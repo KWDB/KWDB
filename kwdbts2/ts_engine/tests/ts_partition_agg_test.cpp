@@ -10,6 +10,7 @@
 // See the Mulan PSL v2 for more details.
 
 #include <cstdio>
+#include "ts_test_base.h"
 #include "test_util.h"
 #include "ts_engine.h"
 #include "ts_lru_block_cache.h"
@@ -22,71 +23,20 @@ const string engine_root_path = "./tsdb";
 extern atomic<int> destroyed_entity_block_file_count;
 extern atomic<int> created_entity_block_file_count;
 
-class TestPartitionAgg : public ::testing::Test {
+class TestPartitionAgg : public TsEngineTestBase {
  public:
-  EngineOptions opts_;
-  TSEngineImpl *engine_;
-  kwdbContext_t g_ctx_;
-  kwdbContext_p ctx_;
-
-  virtual void SetUp() override {
-    ctx_ = &g_ctx_;
-    InitKWDBContext(ctx_);
+  void SetUp() override {
+    InitContext();
     KWDBDynamicThreadPool::GetThreadPool().Init(8, ctx_);
   }
 
-  virtual void TearDown() override {
+  void TearDown() override {
     KWDBDynamicThreadPool::GetThreadPool().Stop();
   }
 
- public:
   TestPartitionAgg() {
-    ctx_ = &g_ctx_;
-    InitKWDBContext(ctx_);
-    opts_.db_path = engine_root_path;
-    Remove(engine_root_path);
-    MakeDirectory(engine_root_path);
-    engine_ = new TSEngineImpl(opts_);
-    auto s = engine_->Init(ctx_);
-    EXPECT_EQ(s, KStatus::SUCCESS);
-  }
-
-  ~TestPartitionAgg() {
-    if (engine_) {
-      delete engine_;
-    }
-  }
-  std::string GetPrimaryKey(TSTableID table_id, TSEntityID dev_id) {
-    std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
-    bool is_dropped = false;
-    KStatus s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
-    EXPECT_EQ(s, KStatus::SUCCESS);
-    std::vector<TagInfo> tag_schema;
-    s = schema_mgr->GetTagMeta(1, tag_schema);
-    EXPECT_EQ(s , KStatus::SUCCESS);
-    uint64_t pkey_len = 0;
-    for (size_t i = 0; i < tag_schema.size(); i++) {
-      if (tag_schema[i].isPrimaryTag()) {
-        pkey_len += tag_schema[i].m_size;
-      }
-    }
-    char* mem = reinterpret_cast<char*>(malloc(pkey_len));
-    memset(mem, 0, pkey_len);
-    std::string dev_str = intToString(dev_id);
-    size_t offset = 0;
-    for (size_t i = 0; i < tag_schema.size(); i++) {
-      if (tag_schema[i].isPrimaryTag()) {
-        if (tag_schema[i].m_data_type == DATATYPE::VARSTRING) {
-          memcpy(mem + offset, dev_str.data(), dev_str.length());
-        } else {
-          memcpy(mem + offset, (char*)(&dev_id), tag_schema[i].m_size);
-        }
-        offset += tag_schema[i].m_size;
-      }
-    }
-    auto ret = std::string{mem, pkey_len};
-    free(mem);
-    return ret;
+    InitContext();
+    InitEngine(engine_root_path);
   }
 };
 
@@ -442,3 +392,67 @@ TEST_F(TestPartitionAgg, basicPartitionAggDelete) {
     }
   }
 }
+
+TEST_F(TestPartitionAgg, basicPartitionAggDeleteAll) {
+  TSTableID table_id = 999;
+  roachpb::CreateTsTable pb_meta;
+  ConstructRoachpbTable(&pb_meta, table_id);
+  std::shared_ptr<TsTable> ts_table;
+  auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  bool is_dropped = false;
+  s = engine_->GetTsTable(ctx_, table_id, ts_table, is_dropped);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, table_schema_mgr);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = table_schema_mgr->GetMetricMeta(1, &metric_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::vector<TagInfo> tag_schema;
+  s = table_schema_mgr->GetTagMeta(1, tag_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  timestamp64 start_ts1 = 3600;
+  KTimestamp interval = 100L;
+  int entity_num = 8;
+  int entity_row_num = 10;
+  uint16_t inc_entity_cnt;
+  uint32_t inc_unordered_cnt = 0;
+  DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
+  for (size_t i = 0; i < entity_num; i++) {
+    auto pay_load = GenRowPayload(*metric_schema, tag_schema, table_id, 1, 1 + i, entity_row_num, start_ts1, interval);
+    TsRawPayload::SetOSN(pay_load, 10);
+    s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+    free(pay_load.data);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+  }
+  timestamp64 start_ts2 = start_ts1 + 10000 * 86400;
+  for (size_t i = 0; i < entity_num; i++) {
+    auto pay_load = GenRowPayload(*metric_schema, tag_schema, table_id, 1, 1 + i, entity_row_num, start_ts2, interval);
+    TsRawPayload::SetOSN(pay_load, 10);
+    s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+    free(pay_load.data);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+  }
+
+  std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = engine_->GetTsVGroups();
+  for (const auto& vgroup : *ts_vgroups) {
+    ASSERT_EQ(vgroup->CalcPartitionAgg(), KStatus::SUCCESS);
+  }
+
+  uint64_t tmp_count = 0;
+  for (uint64_t entity_id = 1; entity_id <= entity_num; ++entity_id) {
+    std::string p_key = GetPrimaryKey(table_id, entity_id);
+    s = engine_->DeleteData(ctx_, table_id, 0, p_key, {{INT64_MIN, INT64_MAX}}, &tmp_count, 0, 11, is_dropped);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+  }
+
+  for (const auto& vgroup : *ts_vgroups) {
+    ASSERT_EQ(vgroup->CalcPartitionAgg(), KStatus::SUCCESS);
+  }
+}
+

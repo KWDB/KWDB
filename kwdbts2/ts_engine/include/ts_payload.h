@@ -140,6 +140,10 @@ class TsRawPayload {
   static void SetHashPoint(const TSSlice &raw, uint32_t hash_point) {
     KUint32(raw.data + hash_point_id_offset_) = hash_point;
   }
+  static uint32_t GetHashPoint(const TSSlice &raw) {
+    return KUint32(raw.data + hash_point_id_offset_);
+  }
+
   static void SetRowType(const TSSlice &raw, DataTagFlag row_type) {
     KUint8(raw.data + row_type_offset_) = row_type;
   }

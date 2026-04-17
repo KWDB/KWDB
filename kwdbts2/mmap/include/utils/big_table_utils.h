@@ -83,24 +83,16 @@ inline void set_null_bitmap(unsigned char *null_bitmap, int col) {
   // unsigned char bit_pos = (1 << (col % 8));
   // col = col / 8;
   unsigned char bit_pos = (1 << (col & 7));
-  col = col >> 3;
-  null_bitmap[col] |= bit_pos;
+  null_bitmap[col >> 3] |= bit_pos;
 }
 
 // unset null bitmap
 inline void unset_null_bitmap(unsigned char *null_bitmap, int col) {
-  // unsigned char bit_pos = (1 << (col % 8));
-  // col = col / 8;
   unsigned char bit_pos = (1 << (col & 7));
-  col = col >> 3;
-  null_bitmap[col] &= ~bit_pos;
+  null_bitmap[col >> 3] &= ~bit_pos;
 }
 
 // get null bitmap status bit
 inline unsigned char get_null_bitmap (unsigned char *null_bitmap, int col) {
-  // unsigned char bit_pos = (1 << (col % 8));
-  unsigned char bit_pos = (1 << (col & 7));
-  // col = col / 8;
-  col = col >> 3;
-  return (null_bitmap[col] & bit_pos);
+  return (null_bitmap[col >> 3] & (1 << (col & 7)));
 }

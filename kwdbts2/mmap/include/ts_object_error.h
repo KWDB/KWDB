@@ -66,15 +66,15 @@ public:
 
   void clear();
 
-  static const char * errorCodeString(int cerr_ode);
+  static const char * errorCodeString(int err_ode);
 
   int setError(const ErrorInfo &rhs);
 
   int setError(int err_code, const string &str = kwdbts::s_emptyString);
 
-  string toString() {return "";};
+  string toString() { return ""; };
 
-  inline bool isOK() { return errcode >= 0;};
+  inline bool isOK() { return errcode >= 0; };
 };
 
 class TSObject;

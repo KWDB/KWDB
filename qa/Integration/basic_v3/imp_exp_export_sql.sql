@@ -20,7 +20,7 @@ insert into test.tb2 values('2024-01-01 00:00:04+00:00',666,119,807,9944.78125,-
 insert into test.tb2 values('2024-01-01 00:00:04+00:00',666,119,807,9944.78125,-7359.134805999276,true,'A','H',-238.10581074656693,865,577,987,659.4307861328125,-349.5548293794309,false,'m','o',3778.0368072157435);
 
 --success
-export into sql "nodelocal://1/test_tbtest1/tb1/" from table test.tb2;
+export into sql "nodelocal://1/test_tbtest1/tb2/" from table test.tb2;
 
 --error(aggregate query)
 export INTO sql "nodelocal://1/test_tbtest2/1" from select k_timestamp,e1 from test.tb2 union select k_timestamp,e1 from test.tb2 order by k_timestamp,e1;

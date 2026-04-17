@@ -10,26 +10,23 @@
 // See the Mulan PSL v2 for more details.
 
 #include "ts_entity_segment.h"
-#include "ts_segment_block_container.h"
 
 #include <cstdint>
 #include <utility>
+
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
-#include "ts_agg.h"
 #include "ts_bitmap.h"
-#include "ts_block_span_sorted_iterator.h"
 #include "ts_bufferbuilder.h"
-#include "ts_coding.h"
 #include "ts_compressor.h"
 #include "ts_entity_segment_handle.h"
 #include "ts_filename.h"
 #include "ts_io.h"
-#include "ts_lastsegment_builder.h"
-#include "ts_sliceguard.h"
-#include "ts_version.h"
 #include "ts_lru_block_cache.h"
+#include "ts_segment_block_container.h"
+#include "ts_sliceguard.h"
 #include "ts_ts_lsn_span_utils.h"
+#include "ts_version.h"
 
 namespace kwdbts {
 
@@ -188,7 +185,7 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
                                                   std::list<shared_ptr<TsBlockSpan>>& block_spans,
                                                   const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
                                                   const std::shared_ptr<MMapMetricsTable>& scan_schema,
-                                                  TsScanStats* ts_scan_stats) {
+                                                  TsScanStats* ts_scan_stats, uint64_t min_readable_block_id) {
   TsEntityItem entity_item{filter.entity_id};
   bool is_exist;
   KStatus s = entity_header_.GetEntityItem(filter.entity_id, entity_item, is_exist);
@@ -203,7 +200,7 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
   TsEntitySegmentBlockItem* cur_blk_item;
   TsSliceGuard block_item_guard;
   TsBlockSpan* template_blk_span = nullptr;
-  while (last_blk_id > 0) {
+  while (last_blk_id > min_readable_block_id) {
     s = block_header_.GetBlockItem(last_blk_id, &cur_blk_item, &block_item_guard, ts_scan_stats);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("get block item failed, entity_id=%lu, blk_id=%lu", filter.entity_id, last_blk_id);

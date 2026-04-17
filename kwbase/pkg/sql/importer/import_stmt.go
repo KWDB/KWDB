@@ -281,7 +281,8 @@ func importPlanHook(
 					if err != nil {
 						return err
 					}
-					if tableDetails, err = checkAndGetTSDetailsInTableInto(ctx, p, importStmt, tableDesc, files, intoCols); err != nil {
+					adjustColumnNumber, tsColNumber := getFloatAndTSTargetColumns(tableDesc, intoCols)
+					if tableDetails, err = checkAndGetTSDetailsInTableInto(ctx, p, importStmt, tableDesc, files, intoCols, adjustColumnNumber, tsColNumber); err != nil {
 						return err
 					}
 					if err = checkIntoColumns(tableDesc, intoCols); err != nil {
@@ -425,6 +426,8 @@ func checkAndGetTSDetailsInTableInto(
 	tableDesc *sqlbase.MutableTableDescriptor,
 	files []string,
 	intoCols []string,
+	adjustColumnNumber []uint32,
+	tsColNumber int32,
 ) ([]sqlbase.ImportTable, error) {
 	switch tableDesc.TableType {
 	//case sqlbase.TableType_CHILD_TABLE:
@@ -432,10 +435,62 @@ func checkAndGetTSDetailsInTableInto(
 	//case sqlbase.TableType_SUPER_TABLE:
 	//	return getTemplateTableDetails(ctx, p, importStmt, files)
 	case tree.TimeseriesTable:
-		return []sqlbase.ImportTable{{Desc: tableDesc.TableDesc(), TableName: tableDesc.Name, IsNew: false, TableType: tree.TimeseriesTable, IntoCols: intoCols}}, nil
+		return []sqlbase.ImportTable{{Desc: tableDesc.TableDesc(), TableName: tableDesc.Name, IsNew: false, TableType: tree.TimeseriesTable, IntoCols: intoCols, AdjustColumnNumber: adjustColumnNumber, TsColNumber: tsColNumber}}, nil
 	default:
 		return nil, errors.Errorf("Unknown table type %v", tableDesc.TableType)
 	}
+}
+
+type colMeta struct {
+	isFloat bool // FLOAT4/FLOAT8 true
+	isTime  bool // TIMESTAMP/TIMEZ true
+}
+
+// getFloatAndTSTargetColumns obtains the location of FLOAT type data in the table structure
+func getFloatAndTSTargetColumns(
+	tableDesc *sqlbase.MutableTableDescriptor, intoCols []string,
+) ([]uint32, int32) {
+	var adjustIdx []uint32
+	var tsIdx int32
+	tsIdx = -1
+	var metaColMeta = make([]colMeta, len(tableDesc.Columns))
+	for i, col := range tableDesc.Columns {
+		switch col.Type.Family() {
+		case types.FloatFamily:
+			metaColMeta[i].isFloat = true
+		case types.TimeFamily, types.TimeTZFamily, types.TimestampFamily, types.TimestampTZFamily:
+			metaColMeta[i].isTime = true
+		}
+	}
+	if len(intoCols) > 0 {
+		for i, name := range intoCols {
+			pos := -1
+			for j, col := range tableDesc.Columns {
+				if col.Name == name {
+					pos = j
+					break
+				}
+			}
+			if pos == -1 {
+				continue
+			}
+			if metaColMeta[pos].isFloat {
+				adjustIdx = append(adjustIdx, uint32(i))
+			}
+			if metaColMeta[pos].isTime {
+				tsIdx = int32(i)
+			}
+		}
+	} else {
+		for i, m := range metaColMeta {
+			if m.isFloat {
+				adjustIdx = append(adjustIdx, uint32(i))
+			} else if m.isTime {
+				tsIdx = int32(i)
+			}
+		}
+	}
+	return adjustIdx, tsIdx //-1代表没找到
 }
 
 // checkIntoColumns is used to judge whether target columns are all in table's columns

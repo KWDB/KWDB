@@ -156,6 +156,9 @@ message TSCol {
   optional VariableLengthType variable_length_type = 5 [(gogoproto.nullable) = false];
   optional ColumnType column_type = 6 [(gogoproto.nullable) = false];
   optional bool nullable = 7 [(gogoproto.nullable) = false];
+  optional string encode_algo = 8;
+  optional string compress_algo = 9;
+  optional string compress_level = 10;
 }
 
 // ColumnFamilyDescriptor is set of columns stored together in one kv entry.
@@ -1338,6 +1341,8 @@ message ImportTable {
   repeated string ColumnComment = 10;
   repeated string columnName = 11;
   repeated string columnIndex = 12;
+  repeated uint32 adjustColumnNumber = 13;
+  optional int32 tsColNumber = 14 [(gogoproto.nullable) = false];
 }
 
 message KWDBTagValue {

@@ -2680,17 +2680,19 @@ class LastAggregate : public AggregateFunc {
     if (chunk->IsNull(line, arg_idx_[0])) {
       return;
     }
-
+    k_bool is_ts_null = chunk->IsNull(line, ts_idx_);
+    if (is_ts_null) {
+      return;
+    }
     k_bool is_dest_null = AggregateFunc::IsNull(bitmap, col_idx_);
     DatumPtr src = chunk->GetData(line, arg_idx_[0]);
     DatumPtr ts_ptr = chunk->GetData(line, ts_idx_);
-    k_bool is_ts_null = chunk->IsNull(line, ts_idx_);
     auto ts = *reinterpret_cast<KTimestamp*>(ts_ptr);
     DatumPtr dest_ptr = dest + offset_;
     k_int64 point_ts = point_time_;
 
     if (is_dest_null) {
-      if (ts > point_ts || is_ts_null) {
+      if (ts > point_ts) {
         return;
       }
       // first assign
@@ -2752,6 +2754,10 @@ class LastAggregate : public AggregateFunc {
       }
 
       if (!input_chunk->IsNull(row, arg_idx)) {
+        bool ts_is_null = input_chunk->IsNull(row, ts_idx_);
+        if (ts_is_null) {
+          continue;
+        }
         char* ts_src_ptr = input_chunk->GetData(row, ts_idx_);
         KTimestamp ts = *reinterpret_cast<KTimestamp*>(ts_src_ptr);
         k_int64 point_ts = point_time_;
@@ -2898,7 +2904,10 @@ class LastRowAggregate : public AggregateFunc {
     if (chunk->IsNull(line, ts_idx_)) {
       return;
     }
-
+    bool ts_is_null = chunk->IsNull(line, ts_idx_);
+    if (ts_is_null) {
+      return;
+    }
     DatumPtr ts_ptr = chunk->GetData(line, ts_idx_);
     DatumPtr dest_ptr = dest + offset_;
 
@@ -2955,7 +2964,10 @@ class LastRowAggregate : public AggregateFunc {
         last_ts_ = INT64_MIN;
         last_data_ptr_ = nullptr;
       }
-
+      bool ts_is_null = data_container->IsNull(row, ts_idx_);
+      if (ts_is_null) {
+        continue;
+      }
       char* ts_src_ptr = data_container->GetData(row, ts_idx_);
       KTimestamp ts = *reinterpret_cast<KTimestamp*>(ts_src_ptr);
       if (ts > last_ts_) {
@@ -3082,7 +3094,10 @@ class LastTSAggregate : public AggregateFunc {
     if (chunk->IsNull(line, arg_idx_[0])) {
       return;
     }
-
+    bool ts_is_null = chunk->IsNull(line, ts_idx_);
+    if (ts_is_null) {
+      return;
+    }
     k_bool is_dest_null = AggregateFunc::IsNull(bitmap, col_idx_);
     DatumPtr ts_ptr = chunk->GetData(line, ts_idx_);
     DatumPtr dest_ptr = dest + offset_;
@@ -3152,6 +3167,10 @@ class LastTSAggregate : public AggregateFunc {
       }
 
       if (!input_chunk->IsNull(row, arg_idx)) {
+        bool ts_is_null = input_chunk->IsNull(row, ts_idx_);
+        if (ts_is_null) {
+          continue;
+        }
         char* ts_src_ptr = input_chunk->GetData(row, ts_idx_);
         KTimestamp ts = *reinterpret_cast<KTimestamp*>(ts_src_ptr);
         if ((last_line_ptr == nullptr || ts > last_ts_) && (ts <= point_ts)) {
@@ -3285,7 +3304,10 @@ class LastRowTSAggregate : public AggregateFunc {
     if (chunk->IsNull(line, ts_idx_)) {
       return;
     }
-
+    bool ts_is_null = chunk->IsNull(line, ts_idx_);
+    if (ts_is_null) {
+      return;
+    }
     DatumPtr ts_ptr = chunk->GetData(line, ts_idx_);
     DatumPtr dest_ptr = dest + offset_;
 
@@ -3340,7 +3362,10 @@ class LastRowTSAggregate : public AggregateFunc {
         last_ts_ = INT64_MIN;
         last_line_ptr = nullptr;
       }
-
+      bool ts_is_null = input_chunk->IsNull(row, ts_idx_);
+      if (ts_is_null) {
+        continue;
+      }
       char* ts_src_ptr = input_chunk->GetData(row, ts_idx_);
 
       KTimestamp ts = *reinterpret_cast<KTimestamp*>(ts_src_ptr);
@@ -3454,7 +3479,10 @@ class FirstAggregate : public AggregateFunc {
     if (chunk->IsNull(line, arg_idx_[0])) {
       return;
     }
-
+    bool ts_is_null = chunk->IsNull(line, ts_idx_);
+    if (ts_is_null) {
+      return;
+    }
     k_bool is_dest_null = AggregateFunc::IsNull(bitmap, col_idx_);
     DatumPtr src = chunk->GetData(line, arg_idx_[0]);
     DatumPtr ts_ptr = chunk->GetData(line, ts_idx_);
@@ -3521,6 +3549,10 @@ class FirstAggregate : public AggregateFunc {
       }
 
       if (!input_chunk->IsNull(row, arg_idx)) {
+        bool ts_is_null = input_chunk->IsNull(row, ts_idx_);
+        if (ts_is_null) {
+          continue;
+        }
         char* ts_src_ptr = input_chunk->GetData(row, ts_idx_);
 
         KTimestamp ts = *reinterpret_cast<KTimestamp*>(ts_src_ptr);
@@ -3646,7 +3678,10 @@ class FirstRowAggregate : public AggregateFunc {
     if (chunk->IsNull(line, ts_idx_)) {
       return;
     }
-
+    bool ts_is_null = chunk->IsNull(line, ts_idx_);
+    if (ts_is_null) {
+      return;
+    }
     DatumPtr ts_ptr = chunk->GetData(line, ts_idx_);
     DatumPtr dest_ptr = dest + offset_;
 
@@ -3708,7 +3743,6 @@ class FirstRowAggregate : public AggregateFunc {
         first_ts_ = INT64_MAX;
         first_data_ptr_ = nullptr;
       }
-
       char* ts_src_ptr = input_chunk->GetData(row, ts_idx_);
 
       KTimestamp ts = *reinterpret_cast<KTimestamp*>(ts_src_ptr);
@@ -3833,7 +3867,10 @@ class FirstTSAggregate : public AggregateFunc {
     if (chunk->IsNull(line, arg_idx_[0])) {
       return;
     }
-
+    bool ts_is_null = chunk->IsNull(line, ts_idx_);
+    if (ts_is_null) {
+      return;
+    }
     k_bool is_dest_null = AggregateFunc::IsNull(bitmap, col_idx_);
     DatumPtr ts_ptr = chunk->GetData(line, ts_idx_);
     DatumPtr dest_ptr = dest + offset_;
@@ -3897,6 +3934,10 @@ class FirstTSAggregate : public AggregateFunc {
       }
 
       if (!input_chunk->IsNull(row, arg_idx)) {
+        bool ts_is_null = input_chunk->IsNull(row, ts_idx_);
+        if (ts_is_null) {
+          continue;
+        }
         char* ts_src_ptr = input_chunk->GetData(row, ts_idx_);
 
         KTimestamp ts = *reinterpret_cast<KTimestamp*>(ts_src_ptr);
@@ -4026,7 +4067,10 @@ class FirstRowTSAggregate : public AggregateFunc {
     if (chunk->IsNull(line, ts_idx_)) {
       return;
     }
-
+    bool ts_is_null = chunk->IsNull(line, ts_idx_);
+    if (ts_is_null) {
+      return;
+    }
     DatumPtr ts_ptr = chunk->GetData(line, ts_idx_);
     DatumPtr dest_ptr = dest + offset_;
 

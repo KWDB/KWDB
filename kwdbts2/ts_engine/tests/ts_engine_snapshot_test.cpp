@@ -21,7 +21,6 @@ using namespace kwdbts;  // NOLINT
 
 std::string db_path = "./test_db";  // NOLINT
 
-extern bool g_go_start_service;
 
 RangeGroup test_range{default_entitygroup_id_in_dist_v2, 0};
 
@@ -34,6 +33,7 @@ class TestEngineSnapshotImgrate : public ::testing::Test {
   TSEngineImpl* ts_engine_desc_{nullptr};
 
   static void SetUpTestCase() {
+    EngineOptions::is_single_node_ = false;
     KWDBDynamicThreadPool::GetThreadPool().InitImplicitly();
   }
 
@@ -42,9 +42,7 @@ class TestEngineSnapshotImgrate : public ::testing::Test {
     if (!pool.IsStop()) {
       pool.Stop();
     }
-#ifdef WITH_TESTS
     KWDBDynamicThreadPool::Destroy();
-#endif
   }
 
   TestEngineSnapshotImgrate() {
@@ -69,7 +67,6 @@ class TestEngineSnapshotImgrate : public ::testing::Test {
       exit(1);
     }
     ts_engine_desc_ = engine;
-    g_go_start_service = false;
   }
 
   ~TestEngineSnapshotImgrate() override {
@@ -1081,7 +1078,6 @@ TEST_F(TestEngineSnapshotImgrate, mulitSnapshot) {
   ASSERT_EQ(s, KStatus::SUCCESS);
 }
 
-
 TEST_F(TestEngineSnapshotImgrate, ConvertUpdateEntities) {
   roachpb::CreateTsTable meta;
   KTableKey cur_table_id = 1006;
@@ -1298,6 +1294,94 @@ TEST_F(TestEngineSnapshotImgrate, ConvertUpdateEntities) {
   ASSERT_EQ(KUint64((char*)(rs.data[3][0]->mem) + 8), 123456);
   delete m_iter;
 
+  s = ts_engine_src_->DropTsTable(ctx_, cur_table_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = ts_engine_desc_->DropTsTable(ctx_, cur_table_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+}
+
+
+TEST_F(TestEngineSnapshotImgrate, ConvertWrongHashPoint) {
+  roachpb::CreateTsTable meta;
+  KTableKey cur_table_id = 1006;
+  ConstructRoachpbTable(&meta, cur_table_id);
+  std::shared_ptr<TsTable> ts_table;
+  KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = ts_engine_desc_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ctx_->ts_engine = ts_engine_src_;
+  // input data to  table 1007
+  uint64_t pkey_int = 1;
+  std::vector<std::string> pkeys;
+  std::string pkey_str = GetPrimaryKey(ts_engine_src_, cur_table_id, pkey_int);
+  pkeys.push_back(pkey_str);
+  uint64_t del_count;
+  auto ts_table_v2 = dynamic_pointer_cast<TsTableV2Impl>(ts_table);
+
+  std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
+  bool is_dropped = false;
+  s = ts_engine_src_->GetTableSchemaMgr(ctx_, cur_table_id, is_dropped, schema_mgr);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = schema_mgr->GetMetricMeta(1, &metric_schema);
+  EXPECT_EQ(s , KStatus::SUCCESS);
+  std::vector<TagInfo> tag_schema;
+  s = schema_mgr->GetTagMeta(1, tag_schema);
+  EXPECT_EQ(s , KStatus::SUCCESS);
+  auto pay_load = GenRowPayload(*metric_schema, tag_schema ,cur_table_id, 1, pkey_int, 1, 10000);
+  TsRawPayload::SetHashPoint(pay_load, 100);
+  TsRawPayload::SetOSN(pay_load, 100);
+  uint16_t inc_entity_cnt;
+  uint32_t inc_unordered_cnt = 0;
+  DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
+  s = ts_engine_src_->PutData(ctx_, cur_table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  EXPECT_EQ(s , KStatus::SUCCESS);
+  TsRawPayload::SetHashPoint(pay_load, 200);
+  s = ts_engine_desc_->PutData(ctx_, cur_table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  EXPECT_EQ(s , KStatus::SUCCESS);
+  free(pay_load.data);
+
+  uint64_t desc_snapshot_id;
+  s = ts_engine_desc_->CreateSnapshotForWrite(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, 101}, &desc_snapshot_id, is_dropped, 200);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  uint64_t snapshot_id;
+  s = ts_engine_src_->CreateSnapshotForRead(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, 101}, UINT64_MAX, &snapshot_id, is_dropped);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  // migrate data from 1007 to 1008
+  TSSlice snapshot_data{nullptr, 0};
+  s = ts_engine_src_->GetSnapshotNextBatchData(ctx_, snapshot_id, &snapshot_data, is_dropped);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_TRUE(snapshot_data.data != nullptr);
+  s = ts_engine_desc_->WriteSnapshotBatchData(ctx_, desc_snapshot_id, snapshot_data, is_dropped);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  free(snapshot_data.data);
+
+  std::vector<k_uint32> scan_cols = {0};
+  std::vector<KwOSNSpan> osn_spans;
+  osn_spans.push_back({0, 10187});
+  std::vector<KwTsSpan> ts_spans;
+  ts_spans.push_back({INT64_MIN, INT64_MAX});
+  BaseEntityIterator *iter;
+  std::vector<kwdbts::EntityResultIndex> entity_id_list;
+  ResultSet rs;
+  rs.setColumnNum(1);
+  uint32_t count;
+  std::vector<HashIdSpan> hash_id_spans;
+  hash_id_spans.push_back({0, UINT64_MAX});
+  s = ts_table_v2->GetTagIteratorByOSN(ctx_, 1, scan_cols, osn_spans, UINT64_MAX, &hash_id_spans, &iter);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = iter->Next(&entity_id_list, &rs, &count);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(count, 1);
+  ASSERT_EQ(entity_id_list.size(), 1);
+  ASSERT_EQ(entity_id_list[0].hash_point, 100);
+  auto op_r_info = reinterpret_cast<OperatorInfoOfRecord*>(entity_id_list[0].op_with_osn.get());
+  ASSERT_EQ(op_r_info->osn, 100);
+  ASSERT_EQ(op_r_info->type, OperatorTypeOfRecord::OP_TYPE_INSERT);
+  delete iter;
+  
   s = ts_engine_src_->DropTsTable(ctx_, cur_table_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
   s = ts_engine_desc_->DropTsTable(ctx_, cur_table_id);

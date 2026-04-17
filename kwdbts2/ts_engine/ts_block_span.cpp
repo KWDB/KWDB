@@ -287,9 +287,10 @@ KStatus TsBlockSpan::BuildCompressedData(TsBufferBuilder* data) {
       lsn_data.append(reinterpret_cast<const char*>(block_->GetOSNAddr(start_row_ + row_idx)), d_size);
     }
     TsBufferBuilder compressed;
+    // LSN use default algorithm
     auto [first, second] = mgr.GetDefaultAlgorithm(d_type);
     TSSlice plain = lsn_data.AsSlice();
-    mgr.CompressData(plain, nullptr, nrow_, &compressed, first, second);
+    mgr.CompressData(plain, nullptr, nrow_, &compressed, first, second, 0);
     data->append(compressed.AsSlice());
     // block data offset
     uint32_t column_block_offset = data->size() - block_data_begin_offset - col_offsets_len;
@@ -363,14 +364,15 @@ KStatus TsBlockSpan::BuildCompressedData(TsBufferBuilder* data) {
       mgr.CompressBitmap(bitmap.get(), data);
       b = bitmap.get();
     }
-    auto [first, second] = mgr.GetDefaultAlgorithm(static_cast<DATATYPE>(col_type));
+    auto [first, second] = mgr.GetAlgorithm(static_cast<DATATYPE>(col_type), (*scan_attrs_)[scan_idx]);
+    // auto [first, second] = mgr.GetDefaultAlgorithm(static_cast<DATATYPE>(d_type));
     if (is_var_col) {
       // varchar use Gorilla algorithm
-      first = TsCompAlg::kSimple8B_V2_u32;
+      first = EncodeAlgo::kSimple8B_V2_u32;
       // var offset data
       TsBufferBuilder compressed;
       bool ok = mgr.CompressData({var_offset_data.data(), var_offset_data.size()},
-                                 nullptr, nrow_, &compressed, first, second);
+                                 nullptr, nrow_, &compressed, first, second, (*scan_attrs_)[scan_idx].compress_level);
       if (!ok) {
         LOG_ERROR("Compress var offset data failed. vg_id [%u] entity_id [%lu] col_id[%u]",
           vgroup_id_, entity_id_, scan_idx)
@@ -381,7 +383,8 @@ KStatus TsBlockSpan::BuildCompressedData(TsBufferBuilder* data) {
       data->append(compressed.AsSlice());
       // var data
       compressed.clear();
-      ok = mgr.CompressVarchar({var_data.data(), var_data.size()}, &compressed, GenCompAlg::kSnappy);
+      ok = mgr.CompressVarchar({var_data.data(), var_data.size()}, &compressed, EngineOptions::compression_algorithm,
+        (*scan_attrs_)[scan_idx].compress_level);
       if (!ok) {
         LOG_ERROR("Compress var data failed. vg_id [%u] entity_id [%lu] col_id[%u]", vgroup_id_, entity_id_, scan_idx)
         return KStatus::FAIL;
@@ -392,7 +395,7 @@ KStatus TsBlockSpan::BuildCompressedData(TsBufferBuilder* data) {
       TsBufferBuilder compressed;
       size_t col_size = scan_idx == 0 ? 8 : d_size;
       TSSlice plain{const_cast<char*>(fixed_col_value_addr), nrow_ * col_size};
-      mgr.CompressData(plain, b, nrow_, &compressed, first, second);
+      mgr.CompressData(plain, b, nrow_, &compressed, first, second, (*scan_attrs_)[scan_idx].compress_level);
       data->append(compressed.AsSlice());
     }
     // block data offset
@@ -416,8 +419,12 @@ KStatus TsBlockSpan::BuildCompressedData(TsBufferBuilder* data) {
       DATATYPE type = static_cast<DATATYPE>((*scan_attrs_)[scan_idx].type);
       AggCalculatorV2 aggCalc(fixed_col_value_addr, b, type, d_size, nrow_);
       auto is_not_null = (*scan_attrs_)[scan_idx].isFlag(AINFO_NOT_NULL);
-      *reinterpret_cast<bool *>(sum.data()) = aggCalc.CalcAggForFlush(is_not_null, count, max.data(),
-                                                                      min.data(), sum.data() + 1);
+      bool is_overflow = false;
+      s = aggCalc.CalcAggForFlush(is_not_null, is_overflow, count, max.data(), min.data(), sum.data() + 1);
+      if (s != KStatus::SUCCESS) {
+        return s;
+      }
+      *reinterpret_cast<bool *>(sum.data()) = is_overflow;
       if (0 != count) {
         int agg_size = 0;
         if (isSumType(col_type)) {

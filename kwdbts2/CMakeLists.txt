@@ -198,11 +198,11 @@ if (NOT BRPC_FOUND)
       BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/third_party/brpc-${BRPC_VERSION}/build"
       LIST_SEPARATOR ","
       CMAKE_ARGS
-        -S "${PROJECT_SOURCE_DIR}/third_party/brpc-${BRPC_VERSION}" 
-        -B "${CMAKE_CURRENT_BINARY_DIR}/third_party/brpc-${BRPC_VERSION}/build" 
+        -S "${PROJECT_SOURCE_DIR}/third_party/brpc-${BRPC_VERSION}"
+        -B "${CMAKE_CURRENT_BINARY_DIR}/third_party/brpc-${BRPC_VERSION}/build"
         -DCMAKE_INSTALL_LIBDIR=lib
-        -DCMAKE_BUILD_TYPE=Release 
-        -DWITH_DEBUG_SYMBOLS=OFF 
+        -DCMAKE_BUILD_TYPE=Release
+        -DWITH_DEBUG_SYMBOLS=OFF
         -DDOWNLOAD_GTEST=OFF
         -DBUILD_BRPC_TOOLS=OFF
         -DCMAKE_PREFIX_PATH=${NATIVE}/kwdbts2/third_party
@@ -391,6 +391,31 @@ ExternalProject_Add(
 set(SNAPPY_INCLUDE ${SNAPPY_INSTALL_DIR}/include)
 set(SNAPPY_LIB ${SNAPPY_INSTALL_DIR}/lib/libsnappy.a)
 
+# zstd
+set(ZSTD_INSTALL_DIR ${THIRD_PARTY_DIR}/zstd_install)
+set(ZSTD_CMAKE_ARGS
+        -DCMAKE_BUILD_TYPE=Release
+        -DCMAKE_INSTALL_PREFIX=${ZSTD_INSTALL_DIR}
+        -DCMAKE_INSTALL_LIBDIR=lib
+        -DCMAKE_BUILD_TYPE=Release
+        -DZSTD_BUILD_CONTRIB=OFF
+        -DZSTD_BUILD_PROGRAMS=OFF
+        -DZSTD_BUILD_SHARED=OFF
+        -DZSTD_BUILD_STATIC=ON
+        -DZSTD_BUILD_TESTS=OFF
+        -DZSTD_LEGACY_SUPPORT=OFF
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+)
+
+ExternalProject_Add(
+        zstd
+        PREFIX ${THIRD_PARTY_DIR}/zstd_build
+        SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}/third_party/zstd-1.4.8/build/cmake
+        CMAKE_ARGS ${ZSTD_CMAKE_ARGS}
+)
+set(ZSTD_INCLUDE ${ZSTD_INSTALL_DIR}/include)
+set(ZSTD_LIB ${ZSTD_INSTALL_DIR}/lib/libzstd.a)
+
 # include file of kwdbts2
 set(TS_INCLUDE
         ../common/src/h
@@ -407,8 +432,9 @@ set(TS_INCLUDE
         exec/include
         statistic/include
         ${SNAPPY_INCLUDE}
+        ${ZSTD_INCLUDE}
         brpc/include
-        )
+)
 if (NOT KWBASE_OSS)
     list(APPEND TS_INCLUDE icl/autonomy/include)
 endif()
@@ -469,10 +495,10 @@ endif()
 if (NOT LZ4_FOUND OR USE_SOURCE)
   add_dependencies(${KWDBTS2_SERVER_LIB} lz4_src)
 endif()
-add_dependencies(${KWDBTS2_SERVER_LIB} snappy)
+add_dependencies(${KWDBTS2_SERVER_LIB} snappy zstd)
 
 # Set brpc library dependency
-target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE ${BRPC_STATIC_LIB} libssl.a libcrypto.a ${SNAPPY_LIB} ${LZ4_STATIC_LIB} ${GFLAGS_STATIC_LIB} ${PROTOBUF_STATIC_LIB})
+target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE ${BRPC_STATIC_LIB} libssl.a libcrypto.a z ${SNAPPY_LIB} ${LZ4_STATIC_LIB} ${GFLAGS_STATIC_LIB} ${PROTOBUF_STATIC_LIB} ${ZSTD_LIB})
 
 # Import the header files required by the server module
 target_include_directories(${KWDBTS2_SERVER_LIB} PRIVATE
@@ -522,9 +548,14 @@ if (WITH_TESTS)
   if (KWBASE_OSS)
       file(GLOB_RECURSE KWDBTS2_SERVER_TEST_SRC
               mmap/tests/*.cpp
+              common/tests/*.cpp
               #storage/tests/*.cpp
+              storage/tests/st_transaction_mgr_test.cpp
+              storage/tests/wal_components_test.cpp
+              storage/tests/wal_mgr_test.cpp
               exec/tests/*.cpp
-              #engine/tests/*.cpp
+              engine/tests/db_test.cpp
+              engine/tests/payload_test.cpp
               ts_engine/tests/*.cpp
               statistic/tests/*.cpp
               brpc/tests/*.cpp
@@ -564,7 +595,7 @@ if (WITH_TESTS)
                 third_party/gtest-1.8.1/fused-src
                 )
 
-        target_link_libraries(${tname} PRIVATE ${KWDBTS2_SERVER_LIB} common ${PROTOBUF_STATIC_LIB} gtest dl rt z)
+        target_link_libraries(${tname} PRIVATE ${KWDBTS2_SERVER_LIB} common ${PROTOBUF_STATIC_LIB} gtest dl rt z ${LZ4_STATIC_LIB} ${ZSTD_LIB})
         set_target_properties(${tname} PROPERTIES
                 CXX_STANDARD_REQUIRED YES
                 CXX_EXTENSIONS NO

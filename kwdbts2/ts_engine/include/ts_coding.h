@@ -20,6 +20,7 @@
 #include <string_view>
 #include <algorithm>
 #include <type_traits>
+#include "data_type.h"
 #include "libkwdbts2.h"
 #include "ts_bufferbuilder.h"
 #include "ts_sliceguard.h"
@@ -33,6 +34,7 @@ char *EncodeFixed64(char *buf, uint64_t v);
 // LEB128 encoding (unsigned)
 char *EncodeVarint32(char *buf, uint32_t v);
 char *EncodeVarint64(char *buf, uint64_t v);
+char *EncodeFixedTimestamp64(char *buf, timestamp64 v);
 
 void PutFixed16(TsBufferBuilder *dst, uint16_t v);
 void PutFixed32(TsBufferBuilder *dst, uint32_t v);
@@ -41,6 +43,7 @@ void PutFixed64(TsBufferBuilder *dst, uint64_t v);
 uint16_t DecodeFixed16(const char *ptr);
 uint32_t DecodeFixed32(const char *ptr);
 uint64_t DecodeFixed64(const char *ptr);
+timestamp64 DecodeFixedTimestamp64(const char *ptr);
 
 const char *DecodeVarint32(const char *ptr, const char *limit, uint32_t *v);
 const char *DecodeVarint64(const char *ptr, const char *limit, uint64_t *v);
@@ -117,6 +120,19 @@ inline uint64_t DecodeFixed64(const char *ptr) {
   uint64_t result;
   memcpy(&result, ptr, sizeof(result));
   return le64toh(result);
+}
+
+inline char *EncodeFixedTimestamp64(char *buf, timestamp64 v) {
+  uint64_t raw = 0;
+  std::memcpy(&raw, &v, sizeof(raw));
+  return EncodeFixed64(buf, raw);
+}
+
+inline timestamp64 DecodeFixedTimestamp64(const char *ptr) {
+  uint64_t raw = DecodeFixed64(ptr);
+  timestamp64 value{};
+  std::memcpy(&value, &raw, sizeof(value));
+  return value;
 }
 
 inline void PutFixed16(TsBufferBuilder *dst, uint16_t v) {

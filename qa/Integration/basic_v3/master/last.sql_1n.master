@@ -374,19 +374,11 @@ select last_row() from t
                 ^
 HINT: try \hf last_row
 > select last(x,y) from t;
-ERROR: at or near "y": syntax error
-SQLSTATE: 42601
-DETAIL: source SQL:
-select last(x,y) from t
-              ^
-HINT: try \hf last
+ERROR: the second parameter is invalid
+SQLSTATE: 22023
 > select last_row(x,y) from t;
-ERROR: at or near ",": syntax error
-SQLSTATE: 42601
-DETAIL: source SQL:
-select last_row(x,y) from t
-                 ^
-HINT: try \hf last_row
+ERROR: the second parameter is invalid
+SQLSTATE: 22023
 > select last_row(x) from t;
   last_row
 ------------

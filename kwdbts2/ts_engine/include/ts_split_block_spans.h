@@ -10,8 +10,9 @@
 // See the Mulan PSL v2 for more details.
 #pragma once
 
-#include <vector>
+#include <cmath>
 #include <memory>
+#include <vector>
 
 #include "ts_common.h"
 
@@ -43,7 +44,9 @@ class TsBlockSpanSplitter {
   TsBlockSpanSplitter(int64_t begin_ts, int64_t interval, std::vector<std::shared_ptr<TsBlockSpan>>& ts_block_spans) :
     begin_ts_(begin_ts), interval_(interval), ts_block_spans_(ts_block_spans) {}
 
-  KStatus SplitBlockSpans(std::vector<std::vector<std::shared_ptr<TsBlockSpan>>>& split_block_spans) {
+  KStatus SplitBlockSpans(std::vector<std::vector<std::shared_ptr<TsBlockSpan>>>& split_block_spans,
+                          std::vector<uint64_t>& block_spans_index) {
+    uint64_t index = 0;
     auto it = ts_block_spans_.begin();
     timestamp64 split_ts_point = begin_ts_ + interval_ - 1;
     std::vector<std::shared_ptr<TsBlockSpan>> cur_block_spans;
@@ -52,9 +55,14 @@ class TsBlockSpanSplitter {
         cur_block_spans.emplace_back(*it);
         ++it;
       } else if (split_ts_point < (*it)->GetFirstTS()) {
-        split_block_spans.emplace_back(cur_block_spans);
+        if (!cur_block_spans.empty()) {
+          split_block_spans.emplace_back(cur_block_spans);
+          block_spans_index.emplace_back(index);
+        }
         cur_block_spans.clear();
-        split_ts_point += interval_;
+        uint32_t interval_num = ceil(static_cast<double>((*it)->GetFirstTS() - split_ts_point) / interval_);
+        index += interval_num;
+        split_ts_point += interval_num * interval_;
       } else {
         int32_t split_row_index = binarySearch(*it, split_ts_point);
         assert(split_row_index >= 0 && split_row_index < ((*it)->GetRowNum() - 1));
@@ -65,6 +73,7 @@ class TsBlockSpanSplitter {
     }
     if (!cur_block_spans.empty()) {
       split_block_spans.emplace_back(cur_block_spans);
+      block_spans_index.push_back(index);
     }
     return KStatus::SUCCESS;
   }

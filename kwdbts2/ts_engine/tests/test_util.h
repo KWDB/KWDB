@@ -36,6 +36,7 @@
 #include "sys_utils.h"
 #include "column_utils.h"
 #include "payload.h"
+#include "ts_engine.h"
 
 using namespace kwdbts;
 
@@ -147,7 +148,11 @@ std::vector<ZTableColumnMeta> g_all_col_types({
 
 void ConstructRoachpbTable(roachpb::CreateTsTable* meta, KTableKey table_id, uint32_t db_id = 1,
                            std::vector<roachpb::DataType> col_types = {
-                           roachpb::DataType::TIMESTAMP, roachpb::DataType::INT, roachpb::DataType::DOUBLE}) {
+                           roachpb::DataType::TIMESTAMP, roachpb::DataType::INT, roachpb::DataType::DOUBLE},
+                           std::vector<roachpb::DataType> tag_types = {
+                            roachpb::DataType::TIMESTAMP, roachpb::DataType::VARCHAR, roachpb::DataType::VARCHAR, roachpb::DataType::TIMESTAMP
+                           },
+                           bool only_one_primary_tag = false) {
   // create table :  TIMESTAMP | INT | DOUBLE
   roachpb::KWDBTsTable *table = KNEW roachpb::KWDBTsTable();
   table->set_ts_table_id(table_id);
@@ -208,20 +213,38 @@ void ConstructRoachpbTable(roachpb::CreateTsTable* meta, KTableKey table_id, uin
 
   // add tag infos
   std::vector<ZTableColumnMeta> tag_metas;
-  tag_metas.push_back({roachpb::DataType::TIMESTAMP, 8, 8, roachpb::VariableLengthType::ColStorageTypeTuple});
-  tag_metas.push_back({roachpb::DataType::VARCHAR, 3000, 3000, roachpb::VariableLengthType::ColStorageTypeTuple});
-  tag_metas.push_back({roachpb::DataType::VARCHAR, 200, 200, roachpb::VariableLengthType::ColStorageTypeTuple});
-  tag_metas.push_back({roachpb::DataType::TIMESTAMP, 8, 8, roachpb::VariableLengthType::ColStorageTypeTuple});
+  for (auto it : tag_types) {
+    switch (it) {
+    case roachpb::DataType::TIMESTAMP:
+      tag_metas.push_back({roachpb::DataType::TIMESTAMP, 8, 8, roachpb::VariableLengthType::ColStorageTypeTuple});
+      break;
+    case roachpb::DataType::VARCHAR:
+      tag_metas.push_back({roachpb::DataType::VARCHAR, 200, 200, roachpb::VariableLengthType::ColStorageTypeTuple});
+      break;
+    case roachpb::DataType::INT:
+      tag_metas.push_back({roachpb::DataType::INT, 4, 4, roachpb::VariableLengthType::ColStorageTypeTuple});
+      break;
+    default:break;
+    }
+  }
 
   for (int i = 0; i< tag_metas.size(); i++) {
     roachpb::KWDBKTSColumn* column = meta->mutable_k_column()->Add();
     column->set_storage_type((roachpb::DataType)(tag_metas[i].type));
     column->set_storage_len(tag_metas[i].storage_len);
     column->set_column_id(tag_metas.size() + 1 + i);
-    if (i % 2 == 0) {
-      column->set_col_type(::roachpb::KWDBKTSColumn_ColumnType::KWDBKTSColumn_ColumnType_TYPE_PTAG);
+    if (only_one_primary_tag) {
+      if (i == 0) {
+        column->set_col_type(::roachpb::KWDBKTSColumn_ColumnType::KWDBKTSColumn_ColumnType_TYPE_PTAG);
+      } else {
+        column->set_col_type(::roachpb::KWDBKTSColumn_ColumnType::KWDBKTSColumn_ColumnType_TYPE_TAG);
+      }
     } else {
-      column->set_col_type(::roachpb::KWDBKTSColumn_ColumnType::KWDBKTSColumn_ColumnType_TYPE_TAG);
+      if (i % 2 == 0) {
+        column->set_col_type(::roachpb::KWDBKTSColumn_ColumnType::KWDBKTSColumn_ColumnType_TYPE_PTAG);
+      } else {
+        column->set_col_type(::roachpb::KWDBKTSColumn_ColumnType::KWDBKTSColumn_ColumnType_TYPE_TAG);
+      }
     }
     column->set_name("tag_" + std::to_string(i + 1));
   }
@@ -417,6 +440,11 @@ TSSlice GenRowPayload(const std::vector<AttributeInfo>& metric, const std::vecto
           builder.SetColumnValue(i, j, (char*)(&cur_ts), sizeof(cur_ts));
           break;
         }
+        case DATATYPE::INT16: {
+          int data = GetRandomNumber(100);
+          builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
+          break;
+        }
         case DATATYPE::INT32: {
           int data = GetRandomNumber(1024);
           builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
@@ -437,7 +465,8 @@ TSSlice GenRowPayload(const std::vector<AttributeInfo>& metric, const std::vecto
           builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
           break;
         }
-        case ::roachpb::DataType::VARCHAR: {
+        case ::roachpb::DataType::VARCHAR:
+        case ::roachpb::DataType::VARBINARY: {
           char buf[128];
           std::sprintf(buf, "varstring_%07lu_%07" PRIu64, i, GetRandomNumber(100000));
           builder.SetColumnValue(i, j, buf, string(buf).size());
@@ -479,8 +508,23 @@ TSSlice GenRowPayloadForSumOverflow(const std::vector<AttributeInfo>& metric, co
           builder.SetColumnValue(i, j, (char*)(&cur_ts), sizeof(cur_ts));
           break;
         }
+        case DATATYPE::INT16: {
+          int16_t data = INT16_MAX;
+          builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
+          break;
+        }
+        case DATATYPE::INT32: {
+          int32_t data = INT32_MAX;
+          builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
+          break;
+        }
         case DATATYPE::INT64: {
-          uint64_t data = INT64_MAX;
+          int64_t data = INT64_MAX;
+          builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
+          break;
+        }
+        case DATATYPE::FLOAT: {
+          float data = numeric_limits<float>::max();
           builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
           break;
         }
@@ -568,4 +612,148 @@ void make_hashpoint(std::vector<HashIdSpan>* hps) {
 
 KwTsSpan ConvertMsToPrecision(KwTsSpan& span, DATATYPE ts_type) {
   return {convertMSToPrecisionTS(span.begin, ts_type), convertMSToPrecisionTS(span.end, ts_type)};
+}
+
+int64_t parseTimestamp(const std::string& timeStr) {
+  int year, month, day, hour, min, sec, msec;
+  if (sscanf(timeStr.c_str(), "%d-%d-%d %d:%d:%d.%d", &year, &month, &day, &hour, &min, &sec, &msec) != 7) {
+    return -1;  // invalid format
+  }
+  std::tm tm = {};
+  tm.tm_year = year - 1900;
+  tm.tm_mon = month - 1;
+  tm.tm_mday = day;
+  tm.tm_hour = hour;
+  tm.tm_min = min;
+  tm.tm_sec = sec;
+  tm.tm_isdst = -1;  // let mktime determine DST
+  time_t t = mktime(&tm);
+  if (t == -1) {
+    return -1;  // invalid time
+  }
+  auto tp = std::chrono::system_clock::from_time_t(t);
+  auto duration = tp.time_since_epoch() + std::chrono::milliseconds(msec);
+  return std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+}
+
+KStatus InsertData(const std::vector<AttributeInfo>& metric, const std::vector<TagInfo>& tag,
+                              TSTableID table_id, uint32_t version,
+                              std::vector<std::vector<std::vector<string>>>& metric_data,
+                              std::vector<std::vector<string>>& tag_data,
+                              kwdbContext_p ctx, TSEngineImpl* engine) {
+  assert(metric_data.size() == tag_data.size());
+  for (int i = 0; i < tag_data.size(); ++i) {
+    TSRowPayloadBuilder builder(tag, metric, metric_data[i].size());
+    for (size_t j = 0; j < tag.size(); j++) {
+      if (tag[j].m_data_type == DATATYPE::VARSTRING) {
+        builder.SetTagValue(j, (char*)tag_data[i][j].c_str(), tag_data[i][j].length());
+      } else {
+        int tag_int_val = stoi(tag_data[i][j]);
+        builder.SetTagValue(j, (char*)(&tag_int_val), tag[j].m_size);
+      }
+    }
+
+    for (size_t j = 0; j < metric_data[i].size(); ++j) {
+      for (int k = 0; k < metric_data[i][j].size(); ++k) {
+        switch (metric[k].type) {
+          case DATATYPE::TIMESTAMP:
+          case DATATYPE::TIMESTAMP64: {
+            timestamp64 ts = parseTimestamp(metric_data[i][j][k]);
+            builder.SetColumnValue(j, k, (char*)(&ts), sizeof(timestamp64));
+            break;
+          }
+          case DATATYPE::INT16: {
+            if (metric_data[i][j][k] == "<NULL>") {
+              builder.SetColumnNull(j, k);
+            } else {
+              int16_t data = stoi(metric_data[i][j][k]);
+              builder.SetColumnValue(j, k, (char*)(&data), sizeof(data));
+            }
+            break;
+          }
+          case DATATYPE::INT32: {
+            if (metric_data[i][j][k] == "<NULL>") {
+              builder.SetColumnNull(j, k);
+            } else {
+              int data = stoi(metric_data[i][j][k]);
+              builder.SetColumnValue(j, k, (char*)(&data), sizeof(data));
+            }
+            break;
+          }
+          case DATATYPE::INT64: {
+            if (metric_data[i][j][k] == "<NULL>") {
+              builder.SetColumnNull(j, k);
+            } else {
+              int64_t data = stoi(metric_data[i][j][k]);
+              builder.SetColumnValue(j, k, (char*)(&data), sizeof(data));
+            }
+            break;
+          }
+          case DATATYPE::FLOAT: {
+            if (metric_data[i][j][k] == "<NULL>") {
+              builder.SetColumnNull(j, k);
+            } else {
+              float data = stof(metric_data[i][j][k]);
+              builder.SetColumnValue(j, k, (char*)(&data), sizeof(data));
+            }
+            break;
+          }
+          case DATATYPE::DOUBLE: {
+            if (metric_data[i][j][k] == "<NULL>") {
+              builder.SetColumnNull(j, k);
+            } else {
+              double data = stod(metric_data[i][j][k]);
+              builder.SetColumnValue(j, k, (char*)(&data), sizeof(data));
+            }
+            break;
+          }
+          case DATATYPE::CHAR: {
+            if (metric_data[i][j][k] == "<NULL>") {
+              builder.SetColumnNull(j, k);
+            } else {
+              char data[20];
+              strncpy(data, metric_data[i][j][k].c_str(), 20);
+              builder.SetColumnValue(j, k, data, sizeof(data));
+            }
+            break;
+          }
+          case DATATYPE::VARSTRING: {
+            if (metric_data[i][j][k] == "<NULL>") {
+              builder.SetColumnNull(j, k);
+            } else {
+              builder.SetColumnValue(j, k, (char*)metric_data[i][j][k].c_str(), metric_data[i][j][k].length());
+            }
+            break;
+          }
+          case DATATYPE::VARBINARY: {
+            if (metric_data[i][j][k] == "<NULL>") {
+              builder.SetColumnNull(j, k);
+            } else {
+              builder.SetColumnValue(j, k, (char*)metric_data[i][j][k].c_str(), metric_data[i][j][k].length());
+            }
+            break;
+          }
+          default:
+            break;
+        }
+      }
+    }
+    TSSlice payload{nullptr, 0};
+    Defer defer{[&]() {
+      if (payload.data) {
+        free(payload.data);
+      }
+    }};
+    if (!builder.Build(table_id, version, &payload)) {
+      return KStatus::FAIL;
+    }
+    uint16_t inc_entity_cnt;
+    uint32_t inc_unordered_cnt = 0;
+    DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
+    auto ret = engine->PutData(ctx, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+    if (ret != KStatus::SUCCESS) {
+      return ret;
+    }
+  }
+  return KStatus::SUCCESS;
 }

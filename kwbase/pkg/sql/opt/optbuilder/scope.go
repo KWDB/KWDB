@@ -1407,7 +1407,7 @@ func (s *scope) replaceAggregate(f *tree.FuncExpr, def *tree.FunctionDefinition)
 		if checkLastAgg(f.Func.FunctionName()) {
 			s.builder.factory.TSFlags |= opt.HasLast
 		}
-		handleLastAgg(s, expr, f.Func.FunctionName())
+		extendLastAgg(s, expr, f.Func.FunctionName())
 	}
 
 	// Processes TWA and Elapsed aggregation functions.

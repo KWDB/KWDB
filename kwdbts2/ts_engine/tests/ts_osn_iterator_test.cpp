@@ -10,18 +10,15 @@
 // See the Mulan PSL v2 for more details.
 
 #include "test_util.h"
+#include "ts_test_base.h"
 #include "ts_engine.h"
 #include "ts_table.h"
 
 using namespace kwdbts;
 
 const string engine_root_path = "./tsdb";
-class TestV2IteratorByOSN : public ::testing::Test {
+class TestV2IteratorByOSN : public TsEngineTestBase {
  public:
-  EngineOptions opts_;
-  TSEngineImpl *engine_{nullptr};
-  kwdbContext_t g_ctx_{};
-  kwdbContext_p ctx_{&g_ctx_};
   TSTableID table_id_ = 999;
   std::shared_ptr<TsTable> ts_table_;
   const std::vector<AttributeInfo>* metric_schema_{nullptr};
@@ -29,29 +26,11 @@ class TestV2IteratorByOSN : public ::testing::Test {
   DATATYPE ts_col_type_;
    std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;
 
-  static void SetUpTestCase() {
-    KWDBDynamicThreadPool::GetThreadPool().InitImplicitly();
-  }
-
-  static void TearDownTestCase() {
-    auto& pool = KWDBDynamicThreadPool::GetThreadPool();
-    if (!pool.IsStop()) {
-      pool.Stop();
-    }
-#ifdef WITH_TESTS
-    KWDBDynamicThreadPool::Destroy();
-#endif
-  }
-
  public:
   TestV2IteratorByOSN() {
-    InitKWDBContext(ctx_);
-    opts_.db_path = engine_root_path;
-    Remove(engine_root_path);
-    MakeDirectory(engine_root_path);
-    engine_ = new TSEngineImpl(opts_);
-    auto s = engine_->Init(ctx_);
-    EXPECT_EQ(s, KStatus::SUCCESS);
+    InitContext();
+    InitEngine(engine_root_path);
+    auto s = KStatus::SUCCESS;
 
     roachpb::CreateTsTable pb_meta;
     ConstructRoachpbTable(&pb_meta, table_id_);
@@ -67,41 +46,6 @@ class TestV2IteratorByOSN : public ::testing::Test {
     ts_col_type_ = table_schema_mgr_->GetTsColDataType();
   }
 
-  ~TestV2IteratorByOSN() override {
-    delete engine_;
-  }
-    std::string GetPrimaryKey(TSEntityID dev_id) {
-    std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
-    bool is_dropped = false;
-    KStatus s = engine_->GetTableSchemaMgr(ctx_, table_id_, is_dropped, schema_mgr);
-    EXPECT_EQ(s, KStatus::SUCCESS);
-    std::vector<TagInfo> tag_schema;
-    s = schema_mgr->GetTagMeta(1, tag_schema);
-    EXPECT_EQ(s , KStatus::SUCCESS);
-    uint64_t pkey_len = 0;
-    for (size_t i = 0; i < tag_schema.size(); i++) {
-      if (tag_schema[i].isPrimaryTag()) {
-        pkey_len += tag_schema[i].m_size;
-      }
-    }
-    char* mem = reinterpret_cast<char*>(malloc(pkey_len));
-    memset(mem, 0, pkey_len);
-    std::string dev_str = intToString(dev_id);
-    size_t offset = 0;
-    for (size_t i = 0; i < tag_schema.size(); i++) {
-      if (tag_schema[i].isPrimaryTag()) {
-        if (tag_schema[i].m_data_type == DATATYPE::VARSTRING) {
-          memcpy(mem + offset, dev_str.data(), dev_str.length());
-        } else {
-          memcpy(mem + offset, (char*)(&dev_id), tag_schema[i].m_size);
-        }
-        offset += tag_schema[i].m_size;
-      }
-    }
-    auto ret = std::string{mem, pkey_len};
-    free(mem);
-    return ret;
-  }
 };
 
 // insert one tag, then scan tags by osn ranges.
@@ -297,7 +241,7 @@ TEST_F(TestV2IteratorByOSN, basic_udpate) {
 
   uint64_t pkey = 1;
   std::vector<void*> pkeys;
-  std::string pkey_str = GetPrimaryKey(pkey);
+  std::string pkey_str = GetPrimaryKey(table_id_, pkey);
   pkeys.push_back(pkey_str.data());
   osn_spans.clear();
   osn_spans.push_back({0, UINT64_MAX});
@@ -490,7 +434,7 @@ TEST_F(TestV2IteratorByOSN, basic_delete) {
   m_iter = nullptr;
 
   uint64_t pkey = 1;
-  std::string pkey_str = GetPrimaryKey(pkey);
+  std::string pkey_str = GetPrimaryKey(table_id_, pkey);
   std::vector<void*> pkeys;
   pkeys.push_back(pkey_str.data());
   osn_spans.clear();
@@ -626,7 +570,7 @@ TEST_F(TestV2IteratorByOSN, basic_metric_delete) {
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   uint64_t pkey_mem = 1;
-  std::string pkey = GetPrimaryKey(pkey_mem);
+  std::string pkey = GetPrimaryKey(table_id_, pkey_mem);
   std::vector<KwTsSpan> ts_spans;
   uint64_t r_count;
   ts_spans.push_back({0, 3600});
@@ -778,7 +722,7 @@ TEST_F(TestV2IteratorByOSN, only_tag_data_exist) {
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   uint64_t pkey_mem = 1;
-  std::string pkey = GetPrimaryKey(pkey_mem);
+  std::string pkey = GetPrimaryKey(table_id_, pkey_mem);
   std::vector<KwTsSpan> ts_spans;
   uint64_t r_count;
   ts_spans.push_back({0, 45600});

@@ -149,11 +149,14 @@ message TSStatisticReaderSpec {
     enum type {
       colID = 0;
       const = 1;
+      function = 2;
     }
 
     required type typ = 1 [(gogoproto.nullable) = false];
 
     required int64 value = 2 [(gogoproto.nullable) = false];
+
+    required string func_value = 3 [(gogoproto.nullable) = false];
   }
 
   message Params {
@@ -172,6 +175,7 @@ message TSStatisticReaderSpec {
   optional bool scalar = 7 [(gogoproto.nullable) = false];
 
   required bool LastRowOpt = 8 [(gogoproto.nullable) = false];
+  optional uint64 timeBucket = 9;
 }
 message HashpointSpan {
   required uint32 from = 1 [(gogoproto.nullable) = false];

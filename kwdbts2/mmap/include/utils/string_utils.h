@@ -11,7 +11,6 @@
 
 #pragma once
 
-#include <vector>
 #include "data_type.h"
 #include <cmath>
 using namespace std;

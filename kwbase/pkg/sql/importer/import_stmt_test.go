@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -711,19 +712,19 @@ func TestImportErr(t *testing.T) {
 
 	sqlDB.Exec(t, `CREATE TABLE t2 (id int, name string, score int)`)
 	sqlDB.Exec(t, `INSERT INTO t2 VALUES (1,'xiaoming', 58),(2,'xiaoli',59),(3,'xiaobao',60)`)
-	sqlDB.Exec(t, `EXPORT INTO CSV 'nodelocal://1/moreColumn' FROM TABLE t2`)
+	sqlDB.Exec(t, `EXPORT INTO CSV 'nodelocal://1/moreColumn2' FROM TABLE t2`)
 
 	sqlDB.Exec(t, `CREATE TABLE t3 (id int)`)
 	sqlDB.Exec(t, `INSERT INTO t3 VALUES (1),(2),(3)`)
-	sqlDB.Exec(t, `EXPORT INTO CSV 'nodelocal://1/lessColumn' FROM TABLE t3`)
+	sqlDB.Exec(t, `EXPORT INTO CSV 'nodelocal://1/lessColumn2' FROM TABLE t3`)
 
 	sqlDB.Exec(t, `CREATE TABLE t4 (home string, name string)`)
 	sqlDB.Exec(t, `INSERT INTO t4 VALUES ('shanxi','xiaoming'),('hebei','xiaoli'),('shandong','xiaobao')`)
-	sqlDB.Exec(t, `EXPORT INTO CSV 'nodelocal://1/errorType' FROM TABLE t4`)
+	sqlDB.Exec(t, `EXPORT INTO CSV 'nodelocal://1/errorType2' FROM TABLE t4`)
 
 	sqlDB.Exec(t, `CREATE TABLE t5 (id int)`)
 	sqlDB.Exec(t, `INSERT INTO t5 VALUES (1),(1),(1)`)
-	sqlDB.Exec(t, `EXPORT INTO CSV 'nodelocal://1/collisions' FROM TABLE t5`)
+	sqlDB.Exec(t, `EXPORT INTO CSV 'nodelocal://1/collisions2' FROM TABLE t5`)
 
 	// case1: lost csv file
 	t.Run("lost csv file", func(t *testing.T) {
@@ -735,30 +736,54 @@ func TestImportErr(t *testing.T) {
 
 	// case2: import csv file with three columns into a tale with two columns
 	t.Run("import more columns", func(t *testing.T) {
-		_, err := db.Query(`IMPORT INTO t1 CSV DATA ('nodelocal://1/moreColumn/n1.0.csv')`)
+		_, err := db.Query(`IMPORT INTO t1 CSV DATA ('nodelocal://1/moreColumn2/n1.0.csv')`)
 		require.EqualError(t, err,
-			`pq: nodelocal://1/moreColumn/n1.0.csv: error parsing row 1: expected 2 fields, got 3 (row: "1,xiaoming,58")`)
+			`pq: nodelocal://1/moreColumn2/n1.0.csv: error parsing row 1: expected 2 fields, got 3 (row: "1,xiaoming,58")`)
+		defer func() {
+			err := os.RemoveAll("../importer/testdata/db/moreColumn2")
+			if err != nil {
+				t.Fatal(err)
+			}
+		}()
 	})
 
 	// case3: import csv file with one column into a tale with two columns
 	t.Run("import less columns", func(t *testing.T) {
-		_, err := db.Query(`IMPORT INTO t1 CSV DATA ('nodelocal://1/lessColumn/n1.0.csv')`)
+		_, err := db.Query(`IMPORT INTO t1 CSV DATA ('nodelocal://1/lessColumn2/n1.0.csv')`)
 		require.EqualError(t, err,
-			"pq: nodelocal://1/lessColumn/n1.0.csv: error parsing row 1: expected 2 fields, got 1 (row: \"1\")")
+			"pq: nodelocal://1/lessColumn2/n1.0.csv: error parsing row 1: expected 2 fields, got 1 (row: \"1\")")
+		defer func() {
+			err := os.RemoveAll("../importer/testdata/db/lessColumn2")
+			if err != nil {
+				t.Fatal(err)
+			}
+		}()
 	})
 
 	// case4: import csv file with error type
 	t.Run("import error type", func(t *testing.T) {
-		_, err := db.Query(`IMPORT INTO t1 CSV DATA ('nodelocal://1/errorType/n1.0.csv')`)
+		_, err := db.Query(`IMPORT INTO t1 CSV DATA ('nodelocal://1/errorType2/n1.0.csv')`)
 		require.EqualError(t, err,
-			"pq: nodelocal://1/errorType/n1.0.csv: error parsing row 1: parse \"id\" as INT4: could not parse \"shanxi\" as type int: strconv.ParseInt: parsing \"shanxi\": invalid syntax (row: \"shanxi,xiaoming\")")
+			"pq: nodelocal://1/errorType2/n1.0.csv: error parsing row 1: parse \"id\" as INT4: could not parse \"shanxi\" as type int: strconv.ParseInt: parsing \"shanxi\": invalid syntax (row: \"shanxi,xiaoming\")")
+		defer func() {
+			err := os.RemoveAll("../importer/testdata/db/errorType2")
+			if err != nil {
+				t.Fatal(err)
+			}
+		}()
 	})
 
 	// case5: import duplicateKey
 	t.Run("import key collisions", func(t *testing.T) {
-		_, err := db.Query(`IMPORT INTO t1 CSV DATA ('nodelocal://1/collisions/n1.0.csv')`)
+		_, err := db.Query(`IMPORT INTO t1 CSV DATA ('nodelocal://1/collisions2/n1.0.csv')`)
 		require.EqualError(t, err,
-			"pq: nodelocal://1/collisions/n1.0.csv: error parsing row 1: expected 2 fields, got 1 (row: \"1\")")
+			"pq: nodelocal://1/collisions2/n1.0.csv: error parsing row 1: expected 2 fields, got 1 (row: \"1\")")
+		defer func() {
+			err := os.RemoveAll("../importer/testdata/db/collisions2")
+			if err != nil {
+				t.Fatal(err)
+			}
+		}()
 	})
 }
 

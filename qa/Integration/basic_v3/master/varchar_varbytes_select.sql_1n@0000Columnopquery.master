@@ -281,8 +281,8 @@ SQLSTATE: 22012
   1073676289
 (18 rows)
 > SELECT e1^0 FROM test_SELECT_col.t1 ORDER BY k_timestamp;---BUG
-ERROR: invalid argument for power function
-SQLSTATE: 2201F
+ERROR: integer out of range
+SQLSTATE: 22003
 > SELECT e1^NULL FROM test_SELECT_col.t1 ORDER BY k_timestamp;
   ?column?
 ------------

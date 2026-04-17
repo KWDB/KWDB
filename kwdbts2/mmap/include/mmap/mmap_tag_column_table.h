@@ -583,6 +583,9 @@ class MMapTagColumnTable: public TSObject {
         break;
       }
     }
+    if (del_osn == UINT64_MAX && !isValidRow(rownum)) {
+      return false;
+    }
     return true;
   }
 

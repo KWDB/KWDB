@@ -109,6 +109,9 @@ type tsScanNode struct {
 
 	// direction flags that order need reverse scan
 	reverse bool
+
+	// TimeBucketRange time interval for the timeBucket function
+	TimeBucketRange uint64
 }
 
 // RelationalInfo contains relational information from the other side of

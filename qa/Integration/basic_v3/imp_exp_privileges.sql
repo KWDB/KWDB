@@ -41,14 +41,14 @@ grant delete on table test.public.t2 to u2;
 grant insert on database test to u3;
 
 --export database
-export into csv "nodelocal://1/db" from database test with privileges;
+export into csv "nodelocal://1/test1" from database test with privileges;
 
 --clean database
 use defaultdb;
 drop database test cascade;
 
 --export database
-import database csv data ("nodelocal://1//db") with privileges;
+import database csv data ("nodelocal://1/test1") with privileges;
 
 show grants on database test;
 show grants on table test.public.t1;

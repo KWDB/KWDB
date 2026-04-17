@@ -394,7 +394,7 @@ func (t *timeSeriesImportInfo) readAndConvertTimeSeriesFiles(
 		default:
 		}
 		if err := ctxgroup.GroupWorkers(ctx, len(t.fileSplitInfos[dataFileIdx]), func(ctx context.Context, id int) error {
-			return t.readAndConvertTimeSeriesFile(ctx, flowCtx, dataFile, t.fileSplitInfos[dataFileIdx][id], spec.Table.IntoCols, stopChan)
+			return t.readAndConvertTimeSeriesFile(ctx, flowCtx, dataFile, t.fileSplitInfos[dataFileIdx][id], spec.Table.IntoCols, stopChan, spec.Table.AdjustColumnNumber, spec.Table.TsColNumber)
 		}); err != nil {
 			if t.filename != "" {
 				log.Infof(ctx, "The CSV file: %s, contains line breaks, so import failed", t.filename)
@@ -567,6 +567,8 @@ func (t *timeSeriesImportInfo) readAndConvertTimeSeriesFile(
 	pf partFileInfo,
 	intoCols []string,
 	stopChan chan bool,
+	adjustColumnNumber []uint32,
+	tsColNumber int32,
 ) error {
 	var count int64
 	conf, err := cloud.ExternalStorageConfFromURI(filename)
@@ -583,9 +585,15 @@ func (t *timeSeriesImportInfo) readAndConvertTimeSeriesFile(
 		return err
 	}
 	defer f.Close()
+	adjustColumnSet := make(map[uint32]struct{})
+	for _, num := range adjustColumnNumber {
+		adjustColumnSet[num] = struct{}{}
+	}
 	fileReader := &fileReader{Reader: ioutil.NopCloser(&byteCounter{r: f}), total: pf.start - pf.end, counter: byteCounter{r: f}}
 	csvReader := csv.NewReader(fileReader)
 	SetCsvOpt(csvReader, t.opts)
+	csvReader.AdjustColumnSet = adjustColumnSet
+	csvReader.TsColNumber = tsColNumber
 	rb := &recordDatums{
 		datumsMap: make(map[string][]tree.Datums),
 		batchSize: t.batchSize,

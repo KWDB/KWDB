@@ -53,10 +53,6 @@ void EntryBlock::reset(uint64_t block_no) {
 
 char* EntryBlock::encode() {
   char* value = new char[BLOCK_SIZE];
-  if (value == nullptr) {
-    LOG_ERROR("Failed to malloc memory.")
-    return nullptr;
-  }
   size_t offset = 0;
   std::memcpy(value, &block_no_, sizeof(block_no_));
   offset += sizeof(block_no_);
@@ -128,11 +124,7 @@ KStatus EntryBlock::readBytes(size_t& offset, char*& res, size_t length,
     LOG_ERROR("too large bytes for readBytes func, length:%ld", length)
     return FAIL;
   }
-  res = new char[length];
-  if (res == nullptr) {
-    LOG_ERROR("Failed to malloc memory, length:%ld", length)
-    return FAIL;
-  }
+  res = new char[length]();
 
   read_size = 0;
 
@@ -179,10 +171,6 @@ void HeaderBlock::setFirstLSN(TS_OSN first_lsn) {
 
 char* HeaderBlock::encode() {
   char* value = new char[BLOCK_SIZE];
-  if (value == nullptr) {
-    LOG_ERROR("Failed to malloc memory.")
-    return nullptr;
-  }
   size_t offset = 0;
   std::memcpy(value, &format, sizeof(format));
   offset += sizeof(format);

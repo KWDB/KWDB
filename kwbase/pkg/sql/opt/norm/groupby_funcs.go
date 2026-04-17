@@ -404,6 +404,7 @@ func onlyTagPrivateTSScan(tsScan *memo.TSScanExpr) *memo.TSScanPrivate {
 			Direction          tree.Direction
 			InStream           bool
 			Fill               memo.TSFill
+			TimeBucketRange    uint64
 		}{AccessMode: flags.AccessMode,
 			ScanAggs:         flags.ScanAggs,
 			TagFilter:        flags.TagFilter,
@@ -441,6 +442,7 @@ func newTSScanPrivateFromOldPrivate(
 			Direction          tree.Direction
 			InStream           bool
 			Fill               memo.TSFill
+			TimeBucketRange    uint64
 		}{AccessMode: flags.AccessMode,
 			ScanAggs:         flags.ScanAggs,
 			TagFilter:        flags.TagFilter,

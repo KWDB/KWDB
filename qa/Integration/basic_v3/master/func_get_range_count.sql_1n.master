@@ -7,6 +7,22 @@ CREATE TABLE
 INSERT 1
 > INSERT INTO test_get_rowcount.t1 VALUES ('2018-10-10 10:00:01', 0, 2);
 INSERT 1
+> SELECT
+    get_range_count(r.range_id, replica_id)
+FROM
+    kwdb_internal.ranges r,
+    UNNEST(r.replicas) AS replica_id
+WHERE
+    r.table_name = 't1'
+AND
+    r.database_name = 'test_get_rowcount'
+ORDER BY
+    replica_id, r.range_id
+LIMIT 1;
+  get_range_count
+-------------------
+                2
+(1 row)
 > SELECT get_range_count(40, 1);
 ERROR: get_range_count(): wrong range type
 > SELECT get_range_count(54, 6);

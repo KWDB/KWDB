@@ -217,6 +217,15 @@ TEST_F(TestDataChunk, TestChunk) {
   ASSERT_EQ(status, SUCCESS);
   status = chunk4->AddRowBatchData(ctx, tag_data_handle.get(), renders, false);
   ASSERT_EQ(status, SUCCESS);
+  EE_StringInfo info_pg_lz4 = ee_makeStringInfo();
+  status = chunk4->PgCompressResultData(ctx, info_pg_lz4, PgCompressMode::PgWithLz4Compress);
+  free(info_pg_lz4->data);
+  delete info_pg_lz4;
+
+  EE_StringInfo info_pg_snappy = ee_makeStringInfo();
+  status = chunk4->PgCompressResultData(ctx, info_pg_snappy, PgCompressMode::PgWithSnappyCompress);
+  free(info_pg_snappy->data);
+  delete info_pg_snappy;
 
   ASSERT_EQ(chunk4->Count(), 1);
 

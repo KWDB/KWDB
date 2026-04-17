@@ -35,6 +35,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
+	"gitee.com/kwbasedb/kwbase/pkg/util/retry"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 )
@@ -123,8 +124,8 @@ var (
 	reWaitForSuccess, _ = regexp.Compile(`.* Please wait for success$`)
 	// indicate errors that already exist in the table
 	reRelationAlreadyExists, _ = regexp.Compile(`relation .* already exists$`)
-	// txn retriable error
-	retriableErr, _ = regexp.Compile(`TransactionRetryWithProtoRefreshError: .*`)
+	// txn retryable error
+	retryableErr, _ = regexp.Compile(`TransactionRetryWithProtoRefreshError: .*`)
 )
 
 const (
@@ -170,8 +171,6 @@ type restfulServer struct {
 
 // restful connection, store connectonHandler and session info
 type restfulConn struct {
-	h             sql.ConnectionHandler
-	res           chan []sql.RestfulRes
 	sessionID     string
 	username      string
 	lastLoginTime int64
@@ -438,14 +437,8 @@ func (s *restfulServer) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, ok := s.connPool.connCache[token]; !ok {
-		connHandler, res, err := s.server.PGServer().SQLServer.NewConnectionHandler(ctx, username)
-		if err != nil {
-			desc = "new connection handler error: " + err.Error()
-			s.sendJSONResponse(ctx, w, RestfulResponseCodeFail, nil, desc)
-			return
-		}
-
-		conn, err := s.newRestfulConn(ctx, connHandler, res, username, tNow)
+		// make a new restfulConn to record session info.
+		conn, err := s.newRestfulConn(ctx, username, tNow)
 		if err != nil {
 			desc = "new connection error: " + err.Error()
 			s.sendJSONResponse(ctx, w, RestfulResponseCodeFail, nil, desc)
@@ -465,11 +458,7 @@ func (s *restfulServer) handleLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *restfulServer) newRestfulConn(
-	ctx context.Context,
-	h sql.ConnectionHandler,
-	res chan []sql.RestfulRes,
-	userName string,
-	tNow int64,
+	ctx context.Context, userName string, tNow int64,
 ) (*restfulConn, error) {
 	sessionID, err := generateSessionID()
 	if err != nil {
@@ -480,8 +469,6 @@ func (s *restfulServer) newRestfulConn(
 		return nil, err
 	}
 	conn := restfulConn{
-		h:             h,
-		res:           res,
 		sessionID:     sessionID,
 		username:      userName,
 		lastLoginTime: tNow,
@@ -539,10 +526,13 @@ func (s *restfulServer) handleDDL(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	connCache, err := s.checkConn(ctx, w, r)
+	connCache, h, err := s.checkConn(ctx, w, r)
 	if err != nil {
 		return
 	}
+	defer func() {
+		h.CloseExecutor(ctx)
+	}()
 	// Calculate the execution time if needed
 	var executionTime float64
 	// split the stmts.
@@ -551,7 +541,7 @@ func (s *restfulServer) handleDDL(w http.ResponseWriter, r *http.Request) {
 		if stmt == "" {
 			continue
 		}
-		connCache.h.NewStmt()
+		h.NewStmt()
 		// ddl includes
 		includeDDlflag := ifContainsType(DDlIncluded, strings.ToLower(stmt))
 		excludeDDlCount := strings.Count(strings.ToLower(stmt), ddlExcludeStrLowercase)
@@ -567,14 +557,14 @@ func (s *restfulServer) handleDDL(w http.ResponseWriter, r *http.Request) {
 			code = RestfulResponseCodeFail
 			continue
 		}
-		err = connCache.h.PushStmt(ctx, sql.ExecStmt{Statement: sqlStmt})
+		err = h.PushStmt(ctx, sql.ExecStmt{Statement: sqlStmt})
 		if err != nil {
 			desc = makeResErr(desc, err)
 			code = RestfulResponseCodeFail
 			continue
 		}
 		ddlStartTime := timeutil.Now()
-		res, err := connCache.h.ExecRestfulStmt(ctx)
+		res, err := h.ExecRestfulStmt(ctx)
 		if err != nil {
 			desc = makeResErr(desc, err)
 			code = RestfulResponseCodeFail
@@ -627,10 +617,13 @@ func (s *restfulServer) handleInsert(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	connCache, err := s.checkConn(ctx, w, r)
+	connCache, h, err := s.checkConn(ctx, w, r)
 	if err != nil {
 		return
 	}
+	defer func() {
+		h.CloseExecutor(ctx)
+	}()
 	// Calculate the execution time if needed
 	var executionTime float64
 	var rowsAffected int64
@@ -647,7 +640,7 @@ func (s *restfulServer) handleInsert(w http.ResponseWriter, r *http.Request) {
 			code = RestfulResponseCodeFail
 			continue
 		}
-		connCache.h.NewStmt()
+		h.NewStmt()
 		stmt, err := parser.ParseOne(insSQL)
 		if err != nil {
 			errStr := strings.ReplaceAll(err.Error(), `"`, `\"`)
@@ -655,13 +648,27 @@ func (s *restfulServer) handleInsert(w http.ResponseWriter, r *http.Request) {
 			code = RestfulResponseCodeFail
 			continue
 		}
-		err = connCache.h.PushStmt(ctx, sql.ExecStmt{Statement: stmt})
+		err = h.PushStmt(ctx, sql.ExecStmt{Statement: stmt})
 		if err != nil {
 			desc = makeResErr(desc, err)
 			code = RestfulResponseCodeFail
 		}
 		InsertStartTime := timeutil.Now()
-		res, err := connCache.h.ExecRestfulStmt(ctx)
+		// we need retry execute insert statement when there is a txn retryable error.
+		var res sql.RestfulRes
+		retryOpts := retry.Options{
+			InitialBackoff: 50 * time.Millisecond,
+			MaxBackoff:     1 * time.Second,
+			Multiplier:     2,
+			MaxRetries:     maxRetries,
+		}
+		for opt := retry.Start(retryOpts); opt.Next(); {
+			res, err = h.ExecRestfulStmt(ctx)
+			// if we do not find txn retryable error, exit loop.
+			if res.Err == nil || !retryableErr.MatchString(res.Err.Error()) {
+				break
+			}
+		}
 		if err != nil {
 			desc = makeResErr(desc, err)
 			code = RestfulResponseCodeFail
@@ -711,10 +718,14 @@ func (s *restfulServer) handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	connCache, err := s.checkConn(ctx, w, r)
+	connCache, h, err := s.checkConn(ctx, w, r)
 	if err != nil {
 		return
 	}
+
+	defer func() {
+		h.CloseExecutor(ctx)
+	}()
 
 	// Execute the query
 	restDatas := [][]string{}
@@ -760,15 +771,15 @@ func (s *restfulServer) handleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 	var rows int
 	for _, stmt := range stmts {
-		connCache.h.NewStmt()
-		err = connCache.h.PushStmt(ctx, sql.ExecStmt{Statement: stmt})
+		h.NewStmt()
+		err = h.PushStmt(ctx, sql.ExecStmt{Statement: stmt})
 		if err != nil {
 			desc = makeResErr(desc, err)
 			code = RestfulResponseCodeFail
 		}
 		// Calculate the execution time if needed
 		QueryStartTime := timeutil.Now()
-		re, err := connCache.h.ExecRestfulStmt(ctx)
+		re, err := h.ExecRestfulStmt(ctx)
 		if err != nil {
 			desc = makeResErr(desc, err)
 			code = RestfulResponseCodeFail
@@ -807,7 +818,7 @@ func (s *restfulServer) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 			// get row data.
 			for _, datums := range re.Rows {
-				restData := makeQueryRes(datums, connCache.h.GetTimeZone(), connCache.isStrTimezone, nameIdx)
+				restData := makeQueryRes(datums, h.GetTimeZone(), connCache.isStrTimezone, nameIdx)
 				restDatas = append(restDatas, restData)
 			}
 			rows = len(re.Rows)
@@ -981,10 +992,14 @@ func (s *restfulServer) handleTelegraf(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	connCache, err := s.checkConn(ctx, w, r)
+	connCache, h, err := s.checkConn(ctx, w, r)
 	if err != nil {
 		return
 	}
+
+	defer func() {
+		h.CloseExecutor(ctx)
+	}()
 
 	// Calculate the execution time if needed
 	var executionTime float64
@@ -993,7 +1008,7 @@ func (s *restfulServer) handleTelegraf(w http.ResponseWriter, r *http.Request) {
 	// the program will get a batch of data at once, so it needs to handle it first
 	statements := strings.Split(strings.ReplaceAll(restTelegraph, "\r\n", "\n"), "\n")
 	for _, stmt := range statements {
-		connCache.h.NewStmt()
+		h.NewStmt()
 		insertTelegraphStmt := makeInsertStmt(stmt)
 
 		insertflag := strings.HasPrefix(strings.ToLower(insertTelegraphStmt), insertTypeStrLowercase)
@@ -1021,13 +1036,13 @@ func (s *restfulServer) handleTelegraf(w http.ResponseWriter, r *http.Request) {
 			code = RestfulResponseCodeFail
 			continue
 		}
-		err = connCache.h.PushStmt(ctx, sql.ExecStmt{Statement: execStmt})
+		err = h.PushStmt(ctx, sql.ExecStmt{Statement: execStmt})
 		if err != nil {
 			desc = makeResErr(desc, err)
 			code = RestfulResponseCodeFail
 		}
 		TeleInsertStartTime := timeutil.Now()
-		re, err := connCache.h.ExecRestfulStmt(ctx)
+		re, err := h.ExecRestfulStmt(ctx)
 		if err != nil {
 			desc = makeResErr(desc, err)
 			code = RestfulResponseCodeFail
@@ -1062,13 +1077,20 @@ func (s *restfulServer) handleTelegraf(w http.ResponseWriter, r *http.Request) {
 // checkConn checks connection of users
 func (s *restfulServer) checkConn(
 	ctx context.Context, w http.ResponseWriter, r *http.Request,
-) (*restfulConn, error) {
+) (*restfulConn, sql.ConnectionHandler, error) {
+	var h sql.ConnectionHandler
+	// find if login token exists and get session info from cache
 	conn, err := s.pickConnCache(ctx)
 	if err != nil {
 		// s.authorization = ""
 		desc := err.Error()
 		s.sendJSONResponse(ctx, w, RestfulResponseCodeFail, nil, desc)
-		return nil, err
+		return nil, h, err
+	}
+	// make a new connection handler every time to avoid parameters of executor being modified by other execution statements.
+	h, _, err = s.server.PGServer().SQLServer.NewConnectionHandler(ctx, conn.username)
+	if err != nil {
+		return nil, h, err
 	}
 	// get dbname by context.
 	paraDbName := r.FormValue("db")
@@ -1076,7 +1098,7 @@ func (s *restfulServer) checkConn(
 	if paraDbName == "" {
 		paraDbName = "defaultdb"
 	}
-	conn.h.SetDBName(paraDbName)
+	h.SetDBName(paraDbName)
 
 	// get timezone by context.
 	paraTimeZone := r.FormValue("tz")
@@ -1106,7 +1128,7 @@ func (s *restfulServer) checkConn(
 			"invalid value for parameter %q: %q", "timezone", paraTimeZone)
 		desc := "pq: " + err.Error()
 		s.sendJSONResponse(ctx, w, RestfulResponseCodeFail, nil, desc)
-		return nil, err
+		return nil, h, err
 	}
 	loc, err := timeutil.TimeZoneStringToLocation(
 		originLoc.String(),
@@ -1117,10 +1139,10 @@ func (s *restfulServer) checkConn(
 			"invalid value for parameter %q: %q", "timezone", originLoc.String())
 		desc := "pq: " + err.Error()
 		s.sendJSONResponse(ctx, w, RestfulResponseCodeFail, nil, desc)
-		return nil, err
+		return nil, h, err
 	}
-	conn.h.SetTimeZone(loc)
-	return conn, nil
+	h.SetTimeZone(loc)
+	return conn, h, nil
 }
 
 // checkFormat checks format of input
@@ -1353,22 +1375,12 @@ func (s *restfulServer) pickConnCache(ctx context.Context) (*restfulConn, error)
 			if resConn, ok = s.connPool.connCache[key]; !ok {
 				return nil, fmt.Errorf("can not find token, need login first")
 			}
-			h, res, err := s.server.PGServer().SQLServer.NewConnectionHandler(ctx, resConn.username)
-			if err != nil {
-				return nil, err
-			}
-			resConn.h = h
-			resConn.res = res
 			return resConn, nil
 		}
 	} else if method == "password" {
 		err := s.checkUser(ctx, username, password)
 		if err == nil {
-			connHandler, res, err := s.server.PGServer().SQLServer.NewConnectionHandler(ctx, username)
-			if err != nil {
-				return nil, err
-			}
-			return s.newRestfulConn(ctx, connHandler, res, username, timeutil.Now().Unix())
+			return s.newRestfulConn(ctx, username, timeutil.Now().Unix())
 		}
 	}
 	return nil, fmt.Errorf("can not find token, need login first")
@@ -1764,7 +1776,10 @@ func (s *restfulServer) handleInfluxDB(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	connCache, err := s.checkConn(ctx, w, r)
+	connCache, h, err := s.checkConn(ctx, w, r)
+	defer func() {
+		h.CloseExecutor(ctx)
+	}()
 	if err != nil {
 		return
 	}
@@ -1794,7 +1809,7 @@ func (s *restfulServer) handleInfluxDB(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		teleResult, err = s.executeWithRetry(ctx, connCache, insertTelegraphStmt, createTelegrafStmt)
+		teleResult, err = s.executeWithRetry(ctx, connCache, h, insertTelegraphStmt, createTelegrafStmt)
 		if err != nil {
 			desc += "pq: " + err.Error() + ";"
 			code = RestfulResponseCodeFail
@@ -1836,7 +1851,10 @@ func (s *restfulServer) handleOpenTSDBTelnet(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		return
 	}
-	connCache, err := s.checkConn(ctx, w, r)
+	connCache, h, err := s.checkConn(ctx, w, r)
+	defer func() {
+		h.CloseExecutor(ctx)
+	}()
 	if err != nil {
 		return
 	}
@@ -1859,7 +1877,7 @@ func (s *restfulServer) handleOpenTSDBTelnet(w http.ResponseWriter, r *http.Requ
 			continue
 		}
 
-		teleResult, err = s.executeWithRetry(ctx, connCache, insertStatement, createStatement)
+		teleResult, err = s.executeWithRetry(ctx, connCache, h, insertStatement, createStatement)
 		if err != nil {
 			desc += "pq: " + err.Error() + ";"
 			code = RestfulResponseCodeFail
@@ -1901,7 +1919,10 @@ func (s *restfulServer) handleOpenTSDBJson(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		return
 	}
-	connCache, err := s.checkConn(ctx, w, r)
+	connCache, h, err := s.checkConn(ctx, w, r)
+	defer func() {
+		h.CloseExecutor(ctx)
+	}()
 	if err != nil {
 		return
 	}
@@ -1931,7 +1952,7 @@ func (s *restfulServer) handleOpenTSDBJson(w http.ResponseWriter, r *http.Reques
 			continue
 		}
 
-		teleResult, err = s.executeWithRetry(ctx, connCache, insertTelegraphStmt, createTelegrafStmt)
+		teleResult, err = s.executeWithRetry(ctx, connCache, h, insertTelegraphStmt, createTelegrafStmt)
 		if err != nil {
 			desc += "pq: " + err.Error() + ";"
 			code = RestfulResponseCodeFail
@@ -1963,7 +1984,10 @@ func refreshRequestTime(connCache *restfulConn) {
 
 // executeWithRetry handles retries in the event of a failure to write without a pattern
 func (s *restfulServer) executeWithRetry(
-	ctx context.Context, connCache *restfulConn, insertStmt, createStmt string,
+	ctx context.Context,
+	connCache *restfulConn,
+	h sql.ConnectionHandler,
+	insertStmt, createStmt string,
 ) (sql.RestfulRes, error) {
 	var execResult sql.RestfulRes
 	insert, err := parser.ParseOne(insertStmt)
@@ -1978,12 +2002,12 @@ func (s *restfulServer) executeWithRetry(
 	// initialize the time of the first retry
 	retryDelay := 1 * time.Second
 	for attempt := 0; attempt < maxRetries; attempt++ {
-		connCache.h.NewStmt()
-		err = connCache.h.PushStmt(ctx, sql.ExecStmt{Statement: insert})
+		h.NewStmt()
+		err = h.PushStmt(ctx, sql.ExecStmt{Statement: insert})
 		if err != nil {
 			return execResult, err
 		}
-		re, err := connCache.h.ExecRestfulStmt(ctx)
+		re, err := h.ExecRestfulStmt(ctx)
 		if err != nil {
 			return execResult, err
 		}
@@ -1994,26 +2018,26 @@ func (s *restfulServer) executeWithRetry(
 		}
 		if reRelationNotExist.MatchString(schemalessError) {
 			// reRelationNotExist performs the following operations
-			connCache.h.NewStmt()
-			err = connCache.h.PushStmt(ctx, sql.ExecStmt{Statement: create})
+			h.NewStmt()
+			err = h.PushStmt(ctx, sql.ExecStmt{Statement: create})
 			if err != nil {
 				return execResult, err
 			}
-			re, err := connCache.h.ExecRestfulStmt(ctx)
+			re, err := h.ExecRestfulStmt(ctx)
 			if err != nil {
 				return execResult, err
 			}
 			execResult = re
 			if execResult.Err != nil {
 				createTableError := execResult.Err.Error()
-				if !reRelationAlreadyExists.MatchString(createTableError) && !reWaitForSuccess.MatchString(createTableError) && !retriableErr.MatchString(createTableError) {
+				if !reRelationAlreadyExists.MatchString(createTableError) && !reWaitForSuccess.MatchString(createTableError) && !retryableErr.MatchString(createTableError) {
 					return execResult, execResult.Err
-				} else if reWaitForSuccess.MatchString(createTableError) || retriableErr.MatchString(createTableError) {
+				} else if reWaitForSuccess.MatchString(createTableError) || retryableErr.MatchString(createTableError) {
 					time.Sleep(retryDelay)
 					retryDelay *= 2
 				}
 			}
-		} else if reWaitForSuccess.MatchString(schemalessError) || retriableErr.MatchString(schemalessError) {
+		} else if reWaitForSuccess.MatchString(schemalessError) || retryableErr.MatchString(schemalessError) {
 			// reWaitForSuccess performs the following operations
 			log.Warningf(ctx, "exec error=%v\n", schemalessError)
 			time.Sleep(retryDelay)

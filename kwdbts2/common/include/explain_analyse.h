@@ -39,6 +39,7 @@ struct OperatorFetcher {
       memory_block_count_ += ts_scan_stats->memory_block_count;
       last_block_count_ += ts_scan_stats->last_block_count;
       entity_block_count_ += ts_scan_stats->entity_block_count;
+      partition_agg_count_ += ts_scan_stats->partition_agg_count;
       block_cache_hit_count_ += ts_scan_stats->block_cache_hit_count;
       block_bytes_ += ts_scan_stats->block_bytes;
       agg_bytes_ += ts_scan_stats->agg_bytes;
@@ -56,6 +57,7 @@ struct OperatorFetcher {
     memory_block_count_ = 0;
     last_block_count_ = 0;
     entity_block_count_ = 0;
+    partition_agg_count_ = 0;
     block_cache_hit_count_ = 0;
     block_bytes_ = 0;
     agg_bytes_ = 0;
@@ -72,6 +74,7 @@ struct OperatorFetcher {
   k_int32 memory_block_count_{0};
   k_int32 last_block_count_{0};
   k_int64 entity_block_count_{0};
+  k_int64 partition_agg_count_{0};
   k_int64 block_cache_hit_count_{0};
   k_int64 block_bytes_{0};
   k_int64 agg_bytes_{0};
@@ -110,6 +113,7 @@ class TsFetcherCollection {
             fetcher->memory_block_count += f->memory_block_count_;
             fetcher->last_block_count += f->last_block_count_;
             fetcher->entity_block_count += f->entity_block_count_;
+            fetcher->partition_agg_count += f->partition_agg_count_;
             fetcher->block_cache_hit_count += f->block_cache_hit_count_;
             fetcher->block_bytes += f->block_bytes_;
             fetcher->agg_bytes += f->agg_bytes_;

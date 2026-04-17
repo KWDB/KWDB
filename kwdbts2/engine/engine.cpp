@@ -29,7 +29,6 @@
 
 extern std::map<std::string, std::string> g_cluster_settings;
 extern std::shared_mutex g_settings_mutex;
-extern bool g_go_start_service;
 
 KStatus TSEngine::Execute(kwdbContext_p ctx, QueryInfo* req, RespInfo* resp) {
   ctx->ts_engine = this;
@@ -62,7 +61,7 @@ std::atomic<int64_t> kw_used_anon_memory_size;
 
 
 void EngineOptions::init() {
-  char * env_var = getenv(ENV_KW_HOME);
+  char* env_var = getenv(ENV_KW_HOME);
   if (env_var) {
     home_ = string(env_var);
   } else {

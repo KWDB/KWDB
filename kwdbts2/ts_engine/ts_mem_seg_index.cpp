@@ -101,7 +101,6 @@ void TsMemSegIndex::InsertWithCAS(const char* key) {
 
   RecomputeSpliceLevels(key, &cur_splice, max_height);
 
-  bool splice_valid = true;
   {
     for (int i = 0; i < sl_height; ++i) {
       while (true) {

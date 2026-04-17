@@ -28,6 +28,9 @@ namespace kwdbts {
 #define MILLISECOND_PER_DAY    86400000
 #define MILLISECOND_PER_WEEK   604800000
 
+#define NANOSECOND_PER_MILLISECOND 1000000
+#define MICROSECOND_PER_MILLISECOND 1000
+
 #define TIME_WINDOW_MIN_DURATION_MS 10
 
 #define EE_TRACE_INFO(...) kwdbts::TRACER.Trace(ctx, __FILE__, __LINE__, 3, __VA_ARGS__)
@@ -203,5 +206,17 @@ inline uint64_t decode_fixed64(const uint8_t* buf) {
 // using RawString = std::string;
 // using RawStringPad16 = std::string;
 // #endif
+
+enum PgCompressMode {
+  // PgCompressOff means that pg extend is disabled.
+  PgCompressOff = 0,
+  // PgWithoutCompress means that that use pg extend but without compress.
+  PgWithoutCompress,
+  // PgWithLz4Compress means that ause pg extend but with lz4
+  PgWithLz4Compress,
+  // PgWithSnappyCompress means that ause pg extend but with snappy
+  PgWithSnappyCompress
+};
+
 }  // namespace kwdbts
 

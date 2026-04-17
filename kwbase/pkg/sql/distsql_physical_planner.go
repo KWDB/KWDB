@@ -2439,10 +2439,14 @@ func (p *PhysicalPlan) buildPhyPlanForTSReaders(
 	typs []types.T,
 	descColumnIDs []sqlbase.ColumnID,
 ) error {
-	//construct TSReaderSpec
-	if n.ScanAggArray && !planCtx.IsLocal() {
+	// construct TSReaderSpec
+	// if n.TimeBucketRange >0, we should push timebucket to statistic.
+	if (n.TimeBucketRange > 0 || n.ScanAggArray) && !planCtx.IsLocal() {
 		tr := execinfrapb.TSStatisticReaderSpec{TableID: uint64(n.Table.ID()), TsSpans: n.tsSpans, TsCols: colMetas,
 			TableVersion: n.Table.GetTSVersion(), LastRowOpt: n.HintType.LastRowOpt()}
+		if n.TimeBucketRange > 0 {
+			tr.TimeBucket = &n.TimeBucketRange
+		}
 		err := p.initPhyPlanForStatisticReaders(tr)
 		if err != nil {
 			return err
@@ -3047,7 +3051,8 @@ func (dsp *DistSQLPlanner) createTSDDL(planCtx *PlanningCtx, n *tsDDLNode) (Phys
 		//	}
 		//	proc.Spec.Core = execinfrapb.ProcessorCoreUnion{TsPro: tsDrop}
 		//	p.TsOperator = tsDrop.TsOperator
-		case alterKwdbAddTag, alterKwdbAddColumn, alterKwdbDropTag, alterKwdbDropColumn, alterKwdbAlterTagType, alterKwdbAlterColumnType:
+		case alterKwdbAddTag, alterKwdbAddColumn, alterKwdbDropTag, alterKwdbDropColumn,
+			alterKwdbAlterTagType, alterKwdbAlterColumnType:
 			var tsAlterColumn = &execinfrapb.TsAlterProSpec{}
 			col := n.d.AlterTag
 			tsColumn := sqlbase.KWDBKTSColumn{
@@ -3059,10 +3064,7 @@ func (dsp *DistSQLPlanner) createTSDDL(planCtx *PlanningCtx, n *tsDDLNode) (Phys
 				VariableLengthType: col.TsCol.VariableLengthType,
 				ColType:            col.TsCol.ColumnType,
 			}
-			colMeta, err := protoutil.Marshal(&tsColumn)
-			if err != nil {
-				panic(err.Error())
-			}
+			makeCompressInfo(&tsColumn, col)
 			switch n.d.Type {
 			case alterKwdbAlterTagType, alterKwdbAlterColumnType:
 				oriCol := n.d.OriginColumn
@@ -3075,6 +3077,9 @@ func (dsp *DistSQLPlanner) createTSDDL(planCtx *PlanningCtx, n *tsDDLNode) (Phys
 					VariableLengthType: oriCol.TsCol.VariableLengthType,
 					ColType:            oriCol.TsCol.ColumnType,
 				}
+				makeCompressInfo(&oriTSCol, oriCol)
+				tsAlterColumn.IsAlterType = n.d.IsAlterType
+				tsAlterColumn.IsAlterCompress = n.d.IsAlterCompress
 				oriColMeta, err := protoutil.Marshal(&oriTSCol)
 				if err != nil {
 					panic(err.Error())
@@ -3096,7 +3101,10 @@ func (dsp *DistSQLPlanner) createTSDDL(planCtx *PlanningCtx, n *tsDDLNode) (Phys
 			if n.txnEvent == txnCommit {
 				tsAlterColumn.TsOperator = execinfrapb.OperatorType_TsCommit
 			}
-
+			colMeta, err := protoutil.Marshal(&tsColumn)
+			if err != nil {
+				panic(err.Error())
+			}
 			tsAlterColumn.Column = colMeta
 			tsAlterColumn.TsTableID = uint64(n.d.SNTable.ID)
 			tsAlterColumn.NextTSVersion = uint32(n.d.SNTable.TsTable.GetNextTsVersion())

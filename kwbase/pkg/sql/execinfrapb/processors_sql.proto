@@ -282,6 +282,8 @@ message TsAlterProSpec {
   optional uint32 tagIndexID = 11 [(gogoproto.nullable) = false];
   repeated uint32 tagIndexColumns = 12;
   optional uint64 retentions = 13 [(gogoproto.nullable) = false];
+  optional bool is_alter_type = 14 [(gogoproto.nullable) = false];
+  optional bool is_alter_compress = 15 [(gogoproto.nullable) = false];
 }
 
 // IndexSkipTableReaderSpec is the specification for a table reader that
@@ -731,6 +733,7 @@ message AggregatorSpec {
     VAR_POP = 40;
     QUANTILE = 41;
     NORM = 42;
+    TIME_BUCKET = 43;
   }
 
   enum Type {

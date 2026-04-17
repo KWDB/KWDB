@@ -10,6 +10,7 @@
 // See the Mulan PSL v2 for more details.
 
 #include <cstdio>
+#include "ts_test_base.h"
 #include "test_util.h"
 #include "ts_engine.h"
 #include "ts_lru_block_cache.h"
@@ -22,45 +23,17 @@ const string engine_root_path = "./tsdb";
 extern atomic<int> destroyed_entity_block_file_count;
 extern atomic<int> created_entity_block_file_count;
 
-class TestV2Iterator : public ::testing::Test {
+class TestV2Iterator : public TsEngineTestBase {
  public:
-  EngineOptions opts_;
-  TSEngineImpl *engine_;
-  kwdbContext_t g_ctx_;
-  kwdbContext_p ctx_;
-
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;
   const std::vector<AttributeInfo>* metric_schema_;
   std::vector<TagInfo> tag_schema_;
   std::shared_ptr<TagTable> tag_table_;
 
-  virtual void SetUp() override {
-    ctx_ = &g_ctx_;
-    InitKWDBContext(ctx_);
-    KWDBDynamicThreadPool::GetThreadPool().Init(8, ctx_);
-  }
-
-  virtual void TearDown() override {
-    KWDBDynamicThreadPool::GetThreadPool().Stop();
-  }
-
- public:
-  TestV2Iterator() {
+  TestV2Iterator() : metric_schema_(nullptr) {
     EngineOptions::is_single_node_ = true;
-    ctx_ = &g_ctx_;
-    InitKWDBContext(ctx_);
-    opts_.db_path = engine_root_path;
-    Remove(engine_root_path);
-    MakeDirectory(engine_root_path);
-    engine_ = new TSEngineImpl(opts_);
-    auto s = engine_->Init(ctx_);
-    EXPECT_EQ(s, KStatus::SUCCESS);
-  }
-
-  ~TestV2Iterator() {
-    if (engine_) {
-      delete engine_;
-    }
+    InitContext();
+    InitEngine(engine_root_path);
   }
 
   void CreateTable(TSTableID table_id, std::shared_ptr<TsTable>& ts_table) {
@@ -379,4 +352,5 @@ TEST_F(TestV2Iterator, basic_del_1) {
   s = ts_table->GetEntityIdList(ctx_,  {pkey.data()}, tags_index_id, tags, TSTagOpType::opUnKnow, scan_tags, &hps, &entity_store, &res, &count_32, 1, 351);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(entity_store.size(), 1);
+  ASSERT_EQ(res.data.size(), 1);
 }

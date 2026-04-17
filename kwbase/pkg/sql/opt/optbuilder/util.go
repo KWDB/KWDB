@@ -1048,6 +1048,17 @@ func handleLastAgg(s *scope, e tree.Expr, funcName string) {
 			f.Exprs = append(f.Exprs, &scopeColumn{name: tbl.Column(0).ColName(),
 				table: col.table, typ: typ, id: tblID.ColumnID(0),
 			})
+			// adjust the parameter order of "last" and "lastts".
+			// The first parameter is the aggregation column,
+			// the second parameter is the timestamptz column,
+			// and the third parameter is the deadline.
+			if (funcName == sqlbase.LastAgg || funcName == sqlbase.LastTSAgg) && len(f.Exprs) == 3 {
+				newExprs := make([]tree.Expr, 3)
+				newExprs[0] = f.Exprs[0]
+				newExprs[1] = f.Exprs[2]
+				newExprs[2] = f.Exprs[1]
+				f.Exprs = newExprs
+			}
 		}
 	}
 }
@@ -1061,7 +1072,7 @@ func (b *Builder) addLastFunction(
 	funcExpr tree.Expr,
 ) {
 	var twiceParam tree.Expr
-	if f, ok := funcExpr.(*tree.FuncExpr); ok && checkLastOrLastTsAgg(funcName) && len(f.Exprs) == 2 {
+	if f, ok := funcExpr.(*tree.FuncExpr); ok && len(f.Exprs) == 2 {
 		twiceParam = f.Exprs[1]
 	}
 
@@ -1201,5 +1212,63 @@ func checkUnsupportedWindowFunctions(funcName string) {
 	if checkLastOrFirstAgg(funcName) || funcName == tree.FuncMatching || funcName == tree.FuncBucketFill || funcName == tree.FuncInterpolate ||
 		checkTwaOrElapsedAgg(funcName) {
 		panic(pgerror.Newf(pgcode.FeatureNotSupported, "%v() is not supported as a window function", funcName))
+	}
+}
+
+// fillThirdArg checks the type of the second parameter
+// and fills in the third parameter for last and lastts.
+func fillThirdArg(typedExpr tree.TypedExpr, f *tree.FuncExpr, funcName string) {
+	if typedExpr.ResolvedType().Family() != types.TimestampTZFamily {
+		panic(pgerror.Newf(pgcode.InvalidParameterValue, "the second parameter is invalid"))
+	}
+	if funcName == sqlbase.LastAgg || funcName == sqlbase.LastTSAgg {
+		boundary := tree.DString(tree.TsMaxNanoTimestampString)
+		if typedExpr.ResolvedType().InternalType.Precision == 3 || typedExpr.ResolvedType().InternalType.Precision == 6 {
+			boundary = tree.TsMaxTimestampString
+		}
+		cast, _ := tree.NewTypedCastExpr(&boundary, types.MakeTimestampTZ(typedExpr.ResolvedType().Precision()))
+		f.Exprs = append(f.Exprs, cast)
+	}
+}
+
+// extendLastAgg extends the last and first series of functions,
+// enabling them to aggregate based on the second parameter during calculation.
+// For last, the second parameter can be either a cutoff time or a timestamptz column;
+// for other functions, the second parameter can only be a timestamptz column.
+func extendLastAgg(s *scope, e tree.Expr, funcName string) {
+	f, ok := e.(*tree.FuncExpr)
+	if !ok {
+		panic(pgerror.Newf(pgcode.Internal, "system error, expr %s must be funcExpr", e.String()))
+	}
+	switch t := len(f.Exprs); t {
+	case 1:
+		// if there is only one parameter, it can only act on the original table
+		handleLastAgg(s, e, funcName)
+	case 2:
+		// check whether the second parameter can be changed to a timestamptz type through typeCheck
+		typedExpr, err := tree.TypeCheck(f.Exprs[1], s.builder.semaCtx, types.MakeTimestampTZ(9))
+		if err != nil || typedExpr == nil {
+			panic(pgerror.Newf(pgcode.DatatypeMismatch, "the second parameter of last must be of timestamptz type"))
+		}
+		if funcName == sqlbase.LastAgg {
+			// handle "last" specially because its second parameter can be a constant and its semantics are different
+			if _, ok2 := typedExpr.(*tree.DTimestampTZ); ok2 {
+				if s.TableType == nil || ((s.TableType.HasRtable() || s.HasMultiTable) && !(s.builder.factory.Memo().QueryType == memo.MultiModel)) ||
+					s.TableType.HasMultiTSTable() || opt.CheckTsProperty(s.ScopeTSProp, ScopeLastError) {
+					panic(pgerror.Newf(pgcode.FeatureNotSupported, "%v() can only be used in timeseries table query or subquery when the second parameter is a const", funcName))
+				}
+				handleLastAgg(s, e, funcName)
+			} else {
+				fillThirdArg(typedExpr, f, funcName)
+			}
+		} else {
+			if _, ok2 := typedExpr.(*tree.DTimestampTZ); ok2 {
+				panic(pgerror.Newf(pgcode.InvalidParameterValue, "the second parameter is invalid"))
+			}
+			fillThirdArg(typedExpr, f, funcName)
+		}
+
+	default:
+		panic(pgerror.Newf(pgcode.TooManyArguments, "too many arguments for %s", funcName))
 	}
 }

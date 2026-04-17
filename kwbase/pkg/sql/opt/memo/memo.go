@@ -1104,7 +1104,7 @@ func (m *Memo) addOrderInGroupWindow(source *GroupByExpr, input RelExpr) {
 	if proj, ok1 := input.(*ProjectExpr); ok1 && m.CheckFlag(opt.GroupWindowUseOrderScan) && source.GroupWindowId > 0 {
 		sortExpr1 := &SortExpr{Input: proj.Input}
 		provided := sortExpr1.ProvidedPhysical()
-		if tsColID := m.GetTSColIDInGroupWindow(nil, 0, source.GroupWindowId); tsColID > 0 {
+		if tsColID := m.GetTSColIDInGroupWindow(nil, source.GroupWindowId); tsColID > 0 {
 			if source.GroupingCols.Len() > 1 {
 				source.GroupingCols.ForEach(func(colID opt.ColumnID) {
 					if colID != source.GroupWindowId && colID != tsColID {
@@ -1212,7 +1212,9 @@ func checkJoinFilter(expr opt.Expr, md *opt.Metadata) (existTSColNormal, existTS
 // eg: select sum(a) from tsdb.t1 where ptag = 1 group by b;
 // 2. group by  contain all primary tag
 // eg: select sum(a) from tsdb.t1 group by ptag;
-func checkOptPruneFinalAgg(gp *GroupingPrivate, meta *opt.Metadata, onlyOnePTagValue bool) {
+func checkOptPruneFinalAgg(
+	gp *GroupingPrivate, meta *opt.Metadata, onlyOnePTagValue bool, canTimeBucketUseStatistic bool,
+) {
 	if onlyOnePTagValue {
 		gp.OptFlags |= opt.PruneFinalAgg
 	} else {
@@ -1232,7 +1234,8 @@ func checkOptPruneFinalAgg(gp *GroupingPrivate, meta *opt.Metadata, onlyOnePTagV
 
 		if tableID != 0 && PrimaryTagCount != 0 {
 			tableMeta := meta.TableMeta(tableID)
-			if PrimaryTagCount == tableMeta.PrimaryTagCount && !gp.OptFlags.UseStatisticOpt() {
+			// the final agg can be removed if timeBucket can be pushed down to the statisticScan.
+			if PrimaryTagCount == tableMeta.PrimaryTagCount && (!gp.OptFlags.UseStatisticOpt() || canTimeBucketUseStatistic) {
 				gp.OptFlags |= opt.PruneFinalAgg
 			}
 		}
@@ -1278,10 +1281,10 @@ func (m *Memo) dealWithGroupBy(src RelExpr, child RelExpr, ret *aggCrossEngCheck
 	src.SetEngineTS()
 
 	// fill statistics
-	m.checkStatisticOpt(&child, aggs, gp)
+	m.checkStatisticOpt(&child, aggs, gp, ret)
 
 	if ret.commonRet.canTimeBucketOptimize {
-		checkOptPruneFinalAgg(gp, m.Metadata(), m.CheckOnlyOnePTagValue())
+		checkOptPruneFinalAgg(gp, m.Metadata(), m.CheckOnlyOnePTagValue(), ret.commonRet.canTimeBucketUseStatistic)
 
 		gp.OptFlags |= opt.TimeBucketPushAgg
 		ret.commonRet.canLimitOptimize = true
@@ -1336,18 +1339,20 @@ func (m *Memo) dealWithOrderBy(sort *SortExpr, ret *CrossEngCheckResults, props 
 // child is the Input of (memo.GroupByExpr / memo.ScalarGroupByExpr).
 // aggs is the Aggregations of (memo.GroupByExpr / memo.ScalarGroupByExpr).
 // gp is the GroupingPrivate of (memo.GroupByExpr / memo.ScalarGroupByExpr).
-func (m *Memo) checkStatisticOpt(child *RelExpr, aggs []AggregationsItem, gp *GroupingPrivate) {
+func (m *Memo) checkStatisticOpt(
+	child *RelExpr, aggs []AggregationsItem, gp *GroupingPrivate, ret *aggCrossEngCheckResults,
+) {
 	if !m.checkAggStatisticUsable(aggs) {
 		return
 	}
 
 	switch src := (*child).(type) {
 	case *TSScanExpr:
-		m.tsScanFillStatistic(src, gp)
+		m.tsScanFillStatistic(src, gp, ret, 0)
 	case *SelectExpr:
-		m.selectExprFillStatistic(src, gp)
+		m.selectExprFillStatistic(src, gp, ret, 0)
 	case *ProjectExpr:
-		m.projectExprFillStatistic(src, aggs, gp)
+		m.projectExprFillStatistic(src, aggs, gp, ret)
 	}
 }
 
@@ -1355,15 +1360,20 @@ func (m *Memo) checkStatisticOpt(child *RelExpr, aggs []AggregationsItem, gp *Gr
 // aggs is the Aggregations of (memo.GroupByExpr / memo.ScalarGroupByExpr).
 // gp is the GroupingPrivate of (memo.GroupByExpr / memo.ScalarGroupByExpr).
 func (m *Memo) projectExprFillStatistic(
-	project *ProjectExpr, aggs []AggregationsItem, gp *GroupingPrivate,
+	project *ProjectExpr, aggs []AggregationsItem, gp *GroupingPrivate, ret *aggCrossEngCheckResults,
 ) {
 	// if col is const, set true
 	mapColConst := make(map[opt.ColumnID]bool, 0)
+	var timeRange uint64
 	for _, val := range project.Projections {
-		switch val.Element.(type) {
+		switch v := val.Element.(type) {
 		case *NullExpr:
 		case *ConstExpr:
 			mapColConst[val.Col] = true
+		case *FunctionExpr:
+			if v.Name == "time_bucket" && ret.commonRet.canTimeBucketOptimize {
+				timeRange = getRangeFromTimeBucket(v)
+			}
 		default:
 			return
 		}
@@ -1392,18 +1402,25 @@ func (m *Memo) projectExprFillStatistic(
 	child := project.Input
 	switch src := (child).(type) {
 	case *TSScanExpr:
-		m.tsScanFillStatistic(src, gp)
+		m.tsScanFillStatistic(src, gp, ret, timeRange)
 	case *SelectExpr:
-		m.selectExprFillStatistic(src, gp)
+		m.selectExprFillStatistic(src, gp, ret, timeRange)
 	}
 }
 
 // tsScanFillStatistic fill tsScan's statistics.
 // tsScan is memo.TSScanExpr.
 // gp is the GroupingPrivate of (memo.GroupByExpr / memo.ScalarGroupByExpr).
-func (m *Memo) tsScanFillStatistic(tsScan *TSScanExpr, gp *GroupingPrivate) {
+func (m *Memo) tsScanFillStatistic(
+	tsScan *TSScanExpr, gp *GroupingPrivate, ret *aggCrossEngCheckResults, timeRange uint64,
+) {
 	allColsPrimary := true
 	flags := &tsScan.Flags
+	if ret.commonRet.canTimeBucketOptimize && timeRange > 0 {
+		flags.TimeBucketRange = timeRange
+		ret.commonRet.canTimeBucketUseStatistic = true
+		gp.OptFlags |= opt.UseStatistic
+	}
 	// fill the grouping with ptag from the tagfilter.
 	// do this because some time the grouping col will be reduced in RBO,
 	// causing can not use statistic optimization.
@@ -1433,6 +1450,37 @@ func (m *Memo) tsScanFillStatistic(tsScan *TSScanExpr, gp *GroupingPrivate) {
 	gp.OptFlags |= opt.UseStatistic
 }
 
+func getRangeFromTimeBucket(timeBucket *FunctionExpr) uint64 {
+	var res uint64
+	var err error
+	for _, arg := range timeBucket.Args {
+		if r, ok := arg.(*ConstExpr); ok {
+			strInterval := r.Value.(*tree.DString)
+			res, err = intervalToNano(string(*strInterval))
+			if err != nil {
+				return 0
+			}
+		}
+	}
+	return res
+}
+
+func intervalToNano(intervalStr string) (uint64, error) {
+	d, err := tree.ParseDInterval(intervalStr)
+	if err != nil {
+		return 0, err
+	}
+	if d.Days > 0 || d.Months > 0 {
+		return 0, pgerror.New(pgcode.Syntax, "time intervals can only be in units of h, s, ms, μs and ns")
+	}
+	// convert to nanosecond
+	ns := d.Duration.Nanos()
+	if ns < 0 {
+		return 0, errors.New("duration cannot be negative")
+	}
+	return uint64(ns), nil
+}
+
 // addTagToGrouping adds ptag which in tagfilter to the grouping.
 // such as "WHERE device = 'Device01' GROUP BY item" is equl to"WHERE device = 'Device01' GROUP BY device, item",
 // it should be changed because the "WHERE device = 'Device01' GROUP BY device, item" can use the statistic.
@@ -1459,7 +1507,9 @@ func addTagToGrouping(set *opt.ColSet, expr opt.Expr, md *opt.Metadata) {
 // tsScanFillStatistic fill filter's statistics.
 // selectExpr is memo.SelectExpr.
 // gp is the GroupingPrivate of (memo.GroupByExpr / memo.ScalarGroupByExpr).
-func (m *Memo) selectExprFillStatistic(selectExpr *SelectExpr, gp *GroupingPrivate) {
+func (m *Memo) selectExprFillStatistic(
+	selectExpr *SelectExpr, gp *GroupingPrivate, ret *aggCrossEngCheckResults, timeRange uint64,
+) {
 	for _, filter := range selectExpr.Filters {
 		if !m.checkFiltersStatisticUsable(filter.Condition) {
 			return
@@ -1467,7 +1517,7 @@ func (m *Memo) selectExprFillStatistic(selectExpr *SelectExpr, gp *GroupingPriva
 	}
 
 	if tsScanExpr, ok := selectExpr.Input.(*TSScanExpr); ok {
-		m.tsScanFillStatistic(tsScanExpr, gp)
+		m.tsScanFillStatistic(tsScanExpr, gp, ret, timeRange)
 	}
 }
 
@@ -1544,15 +1594,36 @@ func (m *Memo) checkAggStatisticUsable(aggs []AggregationsItem) bool {
 		return false
 	}
 	for i := range aggs {
-		switch aggs[i].Agg.(type) {
-		case *SumExpr, *MinExpr, *MaxExpr, *CountExpr, *FirstExpr, *FirstTimeStampExpr, *FirstRowExpr, *AvgExpr,
-			*FirstRowTimeStampExpr, *LastExpr, *LastTimeStampExpr, *LastRowExpr, *LastRowTimeStampExpr, *CountRowsExpr, *ConstAggExpr, *MinExtendExpr, *MaxExtendExpr:
+		switch t := aggs[i].Agg.(type) {
+		case *FirstExpr, *FirstTimeStampExpr, *FirstRowExpr, *FirstRowTimeStampExpr,
+			*LastExpr, *LastTimeStampExpr, *LastRowExpr, *LastRowTimeStampExpr:
+			if !m.tsInputIsFirstColumn(t.Child(0).(opt.ScalarExpr), t.Child(1).(opt.ScalarExpr)) {
+				return false
+			}
+		case *SumExpr, *MinExpr, *MaxExpr, *CountExpr, *AvgExpr, *CountRowsExpr, *ConstAggExpr, *MinExtendExpr, *MaxExtendExpr:
 		default:
 			return false
 		}
 	}
 
 	return true
+}
+
+// tsInputIsFirstColumn checks whether tsInput is the first column in the physical table.
+// If not, statistical information cannot be used.
+func (m *Memo) tsInputIsFirstColumn(input opt.ScalarExpr, tsInput opt.ScalarExpr) bool {
+	if inputCol, ok := input.(*VariableExpr); ok {
+		if tsInputCol, ok1 := tsInput.(*VariableExpr); ok1 {
+			tblID := m.Metadata().ColumnMeta(inputCol.Col).Table
+			if tblID != 0 {
+				index := tblID.ColumnOrdinal(tsInputCol.Col)
+				if index == 0 {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // CrossEngCheckResults includes various flags and an error status related to the optimization and execution checks in ts engine.
@@ -1568,6 +1639,8 @@ type CrossEngCheckResults struct {
 	// canLimitOptimize: return true when the expr can push limit to aggScan
 	// eg: SELECT time_bucket(k_timestamp, '60s'), max(usage_user1) FROM cpu GROUP BY time_bucket(k_timestamp, '60s') ORDER BY time_bucket(k_timestamp, '60s') LIMIT 5;
 	canLimitOptimize bool
+	// can we push down timeBucket into statisticScan
+	canTimeBucketUseStatistic bool
 	// err: is the error.
 	err error
 }
@@ -1610,6 +1683,37 @@ func addSynchronizeStruct(ret *CrossEngCheckResults, src RelExpr) {
 	ret.execInTSEngine = false
 }
 
+// if limit can optimize, we need to clear the statistics of timeBucket for optimization.
+func (m *Memo) dealWithTimeBucketStatistic(
+	src RelExpr, gp *GroupingPrivate, ret *CrossEngCheckResults,
+) {
+	switch source := (src).(type) {
+	case *TSScanExpr:
+		source.Flags.TimeBucketRange = 0
+		ret.canTimeBucketUseStatistic = false
+		if !source.Flags.ScanAggs {
+			gp.OptFlags &^= opt.UseStatistic
+		}
+		break
+	case *GroupByExpr:
+		if source.GroupingPrivate.OptFlags.UseStatisticOpt() {
+			m.dealWithTimeBucketStatistic(source.Input, &source.GroupingPrivate, ret)
+		}
+		return
+	case *ScalarGroupByExpr:
+		if source.GroupingPrivate.OptFlags.UseStatisticOpt() {
+			m.dealWithTimeBucketStatistic(source.Input, &source.GroupingPrivate, ret)
+		}
+		return
+	default:
+		for i := 0; i < source.ChildCount(); i++ {
+			if val, ok := source.Child(i).(RelExpr); ok {
+				m.dealWithTimeBucketStatistic(val, gp, ret)
+			}
+		}
+	}
+}
+
 // checklimitOptimize check whether use limit optimize
 func (m *Memo) checklimitOptimize(source *LimitExpr, ret *CrossEngCheckResults) {
 	if s, ok1 := source.Input.(*SortExpr); ok1 {
@@ -1633,6 +1737,9 @@ func (m *Memo) checklimitOptimize(source *LimitExpr, ret *CrossEngCheckResults) 
 		}
 	} else if _, ok := source.Input.(*GroupByExpr); ok && len(source.Ordering.Columns) <= 0 {
 		source.LimitOptFlag |= opt.TSPushLimitToAggScan
+	}
+	if source.LimitOptFlag.TSPushLimitToAggScan() {
+		m.dealWithTimeBucketStatistic(source.Input, nil, ret)
 	}
 }
 
@@ -2804,21 +2911,23 @@ func CheckGroupWindowExist(expr opt.Expr) (string, bool) {
 }
 
 // GetTSColIDInGroupWindow get tsColID by groupWindowExpr or groupWindowID
-func (m *Memo) GetTSColIDInGroupWindow(
-	expr opt.Expr, exprID opt.ColumnID, id opt.ColumnID,
-) opt.ColumnID {
-	if id <= 0 && expr == nil {
+func (m *Memo) GetTSColIDInGroupWindow(expr opt.Expr, id opt.ColumnID) opt.ColumnID {
+	// id must be present.
+	if id <= 0 {
 		return opt.ColumnID(-1)
 	}
-	if id <= 0 {
+	// When expr is passed in, we need to check whether expr is grouped window function.
+	// eg: m.GetTSColIDInGroupWindow(expr, 123)
+	isGroupWindow := true
+	if expr != nil {
 		// get groupWindowId from groupWindowExpr
-		if _, ok := expr.(*FunctionExpr); ok {
-			if _, ok1 := CheckGroupWindowExist(expr); ok1 {
-				id = exprID
-			}
+		if _, ok := expr.(*FunctionExpr); !ok {
+			isGroupWindow = false
+		} else {
+			_, isGroupWindow = CheckGroupWindowExist(expr)
 		}
 	}
-	if id > 0 {
+	if isGroupWindow {
 		// get tsColMetaID
 		if col := m.Metadata().ColumnMeta(id); col != nil && col.Table > 0 {
 			if tsCol := m.Metadata().FirstColumnMetaFromTable(col.Table); tsCol != nil {

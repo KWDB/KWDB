@@ -727,6 +727,7 @@ func (tsi *TsInputStats) TsStatsForQueryPlan() map[int32][]string {
 		if stats.PorcessorId == 1 {
 			resultMap[stats.PorcessorId] = append(resultMap[stats.PorcessorId], fmt.Sprintf("block cache hit ratio: %f", stats.InputStats.BlockCacheHitRatio))
 			resultMap[stats.PorcessorId] = append(resultMap[stats.PorcessorId], fmt.Sprintf("blocks<mem, last, entity>: <%d, %d, %d>", stats.InputStats.MemoryBlockCount, stats.InputStats.LastBlockCount, stats.InputStats.EntityBlockCount))
+			resultMap[stats.PorcessorId] = append(resultMap[stats.PorcessorId], fmt.Sprintf("partition agg count: %d", stats.InputStats.PartitionAggCount))
 			resultMap[stats.PorcessorId] = append(resultMap[stats.PorcessorId], fmt.Sprintf("scan bytes<block, agg, header>: <%d, %d, %d>", stats.InputStats.BlockBytes, stats.InputStats.AggBytes, stats.InputStats.HeaderBytes))
 		}
 	}
@@ -757,6 +758,7 @@ func (tsi *TsInputStats) SetTsInputStats(stats tse.TsFetcherStats) {
 				MemoryBlockCount:   stats.MemoryBlockCount,
 				LastBlockCount:     stats.LastBlockCount,
 				EntityBlockCount:   stats.EntityBlockCount,
+				PartitionAggCount:  stats.PartitionAggCount,
 				BlockCacheHitRatio: stats.BlockCacheHitRatio,
 				BlockBytes:         stats.BlockBytes,
 				AggBytes:           stats.AggBytes,

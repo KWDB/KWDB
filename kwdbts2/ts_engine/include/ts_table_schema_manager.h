@@ -123,8 +123,6 @@ class TsTableSchemaManager {
 
   vector<uint32_t> GetNTagIndexInfo(uint32_t ts_version, uint32_t index_id);
 
-  KStatus GetMeta(kwdbContext_p ctx, uint32_t version, roachpb::CreateTsTable* meta);
-
   KStatus GetColumnsExcludeDropped(std::vector<AttributeInfo>& schema, uint32_t ts_version = 0);
 
   KStatus GetColumnsIncludeDropped(std::vector<AttributeInfo>& schema, uint32_t ts_version = 0);
@@ -208,7 +206,7 @@ class TsTableSchemaManager {
 
   KStatus getColumnIndex(const AttributeInfo& attr_info, int& col_no);
 
-  static KStatus parseAttrInfo(const roachpb::KWDBKTSColumn& col, AttributeInfo& attr_info, bool first_col);
+  static KStatus parseAttrInfo(const roachpb::KWDBKTSColumn& col, AttributeInfo& attr_info);
 
   KStatus alterTableTag(kwdbContext_p ctx, AlterType alter_type, const AttributeInfo& attr_info,
                         uint32_t cur_version, uint32_t new_version, string& msg);

@@ -2444,7 +2444,7 @@ func (b *Builder) buildGroupBy(groupBy memo.RelExpr) (execPlan, error) {
 				}
 				private.GroupWindowIdOrdinal = opt.ColumnID(input.getColumnOrdinal(private.GroupWindowId))
 				// set ts col to GroupWindowTSColOrdinal
-				tsColID := b.mem.GetTSColIDInGroupWindow(nil, 0, private.GroupWindowId)
+				tsColID := b.mem.GetTSColIDInGroupWindow(nil, private.GroupWindowId)
 				if v, ok := input.outputCols.Get(int(tsColID)); ok {
 					private.GroupWindowTSColOrdinal = opt.ColumnID(v)
 				} else {

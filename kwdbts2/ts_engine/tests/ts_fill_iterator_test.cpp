@@ -10,6 +10,7 @@
 // See the Mulan PSL v2 for more details.
 
 #include <cstdio>
+#include "ts_test_base.h"
 #include "test_util.h"
 #include "ts_engine.h"
 #include "ts_lru_block_cache.h"
@@ -22,78 +23,19 @@ const string engine_root_path = "./tsdb";
 extern atomic<int> destroyed_entity_block_file_count;
 extern atomic<int> created_entity_block_file_count;
 
-class TestFillIterator : public ::testing::Test {
- public:
-  EngineOptions opts_;
-  TSEngineImpl *engine_;
-  kwdbContext_t g_ctx_;
-  kwdbContext_p ctx_;
-
-  virtual void SetUp() override {
-    ctx_ = &g_ctx_;
-    InitKWDBContext(ctx_);
-    KWDBDynamicThreadPool::GetThreadPool().Init(8, ctx_);
-  }
-
-  virtual void TearDown() override {
-    KWDBDynamicThreadPool::GetThreadPool().Stop();
-  }
-
+class TestFillIterator : public TsEngineTestBase {
  public:
   TestFillIterator() {
-    ctx_ = &g_ctx_;
-    InitKWDBContext(ctx_);
-    opts_.db_path = engine_root_path;
-    Remove(engine_root_path);
-    MakeDirectory(engine_root_path);
-    engine_ = new TSEngineImpl(opts_);
-    auto s = engine_->Init(ctx_);
-    EXPECT_EQ(s, KStatus::SUCCESS);
-  }
-
-  ~TestFillIterator() {
-    if (engine_) {
-      delete engine_;
-    }
-  }
-  std::string GetPrimaryKey(TSTableID table_id, TSEntityID dev_id) {
-    std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
-    bool is_dropped = false;
-    KStatus s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
-    EXPECT_EQ(s, KStatus::SUCCESS);
-    std::vector<TagInfo> tag_schema;
-    s = schema_mgr->GetTagMeta(1, tag_schema);
-    EXPECT_EQ(s , KStatus::SUCCESS);
-    uint64_t pkey_len = 0;
-    for (size_t i = 0; i < tag_schema.size(); i++) {
-      if (tag_schema[i].isPrimaryTag()) {
-        pkey_len += tag_schema[i].m_size;
-      }
-    }
-    char* mem = reinterpret_cast<char*>(malloc(pkey_len));
-    memset(mem, 0, pkey_len);
-    std::string dev_str = intToString(dev_id);
-    size_t offset = 0;
-    for (size_t i = 0; i < tag_schema.size(); i++) {
-      if (tag_schema[i].isPrimaryTag()) {
-        if (tag_schema[i].m_data_type == DATATYPE::VARSTRING) {
-          memcpy(mem + offset, dev_str.data(), dev_str.length());
-        } else {
-          memcpy(mem + offset, (char*)(&dev_id), tag_schema[i].m_size);
-        }
-        offset += tag_schema[i].m_size;
-      }
-    }
-    auto ret = std::string{mem, pkey_len};
-    free(mem);
-    return ret;
+    InitContext();
+    InitEngine(engine_root_path);
   }
 };
 
 TEST_F(TestFillIterator, NONE) {
   TSTableID table_id = 999;
   roachpb::CreateTsTable pb_meta;
-  ConstructRoachpbTable(&pb_meta, table_id);
+  std::vector<roachpb::DataType> col_types = {roachpb::DataType::TIMESTAMP, roachpb::DataType::INT, roachpb::DataType::DOUBLE, roachpb::DataType::SMALLINT, roachpb::DataType::BIGINT, roachpb::DataType::FLOAT, roachpb::DataType::VARCHAR, roachpb::DataType::TIMESTAMP};
+  ConstructRoachpbTable(&pb_meta, table_id, 1, col_types);
   std::shared_ptr<TsTable> ts_table;
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -132,7 +74,7 @@ TEST_F(TestFillIterator, NONE) {
     KwTsSpan ts_span = {start_ts, start_ts};
     DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
     ts_span = ConvertMsToPrecision(ts_span, ts_col_type);
-    std::vector<k_uint32> scan_cols = {0, 1, 2};
+    std::vector<k_uint32> scan_cols = {0, 1, 2, 3, 4, 5, 6, 7};
     std::vector<Sumfunctype> scan_agg_types;
 
     std::shared_ptr<MMapMetricsTable> schema;
@@ -186,7 +128,8 @@ TEST_F(TestFillIterator, NONE) {
 TEST_F(TestFillIterator, EXACT) {
   TSTableID table_id = 999;
   roachpb::CreateTsTable pb_meta;
-  ConstructRoachpbTable(&pb_meta, table_id);
+  std::vector<roachpb::DataType> col_types = {roachpb::DataType::TIMESTAMP, roachpb::DataType::INT, roachpb::DataType::DOUBLE, roachpb::DataType::SMALLINT, roachpb::DataType::BIGINT, roachpb::DataType::FLOAT, roachpb::DataType::VARCHAR, roachpb::DataType::TIMESTAMP};
+  ConstructRoachpbTable(&pb_meta, table_id, 1, col_types);
   std::shared_ptr<TsTable> ts_table;
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -225,7 +168,7 @@ TEST_F(TestFillIterator, EXACT) {
     KwTsSpan ts_span = {start_ts, start_ts};
     DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
     ts_span = ConvertMsToPrecision(ts_span, ts_col_type);
-    std::vector<k_uint32> scan_cols = {0, 1, 2};
+    std::vector<k_uint32> scan_cols = {0, 1, 2, 3, 4, 5, 6, 7};
     std::vector<Sumfunctype> scan_agg_types;
 
     std::shared_ptr<MMapMetricsTable> schema;
@@ -284,7 +227,8 @@ TEST_F(TestFillIterator, EXACT) {
 TEST_F(TestFillIterator, PREVIOUS) {
   TSTableID table_id = 999;
   roachpb::CreateTsTable pb_meta;
-  ConstructRoachpbTable(&pb_meta, table_id);
+  std::vector<roachpb::DataType> col_types = {roachpb::DataType::TIMESTAMP, roachpb::DataType::INT, roachpb::DataType::DOUBLE, roachpb::DataType::SMALLINT, roachpb::DataType::BIGINT, roachpb::DataType::FLOAT, roachpb::DataType::VARCHAR, roachpb::DataType::TIMESTAMP};
+  ConstructRoachpbTable(&pb_meta, table_id, 1, col_types);
   std::shared_ptr<TsTable> ts_table;
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -329,7 +273,7 @@ TEST_F(TestFillIterator, PREVIOUS) {
     KwTsSpan ts_span = {fill_ts, fill_ts};
     DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
     ts_span = ConvertMsToPrecision(ts_span, ts_col_type);
-    std::vector<k_uint32> scan_cols = {0, 1, 2};
+    std::vector<k_uint32> scan_cols = {0, 1, 2, 3, 4, 5, 6, 7};
     std::vector<Sumfunctype> scan_agg_types;
 
     std::shared_ptr<MMapMetricsTable> schema;
@@ -388,7 +332,8 @@ TEST_F(TestFillIterator, PREVIOUS) {
 TEST_F(TestFillIterator, NEXT) {
   TSTableID table_id = 999;
   roachpb::CreateTsTable pb_meta;
-  ConstructRoachpbTable(&pb_meta, table_id);
+  std::vector<roachpb::DataType> col_types = {roachpb::DataType::TIMESTAMP, roachpb::DataType::INT, roachpb::DataType::DOUBLE, roachpb::DataType::SMALLINT, roachpb::DataType::BIGINT, roachpb::DataType::FLOAT, roachpb::DataType::VARCHAR, roachpb::DataType::TIMESTAMP};
+  ConstructRoachpbTable(&pb_meta, table_id, 1, col_types);
   std::shared_ptr<TsTable> ts_table;
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -433,7 +378,7 @@ TEST_F(TestFillIterator, NEXT) {
     KwTsSpan ts_span = {fill_ts, fill_ts};
     DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
     ts_span = ConvertMsToPrecision(ts_span, ts_col_type);
-    std::vector<k_uint32> scan_cols = {0, 1, 2};
+    std::vector<k_uint32> scan_cols = {0, 1, 2, 3, 4, 5, 6, 7};
     std::vector<Sumfunctype> scan_agg_types;
 
     std::shared_ptr<MMapMetricsTable> schema;
@@ -515,7 +460,8 @@ TEST_F(TestFillIterator, NEXT) {
 TEST_F(TestFillIterator, CLOSER) {
   TSTableID table_id = 999;
   roachpb::CreateTsTable pb_meta;
-  ConstructRoachpbTable(&pb_meta, table_id);
+  std::vector<roachpb::DataType> col_types = {roachpb::DataType::TIMESTAMP, roachpb::DataType::INT, roachpb::DataType::DOUBLE, roachpb::DataType::SMALLINT, roachpb::DataType::BIGINT, roachpb::DataType::FLOAT, roachpb::DataType::VARCHAR, roachpb::DataType::TIMESTAMP};
+  ConstructRoachpbTable(&pb_meta, table_id, 1, col_types);
   std::shared_ptr<TsTable> ts_table;
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -559,7 +505,7 @@ TEST_F(TestFillIterator, CLOSER) {
     KwTsSpan ts_span = {fill_ts, fill_ts};
     DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
     ts_span = ConvertMsToPrecision(ts_span, ts_col_type);
-    std::vector<k_uint32> scan_cols = {0, 1, 2};
+    std::vector<k_uint32> scan_cols = {0, 1, 2, 3, 4, 5, 6, 7};
     std::vector<Sumfunctype> scan_agg_types;
 
     std::shared_ptr<MMapMetricsTable> schema;
@@ -642,7 +588,8 @@ TEST_F(TestFillIterator, CLOSER) {
 TEST_F(TestFillIterator, CONSTANT) {
   TSTableID table_id = 999;
   roachpb::CreateTsTable pb_meta;
-  ConstructRoachpbTable(&pb_meta, table_id);
+  std::vector<roachpb::DataType> col_types = {roachpb::DataType::TIMESTAMP, roachpb::DataType::INT, roachpb::DataType::DOUBLE, roachpb::DataType::SMALLINT, roachpb::DataType::BIGINT, roachpb::DataType::FLOAT, roachpb::DataType::VARCHAR, roachpb::DataType::TIMESTAMP};
+  ConstructRoachpbTable(&pb_meta, table_id, 1, col_types);
   std::shared_ptr<TsTable> ts_table;
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -681,7 +628,7 @@ TEST_F(TestFillIterator, CONSTANT) {
     KwTsSpan ts_span = {start_ts - 1, start_ts - 1};
     DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
     ts_span = ConvertMsToPrecision(ts_span, ts_col_type);
-    std::vector<k_uint32> scan_cols = {0, 1, 2};
+    std::vector<k_uint32> scan_cols = {0, 1, 2, 3, 4, 5, 6, 7};
     std::vector<Sumfunctype> scan_agg_types;
 
     std::shared_ptr<MMapMetricsTable> schema;
@@ -763,7 +710,8 @@ TEST_F(TestFillIterator, CONSTANT) {
 TEST_F(TestFillIterator, LINEAR) {
   TSTableID table_id = 999;
   roachpb::CreateTsTable pb_meta;
-  ConstructRoachpbTable(&pb_meta, table_id);
+  std::vector<roachpb::DataType> col_types = {roachpb::DataType::TIMESTAMP, roachpb::DataType::INT, roachpb::DataType::DOUBLE, roachpb::DataType::SMALLINT, roachpb::DataType::BIGINT, roachpb::DataType::FLOAT, roachpb::DataType::VARCHAR, roachpb::DataType::TIMESTAMP};
+  ConstructRoachpbTable(&pb_meta, table_id, 1, col_types);
   std::shared_ptr<TsTable> ts_table;
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -807,7 +755,7 @@ TEST_F(TestFillIterator, LINEAR) {
     KwTsSpan ts_span = {fill_ts, fill_ts};
     DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
     ts_span = ConvertMsToPrecision(ts_span, ts_col_type);
-    std::vector<k_uint32> scan_cols = {0, 1, 2};
+    std::vector<k_uint32> scan_cols = {0, 1, 2, 3, 4, 5, 6, 7};
     std::vector<Sumfunctype> scan_agg_types;
 
     std::shared_ptr<MMapMetricsTable> schema;

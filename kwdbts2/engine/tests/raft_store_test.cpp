@@ -11,9 +11,9 @@
 
 #include <unistd.h>
 #include "engine.h"
-#include "test_util.h"
 #include "libkwdbts2.h"
 #include "raft_store.h"
+#include "../../ts_engine/tests/test_util.h"
 
 using namespace kwdbts;  // NOLINT
 
@@ -60,18 +60,31 @@ TEST_F(TsRaftStoreTest, put) {
   KStatus s;
   TSSlice value_slice[6];
   uint64_t indexs[6];
+  uint64_t offs[7];
+  size_t total_len = 0;
   for (int i = 1; i < 7; i++) {
     value_slice[i - 1] = {value[i].data(), value[i].size()};
     indexs[i - 1] = 100 + i;
+    offs[i - 1] = total_len;
+    total_len += value[i].size();
   }
-  TSRaftlog raftlog[3];
-  for(uint64_t i = 0; i < 2; i++) {
-    raftlog[i] = {i+1, 6, &indexs[0], value_slice};
+  offs[6] = total_len;
+
+  char* all_data = new char[total_len];
+  total_len = 0;
+  for (int i = 1; i < 7; i++) {
+    memcpy(all_data + total_len, value[i].data(), value[i].size());
+    total_len += value[i].size();
   }
 
-  uint64_t index =0;
-  TSSlice value_status ={value[5].data(), value[5].size()};
-  raftlog[2] = {1, 1, &index, &value_status};
+  TSRaftlog raftlog[3];
+  for(uint64_t i = 0; i < 2; i++) {
+    raftlog[i] = {i+1, 6, &indexs[0], all_data, offs};
+  }
+
+  uint64_t index = 0;
+  uint64_t status_offs[2] = {0, value[5].size()};
+  raftlog[2] = {1, 1, &index, value[5].data(), status_offs};
   s = raft_store_->WriteRaftLog(ctx_, 3, raftlog, true);
   EXPECT_EQ(s, KStatus::SUCCESS);
   TSSlice res[6];
@@ -88,12 +101,15 @@ TEST_F(TsRaftStoreTest, put) {
   s = raft_store_->Get(ctx_, 1, 0, 1, res);
   EXPECT_EQ(strncmp(res[0].data, value[5].data(), value[5].size()), 0);
   free(res[0].data);
+  delete[] all_data;
 }
 
 TEST_F(TsRaftStoreTest, delete) {
   KStatus s;
   TSSlice value_slice[6];
   uint64_t indexs[6];
+  uint64_t offs[7];
+  size_t total_len = 0;
   std::unordered_map<int, string> value1;
   for (int i = 1; i < 7; i++) {
     value1[i] = value[i];
@@ -101,9 +117,22 @@ TEST_F(TsRaftStoreTest, delete) {
   for (int i = 1; i < 7; i++) {
     value_slice[i - 1] = {value1[i].data(), value1[i].size()};
     indexs[i - 1] = 100 + i;
+    offs[i - 1] = total_len;
+    total_len += value1[i].size();
   }
+  offs[6] = total_len;
+
+  char* all_data = new char[total_len];
+  total_len = 0;
+  for (int i = 1; i < 7; i++) {
+    memcpy(all_data + total_len, value1[i].data(), value1[i].size());
+    total_len += value1[i].size();
+  }
+
   uint64_t del_indexes[2] = {103,106};
-  TSRaftlog raftlog[3] = {{1, 6, &indexs[0], value_slice}, {1, 2, del_indexes, nullptr}, {1, 0, nullptr, nullptr}};
+  TSRaftlog raftlog[3] = {{1, 6, &indexs[0], all_data, offs},
+                          {1, 2, del_indexes, nullptr, nullptr},
+                          {1, 0, nullptr, nullptr, nullptr}};
   s = raft_store_->WriteRaftLog(ctx_, 2, raftlog, true);
   EXPECT_EQ(s, KStatus::SUCCESS);
   TSSlice res[6];
@@ -120,19 +149,33 @@ TEST_F(TsRaftStoreTest, delete) {
   }
   s = raft_store_->WriteRaftLog(ctx_, 1, &raftlog[2], true);
   EXPECT_EQ(raft_store_->Get(ctx_, 1, 106, 107, res), KStatus::FAIL);
+  delete[] all_data;
 }
 
 TEST_F(TsRaftStoreTest, Init) {
   KStatus s;
   TSSlice value_slice[6];
   uint64_t indexs[6];
+  uint64_t offs[7];
+  size_t total_len = 0;
   for (int i = 1; i < 7; i++) {
     value_slice[i - 1] = {value[i].data(), value[i].size()};
     indexs[i - 1] = 100 + i;
+    offs[i - 1] = total_len;
+    total_len += value[i].size();
   }
+  offs[6] = total_len;
+
+  char* all_data = new char[total_len];
+  total_len = 0;
+  for (int i = 1; i < 7; i++) {
+    memcpy(all_data + total_len, value[i].data(), value[i].size());
+    total_len += value[i].size();
+  }
+
   TSRaftlog raftlog[17];
   for (uint64_t i = 0; i < 17; i++) {
-    raftlog[i] = {i + 1, 6, &indexs[0], value_slice};
+    raftlog[i] = {i + 1, 6, &indexs[0], all_data, offs};
   }
   raft_store_->resizeMax();
   uint64_t index = 0;
@@ -151,7 +194,7 @@ TEST_F(TsRaftStoreTest, Init) {
     free(res[i - 1].data);
   }
   uint64_t del_indexes[2] = {103,106};
-  TSRaftlog del_raftlog = {2, 2, del_indexes, nullptr};
+  TSRaftlog del_raftlog = {2, 2, del_indexes, nullptr, nullptr};
   s = raft_store_->WriteRaftLog(ctx_, 1, &del_raftlog, true);
   for (int i = 0; i < 3; i++) {
     EXPECT_EQ(raft_store_->Get(ctx_, 2, 103 + i, 104 + i, res), KStatus::FAIL);
@@ -197,9 +240,224 @@ TEST_F(TsRaftStoreTest, Init) {
   for (int i = 0; i < 3; i++) {
     EXPECT_EQ(raft_store_->Get(ctx_, 2, 103 + i, 104 + i, res), KStatus::FAIL);
   }
-  s = raft_store_->Get(ctx_, 2, 101, 103, res);
-  for (int i = 1; i < 3; i++) {
-    EXPECT_EQ(strncmp(res[i - 1].data, value[i].data(), value[i].size()), 0);
+  delete[] all_data;
+}
+
+TEST_F(TsRaftStoreTest, GetFirstAndLastIndex) {
+  KStatus s;
+  uint64_t indexs[6];
+  uint64_t offs[7];
+  size_t total_len = 0;
+  for (int i = 1; i < 7; i++) {
+    indexs[i - 1] = 100 + i;
+    offs[i - 1] = total_len;
+    total_len += value[i].size();
+  }
+  offs[6] = total_len;
+
+  char* all_data = new char[total_len];
+  total_len = 0;
+  for (int i = 1; i < 7; i++) {
+    memcpy(all_data + total_len, value[i].data(), value[i].size());
+    total_len += value[i].size();
+  }
+
+  TSRaftlog raftlog = {1, 6, &indexs[0], all_data, offs};
+  s = raft_store_->WriteRaftLog(ctx_, 1, &raftlog, true);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+
+  uint64_t first_index = 0;
+  s = raft_store_->GetFirstIndex(ctx_, 1, &first_index);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+  EXPECT_EQ(first_index, 101);
+
+  uint64_t last_index = 0;
+  s = raft_store_->GetLastIndex(ctx_, 1, &last_index);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+  EXPECT_EQ(last_index, 106);
+
+  TSSlice first_value;
+  s = raft_store_->GetFirst(ctx_, 1, &first_value);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+  EXPECT_EQ(strncmp(first_value.data, value[1].data(), value[1].size()), 0);
+  free(first_value.data);
+
+  // Test non-existent range
+  s = raft_store_->GetFirstIndex(ctx_, 999, &first_index);
+  EXPECT_EQ(s, KStatus::FAIL);
+  s = raft_store_->GetLastIndex(ctx_, 999, &last_index);
+  EXPECT_EQ(s, KStatus::FAIL);
+  s = raft_store_->GetFirst(ctx_, 999, &first_value);
+  EXPECT_EQ(s, KStatus::FAIL);
+
+  delete[] all_data;
+}
+
+TEST_F(TsRaftStoreTest, SyncAndClose) {
+  KStatus s;
+  uint64_t indexs[1] = {100};
+  uint64_t offs[2] = {0, value[1].size()};
+
+  TSRaftlog raftlog = {1, 1, &indexs[0], value[1].data(), offs};
+  s = raft_store_->WriteRaftLog(ctx_, 1, &raftlog, false);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+
+  s = raft_store_->Sync(ctx_);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+}
+
+TEST_F(TsRaftStoreTest, ClearRange) {
+  KStatus s;
+  uint64_t indexs[6];
+  uint64_t offs[7];
+  size_t total_len = 0;
+  for (int i = 1; i < 7; i++) {
+    indexs[i - 1] = 100 + i;
+    offs[i - 1] = total_len;
+    total_len += value[i].size();
+  }
+  offs[6] = total_len;
+
+  char* all_data = new char[total_len];
+  total_len = 0;
+  for (int i = 1; i < 7; i++) {
+    memcpy(all_data + total_len, value[i].data(), value[i].size());
+    total_len += value[i].size();
+  }
+
+  TSRaftlog raftlog = {1, 6, &indexs[0], all_data, offs};
+  s = raft_store_->WriteRaftLog(ctx_, 1, &raftlog, true);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+
+  // Clear range (index_cnt = 0)
+  TSRaftlog clear_log = {1, 0, nullptr, nullptr, nullptr};
+  s = raft_store_->WriteRaftLog(ctx_, 1, &clear_log, true);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+
+  // Verify range is cleared
+  TSSlice res[6];
+  s = raft_store_->Get(ctx_, 1, 101, 107, res);
+  EXPECT_EQ(s, KStatus::FAIL);
+
+  delete[] all_data;
+}
+
+TEST_F(TsRaftStoreTest, Truncate) {
+  KStatus s;
+  uint64_t indexs[6];
+  uint64_t offs[7];
+  size_t total_len = 0;
+  for (int i = 1; i < 7; i++) {
+    indexs[i - 1] = 100 + i;
+    offs[i - 1] = total_len;
+    total_len += value[i].size();
+  }
+  offs[6] = total_len;
+
+  char* all_data = new char[total_len];
+  total_len = 0;
+  for (int i = 1; i < 7; i++) {
+    memcpy(all_data + total_len, value[i].data(), value[i].size());
+    total_len += value[i].size();
+  }
+
+  TSRaftlog raftlog = {1, 6, &indexs[0], all_data, offs};
+  s = raft_store_->WriteRaftLog(ctx_, 1, &raftlog, true);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+
+  // Truncate (index_cnt = 1)
+  uint64_t truncate_index = 104;
+  TSRaftlog truncate_log = {1, 1, &truncate_index, nullptr, nullptr};
+  s = raft_store_->WriteRaftLog(ctx_, 1, &truncate_log, true);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+
+  // Verify truncate - indexes >= 104 should be deleted
+  TSSlice res[6];
+  s = raft_store_->Get(ctx_, 1, 104, 107, res);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+
+  // Verify indexes < 104 still exist
+  s = raft_store_->Get(ctx_, 1, 101, 104, res);
+  for (int i = 1; i < 4; i++) {
+    EXPECT_EQ(strncmp(res[i - 1].data, value[i].data(), value[i].size()), 3);
     free(res[i - 1].data);
   }
+
+  delete[] all_data;
+}
+
+TEST_F(TsRaftStoreTest, GetNonExistentRange) {
+  KStatus s;
+  TSSlice res[6];
+  s = raft_store_->Get(ctx_, 999, 101, 107, res);
+  EXPECT_EQ(s, KStatus::FAIL);
+}
+
+TEST_F(TsRaftStoreTest, WriteEmptyValue) {
+  KStatus s;
+  uint64_t indexs[1] = {100};
+  uint64_t offs[2] = {0, 0};
+
+  TSRaftlog raftlog = {1, 1, &indexs[0], nullptr, offs};
+  s = raft_store_->WriteRaftLog(ctx_, 1, &raftlog, true);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+
+  TSSlice res;
+  s = raft_store_->Get(ctx_, 1, 100, 101, &res);
+  EXPECT_EQ(s, KStatus::FAIL);
+}
+
+TEST_F(TsRaftStoreTest, MultipleRanges) {
+  KStatus s;
+  uint64_t indexs[3];
+  uint64_t offs[4];
+  size_t total_len = 0;
+  for (int i = 1; i <= 3; i++) {
+    indexs[i - 1] = 100 + i;
+    offs[i - 1] = total_len;
+    total_len += value[i].size();
+  }
+  offs[3] = total_len;
+
+  char* all_data = new char[total_len];
+  total_len = 0;
+  for (int i = 1; i <= 3; i++) {
+    memcpy(all_data + total_len, value[i].data(), value[i].size());
+    total_len += value[i].size();
+  }
+
+  // Write to range 1
+  TSRaftlog raftlog1 = {1, 3, &indexs[0], all_data, offs};
+  s = raft_store_->WriteRaftLog(ctx_, 1, &raftlog1, true);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+
+  // Write to range 2
+  TSRaftlog raftlog2 = {2, 3, &indexs[0], all_data, offs};
+  s = raft_store_->WriteRaftLog(ctx_, 1, &raftlog2, true);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+
+  // Verify both ranges
+  TSSlice res[3];
+  s = raft_store_->Get(ctx_, 1, 101, 104, res);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+  for (int i = 1; i <= 3; i++) {
+    free(res[i - 1].data);
+  }
+
+  s = raft_store_->Get(ctx_, 2, 101, 104, res);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+  for (int i = 1; i <= 3; i++) {
+    free(res[i - 1].data);
+  }
+
+  delete[] all_data;
+}
+
+TEST_F(TsRaftStoreTest, InvalidOperationType) {
+  KStatus s;
+  // Test with invalid index_cnt (> 2)
+  uint64_t indexs[5] = {100, 101, 102, 103, 104};
+  TSRaftlog raftlog = {1, 5, indexs, nullptr, nullptr};
+  s = raft_store_->WriteRaftLog(ctx_, 1, &raftlog, true);
+  EXPECT_EQ(s, KStatus::FAIL);
 }

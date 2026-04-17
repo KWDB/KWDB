@@ -66,7 +66,7 @@ inline bool IsOsnInSpan(const KwOSNSpan& osn_span, TS_OSN lsn) {
 }
 
 inline bool IsOsnInSpans(TS_OSN a, const std::vector<KwOSNSpan>& b) {
-  for (auto span : b) {
+  for (const auto& span : b) {
     if (IsOsnInSpan(span, a)) {
       return true;
     }

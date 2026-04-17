@@ -22,18 +22,11 @@
 #include "ee_global.h"
 #include "payload_builder.h"
 
-extern bool g_go_start_service;
 namespace kwdbts {
 
-KStatus TsTable::GetLastRowBatch(kwdbContext_p ctx, uint32_t table_version, std::vector<uint32_t> scan_cols,
-                                TS_OSN osn, ResultSet* res, k_uint32* count, bool& valid) {
-  return KStatus::SUCCESS;
-}
-
 TsTable::TsTable(kwdbContext_p ctx, const string& db_path, const KTableKey& table_id)
-    : db_path_(db_path), table_id_(table_id) {
+    : db_path_(db_path + "/"), table_id_(table_id) {
   tbl_sub_path_ = std::to_string(table_id_) + "/";
-  db_path_ = db_path_ + "/";
   entity_groups_mtx_ = new TsTableEntityGrpsRwLatch(RWLATCH_ID_TS_TABLE_ENTITYGRPS_RWLOCK);
   snapshot_manage_mtx_ = new TsTableSnapshotLatch(LATCH_ID_TSTABLE_SNAPSHOT_MUTEX);
   table_version_rw_lock_ = new TsTableVersionRwLatch(RWLATCH_ID_TABLE_VERSION_RWLOCK);
@@ -56,7 +49,8 @@ TsTable::~TsTable() {
 
 // Check that the directory name is a numeric
 bool IsNumber(struct dirent* dir) {
-  for (int i = 0; i < strlen(dir->d_name); ++i) {
+  const size_t name_len = strlen(dir->d_name);
+  for (size_t i = 0; i < name_len; ++i) {
     if (!isdigit(dir->d_name[i])) {
       // Iterate over each character and determine if it's a number
       return false;

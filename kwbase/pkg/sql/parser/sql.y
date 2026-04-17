@@ -714,7 +714,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %token <str> CACHE CALL CANCEL CASCADE CASE CAST CAST_CHECK CHANGEFEED CHAR
 %token <str> CHARACTER CHARACTERISTICS CHECK
 %token <str> CLOB CLUSTER COALESCE COLLATE COLLATION COLUMN COLUMNS COMMENT COMMIT
-%token <str> COMMITTED COMPACT COMPLETE CONCAT CONCURRENTLY CONFIG CONFIGS CONFIGURATION CONFIGURATIONS CONFIGURE
+%token <str> COMMITTED COMPACT COMPLETE COMPRESS CONCAT CONCURRENTLY CONFIG CONFIGS CONFIGURATION CONFIGURATIONS CONFIGURE
 %token <str> CONFLICT CONSTANT CONSTRAINT CONSTRAINTS CONTAINS CONVERSION COPY COVERING CREATE CREATEROLE CREATE_TIME
 %token <str> CROSS CUBE CURRENT CURRENT_CATALOG CURRENT_DATE CURRENT_SCHEMA
 %token <str> CURRENT_ROLE CURRENT_TIME CURRENT_TIMESTAMP
@@ -724,7 +724,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %token <str> DEALLOCATE DEFERRABLE DEFERRED DELETE DESC DESCRIBE DEVICE
 %token <str> DICT DISCARD DISTINCT DISTRIBUTION DO DOMAIN DOUBLE DROP DISABLE
 
-%token <str> EACH ELSIF ENDIF ENDWHILE ENDCASE ENDLOOP ENDHANDLER
+%token <str> EACH ELSIF ENCODE ENDIF ENDWHILE ENDCASE ENDLOOP ENDHANDLER
 %token <str> ELSE ENCODING END ENDPOINT ENDTIME ENUM ESCAPE ESTIMATED EXCEPT EXCLUDE ENABLE
 %token <str> EXACT EXISTS EXECUTE EXPERIMENTAL
 %token <str> EXPERIMENTAL_FINGERPRINTS EXPERIMENTAL_REPLICA
@@ -1166,7 +1166,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.TableExprs> from_list rowsfrom_list opt_from_list
 %type <tree.TablePatterns> table_pattern_list single_table_pattern_list
 %type <tree.TableNames> table_name_list opt_locked_rels
-%type <tree.Exprs> expr_list opt_expr_list tuple1_ambiguous_values tuple1_unambiguous_values
+%type <tree.Exprs> expr_list last_args opt_expr_list tuple1_ambiguous_values tuple1_unambiguous_values
 %type <*tree.Tuple> expr_tuple1_ambiguous expr_tuple_unambiguous
 %type <tree.NameList> attrs
 %type <tree.SelectExprs> target_list
@@ -1196,7 +1196,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.Exprs> trim_list
 %type <tree.Exprs> execute_param_clause
 %type <types.IntervalTypeMetadata> opt_interval_qualifier interval_qualifier interval_second
-%type <tree.Expr> overlay_placing
+%type <tree.Expr> opt_order_ts overlay_placing
 
 %type <bool> opt_unique opt_concurrently opt_cluster
 %type <bool> opt_using_gin_btree
@@ -1270,6 +1270,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <*types.T> character_base
 %type <*types.T> postgres_oid
 %type <*types.T> cast_target
+%type <*types.T> opt_alter_type
 %type <str> extract_arg
 %type <bool> opt_varying
 %type <bool> audit_able
@@ -1309,6 +1310,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.CompositeKeyMatchMethod> key_match
 %type <tree.ReferenceActions> reference_actions
 %type <tree.ReferenceAction> reference_action reference_on_delete reference_on_update
+%type <*string> opt_compress_level opt_compress_algo opt_encode_algo
 
 %type <tree.Expr> func_application func_expr_common_subexpr special_function
 %type <tree.Expr> func_expr func_expr_windowless
@@ -2012,13 +2014,19 @@ alter_table_cmd:
   //     [SET DATA] TYPE <typename>
   //     [ COLLATE collation ]
   //     [ USING <expression> ]
-| ALTER opt_column column_name opt_set_data TYPE typename opt_collate opt_alter_column_using
+  //		 [ ENCODE <encode_algo> ]
+  //	   [ COMPRESS <compress_algo> ]
+  //     [ LEVEL <compress_level> ]
+| ALTER opt_column column_name opt_set_data opt_alter_type opt_collate opt_alter_column_using opt_encode_algo opt_compress_algo opt_compress_level
   {
     $$.val = &tree.AlterTableAlterColumnType{
       Column: tree.Name($3),
-      ToType: $6.colType(),
-      Collation: $7,
-      Using: $8.expr(),
+      ToType: $5.colType(),
+      Collation: $6,
+      Using: $7.expr(),
+			EncodeAlgo:		 $8.strPtr(),
+			CompressAlgo:  $9.strPtr(),
+			CompressLevel: $10.strPtr(),
     }
   }
 | ALTER attribute_tag attribute_name opt_set_data TYPE typename
@@ -2124,6 +2132,29 @@ alter_table_cmd:
   	  TimeInput: $4.timeInput(),
   	}
   }
+
+opt_encode_algo:
+	ENCODE non_reserved_word_or_sconst
+	{
+		EncodeAlgo := $2
+		$$.val = &EncodeAlgo
+	}
+| /* EMPTY */ { $$.val = (*string)(nil) }
+
+opt_compress_algo:
+	COMPRESS non_reserved_word_or_sconst
+	{
+		CompressAlgo := $2
+		$$.val = &CompressAlgo
+	}
+| /* EMPTY */ { $$.val = (*string)(nil) }
+
+opt_alter_type:
+	TYPE typename
+	{
+		$$.val = $2.colType()
+	}
+| /* EMPTY */ { $$.val = (*types.T)(nil) }
 
 alter_index_cmds:
   alter_index_cmd
@@ -6215,6 +6246,22 @@ col_qualification:
 	{
 		$$.val = tree.NamedColumnQualification{Qualification: tree.ColumnComment($3)}
 	}
+| ENCODE non_reserved_word_or_sconst
+	{
+    $$.val = tree.NamedColumnQualification{Qualification: &tree.ColumnEncode{EncodeAlgo: $2}}
+	}
+| COMPRESS non_reserved_word_or_sconst opt_compress_level
+	{
+		$$.val = tree.NamedColumnQualification{Qualification: &tree.ColumnCompress{CompressAlgo: $2, CompressLevel: $3.strPtr()}}
+	}
+
+opt_compress_level:
+	LEVEL non_reserved_word_or_sconst
+	{
+		compressLevel := $2
+		$$.val = &compressLevel
+	}
+| /* EMPTY */ { $$.val = (*string)(nil) }
 
 // DEFAULT NULL is already the default for Postgres. But define it here and
 // carry it forward into the system to make it explicit.
@@ -12192,28 +12239,24 @@ special_function:
     $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: tree.Exprs{$3.expr(), $5.expr()}}
   }
 | INTERPOLATE '(' error { return helpWithFunctionByName(sqllex, $1) }
-| LAST '(' last_column ')'
+| LAST '(' last_args ')'
   {
-    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: tree.Exprs{$3.expr()}}
+    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: $3.exprs()}
   }
-| LAST '(' last_column ',' SCONST ')'
-	{
-		$$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: tree.Exprs{$3.expr(), tree.NewStrVal($5)}}
-	}
 | LAST '(' error { return helpWithFunctionByName(sqllex, $1) }
-| LAST_ROW '(' last_column ')'
+| LAST_ROW '(' last_args ')'
   {
-    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: tree.Exprs{$3.expr()}}
+    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: $3.exprs()}
   }
 | LAST_ROW '(' error { return helpWithFunctionByName(sqllex, $1) }
-| LASTTS '(' last_column ')'
+| LASTTS '(' last_args ')'
   {
-    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: tree.Exprs{$3.expr()}}
+    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: $3.exprs()}
   }
 | LASTTS '(' error { return helpWithFunctionByName(sqllex, $1) }
-| LAST_ROW_TS '(' last_column ')'
+| LAST_ROW_TS '(' last_args ')'
   {
-    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: tree.Exprs{$3.expr()}}
+    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: $3.exprs()}
   }
 | LAST_ROW_TS '(' error { return helpWithFunctionByName(sqllex, $1) }
 | TO_TIME '(' a_expr ')'
@@ -12226,24 +12269,24 @@ special_function:
     $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: tree.Exprs{$3.expr()}}
   }
 | TIME_TO_SEC '(' error { return helpWithFunctionByName(sqllex, $1)}
-| FIRST '(' last_column ')'
+| FIRST '(' last_args ')'
   {
-    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: tree.Exprs{$3.expr()}}
+    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: $3.exprs()}
   }
 | FIRST '(' error { return helpWithFunctionByName(sqllex, $1) }
-| FIRSTTS '(' last_column ')'
+| FIRSTTS '(' last_args ')'
   {
-    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: tree.Exprs{$3.expr()}}
+    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: $3.exprs()}
   }
 | FIRSTTS '(' error { return helpWithFunctionByName(sqllex, $1) }
-| FIRST_ROW '(' last_column ')'
+| FIRST_ROW '(' last_args ')'
   {
-    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: tree.Exprs{$3.expr()}}
+    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: $3.exprs()}
   }
 | FIRST_ROW '(' error { return helpWithFunctionByName(sqllex, $1) }
-| FIRST_ROW_TS '(' last_column ')'
+| FIRST_ROW_TS '(' last_args ')'
   {
-    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: tree.Exprs{$3.expr()}}
+    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: $3.exprs()}
   }
 | FIRST_ROW_TS '(' error { return helpWithFunctionByName(sqllex, $1) }
 | STR_TO_DATE '(' a_expr ',' a_expr ')'
@@ -12251,6 +12294,27 @@ special_function:
     $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: tree.Exprs{$3.expr(), $5.expr()}}
   }
 | STR_TO_DATE '(' error { return helpWithFunctionByName(sqllex, $1)}
+
+last_args:
+last_column opt_order_ts
+  {
+  	argExprs := make(tree.Exprs, 0)
+    argExprs = append(argExprs, $1.expr())
+    if $2.expr() != nil {
+    	argExprs = append(argExprs, $2.expr())
+    }
+		$$.val = argExprs
+  }
+
+opt_order_ts:
+',' a_expr
+  {
+    $$.val = $2.expr()
+  }
+| /* EMPTY */
+  {
+    $$.val = tree.Expr(nil)
+  }
 
 last_column:
 column_path_with_star
@@ -13829,6 +13893,7 @@ col_name_keyword:
 type_func_name_keyword:
   COLLATION
 | CROSS
+| ENCODE
 | FULL
 | INNER
 | ILIKE
@@ -13887,6 +13952,7 @@ reserved_keyword:
 | COLLATE
 | COLUMN
 | COMMENT
+| COMPRESS
 | CONCURRENTLY
 | CONSTRAINT
 | CREATE

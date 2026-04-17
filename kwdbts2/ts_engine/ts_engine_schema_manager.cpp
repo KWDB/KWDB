@@ -126,48 +126,6 @@ KStatus TsEngineSchemaManager::CreateTable(kwdbContext_p ctx, const uint32_t& db
   return KStatus::SUCCESS;
 }
 
-KStatus TsEngineSchemaManager::GetMeta(kwdbContext_p ctx, TSTableID table_id, uint32_t version,
-                                       roachpb::CreateTsTable* meta) {
-  KStatus s = KStatus::FAIL;
-  // Get Metric Meta
-  rdLock();
-  auto it = table_schema_mgrs_.find(table_id);
-  if (it != table_schema_mgrs_.end()) {
-    std::shared_ptr<TsTableSchemaManager> tb_schema = it->second;
-    unLock();
-    s = tb_schema->GetMeta(ctx, version, meta);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("Table[%ld]-version[%d] get metric schema failed.", table_id, version);
-      return s;
-    }
-  } else {
-    unLock();
-    wrLock();
-    Defer defer([&]() { unLock(); });
-    it = table_schema_mgrs_.find(table_id);
-    if (it != table_schema_mgrs_.end()) {
-      s = it->second->GetMeta(ctx, version, meta);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("Table[%ld]-version[%d] get metric schema failed.", table_id, version);
-        return s;
-      }
-      return KStatus::SUCCESS;
-    }
-    auto schema_mgr = std::make_unique<TsTableSchemaManager>(schema_root_path_, table_id);
-    s = schema_mgr->Init();
-    if (s != KStatus::SUCCESS) {
-      return s;
-    }
-    s = schema_mgr->GetMeta(ctx, version, meta);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("Table[%ld]-version[%d] get metric schema failed.", table_id, version);
-      return s;
-    }
-    table_schema_mgrs_[table_id] = std::move(schema_mgr);
-  }
-  return KStatus::SUCCESS;
-}
-
 bool TsEngineSchemaManager::IsTableExist(TSTableID tbl_id) {
   auto tbl_schema_mgr = std::make_unique<TsTableSchemaManager>(schema_root_path_, tbl_id);
   if (tbl_schema_mgr->IsSchemaDirsExist()) {

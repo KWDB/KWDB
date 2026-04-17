@@ -86,6 +86,26 @@ SQLSTATE: 22003
 > select current_timestamp(999) from db.tb;
 ERROR: current_timestamp(): precision 999 out of range
 SQLSTATE: 22003
+> select width_bucket(1,1,1,a) from db1.tb;
+      width_bucket
+------------------------
+  -9223372036854775808
+(1 row)
+> select width_bucket(1,1,1,0) from db1.tb;
+      width_bucket
+------------------------
+  -9223372036854775808
+(1 row)
+> select width_bucket(a,5,10,0) from db1.tb;
+  width_bucket
+----------------
+             0
+(1 row)
+> select width_bucket(a,5,10,1) from db1.tb;
+  width_bucket
+----------------
+             0
+(1 row)
 > drop database db1 cascade;
 DROP DATABASE
 > drop database db cascade;

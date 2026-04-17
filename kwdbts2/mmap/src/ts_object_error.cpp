@@ -107,9 +107,7 @@ int errnumToErrorCode(int errnum) {
     case ENOENT: return KWENOOBJ;
     case ENFILE: return KWENFILE;
     case ENOMEM: return KWENOMEM;
-    case ENOSPC: {
-      return KWENOSPC;
-    }
+    case ENOSPC: return KWENOSPC;
     case EROFS:  return KWEROFS;
     case EACCES: return KWEPERM;
     default: break;
@@ -118,6 +116,5 @@ int errnumToErrorCode(int errnum) {
 }
 
 int errnoToErrorCode() {
-  int errnum = errno;
-  return errnumToErrorCode(errnum);
+  return errnumToErrorCode(errno);
 }

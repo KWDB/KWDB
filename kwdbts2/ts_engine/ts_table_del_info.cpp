@@ -63,14 +63,14 @@ TSSlice STTableRangeDelAndTagInfo::GenData(TSSlice& payload, TSSlice& osn_info, 
   offset += osn_info.len;
   KUint32(offset) = dels.size();
   offset += 4;
-  for (auto del : dels) {
-    KInt64(offset) = del.ts_span.begin;
+  for (const auto& [ts_span, osn_span] : dels) {
+    KInt64(offset) = ts_span.begin;
     offset += 8;
-    KInt64(offset) = del.ts_span.end;
+    KInt64(offset) = ts_span.end;
     offset += 8;
-    KUint64(offset) = del.osn_span.begin;
+    KUint64(offset) = osn_span.begin;
     offset += 8;
-    KUint64(offset) = del.osn_span.end;
+    KUint64(offset) = osn_span.end;
     offset += 8;
   }
   return TSSlice{mem, mem_len};
@@ -203,7 +203,7 @@ KStatus STTableRangeDelAndTagInfo::GenTagPayLoad(kwdbContext_p ctx, EntityResult
     return KStatus::FAIL;
   }
   std::vector<uint32_t> scan_tags;
-  scan_tags.reserve(scan_tags.size());
+  scan_tags.reserve(tags_info.size());
   for (int i = 0; i < tags_info.size(); ++i) {
     scan_tags.push_back(i);
   }
@@ -274,8 +274,9 @@ KStatus STTableRangeDelAndTagInfo::WriteDeleteTagRecord(kwdbContext_p ctx, TSSli
     return KStatus::FAIL;
   }
   // multi delete tags. store max osn of all.
-  if (del_tag_osn_[std::string(pkey.data, pkey.len)] < p.GetOSN()) {
-    del_tag_osn_[std::string(pkey.data, pkey.len)] = p.GetOSN();
+  std::string pkey_str(pkey.data, pkey.len);
+  if (del_tag_osn_[pkey_str] < p.GetOSN()) {
+    del_tag_osn_[pkey_str] = p.GetOSN();
   }
 
   return KStatus::SUCCESS;
@@ -350,10 +351,14 @@ KStatus STTableRangeDelAndTagInfo::WriteDelAndTagInfo(kwdbContext_p ctx, TSSlice
     return s;
   }
   auto pkey = TsRawPayload::GetPrimaryKeyFromSlice(payload);
-  uint64_t hash_point = t1ha1_le(pkey.data, pkey.len);
-  tag_lock.WrLock(hash_point);
+  uint32_t p_hash_point = TsRawPayload::GetHashPoint(payload);
+  if (p_hash_point < begin_hash_ || p_hash_point > end_hash_) {
+    LOG_ERROR("payload hash point[%u] not in span[%lu,%lu]", p_hash_point, begin_hash_, end_hash_);
+    return KStatus::FAIL;
+  }
+  tag_lock.WrLock(p_hash_point);
   Defer defer{[&](){
-    tag_lock.Unlock(hash_point);
+    tag_lock.Unlock(p_hash_point);
   }};
 
   std::shared_ptr<TagTable> tag_table;
@@ -366,13 +371,26 @@ KStatus STTableRangeDelAndTagInfo::WriteDelAndTagInfo(kwdbContext_p ctx, TSSlice
     std::string pkey_str;
     BinaryToHexStr(pkey, pkey_str);
     LOG_INFO("snapshot find valid tag[%s], delete first.", pkey_str.c_str());
+    std::pair<uint64_t, uint64_t> row_info;
+    if (tag_table->GetPrimaryKeyRowInfo(pkey.data, pkey.len, row_info)) {
+      LOG_INFO("valid tag row info[%lu,%lu].", row_info.first, row_info.second);
+      auto p_tag = tag_table->GetTagPartitionTableManager()->GetPartitionTable(row_info.first);
+      if (p_tag != nullptr) {
+        uint32_t hash_point = 0;
+        p_tag->getHashpointByRowNum(row_info.second, &hash_point);
+        if (hash_point != p_hash_point) {
+          LOG_WARN("payload hashpoint[%u], not equal with existed tag[%lu,%lu] hashpoint[%u]",
+            p_hash_point, row_info.first, row_info.second, hash_point);
+        }
+      }
+    }
     ErrorInfo err_info;
     std::pair<size_t, size_t> del_row_no;
     auto ret = tag_table->DeleteTagRecord(pkey.data, pkey.len, err_info,
               scan_osn_, OperateType::DeleteBySnapshot, del_row_no);
     if (ret < 0) {
       LOG_ERROR("DeleteTagRecord failed. [%d]", ret);
-      return s;
+      return KStatus::FAIL;
     }
   }
 
@@ -401,8 +419,8 @@ KStatus STTableRangeDelAndTagInfo::WriteDelAndTagInfo(kwdbContext_p ctx, TSSlice
     }
     std::string ptag(pkey.data, pkey.len);
     TS_OSN last_del_tag_osn = 0;
-    if (del_tag_osn_.find(ptag) != del_tag_osn_.end()) {
-      last_del_tag_osn = del_tag_osn_[ptag];
+    if (auto iter = del_tag_osn_.find(ptag); iter != del_tag_osn_.end()) {
+      last_del_tag_osn = iter->second;
     }
     for (STDelRange& del : dels) {
       // only delte info osn after
@@ -452,7 +470,6 @@ KStatus STTableRangeDelAndTagInfo::WriteDelAndTagInfo(kwdbContext_p ctx, TSSlice
     default:
       LOG_ERROR("cannot find type [%d]", type);
       return KStatus::FAIL;
-      break;
     }
   }
   s = table_->SetTagOSNInfoByRowNum(ctx, row_info, orig_info);
@@ -468,7 +485,7 @@ KStatus STTableRangeDelAndTagInfo::WriteDelAndTagInfo(kwdbContext_p ctx, TSSlice
 KStatus STTableRangeDelAndTagInfo::CommitDeleteInfo(kwdbContext_p ctx) {
   for (const auto& pkey : pkey_del_ranges_) {
     std::string cur_pkey = pkey.first;
-    for (auto [ts_span, osn_span] : pkey.second) {
+    for (auto& [ts_span, osn_span] : pkey.second) {
       auto s = table_->DeleteData(ctx, 1, cur_pkey, {ts_span}, nullptr, 0, osn_span.end);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("Failed DeleteData [%lu].", table_->GetTableId());
@@ -557,7 +574,7 @@ bool STSnapshotPackageBuilder::AddBatchData(TSSlice& batch_data, uint32_t row_nu
 }
 
 bool STSnapshotPackageBuilder::Package(TSSlice* data) {
-  if (packages_.size() == 0) {
+  if (packages_.empty()) {
     *data = {nullptr, 0};
     return true;
   }

@@ -12,15 +12,15 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <map>
 #include <list>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <tuple>
 #include <unordered_map>
-#include <utility>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "data_type.h"
@@ -29,9 +29,10 @@
 #include "st_transaction_mgr.h"
 #include "st_wal_mgr.h"
 #include "ts_engine_schema_manager.h"
+#include "ts_hash_latch.h"
 #include "ts_mem_segment_mgr.h"
-#include "ts_version.h"
 #include "ts_partition_interval_recorder.h"
+#include "ts_version.h"
 #include "ts_partition_agg.h"
 
 extern uint16_t CLUSTER_SETTING_MAX_ROWS_PER_BLOCK;         // PARTITION_ROWS from cluster setting
@@ -92,8 +93,12 @@ class TsVGroup {
   bool enable_cal_agg_thread_{true};
   // Id of the partition agg thread
   KThreadID calc_agg_thread_id_{0};
-  std::mutex calc_agg_mutex_;
-  std::condition_variable agg_cv_;
+  // serialize partition agg calculation for one vgroup.
+  // manual vacuum should wait for it, background recalculation should skip if busy.
+  std::mutex calc_agg_run_mutex_;
+  // synchronization primitives only for calc agg thread waiting/wakeup.
+  std::mutex calc_agg_wait_mutex_;
+  std::condition_variable calc_agg_wait_cv_;
 
   std::atomic<uint64_t> max_osn_{LOG_BLOCK_HEADER_SIZE + BLOCK_SIZE};
 
@@ -242,7 +247,8 @@ class TsVGroup {
                       const std::shared_ptr<MMapMetricsTable>& schema, TsStorageIterator** iter,
                       const std::shared_ptr<TsVGroup>& vgroup,
                       const std::vector<timestamp64>& ts_points, bool reverse, bool sorted, TS_OSN scan_osn,
-                      const FillParams& fill_params);
+                      const FillParams& fill_params,
+                      const TimeBucketInfo time_bucket_info = {0, 0});
 
   KStatus GetMetricIteratorByOSN(kwdbContext_p ctx, const std::shared_ptr<TsVGroup>& vgroup,
     std::vector<EntityResultIndex>& entity_ids, std::vector<k_uint32>& scan_cols, std::vector<k_uint32>& ts_scan_cols,
@@ -492,7 +498,7 @@ class TsVGroup {
   // Recalculate count stat.
   KStatus RecalcCountStat();
 
-  KStatus CalcPartitionAgg();
+  KStatus CalcPartitionAgg(bool force = false);
 
   // Initialize calculate aggregation thread.
   void initCalcAggThread();
@@ -526,7 +532,7 @@ class TsVGroup {
     const std::map<std::shared_ptr<TsTableSchemaManager>, std::vector<uint32_t>>& table_entity_map,
     std::map<std::shared_ptr<TsTableSchemaManager>, ClassifiedEntities>& cla_entities, bool* should_calc);
 
-  KStatus PartitionCompact(std::shared_ptr<const TsPartitionVersion> partition,
+  KStatus PartitionCompact(kwdbContext_p ctx, std::shared_ptr<const TsPartitionVersion> partition,
                            bool call_by_vacuum = false, bool force_vacuum = false);
 
   KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, const TsBlockSpan& ts_blk_span,

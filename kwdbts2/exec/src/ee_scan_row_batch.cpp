@@ -80,7 +80,7 @@ k_int32 ScanRowBatch::NextLine() {
       if (current_batch_count_ == -1) {
         current_batch_count_ = res_.data[0][current_batch_no_]->count;
       }
-      if (current_batch_line_ < (current_batch_count_ + 1)) {
+      if (current_batch_line_ < (current_batch_count_ - 1)) {
         current_batch_line_++;
       } else {
         current_batch_no_++;

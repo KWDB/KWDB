@@ -48,7 +48,7 @@ func checkAndGetDetailsInTableInto(
 			return tableDetails, errors.Errorf("cannot IMPORT INTO a table with a DEFAULT expression for any of its columns")
 		}
 	}
-	tableDetails = []sqlbase.ImportTable{{Desc: &table.TableDescriptor, IsNew: false, IntoCols: intoCols}}
+	tableDetails = []sqlbase.ImportTable{{Desc: &table.TableDescriptor, IsNew: false, IntoCols: intoCols, TsColNumber: -1}}
 	return tableDetails, nil
 }
 
@@ -107,7 +107,7 @@ func checkAndGetDetailsInTableNew(
 		return "", tableDetails, nil, err
 	}
 	if !createFile {
-		tableDetails = []sqlbase.ImportTable{{Create: create.String(), IsNew: true, SchemaName: table.Schema(), TableName: table.Table()}}
+		tableDetails = []sqlbase.ImportTable{{Create: create.String(), IsNew: true, SchemaName: table.Schema(), TableName: table.Table(), TsColNumber: -1}}
 		return dbDesc.Name, tableDetails, nil, nil
 	}
 	if dbName, tableDetails, hasTableComment, privileges, hasPrivileges, err = checkAndGetDetailsInTable(ctx, p, stmts, OptComment, withPrivileges); err != nil {

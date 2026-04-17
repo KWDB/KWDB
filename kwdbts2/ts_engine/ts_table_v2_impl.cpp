@@ -25,7 +25,6 @@
 #include "ts_iterator_v2_impl.h"
 #include "ts_ts_lsn_span_utils.h"
 
-extern bool g_go_start_service;
 
 namespace kwdbts {
 
@@ -357,7 +356,7 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const IteratorParams
                             params.block_filter, params.scan_cols, ts_scan_cols, params.agg_extend_cols,
                             params.scan_agg_types, table_schema_mgr_, schema,
                             &ts_iter, vgroup, params.ts_points, params.reverse, params.sorted, params.scan_osn,
-                            params.fill_params);
+                            params.fill_params, params.time_bucket_info);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("cannot create iterator for vgroup[%u].", vgroup_iter.first);
       return s;
@@ -440,7 +439,9 @@ KStatus TsTableV2Impl::undoAlterTable(kwdbContext_p ctx, AlterType alter_type, r
 }
 
 KStatus TsTableV2Impl::CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableKey& table_id, uint64_t version) {
-  if (!g_go_start_service) return KStatus::SUCCESS;
+#ifdef WITH_TESTS
+  return KStatus::SUCCESS;
+#endif
   // Check if the version exists instead of checking the current version
   if (IsExistTableVersion(version)) {
     return KStatus::SUCCESS;
@@ -763,6 +764,7 @@ KStatus TsTableV2Impl::GetDataVolumeHalfTS(kwdbContext_p ctx, uint64_t begin_has
       .limit = 1,
       .scan_osn = UINT64_MAX,
       .fill_params = fill_params,
+      .time_bucket_info = {0, 0},
   };
   s = GetOffsetIterator(ctx, params, &iter);
   if (s != KStatus::SUCCESS) {
@@ -919,7 +921,7 @@ KStatus TsTableV2Impl::GetEntityIdByNorKeys(kwdbContext_p ctx, std::shared_ptr<T
         offset += result_scan_tag_infos[col].m_size;
       }
 
-      for (auto tag : tags) {
+      for (auto& tag : tags) {
         if (0 == memcmp(tag, tag_val, tag_size)) {
           match_one = true;
           break;
@@ -1156,6 +1158,7 @@ const std::vector<KwTsSpan>& ts_spans, TS_OSN osn, uint64_t* row_count) {
       .limit = 0,
       .scan_osn = osn,
       .fill_params = fill_params,
+      .time_bucket_info = {0, 0},
   };
   KStatus s = GetNormalIterator(ctx, params, &iter);
   if (s != KStatus::SUCCESS) {
@@ -1707,9 +1710,11 @@ KStatus TsTableV2Impl::GetTagRecordInfoByOSN(kwdbContext_p ctx,
   std::vector<KwOSNSpan>& osn_span, TS_OSN scan_osn, std::unordered_map<uint64_t, EntityResultIndex>* pkeys_status) {
   return GetTagRecordInfoByOSN(ctx, [&](TagPartitionTable* entity_tag_bt, int row_num) -> bool {
     uint32_t tag_hash;
-    entity_tag_bt->getHashpointByRowNum(row_num, &tag_hash);
-    if (!InHashIdSpan(tag_hash, hps)) {
-      return false;
+    if (!EngineOptions::isSingleNode()) {
+      entity_tag_bt->getHashpointByRowNum(row_num, &tag_hash);
+      if (!InHashIdSpan(tag_hash, hps)) {
+        return false;
+      }
     }
     return true;
   }, osn_span, scan_osn, pkeys_status);

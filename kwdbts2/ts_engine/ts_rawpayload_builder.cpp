@@ -17,7 +17,7 @@ namespace kwdbts {
 
 
 bool TsRawPayloadRowBuilder::Build(TSSlice* row_data, bool need_malloc) {
-  if (col_value_.size() == 0 || col_value_[0].len == 0) {
+  if (col_value_.empty() || col_value_[0].len == 0) {
     return false;
   }
   size_t bitmap_len;

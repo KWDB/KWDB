@@ -170,6 +170,9 @@ class WALBufferMgr {
     current_block_index_ = nextBlockIndex(current_block_index_);
     currentBlock_ = &buffer_[current_block_index_];
 
+    uint64_t new_block_no = currentBlock_->getBlockNo();
+    currentBlock_->reset(new_block_no);
+
     return SUCCESS;
   }
 

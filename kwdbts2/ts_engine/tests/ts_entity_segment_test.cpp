@@ -71,12 +71,12 @@ class TsEntitySegmentTest : public ::testing::Test {
     if (!pool.IsStop()) {
       pool.Stop();
     }
-#ifdef WITH_TESTS
     KWDBDynamicThreadPool::Destroy();
-#endif
   }
 
-  TsEntitySegmentTest() { EngineOptions::mem_segment_max_size = INT32_MAX; }
+  TsEntitySegmentTest() {
+    EngineOptions::mem_segment_max_size = INT32_MAX;
+  }
 
   ~TsEntitySegmentTest() override = default;
 
@@ -1209,15 +1209,18 @@ TEST_F(TsEntitySegmentTest, BUG_IEOYSN) {
   std::shared_ptr<TsTableSchemaManager> table_schema;
   ASSERT_EQ(mgr->GetTableSchemaMgr(table_id, table_schema), SUCCESS);
 
+  std::vector<std::shared_ptr<TsMemSegment>> mem_segments;
+
   for (int k = 0; k < 10; ++k) {
-    uint64_t dev_id = 100 + k;
+    uint64_t dev_id = 100 + k / 2;
     auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, dev_id, 1000, 123 + k * 1000, 1);
     TsRawPayloadRowParser parser{metric_schema};
     TsRawPayload p{metric_schema};
     p.ParsePayLoadStruct(payload);
     // auto ptag = p.GetPrimaryTag();
-    mem_mgr.PutData(payload, table_schema, k);
+    mem_mgr.PutData(payload, table_schema, dev_id);
     free(payload.data);
+    mem_segments.push_back(mem_mgr.CurrentMemSegment());
     ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
   }
 
@@ -1230,13 +1233,14 @@ TEST_F(TsEntitySegmentTest, BUG_IEOYSN) {
   TsEntitySegmentBuilder builder(env, tmp_path, mgr.get(), &v_mgr, p_version->GetPartitionIdentifier(), nullptr, TsDataSource::Flush);
   ASSERT_EQ(builder.Open(), SUCCESS);
 
-  auto memseg = mem_mgr.CurrentMemSegment();
-  std::list<std::shared_ptr<TsBlockSpan>> block_spans;
-  ASSERT_EQ(memseg->GetBlockSpans(block_spans, mgr.get()), SUCCESS);
-  ASSERT_EQ(block_spans.size(), 10);
+  for (const auto &m : mem_segments) {
+    std::list<std::shared_ptr<TsBlockSpan>> block_spans;
+    ASSERT_EQ(m->GetBlockSpans(block_spans, mgr.get()), SUCCESS);
+    ASSERT_EQ(block_spans.size(), 5);
 
-  for (auto span : block_spans) {
-    builder.PutBlockSpan(std::move(span));
+    for (auto span : block_spans) {
+      builder.PutBlockSpan(std::move(span));
+    }
   }
 
   ASSERT_EQ(mgr->SetTableDropped(table_id), SUCCESS);

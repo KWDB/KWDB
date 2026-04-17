@@ -443,6 +443,9 @@ type TSScanFlags struct {
 
 	// Fill fill clause
 	Fill TSFill
+
+	// TimeBucketRange time interval for the timeBucket function
+	TimeBucketRange uint64
 }
 
 // TSFill fill clause

@@ -166,7 +166,7 @@ class TsTableObject {
 
   int encoding() const { return meta_data_->encoding; }
 
-  TSTableFileMetadata* metaData() { return meta_data_; }
+  TSTableFileMetadata* metaData() const { return meta_data_; }
 
   void setNotDropped() { meta_data_->is_dropped = false; }
 

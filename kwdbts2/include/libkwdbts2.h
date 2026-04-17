@@ -165,6 +165,7 @@ typedef struct {
   int32_t memory_block_count;         // scanned memory block count
   int32_t last_block_count;           // scanned last block count
   int64_t entity_block_count;         // scanned entity block count
+  int64_t partition_agg_count;        // partition pre-aggregation usage count
   int64_t block_cache_hit_count;      // block cache hit count
   int64_t block_bytes;                // scanned block_bytes
   int64_t agg_bytes;                  // scanned agg_bytes
@@ -477,8 +478,8 @@ TSStatus TSAddColumn(TSEngine* engine, TSTableID table_id, char* transaction_id,
 TSStatus TSDropColumn(TSEngine* engine, TSTableID table_id, char* transaction_id, TSSlice column,
                       uint32_t cur_version, uint32_t new_version);
 
-TSStatus TSAlterColumnType(TSEngine* engine, TSTableID table_id, char* transaction_id,
-                           TSSlice new_column, TSSlice origin_column, uint32_t cur_version, uint32_t new_version);
+TSStatus TSAlterColumn(TSEngine* engine, TSTableID table_id, char* transaction_id, TSSlice new_column,
+  TSSlice origin_column, uint32_t cur_version, uint32_t new_version, bool alter_type, bool alter_compress);
 
 TSStatus TSAlterPartitionInterval(TSEngine* engine, TSTableID table_id, uint64_t partition_interval);
 

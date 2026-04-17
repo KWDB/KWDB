@@ -63,7 +63,7 @@ class TsStorageIteratorImpl : public TsStorageIterator {
   KStatus Init(bool is_reversed) override;
 
  protected:
-  void SwitchEntity();
+  virtual void SwitchEntity();
 
   bool IsFilteredOut(timestamp64 begin_ts, timestamp64 end_ts, timestamp64 ts);
   /*
@@ -183,7 +183,8 @@ class TsAggIteratorImpl : public TsStorageIteratorImpl {
                       std::vector<Sumfunctype>& scan_agg_types,
                       const std::vector<timestamp64>& ts_points,
                       const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
-                      const std::shared_ptr<MMapMetricsTable>& schema, TS_OSN scan_osn);
+                      const std::shared_ptr<MMapMetricsTable>& schema, TS_OSN scan_osn,
+                      const TimeBucketInfo time_bucket_info = {0, 0});
   ~TsAggIteratorImpl();
 
   KStatus Init(bool is_reversed) override;
@@ -191,12 +192,21 @@ class TsAggIteratorImpl : public TsStorageIteratorImpl {
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished,
                 timestamp64 ts = INVALID_TS, TsScanStats* ts_scan_stats = nullptr) override;
   bool IsDisordered() override;
+  void SwitchEntity() override;
+  void Reset();
+  void AddAggResult(ResultSet* res);
+  std::vector<shared_ptr<TsBlockSpan>> SortBlockSpans(std::list<std::shared_ptr<TsBlockSpan>>& ts_block_spans);
 
  protected:
-  KStatus Aggregate(TsScanStats* ts_scan_stats);
+  KStatus GenerateAggData();
+  KStatus GetBlockSpans(TsScanStats* ts_scan_stats);
+  KStatus AggregateWithBucket(TsScanStats* ts_scan_stats);
+  KStatus AggregateWithoutBucket(TsScanStats* ts_scan_stats);
   KStatus CountAggregate(TsScanStats* ts_scan_stats = nullptr);
   KStatus PartitionAggregate(TsScanStats* ts_scan_stats = nullptr);
-  KStatus UpdateAggregation(bool can_remove_last_candidate, TsScanStats* ts_scan_stats);
+  KStatus partitionAggImpl(TsScanStats* ts_scan_stats = nullptr);
+  KStatus UpdateAggregation(std::vector<std::shared_ptr<TsBlockSpan>>& ts_block_spans,
+                            bool can_remove_last_candidate, TsScanStats* ts_scan_stats);
   KStatus UpdateAggregation(std::shared_ptr<TsBlockSpan>& block_span,
                             bool aggregate_first_last_cols,
                             bool can_remove_last_candidate,
@@ -250,10 +260,18 @@ class TsAggIteratorImpl : public TsStorageIteratorImpl {
   bool only_last_{true};
   bool only_last_row_{true};
   bool only_partition_agg_type_{true};
+  std::unordered_set<uint32_t> agg_col_idxs_;
+
   AggCandidate first_row_candidate_{INT64_MAX, 0, nullptr};
   AggCandidate last_row_candidate_{INT64_MIN, 0, nullptr};
 
   std::shared_ptr<TsRawPayloadRowParser> parser_;
+
+  TimeBucketInfo time_bucket_info_;
+  int64_t time_bucket_index_;
+  int64_t time_bucket_block_spans_index_;
+  timestamp64 time_bucket_begin_ts_;
+  std::vector<std::vector<std::shared_ptr<TsBlockSpan>>> time_bucket_block_spans_;
 };
 
 class TsOffsetIteratorImpl : public TsIterator {

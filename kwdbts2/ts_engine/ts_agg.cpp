@@ -10,29 +10,36 @@
 // See the Mulan PSL v2 for more details.
 
 #include "ts_agg.h"
+
+#include <algorithm>
+
 #include "engine.h"
 
 namespace kwdbts {
 
-bool AggCalculatorV2::isnull(size_t row) {
-  if (!bitmap_) {
+bool AggCalculatorV2::isnull(size_t row) const {
+  const auto* bitmap = bitmap_;
+  if (bitmap == nullptr) {
     return false;
   }
-  return (*bitmap_)[row] == DataFlags::kNull;
+  return (*bitmap)[row] == DataFlags::kNull;
 }
 
-bool AggCalculatorV2::CalcAggForFlush(int is_not_null, uint16_t& count, void* max_addr, void* min_addr,
-                                      void* sum_addr) {
+KStatus AggCalculatorV2::CalcAggForFlush(bool is_not_null, bool& is_overflow, uint16_t& count,
+                                         void* max_addr, void* min_addr, void* sum_addr) {
   count = 0;
+  is_overflow = false;
   void* min = nullptr;
   void* max = nullptr;
-  bool is_overflow = false;
+  bool overflow = false;
+  const bool need_sum = isSumType(type_) && sum_addr != nullptr;
+  const auto row_stride = static_cast<intptr_t>(size_);
   for (int i = 0; i < count_; ++i) {
     if (!is_not_null && isnull(i)) {
       continue;
     }
     ++count;
-    auto current = static_cast<void*>(mem_ + static_cast<intptr_t>(i) * static_cast<intptr_t>(size_));
+    auto current = static_cast<void*>(mem_ + static_cast<intptr_t>(i) * row_stride);
 
     if (!max || cmp(current, max, type_, size_) > 0) {
       max = current;
@@ -40,67 +47,69 @@ bool AggCalculatorV2::CalcAggForFlush(int is_not_null, uint16_t& count, void* ma
     if (!min || cmp(current, min, type_, size_) < 0) {
       min = current;
     }
-    if (isSumType(type_) && sum_addr != nullptr) {
-      if (!is_overflow) {
+    if (need_sum) {
+      auto* int_sum_addr = static_cast<int64_t*>(sum_addr);
+      auto* double_sum_addr = static_cast<double*>(sum_addr);
+      if (!overflow) {
         switch (type_) {
           case DATATYPE::INT8:
-            is_overflow = AddAggInteger<int64_t>(
-                *static_cast<int64_t*>(sum_addr),
+            overflow = AddAggInteger<int64_t>(
+                *int_sum_addr,
                 *static_cast<int8_t*>(current));
             break;
           case DATATYPE::INT16:
-            is_overflow = AddAggInteger<int64_t>(
-                *static_cast<int64_t*>(sum_addr),
+            overflow = AddAggInteger<int64_t>(
+                *int_sum_addr,
                 *static_cast<int16_t*>(current));
             break;
           case DATATYPE::INT32:
-            is_overflow = AddAggInteger<int64_t>(
-                *static_cast<int64_t*>(sum_addr),
+            overflow = AddAggInteger<int64_t>(
+                *int_sum_addr,
                 *static_cast<int32_t*>(current));
             break;
           case DATATYPE::INT64:
-            is_overflow = AddAggInteger<int64_t>(
-                *static_cast<int64_t*>(sum_addr),
+            overflow = AddAggInteger<int64_t>(
+                *int_sum_addr,
                 *static_cast<int64_t*>(current));
             break;
           case DATATYPE::FLOAT:
             AddAggFloat<double>(
-                *static_cast<double*>(sum_addr),
+                *double_sum_addr,
                 *static_cast<float*>(current));
             break;
           case DATATYPE::DOUBLE:
             AddAggFloat<double>(
-                *static_cast<double*>(sum_addr),
+                *double_sum_addr,
                 *static_cast<double*>(current));
             break;
           default:
             LOG_ERROR("Not supported for sum, datatype: %d", type_);
             return KStatus::FAIL;
         }
-        if (is_overflow) {
-          *static_cast<double*>(sum_addr) = *static_cast<int64_t*>(sum_addr);
+        if (overflow) {
+          *double_sum_addr = static_cast<double>(*int_sum_addr);
         }
       }
-      if (is_overflow) {
+      if (overflow) {
         switch (type_) {
           case DATATYPE::INT8:
             AddAggFloat<double, int64_t>(
-                *static_cast<double*>(sum_addr),
+                *double_sum_addr,
                 *static_cast<int8_t*>(current));
             break;
           case DATATYPE::INT16:
             AddAggFloat<double, int64_t>(
-                *static_cast<double*>(sum_addr),
+                *double_sum_addr,
                 *static_cast<int16_t*>(current));
             break;
           case DATATYPE::INT32:
             AddAggFloat<double, int64_t>(
-                *static_cast<double*>(sum_addr),
+                *double_sum_addr,
                 *static_cast<int32_t*>(current));
             break;
           case DATATYPE::INT64:
             AddAggFloat<double, int64_t>(
-                *static_cast<double*>(sum_addr),
+                *double_sum_addr,
                 *static_cast<int64_t*>(current));
             break;
           case DATATYPE::FLOAT:
@@ -108,12 +117,10 @@ bool AggCalculatorV2::CalcAggForFlush(int is_not_null, uint16_t& count, void* ma
             LOG_ERROR("Overflow not supported for sum, datatype: %d",
                 type_);
             return KStatus::FAIL;
-            break;
           default:
             LOG_ERROR("Not supported for sum, datatype: %d",
                 type_);
             return KStatus::FAIL;
-            break;
         }
       }
     }
@@ -126,7 +133,8 @@ bool AggCalculatorV2::CalcAggForFlush(int is_not_null, uint16_t& count, void* ma
   if (max != nullptr && max_addr != nullptr && max != max_addr) {
     memcpy(max_addr, max, size_);
   }
-  return is_overflow;
+  is_overflow = overflow;
+  return KStatus::SUCCESS;
 }
 
 void VarColAggCalculatorV2::CalcAggForFlush(string& max, string& min, uint64_t& count) {
@@ -137,10 +145,8 @@ void VarColAggCalculatorV2::CalcAggForFlush(string& max, string& min, uint64_t& 
 
   count = var_rows_.size();
 
-  auto max_it = std::max_element(var_rows_.begin(), var_rows_.end());
-  max = *max_it;
-
-  auto min_it = std::min_element(var_rows_.begin(), var_rows_.end());
+  const auto [min_it, max_it] = std::minmax_element(var_rows_.begin(), var_rows_.end());
   min = *min_it;
+  max = *max_it;
 }
 }  // namespace kwdbts

@@ -139,7 +139,8 @@ void LastSegmentReadWriteTest::BuilderWithBasicCheck(TSTableID table_id, int nro
       ASSERT_EQ(s, KStatus::SUCCESS);
     }
     TsSegmentWriteStats stats;
-    builder.Finalize(&stats);
+    s = builder.Finalize(&stats);
+    ASSERT_EQ(s, KStatus::SUCCESS);
     free(payload.data);
   }
 
@@ -319,7 +320,8 @@ void Finalize(R *builder) {
     ASSERT_EQ(s, KStatus::SUCCESS);
   }
   TsSegmentWriteStats stats;
-  builder->builder->Finalize(&stats);
+  s = builder->builder->Finalize(&stats);
+  ASSERT_EQ(s, SUCCESS);
   builder->builder.reset();
 }
 

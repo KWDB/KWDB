@@ -208,7 +208,7 @@ func readAndParallelConvert(
 		ctx, span := tracing.ChildSpan(ctx, "inputconverter", int32(flowCtx.NodeID))
 		defer tracing.FinishSpan(span)
 		defer close(recordInfo.recordCh)
-		return readCSVFile(ctx, flowCtx, fileInfo, recordInfo, csvReader, tableDesc, fileSplitInfos[fileInfo.dataFileIdx][0], parallelism, spec.Table.IntoCols)
+		return readCSVFile(ctx, flowCtx, fileInfo, recordInfo, csvReader, tableDesc, fileSplitInfos[fileInfo.dataFileIdx][0], parallelism, spec.Table.IntoCols, spec.Table.TsColNumber)
 	})
 	return group.Wait()
 }
@@ -227,6 +227,7 @@ func readCSVFile(
 	pf partFileInfo,
 	parallelism int,
 	intoCols []string,
+	tsColNumber int32,
 ) error {
 	var count int64
 	conf, err := cloud.ExternalStorageConfFromURI(fileInfo.filename)
@@ -252,6 +253,7 @@ func readCSVFile(
 	if len(intoCols) > 0 {
 		expectedColsLen = len(intoCols)
 	}
+	csvReader.TsColNumber = tsColNumber
 	for {
 		record, err := csvReader.Read()
 		// file read finished

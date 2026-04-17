@@ -54,6 +54,13 @@ const (
 // TableTypeMap identify what type the table is.
 type TableTypeMap map[tree.TableType]int
 
+// CompressInfo is ts column compress information.
+type CompressInfo struct {
+	EncodeAlgo    *string
+	CompressAlgo  *string
+	CompressLevel *string
+}
+
 // SanitizeVarFreeExpr verifies that an expression is valid, has the correct
 // type and contains no variable expressions. It returns the type-checked and
 // constant-folded expression.
@@ -366,6 +373,7 @@ func MakeTSColumnDefDescs(
 	columnType ColumnType,
 	defaultExpr tree.Expr,
 	semaCtx *tree.SemaContext,
+	compressInfo CompressInfo,
 ) (*ColumnDescriptor, tree.TypedExpr, error) {
 	// Parameter validation for ts column.
 	if len(name) > MaxTSColumnNameLength {
@@ -467,6 +475,12 @@ func MakeTSColumnDefDescs(
 			pgcode.WrongObjectType, "column %s: unsupported %s type %s in timeseries table", col.Name, errMsg, errType)
 	}
 	col.TsCol.StorageType = storageType
+	if !col.IsTagCol() {
+		// set compress info on ts col
+		if err = col.checkColumnCompress(compressInfo); err != nil {
+			return nil, nil, err
+		}
+	}
 	stLen := GetStorageLenForFixedLenTypes(storageType)
 	if stLen != 0 {
 		// we are done for non-string data type, return now
@@ -541,8 +555,58 @@ func MakeTSColumnDefDescs(
 	default:
 		col.TsCol.VariableLengthType = StorageTuple
 	}
-
 	return col, typedExpr, nil
+}
+
+// checkColumnCompress checks whether the encode type and compress type are valid.
+func (col *ColumnDescriptor) checkColumnCompress(compressInfo CompressInfo) error {
+	encodeAlgo := compressInfo.EncodeAlgo
+	compressAlgo := compressInfo.CompressAlgo
+	compressLevel := compressInfo.CompressLevel
+	if encodeAlgo != nil {
+		enType := strings.ToLower(*encodeAlgo)
+		if enType != "disabled" {
+			switch col.Type.Oid() {
+			case oid.T_int2, oid.T_int4, oid.T_int8, oid.T_timestamp, oid.T_timestamptz:
+				if enType != "simple8b" {
+					return pgerror.Newf(pgcode.FeatureNotSupported, "type %s does not support encode type %s", col.Type.Name(), enType)
+				}
+			case oid.T_float4, oid.T_float8:
+				if enType != "chimp" {
+					return pgerror.Newf(pgcode.FeatureNotSupported, "type %s does not support encode type %s", col.Type.Name(), enType)
+				}
+			case oid.T_bool:
+				if enType != "bit-packing" {
+					return pgerror.Newf(pgcode.FeatureNotSupported, "type %s does not support encode type %s", col.Type.Name(), enType)
+				}
+			default:
+				return pgerror.Newf(pgcode.FeatureNotSupported, "type %s does not support encode type %s", col.Type.Name(), enType)
+			}
+		}
+		col.TsCol.EncodeAlgo = &enType
+	}
+	if compressAlgo != nil {
+		cpType := strings.ToLower(*compressAlgo)
+		switch cpType {
+		case "lz4", "zlib", "zstd", "snappy", "disabled":
+			col.TsCol.CompressAlgo = &cpType
+		default:
+			return pgerror.Newf(pgcode.FeatureNotSupported, "type %s does not support compress type %s", col.Type.Name(), cpType)
+		}
+	}
+	if compressLevel != nil {
+		if col.TsCol.CompressAlgo != nil && *col.TsCol.CompressAlgo == "disabled" {
+			return pgerror.New(pgcode.FeatureNotSupported, "can not set level when compress type is disabled")
+		}
+		cpLevel := strings.ToLower(*compressLevel)
+		switch cpLevel {
+		case "low", "medium", "high", "l", "m", "h":
+			col.TsCol.CompressLevel = &cpLevel
+		default:
+			return pgerror.Newf(pgcode.FeatureNotSupported, "compress level %s is not supported", cpLevel)
+		}
+	}
+	return nil
 }
 
 // GetShardColumnName generates a name for the hidden shard column to be used to create a

@@ -37,19 +37,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/mon"
 )
 
-// PreparedStatementOrigin is an enum representing the source of where
-// the prepare statement was made.
-type PreparedStatementOrigin int
-
-const (
-	// PreparedStatementOriginWire signifies the prepared statement was made
-	// over the wire.
-	PreparedStatementOriginWire PreparedStatementOrigin = iota + 1
-	// PreparedStatementOriginSQL signifies the prepared statement was made
-	// over a parsed SQL query.
-	PreparedStatementOriginSQL
-)
-
 // PreparedStatement is a SQL statement that has been parsed and the types
 // of arguments and results have been determined.
 //
@@ -78,7 +65,7 @@ type PreparedStatement struct {
 	createdAt time.Time
 	// origin is the protocol in which this prepare statement was created.
 	// Used for reporting on `pg_prepared_statements`.
-	origin PreparedStatementOrigin
+	origin tree.PreparedStatementOrigin
 
 	// needTSTypeCheck is set true when we need to type check in ts mode.
 	needTSTypeCheck bool

@@ -110,9 +110,14 @@ KStatus BaseAggregator::ResolveAggFuncs(kwdbContext_p ctx) {
       }
       case Sumfunctype::LAST: {
         k_uint32 argIdx = agg.col_idx(0);
+        k_uint32 len = fixLength(input_fields[argIdx]->get_storage_length());
+        if (agg.col_idx_size() <= 1) {
+          // for last(id,'2020-1-1 12:00:01.123'-1d), the second param is const time, not ts column
+          agg_func = AggregateFuncFactory::CreateAnyNotNull(param_.aggs_[i]->get_storage_type(), i, argIdx, len);
+          break;
+        }
         k_uint32 tsIdx = agg.col_idx(1);
         k_int64 time = agg.timestampconstant(0);
-        k_uint32 len = fixLength(input_fields[argIdx]->get_storage_length());
         agg_func = AggregateFuncFactory::CreateLast(param_.aggs_[i]->get_storage_type(), i, argIdx, len, tsIdx, time);
         break;
       }
@@ -129,8 +134,13 @@ KStatus BaseAggregator::ResolveAggFuncs(kwdbContext_p ctx) {
       }
       case Sumfunctype::LAST_ROW: {
         k_uint32 argIdx = agg.col_idx(0);
-        k_uint32 tsIdx = agg.col_idx(1);
         k_uint32 len = fixLength(input_fields[argIdx]->get_storage_length());
+        if (agg.col_idx_size() <= 1) {
+          // for last(id,'2020-1-1 12:00:01.123'-1d), the second param is const time, not ts column
+          agg_func = AggregateFuncFactory::CreateAnyNotNull(param_.aggs_[i]->get_storage_type(), i, argIdx, len);
+          break;
+        }
+        k_uint32 tsIdx = agg.col_idx(1);
         agg_func = AggregateFuncFactory::CreateLastRow(param_.aggs_[i]->get_storage_type(), i, argIdx, len, tsIdx);
         break;
       }

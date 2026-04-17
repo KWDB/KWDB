@@ -22,12 +22,11 @@ int MMapPTagHashIndex::insert(const char *s, int len, TableVersionID table_versi
     ++m_element_count_;
     mutexUnlock();
 
-    size_t bkt_ins_idx = (hash_val >> 56) & (n_bkt_instances_ -1);
+    size_t bkt_ins_idx = (hash_val >> 56) & (n_bkt_instances_ - 1);
     buckets_[bkt_ins_idx]->Wlock();
     size_t bkt_idx = buckets_[bkt_ins_idx]->get_bucket_index(hash_val);
 
     dataRlock();
-    // HashIndexData* rec = addrHash();
     // write to .ht file
     row(rownum)->hash_val = hash_val;
     row(rownum)->bt_row = tag_table_rowid;
@@ -76,15 +75,19 @@ std::pair<TableVersionID, TagPartitionTableRowID>  MMapPTagHashIndex::remove(con
 
     dataWlock();
     size_t delete_count = 0;
-    // HashIndexData* rec = addrHash();
     size_t pre_rownum = 0;
     size_t tmp_rownum = 0;
     TagPartitionTableRowID ret_row = INVALID_TABLE_VERSION_ID;
     TableVersionID ret_tbl_version = INVALID_TABLE_VERSION_ID;
     size_t rownum = buckets_[bkt_ins_idx]->bucketValue(bkt_idx);
-    if (rownum && (hash_val_ == row(rownum)->hash_val &&
-                   this->compare(key, rownum))) {
-        // matched bucketValue
+
+    if (!rownum) {
+        dataUnlock();
+        buckets_[bkt_ins_idx]->Unlock();
+        return std::make_pair(INVALID_TABLE_VERSION_ID, INVALID_TABLE_VERSION_ID);
+    }
+
+    if (rownum && (hash_val_ == row(rownum)->hash_val) && this->compare(key, rownum)) {
         pre_rownum = rownum;
         buckets_[bkt_ins_idx]->bucketValue(bkt_idx) = row(rownum)->next_row;
         ret_tbl_version = row(rownum)->tb_version;
@@ -93,19 +96,7 @@ std::pair<TableVersionID, TagPartitionTableRowID>  MMapPTagHashIndex::remove(con
         ++delete_count;
         goto end_success;
     }
-    if (!rownum) {
-        // list empty
-        m_element_count_ -= delete_count;
-        dataUnlock();
-        buckets_[bkt_ins_idx]->Unlock();
-        std::string key_str;
-        // toHexString(key, len, key_str);
-        LOG_WARN("failed to delete key: %s, hash: %lu from hash index %s, "
-                 "not find the key",
-                 key_str.c_str(), hash_val_, filePath().c_str());
-        return std::make_pair(INVALID_TABLE_VERSION_ID, INVALID_TABLE_VERSION_ID);
-    }
-    // found list node
+    
     pre_rownum = rownum;
     rownum = row(rownum)->next_row;
     while (rownum) {
@@ -123,6 +114,7 @@ std::pair<TableVersionID, TagPartitionTableRowID>  MMapPTagHashIndex::remove(con
         pre_rownum = rownum;
         rownum = tmp_rownum;
     }
+    
     end_success:
     m_element_count_ -= delete_count;
     dataUnlock();
@@ -143,15 +135,19 @@ std::vector<std::pair<TableVersionID, TagPartitionTableRowID>> MMapPTagHashIndex
 
     dataWlock();
     size_t delete_count = 0;
-    // HashIndexData* rec = addrHash();
     size_t pre_rownum = 0;
     size_t tmp_rownum = 0;
     TagPartitionTableRowID ret_row = INVALID_TABLE_VERSION_ID;
     TableVersionID ret_tbl_version = INVALID_TABLE_VERSION_ID;
     size_t rownum = buckets_[bkt_ins_idx]->bucketValue(bkt_idx);
-    if (rownum && (hash_val_ == row(rownum)->hash_val &&
-                   this->compare(key, rownum))) {
-        // matched bucketValue
+
+    if (!rownum) {
+        dataUnlock();
+        buckets_[bkt_ins_idx]->Unlock();
+        return result;
+    }
+
+    if (hash_val_ == row(rownum)->hash_val && this->compare(key, rownum)) {
         pre_rownum = rownum;
         buckets_[bkt_ins_idx]->bucketValue(bkt_idx) = row(rownum)->next_row;
         ret_tbl_version = row(rownum)->tb_version;
@@ -163,26 +159,12 @@ std::vector<std::pair<TableVersionID, TagPartitionTableRowID>> MMapPTagHashIndex
             goto end_success;
         }
     }
-    if (!rownum) {
-        // list empty
-        m_element_count_ -= delete_count;
-        dataUnlock();
-        buckets_[bkt_ins_idx]->Unlock();
-        std::string key_str;
-        // toHexString(key, len, key_str);
-        LOG_WARN("failed to delete key: %s, hash: %lu from hash index %s, "
-                 "not find the key",
-                 key_str.c_str(), hash_val_, filePath().c_str());
-        return result;
-    }
-    // found list node
+
     pre_rownum = rownum;
     rownum = row(rownum)->next_row;
     while (rownum) {
         tmp_rownum = row(rownum)->next_row;
-        if (hash_val_ == row(rownum)->hash_val &&
-            this->compare(key, rownum) ) {
-            // match node
+        if (hash_val_ == row(rownum)->hash_val && this->compare(key, rownum)) {
             row(pre_rownum)->next_row = row(rownum)->next_row;
             ret_tbl_version = row(rownum)->tb_version;
             ret_row = row(rownum)->bt_row;
@@ -193,6 +175,7 @@ std::vector<std::pair<TableVersionID, TagPartitionTableRowID>> MMapPTagHashIndex
         pre_rownum = rownum;
         rownum = tmp_rownum;
     }
+    
     end_success:
     m_element_count_ -= delete_count;
     dataUnlock();
@@ -221,7 +204,6 @@ int MMapPTagHashIndex::read_all(const char *key, int len, std::vector<std::pair<
             dataUnlock();
             buckets_[bkt_ins_idx]->Unlock();
             result.emplace_back(std::make_pair(tmp_version, tmp_part_rowid));
-            rownum = row(rownum)->next_row;
         }
         rownum = row(rownum)->next_row;
     }

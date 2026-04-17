@@ -195,3 +195,55 @@ TEST(TsBitmap, ValidCount) {
     EXPECT_EQ(view->Count(kwdbts::DataFlags::kNone), nnone);
   }
 }
+
+TEST(TsBitmap, AppendAlignedBitmapsAndViews) {
+  TsBitmap lhs(4);
+  lhs[0] = kValid;
+  lhs[1] = kNull;
+  lhs[2] = kNone;
+  lhs[3] = kValid;
+
+  TsBitmap rhs_bitmap(8);
+  for (int i = 0; i < 8; ++i) {
+    rhs_bitmap[i] = static_cast<DataFlags>(i % 3);
+  }
+  lhs.Append(&rhs_bitmap);
+  ASSERT_EQ(lhs.GetCount(), 12);
+  EXPECT_EQ(lhs[0], kValid);
+  EXPECT_EQ(lhs[1], kNull);
+  EXPECT_EQ(lhs[2], kNone);
+  EXPECT_EQ(lhs[3], kValid);
+  for (int i = 0; i < 8; ++i) {
+    EXPECT_EQ(lhs[i + 4], static_cast<DataFlags>(i % 3));
+  }
+
+  auto aligned_view = rhs_bitmap.Slice(4, 4);
+  lhs.Append(aligned_view.get());
+  ASSERT_EQ(lhs.GetCount(), 16);
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_EQ(lhs[i + 12], rhs_bitmap[i + 4]);
+  }
+
+  TsUniformBitmap<kNull> uniform_null(4);
+  lhs.Append(&uniform_null);
+  ASSERT_EQ(lhs.GetCount(), 20);
+  for (int i = 16; i < 20; ++i) {
+    EXPECT_EQ(lhs[i], kNull);
+  }
+}
+
+TEST(TsBitmap, GetStrFastPaths) {
+  TsUniformBitmap<kNull> null_bitmap(6);
+  EXPECT_EQ(null_bitmap.GetStr(), std::string("\x55\x05", 2));
+
+  TsBitmap src(12);
+  for (int i = 0; i < 12; ++i) {
+    src[i] = static_cast<DataFlags>(i % 3);
+  }
+  auto aligned_view = src.Slice(4, 8);
+  TsBitmap ref(8);
+  for (int i = 0; i < 8; ++i) {
+    ref[i] = src[i + 4];
+  }
+  EXPECT_EQ(aligned_view->GetStr(), ref.GetStr());
+}

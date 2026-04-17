@@ -15,16 +15,18 @@
 #include <list>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "data_type.h"
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
 #include "ts_block.h"
-#include "ts_del_item_manager.h"
 #include "ts_table_schema_manager.h"
 
 namespace kwdbts {
+using DatabaseID = uint32_t;
+using PartitionIdentifier = std::tuple<DatabaseID, timestamp64, timestamp64>;  // (dbid, start_time, end_time);
 
 class TsSegmentBase;
 // conditions used for flitering data.

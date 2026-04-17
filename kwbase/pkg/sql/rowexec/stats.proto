@@ -53,6 +53,7 @@ message TableReaderStats {
   int64 block_bytes = 7;
   int64 agg_bytes = 8;
   int64 header_bytes = 9;
+  int64 partition_agg_count = 10;
 }
 
 // TsTableReaderStats are the stats collected during a tsTableReader run.

@@ -2253,6 +2253,8 @@ func newLastAggregate(
 
 	if len(deadlineTs) == 1 && deadlineTs[0] != tree.DNull {
 		lastAgg.DeadlineTs = deadlineTs[0]
+	} else if len(deadlineTs) == 2 && deadlineTs[1] != tree.DNull {
+		lastAgg.DeadlineTs = deadlineTs[1]
 	} else if len(deadlineTs) > 1 {
 		panic(fmt.Sprintf("too many arguments passed in, expected < 2, got %d", len(deadlineTs)))
 	}

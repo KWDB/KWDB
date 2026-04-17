@@ -23,6 +23,9 @@ namespace kwdbts {
 
 #define GET_HIGHER_PRECISION_TIME_TYPE(a, b) (a > b ? a : b)
 
+const k_int64 BASE_CONSTANT = 62135596800000;
+
+
 inline std::string replaceTimeUnit(KString timestring) {
     static const std::vector<std::pair<KString, KString>> replacements = {
         {"nanoseconds", "ns"}, {"nanosecond", "ns"}, {"nsecs", "ns"}, {"nsec", "ns"},
@@ -134,14 +137,27 @@ inline k_int64 getIntervalSeconds(KString timestring, k_bool& var_interval,
   return interval_seconds;
 }
 
+inline k_int64 CalTimeDiff(roachpb::DataType storage_type, k_int64 interval_seconds, k_int64 time_zone_diff) {
+  k_int64 mo = 0;
+  if (storage_type == roachpb::DataType::TIMESTAMP_NANO || storage_type == roachpb::DataType::TIMESTAMPTZ_NANO) {
+    mo = ((BASE_CONSTANT % interval_seconds) * (1000000 % interval_seconds)) % interval_seconds;
+  } else if (storage_type == roachpb::DataType::TIMESTAMP_MICRO ||
+             storage_type == roachpb::DataType::TIMESTAMPTZ_MICRO) {
+    mo = (BASE_CONSTANT * 1000) % interval_seconds;
+  } else {
+    mo = BASE_CONSTANT % interval_seconds;
+  }
+  return (time_zone_diff % interval_seconds + mo) % interval_seconds;
+}
+
 inline roachpb::DataType getTimeFieldType(roachpb::DataType var_type,
                                           KString unit, k_int64* time_diff,
                                           k_int64* type_scale,
                                           k_bool* type_scale_multi_or_divde) {
   roachpb::DataType type;
-  *(time_diff) *= 3600000;
+  *(time_diff) *= MILLISECOND_PER_HOUR;
   if (unit == "ns") {
-    *(time_diff) *= 1000000;
+    *(time_diff) *= NANOSECOND_PER_MILLISECOND;
     if (var_type == roachpb::DataType::TIMESTAMP ||
         var_type == roachpb::DataType::TIMESTAMP_MICRO ||
         var_type == roachpb::DataType::TIMESTAMP_NANO) {
@@ -159,7 +175,7 @@ inline roachpb::DataType getTimeFieldType(roachpb::DataType var_type,
       *(type_scale_multi_or_divde) = KTRUE;  // multi
     }
   } else if (unit == "us") {
-    *(time_diff) *= 1000;
+    *(time_diff) *= MICROSECOND_PER_MILLISECOND;
     if (var_type == roachpb::DataType::TIMESTAMP ||
         var_type == roachpb::DataType::TIMESTAMP_MICRO ||
         var_type == roachpb::DataType::TIMESTAMP_NANO) {

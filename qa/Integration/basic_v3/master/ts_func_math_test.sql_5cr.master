@@ -297,8 +297,8 @@ SQLSTATE: 22003
         4.039801975344831
 (5 rows)
 > SELECT pow(0,0) FROM ts_db.t1;
-ERROR: invalid argument for power function
-SQLSTATE: 2201F
+ERROR: integer out of range
+SQLSTATE: 22003
 > SELECT pow(e1,1) FROM ts_db.t4;
           pow
 -----------------------

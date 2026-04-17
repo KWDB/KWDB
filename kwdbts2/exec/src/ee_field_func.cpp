@@ -2464,7 +2464,14 @@ char *FieldFuncWidthBucket::get_ptr(RowBatch *batch) {
       k_int64 min = args_[1]->ValInt(ptr1);
       k_int64 max = args_[2]->ValInt(ptr2);
       k_int64 buckets_num = args_[3]->ValInt(ptr3);
-
+      if (buckets_num == 0) {
+        intvalue_ = 0;
+        break;
+      }
+      if (min == max) {
+        intvalue_ = INT64_MIN;
+        break;
+      }
       if ((min < max && expr > max) || (min > max && expr < max)) {
         intvalue_ = buckets_num + 1;
       } else if ((min < max && expr < min) || (min > max && expr > min)) {
@@ -2498,7 +2505,8 @@ k_int64 FieldFuncWidthBucket::ValInt() {
     k_int64 min = args_[1]->ValInt();
     k_int64 max = args_[2]->ValInt();
     k_int64 buckets_num = args_[3]->ValInt();
-
+    if (buckets_num == 0) return 0;
+    if (min == max) return INT64_MIN;
     if ((min < max && expr > max) || (min > max && expr < max)) {
       return buckets_num + 1;
     }

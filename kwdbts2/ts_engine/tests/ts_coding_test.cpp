@@ -8,6 +8,42 @@
 #include <vector>
 #include "ts_bufferbuilder.h"
 
+// Verifies fixed-width integer helpers encode and decode values in canonical
+// little-endian byte order.
+TEST(FixedCoding, FixedIntegersUseLittleEndianEncoding) {
+  char u16[sizeof(uint16_t)];
+  char u32[sizeof(uint32_t)];
+  char u64[sizeof(uint64_t)];
+
+  kwdbts::EncodeFixed16(u16, 0x1234);
+  kwdbts::EncodeFixed32(u32, 0x12345678U);
+  kwdbts::EncodeFixed64(u64, 0x0102030405060708ULL);
+
+  const std::string expected16{"\x34\x12", sizeof(u16)};
+  const std::string expected32{"\x78\x56\x34\x12", sizeof(u32)};
+  const std::string expected64{"\x08\x07\x06\x05\x04\x03\x02\x01", sizeof(u64)};
+
+  EXPECT_EQ(std::string(u16, sizeof(u16)), expected16);
+  EXPECT_EQ(std::string(u32, sizeof(u32)), expected32);
+  EXPECT_EQ(std::string(u64, sizeof(u64)), expected64);
+
+  EXPECT_EQ(kwdbts::DecodeFixed16(expected16.data()), 0x1234);
+  EXPECT_EQ(kwdbts::DecodeFixed32(expected32.data()), 0x12345678U);
+  EXPECT_EQ(kwdbts::DecodeFixed64(expected64.data()), 0x0102030405060708ULL);
+}
+
+// Verifies the timestamp64 helpers preserve the raw 64-bit bit pattern while
+// encoding and decoding little-endian bytes.
+TEST(FixedCoding, Timestamp64UsesLittleEndianBitPatternEncoding) {
+  const timestamp64 ts = static_cast<timestamp64>(0x8122334455667788LL);
+  char encoded[sizeof(ts)];
+
+  kwdbts::EncodeFixedTimestamp64(encoded, ts);
+  const std::string expected{"\x88\x77\x66\x55\x44\x33\x22\x81", sizeof(encoded)};
+  EXPECT_EQ(std::string(encoded, sizeof(encoded)), expected);
+  EXPECT_EQ(kwdbts::DecodeFixedTimestamp64(expected.data()), ts);
+}
+
 TEST(BitWriter, WriteBits) {
   kwdbts::TsBufferBuilder buffer;
   {

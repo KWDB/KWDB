@@ -31,6 +31,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -369,6 +370,9 @@ func (ts *TSStatisticReaderSpec) summary() (string, []string) {
 		details = append(details, getTSSpanStr(ts.TsSpans))
 	}
 	details = append(details, fmt.Sprintf("tableID %d", ts.TableID))
+	if ts.TimeBucket != nil && *ts.TimeBucket > 0 {
+		details = append(details, fmt.Sprintf("timeBucket: %d", *ts.TimeBucket))
+	}
 	for idx := range ts.AggTypes {
 		var buf bytes.Buffer
 		buf.WriteString(AggregatorSpec_Func_name[ts.AggTypes[idx]])
@@ -382,6 +386,8 @@ func (ts *TSStatisticReaderSpec) summary() (string, []string) {
 				buf.WriteString(colListStr([]uint32{uint32(val.Value)}))
 			case TSStatisticReaderSpec_ParamInfo_const:
 				buf.WriteString(fmt.Sprintf("%v", val.Value))
+			case TSStatisticReaderSpec_ParamInfo_function:
+				buf.WriteString(buildFunctionBuffer(val.FuncValue))
 			}
 		}
 		buf.WriteByte(')')
@@ -852,11 +858,14 @@ func (d diagramData) ToURL() (string, url.URL, error) {
 // MakeDistsqlJSON construct json in explain analyze
 func (d diagramData) MakeDistsqlJSON(url string) (string, error) {
 	da := diagramDataDist{d.SQL, d.NodeNames, d.Processors, d.Edges, d.flowID, url}
-	json, err := json.MarshalIndent(da, "\n", "  ")
-	if err != nil {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("\n", "  ")
+	if err := enc.Encode(da); err != nil {
 		return "", err
 	}
-	return string(json), nil
+	return buf.String(), nil
 }
 
 // AddSpans implements the FlowDiagram interface.
@@ -1200,6 +1209,27 @@ func getSpecMessage(
 		buf.WriteString(fmt.Sprintf("--Onput: %v\n", strings.Join(output, ",")))
 	}
 	return buf.String()
+}
+
+// replaceAtNumbers replaces the number after @ with a new number from the params array
+// The number after @ is used as the index to get the new number
+// Example: @1 will be replaced by @params[1]
+func buildFunctionBuffer(s string) string {
+	// Match pattern @ + digits
+	re := regexp.MustCompile(`@(\d+)`)
+
+	result := re.ReplaceAllStringFunc(s, func(match string) string {
+		// Extract the number string after @
+		numStr := match[1:]
+		// Convert string to integer index
+		index, err := strconv.Atoi(numStr)
+		if err != nil {
+			return match // return original if invalid
+		}
+		return fmt.Sprintf("@%d", index+1)
+	})
+
+	return result
 }
 
 // PrintBlockFilter print TSBlockFilter

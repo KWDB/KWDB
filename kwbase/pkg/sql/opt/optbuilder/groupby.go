@@ -474,6 +474,11 @@ func (b *Builder) buildAggregation(having opt.ScalarExpr, fromScope *scope) (out
 		}
 	}
 
+	// group window function cannot be used for subquery or union.
+	if b.factory.Memo().CheckFlag(opt.GroupWindowUseOrderScan) && groupWindowID < 0 {
+		panic(pgerror.Newf(pgcode.Syntax, "group window function is only supported for use in single time series table query."))
+	}
+
 	// If there are any aggregates that are ordering sensitive, build the
 	// aggregations as window functions over each group.
 	if g.hasNonCommutativeAggregates() {
@@ -889,7 +894,7 @@ func (b *Builder) buildAggregateFunction(
 						}
 					}
 					if col.Func.FunctionName() == sqlbase.LastAgg && len(agg.FuncExpr.Exprs) == 3 {
-						if _, ok1 := agg.FuncExpr.Exprs[1].(*tree.CastExpr); !ok1 {
+						if _, ok1 := agg.FuncExpr.Exprs[2].(*tree.CastExpr); !ok1 {
 							panic(pgerror.Newf(pgcode.FeatureNotSupported, "%v in interpolate does not support multiple arguments", col.Func.FunctionName()))
 						}
 					}
@@ -1096,7 +1101,7 @@ func (b *Builder) constructAggregate(name string, args []opt.ScalarExpr) opt.Sca
 	case "last_row_ts":
 		return b.factory.ConstructLastRowTimeStamp(args[0], args[1])
 	case "last":
-		return b.factory.ConstructLast(args[0], args[2], args[1])
+		return b.factory.ConstructLast(args[0], args[1], args[2])
 	case "matching":
 		return b.factory.ConstructMatching(args[0], args[1], args[2], args[3], args[4])
 	case "sqrdiff":
@@ -1122,7 +1127,7 @@ func (b *Builder) constructAggregate(name string, args []opt.ScalarExpr) opt.Sca
 	case "last_row":
 		return b.factory.ConstructLastRow(args[0], args[1])
 	case "lastts":
-		return b.factory.ConstructLastTimeStamp(args[0], args[2], args[1])
+		return b.factory.ConstructLastTimeStamp(args[0], args[1], args[2])
 	case "elapsed":
 		return b.factory.ConstructElapsed(args[0], args[1])
 	case "twa":
@@ -1245,8 +1250,12 @@ func (b *Builder) checkTimeSeriesConstraints(dataArg opt.ScalarExpr, funcName st
 func canUseConstOptimize(j int, scalar opt.ScalarExpr, funcName string) bool {
 	if j > 0 && scalar != nil && scalar.Op() == opt.ConstOp {
 		switch funcName {
-		case "twa", "elapsed", "last", "lastts":
+		case "twa", "elapsed":
 			return true
+		case "last", "lastts":
+			if j == 2 {
+				return true
+			}
 		}
 	}
 	return false

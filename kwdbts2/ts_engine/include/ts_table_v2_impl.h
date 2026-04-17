@@ -41,7 +41,7 @@ class TsTableV2Impl : public TsTable {
   ~TsTableV2Impl();
 
   void SetDropped() override {
-    return table_schema_mgr_->SetDropped();
+    table_schema_mgr_->SetDropped();
   }
 
   bool IsDropped() override {

@@ -46,8 +46,10 @@ size_t EngineOptions::min_rows_per_block = 512;
 int64_t EngineOptions::default_partition_interval = 3600 * 24 * 10;
 // default block cache max size is set to 1G
 int64_t EngineOptions::block_cache_max_size = 1024 * 1024 * 1024;
-uint8_t EngineOptions::compress_stage = 2;
-bool EngineOptions::compress_last_segment = false;
+uint8_t EngineOptions::compress_stage = 3;
+CompressLevel EngineOptions::compress_level = CompressLevel::MEDIUM;
+CompressAlgo EngineOptions::compression_algorithm = CompressAlgo::kLz4;
+bool EngineOptions::compress_last_segment = true;
 #ifdef KWBASE_OSS
 bool EngineOptions::force_sync_file = false;
 #else
@@ -61,17 +63,16 @@ bool EngineOptions::force_re_compress = false;
 
 extern std::map<std::string, std::string> g_cluster_settings;
 extern std::shared_mutex g_settings_mutex;
-extern bool g_go_start_service;
 
 namespace kwdbts {
 
 unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 std::mt19937 gen(seed);
 const char schema_directory[] = "schema";
-constexpr char vroup_cfg_file[] = "ts-vgroup.cfg";
+constexpr char vgroup_cfg_file[] = "ts-vgroup.cfg";
 
 KStatus loadVGroupCfg(const fs::path& ts_store_path, std::map<int, std::string>& vgroup_cfg) {
-  fs::path vgroup_cfg_path = ts_store_path / std::string(vroup_cfg_file);
+  fs::path vgroup_cfg_path = ts_store_path / std::string(vgroup_cfg_file);
   std::ifstream ifs(vgroup_cfg_path);
   if (!ifs.is_open()) {
     return SUCCESS;
@@ -289,7 +290,6 @@ KStatus TSEngineImpl::Init(kwdbContext_p ctx) {
     }
   }
 #endif
-
   PreClearDroppedTables();
   fs::path db_path{options_.db_path};
   assert(!db_path.empty());
@@ -405,7 +405,6 @@ void TSEngineImpl::PreClearDroppedTables() {
       // This directory might not exist, but we don't mind, we just need to delete.
       Remove(db_path / schema_directory / fname.substr(split_pos + 1));
       Remove(db_path / schema_directory / fname);
-      auto table_id = std::stol(fname.substr(split_pos + 1));
     }
   }
 }
@@ -530,9 +529,10 @@ KStatus TSEngineImpl::GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, s
     }
     // 2. if table no exist. try to get schema from go level.
     LOG_INFO("try creating table[%lu] by schema from rocksdb. ", table_id);
-    if (!g_go_start_service) {  // unit test from c, just return false.
-      return KStatus::FAIL;
-    }
+#ifdef WITH_TESTS
+    LOG_ERROR("Not support compile option WITH_TESTS");
+    return KStatus::FAIL;
+#endif
     char* error;
     size_t data_len = 0;
     char* data = getTableMetaByVersion(table_id, version, &data_len, &error);
@@ -776,7 +776,6 @@ KStatus TSEngineImpl::PutData(kwdbContext_p ctx, const KTableKey& table_id, uint
       created_tag_num += 1;
     }
     auto vgroup = GetVGroupByID(ctx, vgroup_id);
-    // payload_size += cur_pd.len;
     s =  dynamic_pointer_cast<TsTableV2Impl>(ts_table)->PutData(ctx, vgroup, &cur_pd, 1, mtr_id, entity_id,
             not_create_entity, dedup_result, (DedupRule)(dedup_result->dedup_rule), write_wal);
     if (s != KStatus::SUCCESS) {
@@ -854,10 +853,6 @@ KStatus TSEngineImpl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, ui
     }
   }
   return KStatus::SUCCESS;
-}
-
-KStatus TSEngineImpl::GetMeta(kwdbContext_p ctx, TSTableID table_id, uint32_t version, roachpb::CreateTsTable *meta) {
-  return schema_mgr_->GetMeta(ctx, table_id, version, meta);
 }
 
 KStatus TSEngineImpl::LogInit() {
@@ -945,9 +940,9 @@ KStatus TSEngineImpl::DropColumn(kwdbContext_p ctx, const KTableKey &table_id, c
   return KStatus::SUCCESS;
 }
 
-KStatus TSEngineImpl::AlterColumnType(kwdbContext_p ctx, const KTableKey &table_id, char *transaction_id,
-                                        bool& is_dropped, TSSlice new_column, TSSlice origin_column,
-                                        uint32_t cur_version, uint32_t new_version, string &err_msg) {
+KStatus TSEngineImpl::AlterColumn(kwdbContext_p ctx, const KTableKey &table_id, char *transaction_id,
+                                  bool& is_dropped, TSSlice new_column, TSSlice origin_column,
+                                  uint32_t cur_version, uint32_t new_version, AlterType alter_type, string &err_msg) {
   roachpb::KWDBKTSColumn new_col_meta;
   if (!new_col_meta.ParseFromArray(new_column.data, new_column.len)) {
     LOG_ERROR("ParseFromArray Internal Error");
@@ -963,14 +958,14 @@ KStatus TSEngineImpl::AlterColumnType(kwdbContext_p ctx, const KTableKey &table_
   // Get transaction ID.
   uint64_t x_id = tsx_manager_sys_->getMtrID(transaction_id);
 
-  // Write Alter DDL into WAL, which type is ALTER_COLUMN_TYPE.
-  s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, AlterType::ALTER_COLUMN_TYPE, cur_version, new_version, origin_column);
+  // Write Alter DDL into WAL
+  s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, alter_type, cur_version, new_version, origin_column);
   if (s != KStatus::SUCCESS) {
     err_msg = "Write WAL error";
     LOG_ERROR("%s", err_msg.c_str());
     return s;
   }
-  s = ts_table->AlterTable(ctx, AlterType::ALTER_COLUMN_TYPE, &new_col_meta, cur_version, new_version, err_msg);
+  s = ts_table->AlterTable(ctx, alter_type, &new_col_meta, cur_version, new_version, err_msg);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("Alter column type failed, table id: %lu, cur_version: %d, new_version: %d, error message: %s.",
     table_id, cur_version, new_version, err_msg.c_str());
@@ -1326,7 +1321,6 @@ KStatus TSEngineImpl::CreateCheckpoint(kwdbContext_p ctx) {
   if (!EnableWAL()) {
     return KStatus::SUCCESS;
   } else if (EngineOptions::isSingleNode() || !exist_explict_txn.load()) {
-    std::vector<uint64_t> vgrp_lsn;
     // 1. switch engine wal file
     KStatus s = wal_mgr_->SwitchNextFile();
     if (s == KStatus::FAIL) {
@@ -1334,6 +1328,7 @@ KStatus TSEngineImpl::CreateCheckpoint(kwdbContext_p ctx) {
       return s;
     }
 
+    std::vector<uint64_t> vgrp_lsn;
     // 2. switch vgroup wal file
     for (const auto &vgrp : vgroups_) {
       vgrp->GetWALManager()->Lock();
@@ -1850,7 +1845,10 @@ KStatus TSEngineImpl::DropResidualTsTable(kwdbContext_p ctx) {
     return s;
   }
   for (auto table_id : tables) {
-    bool is_exist = checkTableMetaExist(table_id);
+    bool is_exist = false;
+#ifndef WITH_TESTS
+    is_exist = checkTableMetaExist(table_id);
+#endif
     if (!is_exist) {
       s = DropTsTable(ctx, table_id);
       if (s != KStatus::SUCCESS) {
@@ -2016,9 +2014,9 @@ KStatus TSEngineImpl::recover(kwdbts::kwdbContext_p ctx) {
             s = table->UndoAlterTable(ctx, incomplete[mtr_id]);
             if (s == KStatus::FAIL) {
               LOG_ERROR("Failed to recover alter table %ld.", table_id)
-              #ifdef WITH_TESTS
+#ifdef WITH_TESTS
               return s;
-              #endif
+#endif
             } else {
               table->TSxClean(ctx);
             }
@@ -2041,9 +2039,9 @@ KStatus TSEngineImpl::recover(kwdbts::kwdbContext_p ctx) {
             s = table->UndoCreateIndex(ctx, incomplete[mtr_id]);
             if (s == KStatus::FAIL) {
               LOG_ERROR("Failed to recover create index %ld.", table_id)
-              #ifdef WITH_TESTS
+#ifdef WITH_TESTS
               return s;
-              #endif
+#endif
             } else {
               table->TSxClean(ctx);
             }
@@ -2066,9 +2064,9 @@ KStatus TSEngineImpl::recover(kwdbts::kwdbContext_p ctx) {
             s = table->UndoDropIndex(ctx, incomplete[mtr_id]);
             if (s == KStatus::FAIL) {
               LOG_ERROR("Failed to recover drop index %ld.", table_id)
-              #ifdef WITH_TESTS
+#ifdef WITH_TESTS
               return s;
-              #endif
+#endif
             } else {
               table->TSxClean(ctx);
             }
@@ -2123,9 +2121,9 @@ KStatus TSEngineImpl::recover(kwdbts::kwdbContext_p ctx) {
         s = table->UndoCreateIndex(ctx, index_log);
         if (s == KStatus::FAIL) {
           LOG_ERROR("Failed to recover create index %ld.", table_id)
-          #ifdef WITH_TESTS
+#ifdef WITH_TESTS
           return s;
-          #endif
+#endif
         } else {
           table->TSxClean(ctx);
         }
@@ -2148,9 +2146,9 @@ KStatus TSEngineImpl::recover(kwdbts::kwdbContext_p ctx) {
         s = table->UndoDropIndex(ctx, index_log);
         if (s == KStatus::FAIL) {
           LOG_ERROR("Failed to recover drop index %ld.", table_id)
-          #ifdef WITH_TESTS
+#ifdef WITH_TESTS
           return s;
-          #endif
+#endif
         } else {
           table->TSxClean(ctx);
         }
@@ -2236,7 +2234,7 @@ KStatus TSEngineImpl::Recover(kwdbContext_p ctx) {
   }
 
   // 4. do rollback
-  for (auto txn : txn_op) {
+  for (auto& txn : txn_op) {
     if (txn.second == txnOp::rollback) {
       if (TSMtrRollback(ctx, 0, 0, txn.first, true) == KStatus::FAIL) return KStatus::FAIL;
     }
@@ -2258,7 +2256,7 @@ KStatus TSEngineImpl::Recover(kwdbContext_p ctx) {
   }
 
   // 5. trig all vgroup flush
-  for (const auto &vgrp : vgroups_) {
+  for (const auto& vgrp : vgroups_) {
     s = vgrp->Flush();
     if (s == KStatus::FAIL) {
       LOG_ERROR("Failed to flush metric file.")
@@ -2758,12 +2756,6 @@ KStatus TSEngineImpl::Vacuum(kwdbContext_p ctx, bool force) {
     vgroup->Vacuum(ctx, force);
   }
   return SUCCESS;
-}
-
-double divideAndRound(double a, double b, int precision) {
-  double result = a / b;
-  double factor = std::pow(10.0, precision);
-  return std::round(result * factor) / factor;
 }
 
 KStatus ConstructTableBlocksDistribution(const std::shared_ptr<TsTableSchemaManager>& tb_schema_mgr,

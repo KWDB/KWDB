@@ -207,7 +207,7 @@ TEST(TsDelItemUtilTest, TsCrossSomeLsnCrossAll) {
   del_range.osn_span = {1, 100};
   LSNRangeUtil::MergeRangeCross(scan_range, del_range, &result);
   ASSERT_TRUE(result.size() == 1);
-  ASSERT_TRUE(result[0].ts_span.begin= 1);
+  ASSERT_TRUE(result[0].ts_span.begin == 1);
   ASSERT_TRUE(result[0].ts_span.end == 8);
   ASSERT_TRUE(result[0].osn_span.begin == scan_range.osn_span.begin);
   ASSERT_TRUE(result[0].osn_span.end == 100);
@@ -249,9 +249,9 @@ TEST(TsDelItemUtilTest, mergeSortedSpans2) {
   std::vector<KwTsSpan> ret_spans;
   MergeTsSpans(raw_spans, &ret_spans);
   ASSERT_TRUE(ret_spans.size() == 5);
- }
+}
 
- TEST(TsDelItemUtilTest, snapshot_pack) {
+TEST(TsDelItemUtilTest, snapshot_pack) {
   char tmp[128];
   memset(tmp, 'a', 128);
   uint32_t package_id = 10086;
@@ -295,7 +295,7 @@ TEST(TsDelItemUtilTest, snapshot_pack_301_version) {
   TSSlice del_data{tmp, 100};
   TSSlice data;
 
-   // package_id + table_id + table_version + row_num + data
+  // package_id + table_id + table_version + row_num + data
   size_t data_len = 4 + 8 + 4 + 4 + batch_data.len;
   char* data_with_rownum = reinterpret_cast<char*>(malloc(data_len));
   data.data = data_with_rownum;

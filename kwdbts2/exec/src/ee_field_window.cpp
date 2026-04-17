@@ -189,12 +189,12 @@ void FieldFuncTimeWindow::ResolveParams() {
                                   error_info_.c_str());
     return;
   }
-  roachpb::DataType storage_type = args_[0]->get_storage_type();
+  storage_type_ = args_[0]->get_storage_type();
   if (storage_type_ == roachpb::DataType::TIMESTAMP_NANO ||
-      storage_type == roachpb::DataType::TIMESTAMPTZ_NANO) {
+      storage_type_ == roachpb::DataType::TIMESTAMPTZ_NANO) {
     type_scale_ = 1000000;
-  } else if (storage_type == roachpb::DataType::TIMESTAMP_MICRO ||
-             storage_type == roachpb::DataType::TIMESTAMPTZ_MICRO) {
+  } else if (storage_type_ == roachpb::DataType::TIMESTAMP_MICRO ||
+             storage_type_ == roachpb::DataType::TIMESTAMPTZ_MICRO) {
     type_scale_ = 1000;
   }
   if (!var_interval_ && !year_bucket_ && interval_seconds_ < TIME_WINDOW_MIN_DURATION_MS) {

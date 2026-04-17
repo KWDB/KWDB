@@ -72,6 +72,7 @@ struct TsScanStats {
   int32_t memory_block_count{0};         // scanned memory block count
   int32_t last_block_count{0};           // scanned last block count
   int64_t entity_block_count{0};         // scanned entity block count
+  int64_t partition_agg_count{0};        // partition pre-aggregation usage count
   int64_t block_cache_hit_count{0};      // block cache hit count
   int64_t block_bytes{0};                // scanned block_bytes
   int64_t agg_bytes{0};                  // scanned agg_bytes
@@ -80,6 +81,7 @@ struct TsScanStats {
     memory_block_count = 0;
     last_block_count = 0;
     entity_block_count = 0;
+    partition_agg_count = 0;
     block_cache_hit_count = 0;
     block_bytes = 0;
     agg_bytes = 0;
@@ -115,6 +117,50 @@ enum class DedupRule {
   REJECT = 2,    // reject duplicate rows
   DISCARD = 3,   // ignore duplicate rows
   MERGE = 4,     // duplicate by column
+};
+
+enum class EncodeAlgo : uint16_t {
+  kPlain = 0,
+  kGorilla_32 = 1,
+  kGorilla_64 = 2,
+  kSimple8B_s8 = 3,
+  kSimple8B_s16 = 4,
+  kSimple8B_s32 = 5,
+  kSimple8B_s64 = 6,
+  kSimple8B_u8 = 7,
+  kSimple8B_u16 = 8,
+  kSimple8B_u32 = 9,
+  kSimple8B_u64 = 10,
+
+  kChimp_32 = 11,
+  kChimp_64 = 12,
+  // kALP,
+  // kELF,
+
+  kSimple8B_V2_s8 = 13,
+  kSimple8B_V2_s16 = 14,
+  kSimple8B_V2_s32 = 15,
+  kSimple8B_V2_s64 = 16,
+  kSimple8B_V2_u8 = 17,
+  kSimple8B_V2_u16 = 18,
+  kSimple8B_V2_u32 = 19,
+  kSimple8B_V2_u64 = 20,
+
+  kBitPacking = 21,
+
+  kDisabled = 22,
+  TS_COMP_ALG_LAST
+};
+
+// compression algorithms for general purpose.
+enum class CompressAlgo : uint16_t {
+  kPlain = 0,
+  kSnappy = 1,
+  kLz4 = 2,
+  kZstd = 3,
+  kZlib = 4,
+  kDisabled = 10,
+  GEN_COMP_ALG_LAST
 };
 
 enum SortOrder {
@@ -153,6 +199,12 @@ enum TsDataSource {
   Restore = 4,
   ScheduleVacuum = 5,
   ManualVacuum = 6,
+};
+
+enum CompressLevel {
+  LOW = 0,
+  MEDIUM,
+  HIGH
 };
 
 struct Batch {
@@ -843,7 +895,11 @@ enum Sumfunctype {
   ELAPSED = 36,
   TWA = 37,
   MIN_EXTEND = 38,
-  MAX_EXTEND = 39
+  MAX_EXTEND = 39,
+  VAR_POP = 40,
+  QUANTILE = 41,
+  NORM = 42,
+  TIME_BUCKET = 43
 };
 
 enum WindowFunc {
@@ -1435,6 +1491,16 @@ struct BlockFilter {
 };
 
 /**
+ * @brief Defines a structure for time_bucket pushdown to storage engine,
+ * diff and interval will be used to call CALCULATE_TIME_BUCKET_VALUE to
+ * get time_bucket value.
+ */
+typedef struct {
+  int64_t diff{0};                  // time_bucket time zone diff
+  int64_t interval{0};               // time_bucket interval, 0 means no time_bucket
+} TimeBucketInfo;
+
+/**
  * @brief Defines a structure for iterator parameters, used to store various
  * parameters required for an iterator to perform a scanning operation.
  */
@@ -1453,6 +1519,7 @@ struct IteratorParams {
   k_uint32 limit;
   TS_OSN scan_osn;
   FillParams fill_params;
+  TimeBucketInfo time_bucket_info;
 };
 
 inline bool InHashIdSpan(uint32_t hp, const std::vector<HashIdSpan>* hps) {

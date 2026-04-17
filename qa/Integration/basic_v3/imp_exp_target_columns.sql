@@ -111,8 +111,8 @@ drop table test_impexp.tb1;
 
 -- 07 err. order by or group by
 EXPORT INTO CSV "nodelocal://1/export_column/test_7/" FROM SELECT e1 FROM test_impexp.ds_tb order by e1;
-EXPORT INTO CSV "nodelocal://1/export_column/test_7/" FROM SELECT e1 FROM test_impexp.ds_tb group by e1;
-EXPORT INTO CSV "nodelocal://1/export_column/test_7/" FROM SELECT max(e1) FROM test_impexp.ds_tb;
+EXPORT INTO CSV "nodelocal://1/export_column/test_8/" FROM SELECT e1 FROM test_impexp.ds_tb group by e1;
+EXPORT INTO CSV "nodelocal://1/export_column/test_9/" FROM SELECT max(e1) FROM test_impexp.ds_tb;
 
 
 use defaultdb;

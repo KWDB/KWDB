@@ -12,6 +12,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include "cm_kwdb_context.h"
+#include "ts_test_base.h"
 #include "libkwdbts2.h"
 #include "me_metadata.pb.h"
 #include "ts_engine.h"
@@ -21,42 +22,17 @@
 using namespace kwdbts;  // NOLINT
 
 const string engine_root_path = "./tsdb";
-class TsEngineRecoverTest : public ::testing::Test {
- public:
-  EngineOptions opts_;
-  TSEngineImpl *engine_;
-  kwdbContext_t g_ctx_;
-  kwdbContext_p ctx_;
-
-  virtual void SetUp() override {
-    ctx_ = &g_ctx_;
-    InitKWDBContext(ctx_);
-    KWDBDynamicThreadPool::GetThreadPool().Init(8, ctx_);
-  }
-
-  virtual void TearDown() override {
-    KWDBDynamicThreadPool::GetThreadPool().Stop();
-  }
-
+class TsEngineRecoverTest : public TsEngineTestBase {
  public:
   TsEngineRecoverTest() {
-    ctx_ = &g_ctx_;
-    InitKWDBContext(ctx_);
-    opts_.db_path = engine_root_path;
-    Remove(engine_root_path);
-    MakeDirectory(engine_root_path);
-    engine_ = new TSEngineImpl(opts_);
-    auto s = engine_->Init(ctx_);
-    EXPECT_EQ(s, KStatus::SUCCESS);
+    InitContext();
+    InitEngine(engine_root_path);
     ctx_->ts_engine = engine_;
   }
 
   void Restart() {
     ASSERT_TRUE(engine_ != nullptr);
-    delete engine_;
-    engine_ = new TSEngineImpl(opts_);
-    auto s = engine_->Init(ctx_);
-    ASSERT_EQ(s, KStatus::SUCCESS);
+    InitEngine(opts_.db_path, false);
     ctx_->ts_engine = engine_;
   }
 
@@ -109,52 +85,46 @@ class TsEngineRecoverTest : public ::testing::Test {
     EXPECT_EQ(s , KStatus::SUCCESS);
     free(pay_load.data);
   }
-  std::string GetPrimaryKey(TSTableID table_id, TSEntityID dev_id) {
-    std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
-    bool is_dropped = false;
-    KStatus s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
-    EXPECT_EQ(s, KStatus::SUCCESS);
-    std::vector<TagInfo> tag_schema;
-    s = schema_mgr->GetTagMeta(1, tag_schema);
-    EXPECT_EQ(s , KStatus::SUCCESS);
-    uint64_t pkey_len = 0;
-    for (size_t i = 0; i < tag_schema.size(); i++) {
-      if (tag_schema[i].isPrimaryTag()) {
-        pkey_len += tag_schema[i].m_size;
-      }
-    }
-    char* mem = reinterpret_cast<char*>(malloc(pkey_len));
-    memset(mem, 0, pkey_len);
-    std::string dev_str = intToString(dev_id);
-    size_t offset = 0;
-    for (size_t i = 0; i < tag_schema.size(); i++) {
-      if (tag_schema[i].isPrimaryTag()) {
-        if (tag_schema[i].m_data_type == DATATYPE::VARSTRING) {
-          memcpy(mem + offset, dev_str.data(), dev_str.length());
-        } else {
-          memcpy(mem + offset, (char*)(&dev_id), tag_schema[i].m_size);
-        }
-        offset += tag_schema[i].m_size;
-      }
-    }
-    auto ret = std::string{mem, pkey_len};
-    free(mem);
-    return ret;
-  }
-  uint64_t GetDataNum(TSTableID table_id, TSEntityID dev_id, KwTsSpan ts_span) {
+
+  uint64_t GetDataNum(TSTableID table_id, TSEntityID dev_id, KwTsSpan ts_span, int64_t& dev_num) {
     std::shared_ptr<TsTable> ts_table_dest;
     bool is_dropped = false;
     auto s = engine_->GetTsTable(ctx_, table_id, ts_table_dest, is_dropped);
     EXPECT_EQ(s, KStatus::SUCCESS);
     auto ts_table_v2 = dynamic_pointer_cast<TsTableV2Impl>(ts_table_dest);
-    uint32_t entity_id = 0;
-    uint32_t sub_group_id = 0;
-    auto pkey = GetPrimaryKey(table_id, dev_id);
-    auto find = ts_table_v2->GetSchemaManager()->GetTagTable()->hasPrimaryKey(pkey.data(), pkey.length(), entity_id, sub_group_id);
+    std::vector<EntityResultIndex> devs;
+    if (dev_id > 0) {
+      uint32_t entity_id = 0;
+      uint32_t sub_group_id = 0;
+      auto pkey = GetPrimaryKey(table_id, dev_id);
+      auto find = ts_table_v2->GetSchemaManager()->GetTagTable()->hasPrimaryKey(pkey.data(), pkey.length(), entity_id, sub_group_id);
+      devs.push_back({EntityResultIndex(1, entity_id, sub_group_id)});
+    } else {
+        std::vector<uint32_t> scan_tags{0};
+      std::vector<HashIdSpan> hps;
+      hps.push_back({0, UINT64_MAX});
+      BaseEntityIterator* iter;
+      ts_table_v2->GetTagIterator(ctx_, scan_tags, &hps, &iter, 1, UINT64_MAX);
+      ResultSet res{(k_uint32) scan_tags.size()};
+      k_uint32 fetch_total_count = 0;
+      k_uint64 ptag = 0;
+      k_uint32 count = 0;
+      do {
+        std::vector<EntityResultIndex> devs1;
+        EXPECT_EQ(iter->Next(&devs1, &res, &count), KStatus::SUCCESS);
+        if (count == 0) {
+          break;
+        }
+        devs.insert(devs.end(), devs1.begin(), devs1.end());
+        fetch_total_count += count;
+      }while(count);
+      iter->Close();
+      delete iter;
+    }
     uint64_t row_count = 0;
-    std::vector<EntityResultIndex> devs{EntityResultIndex(1, entity_id, sub_group_id)};
     ctx_->ts_engine = engine_;
     ts_table_v2->GetEntityRowCount(ctx_, devs, {ts_span}, UINT64_MAX, &row_count);
+    dev_num = devs.size();
     return row_count;
   }
   void UpdateTag(TSTableID table_id, TSEntityID dev_id, TS_OSN osn, int up_num) {
@@ -184,12 +154,6 @@ class TsEngineRecoverTest : public ::testing::Test {
     ASSERT_EQ(s, KStatus::SUCCESS);
     ASSERT_EQ(count, del_num);
   }
-
-  ~TsEngineRecoverTest() {
-    if (engine_) {
-      delete engine_;
-    }
-  }
 };
 
 TEST_F(TsEngineRecoverTest, empty) {
@@ -203,9 +167,10 @@ TEST_F(TsEngineRecoverTest, update5Times) {
   for (size_t i = 1; i <= 5; i++) {
     UpdateTag(table_id, 1, 1700000 + 1000 * i);
   }
-  ASSERT_EQ(GetDataNum(table_id, 1, {INT64_MIN, INT64_MAX}), 5);
+  int64_t dev_num = 0;
+  ASSERT_EQ(GetDataNum(table_id, 1, {INT64_MIN, INT64_MAX}, dev_num), 5);
   Restart();
-  ASSERT_EQ(GetDataNum(table_id, 1, {INT64_MIN, INT64_MAX}), 5);
+  ASSERT_EQ(GetDataNum(table_id, 1, {INT64_MIN, INT64_MAX}, dev_num), 5);
 }
 
 TEST_F(TsEngineRecoverTest, delete5Times) {
@@ -215,9 +180,10 @@ TEST_F(TsEngineRecoverTest, delete5Times) {
     InsertData(table_id, 1, 12345 + 10000 * i, 1, 1000, 1700000 + 100 * i);
     DeleteTag(table_id, 1, 1700000 + 100 * i + 10, 1);
   }
-  ASSERT_EQ(GetDataNum(table_id, 1, {INT64_MIN, INT64_MAX}), 0);
+  int64_t dev_num = 0;
+  ASSERT_EQ(GetDataNum(table_id, 1, {INT64_MIN, INT64_MAX}, dev_num), 0);
   Restart();
-  ASSERT_EQ(GetDataNum(table_id, 1, {INT64_MIN, INT64_MAX}), 0);
+  ASSERT_EQ(GetDataNum(table_id, 1, {INT64_MIN, INT64_MAX}, dev_num), 0);
 }
 
 TEST_F(TsEngineRecoverTest, updataDeleteTimes) {
@@ -231,7 +197,23 @@ TEST_F(TsEngineRecoverTest, updataDeleteTimes) {
       DeleteTag(table_id, 1, 1700000 + 100 * i + 10, 1);
     }
   }
-  ASSERT_EQ(GetDataNum(table_id, 1, {INT64_MIN, INT64_MAX}), 1);
+  int64_t dev_num = 0;
+  ASSERT_EQ(GetDataNum(table_id, 1, {INT64_MIN, INT64_MAX}, dev_num), 1);
   Restart();
-  ASSERT_EQ(GetDataNum(table_id, 1, {INT64_MIN, INT64_MAX}), 1);
+  ASSERT_EQ(GetDataNum(table_id, 1, {INT64_MIN, INT64_MAX}, dev_num), 1);
+}
+
+TEST_F(TsEngineRecoverTest, insertDisorderByOSN) {
+  TSTableID table_id = 10032;
+  CreateTable(table_id);
+  InsertData(table_id, 1, 12346, 1, 1000, 1700000);
+  InsertData(table_id, 1, 12345, 1, 1000, 1700000 - 100);
+  int64_t dev_num = 0;
+  ASSERT_EQ(GetDataNum(table_id, 1, {INT64_MIN, INT64_MAX}, dev_num), 2);
+  ASSERT_EQ(GetDataNum(table_id, 0, {INT64_MIN, INT64_MAX}, dev_num), 2);
+  ASSERT_EQ(dev_num, 1);
+  Restart();
+  EXPECT_EQ(GetDataNum(table_id, 1, {INT64_MIN, INT64_MAX}, dev_num), 2);
+  EXPECT_EQ(GetDataNum(table_id, 0, {INT64_MIN, INT64_MAX}, dev_num), 2);
+  ASSERT_EQ(dev_num, 1);
 }

@@ -13,16 +13,14 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
-#include <limits>
 #include <list>
 #include <map>
 #include <memory>
-#include <mutex>
-#include <numeric>
 #include <set>
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -31,21 +29,19 @@
 #include "libkwdbts2.h"
 #include "settings.h"
 #include "ts_common.h"
+#include "ts_del_item_manager.h"
+#include "ts_entity_segment_handle.h"
 #include "ts_io.h"
 #include "ts_lastsegment.h"
 #include "ts_mem_segment_mgr.h"
+#include "ts_mem_segment_proxy.h"
+#include "ts_partition_agg.h"
+#include "ts_partition_count_mgr.h"
 #include "ts_partition_interval_recorder.h"
 #include "ts_segment.h"
-#include "ts_entity_segment_handle.h"
-#include "ts_partition_count_mgr.h"
-#include "ts_partition_meta_mgr.h"
-#include "ts_partition_agg.h"
 
 namespace kwdbts {
-using DatabaseID = uint32_t;
-using PartitionIdx = int64_t;
-using PartitionIdentifier = std::tuple<DatabaseID, timestamp64, timestamp64>;  // (dbid, start_time, end_time);
-using MemSegList = std::list<std::shared_ptr<TsMemSegment>>;
+using MemSegContainer = std::unordered_map<int64_t /*id*/, std::shared_ptr<TsMemSegmentProxy>>;
 
 class TsVGroupVersion;
 class TsEntitySegment;
@@ -175,7 +171,7 @@ class TsPartitionVersion {
   };
 
  private:
-  std::shared_ptr<MemSegList> valid_memseg_;
+  std::shared_ptr<MemSegContainer> valid_memseg_;
   std::shared_ptr<TsEntitySegment> entity_segment_;
   LastSegmentContainer leveled_last_segments_;
 
@@ -201,8 +197,6 @@ class TsPartitionVersion {
   TsPartitionVersion(const TsPartitionVersion &) = default;
   TsPartitionVersion &operator=(const TsPartitionVersion &) = default;
   TsPartitionVersion(TsPartitionVersion &&) = default;
-
-  std::vector<std::shared_ptr<TsSegmentBase>> GetAllSegments() const;
 
   bool HasDirectoryCreated() const { return directory_created_; }
   bool HasFlushed() const { return flushed_; }
@@ -244,7 +238,7 @@ class TsPartitionVersion {
   int32_t GetLastSegmentsCount() const { return GetAllLastSegments().size(); }
 
   std::shared_ptr<TsEntitySegment> GetEntitySegment() const { return entity_segment_; }
-  std::list<std::shared_ptr<TsMemSegment>> GetAllMemSegments() const;
+  std::vector<std::shared_ptr<TsMemSegmentProxy>> GetAllMemSegments() const;
   shared_ptr<TsPartitionEntityCountManager> GetCountManager() const { return count_info_; }
   std::shared_ptr<TsPartitionAggReader> GetAggReader() const { return agg_reader_; }
 
@@ -295,7 +289,7 @@ class TsPartitionVersion {
    @param max_osn  the max osn of entity
    */
   KStatus GetMaxOSN(uint32_t db_id, TSTableID table_id, TSEntityID entity_id, DATATYPE ts_col_type, TS_OSN& max_osn) const;
-  KStatus NeedCalcPartitionAgg(bool& need_calc) const;
+  KStatus CheckPartitionAggMTime(bool& need_calc) const;
 };
 
 class TsVGroupVersion {
@@ -305,14 +299,14 @@ class TsVGroupVersion {
  private:
   const PartitionIntervalRecorder* recorder_;
   std::map<PartitionIdentifier, std::shared_ptr<const TsPartitionVersion>> partitions_;
-  std::shared_ptr<MemSegList> valid_memseg_;
+  std::shared_ptr<MemSegContainer> valid_memseg_;
 
   uint64_t max_osn_ = 0;
   uint64_t version_num_ = 0;
 
  public:
   TsVGroupVersion()
-      : valid_memseg_(std::make_shared<MemSegList>()) {
+      : valid_memseg_(std::make_shared<MemSegContainer>()) {
     recorder_ = PartitionIntervalRecorder::GetInstance();
   }
 
@@ -384,7 +378,7 @@ class TsVersionUpdate {
   bool has_new_mem_segments_ = false;
   std::shared_ptr<TsMemSegment> new_memseg_;
   bool has_del_mem_segments_ = false;
-  std::shared_ptr<TsMemSegment> del_memseg_;
+  int64_t del_memseg_id_ = -1;
 
   bool has_entity_segment_ = false;
   bool delete_all_prev_entity_segment_ = false;
@@ -450,9 +444,9 @@ class TsVersionUpdate {
     need_record_ = true;
   }
 
-  void RemoveMemSegment(std::shared_ptr<TsMemSegment> mem) {
+  void RemoveMemSegment(int64_t mem_id) {
     has_del_mem_segments_ = true;
-    del_memseg_ = std::move(mem);
+    del_memseg_id_ = mem_id;
   }
 
   void AddMemSegment(std::shared_ptr<TsMemSegment> mem) {
@@ -481,7 +475,7 @@ class TsVersionUpdate {
 
   void AddCountFile(const PartitionIdentifier& partition_id, CountStatMetaInfo info) {
     updated_partitions_.insert(partition_id);
-    count_flush_infos_[partition_id] = info;
+    count_flush_infos_[partition_id] = std::move(info);
     has_count_stats_ = true;
     need_record_ = true;
   }
@@ -509,7 +503,8 @@ class TsVersionUpdate {
 
 class TsVersionManager {
  private:
-  TsIOEnv *env_;
+  TsIOEnv *env_ = nullptr;
+  TsIOEnv *last_segment_env_ = nullptr;
   mutable std::shared_mutex mu_;
   mutable PartitionIdentifier last_created_partition_{-1, INVALID_TS, INVALID_TS};  // Initial as invalid
 
@@ -527,10 +522,32 @@ class TsVersionManager {
   class RecordReader;
   class VersionBuilder;
 
+  std::pair<std::unique_ptr<MemSegContainer>, std::shared_ptr<TsMemSegmentProxy>> BuildValidMemSegment(
+      TsVersionUpdate *update) const {
+    auto tmp_memseg_container = std::make_unique<MemSegContainer>();
+    tmp_memseg_container->reserve(current_->valid_memseg_->size() + 1);
+    std::shared_ptr<TsMemSegmentProxy> removed_mem_segment;
+    for (const auto &[id, mem] : *current_->valid_memseg_) {
+      if (mem->GetId() == update->del_memseg_id_) {
+        removed_mem_segment = mem;
+        continue;
+      }
+      tmp_memseg_container->insert({id, mem});
+    }
+
+    if (update->has_new_mem_segments_) {
+      [[maybe_unused]] auto [_, ok] = tmp_memseg_container->insert(
+          {update->new_memseg_->GetId(), std::make_shared<TsMemSegmentProxy>(std::move(update->new_memseg_))});
+      assert(ok);
+    }
+    return {std::move(tmp_memseg_container), std::move(removed_mem_segment)};
+  }
+
  public:
-  explicit TsVersionManager(TsIOEnv *env, const std::string &root_path)
-      : env_(env), root_path_(root_path) {
+  explicit TsVersionManager(TsIOEnv *env, const std::string &root_path) : env_(env), root_path_(root_path) {
     recorder_ = PartitionIntervalRecorder::GetInstance();
+    last_segment_env_ =
+        EngineOptions::g_io_mode >= TsIOMode::FIO_AND_MMAP ? &TsMMapIOEnv::GetInstance() : &TsFIOEnv::GetInstance();
   }
   KStatus Recover(bool force_recover);
   KStatus ApplyUpdate(TsVersionUpdate *update, bool force_apply = false);

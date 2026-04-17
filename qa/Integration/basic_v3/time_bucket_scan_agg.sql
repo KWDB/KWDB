@@ -133,7 +133,30 @@ where 1 = 1
 group by hostname
 order by hostname asc;
 
+explain SELECT hostname, max(usage_user) as max_cur, min(usage_user) as min_cur, avg(usage_user) as avg_cur
+FROM test.cpu
+where 1 = 1
+  and hostname = 'host_4'
+  and k_timestamp > '2023-01-01 00:00:00'::timestamp and k_timestamp < '2024-01-01 00:00:00':: timestamp
+group by hostname
+order by hostname asc;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       lastts(usage_guest),
+       sum(usage_steal),
+       firstts(usage_nice),
+       max(usage_user),
+       max(usage_irq),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+  AND hostname = 'host_0'
+GROUP BY hostname, region, datacenter, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        lastts(usage_guest),
        sum(usage_steal),
@@ -163,7 +186,37 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, region, datacenter, rack, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       first_row(usage_idle),
+       lastts(usage_nice),
+       lastts(usage_irq),
+       lastts(usage_guest_nice),
+       max(usage_idle),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+  AND hostname = 'host_1'
+GROUP BY hostname, region, datacenter, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       sum(usage_guest),
+       count(usage_idle),
+       avg(usage_system),
+       max(usage_steal),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+  AND hostname = 'host_0'
+  AND region = 'aaa'
+GROUP BY hostname, region, datacenter, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        sum(usage_guest),
        count(usage_idle),
@@ -194,7 +247,37 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, region, datacenter, rack, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       last_row(usage_iowait),
+       avg(usage_irq),
+       max(usage_system),
+       firstts(usage_irq),
+       lastts(usage_softirq),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+  AND hostname = 'host_0'
+  AND region = 'aaaaaaaa'
+GROUP BY hostname, region, datacenter, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       first_row(usage_irq),
+       lastts(usage_iowait),
+       sum(usage_iowait),
+       hostname,
+       first_row(usage_system),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+  AND region = 'aaa'
+GROUP BY hostname, region, datacenter, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        first_row(usage_irq),
        lastts(usage_iowait),
        sum(usage_iowait),
@@ -217,6 +300,15 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, region, datacenter, rack, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b, first (usage_nice), min (usage_system), min (usage_softirq), last_row(usage_guest_nice), hostname, lastts(usage_user) as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+  AND region = 'aaaaaaaa'
+GROUP BY hostname, region, datacenter, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        avg(usage_steal),
        avg(usage_guest_nice),
@@ -230,7 +322,37 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, region, datacenter, rack, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts LIMIT 10;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       avg(usage_steal),
+       avg(usage_guest_nice),
+       last_row(usage_guest),
+       min(usage_idle),
+       hostname,
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+GROUP BY hostname, region, datacenter, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts LIMIT 10;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       sum(usage_nice),
+       sum(usage_idle),
+       min(usage_irq),
+       sum(usage_system),
+       last_row(usage_user),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+  AND hostname = 'host_1'
+  AND region = 'aaa'
+GROUP BY hostname, region, datacenter, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts
+OFFSET 2;
+
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        sum(usage_nice),
        sum(usage_idle),
@@ -264,7 +386,41 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, region, datacenter, rack, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       min(usage_iowait),
+       last_row(usage_irq),
+       count(usage_nice),
+       last_row(usage_idle),
+       last_row(usage_system),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+  AND hostname = 'host_0'
+  AND region = 'aaa'
+  AND datacenter = 888888
+GROUP BY hostname, region, datacenter, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       first_row(usage_iowait),
+       last_row(usage_steal),
+       min(usage_user),
+       last_row(usage_nice),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+  AND hostname = 'host_0'
+  AND region = 'aaa'
+  AND datacenter = 888888
+  AND rack = 8888.88
+GROUP BY hostname, region, datacenter, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        first_row(usage_iowait),
        last_row(usage_steal),
@@ -292,6 +448,17 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, region, datacenter, rack, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       sum(usage_guest_nice),
+       sum(usage_irq),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+GROUP BY hostname, region, datacenter, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        min(usage_nice),
@@ -305,7 +472,33 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, region, datacenter, rack, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       min(usage_nice),
+       firstts(usage_user),
+       min(usage_guest), first (usage_idle), first (usage_softirq),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, datacenter, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       count(usage_iowait), last (usage_guest_nice), sum (usage_softirq), first_row(usage_user),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, datacenter, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts
+    LIMIT 1
+OFFSET 1;
+
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        count(usage_iowait), last (usage_guest_nice), sum (usage_softirq), first_row(usage_user),
     lastts(usage_user)            as last_ts
@@ -341,7 +534,40 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, region, datacenter, rack, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       firstts(usage_iowait), last (usage_user), min (usage_steal),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, datacenter, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       first_row(usage_guest),
+       firstts(usage_system),
+       lastts(usage_system),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+GROUP BY hostname, region, datacenter, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
+SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname, first (usage_steal), count (usage_system), firstts(usage_steal), lastts(usage_steal), first_row(usage_steal),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, datacenter, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname, first (usage_steal), count (usage_system), firstts(usage_steal), lastts(usage_steal), first_row(usage_steal),
     lastts(usage_user)            as last_ts
 FROM test.cpu
@@ -361,7 +587,29 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, region, datacenter, rack, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname, first (usage_guest_nice), last (usage_guest), first (usage_iowait), firstts(usage_guest),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, datacenter, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       lastts(usage_user),
+       firstts(usage_guest_nice), last (usage_softirq), last_row(usage_softirq),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, datacenter, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        lastts(usage_user),
        firstts(usage_guest_nice), last (usage_softirq), last_row(usage_softirq),
@@ -387,7 +635,32 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, region, datacenter, rack, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       firstts(usage_idle),
+       first_row(usage_guest_nice),
+       avg(usage_user),
+       count(usage_softirq),
+       count(usage_steal),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+GROUP BY hostname, region, datacenter, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       max(usage_nice), first (usage_system), avg (usage_idle), last (usage_irq), first (usage_irq),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, datacenter, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        max(usage_nice), first (usage_system), avg (usage_idle), last (usage_irq), first (usage_irq),
     lastts(usage_user)            as last_ts
@@ -412,6 +685,20 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, region, datacenter, rack, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       max(usage_guest_nice),
+       lastts(usage_idle),
+       max(usage_guest),
+       avg(usage_nice), first (usage_guest),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, datacenter, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        min(usage_guest_nice),
@@ -423,7 +710,28 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, region, datacenter, rack, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       min(usage_guest_nice),
+       max(usage_softirq),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+GROUP BY hostname, region, datacenter, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname, last (usage_steal), count (usage_user), avg (usage_iowait), count (usage_guest),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, datacenter, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname, last (usage_steal), count (usage_user), avg (usage_iowait), count (usage_guest),
     lastts(usage_user)            as last_ts
 FROM test.cpu
@@ -445,7 +753,33 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, region, datacenter, rack, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       count(usage_guest_nice),
+       firstts(usage_softirq), last (usage_nice), sum (usage_user), max (usage_iowait),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, datacenter, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT count(usage_irq),
+       time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       avg(usage_softirq),
+       first_row(usage_softirq),
+       first_row(usage_nice), last (usage_iowait),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, datacenter, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
+explain SELECT count(usage_irq),
        time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        avg(usage_softirq),
@@ -815,6 +1149,21 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       lastts(usage_guest),
+       sum(usage_steal),
+       firstts(usage_nice),
+       max(usage_user),
+       max(usage_irq),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+  AND hostname = 'host_0'
+GROUP BY hostname, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        first_row(usage_idle),
@@ -830,7 +1179,37 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       first_row(usage_idle),
+       lastts(usage_nice),
+       lastts(usage_irq),
+       lastts(usage_guest_nice),
+       max(usage_idle),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+  AND hostname = 'host_1'
+GROUP BY hostname, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       sum(usage_guest),
+       count(usage_idle),
+       avg(usage_system),
+       max(usage_steal),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+  AND hostname = 'host_0'
+  AND region = 'aaa'
+GROUP BY hostname, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        sum(usage_guest),
        count(usage_idle),
@@ -861,7 +1240,37 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       last_row(usage_iowait),
+       avg(usage_irq),
+       max(usage_system),
+       firstts(usage_irq),
+       lastts(usage_softirq),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+  AND hostname = 'host_0'
+  AND region = 'aaaaaaaa'
+GROUP BY hostname, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       first_row(usage_irq),
+       lastts(usage_iowait),
+       sum(usage_iowait),
+       hostname,
+       first_row(usage_system),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+  AND region = 'aaa'
+GROUP BY hostname, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        first_row(usage_irq),
        lastts(usage_iowait),
        sum(usage_iowait),
@@ -886,6 +1295,17 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+    first (usage_nice), min (usage_system), min (usage_softirq), last_row(usage_guest_nice), hostname,
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+  AND region = 'aaaaaaaa'
+GROUP BY hostname, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        avg(usage_steal),
        avg(usage_guest_nice),
@@ -899,7 +1319,37 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts LIMIT 10;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       avg(usage_steal),
+       avg(usage_guest_nice),
+       last_row(usage_guest),
+       min(usage_idle),
+       hostname,
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+GROUP BY hostname, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts LIMIT 10;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       sum(usage_nice),
+       sum(usage_idle),
+       min(usage_irq),
+       sum(usage_system),
+       last_row(usage_user),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+  AND hostname = 'host_1'
+  AND region = 'aaa'
+GROUP BY hostname, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts
+OFFSET 2;
+
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        sum(usage_nice),
        sum(usage_idle),
@@ -933,7 +1383,41 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       min(usage_iowait),
+       last_row(usage_irq),
+       count(usage_nice),
+       last_row(usage_idle),
+       last_row(usage_system),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+  AND hostname = 'host_0'
+  AND region = 'aaa'
+  AND datacenter = 888888
+GROUP BY hostname, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       first_row(usage_iowait),
+       last_row(usage_steal),
+       min(usage_user),
+       last_row(usage_nice),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+  AND hostname = 'host_0'
+  AND region = 'aaa'
+  AND datacenter = 888888
+  AND rack = 8888.88
+GROUP BY hostname, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        first_row(usage_iowait),
        last_row(usage_steal),
@@ -961,7 +1445,31 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       sum(usage_guest_nice),
+       sum(usage_irq),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+GROUP BY hostname, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       min(usage_nice),
+       firstts(usage_user),
+       min(usage_guest), first (usage_idle), first (usage_softirq),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        min(usage_nice),
        firstts(usage_user),
@@ -985,7 +1493,31 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+    last (usage_system), avg (usage_guest), last (usage_idle), first (usage_user),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       count(usage_iowait), last (usage_guest_nice), sum (usage_softirq), first_row(usage_user),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts
+    LIMIT 1
+OFFSET 1;
+
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        count(usage_iowait), last (usage_guest_nice), sum (usage_softirq), first_row(usage_user),
     lastts(usage_user)            as last_ts
@@ -1009,7 +1541,30 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       firstts(usage_iowait), last (usage_user), min (usage_steal),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       first_row(usage_guest),
+       firstts(usage_system),
+       lastts(usage_system),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+GROUP BY hostname, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        first_row(usage_guest),
        firstts(usage_system),
@@ -1032,6 +1587,17 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+    first (usage_steal), count (usage_system), firstts(usage_steal), lastts(usage_steal), first_row(usage_steal),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
     first (usage_guest_nice), last (usage_guest), first (usage_iowait), firstts(usage_guest),
@@ -1043,7 +1609,30 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+    first (usage_guest_nice), last (usage_guest), first (usage_iowait), firstts(usage_guest),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       lastts(usage_user),
+       firstts(usage_guest_nice), last (usage_softirq), last_row(usage_softirq),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        lastts(usage_user),
        firstts(usage_guest_nice), last (usage_softirq), last_row(usage_softirq),
@@ -1069,7 +1658,32 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       firstts(usage_idle),
+       first_row(usage_guest_nice),
+       avg(usage_user),
+       count(usage_softirq),
+       count(usage_steal),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+GROUP BY hostname, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       max(usage_nice), first (usage_system), avg (usage_idle), last (usage_irq), first (usage_irq),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        max(usage_nice), first (usage_system), avg (usage_idle), last (usage_irq), first (usage_irq),
     lastts(usage_user)            as last_ts
@@ -1094,6 +1708,20 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       max(usage_guest_nice),
+       lastts(usage_idle),
+       max(usage_guest),
+       avg(usage_nice), first (usage_guest),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        min(usage_guest_nice),
@@ -1105,7 +1733,32 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       min(usage_guest_nice),
+       max(usage_softirq),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+GROUP BY hostname, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT count(usage_irq),
+       time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       avg(usage_softirq),
+       first_row(usage_softirq),
+       first_row(usage_nice), last (usage_iowait),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
+explain SELECT count(usage_irq),
        time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        avg(usage_softirq),
@@ -1263,6 +1916,21 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, region, rack, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       lastts(usage_guest),
+       sum(usage_steal),
+       firstts(usage_nice),
+       max(usage_user),
+       max(usage_irq),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+  AND hostname = 'host_0'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        first_row(usage_idle),
@@ -1278,7 +1946,37 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, region, rack, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       first_row(usage_idle),
+       lastts(usage_nice),
+       lastts(usage_irq),
+       lastts(usage_guest_nice),
+       max(usage_idle),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+  AND hostname = 'host_1'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       sum(usage_guest),
+       count(usage_idle),
+       avg(usage_system),
+       max(usage_steal),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+  AND hostname = 'host_0'
+  AND region = 'aaa'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        sum(usage_guest),
        count(usage_idle),
@@ -1309,7 +2007,37 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, region, rack, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       last_row(usage_iowait),
+       avg(usage_irq),
+       max(usage_system),
+       firstts(usage_irq),
+       lastts(usage_softirq),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+  AND hostname = 'host_0'
+  AND region = 'aaaaaaaa'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       first_row(usage_irq),
+       lastts(usage_iowait),
+       sum(usage_iowait),
+       hostname,
+       first_row(usage_system),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+  AND region = 'aaa'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        first_row(usage_irq),
        lastts(usage_iowait),
        sum(usage_iowait),
@@ -1333,6 +2061,16 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, region, rack, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b, first (usage_nice), min (usage_system), min (usage_softirq), last_row(usage_guest_nice), hostname,
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+  AND region = 'aaaaaaaa'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        avg(usage_steal),
        avg(usage_guest_nice),
@@ -1346,7 +2084,37 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, region, rack, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts LIMIT 10;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       avg(usage_steal),
+       avg(usage_guest_nice),
+       last_row(usage_guest),
+       min(usage_idle),
+       hostname,
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts LIMIT 10;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       sum(usage_nice),
+       sum(usage_idle),
+       min(usage_irq),
+       sum(usage_system),
+       last_row(usage_user),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+  AND hostname = 'host_1'
+  AND region = 'aaa'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts
+OFFSET 2;
+
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        sum(usage_nice),
        sum(usage_idle),
@@ -1380,7 +2148,41 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, region, rack, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       min(usage_iowait),
+       last_row(usage_irq),
+       count(usage_nice),
+       last_row(usage_idle),
+       last_row(usage_system),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+  AND hostname = 'host_0'
+  AND region = 'aaa'
+  AND datacenter = 888888
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       first_row(usage_iowait),
+       last_row(usage_steal),
+       min(usage_user),
+       last_row(usage_nice),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+  AND hostname = 'host_0'
+  AND region = 'aaa'
+  AND datacenter = 888888
+  AND rack = 8888.88
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        first_row(usage_iowait),
        last_row(usage_steal),
@@ -1408,7 +2210,31 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, region, rack, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       sum(usage_guest_nice),
+       sum(usage_irq),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       min(usage_nice),
+       firstts(usage_user),
+       min(usage_guest), first (usage_idle), first (usage_softirq),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        min(usage_nice),
        firstts(usage_user),
@@ -1432,7 +2258,31 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, region, rack, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+    last (usage_system), avg (usage_guest), last (usage_idle), first (usage_user),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       count(usage_iowait), last (usage_guest_nice), sum (usage_softirq), first_row(usage_user),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts
+    LIMIT 1
+OFFSET 1;
+
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        count(usage_iowait), last (usage_guest_nice), sum (usage_softirq), first_row(usage_user),
     lastts(usage_user)            as last_ts
@@ -1456,7 +2306,30 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, region, rack, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       firstts(usage_iowait), last (usage_user), min (usage_steal),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       first_row(usage_guest),
+       firstts(usage_system),
+       lastts(usage_system),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        first_row(usage_guest),
        firstts(usage_system),
@@ -1479,6 +2352,17 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, region, rack, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+    first (usage_steal), count (usage_system), firstts(usage_steal), lastts(usage_steal), first_row(usage_steal),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
     first (usage_guest_nice), last (usage_guest), first (usage_iowait), firstts(usage_guest),
@@ -1490,7 +2374,30 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, region, rack, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+    first (usage_guest_nice), last (usage_guest), first (usage_iowait), firstts(usage_guest),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       lastts(usage_user),
+       firstts(usage_guest_nice), last (usage_softirq), last_row(usage_softirq),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        lastts(usage_user),
        firstts(usage_guest_nice), last (usage_softirq), last_row(usage_softirq),
@@ -1516,7 +2423,32 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, region, rack, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       firstts(usage_idle),
+       first_row(usage_guest_nice),
+       avg(usage_user),
+       count(usage_softirq),
+       count(usage_steal),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       max(usage_nice), first (usage_system), avg (usage_idle), last (usage_irq), first (usage_irq),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        max(usage_nice), first (usage_system), avg (usage_idle), last (usage_irq), first (usage_irq),
     lastts(usage_user)            as last_ts
@@ -1541,6 +2473,20 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, region, rack, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       max(usage_guest_nice),
+       lastts(usage_idle),
+       max(usage_guest),
+       avg(usage_nice), first (usage_guest),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        min(usage_guest_nice),
@@ -1552,7 +2498,32 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, region, rack, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       min(usage_guest_nice),
+       max(usage_softirq),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
 SELECT count(usage_irq),
+       time_bucket(k_timestamp, '2s') as k_timestamp_b,
+       hostname,
+       avg(usage_softirq),
+       first_row(usage_softirq),
+       first_row(usage_nice), last (usage_iowait),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '2023-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, k_timestamp_b, last_ts;
+
+explain SELECT count(usage_irq),
        time_bucket(k_timestamp, '2s') as k_timestamp_b,
        hostname,
        avg(usage_softirq),
@@ -1824,7 +2795,37 @@ AND k_timestamp < '2024-01-01 00:00:00'
 GROUP BY hostname, region, rack, k_timestamp_b
 ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '4YEAR') as k_timestamp_b,
+       hostname,
+       lastts(usage_guest),
+       sum(usage_steal),
+       firstts(usage_nice),
+       max(usage_user),
+       max(usage_irq),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE hostname = 'host_0'
+AND k_timestamp >= '1800-01-01 00:00:00'
+AND k_timestamp < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2yrs') as k_timestamp_b,
+       hostname,
+       first_row(usage_idle),
+       lastts(usage_nice),
+       lastts(usage_irq),
+       lastts(usage_guest_nice),
+       max(usage_idle),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE hostname = 'host_1'
+AND k_timestamp >= '1900-01-01 00:00:00'
+AND k_timestamp < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
+
+explain SELECT time_bucket(k_timestamp, '2yrs') as k_timestamp_b,
        hostname,
        first_row(usage_idle),
        lastts(usage_nice),
@@ -1851,7 +2852,32 @@ WHERE hostname = 'host_0'
 GROUP BY hostname, region, rack, k_timestamp_b
 ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '20yr') as k_timestamp_b,
+       hostname,
+       sum(usage_guest),
+       count(usage_idle),
+       avg(usage_system),
+       max(usage_steal),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE hostname = 'host_0'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '100y') as k_timestamp_b,
+       hostname,
+       last_row(usage_iowait),
+       avg(usage_irq),
+       max(usage_system),
+       firstts(usage_irq),
+       lastts(usage_softirq),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE hostname = 'host_0'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
+
+explain SELECT time_bucket(k_timestamp, '100y') as k_timestamp_b,
        hostname,
        last_row(usage_iowait),
        avg(usage_irq),
@@ -1875,6 +2901,17 @@ FROM test.cpu
 GROUP BY hostname, region, rack, k_timestamp_b
 ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2month') as k_timestamp_b,
+       first_row(usage_irq),
+       lastts(usage_iowait),
+       sum(usage_iowait),
+       hostname,
+       first_row(usage_system),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '5mon') as k_timestamp_b, first (usage_nice), min (usage_system), min (usage_softirq), last_row(usage_guest_nice), hostname,
     lastts(usage_user)            as last_ts
 FROM test.cpu
@@ -1882,7 +2919,26 @@ WHERE region = 'aaaaaaaa'
 GROUP BY hostname, region, rack, k_timestamp_b
 ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '5mon') as k_timestamp_b, first (usage_nice), min (usage_system), min (usage_softirq), last_row(usage_guest_nice), hostname,
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE region = 'aaaaaaaa'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '16mons') as k_timestamp_b,
+       avg(usage_steal),
+       avg(usage_guest_nice),
+       last_row(usage_guest),
+       min(usage_idle),
+       hostname,
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, region, rack, k_timestamp_b, last_ts
+LIMIT 10;
+
+explain SELECT time_bucket(k_timestamp, '16mons') as k_timestamp_b,
        avg(usage_steal),
        avg(usage_guest_nice),
        last_row(usage_guest),
@@ -1907,7 +2963,32 @@ GROUP BY hostname, region, rack, k_timestamp_b
 ORDER BY hostname, region, rack, k_timestamp_b, last_ts
 OFFSET 2;
 
+explain SELECT time_bucket(k_timestamp, '15weeks') as k_timestamp_b,
+       hostname,
+       sum(usage_nice),
+       sum(usage_idle),
+       min(usage_irq),
+       sum(usage_system),
+       last_row(usage_user),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, region, rack, k_timestamp_b, last_ts
+OFFSET 2;
+
 SELECT time_bucket(k_timestamp, '5week') as k_timestamp_b,
+       hostname,
+       min(usage_iowait),
+       last_row(usage_irq),
+       count(usage_nice),
+       last_row(usage_idle),
+       last_row(usage_system),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
+
+explain SELECT time_bucket(k_timestamp, '5week') as k_timestamp_b,
        hostname,
        min(usage_iowait),
        last_row(usage_irq),
@@ -1930,7 +3011,29 @@ FROM test.cpu
 GROUP BY hostname, region, rack, k_timestamp_b
 ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '1w') as k_timestamp_b,
+       hostname,
+       first_row(usage_iowait),
+       last_row(usage_steal),
+       min(usage_user),
+       last_row(usage_nice),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2day') as k_timestamp_b,
+       hostname,
+       sum(usage_guest_nice),
+       sum(usage_irq),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '1700-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
+
+explain SELECT time_bucket(k_timestamp, '2day') as k_timestamp_b,
        hostname,
        sum(usage_guest_nice),
        sum(usage_irq),
@@ -1954,7 +3057,31 @@ WHERE k_timestamp >= '1100-01-01 00:00:00'
 GROUP BY hostname, region, rack, k_timestamp_b
 ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '10d') as k_timestamp_b,
+       hostname,
+       min(usage_nice),
+       firstts(usage_user),
+       min(usage_guest), first (usage_idle), first (usage_softirq),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '1100-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '12hour') as k_timestamp_b,
+       hostname,
+    last (usage_system), avg (usage_guest), last (usage_idle), first (usage_user),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '1500-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
+
+explain SELECT time_bucket(k_timestamp, '12hour') as k_timestamp_b,
        hostname,
     last (usage_system), avg (usage_guest), last (usage_idle), first (usage_user),
     lastts(usage_user)            as last_ts
@@ -1979,7 +3106,32 @@ ORDER BY hostname, region, rack, k_timestamp_b, last_ts
     LIMIT 1
 OFFSET 1;
 
+explain SELECT time_bucket(k_timestamp, '3hrs') as k_timestamp_b,
+       hostname,
+       count(usage_iowait), last (usage_guest_nice), sum (usage_softirq), first_row(usage_user),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '1800-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, region, rack, k_timestamp_b, last_ts
+
+    LIMIT 1
+OFFSET 1;
+
 SELECT time_bucket(k_timestamp, '2hr') as k_timestamp_b,
+       hostname,
+       firstts(usage_iowait), last (usage_user), min (usage_steal),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '1600-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
+
+explain SELECT time_bucket(k_timestamp, '2hr') as k_timestamp_b,
        hostname,
        firstts(usage_iowait), last (usage_user), min (usage_steal),
     lastts(usage_user)            as last_ts
@@ -2002,7 +3154,30 @@ WHERE k_timestamp >= '1700-01-01 00:00:00'
 GROUP BY hostname, region, rack, k_timestamp_b
 ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '7h') as k_timestamp_b,
+       hostname,
+       first_row(usage_guest),
+       firstts(usage_system),
+       lastts(usage_system),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '1700-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2minute') as k_timestamp_b,
+       hostname,
+    first (usage_steal), count (usage_system), firstts(usage_steal), lastts(usage_steal), first_row(usage_steal),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '1600-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
+
+explain SELECT time_bucket(k_timestamp, '2minute') as k_timestamp_b,
        hostname,
     first (usage_steal), count (usage_system), firstts(usage_steal), lastts(usage_steal), first_row(usage_steal),
     lastts(usage_user)            as last_ts
@@ -2024,7 +3199,30 @@ WHERE k_timestamp >= '1600-01-01 00:00:00'
 GROUP BY hostname, region, rack, k_timestamp_b
 ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '15mins') as k_timestamp_b,
+       hostname,
+    first (usage_guest_nice), last (usage_guest), first (usage_iowait), firstts(usage_guest),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '1600-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '60min') as k_timestamp_b,
+       hostname,
+       lastts(usage_user),
+       firstts(usage_guest_nice), last (usage_softirq), last_row(usage_softirq),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '1600-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
+
+explain SELECT time_bucket(k_timestamp, '60min') as k_timestamp_b,
        hostname,
        lastts(usage_user),
        firstts(usage_guest_nice), last (usage_softirq), last_row(usage_softirq),
@@ -2050,7 +3248,32 @@ WHERE k_timestamp >= '1600-01-01 00:00:00'
 GROUP BY hostname, region, rack, k_timestamp_b
 ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '12min') as k_timestamp_b,
+       hostname,
+       firstts(usage_idle),
+       first_row(usage_guest_nice),
+       avg(usage_user),
+       count(usage_softirq),
+       count(usage_steal),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '1600-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2second') as k_timestamp_b,
+       hostname,
+       max(usage_nice), first (usage_system), avg (usage_idle), last (usage_irq), first (usage_irq),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '1600-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
+
+explain SELECT time_bucket(k_timestamp, '2second') as k_timestamp_b,
        hostname,
        max(usage_nice), first (usage_system), avg (usage_idle), last (usage_irq), first (usage_irq),
     lastts(usage_user)            as last_ts
@@ -2075,6 +3298,20 @@ WHERE k_timestamp >= '1600-01-01 00:00:00'
 GROUP BY hostname, region, rack, k_timestamp_b
 ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '20secs') as k_timestamp_b,
+       hostname,
+       max(usage_guest_nice),
+       lastts(usage_idle),
+       max(usage_guest),
+       avg(usage_nice), first (usage_guest),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '1600-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
+
 SELECT time_bucket(k_timestamp, '2ec') as k_timestamp_b,
        hostname,
        min(usage_guest_nice),
@@ -2086,7 +3323,32 @@ WHERE k_timestamp >= '1600-01-01 00:00:00'
 GROUP BY hostname, region, rack, k_timestamp_b
 ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
 
+explain SELECT time_bucket(k_timestamp, '2ec') as k_timestamp_b,
+       hostname,
+       min(usage_guest_nice),
+       max(usage_softirq),
+       lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '1600-01-01 00:00:00'
+  AND k_timestamp < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
+
 SELECT count(usage_irq),
+       time_bucket(k_timestamp, '-10s') as k_timestamp_b,
+       hostname,
+       avg(usage_softirq),
+       first_row(usage_softirq),
+       first_row(usage_nice), last (usage_iowait),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '1600-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
+
+explain SELECT count(usage_irq),
        time_bucket(k_timestamp, '-10s') as k_timestamp_b,
        hostname,
        avg(usage_softirq),
@@ -2114,7 +3376,35 @@ WHERE k_timestamp >= '1600-01-01 00:00:00'
 GROUP BY hostname, region, rack, k_timestamp_b
 ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
 
+explain SELECT count(usage_irq),
+       time_bucket(k_timestamp, '1.5hour') as k_timestamp_b,
+       hostname,
+       avg(usage_softirq),
+       first_row(usage_softirq),
+       first_row(usage_nice), last (usage_iowait),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '1600-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
+
 SELECT count(usage_irq),
+       time_bucket(k_timestamp, '2xiaoshi') as k_timestamp_b,
+       hostname,
+       avg(usage_softirq),
+       first_row(usage_softirq),
+       first_row(usage_nice), last (usage_iowait),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '1600-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
+
+explain SELECT count(usage_irq),
        time_bucket(k_timestamp, '2xiaoshi') as k_timestamp_b,
        hostname,
        avg(usage_softirq),
@@ -2141,6 +3431,29 @@ WHERE k_timestamp >= '1600-01-01 00:00:00'
     < '2024-01-01 00:00:00'
 GROUP BY hostname, region, rack, k_timestamp_b
 ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
+
+explain SELECT count(usage_irq),
+       time_bucket(k_timestamp, '10YEARS') as k_timestamp_b,
+       hostname,
+       avg(usage_softirq),
+       first_row(usage_softirq),
+       first_row(usage_nice), last (usage_iowait),
+    lastts(usage_user)            as last_ts
+FROM test.cpu
+WHERE k_timestamp >= '1600-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, k_timestamp_b
+ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
+
+select time_bucket(k_timestamp, '1000hour') as tb, max(usage_softirq) FROM test.cpu
+WHERE k_timestamp >= '2022-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, tb
+ORDER BY hostname, region, rack, tb;
+
+use defaultdb;
 drop database test cascade;
 
 -- Create a test table for aggregate and window functions

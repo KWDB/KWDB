@@ -76,7 +76,6 @@ k_char *EE_MemPoolMalloc(kwdbts::EE_PoolInfoDataPtr pstPoolMsg, k_size_t iMalloc
   }
   if (iMallocLen > pstTemPtr->iBlockSize) {
     data = KNEW char[iMallocLen];
-    std::memset(data, 0, iMallocLen);
     // LOG_INFO("malloc non-anticipatory address: %p, iMallocLen: %ld\n", data, iMallocLen);
     return data;
   }
@@ -90,7 +89,6 @@ k_char *EE_MemPoolMalloc(kwdbts::EE_PoolInfoDataPtr pstPoolMsg, k_size_t iMalloc
     // LOG_ERROR("buffer pool malloc failed, malloc out of memory iMallocLen: %ld\n", iMallocLen);
   }
 
-  std::memset(data, 0, iMallocLen);
   return data;
 }
 

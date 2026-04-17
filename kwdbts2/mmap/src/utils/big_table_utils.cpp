@@ -168,23 +168,22 @@ int getDataTypeSize(AttributeInfo &info) {
 int setAttributeInfo(vector<AttributeInfo> &info) {
   int offset = 0;
 
-  for (vector<AttributeInfo>::iterator it = info.begin(); it != info.end();
-    ++it) {
-    if (it->length <= 0)
-      it->length = 1;
-    if ((it->size = getDataTypeSize(*it)) == -1)
+  for (auto &it : info) {
+    if (it.length <= 0)
+      it.length = 1;
+    if ((it.size = getDataTypeSize(it)) == -1)
       return -1;
-    if (it->max_len == 0)
-      it->max_len = it->size;
-    it->offset = offset;
-    offset += it->size;
-    if (it->type == STRING) {
+    if (it.max_len == 0)
+      it.max_len = it.size;
+    it.offset = offset;
+    offset += it.size;
+    if (it.type == STRING) {
 #if defined(USE_SMART_INDEX)
       if ((encoding & SMART_INDEX) && !actual_dim.empty()) {
-        it->encoding = SMART_INDEX;
+        it.encoding = SMART_INDEX;
       } else
 #endif
-      it->encoding = DICTIONARY;
+      it.encoding = DICTIONARY;
     }
   }
   return offset;
@@ -198,10 +197,9 @@ string toString(const char *str, size_t len) {
   string s;
   s.resize(len);
   size_t i = 0;
-  for (; i < len && *str != 0; ++i) {
-    s[i] = *str++;
+  for (; i < len && str[i] != 0; ++i) {
+    s[i] = str[i];
   }
-  s[i] = 0;
   s.resize(i);
   return s;
 }

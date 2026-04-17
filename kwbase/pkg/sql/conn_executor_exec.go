@@ -590,7 +590,7 @@ func (ex *connExecutor) execStmtInOpenState(
 				NumAnnotations:  stmt.NumAnnotations,
 			},
 			typeHints,
-			PreparedStatementOriginSQL,
+			tree.PreparedStatementOriginSQL,
 		); err != nil {
 			return makeErrEvent(err)
 		}
@@ -955,6 +955,26 @@ func (ex *connExecutor) rollbackSQLTransaction(ctx context.Context) (fsm.Event, 
 	return eventTxnFinish{}, eventTxnFinishPayload{commit: false}
 }
 
+// checkExportFile validates the export path and checks for existing files.
+func checkExportFile(ctx context.Context, p PlanHookState, file string) error {
+	if file == "" {
+		return errors.New("export file path cannot be empty")
+	}
+	store, err := p.ExecCfg().DistSQLSrv.ExternalStorageFromURI(ctx, file)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	filesInTbDir, err := store.ListFiles(ctx, "*")
+	if err != nil {
+		return err
+	}
+	if len(filesInTbDir) != 0 {
+		return errors.Errorf("export path %s is not empty (contains %d files), please use an empty directory to prevent data loss", file, len(filesInTbDir))
+	}
+	return nil
+}
+
 // dispatchToExecutionEngine executes the statement, writes the result to res
 // and returns an event for the connection's state machine.
 //
@@ -987,6 +1007,12 @@ func (ex *connExecutor) dispatchToExecutionEngine(
 		defer auditLog()
 		expOpts, err := checkBeforeExport(ctx, planner, res, ex, exp)
 		if err != nil {
+			res.SetError(err)
+			return nil
+		}
+		file := exp.File.(*tree.StrVal).RawString()
+		if err := checkExportFile(ctx, planner, file); err != nil {
+			res.SetError(err)
 			return nil
 		}
 		if exp.Settings {
@@ -995,7 +1021,7 @@ func (ex *connExecutor) dispatchToExecutionEngine(
 				return nil
 			}
 			// Read the system.settings and Write into clustersetting.sql
-			if err := getClusterSettingSQL(ctx, planner, exp.File.(*tree.StrVal).RawString(), res); err != nil {
+			if err := getClusterSettingSQL(ctx, planner, file, res); err != nil {
 				res.SetError(err)
 				return nil
 			}
@@ -1007,7 +1033,7 @@ func (ex *connExecutor) dispatchToExecutionEngine(
 				return nil
 			}
 			// Read the system.users and Write into users.sql
-			if err := getUserSQL(ctx, planner, exp.File.(*tree.StrVal).RawString(), res); err != nil {
+			if err := getUserSQL(ctx, planner, file, res); err != nil {
 				res.SetError(err)
 				return nil
 			}
@@ -1037,7 +1063,7 @@ func (ex *connExecutor) dispatchToExecutionEngine(
 				// export more than one table can't export metadata
 				// export from select either.
 				if !expOpts.onlyData && exp.Database == "" && onlyOneTable && getTableSelect(stmt.AST) {
-					if err = writeTimeSeriesMeta(ctx, planner, exp.File.(*tree.StrVal).RawString(), tsTable, res, expOpts.withComment, expOpts.withPrivileges); err != nil {
+					if err = writeTimeSeriesMeta(ctx, planner, file, tsTable, res, expOpts.withComment, expOpts.withPrivileges); err != nil {
 						res.SetError(err)
 						return nil
 					}

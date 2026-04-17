@@ -11,6 +11,7 @@
 
 #include "libkwdbts2.h"
 #include "sys_utils.h"
+#include "ts_test_base.h"
 #include "test_util.h"
 #include "ts_engine.h"
 #include "ts_table.h"
@@ -18,42 +19,12 @@
 using namespace kwdbts;
 
 const string engine_root_path = "./tsdb";
-class TestDropTable : public ::testing::Test {
- public:
-  EngineOptions opts_;
-  TSEngineImpl *engine_{nullptr};
-  kwdbContext_t g_ctx_{};
-  kwdbContext_p ctx_{&g_ctx_};
-
-  static void SetUpTestCase() {
-    KWDBDynamicThreadPool::GetThreadPool().InitImplicitly();
-  }
-
-  static void TearDownTestCase() {
-    auto& pool = KWDBDynamicThreadPool::GetThreadPool();
-    if (!pool.IsStop()) {
-      pool.Stop();
-    }
-#ifdef WITH_TESTS
-    KWDBDynamicThreadPool::Destroy();
-#endif
-  }
-
-
+class TestDropTable : public TsEngineTestBase {
  public:
   TestDropTable() {
-    InitKWDBContext(ctx_);
-    opts_.db_path = engine_root_path;
-    Remove(engine_root_path);
-    MakeDirectory(engine_root_path);
-    engine_ = new TSEngineImpl(opts_);
-    auto s = engine_->Init(ctx_);
-    EXPECT_EQ(s, KStatus::SUCCESS);
     EngineOptions::g_dedup_rule = DedupRule::KEEP_EXPERIMENTAL;
-  }
-
-  ~TestDropTable() override {
-    delete engine_;
+    InitContext();
+    InitEngine(engine_root_path);
   }
 };
 

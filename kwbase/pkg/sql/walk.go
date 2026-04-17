@@ -265,7 +265,7 @@ func (v *planVisitor) visitInternal(plan planNode, name string) {
 				v.observer.attr(name, "hint", "last row optimize")
 			}
 			v.observer.attr(name, "access mode", n.AccessMode.String())
-			if n.ScanAggArray {
+			if n.ScanAggArray || n.TimeBucketRange > 0 {
 				v.observer.attr(name, "use statistic", "true")
 			}
 			//timeTmp1 and timeTmp2 need to synchronize changes due to tsspan conversion to zero zone time

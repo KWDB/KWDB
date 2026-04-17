@@ -200,7 +200,7 @@ KStatus WALFileMgr::writeBlocks(std::vector<EntryBlock*>& entry_blocks, HeaderBl
 }
 
 HeaderBlock WALFileMgr::readHeaderBlock() {
-  char* data = new char[BLOCK_SIZE];
+  char* data = new char[BLOCK_SIZE]();
   file_.seekg(0, std::ios::beg);
   file_.read(data, BLOCK_SIZE);
   auto header = HeaderBlock(data);
@@ -235,7 +235,7 @@ KStatus WALFileMgr::readEntryBlocks(std::vector<EntryBlock*>& entry_blocks,
       return FAIL;
     }
 
-    char* data = new char[BLOCK_SIZE];
+    char* data = new char[BLOCK_SIZE]();
     wal_file.seekg(0, std::ios::beg);
     wal_file.read(data, BLOCK_SIZE);
     header = HeaderBlock(data);
@@ -249,7 +249,7 @@ KStatus WALFileMgr::readEntryBlocks(std::vector<EntryBlock*>& entry_blocks,
 
   wal_file.seekg(offset, std::ios::beg);
 
-  char* data = new char[BLOCK_SIZE];
+  char* data = new char[BLOCK_SIZE]();
 
   for (uint64_t index = start_block_no; index <= end_block_no; index++) {
     if (!wal_file.read(data, BLOCK_SIZE)) {
@@ -366,7 +366,7 @@ HeaderBlock WALFileMgr::getHeader() {
     return {};
   }
 
-  char* data = new char[BLOCK_SIZE];
+  char* data = new char[BLOCK_SIZE]();
   wal_file.seekg(0, std::ios::beg);
   wal_file.read(data, BLOCK_SIZE);
   HeaderBlock header(data);

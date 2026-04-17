@@ -1,5 +1,6 @@
 #include "ts_compressor.h"
 
+#include <array>
 #include <gtest/gtest.h>
 
 #include <cmath>
@@ -141,7 +142,7 @@ template <class T>
 static bool Simple8BEncode(const std::vector<T> &input, kwdbts::TsBufferBuilder *out) {
   kwdbts::ConcreateTsCompressor<kwdbts::Simple8BInt<T>>::GetInstance();
   const TSSlice plain{(char *)(input.data()), sizeof(T) * input.size()};
-  return kwdbts::Simple8BInt<T>::GetInstance().Compress(plain, input.size(), out);
+  return kwdbts::Simple8BInt<T>::GetInstance().Compress(plain, input.size(), out, 0);
 }
 
 template <class T>
@@ -154,7 +155,7 @@ template <class T>
 static bool Simple8BV2Encode(const std::vector<T> &input, kwdbts::TsBufferBuilder *out) {
   kwdbts::ConcreateTsCompressor<kwdbts::Simple8BInt<T>>::GetInstance();
   const TSSlice plain{(char *)(input.data()), sizeof(T) * input.size()};
-  return kwdbts::Simple8BIntV2<T>::GetInstance().Compress(plain, input.size(), out);
+  return kwdbts::Simple8BIntV2<T>::GetInstance().Compress(plain, input.size(), out, 0);
 }
 
 template <class T>
@@ -662,6 +663,105 @@ TEST(Snappy, CompressDecompress) {
   EXPECT_EQ(origin.AsStringView(), s);
 }
 
+TEST(LZ4, CompressDecompress) {
+  const kwdbts::CompressorImpl &comp = kwdbts::LZ4String::GetInstance();
+  std::string s;
+  s.resize(8192);
+  char str[] = "WhAtEvEr!!!";
+  for (int i = 0; i < s.size(); ++i) {
+    s[i] = str[i % sizeof(str)];
+  }
+  kwdbts::TsBufferBuilder out;
+  ASSERT_TRUE(comp.Compress({s.data(), s.size()}, 0, &out));
+  // 53 + 8
+  EXPECT_LT(out.size(), s.size());
+
+  kwdbts::TsSliceGuard origin;
+  ASSERT_TRUE(comp.Decompress({out.data(), out.size()}, 0, &origin));
+  size_t origin_size = comp.GetUncompressedSize({out.data(), out.size()}, 0);
+  ASSERT_EQ(origin_size, s.size());
+
+  EXPECT_EQ(origin.AsStringView(), s);
+}
+
+TEST(zstd, CompressDecompress) {
+  const kwdbts::CompressorImpl &comp = kwdbts::ZSTDString::GetInstance();
+  std::string s;
+  s.resize(8192);
+  char str[] = "WhAtEvEr!!!";
+  for (int i = 0; i < s.size(); ++i) {
+    s[i] = str[i % sizeof(str)];
+  }
+  kwdbts::TsBufferBuilder out;
+  ASSERT_TRUE(comp.Compress({s.data(), s.size()}, 0, &out));
+  // 30 + 8
+  EXPECT_LT(out.size(), s.size());
+
+  kwdbts::TsSliceGuard origin;
+  ASSERT_TRUE(comp.Decompress({out.data(), out.size()}, 0, &origin));
+  size_t origin_size = comp.GetUncompressedSize({out.data(), out.size()}, 0);
+  ASSERT_EQ(origin_size, s.size());
+
+  EXPECT_EQ(origin.AsStringView(), s);
+}
+
+TEST(zlib, CompressDecompress) {
+  const kwdbts::CompressorImpl &comp = kwdbts::ZLIBString::GetInstance();
+  std::string s;
+  s.resize(8192);
+  char str[] = "WhAtEvEr!!!";
+  for (int i = 0; i < s.size(); ++i) {
+    s[i] = str[i % sizeof(str)];
+  }
+  kwdbts::TsBufferBuilder out;
+  ASSERT_TRUE(comp.Compress({s.data(), s.size()}, 0, &out));
+  // 55 + 8
+  EXPECT_LT(out.size(), s.size());
+
+  kwdbts::TsSliceGuard origin;
+  ASSERT_TRUE(comp.Decompress({out.data(), out.size()}, 0, &origin));
+  size_t origin_size = comp.GetUncompressedSize({out.data(), out.size()}, 0);
+  ASSERT_EQ(origin_size, s.size());
+
+  EXPECT_EQ(origin.AsStringView(), s);
+}
+
+TEST(GeneralCompression, EmptyInputIsAValidNoOp) {
+  std::array<const kwdbts::CompressorImpl*, 3> compressors = {
+      &kwdbts::LZ4String::GetInstance(),
+      &kwdbts::ZSTDString::GetInstance(),
+      &kwdbts::ZLIBString::GetInstance(),
+  };
+  const TSSlice empty{nullptr, 0};
+
+  for (const auto* comp : compressors) {
+    kwdbts::TsBufferBuilder compressed;
+    ASSERT_TRUE(comp->Compress(empty, 0, &compressed));
+    EXPECT_EQ(compressed.size(), 0);
+    const TSSlice compressed_slice{compressed.data(), compressed.size()};
+
+    kwdbts::TsSliceGuard raw;
+    ASSERT_TRUE(comp->Decompress(compressed_slice, 0, &raw));
+    EXPECT_EQ(raw.size(), 0);
+    EXPECT_EQ(comp->GetUncompressedSize(compressed_slice, 0), 0u);
+  }
+}
+
+TEST(GeneralCompression, RejectTruncatedHeader) {
+  std::array<char, 7> truncated{};
+  TSSlice input{truncated.data(), truncated.size()};
+  kwdbts::TsSliceGuard out;
+
+  EXPECT_FALSE(kwdbts::LZ4String::GetInstance().Decompress(input, 0, &out));
+  EXPECT_EQ(kwdbts::LZ4String::GetInstance().GetUncompressedSize(input, 0), static_cast<size_t>(-1));
+
+  EXPECT_FALSE(kwdbts::ZSTDString::GetInstance().Decompress(input, 0, &out));
+  EXPECT_EQ(kwdbts::ZSTDString::GetInstance().GetUncompressedSize(input, 0), static_cast<size_t>(-1));
+
+  EXPECT_FALSE(kwdbts::ZLIBString::GetInstance().Decompress(input, 0, &out));
+  EXPECT_EQ(kwdbts::ZLIBString::GetInstance().GetUncompressedSize(input, 0), static_cast<size_t>(-1));
+}
+
 // Float & Double
 template<class T>
 class FloatingPointCompressorTester : public ::testing::Test {};
@@ -736,7 +836,7 @@ TYPED_TEST(FloatingPointCompressorTester, CompressDecompress) {
 // bool
 
 static bool BitPackingEnc(const std::vector<uint8_t> &data, kwdbts::TsBufferBuilder *out) {
-  return kwdbts::BitPacking::GetInstance().Compress(TSSlice{(char *)data.data(), data.size()}, data.size(), out);
+  return kwdbts::BitPacking::GetInstance().Compress(TSSlice{(char *)data.data(), data.size()}, data.size(), out, 0);
 }
 
 static bool BitPackingDec(TSSlice data, size_t size, std::vector<uint8_t> *out) {

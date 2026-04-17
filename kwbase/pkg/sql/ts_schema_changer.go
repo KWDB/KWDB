@@ -71,6 +71,7 @@ const (
 	createTagIndex
 	dropTagIndex
 	alterTagIndex
+	modifyColumnCompress
 )
 
 // tsSchemaChangeResumer implements the jobs.Resumer interface for syncMetaCache
@@ -249,6 +250,7 @@ func makeKObjectTableForTs(d jobspb.SyncMetaCacheDetails) sqlbase.CreateTsTable 
 			VariableLengthType: col.TsCol.VariableLengthType,
 			ColType:            col.TsCol.ColumnType,
 		}
+		makeCompressInfo(&kColDesc, col)
 		kColDescs = append(kColDescs, kColDesc)
 		KColumnsID = append(KColumnsID, uint32(col.ID))
 	}
@@ -288,6 +290,45 @@ func makeKObjectTableForTs(d jobspb.SyncMetaCacheDetails) sqlbase.CreateTsTable 
 		TsTable:   kObjectTable,
 		KColumn:   kColDescs,
 		IndexInfo: nTagIndexInfos,
+	}
+}
+
+func makeCompressInfo(kColDesc *sqlbase.KWDBKTSColumn, col sqlbase.ColumnDescriptor) {
+	if col.TsCol.EncodeAlgo != nil {
+		switch *col.TsCol.EncodeAlgo {
+		case "simple8b":
+			kColDesc.EncodeAlgo = sqlbase.ColumnEncodeAlgo_ENCODE_ALGO_SIMPLE8B
+		case "chimp":
+			kColDesc.EncodeAlgo = sqlbase.ColumnEncodeAlgo_ENCODE_ALGO_CHIMP
+		case "bit-packing":
+			kColDesc.EncodeAlgo = sqlbase.ColumnEncodeAlgo_ENCODE_ALGO_BIT_PACKING
+		case "disabled":
+			kColDesc.EncodeAlgo = sqlbase.ColumnEncodeAlgo_ENCODE_ALGO_DISABLED
+		}
+	}
+	if col.TsCol.CompressAlgo != nil {
+		switch *col.TsCol.CompressAlgo {
+		case "lz4":
+			kColDesc.CompressAlgo = sqlbase.ColumnCompressAlgo_COMPRESS_ALGO_LZ4
+		case "zlib":
+			kColDesc.CompressAlgo = sqlbase.ColumnCompressAlgo_COMPRESS_ALGO_ZLIB
+		case "snappy":
+			kColDesc.CompressAlgo = sqlbase.ColumnCompressAlgo_COMPRESS_ALGO_SNAPPY
+		case "zstd":
+			kColDesc.CompressAlgo = sqlbase.ColumnCompressAlgo_COMPRESS_ALGO_ZSTD
+		case "disabled":
+			kColDesc.CompressAlgo = sqlbase.ColumnCompressAlgo_COMPRESS_ALGO_DISABLED
+		}
+	}
+	if col.TsCol.CompressLevel != nil {
+		switch *col.TsCol.CompressLevel {
+		case "low", "l":
+			kColDesc.CompressLevel = sqlbase.ColumnCompressLevel_COMPRESS_LEVEL_LOW
+		case "medium", "m":
+			kColDesc.CompressLevel = sqlbase.ColumnCompressLevel_COMPRESS_LEVEL_MEDIUM
+		case "high", "h":
+			kColDesc.CompressLevel = sqlbase.ColumnCompressLevel_COMPRESS_LEVEL_HIGH
+		}
 	}
 }
 
@@ -340,8 +381,8 @@ func (sw *TSSchemaChangeWorker) handleResult(
 		//		d.DropMEInfo[0].TableID,
 		//		syncErr,
 		//	)
-		case alterKwdbAddColumn, alterKwdbDropColumn, alterKwdbAlterColumnType,
-			alterKwdbAddTag, alterKwdbDropTag, alterKwdbAlterTagType, createTagIndex, dropTagIndex:
+		case alterKwdbAddColumn, alterKwdbDropColumn, alterKwdbAlterColumnType, alterKwdbAddTag,
+			alterKwdbDropTag, alterKwdbAlterTagType, createTagIndex, dropTagIndex:
 			updateErr = sw.handleMutationForTSTable(ctx, d, syncErr)
 		case alterKwdbAlterPartitionInterval:
 			updateErr = p.handleAlterPartitionInterval(
@@ -801,8 +842,8 @@ func (sw *TSSchemaChangeWorker) makeAndRunDistPlan(
 	//		log.Infof(ctx, "%s, jobID: %d, checkReplica finished", opType, sw.job.ID())
 	//	}
 	//	newPlanNode = &tsDDLNode{d: d, nodeID: nodeList}
-	case alterKwdbAddColumn, alterKwdbDropColumn, alterKwdbAlterColumnType,
-		alterKwdbAddTag, alterKwdbDropTag, alterKwdbAlterTagType, createTagIndex, dropTagIndex:
+	case alterKwdbAddColumn, alterKwdbDropColumn, alterKwdbAlterColumnType, alterKwdbAddTag,
+		alterKwdbDropTag, alterKwdbAlterTagType, createTagIndex, dropTagIndex:
 		log.Infof(ctx, "%s job start, name: %s, id: %d, column/tag name: %s, jobID: %d, current tsVersion: %d",
 			opType, d.SNTable.Name, d.SNTable.ID, d.AlterTag.Name, sw.job.ID(), int(d.SNTable.TsTable.TsVersion))
 

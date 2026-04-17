@@ -179,8 +179,9 @@ KStatus TsMemSegBlock::GetColBitmap(uint32_t col_id, const std::vector<Attribute
     *bitmap = iter->second->AsView();
     return KStatus::SUCCESS;
   }
-  auto tmp_bitmap = std::make_unique<TsBitmap>(row_data_.size());
-  for (int i = 0; i < row_data_.size(); i++) {
+  const size_t row_count = row_data_.size();
+  auto tmp_bitmap = std::make_unique<TsBitmap>(row_count);
+  for (size_t i = 0; i < row_count; i++) {
     auto row = row_data_[i];
     if (parser_->IsColNull(row->GetRowData(), col_id)) {
       (*tmp_bitmap)[i] = DataFlags::kNull;
