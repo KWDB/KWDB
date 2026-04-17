@@ -179,11 +179,11 @@ class MemoryTupleData : public BaseTupleData {
   KStatus Reset() override;
 
  private:
-  k_uint32 tuple_size_;                    // Size of each tuple in bytes
-  DatumPtr tuple_data_;                    // Pointer to the allocated memory
+  k_uint32 tuple_size_{0};                    // Size of each tuple in bytes
+  DatumPtr tuple_data_{nullptr};                    // Pointer to the allocated memory
   k_uint32 count_{0};                      // Current number of tuples
   k_uint32 capacity_{0};                   // Maximum capacity
   k_bool allow_abandoned_{false};
-  DatumPtr abandoned_tuple_;  // Pointer to the abandoned tuple data
+  DatumPtr abandoned_tuple_{nullptr};  // Pointer to the abandoned tuple data
 };
 }  // namespace kwdbts

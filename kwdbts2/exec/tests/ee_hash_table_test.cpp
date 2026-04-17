@@ -10,6 +10,7 @@
 // See the Mulan PSL v2 for more details.
 
 #include <cstring>
+#include <new>
 #include <vector>
 
 #include "ee_aggregate_func.h"
@@ -161,6 +162,23 @@ TEST_F(HashTableTest, SpillAndCombineAfterAbandonedTuple) {
                                   &check_used),
             KStatus::SUCCESS);
   EXPECT_TRUE(check_used);
+}
+
+TEST_F(HashTableTest, MemoryTupleDataDestructorHandlesPartialInitializeFailure) {
+  ASSERT_EQ(EE_MemPoolCleanUp(g_pstBufferPoolInfo), KStatus::SUCCESS);
+  g_pstBufferPoolInfo = EE_MemPoolInit(1, ROW_BUFFER_SIZE);
+  ASSERT_NE(g_pstBufferPoolInfo, nullptr);
+
+  alignas(MemoryTupleData) unsigned char storage[sizeof(MemoryTupleData)];
+  std::memset(storage, 0x7f, sizeof(storage));
+
+  auto* tuple_data = new (storage) MemoryTupleData(8, 1, true);
+  EXPECT_EQ(tuple_data->Initialize(), KStatus::FAIL);
+  EXPECT_EQ(g_pstBufferPoolInfo->iNumOfFreeBlock, 0U);
+
+  tuple_data->~MemoryTupleData();
+
+  EXPECT_EQ(g_pstBufferPoolInfo->iNumOfFreeBlock, 1U);
 }
 
 }  // namespace kwdbts
