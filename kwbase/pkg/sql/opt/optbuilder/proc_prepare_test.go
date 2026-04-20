@@ -62,7 +62,7 @@ func TestProcPrepare(t *testing.T) {
 		b.PrepareHelper.Check = func(stmt *tree.Prepare, numPlaceholders int) (tree.PlaceholderTypes, error) {
 			return nil, nil
 		}
-		b.PrepareHelper.Exec = func(ctx context.Context, stmtAST parser.Statement, placeholderHints tree.PlaceholderTypes, origin int, procUserDefinedVars map[string]tree.ProcUdvInfo, insidePrepareOfProcFlag uint8) (prepare.PreparedResult, error) {
+		b.PrepareHelper.Exec = func(ctx context.Context, stmtAST parser.Statement, placeholderHints tree.PlaceholderTypes, origin tree.PreparedStatementOrigin, procUserDefinedVars map[string]tree.ProcUdvInfo, insidePrepareOfProcFlag uint8) (prepare.PreparedResult, error) {
 			return "test result", nil
 		}
 		b.PrepareHelper.Add = func(ctx context.Context, prepareResult prepare.PreparedResult, name string) error {
