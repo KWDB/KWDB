@@ -1189,8 +1189,8 @@ CREATE TABLE
                 l_partkey = p_partkey
           and l_shipdate >= date '1997-01-01'
           and l_shipdate < date '1997-01-01' + interval '1' month limit 1;
-                tree               |                                         field                                         |                                           description
------------------------------------+---------------------------------------------------------------------------------------+--------------------------------------------------------------------------------------------------
+                tree               |                                         field                                         |                                        description
+-----------------------------------+---------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------
                                    | distributed                                                                           | true
                                    | vectorized                                                                            | false
   render                           |                                                                                       |
@@ -1200,7 +1200,7 @@ CREATE TABLE
         │                          | aggregate 1                                                                           | sum(l_extendedprice * (1.0 - l_discount))
         │                          | scalar                                                                                |
         └── render                 |                                                                                       |
-             │                     | CASE WHEN p_type LIKE 'PROMO%' THEN l_extendedprice * (1.0 - l_discount) ELSE 0.0 END | CASE WHEN p_type LIKE 'PROMO%!'(MISSING) THEN l_extendedprice * (1.0 - l_discount) ELSE 0.0 END
+             │                     | CASE WHEN p_type LIKE 'PROMO%' THEN l_extendedprice * (1.0 - l_discount) ELSE 0.0 END | CASE WHEN p_type LIKE 'PROMO%' THEN l_extendedprice * (1.0 - l_discount) ELSE 0.0 END
              │                     | l_extendedprice * (1.0 - l_discount)                                                  | l_extendedprice * (1.0 - l_discount)
              └── hash-join         |                                                                                       |
                   │                | type                                                                                  | inner
@@ -3143,8 +3143,8 @@ CREATE STATISTICS
                 l_partkey = p_partkey
           and l_shipdate >= date '1997-01-01'
           and l_shipdate < date '1997-01-01' + interval '1' month limit 1;
-                tree               |                                         field                                         |                                           description
------------------------------------+---------------------------------------------------------------------------------------+--------------------------------------------------------------------------------------------------
+                tree               |                                         field                                         |                                        description
+-----------------------------------+---------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------
                                    | distributed                                                                           | true
                                    | vectorized                                                                            | false
   render                           |                                                                                       |
@@ -3154,7 +3154,7 @@ CREATE STATISTICS
         │                          | aggregate 1                                                                           | sum(l_extendedprice * (1.0 - l_discount))
         │                          | scalar                                                                                |
         └── render                 |                                                                                       |
-             │                     | CASE WHEN p_type LIKE 'PROMO%' THEN l_extendedprice * (1.0 - l_discount) ELSE 0.0 END | CASE WHEN p_type LIKE 'PROMO%!'(MISSING) THEN l_extendedprice * (1.0 - l_discount) ELSE 0.0 END
+             │                     | CASE WHEN p_type LIKE 'PROMO%' THEN l_extendedprice * (1.0 - l_discount) ELSE 0.0 END | CASE WHEN p_type LIKE 'PROMO%' THEN l_extendedprice * (1.0 - l_discount) ELSE 0.0 END
              │                     | l_extendedprice * (1.0 - l_discount)                                                  | l_extendedprice * (1.0 - l_discount)
              └── hash-join         |                                                                                       |
                   │                | type                                                                                  | inner

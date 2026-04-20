@@ -815,7 +815,7 @@ func GetTagIndexKeyAndFilter(
 	TagIndex := &Flags.TagIndex
 	tagIndexFilters, tagIndexValues, canUseTagIndex := CheckAndGetTagIndex(tagIndexColumnIDs, tagValues, tagEqFilters, filterMap)
 	if canUseTagIndex {
-		if len(tagIndexFilters) == 1 && tagIndexFilters[0].Op() == opt.InOp {
+		if len(tagIndexFilters) == 1 && tagIndexFilters[0].Condition.Op() == opt.InOp {
 			TagIndex.UnionType = Combine
 		} else {
 			TagIndex.UnionType = Intersection

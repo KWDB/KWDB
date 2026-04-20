@@ -50,7 +50,7 @@ func (n *callProcedureNode) endTransaction(txnImplicit bool) {
 			n.err = err
 		}
 		n.execCtx.SetProcedureTxn(tree.ProcedureTransactionDefault)
-		if n.err != nil {
+		if n.err == nil {
 			panic(pgerror.Newf(pgcode.Syntax,
 				"procedure explicit transaction has not been ended, please check explicit transaction start statements."))
 		}
@@ -73,7 +73,12 @@ func (n *callProcedureNode) startExec(params runParams) error {
 	n.execCtx.StartPlanFn = StartPlanInsideProcedure
 	n.params = params
 	if err := n.ins.Execute(&params, &n.execCtx); err != nil {
-		n.endTransaction(params.p.extendedEvalCtx.TxnImplicit)
+		if params.p.extendedEvalCtx.TxnImplicit && n.execCtx.GetProcedureTxn() != tree.ProcedureTransactionDefault {
+			if err := params.p.txn.Rollback(params.ctx); err != nil {
+				n.err = err
+				return err
+			}
+		}
 		n.err = err
 		return err
 	}
