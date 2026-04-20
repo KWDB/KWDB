@@ -38,7 +38,6 @@ import (
 )
 
 func TestStream(t *testing.T) {
-	//t.Skip()
 	defer leaktest.AfterTest(t)()
 
 	ctx := context.Background()
@@ -126,65 +125,65 @@ primary attributes (hostname);`)
 	_, err = db.Exec(`create stream test_stream1 into test_stream_db.cpu_stream_out with options (enable='off') AS select * from test_stream_db.cpu where usage_user > 50;`)
 	require.Error(t, err, "")
 
-	_, err = db.Exec(`create stream test_stream1 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first(k_timestamp), last(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, TIME_WINDOW(k_timestamp, '1m');`)
+	_, err = db.Exec(`create stream test_stream1 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first(k_timestamp), last(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, time_window(k_timestamp, '1m');`)
 	require.Error(t, err)
 
-	_, err = db.Exec(`create stream test_stream1 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, TIME_WINDOW(k_timestamp, '1m');`)
+	_, err = db.Exec(`create stream test_stream1 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, time_window(k_timestamp, '1m');`)
 	require.Error(t, err)
 
-	_, err = db.Exec(`create stream test_stream1 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, TIME_WINDOW(k_timestamp, '1m');`)
+	_, err = db.Exec(`create stream test_stream1 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, time_window(k_timestamp, '1m');`)
 	require.NoError(t, err)
 
-	_, err = db.Exec(`create stream test_stream2 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, TIME_WINDOW(k_timestamp, '1m');`)
+	_, err = db.Exec(`create stream test_stream2 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, time_window(k_timestamp, '1m');`)
 	require.NoError(t, err)
 
-	_, err = db.Exec(`create stream test_stream3 into cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, TIME_WINDOW(k_timestamp, '1m');`)
+	_, err = db.Exec(`create stream test_stream3 into cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, time_window(k_timestamp, '1m');`)
 	require.Error(t, err)
 
-	_, err = db.Exec(`create stream test_stream3 into cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, TIME_WINDOW(k_timestamp, '1m');`)
+	_, err = db.Exec(`create stream test_stream3 into cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, time_window(k_timestamp, '1m');`)
 	require.Error(t, err)
 
-	_, err = db.Exec(`create stream test_stream4 into cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM cpu GROUP BY hostname, TIME_WINDOW(k_timestamp, '1m');
+	_, err = db.Exec(`create stream test_stream4 into cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM cpu GROUP BY hostname, time_window(k_timestamp, '1m');
 `)
 	require.Error(t, err)
 
-	_, err = db.Exec(`create stream test_stream4 into cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM cpu GROUP BY hostname, TIME_WINDOW(k_timestamp, '1m');
+	_, err = db.Exec(`create stream test_stream4 into cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM cpu GROUP BY hostname, time_window(k_timestamp, '1m');
 `)
 	require.Error(t, err)
 
-	_, err = db.Exec(`create stream test_stream4 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM cpu GROUP BY hostname, TIME_WINDOW(k_timestamp, '1m');
+	_, err = db.Exec(`create stream test_stream4 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM cpu GROUP BY hostname, time_window(k_timestamp, '1m');
 `)
 	require.Error(t, err)
 
-	_, err = db.Exec(`create stream test_stream2 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, TIME_WINDOW(k_timestamp, '1m');
+	_, err = db.Exec(`create stream test_stream2 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, time_window(k_timestamp, '1m');
 `)
 	require.Error(t, err)
 
-	_, err = db.Exec(`create stream if not exists test_stream2 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, TIME_WINDOW(k_timestamp, '1m');
-`)
-	require.NoError(t, err)
-
-	_, err = db.Exec(`create stream test_stream5 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp) as w_begin, last_row(k_timestamp) as w_end, max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, TIME_WINDOW(k_timestamp, '1m');
-`)
-	require.Error(t, err)
-
-	_, err = db.Exec(`create stream test_stream5 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT hostname as hostname, max(usage_user) as usage_user_avg, first(k_timestamp) as w_begin, max(usage_system) as usage_system_avg, last(k_timestamp) as w_end, count(*) as count FROM test_stream_db.cpu GROUP BY hostname, TIME_WINDOW(k_timestamp, '1m');
-`)
-	require.Error(t, err)
-
-	_, err = db.Exec(`create stream test_stream5 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp) as w_begin, last_row(k_timestamp) as w_end, hostname as hostname, count(*) as count, max(usage_system) as usage_system_avg, max(usage_user) as usage_user_avg FROM test_stream_db.cpu GROUP BY hostname, TIME_WINDOW(k_timestamp, '1m');
+	_, err = db.Exec(`create stream if not exists test_stream2 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, time_window(k_timestamp, '1m');
 `)
 	require.NoError(t, err)
 
-	_, err = db.Exec(`create stream test_stream0 into test_stream_db.cpu with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, TIME_WINDOW(k_timestamp, '1m');
+	_, err = db.Exec(`create stream test_stream5 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp) as w_begin, last_row(k_timestamp) as w_end, max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, time_window(k_timestamp, '1m');
 `)
 	require.Error(t, err)
 
-	_, err = db.Exec(`create stream test_stream0 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT last_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, TIME_WINDOW(k_timestamp, '1m');
+	_, err = db.Exec(`create stream test_stream5 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT hostname as hostname, max(usage_user) as usage_user_avg, first(k_timestamp) as w_begin, max(usage_system) as usage_system_avg, last(k_timestamp) as w_end, count(*) as count FROM test_stream_db.cpu GROUP BY hostname, time_window(k_timestamp, '1m');
 `)
 	require.Error(t, err)
 
-	_, err = db.Exec(`create stream test_stream0 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), first_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, TIME_WINDOW(k_timestamp, '1m');
+	_, err = db.Exec(`create stream test_stream5 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp) as w_begin, last_row(k_timestamp) as w_end, hostname as hostname, count(*) as count, max(usage_system) as usage_system_avg, max(usage_user) as usage_user_avg FROM test_stream_db.cpu GROUP BY hostname, time_window(k_timestamp, '1m');
+`)
+	require.NoError(t, err)
+
+	_, err = db.Exec(`create stream test_stream0 into test_stream_db.cpu with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, time_window(k_timestamp, '1m');
+`)
+	require.Error(t, err)
+
+	_, err = db.Exec(`create stream test_stream0 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT last_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, time_window(k_timestamp, '1m');
+`)
+	require.Error(t, err)
+
+	_, err = db.Exec(`create stream test_stream0 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), first_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, time_window(k_timestamp, '1m');
 `)
 	require.Error(t, err)
 
@@ -323,23 +322,23 @@ primary attributes (hostname);`)
 	primary attributes (hostname);`)
 	require.NoError(t, err)
 
-	_, err = db.Exec(`create stream test_stream1 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, TIME_WINDOW(k_timestamp, '1m');
+	_, err = db.Exec(`create stream test_stream1 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first_row(k_timestamp), last_row(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, time_window(k_timestamp, '1m');
 `)
 	require.NoError(t, err)
 
-	_, err = db.Exec(`create stream test_stream2 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first(k_timestamp), last(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, COUNT_WINDOW(5);`)
+	_, err = db.Exec(`create stream test_stream2 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first(k_timestamp), last(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, count_window(5);`)
 	require.NoError(t, err)
 
-	_, err = db.Exec(`create stream test_stream3 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first(k_timestamp), last(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, SESSION_WINDOW(k_timestamp, '5m');`)
+	_, err = db.Exec(`create stream test_stream3 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first(k_timestamp), last(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, session_window(k_timestamp, '5m');`)
 	require.NoError(t, err)
 
-	_, err = db.Exec(`create stream test_stream4 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first(k_timestamp), last(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, EVENT_WINDOW(usage_user > 50, usage_system < 20);`)
+	_, err = db.Exec(`create stream test_stream4 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first(k_timestamp), last(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, event_window(usage_user > 50, usage_system < 20);`)
 	require.NoError(t, err)
 
-	_, err = db.Exec(`create stream test_stream5 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first(k_timestamp), last(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, STATE_WINDOW(usage_idle);`)
+	_, err = db.Exec(`create stream test_stream5 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first(k_timestamp), last(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, state_window(usage_idle);`)
 	require.NoError(t, err)
 
-	_, err = db.Exec(`create stream test_stream6 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first(k_timestamp), last(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, TIME_BUCKET(k_timestamp, '1m');`)
+	_, err = db.Exec(`create stream test_stream6 into test_stream_db.cpu_stream_out with options (enable='off') AS SELECT first(k_timestamp), last(k_timestamp), max(usage_user), max(usage_system), count(*), hostname FROM test_stream_db.cpu GROUP BY hostname, time_bucket(k_timestamp, '1m');`)
 	require.NoError(t, err)
 
 	// on
@@ -441,11 +440,11 @@ primary attributes (hostname);`)
 	require.NoError(t, err)
 	_, err = db.Exec(`CREATE STREAM cpu_stream_normal_1 INTO test_stream_db.cpu_avg_normal WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='off', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT k_timestamp AS k_timestamp, hostname AS hostname, usage_user+usage_system AS usage_user_system, usage_idle*usage_nice AS usage_idel_nice, usage_iowait/usage_irq AS usage_iowait_irq FROM test_stream_db.cpu_normal where usage_system>11;`)
 	require.NoError(t, err)
-	_, err = db.Exec(`CREATE STREAM cpu_stream_agg_rel_7 INTO test_stream_db1.cpu_avg_agg7 WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM test_stream_db.cpu_normal WHERE usage_system>0 GROUP BY hostname, STATE_WINDOW(usage_idle);`)
+	_, err = db.Exec(`CREATE STREAM cpu_stream_agg_rel_7 INTO test_stream_db1.cpu_avg_agg7 WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM test_stream_db.cpu_normal WHERE usage_system>0 GROUP BY hostname, state_window(usage_idle);`)
 	require.NoError(t, err)
-	_, err = db.Exec(`CREATE STREAM cpu_stream_agg_ts_3 INTO test_stream_db.cpu_avg_agg1 WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='off', MAX_DELAY='10s',SYNC_TIME='5s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, avg(usage_system) as usage_system_avg, hostname as hostname, count(*) as count, avg(usage_user) as usage_user_avg FROM test_stream_db.cpu_normal WHERE abs(usage_system)>0 GROUP BY hostname, COUNT_WINDOW(3);`)
+	_, err = db.Exec(`CREATE STREAM cpu_stream_agg_ts_3 INTO test_stream_db.cpu_avg_agg1 WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='off', MAX_DELAY='10s',SYNC_TIME='5s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, avg(usage_system) as usage_system_avg, hostname as hostname, count(*) as count, avg(usage_user) as usage_user_avg FROM test_stream_db.cpu_normal WHERE abs(usage_system)>0 GROUP BY hostname, count_window(3);`)
 	require.NoError(t, err)
-	_, err = db.Exec(`CREATE STREAM cpu_stream_agg_ts_8 INTO test_stream_db.cpu_avg_agg8 WITH OPTIONS(recalculate_delay_rounds='0',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='off', MAX_DELAY='10s',SYNC_TIME='5s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end,first_row(k_timestamp) as w_begin1, last_row(k_timestamp) as w_end1, avg(usage_user) as usage_user_avg, avg(usage_system) as usage_system_avg, count(*) as count, hostname as hostname FROM test_stream_db.cpu_normal WHERE usage_system+usage_system>0 GROUP BY hostname, TIME_WINDOW(k_timestamp, '1m','30s');`)
+	_, err = db.exec(`CREATE STREAM cpu_stream_agg_ts_8 INTO test_stream_db.cpu_avg_agg8 WITH OPTIONS(recalculate_delay_rounds='0',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='off', MAX_DELAY='10s',SYNC_TIME='5s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end,first_row(k_timestamp) as w_begin1, last_row(k_timestamp) as w_end1, avg(usage_user) as usage_user_avg, avg(usage_system) as usage_system_avg, count(*) as count, hostname as hostname FROM test_stream_db.cpu_normal WHERE usage_system+usage_system>0 GROUP BY hostname, time_window(k_timestamp, '1m','30s');`)
 	require.NoError(t, err)
 	time.Sleep(time.Second * 2)
 	//
