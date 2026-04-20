@@ -1108,6 +1108,15 @@ func (t TableTypeMap) HasRtable() bool {
 	return ok
 }
 
+// TableNum return number of tables
+func (t TableTypeMap) TableNum() int {
+	tableNum := 0
+	for _, v := range t {
+		tableNum += v
+	}
+	return tableNum
+}
+
 // GetTableDescriptorUseTxn works the same as GetTableDescriptor
 // but use the specified txn.
 func GetTableDescriptorUseTxn(

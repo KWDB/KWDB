@@ -459,6 +459,12 @@ INSERT INTO test_procedure_opt_dxy_ts.t1 VALUES('2970-1-1 00:00:00',24,-1,1,-1,1
 drop procedure test_procedure_opt_dxy_ts.pro1;
 CREATE PROCEDURE test_procedure_opt_dxy_ts.pro1() $$BEGIN SET @a=0; SELECT max(e1) FROM test_procedure_opt_dxy_ts.t1 GROUP BY code1, event_window(e1>2,code2<10000) HAVING max(e1)>code1 ORDER BY code1; END $$;
 call test_procedure_opt_dxy_ts.pro1();
+
+drop procedure test_procedure_opt_dxy_ts.pro2;
+CREATE PROCEDURE test_procedure_opt_dxy_ts.pro2() $$BEGIN SET @a=0;SET @b='\x64787968636b78'; SELECT max(code1) FROM test_procedure_opt_dxy_ts.t1 GROUP BY @b; SELECT max(code1) FROM test_procedure_opt_dxy_ts.t1 GROUP BY state_window(e1); END $$;
+
+drop procedure test_procedure_opt_dxy_ts.pro3;
+CREATE PROCEDURE test_procedure_opt_dxy_ts.pro3() $$BEGIN SET @a=0;SET @b='\x64787968636b78'; SELECT max(code1) FROM test_procedure_opt_dxy_ts.t1 GROUP BY state_window(e1); SELECT max(code1) FROM test_procedure_opt_dxy_ts.t1 GROUP BY @b; END $$;
 drop database test_procedure_opt_dxy_ts cascade;
 
  -- group window expand

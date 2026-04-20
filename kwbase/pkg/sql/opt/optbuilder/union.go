@@ -25,7 +25,6 @@
 package optbuilder
 
 import (
-	"gitee.com/kwbasedb/kwbase/pkg/sql/opt"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
@@ -48,8 +47,8 @@ func (b *Builder) buildUnionClause(
 		desiredTypes = leftScope.makeColumnTypes()
 	}
 	rightScope := b.buildStmt(clause.Right, desiredTypes, inScope)
-	if b.factory.Memo().CheckFlag(opt.GroupWindowUseOrderScan) {
-		panic(pgerror.Newf(pgcode.Syntax, "group window function cannot be used in UNION."))
+	if b.factory.Memo().CheckRelExprHasGroupWindowFunction(&leftScope.expr) || b.factory.Memo().CheckRelExprHasGroupWindowFunction(&rightScope.expr) {
+		panic(pgerror.Newf(pgcode.Syntax, "group window function is only supported for use in single time series table query."))
 	}
 	return b.buildSetOp(clause.Type, clause.All, inScope, leftScope, rightScope)
 }
