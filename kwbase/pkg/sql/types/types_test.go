@@ -33,6 +33,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
 	"github.com/lib/pq/oid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTypes(t *testing.T) {
@@ -891,4 +892,355 @@ func TestOidSetDuringUpgrade(t *testing.T) {
 			assert.Equal(t, Oid, input.Oid())
 		})
 	}
+}
+
+func TestMakeNVarChar(t *testing.T) {
+	t.Run("width=0 returns NVarChar", func(t *testing.T) {
+		result := MakeNVarChar(0)
+		require.Equal(t, NVarChar, result)
+	})
+
+	t.Run("positive width creates NVARCHAR with specified width", func(t *testing.T) {
+		width := int32(50)
+		result := MakeNVarChar(width)
+		require.NotEqual(t, NVarChar, result)
+		require.Equal(t, width, result.Width())
+		require.Equal(t, StringFamily, result.Family())
+		require.Equal(t, T_nvarchar, result.Oid())
+	})
+
+	t.Run("negative width panics", func(t *testing.T) {
+		require.Panics(t, func() {
+			MakeNVarChar(-1)
+		})
+	})
+}
+
+func TestIntervalTypeMetadata(t *testing.T) {
+	t.Run("non-interval type returns error", func(t *testing.T) {
+		_, err := Int.IntervalTypeMetadata()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cannot call IntervalTypeMetadata on non-intervals")
+	})
+
+	t.Run("interval type returns metadata", func(t *testing.T) {
+		metadata, err := Interval.IntervalTypeMetadata()
+		require.NoError(t, err)
+		require.Equal(t, IntervalDurationField{}, metadata.DurationField)
+		require.Equal(t, int32(0), metadata.Precision)
+		require.False(t, metadata.PrecisionIsSet)
+	})
+}
+
+func TestIntervalDurationField_IsDayToHour(t *testing.T) {
+	t.Run("returns true for DAY TO HOUR", func(t *testing.T) {
+		m := &IntervalDurationField{
+			FromDurationType: IntervalDurationType_DAY,
+			DurationType:     IntervalDurationType_HOUR,
+		}
+		require.True(t, m.IsDayToHour())
+	})
+
+	t.Run("returns false for other intervals", func(t *testing.T) {
+		m := &IntervalDurationField{
+			FromDurationType: IntervalDurationType_DAY,
+			DurationType:     IntervalDurationType_MINUTE,
+		}
+		require.False(t, m.IsDayToHour())
+	})
+}
+
+func TestIntervalDurationField_IsMinuteToSecond(t *testing.T) {
+	t.Run("returns true for MINUTE TO SECOND", func(t *testing.T) {
+		m := &IntervalDurationField{
+			FromDurationType: IntervalDurationType_MINUTE,
+			DurationType:     IntervalDurationType_SECOND,
+		}
+		require.True(t, m.IsMinuteToSecond())
+	})
+
+	t.Run("returns false for other intervals", func(t *testing.T) {
+		m := &IntervalDurationField{
+			FromDurationType: IntervalDurationType_HOUR,
+			DurationType:     IntervalDurationType_SECOND,
+		}
+		require.False(t, m.IsMinuteToSecond())
+	})
+}
+
+func TestTypeModifier(t *testing.T) {
+	t.Run("returns -1 for types without width", func(t *testing.T) {
+		require.Equal(t, int32(-1), Int.TypeModifier())
+		require.Equal(t, int32(-1), Bool.TypeModifier())
+		require.Equal(t, int32(-1), Date.TypeModifier())
+	})
+
+	t.Run("returns width+4 for StringFamily", func(t *testing.T) {
+		strType := MakeString(20)
+		require.Equal(t, int32(24), strType.TypeModifier())
+
+		varcharType := MakeVarChar(30, 0)
+		require.Equal(t, int32(34), varcharType.TypeModifier())
+	})
+
+	t.Run("returns width+4 for BytesFamily", func(t *testing.T) {
+		bytesType := MakeBytes(10, 0)
+		require.Equal(t, int32(14), bytesType.TypeModifier())
+	})
+
+	t.Run("returns width for BitFamily", func(t *testing.T) {
+		bitType := MakeBit(5)
+		require.Equal(t, int32(5), bitType.TypeModifier())
+
+		varbitType := MakeVarBit(8)
+		require.Equal(t, int32(8), varbitType.TypeModifier())
+	})
+
+	t.Run("returns ((precision << 16) | width) + 4 for DecimalFamily", func(t *testing.T) {
+		decimalType := MakeDecimal(10, 2)
+		expected := int32(((10 << 16) | 2) + 4)
+		require.Equal(t, expected, decimalType.TypeModifier())
+	})
+}
+
+func TestPGName(t *testing.T) {
+	t.Run("returns lowercase PG name for known types", func(t *testing.T) {
+		require.Equal(t, "int8", Int.PGName())
+		require.Equal(t, "text", String.PGName())
+		require.Equal(t, "bool", Bool.PGName())
+	})
+
+	t.Run("returns _unknown for unknown array type", func(t *testing.T) {
+		unknownArray := MakeArray(Unknown)
+		require.Equal(t, "_unknown", unknownArray.PGName())
+	})
+}
+
+func TestTelemetryName(t *testing.T) {
+	t.Run("returns sanitized telemetry name", func(t *testing.T) {
+		require.Equal(t, "int8", Int.TelemetryName())
+
+		decimalType := MakeDecimal(10, 2)
+		require.Equal(t, "decimal_10_2_", decimalType.TelemetryName())
+	})
+}
+
+func TestSQLStandardNameWithTypmod(t *testing.T) {
+	t.Run("returns SQL standard name without typmod", func(t *testing.T) {
+		require.Equal(t, "bigint", Int.SQLStandardNameWithTypmod(false, 0))
+		require.Equal(t, "text", String.SQLStandardNameWithTypmod(false, 0))
+		require.Equal(t, "boolean", Bool.SQLStandardNameWithTypmod(false, 0))
+	})
+
+	t.Run("returns SQL standard name with typmod", func(t *testing.T) {
+		varcharType := MakeVarChar(20, 0)
+		require.Equal(t, "character varying(20)", varcharType.SQLStandardNameWithTypmod(true, 24))
+
+		decimalType := MakeDecimal(10, 2)
+		require.Equal(t, "numeric(10,2)", decimalType.SQLStandardNameWithTypmod(true, ((10<<16)|2)+4))
+	})
+}
+
+func TestInformationSchemaName(t *testing.T) {
+	t.Run("returns SQL standard name for non-array types", func(t *testing.T) {
+		require.Equal(t, "bigint", Int.InformationSchemaName())
+		require.Equal(t, "text", String.InformationSchemaName())
+		require.Equal(t, "boolean", Bool.InformationSchemaName())
+	})
+
+	t.Run("returns 'ARRAY' for array types", func(t *testing.T) {
+		intArray := MakeArray(Int)
+		require.Equal(t, "ARRAY", intArray.InformationSchemaName())
+	})
+}
+
+func TestSQLString(t *testing.T) {
+	t.Run("returns SQL string for basic types", func(t *testing.T) {
+		require.Equal(t, "INT8", Int.SQLString())
+		require.Equal(t, "STRING", String.SQLString())
+		require.Equal(t, "BOOL", Bool.SQLString())
+	})
+
+	t.Run("returns SQL string with width for string types", func(t *testing.T) {
+		varcharType := MakeVarChar(20, 0)
+		require.Equal(t, "VARCHAR(20)", varcharType.SQLString())
+
+		charType := MakeChar(10)
+		require.Equal(t, "CHAR(10)", charType.SQLString())
+	})
+
+	t.Run("returns SQL string with precision for decimal types", func(t *testing.T) {
+		decimalType := MakeDecimal(10, 2)
+		require.Equal(t, "DECIMAL(10,2)", decimalType.SQLString())
+	})
+
+	t.Run("returns SQL string for array types", func(t *testing.T) {
+		intArray := MakeArray(Int)
+		require.Equal(t, "INT8[]", intArray.SQLString())
+	})
+}
+
+func TestDebugString(t *testing.T) {
+	t.Run("returns debug string", func(t *testing.T) {
+		require.NotEmpty(t, Int.DebugString())
+		require.NotEmpty(t, String.DebugString())
+		require.NotEmpty(t, Bool.DebugString())
+	})
+}
+
+func TestIsAmbiguous(t *testing.T) {
+	t.Run("returns true for unknown type", func(t *testing.T) {
+		require.True(t, Unknown.IsAmbiguous())
+	})
+
+	t.Run("returns true for any type", func(t *testing.T) {
+		require.True(t, Any.IsAmbiguous())
+	})
+
+	t.Run("returns true for collated string with empty locale", func(t *testing.T) {
+		collated := MakeCollatedString(String, "")
+		require.True(t, collated.IsAmbiguous())
+	})
+
+	t.Run("returns false for concrete types", func(t *testing.T) {
+		require.False(t, Int.IsAmbiguous())
+		require.False(t, String.IsAmbiguous())
+		require.False(t, Bool.IsAmbiguous())
+	})
+
+	t.Run("returns false for collated string with locale", func(t *testing.T) {
+		collated := MakeCollatedString(String, "en-US")
+		require.False(t, collated.IsAmbiguous())
+	})
+
+	t.Run("returns true for array with ambiguous element", func(t *testing.T) {
+		ambiguousArray := MakeArray(Unknown)
+		require.True(t, ambiguousArray.IsAmbiguous())
+	})
+
+	t.Run("returns false for array with concrete element", func(t *testing.T) {
+		concreteArray := MakeArray(Int)
+		require.False(t, concreteArray.IsAmbiguous())
+	})
+}
+
+func TestCheckArrayElementType(t *testing.T) {
+	t.Run("returns nil for valid array elements", func(t *testing.T) {
+		require.NoError(t, CheckArrayElementType(Int))
+		require.NoError(t, CheckArrayElementType(String))
+		require.NoError(t, CheckArrayElementType(Bool))
+	})
+
+	t.Run("returns error for invalid array elements", func(t *testing.T) {
+		err := CheckArrayElementType(Jsonb)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "arrays of jsonb not allowed")
+	})
+}
+
+func TestCollatedStringTypeSQL(t *testing.T) {
+	collated := MakeCollatedString(MakeVarChar(20, 0), "en-US")
+
+	t.Run("returns string without array", func(t *testing.T) {
+		result := collated.collatedStringTypeSQL(false)
+		require.Equal(t, "VARCHAR(20) COLLATE en_US", result)
+	})
+
+	t.Run("returns string with array", func(t *testing.T) {
+		result := collated.collatedStringTypeSQL(true)
+		require.Equal(t, "VARCHAR(20)[] COLLATE en_US", result)
+	})
+}
+
+func TestStringTypeSQL(t *testing.T) {
+	t.Run("returns STRING for text type", func(t *testing.T) {
+		require.Equal(t, "STRING", String.stringTypeSQL())
+	})
+
+	t.Run("returns VARCHAR(n) for varchar type with width", func(t *testing.T) {
+		varcharType := MakeVarChar(20, 0)
+		require.Equal(t, "VARCHAR(20)", varcharType.stringTypeSQL())
+	})
+
+	t.Run("returns CHAR for char type with width 1", func(t *testing.T) {
+		charType := MakeChar(1)
+		require.Equal(t, "CHAR", charType.stringTypeSQL())
+	})
+
+	t.Run("returns CHAR(n) for char type with width > 1", func(t *testing.T) {
+		charType := MakeChar(10)
+		require.Equal(t, "CHAR(10)", charType.stringTypeSQL())
+	})
+
+	t.Run("returns NVARCHAR(n) for nvarchar type with width", func(t *testing.T) {
+		nvarcharType := MakeNVarChar(30)
+		require.Equal(t, "NVARCHAR(30)", nvarcharType.stringTypeSQL())
+	})
+}
+
+func TestTypeForNonKeywordTypeName(t *testing.T) {
+	t.Run("returns type for known non-keyword names", func(t *testing.T) {
+		testCases := []struct {
+			name     string
+			expected *T
+		}{
+			{"int8", Int},
+			{"text", String},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				typ, ok, issueNum := TypeForNonKeywordTypeName(tc.name)
+				require.True(t, ok)
+				require.Equal(t, tc.expected, typ)
+				require.Equal(t, 0, issueNum)
+			})
+		}
+	})
+
+	t.Run("returns false for unknown names", func(t *testing.T) {
+		typ, ok, issueNum := TypeForNonKeywordTypeName("unknown_type")
+		require.False(t, ok)
+		require.Nil(t, typ)
+		require.Equal(t, 0, issueNum)
+	})
+
+	t.Run("returns issue number for known postgres types", func(t *testing.T) {
+		typ, ok, issueNum := TypeForNonKeywordTypeName("box")
+		require.False(t, ok)
+		require.Nil(t, typ)
+		require.Equal(t, 21286, issueNum)
+	})
+}
+
+func TestDetailedName(t *testing.T) {
+	t.Run("returns SQL string for basic types", func(t *testing.T) {
+		require.Equal(t, "INT8", Int.DetailedName())
+		require.Equal(t, "STRING", String.DetailedName())
+		require.Equal(t, "BOOL", Bool.DetailedName())
+	})
+
+	t.Run("returns detailed name for collated strings", func(t *testing.T) {
+		collated := MakeCollatedString(String, "en-US")
+		require.Equal(t, "COLLATEDSTRING{en-US}", collated.DetailedName())
+
+		collatedEmpty := MakeCollatedString(String, "")
+		require.Equal(t, "COLLATEDSTRING{*}", collatedEmpty.DetailedName())
+	})
+
+	t.Run("returns detailed name for array types", func(t *testing.T) {
+		intArray := MakeArray(Int)
+		require.Equal(t, "INT8[]", intArray.DetailedName())
+
+		collatedArray := MakeArray(MakeCollatedString(String, "en-US"))
+		require.Equal(t, "COLLATEDSTRING{en-US}[]", collatedArray.DetailedName())
+	})
+
+	t.Run("returns detailed name for tuple types", func(t *testing.T) {
+		tuple := MakeTuple([]T{*Int, *String})
+		require.Equal(t, "tuple{INT8, STRING}", tuple.DetailedName())
+
+		labeledTuple := MakeLabeledTuple([]T{*Int, *String}, []string{"id", "name"})
+		require.Equal(t, "tuple{INT8 AS id, STRING AS name}", labeledTuple.DetailedName())
+	})
 }
