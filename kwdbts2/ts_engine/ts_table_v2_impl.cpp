@@ -1130,6 +1130,10 @@ KStatus TsTableV2Impl::CountRangeData(kwdbContext_p ctx, uint64_t range_group_id
 
 KStatus TsTableV2Impl::GetEntityRowCount(kwdbContext_p ctx, std::vector<EntityResultIndex>& entity_ids,
 const std::vector<KwTsSpan>& ts_spans, TS_OSN osn, uint64_t* row_count) {
+  if (entity_ids.size() == 0) {
+    *row_count = 0;
+    return KStatus::SUCCESS;
+  }
   std::vector<k_uint32> scan_cols = {0};
   std::vector<Sumfunctype> scan_agg_types = {Sumfunctype::COUNT};
   uint32_t table_version = table_schema_mgr_->GetCurrentVersion();

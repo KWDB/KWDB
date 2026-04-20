@@ -2409,23 +2409,13 @@ KStatus TSEngineImpl::CreateSnapshotForWrite(kwdbContext_p ctx, const KTableKey&
   }
   *snapshot_id = insertToSnapshotCache(ts_snapshot_info);
   ts_snapshot_info.id = *snapshot_id;
-  uint64_t count;
-  s = table->GetRangeRowCount(ctx, begin_hash, end_hash, ts_span, osn, &count);
+  s = table->DeleteTotalRange(ctx, begin_hash, end_hash, ts_span, 1, osn);
   if (s == KStatus::FAIL) {
-    LOG_ERROR("GetRangeRowCount [%lu] failed.", table_id);
+    LOG_ERROR("DeleteTotalRange [%lu] failed.", table_id);
     return s;
   }
-  if (count > 0) {
-    LOG_WARN("range hash[%lu ~ %lu], ts[%ld ~ %ld] has row [%lu], we clear them now.",
-      begin_hash, end_hash, ts_span.begin, ts_span.end, count);
-    s = table->DeleteTotalRange(ctx, begin_hash, end_hash, ts_span, 1, osn);
-    if (s == KStatus::FAIL) {
-      LOG_ERROR("DeleteTotalRange [%lu] failed.", table_id);
-      return s;
-    }
-  }
-  LOG_INFO("CreateSnapshotForWrite [%lu] succeeded. range hash[%lu ~ %lu], ts[%ld ~ %ld] has row [%lu]",
-           table_id, begin_hash, end_hash, ts_span.begin, ts_span.end, count)
+  LOG_INFO("CreateSnapshotForWrite [%lu] succeeded. range hash[%lu ~ %lu], ts[%ld ~ %ld].",
+           table_id, begin_hash, end_hash, ts_span.begin, ts_span.end);
   return KStatus::SUCCESS;
 }
 
@@ -2640,7 +2630,6 @@ KStatus TSEngineImpl::WriteSnapshotRollback(kwdbContext_p ctx, uint64_t snapshot
   auto s = CancelBatchJob(ctx, snapshot_id, osn);
   if (s != KStatus::SUCCESS) {
       LOG_ERROR("CancelBatchJob failed.");
-      return s;
   }
   uint64_t count;
   s = ts_snapshot_info.table->DeleteTotalRange(ctx, ts_snapshot_info.begin_hash, ts_snapshot_info.end_hash,
