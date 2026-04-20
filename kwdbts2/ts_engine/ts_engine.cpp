@@ -515,10 +515,13 @@ KStatus TSEngineImpl::GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, s
       if (table != nullptr) {
         ts_table = table;
         tables_cache_->Put(table_id, ts_table);
-        return KStatus::SUCCESS;
+        // Do not return here: the first cache-miss lookup still needs to run
+        // the dropped/version checks below so requested schema versions are
+        // loaded before the handle is returned to callers.
+      } else {
+        LOG_ERROR("make TsTableV2Impl failed for table[%lu]", table_id);
+        return KStatus::FAIL;
       }
-      LOG_ERROR("make TsTableV2Impl failed for table[%lu]", table_id);
-      return KStatus::FAIL;
     }
   }
 
