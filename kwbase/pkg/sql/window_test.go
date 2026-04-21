@@ -43,7 +43,7 @@ func TestWindowNodeMethods(t *testing.T) {
 				params := runParams{
 					ctx: context.Background(),
 				}
-				n.startExec(params)
+				_ = n.startExec(params)
 			},
 		},
 		{
@@ -60,7 +60,7 @@ func TestWindowNodeMethods(t *testing.T) {
 				params := runParams{
 					ctx: context.Background(),
 				}
-				n.Next(params)
+				_, _ = n.Next(params)
 			},
 		},
 		{
@@ -209,7 +209,7 @@ func TestWindowFuncHolderMethods(t *testing.T) {
 						t.Error("Eval should panic")
 					}
 				}()
-				w.Eval(&tree.EvalContext{})
+				_, _ = w.Eval(&tree.EvalContext{})
 			},
 		},
 		{
@@ -259,7 +259,7 @@ func TestWindowNodeColAndAggContainerMethods(t *testing.T) {
 						t.Error("IndexedVarEval should panic")
 					}
 				}()
-				c.IndexedVarEval(0, &tree.EvalContext{})
+				_, _ = c.IndexedVarEval(0, &tree.EvalContext{})
 			},
 		},
 		{

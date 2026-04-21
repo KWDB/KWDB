@@ -82,7 +82,7 @@ func TestTsScanNodeIndexedVarMethods(t *testing.T) {
 						t.Error("IndexedVarEval should panic")
 					}
 				}()
-				n.IndexedVarEval(0, &tree.EvalContext{})
+				_, _ = n.IndexedVarEval(0, &tree.EvalContext{})
 			},
 		},
 	}
@@ -230,7 +230,7 @@ func TestTsScanNodeNextAndValues(t *testing.T) {
 				params := runParams{
 					ctx: context.Background(),
 				}
-				n.Next(params)
+				_, _ = n.Next(params)
 			},
 		},
 		{
@@ -340,7 +340,7 @@ func TestSynchronizerNodeMethods(t *testing.T) {
 						t.Error("IndexedVarEval should panic")
 					}
 				}()
-				n.IndexedVarEval(0, &tree.EvalContext{})
+				_, _ = n.IndexedVarEval(0, &tree.EvalContext{})
 			},
 		},
 		{
@@ -376,7 +376,7 @@ func TestSynchronizerNodeMethods(t *testing.T) {
 				params := runParams{
 					ctx: context.Background(),
 				}
-				n.Next(params)
+				_, _ = n.Next(params)
 			},
 		},
 		{
