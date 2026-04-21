@@ -49,7 +49,7 @@ int64_t EngineOptions::block_cache_max_size = 1024 * 1024 * 1024;
 uint8_t EngineOptions::compress_stage = 3;
 CompressLevel EngineOptions::compress_level = CompressLevel::MEDIUM;
 CompressAlgo EngineOptions::compression_algorithm = CompressAlgo::kLz4;
-bool EngineOptions::compress_last_segment = true;
+bool EngineOptions::compress_last_segment = false;
 #ifdef KWBASE_OSS
 bool EngineOptions::force_sync_file = false;
 #else
