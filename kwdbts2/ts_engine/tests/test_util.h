@@ -711,9 +711,10 @@ KStatus InsertData(const std::vector<AttributeInfo>& metric, const std::vector<T
             if (metric_data[i][j][k] == "<NULL>") {
               builder.SetColumnNull(j, k);
             } else {
-              char data[20];
-              strncpy(data, metric_data[i][j][k].c_str(), 20);
-              builder.SetColumnValue(j, k, data, sizeof(data));
+              constexpr int n = 20;
+              char data[n + 1];
+              strncpy(data, metric_data[i][j][k].c_str(), n);
+              builder.SetColumnValue(j, k, data, n);
             }
             break;
           }
