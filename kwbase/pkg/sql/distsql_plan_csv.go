@@ -265,6 +265,7 @@ func presplitTableBoundaries(
 	return nil
 }
 
+// initImportProgressState initializes read progress and resume positions for an import job.
 func initImportProgressState(
 	prog *jobspb.ImportProgress, tableID sqlbase.ID, fileCount int, tableNums int,
 ) {
@@ -279,6 +280,7 @@ func initImportProgressState(
 	}
 }
 
+// accumulateBulkSummaryRow unmarshals a BulkOpSummary from the row and adds it to the result.
 func accumulateBulkSummaryRow(row tree.Datums, res *roachpb.BulkOpSummary) error {
 	var counts roachpb.BulkOpSummary
 	if err := protoutil.Unmarshal([]byte(*row[0].(*tree.DBytes)), &counts); err != nil {
