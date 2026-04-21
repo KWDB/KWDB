@@ -1,4 +1,3 @@
-// Copyright 2018 The Cockroach Authors.
 // Copyright (c) 2022-present, Shanghai Yunxi Technology Co, Ltd. All rights reserved.
 //
 // This software (KWDB) is licensed under Mulan PSL v2.
