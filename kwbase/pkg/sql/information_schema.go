@@ -42,6 +42,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/vtable"
+	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
 	"github.com/cockroachdb/errors"
 )
@@ -1834,12 +1835,20 @@ func forEachTableDescWithTableLookupInternal(
 		if !ok {
 			// if we can not find schema, check if table exist,
 			// descriptor may be drooped after get all descriptors from cache.
-			if _, err := sqlbase.GetTableDescFromID(ctx, p.txn, table.ID); err != nil {
+			tab, err := sqlbase.GetTableDescFromID(ctx, p.txn, table.ID)
+			if err != nil {
 				if errors.Is(err, sqlbase.ErrDescriptorNotFound) {
+					log.Errorf(ctx, "The table(name:%s,id:%d,state:%s,version:%d) retrieved from the cache "+
+						"cannot be found in the system table.", table.Name, table.ID, table.State.String(), table.Version)
 					continue
 				} else {
 					return err
 				}
+			}
+			if tab.Dropped() {
+				log.Errorf(ctx, "The table(name:%s,id:%d,state:%s,version:%d) retrieved from the cache is being dropped"+
+					" when retrieved from the system table.", table.Name, table.ID, table.State.String(), table.Version)
+				continue
 			}
 			return errors.AssertionFailedf("schema id %d not found", table.GetParentSchemaID())
 		}
