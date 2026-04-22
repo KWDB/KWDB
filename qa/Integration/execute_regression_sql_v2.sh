@@ -182,6 +182,10 @@ function execute_regression_sql_distribute_v3() {
           storedir=$QA_DIR/../install/deploy
 
           $QA_DIR/util/distribute_exec_v2.sh $topology $test_file $out_file $storedir $QA_DIR/Integration/$dir/master/${sql_file}.sh
+          py_res=$?
+          if [ 0 -ne "$py_res" ]; then
+            echo_err "$(date)---------- finish distribute_exec_v2.sh distribute_regression.py FAILED"
+          fi
           ut_end_time=$(date +%s)
           duration=$((ut_end_time-ut_start_time))
           if [ ! -e $master_file ]; then
@@ -191,7 +195,7 @@ function execute_regression_sql_distribute_v3() {
 
           current_time=$(date +"%Y-%m-%d-%H-%M-%S")
 
-          if [ 0 -ne $? ] || [ -s $diff_file ]; then
+          if [ 0 -ne "$py_res" ] || [ -s $diff_file ]; then
             res='FAIL'
             mkdir -p $QA_DIR/TEST_integration/$dir/${sql_file}/$current_time-${res}
             echo_err "$(date)---------- finish ${topology} $sql_file_path FAILED"

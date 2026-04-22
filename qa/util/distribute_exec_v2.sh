@@ -27,6 +27,11 @@ declare -a stmts
 
 python3 $QA_DIR/util/distribute_regression.py ${sql_file} ${KWBIN} ${output_file} ${store_dir} ${output_cmd_file} ${open_source}
 
+res=$?
+if [ "$res" -ne 0 ]; then
+  exit 1
+fi
+
 rm -rf ${LOG_DIR}/${SQL_FILTER}.log
 while read -r line || [ -n "${line}" ];do
   stmts+=(${line})
@@ -34,6 +39,7 @@ while read -r line || [ -n "${line}" ];do
   echo "$line" >> ${LOG_DIR}/${SQL_FILTER}.log
   eval "$line"
 done < ${output_cmd_file}
+exit 0
 
   #[ -n "${last_section[0]}" -a -n "${last_section[1]}" ] && \
   #stmts+=("--node:${last_section[0]}\n${last_section[1]}")
