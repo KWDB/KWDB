@@ -212,10 +212,7 @@ class TsMemSegmentProxy {
     assert(disk_.empty());
     assert(mem_ != nullptr);
 
-    for (auto& [p, seg] : disk_handle.disk_segments_) {
-      disk_[p] = std::move(seg);
-      assert(disk_.find(p) != disk_.end());
-    }
+    disk_ = std::move(disk_handle.disk_segments_);
 
     state_.store(State::kDisk, std::memory_order_release);
     // release the mem segment under write lock

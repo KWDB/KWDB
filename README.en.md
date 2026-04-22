@@ -52,8 +52,8 @@ docker exec -it kwdb./kwbase sql --insecure --host=127.0.0.1
 
 KWDB supports installation and trial use via binary packages, container images, and source code according to your needs.
 
-- **Binary Packages**: Support single-node and cluster deployments in both secure and non-secure modes. For more information, see [Single-Node Deployment](https://www.kaiwudb.com/kaiwudb_docs/#/oss_dev/quickstart/install-kaiwudb/quickstart-bare-metal.html) and [Cluster Deployment](https://www.kaiwudb.com/kaiwudb_docs/#/oss_dev/deployment/overview.html).
-- **Container Images**: KWDB provides multiple container image download channels. You can select the appropriate image based on their current network environment or [directly download](https://gitee.com/kwdb/kwdb/releases/) the corresponding version of the suffix `-docker.tar.gz` compressed package and use the `docker load < KaiwuDB.tar` command to load the image in `kaiwudb_install/packages`.
+- **Binary Packages**: Visit the [KaiwuDB official website](https://www.kaiwudb.com/download?tab=2) to download the binary installation package, which supports single-node and cluster deployments in both secure and non-secure modes. For more information, see [Quick Deployment](https://www.kaiwudb.com/docs/#/oss_dev/en/quickstart/deploy/quick-deploy.html) and [Cluster Deployment](https://www.kaiwudb.com/docs/#/oss_dev/en/deployment/cluster-deployment/script-deployment.html).
+- **Container Images**: KWDB provides multiple container image download channels. 
   - Dockerhub: `kwdb/kwdb`
   - Chinese Mirror: `registry.cn-hangzhou.aliyuncs.com/kwdb/kwdb`
   - Github container registry: `ghcr.io/kwdb/kwdb`

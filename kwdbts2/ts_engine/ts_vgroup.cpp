@@ -1022,6 +1022,7 @@ static KStatus FlushToLastSegment(TsIOEnv* env, TsEngineSchemaManager* schema_mg
 }
 
 KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) {
+  assert(mem_seg->GetRowNum() != 0);
   TsIOEnv* env = &TsIOEnv::GetInstance();
 
   std::unordered_set<const TsPartitionVersion*> flushed_partitions;

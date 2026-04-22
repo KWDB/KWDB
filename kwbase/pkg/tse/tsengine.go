@@ -371,19 +371,6 @@ var SQLTimeseriesTrace = settings.RegisterStringSetting(
 	"",
 )
 
-// TsFreeSpaceAlertThreshold indicates alarm threshold of the available disk space of TsEngine
-var TsFreeSpaceAlertThreshold = settings.RegisterPublicValidatedByteSizeSetting(
-	"ts.disk_free_space.alert_threshold",
-	"ts disk free space alert threshold for insert, default 0Byte, indicates no alert",
-	0,
-	func(v int64) error {
-		if v < 0 {
-			return errors.Errorf("%d is not nonnegative", v)
-		}
-		return nil
-	},
-)
-
 //export isCanceledCtx
 func isCanceledCtx(goCtxPtr C.uint64_t) C.bool {
 	ctx, ok := loadGoContextHandle(uint64(goCtxPtr))

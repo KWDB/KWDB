@@ -38,6 +38,7 @@ class TsLastSegmentBuilder {
  private:
   TsEngineSchemaManager* engine_schema_manager_;
   std::unique_ptr<TsAppendOnlyFile> last_segment_file_;
+  TsBufferBuilder compressed_data_;
 
   class BlockIndexCollector  {
    private:

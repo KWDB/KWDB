@@ -35,15 +35,17 @@ import (
 )
 
 type exportOptions struct {
-	csvOpts        roachpb.CSVOptions
-	chunkSize      int
-	onlyMeta       bool
-	onlyData       bool
-	colName        bool
-	withComment    bool
-	withPrivileges bool
-	fileFormat     string
-	tablePrefix    string
+	csvOpts           roachpb.CSVOptions
+	chunkSize         int
+	onlyMeta          bool
+	onlyData          bool
+	colName           bool
+	withComment       bool
+	withPrivileges    bool
+	fileFormat        string
+	tablePrefix       string
+	threadConcurrency int32
+	writeMemory       int64
 }
 
 // checkBeforeExport is used to check some roles of export before running, such as privilege and options.
@@ -505,6 +507,37 @@ func checkExportOptions(
 		comment = true
 	}
 
+	var threads int
+	if override, ok := opts[exportOptionThreads]; ok {
+		threads, err = strconv.Atoi(override)
+		if err != nil {
+			res.SetError(errors.Errorf("invalid thread_concurrency value"))
+			return expOpts, err
+		}
+		if threads < 0 || threads > 1024 {
+			res.SetError(errors.Errorf("thread_concurrency must be between 0 and 1024, got %d", threads))
+			return expOpts, err
+		}
+	}
+
+	var limitMemory int64
+	if override, ok := opts[exportOptionLimitMemory]; ok {
+		limitMemory, err = util.ParseMemorySize(override)
+		if err != nil {
+			res.SetError(err)
+			return expOpts, err
+		}
+		if limitMemory < 0 {
+			res.SetError(errors.Errorf("limit_memory cannot be negative, got %d", limitMemory))
+			return expOpts, err
+		}
+		const maxMemory = 1 << 50 // 1PB 上限
+		if limitMemory > maxMemory {
+			res.SetError(errors.Errorf("limit_memory exceeds maximum allowed value (1PB)"))
+			return expOpts, err
+		}
+	}
+
 	_, privileges := opts[exportOptionPrivileges]
 
 	if privileges && exp.Database == "" {
@@ -534,6 +567,8 @@ func checkExportOptions(
 		privileges,
 		exp.FileFormat,
 		tablePrefix,
+		int32(threads),
+		limitMemory,
 	}
 	return expOpts, nil
 }

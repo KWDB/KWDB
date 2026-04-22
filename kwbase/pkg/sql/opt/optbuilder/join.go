@@ -62,9 +62,6 @@ func (b *Builder) buildJoin(
 	}
 
 	rightScope := b.buildDataSource(join.Right, nil /* indexFlags */, locking, inScopeRight, "")
-	if b.factory.Memo().CheckFlag(opt.GroupWindowUseOrderScan) {
-		panic(pgerror.Newf(pgcode.Syntax, "group window function cannot be used in JOIN."))
-	}
 
 	// Check that the same table name is not used on both sides.
 	b.validateJoinTableNames(leftScope, rightScope)

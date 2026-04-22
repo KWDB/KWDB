@@ -23,40 +23,37 @@
 
 namespace kwdbts {
 
-bool TsMetricBlock::GetCompressedData(TsBufferBuilder* output, TsMetricCompressInfo* compress_info,
+bool TsMetricBlock::GetCompressedData(TsBufferBuilder& output, TsMetricCompressInfo& compress_info,
                                       bool compress_ts_and_osn, bool compress_columns) {
-  TsBufferBuilder compressed_data;
   const auto& mgr = CompressorManager::GetInstance();
   // 1. Compress OSN
   TSSlice osn_slice{reinterpret_cast<char*>(osn_buffer_.data()), osn_buffer_.size() * sizeof(uint64_t)};
   EncodeAlgo osn_alg = compress_ts_and_osn ? EncodeAlgo::kSimple8B_u64 : EncodeAlgo::kPlain;
-  auto ok = mgr.CompressData(osn_slice, nullptr, count_, &compressed_data, osn_alg, CompressAlgo::kPlain, 0);
+  size_t origin_size = output.size();
+  auto ok = mgr.CompressData(osn_slice, nullptr, count_, &output, osn_alg, CompressAlgo::kPlain, 0);
   if (!ok) {
     LOG_ERROR("compress osn error");
     return FAIL;
   }
-  compress_info->osn_len = compressed_data.size();
-  size_t offset = compress_info->osn_len;
+  compress_info.osn_len = output.size() - origin_size;
+  size_t offset = compress_info.osn_len;
 
   // 2. Compress column data
-  compress_info->column_compress_infos.resize(column_blocks_.size());
-  compress_info->column_data_segments.resize(column_blocks_.size());
-  TsBufferBuilder tmp;
+  compress_info.column_compress_infos.resize(column_blocks_.size());
+  compress_info.column_data_segments.resize(column_blocks_.size());
   TsColumnCompressInfo col_compress_info;
   for (int i = 0; i < column_blocks_.size(); i++) {
-    tmp.clear();
-    ok = column_blocks_[i]->GetCompressedData(&tmp, &col_compress_info, compress_columns);
+    origin_size = output.size();
+    ok = column_blocks_[i]->GetCompressedData(&output, &col_compress_info, compress_columns);
     if (!ok) {
       LOG_ERROR("compress column data error");
       return FAIL;
     }
-    compressed_data.append(tmp);
-    compress_info->column_compress_infos[i] = col_compress_info;
-    compress_info->column_data_segments[i] = {offset, tmp.size()};
-    offset += tmp.size();
+    compress_info.column_compress_infos[i] = col_compress_info;
+    compress_info.column_data_segments[i] = {offset, output.size() - origin_size};
+    offset += output.size() - origin_size;
   }
-  compress_info->row_count = count_;
-  *output = std::move(compressed_data);
+  compress_info.row_count = count_;
   return SUCCESS;
 }
 

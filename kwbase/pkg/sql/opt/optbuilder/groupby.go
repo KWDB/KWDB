@@ -390,13 +390,10 @@ func (b *Builder) buildGroupingColumns(sel *tree.SelectClause, projectionsScope,
 
 // check whether group window function is valid
 func (b *Builder) checkGroupWindow(expr *memo.FunctionExpr, scope *scope) (isGroupWiondow bool) {
-	if _, ok := memo.CheckGroupWindowExist(expr); ok && b.factory.Memo().CheckFlag(opt.GroupWindowUseOrderScan) {
-		panic(pgerror.Newf(pgcode.Syntax, "%s(): multiple group window functions are not supported.", expr.Name))
-	} else if ok {
-		if scope.TableType == nil || scope.TableType.HasRtable() || len(b.factory.Metadata().AllTables()) > 1 {
+	if _, ok := memo.CheckGroupWindowExist(expr); ok {
+		if scope.TableType == nil || scope.TableType.HasRtable() || scope.TableType.TableNum() > 1 {
 			panic(pgerror.Newf(pgcode.Syntax, "%s(): group window function is only supported for use in single time series table query.", expr.Name))
 		}
-		b.factory.Memo().SetFlag(opt.GroupWindowUseOrderScan)
 		isGroupWiondow = true
 	}
 	var countValue int64
@@ -475,7 +472,7 @@ func (b *Builder) buildAggregation(having opt.ScalarExpr, fromScope *scope) (out
 	}
 
 	// group window function cannot be used for subquery or union.
-	if b.factory.Memo().CheckFlag(opt.GroupWindowUseOrderScan) && groupWindowID < 0 {
+	if b.factory.Memo().CheckRelExprHasGroupWindowFunction(&fromScope.expr) && groupWindowID < 0 {
 		panic(pgerror.Newf(pgcode.Syntax, "group window function is only supported for use in single time series table query."))
 	}
 

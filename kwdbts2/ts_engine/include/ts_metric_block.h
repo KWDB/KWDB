@@ -60,7 +60,7 @@ class TsMetricBlock {
   int GetColNum() const { return column_blocks_.size(); }
   int GetRowNum() const { return count_; }
 
-  bool GetCompressedData(TsBufferBuilder* output, TsMetricCompressInfo* compress_info, bool compress_ts_and_osn,
+  bool GetCompressedData(TsBufferBuilder& output, TsMetricCompressInfo& compress_info, bool compress_ts_and_osn,
                          bool compress_columns);
 };
 

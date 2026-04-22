@@ -9,6 +9,7 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -62,7 +63,7 @@ bool TsMemSegmentManager::SwitchMemSegment(TsMemSegment* expected_old_mem_seg, b
   auto row_num = cur_mem_seg_->GetRowNum();
   if (row_num == 0) {
     LOG_INFO("current mem segment is empty, no need SwitchMemSegment.");
-    return true;
+    return false;
   }
   if (flush) {
     TsFlushJobPool::GetInstance().AddFlushJob(vgroup_, std::move(cur_mem_seg_));
@@ -126,21 +127,27 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, const std::shared_p
     LOG_ERROR("ParsePayLoadStruct failed.");
     return s;
   }
-  uint32_t row_num = pd.GetRowCount();
-  // no use lsn anymore, using osn from payload instead.
+
   auto osn = pd.GetOSN();
-  auto cur_mem_seg = CurrentMemSegmentAndAllocateRow(row_num);
-  cur_mem_seg->BackPressureIfNecessary(row_num);
+  uint32_t row_num = pd.GetRowCount();
+  std::shared_ptr<TsMemSegment> cur_mem_seg;
+  {
+    size_t actual_row_num = 0;
+
+    for (size_t i = 0; i < row_num; i++) {
+      auto row_ts = pd.GetTS(i);
+      actual_row_num += (row_ts >= acceptable_ts);
+    }
+    cur_mem_seg = CurrentMemSegmentAndAllocateRow(actual_row_num);
+    cur_mem_seg->BackPressureIfNecessary(actual_row_num);
+  }
+
   size_t max_row_idx = 0;
   timestamp64 max_ts = INT64_MIN;
   timestamp64 last_p_time = INVALID_TS;
   for (size_t i = 0; i < row_num; i++) {
     auto row_ts = pd.GetTS(i);
-    if (row_ts < acceptable_ts) {
-      // TODO(qinlipeng): add reject row_num
-      cur_mem_seg->AllocRowNum(-1);
-      continue;
-    }
+    if (row_ts < acceptable_ts) continue;
     auto p_time = convertTsToPTime(row_ts, ts_type);
     if (last_p_time != p_time || last_p_time == INVALID_TS) {
       auto s = version_manager_->AddPartition(db_id, p_time, p_interval);

@@ -468,10 +468,11 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update, bool force_apply)
     auto [valid_memsegs, tmp_removed_memseg] = BuildValidMemSegment(update);
     new_vgroup_version->valid_memseg_ = std::move(valid_memsegs);
     removed_memseg = std::move(tmp_removed_memseg);
+    assert((update->has_del_mem_segments_) == (removed_memseg != nullptr));
   }
   assert(new_vgroup_version->valid_memseg_ != nullptr);
   // looping over all partitions
-  bool switch_memseg_state = update->has_del_mem_segments_;
+  bool switch_memseg_state = removed_memseg != nullptr;
   TsDiskSegmentHandle disk_handle;
   TsVersionUpdate clean_up_update;
   for (const auto& [par_id, par] : new_vgroup_version->partitions_) {

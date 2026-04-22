@@ -732,8 +732,6 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
     } else {
       CLUSTER_SETTING_COUNT_USE_STATISTICS = false;
     }
-  } else if ("ts.disk_free_space.alert_threshold" == key) {
-    g_free_space_alert_threshold = atoll(value.c_str());
   } else if ("ts.table_cache.capacity" == key) {
     EngineOptions::table_cache_capacity_ = atoi(value.c_str());
     if (g_engine_) {

@@ -47,27 +47,6 @@ class TsTierPartitionManager {
   */
   KStatus MakePartitionDir(const std::string& partition_full_path, int level, ErrorInfo& error_info);
 
-  /**
-  * @brief Removes a partition directory.
-  *
-  * This function remove the specified partition directory, if it's a symbolic link, remove the absolute path first.
-  *
-  * @param partition_full_path The full path of the partition directory to be removed.
-  * @param error_info Reference to an ErrorInfo object to store error details if the operation fails.
-  * @return KStatus::SUCCESS if the operation is successful, otherwise KStatus::FAIL.
-  */
-  KStatus RMPartitionDir(std::string partition_full_path, ErrorInfo& error_info);
-
-  /**
-  * @brief Moves a partition directory to a specified tier level.
-  *
-  * @param partition_full_path The full path of the partition to be moved.
-  * @param to_level The tier level to which the partition should be moved.
-  * @param error_info Reference to an ErrorInfo object to store error details if any.
-  * @return KStatus::SUCCESS if the directory is moved successfully, otherwise KStatus::FAIL.
-  */
-  KStatus MVPartitionDir(const std::string& partition_full_path, std::vector<std::string>& files, int to_level,
-                         const std::function<bool(std::function<bool()>)>& f, ErrorInfo& error_info);
 
   /**
   * @brief Retrieves the tier level of a given partition.
@@ -82,8 +61,6 @@ class TsTierPartitionManager {
   KStatus GetPartitionCurrentLevel(const std::string& partition_full_path, int* level, ErrorInfo& error_info);
 
   KStatus GetPartitionCount(int level, const std::string& disk_path, int* count, ErrorInfo& error_info);
-
-  KStatus Recover(const std::string &link_path, const std::string& tier_path, ErrorInfo& error_info);
 
  private:
   std::string parsePartitionDirToOneLevel(const std::string& partition_full_path);

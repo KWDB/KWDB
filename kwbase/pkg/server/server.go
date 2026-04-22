@@ -193,7 +193,7 @@ var (
 	compressLastSegment = settings.RegisterPublicBoolSetting(
 		"ts.compress.last_segment.enabled",
 		"whether to compress last segment data",
-		true)
+		false)
 
 	maxReservedLastSegNum = settings.RegisterPublicIntSetting(
 		"ts.reserved_last_segment.max_limit",

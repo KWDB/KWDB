@@ -40,6 +40,7 @@ type importFileInfo struct {
 	skip        int64  // Number of records to skip
 	filename    string // source file whole path
 	batchSize   int64  // source batch length for flush
+	limitMemory int64  // source batch memory for flush
 }
 
 type byteCounter struct {
@@ -164,6 +165,7 @@ func readAndConvertFiles(
 				skip:        resumePos,
 				filename:    dataFile,
 				batchSize:   batchSize,
+				limitMemory: spec.Format.Csv.LimitMemory,
 			}
 			recordInfo := &importerRecordInfo{
 				recordCh: make(chan recordBatch, parallelNums),

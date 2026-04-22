@@ -62,11 +62,12 @@ const (
 	csvOptionEnclosed  = "enclosed"
 	rejectedRows       = "rejected_rows"
 	// csvOptionLogColumn  = "log_column"
-	csvOptionThreads    = "thread_concurrency"
-	csvOptionBatchRows  = "batch_rows"
-	csvOptionAutoShrink = "auto_shrink"
-	csvOptionCharset    = "charset"
-	optionWriteWAL      = "writewal"
+	csvOptionThreads     = "thread_concurrency"
+	csvOptionBatchRows   = "batch_rows"
+	csvOptionLimitMemory = "limit_memory"
+	csvOptionAutoShrink  = "auto_shrink"
+	csvOptionCharset     = "charset"
+	optionWriteWAL       = "writewal"
 )
 
 var importOptionExpectValues = map[string]sql.KVStringOptValidate{
@@ -79,11 +80,12 @@ var importOptionExpectValues = map[string]sql.KVStringOptValidate{
 	csvOptionEnclosed:  sql.KVStringOptRequireValue,
 	rejectedRows:       sql.KVStringOptRequireValue,
 	// csvOptionLogColumn:  sql.KVStringOptRequireValue,
-	csvOptionThreads:    sql.KVStringOptRequireValue,
-	csvOptionBatchRows:  sql.KVStringOptRequireValue,
-	csvOptionAutoShrink: sql.KVStringOptRequireNoValue,
-	csvOptionCharset:    sql.KVStringOptRequireValue,
-	optionWriteWAL:      sql.KVStringOptRequireNoValue,
+	csvOptionThreads:     sql.KVStringOptRequireValue,
+	csvOptionBatchRows:   sql.KVStringOptRequireValue,
+	csvOptionLimitMemory: sql.KVStringOptRequireValue,
+	csvOptionAutoShrink:  sql.KVStringOptRequireNoValue,
+	csvOptionCharset:     sql.KVStringOptRequireValue,
+	optionWriteWAL:       sql.KVStringOptRequireNoValue,
 }
 
 // importHeader is the header for RESTORE stmt results.
@@ -627,6 +629,23 @@ func getOptsParas(fileFormat string, opts map[string]string) (roachpb.IOFileForm
 			return ioFileFormat, pgerror.Newf(pgcode.Syntax, "invalid batch_rows value")
 		}
 		ioFileFormat.Csv.BatchRows = int32(batchRows)
+	}
+
+	var limitMemory int64
+	var err error
+	if override, ok := opts[csvOptionLimitMemory]; ok {
+		limitMemory, err = util.ParseMemorySize(override)
+		if err != nil {
+			return ioFileFormat, err
+		}
+		if limitMemory < 0 {
+			return ioFileFormat, errors.Errorf("limit_memory cannot be negative, got %d", limitMemory)
+		}
+		const maxMemory = 1 << 50 // 1PB 上限
+		if limitMemory > maxMemory {
+			return ioFileFormat, errors.Errorf("limit_memory exceeds maximum allowed value (1PB)")
+		}
+		ioFileFormat.Csv.LimitMemory = limitMemory
 	}
 	// log.Infof(context.Background(), "logColumn %d, threads %d, batchRows %d",
 	// 	ioFileFormat.Csv.LogColumn, ioFileFormat.Csv.Threads, ioFileFormat.Csv.BatchRows)

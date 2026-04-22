@@ -79,8 +79,9 @@ var csvValuePool = sync.Pool{
 }
 
 type csvValue struct {
-	rows    []sqlbase.EncDatumRow
-	numRows int64
+	rows          []sqlbase.EncDatumRow
+	numRows       int64
+	completedSend bool
 }
 
 func (cv *csvValue) Reset() {
@@ -248,6 +249,13 @@ func (sp *csvWriter) Run(ctx context.Context) execinfra.RowStats {
 			return nil
 		}
 		parallelNum := runtime.NumCPU()
+		if sp.spec.Options.Threads != 0 {
+			parallelNum = int(sp.spec.Options.Threads)
+		}
+		var shouldLimit bool
+		if sp.spec.Options.LimitMemory != 0 {
+			shouldLimit = true
+		}
 		cwf := &csvWriteFile{
 			csvCh: make(chan *csvValue, parallelNum),
 		}
@@ -316,7 +324,11 @@ func (sp *csvWriter) Run(ctx context.Context) execinfra.RowStats {
 				// receive data, then lock, block other goroutine
 				cwf.Lock()
 				chunk := cwf.chunk
-				cwf.chunk++
+				if !shouldLimit {
+					cwf.chunk++
+				} else if value.completedSend {
+					cwf.chunk++
+				}
 				cwf.Unlock()
 				buf.Reset()
 				for rowID := range value.rows {
@@ -403,22 +415,46 @@ func (sp *csvWriter) Run(ctx context.Context) execinfra.RowStats {
 			sp.input.Start(ctx)
 			input := execinfra.MakeNoMetadataRowSource(sp.input, sp.output)
 			done := false
+			var sendNum int64
 			for {
 				var rowsCount int64
 				c := csvValuePool.Get().(*csvValue)
 				c.Reset()
+				var memoryUsed int64
 				for {
 					// 1 if ChunkRows less than 10W, a batch of ChunkRows will be send. write trhead will
 					//    write file in ChunkRows.
 					// 2 if ChunkRows greater than or equal 10W, a batch of 10W will be send. write thread will
 					//    write file in ChunkRows.
-					if sp.spec.ChunkRows <= sql.ExportChunkSizeDefault { // flag = sp.spec.ChunkRows < sql.ExportChunkSizeDefault
-						if sp.spec.ChunkRows > 0 && rowsCount >= sp.spec.ChunkRows {
+					if shouldLimit {
+						// limit write memory
+						if sp.spec.ChunkRows <= sql.ExportChunkSizeDefault { // flag = sp.spec.ChunkRows < sql.ExportChunkSizeDefault
+							if (rowsCount + sendNum) >= sp.spec.ChunkRows {
+								c.completedSend = true
+								sendNum = 0
+								break
+							}
+						} else {
+							if (rowsCount + sendNum) >= sql.ExportChunkSizeDefault {
+								c.completedSend = true
+								sendNum = 0
+								break
+							}
+						}
+						if memoryUsed >= sp.spec.Options.LimitMemory {
+							sendNum += rowsCount
 							break
 						}
 					} else {
-						if rowsCount >= sql.ExportChunkSizeDefault {
-							break
+						// not limit write memory
+						if sp.spec.ChunkRows <= sql.ExportChunkSizeDefault { // flag = sp.spec.ChunkRows < sql.ExportChunkSizeDefault
+							if sp.spec.ChunkRows > 0 && rowsCount >= sp.spec.ChunkRows {
+								break
+							}
+						} else {
+							if rowsCount >= sql.ExportChunkSizeDefault {
+								break
+							}
 						}
 					}
 
@@ -431,6 +467,7 @@ func (sp *csvWriter) Run(ctx context.Context) execinfra.RowStats {
 						break
 					}
 					c.rows = append(c.rows, row.CopyLen(colsNum))
+					memoryUsed += int64(row.Size())
 					rowsCount++
 				}
 				if rowsCount < 1 {
@@ -439,6 +476,11 @@ func (sp *csvWriter) Run(ctx context.Context) execinfra.RowStats {
 				c.numRows = rowsCount
 				cwf.csvCh <- c
 				if done {
+					if shouldLimit {
+						cwf.Lock()
+						cwf.chunk++
+						cwf.Unlock()
+					}
 					break
 				}
 			}

@@ -37,7 +37,6 @@
 #include "lg_api.h"
 #include "ts_object_error.h"
 
-extern int64_t g_free_space_alert_threshold;
 
 /**
  * @brief Check whether the file or directory exists
@@ -99,10 +98,6 @@ bool ChangeDirLink(string link_path, string new_path, ErrorInfo& error_info);
 std::string ParseLinkDirToReal(string link_path, ErrorInfo& error_info);
 
 bool DirExists(const std::string& path);
-
-int64_t GetDiskFreeSpace(const std::string& path);
-
-bool IsDiskSpaceEnough(const std::string& path);
 
 bool isSoftLink(const std::string& path);
 

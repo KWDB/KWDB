@@ -218,17 +218,19 @@ SQLSTATE: 42601
 ERROR: first() can only be used in timeseries table query or subquery
 SQLSTATE: 0A000
 > select first(ts) as first ,count(ts) from tsdb.t1 group by a,state_window(status) union select first(ts) as first ,count(ts) from tsdb.t2 group by a,state_window(status);
-ERROR: state_window(): multiple group window functions are not supported.
+ERROR: group window function is only supported for use in single time series table query.
 SQLSTATE: 42601
 > select first(ts) as first ,count(ts) from tsdb.t1 group by a,state_window(status) union select first(ts) as first ,count(ts) from tsdb.t2 group by a;
 ERROR: group window function is only supported for use in single time series table query.
 SQLSTATE: 42601
 > select first(ts) as first ,count(ts) from tsdb.t1 where ts in (select first(ts) from tsdb.t2 group by state_window(status));
-ERROR: state_window(): group window function is only supported for use in single time series table query.
+ERROR: state_window() can be only used in groupby
 SQLSTATE: 42601
 > select first(ts) as first ,count(ts) from tsdb.t1 where ts = (select first(ts) from tsdb.t2) group by a, state_window(status);
-ERROR: state_window(): group window function is only supported for use in single time series table query.
-SQLSTATE: 42601
+              first             | count
+--------------------------------+--------
+  2025-01-10 06:14:47.298+00:00 |     1
+(1 row)
 > select first(ts) as first ,count(ts) from (select * from tsdb.t1 group by a, state_window(status));
 ERROR: column "ts" must appear in the GROUP BY clause or be used in an aggregate function
 SQLSTATE: 42803
@@ -442,17 +444,19 @@ SQLSTATE: 42601
 ERROR: first() can only be used in timeseries table query or subquery
 SQLSTATE: 0A000
 > select first(ts) as first ,count(ts) from tsdb.t1 group by a,session_window(ts, '1s') union select first(ts) as first ,count(ts) from tsdb.t2 group by a,session_window(ts, '1s');
-ERROR: session_window(): multiple group window functions are not supported.
+ERROR: group window function is only supported for use in single time series table query.
 SQLSTATE: 42601
 > select first(ts) as first ,count(ts) from tsdb.t1 group by a,session_window(ts, '1s') union select first(ts) as first ,count(ts) from tsdb.t2 group by a;
 ERROR: group window function is only supported for use in single time series table query.
 SQLSTATE: 42601
 > select first(ts) as first ,count(ts) from tsdb.t1 where ts in (select first(ts) from tsdb.t2 group by session_window(ts, '1s'));
-ERROR: session_window(): group window function is only supported for use in single time series table query.
+ERROR: session_window() can be only used in groupby
 SQLSTATE: 42601
 > select first(ts) as first ,count(ts) from tsdb.t1 where ts = (select first(ts) from tsdb.t2) group by a, session_window(ts, '1s');
-ERROR: session_window(): group window function is only supported for use in single time series table query.
-SQLSTATE: 42601
+              first             | count
+--------------------------------+--------
+  2025-01-10 06:14:47.298+00:00 |     1
+(1 row)
 > select first(ts) as first ,count(ts) from (select * from tsdb.t1 group by a, session_window(ts, '1s'));
 ERROR: column "ts" must appear in the GROUP BY clause or be used in an aggregate function
 SQLSTATE: 42803
@@ -1079,17 +1083,19 @@ SQLSTATE: 42601
 ERROR: first() can only be used in timeseries table query or subquery
 SQLSTATE: 0A000
 > select first(ts) as first ,count(ts) from tsdb.t1 group by a,count_window(4) union select first(ts) as first ,count(ts) from tsdb.t2 group by a,count_window(4);
-ERROR: count_window(): multiple group window functions are not supported.
+ERROR: group window function is only supported for use in single time series table query.
 SQLSTATE: 42601
 > select first(ts) as first ,count(ts) from tsdb.t1 group by a,count_window(4) union select first(ts) as first ,count(ts) from tsdb.t2 group by a;
 ERROR: group window function is only supported for use in single time series table query.
 SQLSTATE: 42601
 > select first(ts) as first ,count(ts) from tsdb.t1 where ts in (select first(ts) from tsdb.t2 group by count_window(4));
-ERROR: count_window(): group window function is only supported for use in single time series table query.
+ERROR: count_window() can be only used in groupby
 SQLSTATE: 42601
 > select first(ts) as first ,count(ts) from tsdb.t1 where ts = (select first(ts) from tsdb.t2) group by a, count_window(4);
-ERROR: count_window(): group window function is only supported for use in single time series table query.
-SQLSTATE: 42601
+              first             | count
+--------------------------------+--------
+  2025-01-10 06:14:47.298+00:00 |     1
+(1 row)
 > select first(ts) as first ,count(ts) from (select * from tsdb.t1 group by a, count_window(4));
 ERROR: column "ts" must appear in the GROUP BY clause or be used in an aggregate function
 SQLSTATE: 42803
@@ -1363,17 +1369,18 @@ SQLSTATE: 42601
 ERROR: first() can only be used in timeseries table query or subquery
 SQLSTATE: 0A000
 > select first(ts) as first ,count(ts) from tsdb.t1 group by a,event_window(status>2, b<3) union select first(ts) as first ,count(ts) from tsdb.t2 group by a,event_window(status>2, b<3);
-ERROR: event_window(): multiple group window functions are not supported.
+ERROR: group window function is only supported for use in single time series table query.
 SQLSTATE: 42601
 > select first(ts) as first ,count(ts) from tsdb.t1 group by a,event_window(status>2, b<3) union select first(ts) as first ,count(ts) from tsdb.t2 group by a;
 ERROR: group window function is only supported for use in single time series table query.
 SQLSTATE: 42601
 > select first(ts) as first ,count(ts) from tsdb.t1 where ts in (select first(ts) from tsdb.t2 group by event_window(status>2, b<3));
-ERROR: event_window(): group window function is only supported for use in single time series table query.
+ERROR: event_window() can be only used in groupby
 SQLSTATE: 42601
 > select first(ts) as first ,count(ts) from tsdb.t1 where ts = (select first(ts) from tsdb.t2) group by a, event_window(status>2, b<3);
-ERROR: event_window(): group window function is only supported for use in single time series table query.
-SQLSTATE: 42601
+  first | count
+--------+--------
+(0 rows)
 > select first(ts) as first ,count(ts) from (select * from tsdb.t1 group by a, event_window(status>2, b<3));
 ERROR: column "ts" must appear in the GROUP BY clause or be used in an aggregate function
 SQLSTATE: 42803
@@ -38119,17 +38126,22 @@ SQLSTATE: 42601
 ERROR: first() can only be used in timeseries table query or subquery
 SQLSTATE: 0A000
 > select first(ts) as first ,count(ts) from tsdb.t1 group by a,time_window(ts, '1mons', '1w') union select first(ts) as first ,count(ts) from tsdb.t2 group by a,time_window(ts, '1mons', '1w');
-ERROR: time_window(): multiple group window functions are not supported.
+ERROR: group window function is only supported for use in single time series table query.
 SQLSTATE: 42601
 > select first(ts) as first ,count(ts) from tsdb.t1 group by a,time_window(ts, '1mons', '1w') union select first(ts) as first ,count(ts) from tsdb.t2 group by a;
 ERROR: group window function is only supported for use in single time series table query.
 SQLSTATE: 42601
 > select first(ts) as first ,count(ts) from tsdb.t1 where ts in (select first(ts) from tsdb.t2 group by time_window(ts, '1mons', '1w'));
-ERROR: time_window(): group window function is only supported for use in single time series table query.
+ERROR: time_window() can be only used in groupby
 SQLSTATE: 42601
 > select first(ts) as first ,count(ts) from tsdb.t1 where ts = (select first(ts) from tsdb.t2) group by a, time_window(ts, '1mons', '1w');
-ERROR: time_window(): group window function is only supported for use in single time series table query.
-SQLSTATE: 42601
+            first           | count
+----------------------------+--------
+  2024-12-16 00:00:00+00:00 |     1
+  2024-12-23 00:00:00+00:00 |     1
+  2024-12-30 00:00:00+00:00 |     1
+  2025-01-06 00:00:00+00:00 |     1
+(4 rows)
 > select first(ts) as first ,count(ts) from (select * from tsdb.t1 group by a, time_window(ts, '1mons', '1w'));
 ERROR: column "ts" must appear in the GROUP BY clause or be used in an aggregate function
 SQLSTATE: 42803
@@ -38862,6 +38874,16 @@ CREATE PROCEDURE
   22222
   32767
 (5 rows)
+> drop procedure test_procedure_opt_dxy_ts.pro2;
+ERROR: procedure "test_procedure_opt_dxy_ts.pro2" does not exist
+SQLSTATE: 42704
+> CREATE PROCEDURE test_procedure_opt_dxy_ts.pro2() $$BEGIN SET @a=0;SET @b='\x64787968636b78'; SELECT max(code1) FROM test_procedure_opt_dxy_ts.t1 GROUP BY @b; SELECT max(code1) FROM test_procedure_opt_dxy_ts.t1 GROUP BY state_window(e1); END $$;
+CREATE PROCEDURE
+> drop procedure test_procedure_opt_dxy_ts.pro3;
+ERROR: procedure "test_procedure_opt_dxy_ts.pro3" does not exist
+SQLSTATE: 42704
+> CREATE PROCEDURE test_procedure_opt_dxy_ts.pro3() $$BEGIN SET @a=0;SET @b='\x64787968636b78'; SELECT max(code1) FROM test_procedure_opt_dxy_ts.t1 GROUP BY state_window(e1); SELECT max(code1) FROM test_procedure_opt_dxy_ts.t1 GROUP BY @b; END $$;
+CREATE PROCEDURE
 > drop database test_procedure_opt_dxy_ts cascade;
 DROP DATABASE
 > create ts database tsdb;

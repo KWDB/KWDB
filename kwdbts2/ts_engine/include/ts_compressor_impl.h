@@ -242,7 +242,6 @@ class ConcreateTsCompressor : public TsCompressorBase {
   }
   bool Compress(TSSlice raw, const TsBitmapBase *bitmap, uint32_t count,
                 TsBufferBuilder *out) const override {
-    out->clear();
     assert(bitmap == nullptr || bitmap->GetCount() == count);
     int stride = Compressor::stride;
     if (stride < 0 || bitmap == nullptr || bitmap->IsAllValid()) {

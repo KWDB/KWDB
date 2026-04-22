@@ -60,18 +60,21 @@ TEST(BitWriter, WriteBits) {
   {
     kwdbts::TsBitWriter writer(&buffer);
     EXPECT_TRUE(writer.WriteBits(10, 0b101));
-    ASSERT_EQ(buffer.size(), 2);
-    EXPECT_EQ(static_cast<uint8_t>(buffer[0]), 0b1);
-    EXPECT_EQ(static_cast<uint8_t>(buffer[1]), 0b01000000);
+    ASSERT_EQ(buffer.size(), 4);
+    EXPECT_EQ(static_cast<uint8_t>(buffer[0]), 0b10111001);
+    EXPECT_EQ(static_cast<uint8_t>(buffer[1]), 0b10110111);
+    EXPECT_EQ(static_cast<uint8_t>(buffer[2]), 0b1);
+    EXPECT_EQ(static_cast<uint8_t>(buffer[3]), 0b01000000);
     EXPECT_TRUE(writer.WriteBits(10, 0b10101101));
-    ASSERT_EQ(buffer.size(), 3);
-    EXPECT_EQ(static_cast<uint8_t>(buffer[1]), 0b01001010);
-    EXPECT_EQ(static_cast<uint8_t>(buffer[2]), 0b11010000);
+    ASSERT_EQ(buffer.size(), 5);
+    EXPECT_EQ(static_cast<uint8_t>(buffer[3]), 0b01001010);
+    EXPECT_EQ(static_cast<uint8_t>(buffer[4]), 0b11010000);
   }
 
   for (int i = 0; i < 8; ++i) {
     kwdbts::TsBufferBuilder buf;
     for (int j = 1; j <= 64; ++j) {
+      size_t origin_size = buf.size();
       kwdbts::TsBitWriter w{&buf};
       for (int n = 0; n < i; ++n) {
         w.WriteBit(0);
@@ -82,9 +85,11 @@ TEST(BitWriter, WriteBits) {
         ASSERT_TRUE(w.WriteBits(j, -1));
       }
 
-      ASSERT_EQ(buf.size(), (i + j - 1) / 8 + 1);
+      ASSERT_EQ(buf.size(), origin_size + (i + j - 1) / 8 + 1);
 
-      kwdbts::TsBitReader r{buf.AsStringView()};
+      TSSlice data = buf.SubSlice(origin_size, buf.size() - origin_size);
+      std::string_view v = {data.data, data.len};
+      kwdbts::TsBitReader r{v};
       bool b;
       for (int k = 0; k < i; ++k) {
         ASSERT_TRUE(r.ReadBit(&b));
@@ -123,13 +128,14 @@ TEST(BitWriter, WriteBit) {
                               {"11111111", {0xFF}},
                               {"101010010010", {0xA9, 0x20}}};
   for (const auto &t : cases) {
+    size_t origin_size = buffer.size();
     kwdbts::TsBitWriter writer(&buffer);
     for (auto c : t.binary) {
       writer.WriteBit(c == '1');
     }
-    ASSERT_EQ(buffer.size(), t.number.size());
+    ASSERT_EQ(buffer.size(), origin_size + t.number.size());
     for (int i = 0; i < t.number.size(); ++i) {
-      EXPECT_EQ(static_cast<uint8_t>(buffer[i]), t.number[i]) << t.binary << " at: " << i;
+      EXPECT_EQ(static_cast<uint8_t>(buffer[origin_size + i]), t.number[i]) << t.binary << " at: " << i;
     }
   }
 }
@@ -153,13 +159,13 @@ TEST(BitWriter, WriteByte) {
     for (int i = 0; i < 256; ++i) {
       writer.WriteByte(i);
     }
-    ASSERT_EQ(buffer.size(), 257);
-    EXPECT_EQ(buffer[0], '\x80');
+    ASSERT_EQ(buffer.size(), 256 + 257);
+    EXPECT_EQ(buffer[256 + 0], '\x80');
     for (uint32_t i = 1; i < 256; ++i) {
-      EXPECT_EQ(static_cast<uint8_t>(buffer[i]), (((i - 1) & 0x03) << 6) | ((i & 0xFC) >> 2))
+      EXPECT_EQ(static_cast<uint8_t>(buffer[256 + i]), (((i - 1) & 0x03) << 6) | ((i & 0xFC) >> 2))
           << "idx " << i;
     }
-    EXPECT_EQ(static_cast<uint8_t>(buffer[256]), 0xC0);
+    EXPECT_EQ(static_cast<uint8_t>(buffer[256 + 256]), 0xC0);
   }
 }
 

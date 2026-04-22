@@ -83,7 +83,6 @@ TYPED_TEST(CompressorManagerTester, TwoLevelCompress) {
   for (int i = 0; i < count; ++i) {
     bitmap[i] = i % 7 ? kwdbts::kValid : kwdbts::kNull;
   }
-  out.clear();
   ASSERT_TRUE(inst.CompressData({reinterpret_cast<char*>(vec.data()), vec.size() * sz}, &bitmap, vec.size(), &out,
                     GetCompressorAlg<TypeParam>::Alg, kwdbts::CompressAlgo::kSnappy, 1));
   ASSERT_TRUE(inst.DecompressData(out.GetBuffer(), &bitmap, vec.size(), &raw));
