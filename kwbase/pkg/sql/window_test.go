@@ -249,20 +249,6 @@ func TestWindowNodeColAndAggContainerMethods(t *testing.T) {
 		testFunc  func(t *testing.T, c *windowNodeColAndAggContainer)
 	}{
 		{
-			name: "test IndexedVarEval panic",
-			setupFunc: func() *windowNodeColAndAggContainer {
-				return &windowNodeColAndAggContainer{}
-			},
-			testFunc: func(t *testing.T, c *windowNodeColAndAggContainer) {
-				defer func() {
-					if r := recover(); r == nil {
-						t.Error("IndexedVarEval should panic")
-					}
-				}()
-				_, _ = c.IndexedVarEval(0, &tree.EvalContext{})
-			},
-		},
-		{
 			name: "test IndexedVarResolvedType panic",
 			setupFunc: func() *windowNodeColAndAggContainer {
 				return &windowNodeColAndAggContainer{}

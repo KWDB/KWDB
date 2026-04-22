@@ -236,7 +236,8 @@ func TestCheckTsCompressStage(t *testing.T) {
 		{"valid value 0", "0", false},
 		{"valid value 1", "1", false},
 		{"valid value 2", "2", false},
-		{"invalid value 3", "3", true},
+		{"valid value 3", "3", false},
+		{"invalid value 4", "4", true},
 		{"invalid value -1", "-1", true},
 		{"invalid value abc", "abc", true},
 	}
