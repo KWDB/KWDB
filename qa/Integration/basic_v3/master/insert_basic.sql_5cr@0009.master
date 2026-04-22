@@ -1,0 +1,40 @@
+> drop database if exists test_tsinsert_direct_batcherror cascade;
+DROP DATABASE
+> create ts database test_tsinsert_direct_batcherror;
+CREATE TS DATABASE
+> create table test_tsinsert_direct_batcherror.t1 (
+  ts timestamptz not null,
+  val1 double,
+  val2 double,
+  val3 double,
+  time timestamptz
+) tags (ternimal_id int4 not null) primary tags (ternimal_id);
+CREATE TABLE
+> set cluster setting server.tsinsert_direct.enabled = true;
+SET CLUSTER SETTING
+> set session ts_ignore_batcherror = true;
+SET
+> insert into test_tsinsert_direct_batcherror.t1 values
+  ('2024-01-01 00:00:00+00',1.1,2.2,3.3,'2024-01-01 00:00:00+00',9223372036854775807),
+  ('2024-01-01 00:00:01+00',1.1,2.2,3.3,'2024-01-01 00:00:01+00',9223372036854775808);
+ERROR: All BatchInsert Error.Check logs under the user data directory for more information.
+> select count(*) from test_tsinsert_direct_batcherror.t1;
+  count
+---------
+      0
+(1 row)
+> insert into test_tsinsert_direct_batcherror.t1 values
+  ('2024-01-01 00:00:02+00',1.1,2.2,3.3,'2024-01-01 00:00:02+00',1),
+  ('2024-01-01 00:00:03+00',1.1,2.2,3.3,'2024-01-01 00:00:03+00',9223372036854775808);
+NOTICE:  1 rows rejected
+Details: 1 rows rejected due to err. Check logs under the user data directory for more information.
+INSERT 1
+> select count(*), min(ternimal_id), max(ternimal_id) from test_tsinsert_direct_batcherror.t1;
+  count | min | max
+--------+-----+------
+      1 |   1 |   1
+(1 row)
+> set session ts_ignore_batcherror = false;
+SET
+> drop database if exists test_tsinsert_direct_batcherror cascade;
+DROP DATABASE

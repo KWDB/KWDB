@@ -867,7 +867,7 @@ func GetRowBytesForTsInsert(
 	inputValues := make([]tree.Datums, rowNum)
 	outputValues := make([]tree.Datums, 0, rowNum)
 
-	insertStmt := stmts[0].Insertdirectstmt
+	insertStmt := &stmts[0].Insertdirectstmt
 	insertValues := insertStmt.InsertValues
 	valuesType := insertStmt.ValuesType
 

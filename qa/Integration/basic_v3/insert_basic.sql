@@ -496,3 +496,29 @@ insert into test_insert2.t1 (k_timestamp,id,code1,code8,code14,code16) values
  (2000,1,1,'a','a','bbcc');
 select k_timestamp,id,code1,code8,code14,code16 from test_insert2.t1 order by k_timestamp;
 drop database if exists test_insert2 cascade;
+
+-- testcase0009 ignore batcherror insert
+-- bug-IJCCFG
+drop database if exists test_tsinsert_direct_batcherror cascade;
+create ts database test_tsinsert_direct_batcherror;
+create table test_tsinsert_direct_batcherror.t1 (
+  ts timestamptz not null,
+  val1 double,
+  val2 double,
+  val3 double,
+  time timestamptz
+) tags (ternimal_id int4 not null) primary tags (ternimal_id);
+set cluster setting server.tsinsert_direct.enabled = true;
+set session ts_ignore_batcherror = true;
+insert into test_tsinsert_direct_batcherror.t1 values
+  ('2024-01-01 00:00:00+00',1.1,2.2,3.3,'2024-01-01 00:00:00+00',9223372036854775807),
+  ('2024-01-01 00:00:01+00',1.1,2.2,3.3,'2024-01-01 00:00:01+00',9223372036854775808);
+select count(*) from test_tsinsert_direct_batcherror.t1;
+
+-- tsinsert_direct batch error: valid rows should still be inserted when bad rows are ignored.
+insert into test_tsinsert_direct_batcherror.t1 values
+  ('2024-01-01 00:00:02+00',1.1,2.2,3.3,'2024-01-01 00:00:02+00',1),
+  ('2024-01-01 00:00:03+00',1.1,2.2,3.3,'2024-01-01 00:00:03+00',9223372036854775808);
+select count(*), min(ternimal_id), max(ternimal_id) from test_tsinsert_direct_batcherror.t1;
+set session ts_ignore_batcherror = false;
+drop database if exists test_tsinsert_direct_batcherror cascade;

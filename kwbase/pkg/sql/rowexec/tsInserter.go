@@ -167,7 +167,14 @@ func startForSingleMode(ctx context.Context, tri *tsInserter) context.Context {
 
 	var entitiesAffected uint32
 	var unorderedAffected uint32
-	for _, rawResponse := range ba.RawResponse().Responses {
+	rawResponses := ba.RawResponse()
+	if rawResponses == nil {
+		tri.insertSuccess = false
+		tri.err = errors.Newf("nodeID %d insert failed, fail reason: empty ts insert response;", tri.nodeID)
+		log.Errorf(context.Background(), tri.err.Error())
+		return ctx
+	}
+	for _, rawResponse := range rawResponses.Responses {
 		if v, ok := rawResponse.Value.(*roachpb.ResponseUnion_TsPut); ok {
 			tri.dedupRule = v.TsPut.DedupRule
 			tri.dedupRows += v.TsPut.NumKeys
@@ -241,7 +248,14 @@ func startForDistributeMode(ctx context.Context, tri *tsInserter) context.Contex
 
 	var entitiesAffected uint32
 	var unorderedAffected uint32
-	for _, rawResponse := range ba.RawResponse().Responses {
+	rawResponses := ba.RawResponse()
+	if rawResponses == nil {
+		tri.insertSuccess = false
+		tri.err = errors.Newf("nodeID %d insert failed, fail reason: empty ts insert response;", tri.nodeID)
+		log.Errorf(context.Background(), tri.err.Error())
+		return ctx
+	}
+	for _, rawResponse := range rawResponses.Responses {
 		if v, ok := rawResponse.Value.(*roachpb.ResponseUnion_TsRowPut); ok {
 			tri.dedupRule = v.TsRowPut.DedupRule
 			tri.insertRows += v.TsRowPut.NumKeys
