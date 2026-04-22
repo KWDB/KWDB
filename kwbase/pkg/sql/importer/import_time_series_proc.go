@@ -89,6 +89,7 @@ func runTimeSeriesImport(
 	closeChan := make(chan struct{}, int(parallelNums))
 	g := ctxgroup.WithContext(ctx)
 	stopChan := make(chan bool, int(parallelNums))
+
 	// Read csv file, convert it to datums and split datums by p_tag.
 	g.GoCtx(func(ctx context.Context) error {
 		defer func() {
@@ -247,6 +248,7 @@ type timeSeriesImportInfo struct {
 type datumsInfo struct {
 	datums []tree.Datums
 	priVal string
+	size   int64
 }
 
 const defaultBatchSize = 500
@@ -489,13 +491,15 @@ func (t *timeSeriesImportInfo) getType(id int) (oid.Oid, bool) {
 
 // recordBatch represents recordBatch of data to convert.
 type recordDatums struct {
-	datumsMap map[string][]tree.Datums
-	count     int64
-	batchSize int64
+	datumsMap   map[string][]tree.Datums
+	count       int64
+	batchSize   int64
+	size        int64
+	historySize int64
 }
 
 // append: add datums elements by priVal
-func (r *recordDatums) append(datums tree.Datums, priVal string) {
+func (r *recordDatums) append(datums tree.Datums, priVal string, readSize int64) {
 	datumSlice, ok := r.datumsMap[priVal]
 	if !ok {
 		// TODO
@@ -503,6 +507,7 @@ func (r *recordDatums) append(datums tree.Datums, priVal string) {
 	}
 	datumSlice = append(datumSlice, datums)
 	r.datumsMap[priVal] = datumSlice
+	r.size = r.LineSize(readSize)
 	r.count++
 }
 
@@ -526,12 +531,13 @@ func (r *recordDatums) flush(ctx context.Context, t *timeSeriesImportInfo) {
 				t.handleCoruptedResult(ctx, tree.ConvertDatumsToStr(datum, ','), ctx.Err())
 			}
 		default:
-			t.datumsCh[workerID] <- datumsInfo{datums: datums, priVal: priVal}
+			t.datumsCh[workerID] <- datumsInfo{datums: datums, priVal: priVal, size: r.size}
 		}
 	}
-
+	r.historySize += r.size
 	r.datumsMap = make(map[string][]tree.Datums)
 	r.count = 0
+	r.size = 0
 }
 
 // SetCsvOpt apply opt in roachpb params to csvReader
@@ -552,9 +558,15 @@ func SetCsvOpt(csvReader *csv.Reader, opts roachpb.CSVOptions) {
 }
 
 const (
-	minimalBatchSize = 10000
-	durationShrink   = 10
+	minimalBatchSize       = 10000
+	durationShrink         = 10
+	importDatumDefaultSize = 1 << 20 //1 MiB
 )
+
+// LineSize returns the size of the recordDatums
+func (r *recordDatums) LineSize(allSize int64) int64 {
+	return allSize - r.historySize
+}
 
 // readCSVFile read data from csv file ,skip rows that have been specified
 // by the user or rows that have already been imported.Check if the length
@@ -627,9 +639,8 @@ func (t *timeSeriesImportInfo) readAndConvertTimeSeriesFile(
 			break
 		}
 		if err != nil {
-			row := tree.StrRecord(record, ',')
-			t.handleCoruptedResult(ctx, row, err)
-			continue
+			log.Infof(ctx, "An error occurred during import, and the error is %s", err)
+			return err
 		}
 		count++
 		if len(record) == expectedColsLen {
@@ -664,9 +675,15 @@ func (t *timeSeriesImportInfo) readAndConvertTimeSeriesFile(
 			// If rowsVal fail to generate payload, write rowsVal to the reject file.
 			t.handleCoruptedResult(ctx, row, err)
 		} else {
-			rb.append(datums, priVal)
+			rb.append(datums, priVal, csvReader.ReadSize())
 		}
-		if rb.count > avgBatchSize {
+		var shouldLimit bool
+		if t.opts.LimitMemory != 0 {
+			shouldLimit = rb.count > avgBatchSize || rb.LineSize(csvReader.ReadSize()) >= t.opts.LimitMemory
+		} else {
+			shouldLimit = rb.count > avgBatchSize
+		}
+		if shouldLimit {
 			everFlushed = true
 			rb.flush(ctx, t)
 		}
@@ -941,13 +958,21 @@ func (t *timeSeriesImportInfo) ingestDatums(ctx context.Context, closeChan chan 
 			case datumsInfo := <-datumsChan:
 				// every time get datums from convert string to datum finished. assign to target priValrows. if need send to storage. then send.
 				// otherwise put datums to map[priVal]
+				var memorySize int64
 				datumSlice, ok := datumsMap[datumsInfo.priVal]
 				if !ok {
 					datumSlice = make([]tree.Datums, 0, t.batchSize)
 				}
+				memorySize += datumsInfo.size
 				datumSlice = append(datumSlice, datumsInfo.datums...)
 				// fmt.Printf("datumSlice len %d\n",len(datumSlice))
-				if len(datumSlice) > avgBatchSize {
+				var shouldSend bool
+				if t.opts.LimitMemory != 0 {
+					shouldSend = len(datumSlice) > avgBatchSize || memorySize > t.opts.LimitMemory
+				} else {
+					shouldSend = len(datumSlice) > avgBatchSize
+				}
+				if shouldSend {
 					// log.Infof(ctx, "import debug info t.ingest by count %d", len(datumSlice))
 					if err := t.ingest(ctx, datumSlice, i); err != nil {
 						var starts, ends string

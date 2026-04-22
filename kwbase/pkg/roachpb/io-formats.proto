@@ -54,6 +54,7 @@ message CSVOptions {
   optional int32 batchRows = 7 [(gogoproto.nullable) = false];
   optional bool autoShrink = 8 [(gogoproto.nullable) = false];
   optional string charset = 9 [(gogoproto.nullable) = false];
+  optional int64 limitMemory = 10 [(gogoproto.nullable) = false];
 }
 
 // MySQLOutfileOptions describe the format of mysql's outfile.

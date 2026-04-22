@@ -88,6 +88,8 @@ const (
 	exportOptionCharset     = "charset"
 	exportOptionComment     = "comment"
 	exportOptionPrivileges  = "privileges"
+	exportOptionThreads     = "thread_concurrency"
+	exportOptionLimitMemory = "limit_memory"
 )
 
 var exportOptionExpectValues = map[string]KVStringOptValidate{
@@ -103,6 +105,8 @@ var exportOptionExpectValues = map[string]KVStringOptValidate{
 	exportOptionCharset:     KVStringOptRequireValue,
 	exportOptionComment:     KVStringOptRequireNoValue,
 	exportOptionPrivileges:  KVStringOptRequireNoValue,
+	exportOptionThreads:     KVStringOptRequireValue,
+	exportOptionLimitMemory: KVStringOptRequireValue,
 }
 
 // ExportChunkSizeDefault The default limit for the number of rows in an exported file
@@ -262,6 +266,33 @@ func (ef *execFactory) ConstructExport(
 			return nil, pgerror.New(pgcode.InvalidParameterValue, "invalid csv chunk size")
 		}
 	}
+
+	if override, ok := optVals[exportOptionThreads]; ok {
+		threads, err := strconv.Atoi(override)
+		if err != nil {
+			return nil, err
+		}
+		if threads < 0 || threads > 1024 {
+			return nil, errors.Errorf("thread_concurrency must be between 0 and 1024, got %d", threads)
+		}
+		csvOpts.Threads = int32(threads)
+	}
+
+	if override, ok := optVals[exportOptionLimitMemory]; ok {
+		limitMemory, err := util.ParseMemorySize(override)
+		if err != nil {
+			return nil, err
+		}
+		if limitMemory < 0 {
+			return nil, errors.Errorf("limit_memory cannot be negative, got %d", limitMemory)
+		}
+		const maxMemory = 1 << 50 // 1PB 上限
+		if limitMemory > maxMemory {
+			return nil, errors.Errorf("limit_memory exceeds maximum allowed value (1PB)")
+		}
+		csvOpts.LimitMemory = limitMemory
+	}
+
 	var queryName string
 	if export.Query.Select == nil {
 		return nil, errors.Errorf("cannot export nil or strange select")
