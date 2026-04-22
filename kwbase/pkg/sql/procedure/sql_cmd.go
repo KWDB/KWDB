@@ -12,6 +12,8 @@
 package procedure
 
 import (
+	"errors"
+
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/exec"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/props/physical"
@@ -233,7 +235,9 @@ func (ins *StmtIns) executeImplement(
 	}
 	// implicit transaction commit.
 	if err := dealImplicitTxn(params, rCtx, &implicitTxnFlag, true); err != nil {
-		return err
+		if _, _, err := dealWithHandleByType(params, rCtx, tree.SQLEXCEPTION); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -264,15 +268,15 @@ func dealImplicitTxn(
 ) (err error) {
 	if *implicitTxnFlag && rCtx.GetProcedureTxn() == tree.ProcedureTransactionStart {
 		if commit {
-			err = params.GetTxn().CommitOrCleanup(params.GetCtx())
+			err = params.GetTxn().Commit(params.GetCtx())
 		} else {
 			err = params.GetTxn().Rollback(params.GetCtx())
 		}
-		if err != nil {
-			return err
-		}
 		rCtx.SetProcedureTxn(tree.ProcedureTransactionDefault)
 		*implicitTxnFlag = false
+		if err != nil {
+			return errors.New("commit/rollback implicit transaction failed: " + err.Error())
+		}
 	}
 	return nil
 }

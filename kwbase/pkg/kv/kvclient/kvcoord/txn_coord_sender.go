@@ -747,21 +747,12 @@ func (tc *TxnCoordSender) handleRetryableErrLocked(
 	// old one is toast. This TxnCoordSender cannot be used any more - future
 	// Send() calls will be rejected; the client is supposed to create a new
 	// one.
-	if errTxnID != newTxn.ID {
-		// Remember that this txn is aborted to reject future requests.
-		tc.mu.txn.Status = roachpb.ABORTED
-		// Abort the old txn. The client is not supposed to use use this
-		// TxnCoordSender any more.
-		tc.interceptorAlloc.txnHeartbeater.abortTxnAsyncLocked(ctx)
-		log.VEventf(ctx, 2, "closes all the interceptors on retry")
-		tc.cleanupTxnLocked(ctx)
-		return retErr
-	}
-	// Set txnState to txnRetryableError for statement level retry at RC level
-	if tc.mu.txn.IsoLevel == enginepb.ReadCommitted {
-		tc.mu.txnState = txnRetryableError
-		tc.mu.storedRetryableErr = retErr
-	}
+
+	// Move to a retryable error state, where all Send() calls fail until the
+	// state is cleared.
+	tc.mu.txnState = txnRetryableError
+	tc.mu.storedRetryableErr = retErr
+
 	// If the previous transaction is aborted, it means we had to start a new
 	// transaction and the old one is toast. This TxnCoordSender cannot be used
 	// any more - future Send() calls will be rejected; the client is supposed to
