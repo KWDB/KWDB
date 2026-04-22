@@ -239,16 +239,19 @@ std::make_signed_t<T> DecodeZigZag(T v) {
 class TsBitWriter {
  private:
   TsBufferBuilder *rep_;
+  size_t origin_pos_;
   size_t pos_;
 
  public:
-  explicit TsBitWriter(TsBufferBuilder *rep) : rep_(rep), pos_(0) { rep_->clear(); }
+  explicit TsBitWriter(TsBufferBuilder *rep) : rep_(rep), pos_(0) {
+    origin_pos_ = rep->size();
+  }
   // const std::string &Str() const { return *rep_; }
   bool WriteBits(int nbits, uint64_t v) {
     assert(nbits > 0 && nbits <= 64);
     assert(nbits == 64 || v <= ((1ULL << nbits) - 1));
     while (nbits > 0) {
-      int nspace = rep_->size() * 8 - pos_;
+      int nspace = (rep_->size() - origin_pos_) * 8 - pos_;
       if (nspace == 0) {
         rep_->push_back(0);
       } else if (nspace >= nbits) {
@@ -269,7 +272,7 @@ class TsBitWriter {
   }
 
   bool WriteBit(bool bit) {
-    if (rep_->size() * 8 - pos_ == 0) {
+    if ((rep_->size() - origin_pos_) * 8 - pos_ == 0) {
       rep_->push_back(0);
     }
     rep_->back() |= bit << (7 - pos_ % 8);

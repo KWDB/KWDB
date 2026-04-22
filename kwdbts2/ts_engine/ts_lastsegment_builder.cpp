@@ -203,27 +203,22 @@ KStatus TsLastSegmentBuilder::RecordAndWriteBlockToFile() {
   TSSlice entity_id_slice{reinterpret_cast<char*>(entity_id_buffer_.data()),
                           entity_id_buffer_.size() * sizeof(TSEntityID)};
   const auto& mgr = CompressorManager::GetInstance();
-  TsBufferBuilder compressed_data;
-  bool ok = mgr.CompressData(entity_id_slice, nullptr, entity_id_buffer_.size(), &compressed_data, EncodeAlgo::kPlain,
+  compressed_data_.clear();
+  bool ok = mgr.CompressData(entity_id_slice, nullptr, entity_id_buffer_.size(), &compressed_data_, EncodeAlgo::kPlain,
                              CompressAlgo::kPlain, 0);
   if (!ok) {
     return FAIL;
   }
-  auto s = last_segment_file_->Append(compressed_data.AsSlice());
-  if (s == FAIL) {
-    return s;
-  }
 
-  block_info.entity_id_len = compressed_data.size();
+  block_info.entity_id_len = compressed_data_.size();
 
   TsMetricCompressInfo compress_info;
-  compressed_data.clear();
-  ok = metric_block->GetCompressedData(&compressed_data, &compress_info, EngineOptions::compress_last_segment,
+  ok = metric_block->GetCompressedData(compressed_data_, compress_info, EngineOptions::compress_last_segment,
                                        EngineOptions::compress_last_segment);
   if (!ok) {
     return FAIL;
   }
-  s = last_segment_file_->Append(compressed_data.AsSlice());
+  auto s = last_segment_file_->Append(compressed_data_.AsSlice());
   if (s == FAIL) {
     return s;
   }

@@ -111,7 +111,7 @@ bool GorillaInt::Compress(TSSlice data, uint64_t count, TsBufferBuilder *out, in
     return true;
   }
   assert(data.len == count * dsize);
-  out->reserve(dsize * count);
+  out->reserve(out->size() + dsize * count);
   TsBitWriter writer(out);
   int64_t *ts_data = reinterpret_cast<int64_t *>(data.data);
 
@@ -279,7 +279,7 @@ bool GorillaIntV2<T>::Compress(TSSlice data, uint64_t count, TsBufferBuilder *ou
     return true;
   }
   assert(data.len == count * stride);
-  out->reserve(stride * count);
+  out->reserve(out->size() + stride * count);
   T *ts_data = reinterpret_cast<T *>(data.data);
 
   // 1. record the first timestamp;
@@ -358,7 +358,6 @@ template <class T>
 bool Chimp<T>::Compress(TSSlice data, uint64_t count, TsBufferBuilder *out, int level) const {
   assert(data.len == sizeof(T) * count);
   auto sz = sizeof(T) * 8;
-  out->clear();
 
   if (count == 0) {
     return true;  // no data, no need to compress
@@ -526,7 +525,6 @@ static inline T DecodeZigZagIfNeeded(std::make_unsigned_t<T> v) {
 template <typename T>
 static bool CompressImplGreedy(const T *data, uint64_t count, TsBufferBuilder *out) {
   static_assert(std::is_integral_v<T>);
-  out->clear();
   for (int i = 0; i < count;) {
     auto data_i = EncodeZigZagIfNeeded(data[i]);
     int valid_nbits = GetValidBits(data_i);
@@ -670,7 +668,6 @@ bool V2CompressImplGreedy(const T *data, uint64_t count, TsBufferBuilder *out) {
   if (count == 0) {
     return true;
   }
-  out->clear();
 
   if constexpr (sizeof(T) >= 4) {
     auto v1 = EncodeZigZagIfNeeded(data[0]);
@@ -929,7 +926,6 @@ bool BitPacking::Decompress(TSSlice data, uint64_t count, TsSliceGuard *out) con
 }
 
 bool SnappyString::Compress(TSSlice data, uint64_t count, TsBufferBuilder *out, int level) const {
-  out->clear();
   snappy::ByteArraySource src(data.data, data.len);
   BufferSink sink(out);
   snappy::Compress(&src, &sink);
@@ -958,7 +954,6 @@ size_t SnappyString::GetUncompressedSize(TSSlice data, uint64_t count) const {
 }
 
 bool LZ4String::Compress(TSSlice data, uint64_t count, TsBufferBuilder *out, int level) const {
-  out->clear();
   if (data.len == 0) {
     return true;
   }
@@ -973,7 +968,7 @@ bool LZ4String::Compress(TSSlice data, uint64_t count, TsBufferBuilder *out, int
     LOG_ERROR("LZ4 Compress Failed! Invalid destination capacity for input size %d.", input_size);
     return false;
   }
-  out->reserve(kGeneralCompressionHeaderSize + static_cast<size_t>(dst_capacity));
+  out->reserve(out->size() + kGeneralCompressionHeaderSize + static_cast<size_t>(dst_capacity));
   PutFixed64(out, data.len);
   const size_t compressed_offset = out->size();
   out->resize(compressed_offset + static_cast<size_t>(dst_capacity));
@@ -1021,7 +1016,6 @@ size_t LZ4String::GetUncompressedSize(TSSlice data, uint64_t count) const {
 }
 
 bool ZSTDString::Compress(TSSlice data, uint64_t count, TsBufferBuilder *out, int level) const {
-  out->clear();
   if (data.len == 0) {
     out->append(data);
     return true;
@@ -1031,7 +1025,7 @@ bool ZSTDString::Compress(TSSlice data, uint64_t count, TsBufferBuilder *out, in
     LOG_ERROR("ZSTD Compress Failed! Input size is incorrect (too large or negative).");
     return false;
   }
-  out->reserve(kGeneralCompressionHeaderSize + dst_capacity);
+  out->reserve(out->size() + kGeneralCompressionHeaderSize + dst_capacity);
   PutFixed64(out, data.len);
   const size_t compressed_offset = out->size();
   out->resize(compressed_offset + dst_capacity);
@@ -1077,7 +1071,6 @@ size_t ZSTDString::GetUncompressedSize(TSSlice data, uint64_t count) const {
 }
 
 bool ZLIBString::Compress(TSSlice data, uint64_t count, TsBufferBuilder *out, int level) const {
-  out->clear();
   if (data.len == 0) {
     out->append(data);
     return true;
@@ -1100,7 +1093,7 @@ bool ZLIBString::Compress(TSSlice data, uint64_t count, TsBufferBuilder *out, in
     return false;
   }
 
-  out->reserve(kGeneralCompressionHeaderSize + static_cast<size_t>(dst_capacity));
+  out->reserve(out->size() + kGeneralCompressionHeaderSize + static_cast<size_t>(dst_capacity));
   PutFixed64(out, data.len);
   const size_t compressed_offset = out->size();
   out->resize(compressed_offset + static_cast<size_t>(dst_capacity));
@@ -1169,9 +1162,12 @@ size_t ZLIBString::GetUncompressedSize(TSSlice data, uint64_t count) const {
   return org_size == 0 ? -1 : org_size;
 }
 
+// Reuse the thread local buffer to avoid memory allocation
+thread_local TsBufferBuilder tl_first_out;
+thread_local TsBufferBuilder tl_second_out;
+
 bool CompressorManager::TwoLevelCompressor::Compress(TSSlice raw, const TsBitmapBase *bitmap, uint32_t count,
                                                      TsBufferBuilder *out, int level) const {
-  out->clear();
   auto first = first_algo_;
   auto second = second_algo_;
   if (IsPlain()) {
@@ -1179,14 +1175,14 @@ bool CompressorManager::TwoLevelCompressor::Compress(TSSlice raw, const TsBitmap
     out->append(raw);
     return true;
   }
-  TsBufferBuilder buf1;
   TSSlice data;
   bool ok = true;
   if (first_ == nullptr) {
     data = raw;
   } else {
-    ok = first_->Compress(raw, bitmap, count, &buf1);
-    data = buf1.AsSlice();
+    tl_first_out.clear();
+    ok = first_->Compress(raw, bitmap, count, &tl_first_out);
+    data = tl_first_out.AsSlice();
   }
   if (!ok || data.len > raw.len) {
     first = EncodeAlgo::kPlain;
@@ -1197,12 +1193,12 @@ bool CompressorManager::TwoLevelCompressor::Compress(TSSlice raw, const TsBitmap
     out->append(data);
     return true;
   }
-  TsBufferBuilder buf2;
-  ok = second_->Compress(data, &buf2, level);
-  if (!ok || buf2.size() > data.len) {
+  tl_second_out.clear();
+  ok = second_->Compress(data, &tl_second_out, level);
+  if (!ok || tl_second_out.size() > data.len) {
     second = CompressAlgo::kPlain;
   } else {
-    data = buf2.AsSlice();
+    data = tl_second_out.AsSlice();
   }
   EncodeAlgorithm(out, first, second);
   out->append(data);
@@ -1453,24 +1449,23 @@ bool CompressorManager::CompressVarchar(TSSlice input, TsBufferBuilder *output, 
       break;
   }
   static_assert(sizeof(alg) == sizeof(uint16_t));
-  output->clear();
-  PutFixed16(output, static_cast<uint16_t>(alg));
   if (alg == CompressAlgo::kPlain) {
+    PutFixed16(output, static_cast<uint16_t>(alg));
     output->append(input.data, input.len);
     return true;
   }
+  TsBufferBuilder tmp;
+  PutFixed16(&tmp, static_cast<uint16_t>(alg));
   auto it = ts_compressors_.find(alg);
   if (it == ts_compressors_.end()) {
     LOG_ERROR("Invalid general compression algorithm: %d", static_cast<int>(alg));
     return false;
   }
-  TsBufferBuilder tmp;
   bool ok = it->second->Compress(input, &tmp, compress_levels_.at(alg)[GetLevelIdx(level)]);
   if (!ok) {
     return false;
   }
   if (tmp.size() >= input.len) {
-    output->clear();
     PutFixed16(output, static_cast<uint16_t>(CompressAlgo::kPlain));
     output->append(input.data, input.len);
     return true;
