@@ -100,7 +100,9 @@ func TestCallProcedure(t *testing.T) {
 	p.txn = kv.NewTxn(context.TODO(), db, 1)
 	node.execCtx.Init()
 	node.execCtx.SetProcedureTxn(tree.ProcedureTransactionStart)
-	node.endTransaction(true)
+	require.Panics(t, func() {
+		node.endTransaction(true)
+	}, "endTransaction should panic when explicit transaction is not properly ended")
 }
 
 // Instruction represents a well-typed expression.
