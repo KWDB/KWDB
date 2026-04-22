@@ -20,7 +20,7 @@
 
 
 namespace kwdbts {
-constexpr char tier_cfg_file[] = "ts-tier.cfg";
+constexpr char tier_cfg_file[] = "ts_tier.cfg";
 
 KStatus TsTier::Init(const std::string& ts_store_path) {
   return SUCCESS;

@@ -12,6 +12,7 @@
 #include "st_tier_manager.h"
 #include <dirent.h>
 #include <unistd.h>
+#include <array>
 #include <cstdlib>
 #include <chrono>
 #include "sys_utils.h"
@@ -19,36 +20,55 @@
 
 namespace kwdbts {
 constexpr char tier_disk_partition_root_path[] = "partitions";
-constexpr char tier_disk_partition_list_file[] = "tier_partition.lst";
-constexpr int partition_directory_level = 4;
+constexpr int partition_directory_level = 2;
+constexpr char path_separator = '/';
+constexpr char flatten_separator = '_';
 
 int TsTierPartitionManager::CalculateTierLevelByTimestamp(timestamp64 p_max_ts) {
     return 0;
 }
 
 std::string TsTierPartitionManager::parsePartitionDirToOneLevel(const std::string& partition_full_path) {
-  int scan_level = 0;
-  int end_idx = partition_full_path.size();
-  std::string OneLevelName;
+  std::array<std::pair<size_t, size_t>, partition_directory_level> segments{};
+  size_t segment_count = 0;
+  size_t scan_end = partition_full_path.size();
 
-  for (int i = partition_full_path.size() - 1; i >= 0; --i) {
-    if (partition_full_path[i] == '/') {
-      if (i + 1 < end_idx) {
-        std::string prefix = partition_full_path.substr(i + 1, end_idx - i - 1);
-        if (scan_level > 0) {
-          prefix += '_';
-        }
-        prefix += OneLevelName;
-        OneLevelName = std::move(prefix);
-        ++scan_level;
-        if (scan_level >= partition_directory_level) {
-          break;
-        }
-      }
-      end_idx = i;
+  while (scan_end > 0 && partition_full_path[scan_end - 1] == path_separator) {
+    --scan_end;
+  }
+  if (scan_end == 0) {
+    return "";
+  }
+
+  while (scan_end > 0 && segment_count < segments.size()) {
+    size_t slash_pos = partition_full_path.rfind(path_separator, scan_end - 1);
+    size_t segment_begin = slash_pos == std::string::npos ? 0 : slash_pos + 1;
+    if (segment_begin < scan_end) {
+      segments[segment_count++] = {segment_begin, scan_end - segment_begin};
+    }
+    if (slash_pos == std::string::npos) {
+      break;
+    }
+    scan_end = slash_pos;
+    while (scan_end > 0 && partition_full_path[scan_end - 1] == path_separator) {
+      --scan_end;
     }
   }
-  return OneLevelName;
+
+  size_t reserved_size = segment_count == 0 ? 0 : segment_count - 1;
+  for (size_t i = 0; i < segment_count; ++i) {
+    reserved_size += segments[i].second;
+  }
+
+  std::string one_level_name;
+  one_level_name.reserve(reserved_size);
+  for (size_t i = segment_count; i > 0; --i) {
+    if (!one_level_name.empty()) {
+      one_level_name += flatten_separator;
+    }
+    one_level_name.append(partition_full_path, segments[i - 1].first, segments[i - 1].second);
+  }
+  return one_level_name;
 }
 
 KStatus TsTierPartitionManager::MakePartitionDir(const std::string& partition_full_path, int level,
@@ -56,33 +76,6 @@ KStatus TsTierPartitionManager::MakePartitionDir(const std::string& partition_fu
   if (!MakeDirectory(partition_full_path, error_info)) {
     return KStatus::FAIL;
   }
-  return KStatus::SUCCESS;
-}
-
-KStatus TsTierPartitionManager::RMPartitionDir(std::string partition_full_path, ErrorInfo& error_info) {
-  error_info.clear();
-  // A soft link to a directory cannot be deleted with a slash, remove the last '/', then exec system()
-  if (partition_full_path.back() == '/') {
-    partition_full_path = partition_full_path.substr(0, partition_full_path.length() - 1);
-  }
-  std::string real_path = ParseLinkDirToReal(partition_full_path, error_info);
-  if (error_info.errcode != 0) {
-    LOG_ERROR("parse link path [%s] failed. errmsg: %s", partition_full_path.c_str(), error_info.errmsg.c_str());
-    return KStatus::FAIL;
-  }
-  if (!Remove(real_path, error_info)) {
-    LOG_ERROR("remove [%s] failed. errmsg: %s", real_path.c_str(), error_info.errmsg.c_str());
-    return KStatus::FAIL;
-  }
-  if (!System("rm -rf " + partition_full_path)) {
-    return KStatus::FAIL;
-  }
-  return KStatus::SUCCESS;
-}
-
-KStatus TsTierPartitionManager::MVPartitionDir(const std::string& partition_full_path, std::vector<std::string>& files,
-                                               int to_level, const std::function<bool(std::function<bool()>)>& f,
-                                               ErrorInfo& error_info) {
   return KStatus::SUCCESS;
 }
 
@@ -94,15 +87,6 @@ KStatus TsTierPartitionManager::GetPartitionCurrentLevel(const std::string& part
 
 KStatus TsTierPartitionManager::GetPartitionCount(int level, const std::string& disk_path, int* count,
                                                   ErrorInfo& error_info) {
-  return KStatus::SUCCESS;
-}
-
-KStatus TsTierPartitionManager::Recover(const std::string &link_path, const std::string& tier_path, ErrorInfo& error_info) {
-  std::string real_path = ParseLinkDirToReal(link_path, error_info);
-  if (real_path.compare(tier_path) == 0) {
-    return KStatus::SUCCESS;
-  }
-  Remove(tier_path, error_info);
   return KStatus::SUCCESS;
 }
 

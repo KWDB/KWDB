@@ -53,8 +53,6 @@ void LogRemainingDirectoryEntries(const fs::path& dir_path) {
 
 }  // namespace
 
-int64_t g_free_space_alert_threshold = 0;
-
 bool IsExists(const fs::path& path) {
   return fs::exists(path);
 }
@@ -211,25 +209,6 @@ std::string ParseLinkDirToReal(string link_path, ErrorInfo& error_info) {
 
 bool DirExists(const std::string& path) {
   return fs::exists(path) && fs::is_directory(path);
-}
-
-int64_t GetDiskFreeSpace(const std::string &path) {
-  std::error_code ec;
-  auto space_info = fs::space(path, ec);
-  if (ec) {
-    // error happens, just quits here
-    return -1;
-  }
-  // the available size is space_info.available
-  return static_cast<int64_t>(space_info.available);
-}
-
-bool IsDiskSpaceEnough(const std::string& path) {
-  if (g_free_space_alert_threshold == 0) {
-    return true;
-  }
-  auto free_space = GetDiskFreeSpace(path);
-  return free_space > g_free_space_alert_threshold;
 }
 
 bool isSoftLink(const std::string& path) {
