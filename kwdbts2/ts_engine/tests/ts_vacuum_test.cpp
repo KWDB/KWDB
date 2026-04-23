@@ -1,7 +1,9 @@
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
+#include <future>
 
 #include "cm_kwdb_context.h"
 #include "data_type.h"
@@ -48,6 +50,7 @@ class VacuumTest : public testing::Test {
   std::vector<TagInfo> tag_schema_;
 
   std::shared_ptr<TsVGroup> vgroup_;
+  std::shared_mutex wal_level_mutex;
 
   void SetUp() override {
     fs::remove_all("./tsdb");
@@ -64,7 +67,6 @@ class VacuumTest : public testing::Test {
     ASSERT_EQ(table_schema_mgr_->GetMetricMeta(1, &metric_schema_), KStatus::SUCCESS);
     ASSERT_EQ(table_schema_mgr_->GetTagMeta(1, tag_schema_), KStatus::SUCCESS);
 
-    std::shared_mutex wal_level_mutex;
     vgroup_ = std::make_shared<TsVGroup>(&opts_, 1, schema_mgr_.get(), &wal_level_mutex, nullptr, false);
     ASSERT_EQ(vgroup_->Init(ctx_), KStatus::SUCCESS);
   }
@@ -106,4 +108,56 @@ TEST_F(VacuumTest, ZDP49302) {
   }
 
   EXPECT_LE(nblock_file, 1);
+}
+
+TEST_F(VacuumTest, ZDP51351) {
+  // 设置参数
+  EngineOptions::max_last_segment_num = 3;
+  EngineOptions::min_rows_per_block = 1000;
+  EngineOptions::max_rows_per_block = 1000;
+  vgroup_ = std::make_shared<TsVGroup>(&opts_, 1, schema_mgr_.get(), &wal_level_mutex, nullptr, true);
+  vgroup_->Init(nullptr);
+
+
+  std::promise<bool> success;
+  auto f = success.get_future();
+
+  auto worker = [&]() {
+    // 执行5轮写入操作
+    for (int round = 0; round < 5; ++round) {
+      // 每轮写入8个设备，设备ID为 [1<<9, 2<<9, ..., 8<<9] = [512, 1024, 1536, 2048, 2560, 3072, 3584, 4096]
+      for (int i = 1; i <= 8; ++i) {
+        int device_id = i << 9;
+        auto payload = GenRowPayload(*metric_schema_, tag_schema_, table_id, 1, device_id, 1, 0, 1);
+        TsRawPayloadRowParser parser{metric_schema_};
+        TsRawPayload p{metric_schema_};
+        p.ParsePayLoadStruct(payload);
+        auto ptag = p.GetPrimaryTag();
+        vgroup_->PutData(ctx_, table_schema_mgr_, 0, &ptag, device_id, &payload, false);
+        free(payload.data);
+        EXPECT_EQ(vgroup_->Flush(), KStatus::SUCCESS);
+        // EXPECT_EQ(vgroup_->Compact(), KStatus::SUCCESS);
+      }
+      auto payload = GenRowPayload(*metric_schema_, tag_schema_, table_id, 1, 1, 1, 30ULL * 24 * 3600 * 1000, 1);
+      TsRawPayloadRowParser parser{metric_schema_};
+      TsRawPayload p{metric_schema_};
+      p.ParsePayLoadStruct(payload);
+      auto ptag = p.GetPrimaryTag();
+      vgroup_->PutData(ctx_, table_schema_mgr_, 0, &ptag, 1, &payload, false);
+      free(payload.data);
+      EXPECT_EQ(vgroup_->Flush(), KStatus::SUCCESS);
+    }
+
+    // 直接调用Vacuum，预期会卡死
+    vgroup_->Vacuum(ctx_, true);
+    success.set_value(true);
+  };
+
+  std::thread t(worker);
+  t.detach();
+
+  auto status = f.wait_for(std::chrono::seconds{5});
+  if (status == std::future_status::timeout) {
+    FAIL() << "Vacuum is blocked";
+  }
 }

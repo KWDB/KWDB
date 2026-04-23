@@ -11,6 +11,7 @@
 #pragma once
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <list>
@@ -19,7 +20,6 @@
 #include <set>
 #include <string>
 #include <string_view>
-#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -77,10 +77,6 @@ class TsPartitionVersion {
 
     size_t size_ = 0;
 
-    int level_to_compact_ = -1;
-    int group_to_compact_ = -1;
-    int current_candidate_size_ = 0;
-
    public:
     static uint32_t GetGroupSize(int level) {
       if (level == 0) {
@@ -118,32 +114,12 @@ class TsPartitionVersion {
     size_t Size() const { return size_; }
 
     void AddLastSegment(int level, int group, Ptr last_segment) {
-      if (level >= kMaxLevel || group > GetGroupSize(level)) {
-        return;
-      }
-      last_segments_[level][group].push_back(last_segment);
+      assert(level < kMaxLevel && group < GetGroupSize(level));
+      last_segments_[level][group].push_back(std::move(last_segment));
       size_++;
-
-      if (level < level_to_compact_) {
-        return;
-      }
-
-      int sz = last_segments_[level][group].size();
-      if (level > 0 && sz > 1 && sz > current_candidate_size_) {
-        level_to_compact_ = level;
-        group_to_compact_ = group;
-        current_candidate_size_ = sz;
-      }
-
-      if (level == 0 && sz > EngineOptions::max_last_segment_num) {
-        level_to_compact_ = level;
-        group_to_compact_ = group;
-      }
     }
 
-    auto GetLevelGroupToCompact() const { return std::make_tuple(level_to_compact_, group_to_compact_); }
-
-    const std::vector<std::shared_ptr<TsLastSegment>> &GetLastSegments(int level, int group) const {
+    std::vector<std::shared_ptr<TsLastSegment>> GetLastSegments(int level, int group) const {
       return last_segments_[level][group];
     }
 
@@ -219,10 +195,6 @@ class TsPartitionVersion {
     return intToString(std::get<1>(partition_info_)) + "_" + intToString(std::get<2>(partition_info_));
   }
 
-  bool NeedCompact() const {
-    auto [l, g] = leveled_last_segments_.GetLevelGroupToCompact();
-    return l != -1;
-  }
   std::vector<std::shared_ptr<TsLastSegment>> GetCompactLastSegments(int *level, int *group) const;
 
   std::vector<std::shared_ptr<TsLastSegment>> GetVacuumLastSegments(bool force_vacuum) const;
@@ -270,8 +242,15 @@ class TsPartitionVersion {
                        TsScanStats* ts_scan_stats = nullptr,
                        bool skip_mem = false, bool skip_last = false, bool skip_entity = false) const;
 
-  bool TrySetBusy(PartitionStatus desired) const;
-  void ResetStatus() const;
+  bool TrySetBusy(PartitionStatus desired) const {
+    PartitionStatus expected = PartitionStatus::None;
+    return exclusive_status_->compare_exchange_strong(expected, desired, std::memory_order_acquire,
+                                                      std::memory_order_relaxed);
+  }
+  void ResetStatus() const { exclusive_status_->store(PartitionStatus::None, std::memory_order_release); }
+
+  PartitionStatus GetStatus() const { return exclusive_status_->load(std::memory_order_relaxed); }
+
   KStatus NeedVacuumEntitySegment(const fs::path& root_path, TsEngineSchemaManager* schema_manager,
                                   bool force, bool& need_vacuum) const;
 
@@ -315,8 +294,6 @@ class TsVGroupVersion {
   std::vector<std::shared_ptr<const TsPartitionVersion>> GetPartitions(uint32_t dbid,
                                                                        const std::vector<KwTsSpan> &ts_spans,
                                                                        DATATYPE ts_type) const;
-
-  std::vector<std::shared_ptr<const TsPartitionVersion>> GetPartitionsToCompact() const;
 
   // timestamp is in ptime
   std::shared_ptr<const TsPartitionVersion> GetPartition(uint32_t dbid, timestamp64 timestamp) const;

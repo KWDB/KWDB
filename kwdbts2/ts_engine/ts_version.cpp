@@ -731,15 +731,15 @@ std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetParti
   return result;
 }
 
-std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetPartitionsToCompact() const {
-  std::vector<std::shared_ptr<const TsPartitionVersion>> result;
-  for (const auto &[k, v] : partitions_) {
-    if (v->NeedCompact()) {
-      result.push_back(v);
-    }
-  }
-  return result;
-}
+// std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetPartitionsToCompact() const {
+//   std::vector<std::shared_ptr<const TsPartitionVersion>> result;
+//   for (const auto &[k, v] : partitions_) {
+//     if (v->NeedCompact()) {
+//       result.push_back(v);
+//     }
+//   }
+//   return result;
+// }
 
 std::shared_ptr<const TsPartitionVersion> TsVGroupVersion::GetPartition(uint32_t target_dbid,
                                                                         timestamp64 target_time) const {
@@ -781,20 +781,21 @@ std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetDBAll
 
 std::vector<std::shared_ptr<TsLastSegment>> TsPartitionVersion::GetCompactLastSegments(int *level, int *group) const {
   // NOTE: check will from bottom to top
-  auto [l, g] = leveled_last_segments_.GetLevelGroupToCompact();
-  if (l < 0) {
-    return {};
+  int max_level = leveled_last_segments_.GetMaxLevel();
+  for (int l = max_level - 1; l >= 0; --l) {
+    int max_group = leveled_last_segments_.GetGroupSize(l);
+    for (int g = 0; g < max_group; ++g) {
+      auto sz = leveled_last_segments_.GetLastSegmentsCount(l, g);
+
+      bool need_compact = (l > 0 && sz > 1) || (l == 0 && sz > EngineOptions::max_last_segment_num);
+      if (need_compact) {
+        *level = l;
+        *group = g;
+        return leveled_last_segments_.GetLastSegments(l, g);
+      }
+    }
   }
-  const auto &lasts = leveled_last_segments_.GetLastSegments(l, g);
-  *level = l;
-  *group = g;
-  if (lasts.size() <= EngineOptions::max_compact_num) {
-    return lasts;
-  }
-  std::vector<std::shared_ptr<TsLastSegment>> result;
-  result.reserve(EngineOptions::max_compact_num);
-  std::move(lasts.begin(), lasts.begin() + EngineOptions::max_compact_num, std::back_inserter(result));
-  return result;
+  return {};
 }
 
 std::vector<std::shared_ptr<TsMemSegmentProxy>> TsPartitionVersion::GetAllMemSegments() const {
@@ -986,15 +987,6 @@ KStatus TsPartitionVersion::GetBlockSpans(const TsScanFilterParams& filter,
   return KStatus::SUCCESS;
 }
 
-bool TsPartitionVersion::TrySetBusy(PartitionStatus desired) const {
-  PartitionStatus expected = PartitionStatus::None;
-  return exclusive_status_->compare_exchange_strong(expected, desired);
-}
-
-void TsPartitionVersion::ResetStatus() const {
-  exclusive_status_->store(PartitionStatus::None);
-}
-
 KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path, TsEngineSchemaManager* schema_manager,
                                                     bool force, bool& need_vacuum) const {
   need_vacuum = false;
@@ -1065,7 +1057,7 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path, T
       }
 
       if (force) {
-        auto is_exist = checkTableMetaExist(entity_item.table_id);
+        auto is_exist = checkTableMetaExist == nullptr ? false : checkTableMetaExist(entity_item.table_id);
         if (!is_exist) {
           need_vacuum = true;
           return SUCCESS;

@@ -713,57 +713,17 @@ void TsVGroup::closeCompactThread() {
   }
 }
 
-KStatus TsVGroup::PartitionCompact(kwdbContext_p ctx, std::shared_ptr<const TsPartitionVersion> partition,
-                                   bool call_by_vacuum, bool force_vacuum) {
+KStatus TsVGroup::PartitionCompactNoLockImpl(kwdbContext_p ctx, TsVersionUpdate* update, bool force_write_entity,
+                                             const std::shared_ptr<const TsPartitionVersion>& partition, int level,
+                                             int group,
+                                             const std::vector<std::shared_ptr<TsLastSegment>>& last_segments) {
   TsIOEnv* env = &TsIOEnv::GetInstance();
-  auto partition_id = partition->GetPartitionIdentifier();
-  if (!partition->TrySetBusy(PartitionStatus::Compacting)) {
-    auto root_path = this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier());
-    LOG_INFO("partition skip compact, root_path: %s", root_path.c_str());
-    return KStatus::FAIL;
-  }
-  partition = version_manager_->Current()->GetPartition(std::get<0>(partition_id), std::get<1>(partition_id));
-  Defer defer{[&]() {
-    partition->ResetStatus();
-  }};
-  TsVersionUpdate update;
-  // 1. Get all the last segments that need to be compacted.
-  std::vector<std::shared_ptr<TsLastSegment>> last_segments;
-  int level = -1, group = -1;
-  if (!call_by_vacuum) {
-    last_segments = partition->GetCompactLastSegments(&level, &group);
-  } else {
-    last_segments = partition->GetVacuumLastSegments(force_vacuum);
-    if (last_segments.size() > EngineOptions::max_compact_num) {
-      if (!force_vacuum) {
-        LOG_INFO("skip compact in vacuum, because the maximum number of compact is exceeded[%zu>%d]",
-                 last_segments.size(), EngineOptions::max_compact_num);
-        return KStatus::SUCCESS;
-      } else {
-        while (last_segments.size() > EngineOptions::max_compact_num) {
-          if (ctx->relation_ctx != 0 && isCanceledCtx(ctx->relation_ctx)) {
-            LOG_INFO("Context has been canceled, stop compact.");
-            return KStatus::FAIL;
-          }
-          partition->ResetStatus();
-          LOG_INFO("wait for the partition[%s] compact to complete before vacuuming",
-                   partition->GetPartitionPath().c_str());
-          sleep(30);
-          while (!partition->TrySetBusy(PartitionStatus::Compacting)) {
-            sleep(1);
-          }
-          partition = version_manager_->Current()->GetPartition(std::get<0>(partition_id), std::get<1>(partition_id));
-          last_segments = partition->GetVacuumLastSegments(force_vacuum);
-        }
-      }
-    }
-  }
-  if (last_segments.empty()) {
-    return KStatus::SUCCESS;
-  }
-  auto entity_segment = partition->GetEntitySegment();
+  assert(partition->GetStatus() != PartitionStatus::None);
+  assert(!last_segments.empty());
 
-  auto partition_name = PartitionDirName(partition_id);;
+  auto partition_id = partition->GetPartitionIdentifier();
+  auto entity_segment = partition->GetEntitySegment();
+  auto partition_name = PartitionDirName(partition_id);
   auto root_path = this->GetPath() / partition_name;
 
   {
@@ -771,8 +731,13 @@ KStatus TsVGroup::PartitionCompact(kwdbContext_p ctx, std::shared_ptr<const TsPa
     for (const auto& l : last_segments) {
       ss << l->GetFileNumber() << ", ";
     }
-    LOG_INFO("Compact %s at vgroup: %d, level: %d, group: %d, last segments:(%s)", partition_name.c_str(),
-             this->vgroup_id_, level, group, ss.str().c_str());
+    if (!force_write_entity) {
+      LOG_INFO("Compact %s at vgroup: %d, level: %d, group: %d, last segments:(%s)", partition_name.c_str(),
+               this->vgroup_id_, level, group, ss.str().c_str());
+    } else {
+      LOG_INFO("Compact %s at vgroup: %d, call by vacuum, last segments:(%s)", partition_name.c_str(), this->vgroup_id_,
+               ss.str().c_str());
+    }
   }
   // 2. Build the column block.
   std::stringstream ss;
@@ -801,21 +766,21 @@ KStatus TsVGroup::PartitionCompact(kwdbContext_p ctx, std::shared_ptr<const TsPa
       return s;
     }
 
-    s = builder.Compact(call_by_vacuum, &update, &residual_spans, &entity_stats);
+    s = builder.Compact(force_write_entity, update, &residual_spans, &entity_stats);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("partition[%s] compact failed, TsEntitySegmentBuilder build failed", path_.c_str());
       return s;
     }
 
     EntitySegmentMetaInfo info;
-    update.GetEntitySegmentInfo(partition_id, &info);
+    update->GetEntitySegmentInfo(partition_id, &info);
     ss << "entity segment: [" << info.datablock_info.length << "," << info.header_b_info.length << ","
        << info.agg_info.length << "," << info.header_e_file_number << "];";
   }
 
   // 3. write last segment
   if (!residual_spans.empty()) {
-    assert(!call_by_vacuum);
+    assert(!force_write_entity);
     ss << "last segment: ";
     int next_level = std::min<int>(level + 1, TsPartitionVersion::LastSegmentContainer::kMaxLevel - 1);
 
@@ -861,7 +826,7 @@ KStatus TsVGroup::PartitionCompact(kwdbContext_p ctx, std::shared_ptr<const TsPa
       char log_buf[64];
       std::snprintf(log_buf, sizeof(log_buf), "%lu: (%d, %d), ", builder->GetFileNumber(), level, group);
       ss << log_buf;
-      update.AddLastSegment(partition_id, {builder->GetFileNumber(), next_level, it->first});
+      update->AddLastSegment(partition_id, {builder->GetFileNumber(), next_level, it->first});
     }
     ss << "}";
   } else {
@@ -870,47 +835,70 @@ KStatus TsVGroup::PartitionCompact(kwdbContext_p ctx, std::shared_ptr<const TsPa
 
   // 3. Set the compacted version.
   for (auto& last_segment : last_segments) {
-    update.DeleteLastSegment(partition->GetPartitionIdentifier(), last_segment->GetFileNumber());
+    update->DeleteLastSegment(partition->GetPartitionIdentifier(), last_segment->GetFileNumber());
   }
 
   LOG_INFO("Compact end. %s", ss.str().c_str());
 
-  // 4. Update the version.
+  return SUCCESS;
+}
+
+KStatus TsVGroup::PartitionCompact(kwdbContext_p ctx, std::shared_ptr<const TsPartitionVersion> partition,
+                                   bool call_by_vacuum, bool force_vacuum, bool* skipped) {
+  TsIOEnv* env = &TsIOEnv::GetInstance();
+  auto partition_id = partition->GetPartitionIdentifier();
+  if (!partition->TrySetBusy(PartitionStatus::Compacting)) {
+    if (skipped) {
+      *skipped = true;
+    } else {
+      auto root_path = this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier());
+      LOG_INFO("partition skip compact, root_path: %s", root_path.c_str());
+    }
+    return KStatus::FAIL;
+  }
+  partition = version_manager_->Current()->GetPartition(std::get<0>(partition_id), std::get<1>(partition_id));
+  Defer defer{[&]() {
+    partition->ResetStatus();
+  }};
+  // 1. Get all the last segments that need to be compacted.
+  int level = -1, group = -1;
+  std::vector<std::shared_ptr<TsLastSegment>> last_segments = partition->GetCompactLastSegments(&level, &group);
+  if (last_segments.empty()) {
+    if (skipped) *skipped = true;
+    return KStatus::SUCCESS;
+  }
+  TsVersionUpdate update;
+  auto s = PartitionCompactNoLockImpl(ctx, &update, call_by_vacuum, partition, level, group, last_segments);
+  if (s == FAIL) {
+    LOG_ERROR("compact failed");
+    return FAIL;
+  }
   return version_manager_->ApplyUpdate(&update);
 }
 
 KStatus TsVGroup::Compact(bool* compacted) {
-  auto current = version_manager_->Current();
-  std::vector<std::shared_ptr<const TsPartitionVersion>> partitions = current->GetPartitionsToCompact();
-  if (partitions.empty()) {
-    if (compacted != nullptr) {
-      *compacted = false;
-    }
-    return KStatus::SUCCESS;
-  }
-  if (compacted != nullptr) {
-    *compacted = true;
-  }
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
   if (s != KStatus::SUCCESS) {
     return s;
   }
-  // Compact partitions
-  bool success{true};
-  for (auto it = partitions.rbegin(); it != partitions.rend(); ++it) {
-    const auto& cur_partition = *it;
-    s = PartitionCompact(ctx_p, cur_partition);
-    if (s != KStatus::SUCCESS) {
-      success = false;
-      continue;
+
+  auto current = version_manager_->Current();
+  auto partitions = current->GetAllPartitions();
+  bool executed = false;
+  for (const auto& [db_id, partition] : partitions) {
+    bool skipped = false;
+    s = PartitionCompact(ctx_p, partition, false, false, &skipped);
+    if (skipped) continue;
+    executed = true;
+    if (s == FAIL) {
+      auto p = partition->GetPartitionPath();
+      LOG_ERROR("compact failed, partition: %s", p.c_str());
+      return s;
     }
   }
-  if (!success) {
-    LOG_ERROR("compact failed.");
-    return FAIL;
-  }
+  if (compacted) *compacted = executed;
   return KStatus::SUCCESS;
 }
 
@@ -2131,19 +2119,46 @@ KStatus TsVGroup::Vacuum(kwdbContext_p ctx, bool force) {
       auto partition_id = partition->GetPartitionIdentifier();
       auto root_path = this->GetPath() / PartitionDirName(partition_id);
       bool need_vacuum = false;
-      if (partition->GetLastSegmentsCount() != 0) {
-        // force compact historical partition
-        s = PartitionCompact(ctx, partition, true, force);
-        if (s != SUCCESS) {
-          LOG_ERROR("PartitionCompact failed, [%s]", partition->GetPartitionIdentifierStr().c_str());
-          continue;
+      while (!partition->TrySetBusy(PartitionStatus::Vacuuming)) {
+        if (!force) {
+          return SUCCESS;
         }
-        partition = version_manager_->Current()->GetPartition(std::get<0>(partition_id), std::get<1>(partition_id));
+        this_thread::sleep_for(std::chrono::seconds(2));
       }
+      Defer defer{[&]() { partition->ResetStatus(); }};
+
+      partition = version_manager_->GetPartitionVersion(partition_id);
+
+      auto last_segments = partition->GetVacuumLastSegments(force);
+      if (!last_segments.empty()) {
+        TsVersionUpdate update;
+        auto total_size = last_segments.size();
+        int batch_size = std::max<int>(1, EngineOptions::max_compact_num);
+        int start = 0, end = std::min<int>(batch_size, total_size);
+        while (start < total_size) {
+          std::vector<std::shared_ptr<TsLastSegment>> batch_segments;
+          std::move(last_segments.begin() + start, last_segments.begin() + end, std::back_inserter(batch_segments));
+
+          s = PartitionCompactNoLockImpl(ctx, &update, true, partition, -1, -1, batch_segments);
+          if (s != SUCCESS) {
+            LOG_ERROR("PartitionCompactNoLockImpl failed, [%s]", partition->GetPartitionIdentifierStr().c_str());
+            return FAIL;
+          }
+          start = end;
+          end = std::min<int>(start + batch_size, total_size);
+        }
+        if (version_manager_->ApplyUpdate(&update) == FAIL) {
+          LOG_ERROR("ApplyUpdate failed");
+          return FAIL;
+        }
+      }
+
+      partition = version_manager_->GetPartitionVersion(partition_id);
+
       s = partition->NeedVacuumEntitySegment(root_path, schema_mgr_, force, need_vacuum);
       if (s != SUCCESS) {
         LOG_ERROR("NeedVacuumEntitySegment failed.");
-        continue;
+        return FAIL;
       }
       if (need_vacuum) {
         s = VacuumPartition(ctx, partition, force);
@@ -2167,24 +2182,6 @@ KStatus TsVGroup::Vacuum(kwdbContext_p ctx, bool force) {
 }
 
 KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitionVersion> partition, bool force) {
-  if (force) {
-    while (!partition->TrySetBusy(PartitionStatus::Vacuuming)) {
-      this_thread::sleep_for(std::chrono::seconds(1));
-      // if (ctx->relation_ctx != 0 && isCanceledCtx(ctx->relation_ctx)) {
-      //   LOG_INFO("Context has been canceled, stop vacuum.");
-      //   return KStatus::SUCCESS;
-      // }
-    }
-  } else {
-    if (!partition->TrySetBusy(PartitionStatus::Vacuuming)) {
-      return SUCCESS;
-    }
-  }
-  Defer defer{[&]() {
-    partition->ResetStatus();
-  }};
-
-  partition = version_manager_->GetPartitionVersion(partition->GetPartitionIdentifier());
   auto entity_segment = partition->GetEntitySegment();
   if (entity_segment == nullptr) {
     return SUCCESS;
@@ -2230,7 +2227,7 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
     bool is_dropped = false;
     if (has_entity_item) {
       if (force) {
-        is_dropped = !checkTableMetaExist(entity_item.table_id);
+        is_dropped = checkTableMetaExist == nullptr ? false : !checkTableMetaExist(entity_item.table_id);
       }
       if (!is_dropped) {
         s = schema_mgr_->GetTableSchemaMgr(entity_item.table_id, tb_schema_mgr, &is_dropped);
