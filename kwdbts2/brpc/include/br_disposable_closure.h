@@ -14,11 +14,13 @@
 #include <google/protobuf/stubs/common.h>
 
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
 
+#include "brpc/controller.h"
 #include "lg_api.h"
 
 namespace kwdbts {

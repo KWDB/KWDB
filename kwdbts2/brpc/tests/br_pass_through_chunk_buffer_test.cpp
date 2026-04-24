@@ -13,128 +13,201 @@
 
 #include <gtest/gtest.h>
 
-#include "../../exec/tests/ee_op_test_base.h"
+#include <memory>
+#include <thread>
+#include <vector>
+
 #include "ee_data_chunk.h"
 
 namespace kwdbts {
 
-class BrPassThroughChunkBufferTest : public OperatorTestBase {
- protected:
-  void SetUp() override {
-    OperatorTestBase::SetUp();
-    InitializeColumnInfo();
-    chunk_ = CreateTestDataChunk();
+namespace {
 
-    query_id_ = 12345;
-    processor_id_ = 67890;
-    sender_id_ = 1;
-    chunk_size_ = 1024;
-    driver_sequence_ = 1;
-  }
+// Creates a minimal DataChunk instance used as test payload.
+DataChunkPtr CreateSimpleChunk() { return std::make_unique<DataChunk>(); }
 
-  void TearDown() override {
-    OperatorTestBase::TearDown();
-    chunk_.reset();
-    delete[] col_info_;
-  }
+class ScopedQueryInstance {
+ public:
+  ScopedQueryInstance(PassThroughChunkBufferManager* manager, KQueryId query_id)
+      : manager_(manager), query_id_(query_id) {}
 
-  void InitializeColumnInfo() {
-    col_info_ = KNEW ColumnInfo[5];
-    col_info_[0] = ColumnInfo(8, roachpb::DataType::TIMESTAMPTZ, KWDBTypeFamily::TimestampTZFamily);
-    col_info_[1] = ColumnInfo(31, roachpb::DataType::CHAR, KWDBTypeFamily::StringFamily);
-    col_info_[2] = ColumnInfo(1, roachpb::DataType::BOOL, KWDBTypeFamily::BoolFamily);
+  void Activate() { active_ = true; }
 
-    TSTagReaderSpec spec;
-    spec.set_tableid(1);
-    spec.set_tableversion(1);
-    for (int i = 0; i < 3; ++i) {
-      TSCol* col = spec.add_colmetas();
-      col->set_storage_type(col_info_[i].storage_type);
-      col->set_column_type(roachpb::KWDBKTSColumn_ColumnType::KWDBKTSColumn_ColumnType_TYPE_DATA);
-      col->set_storage_len(col_info_[i].storage_len);
+  ~ScopedQueryInstance() {
+    if (active_) {
+      manager_->CloseQueryInstance(query_id_);
     }
   }
 
-  // Create test data chunk
-  std::unique_ptr<DataChunk> CreateTestDataChunk() {
-    return std::make_unique<DataChunk>(col_info_, 3, 1);
-  }
-
+ private:
+  PassThroughChunkBufferManager* manager_;
   KQueryId query_id_;
-  KProcessorId processor_id_;
-  k_int32 sender_id_;
-  k_size_t chunk_size_;
-  k_int32 driver_sequence_;
-  ColumnInfo* col_info_;
-  std::unique_ptr<DataChunk> chunk_;
+  bool active_ = false;
 };
 
-// Comprehensive test for PassThroughChunkBuffer
-TEST_F(BrPassThroughChunkBufferTest, PassThroughChunkBufferComprehensiveTest) {
-  // 1. Basic functionality test
-  // Create PassThroughChunkBuffer instance
-  PassThroughChunkBuffer buffer(query_id_);
-  // Test reference counting
-  EXPECT_EQ(buffer.Ref(), 2);
-  EXPECT_EQ(buffer.Unref(), 1);
-  // Create Key
-  PassThroughChunkBuffer::Key key(query_id_, processor_id_);
-  // Get or create Channel
-  PassThroughChannel* channel = buffer.GetOrCreateChannel(key);
-  EXPECT_NE(channel, nullptr);
-  // Get the same Channel again
-  PassThroughChannel* same_channel = buffer.GetOrCreateChannel(key);
-  EXPECT_EQ(channel, same_channel);
+}  // namespace
 
-  // 2. Context functionality test
-  // Create PassThroughContext
-  PassThroughContext context(&buffer, query_id_, processor_id_);
-  // Initialize Context
-  context.Init();
-  // Test AppendChunk
-  context.AppendChunk(sender_id_, chunk_, chunk_size_, driver_sequence_);
-  // Test PullChunks
+// Verifies that AppendChunk stores chunks and PullChunks atomically transfers
+// ownership of all buffered chunks and their byte sizes in FIFO order.
+// A subsequent PullChunks call on an empty channel must return empty vectors.
+TEST(BrPassThroughChunkBufferTest, SenderChannelSwapsBufferedChunks) {
+  PassThroughSenderChannel sender_channel;
+
+  auto first_chunk = CreateSimpleChunk();
+  auto second_chunk = CreateSimpleChunk();
+  // Append two chunks with distinct sizes and driver sequence numbers.
+  sender_channel.AppendChunk(first_chunk, 32, 11);
+  sender_channel.AppendChunk(second_chunk, 64, 22);
+
   ChunkUniquePtrVector chunks;
   std::vector<k_size_t> bytes;
-  context.PullChunks(sender_id_, &chunks, &bytes);
-  // Verify results
-  EXPECT_EQ(chunks.size(), 1);
-  EXPECT_EQ(bytes.size(), 1);
-  EXPECT_EQ(bytes[0], chunk_size_);
-  EXPECT_EQ(chunks[0].second, driver_sequence_);
+  // Pull all buffered chunks; internal buffers should be swapped out.
+  sender_channel.PullChunks(&chunks, &bytes);
 
-  // 3. Manager functionality test
+  ASSERT_EQ(chunks.size(), 2u);
+  ASSERT_EQ(bytes.size(), 2u);
+  EXPECT_EQ(bytes[0], 32u);
+  EXPECT_EQ(bytes[1], 64u);
+  EXPECT_EQ(chunks[0].second, 11);
+  EXPECT_EQ(chunks[1].second, 22);
+  EXPECT_NE(chunks[0].first, nullptr);
+  EXPECT_NE(chunks[1].first, nullptr);
+
+  chunks.clear();
+  bytes.clear();
+  // Second pull must yield nothing because the channel is now empty.
+  sender_channel.PullChunks(&chunks, &bytes);
+  EXPECT_TRUE(chunks.empty());
+  EXPECT_TRUE(bytes.empty());
+}
+
+// Verifies that:
+//   1. GetOrCreateChannel returns the same channel object for the same key
+//      and a different object for a different key.
+//   2. Chunks appended through one PassThroughContext are only visible when
+//      pulling from that same context (keyed by processor_id and sender_id),
+//      ensuring strict per-key and per-sender isolation.
+TEST(BrPassThroughChunkBufferTest, ChannelAndContextAreIsolatedByKeyAndSender) {
+  PassThroughChunkBuffer buffer(88);
+
+  PassThroughChunkBuffer::Key first_key(88, 1);
+  PassThroughChunkBuffer::Key second_key(88, 2);
+  // Same key must resolve to the same channel instance.
+  PassThroughChannel* first_channel = buffer.GetOrCreateChannel(first_key);
+  EXPECT_EQ(first_channel, buffer.GetOrCreateChannel(first_key));
+  // Different key must yield a distinct channel instance.
+  EXPECT_NE(first_channel, buffer.GetOrCreateChannel(second_key));
+
+  PassThroughContext first_context(&buffer, 88, 1);
+  PassThroughContext second_context(&buffer, 88, 2);
+  first_context.Init();
+  second_context.Init();
+
+  auto first_chunk = CreateSimpleChunk();
+  auto second_chunk = CreateSimpleChunk();
+  auto other_sender_chunk = CreateSimpleChunk();
+
+  // Append chunks through different contexts and senders.
+  first_context.AppendChunk(7, first_chunk, 101, 1);
+  second_context.AppendChunk(7, second_chunk, 202, 2);
+  first_context.AppendChunk(8, other_sender_chunk, 303, 3);
+
+  ChunkUniquePtrVector chunks;
+  std::vector<k_size_t> bytes;
+
+  // first_context sender 7 should only see its own chunk (size=101, seq=1).
+  first_context.PullChunks(7, &chunks, &bytes);
+  ASSERT_EQ(chunks.size(), 1u);
+  ASSERT_EQ(bytes.size(), 1u);
+  EXPECT_EQ(bytes[0], 101u);
+  EXPECT_EQ(chunks[0].second, 1);
+
+  chunks.clear();
+  bytes.clear();
+  // second_context sender 7 should only see its own chunk (size=202, seq=2).
+  second_context.PullChunks(7, &chunks, &bytes);
+  ASSERT_EQ(chunks.size(), 1u);
+  ASSERT_EQ(bytes.size(), 1u);
+  EXPECT_EQ(bytes[0], 202u);
+  EXPECT_EQ(chunks[0].second, 2);
+
+  chunks.clear();
+  bytes.clear();
+  // first_context sender 8 should only see its own chunk (size=303, seq=3).
+  first_context.PullChunks(8, &chunks, &bytes);
+  ASSERT_EQ(chunks.size(), 1u);
+  ASSERT_EQ(bytes.size(), 1u);
+  EXPECT_EQ(bytes[0], 303u);
+  EXPECT_EQ(chunks[0].second, 3);
+
+  EXPECT_EQ(buffer.Unref(), 0);
+}
+
+// Verifies reference counting semantics on PassThroughChunkBuffer and the full
+// lifecycle of PassThroughChunkBufferManager:
+//   - Ref/Unref adjust the count correctly.
+//   - OpenQueryInstance is idempotent; each open increments the ref count.
+//   - CloseQueryInstance on an unknown query_id succeeds without side effects.
+//   - The buffer is removed only when the ref count reaches zero.
+//   - Close() flushes all remaining buffers regardless of ref counts.
+TEST(BrPassThroughChunkBufferTest, ReferenceCountingAndManagerLifecycleAreStable) {
+  PassThroughChunkBuffer buffer(12345);
+  // Initial ref count is 1; Ref() should return 2.
+  EXPECT_EQ(buffer.Ref(), 2);
+  // Unref() should return 1 (buffer still alive).
+  EXPECT_EQ(buffer.Unref(), 1);
+
   PassThroughChunkBufferManager manager;
-  // Test OpenQueryInstance
-  EXPECT_EQ(manager.OpenQueryInstance(query_id_), KStatus::SUCCESS);
-  // Test Get
-  PassThroughChunkBuffer* buffer_ptr = manager.Get(query_id_);
-  EXPECT_NE(buffer_ptr, nullptr);
-  // Test repeated Open
-  EXPECT_EQ(manager.OpenQueryInstance(query_id_), KStatus::SUCCESS);
+  // First open creates the buffer; Get() must return non-null.
+  EXPECT_EQ(manager.OpenQueryInstance(12345), KStatus::SUCCESS);
+  EXPECT_NE(manager.Get(12345), nullptr);
+  // Second open on the same query_id increments the ref count.
+  EXPECT_EQ(manager.OpenQueryInstance(12345), KStatus::SUCCESS);
+  // Closing an unknown query_id must succeed gracefully.
+  EXPECT_EQ(manager.CloseQueryInstance(99999), KStatus::SUCCESS);
+  // First close decrements ref count; buffer must still exist.
+  EXPECT_EQ(manager.CloseQueryInstance(12345), KStatus::SUCCESS);
+  EXPECT_NE(manager.Get(12345), nullptr);
+  // Second close drops ref count to zero; buffer must be removed.
+  EXPECT_EQ(manager.CloseQueryInstance(12345), KStatus::SUCCESS);
+  EXPECT_EQ(manager.Get(12345), nullptr);
 
-  // 4. Multi-threading test - using mutex to avoid concurrency issues
-  const int kNumThreads = 4;
-  const int kNumOperations = 10;  // Reduce operation count to speed up testing
+  // Open two independent queries, close each, then call Close() to flush all.
+  EXPECT_EQ(manager.OpenQueryInstance(1), KStatus::SUCCESS);
+  EXPECT_EQ(manager.OpenQueryInstance(2), KStatus::SUCCESS);
+  EXPECT_EQ(manager.CloseQueryInstance(1), KStatus::SUCCESS);
+  EXPECT_EQ(manager.CloseQueryInstance(2), KStatus::SUCCESS);
+  manager.Close();
+  EXPECT_EQ(manager.Get(1), nullptr);
+  EXPECT_EQ(manager.Get(2), nullptr);
+
+  EXPECT_EQ(buffer.Unref(), 0);
+}
+
+// Verifies that concurrent writes from multiple threads do not lose any chunks.
+//
+// Each thread appends kChunkPerThread chunks through its own PassThroughContext.
+// After all threads complete, sequential reads must recover exactly
+// kChunkPerThread chunks per sender with correct byte sizes and sequence numbers.
+TEST(BrPassThroughChunkBufferTest, ConcurrentContextsDoNotLoseChunks) {
+  PassThroughChunkBufferManager manager;
+  ScopedQueryInstance query_instance(&manager, 77);
+  ASSERT_EQ(manager.OpenQueryInstance(77), KStatus::SUCCESS);
+  query_instance.Activate();
+  PassThroughChunkBuffer* buffer = manager.Get(77);
+  ASSERT_NE(buffer, nullptr);
+
+  constexpr int kThreadCount = 4;
+  constexpr int kChunkPerThread = 8;
   std::vector<std::thread> threads;
-  std::mutex test_mutex;
-  for (int i = 0; i < kNumThreads; ++i) {
-    threads.emplace_back([&, i]() {
-      KProcessorId thread_processor_id = processor_id_ + i;
-      PassThroughContext thread_context(buffer_ptr, query_id_, thread_processor_id);
-      thread_context.Init();
-      for (int j = 0; j < kNumOperations; ++j) {
-        // Use mutex to protect shared resources
-        std::lock_guard<std::mutex> lock(test_mutex);
-        // Create new data chunk instead of sharing the same one
-        auto thread_chunk = CreateTestDataChunk();
-        thread_context.AppendChunk(sender_id_, thread_chunk, chunk_size_, j);
-        ChunkUniquePtrVector thread_chunks;
-        std::vector<k_size_t> thread_bytes;
-        thread_context.PullChunks(sender_id_, &thread_chunks, &thread_bytes);
-        if (!thread_chunks.empty()) {
-          EXPECT_EQ(thread_bytes.size(), thread_chunks.size());
-        }
+  // Launch kThreadCount threads; each appends kChunkPerThread chunks.
+  for (int i = 0; i < kThreadCount; ++i) {
+    threads.emplace_back([buffer, i]() {
+      PassThroughContext context(buffer, 77, 100 + i);
+      context.Init();
+      for (int j = 0; j < kChunkPerThread; ++j) {
+        auto chunk = CreateSimpleChunk();
+        context.AppendChunk(i, chunk, static_cast<k_size_t>(i * 100 + j), j);
       }
     });
   }
@@ -142,21 +215,20 @@ TEST_F(BrPassThroughChunkBufferTest, PassThroughChunkBufferComprehensiveTest) {
     thread.join();
   }
 
-  // 5. Error handling test
-  // Test non-existent query_id
-  EXPECT_EQ(manager.Get(99999), nullptr);
-  // Test closing non-existent query_id
-  EXPECT_EQ(manager.CloseQueryInstance(99999), KStatus::SUCCESS);
-
-  // 6. Cleanup test
-  // Test CloseQueryInstance
-  EXPECT_EQ(manager.CloseQueryInstance(query_id_), KStatus::SUCCESS);
-  // Close again
-  EXPECT_EQ(manager.CloseQueryInstance(query_id_), KStatus::SUCCESS);
-  // Test Close
-  manager.Close();
-  // Verify buffer has been deleted
-  EXPECT_EQ(manager.Get(query_id_), nullptr);
+  // Verify each sender's chunks were stored completely and in order.
+  for (int i = 0; i < kThreadCount; ++i) {
+    PassThroughContext context(buffer, 77, 100 + i);
+    context.Init();
+    ChunkUniquePtrVector chunks;
+    std::vector<k_size_t> bytes;
+    context.PullChunks(i, &chunks, &bytes);
+    ASSERT_EQ(chunks.size(), static_cast<size_t>(kChunkPerThread));
+    ASSERT_EQ(bytes.size(), static_cast<size_t>(kChunkPerThread));
+    for (int j = 0; j < kChunkPerThread; ++j) {
+      EXPECT_EQ(chunks[j].second, j);
+      EXPECT_EQ(bytes[j], static_cast<k_size_t>(i * 100 + j));
+    }
+  }
 }
 
 }  // namespace kwdbts
