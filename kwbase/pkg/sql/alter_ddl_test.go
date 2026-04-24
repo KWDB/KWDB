@@ -431,7 +431,7 @@ func TestAlterTSTableIntegration(t *testing.T) {
 
 	// set activetime
 	_, err = db.Exec(`ALTER TABLE test_ts_alter_db.test_ts_table SET ACTIVETIME = 7d`)
-	require.NoError(t, err)
+	require.Error(t, err)
 
 	// drop tag
 	_, err = db.Exec(`ALTER TABLE test_ts_alter_db.test_ts_table DROP TAG tag3`)

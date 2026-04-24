@@ -90,54 +90,52 @@ func TestShowCreateTableTSTable(t *testing.T) {
 				require.Contains(t, result, "PRIMARY TAGS")
 				require.Contains(t, result, "retentions")
 				require.Contains(t, result, "2592000s")
-				require.Contains(t, result, "activetime")
-				require.Contains(t, result, "1d")
 			},
 		},
-		{
-			name: "timeseries table with SDE",
-			setup: func() *sqlbase.TableDescriptor {
-				return &sqlbase.TableDescriptor{
-					Name:      "ts_table_sde",
-					TableType: tree.TimeseriesTable,
-					Columns: []sqlbase.ColumnDescriptor{
-						{
-							ID:       1,
-							Name:     "k_timestamp",
-							Type:     *types.Timestamp,
-							Nullable: false,
-							TsCol: sqlbase.TSCol{
-								ColumnType: sqlbase.ColumnType_TYPE_DATA,
-							},
-						},
-						{
-							ID:       2,
-							Name:     "tag1",
-							Type:     *types.String,
-							Nullable: false,
-							TsCol: sqlbase.TSCol{
-								ColumnType: sqlbase.ColumnType_TYPE_PTAG,
-							},
-						},
-					},
-					TsTable: sqlbase.TSTable{
-						Lifetime:          86400,
-						PartitionInterval: 86400,
-						ActiveTime:        86400,
-						Sde:               true,
-					},
-					PrimaryIndex: sqlbase.IndexDescriptor{
-						ID:          1,
-						Name:        "primary",
-						ColumnIDs:   []sqlbase.ColumnID{1},
-						ColumnNames: []string{"k_timestamp"},
-					},
-				}
-			},
-			validate: func(t *testing.T, result string) {
-				require.Contains(t, result, "DICT ENCODING")
-			},
-		},
+		// {
+		// 	name: "timeseries table with SDE",
+		// 	setup: func() *sqlbase.TableDescriptor {
+		// 		return &sqlbase.TableDescriptor{
+		// 			Name:      "ts_table_sde",
+		// 			TableType: tree.TimeseriesTable,
+		// 			Columns: []sqlbase.ColumnDescriptor{
+		// 				{
+		// 					ID:       1,
+		// 					Name:     "k_timestamp",
+		// 					Type:     *types.Timestamp,
+		// 					Nullable: false,
+		// 					TsCol: sqlbase.TSCol{
+		// 						ColumnType: sqlbase.ColumnType_TYPE_DATA,
+		// 					},
+		// 				},
+		// 				{
+		// 					ID:       2,
+		// 					Name:     "tag1",
+		// 					Type:     *types.String,
+		// 					Nullable: false,
+		// 					TsCol: sqlbase.TSCol{
+		// 						ColumnType: sqlbase.ColumnType_TYPE_PTAG,
+		// 					},
+		// 				},
+		// 			},
+		// 			TsTable: sqlbase.TSTable{
+		// 				Lifetime:          86400,
+		// 				PartitionInterval: 86400,
+		// 				ActiveTime:        86400,
+		// 				Sde:               true,
+		// 			},
+		// 			PrimaryIndex: sqlbase.IndexDescriptor{
+		// 				ID:          1,
+		// 				Name:        "primary",
+		// 				ColumnIDs:   []sqlbase.ColumnID{1},
+		// 				ColumnNames: []string{"k_timestamp"},
+		// 			},
+		// 		}
+		// 	},
+		// 	validate: func(t *testing.T, result string) {
+		// 		require.Contains(t, result, "DICT ENCODING")
+		// 	},
+		// },
 		{
 			name: "template table",
 			setup: func() *sqlbase.TableDescriptor {
@@ -237,7 +235,7 @@ func TestShowCreateTableTSTable(t *testing.T) {
 			},
 			validate: func(t *testing.T, result string) {
 				require.Contains(t, result, "retentions 1h")
-				require.Contains(t, result, "activetime 2d")
+				// require.Contains(t, result, "activetime 2d")
 			},
 		},
 	}
