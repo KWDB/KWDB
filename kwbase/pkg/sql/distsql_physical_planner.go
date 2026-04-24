@@ -2919,7 +2919,6 @@ func (dsp *DistSQLPlanner) operateTSData(
 	var p PhysicalPlan
 	var clearInfos []sqlbase.DeleteMeMsg
 	var endTime int64
-	var comPressTime int64
 	stageID := p.NewStageID()
 	tsPro := &execinfrapb.TsProSpec{}
 	p.ResultRouters = make([]physicalplan.ProcessorIdx, len(n.nodeID))
@@ -2940,18 +2939,12 @@ func (dsp *DistSQLPlanner) operateTSData(
 		} else {
 			endTime = timeutil.Now().Unix() - int64(table.TsTable.Lifetime)
 		}
-		if table.TsTable.ActiveTime == 0 {
-			comPressTime = math.MinInt64
-		} else {
-			comPressTime = timeutil.Now().Unix() - int64(table.TsTable.ActiveTime)
-		}
 		clearInfo := sqlbase.DeleteMeMsg{
-			TableID:    uint32(table.ID),
-			StartTs:    math.MinInt64,
-			EndTs:      endTime,
-			CompressTs: comPressTime,
-			TsVersion:  uint32(table.TsTable.GetTsVersion()),
-			IsTSTable:  table.IsTSTable(),
+			TableID:   uint32(table.ID),
+			StartTs:   math.MinInt64,
+			EndTs:     endTime,
+			TsVersion: uint32(table.TsTable.GetTsVersion()),
+			IsTSTable: table.IsTSTable(),
 		}
 		clearInfos = append(clearInfos, clearInfo)
 	}

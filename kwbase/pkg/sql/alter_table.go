@@ -217,7 +217,7 @@ func (n *alterTableNode) startExec(params runParams) error {
 					CompressAlgo:  d.ColumnCompress.CompressAlgo,
 					CompressLevel: d.ColumnCompress.CompressLevel,
 				}
-				TSColumn, _, err := sqlbase.MakeTSColumnDefDescs(string(d.Name), d.Type, true, n.tableDesc.TsTable.GetSde(), sqlbase.ColumnType_TYPE_DATA, d.DefaultExpr.Expr, &params.p.semaCtx, compressInfo)
+				TSColumn, _, err := sqlbase.MakeTSColumnDefDescs(string(d.Name), d.Type, true, sqlbase.ColumnType_TYPE_DATA, d.DefaultExpr.Expr, &params.p.semaCtx, compressInfo)
 				if err != nil {
 					return err
 				}
@@ -970,7 +970,7 @@ func (n *alterTableNode) startExec(params runParams) error {
 				return nil
 			}
 
-			alteringTag, _, err := sqlbase.MakeTSColumnDefDescs(tagColumn.Name, newType, tagColumn.Nullable, false, sqlbase.ColumnType_TYPE_TAG, nil, &params.p.semaCtx, sqlbase.CompressInfo{})
+			alteringTag, _, err := sqlbase.MakeTSColumnDefDescs(tagColumn.Name, newType, tagColumn.Nullable, sqlbase.ColumnType_TYPE_TAG, nil, &params.p.semaCtx, sqlbase.CompressInfo{})
 			if err != nil {
 				return err
 			}
@@ -1165,7 +1165,7 @@ func (n *alterTableNode) startExec(params runParams) error {
 				return err
 			}
 			t.Tag.TagType = tagType
-			tagCol, _, err := sqlbase.MakeTSColumnDefDescs(string(t.Tag.TagName), t.Tag.TagType, t.Tag.Nullable, false, sqlbase.ColumnType_TYPE_TAG, nil, &params.p.semaCtx, sqlbase.CompressInfo{})
+			tagCol, _, err := sqlbase.MakeTSColumnDefDescs(string(t.Tag.TagName), t.Tag.TagType, t.Tag.Nullable, sqlbase.ColumnType_TYPE_TAG, nil, &params.p.semaCtx, sqlbase.CompressInfo{})
 			if err != nil {
 				return err
 			}
@@ -1476,27 +1476,6 @@ func (n *alterTableNode) startExec(params runParams) error {
 			log.Infof(params.ctx, "alter ts table %s 1st txn finished, id: %d, content: %s", n.n.Table.String(), n.tableDesc.ID, n.n.Cmds)
 
 			return nil
-
-		case *tree.AlterTableSetActivetime:
-			if n.tableDesc.TableType == tree.RelationalTable {
-				return pgerror.Newf(
-					pgcode.WrongObjectType, "can not set retentions on relational table \"%s\"", n.tableDesc.Name)
-			}
-			if n.tableDesc.TableType == tree.InstanceTable {
-				return pgerror.Newf(
-					pgcode.WrongObjectType, "can not set retentions on instance table \"%s\"", n.tableDesc.Name)
-			}
-			log.Infof(params.ctx, "alter ts table %s 1st txn start, id: %d, content: %s", n.n.Table.String(), n.tableDesc.ID, n.n.Cmds)
-
-			activeTime := getTimeFromTimeInput(t.TimeInput)
-			if activeTime < 0 || activeTime > MaxLifeTime {
-				return pgerror.Newf(pgcode.InvalidParameterValue, "active time %d %s is invalid",
-					t.TimeInput.Value, t.TimeInput.Unit)
-			}
-			activeTimeInput := timeInputToString(t.TimeInput)
-			n.tableDesc.TsTable.ActiveTime = uint32(activeTime)
-			n.tableDesc.TsTable.ActiveTimeInput = &activeTimeInput
-			descriptorChanged = true
 		case *tree.AlterPartitionInterval:
 			log.Infof(params.ctx, "alter ts table %s 1st txn start, id: %d, content: %s", n.n.Table.String(), n.tableDesc.ID, n.n.Cmds)
 
@@ -1745,7 +1724,7 @@ func applyColumnMutation(
 					compressInfo.CompressLevel = col.TsCol.CompressLevel
 				}
 				//var alteringTag sqlbase.ColumnDescriptor
-				alteringCol, _, err := sqlbase.MakeTSColumnDefDescs(col.Name, newType, col.Nullable, false, sqlbase.ColumnType_TYPE_DATA, nil, &params.p.semaCtx, compressInfo)
+				alteringCol, _, err := sqlbase.MakeTSColumnDefDescs(col.Name, newType, col.Nullable, sqlbase.ColumnType_TYPE_DATA, nil, &params.p.semaCtx, compressInfo)
 				if err != nil {
 					return false, err
 				}

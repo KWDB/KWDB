@@ -91,7 +91,7 @@ class TsEngineRecoverTest : public TsEngineTestBase {
     bool is_dropped = false;
     auto s = engine_->GetTsTable(ctx_, table_id, ts_table_dest, is_dropped);
     EXPECT_EQ(s, KStatus::SUCCESS);
-    auto ts_table_v2 = dynamic_pointer_cast<TsTableV2Impl>(ts_table_dest);
+    auto ts_table_v2 = dynamic_pointer_cast<TsTableImpl>(ts_table_dest);
     std::vector<EntityResultIndex> devs;
     if (dev_id > 0) {
       uint32_t entity_id = 0;

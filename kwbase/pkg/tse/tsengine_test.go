@@ -96,7 +96,6 @@ func makeTestObjectTable(
 		TsTableId:    tableID,
 		DatabaseId:   uint32(1),
 		LifeTime:     0,
-		ActiveTime:   0,
 		KColumnsId:   KColumnsID,
 		RowSize:      cOffset,
 		BitmapOffset: 0,

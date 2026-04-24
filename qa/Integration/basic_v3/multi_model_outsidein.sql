@@ -13,8 +13,7 @@ CREATE TABLE db_pipec.t_point (
     pipeline_sn varchar(16) not null,
     measure_type smallint,
     measure_location varchar(64))
-  PRIMARY TAGS(point_sn)
-  ACTIVETIME 3h;
+  PRIMARY TAGS(point_sn);
 
 -- Populate sample data
 insert into db_pipec.t_point values('2024-08-27 11:00:00',10.5,'a0','b0','c0','d0','e0',1,'f0');
@@ -1153,8 +1152,7 @@ CREATE TABLE mtagdb.measurepoints (
     measure_style int NOT NULL,
     measure_unit varchar(16),
     measure_location varchar(64))
-  PRIMARY TAGS(measure_position, measure_tag, measure_style, measure_type)
-  ACTIVETIME 3h;
+  PRIMARY TAGS(measure_position, measure_tag, measure_style, measure_type);
 
 insert into mtagdb.measurepoints values ('2025-01-01 01:01:01', 2.5, 'pipeline_1', 1, 'pipeline_sn_1', 2, 'mm', 'locatin1');
 insert into mtagdb.measurepoints values ('2025-01-01 01:01:02', 3.5, 'pipeline_1', 1, 'pipeline_sn_1', 2, 'mm', 'locatin1');

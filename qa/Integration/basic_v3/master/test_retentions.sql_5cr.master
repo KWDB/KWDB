@@ -176,154 +176,45 @@ INSERT 1
 ---------
       0
 (1 row)
-> create ts database tsdb;
-CREATE TS DATABASE
-> create table tsdb.t(ts timestamp not null, a int) tags(ptag int not null) primary tags(ptag); --t: 0
-CREATE TABLE
-> SELECT LIFETIME from kwdb_internal.kwdb_retention where table_name = 't';
-  lifetime
-------------
-         0
-(1 row)
-> show create table tsdb.t;
-   table_name   |              create_statement
-----------------+----------------------------------------------
-  tsdb.public.t | CREATE TABLE t (
-                |     ts TIMESTAMPTZ(3) NOT NULL,
-                |     a INT4 NULL
-                | ) TAGS (
-                |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
-                |     retentions 0s
-                |     activetime 1d
-                |
-(1 row)
-> create table tsdb.t1(ts timestamp not null, a int) tags(ptag int not null) primary tags(ptag) activetime 100d;
-CREATE TABLE
-> create table tsdb.t2(ts timestamp not null, a int) tags(ptag int not null) primary tags(ptag) activetime 1000Y;
-CREATE TABLE
-> create table tsdb.t3(ts timestamp not null, a int) tags(ptag int not null) primary tags(ptag) activetime 1001YEAR;
-ERROR: active time 1001year is invalid
-SQLSTATE: 22023
-> create table tsdb.t3(ts timestamp not null, a int) tags(ptag int not null) primary tags(ptag) activetime 1000month;
-CREATE TABLE
-> show create table tsdb.t1;
-    table_name   |              create_statement
------------------+----------------------------------------------
-  tsdb.public.t1 | CREATE TABLE t1 (
-                 |     ts TIMESTAMPTZ(3) NOT NULL,
-                 |     a INT4 NULL
-                 | ) TAGS (
-                 |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
-                 |     retentions 0s
-                 |     activetime 100d
-                 |
-(1 row)
-> show create table tsdb.t2;
-    table_name   |              create_statement
------------------+----------------------------------------------
-  tsdb.public.t2 | CREATE TABLE t2 (
-                 |     ts TIMESTAMPTZ(3) NOT NULL,
-                 |     a INT4 NULL
-                 | ) TAGS (
-                 |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
-                 |     retentions 0s
-                 |     activetime 1000y
-                 |
-(1 row)
-> show create table tsdb.t3;
-    table_name   |              create_statement
------------------+----------------------------------------------
-  tsdb.public.t3 | CREATE TABLE t3 (
-                 |     ts TIMESTAMPTZ(3) NOT NULL,
-                 |     a INT4 NULL
-                 | ) TAGS (
-                 |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
-                 |     retentions 0s
-                 |     activetime 1000month
-                 |
-(1 row)
-> alter table tsdb.t1 set activetime = 100000s;
-ALTER TABLE
-> alter table tsdb.t2 set activetime = 100000000000000WEEK;
-ERROR: active time 100000000000000 week is invalid
-SQLSTATE: 22023
-> alter table tsdb.t3 set activetime = 10hour;
-ALTER TABLE
-> show create table tsdb.t1;
-    table_name   |              create_statement
------------------+----------------------------------------------
-  tsdb.public.t1 | CREATE TABLE t1 (
-                 |     ts TIMESTAMPTZ(3) NOT NULL,
-                 |     a INT4 NULL
-                 | ) TAGS (
-                 |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
-                 |     retentions 0s
-                 |     activetime 100000s
-                 |
-(1 row)
-> show create table tsdb.t2;
-    table_name   |              create_statement
------------------+----------------------------------------------
-  tsdb.public.t2 | CREATE TABLE t2 (
-                 |     ts TIMESTAMPTZ(3) NOT NULL,
-                 |     a INT4 NULL
-                 | ) TAGS (
-                 |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
-                 |     retentions 0s
-                 |     activetime 1000y
-                 |
-(1 row)
-> show create table tsdb.t3;
-    table_name   |              create_statement
------------------+----------------------------------------------
-  tsdb.public.t3 | CREATE TABLE t3 (
-                 |     ts TIMESTAMPTZ(3) NOT NULL,
-                 |     a INT4 NULL
-                 | ) TAGS (
-                 |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
-                 |     retentions 0s
-                 |     activetime 10hour
-                 |
-(1 row)
-> drop database tsdb;
+> DROP database test1;
 DROP DATABASE
 > CREATE TS DATABASE ts_db8 retentions 10year;
 CREATE TS DATABASE
-> use ts_db8;
-SET
-> create TABLE tb(k_timestamp timestamptz not null,e1 timestamp ,e2 smallint ,e3 int ,e4 bigint ,e5 float ,e6 float ,e7 char(5) ,e8 bool ,e9 varbytes(10)) ATTRIBUTES (code1 int not null) primary tags(code1);
+> create TABLE ts_db8.tb(k_timestamp timestamptz not null,e1 timestamp ,e2 smallint ,e3 int ,e4 bigint ,e5 float ,e6 float ,e7 char(5) ,e8 bool ,e9 varbytes(10)) ATTRIBUTES (code1 int not null) primary tags(code1);
 CREATE TABLE
-> INSERT into tb VALUES( '2024-01-28 00:01:45.137+00:00', 1111111111000,1000,1000000,100000000000000000,100000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
+> INSERT into ts_db8.tb VALUES( '2024-01-28 00:01:45.137+00:00', 1111111111000,1000,1000000,100000000000000000,100000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
 INSERT 1
-> INSERT into tb VALUES( '2024-01-28 00:02:45.137+00:00', 2222222222000,2000,2000000,200000000000000000,200000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
+> INSERT into ts_db8.tb VALUES( '2024-01-28 00:02:45.137+00:00', 2222222222000,2000,2000000,200000000000000000,200000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
 INSERT 1
-> INSERT into tb VALUES( '2024-01-28 00:03:45.137+00:00', 3333333333000,3000,3000000,300000000000000000,300000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
+> INSERT into ts_db8.tb VALUES( '2024-01-28 00:03:45.137+00:00', 3333333333000,3000,3000000,300000000000000000,300000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
 INSERT 1
-> INSERT into tb VALUES( '2024-01-28 00:04:45.137+00:00', 4444444444000,4000,4000000,400000000000000000,400000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
+> INSERT into ts_db8.tb VALUES( '2024-01-28 00:04:45.137+00:00', 4444444444000,4000,4000000,400000000000000000,400000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
 INSERT 1
-> INSERT into tb VALUES( '2024-01-28 00:05:45.137+00:00', 5555555555000,5000,5000000,500000000000000000,500000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
+> INSERT into ts_db8.tb VALUES( '2024-01-28 00:05:45.137+00:00', 5555555555000,5000,5000000,500000000000000000,500000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
 INSERT 1
-> INSERT into tb VALUES( '2024-01-28 00:06:45.137+00:00', 6666666666000,1000,1000000,100000000000000000,100000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
+> INSERT into ts_db8.tb VALUES( '2024-01-28 00:06:45.137+00:00', 6666666666000,1000,1000000,100000000000000000,100000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
 INSERT 1
-> INSERT into tb VALUES( '2024-01-28 00:07:45.137+00:00', 7777777777000,2000,2000000,200000000000000000,200000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
+> INSERT into ts_db8.tb VALUES( '2024-01-28 00:07:45.137+00:00', 7777777777000,2000,2000000,200000000000000000,200000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
 INSERT 1
-> INSERT into tb VALUES( '2024-01-28 00:08:45.137+00:00', 3333333333000,3000,3000000,300000000000000000,300000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
+> INSERT into ts_db8.tb VALUES( '2024-01-28 00:08:45.137+00:00', 3333333333000,3000,3000000,300000000000000000,300000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
 INSERT 1
-> INSERT into tb VALUES( '2024-01-28 00:09:45.137+00:00', 4444444444000,4000,4000000,400000000000000000,400000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
+> INSERT into ts_db8.tb VALUES( '2024-01-28 00:09:45.137+00:00', 4444444444000,4000,4000000,400000000000000000,400000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
 INSERT 1
-> INSERT into tb VALUES( '2024-01-28 00:10:45.137+00:00', 5555555555000,5000,5000000,500000000000000000,500000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
+> INSERT into ts_db8.tb VALUES( '2024-01-28 00:10:45.137+00:00', 5555555555000,5000,5000000,500000000000000000,500000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
 INSERT 1
-> INSERT into tb VALUES( '0000-01-01 00:00:00.000+00:00', 3333333333000,3000,3000000,300000000000000000,300000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
+> INSERT into ts_db8.tb VALUES( '0000-01-01 00:00:00.000+00:00', 3333333333000,3000,3000000,300000000000000000,300000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
 INSERT 1
-> INSERT into tb VALUES( '0010-01-01 00:09:45.137+00:00', 4444444444000,4000,4000000,400000000000000000,400000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
+> INSERT into ts_db8.tb VALUES( '0010-01-01 00:09:45.137+00:00', 4444444444000,4000,4000000,400000000000000000,400000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
 INSERT 1
-> INSERT into tb VALUES( '0020-01-28 00:10:45.137+00:00', 5555555555000,5000,5000000,500000000000000000,500000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
+> INSERT into ts_db8.tb VALUES( '0020-01-28 00:10:45.137+00:00', 5555555555000,5000,5000000,500000000000000000,500000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
 INSERT 1
-> select count(*) from tb;
+> select count(*) from ts_db8.tb;
   count
 ---------
      10
 (1 row)
+> DROP database ts_db8;
+DROP DATABASE
 > CREATE TS DATABASE test_lifetime;
 CREATE TS DATABASE
 > create table test_lifetime.tb(
@@ -371,25 +262,10 @@ INSERT 1
 (2 rows)
 > ALTER TABLE test_lifetime.tb SET RETENTIONS=1week;
 ALTER TABLE
-> select count(*) from test1.t1;
+> select count(*) from test_lifetime.tb;
   count
 ---------
       0
 (1 row)
-> drop database test1;
-DROP DATABASE
-> select count(*) from tb;
-  count
----------
-     10
-(1 row)
-> drop DATABASE ts_db8;
-DROP DATABASE
-> SELECT k_timestamp FROM test_lifetime.tb order by k_timestamp;
-  k_timestamp
----------------
-(0 rows)
-> DROP TABLE test_lifetime.tb;
-DROP TABLE
 > DROP DATABASE test_lifetime CASCADE;
 DROP DATABASE

@@ -456,7 +456,7 @@ KStatus TSEngineImpl::CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roach
     LOG_ERROR("Get table schema manager [%lu] failed.", table_id);
     return s;
   }
-  ts_table = std::make_shared<TsTableV2Impl>(table_schema_mgr, vgroups_);
+  ts_table = std::make_shared<TsTableImpl>(table_schema_mgr, vgroups_);
   tables_cache_->Put(table_id, ts_table);
   return s;
 }
@@ -511,7 +511,7 @@ KStatus TSEngineImpl::GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, s
     }
     if (!table_not_exist) {
       // 1. if table exist, open table.
-      auto table = std::make_shared<TsTableV2Impl>(schema, vgroups_);
+      auto table = std::make_shared<TsTableImpl>(schema, vgroups_);
       if (table != nullptr) {
         ts_table = table;
         tables_cache_->Put(table_id, ts_table);
@@ -519,7 +519,7 @@ KStatus TSEngineImpl::GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, s
         // the dropped/version checks below so requested schema versions are
         // loaded before the handle is returned to callers.
       } else {
-        LOG_ERROR("make TsTableV2Impl failed for table[%lu]", table_id);
+        LOG_ERROR("make TsTableImpl failed for table[%lu]", table_id);
         return KStatus::FAIL;
       }
     }
@@ -779,7 +779,7 @@ KStatus TSEngineImpl::PutData(kwdbContext_p ctx, const KTableKey& table_id, uint
       created_tag_num += 1;
     }
     auto vgroup = GetVGroupByID(ctx, vgroup_id);
-    s =  dynamic_pointer_cast<TsTableV2Impl>(ts_table)->PutData(ctx, vgroup, &cur_pd, 1, mtr_id, entity_id,
+    s =  dynamic_pointer_cast<TsTableImpl>(ts_table)->PutData(ctx, vgroup, &cur_pd, 1, mtr_id, entity_id,
             not_create_entity, dedup_result, (DedupRule)(dedup_result->dedup_rule), write_wal);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("put data failed. table[%lu].", table_id);
@@ -1515,7 +1515,7 @@ KStatus TSEngineImpl::GetMetaData(kwdbContext_p ctx, const KTableKey& table_id,
   if (s == FAIL) {
     return s;
   }
-  auto table_v2 = dynamic_pointer_cast<TsTableV2Impl>(table);
+  auto table_v2 = dynamic_pointer_cast<TsTableImpl>(table);
   uint32_t cur_table_version = table->GetCurrentTableVersion();
   LOG_INFO("TSEngineImpl::GetMetaData Begin! table_id: %lu table_version: %u ",
      table_id, cur_table_version);
@@ -1597,7 +1597,7 @@ KStatus TSEngineImpl::DeleteEntities(kwdbContext_p ctx, const KTableKey& table_i
     return s;
   }
   ctx->ts_engine = this;
-  return (dynamic_pointer_cast<TsTableV2Impl>(ts_table))->DeleteEntities(ctx, primary_tags, count, mtr_id, osn, true);
+  return (dynamic_pointer_cast<TsTableImpl>(ts_table))->DeleteEntities(ctx, primary_tags, count, mtr_id, osn, true);
 }
 
 KStatus TSEngineImpl::DeleteEntityByTag(kwdbContext_p ctx, const KTableKey& table_id, bool& is_dropped,
@@ -1610,8 +1610,8 @@ KStatus TSEngineImpl::DeleteEntityByTag(kwdbContext_p ctx, const KTableKey& tabl
     return s;
   }
   uint32_t cur_table_version = ts_table->GetCurrentTableVersion();
-  return (dynamic_pointer_cast<TsTableV2Impl>(ts_table))->DeleteEntityByTag(ctx, tags_index_id, tags, count, mtr_id,
-                                                                            osn, cur_table_version, hash_span);
+  return dynamic_pointer_cast<TsTableImpl>(ts_table)->DeleteEntityByTag(ctx, tags_index_id, tags, count, mtr_id,
+                                                                        osn, cur_table_version, hash_span);
 }
 
 KStatus TSEngineImpl::DeleteMetricByTag(kwdbContext_p ctx, const KTableKey& table_id, bool& is_dropped,
@@ -1625,8 +1625,8 @@ KStatus TSEngineImpl::DeleteMetricByTag(kwdbContext_p ctx, const KTableKey& tabl
     return s;
   }
   uint32_t cur_table_version = ts_table->GetCurrentTableVersion();
-  return (dynamic_pointer_cast<TsTableV2Impl>(ts_table))->DeleteMetricByTag(ctx, tags_index_id, tags, ts_spans, count,
-                                                                            mtr_id, osn, cur_table_version, hash_span);
+  return dynamic_pointer_cast<TsTableImpl>(ts_table)->DeleteMetricByTag(ctx, tags_index_id, tags, ts_spans, count,
+                                                                        mtr_id, osn, cur_table_version, hash_span);
 }
 
 KStatus TSEngineImpl::DeleteRangeEntities(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t& range_grp_id,
@@ -2361,7 +2361,7 @@ uint64_t* snapshot_id, bool& is_dropped) {
   // todo(liangbo01) maybe we need use available version.
   ts_snapshot_info.table_version = table->GetCurrentTableVersion();
   ts_snapshot_info.del_iter = std::make_shared<STTableRangeDelAndTagInfo>(
-      reinterpret_pointer_cast<TsTableV2Impl>(ts_snapshot_info.table),
+      reinterpret_pointer_cast<TsTableImpl>(ts_snapshot_info.table),
       ts_snapshot_info.begin_hash, ts_snapshot_info.end_hash, ts_snapshot_info.table_version, scan_osn);
   ts_snapshot_info.op_osn = scan_osn;
   s = ts_snapshot_info.del_iter->Init();
@@ -2402,7 +2402,7 @@ KStatus TSEngineImpl::CreateSnapshotForWrite(kwdbContext_p ctx, const KTableKey&
   ts_snapshot_info.batch_read_finished = false;
   ts_snapshot_info.del_info_read_finished = false;
   ts_snapshot_info.del_iter = std::make_shared<STTableRangeDelAndTagInfo>(
-      reinterpret_pointer_cast<TsTableV2Impl>(ts_snapshot_info.table),
+      reinterpret_pointer_cast<TsTableImpl>(ts_snapshot_info.table),
       ts_snapshot_info.begin_hash, ts_snapshot_info.end_hash, ts_snapshot_info.table_version, osn);
   ts_snapshot_info.op_osn = osn;
   s = ts_snapshot_info.del_iter->Init();

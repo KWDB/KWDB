@@ -16,8 +16,7 @@ CREATE TABLE db_pipec.t_point (
     pipeline_sn varchar(16) not null,
     measure_type smallint,
     measure_location varchar(64))
-  PRIMARY TAGS(point_sn)
-  ACTIVETIME 3h;
+  PRIMARY TAGS(point_sn);
 
 -- Populate sample data
 insert into db_pipec.t_point values('2024-08-27 11:00:00',10.5,'a0','b0','c0','d0','e0',1,'f0');
@@ -1251,7 +1250,7 @@ CREATE TABLE runba.opcdata449600 (
 ) PRIMARY TAGS (
   channel,
   companyid
-) ACTIVETIME 10m;
+);
 
 CREATE TABLE runba.opcdata449652 (
                                      "time" TIMESTAMPTZ NOT NULL,

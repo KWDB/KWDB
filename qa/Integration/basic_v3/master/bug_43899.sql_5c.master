@@ -13,8 +13,7 @@ CREATE TS DATABASE
     pipeline_sn varchar(16) not null,
     measure_type smallint,
     measure_location varchar(64))
-  PRIMARY TAGS(point_sn)
-  ACTIVETIME 3h;
+  PRIMARY TAGS(point_sn);
 CREATE TABLE
 > CREATE DATABASE pipec_r;
 CREATE DATABASE

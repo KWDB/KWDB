@@ -147,9 +147,7 @@ CREATE TABLE test_select_subquery.t2 (
 	code1 INT2 NOT NULL,
 	code6 BOOL
  ) PRIMARY TAGS(code1)
-	retentions 0s
-	activetime 1d
-	;
+	retentions 0s;
 
 INSERT INTO test_select_subquery.t2 VALUES ('2023-05-10 10:00:00.000', 1, '2023-05-10 10:00:00.000', 'char_test_1023', 1, 1);
 

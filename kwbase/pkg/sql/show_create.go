@@ -239,18 +239,6 @@ func ShowCreateTable(
 			f.WriteString(strconv.Itoa(int(desc.TsTable.Lifetime)))
 			f.WriteString("s")
 		}
-
-		f.WriteString("\n\t")
-		f.WriteString("activetime ")
-		if desc.TsTable.ActiveTimeInput != nil {
-			f.WriteString(*desc.TsTable.ActiveTimeInput)
-		} else {
-			f.WriteString("1d")
-		}
-		if desc.TsTable.Sde {
-			f.WriteString(" DICT ENCODING")
-		}
-		f.WriteString("\n\t")
 	}
 
 	if err := showCreateInterleave(&desc.PrimaryIndex, &f.Buffer, dbPrefix, lCtx); err != nil {
@@ -274,7 +262,7 @@ func ShowCreateTable(
 // ShowCreateInstanceTable returns a valid SQL representation of the CREATE
 // INSTANCE TABLE statement used to create the given table.
 func ShowCreateInstanceTable(
-	sTable tree.Name, cTable string, tagName []string, tagValue []string, sde bool, typ []types.T,
+	sTable tree.Name, cTable string, tagName []string, tagValue []string, typ []types.T,
 ) string {
 	f := tree.NewFmtCtx(tree.FmtSimple)
 	f.WriteString("CREATE ")
@@ -306,9 +294,6 @@ func ShowCreateInstanceTable(
 		}
 	}
 	f.WriteString(" )")
-	if sde {
-		f.WriteString(" DICT ENCODING")
-	}
 	return f.CloseAndGetString()
 }
 

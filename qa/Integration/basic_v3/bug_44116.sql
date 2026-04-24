@@ -64,8 +64,7 @@ CREATE TABLE d1.t_electmeter (
 	machine_code VARCHAR(64) NOT NULL,
 	op_group VARCHAR(64) NOT NULL,
 	location VARCHAR(64) NOT NULL,
-	cnc_number INT4 ) PRIMARY TAGS(machine_code)
-	 activetime 3h;
+	cnc_number INT4 ) PRIMARY TAGS(machine_code);
 
 CREATE TABLE up_exg_msg_real_location (
                                           gtime TIMESTAMPTZ NOT NULL,
@@ -196,8 +195,7 @@ CREATE TABLE t_cnc (
 	machine_code VARCHAR(64) NOT NULL,
 	op_group VARCHAR(64) NOT NULL,
 	brand VARCHAR(64) NOT NULL,
-	number_of_molds INT4 ) PRIMARY TAGS(machine_code, op_group)
-	 activetime 3h;
+	number_of_molds INT4 ) PRIMARY TAGS(machine_code, op_group);
 
 
 

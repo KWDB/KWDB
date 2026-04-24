@@ -293,7 +293,7 @@ TEST_F(TsEngineV2Test, TableCache){
   std::vector<std::shared_ptr<TsTable>> tables;
   const std::vector<std::shared_ptr<TsVGroup>> vgroups = {};
   for (int i = 0; i < 60; ++i) {
-    std::shared_ptr<TsTable> table = std::make_shared<TsTableV2Impl>(schema_mgr, vgroups);
+    std::shared_ptr<TsTable> table = std::make_shared<TsTableImpl>(schema_mgr, vgroups);
     tables.push_back(table);
     table_cache.Put(i, table);
   }

@@ -17,8 +17,6 @@ CREATE TABLE
                           |     code1 INT2 NOT NULL,
                           |     code2 INT4 ) PRIMARY TAGS(code1)
                           |     retentions 0s
-                          |     activetime 1d
-                          |
 (1 row)
 > set sql_safe_updates = false;
 SET

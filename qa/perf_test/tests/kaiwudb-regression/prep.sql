@@ -28,8 +28,7 @@ CREATE TABLE db_pipec_small.t_point(
     pipeline_sn varchar(16) not null,
     measure_type smallint,
     measure_location varchar(64))
-  PRIMARY TAGS(point_sn)
-  ACTIVETIME 3h;
+  PRIMARY TAGS(point_sn);
 
 -- relation table
 CREATE DATABASE pipec_r_small;
@@ -168,8 +167,7 @@ CREATE TABLE mtagdb.measurepoints (
     measure_style int NOT NULL,
     measure_unit varchar(16),
     measure_location varchar(64))
-  PRIMARY TAGS(measure_position, measure_tag, measure_style, measure_type) 
-  ACTIVETIME 3h;
+  PRIMARY TAGS(measure_position, measure_tag, measure_style, measure_type);
   
   insert into mtagdb.measurepoints values ('2025-01-01 01:01:01', 2.5, 'pipeline_1', 1, 'pipeline_sn_1', 2, 'mm', 'locatin1');
   insert into mtagdb.measurepoints values ('2025-01-01 01:01:02', 3.5, 'pipeline_1', 1, 'pipeline_sn_1', 2, 'mm', 'locatin1');

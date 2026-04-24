@@ -275,9 +275,6 @@ func (u *sqlSymUnion) methods() tree.MethodArray {
 func (u *sqlSymUnion) timeInput() tree.TimeInput {
     return u.val.(tree.TimeInput)
 }
-func (u *sqlSymUnion) activeTime() *tree.TimeInput {
-    return u.val.(*tree.TimeInput)
-}
 func (u *sqlSymUnion) partitionInterval() *tree.TimeInput {
     return u.val.(*tree.TimeInput)
 }
@@ -722,7 +719,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 
 %token <str> D DATA DATABASE DATABASES DATAS DATE DAY DDLREPLAY DEC DECLARE DECIMAL DEFAULT DELIMITER_EOF
 %token <str> DEALLOCATE DEFERRABLE DEFERRED DELETE DESC DESCRIBE DEVICE
-%token <str> DICT DISCARD DISTINCT DISTRIBUTION DO DOMAIN DOUBLE DROP DISABLE
+%token <str> DISCARD DISTINCT DISTRIBUTION DO DOMAIN DOUBLE DROP DISABLE
 
 %token <str> EACH ELSIF ENCODE ENDIF ENDWHILE ENDCASE ENDLOOP ENDHANDLER
 %token <str> ELSE ENCODING END ENDPOINT ENDTIME ENUM ESCAPE ESTIMATED EXCEPT EXCLUDE ENABLE
@@ -754,7 +751,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %token <str> LANGUAGE LAST LASTTS LAST_ROW LAST_ROW_TS LATERAL LC_CTYPE LC_COLLATE
 %token <str> LEADING LEASE LEAST LEFT LESS LEVEL LIKE LIMIT LIST LOCAL
 %token <str> LOCALTIME LOCALTIMESTAMP LOCATION LOCKED LOGIN LOOKUP LOOP LOW LSHIFT
-%token <str> ACTIVETIME LUA
+%token <str> LUA
 
 %token <str> M MATCH MATERIALIZED MB MEMCAPACITY MEMORY MERGE MICROSECOND MILLISECOND MINVALUE MAXVALUE MINUTE MON MONTH MS
 
@@ -1124,7 +1121,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.TableDefs> opt_table_elem_list table_elem_list create_as_opt_col_list create_as_table_defs
 %type <tree.FuncArgDefs> arg_def_list
 %type <tree.TimeInput> resolution keep_duration
-%type <*tree.TimeInput> opt_active_time opt_partition_interval opt_hash_num
+%type <*tree.TimeInput> opt_partition_interval opt_hash_num
 %type <tree.Retention> retentions_elem
 %type <tree.RetentionList> retentions_elems
 %type <str> method
@@ -1134,7 +1131,6 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <*tree.DownSampling> opt_retentions_elems
 %type <tree.Tags> table_elem_tag_list
 %type <tree.Tag> table_elem_tag
-%type <bool> opt_dict_encoding
 %type <bool> opt_nullable
 %type <tree.CreateTableOnCommitSetting> opt_create_table_on_commit
 %type <*tree.InterleaveDef> opt_interleave
@@ -1368,7 +1364,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %right		 ASSIGN
 %nonassoc  VALUES              // see value_clause
 %nonassoc  SET                 // see table_expr_opt_alias_idx
-%nonassoc  ACTIVETIME VALID INTERPOLATE LINEAR PREV NEXT
+%nonassoc  VALID INTERPOLATE LINEAR PREV NEXT
 %left      UNION EXCEPT
 %left      INTERSECT
 %left      OR
@@ -1516,7 +1512,6 @@ alter_ddl_stmt:
 //   ALTER TABLE ... VALIDATE CONSTRAINT <constraintname>
 //   ALTER TABLE ... CONFIGURE ZONE <zoneconfig>
 //   ALTER TABLE ... SET RETENTIONS = <duration>
-//   ALTER TABLE ... SET ACTIVETIME = <duration>
 //   ALTER TABLE ... SET PARTITION INTERVAL = <duration>
 //
 // Column qualifiers:
@@ -2124,12 +2119,6 @@ alter_table_cmd:
   {
   	$$.val = &tree.AlterTableSetRetentions{
   		TimeInput: $4.timeInput(),
-  	}
-  }
-| SET ACTIVETIME '=' keep_duration
-  {
-  	$$.val = &tree.AlterTableSetActivetime{
-  	  TimeInput: $4.timeInput(),
   	}
   }
 
@@ -5471,7 +5460,7 @@ create_schema_stmt:
 // CREATE [[GLOBAL | LOCAL] {TEMPORARY | TEMP}] TABLE [IF NOT EXISTS] <tablename> ( <elements...> ) [<interleave>] [<on_commit>] [<comment_clause>]
 // CREATE [[GLOBAL | LOCAL] {TEMPORARY | TEMP}] TABLE [IF NOT EXISTS] <tablename> [( <colnames...> )] AS <source> [<interleave>] [<on commit>] [<comment_clause>]
 // CREATE TABLE <tablename> (<elements...>) ATTRIBUTES/TAGS (<elements...>) PRIMARY ATTRIBUTES/TAGS (<name_list>)
-//			[RETENTIONS <duration>] [ACTIVETIME <duration>] [DICT ENCODING] [PARTITION INTERVAL <duration>] [<comment>]
+//			[RETENTIONS <duration>] [PARTITION INTERVAL <duration>] [<comment>]
 //
 // Table elements:
 //    <name> <type> [<qualifiers...>]
@@ -5603,7 +5592,7 @@ storage_parameter_list:
   }
 
 //create_super_table_stmt:
-//  CREATE opt_temp_create_table TABLE table_name '(' opt_table_elem_list ')' attributes_tags '(' table_elem_tag_list ')' opt_retentions_elems opt_active_time opt_dict_encoding opt_partition_interval
+//  CREATE opt_temp_create_table TABLE table_name '(' opt_table_elem_list ')' attributes_tags '(' table_elem_tag_list ')' opt_retentions_elems opt_partition_interval
 //	{
 //    name := $4.unresolvedObjectName().ToTableName()
 //    $$.val = &tree.CreateTable{
@@ -5615,8 +5604,6 @@ storage_parameter_list:
 //      TableType: tree.SuperTable,
 //      Tags: $10.tags(),
 //      DownSampling: $12.downSampling(),
-//      ActiveTime: $13.activeTime(),
-//      Sde: $14.bool(),
 //      PartitionInterval: $15.partitionInterval(),
 //    }
 //	}
@@ -5728,7 +5715,7 @@ table_elem_tag:
 //  }
 
 create_ts_table_stmt:
-  CREATE opt_temp_create_table TABLE IF NOT EXISTS table_name '(' opt_table_elem_list ')' attributes_tags '(' table_elem_tag_list ')' PRIMARY attributes_tags '(' name_list ')' opt_retentions_elems opt_active_time opt_dict_encoding opt_comment_clause opt_hash_num
+  CREATE opt_temp_create_table TABLE IF NOT EXISTS table_name '(' opt_table_elem_list ')' attributes_tags '(' table_elem_tag_list ')' PRIMARY attributes_tags '(' name_list ')' opt_retentions_elems opt_comment_clause opt_hash_num
 	{
     name := $7.unresolvedObjectName().ToTableName()
     $$.val = &tree.CreateTable{
@@ -5738,16 +5725,14 @@ create_ts_table_stmt:
       Temporary: $2.persistenceType(),
       OnCommit: tree.CreateTableOnCommitUnset,
       DownSampling: $20.downSampling(),
-      ActiveTime: $21.activeTime(),
       TableType: tree.TimeseriesTable,
       Tags: $13.tags(),
-      Sde: $22.bool(),
       PrimaryTagList: $18.nameList(),
-      Comment: $23,
-      HashNum: $24.int64(),
+      Comment: $21,
+      HashNum: $22.int64(),
     }
 	}
-| CREATE opt_temp_create_table TABLE table_name '(' opt_table_elem_list ')' attributes_tags '(' table_elem_tag_list ')' PRIMARY attributes_tags '(' name_list ')' opt_retentions_elems opt_active_time opt_dict_encoding opt_comment_clause opt_hash_num
+| CREATE opt_temp_create_table TABLE table_name '(' opt_table_elem_list ')' attributes_tags '(' table_elem_tag_list ')' PRIMARY attributes_tags '(' name_list ')' opt_retentions_elems opt_comment_clause opt_hash_num
 	{
     name := $4.unresolvedObjectName().ToTableName()
     $$.val = &tree.CreateTable{
@@ -5757,13 +5742,11 @@ create_ts_table_stmt:
       Temporary: $2.persistenceType(),
       OnCommit: tree.CreateTableOnCommitUnset,
       DownSampling: $17.downSampling(),
-      ActiveTime: $18.activeTime(),
       TableType: tree.TimeseriesTable,
       Tags: $10.tags(),
-      Sde: $19.bool(),
       PrimaryTagList: $15.nameList(),
-      Comment: $20,
-      HashNum: $21.int64(),
+      Comment: $18,
+      HashNum: $19.int64(),
     }
 	}
 
@@ -7414,27 +7397,6 @@ opt_nullable:
 | /* EMPTY */
 	{
 		$$.val = true
-	}
-
-opt_dict_encoding:
-	DICT ENCODING
-	{
-		$$.val = true
-	}
-| /* EMPTY */ %prec VALUES
-	{
-		$$.val = false
-	}
-
-opt_active_time:
-  ACTIVETIME keep_duration
-	{
-		activetime := $2.timeInput()
-    $$.val = &activetime
-	}
-| /* EMPTY */ %prec VALUES
-	{
-		$$.val = (*tree.TimeInput)(nil)
 	}
 
 opt_partition_interval:
@@ -13460,7 +13422,6 @@ unreserved_keyword:
 | ACCESS_HINT
 | NO_ACCESS_HINT
 | ACTION
-| ACTIVETIME
 | ADD
 | ADMIN
 | AFTER
@@ -13527,7 +13488,6 @@ unreserved_keyword:
 | DESCRIBE
 | DEVICE
 | DEFERRED
-| DICT
 | DISCARD
 | DISABLE
 | DISTRIBUTION

@@ -421,7 +421,7 @@ select * from t2 where code1 = 100 order by code0;
 explain select * from t2 where code1 = 100;
 drop table test_ntag_hash.t2;
 
-CREATE TABLE test_ntag_hash.t3(k_timestamp timestamptz NOT NULL, e1 int2 ) ATTRIBUTES (code1 int NOT NULL,code2 int NOT NULL,t_int2_1 int2, t_int4_1 int, t_int8_1 int8, t_float4_1 float4, t_float8_1 float8, t_bool_1 bool, t_charn_1 char(1023), t_ncharn_1 nchar(254),t_char_1 char, t_nchar_1 nchar,t_varcharn_1 varchar(256), t_varchar_1 varchar, t_varbytesn_1 varbytes(256),t_varbytes_1 varbytes) primary tags(code1,code2) activetime 10s;
+CREATE TABLE test_ntag_hash.t3(k_timestamp timestamptz NOT NULL, e1 int2 ) ATTRIBUTES (code1 int NOT NULL,code2 int NOT NULL,t_int2_1 int2, t_int4_1 int, t_int8_1 int8, t_float4_1 float4, t_float8_1 float8, t_bool_1 bool, t_charn_1 char(1023), t_ncharn_1 nchar(254),t_char_1 char, t_nchar_1 nchar,t_varcharn_1 varchar(256), t_varchar_1 varchar, t_varbytesn_1 varbytes(256),t_varbytes_1 varbytes) primary tags(code1,code2);
 ALTER TABLE t3 ADD TAG code3 INT2;
 ALTER TABLE t3 ADD TAG code5 INT2;
 INSERT INTO test_ntag_hash.t3 (k_timestamp,e1, code1, code2,code3,code5, t_int2_1,t_int4_1,t_int8_1,t_float4_1,t_float8_1,t_bool_1,t_charn_1,t_ncharn_1,t_char_1,t_nchar_1,t_varcharn_1,t_varchar_1,t_varbytesn_1,

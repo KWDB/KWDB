@@ -330,7 +330,7 @@ TEST_F(TestV2Iterator, multiDBAndEntity) {
       s = engine_->GetTsTable(ctx_, table_id + i, ts_table, is_dropped, false);
       ASSERT_EQ(s , KStatus::SUCCESS);
       vector<EntityResultIndex> entity_store;
-      s = dynamic_pointer_cast<TsTableV2Impl>(ts_table)->GetEntityIdByHashSpan(ctx_, {0, UINT64_MAX}, UINT64_MAX, entity_store);
+      s = dynamic_pointer_cast<TsTableImpl>(ts_table)->GetEntityIdByHashSpan(ctx_, {0, UINT64_MAX}, UINT64_MAX, entity_store);
       ASSERT_EQ(s, KStatus::SUCCESS);
       entity_scan_num += entity_store.size();
       s = engine_->GetTableSchemaMgr(ctx_, table_id + i, is_dropped, table_schema_mgr);

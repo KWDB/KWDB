@@ -4042,8 +4042,7 @@ meter_id                    INT8                    NOT NULL,
 ou_id                           INT4                    NOT NULL,
 mnft_code                       INT2                    NOT NULL
 ) PRIMARY TAGS(mnft_code, meter_id)
-retentions 30d
-ACTIVETIME 30d;
+retentions 30d;
 
 
 CREATE TABLE iot_gas_meter.bill_abs_info (

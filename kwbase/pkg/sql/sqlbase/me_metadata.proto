@@ -197,7 +197,7 @@ message KWDBTsTable {
   optional uint64 bitmap_offset = 8 [(gogoproto.nullable) = false];
   // table name
   optional string table_name = 10 [(gogoproto.nullable) = false];
-  // dict encoding
+  // dict encoding(deprecated)
   optional bool sde = 11 [(gogoproto.nullable) = false];
   // partition interval
   optional uint64 partition_interval = 12 [(gogoproto.nullable) = false];

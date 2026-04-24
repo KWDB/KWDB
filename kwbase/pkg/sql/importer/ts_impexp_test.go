@@ -74,7 +74,7 @@ func TestImpExpNormalTsTable(t *testing.T) {
 
 	sqlDB.Exec(t, `CREATE TS DATABASE tsdb;`)
 	sqlDB.Exec(t, `USE tsdb;`)
-	createSQL := `CREATE TABLE t1 (k_timestamp TIMESTAMP NOT NULL, a INT4 NULL) TAGS (location VARCHAR(64) 'beijing', color VARCHAR(64) 'blue') ACTIVETIME 15;`
+	createSQL := `CREATE TABLE t1 (k_timestamp TIMESTAMP NOT NULL, a INT4 NULL) TAGS (location VARCHAR(64) 'beijing', color VARCHAR(64) 'blue');`
 	sqlDB.Exec(t, createSQL)
 	// export only meta and check meta.sql is existed
 	t.Run(`export only meta`, func(t *testing.T) {
@@ -86,12 +86,6 @@ func TestImpExpNormalTsTable(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// we parse the stmt and export its .String(),
-		// so it will be different from show create stmt with additional 'ACTIVETIME 15'.
-		//showCreateAll := sqlDB.QueryStr(t, "SHOW CREATE TABLE t1")
-		//if showCreate, export := showCreateAll[0][1], string(meta); showCreate+";\n" != export {
-		//	t.Fatalf("export's content is different from show create SQL\nshowCreate:%v\nexport:%v\n", showCreate, export)
-		//}
 		if string(meta) != createSQL+"\n" {
 			t.Fatalf("export's content is different from create SQL\ncreate:%v\nexport:%v\n", createSQL, string(meta))
 		}
@@ -152,7 +146,7 @@ func TestImpExpTemplateTable(t *testing.T) {
 	defer srv.Stopper().Stop(context.Background())
 	sqlDB := sqlutils.MakeSQLRunner(db)
 
-	createSQL := `CREATE TABLE st (k_timestamp TIMESTAMP NOT NULL, abc INT4 NULL) TAGS (location VARCHAR(64), color VARCHAR(64)) ACTIVETIME 15;`
+	createSQL := `CREATE TABLE st (k_timestamp TIMESTAMP NOT NULL, abc INT4 NULL) TAGS (location VARCHAR(64), color VARCHAR(64));`
 	sqlDB.Exec(t, `CREATE TS DATABASE tsdb;`)
 	sqlDB.Exec(t, `USE tsdb;`)
 	sqlDB.Exec(t, createSQL)

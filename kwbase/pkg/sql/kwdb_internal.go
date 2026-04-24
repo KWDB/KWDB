@@ -1572,7 +1572,7 @@ CREATE TABLE kwdb_internal.create_statements (
 								}
 							}
 							// TODO(wy):get tag value
-							childStmt := ShowCreateInstanceTable(tree.Name(table.Name), childName, name, nil, table.TsTable.Sde, typ)
+							childStmt := ShowCreateInstanceTable(tree.Name(table.Name), childName, name, nil, typ)
 							if err := addRow(
 								dbDescID,
 								parentNameStr,

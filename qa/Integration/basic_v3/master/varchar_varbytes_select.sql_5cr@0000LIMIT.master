@@ -43,6 +43,4 @@
                             |     year NCHAR(1),
                             |     type NCHAR(254) ) PRIMARY TAGS(code1, flag, color)
                             |     retentions 0s
-                            |     activetime 1d
-                            |
 (1 row)

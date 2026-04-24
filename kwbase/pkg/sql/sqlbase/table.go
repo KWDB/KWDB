@@ -369,7 +369,6 @@ func MakeTSColumnDefDescs(
 	name string,
 	typ *types.T,
 	nullable bool,
-	sde bool,
 	columnType ColumnType,
 	defaultExpr tree.Expr,
 	semaCtx *tree.SemaContext,
@@ -537,18 +536,6 @@ func MakeTSColumnDefDescs(
 			}
 		}
 	}
-	// dict encoding
-	if sde && col.TsCol.StorageLen <= TSBOStringMaxLen {
-		switch storageType {
-		case DataType_CHAR:
-			col.TsCol.StorageType = DataType_SDECHAR
-		case DataType_VARCHAR:
-			col.TsCol.StorageType = DataType_SDEVARCHAR
-		default:
-			// empty
-		}
-	}
-
 	switch storageType {
 	case DataType_VARCHAR, DataType_NVARCHAR, DataType_VARBYTES:
 		col.TsCol.VariableLengthType = StorageIndependentPage
