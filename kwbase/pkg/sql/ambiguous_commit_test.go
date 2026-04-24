@@ -75,6 +75,7 @@ func TestAmbiguousCommit(t *testing.T) {
 
 	testutils.RunTrueAndFalse(t, "ambiguousSuccess", func(t *testing.T, ambiguousSuccess bool) {
 		var params base.TestServerArgs
+		params.Insecure = true
 		var processed int32
 		var tableStartKey atomic.Value
 
