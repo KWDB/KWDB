@@ -150,7 +150,7 @@ SET
 DROP DATABASE
 > CREATE TS DATABASE db_digital_ent;
 CREATE TS DATABASE
-> CREATE TABLE db_digital_ent.stbl_event (ts timestamptz NOT NULL,data_write_time timestamp,type varchar(10),params varchar(1000)) ATTRIBUTES (device varchar(64) NOT NULL,identifier nchar(64) NOT NULL) primary tags(device, identifier) activetime 1h;
+> CREATE TABLE db_digital_ent.stbl_event (ts timestamptz NOT NULL,data_write_time timestamp,type varchar(10),params varchar(1000)) ATTRIBUTES (device varchar(64) NOT NULL,identifier nchar(64) NOT NULL) primary tags(device, identifier);
 CREATE TABLE
 > select ts as timestamp, * from db_digital_ent.stbl_event where ts >= '2025-02-10 00:00:00' and ts <= '2025-02-18 00:00:00' order by ts desc limit 10 offset 100000000;
   timestamp | ts | data_write_time | type | params | device | identifier

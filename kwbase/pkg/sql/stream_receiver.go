@@ -244,6 +244,7 @@ func (srw *StreamReceiver) flush() error {
 		)
 
 		colNum := srw.rowContainer.NumCols()
+		errNum := 0
 		// retry to INSERT results using single row mode
 		for idx := 0; idx < rowCount; idx++ {
 			start := idx * colNum
@@ -251,7 +252,15 @@ func (srw *StreamReceiver) flush() error {
 			if _, err := srw.executor.Exec(srw.ctx, "stream-receiver-persist-results-single-mode",
 				nil, srw.singleInsertStmt, currentBatch[start:end]...); err != nil {
 				// ignore the error in single mode to avoid too many output messages.
+				errNum++
 			}
+		}
+		if errNum > 0 {
+			log.Errorf(
+				srw.ctx,
+				"write stream results to target table using single-row mode, stream name: %s, failed rows: %d, total rows: %d",
+				srw.metadata.Name, errNum, rowCount,
+			)
 		}
 	}
 

@@ -592,7 +592,7 @@ CREATE TABLE db1.ts_t1(
     t2 int,
     t3 bigint,
     t4 float,
-    t5 double) primary tags(code1, flag, color) activetime 10s;
+    t5 double) primary tags(code1, flag, color);
 
 INSERT INTO db1.ts_t1 (k_timestamp, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e20, e21, e22, code1,  flag, color) VALUES ('2024-06-01 00:00:00.000',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,800,800,'color');
 INSERT INTO db1.ts_t1 (k_timestamp, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e20, e21, e22, code1,  flag, color) VALUES ('2024-06-01 01:00:00.000',100,100,1.88,1.88,1,'2024-06-14 01:47:56.286+00:00','e1','e1','e1','1','1','1','1','1','1','1','1','1','1','1','1',800,800,'color');

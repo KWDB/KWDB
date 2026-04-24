@@ -71,8 +71,6 @@ create table tsdb.t1(ts timestamp not null, a int) tags(ptag int not null) prima
                 | ) TAGS (
                 |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
                 |     retentions 0s
-                |     activetime 1d
-                |
 (1 row)
 > alter table tsdb.t set PARTITION INTERVAL = 25d;
 ERROR: at or near "partition": syntax error
@@ -101,8 +99,6 @@ CREATE TABLE
                  | ) TAGS (
                  |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
                  |     retentions 0s
-                 |     activetime 1d
-                 |
 (1 row)
 > insert into tsdb.t1 values('2019-12-11 01:23:05', 1, 100);
 INSERT 1

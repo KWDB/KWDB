@@ -52,7 +52,7 @@ class StWorker : public Worker {
     for (int i = 0; i < meta.k_column_size(); i++) {
       const auto& col = meta.k_column(i);
       struct AttributeInfo col_var;
-      TsTableV2Impl::GetColAttributeInfo(ctx, col, col_var, i==0);
+      TsTableImpl::GetColAttributeInfo(ctx, col, col_var, i==0);
       if (col_var.isAttrType(COL_GENERAL_TAG) || col_var.isAttrType(COL_PRIMARY_TAG)) {
         tag_schema.emplace_back(std::move(col_var));
       } else {

@@ -249,7 +249,7 @@ t_varchar_1 varchar,
 t_varbytesn_1 varbytes(256),
 t_varbytes_1 varbytes) primary tags(
 code1,
-code2) activetime 10s;
+code2);
 
 ALTER TABLE ts_t1 ADD TAG code3 INT2;
 ALTER TABLE ts_t1 ADD TAG code5 INT2;

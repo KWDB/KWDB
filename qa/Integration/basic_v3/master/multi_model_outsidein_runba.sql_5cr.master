@@ -114,7 +114,7 @@ CREATE TABLE
 ) PRIMARY TAGS (
   channel,
   companyid
-) ACTIVETIME 10m;
+);
 CREATE TABLE
 > CREATE TABLE runba.opcdata449652 (
   "time" TIMESTAMPTZ NOT NULL,

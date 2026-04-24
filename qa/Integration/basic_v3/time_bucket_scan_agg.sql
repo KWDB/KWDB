@@ -3528,3 +3528,17 @@ SELECT quantile(5.0, 0.5); -- Single value
 -- Cleanup additional data
 DELETE FROM test_data WHERE value = 20.0 AND group_id = 1;
 DELETE FROM test_data WHERE value = 15.0 AND group_id = 2;
+
+-- bugfix: IJBKY7
+create ts database test_timebucket_gapfill_ns;
+
+create table test_timebucket_gapfill_ns.tb3(k_timestamp timestamptz not null,e1 timestamp,e2 int2,e3 int,e4 int8,e5 float4,e6 float8,e7 bool,e8 char,e9 char(100),e10 nchar,e11 nchar(255),e12 varchar,e13 varchar(254),e14 varchar(4096),e15 nvarchar,e16 nvarchar(255),e17 nvarchar(4096),e18 varbytes,e19 varbytes(100),e20 varbytes,e21 varbytes(254),e22 varbytes(4096),e23 timestamp(6),e24 timestamp(9),e25 timestamptz(6),e26 timestamptz(9)) tags (t1 int2,t2 int,t3 int8 not null,t4 bool,t5 float4,t6 float8,t7 char,t8 char(100),t9 nchar,t10 nchar(254),t11 varchar not null,t12 varchar(128),t13 varbytes not null,t14 varbytes(100) not null,t15 varbytes,t16 varbytes(255)) primary tags(t3,t11);
+
+insert into test_timebucket_gapfill_ns.tb3 values('2025-06-06 08:00:00.0111','2024-06-10 16:16:15.183',800,8000,80000,800000.808888,8000000.808088,true,'d','test测试！！！@烟小白吖 ','d','类型测试1()* ',null,null,'255测试1cdf~# ','@烟小白吖 ','abc255测试1()&^%{}','deg4096测试1(','b','查询1023_2','tes_测试1',b'\xaa\xaa\xaa',b'\xbb\xcc\xbb\xbb','0011-11-01 22:22:26.2655671','2022-08-13 05:15:35.21747566','2030-11-21 11:21:21.1223344','2028-08-30 11:11:12.1686543',7,200,2000,false,-10.123,500.578578,'c','test测试！！！@烟小白吖 ','g','abc','\0test查询！！！@TEST1\0','64_3','t','es1023_2','f','tes4096_2');
+insert into test_timebucket_gapfill_ns.tb3 values('2025-06-06 11:15:15.783','2024-06-10 17:04:55.5831',500,5000,60000,500000.505555,5000000.505055,false,'c','test测试！！！@烟小白吖 ','n','类型测试1() ',null,null,'255测试1cdf~# ','@烟小白吖 ','abc255测试1()*&^%{}','deg4096测试1(','b','查询1023_2','tes_测试1',b'\xaa\xaa\xaa',b'\xbb\xcc\xbb\xbb','2011-08-21 08:46:26.885552','2040-07-27 15:35:55.5177765123','2035-07-21 09:51:17.4776623','2030-03-20 03:20:20.668123456',8,800,8000,false,-20.123,800.578578,'d','test测试！！！@烟小白吖 ','d','ddd','\0test查询！！！@TEST1\0','64_3','t','es1023_2','f','tes4096_2');
+
+explain select time_bucket(e26, '1hour') as tb, sum(t3) from test_timebucket_gapfill_ns.tb3 group by tb order by tb;
+select time_bucket(e26, '1hour') as tb, sum(t3) from test_timebucket_gapfill_ns.tb3 group by tb order by tb;
+
+use defaultdb;
+drop database test_timebucket_gapfill_ns cascade;

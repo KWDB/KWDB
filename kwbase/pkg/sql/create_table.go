@@ -335,7 +335,7 @@ func getTableCreateParams(
 // checkEngineType check if features in different engines are supported
 func checkEngineType(n *createTableNode) error {
 	if n.dbDesc.EngineType == tree.EngineTypeRelational && n.n.TableType == tree.RelationalTable {
-		if n.n.DownSampling != nil || n.n.Sde {
+		if n.n.DownSampling != nil {
 			return pgerror.Newf(pgcode.WrongObjectType, "downsampling feature is not supported on relational table \"%s\"", n.n.Table.TableName)
 		}
 	}
@@ -1595,7 +1595,6 @@ func buildTSTableDesc(
 	user string,
 ) error {
 	allTagName := make(map[tree.Name]*sqlbase.ColumnDescriptor, len(n.Tags)+1)
-	desc.TsTable.Sde = n.Sde
 	if len(n.StorageParams) > 0 {
 		return sqlbase.TSUnsupportedError("storage params is not accepted for timeseries table")
 	}
@@ -1606,19 +1605,6 @@ func buildTSTableDesc(
 		return pgerror.Newf(pgcode.TooManyColumns, "table %s has too many columns,"+
 			" each timeseries table can have maximum 4096 columns", n.Table.Table())
 	}
-	var activeTime int64
-	if n.ActiveTime != nil {
-		activeTime = getTimeFromTimeInput(*n.ActiveTime)
-		if activeTime < 0 || activeTime > MaxLifeTime {
-			return pgerror.Newf(pgcode.InvalidParameterValue, "active time %d%s is invalid",
-				n.ActiveTime.Value, n.ActiveTime.Unit)
-		}
-		activeTimeInput := timeInputToString(*n.ActiveTime)
-		desc.TsTable.ActiveTimeInput = &activeTimeInput
-	} else {
-		activeTime = DefaultActiveTime
-	}
-	desc.TsTable.ActiveTime = uint32(activeTime)
 	desc.TsTable.TsVersion = 1
 	desc.TsTable.NextTsVersion = desc.TsTable.TsVersion + 1
 
@@ -1674,7 +1660,7 @@ func buildTSTableDesc(
 		}
 		n.Tags[i].TagType = tagType
 		// Building columnDesc for tags
-		tagColumn, _, err := sqlbase.MakeTSColumnDefDescs(string(n.Tags[i].TagName), n.Tags[i].TagType, n.Tags[i].Nullable, false, columnType, nil, semaCtx, sqlbase.CompressInfo{})
+		tagColumn, _, err := sqlbase.MakeTSColumnDefDescs(string(n.Tags[i].TagName), n.Tags[i].TagType, n.Tags[i].Nullable, columnType, nil, semaCtx, sqlbase.CompressInfo{})
 		if err != nil {
 			return err
 		}
@@ -1830,7 +1816,7 @@ func checkAndMakeTSColDesc(
 		CompressAlgo:  d.ColumnCompress.CompressAlgo,
 		CompressLevel: d.ColumnCompress.CompressLevel,
 	}
-	*col, expr, err = sqlbase.MakeTSColumnDefDescs(string(d.Name), d.Type, nullable, desc.TsTable.Sde, sqlbase.ColumnType_TYPE_DATA, d.DefaultExpr.Expr, semaCtx, compressInfo)
+	*col, expr, err = sqlbase.MakeTSColumnDefDescs(string(d.Name), d.Type, nullable, sqlbase.ColumnType_TYPE_DATA, d.DefaultExpr.Expr, semaCtx, compressInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -3311,9 +3297,6 @@ const InvalidLifetime = MaxLifeTime + 1
 
 // MaxLifeTime means max lifetime on table which is 1000 years.
 const MaxLifeTime = 1000 * 365 * 24 * 3600
-
-// DefaultActiveTime means default activetime on table which is 1 day.
-const DefaultActiveTime = 24 * 3600
 
 // DefaultPartitionInterval means default Partition Interval on table which is 10 day.
 const DefaultPartitionInterval = 10 * 24 * 3600

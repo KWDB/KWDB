@@ -19,8 +19,7 @@ CREATE TABLE db_pipec.t_point (
     pipeline_sn varchar(16),
     measure_type smallint,
     measure_location varchar(64))
-  PRIMARY TAGS(point_sn) 
-  ACTIVETIME 3h;
+  PRIMARY TAGS(point_sn);
 
 CREATE DATABASE pipec_r;
 CREATE TABLE pipec_r.station_info (

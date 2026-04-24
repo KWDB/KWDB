@@ -48,7 +48,7 @@ enum STOSNDeleteInfoType : uint32_t {
 
 class STTableRangeDelAndTagInfo {
  private:
-  std::shared_ptr<TsTableV2Impl> table_;
+  std::shared_ptr<TsTableImpl> table_;
   uint64_t begin_hash_;
   uint64_t end_hash_;
   uint32_t table_version_;
@@ -64,7 +64,7 @@ class STTableRangeDelAndTagInfo {
   std::unordered_map<std::string, kwdbts::EntityResultIndex> pkey_last_row_;
 
  public:
-  STTableRangeDelAndTagInfo(std::shared_ptr<TsTableV2Impl> table, uint64_t b, uint64_t e, uint32_t v, TS_OSN osn) :
+  STTableRangeDelAndTagInfo(std::shared_ptr<TsTableImpl> table, uint64_t b, uint64_t e, uint32_t v, TS_OSN osn) :
     table_(table), begin_hash_(b), end_hash_(e), table_version_(v), scan_osn_(osn) {}
 
   ~STTableRangeDelAndTagInfo();
@@ -104,7 +104,7 @@ class STTableRangeDelAndTagInfo {
  * 
  * type code : 1-tag delete. 2-metric delete
  * 
- * 
+ *
  */
 class STPackageSnapshotData {
  public:
@@ -117,14 +117,14 @@ class STPackageSnapshotData {
 
 /**
  * snapshot struct  SNAPSHOT_VERSION = 2
- * 
+ *
    _____________________________________________________________________________________________________________________________
-  |     20    |       4          |       4        |      4       |    n       |       4      |      n   | 
+  |     20    |       4          |       4        |      4       |    n       |       4      |      n   |
   |-----------|------------------|----------------|--------------|------------|--------------|----------|
   | reserverd | snapshot version | package number | package1 len | package1   | package2 len | package2 |
- * 
+ *
  * package struct is SNAPSHOT_VERSION = 1.
- * 
+ *
  */
 class STSnapshotPackageBuilder {
  private:

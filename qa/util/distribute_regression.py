@@ -31,7 +31,7 @@ def get_nodes(node_str: str):
     nodes = nodes.split(',')
     ids = []
     for node in nodes:
-        if re.match('c\d+', node):
+        if re.match(r'c\d+', node):
             ids.append(int(re.sub('c', '', node)))
     return ids
 
@@ -64,7 +64,7 @@ def get_create_table_arg(node_str: str):
     rel = False
     num = 0
     for arg in args:
-        if re.match('\d+', arg):
+        if re.match(r'\d+', arg):
             num = int(re.sub('c', '', arg))
         elif re.match('rel', arg):
             rel = True
@@ -98,7 +98,7 @@ def get_create_table_arg(node_str: str):
     rel = False
     num = 0
     for arg in args:
-        if re.match('\d+', arg):
+        if re.match(r'\d+', arg):
             num = int(re.sub('c', '', arg))
         elif re.match('rel', arg):
             rel = True
@@ -442,8 +442,8 @@ if __name__ == "__main__":
                 cmds.append(cmd)
                 cmd = "count=0;" \
                       "while [ $({} sql --insecure --host={} " \
-                      ("-e \"SET statement_timeout = '10s';SELECT COUNT(*) FROM kwdb_internal.ranges WHERE {}=ANY("
-                       "replicas);\" --format=raw | grep -v '#' ) -ne 0 ] && [ $count -lt 210 ]; do") \
+                      "-e \"SET statement_timeout = '10s';SELECT COUNT(*) FROM kwdb_internal.ranges " \
+                       "WHERE {}=ANY(replicas);\" --format=raw | grep -v '#' ) -ne 0 ] && [ $count -lt 210 ]; do" \
                       "    count=$((count+1));" \
                       "    sleep 1;" \
                       "done\n" \

@@ -12,8 +12,7 @@ CREATE TABLE db_pipec.t_point (
     pipeline_sn varchar(16) not null,
     measure_type smallint,
     measure_location varchar(64))
-  PRIMARY TAGS(point_sn)
-  ACTIVETIME 3h;
+  PRIMARY TAGS(point_sn);
 insert into db_pipec.t_point values('2024-08-27 11:00:00',10.5,'a','b','c','d','e',1,'f');
 insert into db_pipec.t_point values('2024-08-27 12:00:00',11.5,'a1','b1','c1','d1','e1',1,'f1');
 insert into db_pipec.t_point values('2024-08-27 10:00:00',12.5,'a2','b2','c2','d2','e2',2,'f2');

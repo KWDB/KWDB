@@ -263,7 +263,6 @@ func makeKObjectTableForTs(d jobspb.SyncMetaCacheDetails) sqlbase.CreateTsTable 
 		TsTableId:         uint64(d.SNTable.ID),
 		DatabaseId:        uint32(d.SNTable.ParentID),
 		LifeTime:          d.SNTable.TsTable.Lifetime,
-		ActiveTime:        d.SNTable.TsTable.ActiveTime,
 		KColumnsId:        KColumnsID,
 		RowSize:           d.SNTable.TsTable.RowSize,
 		BitmapOffset:      d.SNTable.TsTable.BitmapOffset,

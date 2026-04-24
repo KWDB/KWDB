@@ -7,8 +7,7 @@ CREATE TABLE stbl_raw (
         parse VARCHAR(10) NULL
 ) TAGS (
         device VARCHAR(64) NOT NULL,
-        iot_hub_name NCHAR(64) NOT NULL ) PRIMARY TAGS(device, iot_hub_name)
-        activetime 1d;
+        iot_hub_name NCHAR(64) NOT NULL ) PRIMARY TAGS(device, iot_hub_name);
 
 -- all device
 explain Select * from stbl.stbl_raw where ts>'2024-11-1' and ts<'2024-11-30' order by ts limit 20 offset 7200000;

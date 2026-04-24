@@ -205,7 +205,7 @@ KBStatus StScanWorker::do_work(KTimestamp  new_ts) {
   if (s.isNotOK()) {
     return s;
   }
-  auto tablev2 = dynamic_pointer_cast<TsTableV2Impl>(ts_table);
+  auto tablev2 = dynamic_pointer_cast<TsTableImpl>(ts_table);
   auto tbl_version = tablev2->GetSchemaManager()->GetCurrentVersion();
   tablev2->GetSchemaManager()->GetColumnsExcludeDropped(data_schema, tbl_version);
   for (size_t i = 0; i < data_schema.size(); i++) {

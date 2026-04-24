@@ -28,7 +28,7 @@
 
 namespace kwdbts {
 
-TsTableV2Impl::~TsTableV2Impl() {
+TsTableImpl::~TsTableImpl() {
   // todo(liangbo01)  no implemented.
   // if (table_dropped_.load()) {
   //   table_schema_mgr_->RemoveAll();
@@ -36,7 +36,7 @@ TsTableV2Impl::~TsTableV2Impl() {
   // }
 }
 
-KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, TsVGroup* v_group, TSSlice* payload, int payload_num,
+KStatus TsTableImpl::PutData(kwdbContext_p ctx, TsVGroup* v_group, TSSlice* payload, int payload_num,
                           uint64_t mtr_id, TSEntityID entity_id, uint32_t* inc_unordered_cnt,
                           DedupResult* dedup_result, const DedupRule& dedup_rule, bool write_wal) {
   assert(payload_num == 1);
@@ -58,7 +58,7 @@ KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, TsVGroup* v_group, TSSlice* pa
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, TsVGroup* v_group, TsRawPayload& p,
+KStatus TsTableImpl::PutData(kwdbContext_p ctx, TsVGroup* v_group, TsRawPayload& p,
                   TSEntityID entity_id, uint64_t mtr_id, uint32_t* inc_unordered_cnt,
                   DedupResult* dedup_result, const DedupRule& dedup_rule, bool write_wal) {
   uint8_t payload_data_flag = p.GetRowType();
@@ -77,7 +77,7 @@ KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, TsVGroup* v_group, TsRawPayloa
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::GetTagIterator(kwdbContext_p ctx, std::vector<uint32_t> scan_tags,
+KStatus TsTableImpl::GetTagIterator(kwdbContext_p ctx, std::vector<uint32_t> scan_tags,
                                 std::vector<HashIdSpan> *hps,
                                 BaseEntityIterator** iter, k_uint32 table_version, TS_OSN osn) {
   std::shared_ptr<TagTable> tag_table;
@@ -101,7 +101,7 @@ KStatus TsTableV2Impl::GetTagIterator(kwdbContext_p ctx, std::vector<uint32_t> s
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::GetEntityIdList(kwdbContext_p ctx, const std::vector<void*>& primary_tags,
+KStatus TsTableImpl::GetEntityIdList(kwdbContext_p ctx, const std::vector<void*>& primary_tags,
                                  const std::vector<uint64_t/*index_id*/> &tags_index_id,
                                  const std::vector<void*> tags,
                                  TSTagOpType op_type,
@@ -151,7 +151,7 @@ KStatus TsTableV2Impl::GetEntityIdList(kwdbContext_p ctx, const std::vector<void
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::GetTagList(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_id_list,
+KStatus TsTableImpl::GetTagList(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_id_list,
                             const std::vector<uint32_t>& scan_tags, ResultSet* res, uint32_t* count,
                             uint32_t table_version, TS_OSN osn) {
   std::shared_ptr<TagTable> tag_table;
@@ -165,7 +165,7 @@ KStatus TsTableV2Impl::GetTagList(kwdbContext_p ctx, const std::vector<EntityRes
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::GetTagListByRowNum(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_id_list,
+KStatus TsTableImpl::GetTagListByRowNum(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_id_list,
   const std::vector<uint32_t>& scan_tags, TS_OSN osn, ResultSet* res, uint32_t* count,
   uint32_t table_version) {
   *count = 0;
@@ -246,7 +246,7 @@ KStatus TsTableV2Impl::GetTagListByRowNum(kwdbContext_p ctx, const std::vector<E
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::GetTagOSNInfoByRowNum(kwdbContext_p ctx, EntityResultIndex entity, TagDataInfo& info) {
+KStatus TsTableImpl::GetTagOSNInfoByRowNum(kwdbContext_p ctx, EntityResultIndex entity, TagDataInfo& info) {
   std::vector<TagPartitionTable*> all_tag_partition_tables;
   auto tag_bt = table_schema_mgr_->GetTagTable();
   tag_bt->GetTagPartitionTableManager()->
@@ -266,7 +266,7 @@ KStatus TsTableV2Impl::GetTagOSNInfoByRowNum(kwdbContext_p ctx, EntityResultInde
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::GetTagOSNInfoByRowNum(kwdbContext_p ctx, std::pair<uint64_t, uint64_t>& row_info,
+KStatus TsTableImpl::GetTagOSNInfoByRowNum(kwdbContext_p ctx, std::pair<uint64_t, uint64_t>& row_info,
   TagDataInfo& info) {
   auto tag_bt = table_schema_mgr_->GetTagTable();
   auto entity_tag_bt = tag_bt->GetTagPartitionTableManager()->GetPartitionTable(row_info.first);
@@ -281,7 +281,7 @@ KStatus TsTableV2Impl::GetTagOSNInfoByRowNum(kwdbContext_p ctx, std::pair<uint64
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::SetTagOSNInfoByRowNum(kwdbContext_p ctx, std::pair<uint64_t, uint64_t>& row_info,
+KStatus TsTableImpl::SetTagOSNInfoByRowNum(kwdbContext_p ctx, std::pair<uint64_t, uint64_t>& row_info,
   TagDataInfo& info) {
   auto tag_bt = table_schema_mgr_->GetTagTable();
   auto entity_tag_bt = tag_bt->GetTagPartitionTableManager()->GetPartitionTable(row_info.first);
@@ -296,7 +296,7 @@ KStatus TsTableV2Impl::SetTagOSNInfoByRowNum(kwdbContext_p ctx, std::pair<uint64
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const IteratorParams &params, TsIterator** iter) {
+KStatus TsTableImpl::GetNormalIterator(kwdbContext_p ctx, const IteratorParams &params, TsIterator** iter) {
   auto ts_table_iterator = new TsTableIterator();
   KStatus s = KStatus::SUCCESS;
   Defer defer{[&]() {
@@ -370,7 +370,7 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const IteratorParams
   return s;
 }
 
-KStatus TsTableV2Impl::GetOffsetIterator(kwdbContext_p ctx, const IteratorParams &params, TsIterator** iter) {
+KStatus TsTableImpl::GetOffsetIterator(kwdbContext_p ctx, const IteratorParams &params, TsIterator** iter) {
   std::shared_ptr<MMapMetricsTable> metric_schema;
   auto ret = table_schema_mgr_->GetMetricSchema(params.table_version, &metric_schema);
   if (ret != KStatus::SUCCESS) {
@@ -423,22 +423,22 @@ KStatus TsTableV2Impl::GetOffsetIterator(kwdbContext_p ctx, const IteratorParams
     return s;
   }
   *iter = ts_iter;
-  LOG_DEBUG("TsTableV2Impl::GetOffsetIterator success.");
+  LOG_DEBUG("TsTableImpl::GetOffsetIterator success.");
   return KStatus::SUCCESS;
 }
 
 KStatus
-TsTableV2Impl::AlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column, uint32_t cur_version,
+TsTableImpl::AlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column, uint32_t cur_version,
                           uint32_t new_version, string& msg) {
   return table_schema_mgr_->AlterTable(ctx, alter_type, column, cur_version, new_version, msg);
 }
 
-KStatus TsTableV2Impl::undoAlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column,
+KStatus TsTableImpl::undoAlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column,
       uint32_t cur_version, uint32_t new_version) {
   return table_schema_mgr_->UndoAlterTable(ctx, alter_type, column, cur_version, new_version);
 }
 
-KStatus TsTableV2Impl::CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableKey& table_id, uint64_t version) {
+KStatus TsTableImpl::CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableKey& table_id, uint64_t version) {
 #ifdef WITH_TESTS
   return KStatus::SUCCESS;
 #endif
@@ -470,7 +470,7 @@ KStatus TsTableV2Impl::CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableK
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::CreateNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id, const uint64_t index_id,
+KStatus TsTableImpl::CreateNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id, const uint64_t index_id,
                                       const uint32_t cur_version, const uint32_t new_version,
                                       const std::vector<uint32_t/* tag column id*/>& tags) {
     LOG_INFO("CreateNormalTagIndex start, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
@@ -485,12 +485,12 @@ KStatus TsTableV2Impl::CreateNormalTagIndex(kwdbContext_p ctx, const uint64_t tr
 }
 
 
-KStatus TsTableV2Impl::TSxClean(kwdbContext_p ctx) {
+KStatus TsTableImpl::TSxClean(kwdbContext_p ctx) {
   table_schema_mgr_->GetTagTable()->GetTagTableVersionManager()->SyncCurrentTableVersion();
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::DropNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id,  const uint32_t cur_version,
+KStatus TsTableImpl::DropNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id,  const uint32_t cur_version,
                                     const uint32_t new_version, const uint64_t index_id) {
     LOG_INFO("DropNormalTagIndex start, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
              this->table_id_, index_id, cur_version, new_version)
@@ -503,7 +503,7 @@ KStatus TsTableV2Impl::DropNormalTagIndex(kwdbContext_p ctx, const uint64_t tran
     return SUCCESS;
 }
 
-KStatus TsTableV2Impl::UndoCreateIndex(kwdbContext_p ctx, LogEntry* log) {
+KStatus TsTableImpl::UndoCreateIndex(kwdbContext_p ctx, LogEntry* log) {
   ErrorInfo err_info;
   auto index_log = reinterpret_cast<CreateIndexEntry*>(log);
   uint32_t index_id = index_log->getIndexID();
@@ -520,7 +520,7 @@ KStatus TsTableV2Impl::UndoCreateIndex(kwdbContext_p ctx, LogEntry* log) {
   return SUCCESS;
 }
 
-KStatus TsTableV2Impl::UndoDropIndex(kwdbContext_p ctx, LogEntry* log) {
+KStatus TsTableImpl::UndoDropIndex(kwdbContext_p ctx, LogEntry* log) {
   ErrorInfo err_info;
   auto index_log = reinterpret_cast<DropIndexEntry*>(log);
   std::vector<uint32_t> tags;
@@ -544,11 +544,11 @@ KStatus TsTableV2Impl::UndoDropIndex(kwdbContext_p ctx, LogEntry* log) {
   return SUCCESS;
 }
 
-std::vector<uint32_t> TsTableV2Impl::GetNTagIndexInfo(uint32_t ts_version, uint32_t index_id) {
+std::vector<uint32_t> TsTableImpl::GetNTagIndexInfo(uint32_t ts_version, uint32_t index_id) {
     return table_schema_mgr_->GetNTagIndexInfo(ts_version, index_id);
 }
 
-KStatus TsTableV2Impl::DeleteEntities(kwdbContext_p ctx,  std::vector<std::string>& primary_tag,
+KStatus TsTableImpl::DeleteEntities(kwdbContext_p ctx,  std::vector<std::string>& primary_tag,
   uint64_t* count, uint64_t mtr_id, TS_OSN osn, bool user_del) {
   *count = 0;
   auto tag_table = table_schema_mgr_->GetTagTable();
@@ -578,7 +578,7 @@ KStatus TsTableV2Impl::DeleteEntities(kwdbContext_p ctx,  std::vector<std::strin
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::GetRangeRowCount(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
+KStatus TsTableImpl::GetRangeRowCount(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
 KwTsSpan ts_span, TS_OSN osn, uint64_t* count) {
   HashIdSpan hash_span{begin_hash, end_hash};
   vector<EntityResultIndex> entity_store;
@@ -596,7 +596,7 @@ KwTsSpan ts_span, TS_OSN osn, uint64_t* count) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::DeleteTotalRange(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
+KStatus TsTableImpl::DeleteTotalRange(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
 KwTsSpan ts_span, uint64_t mtr_id, uint64_t osn) {
   uint64_t row_num_bef = 0;
   uint64_t row_num_aft = 0;
@@ -672,7 +672,7 @@ KwTsSpan ts_span, uint64_t mtr_id, uint64_t osn) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::GetAvgTableRowSize(kwdbContext_p ctx, uint64_t* row_size) {
+KStatus TsTableImpl::GetAvgTableRowSize(kwdbContext_p ctx, uint64_t* row_size) {
   // fixed tuple length of one row.
   size_t row_length = 0;
   const std::vector<AttributeInfo>* schemas{nullptr};
@@ -693,7 +693,7 @@ KStatus TsTableV2Impl::GetAvgTableRowSize(kwdbContext_p ctx, uint64_t* row_size)
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::GetDataVolume(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
+KStatus TsTableImpl::GetDataVolume(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
 const KwTsSpan& ts_span, uint64_t* volume) {
   uint64_t row_num = 0;
   auto s = GetRangeRowCount(ctx, begin_hash, end_hash, ts_span, UINT64_MAX, &row_num);
@@ -713,7 +713,7 @@ const KwTsSpan& ts_span, uint64_t* volume) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::GetDataVolumeHalfTS(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
+KStatus TsTableImpl::GetDataVolumeHalfTS(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
                                             const KwTsSpan& ts_span, timestamp64* half_ts) {
   uint64_t row_num = 0;
   HashIdSpan hash_span{begin_hash, end_hash};
@@ -804,7 +804,7 @@ KStatus TsTableV2Impl::GetDataVolumeHalfTS(kwdbContext_p ctx, uint64_t begin_has
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::GetEntityIdByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span,
+KStatus TsTableImpl::GetEntityIdByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span,
                                             TS_OSN scan_osn, vector<EntityResultIndex>& entity_store) {
   return TrasvalAllTagPtable(ctx, [&](TagPartitionTable* entity_tag_bt, TableVersionID vec_idx) -> bool {
     for (int rownum = 1; rownum <= entity_tag_bt->size(); rownum++) {
@@ -837,7 +837,7 @@ KStatus TsTableV2Impl::GetEntityIdByHashSpan(kwdbContext_p ctx, const HashIdSpan
   });
 }
 
-KStatus TsTableV2Impl::GetEntityIdByPriKeys(kwdbContext_p ctx, const std::vector<void*> &primary_keys,
+KStatus TsTableImpl::GetEntityIdByPriKeys(kwdbContext_p ctx, const std::vector<void*> &primary_keys,
                                             TS_OSN scan_osn, vector<EntityResultIndex>& entity_store) {
   return TrasvalAllTagPtable(ctx, [&](TagPartitionTable* entity_tag_bt, TableVersionID vec_idx) -> bool {
     auto pri_size = entity_tag_bt->primaryTagSize();
@@ -868,7 +868,7 @@ KStatus TsTableV2Impl::GetEntityIdByPriKeys(kwdbContext_p ctx, const std::vector
   });
 }
 
-KStatus TsTableV2Impl::GetEntityIdByNorKeys(kwdbContext_p ctx, std::shared_ptr<TagTable> tag_table,
+KStatus TsTableImpl::GetEntityIdByNorKeys(kwdbContext_p ctx, std::shared_ptr<TagTable> tag_table,
                                             const std::vector<void*> tags,
                                             const std::vector<uint32_t>& src_scan_tags, TS_OSN scan_osn,
                                             vector<EntityResultIndex>& entity_store, uint32_t table_version) {
@@ -950,7 +950,7 @@ KStatus TsTableV2Impl::GetEntityIdByNorKeys(kwdbContext_p ctx, std::shared_ptr<T
   });
 }
 
-KStatus TsTableV2Impl::getPTagsByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span,
+KStatus TsTableImpl::getPTagsByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span,
   TS_OSN scan_osn, vector<string>* primary_tags) {
   return TrasvalAllTagPtable(ctx, [&](TagPartitionTable* entity_tag_bt, TableVersionID vec_idx) -> bool {
     for (int rownum = 1; rownum <= entity_tag_bt->size(); rownum++) {
@@ -976,7 +976,7 @@ KStatus TsTableV2Impl::getPTagsByHashSpan(kwdbContext_p ctx, const HashIdSpan& h
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::DeleteRangeEntities(kwdbContext_p ctx, const uint64_t& range_group_id, const HashIdSpan& hash_span,
+KStatus TsTableImpl::DeleteRangeEntities(kwdbContext_p ctx, const uint64_t& range_group_id, const HashIdSpan& hash_span,
                                     uint64_t* count, uint64_t mtr_id, uint64_t osn, bool user_del) {
   *count = 0;
   vector<string> primary_tags;
@@ -992,7 +992,7 @@ KStatus TsTableV2Impl::DeleteRangeEntities(kwdbContext_p ctx, const uint64_t& ra
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::DeleteRangeData(kwdbContext_p ctx, uint64_t range_group_id, HashIdSpan& hash_span,
+KStatus TsTableImpl::DeleteRangeData(kwdbContext_p ctx, uint64_t range_group_id, HashIdSpan& hash_span,
                         const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id, uint64_t osn) {
   *count = 0;
   vector<string> primary_tags;
@@ -1015,7 +1015,7 @@ KStatus TsTableV2Impl::DeleteRangeData(kwdbContext_p ctx, uint64_t range_group_i
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::DeleteData(kwdbContext_p ctx, uint64_t range_group_id, std::string& primary_tag,
+KStatus TsTableImpl::DeleteData(kwdbContext_p ctx, uint64_t range_group_id, std::string& primary_tag,
   const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id, TS_OSN osn) {
   ErrorInfo err_info;
   auto tag_table = table_schema_mgr_->GetTagTable();
@@ -1050,7 +1050,7 @@ KStatus TsTableV2Impl::DeleteData(kwdbContext_p ctx, uint64_t range_group_id, st
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::DeleteEntityByTag(kwdbContext_p ctx, const std::vector<uint32_t/*index_id*/> &tags_index_id,
+KStatus TsTableImpl::DeleteEntityByTag(kwdbContext_p ctx, const std::vector<uint32_t/*index_id*/> &tags_index_id,
                         std::vector<std::string> tags, uint64_t* count, uint64_t mtr_id, uint64_t osn,
                         uint32_t cur_table_version, const HashIdSpan& hash_span) {
   *count = 0;
@@ -1075,7 +1075,7 @@ KStatus TsTableV2Impl::DeleteEntityByTag(kwdbContext_p ctx, const std::vector<ui
   return DeleteEntities(ctx, primary_tags, count, 0, osn, true);
 }
 
-KStatus TsTableV2Impl::DeleteMetricByTag(kwdbContext_p ctx, const std::vector<uint32_t/*index_id*/> &tags_index_id,
+KStatus TsTableImpl::DeleteMetricByTag(kwdbContext_p ctx, const std::vector<uint32_t/*index_id*/> &tags_index_id,
                                          std::vector<std::string> tags, const std::vector<KwTsSpan>& ts_spans,
                                          uint64_t* count, uint64_t mtr_id, uint64_t osn, uint32_t cur_table_version,
                                          const HashIdSpan& hash_span) {
@@ -1111,7 +1111,7 @@ KStatus TsTableV2Impl::DeleteMetricByTag(kwdbContext_p ctx, const std::vector<ui
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::CountRangeData(kwdbContext_p ctx, uint64_t range_group_id, HashIdSpan& hash_span,
+KStatus TsTableImpl::CountRangeData(kwdbContext_p ctx, uint64_t range_group_id, HashIdSpan& hash_span,
                                        const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
                                        uint64_t mtr_id, TS_OSN osn) {
   vector<EntityResultIndex> entity_store;
@@ -1128,7 +1128,7 @@ KStatus TsTableV2Impl::CountRangeData(kwdbContext_p ctx, uint64_t range_group_id
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::GetEntityRowCount(kwdbContext_p ctx, std::vector<EntityResultIndex>& entity_ids,
+KStatus TsTableImpl::GetEntityRowCount(kwdbContext_p ctx, std::vector<EntityResultIndex>& entity_ids,
 const std::vector<KwTsSpan>& ts_spans, TS_OSN osn, uint64_t* row_count) {
   if (entity_ids.size() == 0) {
     *row_count = 0;
@@ -1187,7 +1187,7 @@ const std::vector<KwTsSpan>& ts_spans, TS_OSN osn, uint64_t* row_count) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::GetLastRowEntity(kwdbContext_p ctx, EntityResultIndex& entity_id,
+KStatus TsTableImpl::GetLastRowEntity(kwdbContext_p ctx, EntityResultIndex& entity_id,
   timestamp64& entity_last_ts, TS_OSN osn) {
   entity_id = {0, 0, 0};
   entity_last_ts = INT64_MIN;
@@ -1222,7 +1222,7 @@ KStatus TsTableV2Impl::GetLastRowEntity(kwdbContext_p ctx, EntityResultIndex& en
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::GetLastRowBatch(kwdbContext_p ctx, uint32_t table_version, std::vector<uint32_t> scan_cols,
+KStatus TsTableImpl::GetLastRowBatch(kwdbContext_p ctx, uint32_t table_version, std::vector<uint32_t> scan_cols,
                                        TS_OSN osn, ResultSet* res, k_uint32* count, bool& valid) {
   *count = 0;
   if (0 == EngineOptions::last_cache_max_size) {
@@ -1318,7 +1318,7 @@ KStatus TsTableV2Impl::GetLastRowBatch(kwdbContext_p ctx, uint32_t table_version
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::GetColAttributeInfo(kwdbContext_p ctx, const roachpb::KWDBKTSColumn& col,
+KStatus TsTableImpl::GetColAttributeInfo(kwdbContext_p ctx, const roachpb::KWDBKTSColumn& col,
                                    AttributeInfo& attr_info, bool first_col) {
   switch (col.storage_type()) {
     case roachpb::TIMESTAMP:
@@ -1396,7 +1396,7 @@ KStatus TsTableV2Impl::GetColAttributeInfo(kwdbContext_p ctx, const roachpb::KWD
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::GetMetricColumnInfo(kwdbContext_p ctx, struct AttributeInfo& attr_info, roachpb::KWDBKTSColumn& col) {
+KStatus TsTableImpl::GetMetricColumnInfo(kwdbContext_p ctx, struct AttributeInfo& attr_info, roachpb::KWDBKTSColumn& col) {
   col.clear_storage_len();
   switch (attr_info.type) {
     case DATATYPE::TIMESTAMP64:
@@ -1464,7 +1464,7 @@ KStatus TsTableV2Impl::GetMetricColumnInfo(kwdbContext_p ctx, struct AttributeIn
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::GetTagColumnInfo(kwdbContext_p ctx, struct TagInfo& tag_info, roachpb::KWDBKTSColumn& col) {
+KStatus TsTableImpl::GetTagColumnInfo(kwdbContext_p ctx, struct TagInfo& tag_info, roachpb::KWDBKTSColumn& col) {
   col.clear_storage_len();
   col.set_storage_len(tag_info.m_length);
   col.set_column_id(tag_info.m_id);
@@ -1519,7 +1519,7 @@ KStatus TsTableV2Impl::GetTagColumnInfo(kwdbContext_p ctx, struct TagInfo& tag_i
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::GenerateMetaSchema(kwdbContext_p ctx, roachpb::CreateTsTable* meta,
+KStatus TsTableImpl::GenerateMetaSchema(kwdbContext_p ctx, roachpb::CreateTsTable* meta,
                                     const std::vector<AttributeInfo>& metric_schema,
                                          std::vector<TagInfo>& tag_schema,
                                          uint32_t schema_version) {
@@ -1562,7 +1562,7 @@ KStatus TsTableV2Impl::GenerateMetaSchema(kwdbContext_p ctx, roachpb::CreateTsTa
   Return(KStatus::SUCCESS);
 }
 
-KStatus TsTableV2Impl::GetMetricDelInfoByOSN(kwdbContext_p ctx, const EntityResultIndex& entity_id,
+KStatus TsTableImpl::GetMetricDelInfoByOSN(kwdbContext_p ctx, const EntityResultIndex& entity_id,
   std::vector<KwOSNSpan>& osn_span, std::vector<KwTsSpan>* del_spans) {
   auto vgroup = GetVGroupByID(entity_id.subGroupId);
   if (vgroup == nullptr) {
@@ -1572,7 +1572,7 @@ KStatus TsTableV2Impl::GetMetricDelInfoByOSN(kwdbContext_p ctx, const EntityResu
   return vgroup->GetDelInfoByOSN(ctx, GetTableId(), entity_id.entityId, osn_span, del_spans);
 }
 
-KStatus TsTableV2Impl::GetMetricDelInfoWithOSN(kwdbContext_p ctx, const EntityResultIndex& entity_id,
+KStatus TsTableImpl::GetMetricDelInfoWithOSN(kwdbContext_p ctx, const EntityResultIndex& entity_id,
   list<STDelRange>* del_osns) {
   auto vgroup = GetVGroupByID(entity_id.subGroupId);
   if (vgroup == nullptr) {
@@ -1582,7 +1582,7 @@ KStatus TsTableV2Impl::GetMetricDelInfoWithOSN(kwdbContext_p ctx, const EntityRe
   return vgroup->GetDelInfoWithOSN(ctx, GetTableId(), entity_id.entityId, del_osns);
 }
 
-KStatus TsTableV2Impl::GetMetricIteratorByOSN(kwdbContext_p ctx, k_uint32 table_version,
+KStatus TsTableImpl::GetMetricIteratorByOSN(kwdbContext_p ctx, k_uint32 table_version,
   std::vector<k_uint32>& scan_cols,
   std::vector<EntityResultIndex>& entity_ids,
   std::vector<KwOSNSpan>& osn_span, std::vector<KwTsSpan>& ts_spans, TsIterator** iter) {
@@ -1641,7 +1641,7 @@ KStatus TsTableV2Impl::GetMetricIteratorByOSN(kwdbContext_p ctx, k_uint32 table_
   return s;
 }
 
-KStatus TsTableV2Impl::TrasvalAllTagPtable(kwdbContext_p ctx,
+KStatus TsTableImpl::TrasvalAllTagPtable(kwdbContext_p ctx,
 const std::function<bool(TagPartitionTable*, TableVersionID)>& func) {
   std::vector<std::pair<TableVersionID, TagPartitionTable *>> tag_part_tables;
   auto tag_bt = table_schema_mgr_->GetTagTable();
@@ -1658,7 +1658,7 @@ const std::function<bool(TagPartitionTable*, TableVersionID)>& func) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::GetImagrateTagBySnapshot(kwdbContext_p ctx, HashIdSpan hash_range,
+KStatus TsTableImpl::GetImagrateTagBySnapshot(kwdbContext_p ctx, HashIdSpan hash_range,
    TS_OSN scan_osn, std::list<EntityResultIndex>* pkeys_status) {
   int valid_tag_num = 0;
   auto s = TrasvalAllTagPtable(ctx, [&](TagPartitionTable* entity_tag_bt, TableVersionID vec_idx) -> bool {
@@ -1709,7 +1709,7 @@ KStatus TsTableV2Impl::GetImagrateTagBySnapshot(kwdbContext_p ctx, HashIdSpan ha
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::GetTagRecordInfoByOSN(kwdbContext_p ctx,
+KStatus TsTableImpl::GetTagRecordInfoByOSN(kwdbContext_p ctx,
   const std::vector<HashIdSpan>* hps,
   std::vector<KwOSNSpan>& osn_span, TS_OSN scan_osn, std::unordered_map<uint64_t, EntityResultIndex>* pkeys_status) {
   return GetTagRecordInfoByOSN(ctx, [&](TagPartitionTable* entity_tag_bt, int row_num) -> bool {
@@ -1724,7 +1724,7 @@ KStatus TsTableV2Impl::GetTagRecordInfoByOSN(kwdbContext_p ctx,
   }, osn_span, scan_osn, pkeys_status);
 }
 
-KStatus TsTableV2Impl::GetTagRecordInfoByOSN(kwdbContext_p ctx,
+KStatus TsTableImpl::GetTagRecordInfoByOSN(kwdbContext_p ctx,
   std::function<bool(TagPartitionTable* entity_tag_bt, int row_num)> in_span_func,
   std::vector<KwOSNSpan>& osn_span, TS_OSN scan_osn, std::unordered_map<uint64_t, EntityResultIndex>* pkeys_status) {
   std::unordered_map<uint64_t, EntityResultIndex> history_tag_status;
@@ -1816,7 +1816,7 @@ KStatus TsTableV2Impl::GetTagRecordInfoByOSN(kwdbContext_p ctx,
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::GetTagIteratorByOSN(kwdbContext_p ctx, k_uint32 table_version, std::vector<k_uint32>& scan_cols,
+KStatus TsTableImpl::GetTagIteratorByOSN(kwdbContext_p ctx, k_uint32 table_version, std::vector<k_uint32>& scan_cols,
   std::vector<KwOSNSpan>& osn_span, TS_OSN scan_osn,
   std::vector<HashIdSpan>* hps, BaseEntityIterator** iter) {
   std::unordered_map<uint64_t, EntityResultIndex> pkeys_status;
@@ -1842,7 +1842,7 @@ KStatus TsTableV2Impl::GetTagIteratorByOSN(kwdbContext_p ctx, k_uint32 table_ver
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::GetEntityIdListByOSN(kwdbContext_p ctx, const std::vector<void*>& primary_tags,
+KStatus TsTableImpl::GetEntityIdListByOSN(kwdbContext_p ctx, const std::vector<void*>& primary_tags,
             std::vector<KwOSNSpan>& osn_span, TS_OSN scan_osn,
             std::vector<k_uint32>& scan_cols,
             std::vector<HashIdSpan>* hps,

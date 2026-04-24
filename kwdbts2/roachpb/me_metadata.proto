@@ -72,7 +72,7 @@ message KWDBTsTable {
   optional uint64 bitmap_offset = 8;
   // table name
   optional string table_name = 10;
-  // dict encoding
+  // dict encoding(deprecated)
   optional bool sde = 11;
   // partition interval
   optional uint64 partition_interval = 12;

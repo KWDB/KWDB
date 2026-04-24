@@ -2261,9 +2261,7 @@ SQLSTATE: 42809
                          |     code8 VARCHAR(128) NOT NULL,
                          |     code14 CHAR(1023) NOT NULL,
                          |     code16 NCHAR(254) NOT NULL ) PRIMARY TAGS(code1, code8, code14, code16)
-                         |     retentions 0s
-                         |     activetime 1d
-                         |     ;
+                         |     retentions 0s;
                          | COMMENT ON TABLE t1 IS '《!!database TEST中文英文TABLE!!》';
                          | COMMENT ON COLUMN t1.k_timestamp IS '《!!database TEST中文英文COLUMN-k_timestamp!!》';
                          | COMMENT ON COLUMN t1.code1 IS '《!!database TEST中文英文COLUMN-code1!!》';
@@ -2403,9 +2401,7 @@ CREATE TABLE
                   |     code14 CHAR(1023) NOT NULL,
                   |     code15 NCHAR(1),
                   |     code16 NCHAR(254) NOT NULL ) PRIMARY TAGS(code1, code8, code14, code16)
-                  |     retentions 0s
-                  |     activetime 1d
-                  |     ;
+                  |     retentions 0s;
                   | COMMENT ON TABLE t1 IS 'tsdb1.t1';
                   | COMMENT ON COLUMN t1.k_timestamp IS 't1.ts';
                   | COMMENT ON COLUMN t1.id IS 't1.id';

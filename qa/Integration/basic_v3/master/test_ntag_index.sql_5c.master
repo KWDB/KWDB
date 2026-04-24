@@ -633,8 +633,6 @@ ALTER TABLE
              |     type NCHAR(254),
              |     code9 INT2 ) PRIMARY TAGS(code0)
              |     retentions 0s
-             |     activetime 1d
-             |
 (1 row)
 > show columns from t2;
   column_name |   data_type    | is_nullable | column_default | generation_expression |          indices          | is_hidden | is_tag
@@ -1087,8 +1085,6 @@ ALTER TABLE
              |     type NCHAR(254),
              |     code9 INT2 ) PRIMARY TAGS(code0)
              |     retentions 0s
-             |     activetime 1d
-             |
 (1 row)
 > show columns from t2;
   column_name |   data_type    | is_nullable | column_default | generation_expression |          indices          | is_hidden | is_tag
@@ -1637,8 +1633,6 @@ ALTER TABLE
              |     year NCHAR(1),
              |     type NCHAR(254) ) PRIMARY TAGS(code0)
              |     retentions 0s
-             |     activetime 1d
-             |
 (1 row)
 > show columns from t2;
   column_name |   data_type    | is_nullable | column_default | generation_expression |          indices          | is_hidden | is_tag
@@ -2809,7 +2803,7 @@ DROP TABLE
 (7 rows)
 > drop table test_ntag_hash.t2;
 DROP TABLE
-> CREATE TABLE test_ntag_hash.t3(k_timestamp timestamptz NOT NULL, e1 int2 ) ATTRIBUTES (code1 int NOT NULL,code2 int NOT NULL,t_int2_1 int2, t_int4_1 int, t_int8_1 int8, t_float4_1 float4, t_float8_1 float8, t_bool_1 bool, t_charn_1 char(1023), t_ncharn_1 nchar(254),t_char_1 char, t_nchar_1 nchar,t_varcharn_1 varchar(256), t_varchar_1 varchar, t_varbytesn_1 varbytes(256),t_varbytes_1 varbytes) primary tags(code1,code2) activetime 10s;
+> CREATE TABLE test_ntag_hash.t3(k_timestamp timestamptz NOT NULL, e1 int2 ) ATTRIBUTES (code1 int NOT NULL,code2 int NOT NULL,t_int2_1 int2, t_int4_1 int, t_int8_1 int8, t_float4_1 float4, t_float8_1 float8, t_bool_1 bool, t_charn_1 char(1023), t_ncharn_1 nchar(254),t_char_1 char, t_nchar_1 nchar,t_varcharn_1 varchar(256), t_varchar_1 varchar, t_varbytesn_1 varbytes(256),t_varbytes_1 varbytes) primary tags(code1,code2);
 CREATE TABLE
 > ALTER TABLE t3 ADD TAG code3 INT2;
 ALTER TABLE

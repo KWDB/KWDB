@@ -77,8 +77,7 @@ CREATE TABLE test.t_cnc (
  factory_id INT2 NOT NULL,
  workshop_id INT2 NOT NULL,
  number_of_molds INT4 ) PRIMARY TAGS(machine_code, op_group)
- retentions 5d
- activetime 1h;
+ retentions 5d;
 EXPLAIN SELECT op_group, count(*) FROM test.t_cnc WHERE machine_code LIKE '0_%' GROUP BY op_group;
 
 drop database test cascade;

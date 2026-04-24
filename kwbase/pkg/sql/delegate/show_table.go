@@ -294,7 +294,7 @@ func (d *delegator) delegateInstanceShowCreate(
 		value := ConvertTagValToString(row[i])
 		values = append(values, value)
 	}
-	stmt := ShowCreateInstanceTable(tree.Name(cTbNameSpace.STableName), cTbNameSpace.InstName, name, values, desc.TsTable.Sde, typ)
+	stmt := ShowCreateInstanceTable(tree.Name(cTbNameSpace.STableName), cTbNameSpace.InstName, name, values, typ)
 	query := `SELECT '%[1]s' AS table_name, e'%[2]s ' AS create_statement`
 	query = fmt.Sprintf(query, cTbNameSpace.InstName, stmt)
 	return parse(query)
@@ -332,12 +332,7 @@ func ConvertTagValToString(d tree.Datum) string {
 // ShowCreateInstanceTable returns a valid SQL representation of the CREATE
 // INSTANCE TABLE statement used to create the given table.
 func ShowCreateInstanceTable(
-	sTable tree.Name,
-	cTable string,
-	attributeName []string,
-	attributeValue []string,
-	sde bool,
-	typ []types.T,
+	sTable tree.Name, cTable string, attributeName []string, attributeValue []string, typ []types.T,
 ) string {
 	f := tree.NewFmtCtx(tree.FmtSimple)
 	f.WriteString("CREATE ")
@@ -364,9 +359,6 @@ func ShowCreateInstanceTable(
 		f.WriteString(attributeValue[i])
 	}
 	f.WriteString(" )")
-	if sde {
-		f.WriteString(" DICT ENCODING")
-	}
 	return f.CloseAndGetString()
 }
 

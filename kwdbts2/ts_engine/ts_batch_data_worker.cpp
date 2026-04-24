@@ -209,7 +209,7 @@ KStatus TsReadBatchDataWorker::GetTagValue(kwdbContext_p ctx) {
     return KStatus::SUCCESS;
   }
 
-  auto* ts_table_v2 = dynamic_cast<TsTableV2Impl*>(ts_table_.get());
+  auto* ts_table_v2 = dynamic_cast<TsTableImpl*>(ts_table_.get());
   if (ts_table_v2 == nullptr) {
     LOG_ERROR("unexpected ts table implementation, table_id[%lu]", table_id_);
     return KStatus::FAIL;

@@ -1393,20 +1393,17 @@ type CreateTable struct {
 	// In CREATE...AS queries, Defs represents a list of ColumnTableDefs, one for
 	// each column, and a ConstraintTableDef for each constraint on a subset of
 	// these columns.
-	Defs       TableDefs
-	AsSource   *Select
-	ActiveTime *TimeInput
-	TableType  TableType
-	Tags       Tags
+	Defs      TableDefs
+	AsSource  *Select
+	TableType TableType
+	Tags      Tags
 	// In InstanceTable, UsingSource represents this table belong to which SuperTable
 	UsingSource TableName
 	Instances   InsTableDefs
 
 	// DownSampling rules when create table including retentions, keep duration and method
 	// only support lifetime for now, e.g. retentions 1 day
-	DownSampling *DownSampling
-	// dict encoding
-	Sde            bool
+	DownSampling   *DownSampling
 	PrimaryTagList NameList
 	Comment        string
 	HashNum        int64
@@ -1536,11 +1533,6 @@ func (node *CreateTable) FormatBody(ctx *FmtCtx) {
 				}
 			}
 			ctx.WriteByte(')')
-		}
-		if node.ActiveTime != nil {
-			ctx.WriteString(" ACTIVETIME ")
-			ctx.Printf("%d", node.ActiveTime.Value)
-			ctx.WriteString(node.ActiveTime.Unit)
 		}
 		if node.HashNum != 0 {
 			ctx.WriteString(" WITH HASH (")

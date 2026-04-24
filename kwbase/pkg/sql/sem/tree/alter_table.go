@@ -96,7 +96,6 @@ func (*AlterTableDropTag) alterTableCmd()            {}
 func (*AlterTableRenameTag) alterTableCmd()          {}
 func (*AlterTableSetTag) alterTableCmd()             {}
 func (*AlterTableSetRetentions) alterTableCmd()      {}
-func (*AlterTableSetActivetime) alterTableCmd()      {}
 func (*AlterPartitionInterval) alterTableCmd()       {}
 
 var _ AlterTableCmd = &AlterTableAddColumn{}
@@ -121,7 +120,6 @@ var _ AlterTableCmd = &AlterTableDropTag{}
 var _ AlterTableCmd = &AlterTableRenameTag{}
 var _ AlterTableCmd = &AlterTableSetTag{}
 var _ AlterTableCmd = &AlterTableSetRetentions{}
-var _ AlterTableCmd = &AlterTableSetActivetime{}
 var _ AlterTableCmd = &AlterPartitionInterval{}
 
 // ColumnMutationCmd is the subset of AlterTableCmds that modify an
@@ -691,22 +689,6 @@ func (node *AlterTableSetRetentions) Format(ctx *FmtCtx) {
 // TelemetryCounter implements the AlterTableCmd interface.
 func (node *AlterTableSetRetentions) TelemetryCounter() telemetry.Counter {
 	return sqltelemetry.SchemaChangeAlterCounterWithExtra("table", "set_retentions")
-}
-
-// AlterTableSetActivetime represents an ALTER TABLE SET ACTIVETIME statement.
-type AlterTableSetActivetime struct {
-	TimeInput TimeInput
-}
-
-// Format implements the NodeFormatter interface.
-func (node *AlterTableSetActivetime) Format(ctx *FmtCtx) {
-	ctx.WriteString(" SET ACTIVETIME = ")
-	ctx.FormatNode(&node.TimeInput)
-}
-
-// TelemetryCounter implements the AlterTableCmd interface.
-func (node *AlterTableSetActivetime) TelemetryCounter() telemetry.Counter {
-	return sqltelemetry.SchemaChangeAlterCounterWithExtra("table", "set_activetime")
 }
 
 // AlterPartitionInterval represents an ALTER TABLE SET PARTITION INTERVAL statement.

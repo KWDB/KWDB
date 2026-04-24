@@ -1361,6 +1361,7 @@ Reparse:
 	if stmt.Insertdirectstmt.InsertFast &&
 		(stmt.Insertdirectstmt.NeedReparse || stmt.NumPlaceholders == 0 || len(stmt.Insertdirectstmt.InsertValues) > 0) {
 		c.parser.IsShortcircuit = false
+		c.parser.SetPrepareMode(false)
 		goto Reparse
 	}
 	if stmt.Insertdirectstmt.InsertFast && stmt.Insertdirectstmt.ErrorInfo != nil {

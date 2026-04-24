@@ -1393,8 +1393,8 @@ func (m *Memo) projectExprFillStatistic(
 		case *ConstExpr:
 			mapColConst[val.Col] = true
 		case *FunctionExpr:
-			if v.Name == "time_bucket" && ret.commonRet.canTimeBucketOptimize {
-				timeRange = getRangeFromTimeBucket(v)
+			if v.Name == tree.FuncTimeBucket && ret.commonRet.canTimeBucketOptimize {
+				timeRange = m.getRangeFromTimeBucket(v)
 			}
 		default:
 			return
@@ -1472,10 +1472,18 @@ func (m *Memo) tsScanFillStatistic(
 	gp.OptFlags |= opt.UseStatistic
 }
 
-func getRangeFromTimeBucket(timeBucket *FunctionExpr) uint64 {
+func (m *Memo) getRangeFromTimeBucket(timeBucket *FunctionExpr) uint64 {
 	var res uint64
 	var err error
 	for _, arg := range timeBucket.Args {
+		if v, ok := arg.(*VariableExpr); ok {
+			tableID := m.Metadata().ColumnMeta(v.Col).Table
+			tsColMetaID := m.Metadata().FirstColumnMetaFromTable(tableID).MetaID
+			// only timeBucket of tsCol can use statistics optimization.
+			if v.Col != tsColMetaID {
+				return 0
+			}
+		}
 		if r, ok := arg.(*ConstExpr); ok {
 			strInterval := r.Value.(*tree.DString)
 			res, err = intervalToNano(string(*strInterval))
