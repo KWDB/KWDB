@@ -81,9 +81,17 @@ type Shortinsert struct {
 	Prepareplaceholder int
 	PrepareMode        bool
 	ValueBracketCount  int
+	ColumnBracketCount int
 	NeedReparse        bool
 	isValues           bool
 	Customize          bool
+	isplaceholder      bool
+	ExpectValue        bool // placeholder in insert_direct prepare mode
+	ExpectInsertColumn bool // specify columns in insert_direct prepare mode
+	InInsertColumns    bool // insert column name stage in insert_direct prepare mode
+	errMsg             string
+	RepeatInsertColumn bool
+	isInsertSelect     bool // isInsertSelect marks whether INSERT data is sourced from SELECT.
 }
 
 var intervalUnit = map[string]struct{}{
@@ -109,25 +117,34 @@ var intervalUnit = map[string]struct{}{
 	"y":           {},
 }
 
-func (s *Shortinsert) init() {
-	s.isTsTable = false
-	s.isInsert = false
-	s.symbol = false
-	s.bracket = struct{ elements []int }{}
-	s.InsertValues = s.InsertValues[:0]
-	s.ValuesType = s.ValuesType[:0]
-	s.Columnsname = s.Columnsname[:0]
-	if s.ColumnsLengthMap != nil {
-		s.ColumnsLengthMap = nil
+func (si *Shortinsert) init() {
+	si.isTsTable = false
+	si.isInsert = false
+	si.symbol = false
+	si.bracket = struct{ elements []int }{}
+	si.InsertValues = si.InsertValues[:0]
+	si.ValuesType = si.ValuesType[:0]
+	si.Columnsname = si.Columnsname[:0]
+	if si.ColumnsLengthMap != nil {
+		si.ColumnsLengthMap = nil
 	}
-	s.ColumnsLengthMap = make(map[tree.Name]string)
-	s.db = ""
-	s.tb = ""
-	s.RowCount = 0
-	s.Prepareplaceholder = 0
-	s.ValueBracketCount = 0
-	s.NeedReparse = false
-	s.isValues = false
+	si.ColumnsLengthMap = make(map[tree.Name]string)
+	si.db = ""
+	si.tb = ""
+	si.RowCount = 0
+	si.Prepareplaceholder = 0
+	si.ValueBracketCount = 0
+	si.ColumnBracketCount = 0
+	si.isValues = false
+
+	si.errMsg = ""
+	si.isplaceholder = false
+	si.NeedReparse = false
+	si.ExpectValue = false
+	si.ExpectInsertColumn = false
+	si.InInsertColumns = false
+	si.RepeatInsertColumn = false
+	si.isInsertSelect = false
 }
 
 func makeScanner(str string) scanner {
@@ -187,6 +204,127 @@ func (s *scanner) finishString(buf []byte) string {
 	str := *(*string)(unsafe.Pointer(&buf))
 	s.returnBuffer(buf)
 	return str
+}
+
+func (si *Shortinsert) consumeValueToken(tokenText string) bool {
+	if si.PrepareMode && !si.ExpectValue {
+		si.errMsg = fmt.Sprintf("syntax error: missing comma before %s", tokenText)
+		return false
+	}
+	si.ExpectValue = false
+	return true
+}
+
+// handleInsertColumnLParen handles '(' in the INSERT column list
+func (s *scanner) handleInsertColumnLParen(si *Shortinsert) bool {
+	if !si.isInsert || si.isValues || si.RepeatInsertColumn || si.isInsertSelect {
+		return false
+	}
+	if si.PrepareMode && si.ColumnBracketCount > 0 {
+		si.NeedReparse = true
+	}
+	si.ColumnBracketCount++
+	si.bracket.elements = append(si.bracket.elements, 1)
+	if si.PrepareMode && !si.NeedReparse && si.ColumnBracketCount == 1 {
+		si.InInsertColumns, si.ExpectInsertColumn = true, true
+	}
+	return true
+}
+
+// handlePrepareValuesLParen handles '(' in the VALUES clause
+func (s *scanner) handlePrepareValuesLParen(si *Shortinsert) bool {
+	if !si.PrepareMode || !si.isValues || si.InInsertColumns {
+		return false
+	}
+	// If '(' is encountered again within the values parentheses, it indicates that nested parentheses
+	// have appeared, such as values ((...)), which is beyond the scope of processing and
+	// requires subsequent re parsing.
+	if si.ValueBracketCount > 0 {
+		si.NeedReparse = true
+	}
+	si.ValueBracketCount++
+	// ExpectValue is only enabled when it has not entered complex nesting (NeedReparse=false) and is currently
+	// in the outermost tuple. ExpectValue=true means that the next valid token should be a value, not ',' or ')'.
+	if !si.NeedReparse && si.ValueBracketCount == 1 {
+		si.ExpectValue = true
+	}
+	return true
+}
+
+// handleInsertColumnRParen handles ')' in the INSERT column list
+func (s *scanner) handleInsertColumnRParen(si *Shortinsert) bool {
+	if !si.isInsert || si.isValues || si.isInsertSelect {
+		return false
+	}
+	if si.PrepareMode && si.ColumnBracketCount == 0 {
+		si.errMsg = "syntax error: unexpected ')'"
+		return true
+	}
+	if si.PrepareMode && si.ColumnBracketCount == 1 && !si.NeedReparse && si.ExpectInsertColumn {
+		si.errMsg = "syntax error: missing column before ')'"
+		return true
+	}
+	if !si.RepeatInsertColumn {
+		if si.PrepareMode && si.ColumnBracketCount == 1 {
+			si.ExpectInsertColumn, si.InInsertColumns = false, false
+		}
+		si.ColumnBracketCount--
+		if n := len(si.bracket.elements); n > 0 {
+			si.bracket.elements = si.bracket.elements[:n-1]
+		}
+		si.RepeatInsertColumn = true
+	}
+	return true
+}
+
+// handlePrepareValuesRParen handles ')' in the VALUES clause
+func (s *scanner) handlePrepareValuesRParen(si *Shortinsert) bool {
+	if !si.PrepareMode || !si.isValues || si.InInsertColumns || !si.isplaceholder {
+		return false
+	}
+	if si.ValueBracketCount == 0 {
+		si.errMsg = "syntax error: unexpected ')'"
+		return true
+	}
+	if !si.NeedReparse && si.ValueBracketCount == 1 && si.ExpectValue {
+		si.errMsg = "syntax error: missing value before ')'"
+		return true
+	}
+	if si.ValueBracketCount == 1 {
+		si.ExpectValue = false
+	}
+	si.ValueBracketCount--
+	// One row ends when the outermost VALUES tuple is closed.
+	if si.ValueBracketCount == 0 {
+		si.RowCount++
+	}
+	return true
+}
+
+// handleInsertColumnComma handles ',' in the INSERT column list.
+func (s *scanner) handleInsertColumnComma(si *Shortinsert) bool {
+	if !si.PrepareMode || si.isValues || !si.isInsert || si.RepeatInsertColumn || !si.InInsertColumns {
+		return false
+	}
+	if si.ExpectInsertColumn {
+		si.errMsg = "syntax error: unexpected ',' or missing column name before ','"
+		return true
+	}
+	si.ExpectInsertColumn = true
+	return true
+}
+
+// handlePrepareValuesComma handles ',' in the VALUES clause of a prepared INSERT.
+func (s *scanner) handlePrepareValuesComma(si *Shortinsert) bool {
+	if !si.PrepareMode || !si.isValues || si.InInsertColumns || !si.isplaceholder {
+		return false
+	}
+	if si.ExpectValue {
+		si.errMsg = "syntax error: unexpected ',' or missing value before ','"
+		return true
+	}
+	si.ExpectValue = true
+	return true
 }
 
 /* scan
@@ -499,23 +637,45 @@ func (s *scanner) scan(lval *sqlSymType) {
 		return
 
 	case '(':
-		if s.shortinsert.isInsert && !s.shortinsert.isValues {
-			s.shortinsert.bracket.elements = append(s.shortinsert.bracket.elements, 1)
-		} else if s.shortinsert.isValues && s.shortinsert.isTsTable && s.shortinsert.PrepareMode {
-			if s.shortinsert.ValueBracketCount > 0 {
-				s.shortinsert.NeedReparse = true
-			}
-			s.shortinsert.ValueBracketCount++
+		si := &s.shortinsert
+		// handleInsertColumnLParen handles '(' in the INSERT column list
+		// eg: insert into t (...) values
+		if s.handleInsertColumnLParen(si) {
+			return
+		}
+		// handlePrepareValuesLParen handles '(' in the VALUES clause
+		// eg: insert into t values (...)
+		if s.handlePrepareValuesLParen(si) {
+			return
 		}
 	case ')':
-		if s.shortinsert.isValues && s.shortinsert.isTsTable && s.shortinsert.PrepareMode {
-			if s.shortinsert.ValueBracketCount > 0 {
-				s.shortinsert.ValueBracketCount--
-			}
-		} else if len(s.shortinsert.bracket.elements) != 0 {
-			s.shortinsert.bracket.elements = s.shortinsert.bracket.elements[:len(s.shortinsert.bracket.elements)-1]
+		si := &s.shortinsert
+		// handleInsertColumnRParen handles ')' in the INSERT column list
+		if s.handleInsertColumnRParen(si) {
+			si.RowCount++
+			return
 		}
-		s.shortinsert.RowCount++
+		// handlePrepareValuesRParen handles ')' in the VALUES clause
+		if s.handlePrepareValuesRParen(si) {
+			return
+		}
+		si.RowCount++
+		return
+	case ',':
+		si := &s.shortinsert
+		if si.NeedReparse {
+			return
+		}
+		// handleInsertColumnComma handles ',' in the INSERT column list.
+		// e.g.: insert into t (c1, c2, c3) values
+		if s.handleInsertColumnComma(si) {
+			return
+		}
+		// handleInsertColumnComma handles ',' in the VALUES clause
+		// e.g.: insert into t values ($1, $2, $3)
+		if s.handlePrepareValuesComma(si) {
+			return
+		}
 	default:
 		if lex.IsDigit(ch) {
 			s.scanNumber(lval, ch)
@@ -689,19 +849,31 @@ func (s *scanner) scanIdent(lval *sqlSymType) {
 		// The string has unicode in it. No choice but to run Normalize.
 		lval.str = lex.NormalizeName(s.in[start:s.pos])
 	}
-	if s.shortinsert.isValues && s.shortinsert.isTsTable {
+
+	si := &s.shortinsert
+	if si.PrepareMode && si.isInsert && si.InInsertColumns && !si.isInsertSelect {
+		if !si.ExpectInsertColumn {
+			si.errMsg = fmt.Sprintf("syntax error: missing comma before column %s", lval.str)
+			return
+		}
+		si.ExpectInsertColumn = false
+	}
+	if si.isValues && si.isTsTable {
+		if !si.consumeValueToken(lval.str) {
+			return
+		}
 		if lval.str == "null" {
-			s.shortinsert.InsertValues = append(s.shortinsert.InsertValues, "")
-			s.shortinsert.ValuesType = append(s.shortinsert.ValuesType, NORMALTYPE)
+			si.InsertValues = append(si.InsertValues, "")
+			si.ValuesType = append(si.ValuesType, NORMALTYPE)
 		} else {
-			s.shortinsert.InsertValues = append(s.shortinsert.InsertValues, lval.str)
+			si.InsertValues = append(si.InsertValues, lval.str)
 			if lval.str == "now" {
-				s.shortinsert.RowCount--
+				si.RowCount--
 			}
 			if lval.str == "true" || lval.str == "false" {
-				s.shortinsert.ValuesType = append(s.shortinsert.ValuesType, NUMTYPE)
+				si.ValuesType = append(si.ValuesType, NUMTYPE)
 			} else {
-				s.shortinsert.ValuesType = append(s.shortinsert.ValuesType, NORMALTYPE)
+				si.ValuesType = append(si.ValuesType, NORMALTYPE)
 			}
 		}
 		return
@@ -737,8 +909,8 @@ func (s *scanner) scanIdent(lval *sqlSymType) {
 		// experimental_/testing_ prefix.
 		lval.id = lex.GetKeywordID(lval.str)
 	}
-	if len(s.shortinsert.bracket.elements) != 0 {
-		s.shortinsert.Columnsname = append(s.shortinsert.Columnsname, tree.Name(strings.ToLower(s.in[start:s.pos])))
+	if len(si.bracket.elements) != 0 {
+		si.Columnsname = append(si.Columnsname, tree.Name(strings.ToLower(s.in[start:s.pos])))
 	}
 }
 
@@ -875,9 +1047,15 @@ func (s *scanner) scanPlaceholder(lval *sqlSymType) {
 	}
 	lval.str = s.in[start:s.pos]
 
-	if s.shortinsert.isTsTable {
-		s.shortinsert.Prepareplaceholder++
-		return
+	si := &s.shortinsert
+	if si.isTsTable {
+		if si.isValues && si.PrepareMode {
+			if !si.consumeValueToken("$" + lval.str) {
+				return
+			}
+		}
+		si.isplaceholder = true
+		si.Prepareplaceholder++
 	}
 
 	placeholder, err := tree.NewPlaceholder(lval.str)
@@ -1077,15 +1255,25 @@ outer:
 		lval.str = errInvalidUTF8
 		return false
 	}
-
-	if s.shortinsert.isValues && s.shortinsert.isTsTable {
-		s.shortinsert.InsertValues = append(s.shortinsert.InsertValues, s.finishString(buf))
-		s.shortinsert.ValuesType = append(s.shortinsert.ValuesType, STRINGTYPE)
+	si := &s.shortinsert
+	if si.InInsertColumns {
+		if !si.ExpectInsertColumn {
+			si.errMsg = fmt.Sprintf("syntax error")
+			return false
+		}
+		si.ExpectInsertColumn = false
+	}
+	if si.isValues && si.isTsTable {
+		if si.isplaceholder && !si.consumeValueToken("string literal") {
+			return false
+		}
+		si.InsertValues = append(si.InsertValues, s.finishString(buf))
+		si.ValuesType = append(si.ValuesType, STRINGTYPE)
 		return true
 	}
 	// tsinsert_direct handling of "column" situation
-	if len(s.shortinsert.bracket.elements) != 0 {
-		s.shortinsert.Columnsname = append(s.shortinsert.Columnsname, tree.Name(s.finishString(buf)))
+	if len(si.bracket.elements) != 0 {
+		si.Columnsname = append(si.Columnsname, tree.Name(s.finishString(buf)))
 	}
 
 	lval.str = s.finishString(buf)
