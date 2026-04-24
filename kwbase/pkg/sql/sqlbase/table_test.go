@@ -86,7 +86,7 @@ func TestMakeTSColumnDefDescs(t *testing.T) {
 		CompressAlgo:  nil,
 		CompressLevel: nil,
 	}
-	col, _, err := MakeTSColumnDefDescs("tscol", types.Timestamp, false, false, 0, nil, nil, compressInfo)
+	col, _, err := MakeTSColumnDefDescs("tscol", types.Timestamp, false, 0, nil, nil, compressInfo)
 	if err != nil {
 		t.Errorf("MakeTSColumnDefDescs failed: %v", err)
 	}

@@ -212,9 +212,8 @@ func TestCreateTableFormat(t *testing.T) {
 					{TagName: "tag1", TagType: types.Int},
 				},
 				PrimaryTagList: NameList{"tag1"},
-				ActiveTime:     &TimeInput{Value: 1, Unit: "h"},
 			},
-			expected: `CREATE TABLE db.public.ts_tbl (c1 INT8) TAGS (tag1 INT8 NOT NULL) PRIMARY TAGS(tag1) ACTIVETIME 1h`,
+			expected: `CREATE TABLE db.public.ts_tbl (c1 INT8) TAGS (tag1 INT8 NOT NULL) PRIMARY TAGS(tag1)`,
 		},
 	}
 

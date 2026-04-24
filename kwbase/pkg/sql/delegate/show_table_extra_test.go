@@ -52,10 +52,9 @@ func TestShowCreateInstanceTable(t *testing.T) {
 	cTable := "inst_name"
 	attributeName := []string{"tag1", "tag2"}
 	attributeValue := []string{"'val1'", "123"}
-	sde := false
 	typ := []types.T{*types.String, *types.Int}
 
-	res := ShowCreateInstanceTable(sTable, cTable, attributeName, attributeValue, sde, typ)
+	res := ShowCreateInstanceTable(sTable, cTable, attributeName, attributeValue, typ)
 	require.Contains(t, res, "CREATE TABLE inst_name USING stable_name")
 	require.Contains(t, res, "tag1")
 	require.Contains(t, res, "'val1'")

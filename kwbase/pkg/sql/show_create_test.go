@@ -72,7 +72,6 @@ func TestShowCreateInstanceTableExtended(t *testing.T) {
 		cTable        string
 		tagName       []string
 		tagValue      []string
-		sde           bool
 		typ           []types.T
 		shouldContain []string
 	}{
@@ -82,7 +81,6 @@ func TestShowCreateInstanceTableExtended(t *testing.T) {
 			cTable:   "child_table",
 			tagName:  []string{"tag1", "tag2"},
 			tagValue: []string{"'val1'", "123"},
-			sde:      false,
 			typ:      []types.T{*types.String, *types.Int},
 			shouldContain: []string{
 				"CREATE TABLE child_table",
@@ -97,12 +95,10 @@ func TestShowCreateInstanceTableExtended(t *testing.T) {
 			cTable:   "instance_table",
 			tagName:  []string{"id"},
 			tagValue: []string{"1"},
-			sde:      true,
 			typ:      []types.T{*types.Int},
 			shouldContain: []string{
 				"CREATE TABLE instance_table",
 				"USING template_table",
-				"DICT ENCODING",
 			},
 		},
 		{
@@ -111,7 +107,6 @@ func TestShowCreateInstanceTableExtended(t *testing.T) {
 			cTable:   "child_table",
 			tagName:  []string{"tag1"},
 			tagValue: []string{""},
-			sde:      false,
 			typ:      []types.T{*types.String},
 			shouldContain: []string{
 				"CREATE TABLE child_table",
@@ -124,7 +119,6 @@ func TestShowCreateInstanceTableExtended(t *testing.T) {
 			cTable:   "child_table",
 			tagName:  []string{"data"},
 			tagValue: []string{"'hello'"},
-			sde:      false,
 			typ:      []types.T{*types.Bytes},
 			shouldContain: []string{
 				"CREATE TABLE child_table",
@@ -135,7 +129,7 @@ func TestShowCreateInstanceTableExtended(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := ShowCreateInstanceTable(tt.sTable, tt.cTable, tt.tagName, tt.tagValue, tt.sde, tt.typ)
+			result := ShowCreateInstanceTable(tt.sTable, tt.cTable, tt.tagName, tt.tagValue, tt.typ)
 			for _, expected := range tt.shouldContain {
 				require.Contains(t, result, expected)
 			}

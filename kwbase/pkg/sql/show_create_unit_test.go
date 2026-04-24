@@ -206,7 +206,6 @@ func TestShowCreateInstanceTable(t *testing.T) {
 		cTable   string
 		tagName  []string
 		tagValue []string
-		sde      bool
 		typ      []types.T
 		expected string
 	}{
@@ -216,7 +215,6 @@ func TestShowCreateInstanceTable(t *testing.T) {
 			cTable:   "instance_table",
 			tagName:  []string{"tag1", "tag2"},
 			tagValue: []string{"value1", "value2"},
-			sde:      false,
 			typ:      []types.T{*types.String, *types.String},
 			expected: `CREATE TABLE instance_table USING template_table (
 	tag1, 
@@ -230,18 +228,17 @@ func TestShowCreateInstanceTable(t *testing.T) {
 			cTable:   "instance_table_sde",
 			tagName:  []string{"tag1"},
 			tagValue: []string{"value1"},
-			sde:      true,
 			typ:      []types.T{*types.String},
 			expected: `CREATE TABLE instance_table_sde USING template_table (
 	tag1 ) TAGS (
-	value1 ) DICT ENCODING`,
+	value1 )`,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			sTable := tree.Name(tt.sTable)
-			result := ShowCreateInstanceTable(sTable, tt.cTable, tt.tagName, tt.tagValue, tt.sde, tt.typ)
+			result := ShowCreateInstanceTable(sTable, tt.cTable, tt.tagName, tt.tagValue, tt.typ)
 			require.Equal(t, tt.expected, result)
 		})
 	}
