@@ -201,7 +201,7 @@ KStatus TsVGroup::PutData(kwdbContext_p ctx, const std::shared_ptr<TsTableSchema
     LOG_ERROR("mem_segment_mgr_.PutData Failed.")
     return FAIL;
   }
-    // update vgroup entity_id.
+  // update vgroup entity_id.
   return KStatus::SUCCESS;
 }
 

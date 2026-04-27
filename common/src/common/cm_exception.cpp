@@ -9,12 +9,12 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-
+#include <cstdio> 
 #include <signal.h>
 #include <execinfo.h>
 #include <cxxabi.h>
 #include <unistd.h>
-
+#include <fcntl.h>
 #include <atomic>
 #include <string>
 #include <iostream>
@@ -31,9 +31,7 @@ namespace kwdbts {
 
 const char* kErrlogName = "errlog.log";
 k_char kErrlogPath[FULL_FILE_NAME_MAX_LEN];
-
 char kEmergencyBuf[512];
-
 PostExceptionCb kPostExceptionCb = nullptr;
 
 #define EXCEPTION_SIGNAL_CNT (6)
@@ -42,59 +40,97 @@ static k_int32 kExceptionSignals[EXCEPTION_SIGNAL_CNT] = {
 };
 static struct sigaction kOldSigactions[EXCEPTION_SIGNAL_CNT];
 
-KString demangle(const char* symbol) {
-  // extract symbol from - me.so(_ZN6kwdbts14PrintBacktraceERSo+0x34) [0xffff974b3530]
-  static constexpr k_char OPEN = '(';
-  const k_char* begin = nullptr;
-  const k_char* end = nullptr;
-  for (const k_char *j = symbol; *j; ++j) {
-    if (*j == OPEN) {
-      begin = j + 1;
-    } else if (*j == '+') {
-      end = j;
-    }
+extern void DumpThreadBacktraceToFile(int fd);
+extern char* AppendLiteral(char* cursor, char* end, const char* text);
+extern char* AppendUInt64(char* cursor, char* end, uint64_t value);
+extern char* AppendPtr(char* cursor, char* end, uintptr_t ptr_value);
+extern char* AppendInt32(char* cursor, char* end, int32_t value);
+
+static int FastSecondToDate(const time_t& unix_sec, struct tm* tm, int time_zone) {
+    static const int kHoursInDay = 24;
+    static const int kMinutesInHour = 60;
+    static const int kDaysFromUnixTime = 2472632;
+    static const int kDaysFromYear = 153;
+    static const int kMagicUnkonwnFirst = 146097;
+    static const int kMagicUnkonwnSec = 1461;
+    tm->tm_sec  =  unix_sec % kMinutesInHour;
+    int i      = (unix_sec/kMinutesInHour);
+    tm->tm_min  = i % kMinutesInHour;  // nn
+    i /= kMinutesInHour;
+    tm->tm_hour = (i + time_zone) % kHoursInDay;  // hh
+    tm->tm_mday = (i + time_zone) / kHoursInDay;
+    int a = tm->tm_mday + kDaysFromUnixTime;
+    int b = (a*4  + 3)/kMagicUnkonwnFirst;
+    int c = (-b*kMagicUnkonwnFirst)/4 + a;
+    int d =((c*4 + 3) / kMagicUnkonwnSec);
+    int e = -d * kMagicUnkonwnSec;
+    e = e/4 + c;
+    int m = (5*e + 2)/kDaysFromYear;
+    tm->tm_mday = -(kDaysFromYear * m + 2)/5 + e + 1;
+    tm->tm_mon = (-m/10)*12 + m + 2;
+    tm->tm_year = b*100 + d  - 6700 + (m/10);
+    return 0;
+}
+
+void GenExceptionHeader(char* buff, size_t* length, const char* sigstr, int sig, int si_code, uintptr_t ptr) {
+  //  "Exception time(UTC):%s\nsignal:%s(%d)\npid=%d tid=%d si_code=%d si_addr=%p\n",
+  char* cursor = buff;
+  char* end = buff + *length;
+  cursor = AppendLiteral(cursor, end, "Exception time(UTC):");
+  time_t curr_time = 0;
+  char time_buffer[32];
+  struct tm curr_time_info;
+  curr_time = time(NULL);
+  FastSecondToDate(curr_time, &curr_time_info, 8);
+  strftime(time_buffer, 32, "%Y-%m-%d %H:%M:%S", &curr_time_info);
+  cursor = AppendLiteral(cursor, end, time_buffer);
+  cursor = AppendLiteral(cursor, end, "\nsignal:");
+  cursor = AppendLiteral(cursor, end, sigstr);
+  cursor = AppendLiteral(cursor, end, "(");
+  cursor = AppendInt32(cursor, end, sig);
+  cursor = AppendLiteral(cursor, end, ")\npid=");
+  cursor = AppendUInt64(cursor, end, static_cast<uint64_t>(getpid()));
+  cursor = AppendLiteral(cursor, end, " tid=");
+  cursor = AppendUInt64(cursor, end, static_cast<uint64_t>(gettid()));
+  cursor = AppendLiteral(cursor, end, " si_code=");
+  cursor = AppendInt32(cursor, end, si_code);
+  cursor = AppendLiteral(cursor, end, " si_addr=0x");
+  cursor = AppendPtr(cursor, end, ptr);
+  cursor = AppendLiteral(cursor, end, "\n");
+  *length = static_cast<size_t>(cursor - buff);
+}
+
+void StoreExceptionStackToFile(const int sig, siginfo_t* const info) {
+  // Replace strsignal with a async-signal-safe lookup
+  const char* sigstr = "Unknown";
+  switch (sig) {
+    case SIGSEGV: sigstr = "SIGSEGV"; break;
+    case SIGABRT: sigstr = "SIGABRT"; break;
+    case SIGBUS:  sigstr = "SIGBUS"; break;
+    case SIGSYS:  sigstr = "SIGSYS"; break;
+    case SIGFPE:  sigstr = "SIGFPE"; break;
+    case SIGILL:  sigstr = "SIGILL"; break;
+    default:      sigstr = "Unknown"; break;
   }
-  if (begin && end && begin < end) {
-    KString mangled(begin, end);
-    if (mangled.compare(0, 2, "_Z") == 0) {
-      char* demangled = abi::__cxa_demangle(mangled.c_str(), nullptr, nullptr, nullptr);
-      if (demangled) {
-        KString full_name(symbol, begin);
-        full_name += demangled;
-        full_name += end;
-        free(demangled);
-        return full_name;
-      }
-    }
-    // C function
-    return symbol;
-  } else {
-    return symbol;
+  size_t buf_size = sizeof(kEmergencyBuf);
+  GenExceptionHeader(kEmergencyBuf, &buf_size, sigstr, sig, info->si_code, reinterpret_cast<uintptr_t>(info->si_addr));
+  if (-1 == write(STDOUT_FILENO, kEmergencyBuf, buf_size)) {
+    return;
   }
-}
+  DumpThreadBacktraceToFile(STDOUT_FILENO);
 
-void PrintBacktrace(std::ostream& os) {
-  const k_int32 max_frame_level = 32;
-  void *array[max_frame_level];
-  size_t size = backtrace(array, max_frame_level);
-  char **symbols = backtrace_symbols(array, size);
-  os << "backtrace: size:" << size << std::endl;
-  for (size_t i = 0; i < size; i++) {
-    os << "#" << i << " " << demangle(symbols[i]) << std::endl;
+  if (kErrlogPath[0] == '\0') {
+    return;
   }
-  free(symbols);
+  int fd = open(kErrlogPath, O_WRONLY | O_CREAT | O_APPEND, 0644);
+  if (fd < 0) {
+    return;
+  }
+  if (-1 != write(fd, kEmergencyBuf, buf_size)) {
+    DumpThreadBacktraceToFile(fd);
+  }
+  close(fd);
 }
-
-void Out2Console(const KString &str) {
-  std::cout << str;
-  std::cout.flush();
-}
-
-void Out2Console(const char* str) {
-  std::cout << str;
-  std::cout.flush();
-}
-
 void ExceptionHandler(const int sig, siginfo_t* const info, void*) {
   static std::atomic_bool handlered{false};
   if (handlered.exchange(true)) {
@@ -102,47 +138,7 @@ void ExceptionHandler(const int sig, siginfo_t* const info, void*) {
     signal(sig, SIG_DFL);
     return;
   }
-
-  time_t curr_time;
-  char time_buffer[32];
-  struct tm curr_time_info;
-  curr_time = time(NULL);
-  localtime_r(&curr_time, &curr_time_info);
-  strftime(time_buffer, 32, "%Y-%m-%d %H:%M:%S", &curr_time_info);
-  const char* sigstr = strsignal(sig);
-  // https://man7.org/linux/man-pages/man2/sigaction.2.html
-  snprintf(kEmergencyBuf, sizeof(kEmergencyBuf),
-#if __GLIBC__ == 2 && __GLIBC_MINOR__ < 30
-    "Exception time(UTC):%s\nsignal:%s(%d)\npid=%d tid=%ld si_code=%d si_addr=%p\n",
-#else
-    "Exception time(UTC):%s\nsignal:%s(%d)\npid=%d tid=%d si_code=%d si_addr=%p\n",
-#endif
-    time_buffer, sigstr, sig, getpid(), gettid(), info->si_code, info->si_addr);
-  Out2Console(kEmergencyBuf);
-
-  // TODO(jinmou): Won't print backtrace if can't malloc.
-  std::ostringstream oss;
-  PrintBacktrace(oss);
-
-  std::string msg = oss.str();
-  Out2Console(msg);
-
-  std::ofstream logfile;
-  logfile.open(kErrlogPath, std::ios_base::app);
-  logfile << kEmergencyBuf;
-  logfile << msg;
-  logfile.flush();
-
-  if (kPostExceptionCb) {
-    oss.str("");
-    kPostExceptionCb(sig, oss);
-    msg = oss.str();
-    Out2Console(msg);
-    logfile << msg;
-    logfile.flush();
-  }
-  logfile.close();
-
+  StoreExceptionStackToFile(sig, info);
   // https://pkg.go.dev/os/signal#hdr-Go_programs_that_use_cgo_or_SWIG
   // pass to GO or default
   for (k_int32 i = 0; i < EXCEPTION_SIGNAL_CNT; i++) {
@@ -164,8 +160,7 @@ int32_t RegisterExceptionHandler(char *dir, PostExceptionCb cb) {
   } else {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-truncation"
-    snprintf(kErrlogPath, FULL_FILE_NAME_MAX_LEN, "%s/%s", dir,
-             kErrlogName);
+    snprintf(kErrlogPath, FULL_FILE_NAME_MAX_LEN, "%s/%s", dir, kErrlogName);
 #pragma GCC diagnostic pop
   }
 
@@ -183,6 +178,10 @@ int32_t RegisterExceptionHandler(char *dir, PostExceptionCb cb) {
     }
   }
   return 0;
+}
+
+void ExceptionHandlerForTest(int signr, siginfo_t *info, void *secret) {
+  ExceptionHandler(signr, info, secret);
 }
 
 }  // namespace kwdbts
