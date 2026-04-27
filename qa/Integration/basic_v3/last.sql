@@ -38,6 +38,10 @@ select time_bucket(k_timestamp, '300s') bucket, last(x) from t group by bucket o
 select time_bucket(k_timestamp, '300s') bucket, last(y), sum(a) from t group by bucket order by bucket; -- throw error because cannot aggregate tag
 select time_bucket(k_timestamp, '300s') bucket, last(y) from t group by bucket order by bucket;
 select time_bucket(k_timestamp, '300s') bucket, last(z) from t group by bucket order by bucket;
+
+-- push down time_bucket to storage engine
+select time_bucket(k_timestamp, '300s') bucket, last(z) from t group by a, bucket order by a, bucket;
+
 select time_bucket(k_timestamp, '300s') bucket, last(x), last(x), last(y) from t group by bucket order by bucket;
 select time_bucket(k_timestamp, '300s') bucket, last(*) from t group by bucket order by bucket;
 select time_bucket(k_timestamp, '300s') bucket, last(*), count(*) from t group by bucket order by bucket; 

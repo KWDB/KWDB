@@ -705,7 +705,7 @@ bool mul_integer_overflow(T& a, T b) {
 
 char *FieldSumStatisticTagSum::get_ptr() {
   return static_cast<char *>(current_thd->GetRowBatch()->GetData(
-      num_, -1, column_type_, storage_type_));
+      num_, storage_len_, column_type_, storage_type_));
 }
 
 k_bool FieldSumStatisticTagSum::is_nullable() {
@@ -770,7 +770,7 @@ k_bool FieldSumStatisticTagSum::fill_template_field(char *ptr) { return true; }
 
 char *FieldSumStatisticTagCount::get_ptr() {
   return static_cast<char *>(
-      current_thd->GetRowBatch()->GetData(num_, -1, column_type_, storage_type_));
+      current_thd->GetRowBatch()->GetData(num_, storage_len_, column_type_, storage_type_));
 }
 
 k_bool FieldSumStatisticTagCount::is_nullable() {

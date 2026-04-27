@@ -211,7 +211,9 @@ struct Batch {
   Batch() = delete;
 
   Batch(char* m, k_uint32 c)
-      : mem(m), count(c) {}
+      : mem(m), count(c) {
+        value_is_overflow = &is_overflow;
+      }
 
   Batch(char* m, k_uint32 c, char* b)
       : mem(m), bitmap(b), count(c) {}
@@ -222,6 +224,9 @@ struct Batch {
   Batch(k_uint32 c, char* b, k_uint32 o)
       : bitmap(b), count(c), offset(o) {}
 
+  Batch(char* m, k_uint32 c, char* b, k_uint32 o, bool* f)
+      : mem(m), bitmap(b), count(c), offset(o), value_is_overflow(f) {}
+
   // Record whether mem_ is the memory space requested on the heap
   bool is_new = false;
   bool is_overflow = false;
@@ -230,6 +235,7 @@ struct Batch {
   char* bitmap = nullptr;
   k_uint32 count = 0;
   k_uint32 offset = 0;
+  bool* value_is_overflow = nullptr;
 
   virtual ~Batch() {
     if (is_new && mem) {
@@ -240,6 +246,29 @@ struct Batch {
       free(bitmap);
       bitmap = nullptr;
     }
+  }
+
+  // Check if agg value is overflow
+  bool isOverflow(k_uint32 row_idx) const {
+    if (value_is_overflow == nullptr) {
+      return false;
+    }
+    if (row_idx >= count) {
+      return false;
+    }
+    return value_is_overflow[row_idx];
+  }
+
+  // Set agg value is overflow
+  void setOverflow(k_uint32 row_idx) {
+    if (value_is_overflow == nullptr) {
+      return;
+    }
+    if (row_idx >= count) {
+      return;
+    }
+    value_is_overflow[row_idx] = true;
+    return;
   }
 
   // row_idx  start from 0

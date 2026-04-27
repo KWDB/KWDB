@@ -34,7 +34,7 @@ k_bool ScanRowBatch::IsOverflow(k_uint32 col,
   if (roachpb::KWDBKTSColumn::TYPE_DATA != ctype) {
     return false;
   }
-  return res_.data[col][current_batch_no_]->is_overflow;
+  return res_.data[col][current_batch_no_]->isOverflow(current_batch_line_);
 }
 
 void ScanRowBatch::Reset() {

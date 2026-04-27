@@ -147,6 +147,14 @@ INSERT 1
   2023-07-29 03:25:00+00:00 | e
   2023-07-29 03:35:00+00:00 | e
 (4 rows)
+> select time_bucket(k_timestamp, '300s') bucket, last(z) from t group by a, bucket order by a, bucket;
+           bucket           | last
+----------------------------+-------
+  2023-07-29 03:10:00+00:00 | b
+  2023-07-29 03:15:00+00:00 | b
+  2023-07-29 03:25:00+00:00 | e
+  2023-07-29 03:35:00+00:00 | e
+(4 rows)
 > select time_bucket(k_timestamp, '300s') bucket, last(x), last(x), last(y) from t group by bucket order by bucket;
            bucket           | last | last | last
 ----------------------------+------+------+-------

@@ -1850,6 +1850,58 @@ void TsAggIteratorImpl::Reset() {
   }
 }
 
+void TsAggIteratorImpl::TimeBucketReset() {
+  // Move to the next agg result address for batch agg
+  for (int i = 0; i < kw_scan_cols_.size(); ++i) {
+    auto kw_col_idx = (scan_agg_types_[i] == Sumfunctype::MAX_EXTEND || scan_agg_types_[i] == Sumfunctype::MIN_EXTEND) ?
+                             agg_extend_cols_[i] : kw_scan_cols_[i];
+    if (!isVarLenType(attrs_[kw_col_idx].type) || scan_agg_types_[i] == Sumfunctype::COUNT
+                                    || scan_agg_types_[i] == Sumfunctype::FIRSTTS
+                                    || scan_agg_types_[i] == Sumfunctype::LASTTS
+                                    || scan_agg_types_[i] == Sumfunctype::FIRSTROWTS
+                                    || scan_agg_types_[i] == Sumfunctype::LASTROWTS) {
+      final_agg_data_[i].len = -1;
+      final_agg_data_[i].data += scan_agg_types_[i] == Sumfunctype::COUNT ? sizeof(uint64_t) :
+                                  scan_agg_types_[i] == Sumfunctype::SUM ? sizeof(int64_t) :
+                                    (scan_agg_types_[i] == Sumfunctype::FIRSTTS
+                                    || scan_agg_types_[i] == Sumfunctype::LASTTS
+                                    || scan_agg_types_[i] == Sumfunctype::FIRSTROWTS
+                                    || scan_agg_types_[i] == Sumfunctype::LASTROWTS) ? sizeof(timestamp64) :
+                                      attrs_[kw_col_idx].size;
+    } else {
+      final_agg_data_[i].len = 0;
+      final_agg_data_[i].data = nullptr;
+    }
+  }
+
+  cur_first_col_idxs_ = first_col_idxs_;
+  cur_last_col_idxs_ = last_col_idxs_;
+  for (auto first_col_idx : cur_first_col_idxs_) {
+    candidates_[first_col_idx].blk_span = nullptr;
+    candidates_[first_col_idx].ts = INT64_MAX;
+  }
+  for (auto last_col_idx : cur_last_col_idxs_) {
+    candidates_[last_col_idx].blk_span = nullptr;
+    candidates_[last_col_idx].ts = INT64_MIN;
+  }
+
+  std::fill(is_overflow_.begin(), is_overflow_.end(), false);
+
+  for (auto count_col_idx : count_col_idxs_) {
+    final_agg_data_[count_col_idx].len = sizeof(uint64_t);
+    memset(final_agg_data_[count_col_idx].data, 0, final_agg_data_[count_col_idx].len);
+  }
+
+  if (has_first_row_col_) {
+    first_row_candidate_.blk_span = nullptr;
+    first_row_candidate_.ts = INT64_MAX;
+  }
+  if (has_last_row_col_) {
+    last_row_candidate_.blk_span = nullptr;
+    last_row_candidate_.ts = INT64_MIN;
+  }
+}
+
 inline void TsAggIteratorImpl::AddAggResult(ResultSet* res) {
   for (k_uint32 i = 0; i < kw_scan_cols_.size(); ++i) {
     TSSlice& slice = final_agg_data_[i];
@@ -1974,7 +2026,14 @@ KStatus TsAggIteratorImpl::Next(ResultSet* res, k_uint32* count, bool* is_finish
     }
 
     // Split block spans to multiple time buckets.
-    std::vector<shared_ptr<TsBlockSpan>> ts_block_spans = SortBlockSpans(ts_block_spans_);
+    std::vector<shared_ptr<TsBlockSpan>> ts_block_spans;
+    if (ts_block_spans_.size() <= 1) {
+      if (!ts_block_spans_.empty()) {
+        ts_block_spans.push_back(std::move(*ts_block_spans_.begin()));
+      }
+    } else {
+      ts_block_spans = SortBlockSpans(ts_block_spans_);
+    }
 
     std::vector<uint64_t> block_spans_index;
     if (!ts_block_spans.empty()) {
@@ -1989,19 +2048,106 @@ KStatus TsAggIteratorImpl::Next(ResultSet* res, k_uint32* count, bool* is_finish
       }
     }
 
-    // Loop all the time buckets to calculate agg data.
-    for (time_bucket_block_spans_index_ = 0; time_bucket_block_spans_index_ < time_bucket_block_spans_.size();
-              ++time_bucket_block_spans_index_) {
-      time_bucket_index_ = block_spans_index[time_bucket_block_spans_index_];
-      Reset();
-      ret = AggregateWithBucket(ts_scan_stats);
-      if (ret != KStatus::SUCCESS) {
-        LOG_ERROR("AggregateWithBucket failed.");
-        return ret;
+    *count = time_bucket_block_spans_.size();
+    if (*count > 0) {
+      // Initialize batch agg results
+      for (int i = 0; i < kw_scan_cols_.size(); ++i) {
+        auto kw_col_idx = (scan_agg_types_[i] == Sumfunctype::MAX_EXTEND || scan_agg_types_[i] == Sumfunctype::MIN_EXTEND) ?
+                              agg_extend_cols_[i] : kw_scan_cols_[i];
+        if (!isVarLenType(attrs_[kw_col_idx].type) || scan_agg_types_[i] == Sumfunctype::COUNT
+                                  || scan_agg_types_[i] == Sumfunctype::FIRSTTS
+                                  || scan_agg_types_[i] == Sumfunctype::LASTTS
+                                  || scan_agg_types_[i] == Sumfunctype::FIRSTROWTS
+                                  || scan_agg_types_[i] == Sumfunctype::LASTROWTS) {
+          int32_t type_size = scan_agg_types_[i] == Sumfunctype::COUNT ? sizeof(uint64_t) :
+                                scan_agg_types_[i] == Sumfunctype::SUM ? sizeof(int64_t) :
+                                  (scan_agg_types_[i] == Sumfunctype::FIRSTTS
+                                  || scan_agg_types_[i] == Sumfunctype::LASTTS
+                                  || scan_agg_types_[i] == Sumfunctype::FIRSTROWTS
+                                  || scan_agg_types_[i] == Sumfunctype::LASTROWTS) ? sizeof(timestamp64) :
+                                    attrs_[kw_col_idx].size;
+          size_t size = (KW_BITMAP_SIZE(*count)) + (*count) * sizeof(bool) + (*count) * type_size;
+          // buffer contains bitmap, overflow and value
+          char* buffer = static_cast<char*>(malloc(size));
+          if (buffer == nullptr) {
+            LOG_ERROR("malloc failed. alloc size: %lu", size);
+            return KStatus::FAIL;
+          }
+          memset(buffer, 0, (KW_BITMAP_SIZE(*count)) + (*count) * sizeof(bool));
+          final_agg_data_[i].len = -1;
+          final_agg_data_[i].data = buffer + (KW_BITMAP_SIZE(*count)) + (*count) * sizeof(bool);
+          bool* overflow = reinterpret_cast<bool*>(buffer + (KW_BITMAP_SIZE(*count)));
+          // Create a batch with all agg data
+          auto b = new Batch(final_agg_data_[i].data, *count, buffer, 1, overflow);
+          if (b == nullptr) {
+            free(buffer);
+            LOG_ERROR("new Batch failed for fixed len type.");
+            return KStatus::FAIL;
+          }
+          final_agg_data_[i].data -= type_size;
+          b->is_new = false;
+          b->need_free_bitmap = true;
+          res->push_back(i, b);
+        } else {
+          size_t size = KW_BITMAP_SIZE(*count);
+          char* buffer = static_cast<char*>(malloc(size));
+          if (buffer == nullptr) {
+            LOG_ERROR("malloc failed. alloc size: %lu", size);
+            return KStatus::FAIL;
+          }
+          memset(buffer, 0, size);
+          auto b = new VarColumnBatch(*count, buffer, 1);
+          if (b == nullptr) {
+            free(buffer);
+            LOG_ERROR("new Batch failed for var len type.");
+            return KStatus::FAIL;
+          }
+          b->need_free_bitmap = true;
+          res->push_back(i, b);
+        }
       }
-      // We need to add all rows as a bulk to result for better performance.
-      AddAggResult(res);
-      ++(*count);
+      // Loop all the time buckets to calculate agg data.
+      for (time_bucket_block_spans_index_ = 0; time_bucket_block_spans_index_ < *count;
+                ++time_bucket_block_spans_index_) {
+        time_bucket_index_ = block_spans_index[time_bucket_block_spans_index_];
+        TimeBucketReset();
+        ret = AggregateWithBucket(ts_scan_stats);
+        if (ret != KStatus::SUCCESS) {
+          LOG_ERROR("AggregateWithBucket failed.");
+          return ret;
+        }
+        // Finalize agg result
+        for (k_uint32 i = 0; i < kw_scan_cols_.size(); ++i) {
+          uint32_t col_idx =
+                    (scan_agg_types_[i] == Sumfunctype::MAX_EXTEND || scan_agg_types_[i] == Sumfunctype::MIN_EXTEND) ?
+                    agg_extend_cols_[i] : kw_scan_cols_[i];
+          if (!isVarLenType(attrs_[col_idx].type) || scan_agg_types_[i] == Sumfunctype::COUNT
+                                  || scan_agg_types_[i] == Sumfunctype::FIRSTTS
+                                  || scan_agg_types_[i] == Sumfunctype::LASTTS
+                                  || scan_agg_types_[i] == Sumfunctype::FIRSTROWTS
+                                  || scan_agg_types_[i] == Sumfunctype::LASTROWTS) {
+            Batch* b = const_cast<Batch*>(res->data[i][0]);
+            if (final_agg_data_[i].len == -1) {
+              // null value
+              b->setNull(time_bucket_block_spans_index_);
+            } else if (is_overflow_[i]) {
+              // agg value is overflow
+              b->setOverflow(time_bucket_block_spans_index_);
+            }
+          } else {
+            VarColumnBatch* b = static_cast<VarColumnBatch*>(const_cast<Batch*>(res->data[i][0]));
+            TSSlice& slice = final_agg_data_[i];
+            if (slice.data == nullptr) {
+              // null value
+              b->setNull(time_bucket_block_spans_index_);
+              b->push_back(nullptr);
+            } else {
+              std::shared_ptr<char> ptr(slice.data, free);
+              b->push_back(ptr);
+            }
+          }
+        }
+      }
     }
 
     res->entity_index = {1, entity_id, vgroup_->GetVGroupID()};
@@ -2131,7 +2277,102 @@ KStatus TsAggIteratorImpl::AggregateWithBucket(TsScanStats* ts_scan_stats) {
       return ret;
     }
   }
-  return GenerateAggData();
+  return GenerateTimeBucketAggData();
+}
+
+KStatus TsAggIteratorImpl::GenerateTimeBucketAggData() {
+  // To support batch agg, we don't malloc / free final_agg_data_[].data
+  for (int i = 0; i < scan_agg_types_.size(); ++i) {
+    Sumfunctype agg_type = scan_agg_types_[i];
+    if (agg_type == Sumfunctype::COUNT || agg_type == Sumfunctype::SUM) {
+      continue;
+    }
+    if (agg_type == Sumfunctype::MAX || agg_type == Sumfunctype::MIN) {
+      if ((agg_type == Sumfunctype::MAX && max_map_[kw_scan_cols_[i]] != i)
+          || (agg_type ==Sumfunctype::MIN && min_map_[kw_scan_cols_[i]] != i)) {
+        final_agg_data_[i].len = final_agg_data_[min_map_[kw_scan_cols_[i]]].len;
+        memcpy(final_agg_data_[i].data, final_agg_data_[min_map_[kw_scan_cols_[i]]].data, final_agg_data_[i].len);
+      }
+      continue;
+    }
+    if (agg_type == Sumfunctype::TIME_BUCKET) {
+      final_agg_data_[i].len = sizeof(timestamp64);
+      KTimestamp(final_agg_data_[i].data) = time_bucket_begin_ts_
+                  + time_bucket_info_.interval * time_bucket_index_;
+      continue;
+    }
+    auto& c = ((agg_type == Sumfunctype::LAST_ROW || agg_type == Sumfunctype::LASTROWTS) ?
+                last_row_candidate_ :
+                  (agg_type == Sumfunctype::LAST || agg_type == Sumfunctype::LASTTS) ?
+                  candidates_[last_ts_points_.empty() ? last_map_[kw_scan_cols_[i]] : i] :
+                    (agg_type == Sumfunctype::FIRST_ROW || agg_type == Sumfunctype::FIRSTROWTS) ?
+                    first_row_candidate_ :
+                      (agg_type == Sumfunctype::FIRST || agg_type == Sumfunctype::FIRSTTS) ?
+                      candidates_[first_map_[kw_scan_cols_[i]]] :
+                        (agg_type == Sumfunctype::MAX_EXTEND) ?
+                        candidates_[max_map_[kw_scan_cols_[i]]] : candidates_[min_map_[kw_scan_cols_[i]]]);
+    const k_uint32 col_idx = (agg_type == Sumfunctype::MAX_EXTEND || agg_type == Sumfunctype::MIN_EXTEND) ?
+                             agg_extend_cols_[i] : kw_scan_cols_[i];
+    auto kw_col_idx = kw_scan_cols_[i];
+    if (isVarLenType(attrs_[kw_col_idx].type) && final_agg_data_[i].data != nullptr &&
+          !(agg_type == Sumfunctype::FIRSTTS || agg_type == Sumfunctype::LASTTS
+              || agg_type == Sumfunctype::FIRSTROWTS || agg_type == Sumfunctype::LASTROWTS)) {
+      free(final_agg_data_[i].data);
+      final_agg_data_[i].data = nullptr;
+      final_agg_data_[i].len = 0;
+    }
+    if (c.blk_span == nullptr) {
+      // null value
+      final_agg_data_[i].len = -1;
+    } else if (agg_type == Sumfunctype::FIRSTTS || agg_type == Sumfunctype::LASTTS
+              || agg_type == Sumfunctype::FIRSTROWTS || agg_type == Sumfunctype::LASTROWTS) {
+      memcpy(final_agg_data_[i].data, &c.ts, sizeof(timestamp64));
+      final_agg_data_[i].len = sizeof(timestamp64);
+    } else {
+      if (!c.blk_span->IsColExist(col_idx)) {
+        if (agg_type == Sumfunctype::FIRST_ROW || agg_type == Sumfunctype::LAST_ROW) {
+          // don't need to do anything
+        } else {
+          LOG_ERROR("Something is wrong here since column doesn't exist and we should not have any candidates.")
+          return KStatus::FAIL;
+        }
+      } else {
+        if (!c.blk_span->IsVarLenType(col_idx)) {
+          char* value = nullptr;
+          std::unique_ptr<TsBitmapBase> bitmap;
+          auto ret = c.blk_span->GetFixLenColAddr(col_idx, &value, &bitmap);
+          if (ret != KStatus::SUCCESS) {
+            return ret;
+          }
+
+          if (!attrs_[col_idx].isFlag(AINFO_NOT_NULL) && bitmap->At(c.row_idx) != DataFlags::kValid) {
+            // null value
+            final_agg_data_[i].len = -1;
+          } else {
+            final_agg_data_[i].len = c.blk_span->GetColSize(col_idx);
+            memcpy(final_agg_data_[i].data, value + c.row_idx * final_agg_data_[i].len, final_agg_data_[i].len);
+          }
+        } else {
+          TSSlice slice;
+          DataFlags flag;
+          auto ret = c.blk_span->GetVarLenTypeColAddr(c.row_idx, col_idx, flag, slice);
+          if (ret != KStatus::SUCCESS) {
+            LOG_ERROR("GetVarLenTypeColAddr failed.");
+            return ret;
+          }
+          if (flag != DataFlags::kValid) {
+            final_agg_data_[i] = {nullptr, 0};
+          } else {
+            final_agg_data_[i].len = slice.len + kStringLenLen;
+            final_agg_data_[i].data = static_cast<char*>(malloc(final_agg_data_[i].len));
+            KUint16(final_agg_data_[i].data) = slice.len;
+            memcpy(final_agg_data_[i].data + kStringLenLen, slice.data, slice.len);
+          }
+        }
+      }
+    }
+  }
+  return KStatus::SUCCESS;
 }
 
 KStatus TsAggIteratorImpl::GenerateAggData() {
@@ -2942,6 +3183,10 @@ KStatus TsAggIteratorImpl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& block
         agg_data.len = sizeof(int64_t);
         InitAggData(agg_data);
         InitSumValue(agg_data.data, type);
+      } else if (agg_data.len == -1) {
+        // To support batch agg, we don't malloc memory here
+        agg_data.len = sizeof(int64_t);
+        InitSumValue(agg_data.data, type);
       }
       if (!is_overflow_[idx]) {
         ret = AddSumNotOverflowYetByPreSum(idx, type, pre_sum, agg_data, pre_sum_is_overflow);
@@ -2971,6 +3216,10 @@ KStatus TsAggIteratorImpl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& block
         if (agg_data.data == nullptr) {
           agg_data.len = sizeof(int64_t);
           InitAggData(agg_data);
+          InitSumValue(agg_data.data, type);
+        } else if (agg_data.len == -1) {
+          // To support batch agg, we don't malloc memory here
+          agg_data.len = sizeof(int64_t);
           InitSumValue(agg_data.data, type);
         }
         std::vector<bool>::reference cur_overflow = is_overflow_[idx];
@@ -3016,6 +3265,10 @@ KStatus TsAggIteratorImpl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& block
         if (agg_data.data == nullptr) {
           agg_data.len = size;
           InitAggData(agg_data);
+          need_copy = true;
+        } else if (agg_data.len == -1) {
+          // To support batch agg, we don't malloc memory here
+          agg_data.len = size;
           need_copy = true;
         } else if (cmp(pre_max, agg_data.data, type, kw_col_idx == 0 ? 8 : size) > 0) {
           need_copy = true;
@@ -3064,6 +3317,13 @@ KStatus TsAggIteratorImpl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& block
           if (agg_data.data == nullptr) {
             agg_data.len = size;
             InitAggData(agg_data);
+            memcpy(agg_data.data, current, size);
+            if (agg_extend_cols_[idx] >= 0) {
+              candidates_[idx] = {-1, row_idx, block_span};
+            }
+          } else if (agg_data.len == -1) {
+            // To support batch agg, we don't malloc memory here
+            agg_data.len = size;
             memcpy(agg_data.data, current, size);
             if (agg_extend_cols_[idx] >= 0) {
               candidates_[idx] = {-1, row_idx, block_span};
@@ -3143,6 +3403,10 @@ KStatus TsAggIteratorImpl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& block
           agg_data.len = size;
           InitAggData(agg_data);
           need_copy = true;
+        } else if (agg_data.len == -1) {
+          // To support batch agg, we don't malloc memory here
+          agg_data.len = size;
+          need_copy = true;
         } else if (cmp(pre_min, agg_data.data, type, kw_col_idx == 0 ? 8 : size) < 0) {
           need_copy = true;
         }
@@ -3190,6 +3454,13 @@ KStatus TsAggIteratorImpl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& block
           if (agg_data.data == nullptr) {
             agg_data.len = size;
             InitAggData(agg_data);
+            memcpy(agg_data.data, current, size);
+            if (agg_extend_cols_[idx] >= 0) {
+              candidates_[idx] = {-1, row_idx, block_span};
+            }
+          } else if (agg_data.len == -1) {
+            // To support batch agg, we don't malloc memory here
+            agg_data.len = size;
             memcpy(agg_data.data, current, size);
             if (agg_extend_cols_[idx] >= 0) {
               candidates_[idx] = {-1, row_idx, block_span};

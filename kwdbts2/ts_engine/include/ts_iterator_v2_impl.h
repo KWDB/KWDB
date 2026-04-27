@@ -29,7 +29,7 @@
 
 namespace kwdbts {
 
-#define KW_BITMAP_SIZE(n)  (n + 7) >> 1
+#define KW_BITMAP_SIZE(n)  (n + 7) >> 3
 
 typedef enum {
   SCAN_STATUS_UNKNOWN,
@@ -194,11 +194,13 @@ class TsAggIteratorImpl : public TsStorageIteratorImpl {
   bool IsDisordered() override;
   void SwitchEntity() override;
   void Reset();
+  void TimeBucketReset();
   void AddAggResult(ResultSet* res);
   std::vector<shared_ptr<TsBlockSpan>> SortBlockSpans(std::list<std::shared_ptr<TsBlockSpan>>& ts_block_spans);
 
  protected:
   KStatus GenerateAggData();
+  KStatus GenerateTimeBucketAggData();
   KStatus GetBlockSpans(TsScanStats* ts_scan_stats);
   KStatus AggregateWithBucket(TsScanStats* ts_scan_stats);
   KStatus AggregateWithoutBucket(TsScanStats* ts_scan_stats);

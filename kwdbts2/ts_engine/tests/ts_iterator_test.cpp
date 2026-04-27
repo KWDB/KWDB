@@ -45,7 +45,7 @@ class TestV2Iterator : public TsEngineTestBase {
         for (int k = 0; k < col_num; ++k) {
           bool expect_null = expected[i][j][k] == "<NULL>";
           bool is_null = false;
-          res.data[k][j]->isNull(0, &is_null);
+          res.data[k][0]->isNull(j, &is_null);
           if (expect_null) {
             ASSERT_EQ(is_null, true);
             continue;
@@ -53,40 +53,42 @@ class TestV2Iterator : public TsEngineTestBase {
           ASSERT_EQ(is_null, false);
           switch (col_type[k]) {
             case DATATYPE::TIMESTAMP64:
-              ASSERT_EQ(KTimestamp(res.data[k][j]->mem), parseTimestamp((expected[i][j][k])));
+              ASSERT_EQ(KTimestamp(res.data[k][0]->mem + j * sizeof(KTimestamp)), parseTimestamp((expected[i][j][k])));
               break;
             case DATATYPE::INT16:
-              ASSERT_EQ(KInt16(res.data[k][j]->mem), stoi(expected[i][j][k]));
+              ASSERT_EQ(KInt16(res.data[k][0]->mem + j * sizeof(int16_t)), stoi(expected[i][j][k]));
               break;
             case DATATYPE::INT32:
-              ASSERT_EQ(KInt32(res.data[k][j]->mem), stoi(expected[i][j][k]));
+              ASSERT_EQ(KInt32(res.data[k][0]->mem + j * sizeof(int32_t)), stoi(expected[i][j][k]));
               break;
             case DATATYPE::INT64:
-              ASSERT_EQ(KInt64(res.data[k][j]->mem), stol(expected[i][j][k]));
+              ASSERT_EQ(KInt64(res.data[k][0]->mem + j * sizeof(int64_t)), stol(expected[i][j][k]));
               break;
             case DATATYPE::FLOAT:
-              ASSERT_EQ(KFloat32(res.data[k][j]->mem), stof(expected[i][j][k]));
+              ASSERT_EQ(KFloat32(res.data[k][0]->mem + j * sizeof(float)), stof(expected[i][j][k]));
               break;
             case DATATYPE::DOUBLE:
-              ASSERT_LE(abs(KDouble64(res.data[k][j]->mem) - stod(expected[i][j][k])), 0.00001);
+              ASSERT_LE(abs(KDouble64(res.data[k][0]->mem + j * sizeof(double)) - stod(expected[i][j][k])), 0.00001);
               break;
             case DATATYPE::CHAR:
-              ASSERT_EQ(KChar(res.data[k][j]->mem), *expected[i][j][k].c_str());
+              ASSERT_EQ(KChar(res.data[k][0]->mem + j * 20), *expected[i][j][k].c_str());
               break;
             case DATATYPE::VARSTRING:
               {
-                int16_t str_len = KInt16(res.data[k][j]->mem);
+                VarColumnBatch* b = static_cast<VarColumnBatch*>(const_cast<Batch*>(res.data[k][0]));
+                int16_t str_len = b->getDataLen(j);
                 char str_val[1024];
-                memcpy(str_val, res.data[k][j]->mem + 2, str_len);
+                memcpy(str_val, b->getData(j) + 2, str_len);
                 str_val[str_len] = 0;
                 ASSERT_EQ(str_val, expected[i][j][k]);
               }
               break;
             case DATATYPE::VARBINARY:
               {
-                int16_t str_len = KInt16(res.data[k][j]->mem);
+                VarColumnBatch* b = static_cast<VarColumnBatch*>(const_cast<Batch*>(res.data[k][0]));
+                int16_t str_len = b->getDataLen(j);
                 char str_val[1024];
-                memcpy(str_val, res.data[k][j]->mem + 2, str_len);
+                memcpy(str_val, b->getData(j) + 2, str_len);
                 str_val[str_len] = 0;
                 ASSERT_EQ(str_val, expected[i][j][k]);
               }
@@ -1361,6 +1363,18 @@ vector<vector<roachpb::DataType>> timeBucketAgg_metric_types = {
     roachpb::DataType::INT, roachpb::DataType::INT, roachpb::DataType::INT,
     roachpb::DataType::SMALLINT, roachpb::DataType::SMALLINT, roachpb::DataType::FLOAT,
     roachpb::DataType::FLOAT, roachpb::DataType::DOUBLE, roachpb::DataType::DOUBLE
+  },
+  // test case 5 (for MAX_EXTEND)
+  {
+    roachpb::DataType::TIMESTAMP, roachpb::DataType::INT, roachpb::DataType::SMALLINT,
+    roachpb::DataType::BIGINT, roachpb::DataType::FLOAT, roachpb::DataType::DOUBLE,
+    roachpb::DataType::CHAR, roachpb::DataType::VARCHAR, roachpb::DataType::VARBINARY
+  },
+  // test case 6 (for MIN_EXTEND)
+  {
+    roachpb::DataType::TIMESTAMP, roachpb::DataType::INT, roachpb::DataType::SMALLINT,
+    roachpb::DataType::BIGINT, roachpb::DataType::FLOAT, roachpb::DataType::DOUBLE,
+    roachpb::DataType::CHAR, roachpb::DataType::VARCHAR, roachpb::DataType::VARBINARY
   }
 };
 
@@ -1375,7 +1389,11 @@ vector<vector<roachpb::DataType>> timeBucketAgg_tag_types = {
   {
     roachpb::DataType::VARCHAR, roachpb::DataType::VARCHAR, roachpb::DataType::INT, roachpb::DataType::INT, roachpb::DataType::VARCHAR,
     roachpb::DataType::VARCHAR, roachpb::DataType::VARCHAR, roachpb::DataType::VARCHAR, roachpb::DataType::VARCHAR, roachpb::DataType::VARCHAR
-  }
+  },
+  // test case 5 (for MAX_EXTEND)
+  {roachpb::DataType::VARCHAR, roachpb::DataType::INT},
+  // test case 6 (for MIN_EXTEND)
+  {roachpb::DataType::VARCHAR, roachpb::DataType::INT}
 };
 
 vector<vector<vector<vector<string>>>> timeBucketAgg_metric_data = {
@@ -1555,6 +1573,24 @@ vector<vector<vector<vector<string>>>> timeBucketAgg_metric_data = {
       {"2023-05-31 10:00:09.000", "<NULL>", "<NULL>", "<NULL>", "<NULL>", "<NULL>", "<NULL>", "<NULL>", "<NULL>", "<NULL>", "<NULL>"},
       {"2023-05-31 10:00:10.000", "44", "70", "20", "67", "65", "11", "7", "-92", "0", "31"}
     }
+  },
+  // test case 5 (for MAX_EXTEND)
+  {
+    // tag 1
+    {
+      {"2026-3-22 12:10:10.181", "198", "3", "12345678", "20.18", "19.38", "a", "varchar data 1", "varbinary data 1"},
+      {"2026-3-22 12:10:13.293", "138", "19", "87654321", "12.98", "218.58", "b", "varchar data 2", "varbinary data 2"},
+      {"2026-3-22 12:10:18.683", "20", "28", "35367782", "386.197", "538.186", "c", "varchar data 3", "varbinary data 3"}
+    }
+  },
+  // test case 6 (for MIN_EXTEND)
+  {
+    // tag 1
+    {
+      {"2026-3-22 12:10:10.181", "198", "3", "12345678", "20.18", "19.38", "a", "varchar data 1", "varbinary data 1"},
+      {"2026-3-22 12:10:13.293", "138", "19", "87654321", "12.98", "218.58", "b", "varchar data 2", "varbinary data 2"},
+      {"2026-3-22 12:10:18.683", "20", "28", "35367782", "386.197", "538.186", "c", "varchar data 3", "varbinary data 3"}
+    }
   }
 };
 
@@ -1608,6 +1644,16 @@ vector<vector<vector<string>>> timeBucketAgg_tag_data = {
     {"host_8", "z", "999", "6666", "c", "t", "y", "u", "r", "m"},
     // host_9
     {"host_9", "zero", "10000", "6666", "f", "r", "n", "m", "t", "y"}
+  },
+  // test case 5 (for MAX_EXTEND)
+  {
+    // tag 1
+    {"device 1", "238"}
+  },
+  // test case 6 (for MIN_EXTEND)
+  {
+    // tag 1
+    {"device 1", "168"}
   }
 };
 
@@ -1619,7 +1665,11 @@ vector<vector<uint32_t>> timeBucketAgg_tag_ids = {
   // test case 3
   {7, 8, 9},
   // test case 4
-  {10, 11, 12, 13, 14, 15, 16, 17, 18, 19}
+  {10, 11, 12, 13, 14, 15, 16, 17, 18, 19},
+  // test case 5 (for MAX_EXTEND)
+  {20},
+  // test case 6 (for MIN_EXTEND)
+  {21}
 };
 
 vector<KwTsSpan> timeBucketAgg_ts_span = {
@@ -1631,7 +1681,11 @@ vector<KwTsSpan> timeBucketAgg_ts_span = {
   {INT64_MIN, INT64_MAX},
   // test case 4
   // {INT64_MIN, INT64_MAX}
-  {1672560000000, 1704096000000}
+  {1672560000000, 1704096000000},
+  // test case 5 (for MAX_EXTEND)
+  {INT64_MIN, INT64_MAX},
+  // test case 6 (for MIN_EXTEND)
+  {INT64_MIN, INT64_MAX}
 };
 
 vector<vector<k_uint32>> timeBucketAgg_scan_cols = {
@@ -1642,7 +1696,26 @@ vector<vector<k_uint32>> timeBucketAgg_scan_cols = {
   // test case 3
   {0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 7, 7, 7, 8, 8, 8},
   // test case 4
-  {0, 9, 8, 4, 1, 6, 1, 3, 10, 3, 3, 9, 9}
+  {0, 9, 8, 4, 1, 6, 1, 3, 10, 3, 3, 9, 9},
+  // test case 5 (for MAX_EXTEND)
+  {0, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+  // test case 6 (for MIN_EXTEND)
+  {0, 1, 1, 1, 1, 1, 1, 1, 1, 1}
+};
+
+vector<vector<k_int32>> timeBucketAgg_agg_extend_cols = {
+  // test case 1
+  {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+  // test case 2
+  {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+  // test case 3
+  {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+  // test case 4
+  {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+  // test case 5 (for MAX_EXTEND)
+  {-1, 0, 1, 2, 3, 4, 5, 6, 7, 8},
+  // test case 6 (for MIN_EXTEND)
+  {-1, 0, 1, 2, 3, 4, 5, 6, 7, 8}
 };
 
 vector<vector<Sumfunctype>> timeBucketAgg_scan_agg_types = {
@@ -1671,6 +1744,16 @@ vector<vector<Sumfunctype>> timeBucketAgg_scan_agg_types = {
   {
     Sumfunctype::TIME_BUCKET, Sumfunctype::LASTTS, Sumfunctype::SUM, Sumfunctype::FIRSTTS, Sumfunctype::MAX, Sumfunctype::MAX, Sumfunctype::LASTTS,
     Sumfunctype::FIRST_ROW, Sumfunctype::LAST_ROW, Sumfunctype::FIRST, Sumfunctype::LAST, Sumfunctype::FIRSTROWTS, Sumfunctype::LASTROWTS
+  },
+  // test case 5 (for MAX_EXTEND)
+  {
+    Sumfunctype::TIME_BUCKET, Sumfunctype::MAX_EXTEND, Sumfunctype::MAX, Sumfunctype::MAX_EXTEND, Sumfunctype::MAX_EXTEND, Sumfunctype::MAX_EXTEND,
+    Sumfunctype::MAX_EXTEND, Sumfunctype::MAX_EXTEND, Sumfunctype::MAX_EXTEND, Sumfunctype::MAX_EXTEND
+  },
+  // test case 6 (for MIN_EXTEND)
+  {
+    Sumfunctype::TIME_BUCKET, Sumfunctype::MIN_EXTEND, Sumfunctype::MIN, Sumfunctype::MIN_EXTEND, Sumfunctype::MIN_EXTEND, Sumfunctype::MIN_EXTEND,
+    Sumfunctype::MIN_EXTEND, Sumfunctype::MIN_EXTEND, Sumfunctype::MIN_EXTEND, Sumfunctype::MIN_EXTEND
   }
 };
 
@@ -1682,35 +1765,51 @@ vector<TimeBucketInfo> timeBucketAgg_time_bucket_info = {
   // test case 3
   {0, 5000},
   // test case 4
-  {0, 2000}
+  {0, 2000},
+  // test case 5 (for MAX_EXTEND)
+  {0, 5000},
+  // test case 6 (for MIN_EXTEND)
+  {0, 5000}
 };
 
 vector<vector<DATATYPE>> timeBucketAgg_out_type = {
   // test case 1
   {
-    DATATYPE::TIMESTAMP64, DATATYPE::INT32, DATATYPE::INT32, DATATYPE::INT32, DATATYPE::INT32, DATATYPE::INT32, DATATYPE::INT16, DATATYPE::INT16, DATATYPE::INT16,
-    DATATYPE::INT32, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT32, DATATYPE::DOUBLE, DATATYPE::FLOAT, DATATYPE::FLOAT,
-    DATATYPE::INT32, DATATYPE::DOUBLE, DATATYPE::DOUBLE, DATATYPE::DOUBLE, DATATYPE::INT32, DATATYPE::CHAR, DATATYPE::CHAR,
-    DATATYPE::INT32, DATATYPE::VARSTRING, DATATYPE::VARSTRING, DATATYPE::INT32, DATATYPE::VARBINARY, DATATYPE::VARBINARY
+    DATATYPE::TIMESTAMP64, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT32, DATATYPE::INT32, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT16, DATATYPE::INT16,
+    DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::DOUBLE, DATATYPE::FLOAT, DATATYPE::FLOAT,
+    DATATYPE::INT64, DATATYPE::DOUBLE, DATATYPE::DOUBLE, DATATYPE::DOUBLE, DATATYPE::INT64, DATATYPE::CHAR, DATATYPE::CHAR,
+    DATATYPE::INT64, DATATYPE::VARSTRING, DATATYPE::VARSTRING, DATATYPE::INT64, DATATYPE::VARBINARY, DATATYPE::VARBINARY
   },
   // test case 2
   {
-    DATATYPE::TIMESTAMP64, DATATYPE::INT32, DATATYPE::INT32, DATATYPE::INT32, DATATYPE::INT32, DATATYPE::INT32, DATATYPE::INT16, DATATYPE::INT16, DATATYPE::INT16,
-    DATATYPE::INT32, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT32, DATATYPE::DOUBLE, DATATYPE::FLOAT, DATATYPE::FLOAT,
-    DATATYPE::INT32, DATATYPE::DOUBLE, DATATYPE::DOUBLE, DATATYPE::DOUBLE, DATATYPE::INT32, DATATYPE::CHAR, DATATYPE::CHAR,
-    DATATYPE::INT32, DATATYPE::VARSTRING, DATATYPE::VARSTRING, DATATYPE::INT32, DATATYPE::VARBINARY, DATATYPE::VARBINARY
+    DATATYPE::TIMESTAMP64, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT32, DATATYPE::INT32, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT16, DATATYPE::INT16,
+    DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::DOUBLE, DATATYPE::FLOAT, DATATYPE::FLOAT,
+    DATATYPE::INT64, DATATYPE::DOUBLE, DATATYPE::DOUBLE, DATATYPE::DOUBLE, DATATYPE::INT64, DATATYPE::CHAR, DATATYPE::CHAR,
+    DATATYPE::INT64, DATATYPE::VARSTRING, DATATYPE::VARSTRING, DATATYPE::INT64, DATATYPE::VARBINARY, DATATYPE::VARBINARY
   },
   // test case 3
   {
-    DATATYPE::TIMESTAMP64, DATATYPE::INT32, DATATYPE::INT32, DATATYPE::INT32, DATATYPE::INT32, DATATYPE::INT32, DATATYPE::INT16, DATATYPE::INT16, DATATYPE::INT16,
-    DATATYPE::INT32, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT32, DATATYPE::DOUBLE, DATATYPE::FLOAT, DATATYPE::FLOAT,
-    DATATYPE::INT32, DATATYPE::DOUBLE, DATATYPE::DOUBLE, DATATYPE::DOUBLE, DATATYPE::INT32, DATATYPE::CHAR, DATATYPE::CHAR,
-    DATATYPE::INT32, DATATYPE::VARSTRING, DATATYPE::VARSTRING, DATATYPE::INT32, DATATYPE::VARBINARY, DATATYPE::VARBINARY
+    DATATYPE::TIMESTAMP64, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT32, DATATYPE::INT32, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT16, DATATYPE::INT16,
+    DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::DOUBLE, DATATYPE::FLOAT, DATATYPE::FLOAT,
+    DATATYPE::INT64, DATATYPE::DOUBLE, DATATYPE::DOUBLE, DATATYPE::DOUBLE, DATATYPE::INT64, DATATYPE::CHAR, DATATYPE::CHAR,
+    DATATYPE::INT64, DATATYPE::VARSTRING, DATATYPE::VARSTRING, DATATYPE::INT64, DATATYPE::VARBINARY, DATATYPE::VARBINARY
   },
   // test case 4
   {
     DATATYPE::TIMESTAMP64, DATATYPE::TIMESTAMP64, DATATYPE::DOUBLE, DATATYPE::TIMESTAMP64, DATATYPE::INT64, DATATYPE::INT16, DATATYPE::TIMESTAMP64,
     DATATYPE::INT32, DATATYPE::DOUBLE, DATATYPE::INT32, DATATYPE::INT32, DATATYPE::TIMESTAMP64, DATATYPE::TIMESTAMP64
+  },
+  // test case 5 (for MAX_EXTEND)
+  {
+    DATATYPE::TIMESTAMP64, DATATYPE::TIMESTAMP64, DATATYPE::INT32, DATATYPE::INT16,
+    DATATYPE::INT64, DATATYPE::FLOAT, DATATYPE::DOUBLE,
+    DATATYPE::CHAR, DATATYPE::VARSTRING, DATATYPE::VARBINARY
+  },
+  // test case 6 (for MIN_EXTEND)
+  {
+    DATATYPE::TIMESTAMP64, DATATYPE::TIMESTAMP64, DATATYPE::INT32, DATATYPE::INT16,
+    DATATYPE::INT64, DATATYPE::FLOAT, DATATYPE::DOUBLE,
+    DATATYPE::CHAR, DATATYPE::VARSTRING, DATATYPE::VARBINARY
   }
 };
 
@@ -1853,6 +1952,22 @@ vector<vector<vector<vector<string>>>> timeBucketAgg_expected_data = {
       {"2023-05-31 10:00:08.000", "<NULL>", "<NULL>", "<NULL>", "<NULL>", "<NULL>", "<NULL>", "<NULL>", "<NULL>", "<NULL>", "<NULL>", "2023-05-31 10:00:08.000", "2023-05-31 10:00:09.000"},
       {"2023-05-31 10:00:10.000", "2023-05-31 10:00:10.000", "-92", "2023-05-31 10:00:10.000", "44", "11", "2023-05-31 10:00:10.000", "20", "31", "20", "20", "2023-05-31 10:00:10.000", "2023-05-31 10:00:10.000"}
     }
+  },
+  // test case 5 (for MAX_EXTEND)
+  {
+    // tag 1
+    {
+      {"2026-3-22 12:10:10.000", "2026-3-22 12:10:10.181", "198", "3", "12345678", "20.18", "19.38", "a", "varchar data 1", "varbinary data 1"},
+      {"2026-3-22 12:10:15.000", "2026-3-22 12:10:18.683", "20", "28", "35367782", "386.197", "538.186", "c", "varchar data 3", "varbinary data 3"}
+    }
+  },
+  // test case 6 (for MIN_EXTEND)
+  {
+    // tag 1
+    {
+      {"2026-3-22 12:10:10.000", "2026-3-22 12:10:13.293", "138", "19", "87654321", "12.98", "218.58", "b", "varchar data 2", "varbinary data 2"},
+      {"2026-3-22 12:10:15.000", "2026-3-22 12:10:18.683", "20", "28", "35367782", "386.197", "538.186", "c", "varchar data 3", "varbinary data 3"}
+    }
   }
 };
 
@@ -1905,7 +2020,7 @@ TEST_F(TimeBucketAggV2Iterator, timeBucketAgg) {
       std::vector<uint32_t> entity_ids = timeBucketAgg_tag_ids[i];
       std::vector<KwTsSpan> ts_spans = {ts_span};
       std::vector<BlockFilter> block_filter = {};
-      std::vector<k_int32> agg_extend_cols(scan_cols.size(), -1);
+      std::vector<k_int32> agg_extend_cols = timeBucketAgg_agg_extend_cols[i];
       std::vector<timestamp64> ts_points = {};
       FillParams fill_params;
       TimeBucketInfo time_bucket_info = timeBucketAgg_time_bucket_info[i];
