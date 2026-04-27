@@ -1213,6 +1213,11 @@ func (g *Gossip) RegisterCallback(pattern string, method Callback, opts ...Callb
 	}
 }
 
+// SetSystemConfig set systemConfig
+func (g *Gossip) SetSystemConfig(cfg *config.SystemConfig) {
+	g.systemConfig = cfg
+}
+
 // GetSystemConfig returns the local unmarshaled version of the system config.
 // Returns nil if the system config hasn't been set yet.
 func (g *Gossip) GetSystemConfig() *config.SystemConfig {

@@ -1,0 +1,43 @@
+// Copyright (c) 2022-present, Shanghai Yunxi Technology Co, Ltd. All rights reserved.
+//
+// This software (KWDB) is licensed under Mulan PSL v2.
+// You can use this software according to the terms and conditions of the Mulan PSL v2.
+// You may obtain a copy of Mulan PSL v2 at:
+//          http://license.coscl.org.cn/MulanPSL2
+// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+// EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+// MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+// See the Mulan PSL v2 for more details.
+
+package mutations
+
+import "testing"
+
+func TestMaxBatchSize(t *testing.T) {
+	// Test that MaxBatchSize returns a positive integer
+	maxBatchSize := MaxBatchSize()
+	if maxBatchSize <= 0 {
+		t.Fatalf("expected positive max batch size, got %d", maxBatchSize)
+	}
+}
+
+func TestSetMaxBatchSizeForTests(t *testing.T) {
+	// Test that SetMaxBatchSizeForTests changes the max batch size
+	defer ResetMaxBatchSizeForTests()
+
+	SetMaxBatchSizeForTests(100)
+	if MaxBatchSize() != 100 {
+		t.Fatalf("expected max batch size to be 100, got %d", MaxBatchSize())
+	}
+}
+
+func TestResetMaxBatchSizeForTests(t *testing.T) {
+	// Test that ResetMaxBatchSizeForTests resets the max batch size
+	original := MaxBatchSize()
+
+	SetMaxBatchSizeForTests(100)
+	ResetMaxBatchSizeForTests()
+	if MaxBatchSize() != original {
+		t.Fatalf("expected max batch size to be %d, got %d", original, MaxBatchSize())
+	}
+}

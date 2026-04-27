@@ -31,6 +31,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/config/zonepb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/cat"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 )
@@ -65,7 +66,7 @@ func (tc *Catalog) CreateTable(stmt *tree.CreateTable) *Table {
 	// Update the table name to include catalog and schema if not provided.
 	tc.qualifyTableName(&stmt.Table)
 
-	tab := &Table{TabID: tc.nextStableID(), TabName: stmt.Table, Catalog: tc}
+	tab := &Table{TabID: tc.nextStableID(), TabName: stmt.Table, Catalog: tc, TableType: stmt.TableType}
 
 	// Assume that every table in the "system" or "information_schema" catalog
 	// is a virtual table. This is a simplified assumption for testing purposes.
@@ -106,7 +107,7 @@ func (tc *Catalog) CreateTable(stmt *tree.CreateTable) *Table {
 			}
 		}
 
-		if !hasPrimaryIndex {
+		if tab.TableType == tree.RelationalTable && !hasPrimaryIndex {
 			rowid := &Column{
 				Ordinal:     tab.ColumnCount(),
 				Name:        "rowid",
@@ -144,7 +145,7 @@ func (tc *Catalog) CreateTable(stmt *tree.CreateTable) *Table {
 				}
 			}
 		}
-	} else if !tab.IsVirtual {
+	} else if !tab.IsVirtual && tab.TableType == tree.RelationalTable {
 		tab.addPrimaryColumnIndex("rowid")
 	}
 	if stmt.PartitionBy != nil {
@@ -218,6 +219,10 @@ OuterLoop:
 		case *tree.ForeignKeyConstraintTableDef:
 			tc.resolveFK(tab, def)
 		}
+	}
+
+	for _, tag := range stmt.Tags {
+		tab.addTags(&tag, &stmt.PrimaryTagList)
 	}
 
 	// Add the new table to the catalog.
@@ -347,18 +352,18 @@ func (tc *Catalog) resolveFK(tab *Table, d *tree.ForeignKeyConstraintTableDef) {
 	}
 
 	fk := ForeignKeyConstraint{
-		name:                     constraintName,
-		originTableID:            tab.ID(),
-		referencedTableID:        targetTable.ID(),
-		originColumnOrdinals:     fromCols,
-		referencedColumnOrdinals: toCols,
-		validated:                true,
-		matchMethod:              d.Match,
-		deleteAction:             d.Actions.Delete,
-		updateAction:             d.Actions.Update,
+		FkName:                     constraintName,
+		FkOriginTableID:            tab.ID(),
+		FkReferencedTableID:        targetTable.ID(),
+		FkOriginColumnOrdinals:     fromCols,
+		FkReferencedColumnOrdinals: toCols,
+		validated:                  true,
+		matchMethod:                d.Match,
+		deleteAction:               d.Actions.Delete,
+		updateAction:               d.Actions.Update,
 	}
-	tab.outboundFKs = append(tab.outboundFKs, fk)
-	targetTable.inboundFKs = append(targetTable.inboundFKs, fk)
+	tab.OutboundFKs = append(tab.OutboundFKs, fk)
+	targetTable.InboundFKs = append(targetTable.InboundFKs, fk)
 }
 
 func (tt *Table) addColumn(def *tree.ColumnTableDef) {
@@ -393,13 +398,47 @@ func (tt *Table) addColumn(def *tree.ColumnTableDef) {
 	tt.Columns = append(tt.Columns, col)
 }
 
+func (tt *Table) addTags(def *tree.Tag, ptagNames *tree.NameList) {
+	isPtag := false
+	for _, name := range *ptagNames {
+		if def.TagName == name {
+			isPtag = true
+		}
+	}
+
+	col := &Column{
+		Ordinal:  tt.ColumnCount(),
+		Name:     string(def.TagName),
+		Type:     def.TagType,
+		Nullable: def.Nullable,
+	}
+	col.ColType = *def.TagType
+
+	if def.TagVal != nil {
+		s := serializeTableDefExpr(def.TagVal)
+		col.DefaultExpr = &s
+	}
+
+	col.TsCol.StorageType = sqlbase.GetTSDataType(def.TagType)
+	stLen := sqlbase.GetStorageLenForFixedLenTypes(col.TsCol.StorageType)
+	// we are done for non-string data type, return now
+	col.TsCol.StorageLen = uint64(stLen)
+	if isPtag {
+		col.TsCol.ColumnType = sqlbase.ColumnType_TYPE_PTAG
+	} else {
+		col.TsCol.ColumnType = sqlbase.ColumnType_TYPE_TAG
+	}
+
+	tt.Columns = append(tt.Columns, col)
+}
+
 func (tt *Table) addIndex(def *tree.IndexTableDef, typ indexType) *Index {
 	idx := &Index{
 		IdxName:     tt.makeIndexName(def.Name, typ),
 		Unique:      typ != nonUniqueIndex,
 		Inverted:    def.Inverted,
 		IdxZone:     &zonepb.ZoneConfig{},
-		table:       tt,
+		IdxTable:    tt,
 		partitionBy: def.PartitionBy,
 	}
 
@@ -440,7 +479,7 @@ func (tt *Table) addIndex(def *tree.IndexTableDef, typ indexType) *Index {
 		if len(tt.Indexes) != 0 {
 			panic("primary index should always be 0th index")
 		}
-		idx.ordinal = len(tt.Indexes)
+		idx.IdxOrdinal = len(tt.Indexes)
 		tt.Indexes = append(tt.Indexes, idx)
 		return idx
 	}
@@ -493,7 +532,7 @@ func (tt *Table) addIndex(def *tree.IndexTableDef, typ indexType) *Index {
 		}
 	}
 
-	idx.ordinal = len(tt.Indexes)
+	idx.IdxOrdinal = len(tt.Indexes)
 	tt.Indexes = append(tt.Indexes, idx)
 
 	return idx

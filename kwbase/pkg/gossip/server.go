@@ -367,6 +367,11 @@ func (s *server) maybeTightenLocked() {
 	}
 }
 
+// StartServer start server
+func (s *server) StartServer(addr net.Addr) {
+	s.start(addr)
+}
+
 // start initializes the infostore with the rpc server address and
 // then begins processing connecting clients in an infinite select
 // loop via goroutine. Periodically, clients connected and awaiting

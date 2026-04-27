@@ -533,6 +533,7 @@ func (sb *statisticsBuilder) makeTableStatistics(tabID opt.TableID) *props.Stati
 			stats.RowCount = unknownRowCount
 		}
 		stats.PTagCount = defaultPTagCount
+		stats.DefaultFlag = true
 	} else {
 		// Get the RowCount from the most recent statistic. Stats are ordered
 		// with most recent first.

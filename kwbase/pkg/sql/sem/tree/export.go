@@ -49,7 +49,7 @@ func (node *Export) Format(ctx *FmtCtx) {
 	if node.Query != nil {
 		ctx.FormatNode(node.Query)
 	} else {
-		ctx.WriteString(" DATABASE ")
+		ctx.WriteString("DATABASE ")
 		ctx.WriteString(string(node.Database))
 	}
 	if node.Options != nil {

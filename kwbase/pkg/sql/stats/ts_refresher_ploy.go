@@ -75,6 +75,109 @@ import (
 	"github.com/shirou/gopsutil/cpu"
 )
 
+type tsRefresherPolicy interface {
+	now() time.Time
+	cpuPercent(interval time.Duration, percpu bool) ([]float64, error)
+
+	firstRefreshStats(
+		ctx context.Context, r *Refresher, tableID sqlbase.ID, asOf time.Duration,
+	) error
+
+	firstRefreshTagStats(
+		ctx context.Context,
+		r *Refresher,
+		tableID sqlbase.ID,
+		colsNewDesc []sqlbase.ColumnDescriptor,
+		enableTSOrderedTable bool,
+		tabDesc *sqlbase.TableDescriptor,
+	) error
+
+	refreshMetricStats(
+		ctx context.Context,
+		r *Refresher,
+		tableID sqlbase.ID,
+		colsNewDesc []sqlbase.ColumnDescriptor,
+		tabDesc *sqlbase.TableDescriptor,
+		enableTagAutomaticCollection bool,
+	) error
+
+	refreshTagStats(
+		ctx context.Context,
+		r *Refresher,
+		tableID sqlbase.ID,
+		colsNewDesc []sqlbase.ColumnDescriptor,
+		enableTSOrderedTable bool,
+	) error
+}
+
+type defaultTSRefresherPolicy struct{}
+
+func (defaultTSRefresherPolicy) now() time.Time {
+	return timeutil.Now()
+}
+
+func (defaultTSRefresherPolicy) cpuPercent(interval time.Duration, percpu bool) ([]float64, error) {
+	return cpu.Percent(interval, percpu)
+}
+
+func (defaultTSRefresherPolicy) firstRefreshStats(
+	ctx context.Context, r *Refresher, tableID sqlbase.ID, asOf time.Duration,
+) error {
+	return r.firstRefreshStats(ctx, tableID, asOf)
+}
+
+func (defaultTSRefresherPolicy) firstRefreshTagStats(
+	ctx context.Context,
+	r *Refresher,
+	tableID sqlbase.ID,
+	colsNewDesc []sqlbase.ColumnDescriptor,
+	enableTSOrderedTable bool,
+	tabDesc *sqlbase.TableDescriptor,
+) error {
+	return r.firstRefreshTagStats(ctx, tableID, colsNewDesc, enableTSOrderedTable, tabDesc)
+}
+
+func (defaultTSRefresherPolicy) refreshMetricStats(
+	ctx context.Context,
+	r *Refresher,
+	tableID sqlbase.ID,
+	colsNewDesc []sqlbase.ColumnDescriptor,
+	tabDesc *sqlbase.TableDescriptor,
+	enableTagAutomaticCollection bool,
+) error {
+	return r.refreshMetricStats(ctx, tableID, colsNewDesc, tabDesc, enableTagAutomaticCollection)
+}
+
+func (defaultTSRefresherPolicy) refreshTagStats(
+	ctx context.Context,
+	r *Refresher,
+	tableID sqlbase.ID,
+	colsNewDesc []sqlbase.ColumnDescriptor,
+	enableTSOrderedTable bool,
+) error {
+	return r.refreshTagStats(ctx, tableID, colsNewDesc, enableTSOrderedTable)
+}
+
+var tsRefreshPolicy tsRefresherPolicy = defaultTSRefresherPolicy{}
+
+var (
+	getTableStatsFn = func(ctx context.Context, r *Refresher, tableID sqlbase.ID) ([]*TableStatistic, error) {
+		return r.cache.GetTableStats(ctx, tableID)
+	}
+
+	firstRefreshTsStatsFn = func(ctx context.Context, r *Refresher, tableID sqlbase.ID) error {
+		return r.firstRefreshTsStats(ctx, tableID)
+	}
+
+	getDatabaseDescFromIDFn = func(ctx context.Context, r *Refresher, dbID sqlbase.ID) (*sqlbase.DatabaseDescriptor, error) {
+		return sqlbase.GetDatabaseDescFromID(ctx, r.cache.ClientDB, dbID)
+	}
+
+	gossipTableStatAddedFn = func(r *Refresher, tableID sqlbase.ID) error {
+		return GossipTableStatAdded(r.cache.Gossip, tableID)
+	}
+)
+
 // maybeRefreshTsStats implements the core logic described in the comment for
 // Refresher. It is called by the background Refresher thread.
 func (r *Refresher) maybeRefreshTsStats(
@@ -85,7 +188,7 @@ func (r *Refresher) maybeRefreshTsStats(
 	asOf time.Duration,
 ) {
 	// Get system cpu usage
-	cpuPercent, err := cpu.Percent(time.Second, false)
+	cpuPercent, err := tsRefreshPolicy.cpuPercent(time.Second, false)
 	if err != nil {
 		log.Errorf(ctx, "failed to get cpu usage when refreshing statistics")
 		return
@@ -100,7 +203,7 @@ func (r *Refresher) maybeRefreshTsStats(
 	enableTagAutomaticCollection := AutomaticTagStatisticsClusterMode.Get(&r.st.SV)
 	enableTSOrderedTable := opt.TSOrderedTable.Get(&r.st.SV)
 	colsNewDesc := tabDesc.Columns
-	tableStats, err := r.cache.GetTableStats(ctx, tableID)
+	tableStats, err := getTableStatsFn(ctx, r, tableID)
 	if err != nil {
 		log.Errorf(ctx, "failed to get table statistics cache for table (ID: %d) when refreshing statistics: %v", tableID, err)
 		return
@@ -109,7 +212,7 @@ func (r *Refresher) maybeRefreshTsStats(
 	if len(tableStats) == 0 {
 		// Sample Metric and tag table
 		if enableMetricAutomaticCollection && enableTagAutomaticCollection {
-			err := r.firstRefreshStats(ctx, tableID, asOf)
+			err := tsRefreshPolicy.firstRefreshStats(ctx, r, tableID, asOf)
 			if err != nil {
 				log.Warningf(ctx, "failed to create statistics on table (ID: %d): %v when refreshing statistic for the first time", tableID, err)
 			}
@@ -117,7 +220,7 @@ func (r *Refresher) maybeRefreshTsStats(
 
 		// Sample tag table statistics and metric table statistics of row count
 		if !enableMetricAutomaticCollection && (enableTagAutomaticCollection || enableTSOrderedTable) {
-			err := r.firstRefreshTagStats(ctx, tableID, colsNewDesc, enableTSOrderedTable, tabDesc)
+			err := tsRefreshPolicy.firstRefreshTagStats(ctx, r, tableID, colsNewDesc, enableTSOrderedTable, tabDesc)
 			if err != nil {
 				log.Warningf(ctx, "failed to create statistics on table (ID: %d): %v when refreshing tag statistic for the first time", tableID, err)
 			}
@@ -280,7 +383,7 @@ func (r *Refresher) HandleTsMetricStats(
 		// refresh time is calculated from the most recent 4 refreshes. See the
 		// comment in stats/delete_stats.go.)
 		maxTimeBetweenRefreshes := stat.CreatedAt.Add(2*avgTsColumnRefreshTime(tsColumnStats) + r.extraTime)
-		if timeutil.Now().After(maxTimeBetweenRefreshes) {
+		if tsRefreshPolicy.now().After(maxTimeBetweenRefreshes) {
 			mustRefresh = true
 		}
 		rowCount = float64(stat.RowCount)
@@ -297,7 +400,7 @@ func (r *Refresher) HandleTsMetricStats(
 		return
 	}
 
-	if err := r.refreshMetricStats(ctx, tableID, colsNewDesc, tabDesc, enableTagAutomaticCollection); err != nil {
+	if err := tsRefreshPolicy.refreshMetricStats(ctx, r, tableID, colsNewDesc, tabDesc, enableTagAutomaticCollection); err != nil {
 		if errors.Is(err, ConcurrentCreateStatsError) {
 			// Another stats job was already running. Attempt to reschedule this
 			// refresh.
@@ -341,7 +444,7 @@ func (r *Refresher) HandleTsTagStats(
 	mustRefresh := false
 	if stat := mostRecentAutomaticStat(tsTagStats); stat != nil {
 		maxTimeBetweenRefreshes := stat.CreatedAt.Add(avgTsPrimaryTagRefreshTime(tsTagStats))
-		if timeutil.Now().After(maxTimeBetweenRefreshes) {
+		if tsRefreshPolicy.now().After(maxTimeBetweenRefreshes) {
 			mustRefresh = true
 		}
 		rowCount = float64(stat.RowCount)
@@ -367,7 +470,7 @@ func (r *Refresher) HandleTsTagStats(
 		return
 	}
 
-	if err := r.refreshTagStats(ctx, tableID, colsNewDesc, enableTSOrderedTable); err != nil {
+	if err := tsRefreshPolicy.refreshTagStats(ctx, r, tableID, colsNewDesc, enableTSOrderedTable); err != nil {
 		if errors.Is(err, ConcurrentCreateStatsError) {
 			// Another stats job was already running. Attempt to reschedule this
 			// refresh.
@@ -534,7 +637,7 @@ func (r *Refresher) firstRefreshTagStats(
 func (r *Refresher) firstRefreshStats(
 	ctx context.Context, tableID sqlbase.ID, asOf time.Duration,
 ) error {
-	if err := r.firstRefreshTsStats(ctx, tableID); err != nil {
+	if err := firstRefreshTsStatsFn(ctx, r, tableID); err != nil {
 		if errors.Is(err, ConcurrentCreateStatsError) {
 			// For the cases where mustRefresh=true (stats don't yet exist or it
 			// has been 2x the average time since a refresh), we want to make sure
@@ -557,7 +660,7 @@ func (r *Refresher) updateTableStatistics(
 	tabDesc *sqlbase.TableDescriptor,
 ) error {
 	// Get database description.
-	dbDesc, dbErr := sqlbase.GetDatabaseDescFromID(ctx, r.cache.ClientDB, tabDesc.ParentID)
+	dbDesc, dbErr := getDatabaseDescFromIDFn(ctx, r, tabDesc.ParentID)
 	if dbErr != nil {
 		return dbErr
 	}
@@ -649,7 +752,7 @@ func (r *Refresher) updateTableStatistics(
 			return err
 		}
 		// update cache
-		err = GossipTableStatAdded(r.cache.Gossip, tableID)
+		err = gossipTableStatAddedFn(r, tableID)
 		if err != nil {
 			log.Errorf(ctx, "Gossip Table Stat err: %v", err)
 		}

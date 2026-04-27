@@ -34,6 +34,7 @@ import (
 	"strings"
 	"testing"
 
+	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
@@ -429,4 +430,785 @@ func TestMergeResultTypes(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPhysicalPlanBasicMethods(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Test NewStageID
+	p := PhysicalPlan{}
+	if id := p.NewStageID(); id != 1 {
+		t.Fatalf("expected stage ID 1, got %d", id)
+	}
+	if id := p.NewStageID(); id != 2 {
+		t.Fatalf("expected stage ID 2, got %d", id)
+	}
+
+	// Test AddProcessor
+	nodeID := roachpb.NodeID(1)
+	proc := Processor{
+		Node: nodeID,
+		Spec: execinfrapb.ProcessorSpec{
+			Core: execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
+		},
+	}
+	idx := p.AddProcessor(proc)
+	if idx != 0 {
+		t.Fatalf("expected processor index 0, got %d", idx)
+	}
+	if len(p.Processors) != 1 {
+		t.Fatalf("expected 1 processor, got %d", len(p.Processors))
+	}
+
+	// Test SetMergeOrdering
+	ordering := execinfrapb.Ordering{
+		Columns: []execinfrapb.Ordering_Column{
+			{ColIdx: 0, Direction: execinfrapb.Ordering_Column_ASC},
+		},
+	}
+	p.ResultRouters = []ProcessorIdx{0, 1} // Multiple result routers
+	p.SetMergeOrdering(ordering)
+	if len(p.MergeOrdering.Columns) != 1 {
+		t.Fatalf("expected 1 ordering column, got %d", len(p.MergeOrdering.Columns))
+	}
+
+	// Test SetMergeOrdering with single result router
+	p.ResultRouters = []ProcessorIdx{0} // Single result router
+	p.SetMergeOrdering(ordering)
+	if len(p.MergeOrdering.Columns) != 0 {
+		t.Fatalf("expected 0 ordering columns for single result router, got %d", len(p.MergeOrdering.Columns))
+	}
+}
+
+func TestPhysicalPlanChildIsExecInTSEngine(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Test with non-TS processor
+	p := PhysicalPlan{
+		Processors: []Processor{
+			{
+				Spec: execinfrapb.ProcessorSpec{
+					Core: execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
+				},
+			},
+		},
+		ResultRouters: []ProcessorIdx{0},
+	}
+	if p.ChildIsExecInTSEngine() {
+		t.Fatal("expected false for non-TS processor")
+	}
+
+	// Test with TS processor
+	p = PhysicalPlan{
+		Processors: []Processor{
+			{
+				Spec: execinfrapb.ProcessorSpec{
+					Core:   execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
+					Engine: execinfrapb.ProcessorSpec_TimeSeries,
+				},
+			},
+		},
+		ResultRouters: []ProcessorIdx{0},
+	}
+	if !p.ChildIsExecInTSEngine() {
+		t.Fatal("expected true for TS processor")
+	}
+}
+
+func TestPhysicalPlanIsDistInTS(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Test with local plan
+	p := PhysicalPlan{
+		remotePlan: false,
+		Processors: []Processor{
+			{
+				Spec: execinfrapb.ProcessorSpec{
+					Core:   execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
+					Engine: execinfrapb.ProcessorSpec_TimeSeries,
+				},
+			},
+		},
+	}
+	if p.IsDistInTS() {
+		t.Fatal("expected false for local plan")
+	}
+
+	// Test with remote plan but no TS processors
+	p = PhysicalPlan{
+		remotePlan: true,
+		Processors: []Processor{
+			{
+				Spec: execinfrapb.ProcessorSpec{
+					Core: execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
+				},
+			},
+		},
+	}
+	if p.IsDistInTS() {
+		t.Fatal("expected false for remote plan with no TS processors")
+	}
+
+	// Test with remote plan and TS processors
+	p = PhysicalPlan{
+		remotePlan: true,
+		Processors: []Processor{
+			{
+				Spec: execinfrapb.ProcessorSpec{
+					Core:   execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
+					Engine: execinfrapb.ProcessorSpec_TimeSeries,
+				},
+			},
+		},
+	}
+	if !p.IsDistInTS() {
+		t.Fatal("expected true for remote plan with TS processors")
+	}
+}
+
+func TestPhysicalPlanPopulateEndpoints(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Create a plan with two processors and a stream between them
+	p := PhysicalPlan{
+		Processors: []Processor{
+			{
+				Node: 1,
+				Spec: execinfrapb.ProcessorSpec{
+					Output: []execinfrapb.OutputRouterSpec{{Type: execinfrapb.OutputRouterSpec_PASS_THROUGH}},
+				},
+			},
+			{
+				Node: 1,
+				Spec: execinfrapb.ProcessorSpec{
+					Input: []execinfrapb.InputSyncSpec{{Type: execinfrapb.InputSyncSpec_UNORDERED}},
+				},
+			},
+		},
+		Streams: []Stream{
+			{
+				SourceProcessor:  0,
+				DestProcessor:    1,
+				SourceRouterSlot: 0,
+				DestInput:        0,
+			},
+		},
+	}
+
+	// Test PopulateEndpoints
+	nodeAddresses := map[roachpb.NodeID]string{
+		1: "localhost:26257",
+	}
+	p.PopulateEndpoints(nodeAddresses)
+
+	// Verify the stream was added to both processors
+	if len(p.Processors[0].Spec.Output[0].Streams) != 1 {
+		t.Fatalf("expected 1 stream in output router, got %d", len(p.Processors[0].Spec.Output[0].Streams))
+	}
+	if len(p.Processors[1].Spec.Input[0].Streams) != 1 {
+		t.Fatalf("expected 1 stream in input synchronizer, got %d", len(p.Processors[1].Spec.Input[0].Streams))
+	}
+}
+
+func TestPhysicalPlanAddNoInputStage(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	p := PhysicalPlan{}
+	corePlacements := []ProcessorCorePlacement{
+		{
+			SQLInstanceID: 1,
+			Core:          execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
+		},
+		{
+			SQLInstanceID: 2,
+			Core:          execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
+		},
+	}
+
+	post := execinfrapb.PostProcessSpec{}
+	outputTypes := []types.T{*types.Int, *types.String}
+	ordering := execinfrapb.Ordering{}
+
+	p.AddNoInputStage(corePlacements, post, outputTypes, ordering)
+
+	if len(p.Processors) != 2 {
+		t.Fatalf("expected 2 processors, got %d", len(p.Processors))
+	}
+	if len(p.ResultRouters) != 2 {
+		t.Fatalf("expected 2 result routers, got %d", len(p.ResultRouters))
+	}
+}
+
+func TestPhysicalPlanAddTSRendering(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Test case 1: Empty expressions
+	p1 := PhysicalPlan{
+		Processors: []Processor{
+			{
+				Spec: execinfrapb.ProcessorSpec{
+					Engine: execinfrapb.ProcessorSpec_TimeSeries,
+				},
+			},
+		},
+		ResultRouters: []ProcessorIdx{0},
+		ResultTypes:   []types.T{*types.Int, *types.String},
+	}
+	err := p1.AddTSRendering(nil, fakeExprContext{}, nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error for empty expressions: %s", err)
+	}
+
+	// Test case 2: Basic rendering
+	p2 := PhysicalPlan{
+		Processors: []Processor{
+			{
+				Spec: execinfrapb.ProcessorSpec{
+					Engine: execinfrapb.ProcessorSpec_TimeSeries,
+				},
+			},
+		},
+		ResultRouters: []ProcessorIdx{0},
+		ResultTypes:   []types.T{*types.Int, *types.String},
+	}
+	exprs := []tree.TypedExpr{
+		&tree.IndexedVar{Idx: 0},
+		&tree.IndexedVar{Idx: 1},
+	}
+	outTypes := []types.T{*types.Int, *types.String}
+	err = p2.AddTSRendering(exprs, fakeExprContext{}, []int{0, 1}, outTypes)
+	if err != nil {
+		t.Fatalf("unexpected error for basic rendering: %s", err)
+	}
+	post := p2.GetLastStageTSPost()
+	if len(post.RenderExprs) != 2 {
+		t.Fatalf("expected 2 render expressions, got %d", len(post.RenderExprs))
+	}
+
+	// Test case 3: With existing render expressions
+	p3 := PhysicalPlan{
+		Processors: []Processor{
+			{
+				Spec: execinfrapb.ProcessorSpec{
+					Engine: execinfrapb.ProcessorSpec_TimeSeries,
+					Post:   execinfrapb.PostProcessSpec{RenderExprs: []execinfrapb.Expression{{Expr: "@1"}}},
+				},
+			},
+		},
+		ResultRouters: []ProcessorIdx{0},
+		ResultTypes:   []types.T{*types.Int},
+	}
+	p3.GetLastStageTSPost()
+	err = p3.AddTSRendering(exprs, fakeExprContext{}, []int{0, 1}, outTypes)
+	if err != nil {
+		t.Fatalf("unexpected error with existing render expressions: %s", err)
+	}
+	if len(p3.Processors) != 2 {
+		t.Fatalf("expected 2 processors after adding no-op stage, got %d", len(p3.Processors))
+	}
+
+	// Test case 4: With ordering
+	p4 := PhysicalPlan{
+		Processors: []Processor{
+			{
+				Spec: execinfrapb.ProcessorSpec{
+					Engine: execinfrapb.ProcessorSpec_TimeSeries,
+				},
+			},
+		},
+		ResultRouters: []ProcessorIdx{0},
+		ResultTypes:   []types.T{*types.Int, *types.String},
+		MergeOrdering: execinfrapb.Ordering{
+			Columns: []execinfrapb.Ordering_Column{
+				{ColIdx: 1, Direction: execinfrapb.Ordering_Column_ASC},
+			},
+		},
+	}
+	err = p4.AddTSRendering([]tree.TypedExpr{&tree.IndexedVar{Idx: 0}}, fakeExprContext{}, []int{0}, []types.T{*types.Int})
+	if err != nil {
+		t.Fatalf("unexpected error with ordering: %s", err)
+	}
+	post = p4.GetLastStageTSPost()
+	if len(post.RenderExprs) != 2 {
+		t.Fatalf("expected 2 render expressions (including ordering column), got %d", len(post.RenderExprs))
+	}
+	if len(p4.MergeOrdering.Columns) != 1 {
+		t.Fatalf("expected 1 ordering column, got %d", len(p4.MergeOrdering.Columns))
+	}
+}
+
+func TestPhysicalPlanAddDistinctSetOpStage(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Test case 1: Single node
+	t.Run("SingleNode", func(t *testing.T) {
+		p := PhysicalPlan{
+			Processors: []Processor{
+				{ // Left router
+					Node: 1,
+					Spec: execinfrapb.ProcessorSpec{
+						Output: []execinfrapb.OutputRouterSpec{{Type: execinfrapb.OutputRouterSpec_PASS_THROUGH}},
+					},
+				},
+				{ // Right router
+					Node: 1,
+					Spec: execinfrapb.ProcessorSpec{
+						Output: []execinfrapb.OutputRouterSpec{{Type: execinfrapb.OutputRouterSpec_PASS_THROUGH}},
+					},
+				},
+			},
+			ResultRouters: []ProcessorIdx{0, 1},
+		}
+
+		nodes := []roachpb.NodeID{1}
+		joinCore := execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}}
+		distinctCores := []execinfrapb.ProcessorCoreUnion{
+			{Noop: &execinfrapb.NoopCoreSpec{}},
+			{Noop: &execinfrapb.NoopCoreSpec{}},
+		}
+		post := execinfrapb.PostProcessSpec{}
+		eqCols := []uint32{0}
+		leftTypes := []types.T{*types.Int}
+		rightTypes := []types.T{*types.Int}
+		leftMergeOrd := execinfrapb.Ordering{}
+		rightMergeOrd := execinfrapb.Ordering{}
+		leftRouters := []ProcessorIdx{0}
+		rightRouters := []ProcessorIdx{1}
+
+		p.AddDistinctSetOpStage(nodes, joinCore, distinctCores, post, eqCols, leftTypes, rightTypes, leftMergeOrd, rightMergeOrd, leftRouters, rightRouters)
+
+		// Verify distinct and join stages were created
+		if len(p.Processors) != 5 { // 2 original + 2 distinct + 1 join = 5
+			t.Fatalf("expected 5 processors, got %d", len(p.Processors))
+		}
+
+		// Verify result routers were updated
+		if len(p.ResultRouters) != 1 {
+			t.Fatalf("expected 1 result router, got %d", len(p.ResultRouters))
+		}
+
+		// Verify streams were created
+		if len(p.Streams) != 4 { // 2 mergeResultStreams + 2 distinct to join = 4
+			t.Fatalf("expected 4 streams, got %d", len(p.Streams))
+		}
+	})
+
+	// Test case 2: Multiple nodes
+	t.Run("MultipleNodes", func(t *testing.T) {
+		p := PhysicalPlan{
+			Processors: []Processor{
+				{ // Left router
+					Node: 1,
+					Spec: execinfrapb.ProcessorSpec{
+						Output: []execinfrapb.OutputRouterSpec{{Type: execinfrapb.OutputRouterSpec_PASS_THROUGH}},
+					},
+				},
+				{ // Right router
+					Node: 1,
+					Spec: execinfrapb.ProcessorSpec{
+						Output: []execinfrapb.OutputRouterSpec{{Type: execinfrapb.OutputRouterSpec_PASS_THROUGH}},
+					},
+				},
+			},
+			ResultRouters: []ProcessorIdx{0, 1},
+		}
+
+		nodes := []roachpb.NodeID{1, 2}
+		joinCore := execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}}
+		distinctCores := []execinfrapb.ProcessorCoreUnion{
+			{Noop: &execinfrapb.NoopCoreSpec{}},
+			{Noop: &execinfrapb.NoopCoreSpec{}},
+		}
+		post := execinfrapb.PostProcessSpec{}
+		eqCols := []uint32{0}
+		leftTypes := []types.T{*types.Int}
+		rightTypes := []types.T{*types.Int}
+		leftMergeOrd := execinfrapb.Ordering{}
+		rightMergeOrd := execinfrapb.Ordering{}
+		leftRouters := []ProcessorIdx{0}
+		rightRouters := []ProcessorIdx{1}
+
+		p.AddDistinctSetOpStage(nodes, joinCore, distinctCores, post, eqCols, leftTypes, rightTypes, leftMergeOrd, rightMergeOrd, leftRouters, rightRouters)
+
+		// Verify distinct and join stages were created
+		if len(p.Processors) != 8 { // 2 original + 4 distinct + 2 join = 8
+			t.Fatalf("expected 8 processors, got %d", len(p.Processors))
+		}
+
+		// Verify result routers were updated
+		if len(p.ResultRouters) != 2 {
+			t.Fatalf("expected 2 result routers, got %d", len(p.ResultRouters))
+		}
+
+		// Verify hash routing was set up
+		if p.Processors[0].Spec.Output[0].Type != execinfrapb.OutputRouterSpec_BY_HASH {
+			t.Fatalf("expected left router to use BY_HASH, got %v", p.Processors[0].Spec.Output[0].Type)
+		}
+		if p.Processors[1].Spec.Output[0].Type != execinfrapb.OutputRouterSpec_BY_HASH {
+			t.Fatalf("expected right router to use BY_HASH, got %v", p.Processors[1].Spec.Output[0].Type)
+		}
+		if !reflect.DeepEqual(p.Processors[0].Spec.Output[0].HashColumns, eqCols) {
+			t.Fatalf("expected left router hash columns %v, got %v", eqCols, p.Processors[0].Spec.Output[0].HashColumns)
+		}
+		if !reflect.DeepEqual(p.Processors[1].Spec.Output[0].HashColumns, eqCols) {
+			t.Fatalf("expected right router hash columns %v, got %v", eqCols, p.Processors[1].Spec.Output[0].HashColumns)
+		}
+	})
+}
+
+func TestPhysicalPlanPushAggToStatisticReader(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Test case 1: Basic SUM aggregation
+	t.Run("BasicSUM", func(t *testing.T) {
+		p := PhysicalPlan{
+			Processors: []Processor{
+				{
+					Spec: execinfrapb.ProcessorSpec{
+						Core: execinfrapb.ProcessorCoreUnion{
+							TsStatisticReader: &execinfrapb.TSStatisticReaderSpec{},
+						},
+						Post: execinfrapb.PostProcessSpec{
+							OutputTypes:   []types.T{*types.Float, *types.Float},
+							OutputColumns: []uint32{0, 1},
+						},
+					},
+				},
+			},
+		}
+
+		aggSpecs := &execinfrapb.AggregatorSpec{
+			Aggregations: []execinfrapb.AggregatorSpec_Aggregation{
+				{
+					Func:   execinfrapb.AggregatorSpec_SUM,
+					ColIdx: []uint32{0},
+					//OutputIdx: 0,
+				},
+			},
+		}
+
+		tsPostSpec := &execinfrapb.PostProcessSpec{
+			OutputTypes: []types.T{*types.Float},
+		}
+
+		err := p.PushAggToStatisticReader(fakeExprContext{}, 0, aggSpecs, tsPostSpec, []types.T{*types.Float}, nil, false)
+		if err != nil {
+			t.Fatalf("unexpected error: %s", err)
+		}
+
+		tr := p.Processors[0].Spec.Core.TsStatisticReader
+		if tr == nil {
+			t.Fatal("expected TsStatisticReader to be set")
+		}
+		if len(tr.AggTypes) != 1 {
+			t.Fatalf("expected 1 agg type, got %d", len(tr.AggTypes))
+		}
+		if tr.AggTypes[0] != int32(execinfrapb.AggregatorSpec_SUM) {
+			t.Fatalf("expected SUM agg type, got %d", tr.AggTypes[0])
+		}
+		if len(p.Processors[0].Spec.Post.RenderExprs) != 1 {
+			t.Fatalf("expected 1 render expression, got %d", len(p.Processors[0].Spec.Post.RenderExprs))
+		}
+	})
+
+	// Test case 2: Basic COUNT aggregation
+	t.Run("BasicCOUNT", func(t *testing.T) {
+		p := PhysicalPlan{
+			Processors: []Processor{
+				{
+					Spec: execinfrapb.ProcessorSpec{
+						Core: execinfrapb.ProcessorCoreUnion{
+							TsStatisticReader: &execinfrapb.TSStatisticReaderSpec{},
+						},
+						Post: execinfrapb.PostProcessSpec{
+							OutputTypes:   []types.T{*types.Float, *types.Float},
+							OutputColumns: []uint32{0, 1},
+						},
+					},
+				},
+			},
+		}
+
+		aggSpecs := &execinfrapb.AggregatorSpec{
+			Aggregations: []execinfrapb.AggregatorSpec_Aggregation{
+				{
+					Func:   execinfrapb.AggregatorSpec_COUNT,
+					ColIdx: []uint32{0},
+					//OutputIdx: 0,
+				},
+			},
+		}
+
+		tsPostSpec := &execinfrapb.PostProcessSpec{
+			OutputTypes: []types.T{*types.Int4},
+		}
+
+		err := p.PushAggToStatisticReader(fakeExprContext{}, 0, aggSpecs, tsPostSpec, []types.T{*types.Int4}, nil, false)
+		if err != nil {
+			t.Fatalf("unexpected error: %s", err)
+		}
+
+		tr := p.Processors[0].Spec.Core.TsStatisticReader
+		if tr == nil {
+			t.Fatal("expected TsStatisticReader to be set")
+		}
+		if len(tr.AggTypes) != 1 {
+			t.Fatalf("expected 1 agg type, got %d", len(tr.AggTypes))
+		}
+		if tr.AggTypes[0] != int32(execinfrapb.AggregatorSpec_COUNT) {
+			t.Fatalf("expected COUNT agg type, got %d", tr.AggTypes[0])
+		}
+		if len(p.Processors[0].Spec.Post.RenderExprs) != 1 {
+			t.Fatalf("expected 1 render expression, got %d", len(p.Processors[0].Spec.Post.RenderExprs))
+		}
+	})
+
+	// Test case 3: AVG aggregation (should be split into SUM and COUNT)
+	t.Run("AVGAggregation", func(t *testing.T) {
+		p := PhysicalPlan{
+			Processors: []Processor{
+				{
+					Spec: execinfrapb.ProcessorSpec{
+						Core: execinfrapb.ProcessorCoreUnion{
+							TsStatisticReader: &execinfrapb.TSStatisticReaderSpec{},
+						},
+						Post: execinfrapb.PostProcessSpec{
+							OutputTypes:   []types.T{*types.Float, *types.Float},
+							OutputColumns: []uint32{0},
+						},
+					},
+				},
+			},
+		}
+
+		aggSpecs := &execinfrapb.AggregatorSpec{
+			Aggregations: []execinfrapb.AggregatorSpec_Aggregation{
+				{
+					Func:   execinfrapb.AggregatorSpec_AVG,
+					ColIdx: []uint32{0},
+					//OutputIdx: 0,
+				},
+			},
+		}
+
+		tsPostSpec := &execinfrapb.PostProcessSpec{
+			OutputTypes: []types.T{*types.Float},
+		}
+
+		err := p.PushAggToStatisticReader(fakeExprContext{}, 0, aggSpecs, tsPostSpec, []types.T{*types.Float}, nil, false)
+		if err != nil {
+			t.Fatalf("unexpected error: %s", err)
+		}
+
+		tr := p.Processors[0].Spec.Core.TsStatisticReader
+		if tr == nil {
+			t.Fatal("expected TsStatisticReader to be set")
+		}
+		if len(tr.AggTypes) != 2 {
+			t.Fatalf("expected 2 agg types (SUM and COUNT), got %d", len(tr.AggTypes))
+		}
+		if tr.AggTypes[0] != int32(execinfrapb.AggregatorSpec_SUM) {
+			t.Fatalf("expected SUM agg type as first, got %d", tr.AggTypes[0])
+		}
+		if tr.AggTypes[1] != int32(execinfrapb.AggregatorSpec_COUNT) {
+			t.Fatalf("expected COUNT agg type as second, got %d", tr.AggTypes[1])
+		}
+		if len(p.Processors[0].Spec.Post.RenderExprs) != 1 {
+			t.Fatalf("expected 1 render expression for AVG, got %d", len(p.Processors[0].Spec.Post.RenderExprs))
+		}
+	})
+
+	// Test case 4: Error - not a TsStatisticReader
+	t.Run("ErrorNotTsStatisticReader", func(t *testing.T) {
+		p := PhysicalPlan{
+			Processors: []Processor{
+				{
+					Spec: execinfrapb.ProcessorSpec{
+						Core: execinfrapb.ProcessorCoreUnion{
+							Noop: &execinfrapb.NoopCoreSpec{},
+						},
+					},
+				},
+			},
+		}
+
+		aggSpecs := &execinfrapb.AggregatorSpec{
+			Aggregations: []execinfrapb.AggregatorSpec_Aggregation{
+				{
+					Func:   execinfrapb.AggregatorSpec_SUM,
+					ColIdx: []uint32{0},
+					//OutputIdx: 0,
+				},
+			},
+		}
+
+		tsPostSpec := &execinfrapb.PostProcessSpec{
+			OutputTypes: []types.T{*types.Float},
+		}
+
+		err := p.PushAggToStatisticReader(fakeExprContext{}, 0, aggSpecs, tsPostSpec, []types.T{*types.Float}, nil, false)
+		if err == nil {
+			t.Fatal("expected error for non-TsStatisticReader processor")
+		}
+	})
+
+	// Test case 5: Error - column index out of range
+	t.Run("ErrorColumnIndexOutOfRange", func(t *testing.T) {
+		p := PhysicalPlan{
+			Processors: []Processor{
+				{
+					Spec: execinfrapb.ProcessorSpec{
+						Core: execinfrapb.ProcessorCoreUnion{
+							TsStatisticReader: &execinfrapb.TSStatisticReaderSpec{},
+						},
+						Post: execinfrapb.PostProcessSpec{
+							OutputTypes: []types.T{*types.Float}, // Only one column
+						},
+					},
+				},
+			},
+		}
+
+		aggSpecs := &execinfrapb.AggregatorSpec{
+			Aggregations: []execinfrapb.AggregatorSpec_Aggregation{
+				{
+					Func:   execinfrapb.AggregatorSpec_SUM,
+					ColIdx: []uint32{1}, // Column index 1 is out of range
+					//OutputIdx: 0,
+				},
+			},
+		}
+
+		tsPostSpec := &execinfrapb.PostProcessSpec{
+			OutputTypes: []types.T{*types.Float},
+		}
+
+		err := p.PushAggToStatisticReader(fakeExprContext{}, 0, aggSpecs, tsPostSpec, []types.T{*types.Float}, nil, false)
+		if err == nil {
+			t.Fatal("expected error for column index out of range")
+		}
+	})
+}
+
+func TestPhysicalPlanAddBLJoinStage(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Test case 1: Single node
+	t.Run("SingleNode", func(t *testing.T) {
+		p := PhysicalPlan{
+			Processors: []Processor{
+				{ // Left router
+					Node: 1,
+					Spec: execinfrapb.ProcessorSpec{
+						Output: []execinfrapb.OutputRouterSpec{{Type: execinfrapb.OutputRouterSpec_PASS_THROUGH}},
+					},
+				},
+				{ // Right router
+					Node: 1,
+					Spec: execinfrapb.ProcessorSpec{
+						Output: []execinfrapb.OutputRouterSpec{{Type: execinfrapb.OutputRouterSpec_PASS_THROUGH}},
+					},
+				},
+			},
+		}
+
+		nodes := []roachpb.NodeID{1}
+		core := execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}}
+		post := execinfrapb.PostProcessSpec{}
+		leftTypes := []types.T{*types.Int}
+		rightTypes := []types.T{*types.String}
+		leftMergeOrd := execinfrapb.Ordering{}
+		rightMergeOrd := execinfrapb.Ordering{}
+		leftRouters := []ProcessorIdx{0}
+		rightRouters := []ProcessorIdx{1}
+
+		p.AddBLJoinStage(nodes, core, post, leftTypes, rightTypes, leftMergeOrd, rightMergeOrd, leftRouters, rightRouters)
+
+		// Verify BLJ processor was created
+		if len(p.Processors) != 3 { // 2 original + 1 BLJ = 3
+			t.Fatalf("expected 3 processors, got %d", len(p.Processors))
+		}
+
+		// Verify result routers were updated
+		if len(p.ResultRouters) != 1 {
+			t.Fatalf("expected 1 result router, got %d", len(p.ResultRouters))
+		}
+
+		// Verify streams were created
+		if len(p.Streams) != 2 { // 1 left to BLJ + 1 right to BLJ = 2
+			t.Fatalf("expected 2 streams, got %d", len(p.Streams))
+		}
+
+		// Verify BLJ processor has two inputs
+		bljProc := p.Processors[2]
+		if len(bljProc.Spec.Input) != 2 {
+			t.Fatalf("expected 2 inputs for BLJ processor, got %d", len(bljProc.Spec.Input))
+		}
+	})
+
+	// Test case 2: Multiple nodes
+	t.Run("MultipleNodes", func(t *testing.T) {
+		p := PhysicalPlan{
+			Processors: []Processor{
+				{ // Left router
+					Node: 1,
+					Spec: execinfrapb.ProcessorSpec{
+						Output: []execinfrapb.OutputRouterSpec{{Type: execinfrapb.OutputRouterSpec_PASS_THROUGH}},
+					},
+				},
+				{ // Right router 1
+					Node: 2,
+					Spec: execinfrapb.ProcessorSpec{
+						Output: []execinfrapb.OutputRouterSpec{{Type: execinfrapb.OutputRouterSpec_PASS_THROUGH}},
+					},
+				},
+				{ // Right router 2
+					Node: 3,
+					Spec: execinfrapb.ProcessorSpec{
+						Output: []execinfrapb.OutputRouterSpec{{Type: execinfrapb.OutputRouterSpec_PASS_THROUGH}},
+					},
+				},
+			},
+		}
+
+		nodes := []roachpb.NodeID{2, 3}
+		core := execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}}
+		post := execinfrapb.PostProcessSpec{}
+		leftTypes := []types.T{*types.Int}
+		rightTypes := []types.T{*types.String}
+		leftMergeOrd := execinfrapb.Ordering{}
+		rightMergeOrd := execinfrapb.Ordering{}
+		leftRouters := []ProcessorIdx{0}
+		rightRouters := []ProcessorIdx{1, 2}
+
+		p.AddBLJoinStage(nodes, core, post, leftTypes, rightTypes, leftMergeOrd, rightMergeOrd, leftRouters, rightRouters)
+
+		// Verify BLJ processors were created
+		if len(p.Processors) != 5 { // 3 original + 2 BLJ = 5
+			t.Fatalf("expected 5 processors, got %d", len(p.Processors))
+		}
+
+		// Verify result routers were updated
+		if len(p.ResultRouters) != 2 {
+			t.Fatalf("expected 2 result routers, got %d", len(p.ResultRouters))
+		}
+
+		// Verify streams were created
+		if len(p.Streams) != 4 { // 2 left to BLJ + 2 right to BLJ = 4
+			t.Fatalf("expected 4 streams, got %d", len(p.Streams))
+		}
+
+		// Verify left router uses MIRROR routing
+		if p.Processors[0].Spec.Output[0].Type != execinfrapb.OutputRouterSpec_MIRROR {
+			t.Fatalf("expected left router to use MIRROR, got %v", p.Processors[0].Spec.Output[0].Type)
+		}
+
+		// Verify BLJ processors have two inputs
+		for i := 3; i < 5; i++ {
+			bljProc := p.Processors[i]
+			if len(bljProc.Spec.Input) != 2 {
+				t.Fatalf("expected 2 inputs for BLJ processor %d, got %d", i, len(bljProc.Spec.Input))
+			}
+		}
+	})
 }

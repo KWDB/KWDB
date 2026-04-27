@@ -331,7 +331,7 @@ func (v *planVisitor) visitInternal(plan planNode, name string) {
 				exprStr := r.String()
 				colName := n.columns[i].Name
 				if v.observer.attr != nil {
-					v.observer.attr(name, colName, fmt.Sprintf(exprStr))
+					v.observer.attr(name, colName, exprStr)
 				}
 				v.metadataExpr(name, "render", i, r)
 			}

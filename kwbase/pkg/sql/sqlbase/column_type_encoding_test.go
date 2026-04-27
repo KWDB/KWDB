@@ -27,13 +27,24 @@ package sqlbase
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
+	"gitee.com/kwbasedb/kwbase/pkg/util/duration"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding"
+	"gitee.com/kwbasedb/kwbase/pkg/util/timeofday"
+	"gitee.com/kwbasedb/kwbase/pkg/util/timetz"
+	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
+	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil/pgdate"
+	"gitee.com/kwbasedb/kwbase/pkg/util/uint128"
+	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
+	"github.com/cockroachdb/apd"
 	"github.com/leanovate/gopter"
 	"github.com/leanovate/gopter/prop"
 )
@@ -104,6 +115,762 @@ func TestEncodeTableValue(t *testing.T) {
 		genDatum(),
 	))
 	properties.TestingRun(t)
+}
+
+func TestDecodeTableKeyTypes(t *testing.T) {
+	a := &DatumAlloc{}
+	ctx := tree.NewTestingEvalContext(cluster.MakeTestingClusterSettings())
+
+	t.Run("Bool", func(t *testing.T) {
+		for _, dir := range []encoding.Direction{encoding.Ascending, encoding.Descending} {
+			for _, v := range []tree.Datum{tree.DBoolTrue, tree.DBoolFalse} {
+				b, err := EncodeTableKey(nil, v, dir)
+				if err != nil {
+					t.Fatalf("encode error: %v", err)
+				}
+				result, remaining, err := DecodeTableKey(a, types.Bool, b, dir)
+				if err != nil {
+					t.Fatalf("decode error: %v", err)
+				}
+				if len(remaining) != 0 {
+					t.Fatalf("leftover bytes: %v", remaining)
+				}
+				if result.Compare(ctx, v) != 0 {
+					t.Fatalf("value mismatch: got %v, want %v", result, v)
+				}
+			}
+		}
+	})
+
+	t.Run("Int", func(t *testing.T) {
+		for _, dir := range []encoding.Direction{encoding.Ascending, encoding.Descending} {
+			for _, v := range []tree.Datum{
+				tree.NewDInt(0), tree.NewDInt(1), tree.NewDInt(-1),
+				tree.NewDInt(math.MaxInt64), tree.NewDInt(math.MinInt64),
+			} {
+				b, err := EncodeTableKey(nil, v, dir)
+				if err != nil {
+					t.Fatalf("encode error: %v", err)
+				}
+				result, remaining, err := DecodeTableKey(a, types.Int, b, dir)
+				if err != nil {
+					t.Fatalf("decode error: %v", err)
+				}
+				if len(remaining) != 0 {
+					t.Fatalf("leftover bytes: %v", remaining)
+				}
+				if result.Compare(ctx, v) != 0 {
+					t.Fatalf("value mismatch: got %v, want %v", result, v)
+				}
+			}
+		}
+	})
+
+	t.Run("Float", func(t *testing.T) {
+		for _, dir := range []encoding.Direction{encoding.Ascending, encoding.Descending} {
+			for _, v := range []tree.Datum{
+				tree.NewDFloat(0), tree.NewDFloat(1.5), tree.NewDFloat(-3.14),
+				tree.NewDFloat(math.MaxFloat64), tree.NewDFloat(-math.MaxFloat64),
+			} {
+				b, err := EncodeTableKey(nil, v, dir)
+				if err != nil {
+					t.Fatalf("encode error: %v", err)
+				}
+				result, remaining, err := DecodeTableKey(a, types.Float, b, dir)
+				if err != nil {
+					t.Fatalf("decode error: %v", err)
+				}
+				if len(remaining) != 0 {
+					t.Fatalf("leftover bytes: %v", remaining)
+				}
+				if result.Compare(ctx, v) != 0 {
+					t.Fatalf("value mismatch: got %v, want %v", result, v)
+				}
+			}
+		}
+	})
+
+	t.Run("String", func(t *testing.T) {
+		for _, dir := range []encoding.Direction{encoding.Ascending, encoding.Descending} {
+			for _, v := range []tree.Datum{
+				tree.NewDString(""), tree.NewDString("hello"), tree.NewDString("世界"),
+				tree.NewDString(strings.Repeat("a", 100)),
+			} {
+				b, err := EncodeTableKey(nil, v, dir)
+				if err != nil {
+					t.Fatalf("encode error: %v", err)
+				}
+				result, remaining, err := DecodeTableKey(a, types.String, b, dir)
+				if err != nil {
+					t.Fatalf("decode error: %v", err)
+				}
+				if len(remaining) != 0 {
+					t.Fatalf("leftover bytes: %v", remaining)
+				}
+				if result.Compare(ctx, v) != 0 {
+					t.Fatalf("value mismatch: got %v, want %v", result, v)
+				}
+			}
+		}
+	})
+
+	t.Run("Bytes", func(t *testing.T) {
+		for _, dir := range []encoding.Direction{encoding.Ascending, encoding.Descending} {
+			for _, v := range []tree.Datum{
+				tree.NewDBytes(tree.DBytes("")),
+				tree.NewDBytes(tree.DBytes("abcde")),
+				tree.NewDBytes(tree.DBytes("hello\x00world")),
+			} {
+				b, err := EncodeTableKey(nil, v, dir)
+				if err != nil {
+					t.Fatalf("encode error: %v", err)
+				}
+				result, remaining, err := DecodeTableKey(a, types.Bytes, b, dir)
+				if err != nil {
+					t.Fatalf("decode error: %v", err)
+				}
+				if len(remaining) != 0 {
+					t.Fatalf("leftover bytes: %v", remaining)
+				}
+				if result.Compare(ctx, v) != 0 {
+					t.Fatalf("value mismatch: got %v, want %v", result, v)
+				}
+			}
+		}
+	})
+
+	t.Run("Date", func(t *testing.T) {
+		for _, dir := range []encoding.Direction{encoding.Ascending, encoding.Descending} {
+			for _, v := range []tree.Datum{
+				func() *tree.DDate {
+					d, _ := pgdate.MakeDateFromPGEpoch(0)
+					return tree.NewDDate(d)
+				}(),
+				func() *tree.DDate {
+					d, _ := pgdate.MakeDateFromPGEpoch(18429)
+					return tree.NewDDate(d)
+				}(),
+				func() *tree.DDate {
+					d, _ := pgdate.MakeDateFromPGEpoch(-730119)
+					return tree.NewDDate(d)
+				}(),
+				func() *tree.DDate {
+					d, _ := pgdate.MakeDateFromPGEpoch(2921939)
+					return tree.NewDDate(d)
+				}(),
+			} {
+				b, err := EncodeTableKey(nil, v, dir)
+				if err != nil {
+					t.Fatalf("encode error: %v", err)
+				}
+				result, remaining, err := DecodeTableKey(a, types.Date, b, dir)
+				if err != nil {
+					t.Fatalf("decode error: %v", err)
+				}
+				if len(remaining) != 0 {
+					t.Fatalf("leftover bytes: %v", remaining)
+				}
+				if result.Compare(ctx, v) != 0 {
+					t.Fatalf("value mismatch: got %v, want %v", result, v)
+				}
+			}
+		}
+	})
+
+	t.Run("Time", func(t *testing.T) {
+		for _, dir := range []encoding.Direction{encoding.Ascending, encoding.Descending} {
+			for _, v := range []tree.Datum{
+				tree.MakeDTime(timeofday.FromInt(0)),
+				tree.MakeDTime(timeofday.FromInt(8639999999999)),
+				tree.MakeDTime(timeofday.FromInt(1234567890)),
+			} {
+				b, err := EncodeTableKey(nil, v, dir)
+				if err != nil {
+					t.Fatalf("encode error: %v", err)
+				}
+				result, remaining, err := DecodeTableKey(a, types.Time, b, dir)
+				if err != nil {
+					t.Fatalf("decode error: %v", err)
+				}
+				if len(remaining) != 0 {
+					t.Fatalf("leftover bytes: %v", remaining)
+				}
+				if result.Compare(ctx, v) != 0 {
+					t.Fatalf("value mismatch: got %v, want %v", result, v)
+				}
+			}
+		}
+	})
+
+	t.Run("TimeTZ", func(t *testing.T) {
+		for _, dir := range []encoding.Direction{encoding.Ascending, encoding.Descending} {
+			for _, v := range []tree.Datum{
+				tree.NewDTimeTZ(timetz.MakeTimeTZFromTime(timeutil.Now().Add(-24 * time.Second))),
+				tree.NewDTimeTZ(timetz.MakeTimeTZFromTime(timeutil.Now())),
+				tree.NewDTimeTZ(timetz.MakeTimeTZFromTime(timeutil.Now().Add(24 * time.Second))),
+			} {
+				b, err := EncodeTableKey(nil, v, dir)
+				if err != nil {
+					t.Fatalf("encode error: %v", err)
+				}
+				result, remaining, err := DecodeTableKey(a, types.TimeTZ, b, dir)
+				if err != nil {
+					t.Fatalf("decode error: %v", err)
+				}
+				if len(remaining) != 0 {
+					t.Fatalf("leftover bytes: %v", remaining)
+				}
+				if result.Compare(ctx, v) != 0 {
+					t.Fatalf("value mismatch: got %v, want %v", result, v)
+				}
+			}
+		}
+	})
+
+	t.Run("Timestamp", func(t *testing.T) {
+		for _, dir := range []encoding.Direction{encoding.Ascending, encoding.Descending} {
+			for _, v := range []tree.Datum{
+				tree.MakeDTimestamp(timeutil.Now().Add(-24*time.Second), time.Second),
+				tree.MakeDTimestamp(timeutil.Now(), time.Second),
+				tree.MakeDTimestamp(timeutil.Now().Add(24*time.Second), time.Second),
+			} {
+				b, err := EncodeTableKey(nil, v, dir)
+				if err != nil {
+					t.Fatalf("encode error: %v", err)
+				}
+				result, remaining, err := DecodeTableKey(a, types.Timestamp, b, dir)
+				if err != nil {
+					t.Fatalf("decode error: %v", err)
+				}
+				if len(remaining) != 0 {
+					t.Fatalf("leftover bytes: %v", remaining)
+				}
+				if result.Compare(ctx, v) != 0 {
+					t.Fatalf("value mismatch: got %v, want %v", result, v)
+				}
+			}
+		}
+	})
+
+	t.Run("TimestampTZ", func(t *testing.T) {
+		for _, dir := range []encoding.Direction{encoding.Ascending, encoding.Descending} {
+			for _, v := range []tree.Datum{
+				tree.MakeDTimestampTZ(timeutil.Now().Add(-24*time.Second), time.Second),
+				tree.MakeDTimestampTZ(timeutil.Now(), time.Second),
+				tree.MakeDTimestampTZ(timeutil.Now().Add(24*time.Second), time.Second),
+			} {
+				b, err := EncodeTableKey(nil, v, dir)
+				if err != nil {
+					t.Fatalf("encode error: %v", err)
+				}
+				result, remaining, err := DecodeTableKey(a, types.TimestampTZ, b, dir)
+				if err != nil {
+					t.Fatalf("decode error: %v", err)
+				}
+				if len(remaining) != 0 {
+					t.Fatalf("leftover bytes: %v", remaining)
+				}
+				if result.Compare(ctx, v) != 0 {
+					t.Fatalf("value mismatch: got %v, want %v", result, v)
+				}
+			}
+		}
+	})
+
+	t.Run("Interval", func(t *testing.T) {
+		for _, dir := range []encoding.Direction{encoding.Ascending, encoding.Descending} {
+			for _, v := range []tree.Datum{
+				tree.NewDInterval(duration.MakeDuration(2000000000, 0, 0), types.IntervalTypeMetadata{}),
+				tree.NewDInterval(duration.MakeDuration(1000000000, 0, 0), types.IntervalTypeMetadata{}),
+			} {
+				b, err := EncodeTableKey(nil, v, dir)
+				if err != nil {
+					t.Fatalf("encode error: %v", err)
+				}
+				result, remaining, err := DecodeTableKey(a, types.Interval, b, dir)
+				if err != nil {
+					t.Fatalf("decode error: %v", err)
+				}
+				if len(remaining) != 0 {
+					t.Fatalf("leftover bytes: %v", remaining)
+				}
+				if result.Compare(ctx, v) != 0 {
+					t.Fatalf("value mismatch: got %v, want %v", result, v)
+				}
+			}
+		}
+	})
+
+	t.Run("UUID", func(t *testing.T) {
+		for _, dir := range []encoding.Direction{encoding.Ascending, encoding.Descending} {
+			for _, v := range []tree.Datum{
+				tree.NewDUuid(tree.DUuid{uuid.FromUint128(uint128.Uint128{0, 0})}),
+				tree.NewDUuid(tree.DUuid{uuid.FromUint128(uint128.Uint128{2220, 3333})}),
+			} {
+				b, err := EncodeTableKey(nil, v, dir)
+				if err != nil {
+					t.Fatalf("encode error: %v", err)
+				}
+				result, remaining, err := DecodeTableKey(a, types.Uuid, b, dir)
+				if err != nil {
+					t.Fatalf("decode error: %v", err)
+				}
+				if len(remaining) != 0 {
+					t.Fatalf("leftover bytes: %v", remaining)
+				}
+				if result.Compare(ctx, v) != 0 {
+					t.Fatalf("value mismatch: got %v, want %v", result, v)
+				}
+			}
+		}
+	})
+
+	t.Run("BitArray", func(t *testing.T) {
+		for _, dir := range []encoding.Direction{encoding.Ascending, encoding.Descending} {
+			v1, _ := tree.NewDBitArrayFromInt(0b10101010, 8)
+			v2, _ := tree.NewDBitArrayFromInt(0b10101010, 10)
+			v3, _ := tree.NewDBitArrayFromInt(0b10101010, 12)
+			for _, v := range []tree.Datum{
+				v1, v2, v3,
+			} {
+				b, err := EncodeTableKey(nil, v, dir)
+				if err != nil {
+					t.Fatalf("encode error: %v", err)
+				}
+				result, remaining, err := DecodeTableKey(a, types.VarBit, b, dir)
+				if err != nil {
+					t.Fatalf("decode error: %v", err)
+				}
+				if len(remaining) != 0 {
+					t.Fatalf("leftover bytes: %v", remaining)
+				}
+				if result.Compare(ctx, v) != 0 {
+					t.Fatalf("value mismatch: got %v, want %v", result, v)
+				}
+			}
+		}
+	})
+
+	t.Run("Name", func(t *testing.T) {
+		for _, dir := range []encoding.Direction{encoding.Ascending, encoding.Descending} {
+			for _, v := range []tree.Datum{
+				tree.NewDName(""), tree.NewDName("test_name"), tree.NewDName("123"),
+			} {
+				b, err := EncodeTableKey(nil, v, dir)
+				if err != nil {
+					t.Fatalf("encode error: %v", err)
+				}
+				result, remaining, err := DecodeTableKey(a, types.Name, b, dir)
+				if err != nil {
+					t.Fatalf("decode error: %v", err)
+				}
+				if len(remaining) != 0 {
+					t.Fatalf("leftover bytes: %v", remaining)
+				}
+				if result.Compare(ctx, v) != 0 {
+					t.Fatalf("value mismatch: got %v, want %v", result, v)
+				}
+			}
+		}
+	})
+
+	t.Run("Null", func(t *testing.T) {
+		for _, dir := range []encoding.Direction{encoding.Ascending, encoding.Descending} {
+			b := encoding.EncodeNullAscending(nil)
+			if dir == encoding.Descending {
+				b = encoding.EncodeNullDescending(nil)
+			}
+			result, remaining, err := DecodeTableKey(a, types.Int, b, dir)
+			if err != nil {
+				t.Fatalf("decode error: %v", err)
+			}
+			if len(remaining) != 0 {
+				t.Fatalf("leftover bytes: %v", remaining)
+			}
+			if result != tree.DNull {
+				t.Fatalf("expected DNull, got %v", result)
+			}
+		}
+	})
+}
+
+func TestEncodeTableValueTypes(t *testing.T) {
+	a := &DatumAlloc{}
+	ctx := tree.NewTestingEvalContext(cluster.MakeTestingClusterSettings())
+
+	t.Run("Bool", func(t *testing.T) {
+		for _, colID := range []ColumnID{0, 1} {
+			for _, v := range []tree.Datum{tree.DBoolTrue, tree.DBoolFalse} {
+				b, err := EncodeTableValue(nil, colID, v, nil)
+				if err != nil {
+					t.Fatalf("encode error: %v", err)
+				}
+				result, remaining, err := DecodeTableValue(a, types.Bool, b)
+				if err != nil {
+					t.Fatalf("decode error: %v", err)
+				}
+				if len(remaining) != 0 {
+					t.Fatalf("leftover bytes: %v", remaining)
+				}
+				if result.Compare(ctx, v) != 0 {
+					t.Fatalf("value mismatch: got %v, want %v", result, v)
+				}
+			}
+		}
+	})
+
+	t.Run("Int", func(t *testing.T) {
+		for _, colID := range []ColumnID{0, 1} {
+			for _, v := range []tree.Datum{
+				tree.NewDInt(0), tree.NewDInt(1), tree.NewDInt(-1),
+				tree.NewDInt(math.MaxInt64), tree.NewDInt(math.MinInt64),
+			} {
+				b, err := EncodeTableValue(nil, colID, v, nil)
+				if err != nil {
+					t.Fatalf("encode error: %v", err)
+				}
+				result, remaining, err := DecodeTableValue(a, types.Int, b)
+				if err != nil {
+					t.Fatalf("decode error: %v", err)
+				}
+				if len(remaining) != 0 {
+					t.Fatalf("leftover bytes: %v", remaining)
+				}
+				if result.Compare(ctx, v) != 0 {
+					t.Fatalf("value mismatch: got %v, want %v", result, v)
+				}
+			}
+		}
+	})
+
+	t.Run("Float", func(t *testing.T) {
+		for _, colID := range []ColumnID{0, 1} {
+			for _, v := range []tree.Datum{
+				tree.NewDFloat(0), tree.NewDFloat(1.5), tree.NewDFloat(-3.14),
+				tree.NewDFloat(math.MaxFloat64), tree.NewDFloat(-math.MaxFloat64),
+			} {
+				b, err := EncodeTableValue(nil, colID, v, nil)
+				if err != nil {
+					t.Fatalf("encode error: %v", err)
+				}
+				result, remaining, err := DecodeTableValue(a, types.Float, b)
+				if err != nil {
+					t.Fatalf("decode error: %v", err)
+				}
+				if len(remaining) != 0 {
+					t.Fatalf("leftover bytes: %v", remaining)
+				}
+				if result.Compare(ctx, v) != 0 {
+					t.Fatalf("value mismatch: got %v, want %v", result, v)
+				}
+			}
+		}
+	})
+
+	t.Run("Decimal", func(t *testing.T) {
+		for _, colID := range []ColumnID{0, 1} {
+			for _, v := range []tree.Datum{
+				&tree.DDecimal{Decimal: *apd.New(0, 0)},
+				&tree.DDecimal{Decimal: *apd.New(123, 2)},
+				&tree.DDecimal{Decimal: *apd.New(-456, 3)},
+			} {
+				b, err := EncodeTableValue(nil, colID, v, nil)
+				if err != nil {
+					t.Fatalf("encode error: %v", err)
+				}
+				result, remaining, err := DecodeTableValue(a, types.Decimal, b)
+				if err != nil {
+					t.Fatalf("decode error: %v", err)
+				}
+				if len(remaining) != 0 {
+					t.Fatalf("leftover bytes: %v", remaining)
+				}
+				if result.Compare(ctx, v) != 0 {
+					t.Fatalf("value mismatch: got %v, want %v", result, v)
+				}
+			}
+		}
+	})
+
+	t.Run("String", func(t *testing.T) {
+		for _, colID := range []ColumnID{0, 1} {
+			for _, v := range []tree.Datum{
+				tree.NewDString(""), tree.NewDString("hello"), tree.NewDString("世界"),
+				tree.NewDString(strings.Repeat("a", 100)),
+			} {
+				b, err := EncodeTableValue(nil, colID, v, nil)
+				if err != nil {
+					t.Fatalf("encode error: %v", err)
+				}
+				result, remaining, err := DecodeTableValue(a, types.String, b)
+				if err != nil {
+					t.Fatalf("decode error: %v", err)
+				}
+				if len(remaining) != 0 {
+					t.Fatalf("leftover bytes: %v", remaining)
+				}
+				if result.Compare(ctx, v) != 0 {
+					t.Fatalf("value mismatch: got %v, want %v", result, v)
+				}
+			}
+		}
+	})
+
+	t.Run("Bytes", func(t *testing.T) {
+		for _, colID := range []ColumnID{0, 1} {
+			for _, v := range []tree.Datum{
+				tree.NewDBytes(tree.DBytes("")),
+				tree.NewDBytes(tree.DBytes("abcde")),
+				tree.NewDBytes(tree.DBytes("hello\x00world")),
+			} {
+				b, err := EncodeTableValue(nil, colID, v, nil)
+				if err != nil {
+					t.Fatalf("encode error: %v", err)
+				}
+				result, remaining, err := DecodeTableValue(a, types.Bytes, b)
+				if err != nil {
+					t.Fatalf("decode error: %v", err)
+				}
+				if len(remaining) != 0 {
+					t.Fatalf("leftover bytes: %v", remaining)
+				}
+				if result.Compare(ctx, v) != 0 {
+					t.Fatalf("value mismatch: got %v, want %v", result, v)
+				}
+			}
+		}
+	})
+
+	t.Run("Date", func(t *testing.T) {
+		for _, colID := range []ColumnID{0, 1} {
+			for _, v := range []tree.Datum{
+				func() *tree.DDate {
+					d, _ := pgdate.MakeDateFromPGEpoch(0)
+					return tree.NewDDate(d)
+				}(),
+				func() *tree.DDate {
+					d, _ := pgdate.MakeDateFromPGEpoch(18429)
+					return tree.NewDDate(d)
+				}(),
+				func() *tree.DDate {
+					d, _ := pgdate.MakeDateFromPGEpoch(-730119)
+					return tree.NewDDate(d)
+				}(),
+				func() *tree.DDate {
+					d, _ := pgdate.MakeDateFromPGEpoch(2921939)
+					return tree.NewDDate(d)
+				}(),
+			} {
+				b, err := EncodeTableValue(nil, colID, v, nil)
+				if err != nil {
+					t.Fatalf("encode error: %v", err)
+				}
+				result, remaining, err := DecodeTableValue(a, types.Date, b)
+				if err != nil {
+					t.Fatalf("decode error: %v", err)
+				}
+				if len(remaining) != 0 {
+					t.Fatalf("leftover bytes: %v", remaining)
+				}
+				if result.Compare(ctx, v) != 0 {
+					t.Fatalf("value mismatch: got %v, want %v", result, v)
+				}
+			}
+		}
+	})
+
+	t.Run("Time", func(t *testing.T) {
+		for _, colID := range []ColumnID{0, 1} {
+			for _, v := range []tree.Datum{
+				tree.MakeDTime(timeofday.FromInt(0)),
+				tree.MakeDTime(timeofday.FromInt(8639999999999)),
+				tree.MakeDTime(timeofday.FromInt(1234567890)),
+			} {
+				b, err := EncodeTableValue(nil, colID, v, nil)
+				if err != nil {
+					t.Fatalf("encode error: %v", err)
+				}
+				result, remaining, err := DecodeTableValue(a, types.Time, b)
+				if err != nil {
+					t.Fatalf("decode error: %v", err)
+				}
+				if len(remaining) != 0 {
+					t.Fatalf("leftover bytes: %v", remaining)
+				}
+				if result.Compare(ctx, v) != 0 {
+					t.Fatalf("value mismatch: got %v, want %v", result, v)
+				}
+			}
+		}
+	})
+
+	t.Run("TimeTZ", func(t *testing.T) {
+		for _, colID := range []ColumnID{0, 1} {
+			for _, v := range []tree.Datum{
+				tree.NewDTimeTZ(timetz.MakeTimeTZFromTime(timeutil.Now().Add(-24 * time.Second))),
+				tree.NewDTimeTZ(timetz.MakeTimeTZFromTime(timeutil.Now())),
+				tree.NewDTimeTZ(timetz.MakeTimeTZFromTime(timeutil.Now().Add(24 * time.Second))),
+			} {
+				b, err := EncodeTableValue(nil, colID, v, nil)
+				if err != nil {
+					t.Fatalf("encode error: %v", err)
+				}
+				result, remaining, err := DecodeTableValue(a, types.TimeTZ, b)
+				if err != nil {
+					t.Fatalf("decode error: %v", err)
+				}
+				if len(remaining) != 0 {
+					t.Fatalf("leftover bytes: %v", remaining)
+				}
+				if result.Compare(ctx, v) != 0 {
+					t.Fatalf("value mismatch: got %v, want %v", result, v)
+				}
+			}
+		}
+	})
+
+	t.Run("Timestamp", func(t *testing.T) {
+		for _, colID := range []ColumnID{0, 1} {
+			for _, v := range []tree.Datum{
+				tree.MakeDTimestamp(timeutil.Now().Add(-24*time.Second), time.Second),
+				tree.MakeDTimestamp(timeutil.Now(), time.Second),
+				tree.MakeDTimestamp(timeutil.Now().Add(24*time.Second), time.Second),
+			} {
+				b, err := EncodeTableValue(nil, colID, v, nil)
+				if err != nil {
+					t.Fatalf("encode error: %v", err)
+				}
+				result, remaining, err := DecodeTableValue(a, types.Timestamp, b)
+				if err != nil {
+					t.Fatalf("decode error: %v", err)
+				}
+				if len(remaining) != 0 {
+					t.Fatalf("leftover bytes: %v", remaining)
+				}
+				if result.Compare(ctx, v) != 0 {
+					t.Fatalf("value mismatch: got %v, want %v", result, v)
+				}
+			}
+		}
+	})
+
+	t.Run("TimestampTZ", func(t *testing.T) {
+		for _, colID := range []ColumnID{0, 1} {
+			for _, v := range []tree.Datum{
+				tree.MakeDTimestampTZ(timeutil.Now().Add(-24*time.Second), time.Second),
+				tree.MakeDTimestampTZ(timeutil.Now(), time.Second),
+				tree.MakeDTimestampTZ(timeutil.Now().Add(24*time.Second), time.Second),
+			} {
+				b, err := EncodeTableValue(nil, colID, v, nil)
+				if err != nil {
+					t.Fatalf("encode error: %v", err)
+				}
+				result, remaining, err := DecodeTableValue(a, types.TimestampTZ, b)
+				if err != nil {
+					t.Fatalf("decode error: %v", err)
+				}
+				if len(remaining) != 0 {
+					t.Fatalf("leftover bytes: %v", remaining)
+				}
+				if result.Compare(ctx, v) != 0 {
+					t.Fatalf("value mismatch: got %v, want %v", result, v)
+				}
+			}
+		}
+	})
+
+	t.Run("Interval", func(t *testing.T) {
+		for _, colID := range []ColumnID{0, 1} {
+			for _, v := range []tree.Datum{
+				tree.NewDInterval(duration.MakeDuration(2000000000, 0, 0), types.IntervalTypeMetadata{}),
+				tree.NewDInterval(duration.MakeDuration(1000000000, 0, 0), types.IntervalTypeMetadata{}),
+			} {
+				b, err := EncodeTableValue(nil, colID, v, nil)
+				if err != nil {
+					t.Fatalf("encode error: %v", err)
+				}
+				result, remaining, err := DecodeTableValue(a, types.Interval, b)
+				if err != nil {
+					t.Fatalf("decode error: %v", err)
+				}
+				if len(remaining) != 0 {
+					t.Fatalf("leftover bytes: %v", remaining)
+				}
+				if result.Compare(ctx, v) != 0 {
+					t.Fatalf("value mismatch: got %v, want %v", result, v)
+				}
+			}
+		}
+	})
+
+	t.Run("UUID", func(t *testing.T) {
+		for _, colID := range []ColumnID{0, 1} {
+			for _, v := range []tree.Datum{
+				tree.NewDUuid(tree.DUuid{uuid.FromUint128(uint128.Uint128{0, 0})}),
+				tree.NewDUuid(tree.DUuid{uuid.FromUint128(uint128.Uint128{2220, 3333})}),
+			} {
+				b, err := EncodeTableValue(nil, colID, v, nil)
+				if err != nil {
+					t.Fatalf("encode error: %v", err)
+				}
+				result, remaining, err := DecodeTableValue(a, types.Uuid, b)
+				if err != nil {
+					t.Fatalf("decode error: %v", err)
+				}
+				if len(remaining) != 0 {
+					t.Fatalf("leftover bytes: %v", remaining)
+				}
+				if result.Compare(ctx, v) != 0 {
+					t.Fatalf("value mismatch: got %v, want %v", result, v)
+				}
+			}
+		}
+	})
+
+	t.Run("BitArray", func(t *testing.T) {
+		for _, colID := range []ColumnID{0, 1} {
+			v1, _ := tree.NewDBitArrayFromInt(0b10101010, 8)
+			v2, _ := tree.NewDBitArrayFromInt(0b10101010, 10)
+			v3, _ := tree.NewDBitArrayFromInt(0b10101010, 12)
+			for _, v := range []tree.Datum{
+				v1, v2, v3,
+			} {
+				b, err := EncodeTableValue(nil, colID, v, nil)
+				if err != nil {
+					t.Fatalf("encode error: %v", err)
+				}
+				result, remaining, err := DecodeTableValue(a, types.VarBit, b)
+				if err != nil {
+					t.Fatalf("decode error: %v", err)
+				}
+				if len(remaining) != 0 {
+					t.Fatalf("leftover bytes: %v", remaining)
+				}
+				if result.Compare(ctx, v) != 0 {
+					t.Fatalf("value mismatch: got %v, want %v", result, v)
+				}
+			}
+		}
+	})
+
+	t.Run("Null", func(t *testing.T) {
+		for _, colID := range []ColumnID{0, 1} {
+			b, err := EncodeTableValue(nil, colID, tree.DNull, nil)
+			if err != nil {
+				t.Fatalf("encode error: %v", err)
+			}
+			result, remaining, err := DecodeTableValue(a, types.Int, b)
+			if err != nil {
+				t.Fatalf("decode error: %v", err)
+			}
+			if len(remaining) != 0 {
+				t.Fatalf("leftover bytes: %v", remaining)
+			}
+			if result != tree.DNull {
+				t.Fatalf("expected DNull, got %v", result)
+			}
+		}
+	})
 }
 
 func TestEncodeTableKey(t *testing.T) {

@@ -31,6 +31,7 @@ import (
 	"testing"
 	"time"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
@@ -144,3 +145,222 @@ func BenchmarkMultiplexedRowChannel(b *testing.B) {
 		})
 	}
 }
+
+// TestRowChannelPush tests the Push method of RowChannel
+func TestRowChannelPush(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	rc := &RowChannel{}
+	rc.InitWithNumSenders(sqlbase.OneIntCol, 1)
+
+	// Test Push with NeedMoreRows status
+	row := sqlbase.EncDatumRow{sqlbase.IntEncDatum(1)}
+	status := rc.Push(row, nil)
+	if status != NeedMoreRows {
+		t.Errorf("Expected NeedMoreRows, got %v", status)
+	}
+
+	// Test Push with metadata
+	meta := &execinfrapb.ProducerMetadata{Err: fmt.Errorf("test error")}
+	status = rc.Push(nil, meta)
+	if status != NeedMoreRows {
+		t.Errorf("Expected NeedMoreRows, got %v", status)
+	}
+
+	// Test Push after ConsumerDone
+	rc.ConsumerDone()
+	status = rc.Push(row, nil)
+	if status != DrainRequested {
+		t.Errorf("Expected DrainRequested, got %v", status)
+	}
+
+	// Test Push after ConsumerClosed
+	rc.ConsumerClosed()
+	status = rc.Push(row, nil)
+	if status != ConsumerClosed {
+		t.Errorf("Expected ConsumerClosed, got %v", status)
+	}
+
+	rc.ProducerDone()
+}
+
+// TestRowChannelNext tests the Next method of RowChannel
+func TestRowChannelNext(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	rc := &RowChannel{}
+	rc.InitWithNumSenders(sqlbase.OneIntCol, 1)
+
+	// Push a row and test Next
+	row := sqlbase.EncDatumRow{sqlbase.IntEncDatum(1)}
+	rc.Push(row, nil)
+
+	resultRow, resultMeta := rc.Next()
+	if resultRow == nil {
+		t.Errorf("Expected row, got nil")
+	}
+	if resultMeta != nil {
+		t.Errorf("Expected nil meta, got %v", resultMeta)
+	}
+
+	// Push metadata and test Next
+	meta := &execinfrapb.ProducerMetadata{Err: fmt.Errorf("test error")}
+	rc.Push(nil, meta)
+
+	resultRow, resultMeta = rc.Next()
+	if resultRow != nil {
+		t.Errorf("Expected nil row, got %v", resultRow)
+	}
+	if resultMeta == nil {
+		t.Errorf("Expected meta, got nil")
+	}
+
+	rc.ProducerDone()
+
+	// Test Next after channel is closed
+	resultRow, resultMeta = rc.Next()
+	if resultRow != nil || resultMeta != nil {
+		t.Errorf("Expected nil row and meta, got row=%v, meta=%v", resultRow, resultMeta)
+	}
+}
+
+// TestDrainAndForwardMetadata tests the DrainAndForwardMetadata function
+func TestDrainAndForwardMetadata(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	ctx := context.Background()
+
+	// Create a source with metadata
+	src := &RowChannel{}
+	src.InitWithNumSenders(nil, 1)
+	src.Push(nil, &execinfrapb.ProducerMetadata{Err: fmt.Errorf("test")})
+	src.Push(nil, nil)
+	src.Start(ctx)
+
+	// Create a receiver
+	dst := &RowChannel{}
+	dst.InitWithNumSenders(nil, 1)
+
+	DrainAndForwardMetadata(ctx, src, dst)
+
+	// Check that we received the metadata
+	_, meta := dst.Next()
+	if meta == nil || meta.Err == nil {
+		t.Errorf("Expected metadata with error, got meta=%v", meta)
+	}
+
+	src.ProducerDone()
+	dst.ProducerDone()
+}
+
+// TestNoMetadataRowSource tests the NoMetadataRowSource
+func TestNoMetadataRowSource(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	ctx := context.Background()
+
+	// Create a source with rows and metadata
+	src := &RowChannel{}
+	src.InitWithNumSenders(sqlbase.OneIntCol, 1)
+	row1 := sqlbase.EncDatumRow{sqlbase.IntEncDatum(1)}
+	row2 := sqlbase.EncDatumRow{sqlbase.IntEncDatum(2)}
+	src.Push(row1, nil)
+	src.Push(nil, &execinfrapb.ProducerMetadata{Err: nil}) // Non-error metadata
+	src.Push(row2, nil)
+	src.Start(ctx)
+
+	// Create a receiver for metadata
+	metaSink := &RowChannel{}
+	metaSink.InitWithNumSenders(nil, 1)
+
+	// Create NoMetadataRowSource
+	nmrs := MakeNoMetadataRowSource(src, metaSink)
+
+	// Test NextRow
+	resultRow, err := nmrs.NextRow()
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+	if resultRow == nil {
+		t.Errorf("Expected row, got nil")
+	}
+
+	// Test NextRow again (should skip metadata)
+	resultRow, err = nmrs.NextRow()
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+	if resultRow == nil {
+		t.Errorf("Expected row, got nil")
+	}
+
+	src.ProducerDone()
+	metaSink.ProducerDone()
+}
+
+// TestRowSourceBase tests the rowSourceBase methods
+func TestRowSourceBase(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	rb := &rowSourceBase{}
+
+	// Test consumerDone
+	rb.consumerDone()
+	if rb.ConsumerStatus != DrainRequested {
+		t.Errorf("Expected DrainRequested, got %v", rb.ConsumerStatus)
+	}
+
+	// Test consumerClosed
+	rb.consumerClosed("test")
+	if rb.ConsumerStatus != ConsumerClosed {
+		t.Errorf("Expected ConsumerClosed, got %v", rb.ConsumerStatus)
+	}
+}
+
+// TestRunWithError tests the Run function with an error in the source
+func TestRunWithError(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	ctx := context.Background()
+
+	// Create a source that panics
+	src := &panicRowSource{}
+	src.Start(ctx)
+
+	// Create a receiver
+	dst := &RowChannel{}
+	dst.InitWithNumSenders(nil, 1)
+
+	Run(ctx, src, dst, time.Time{})
+
+	// Check that we received the error
+	_, meta := dst.Next()
+	if meta == nil || meta.Err == nil {
+		t.Errorf("Expected metadata with error, got meta=%v", meta)
+	}
+
+	// src.ConsumerClosed() is called by HandleConsumerClosed
+	// dst.ProducerDone() is called by HandleConsumerClosed
+}
+
+// panicRowSource is a RowSource that panics when Next() is called
+
+type panicRowSource struct{}
+
+func (prs *panicRowSource) OutputTypes() []types.T {
+	return nil
+}
+
+func (prs *panicRowSource) Start(ctx context.Context) context.Context {
+	return ctx
+}
+
+func (prs *panicRowSource) Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerMetadata) {
+	panic("test panic")
+}
+
+func (prs *panicRowSource) ConsumerDone() {}
+
+func (prs *panicRowSource) ConsumerClosed() {}
+
+func (prs *panicRowSource) InitProcessorProcedure(txn *kv.Txn) {}

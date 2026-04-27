@@ -154,3 +154,24 @@ func TestCreateTableLike(t *testing.T) {
 		[][]string{{"1"}},
 	)
 }
+
+func TestCreateTSTable(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	params, _ := tests.CreateTestServerParams()
+	params.Knobs.TSSchemaChanger = &TSSchemaChangerTestingKnobs{}
+
+	s, rawDB, _ := serverutils.StartServer(t, params)
+	defer s.Stopper().Stop(context.TODO())
+	db := sqlutils.MakeSQLRunner(rawDB)
+
+	// Workspace.
+	db.Exec(t, `CREATE TS DATABASE IF NOT EXISTS tsdb`)
+	db.Exec(t, `SET DATABASE = tsdb`)
+
+	// test create ts table
+	db.Exec(t, `CREATE TABLE t1 (ts timestamp not null, a INT)
+  tags(tag1 int not null, tag2 int) primary tags(tag1)
+	`)
+	db.Exec(t, `EXPLAIN SELECT * FROM t1`)
+}

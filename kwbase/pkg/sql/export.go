@@ -642,19 +642,19 @@ func getUserSQL(ctx context.Context, p *planner, file string, res RestrictedComm
 			CREATE USER u2 ---> WITH ---> NOLOGIN ---> VALID UNTIL---> '2025-01-16 00:00:00+00:00'
 		*/
 		if option == "" {
-			createStmt = fmt.Sprintf(createUser + username)
+			createStmt = createUser + username
 		} else {
 			parts := strings.Split(option, ",")
 			withOption := " WITH "
 			for _, options := range parts {
 				index := strings.Index(options, "=")
 				if index == -1 {
-					withOption = fmt.Sprintf(withOption + options)
+					withOption = withOption + options
 				} else {
-					withOption = fmt.Sprintf(withOption + options[:index] + " '" + options[index+1:] + "'")
+					withOption = withOption + options[:index] + " '" + options[index+1:] + "'"
 				}
 			}
-			createStmt = fmt.Sprintf(createUser + username + withOption)
+			createStmt = createUser + username + withOption
 		}
 		if _, err := writer.GetBufio().WriteString(createStmt + ";" + "\n"); err != nil {
 			return err
@@ -664,22 +664,22 @@ func getUserSQL(ctx context.Context, p *planner, file string, res RestrictedComm
 	for _, rolename := range sysRoleName {
 		option := userOptionMap[rolename]
 		if option == "" {
-			createStmt = fmt.Sprintf(createRole + rolename + " " + "WITH LOGIN")
+			createStmt = createRole + rolename + " " + "WITH LOGIN"
 		} else {
 			parts := strings.Split(option, ",")
 			withOption := " WITH "
 			for _, options := range parts {
 				index := strings.Index(options, "=")
 				if index == -1 {
-					withOption = fmt.Sprintf(withOption + options + " ")
+					withOption = withOption + options + " "
 				} else {
-					withOption = fmt.Sprintf(withOption + options[:index] + " '" + options[index+1:] + "' ")
+					withOption = withOption + options[:index] + " '" + options[index+1:] + "' "
 				}
 			}
 			if !strings.Contains(option, "NOLOGIN") {
-				withOption = fmt.Sprintf(withOption + " LOGIN")
+				withOption = withOption + " LOGIN"
 			}
-			createStmt = fmt.Sprintf(createRole + rolename + withOption)
+			createStmt = createRole + rolename + withOption
 		}
 		if _, err := writer.GetBufio().WriteString(createStmt + ";" + "\n"); err != nil {
 			return err
@@ -693,7 +693,7 @@ func getUserSQL(ctx context.Context, p *planner, file string, res RestrictedComm
 		  admin | root   |  true
 		  r1    | u1     |  false
 	*/
-	selectStmt := fmt.Sprintf("SELECT * FROM system.role_members;")
+	selectStmt := "SELECT * FROM system.role_members;"
 	row, err := p.ExecCfg().InternalExecutor.Query(ctx, "select user members", nil, selectStmt)
 	if err != nil {
 		return err

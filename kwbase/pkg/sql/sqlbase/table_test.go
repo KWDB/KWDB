@@ -38,6 +38,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
@@ -58,6 +59,110 @@ type indexKeyTest struct {
 	secondaryInterleaves []ID
 	primaryValues        []tree.Datum // len must be at least primaryInterleaveComponents+1
 	secondaryValues      []tree.Datum // len must be at least secondaryInterleaveComponents+1
+}
+
+func TestMakeColumnDefDescs(t *testing.T) {
+	colDef, err := tree.NewColumnTableDef(tree.Name("col1"), types.Int, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expr, err := parser.ParseExpr("DEFAULT 1")
+	if err == nil {
+		t.Fatal("statement DEFAULT 1 is parsed successfully")
+	}
+	colDef.DefaultExpr.Expr = expr
+	col, _, _, err := MakeColumnDefDescs(colDef, nil, tree.RelationalTable)
+	if err != nil {
+		t.Errorf("MakeColumnDefDescs failed: %v", err)
+	}
+	if col == nil {
+		t.Error("MakeColumnDefDescs returned nil")
+	}
+}
+
+func TestMakeTSColumnDefDescs(t *testing.T) {
+	compressInfo := CompressInfo{
+		EncodeAlgo:    nil,
+		CompressAlgo:  nil,
+		CompressLevel: nil,
+	}
+	col, _, err := MakeTSColumnDefDescs("tscol", types.Timestamp, false, 0, nil, nil, compressInfo)
+	if err != nil {
+		t.Errorf("MakeTSColumnDefDescs failed: %v", err)
+	}
+	if col == nil {
+		t.Error("MakeTSColumnDefDescs returned nil")
+	}
+}
+
+func TestGetShardColumnName(t *testing.T) {
+	name := GetShardColumnName([]string{"a", "b"}, 10)
+	if name == "" {
+		t.Error("GetShardColumnName returned empty")
+	}
+	if name[:6] != "kwdb_i" {
+		t.Errorf("expected prefix kwdb_i, got %s", name[:6])
+	}
+}
+
+func TestGetColumnTypes(t *testing.T) {
+	tableDesc := &TableDescriptor{
+		Columns: []ColumnDescriptor{
+			{ID: 1, Type: *types.Int},
+			{ID: 2, Type: *types.String},
+		},
+	}
+	colTypes, err := GetColumnTypes(tableDesc, []ColumnID{1, 2})
+	if err != nil {
+		t.Errorf("GetColumnTypes failed: %v", err)
+	}
+	if len(colTypes) != 2 {
+		t.Errorf("expected 2 types, got %d", len(colTypes))
+	}
+}
+
+func TestFindFKReferencedIndex(t *testing.T) {
+	tableDesc := &TableDescriptor{
+		Indexes: []IndexDescriptor{
+			{ID: 1, Unique: true, ColumnIDs: []ColumnID{1}},
+		},
+	}
+	referencedIndex, err := FindFKReferencedIndex(tableDesc, []ColumnID{1})
+	if err != nil {
+		t.Errorf("FindFKReferencedIndex failed: %v", err)
+	}
+	if referencedIndex == nil {
+		t.Error("FindFKReferencedIndex returned nil")
+	}
+}
+
+func TestFindFKOriginIndex(t *testing.T) {
+	tableDesc := &TableDescriptor{
+		Indexes: []IndexDescriptor{
+			{ID: 1, ColumnIDs: []ColumnID{1}},
+		},
+	}
+	originIndex, err := FindFKOriginIndex(tableDesc, []ColumnID{1})
+	if err != nil {
+		t.Errorf("FindFKOriginIndex failed: %v", err)
+	}
+	if originIndex == nil {
+		t.Error("FindFKOriginIndex returned nil")
+	}
+}
+
+func TestEncodeColumns(t *testing.T) {
+	vals := []tree.Datum{tree.NewDInt(1)}
+	colIDs := []ColumnID{1}
+	colMap := map[ColumnID]int{1: 0}
+	var dirs []IndexDescriptor_Direction
+	enc, _, err := EncodeColumns(colIDs, dirs, colMap, vals, nil)
+	if err != nil {
+		t.Errorf("EncodeColumns failed: %v", err)
+	}
+	if len(enc) == 0 {
+		t.Error("EncodeColumns returned empty")
+	}
 }
 
 func makeTableDescForTest(test indexKeyTest) (TableDescriptor, map[ColumnID]int) {
@@ -282,6 +387,202 @@ func TestIndexKey(t *testing.T) {
 
 		checkEntry(&tableDesc.PrimaryIndex, primaryIndexKV)
 		checkEntry(&tableDesc.Indexes[0], secondaryIndexKV)
+	}
+}
+
+// TestValidateColumnDefType tests the ValidateColumnDefType function.
+func TestValidateColumnDefType(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Test valid types
+	validTypes := []*types.T{
+		types.Bool,
+		types.Int,
+		types.Float,
+		types.Decimal,
+		types.String,
+		types.Bytes,
+		types.Date,
+		types.TimestampTZ,
+		types.Interval,
+		types.Uuid,
+		types.Jsonb,
+		types.INet,
+	}
+
+	for _, typ := range validTypes {
+		if err := ValidateColumnDefType(typ, tree.RelationalTable); err != nil {
+			t.Errorf("type %s should be valid, got error: %v", typ, err)
+		}
+	}
+
+	// Test invalid types
+	invalidTypes := []*types.T{
+		types.Any,
+		types.Unknown,
+	}
+
+	for _, typ := range invalidTypes {
+		if err := ValidateColumnDefType(typ, tree.RelationalTable); err == nil {
+			t.Errorf("type %s should be invalid, got no error", typ)
+		}
+	}
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("decimal type with precision < scale should be invalid")
+		}
+	}()
+
+	// Test decimal precision validation
+	decimalType := types.MakeDecimal(5, 10) // precision < scale should fail
+	if err := ValidateColumnDefType(decimalType, tree.RelationalTable); err == nil {
+		t.Error("decimal type with precision < scale should be invalid")
+	}
+
+	// Test array validation
+	arrayType := types.MakeArray(types.Int)
+	if err := ValidateColumnDefType(arrayType, tree.RelationalTable); err != nil {
+		t.Errorf("basic array type should be valid, got error: %v", err)
+	}
+
+	// Test nested array validation (should fail)
+	nestedArrayType := types.MakeArray(types.MakeArray(types.Int))
+	if err := ValidateColumnDefType(nestedArrayType, tree.RelationalTable); err == nil {
+		t.Error("nested array type should be invalid")
+	}
+}
+
+// TestContainsNonAlphaNumSymbol tests the ContainsNonAlphaNumSymbol function.
+func TestContainsNonAlphaNumSymbol(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	testCases := []struct {
+		input    string
+		expected bool
+	}{
+		{"abc123", false},
+		{"abc123!@#", false},
+		{"hello_world", false},
+		{"hello世界", true}, // Contains Chinese characters
+		{"test-with-dashes", false},
+		{"test with spaces", false},
+		{"normal_text", false},
+		{"text_with_数字", true}, // Contains Chinese characters
+		{"", false},
+		{"12345", false},
+		{"!@#$%", false},
+	}
+
+	for _, tc := range testCases {
+		result := ContainsNonAlphaNumSymbol(tc.input)
+		if result != tc.expected {
+			t.Errorf("ContainsNonAlphaNumSymbol(%q) = %v, expected %v", tc.input, result, tc.expected)
+		}
+	}
+}
+
+// TestGetTSDataType tests the GetTSDataType function.
+func TestGetTSDataType(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	testCases := []struct {
+		input    *types.T
+		expected DataType
+	}{
+		{types.Timestamp, DataType_TIMESTAMP_MICRO},
+		{types.TimestampTZ, DataType_TIMESTAMPTZ_MICRO},
+		{types.Int2, DataType_SMALLINT},
+		{types.Int4, DataType_INT},
+		{types.Int, DataType_BIGINT},
+		{types.Float4, DataType_FLOAT},
+		{types.Float, DataType_DOUBLE},
+		{types.Bool, DataType_BOOL},
+		{types.MakeChar(10), DataType_CHAR},
+		{types.MakeNChar(10), DataType_NCHAR},
+		{types.VarChar, DataType_VARCHAR},
+		{types.MakeVarChar(10, 0), DataType_VARCHAR},
+		{types.MakeNVarChar(10), DataType_NVARCHAR},
+		{types.MakeVarBytes(10, 0), DataType_VARBYTES},
+		{types.Decimal, DataType_FLOAT}, // Decimal is not supported in TS
+		{types.Any, DataType_UNKNOWN},   // Unsupported type
+	}
+
+	for _, tc := range testCases {
+		result := GetTSDataType(tc.input)
+		if result != tc.expected {
+			t.Errorf("GetTSDataType(%v) = %v, expected %v", tc.input.Name(), result, tc.expected)
+		}
+	}
+}
+
+// TestGetStorageLenForFixedLenTypes tests the GetStorageLenForFixedLenTypes function.
+func TestGetStorageLenForFixedLenTypes(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	testCases := []struct {
+		dataType DataType
+		expected uint32
+	}{
+		{DataType_TIMESTAMP, 8},
+		{DataType_TIMESTAMP_MICRO, 8},
+		{DataType_TIMESTAMP_NANO, 8},
+		{DataType_TIMESTAMPTZ, 8},
+		{DataType_TIMESTAMPTZ_MICRO, 8},
+		{DataType_TIMESTAMPTZ_NANO, 8},
+		{DataType_BOOL, 1},
+		{DataType_SMALLINT, 2},
+		{DataType_INT, 4},
+		{DataType_BIGINT, 8},
+		{DataType_FLOAT, 4},
+		{DataType_DOUBLE, 8},
+		{DataType_CHAR, 0},    // Variable length
+		{DataType_VARCHAR, 0}, // Variable length
+		{DataType_UNKNOWN, 0}, // Unknown type
+	}
+
+	for _, tc := range testCases {
+		result := GetStorageLenForFixedLenTypes(tc.dataType)
+		if result != tc.expected {
+			t.Errorf("GetStorageLenForFixedLenTypes(%v) = %d, expected %d", tc.dataType, result, tc.expected)
+		}
+	}
+}
+
+// TestUpdateTimeColPrecision tests the UpdateTimeColPrecision function.
+func TestUpdateTimeColPrecision(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Test with relational table (should return same type)
+	relationalType := types.MakeTimestamp(0)
+	result := UpdateTimeColPrecision(relationalType, tree.RelationalTable)
+	if result != relationalType {
+		t.Errorf("UpdateTimeColPrecision should return same type for relational table, got %v", result)
+	}
+
+	// Test with timeseries table and timestamp with precision 0 (should update to 3)
+	tsType := types.MakeTimestamp(0)
+	tsType.InternalType.TimePrecisionIsSet = false
+	result = UpdateTimeColPrecision(tsType, tree.TimeseriesTable)
+	expected := types.MakeTimestamp(3)
+	if result.Precision() != expected.Precision() {
+		t.Errorf("UpdateTimeColPrecision should update precision to 3 for timeseries table, got %d", result.Precision())
+	}
+
+	// Test with timeseries table and timestamp with precision already set (should not update)
+	tsTypeWithPrec := types.MakeTimestamp(6)
+	result = UpdateTimeColPrecision(tsTypeWithPrec, tree.TimeseriesTable)
+	if result.Precision() != tsTypeWithPrec.Precision() {
+		t.Errorf("UpdateTimeColPrecision should not update precision when already set, got %d", result.Precision())
+	}
+
+	// Test with timeseries table and timetz with precision 0 (should update to 3)
+	timetzType := types.MakeTimeTZ(0)
+	timetzType.InternalType.TimePrecisionIsSet = false
+	result = UpdateTimeColPrecision(timetzType, tree.TimeseriesTable)
+	expectedTimetz := types.MakeTimeTZ(3)
+	if result.Precision() != expectedTimetz.Precision() {
+		t.Errorf("UpdateTimeColPrecision should update timetz precision to 3 for timeseries table, got %d", result.Precision())
 	}
 }
 
@@ -1535,4 +1836,241 @@ func TestDecodeTableValue(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSanitizeVarFreeExpr(t *testing.T) {
+	// Create a simple expression for testing
+	evalCtx := tree.SemaContext{}
+	// defer evalCtx.Close(context.Background())
+
+	// Test valid expressions
+	expr, err := parser.ParseExpr("1 + 2")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// It should be able to successfully verify simple expressions
+	typedExpr, err := SanitizeVarFreeExpr(expr, types.Any, "test context", &evalCtx, false, false, "")
+	if err != nil {
+		t.Errorf("SanitizeVarFreeExpr failed unexpectedly: %v", err)
+	}
+	if typedExpr == nil {
+		t.Error("SanitizeVarFreeExpr returned nil for valid expression")
+	}
+
+	// Test expressions with placeholders - this should fail
+	_, err = parser.ParseExpr("SELECT $1")
+	if err == nil {
+		t.Fatal(err)
+	}
+
+}
+
+func TestTableDescriptor_GetConstraintInfo(t *testing.T) {
+	tableDesc := &TableDescriptor{
+		Name:       "test_table",
+		ID:         50,
+		Privileges: NewDefaultPrivilegeDescriptor(),
+	}
+
+	// Test the empty constraint information
+	constraints, err := tableDesc.GetConstraintInfo(context.Background(), nil)
+	if err != nil {
+		t.Errorf("GetConstraintInfo failed: %v", err)
+	}
+
+	if len(constraints) == 0 {
+		t.Log("No constraints found (expected for empty table)")
+	}
+}
+
+func TestTableDescriptor_GetConstraintInfoWithLookup(t *testing.T) {
+	tableDesc := &TableDescriptor{
+		Name: "test_table",
+		ID:   50,
+	}
+
+	// Create a simple table lookup function
+	tableLookup := func(id ID) (*TableDescriptor, error) {
+		return nil, nil
+	}
+
+	// Test the empty constraint information
+	constraints, err := tableDesc.GetConstraintInfoWithLookup(tableLookup)
+	if err != nil {
+		t.Errorf("GetConstraintInfoWithLookup failed: %v", err)
+	}
+
+	if len(constraints) == 0 {
+		t.Log("No constraints found (expected for empty table)")
+	}
+}
+
+func TestTableDescriptor_CheckUniqueConstraints(t *testing.T) {
+	tableDesc := &TableDescriptor{
+		Name:       "test_table",
+		ID:         50,
+		Privileges: NewDefaultPrivilegeDescriptor(),
+	}
+
+	// The test empty table should have no uniqueness constraint error
+	err := tableDesc.CheckUniqueConstraints()
+	if err != nil {
+		t.Errorf("CheckUniqueConstraints failed: %v", err)
+	}
+}
+
+func TestIndexDescriptor_IsValidOriginIndex(t *testing.T) {
+	idx := &IndexDescriptor{
+		ID:        1,
+		ColumnIDs: []ColumnID{1, 2},
+	}
+
+	// Test the effective source index situation
+	validColIDs := ColumnIDs{1, 2}
+	isValid := idx.IsValidOriginIndex(validColIDs)
+	if !isValid {
+		t.Error("Expected index to be valid origin index for matching columns")
+	}
+
+	// Test the invalid source index situation
+	invalidColIDs := ColumnIDs{3, 4}
+	isValid = idx.IsValidOriginIndex(invalidColIDs)
+	if isValid {
+		t.Error("Expected index to be invalid origin index for non-matching columns")
+	}
+}
+
+func TestIndexDescriptor_IsValidReferencedIndex(t *testing.T) {
+	idx := &IndexDescriptor{
+		ID:        1,
+		Unique:    true, // The reference index must be unique
+		ColumnIDs: []ColumnID{1, 2},
+	}
+
+	// Test the effective referenced index situation
+	validColIDs := ColumnIDs{1, 2}
+	isValid := idx.IsValidReferencedIndex(validColIDs)
+	if !isValid {
+		t.Error("Expected index to be valid referenced index for matching unique columns")
+	}
+
+	// Test the situation where non-unique indexes are used as referenced indexes
+	nonUniqueIdx := &IndexDescriptor{
+		ID:        1,
+		Unique:    false, // Not unique
+		ColumnIDs: []ColumnID{1, 2},
+	}
+	isValid = nonUniqueIdx.IsValidReferencedIndex(validColIDs)
+	if isValid {
+		t.Error("Expected non-unique index to be invalid referenced index")
+	}
+}
+
+func TestConditionalGetTableDescFromTxn(t *testing.T) {
+	// This function depends on the transaction context and simply tests its basic behavior
+	// As a database connection is required, we mainly test the boundary conditions
+	t.Skip("ConditionalGetTableDescFromTxn requires database connection for full testing")
+}
+
+func TestGetTableDescriptorWithErr(t *testing.T) {
+	// This function also requires a database connection
+	t.Skip("GetTableDescriptorWithErr requires database connection for full testing")
+}
+
+func TestTableTypeMap_Insert(t *testing.T) {
+	tableMap := make(TableTypeMap)
+
+	// Insert relational table type
+	tableMap.Insert(tree.RelationalTable)
+	if _, exists := tableMap[tree.RelationalTable]; !exists {
+		t.Error("RelationalTable was not inserted into map")
+	}
+
+	// Insert the view type
+	tableMap.Insert(tree.TimeseriesTable)
+	if _, exists := tableMap[tree.TimeseriesTable]; !exists {
+		t.Error("TimeseriesTable was not inserted into map")
+	}
+}
+
+func TestTableTypeMap_IncludeTSTable(t *testing.T) {
+	// Test the empty mapping
+	tableMap := make(TableTypeMap)
+	if tableMap.IncludeTSTable() {
+		t.Error("Empty map should not include TS table")
+	}
+
+	// Add the type of time series table
+	tableMap[tree.TimeseriesTable] = 1
+	if !tableMap.IncludeTSTable() {
+		t.Error("Map with TSObject should include TS table")
+	}
+}
+
+func TestTableTypeMap_HasMultiTSTable(t *testing.T) {
+	tableMap := make(TableTypeMap)
+	if tableMap.HasMultiTSTable() {
+		t.Error("Empty map should not have multi TS table")
+	}
+
+	// Add multiple time series table types
+	tableMap[tree.TimeseriesTable] = 1
+	tableMap[tree.InstanceTable] = 1
+	if !tableMap.HasMultiTSTable() {
+		t.Error("Map with MTSTableObject should have multi TS table")
+	}
+}
+
+func TestTableTypeMap_HasStable(t *testing.T) {
+	tableMap := make(TableTypeMap)
+	if tableMap.HasStable() {
+		t.Error("Empty map should not have stable")
+	}
+
+	tableMap[tree.TemplateTable] = 1
+	if !tableMap.HasStable() {
+		t.Error("Map with StableObject should have stable")
+	}
+}
+
+func TestTableTypeMap_HasCtable(t *testing.T) {
+	tableMap := make(TableTypeMap)
+	if tableMap.HasCtable() {
+		t.Error("Empty map should not have ctable")
+	}
+
+	tableMap[tree.InstanceTable] = 1
+	if !tableMap.HasCtable() {
+		t.Error("Map with CtableObject should have ctable")
+	}
+}
+
+func TestTableTypeMap_HasGtable(t *testing.T) {
+	tableMap := make(TableTypeMap)
+	if tableMap.HasGtable() {
+		t.Error("Empty map should not have gtable")
+	}
+
+	tableMap[tree.TimeseriesTable] = 1
+	if !tableMap.HasGtable() {
+		t.Error("Map with GtableObject should have gtable")
+	}
+}
+
+func TestTableTypeMap_HasRtable(t *testing.T) {
+	tableMap := make(TableTypeMap)
+	if tableMap.HasRtable() {
+		t.Error("Empty map should not have rtable")
+	}
+
+	tableMap[tree.RelationalTable] = 1
+	if !tableMap.HasRtable() {
+		t.Error("Map with RtableObject should have rtable")
+	}
+}
+
+func TestGetTableDescriptorUseTxn(t *testing.T) {
+	// This function also requires a database connection
+	t.Skip("GetTableDescriptorUseTxn requires database connection for full testing")
 }

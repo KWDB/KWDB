@@ -1312,7 +1312,9 @@ func TypeName(o oid.Oid) (string, bool) {
 
 // IsTypeEngineSet return true if this type support engine.
 func (t *T) IsTypeEngineSet(typeEngine Engine) bool {
-	return t.InternalType.TypeEngine&typeEngine.Mask() != 0
+	mask := typeEngine.Mask()
+	ret := t.InternalType.TypeEngine & mask
+	return ret != 0
 }
 
 // SQLStandardName returns the type's name as it is specified in the SQL

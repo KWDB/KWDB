@@ -25,7 +25,7 @@
 package server
 
 // #cgo CPPFLAGS: -I../../../kwdbts2/include
-// #cgo LDFLAGS: -lkwdbts2 -lrocksdb -lcommon -lsnappy -lm  -lstdc++
+// #cgo LDFLAGS: -lkwdbts2 -lcommon -lsnappy -lm  -lstdc++
 // #cgo LDFLAGS: -lprotobuf
 // #cgo linux LDFLAGS: -lrt -lpthread
 //
@@ -1047,6 +1047,9 @@ func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
 		execCfg.SchemaChangerTestingKnobs = sqlSchemaChangerTestingKnobs.(*sql.SchemaChangerTestingKnobs)
 	} else {
 		execCfg.SchemaChangerTestingKnobs = new(sql.SchemaChangerTestingKnobs)
+	}
+	if tsSchemaChangerTestingKnobs := s.cfg.TestingKnobs.TSSchemaChanger; tsSchemaChangerTestingKnobs != nil {
+		execCfg.TSSchemaChangerTestingKnobs = tsSchemaChangerTestingKnobs.(*sql.TSSchemaChangerTestingKnobs)
 	}
 	if gcJobTestingKnobs := s.cfg.TestingKnobs.GCJob; gcJobTestingKnobs != nil {
 		execCfg.GCJobTestingKnobs = gcJobTestingKnobs.(*sql.GCJobTestingKnobs)

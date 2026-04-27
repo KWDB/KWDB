@@ -29,6 +29,9 @@ func CheckDBSupportShow(d *delegator, dbName tree.Name, n tree.Statement) error 
 	if err != nil {
 		return err
 	}
+	if schema == nil {
+		return pgerror.Newf(pgcode.Internal, "schema is nil")
+	}
 	if schema.GetDatabaseType() == tree.EngineTypeTimeseries {
 		return TSUnsupportedShowError(n)
 	}

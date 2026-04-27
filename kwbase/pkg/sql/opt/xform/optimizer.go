@@ -778,10 +778,10 @@ func (o *Optimizer) setLowestCostTree(parent opt.Expr, parentProps *physical.Req
 		// handle tsScan's children tagFilters and primaryTagFilters, set lowest cost
 		tsScan, _ := parent.(*memo.TSScanExpr)
 		for _, before := range tsScan.Flags.TagFilter {
-			o.setLowestCostTree(before, childProps)
+			o.setLowestCostTree(before.Condition, childProps)
 		}
 		for _, before := range tsScan.Flags.PrimaryTagFilter {
-			o.setLowestCostTree(before, childProps)
+			o.setLowestCostTree(before.Condition, childProps)
 		}
 	}
 

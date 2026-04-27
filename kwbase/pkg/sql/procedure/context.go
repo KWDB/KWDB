@@ -79,17 +79,24 @@ func (c *SpExecContext) Init() {
 // InitResult execute context
 func (c *SpExecContext) InitResult() {
 	c.results = &Result{}
-	*c.continueExec = true
+	if c.continueExec != nil {
+		*c.continueExec = true
+	}
 }
 
 // ContinueExec returns execute execute status
 func (c *SpExecContext) ContinueExec() bool {
-	return *c.continueExec
+	if c.continueExec != nil {
+		return *c.continueExec
+	}
+	return false
 }
 
 // ResetExecuteStatus resets continue execute status
 func (c *SpExecContext) ResetExecuteStatus() {
-	*c.continueExec = false
+	if c.continueExec != nil {
+		*c.continueExec = false
+	}
 }
 
 // Inherit execute context
@@ -130,13 +137,13 @@ func (c *SpExecContext) AddVariable(v *exec.LocalVariable) {
 }
 
 // SetVariable sets a local variable
-func (c *SpExecContext) SetVariable(idx int, v *tree.Datum) {
-	c.localVariable[idx].Data = *v
+func (c *SpExecContext) SetVariable(idx int, v tree.Datum) {
+	c.localVariable[idx].Data = v
 }
 
 // SetExternalVariable sets a external variable
-func (c *SpExecContext) SetExternalVariable(idx int, v *tree.Datum) {
-	c.TriggerReplaceValues.SetValue(tree.PlaceholderIdx(idx), *v)
+func (c *SpExecContext) SetExternalVariable(idx int, v tree.Datum) {
+	c.TriggerReplaceValues.SetValue(tree.PlaceholderIdx(idx), v)
 }
 
 // GetVariableName gets the local variable name.
@@ -344,7 +351,10 @@ func (c *SpExecContext) GetExceptionErr() error {
 
 // GetProcedureTxn get  c.procedureTxn
 func (c *SpExecContext) GetProcedureTxn() tree.ProcedureTxnState {
-	return *c.procedureTxn
+	if c.procedureTxn != nil {
+		return *c.procedureTxn
+	}
+	return tree.ProcedureTransactionDefault
 }
 
 // SetProcedureTxn get  c.procedureTxn

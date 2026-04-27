@@ -446,7 +446,7 @@ func (b *Builder) buildTSUpdate(
 	// Verify whether the time-series table and relational table are mixed in the time-series query
 	b.CheckMixedTableRefWithTs()
 	colCount := table.ColumnCount()
-	tagCols := make([]*sqlbase.ColumnDescriptor, 0)
+	tagCols := make([]cat.Column, 0)
 	colMap := make(map[int]int, 0)
 	primaryTagIDs := make(map[int]struct{})
 	ordinaryTag := make(map[string]int, colCount)
@@ -456,14 +456,14 @@ func (b *Builder) buildTSUpdate(
 	for i := 0; i < colCount; i++ {
 		col := table.Column(i)
 		if col.IsTagCol() {
-			tagCols = append(tagCols, col.(*sqlbase.ColumnDescriptor))
+			tagCols = append(tagCols, col)
 			if col.IsPrimaryTagCol() {
 				// build primary tags' map，and check if scope column in filter meets the conditions
 				primaryTagIDs[int(col.ColID())] = struct{}{}
 				ptagType[int(col.ColID())] = *col.DatumType()
 			} else {
 				tagName = append(tagName, string(col.ColName()))
-				ordinaryTag[string(col.ColName())] = int(col.(*sqlbase.ColumnDescriptor).ID)
+				ordinaryTag[string(col.ColName())] = int(col.ColID())
 			}
 		}
 	}
@@ -538,7 +538,11 @@ func (b *Builder) buildTSUpdate(
 	query += " " + tagQueryFilter
 	// todo: add limit 1 to avoid finding multiple rows of values for the same PTAG in distributed scenarios
 	query = "select distinct * from (" + query + ") limit 1"
-	row, err := b.evalCtx.InternalExecutor.QueryRow(b.ctx, "queryTag", b.evalCtx.Txn, query)
+	var row tree.Datums
+	var err error
+	if b.evalCtx.InternalExecutor != nil {
+		row, err = b.evalCtx.InternalExecutor.QueryRow(b.ctx, "queryTag", b.evalCtx.Txn, query)
+	}
 	// Only the prepare statement does not need to return error,
 	// all other scenarios require an error.
 	skipErr := b.factory.CheckFlag(opt.IsPrepare) && !b.factory.CheckFlag(opt.IsExecute)
@@ -566,7 +570,7 @@ func (b *Builder) buildTSUpdate(
 		// check if tags completed
 		if exp, ok := exprs[int(col.ColID())]; ok {
 			tagValue = append(tagValue, exp)
-			colMap[int(col.ID)] = i
+			colMap[int(col.ColID())] = i
 		}
 	}
 

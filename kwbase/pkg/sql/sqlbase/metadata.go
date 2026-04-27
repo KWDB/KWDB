@@ -349,6 +349,9 @@ func (b *WhiteListMap) CanPushByPos(key uint32, pos uint32) bool {
 // CheckWhiteListParam check if operation exists on the whitelist through key and pos,
 // and if it exists, it can be executed in ts engine
 func (b *WhiteListMap) CheckWhiteListParam(key uint32, pos uint32) bool {
+	if b == nil {
+		return false
+	}
 	val, find := b.getValue(key)
 	if !find {
 		return false

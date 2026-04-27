@@ -1,0 +1,183 @@
+// Copyright (c) 2022-present, Shanghai Yunxi Technology Co, Ltd. All rights reserved.
+//
+// This software (KWDB) is licensed under Mulan PSL v2.
+// You can use this software according to the terms and conditions of the Mulan PSL v2.
+// You may obtain a copy of Mulan PSL v2 at:
+//          http://license.coscl.org.cn/MulanPSL2
+// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+// EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+// MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+// See the Mulan PSL v2 for more details.
+
+package server_test
+
+import (
+	"context"
+	"errors"
+	"net"
+	"os"
+	"testing"
+	"time"
+
+	"gitee.com/kwbasedb/kwbase/pkg/security"
+	"gitee.com/kwbasedb/kwbase/pkg/security/audit/event/target"
+	"gitee.com/kwbasedb/kwbase/pkg/security/audit/server"
+	"gitee.com/kwbasedb/kwbase/pkg/security/securitytest"
+	testserver "gitee.com/kwbasedb/kwbase/pkg/server"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/tests"
+	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
+	"gitee.com/kwbasedb/kwbase/pkg/testutils/testcluster"
+	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
+	"gitee.com/kwbasedb/kwbase/pkg/util/randutil"
+	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
+)
+
+func TestMain(m *testing.M) {
+	security.SetAssetLoader(securitytest.EmbeddedAssets)
+	randutil.SeedForTests()
+	serverutils.InitTestServerFactory(testserver.TestServerFactory)
+	serverutils.InitTestClusterFactory(testcluster.TestClusterFactory)
+	os.Exit(m.Run())
+}
+
+func TestAuditEvent(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// start test server
+	params, _ := tests.CreateTestServerParams()
+	s, DB, _ := serverutils.StartServer(t, params)
+	defer s.Stopper().Stop(context.TODO())
+
+	//prepare audit
+	createAuditStmt := "create audit stmttest ON DATABASE FOR CREATE TO root;"
+	enableAuditStmt := "ALTER AUDIT stmttest enable;"
+	openAuditStmt := "SET CLUSTER SETTING audit.enabled=true;"
+
+	if _, err := DB.Exec(openAuditStmt); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := DB.Exec(createAuditStmt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := DB.Exec(enableAuditStmt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := DB.Exec("CREATE DATABASE test"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMakeAuditInfo_Basic(t *testing.T) {
+	start := timeutil.Now().Add(-2 * time.Second)
+	addr := &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 5432}
+
+	ai := server.MakeAuditInfo(start,
+		"alice",
+		[]string{"admin", "dev"},
+		target.OperationType("TEST_OP"),
+		target.AuditObjectType("TEST_OBJ"),
+		target.AuditLevelType(1),
+		addr,
+		nil,
+	)
+
+	if ai.User == nil {
+		t.Fatalf("expected User not nil")
+	}
+	if ai.User.Username != "alice" {
+		t.Fatalf("expected username alice, got %q", ai.User.Username)
+	}
+	if len(ai.User.Roles) != 2 || ai.User.Roles[0].Name != "admin" {
+		t.Fatalf("unexpected roles: %#v", ai.User.Roles)
+	}
+	if ai.Client == nil {
+		t.Fatalf("expected Client not nil")
+	}
+	if ai.Client.Address != addr.String() {
+		t.Fatalf("expected client address %s, got %s", addr.String(), ai.Client.Address)
+	}
+	if ai.GetTargetType() != target.AuditObjectType("TEST_OBJ") {
+		t.Fatalf("expected target type TEST_OBJ, got %v", ai.GetTargetType())
+	}
+	if ai.Result == nil {
+		t.Fatalf("expected Result not nil")
+	}
+	if ai.Result.Status != server.ExecSuccess {
+		t.Fatalf("expected result status %s, got %s", server.ExecSuccess, ai.Result.Status)
+	}
+	// elapsed should be non-negative
+	if ai.Elapsed < 0 {
+		t.Fatalf("unexpected negative elapsed: %v", ai.Elapsed)
+	}
+}
+
+func TestSetResult_ErrorAndRows(t *testing.T) {
+	var ai server.AuditInfo
+	ai.SetResult(errors.New("boom"), 5)
+
+	if ai.Result == nil {
+		t.Fatalf("expected Result not nil")
+	}
+	if ai.Result.Status != server.ExecFail {
+		t.Fatalf("expected status %s, got %s", server.ExecFail, ai.Result.Status)
+	}
+	if ai.Result.ErrMsg != "boom" {
+		t.Fatalf("expected ErrMsg 'boom', got %q", ai.Result.ErrMsg)
+	}
+	if ai.Result.RowsAffected != 5 {
+		t.Fatalf("expected RowsAffected 5, got %d", ai.Result.RowsAffected)
+	}
+}
+
+func TestTarget_SetAndGet(t *testing.T) {
+	var ai server.AuditInfo
+	ai.SetTargetType(target.AuditObjectType("table"))
+	ai.SetTarget(42, "users", []string{"col1", "col2"})
+
+	ti := ai.GetTargetInfo()
+	if ti == nil {
+		t.Fatalf("expected target info not nil")
+	}
+	if ti.GetTargetType() != target.AuditObjectType("table") {
+		t.Fatalf("expected target type 'table', got %v", ti.GetTargetType())
+	}
+	ids := ti.GetTargetIDs()
+	found := false
+	for _, id := range ids {
+		if id == 42 {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected target id 42 in %v", ids)
+	}
+	if ai.IsTargetEmpty() {
+		t.Fatalf("expected target not empty")
+	}
+	if ti.IsTargetEmpty() {
+		t.Fatalf("expected targetinfo not empty")
+	}
+}
+
+func TestSetClient_FromSessionData(t *testing.T) {
+	var ai server.AuditInfo
+	addr := &net.TCPAddr{IP: net.ParseIP("10.0.0.1"), Port: 6000}
+	sd := &sessiondata.SessionData{
+		ApplicationName: "myapp",
+		RemoteAddr:      addr,
+	}
+	ai.SetClient(sd)
+
+	if ai.Client == nil {
+		t.Fatalf("expected client not nil")
+	}
+	if ai.Client.AppName != "myapp" {
+		t.Fatalf("expected AppName myapp, got %q", ai.Client.AppName)
+	}
+	if ai.Client.Address != addr.String() {
+		t.Fatalf("expected Address %s, got %s", addr.String(), ai.Client.Address)
+	}
+}

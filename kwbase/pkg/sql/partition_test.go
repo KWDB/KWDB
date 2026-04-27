@@ -26,10 +26,13 @@ package sql_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"gitee.com/kwbasedb/kwbase/pkg/config/zonepb"
 	"gitee.com/kwbasedb/kwbase/pkg/server"
+	"gitee.com/kwbasedb/kwbase/pkg/sql"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/tests"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
@@ -150,4 +153,83 @@ func TestRemovePartitioningOSS(t *testing.T) {
 	if a := sqlDB.QueryStr(t, "SHOW CREATE t.kv")[0][1]; exp != a {
 		t.Fatalf("expected:\n%s\n\ngot:\n%s\n\n", exp, a)
 	}
+}
+
+// TestNewPartitioningDescriptor tests the NewPartitioningDescriptor function
+func TestNewPartitioningDescriptor(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	ctx := context.Background()
+	evalCtx := &tree.EvalContext{}
+
+	// Test case 1: Nil partitionBy
+	t.Run("NilPartitionBy", func(t *testing.T) {
+		tableDesc := &sqlbase.MutableTableDescriptor{}
+		indexDesc := &sqlbase.IndexDescriptor{}
+		partDesc, err := sql.NewPartitioningDescriptor(ctx, evalCtx, tableDesc, indexDesc, nil)
+		if err != nil {
+			t.Fatalf("expected no error, got: %v", err)
+		}
+		if len(partDesc.HashPoint) != 0 || len(partDesc.List) != 0 || len(partDesc.Range) != 0 {
+			t.Fatalf("expected empty partitioning descriptor, got: %v", partDesc)
+		}
+	})
+
+	// Test case 2: TS Table with HashPoint
+	t.Run("TSTableHashPoint", func(t *testing.T) {
+		tableDesc := &sqlbase.MutableTableDescriptor{
+			TableDescriptor: sqlbase.TableDescriptor{
+				TableType: tree.TimeseriesTable,
+			},
+		}
+		indexDesc := sqlbase.IndexDescriptor{}
+		hashPoint1 := tree.HashPointPartition{
+			Name:       tree.UnrestrictedName("p1"),
+			HashPoints: []int32{1, 2, 3},
+		}
+		hashPoint2 := tree.HashPointPartition{
+			Name: tree.UnrestrictedName("p2"),
+			From: 10,
+			To:   20,
+		}
+		partBy := &tree.PartitionBy{
+			HashPoint: []tree.HashPointPartition{hashPoint1, hashPoint2},
+		}
+		partDesc, err := sql.NewPartitioningDescriptor(ctx, evalCtx, tableDesc, &indexDesc, partBy)
+		if err != nil {
+			t.Fatalf("expected no error, got: %v", err)
+		}
+
+		if partDesc.HashPoint[0].Name != "p1" || len(partDesc.HashPoint[0].HashPoints) != 3 {
+			t.Fatalf("expected hash point p1 with 3 points, got: %v", partDesc.HashPoint[0])
+		}
+		if partDesc.HashPoint[1].Name != "p2" || partDesc.HashPoint[1].FromPoint != 10 || partDesc.HashPoint[1].ToPoint != 20 {
+			t.Fatalf("expected hash point p2 with from=10 and to=20, got: %v", partDesc.HashPoint[1])
+		}
+	})
+
+	// Test case 3: TS Table with invalid HashPoint (from >= to)
+	t.Run("TSTableInvalidHashPoint", func(t *testing.T) {
+		tableDesc := &sqlbase.MutableTableDescriptor{
+			TableDescriptor: sqlbase.TableDescriptor{
+				TableType: tree.TimeseriesTable,
+			},
+		}
+		indexDesc := &sqlbase.IndexDescriptor{}
+		hashPoint := tree.HashPointPartition{
+			Name: tree.UnrestrictedName("p1"),
+			From: 20,
+			To:   10, // from >= to, which is invalid
+		}
+		partBy := &tree.PartitionBy{
+			HashPoint: []tree.HashPointPartition{hashPoint},
+		}
+		_, err := sql.NewPartitioningDescriptor(ctx, evalCtx, tableDesc, indexDesc, partBy)
+		if err == nil {
+			t.Fatal("expected error for invalid hash point, got nil")
+		}
+		if !strings.Contains(err.Error(), "from point must smaller than to point") {
+			t.Fatalf("expected error message to contain 'from point must smaller than to point', got: %s", err.Error())
+		}
+	})
 }

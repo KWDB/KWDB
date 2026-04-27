@@ -1029,6 +1029,17 @@ func (desc *TableDescriptor) ForeachNonDropIndex(f func(*IndexDescriptor) error)
 	return nil
 }
 
+// GeneratedFamilyName generates a family name based on the family ID and column names.
+func GeneratedFamilyName(familyID FamilyID, columnNames ...string) string {
+	var buf strings.Builder
+	fmt.Fprintf(&buf, "fam_%d", familyID)
+	for _, n := range columnNames {
+		buf.WriteString(`_`)
+		buf.WriteString(n)
+	}
+	return buf.String()
+}
+
 func generatedFamilyName(familyID FamilyID, columnNames []string) string {
 	var buf strings.Builder
 	fmt.Fprintf(&buf, "fam_%d", familyID)
@@ -3708,7 +3719,7 @@ func ColumnNeedsBackfill(desc *ColumnDescriptor) bool {
 	return desc.HasDefault() || !desc.Nullable || desc.IsComputed()
 }
 
-// HasPrimaryKey returns true if the table has a primary key.
+// HasPrimaryKey returns true if the table's primary key is NOT disabled.
 func (desc *TableDescriptor) HasPrimaryKey() bool {
 	return !desc.PrimaryIndex.Disabled
 }

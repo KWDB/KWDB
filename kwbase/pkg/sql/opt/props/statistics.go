@@ -84,6 +84,9 @@ type Statistics struct {
 	// reduction in number of rows for the top-level operator in this
 	// expression.
 	Selectivity float64
+
+	// DefaultFlag
+	DefaultFlag bool
 }
 
 // SortDistributionStats store sort histogram

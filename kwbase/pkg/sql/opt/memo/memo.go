@@ -911,7 +911,7 @@ func (m *Memo) sortCondition(sel *SelectExpr, rel *props.Relational, e *opt.Scal
 func (m *Memo) ComputeLocalTSFiltersSelectivity(
 	sel *SelectExpr, relProps *props.Relational, condition opt.ScalarExpr,
 ) float64 {
-	if m.logPropsBuilder.sb.md != nil {
+	if m.logPropsBuilder.sb.md != nil && m.logPropsBuilder.sb.md.NumColumns() > 0 {
 		cb := constraintsBuilder{
 			md:      m.logPropsBuilder.sb.md,
 			evalCtx: m.logPropsBuilder.sb.evalCtx,
@@ -1448,7 +1448,7 @@ func (m *Memo) tsScanFillStatistic(
 	// causing can not use statistic optimization.
 	tempSet := gp.GroupingCols.Copy()
 	for _, v := range flags.TagFilter {
-		addTagToGrouping(&tempSet, v, m.Metadata())
+		addTagToGrouping(&tempSet, v.Condition, m.Metadata())
 	}
 
 	tempSet.ForEach(func(colID opt.ColumnID) {
@@ -3056,10 +3056,10 @@ func CheckDataLength(typ *types.T) bool {
 		if typeWidth >= sqlbase.TSMaxFixedLen {
 			return false
 		}
-	case sqlbase.DataType_BYTES:
-		if typeWidth >= sqlbase.TSMaxFixedLen {
-			return false
-		}
+	//case sqlbase.DataType_BYTES:
+	//	if typeWidth >= sqlbase.TSMaxFixedLen {
+	//		return false
+	//	}  // delete bytes from timeseries engine
 	case sqlbase.DataType_VARCHAR, sqlbase.DataType_NVARCHAR:
 		if typeWidth > sqlbase.TSMaxVariableLen {
 			return false

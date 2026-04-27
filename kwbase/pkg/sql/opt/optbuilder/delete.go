@@ -255,13 +255,13 @@ func (b *Builder) buildTSDelete(
 		panic(err)
 	}
 	colCount := table.ColumnCount()
-	priTagCols := make([]*sqlbase.ColumnDescriptor, 0)
+	priTagCols := make([]cat.Column, 0)
 	colMap := make(map[int]int, 0)
 	primaryTagIDs := make(map[int]struct{})
 
 	for i := 0; i < colCount; i++ {
 		if table.Column(i).IsPrimaryTagCol() {
-			priTagCols = append(priTagCols, table.Column(i).(*sqlbase.ColumnDescriptor))
+			priTagCols = append(priTagCols, table.Column(i))
 			// build primary tags' map，and check if scope column in filter meets the conditions
 			primaryTagIDs[int(table.Column(i).ColID())] = struct{}{}
 		}
@@ -328,7 +328,7 @@ func (b *Builder) buildTSDelete(
 	if filterTyp == onlyTag || filterTyp == tagAndTS {
 		for _, col := range priTagCols {
 			if exp, ok := exprs[int(col.ColID())]; ok {
-				colMap[int(col.ID)] = len(filter)
+				colMap[int(col.ColID())] = len(filter)
 				filter = append(filter, exp.exp)
 			}
 		}

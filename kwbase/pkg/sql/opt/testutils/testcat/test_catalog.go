@@ -621,8 +621,11 @@ type Table struct {
 	// other table(s).
 	interleaved bool
 
-	outboundFKs []ForeignKeyConstraint
-	inboundFKs  []ForeignKeyConstraint
+	OutboundFKs []ForeignKeyConstraint
+	InboundFKs  []ForeignKeyConstraint
+
+	//ts info
+	TableType tree.TableType
 }
 
 var _ cat.Table = &Table{}
@@ -752,22 +755,22 @@ func (tt *Table) Family(i int) cat.Family {
 
 // OutboundForeignKeyCount is part of the cat.Table interface.
 func (tt *Table) OutboundForeignKeyCount() int {
-	return len(tt.outboundFKs)
+	return len(tt.OutboundFKs)
 }
 
 // OutboundForeignKey is part of the cat.Table interface.
 func (tt *Table) OutboundForeignKey(i int) cat.ForeignKeyConstraint {
-	return &tt.outboundFKs[i]
+	return &tt.OutboundFKs[i]
 }
 
 // InboundForeignKeyCount is part of the cat.Table interface.
 func (tt *Table) InboundForeignKeyCount() int {
-	return len(tt.inboundFKs)
+	return len(tt.InboundFKs)
 }
 
 // InboundForeignKey is part of the cat.Table interface.
 func (tt *Table) InboundForeignKey(i int) cat.ForeignKeyConstraint {
-	return &tt.inboundFKs[i]
+	return &tt.InboundFKs[i]
 }
 
 // FindOrdinal returns the ordinal of the column with the given name.
@@ -791,7 +794,7 @@ func (tt *Table) GetParentID() tree.ID {
 
 // GetTableType return which type the table is.
 func (tt *Table) GetTableType() tree.TableType {
-	return 0
+	return tt.TableType
 }
 
 // GetTriggers returns the definition of trigger
@@ -816,7 +819,16 @@ func (tt *Table) SetTableName(name string) {
 
 // GetTagMeta get name and type of all tags.
 func (tt *Table) GetTagMeta() []cat.TagMeta {
-	return nil
+	tagMeta := make([]cat.TagMeta, 0)
+	for _, col := range tt.Columns {
+		if col.IsTagCol() {
+			tagMeta = append(tagMeta, cat.TagMeta{
+				TagName: col.Name,
+				TagType: *col.Type,
+			})
+		}
+	}
+	return tagMeta
 }
 
 // AddTagMetaToTable adds tag into table desc.
@@ -848,10 +860,10 @@ type Index struct {
 	IdxZone *zonepb.ZoneConfig
 
 	// Ordinal is the ordinal of this index in the table.
-	ordinal int
+	IdxOrdinal int
 
 	// table is a back reference to the table this index is on.
-	table *Table
+	IdxTable *Table
 
 	// partitionBy is the partitioning clause that corresponds to this index. Used
 	// to implement PartitionByListPrefixes.
@@ -860,7 +872,7 @@ type Index struct {
 
 // ID is part of the cat.Index interface.
 func (ti *Index) ID() cat.StableID {
-	return 1 + cat.StableID(ti.ordinal)
+	return 1 + cat.StableID(ti.IdxOrdinal)
 }
 
 // Name is part of the cat.Index interface.
@@ -870,12 +882,12 @@ func (ti *Index) Name() tree.Name {
 
 // Table is part of the cat.Index interface.
 func (ti *Index) Table() cat.Table {
-	return ti.table
+	return ti.IdxTable
 }
 
 // Ordinal is part of the cat.Index interface.
 func (ti *Index) Ordinal() int {
-	return ti.ordinal
+	return ti.IdxOrdinal
 }
 
 // IsUnique is part of the cat.Index interface.
@@ -993,6 +1005,9 @@ type Column struct {
 	ColType      types.T
 	DefaultExpr  *string
 	ComputedExpr *string
+
+	// ts column type
+	TsCol sqlbase.TSCol
 }
 
 var _ cat.Column = &Column{}
@@ -1009,22 +1024,22 @@ func (tc *Column) IsNullable() bool {
 
 // IsTagCol is part of the cat.Column interface.
 func (tc *Column) IsTagCol() bool {
-	return false
+	return tc.TsCol.ColumnType == sqlbase.ColumnType_TYPE_TAG || tc.TsCol.ColumnType == sqlbase.ColumnType_TYPE_PTAG
 }
 
 // IsOrdinaryTagCol is part of the cat.Column interface.
 func (tc *Column) IsOrdinaryTagCol() bool {
-	return false
+	return tc.TsCol.ColumnType == sqlbase.ColumnType_TYPE_TAG
 }
 
 // IsPrimaryTagCol is part of the cat.Column interface.
 func (tc *Column) IsPrimaryTagCol() bool {
-	return false
+	return tc.TsCol.ColumnType == sqlbase.ColumnType_TYPE_PTAG
 }
 
 // TsColStorgeLen is part of the cat.Column interface.
 func (tc *Column) TsColStorgeLen() uint64 {
-	return 0
+	return tc.TsCol.StorageLen
 }
 
 // ColName is part of the cat.Column interface.
@@ -1183,12 +1198,12 @@ func (ts TableStats) Swap(i, j int) {
 // ForeignKeyConstraint implements cat.ForeignKeyConstraint. See that interface
 // for more information on the fields.
 type ForeignKeyConstraint struct {
-	name              string
-	originTableID     cat.StableID
-	referencedTableID cat.StableID
+	FkName              string
+	FkOriginTableID     cat.StableID
+	FkReferencedTableID cat.StableID
 
-	originColumnOrdinals     []int
-	referencedColumnOrdinals []int
+	FkOriginColumnOrdinals     []int
+	FkReferencedColumnOrdinals []int
 
 	validated    bool
 	matchMethod  tree.CompositeKeyMatchMethod
@@ -1200,45 +1215,45 @@ var _ cat.ForeignKeyConstraint = &ForeignKeyConstraint{}
 
 // Name is part of the cat.ForeignKeyConstraint interface.
 func (fk *ForeignKeyConstraint) Name() string {
-	return fk.name
+	return fk.FkName
 }
 
 // OriginTableID is part of the cat.ForeignKeyConstraint interface.
 func (fk *ForeignKeyConstraint) OriginTableID() cat.StableID {
-	return fk.originTableID
+	return fk.FkOriginTableID
 }
 
 // ReferencedTableID is part of the cat.ForeignKeyConstraint interface.
 func (fk *ForeignKeyConstraint) ReferencedTableID() cat.StableID {
-	return fk.referencedTableID
+	return fk.FkReferencedTableID
 }
 
 // ColumnCount is part of the cat.ForeignKeyConstraint interface.
 func (fk *ForeignKeyConstraint) ColumnCount() int {
-	return len(fk.originColumnOrdinals)
+	return len(fk.FkOriginColumnOrdinals)
 }
 
 // OriginColumnOrdinal is part of the cat.ForeignKeyConstraint interface.
 func (fk *ForeignKeyConstraint) OriginColumnOrdinal(originTable cat.Table, i int) int {
-	if originTable.ID() != fk.originTableID {
+	if originTable.ID() != fk.FkOriginTableID {
 		panic(errors.AssertionFailedf(
 			"invalid table %d passed to OriginColumnOrdinal (expected %d)",
-			originTable.ID(), fk.originTableID,
+			originTable.ID(), fk.FkOriginTableID,
 		))
 	}
 
-	return fk.originColumnOrdinals[i]
+	return fk.FkOriginColumnOrdinals[i]
 }
 
 // ReferencedColumnOrdinal is part of the cat.ForeignKeyConstraint interface.
 func (fk *ForeignKeyConstraint) ReferencedColumnOrdinal(referencedTable cat.Table, i int) int {
-	if referencedTable.ID() != fk.referencedTableID {
+	if referencedTable.ID() != fk.FkReferencedTableID {
 		panic(errors.AssertionFailedf(
 			"invalid table %d passed to ReferencedColumnOrdinal (expected %d)",
-			referencedTable.ID(), fk.referencedTableID,
+			referencedTable.ID(), fk.FkReferencedTableID,
 		))
 	}
-	return fk.referencedColumnOrdinals[i]
+	return fk.FkReferencedColumnOrdinals[i]
 }
 
 // Validated is part of the cat.ForeignKeyConstraint interface.

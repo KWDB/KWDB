@@ -493,7 +493,7 @@ func (b *Builder) buildInsert(ins *tree.Insert, inScope *scope) (outScope *scope
  * @Return 3: list of column index
  */
 func buildColsForTsInsert(
-	ins *tree.Insert, cols []*sqlbase.ColumnDescriptor, table cat.Table, needMap bool,
+	ins *tree.Insert, cols []cat.Column, table cat.Table, needMap bool,
 ) (opt.ColsMap, opt.ColList, opt.ColIdxs) {
 	columnMap := make(opt.ColsMap, 0)
 	var resCols opt.ColList
@@ -510,7 +510,7 @@ func buildColsForTsInsert(
 			// instance table does not support specifying tag column
 			if targetCol.IsTagCol() && (table.GetTableType() == tree.InstanceTable ||
 				table.GetTableType() == tree.TemplateTable) {
-				panic(pgerror.Newf(pgcode.FeatureNotSupported, "cannot insert tag column: \"%s\" for INSTANCE table", targetCol.Name))
+				panic(pgerror.Newf(pgcode.FeatureNotSupported, "cannot insert tag column: \"%s\" for INSTANCE table", targetCol.ColName()))
 			}
 			// check if duplicate columns are input.
 			if _, ok := inColName[ins.Columns[idx]]; !ok {
@@ -519,9 +519,9 @@ func buildColsForTsInsert(
 				panic(pgerror.Newf(pgcode.DuplicateColumn, "multiple assignments to the same column \"%s\"", string(ins.Columns[idx])))
 			}
 			if needMap {
-				columnMap[int(targetCol.ID)] = idx
+				columnMap[int(targetCol.ColID())] = idx
 			} else {
-				resCols = append(resCols, opt.ColumnID(targetCol.ID))
+				resCols = append(resCols, opt.ColumnID(targetCol.ColID()))
 				colIdxs = append(colIdxs, idx)
 			}
 		}
@@ -532,9 +532,9 @@ func buildColsForTsInsert(
 				break
 			}
 			if needMap {
-				columnMap[int(cols[i].ID)] = i
+				columnMap[int(cols[i].ColID())] = i
 			} else {
-				resCols = append(resCols, opt.ColumnID(cols[i].ID))
+				resCols = append(resCols, opt.ColumnID(cols[i].ColID()))
 				colIdxs = append(colIdxs, i)
 			}
 		}
@@ -601,9 +601,9 @@ func (mb *mutationBuilder) buildTSInsertSelect(rNum, tNum int, ins *tree.Insert,
 	}
 
 	colCount := table.ColumnCount()
-	cols := make([]*sqlbase.ColumnDescriptor, 0)
+	cols := make([]cat.Column, 0)
 	for i := 0; i < colCount; i++ {
-		col := table.Column(i).(*sqlbase.ColumnDescriptor)
+		col := table.Column(i)
 		cols = append(cols, col)
 	}
 
@@ -1217,11 +1217,11 @@ func (b *Builder) buildTSInsert(
 	// Resolve the columns of the table, separating the data columns and tag columns.
 	// Arrange them in order data columns + tag columns.
 	colCount := table.ColumnCount()
-	cols := make([]*sqlbase.ColumnDescriptor, 0)
-	var dataCols, tagCols []*sqlbase.ColumnDescriptor
-	priTagCols := make([]*sqlbase.ColumnDescriptor, 0)
+	cols := make([]cat.Column, 0)
+	var dataCols, tagCols []cat.Column
+	priTagCols := make([]cat.Column, 0)
 	for i := 0; i < colCount; i++ {
-		col := table.Column(i).(*sqlbase.ColumnDescriptor)
+		col := table.Column(i)
 		if col.IsPrimaryTagCol() {
 			priTagCols = append(priTagCols, col)
 		}
@@ -1242,12 +1242,12 @@ func (b *Builder) buildTSInsert(
 	// user specifies insert field.
 	colMap, _, _ = buildColsForTsInsert(ins, cols, table, true)
 	notFound := false
-	var priTagNames []string
+	var priTagNames []tree.Name
 	for _, col := range priTagCols {
-		if _, ok := colMap[int(col.ID)]; !ok {
+		if _, ok := colMap[int(col.ColID())]; !ok {
 			notFound = true
 		}
-		priTagNames = append(priTagNames, col.Name)
+		priTagNames = append(priTagNames, col.ColName())
 	}
 	if notFound && table.GetTableType() != tree.InstanceTable &&
 		table.GetTableType() != tree.TemplateTable {
@@ -1278,7 +1278,7 @@ func (b *Builder) buildTSInsert(
 			copy(childRowsValue[i], rowsValue[i])
 			childRowsValue[i] = append(childRowsValue[i], childNamePriTag)
 		}
-		colMap[int(priTagCols[0].ID)] = len(childRowsValue[0]) - 1
+		colMap[int(priTagCols[0].ColID())] = len(childRowsValue[0]) - 1
 		rowsValue = childRowsValue
 	}
 
@@ -1488,11 +1488,9 @@ func (mb *mutationBuilder) mapColumnNamesToOrdinals(names tree.NameList) util.Fa
 }
 
 // getTSColumnByName returns the creating index of endpoint corresponding user specified insertion order
-func getTSColumnByName(
-	inputName tree.Name, cols []*sqlbase.ColumnDescriptor,
-) (*sqlbase.ColumnDescriptor, error) {
+func getTSColumnByName(inputName tree.Name, cols []cat.Column) (cat.Column, error) {
 	for i := range cols {
-		if string(inputName) == cols[i].Name {
+		if inputName == cols[i].ColName() {
 			return cols[i], nil
 		}
 	}
@@ -1507,11 +1505,7 @@ func getTSColumnByName(
 // Returns:
 // - return Datums
 func (b *Builder) checkInputForTSInsert(
-	ctx *tree.SemaContext,
-	inScope *scope,
-	ins *tree.Insert,
-	cols []*sqlbase.ColumnDescriptor,
-	colMap map[int]int,
+	ctx *tree.SemaContext, inScope *scope, ins *tree.Insert, cols []cat.Column, colMap map[int]int,
 ) ([]tree.Exprs, error) {
 	input, ok := ins.Rows.Select.(*tree.ValuesClause)
 	if !ok {
@@ -1539,26 +1533,26 @@ func (b *Builder) checkInputForTSInsert(
 		for j := range cols {
 			column := cols[j]
 			// Retrieves the value of the current column from colMap.
-			ord, ok := colMap[int(column.ID)]
+			ord, ok := colMap[int(column.ColID())]
 			if !ok {
 				continue
 			}
 			switch v := inputValues[i][ord].(type) {
 			case *tree.Placeholder:
-				ctx.Placeholders.Types[v.Idx] = &column.Type
+				ctx.Placeholders.Types[v.Idx] = column.DatumType()
 			case *tree.DBool:
-				switch column.Type.Family() {
+				switch column.DatumType().Family() {
 				case types.BoolFamily, types.IntFamily:
 					// do nothing
 				default:
-					return nil, tree.NewDatatypeMismatchError(column.Name, v.String(), column.Type.SQLString())
+					return nil, tree.NewDatatypeMismatchError(string(column.ColName()), v.String(), column.ColTypeStr())
 				}
 			case *tree.FuncExpr:
 				// Currently only the now() function is supported for inserting ts table.
 				if v.Func.FunctionName() != "now" {
 					return nil, pgerror.Newf(pgcode.Syntax, "unsupported function input \"%s\"", v.Func.FunctionName())
 				}
-				texpr, err := v.TypeCheck(ctx, &column.Type)
+				texpr, err := v.TypeCheck(ctx, column.DatumType())
 				if err != nil {
 					return nil, err
 				}
@@ -1570,10 +1564,10 @@ func (b *Builder) checkInputForTSInsert(
 				for k := range inScope.cols {
 					scopeCol := inScope.cols[k]
 					if v.String() == string(scopeCol.name) && scopeCol.IsDeclared() {
-						if column.Type.Family() != scopeCol.typ.Family() {
+						if column.DatumType().Family() != scopeCol.typ.Family() {
 							return nil, pgerror.Newf(pgcode.DatatypeMismatch,
 								"variable \"%s\" type is %s, does not match the column \"%s\" type: %s",
-								scopeCol.name.String(), scopeCol.typ.SQLString(), column.Name, column.Type.SQLString())
+								scopeCol.name.String(), scopeCol.typ.SQLString(), column.ColName(), column.ColTypeStr())
 						}
 						indexVal := tree.NewTypedOrdinalReference(scopeCol.RealIdx(), scopeCol.typ)
 						indexVal.ProcProperty = scopeCol.CopyProcedureProperty()
@@ -1584,7 +1578,7 @@ func (b *Builder) checkInputForTSInsert(
 					}
 				}
 				if !found {
-					return nil, pgerror.Newf(pgcode.Syntax, "unsupported input type relation \"%s\" (column %s)", v.String(), column.Name)
+					return nil, pgerror.Newf(pgcode.Syntax, "unsupported input type relation \"%s\" (column %s)", v.String(), column.ColName())
 				}
 			case *tree.BinaryExpr:
 				return nil, pgerror.Newf(pgcode.Syntax, "unsupported input type BinaryOperator")
@@ -1597,7 +1591,7 @@ func (b *Builder) checkInputForTSInsert(
 					if err1 != nil {
 						panic(err1)
 					}
-					indexVal := tree.NewTypedOrdinalReference(sm.RealIdx(), &column.Type)
+					indexVal := tree.NewTypedOrdinalReference(sm.RealIdx(), column.DatumType())
 					indexVal.ProcProperty = tree.NewUDFColProperty(false, v.VarName)
 					indexVal.SetUdvColFormat(v)
 					inputValues[i][ord] = indexVal
@@ -1606,7 +1600,7 @@ func (b *Builder) checkInputForTSInsert(
 					if !ok {
 						return nil, pgerror.Newf(pgcode.Syntax, "%s is not defined", v.VarName)
 					}
-					texpr, err := val.TypeCheck(ctx, &column.Type)
+					texpr, err := val.TypeCheck(ctx, column.DatumType())
 					if err != nil {
 						return nil, err
 					}
@@ -1733,7 +1727,7 @@ func constructAutoAddStmts(tab cat.Table, ins *tree.Insert, name tree.TableName)
 			if targetCol.IsTagCol() != colDef.IsTag {
 				return []string{}, pgerror.Newf(pgcode.DuplicateColumn, "duplicate %s name: %q", typ, colDef.Name)
 			}
-			if targetCol.Type.Width() < ins.NoSchemaColumns[idx].Type.Width() {
+			if targetCol.ColTypeWidth() < int(ins.NoSchemaColumns[idx].Type.Width()) {
 				if ins.NoSchemaColumns[idx].IsTag {
 					addStmts = append(addStmts, fmt.Sprintf(alterTagTypeStmt, name.String(), colDef.Name.String(), colDef.Type.SQLString()))
 				} else {
@@ -1745,15 +1739,15 @@ func constructAutoAddStmts(tab cat.Table, ins *tree.Insert, name tree.TableName)
 		// instance table does not support specifying tag column
 		if targetCol != nil && targetCol.IsTagCol() && (tab.GetTableType() == tree.InstanceTable ||
 			tab.GetTableType() == tree.TemplateTable) {
-			return []string{}, pgerror.Newf(pgcode.FeatureNotSupported, "cannot insert tag column: \"%s\" for INSTANCE table", targetCol.Name)
+			return []string{}, pgerror.Newf(pgcode.FeatureNotSupported, "cannot insert tag column: \"%s\" for INSTANCE table", targetCol.ColName())
 		}
 	}
 	return addStmts, nil
 }
 
-func getColumnDescs(tab cat.Table) []*sqlbase.ColumnDescriptor {
+func getColumnDescs(tab cat.Table) []cat.Column {
 	colCount := tab.ColumnCount()
-	var cols []*sqlbase.ColumnDescriptor
+	var cols []cat.Column
 	for i := 0; i < colCount; i++ {
 		cols = append(cols, tab.Column(i).(*sqlbase.ColumnDescriptor))
 	}

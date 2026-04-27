@@ -404,19 +404,19 @@ type TSScanFlags struct {
 	ScanAggs bool
 
 	// TagFilter tag col filter exprs
-	TagFilter opt.Exprs
+	TagFilter FiltersExpr
 
 	// BlockFilter ordinary col(except the ts col) filter exprs
 	BlockFilter FiltersExpr
 
 	// PrimaryTagFilter primary tag col filter exprs
-	PrimaryTagFilter opt.Exprs
+	PrimaryTagFilter FiltersExpr
 
 	// PrimaryTagValues primary tag col and value map
 	PrimaryTagValues PTagValues
 
 	// TagIndexFilter tag index col filter exprs
-	TagIndexFilter opt.Exprs
+	TagIndexFilter FiltersExpr
 
 	// TagIndex tag col and value map
 	TagIndex TagIndexInfo
@@ -452,6 +452,8 @@ type TSScanFlags struct {
 type TSFill interface {
 	// ConvertFill convert TSFill of memo to TSFill of AE
 	ConvertFill() *execinfrapb.TSFill
+
+	String() string
 }
 
 // RangeFill extractFill, previousFill, nextFill, closerFill and linearFill
@@ -472,6 +474,15 @@ func (r *RangeFill) ConvertFill() *execinfrapb.TSFill {
 	}
 
 	return &fill
+}
+
+// String returns struct string
+func (r *RangeFill) String() string {
+	ret := fmt.Sprintf("fill-%v-", r.FillType)
+	if r.FillRange != nil {
+		ret += fmt.Sprintf("[%v %v]", r.FillRange.BeforeRange, r.FillRange.AfterRange)
+	}
+	return ret
 }
 
 var _ TSFill = &RangeFill{}
@@ -560,6 +571,11 @@ func (c *ConstFill) ConvertFill() *execinfrapb.TSFill {
 	makeConstFill(c.ConstExpr, &fill)
 
 	return &fill
+}
+
+// String returns struct string
+func (c *ConstFill) String() string {
+	return "fill-" + c.ConstExpr.String()
 }
 
 var _ TSFill = &ConstFill{}
@@ -965,6 +981,39 @@ type TagIndexInfo struct {
 	IndexID   []uint32
 	// TagIndexValues tag index key values
 	TagIndexValues []map[uint32][]string
+}
+
+func (i *TagIndexInfo) String() string {
+	ret := ""
+	if i.UnionType == Intersection {
+		ret += "Intersection"
+	} else if i.UnionType == Combine {
+		ret += "Combine"
+	}
+	ret += "-"
+	if i.IndexID != nil {
+		ret += "indexid"
+		for ix, id := range i.IndexID {
+			ret += fmt.Sprintf("[%v]%v ", ix, id)
+		}
+		ret += "-"
+	}
+	if i.TagIndexValues != nil {
+		ret += "TagIndexValues"
+		for ix, m := range i.TagIndexValues {
+			ret += fmt.Sprintf("[%v]", ix)
+			for k, v := range m {
+				ret += fmt.Sprintf(" [%v] ", k)
+				for _, s := range v {
+					ret += s
+				}
+				ret += " "
+			}
+			ret += "  "
+		}
+		ret += "-"
+	}
+	return ret
 }
 
 // RebuildExprs if the subexpression contains identical expressions, it needs to be rebuilt.

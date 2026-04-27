@@ -104,6 +104,13 @@ type TSSchemaChangeWorker struct {
 	healthyNodes []roachpb.NodeID
 }
 
+// TSSchemaChangerTestingKnobs is for testing the TS Schema Changer.
+// Only create metadata for ts table.
+type TSSchemaChangerTestingKnobs struct{}
+
+// ModuleTestingKnobs is part of the base.ModuleTestingKnobs interface.
+func (*TSSchemaChangerTestingKnobs) ModuleTestingKnobs() {}
+
 // Resume is part of the jobs.Resumer interface.
 func (r *tsSchemaChangeResumer) Resume(
 	ctx context.Context, phs interface{}, resultsCh chan<- tree.Datums,
@@ -138,6 +145,10 @@ func (sw *TSSchemaChangeWorker) exec(ctx context.Context) error {
 		// handle the intermediate state of metadata
 		sw.handleResult(ctx, &d, syncErr)
 	}()
+	// if exec ts ddl in unit test, skip exec in ts engine.
+	if sw.execCfg.TSSchemaChangerTestingKnobs != nil {
+		return nil
+	}
 	opts := retry.Options{
 		InitialBackoff: 100 * time.Millisecond,
 		MaxBackoff:     10 * time.Second,
@@ -1355,6 +1366,9 @@ func (sw *TSSchemaChangeWorker) handleMutationForTSTable(
 		}
 	}
 
+	if sw.p == nil {
+		return errors.Errorf("unvalidated planner")
+	}
 	_, updateDescErr := sw.p.ExecCfg().LeaseManager.Publish(
 		ctx,
 		sw.tableID,
