@@ -46,6 +46,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
+	"gitee.com/kwbasedb/kwbase/pkg/util/tracing"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 	"github.com/pkg/errors"
 )
@@ -605,5 +606,68 @@ func BenchmarkOutbox(b *testing.B) {
 			outboxWG.Wait()
 			streamNotification.Donec <- nil
 		})
+	}
+}
+
+func TestOutboxStatsStats(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	stats := OutboxStats{
+		BytesSent: 1024,
+	}
+
+	statsMap := stats.Stats()
+	if len(statsMap) != 1 {
+		t.Errorf("expected 1 stat, got: %d", len(statsMap))
+	}
+
+	if _, ok := statsMap["outbox.bytes_sent"]; !ok {
+		t.Error("expected 'outbox.bytes_sent' stat")
+	}
+}
+
+func TestOutboxStatsTsStats(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	stats := OutboxStats{}
+
+	tsStats := stats.TsStats()
+	if tsStats != nil {
+		t.Error("expected TsStats() to return nil")
+	}
+}
+
+func TestOutboxStatsGetSpanStatsType(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	stats := OutboxStats{}
+
+	spanStatsType := stats.GetSpanStatsType()
+	if spanStatsType != tracing.SpanStatsTypeDefault {
+		t.Errorf("expected GetSpanStatsType() to return %d, got: %d", tracing.SpanStatsTypeDefault, spanStatsType)
+	}
+}
+
+func TestOutboxStatsStatsForQueryPlan(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	stats := OutboxStats{
+		BytesSent: 1024,
+	}
+
+	statsForPlan := stats.StatsForQueryPlan()
+	if len(statsForPlan) != 1 {
+		t.Errorf("expected 1 stat for query plan, got: %d", len(statsForPlan))
+	}
+}
+
+func TestOutboxStatsTsStatsForQueryPlan(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	stats := OutboxStats{}
+
+	tsStatsForPlan := stats.TsStatsForQueryPlan()
+	if tsStatsForPlan != nil {
+		t.Error("expected TsStatsForQueryPlan() to return nil")
 	}
 }

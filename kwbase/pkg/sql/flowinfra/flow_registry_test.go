@@ -26,6 +26,7 @@ package flowinfra
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"sync"
 	"testing"
@@ -35,7 +36,9 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/distsqlutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
@@ -676,5 +679,193 @@ func TestFlowCancelPartiallyBlocked(t *testing.T) {
 	_, meta = left.Next()
 	if meta.Err != sqlbase.QueryCanceledError {
 		t.Fatal("expected query canceled, found", meta.Err)
+	}
+}
+
+// mockRowReceiver is a mock implementation of execinfra.RowReceiver for testing.
+type mockRowReceiver struct {
+	rows   []sqlbase.EncDatumRow
+	meta   []*execinfrapb.ProducerMetadata
+	done   bool
+	closed bool
+	typs   []types.T
+}
+
+func (m *mockRowReceiver) Push(
+	row sqlbase.EncDatumRow, meta *execinfrapb.ProducerMetadata,
+) execinfra.ConsumerStatus {
+	if row != nil {
+		m.rows = append(m.rows, row)
+	}
+	if meta != nil {
+		m.meta = append(m.meta, meta)
+	}
+	return execinfra.NeedMoreRows
+}
+
+func (m *mockRowReceiver) PushPGResult(ctx context.Context, res []byte) error {
+	return nil
+}
+
+func (m *mockRowReceiver) AddPGComplete(
+	complete string, stmtType tree.StatementType, rowsAffected int,
+) {
+}
+
+func (m *mockRowReceiver) Types() []types.T {
+	return m.typs
+}
+
+func (m *mockRowReceiver) ProducerDone() {
+	m.done = true
+}
+
+func (m *mockRowReceiver) GetCols() int {
+	return len(m.typs)
+}
+
+func (m *mockRowReceiver) AddStats(time time.Duration, isAddRows bool) {
+}
+
+func (m *mockRowReceiver) GetStats() execinfra.RowStats {
+	return execinfra.RowStats{}
+}
+
+func (m *mockRowReceiver) ConsumerDone() {
+	m.closed = true
+}
+
+func (m *mockRowReceiver) ConsumerClosed() bool {
+	return m.closed
+}
+
+// mockQueue is a mock implementation of Queue for testing.
+type mockQueue struct{}
+
+func (m *mockQueue) Push(ctx context.Context, msg interface{}) error {
+	return nil
+}
+
+func (m *mockQueue) Pop(ctx context.Context) (interface{}, error) {
+	return nil, nil
+}
+
+func (m *mockQueue) Close() error {
+	return nil
+}
+
+func TestMessageQueueNewMessageQueueInfo(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	receiver := &mockRowReceiver{}
+	typs := []types.T{
+		*types.Int,
+	}
+
+	mq := NewMessageQueueInfo(nil, receiver, typs)
+	if mq == nil {
+		t.Error("expected NewMessageQueueInfo() to return a non-nil MessageQueue")
+	}
+	if len(mq.typs) != len(typs) {
+		t.Error("expected MessageQueue.typs to be set correctly")
+	}
+}
+
+func TestMessageQueueAddRowLocked(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	ctx := context.Background()
+	receiver := &mockRowReceiver{}
+	typs := []types.T{
+		*types.Int,
+	}
+
+	mq := NewMessageQueueInfo(nil, receiver, typs)
+
+	// Initialize the mutex and condition variable
+	mq.mu.Lock()
+	mq.mu.cond = sync.NewCond(&mq.mu.Mutex)
+
+	// Create a row
+	row := sqlbase.EncDatumRow{}
+
+	// Test adding a row
+	err := mq.addRowLocked(ctx, row)
+	if err != nil {
+		t.Errorf("expected addRowLocked() to succeed, got: %v", err)
+	}
+	if mq.mu.rowBufLen != 1 {
+		t.Errorf("expected rowBufLen to be 1, got: %d", mq.mu.rowBufLen)
+	}
+
+	mq.mu.Unlock()
+}
+
+func TestMessageQueueAddMetadataLocked(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	receiver := &mockRowReceiver{}
+	typs := []types.T{
+		*types.Int,
+	}
+
+	mq := NewMessageQueueInfo(nil, receiver, typs)
+
+	// Initialize the mutex and condition variable
+	mq.mu.Lock()
+	mq.mu.cond = sync.NewCond(&mq.mu.Mutex)
+
+	// Create metadata
+	meta := &execinfrapb.ProducerMetadata{}
+
+	// Test adding metadata
+	mq.addMetadataLocked(meta)
+	if len(mq.mu.metadataBuf) != 1 {
+		t.Errorf("expected metadataBuf length to be 1, got: %d", len(mq.mu.metadataBuf))
+	}
+
+	mq.mu.Unlock()
+}
+
+func TestIsFlowRetryableError(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Test with a retryable error
+	retryableErr := &flowRetryableError{cause: nil}
+	if !IsFlowRetryableError(retryableErr) {
+		t.Error("expected IsFlowRetryableError() to return true for flowRetryableError")
+	}
+
+	// Test with a non-retryable error
+	nonRetryableErr := fmt.Errorf("non-retryable error")
+	if IsFlowRetryableError(nonRetryableErr) {
+		t.Error("expected IsFlowRetryableError() to return false for non-retryable error")
+	}
+}
+
+func TestNewInboundStreamInfo(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	receiver := RowInboundStreamHandler{&mockRowReceiver{}}
+	var wg sync.WaitGroup
+
+	isi := NewInboundStreamInfo(receiver, &wg)
+	if isi == nil {
+		t.Error("expected NewInboundStreamInfo() to return a non-nil InboundStreamInfo")
+	}
+	if isi.receiver != receiver {
+		t.Error("expected InboundStreamInfo.receiver to be set correctly")
+	}
+	if isi.waitGroup != &wg {
+		t.Error("expected InboundStreamInfo.waitGroup to be set correctly")
+	}
+	if isi.connected {
+		t.Error("expected InboundStreamInfo.connected to be false initially")
+	}
+	if isi.canceled {
+		t.Error("expected InboundStreamInfo.canceled to be false initially")
+	}
+	if isi.finished {
+		t.Error("expected InboundStreamInfo.finished to be false initially")
 	}
 }
