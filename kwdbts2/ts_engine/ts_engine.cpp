@@ -170,6 +170,8 @@ TSEngineImpl::TSEngineImpl(const EngineOptions& engine_options)
 }
 
 TSEngineImpl::~TSEngineImpl() {
+  enable_cal_agg_thread_ = false;
+  closeCalcAggThread();
   DestoryExecutor();
 #ifndef WITH_TESTS
   BrMgr::GetInstance().Destroy();
@@ -385,10 +387,76 @@ KStatus TSEngineImpl::Init(kwdbContext_p ctx) {
       return KStatus::FAIL;
     }
   }
-  for (const auto& vgroup : vgroups_) {
-    vgroup->initCalcAggThread();
-  }
+  initCalcAggThread();
   return KStatus::SUCCESS;
+}
+
+void TSEngineImpl::calcAggRoutine(void* args) {
+  while (!KWDBDynamicThreadPool::GetThreadPool().IsCancel() && enable_cal_agg_thread_) {
+    if (KWDBDynamicThreadPool::GetThreadPool().IsCancel() || !enable_cal_agg_thread_) {
+      break;
+    }
+
+    // Engine serial agg scheduler: one engine thread walks all vgroups in order.
+    for (const auto& vgroup : vgroups_) {
+      if (KWDBDynamicThreadPool::GetThreadPool().IsCancel() || !enable_cal_agg_thread_) {
+        break;
+      }
+
+      KStatus s = vgroup->RecalcCountStat();
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("RecalcCountStat failed for vgroup [%u].", vgroup->GetVGroupID())
+      }
+
+      if (CLUSTER_SETTING_PARTITION_AGG) {
+        s = vgroup->CalcPartitionAgg();
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("CalcPartitionAgg failed for vgroup [%u].", vgroup->GetVGroupID())
+        }
+      }
+    }
+    if (KWDBDynamicThreadPool::GetThreadPool().IsCancel() || !enable_cal_agg_thread_) {
+      break;
+    }
+
+    std::unique_lock<std::mutex> lock(calc_agg_wait_mutex_);
+    calc_agg_wait_cv_.wait_for(lock, EngineOptions::agg_stats_recalc_cycle == 0 ?
+        std::chrono::minutes(5) : std::chrono::seconds(EngineOptions::agg_stats_recalc_cycle),
+        [this]() { return !enable_cal_agg_thread_; });
+  }
+}
+
+void TSEngineImpl::initCalcAggThread() {
+#ifdef WITH_TESTS
+  return;
+#endif
+  enable_cal_agg_thread_ = true;
+  KWDBOperatorInfo kwdb_operator_info;
+  kwdb_operator_info.SetOperatorName("Engine::SerialAggScheduler");
+  kwdb_operator_info.SetOperatorOwner("Engine");
+  kwdb_operator_info.SetOperatorStartTime((k_uint64)time(nullptr));
+  calc_agg_thread_id_ = KWDBDynamicThreadPool::GetThreadPool().ApplyThread(
+      std::bind(&TSEngineImpl::calcAggRoutine, this, std::placeholders::_1), this, &kwdb_operator_info);
+  if (calc_agg_thread_id_ < 1) {
+    LOG_ERROR("Engine serial agg scheduler create failed");
+    return;
+  }
+  LOG_INFO("Engine agg scheduler started. tid=%lu, vg=%zu",
+           calc_agg_thread_id_, vgroups_.size());
+}
+
+void TSEngineImpl::closeCalcAggThread() {
+#ifdef WITH_TESTS
+  return;
+#endif
+  if (calc_agg_thread_id_ > 0) {
+    LOG_INFO("Engine agg scheduler stopping. tid=%lu", calc_agg_thread_id_);
+    enable_cal_agg_thread_ = false;
+    calc_agg_wait_cv_.notify_all();
+    KWDBDynamicThreadPool::GetThreadPool().JoinThread(calc_agg_thread_id_, 0);
+    LOG_INFO("Engine agg scheduler stopped. tid=%lu", calc_agg_thread_id_);
+    calc_agg_thread_id_ = 0;
+  }
 }
 
 void TSEngineImpl::PreClearDroppedTables() {

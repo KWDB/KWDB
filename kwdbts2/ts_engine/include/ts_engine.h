@@ -12,6 +12,7 @@
 #pragma once
 
 #include <atomic>
+#include <condition_variable>
 #include <list>
 #include <map>
 #include <memory>
@@ -88,6 +89,13 @@ class TSEngineImpl : public TSEngine {
   TsHashRWLatch tag_lock_;
   // std::unique_ptr<TsMemSegmentManager> mem_seg_mgr_ = nullptr;
   PartitionIntervalRecorder* interval_recorder_ = nullptr;
+
+  // Engine serial agg scheduler: one engine-level thread serially recalculates
+  // count stats / partition agg for all vgroups.
+  bool enable_cal_agg_thread_{true};
+  KThreadID calc_agg_thread_id_{0};
+  std::mutex calc_agg_wait_mutex_;
+  std::condition_variable calc_agg_wait_cv_;
 
  public:
   explicit TSEngineImpl(const EngineOptions& engine_options);
@@ -347,6 +355,11 @@ class TSEngineImpl : public TSEngine {
 
 
  private:
+  // Engine serial agg scheduler main loop.
+  void calcAggRoutine(void* args);
+  void initCalcAggThread();
+  void closeCalcAggThread();
+
   TsVGroup* GetVGroupByID(kwdbContext_p ctx, uint32_t vgroup_id);
 
   KStatus putTagData(kwdbContext_p ctx, TSTableID table_id, uint32_t groupid, uint32_t entity_id, TsRawPayload& payload);

@@ -92,8 +92,6 @@ TsVGroup::TsVGroup(EngineOptions* engine_options, uint32_t vgroup_id, TsEngineSc
 TsVGroup::~TsVGroup() {
   enable_compact_thread_ = false;
   closeCompactThread();
-  enable_cal_agg_thread_ = false;
-  closeCalcAggThread();
   for (auto it : entity_latest_row_) {
     if (it.second.last_payload.data != nullptr) {
       free(it.second.last_payload.data);
@@ -2985,60 +2983,5 @@ KStatus TsVGroup::CalcPartitionAgg(bool force) {
   }
   version_manager_->ApplyUpdate(&update);
   return KStatus::SUCCESS;
-}
-
-void TsVGroup::calcAggRoutine(void* args) {
-  while (!KWDBDynamicThreadPool::GetThreadPool().IsCancel() && enable_cal_agg_thread_) {
-    // If the thread pool stops or the system is no longer running, exit the loop
-    if (KWDBDynamicThreadPool::GetThreadPool().IsCancel() || !enable_cal_agg_thread_) {
-      break;
-    }
-    KStatus s = RecalcCountStat();
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("RecalcCountStat failed.")
-    }
-    if (CLUSTER_SETTING_PARTITION_AGG) {
-      s = CalcPartitionAgg();
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("CalPartitionAgg failed")
-      }
-    }
-    std::unique_lock<std::mutex> lock(calc_agg_wait_mutex_);
-    calc_agg_wait_cv_.wait_for(lock, EngineOptions::agg_stats_recalc_cycle == 0 ?
-        std::chrono::minutes(5) : std::chrono::seconds(EngineOptions::agg_stats_recalc_cycle),
-        [this]() { return !enable_cal_agg_thread_; });
-  }
-}
-
-void TsVGroup::initCalcAggThread() {
-#ifdef WITH_TESTS
-  return;
-#endif
-  KWDBOperatorInfo kwdb_operator_info;
-  // Set the name and owner of the operation
-  kwdb_operator_info.SetOperatorName("VGroup::CalAggThread");
-  kwdb_operator_info.SetOperatorOwner("VGroup");
-  // Record the start time of the operation
-  kwdb_operator_info.SetOperatorStartTime((k_uint64)time(nullptr));
-  // Start asynchronous thread
-  calc_agg_thread_id_ = KWDBDynamicThreadPool::GetThreadPool().ApplyThread(
-  std::bind(&TsVGroup::calcAggRoutine, this, std::placeholders::_1), this, &kwdb_operator_info);
-  if (calc_agg_thread_id_ < 1) {
-    // If thread creation fails, record error message
-    LOG_ERROR("VGroup cal agg thread create failed");
-  }
-}
-
-void TsVGroup::closeCalcAggThread() {
-#ifdef WITH_TESTS
-  return;
-#endif
-  if (calc_agg_thread_id_ > 0) {
-    // Wake up potentially dormant agg thread
-    enable_cal_agg_thread_ = false;
-    calc_agg_wait_cv_.notify_all();
-    // Waiting for the agg thread to complete
-    KWDBDynamicThreadPool::GetThreadPool().JoinThread(calc_agg_thread_id_, 0);
-  }
 }
 }  //  namespace kwdbts

@@ -89,16 +89,9 @@ class TsVGroup {
   std::mutex recalc_count_mutex_;
   std::map<PartitionIdentifier, std::map<TSTableID, std::unordered_set<TSEntityID>>> recalc_count_entities_;
 
-  // partition agg thread flag
-  bool enable_cal_agg_thread_{true};
-  // Id of the partition agg thread
-  KThreadID calc_agg_thread_id_{0};
   // serialize partition agg calculation for one vgroup.
   // manual vacuum should wait for it, background recalculation should skip if busy.
   std::mutex calc_agg_run_mutex_;
-  // synchronization primitives only for calc agg thread waiting/wakeup.
-  std::mutex calc_agg_wait_mutex_;
-  std::condition_variable calc_agg_wait_cv_;
 
   std::atomic<uint64_t> max_osn_{LOG_BLOCK_HEADER_SIZE + BLOCK_SIZE};
 
@@ -500,9 +493,6 @@ class TsVGroup {
 
   KStatus CalcPartitionAgg(bool force = false);
 
-  // Initialize calculate aggregation thread.
-  void initCalcAggThread();
-
  private:
   // check partition of rows exist. if not creating it.
   // KStatus makeSurePartitionExist(TSTableID table_id, const std::list<TSMemSegRowData>& rows);
@@ -518,10 +508,6 @@ class TsVGroup {
   // Close compact thread.
   void closeCompactThread();
 
-  // Thread scheduling executes calculate aggregation tasks.
-  void calcAggRoutine(void* args);
-  // Close calculate aggregation thread.
-  void closeCalcAggThread();
 
   struct ClassifiedEntities {
     std::vector<uint32_t> calc_entities_;
