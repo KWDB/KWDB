@@ -22,6 +22,8 @@ DATA_DIR=${7:-"${QA_DIR}/tsbs_test/data"}
 QUERY_WORKERS=${8:-"8"}
 # 设置默认值为false，防止变量未定义导致的错误
 UPDATE_THRESHOLD=${UPDATE_THRESHOLD:-false}
+# COMPARE_THRESHOLD控制是否对比阈值，默认为false（不对比）
+COMPARE_THRESHOLD=${COMPARE_THRESHOLD:-false}
 IFS=',' read -ra TSBS_SCALE_LIST <<< "${scales}"
 BIN_DIR=${BIN_DIR:-"/home/inspur/src/gitee.com/kwbasedb/install/bin"}
 KWBIN=${KWBIN:-"${BIN_DIR}/kwbase"}
@@ -59,7 +61,8 @@ mkdir -p ${loadDataDir}
 mkdir -p ${queryDataDir}
 mkdir -p ${thresholdDir}
 
-if [[ ! -f "$thresholdDir/TSBS_THRESHOLD.csv" && $UPDATE_THRESHOLD = false ]]; then
+# 只有在需要对比阈值时才检查阈值文件是否存在
+if [[ ! -f "$thresholdDir/TSBS_THRESHOLD.csv" && $UPDATE_THRESHOLD = false && $COMPARE_THRESHOLD = true ]]; then
     echo "Threshold not found. Please run with UPDATE_THRESHOLD=true first."
     exit 1
 fi
@@ -189,8 +192,14 @@ for scale in ${TSBS_SCALE_LIST[@]}; do
             echo "update threshold failed"
             exit 1
         fi
-    else
+    elif [ "${COMPARE_THRESHOLD}" = "true" ]; then
         python3 ${QA_DIR}/tsbs_test/record_result.py -v tsbs -p ${time} -f ${format} -s ${scale} -n load -w ${QUERY_WORKERS} -t ${query_times} -r ${loadResultDir}/${tsbs_case}_${format}_scale_${scale}.log -d ${queryResultDir} -o ${parallel_degree} -c ${thresholdDir}
+        if [ $? = 1 ]; then
+            echo "record load result failed"
+            exit 1
+        fi
+    else
+        python3 ${QA_DIR}/tsbs_test/record_result.py -v tsbs -p ${time} -f ${format} -s ${scale} -n load -w ${QUERY_WORKERS} -t ${query_times} -r ${loadResultDir}/${tsbs_case}_${format}_scale_${scale}.log -d ${queryResultDir} -o ${parallel_degree}
         if [ $? = 1 ]; then
             echo "record load result failed"
             exit 1
@@ -246,8 +255,14 @@ for scale in ${TSBS_SCALE_LIST[@]}; do
                 echo "update threshold failed"
                 exit 1
             fi
-        else
+        elif [ "${COMPARE_THRESHOLD}" = "true" ]; then
             python3 ${QA_DIR}/tsbs_test/record_result.py -v tsbs -p ${time} -f ${format} -s ${scale} -n ${QUERY_TYPE} -w ${QUERY_WORKERS} -t ${query_times} -r ${query_result} -d ${queryResultDir} -o ${parallel_degree} -c ${thresholdDir}
+            if [ $? = 1 ]; then
+                echo "record result ${QUERY_TYPE} failed"
+                exit 1
+            fi
+        else
+            python3 ${QA_DIR}/tsbs_test/record_result.py -v tsbs -p ${time} -f ${format} -s ${scale} -n ${QUERY_TYPE} -w ${QUERY_WORKERS} -t ${query_times} -r ${query_result} -d ${queryResultDir} -o ${parallel_degree}
             if [ $? = 1 ]; then
                 echo "record result ${QUERY_TYPE} failed"
                 exit 1
