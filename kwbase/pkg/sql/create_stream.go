@@ -27,6 +27,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/json"
+	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"github.com/cockroachdb/errors"
 )
@@ -319,6 +320,8 @@ VALUES ($1,$2,$3,$4,$5)`,
 			close(n.run.errCh)
 			close(n.run.resultsCh)
 		}()
+
+		log.Infof(params.ctx, "create and start stream %s(%d)", n.n.StreamName, streamSchema.id)
 	}
 
 	return nil

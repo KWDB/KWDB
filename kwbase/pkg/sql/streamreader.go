@@ -218,6 +218,11 @@ func (s *streamReaderProcessor) Start(ctx context.Context) context.Context {
 	s.rowBuffer = newStreamReaderRowBuffer(
 		s.FlowCtx, s.spec, s.ordering, s.streamOpts, s.recalculator, s.streamSink.HasAgg)
 
+	if err := s.recalculator.checkJobStreamNotExist(s.spec.JobID); err != nil {
+		s.MoveToDraining(err)
+		return ctx
+	}
+
 	// process potential unprocessed rows, including historical rows
 	if s.streamOpts.ProcessHistory {
 		if err = s.recalculator.HandleHistoryRows(); err != nil {
@@ -250,7 +255,7 @@ func (s *streamReaderProcessor) Start(ctx context.Context) context.Context {
 	}
 
 	s.startAsyncTasks(ctx, s.spec.Metadata, jobDetails.ActiveNodeList)
-	log.Infof(s.Ctx, "successful to start stream %q.", s.spec.Metadata.Name)
+	log.Infof(s.Ctx, "successful to start stream %q, id %d.", s.spec.Metadata.Name, s.spec.Metadata.ID)
 
 	if len(rowsResend) > 0 {
 		// resend rows in last window,
@@ -610,6 +615,11 @@ func (s *streamReaderProcessor) checkpoint() error {
 	var err error
 
 	defer s.notifyNext()
+
+	if err := s.recalculator.checkJobStreamNotExist(s.spec.JobID); err != nil {
+		log.Warningf(s.Ctx, err.Error())
+		return err
+	}
 
 	lowWaterMark, err := s.extractGlobalHighWaterMark()
 	if err != nil {

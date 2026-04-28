@@ -1051,6 +1051,8 @@ CREATE STREAM cpu_stream_normal_3 INTO stream_db_fvt_out1.cpu_avg_normal WITH OP
 CREATE STREAM cpu_stream_normal_4 INTO stream_db_fvt_out1.cpu_avg_normal WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='1500ms',heartbeat_interval='2s') AS SELECT k_timestamp AS k_timestamp, hostname AS hostname, usage_user+usage_system AS usage_user_system, usage_idle*usage_nice AS usage_idel_nice, usage_iowait/usage_irq AS usage_iowait_irq FROM stream_db_fvt.cpu_normal;
 CREATE STREAM cpu_stream_normal_5 INTO stream_db_fvt_out.cpu_normal WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT k_timestamp AS k_timestamp, usage_steal AS usage_steal, usage_guest AS usage_guest, usage_guest_nice AS usage_guest_nice, hostname AS hostname, region AS region, service_environment AS service_environment FROM stream_db_fvt.cpu_normal;
 
+select pg_sleep(1);
+
 -- show jobs
 select count(*) from [show jobs where job_type='STREAM'];
 select job_type, description, user_name, statement, error from [show jobs where job_type='STREAM'];
@@ -1333,7 +1335,7 @@ CREATE STREAM cpu_stream_agg_rel_6 INTO stream_db_fvt_out1.cpu_avg_agg6 WITH OPT
 -- 7. cannot create stream without any agg function (group by hostname only)
 CREATE STREAM cpu_stream_agg_rel_7 INTO stream_db_fvt_out1.cpu_avg_agg7 WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY hostname;
 
-select pg_sleep(2);
+select pg_sleep(1);
 
 INSERT INTO stream_db_fvt.cpu_agg values ('2023-05-31 10:00:30.123456789', 58, 10, 24, 61, 22, 63, 6, 44, 80, 38, 'host_1', '', '', '', '', '', '', '', '', '');
 INSERT INTO stream_db_fvt.cpu_agg values ('2023-05-31 10:00:40.123456789', 58, 55, 24, 61, 22, 63, 6, 44, 80, 38, 'host_0', '', '', '', '', '', '', '', '', '');

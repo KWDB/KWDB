@@ -1263,6 +1263,11 @@ CREATE STREAM
 ERROR: the checkpoint interval should be larger than the heartbeat interval
 > CREATE STREAM cpu_stream_normal_5 INTO stream_db_fvt_out.cpu_normal WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT k_timestamp AS k_timestamp, usage_steal AS usage_steal, usage_guest AS usage_guest, usage_guest_nice AS usage_guest_nice, hostname AS hostname, region AS region, service_environment AS service_environment FROM stream_db_fvt.cpu_normal;
 CREATE STREAM
+> select pg_sleep(1);
+  pg_sleep
+------------
+    true
+(1 row)
 > select count(*) from [show jobs where job_type='STREAM'];
   count
 ---------
@@ -1589,7 +1594,7 @@ CREATE STREAM
 CREATE STREAM
 > CREATE STREAM cpu_stream_agg_rel_7 INTO stream_db_fvt_out1.cpu_avg_agg7 WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY hostname;
 ERROR: missing time_bucket or window function in GROUP BY cluster
-> select pg_sleep(2);
+> select pg_sleep(1);
   pg_sleep
 ------------
     true

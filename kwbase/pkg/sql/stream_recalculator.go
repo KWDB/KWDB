@@ -1820,6 +1820,28 @@ func (sr *streamRecalculator) isSlideCountWindow() bool {
 	return sr.streamSink.HasSlide && sr.streamSink.Function == memo.CountWindow
 }
 
+func (sr *streamRecalculator) checkJobStreamNotExist(jobID int64) error {
+	row, err := sr.distInternalExecutor.QueryRowEx(
+		sr.ctx,
+		"stream-exist",
+		nil,
+		sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
+		"SELECT id FROM system.kwdb_streams WHERE id=$1 AND job_id=$2",
+		sr.instanceID,
+		jobID,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	if row == nil {
+		return errors.Errorf("Job %d of stream %s with ID %d does not exist.", jobID, sr.streamName, sr.instanceID)
+	}
+
+	return nil
+}
+
 // constructTimestampDatum constructs the tree.Datum using the input watermark (milliseconds)
 func constructTimestampDatum(watermark int64, typ types.T) tree.Datum {
 	switch typ.Family() {

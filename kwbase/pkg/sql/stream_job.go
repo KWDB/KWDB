@@ -89,6 +89,9 @@ func (s *streamResumer) Resume(
 			if strings.Contains(msg, "stopped successfully") {
 				log.Infof(ctx, "stream %q is stopped by user: %s", streamName, msg)
 				break
+			} else if strings.Contains(msg, "does not exist") {
+				log.Info(ctx, msg)
+				break
 			} else {
 				log.Errorf(ctx, "stream %q is existed with error: %s, retried times %d", streamName, msg, r.CurrentAttempts())
 
@@ -200,13 +203,18 @@ func (p *planner) updateStreamRunHistory(
 	ctx context.Context, job *jobs.Job, jobError error, streamID uint64,
 ) error {
 	var err error
-	stream, err := p.loadStreamByID(ctx, streamID)
+	var stream *StreamMetadata
+	stream, err = p.loadStreamByID(ctx, streamID)
 	if err != nil {
 		return err
 	}
 
 	if stream == nil {
 		return errors.Errorf("stream with id %d does not exist", streamID)
+	}
+
+	if stream.jobID > 0 && stream.jobID != *job.ID() {
+		return errors.Errorf("Job ID %d does not belong to stream %s (%d).", *job.ID(), stream.name, streamID)
 	}
 
 	status, rInfo, err := constructStreamRunInfo(stream, job, jobError)
