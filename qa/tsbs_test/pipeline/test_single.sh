@@ -74,7 +74,7 @@ CURR_HOST_IP=`hostname -I | awk '{print $1}'`
 
 for scale in "${TSBS_SCALE_LIST[@]}"; do
     sh -c "docker exec -i ${CONTAINER_NAME_SINGLE} /home/inspur/src/gitee.com/kwbasedb/qa/tsbs_test/pipeline/start_in_container.sh ${CLUSTER_NODE_NUM} ${CURR_HOST_IP} 27260 8184 37360 ${ENABLE_BUFFER_POOL}"
-    sh -c "docker exec -i ${CONTAINER_NAME_SINGLE} /home/inspur/src/gitee.com/kwbasedb/qa/tsbs_test/pipeline/test_in_container.sh ${scale} ${TSBS_FORMAT} ${KWDB_CT_NAME} ${BRANCH_NAME} ${QUERY_WORKERS} ${QUERY_TIMES} ${ENABLE_PERF} ${INSERT_TYPE} ${CLUSTER_NODE_NUM} ${CURR_HOST_IP} ${WAL} ${REPLICA_MODE} ${LOAD_WORKERS} ${INSERT_DIRECT} ${PARALLEL_DEGREE} ${ENABLE_BUFFER_POOL} ${TS_AUTOMATIC_COLLECTION} ${PIPELINE} ${VECTORIZE} ${BLOCK_CACHE_MEMORY_SIZE} /home/inspur/src/reports true 27260 8184 37360 ${UPDATE_THRESHOLD} ${KWBASE_LICENSE} ${QUERY_TYPES_PARAM} ${COMPARE_THRESHOLD}"
+    sh -c "docker exec -i ${CONTAINER_NAME_SINGLE} /home/inspur/src/gitee.com/kwbasedb/qa/tsbs_test/pipeline/test_in_container.sh ${scale} ${TSBS_FORMAT} ${KWDB_CT_NAME} ${BRANCH_NAME} ${QUERY_WORKERS} ${QUERY_TIMES} ${ENABLE_PERF} ${INSERT_TYPE} ${CLUSTER_NODE_NUM} ${CURR_HOST_IP} ${WAL} ${REPLICA_MODE} ${LOAD_WORKERS} ${INSERT_DIRECT} ${PARALLEL_DEGREE} ${ENABLE_BUFFER_POOL} ${TS_AUTOMATIC_COLLECTION} ${PIPELINE} ${VECTORIZE} ${BLOCK_CACHE_MEMORY_SIZE} /home/inspur/src/reports true 27260 8184 37360 ${UPDATE_THRESHOLD} '${KWBASE_LICENSE}' '${QUERY_TYPES_PARAM}' '${COMPARE_THRESHOLD}'"
     exit_code=$?
     if [ $exit_code -ne 0 ]; then
         echo "FAILED: Single node Scale ${scale} TSBS test failed"
