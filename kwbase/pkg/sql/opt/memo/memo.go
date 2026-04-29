@@ -534,7 +534,7 @@ func (m *Memo) Init(evalCtx *tree.EvalContext) {
 	m.TimeBucketEnabled = evalCtx.SessionData.TimeBucketEnabled
 	if evalCtx.Settings != nil {
 		m.tsOrderedScan = opt.TSOrderedTable.Get(&evalCtx.Settings.SV)
-		m.tsCanPushAllProcessor = opt.PushdownAll.Get(&evalCtx.Settings.SV)
+		m.tsCanPushAllProcessor = opt.EffectivePushdownAll(&evalCtx.Settings.SV)
 		m.tsForcePushGroupToTSEngine = !stats.AutomaticTsStatisticsClusterMode.Get(&evalCtx.Settings.SV)
 		m.tsQueryOptMode = opt.TSQueryOptMode.Get(&evalCtx.Settings.SV)
 	} else {
@@ -718,7 +718,7 @@ func (m *Memo) IsStale(
 		m.saveTablesPrefix != evalCtx.SessionData.SaveTablesPrefix ||
 		m.insertFastPath != evalCtx.SessionData.InsertFastPath ||
 		m.tsOrderedScan != opt.TSOrderedTable.Get(&evalCtx.Settings.SV) ||
-		m.tsCanPushAllProcessor != opt.PushdownAll.Get(&evalCtx.Settings.SV) ||
+		m.tsCanPushAllProcessor != opt.EffectivePushdownAll(&evalCtx.Settings.SV) ||
 		m.tsQueryOptMode != opt.TSQueryOptMode.Get(&evalCtx.Settings.SV) ||
 		m.tsForcePushGroupToTSEngine == stats.AutomaticTsStatisticsClusterMode.Get(&evalCtx.Settings.SV) ||
 		m.maxPushLimitNumber != evalCtx.SessionData.MaxPushLimitNumber ||

@@ -1820,6 +1820,9 @@ func (s *Server) Start(ctx context.Context) error {
 	advAddrU := util.NewUnresolvedAddr("tcp", s.cfg.AdvertiseAddr)
 	advSQLAddrU := util.NewUnresolvedAddr("tcp", s.cfg.SQLAdvertiseAddr)
 	brpcAddrU := util.NewUnresolvedAddr("tcp", s.cfg.AdvertiseBrpcAddr)
+	if base.IsWindows() {
+		brpcAddrU = util.NewUnresolvedAddr("", "")
+	}
 	filtered := s.cfg.FilterGossipBootstrapResolvers(ctx, listenAddrU, advAddrU)
 	s.gossip.Start(advAddrU, filtered)
 	log.Event(ctx, "started gossip")
@@ -2669,6 +2672,9 @@ func (s *Server) startServeUI(
 }
 
 func (s *Server) checkBRPC(ctx context.Context) error {
+	if base.IsWindows() {
+		return nil
+	}
 	var err error
 	_, err = listen(ctx, &s.cfg.BRPCAddr, &s.cfg.AdvertiseBrpcAddr, "brpc")
 	if err != nil {

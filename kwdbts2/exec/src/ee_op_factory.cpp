@@ -33,12 +33,28 @@
 #include "ee_result_collector_op.h"
 #include "ee_local_inbound_op.h"
 #include "ee_local_merge_inbound_op.h"
+#ifndef _WIN32
 #include "ee_remote_inbound_op.h"
 #include "ee_remote_merge_sort_inbound_op.h"
 #include "ee_router_outbound_op.h"
+#endif
 #include "ee_local_outbound_op.h"
 
 namespace kwdbts {
+
+#ifdef _WIN32
+namespace {
+
+KStatus ReturnWindowsBrpcUnsupported(const char* op_name) {
+  LOG_ERROR("%s requires brpc, which is disabled on Windows.", op_name);
+  EEPgErrorInfo::SetPgErrorInfo(
+      ERRCODE_FEATURE_NOT_SUPPORTED,
+      "Windows does not support AE-to-AE remote TS streams when brpc is disabled");
+  return KStatus::FAIL;
+}
+
+}  // namespace
+#endif
 
 KStatus OpFactory::NewTagScan(kwdbContext_p ctx, TsFetcherCollection* collection, const PostProcessSpec& post,
                               const TSProcessorCoreUnion& core,
@@ -284,7 +300,11 @@ KStatus OpFactory::NewSynchronizer(kwdbContext_p ctx, TsFetcherCollection* colle
   }
 
   if (is_routor) {
+#ifdef _WIN32
+    Return(ReturnWindowsBrpcUnsupported("RouterOutboundOperator"));
+#else
     *iterator = NewIterator<RouterOutboundOperator>(collection, const_cast<TSOutputRouterSpec*>(&output_spec), *table);
+#endif
   } else {
     *iterator = NewIterator<LocalOutboundOperator>(collection, const_cast<TSOutputRouterSpec*>(&output_spec), *table);
   }
@@ -418,11 +438,15 @@ KStatus OpFactory::NewInboundOperator(kwdbContext_p ctx, TsFetcherCollection* co
                           BaseOperator **iterator, TABLE **table, bool is_remote, bool is_ordered) {
   EnterFunc();
   if (is_remote) {
+#ifdef _WIN32
+    Return(ReturnWindowsBrpcUnsupported("RemoteInboundOperator"));
+#else
     if (is_ordered) {
       *iterator = NewIterator<RemoteMergeSortInboundOperator>(collection, spec, *table);
     } else {
       *iterator = NewIterator<RemoteInboundOperator>(collection, spec, *table);
     }
+#endif
   } else {
     if (is_ordered) {
       *iterator = NewIterator<LocalMergeInboundOperator>(collection, spec, *table);
@@ -443,7 +467,11 @@ KStatus OpFactory::NewOutboundOperator(kwdbContext_p ctx, TsFetcherCollection* c
                         TSOutputRouterSpec* spec, BaseOperator **iterator, TABLE **table, bool is_remote) {
   EnterFunc();
   if (is_remote) {
+#ifdef _WIN32
+    Return(ReturnWindowsBrpcUnsupported("RouterOutboundOperator"));
+#else
     *iterator = NewIterator<RouterOutboundOperator>(collection, spec, *table);
+#endif
   } else {
     *iterator = NewIterator<LocalOutboundOperator>(collection, spec, *table);
   }

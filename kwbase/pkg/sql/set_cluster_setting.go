@@ -32,6 +32,7 @@ import (
 	"strings"
 	"time"
 
+	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvclient/kvcoord"
 	//mgr "gitee.com/kwbasedb/kwbase/pkg/replicationmgr"
@@ -39,6 +40,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/opt"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
@@ -161,6 +163,13 @@ func checkTsQueryOptMode(encodedValue string) error {
 func checkBool(encodedValue string) error {
 	_, err := strconv.ParseBool(encodedValue)
 	return err
+}
+
+func checkPushdownAll(encodedValue string) error {
+	if err := checkBool(encodedValue); err != nil {
+		return err
+	}
+	return opt.CheckPushdownAllSetting(encodedValue, base.IsWindows())
 }
 
 // checkCapacityStatsPeriod checks whether the capacity stats period value set is valid
@@ -291,6 +300,7 @@ func checkTsCountRecalcCycle(encodedValue string) error {
 
 // CheckClusterSetting map of checking methods for saving cluster settings
 var CheckClusterSetting = map[string]CheckOperation{
+	"sql.all_push_down.enabled":          checkPushdownAll,
 	"ts.dedup.rule":                      checkTsDedupRule,
 	"ts.rows_per_block.max_limit":        checkTsRowsPerBlockMaxLimit,
 	"ts.sql.query_opt_mode":              checkTsQueryOptMode,

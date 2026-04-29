@@ -701,6 +701,10 @@ func (cfg *Config) CreateTsEngine(
 	}
 
 	//TODO Use the rocksdb store directory +tsdb suffix
+	brpcAddr := cfg.BRPCListenAddr
+	if base.IsWindows() {
+		brpcAddr = ""
+	}
 	tsConfig := tse.TsEngineConfig{
 		Dir:            cfg.TsStores.Specs[0].Path,
 		Settings:       cfg.Settings,
@@ -709,7 +713,7 @@ func (cfg *Config) CreateTsEngine(
 		BufferPoolSize: bufferPoolSize,
 		LogCfg:         cfg.LogConfig,
 		IsSingleNode:   GetSingleNodeModeFlag(cfg.ModeFlag),
-		BRPCAddr:       cfg.BRPCListenAddr,
+		BRPCAddr:       brpcAddr,
 		ClusterID:      clusterID,
 		TsIDGen:        tsIDGen,
 	}

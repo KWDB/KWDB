@@ -475,6 +475,14 @@ list(APPEND KWDBTS2_SERVER_LIB_SRC
     roachpb/me_metadata.pb.cc
     roachpb/br_internal_service.pb.cc
 )
+if (WIN32)
+    list(FILTER KWDBTS2_SERVER_LIB_SRC EXCLUDE REGEX ".*/brpc/src/.*")
+    list(FILTER KWDBTS2_SERVER_LIB_SRC EXCLUDE REGEX ".*/ee_remote_inbound_op\\.cpp$")
+    list(FILTER KWDBTS2_SERVER_LIB_SRC EXCLUDE REGEX ".*/ee_remote_merge_sort_inbound_op\\.cpp$")
+    list(FILTER KWDBTS2_SERVER_LIB_SRC EXCLUDE REGEX ".*/ee_router_outbound_op\\.cpp$")
+    list(FILTER KWDBTS2_SERVER_LIB_SRC EXCLUDE REGEX ".*/ee_sink_buffer\\.cpp$")
+endif()
+
 list(FILTER KWDBTS2_SERVER_LIB_SRC EXCLUDE REGEX ".*/tests/.*")
 
 if (ENABLE_COVERAGE)
