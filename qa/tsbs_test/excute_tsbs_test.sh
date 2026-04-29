@@ -113,8 +113,8 @@ fi
 
 for scale in ${TSBS_SCALE_LIST[@]}; do
 
-    queryResultDir="${TSBS_RESULT_DIR}/${KWDB_CT_NAME}/${time}_${BRANCH_NAME}_scale${scale}_cluster${node_num}_insertdirect${insert_direct}_${insert_type}_wal${wal}_replica${replica_mode}_dop${parallel_degree}/query_result"
-    loadResultDir="${TSBS_RESULT_DIR}/${KWDB_CT_NAME}/${time}_${BRANCH_NAME}_scale${scale}_cluster${node_num}_insertdirect${insert_direct}_${insert_type}_wal${wal}_replica${replica_mode}_dop${parallel_degree}/load_result"
+    queryResultDir="${TSBS_RESULT_DIR}/${KWDB_CT_NAME}/${time}_${BRANCH_NAME}_scale${scale}_cluster${node_num}_insertdirect${insert_direct}_${insert_type}_wal${wal}_replica${cluster_node_num}_dop${parallel_degree}/query_result"
+    loadResultDir="${TSBS_RESULT_DIR}/${KWDB_CT_NAME}/${time}_${BRANCH_NAME}_scale${scale}_cluster${node_num}_insertdirect${insert_direct}_${insert_type}_wal${wal}_replica${cluster_node_num}_dop${parallel_degree}/load_result"
     mkdir -p ${loadResultDir}
     mkdir -p ${queryResultDir}
 

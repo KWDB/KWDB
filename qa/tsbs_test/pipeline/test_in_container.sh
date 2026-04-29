@@ -46,7 +46,7 @@ data_dir=${workspace}/kwbasedb/tsbs_test
 cd /home/inspur/src/gitee.com/kwbasedb/install/bin
 
 if [[ ${is_test_container} == "true" ]]; then
-  if [[ ${replica_mode} == 3 ]]; then
+  if [[ ${cluster_node_num} == 3 ]]; then
     LD_LIBRARY_PATH=../lib ./kwbase init --insecure --host=${ip}:$listenport
   fi
   
