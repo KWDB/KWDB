@@ -40,6 +40,8 @@ httpport=${24:-"8181"}
 brpcport=${25:-"37357"}
 update_threshold=${26:-"false"}
 license=${27:-""}
+query_types_param=${28:-""}
+compare_threshold=${29:-"false"}
 workspace=/home/inspur/src/gitee.com
 data_dir=${workspace}/kwbasedb/tsbs_test
 
@@ -54,7 +56,7 @@ if [[ ${is_test_container} == "true" ]]; then
     LD_LIBRARY_PATH=../lib ./kwbase sql --insecure --host=${ip}:$listenport --execute="set cluster setting cluster.license ='${license}';"
   fi
 
-  UPDATE_THRESHOLD=${update_threshold} /home/inspur/src/gitee.com/kwbasedb/qa/tsbs_test/excute_tsbs_test.sh ${cluster_node_num} ${scale} ${tsbs_result_dir} ${KWDB_CT_NAME} ${ip} ${listenport} /home/inspur/src/gitee.com ${query_workers}
+  QUERY_TYPES_PARAM=${query_types_param} COMPARE_THRESHOLD=${compare_threshold} UPDATE_THRESHOLD=${update_threshold} /home/inspur/src/gitee.com/kwbasedb/qa/tsbs_test/excute_tsbs_test.sh ${cluster_node_num} ${scale} ${tsbs_result_dir} ${KWDB_CT_NAME} ${ip} ${listenport} /home/inspur/src/gitee.com ${query_workers} ${query_types_param}
   exit_code=$?
   if [ $exit_code -ne 0 ]; then
     exit 1

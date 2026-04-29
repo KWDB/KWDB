@@ -20,6 +20,7 @@ me_host_ip=${5:-"127.0.102.145"}
 me_host_port=${6:-"26257"}
 DATA_DIR=${7:-"${QA_DIR}/tsbs_test/data"}
 QUERY_WORKERS=${8:-"8"}
+QUERY_TYPES_PARAM=${9:-""}
 # 设置默认值为false，防止变量未定义导致的错误
 UPDATE_THRESHOLD=${UPDATE_THRESHOLD:-false}
 # COMPARE_THRESHOLD控制是否对比阈值，默认为false（不对比）
@@ -212,15 +213,21 @@ for scale in ${TSBS_SCALE_LIST[@]}; do
     if [ -f "${clusterSettingsDir}/after_load_scale${scale}.sql" ]; then
         $KWBIN sql --host=${me_host_ip} --port=${me_host_port} --insecure < ${clusterSettingsDir}/after_load_scale${scale}.sql > /dev/null
     fi
-    eval "var_exists=\${QUERY_TYPES_${scale}+x}"
-    if [ -n "${var_exists}" ]; then
-        QUERY_TYPES_VAR="QUERY_TYPES_${scale}"
-    elif eval "var_exists=\${QUERY_TYPES_${node_num}+x}" && [ -n "$var_exists" ]; then
-        QUERY_TYPES_VAR="QUERY_TYPES_${node_num}"
+    # 如果传入了QUERY_TYPES_PARAM参数，则使用该参数；否则使用现有的查询类型逻辑
+    if [ -n "${QUERY_TYPES_PARAM}" ]; then
+        IFS=',' read -ra QUERY_TYPES_LIST <<< "${QUERY_TYPES_PARAM}"
     else
-        QUERY_TYPES_VAR="QUERY_TYPES_ALL"
+        eval "var_exists=\${QUERY_TYPES_${scale}+x}"
+        if [ -n "${var_exists}" ]; then
+            QUERY_TYPES_VAR="QUERY_TYPES_${scale}"
+        elif eval "var_exists=\${QUERY_TYPES_${node_num}+x}" && [ -n "$var_exists" ]; then
+            QUERY_TYPES_VAR="QUERY_TYPES_${node_num}"
+        else
+            QUERY_TYPES_VAR="QUERY_TYPES_ALL"
+        fi
+        IFS=' ' read -ra QUERY_TYPES_LIST <<< "${!QUERY_TYPES_VAR}"
     fi
-    for QUERY_TYPE in ${!QUERY_TYPES_VAR}; do
+    for QUERY_TYPE in ${QUERY_TYPES_LIST[@]}; do
         query_data=${queryDataDir}/${format}_scale${scale}_${tsbs_case}_${QUERY_TYPE}_query_times${query_times}.dat
         if [ ! -f "${query_data}" ]; then
             LD_LIBRARY_PATH=${TSBS_PATH}/lib ${TSBS_PATH}/tsbs_generate_queries_${arch} \
