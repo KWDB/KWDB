@@ -278,11 +278,10 @@ func (p *Parser) scanOneStmt() (sql string, tokens []sqlSymType, done bool) {
 			if lval.id == SELECT {
 				tokens = append(tokens, lval)
 				p.IsShortcircuit = false
-				p.scanner.shortinsert.isInsertSelect = true
 				continue
 			}
 
-			if p.scanner.shortinsert.isValues && p.scanner.shortinsert.isTsTable {
+			if p.scanner.shortinsert.isValues && p.scanner.shortinsert.isTsTable && !p.scanner.shortinsert.PrepareMode {
 				continue
 			}
 			// "insert into database.table": len(tokens) == 4
@@ -324,20 +323,10 @@ func extractDBAndTable(tokens []sqlSymType, dot int, NoSchema *bool) (db, tb str
 }
 
 func (p *Parser) validateDirectStmt(stmt *Statement) error {
-	si := &p.scanner.shortinsert
-	if !si.isplaceholder {
-		si.ValueBracketCount--
-	}
-	if si.errMsg != "" {
-		return pgerror.New(pgcode.Syntax, si.errMsg)
-	}
-	if !si.PrepareMode || si.Prepareplaceholder == 0 { //  Not placeholder insert in JDBC prepare mode.
+	if !p.scanner.shortinsert.PrepareMode || p.scanner.shortinsert.Prepareplaceholder == 0 {
 		return nil
 	}
-	if si.ValueBracketCount != 0 || stmt.Insertdirectstmt.RowsAffected <= 0 {
-		return pgerror.New(pgcode.Syntax, "syntax error")
-	}
-	if si.InInsertColumns || len(si.bracket.elements) != 0 {
+	if p.scanner.shortinsert.ValueBracketCount != 0 || stmt.Insertdirectstmt.RowsAffected <= 0 {
 		return pgerror.New(pgcode.Syntax, "syntax error")
 	}
 	if int64(stmt.NumPlaceholders)%stmt.Insertdirectstmt.RowsAffected != 0 {
@@ -404,6 +393,12 @@ func (p *Parser) parseWithDepth(depth int, sql string, nakedIntType *types.T) (S
 		sql, tokens, done := p.scanOneStmt()
 		if p.scanner.shortinsert.isInsert && p.scanner.shortinsert.isTsTable {
 			p.Customize = p.scanner.shortinsert.Customize
+			if p.scanner.shortinsert.PrePlaceholder {
+				_, err := p.parse(depth+1, sql, tokens, nakedIntType)
+				if err != nil {
+					return nil, err
+				}
+			}
 			var NoScheNameList tree.NoSchemaNameList
 			stmt := makeDirectStmt(p, NoScheNameList, sql)
 			if sql != "" {
