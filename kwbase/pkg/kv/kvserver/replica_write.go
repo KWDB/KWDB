@@ -333,6 +333,39 @@ func (r *Replica) executeWriteTSBatch(
 		return br, g, pErr
 	}
 
+	var storageAsync bool
+	if r.store.TsRaftLogEngine == nil {
+		storageAsync = storage.IsAsyncConsensus()
+	} else {
+		storageAsync = r.store.TsRaftLogEngine.IsAsyncConsensus()
+	}
+
+	if storageAsync && r.isTsLocked() && len(ba.Requests) != 0 {
+		isAllTsRowPut := true
+		for _, req := range ba.Requests {
+			if req.GetTsRowPut() == nil {
+				isAllTsRowPut = false
+				break
+			}
+		}
+		if isAllTsRowPut {
+			br = &roachpb.BatchResponse{}
+			br.Responses = make([]roachpb.ResponseUnion, len(ba.Requests))
+			ba.Requests = r.batchRequestOsnRewrite(ctx, ba.Requests)
+			tableID, rangeGroupID, tsTxnID, needAutoCommit, err := r.stageTsBatchRequest(ctx, ba, br.Responses, true, nil)
+			if err == nil && tsTxnID != 0 && needAutoCommit {
+				err = r.store.TsEngine.MtrCommit(tableID, rangeGroupID, tsTxnID, nil)
+			}
+			if err != nil {
+				pErr = roachpb.NewError(err)
+				br = nil
+				log.Infof(ctx, "stage error: %v", err)
+			}
+			ba.AsyncConsensus = true
+			log.VEventf(ctx, 3, "mode2: replica_write is async write and apply now, tableID is %d, rangeID is %d", tableID, r.RangeID)
+		}
+	}
+
 	// Checking the context just before proposing can help avoid ambiguous errors.
 	if err := ctx.Err(); err != nil {
 		r.readOnlyCmdMu.RUnlock()

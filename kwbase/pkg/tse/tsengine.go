@@ -343,8 +343,8 @@ var TsRaftLogCombineWAL = settings.RegisterPublicBoolSetting(
 // TsRaftLogSyncPeriod determine the sync interval of ts raft logs.
 var TsRaftLogSyncPeriod = settings.RegisterPublicDurationSetting(
 	"ts.raft_log.sync_period",
-	"the min duration between every 2 syncs to disk of ts raft logs",
-	10*time.Second,
+	"used to set whether to enable asynchronous raft log consensus, with a default value of 0 (disabled)",
+	0*time.Second,
 )
 
 // TsWALLevelClusterSettingName is the name of the ts wal level cluster setting.

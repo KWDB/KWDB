@@ -814,20 +814,32 @@ func iterateOnReader(
 
 var syncPeriod time.Duration
 var asyncWrite bool
+var asyncConsensus bool
 
 // SetSyncPeriod sets syncPeriod
 func SetSyncPeriod(period time.Duration) {
-	if period > 100*time.Millisecond {
-		asyncWrite = true
+	if period > 0 {
 		syncPeriod = period
-	} else {
-		asyncWrite = false
+		asyncConsensus = true
 	}
+	asyncWrite = false
+	// todo(qzy): remove mode2 code later, set asyncWrite always false temporarily
+	//if period > 100*time.Millisecond {
+	//	asyncWrite = true
+	//	syncPeriod = period
+	//} else {
+	//	asyncWrite = false
+	//}
 }
 
 // IsAsyncWrite returns whether write raft log to disk async.
 func IsAsyncWrite() bool {
 	return asyncWrite
+}
+
+// IsAsyncConsensus returns whether async consensus enabled.
+func IsAsyncConsensus() bool {
+	return asyncConsensus
 }
 
 // GetSyncPeriod get sync period
