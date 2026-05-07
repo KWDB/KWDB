@@ -1829,7 +1829,7 @@ func TestTSDBResetStringSize(t *testing.T) {
 }
 
 func TestTSTableResetStringSize(t *testing.T) {
-	m := &TSTable{Lifetime: 20}
+	m := &TSTable{Lifetime: 20, ActiveTime: 1}
 	m.Reset()
 	if m.Lifetime != 0 {
 		t.Error("Reset failed")

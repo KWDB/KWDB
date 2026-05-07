@@ -2126,6 +2126,9 @@ func (r *TsEngine) CancelTsFlow(ctx *context.Context, tsQueryInfo TsQueryInfo) (
 func (r *TsEngine) InitTsHandle(
 	ctx *context.Context, tsQueryInfo TsQueryInfo,
 ) (tsRespInfo TsQueryInfo, err error) {
+	if r == nil {
+		return TsQueryInfo{}, errors.New("TsEngine not initialized")
+	}
 	r.checkOrWaitForOpen()
 	return r.tsExecute(ctx, C.MQ_TYPE_DML_INIT, tsQueryInfo)
 }

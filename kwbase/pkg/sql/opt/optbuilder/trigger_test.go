@@ -150,9 +150,9 @@ func TestTriggerColConstants(t *testing.T) {
 func TestBuildProcCommandForTriggers(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
-	// Test Case 1: The situation without triggers
+	// 测试用例1: 没有触发器的情况
 	t.Run("no triggers", func(t *testing.T) {
-		// Create a simple Builder instance
+		// 创建一个简单的 Builder 实例
 		b := &Builder{
 			TriggerInfo: &TriggerBuilder{
 				TriggerTab: make(map[cat.StableID]TriggerTab),
@@ -164,10 +164,10 @@ func TestBuildProcCommandForTriggers(t *testing.T) {
 			TableType: make(map[tree.TableType]int),
 		}
 
-		// Create a simple test table (the cat.Table interface needs to be implemented)
+		// 创建一个简单的测试表 (需要实现 cat.Table 接口)
 		testTab := &testTriggerTable{}
 
-		// init outScope
+		// 初始化 outScope
 		outScope := &scope{}
 		outScope.builder = b
 
@@ -182,10 +182,10 @@ func TestBuildProcCommandForTriggers(t *testing.T) {
 			insertOrds:    []scopeOrdinal{},
 		}
 
-		// call function
+		// 调用函数
 		result := mb.buildProcCommandForTriggers(tree.TriggerEventInsert)
 
-		// Verification result
+		// 验证结果
 		if result == nil {
 			t.Errorf("Expected non-nil result")
 		}
@@ -194,9 +194,9 @@ func TestBuildProcCommandForTriggers(t *testing.T) {
 		}
 	})
 
-	// Test Case 2: The situation with triggers
+	// 测试用例2: 有触发器的情况
 	t.Run("with triggers", func(t *testing.T) {
-		// Create a simple instance of Builder
+		// 创建一个简单的 Builder 实例
 		b := &Builder{
 			TriggerInfo: &TriggerBuilder{
 				TriggerTab: make(map[cat.StableID]TriggerTab),
@@ -208,10 +208,10 @@ func TestBuildProcCommandForTriggers(t *testing.T) {
 			TableType: make(map[tree.TableType]int),
 		}
 
-		// Create a test table with triggers
+		// 创建一个带有触发器的测试表
 		testTab := &testTriggerTableWithTriggers{}
 
-		// init outScope
+		// 初始化 outScope
 		outScope := &scope{}
 		outScope.builder = b
 
@@ -226,28 +226,28 @@ func TestBuildProcCommandForTriggers(t *testing.T) {
 			insertOrds:    []scopeOrdinal{},
 		}
 
-		// call function
+		// 调用函数
 		result := mb.buildProcCommandForTriggers(tree.TriggerEventInsert)
 
-		// Verification result
+		// 验证结果
 		if result == nil {
 			t.Errorf("Expected non-nil result")
 		}
-		// Here we expect to have a trigger command
+		// 这里我们期望有一个触发器命令
 		if len(result.Bodys) != 1 {
 			t.Errorf("Expected 1 trigger command, got %d", len(result.Bodys))
 		}
 	})
 }
 
-// testTriggerTableWithTriggers is an implementation of a test table with triggers
+// testTriggerTableWithTriggers 是一个带有触发器的测试表实现
 type testTriggerTableWithTriggers struct {
 	testTriggerTable
 }
 
-// GetTriggers returns a trigger definition
+// GetTriggers 返回一个触发器定义
 func (t *testTriggerTableWithTriggers) GetTriggers(event tree.TriggerEvent) []cat.TriggerMeta {
-	// Return the trigger only during the INSERT event
+	// 只在 INSERT 事件时返回触发器
 	if event == tree.TriggerEventInsert {
 		return []cat.TriggerMeta{
 			{
@@ -262,17 +262,17 @@ func (t *testTriggerTableWithTriggers) GetTriggers(event tree.TriggerEvent) []ca
 	return nil
 }
 
-// testTriggerTable is a simple implementation of cat.Table for testing
+// testTriggerTable 是一个用于测试的简单 cat.Table 实现
 type testTriggerTable struct{}
 
-// testColumn is a simple implementation of cat.Column for testing
+// testColumn 是一个用于测试的简单 cat.Column 实现
 type testColumn struct {
 	colID     cat.StableID
 	colName   tree.Name
 	datumType *types.T
 }
 
-// The method for implementing the cat.Column interface
+// 实现 cat.Column 接口的方法
 func (c *testColumn) ColID() cat.StableID {
 	return c.colID
 }
@@ -397,7 +397,7 @@ func (c *testColumn) TsColStorgeLen() uint64 {
 	return 0
 }
 
-// Methods for implementing the cat.Object interface
+// 实现 cat.Object 接口的方法
 func (t *testTriggerTable) ID() cat.StableID {
 	return cat.StableID(1)
 }
@@ -410,12 +410,12 @@ func (t *testTriggerTable) Equals(other cat.Object) bool {
 	return false
 }
 
-// The method for implementing the cat.DataSource interface
+// 实现 cat.DataSource 接口的方法
 func (t *testTriggerTable) Name() tree.Name {
 	return "test_table"
 }
 
-// The method for implementing the cat.Table interface
+// 实现 cat.Table 接口的方法
 func (t *testTriggerTable) IsVirtualTable() bool {
 	return false
 }
@@ -429,7 +429,7 @@ func (t *testTriggerTable) IsInterleaved() bool {
 }
 
 func (t *testTriggerTable) ColumnCount() int {
-	return 1 // return a column
+	return 1 // 返回一个列
 }
 
 func (t *testTriggerTable) WritableColumnCount() int {
@@ -441,7 +441,7 @@ func (t *testTriggerTable) DeletableColumnCount() int {
 }
 
 func (t *testTriggerTable) Column(i int) cat.Column {
-	// return a simple column
+	// 返回一个简单的列
 	return &testColumn{
 		colID:     cat.StableID(1),
 		colName:   "id",
@@ -506,10 +506,10 @@ func (t *testTriggerTable) InboundForeignKey(i int) cat.ForeignKeyConstraint {
 }
 
 func (t *testTriggerTable) GetTriggers(event tree.TriggerEvent) []cat.TriggerMeta {
-	return nil // return an empty list of triggers
+	return nil // 返回空触发器列表
 }
 
-// Implement other required methods
+// 实现其他需要的方法
 func (t *testTriggerTable) Zone() cat.Zone {
 	return nil
 }

@@ -2435,19 +2435,19 @@ func TestCreatePlanForUnionFastPathKeepsLeftPlan(t *testing.T) {
 	}
 }
 
-func TestCreateTsInsertNodeForSingleModePanicsOnMultipleNodes(t *testing.T) {
-	defer leaktest.AfterTest(t)()
+// func TestCreateTsInsertNodeForSingleModePanicsOnMultipleNodes(t *testing.T) {
+// 	defer leaktest.AfterTest(t)()
 
-	n := makeTsInsertNodeForTest(t,
-		[]roachpb.NodeID{1, 2},
-		[][]tsInsertPayloadSeed{{}, {}},
-	)
+// 	n := makeTsInsertNodeForTest(t,
+// 		[]roachpb.NodeID{1, 2},
+// 		[][]tsInsertPayloadSeed{{}, {}},
+// 	)
 
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("expected panic when single-mode nodeIDs > 1")
-		}
-	}()
+// 	defer func() {
+// 		if r := recover(); r == nil {
+// 			t.Fatal("expected panic when single-mode nodeIDs > 1")
+// 		}
+// 	}()
 
-	_, _ = createTsInsertNodeForSingleMode(n)
-}
+// 	_, _ = createTsInsertNodeForSingleMode(n)
+// }

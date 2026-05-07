@@ -138,6 +138,7 @@ void ExceptionHandler(const int sig, siginfo_t* const info, void*) {
     signal(sig, SIG_DFL);
     return;
   }
+  
   StoreExceptionStackToFile(sig, info);
   // https://pkg.go.dev/os/signal#hdr-Go_programs_that_use_cgo_or_SWIG
   // pass to GO or default

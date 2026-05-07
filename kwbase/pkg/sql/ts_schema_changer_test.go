@@ -155,8 +155,10 @@ func TestMakeKObjectTableForTs(t *testing.T) {
 			},
 			TsTable: sqlbase.TSTable{
 				Lifetime:          86400,
+				ActiveTime:        3600,
 				RowSize:           12,
 				BitmapOffset:      8,
+				Sde:               true,
 				PartitionInterval: 3600,
 				TsVersion:         1,
 				HashNum:           16,

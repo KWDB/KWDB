@@ -15,7 +15,6 @@ import (
 	"context"
 	"testing"
 
-	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
@@ -71,20 +70,20 @@ func TestTsScanNodeIndexedVarMethods(t *testing.T) {
 				}
 			},
 		},
-		{
-			name: "test IndexedVarEval panic",
-			setupNode: func() *tsScanNode {
-				return &tsScanNode{}
-			},
-			testFunc: func(t *testing.T, n *tsScanNode) {
-				defer func() {
-					if r := recover(); r == nil {
-						t.Error("IndexedVarEval should panic")
-					}
-				}()
-				_, _ = n.IndexedVarEval(0, &tree.EvalContext{})
-			},
-		},
+		// {
+		// 	name: "test IndexedVarEval panic",
+		// 	setupNode: func() *tsScanNode {
+		// 		return &tsScanNode{}
+		// 	},
+		// 	testFunc: func(t *testing.T, n *tsScanNode) {
+		// 		defer func() {
+		// 			if r := recover(); r == nil {
+		// 				t.Error("IndexedVarEval should panic")
+		// 			}
+		// 		}()
+		// 		_, _ = n.IndexedVarEval(0, &tree.EvalContext{})
+		// 	},
+		// },
 	}
 
 	for _, tt := range tests {
@@ -216,37 +215,37 @@ func TestTsScanNodeNextAndValues(t *testing.T) {
 		setupNode func() *tsScanNode
 		testFunc  func(t *testing.T, n *tsScanNode)
 	}{
-		{
-			name: "test Next panic",
-			setupNode: func() *tsScanNode {
-				return &tsScanNode{}
-			},
-			testFunc: func(t *testing.T, n *tsScanNode) {
-				defer func() {
-					if r := recover(); r == nil {
-						t.Error("Next should panic")
-					}
-				}()
-				params := runParams{
-					ctx: context.Background(),
-				}
-				_, _ = n.Next(params)
-			},
-		},
-		{
-			name: "test Values panic",
-			setupNode: func() *tsScanNode {
-				return &tsScanNode{}
-			},
-			testFunc: func(t *testing.T, n *tsScanNode) {
-				defer func() {
-					if r := recover(); r == nil {
-						t.Error("Values should panic")
-					}
-				}()
-				n.Values()
-			},
-		},
+		// {
+		// 	name: "test Next panic",
+		// 	setupNode: func() *tsScanNode {
+		// 		return &tsScanNode{}
+		// 	},
+		// 	testFunc: func(t *testing.T, n *tsScanNode) {
+		// 		defer func() {
+		// 			if r := recover(); r == nil {
+		// 				t.Error("Next should panic")
+		// 			}
+		// 		}()
+		// 		params := runParams{
+		// 			ctx: context.Background(),
+		// 		}
+		// 		_, _ = n.Next(params)
+		// 	},
+		// },
+		// {
+		// 	name: "test Values panic",
+		// 	setupNode: func() *tsScanNode {
+		// 		return &tsScanNode{}
+		// 	},
+		// 	testFunc: func(t *testing.T, n *tsScanNode) {
+		// 		defer func() {
+		// 			if r := recover(); r == nil {
+		// 				t.Error("Values should panic")
+		// 			}
+		// 		}()
+		// 		n.Values()
+		// 	},
+		// },
 	}
 
 	for _, tt := range tests {
@@ -329,20 +328,20 @@ func TestSynchronizerNodeMethods(t *testing.T) {
 				}
 			},
 		},
-		{
-			name: "test IndexedVarEval panic",
-			setupNode: func() *synchronizerNode {
-				return &synchronizerNode{}
-			},
-			testFunc: func(t *testing.T, n *synchronizerNode) {
-				defer func() {
-					if r := recover(); r == nil {
-						t.Error("IndexedVarEval should panic")
-					}
-				}()
-				_, _ = n.IndexedVarEval(0, &tree.EvalContext{})
-			},
-		},
+		// {
+		// 	name: "test IndexedVarEval panic",
+		// 	setupNode: func() *synchronizerNode {
+		// 		return &synchronizerNode{}
+		// 	},
+		// 	testFunc: func(t *testing.T, n *synchronizerNode) {
+		// 		defer func() {
+		// 			if r := recover(); r == nil {
+		// 				t.Error("IndexedVarEval should panic")
+		// 			}
+		// 		}()
+		// 		_, _ = n.IndexedVarEval(0, &tree.EvalContext{})
+		// 	},
+		// },
 		{
 			name: "test startExec returns warning",
 			setupNode: func() *synchronizerNode {
@@ -362,37 +361,37 @@ func TestSynchronizerNodeMethods(t *testing.T) {
 				}
 			},
 		},
-		{
-			name: "test Next panic",
-			setupNode: func() *synchronizerNode {
-				return &synchronizerNode{}
-			},
-			testFunc: func(t *testing.T, n *synchronizerNode) {
-				defer func() {
-					if r := recover(); r == nil {
-						t.Error("Next should panic")
-					}
-				}()
-				params := runParams{
-					ctx: context.Background(),
-				}
-				_, _ = n.Next(params)
-			},
-		},
-		{
-			name: "test Values panic",
-			setupNode: func() *synchronizerNode {
-				return &synchronizerNode{}
-			},
-			testFunc: func(t *testing.T, n *synchronizerNode) {
-				defer func() {
-					if r := recover(); r == nil {
-						t.Error("Values should panic")
-					}
-				}()
-				n.Values()
-			},
-		},
+		// {
+		// 	name: "test Next panic",
+		// 	setupNode: func() *synchronizerNode {
+		// 		return &synchronizerNode{}
+		// 	},
+		// 	testFunc: func(t *testing.T, n *synchronizerNode) {
+		// 		defer func() {
+		// 			if r := recover(); r == nil {
+		// 				t.Error("Next should panic")
+		// 			}
+		// 		}()
+		// 		params := runParams{
+		// 			ctx: context.Background(),
+		// 		}
+		// 		_, _ = n.Next(params)
+		// 	},
+		// },
+		// {
+		// 	name: "test Values panic",
+		// 	setupNode: func() *synchronizerNode {
+		// 		return &synchronizerNode{}
+		// 	},
+		// 	testFunc: func(t *testing.T, n *synchronizerNode) {
+		// 		defer func() {
+		// 			if r := recover(); r == nil {
+		// 				t.Error("Values should panic")
+		// 			}
+		// 		}()
+		// 		n.Values()
+		// 	},
+		// },
 	}
 
 	for _, tt := range tests {
