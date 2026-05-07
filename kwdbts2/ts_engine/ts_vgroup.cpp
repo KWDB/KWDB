@@ -2684,7 +2684,6 @@ KStatus TsVGroup::GetCalcEntities(PartitionIdentifier par_id, const shared_ptr<c
       agg_index.entity_id = entity;
       auto s = partition->GetAggReader()->GetPartitionAggIndex(agg_index);
       if (s != KStatus::SUCCESS) {
-        LOG_WARN("Failed get entity[%d] agg stats", entity);
         calc_agg_entities.emplace_back(entity);
         continue;
       }
