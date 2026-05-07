@@ -475,7 +475,7 @@ class TsVGroup {
     }
   }
 
-  KStatus Vacuum(kwdbContext_p ctx, bool force);
+  KStatus Vacuum(kwdbContext_p ctx, bool force, bool only_agg = false);
 
   KStatus VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitionVersion> partition, bool force);
 

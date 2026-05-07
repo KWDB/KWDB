@@ -2099,8 +2099,19 @@ KStatus TsVGroup::MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip,
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroup::Vacuum(kwdbContext_p ctx, bool force) {
+KStatus TsVGroup::Vacuum(kwdbContext_p ctx, bool force, bool only_agg) {
   KStatus s = KStatus::SUCCESS;
+  if (force && CLUSTER_SETTING_PARTITION_AGG) {
+    s = CalcPartitionAgg(true);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("CalcPartitionAgg failed after manual vacuum.");
+      return s;
+    }
+  }
+  if (only_agg) {
+    return KStatus::SUCCESS;
+  }
+
   auto current = version_manager_->Current();
   auto all_partitions = current->GetPartitions();
 
@@ -2159,14 +2170,6 @@ KStatus TsVGroup::Vacuum(kwdbContext_p ctx, bool force) {
                     partition->GetStartTime(), partition->GetEndTime() - 1);
         }
       }
-    }
-  }
-
-  if (force && CLUSTER_SETTING_PARTITION_AGG) {
-    s = CalcPartitionAgg(true);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("CalcPartitionAgg failed after manual vacuum.");
-      return s;
     }
   }
 

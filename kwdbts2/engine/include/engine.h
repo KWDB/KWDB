@@ -596,7 +596,7 @@ struct TSEngine {
    */
   virtual void AlterTableCacheCapacity(int capacity) = 0;
 
-  virtual KStatus Vacuum(kwdbContext_p ctx, bool force) {
+  virtual KStatus Vacuum(kwdbContext_p ctx, bool force, bool only_agg) {
     return SUCCESS;
   }
 

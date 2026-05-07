@@ -2811,9 +2811,9 @@ KStatus TSEngineImpl::GetMaxEntityIdByVGroupId(kwdbContext_p ctx, uint32_t vgrou
   return KStatus::SUCCESS;
 }
 
-KStatus TSEngineImpl::Vacuum(kwdbContext_p ctx, bool force) {
+KStatus TSEngineImpl::Vacuum(kwdbContext_p ctx, bool force, bool only_agg) {
   for (const auto& vgroup : vgroups_) {
-    vgroup->Vacuum(ctx, force);
+    vgroup->Vacuum(ctx, force, only_agg);
   }
   return SUCCESS;
 }

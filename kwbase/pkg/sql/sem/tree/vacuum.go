@@ -13,6 +13,9 @@ package tree
 
 // Vacuum represents a vacuum ts databases statement.
 type Vacuum struct {
+	// AggregateOnly indicates that vacuum should only recompute pre-aggregates
+	// (corresponds to the SQL clause "AGGREGATE ONLY").
+	AggregateOnly bool
 }
 
 var _ Statement = &Vacuum{}
@@ -20,4 +23,7 @@ var _ Statement = &Vacuum{}
 // Format implements the NodeFormatter interface.
 func (node *Vacuum) Format(ctx *FmtCtx) {
 	ctx.WriteString("VACUUM TS DATABASES")
+	if node.AggregateOnly {
+		ctx.WriteString(" AGGREGATE ONLY")
+	}
 }

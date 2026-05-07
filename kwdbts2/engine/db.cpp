@@ -235,7 +235,7 @@ TSStatus TSDropResidualTsTable(TSEngine* engine) {
   return kTsSuccess;
 }
 
-TSStatus TSVacuum(TSEngine* engine, uint64_t goCtxPtr, bool force) {
+TSStatus TSVacuum(TSEngine* engine, uint64_t goCtxPtr, bool force, bool only_agg) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -249,18 +249,18 @@ TSStatus TSVacuum(TSEngine* engine, uint64_t goCtxPtr, bool force) {
     return kTsSuccess;
   }
   Defer defer([&](){ g_is_vacuuming.store(false); });
-  LOG_INFO("TSVacuum begin, force:%d.", force);
+  LOG_INFO("TSVacuum begin, force:%d, only_agg:%d", force, only_agg);
   if (force) {
     s = engine->FlushVGroups(ctx_p);
     if (s != KStatus::SUCCESS) {
       return ToTsStatus("TsVacuum Error! FlushVGroups failed.");
     }
   }
-  s = engine->Vacuum(ctx_p, force);
+  s = engine->Vacuum(ctx_p, force, only_agg);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("TsVacuum Error!");
   }
-  LOG_INFO("TSVacuum success, force:%d.", force);
+  LOG_INFO("TSVacuum success, force:%d, only_agg:%d", force, only_agg);
   return kTsSuccess;
 }
 

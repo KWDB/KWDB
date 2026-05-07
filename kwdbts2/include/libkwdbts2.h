@@ -253,7 +253,7 @@ TSStatus TSCreateNormalTagIndex(TSEngine* engine, TSTableID table_id, uint64_t i
 TSStatus TSDropNormalTagIndex(TSEngine* engine, TSTableID table_id, uint64_t index_id, char* transaction_id,
                               uint32_t cur_version, uint32_t new_version);
 
-TSStatus TSVacuum(TSEngine* engine, uint64_t goCtxPtr, bool force);
+TSStatus TSVacuum(TSEngine* engine, uint64_t goCtxPtr, bool force, bool only_agg);
 
 /**
  * @brief Migrate table partition to another tiering level if hot and cold data tiering is configured

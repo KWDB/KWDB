@@ -2041,14 +2041,14 @@ func (r *TsEngine) CountRangeData(
 }
 
 // Vacuum vacuum partitions
-func (r *TsEngine) Vacuum(ctx context.Context, manual bool) error {
+func (r *TsEngine) Vacuum(ctx context.Context, manual bool, onlyAgg bool) error {
 	if r == nil {
 		return nil
 	}
 	r.checkOrWaitForOpen()
 	goCtxPtr, releaseGoCtx := registerGoContextHandle(ctx)
 	defer releaseGoCtx()
-	status := C.TSVacuum(r.tdb, goCtxPtr, C.bool(manual))
+	status := C.TSVacuum(r.tdb, goCtxPtr, C.bool(manual), C.bool(onlyAgg))
 	if err := statusToError(status); err != nil {
 		return errors.Wrap(err, "failed to vacuum ts storage")
 	}

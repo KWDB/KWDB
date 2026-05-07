@@ -36,7 +36,7 @@ insert into test.t1 values('2024-12-22 09:35:29', 29, 3);
 insert into test.t1 values('2024-12-22 09:35:30', 30, 3);
 
 select count(c1) from t1;
-vacuum ts databases;
+vacuum ts databases aggregate only;
 select count(c1) from t1;
 delete from t1 where ts='2024-12-22 09:35:01';
 select count(c1) from t1;
