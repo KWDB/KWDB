@@ -18,9 +18,11 @@
 #include <string>
 #include <vector>
 
+#include "data_type.h"
 #include "ee_global.h"
 #include "engine.h"
 #include "ts_iterator_v2_impl.h"
+#include "ts_common.h"
 #include "ts_ts_lsn_span_utils.h"
 #include "ts_vgroup.h"
 #include "ts_split_block_spans.h"
@@ -218,6 +220,7 @@ inline bool TsStorageIteratorImpl::IsFilteredOut(timestamp64 begin_ts, timestamp
 KStatus TsStorageIteratorImpl::getBlockSpanMinMaxValue(std::shared_ptr<TsBlockSpan>& block_span, uint32_t col_id,
                                                          uint32_t type, TsScanStats* ts_scan_stats,
                                                          void*& min, void*& max) {
+  assert(!isVarLenType(type));
   std::unique_ptr<TsBitmapBase> bitmap;
   char* value = nullptr;
   auto s = block_span->GetFixLenColAddr(col_id, &value, &bitmap, ts_scan_stats);
@@ -231,21 +234,28 @@ KStatus TsStorageIteratorImpl::getBlockSpanMinMaxValue(std::shared_ptr<TsBlockSp
   void* cur_min = nullptr;
   void* current;
   bool need_check_bt = !bitmap->IsAllValid();
-  for (int row_idx = 0; row_idx < row_num; ++row_idx) {
-    if (need_check_bt && bitmap->At(row_idx) != DataFlags::kValid) {
-      continue;
-    }
-    current = reinterpret_cast<void*>((intptr_t)(value + row_idx * size));
-    if (cur_max != nullptr) {
-      auto ret = cmpWithSpan(cur_min, cur_max, current, type, size);
-      if (ret < 0) {
-        cur_min = current;
-      } else if (ret > 0) {
-        cur_max = current;
+  if (!need_check_bt && isArithmeticType(type)) {
+    auto [tmp_min, tmp_max] = cmpWithSpanBatch(value, type, row_num);
+    assert(size <= 8);
+    cur_max = tmp_max;
+    cur_min = tmp_min;
+  } else {
+    for (int row_idx = 0; row_idx < row_num; ++row_idx) {
+      if (need_check_bt && bitmap->At(row_idx) != DataFlags::kValid) {
+        continue;
       }
-    } else {
-      cur_max = current;
-      cur_min = current;
+      current = reinterpret_cast<void*>((intptr_t)(value + row_idx * size));
+      if (cur_max != nullptr) {
+        auto ret = cmpWithSpan(cur_min, cur_max, current, type, size);
+        if (ret < 0) {
+          cur_min = current;
+        } else if (ret > 0) {
+          cur_max = current;
+        }
+      } else {
+        cur_max = current;
+        cur_min = current;
+      }
     }
   }
   if (cur_max != nullptr) {

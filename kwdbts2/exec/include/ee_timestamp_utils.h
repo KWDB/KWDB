@@ -16,6 +16,7 @@
 #include <string>
 #include <algorithm>
 
+#include "ee_encoding.h"
 #include "kwdb_type.h"
 #include "cm_func.h"
 
@@ -213,37 +214,36 @@ inline roachpb::DataType getTimeFieldType(roachpb::DataType var_type,
   }
   return type;
 }
-inline CKTime getCKTime(k_int64 val, roachpb::DataType type, k_int8 timezone) {
+
+template <int64_t Interval>
+inline CKTime getCKTimeImpl(k_int64 val, k_int8 timezone) {
   CKTime ck_time;
-  k_int64 val_interval;
+  constexpr int64_t ratio = 1000000000 / Interval;
+  int64_t div = val / Interval;
+  int64_t mod = val % Interval;
+
+  bool flag = val < 0 && mod != 0;
+  ck_time.t_timespec.tv_sec = div - static_cast<int64_t>(flag);
+  ck_time.t_timespec.tv_nsec = (mod + (flag ? Interval : 0)) * ratio;
+  ck_time.UpdateSecWithTZ(timezone);
+  return ck_time;
+}
+
+inline CKTime getCKTime(k_int64 val, roachpb::DataType type, k_int8 timezone) {
   switch (type) {
     case roachpb::DataType::TIMESTAMP:
     case roachpb::DataType::TIMESTAMPTZ:
-      val_interval = 1000;
-      break;
+      return getCKTimeImpl<1000>(val, timezone);
     case roachpb::DataType::TIMESTAMP_MICRO:
     case roachpb::DataType::TIMESTAMPTZ_MICRO:
-      val_interval = 1000000;
-      break;
+      return getCKTimeImpl<1000000>(val, timezone);
     case roachpb::DataType::TIMESTAMP_NANO:
     case roachpb::DataType::TIMESTAMPTZ_NANO:
-      val_interval = 1000000000;
-      break;
+      return getCKTimeImpl<1000000000>(val, timezone);
     default:
-      val_interval = 1000;
       break;
   }
-  if (val < 0 && val % val_interval) {
-    ck_time.t_timespec.tv_sec = val / val_interval - 1;
-    ck_time.t_timespec.tv_nsec =
-        ((val % val_interval) + val_interval) * (1000000000 / val_interval);
-  } else {
-    ck_time.t_timespec.tv_sec = (val / val_interval);
-    ck_time.t_timespec.tv_nsec =
-        val % val_interval * (1000000000 / val_interval);
-  }
-  ck_time.UpdateSecWithTZ(timezone);
-  return ck_time;
+  return getCKTimeImpl<1000>(val, timezone);
 }
 
 inline bool convertTimePrecision(k_int64* val, roachpb::DataType in_type,

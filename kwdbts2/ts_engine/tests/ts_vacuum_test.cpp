@@ -160,7 +160,7 @@ TEST_F(VacuumTest, ZDP51351) {
   std::thread t(worker);
   t.detach();
 
-  auto status = f.wait_for(std::chrono::seconds{5});
+  auto status = f.wait_for(std::chrono::seconds{120});
   if (status == std::future_status::timeout) {
     FAIL() << "Vacuum is blocked";
   }

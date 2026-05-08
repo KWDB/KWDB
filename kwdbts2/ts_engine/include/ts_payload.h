@@ -31,6 +31,8 @@ class TsRawPayloadRowParser {
   const std::vector<AttributeInfo>* schema_ = nullptr;
   std::vector<int> col_offset_;
 
+  void FailReport(TSSlice row_data) const;
+
  public:
   explicit TsRawPayloadRowParser(const std::vector<AttributeInfo>* data_schema);
   ~TsRawPayloadRowParser() {}
@@ -39,7 +41,36 @@ class TsRawPayloadRowParser {
     return isRowDeleted(row_data.data, col_id + 1);
   }
 
-  bool GetColValueAddr(const TSSlice& row_data, int col_id, TSSlice* col_data);
+  bool GetColValueAddr(const TSSlice row_data, int col_id, TSSlice* col_data) const {
+    if UNLIKELY (col_id >= schema_->size() || row_data.len <= col_offset_[col_id]) {
+      FailReport(row_data);
+      return false;
+    }
+    // run here means column value is not null.
+
+    const auto& col_schema = (*schema_)[col_id];
+
+    const auto offset = col_offset_[col_id];
+    if (!isVarLenType(col_schema.type)) {
+      col_data->data = row_data.data + offset;
+      col_data->len = col_schema.size;
+      auto end_offset = offset + col_schema.size;
+      if LIKELY (end_offset <= row_data.len) {
+        return true;
+      }
+    } else {
+      size_t actual_offset = KUint64(row_data.data + offset);
+      col_data->len = KUint16(row_data.data + actual_offset);
+      auto end_offset = actual_offset + col_data->len + kStringLenLen;
+      if LIKELY (end_offset <= row_data.len) {
+        col_data->data = row_data.data + actual_offset + kStringLenLen;
+        return true;
+      }
+    }
+
+    FailReport(row_data);
+    return false;
+  }
 
   // ts used frequently,so optimize it.
   inline timestamp64 GetTimestamp(const TSSlice& row_data) const {

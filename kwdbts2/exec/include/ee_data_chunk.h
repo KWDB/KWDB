@@ -178,14 +178,21 @@ class DataChunk : public IChunk {
    * @param[in] row
    * @param[in] col
    */
-  void SetNull(k_uint32 row, k_uint32 col);
+  void SetNull(k_uint32 row, k_uint32 col) {
+    // 1 null，0 not null
+    uint8_t* bitmap = reinterpret_cast<uint8_t*>(data_ + bitmap_offset_[col]);
+    bitmap[row >> 3] |= 1 << (row & 7);
+  }
 
   /**
    * @brief Set not null at (row, col)
    * @param[in] row
    * @param[in] col
    */
-  void SetNotNull(k_uint32 row, k_uint32 col);
+  void SetNotNull(k_uint32 row, k_uint32 col) {
+    char* bitmap = reinterpret_cast<char*>(data_ + bitmap_offset_[col]);
+    bitmap[row >> 3] &= ~(1 << (row & 7));
+  }
 
   /**
    * @brief Set all fields null in the data chunk

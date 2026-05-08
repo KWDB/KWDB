@@ -187,6 +187,11 @@ typedef uint64_t    TS_OSN;
 inline bool isBinaryType(int type) { return (type == BINARY || type == VARBINARY); }
 
 inline bool isVarLenType(int type) { return ((type == VARSTRING) ||  (type == VARBINARY)); }
+inline bool isArithmeticType(int type) {
+  return (type == INT8 || type == INT16 || type == INT32 || type == INT64 || type == FLOAT || type == DOUBLE ||
+          type == BOOL || type == TIMESTAMP || type == TIMESTAMP64 || type == TIMESTAMP64_MICRO ||
+          type == TIMESTAMP64_NANO);
+}
 
 #define AINFO_INTERNAL              0x00000001  // internal column
 #define AINFO_HAS_DEFAULT           0x00000002  // has default value set

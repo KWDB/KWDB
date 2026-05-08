@@ -11,6 +11,7 @@
 #pragma once
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <list>
 #include <memory>
@@ -326,8 +327,8 @@ class TsEntityBlock : public TsBlock {
 
   inline bool HasDataCachedNoLock(int32_t col_idx) {
     assert(col_idx >= -1);
-    return column_blocks_.size() > col_idx + 1 && column_blocks_[col_idx + 1] != nullptr
-            && (column_blocks_[col_idx + 1]->ready_flag & COLUMN_BLOCK_BUFFER_READY);
+    return column_blocks_.size() > col_idx + 1 && column_blocks_[col_idx + 1] != nullptr &&
+           (column_blocks_[col_idx + 1]->ready_flag.load(std::memory_order_acquire) & COLUMN_BLOCK_BUFFER_READY);
   }
 
   inline bool HasDataCached(int32_t col_idx) {

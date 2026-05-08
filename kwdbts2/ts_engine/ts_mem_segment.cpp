@@ -494,8 +494,10 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
           std::shared_ptr<TsMemSegBlock> mem_block = std::make_shared<TsMemSegBlock>(self);
           mem_block->InsertRow(dedup_row);
           std::shared_ptr<TsBlockSpan> cur_span;
-          s = TsBlockSpan::MakeNewBlockSpan(template_blk_span, 0, mem_block->GetEntityId(), mem_block, 0,
-                                            mem_block->GetRowNum(), scan_schema, tbl_schema_mgr, cur_span);
+          auto entity_id = mem_block->GetEntityId();
+          auto row_num = mem_block->GetRowNum();
+          s = TsBlockSpan::MakeNewBlockSpan(template_blk_span, 0, entity_id, std::move(mem_block), 0, row_num,
+                                            scan_schema, tbl_schema_mgr, cur_span);
           if (s != SUCCESS) {
             LOG_ERROR("MakeNewBlockSpan failed.");
             return KStatus::FAIL;
@@ -552,8 +554,10 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
         std::shared_ptr<TsMemSegBlock> mem_block = std::make_shared<TsMemSegBlock>(self);
         mem_block->InsertRow(dedup_row);
         std::shared_ptr<TsBlockSpan> cur_span;
-        s = TsBlockSpan::MakeNewBlockSpan(template_blk_span, 0, mem_block->GetEntityId(), mem_block, 0,
-                                          mem_block->GetRowNum(), scan_schema, tbl_schema_mgr, cur_span);
+        auto entity_id = mem_block->GetEntityId();
+        auto row_num = mem_block->GetRowNum();
+        s = TsBlockSpan::MakeNewBlockSpan(template_blk_span, 0, entity_id, std::move(mem_block), 0, row_num,
+                                          scan_schema, tbl_schema_mgr, cur_span);
         if (s != SUCCESS) {
           LOG_ERROR("MakeNewBlockSpan failed.");
           return KStatus::FAIL;
@@ -691,8 +695,10 @@ KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter, std::
           std::shared_ptr<TsMemSegBlock> mem_block = std::make_shared<TsMemSegBlock>(self);
           mem_block->InsertRow(dedup_row);
           std::shared_ptr<TsBlockSpan> cur_span;
-          auto s = TsBlockSpan::MakeNewBlockSpan(template_blk_span, filter.vgroup_id, filter.entity_id, mem_block, 0,
-                                                 mem_block->GetRowNum(), scan_schema, tbl_schema_mgr, cur_span);
+          auto row_num = mem_block->GetRowNum();
+          auto s =
+              TsBlockSpan::MakeNewBlockSpan(template_blk_span, filter.vgroup_id, filter.entity_id, std::move(mem_block),
+                                            0, row_num, scan_schema, tbl_schema_mgr, cur_span);
           if (s != SUCCESS) {
             LOG_ERROR("MakeNewBlockSpan failed.");
             return KStatus::FAIL;
@@ -738,8 +744,9 @@ KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter, std::
         std::shared_ptr<TsMemSegBlock> mem_block = std::make_shared<TsMemSegBlock>(self);
         mem_block->InsertRow(dedup_row);
         std::shared_ptr<TsBlockSpan> cur_span;
-        auto s = TsBlockSpan::MakeNewBlockSpan(template_blk_span, filter.vgroup_id, filter.entity_id, mem_block, 0,
-                                               mem_block->GetRowNum(), scan_schema, tbl_schema_mgr, cur_span);
+        auto row_num = mem_block->GetRowNum();
+        auto s = TsBlockSpan::MakeNewBlockSpan(template_blk_span, filter.vgroup_id, filter.entity_id,
+                                               std::move(mem_block), 0, row_num, scan_schema, tbl_schema_mgr, cur_span);
         if (s != SUCCESS) {
           LOG_ERROR("MakeNewBlockSpan failed.");
           return KStatus::FAIL;
@@ -782,8 +789,9 @@ KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter, std::
   TsBlockSpan* template_blk_span = nullptr;
   for (auto& mem_blk : mem_blocks) {
     std::shared_ptr<TsBlockSpan> cur_span;
-    auto s = TsBlockSpan::MakeNewBlockSpan(template_blk_span, filter.vgroup_id, filter.entity_id, mem_blk, 0,
-                                           mem_blk->GetRowNum(), scan_schema, tbl_schema_mgr, cur_span);
+    auto row_num = mem_blk->GetRowNum();
+    auto s = TsBlockSpan::MakeNewBlockSpan(template_blk_span, filter.vgroup_id, filter.entity_id, std::move(mem_blk), 0,
+                                           row_num, scan_schema, tbl_schema_mgr, cur_span);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsBlockSpan::GenDataConvertfailed, entity_id=%lu.", filter.entity_id);
         return s;

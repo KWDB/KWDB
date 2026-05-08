@@ -75,21 +75,21 @@ KStatus TsBlockSpan::GenDataConvert(uint32_t blk_version, uint32_t scan_version,
   return KStatus::SUCCESS;
 }
 
-KStatus TsBlockSpan::MakeNewBlockSpan(TsBlockSpan* src_blk_span, uint32_t vgroup_id,
-  TSEntityID entity_id, const std::shared_ptr<TsBlock>& block, int start, int nrow,
-  const std::shared_ptr<MMapMetricsTable>& scan_schema,
-  const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, std::shared_ptr<TsBlockSpan>& ret) {
-  if (src_blk_span == nullptr ||
-     (src_blk_span->block_->GetTableVersion() != block->GetTableVersion())) {
+KStatus TsBlockSpan::MakeNewBlockSpan(TsBlockSpan* src_blk_span, uint32_t vgroup_id, TSEntityID entity_id,
+                                      std::shared_ptr<TsBlock> block, int start, int nrow,
+                                      const std::shared_ptr<MMapMetricsTable>& scan_schema,
+                                      const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
+                                      std::shared_ptr<TsBlockSpan>& ret) {
+  if (src_blk_span == nullptr || (src_blk_span->block_->GetTableVersion() != block->GetTableVersion())) {
     std::shared_ptr<TSBlkDataTypeConvert> convert = nullptr;
     auto s = GenDataConvert(block->GetTableVersion(), scan_schema->GetVersion(), tbl_schema_mgr, convert);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsBlockSpan::MakeNewBlockSpan, entity_id=%lu", entity_id);
       return s;
     }
-    ret = std::make_shared<TsBlockSpan>(vgroup_id, entity_id, block, start, nrow, convert, scan_schema);
+    ret = std::make_shared<TsBlockSpan>(vgroup_id, entity_id, std::move(block), start, nrow, convert, scan_schema);
   } else {
-    ret = std::make_shared<TsBlockSpan>(*src_blk_span, block, start, nrow, entity_id);
+    ret = std::make_shared<TsBlockSpan>(*src_blk_span, std::move(block), start, nrow, entity_id);
   }
   return KStatus::SUCCESS;
 }
@@ -217,10 +217,10 @@ KStatus TsBlockSpan::MakeMergeBlockSpan(std::list<std::shared_ptr<kwdbts::TsBloc
   return KStatus::SUCCESS;
 }
 
-TsBlockSpan::TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, const std::shared_ptr<TsBlock>& block,
-                         int start, int nrow, std::shared_ptr<TSBlkDataTypeConvert>& convert,
+TsBlockSpan::TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_ptr<TsBlock> tmp_block, int start, int nrow,
+                         std::shared_ptr<TSBlkDataTypeConvert>& convert,
                          const std::shared_ptr<MMapMetricsTable>& scan_schema)
-    : block_(block),
+    : block_(std::move(tmp_block)),
       vgroup_id_(vgroup_id),
       entity_id_(entity_id),
       start_row_(start),
@@ -234,7 +234,7 @@ TsBlockSpan::TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, const std::sh
   }
   assert(nrow_ >= 1);
   if (convert == nullptr) {
-    assert(block->GetTableVersion() == scan_version);
+    assert(block_->GetTableVersion() == scan_version);
   } else {
     assert(convert->scan_version_ == scan_version && convert->block_version_ == block_->GetTableVersion());
   }
@@ -242,9 +242,14 @@ TsBlockSpan::TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, const std::sh
   (void)scan_version;  // avoid "set but not used" warning in release build
 }
 
-TsBlockSpan::TsBlockSpan(const TsBlockSpan& src, std::shared_ptr<TsBlock> block, int start, int nrow, TSEntityID e_id) :
-  block_(block), vgroup_id_(src.vgroup_id_), entity_id_(e_id == 0 ? src.entity_id_ : e_id),
-  start_row_(start), nrow_(nrow), scan_attrs_(src.scan_attrs_), convert_(src.convert_) {
+TsBlockSpan::TsBlockSpan(const TsBlockSpan& src, std::shared_ptr<TsBlock> tmp_block, int start, int nrow, TSEntityID e_id)
+    : block_(std::move(tmp_block)),
+      vgroup_id_(src.vgroup_id_),
+      entity_id_(e_id == 0 ? src.entity_id_ : e_id),
+      start_row_(start),
+      nrow_(nrow),
+      scan_attrs_(src.scan_attrs_),
+      convert_(src.convert_) {
   assert(src.block_->GetTableVersion() == block_->GetTableVersion());
   has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_) && convert_ == nullptr;
 }

@@ -229,8 +229,9 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
         block = std::make_shared<TsEntityBlock>(filter.table_id, cur_blk_item, entity_segment->GetSegmentBlockContainer());
       }
       std::shared_ptr<TsBlockSpan> cur_blk_span;
-      s = TsBlockSpan::MakeNewBlockSpan(template_blk_span, filter.vgroup_id, filter.entity_id, block, 0, block->GetRowNum(),
-                                        scan_schema, tbl_schema_mgr, cur_blk_span);
+      auto nrow = block->GetRowNum();
+      s = TsBlockSpan::MakeNewBlockSpan(template_blk_span, filter.vgroup_id, filter.entity_id, std::move(block), 0,
+                                        nrow, scan_schema, tbl_schema_mgr, cur_blk_span);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("MakeNewBlockSpan failed, entity_id=%lu, blk_id=%lu", filter.entity_id, last_blk_id);
         return s;
@@ -270,8 +271,8 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
         }
         std::shared_ptr<TsBlockSpan> cur_blk_span;
         s = TsBlockSpan::MakeNewBlockSpan(template_blk_span, filter.vgroup_id, filter.entity_id, block,
-                                          row_spans[i].first, row_spans[i].second,
-                                          scan_schema, tbl_schema_mgr, cur_blk_span);
+                                          row_spans[i].first, row_spans[i].second, scan_schema, tbl_schema_mgr,
+                                          cur_blk_span);
         if (s != KStatus::SUCCESS) {
           LOG_ERROR("MakeNewBlockSpan failed, entity_id=%lu, blk_id=%lu", filter.entity_id, last_blk_id);
           return s;
