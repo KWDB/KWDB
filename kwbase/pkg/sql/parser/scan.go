@@ -706,7 +706,9 @@ func (s *scanner) scanIdent(lval *sqlSymType) {
 				s.shortinsert.ValuesType = append(s.shortinsert.ValuesType, NORMALTYPE)
 			}
 		}
-		return
+		if !s.shortinsert.PrepareMode {
+			return
+		}
 	}
 
 	isExperimental := false
