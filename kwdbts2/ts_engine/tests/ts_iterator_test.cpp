@@ -1375,6 +1375,12 @@ vector<vector<roachpb::DataType>> timeBucketAgg_metric_types = {
     roachpb::DataType::TIMESTAMP, roachpb::DataType::INT, roachpb::DataType::SMALLINT,
     roachpb::DataType::BIGINT, roachpb::DataType::FLOAT, roachpb::DataType::DOUBLE,
     roachpb::DataType::CHAR, roachpb::DataType::VARCHAR, roachpb::DataType::VARBINARY
+  },
+  // test case 7 (for heap access after freed)
+  {
+    roachpb::DataType::TIMESTAMP, roachpb::DataType::INT, roachpb::DataType::SMALLINT,
+    roachpb::DataType::BIGINT, roachpb::DataType::FLOAT, roachpb::DataType::DOUBLE,
+    roachpb::DataType::CHAR, roachpb::DataType::VARCHAR, roachpb::DataType::VARBINARY
   }
 };
 
@@ -1393,6 +1399,8 @@ vector<vector<roachpb::DataType>> timeBucketAgg_tag_types = {
   // test case 5 (for MAX_EXTEND)
   {roachpb::DataType::VARCHAR, roachpb::DataType::INT},
   // test case 6 (for MIN_EXTEND)
+  {roachpb::DataType::VARCHAR, roachpb::DataType::INT},
+  // test case 7 (for heap access after freed)
   {roachpb::DataType::VARCHAR, roachpb::DataType::INT}
 };
 
@@ -1591,6 +1599,16 @@ vector<vector<vector<vector<string>>>> timeBucketAgg_metric_data = {
       {"2026-3-22 12:10:13.293", "138", "19", "87654321", "12.98", "218.58", "b", "varchar data 2", "varbinary data 2"},
       {"2026-3-22 12:10:18.683", "20", "28", "35367782", "386.197", "538.186", "c", "varchar data 3", "varbinary data 3"}
     }
+  },
+  // test case 7 (for heap access after freed)
+  {
+    // tag 1
+    {
+      {"2026-3-22 12:10:10.181", "198", "3", "12345678", "20.18", "19.38", "a", "varchar data 1", "varbinary data 1"},
+      {"2026-3-22 12:10:19.999", "138", "19", "87654321", "12.98", "218.58", "b", "varchar data 2", "varbinary data 2"},
+      {"2026-3-22 12:10:30.000", "20", "<NULL>", "35367782", "386.197", "538.186", "c", "varchar data 3", "varbinary data 3"},
+      {"2026-3-22 12:10:54.999", "89", "<NULL>", "87932", "2509.3", "873.982102", "d", "varchar data 4", "varbinary data 4"}
+    }
   }
 };
 
@@ -1654,6 +1672,11 @@ vector<vector<vector<string>>> timeBucketAgg_tag_data = {
   {
     // tag 1
     {"device 1", "168"}
+  },
+  // test case 7 (for heap access after freed)
+  {
+    // tag 1
+    {"device 1", "111"}
   }
 };
 
@@ -1669,7 +1692,9 @@ vector<vector<uint32_t>> timeBucketAgg_tag_ids = {
   // test case 5 (for MAX_EXTEND)
   {20},
   // test case 6 (for MIN_EXTEND)
-  {21}
+  {21},
+  // test case 7 (for heap access after freed)
+  {22}
 };
 
 vector<KwTsSpan> timeBucketAgg_ts_span = {
@@ -1685,6 +1710,8 @@ vector<KwTsSpan> timeBucketAgg_ts_span = {
   // test case 5 (for MAX_EXTEND)
   {INT64_MIN, INT64_MAX},
   // test case 6 (for MIN_EXTEND)
+  {INT64_MIN, INT64_MAX},
+  // test case 7 (for heap access after freed)
   {INT64_MIN, INT64_MAX}
 };
 
@@ -1700,7 +1727,9 @@ vector<vector<k_uint32>> timeBucketAgg_scan_cols = {
   // test case 5 (for MAX_EXTEND)
   {0, 1, 1, 1, 1, 1, 1, 1, 1, 1},
   // test case 6 (for MIN_EXTEND)
-  {0, 1, 1, 1, 1, 1, 1, 1, 1, 1}
+  {0, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+  // test case 7 (for heap access after freed)
+  {0, 2}
 };
 
 vector<vector<k_int32>> timeBucketAgg_agg_extend_cols = {
@@ -1715,7 +1744,9 @@ vector<vector<k_int32>> timeBucketAgg_agg_extend_cols = {
   // test case 5 (for MAX_EXTEND)
   {-1, 0, 1, 2, 3, 4, 5, 6, 7, 8},
   // test case 6 (for MIN_EXTEND)
-  {-1, 0, 1, 2, 3, 4, 5, 6, 7, 8}
+  {-1, 0, 1, 2, 3, 4, 5, 6, 7, 8},
+  // test case 7 (for heap access after freed)
+  {-1, -1}
 };
 
 vector<vector<Sumfunctype>> timeBucketAgg_scan_agg_types = {
@@ -1754,6 +1785,10 @@ vector<vector<Sumfunctype>> timeBucketAgg_scan_agg_types = {
   {
     Sumfunctype::TIME_BUCKET, Sumfunctype::MIN_EXTEND, Sumfunctype::MIN, Sumfunctype::MIN_EXTEND, Sumfunctype::MIN_EXTEND, Sumfunctype::MIN_EXTEND,
     Sumfunctype::MIN_EXTEND, Sumfunctype::MIN_EXTEND, Sumfunctype::MIN_EXTEND, Sumfunctype::MIN_EXTEND
+  },
+  // test case 7 (for heap access after freed)
+  {
+    Sumfunctype::TIME_BUCKET, Sumfunctype::LAST
   }
 };
 
@@ -1769,6 +1804,8 @@ vector<TimeBucketInfo> timeBucketAgg_time_bucket_info = {
   // test case 5 (for MAX_EXTEND)
   {0, 5000},
   // test case 6 (for MIN_EXTEND)
+  {0, 5000},
+  // test case 7 (for heap access after freed)
   {0, 5000}
 };
 
@@ -1810,6 +1847,10 @@ vector<vector<DATATYPE>> timeBucketAgg_out_type = {
     DATATYPE::TIMESTAMP64, DATATYPE::TIMESTAMP64, DATATYPE::INT32, DATATYPE::INT16,
     DATATYPE::INT64, DATATYPE::FLOAT, DATATYPE::DOUBLE,
     DATATYPE::CHAR, DATATYPE::VARSTRING, DATATYPE::VARBINARY
+  },
+  // test case 7 (for heap access after freed)
+  {
+    DATATYPE::TIMESTAMP64, DATATYPE::INT16
   }
 };
 
@@ -1967,6 +2008,16 @@ vector<vector<vector<vector<string>>>> timeBucketAgg_expected_data = {
     {
       {"2026-3-22 12:10:10.000", "2026-3-22 12:10:13.293", "138", "19", "87654321", "12.98", "218.58", "b", "varchar data 2", "varbinary data 2"},
       {"2026-3-22 12:10:15.000", "2026-3-22 12:10:18.683", "20", "28", "35367782", "386.197", "538.186", "c", "varchar data 3", "varbinary data 3"}
+    }
+  },
+  // test case 7 (for heap access after freed)
+  {
+    // tag 1
+    {
+      {"2026-3-22 12:10:10.000", "3"},
+      {"2026-3-22 12:10:15.000", "19"},
+      {"2026-3-22 12:10:30.000", "<NULL>"},
+      {"2026-3-22 12:10:50.000", "<NULL>"}
     }
   }
 };
