@@ -947,9 +947,10 @@ func (sr *streamRecalculator) loadExpiredTime(last time.Time) (time.Time, error)
 
 // loadRowsInLastWindow read rows from the source table
 // that falls within the last window of the target table.
-func (sr *streamRecalculator) loadRowsInLastWindow() ([]tree.Datums, error) {
+// hasRow checks whether real-time data has been received. If so, to ensure ordering, no data will be resent.
+func (sr *streamRecalculator) loadRowsInLastWindow(hasRow func() bool) ([]tree.Datums, error) {
 	if sr.isSlideCountWindow() {
-		return sr.loadRowsInLastCountWindow()
+		return sr.loadRowsInLastCountWindow(hasRow)
 	}
 
 	rows, err := sr.distInternalExecutor.QueryEx(
@@ -988,6 +989,10 @@ func (sr *streamRecalculator) loadRowsInLastWindow() ([]tree.Datums, error) {
 			return nil, err
 		}
 
+		if ok := hasRow(); ok {
+			return nil, nil
+		}
+
 		res = append(res, pRows...)
 	}
 
@@ -996,7 +1001,8 @@ func (sr *streamRecalculator) loadRowsInLastWindow() ([]tree.Datums, error) {
 
 // loadRowsInLastCountWindow read rows from the source table
 // that falls within the last window of the target table.
-func (sr *streamRecalculator) loadRowsInLastCountWindow() ([]tree.Datums, error) {
+// hasRow checks whether real-time data has been received. If so, to ensure ordering, no data will be resent.
+func (sr *streamRecalculator) loadRowsInLastCountWindow(hasRow func() bool) ([]tree.Datums, error) {
 	res := make([]tree.Datums, 0)
 	if !sr.streamParameters.TargetTable.IsTsTable {
 		return res, nil
@@ -1035,6 +1041,10 @@ func (sr *streamRecalculator) loadRowsInLastCountWindow() ([]tree.Datums, error)
 
 		if err != nil {
 			return nil, err
+		}
+
+		if ok := hasRow(); ok {
+			return nil, nil
 		}
 
 		res = append(res, pRows...)
@@ -1275,12 +1285,13 @@ func (sr *streamRecalculator) persistResults(rows []tree.Datums) error {
 		return nil
 	}
 
+	failedRowsNum := 0
 	batchNum := numRows / streamInsertBatch
 	finalBatchSize := numRows - batchNum*streamInsertBatch
 
 	currentBatch := make([]interface{}, sr.targetColNum*streamInsertBatch)
 	rowIndex := 0
-	for batchIdx := 0; batchIdx < batchNum; batchNum++ {
+	for batchIdx := 0; batchIdx < batchNum; batchIdx++ {
 		paraIdx := 0
 		for idx := 0; idx < streamInsertBatch; idx++ {
 			row := rows[rowIndex]
@@ -1313,6 +1324,7 @@ func (sr *streamRecalculator) persistResults(rows []tree.Datums) error {
 				if _, err := sr.executor.Exec(sr.ctx, "stream-persist-recalculate-results-single-mode",
 					nil, sr.singleInsertStmt, currentBatch[start:end]...); err != nil {
 					// ignore the error in single mode to avoid too many output messages.
+					failedRowsNum++
 				}
 			}
 		}
@@ -1351,8 +1363,14 @@ func (sr *streamRecalculator) persistResults(rows []tree.Datums) error {
 			if _, err := sr.executor.Exec(sr.ctx, "stream-persist-recalculate-results-single-mode",
 				nil, sr.singleInsertStmt, finalBatch[start:end]...); err != nil {
 				// ignore the error in single mode to avoid too many output messages.
+				failedRowsNum++
 			}
 		}
+	}
+
+	if failedRowsNum > 0 {
+		log.Infof(sr.ctx, "stream %s persist results completed, total rows: %d, success: %d, failed: %d",
+			sr.streamName, numRows, numRows-failedRowsNum, failedRowsNum)
 	}
 
 	return nil

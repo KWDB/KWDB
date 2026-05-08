@@ -92,6 +92,13 @@ func (s *streamResumer) Resume(
 			} else if strings.Contains(msg, "does not exist") {
 				log.Info(ctx, msg)
 				break
+			} else if strings.Contains(msg, "memory budget exceeded") {
+				err = errors.Errorf(
+					"%s, Increase BUFFER_SIZE or reduce SYNC_TIME in stream options.",
+					msg,
+				)
+				log.Infof(ctx, "stream %q is stopped by error: %s, %s", streamName, err.Error())
+				break
 			} else {
 				log.Errorf(ctx, "stream %q is existed with error: %s, retried times %d", streamName, msg, r.CurrentAttempts())
 
