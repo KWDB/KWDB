@@ -91,14 +91,14 @@ TEST_F(VacuumTest, ZDP49302) {
   ts_spans.push_back({0, 0});
   vgroup_->DeleteData(ctx_, table_id, 1, 5000, ts_spans);
 
-  vgroup_->Flush();
-  vgroup_->Vacuum(ctx_, false);
-  vgroup_->Vacuum(ctx_, false);
-  vgroup_->Vacuum(ctx_, false);
-  vgroup_->Vacuum(ctx_, false);
-  vgroup_->Vacuum(ctx_, false);
-  vgroup_->Vacuum(ctx_, false);
-  vgroup_->Vacuum(ctx_, false);
+  ASSERT_EQ(vgroup_->Flush(), SUCCESS);
+  ASSERT_EQ(vgroup_->Vacuum(ctx_, false), SUCCESS);
+  ASSERT_EQ(vgroup_->Vacuum(ctx_, false), SUCCESS);
+  ASSERT_EQ(vgroup_->Vacuum(ctx_, false), SUCCESS);
+  ASSERT_EQ(vgroup_->Vacuum(ctx_, false), SUCCESS);
+  ASSERT_EQ(vgroup_->Vacuum(ctx_, false), SUCCESS);
+  ASSERT_EQ(vgroup_->Vacuum(ctx_, false), SUCCESS);
+  ASSERT_EQ(vgroup_->Vacuum(ctx_, false), SUCCESS);
 
   int nblock_file = 0;
 

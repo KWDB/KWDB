@@ -102,8 +102,18 @@ KStatus TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime, int64
     // create directory for new partition
     // TODO(zzr): optimization: create the directory only when flushing
     // this logic is only for deletion and will be removed later after optimize delete
-    env_->DeleteDir(partition_dir);
-    env_->NewDirectory(partition_dir);
+    {
+      auto s = env_->DeleteDir(partition_dir);
+      if (s == FAIL) {
+        LOG_ERROR("Partition directory already exists, but can not delete it: %s", partition_dir.string().c_str());
+        return FAIL;
+      }
+      s = env_->NewDirectory(partition_dir);
+      if (s == FAIL) {
+        LOG_ERROR("can not create partition directory: %s", partition_dir.string().c_str());
+        return FAIL;
+      }
+    }
     LOG_INFO("Partition directory created: %s", partition_dir.string().c_str());
     partition->directory_created_ = true;
 
@@ -288,7 +298,12 @@ KStatus TsVersionManager::Recover(bool force_recover) {
 
     // the older log file is no longer needed, delete it
     // no need to check return value
-    env_->DeleteFile(root_path_ / log_filename);
+    auto log_path = root_path_ / log_filename;
+    s = env_->DeleteFile(root_path_ / log_filename);
+    if (s == FAIL) {
+      // it's ok if the delete failed, it's just a cleanup
+      LOG_WARN("can not delete old update log file: %s", log_path.c_str());
+    }
   }
 
   // delete unexpected files
@@ -1766,11 +1781,17 @@ KStatus TsVersionManager::RecordReader::ReadRecord(std::string *record, bool *eo
   ptr += sizeof(uint16_t);
   uint32_t size = DecodeFixed32(ptr);
 
-  file_->Read(size, &result);
-  if (result.size() != size) {
+  if (file_->Tell() + size > file_->GetFileSize()) {
     *eof = true;
     LOG_WARN("Failed to read a full record data, expect %u, actual %lu, ignore following records", size, result.size());
     return SUCCESS;
+  }
+
+  s = file_->Read(size, &result);
+  if (s == FAIL || result.size() != size) {
+    auto path = file_->GetFilePath();
+    LOG_ERROR("read version update record failed, path: %s, offset: %lu, len: %u", path.c_str(), file_->Tell(), size);
+    return FAIL;
   }
 
   uint16_t tmp = 0;

@@ -2390,7 +2390,11 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
   TsVersionUpdate update;
   auto info = vacuumer->GetHandleInfo();
   update.SetEntitySegment(partition->GetPartitionIdentifier(), info, true);
-  vacuumer.reset();
+  if (vacuumer->Finalize() == FAIL) {
+    LOG_ERROR("Vacuum failed, Finalize failed");
+    cancel_vacuumer = true;
+    return KStatus::FAIL;
+  }
   if (!invalid_counts.empty()) {
     uint64_t file_number = version_manager_->NewFileNumber();
     update.AddCountFile(partition->GetPartitionIdentifier(), {file_number, invalid_counts});

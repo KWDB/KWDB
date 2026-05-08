@@ -36,7 +36,8 @@ KStatus TsEntitySegmentEntityItemFile::Open() {
     return KStatus::FAIL;
   }
   if (r_file_->GetFileSize() < sizeof(TsEntityItemFileHeader)) {
-    LOG_ERROR("TsEntitySegmentEntityItemFile open failed, file_path=%s", file_path_.c_str())
+    LOG_ERROR("TsEntitySegmentEntityItemFile open failed, file_path=%s, file_size=%lu small than header size",
+              file_path_.c_str(), r_file_->GetFileSize());
     return KStatus::FAIL;
   }
   KStatus s = r_file_->Read(r_file_->GetFileSize() - sizeof(TsEntityItemFileHeader), sizeof(TsEntityItemFileHeader),

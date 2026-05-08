@@ -97,7 +97,7 @@ void LastSegmentReadWriteTest::BuilderWithBasicCheck(TSTableID table_id, int nro
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     std::unique_ptr<TsAppendOnlyFile> last_segment;
-    env->NewAppendOnlyFile(filename, &last_segment);
+    ASSERT_EQ(env->NewAppendOnlyFile(filename, &last_segment), SUCCESS);
     TsLastSegmentBuilder builder(mgr.get(), std::move(last_segment), 0);
     auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, 1, nrow, 123);
     TsRawPayloadRowParser parser{metric_schema};
@@ -165,7 +165,7 @@ void LastSegmentReadWriteTest::BuilderWithBasicCheck(TSTableID table_id, int nro
   for (int i = 0; i < nblock; ++i) {
     const TsLastSegmentBlockIndex &idx_block = block_indexes[i];
     TsSliceGuard result;
-    rfile->Read(idx_block.info_offset, idx_block.length, &result);
+    ASSERT_EQ(rfile->Read(idx_block.info_offset, idx_block.length, &result), SUCCESS);
     TsLastSegmentBlockInfo info;
     TSSlice data{result.data(), result.size()};
     ASSERT_EQ(DecodeBlockInfo(data, &info), SUCCESS);
@@ -251,7 +251,7 @@ R LastSegmentReadWriteTest::GenBuilders(TSTableID table_id) {
   s = schema_mgr->GetTagMeta(1, tag_schema);
 
   std::unique_ptr<TsAppendOnlyFile> last_segment;
-  env->NewAppendOnlyFile(filename, &last_segment);
+  EXPECT_EQ(env->NewAppendOnlyFile(filename, &last_segment), SUCCESS);
   R res;
   res.builder = std::make_unique<TsLastSegmentBuilder>(mgr.get(), std::move(last_segment), 0);
   res.metric_schema = std::move(metric_schema);

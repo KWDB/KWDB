@@ -97,8 +97,8 @@ KStatus TsEntitySegmentAggFile::Open() {
 }
 
 KStatus TsEntitySegmentAggFile::ReadAggData(uint64_t offset, TsSliceGuard* data, size_t len) {
-  r_file_->Read(offset, len, data);
-  if (data->size() != len) {
+  auto s = r_file_->Read(offset, len, data);
+  if (s == FAIL || data->size() != len) {
     LOG_ERROR("TsEntitySegmentAggFile read agg block failed, offset=%lu, len=%zu", offset, len)
     return FAIL;
   }

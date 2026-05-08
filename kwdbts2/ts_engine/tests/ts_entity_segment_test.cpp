@@ -1199,8 +1199,8 @@ TEST_F(TsEntitySegmentTest, BUG_IEOYSN) {
   auto env = &TsIOEnv::GetInstance();
 
   std::string tmp_path = "bug-IEOYSN";
-  env->DeleteDir(tmp_path);
-  env->NewDirectory(tmp_path);
+  ASSERT_EQ(env->DeleteDir(tmp_path), SUCCESS);
+  ASSERT_EQ(env->NewDirectory(tmp_path), SUCCESS);
 
   TsVersionManager v_mgr(env, tmp_path);
   ASSERT_EQ(v_mgr.Recover(false), SUCCESS);
