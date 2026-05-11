@@ -252,7 +252,7 @@ class TsPartitionVersion {
   PartitionStatus GetStatus() const { return exclusive_status_->load(std::memory_order_relaxed); }
 
   KStatus NeedVacuumEntitySegment(const fs::path& root_path, TsEngineSchemaManager* schema_manager,
-                                  bool force, bool& need_vacuum) const;
+                                  uint32_t vgroup_id, bool force, bool& need_vacuum) const;
 
   KStatus GetDelMaxOSN(TSEntityID e_id, TS_OSN& max_osn) const {
     return del_info_->GetDelMaxOSN(e_id, max_osn);

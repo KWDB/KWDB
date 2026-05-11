@@ -2158,7 +2158,8 @@ KStatus TsVGroup::Vacuum(kwdbContext_p ctx, bool force, bool only_agg) {
 
       partition = version_manager_->GetPartitionVersion(partition_id);
 
-      s = partition->NeedVacuumEntitySegment(root_path, schema_mgr_, force, need_vacuum);
+      s = partition->NeedVacuumEntitySegment(root_path, schema_mgr_, vgroup_id_, force, need_vacuum);
+      LOG_INFO("NeedVacuumEntitySegment, need_vacuum=%d", need_vacuum ? 1 : 0)
       if (s != SUCCESS) {
         LOG_ERROR("NeedVacuumEntitySegment failed.");
         return FAIL;
@@ -2212,6 +2213,7 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
   for (uint32_t entity_id = 1; entity_id <= max_entity_id; entity_id++) {
     TsEntityItem entity_item;
     bool has_entity_item = false;
+    bool entity_invalid = false;
     s = entity_segment->GetEntityItem(entity_id, entity_item, has_entity_item);
     if (s != SUCCESS) {
       LOG_ERROR("Vacuum failed, GetEntityItem [%u] failed", entity_id);
@@ -2231,9 +2233,13 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
           cancel_vacuumer = true;
           return s;
         }
+        auto tag_row = tb_schema_mgr->GetTagTable()->GetEntityTag(vgroup_id_, entity_id, UINT64_MAX);
+        if (tag_row.second == 0) {
+          entity_invalid = true;
+        }
       }
     }
-    if (!has_entity_item || 0 == entity_item.cur_block_id || is_dropped) {
+    if (entity_invalid || !has_entity_item || 0 == entity_item.cur_block_id || is_dropped) {
       TsEntityItem empty_entity_item{entity_id};
       empty_entity_item.table_id = entity_item.table_id;
       s = vacuumer->AppendEntityItem(empty_entity_item);

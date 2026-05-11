@@ -1007,7 +1007,7 @@ KStatus TsPartitionVersion::GetBlockSpans(const TsScanFilterParams& filter,
 }
 
 KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path, TsEngineSchemaManager* schema_manager,
-                                                    bool force, bool& need_vacuum) const {
+                                                    uint32_t vgroup_id, bool force, bool& need_vacuum) const {
   need_vacuum = false;
   int nlastseg = leveled_last_segments_.Size();
   if (nlastseg == 0 && entity_segment_ == nullptr) {
@@ -1062,7 +1062,6 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path, T
   need_vacuum = has_del_info;
   if (!need_vacuum && entity_segment_ != nullptr) {
     uint64_t max_entity_id = entity_segment_->GetEntityNum();
-    std::unordered_map<TSTableID, bool> traversed_table;
     for (int entity_id = 1; entity_id <= max_entity_id; entity_id++) {
       TsEntityItem entity_item;
       bool found = false;
@@ -1096,29 +1095,32 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path, T
           }
         }
       }
-      if (traversed_table.count(entity_item.table_id) == 0) {
-        bool is_dropped = false;
-        std::shared_ptr<TsTableSchemaManager> tb_schema_mgr{nullptr};
-        s = schema_manager->GetTableSchemaMgr(entity_item.table_id, tb_schema_mgr, &is_dropped);
-        if (s != SUCCESS) {
-          if (is_dropped) {
-            need_vacuum = true;
-            return SUCCESS;
-          }
-          LOG_ERROR("GetTableSchemaMgr failed, table id [%lu]", entity_item.table_id);
-          return FAIL;
+      bool is_dropped = false;
+      std::shared_ptr<TsTableSchemaManager> tb_schema_mgr{nullptr};
+      s = schema_manager->GetTableSchemaMgr(entity_item.table_id, tb_schema_mgr, &is_dropped);
+      if (s != SUCCESS) {
+        if (is_dropped) {
+          need_vacuum = true;
+          return SUCCESS;
         }
-        auto life_time = tb_schema_mgr->GetLifeTime();
-        bool has_lifetime = life_time.ts != 0;
-        if (has_lifetime) {
-          auto start_ts = (now.time_since_epoch().count() - life_time.ts) * life_time.precision;
-          auto end_time = GetTsColTypeEndTime(tb_schema_mgr->GetTsColDataType());
-          if (end_time < start_ts) {
-            need_vacuum = true;
-            return SUCCESS;
-          }
+        LOG_ERROR("GetTableSchemaMgr failed, table id [%lu]", entity_item.table_id);
+        return FAIL;
+      }
+      auto tag_row = tb_schema_mgr->GetTagTable()->GetEntityTag(vgroup_id, entity_id, UINT64_MAX);
+      if (tag_row.second == 0) {
+        // LOG_INFO("Vacuum found entity [%u] has no tag", entity_id);
+        need_vacuum = true;
+        return SUCCESS;
+      }
+      auto life_time = tb_schema_mgr->GetLifeTime();
+      bool has_lifetime = life_time.ts != 0;
+      if (has_lifetime) {
+        auto start_ts = (now.time_since_epoch().count() - life_time.ts) * life_time.precision;
+        auto end_time = GetTsColTypeEndTime(tb_schema_mgr->GetTsColDataType());
+        if (end_time < start_ts) {
+          need_vacuum = true;
+          return SUCCESS;
         }
-        traversed_table[entity_item.table_id] = true;
       }
     }
   }
