@@ -322,6 +322,11 @@ func asDataSource(n exec.Node) planDataSource {
 	}
 }
 
+// NumResultColumns is part of the exec.Factory interface.
+func (ef *execFactory) NumResultColumns(node exec.Node) int {
+	return len(planColumns(node.(planNode)))
+}
+
 // ConstructFilter is part of the exec.Factory interface.
 func (ef *execFactory) ConstructFilter(
 	n exec.Node, filter tree.TypedExpr, reqOrdering exec.OutputOrdering, execInTSEngine bool,
@@ -791,7 +796,12 @@ func (ef *execFactory) addAggregations(n *groupNode, aggregations []exec.AggInfo
 		// reason: the subsequent plan will split the func interpolate.
 		// interpolate(count(device_id), null) => interpolate($1,null), count(id)
 		if agg.FuncName == "interpolate" {
-			n.columns = append(n.columns, sqlbase.ResultColumn{})
+			n.columns = append(n.columns, sqlbase.ResultColumn{
+				Name:         agg.FuncName,
+				Typ:          agg.ResultType,
+				Hidden:       true,
+				TypeModifier: agg.ResultType.TypeModifier(),
+			})
 		}
 	}
 	return nil
