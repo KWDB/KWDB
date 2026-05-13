@@ -973,3 +973,93 @@ select
   limit 77
 ;
 drop database test_vacuum cascade;
+
+drop database if EXISTS iiot_monitor cascade;
+
+CREATE TS DATABASE iiot_monitor;
+
+CREATE TABLE iiot_monitor.public.sensor_data (
+                                                 ts TIMESTAMPTZ(3) NOT NULL,
+                                                 temperature FLOAT8 NULL,
+                                                 pressure FLOAT8 NULL,
+                                                 vibration FLOAT8 NULL,
+                                                 humidity FLOAT8 NULL,
+                                                 status INT2 NULL
+) TAGS (
+    device_id INT4 NOT NULL,
+    sensor_type VARCHAR(30)
+) PRIMARY TAGS(device_id);
+
+SELECT device_id,
+       avg(temperature) AS avg_temp,
+       count(temperature) AS valid_cnt,
+       count(*) AS total_cnt
+FROM iiot_monitor.sensor_data
+GROUP BY device_id
+ORDER BY avg_temp DESC NULLS LAST
+    LIMIT 3;
+
+insert into iiot_monitor.sensor_data values('2020-1-1', 1.2, 3.4, 5.6, 7.8, 9, 10, 'aaa');
+insert into iiot_monitor.sensor_data values('2021-1-1', 11.2, 13.4, 15.6, 17.8, 19, 10, 'bbb');
+
+SELECT device_id,
+       avg(temperature) AS avg_temp,
+       count(temperature) AS valid_cnt,
+       count(*) AS total_cnt
+FROM iiot_monitor.sensor_data
+GROUP BY device_id
+ORDER BY avg_temp DESC NULLS LAST
+    LIMIT 3;
+
+SELECT device_id,
+       sum(temperature),min(temperature),avg(temperature) AS avg_temp
+FROM iiot_monitor.sensor_data
+where device_id = 10
+GROUP BY device_id;
+
+SELECT device_id,
+       sum(temperature),
+       min(temperature),
+       avg(temperature) AS avg_temp,
+       count(temperature) AS valid_cnt,
+       count(*) AS total_cnt
+FROM iiot_monitor.sensor_data
+where device_id = 10 GROUP BY device_id;
+
+SELECT device_id,
+       sum(temperature),max(temperature), avg(temperature),
+       count(temperature),min(temperature) FROM iiot_monitor.sensor_data
+where device_id = 10 GROUP BY device_id;
+
+drop database if EXISTS iiot_monitor cascade;
+
+drop database if EXISTS d1 cascade;
+create ts database d1;
+use d1;
+
+CREATE TABLE d1.t1 (
+    ts TIMESTAMPTZ(3) NOT NULL,
+    e1 int,
+    e2 int,
+    e3 int,
+    e4 int
+) TAGS (
+    tag1 INT4 NOT NULL,
+    tag2 VARCHAR(30)
+) PRIMARY TAGS(tag1);
+
+insert into t1 values ('2020-1-1', 1, 2, 3, 4, 10, 'abc');
+
+SELECT tag1,
+       max(e1),
+       count(e2),
+       count(e3),
+       avg(e3),
+       count(e4),
+       count(*)
+FROM d1.t1
+GROUP BY tag1;
+
+SELECT tag1, count(e1), avg(e1), sum(e2), min(e2), count(*) FROM d1.t1 GROUP BY tag1;
+
+drop database if EXISTS d1 cascade;

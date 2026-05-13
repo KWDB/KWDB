@@ -997,3 +997,116 @@ select
 ERROR: references to WITH expressions from correlated subqueries are unsupported
 > drop database test_vacuum cascade;
 DROP DATABASE
+> drop database if EXISTS iiot_monitor cascade;
+DROP DATABASE
+> CREATE TS DATABASE iiot_monitor;
+CREATE TS DATABASE
+> CREATE TABLE iiot_monitor.public.sensor_data (
+                                                 ts TIMESTAMPTZ(3) NOT NULL,
+                                                 temperature FLOAT8 NULL,
+                                                 pressure FLOAT8 NULL,
+                                                 vibration FLOAT8 NULL,
+                                                 humidity FLOAT8 NULL,
+                                                 status INT2 NULL
+) TAGS (
+    device_id INT4 NOT NULL,
+    sensor_type VARCHAR(30)
+) PRIMARY TAGS(device_id);
+CREATE TABLE
+> SELECT device_id,
+       avg(temperature) AS avg_temp,
+       count(temperature) AS valid_cnt,
+       count(*) AS total_cnt
+FROM iiot_monitor.sensor_data
+GROUP BY device_id
+ORDER BY avg_temp DESC NULLS LAST
+    LIMIT 3;
+  device_id | avg_temp | valid_cnt | total_cnt
+------------+----------+-----------+------------
+(0 rows)
+> insert into iiot_monitor.sensor_data values('2020-1-1', 1.2, 3.4, 5.6, 7.8, 9, 10, 'aaa');
+INSERT 1
+> insert into iiot_monitor.sensor_data values('2021-1-1', 11.2, 13.4, 15.6, 17.8, 19, 10, 'bbb');
+INSERT 1
+> SELECT device_id,
+       avg(temperature) AS avg_temp,
+       count(temperature) AS valid_cnt,
+       count(*) AS total_cnt
+FROM iiot_monitor.sensor_data
+GROUP BY device_id
+ORDER BY avg_temp DESC NULLS LAST
+    LIMIT 3;
+  device_id |     avg_temp      | valid_cnt | total_cnt
+------------+-------------------+-----------+------------
+         10 | 6.199999999999999 |         2 |         2
+(1 row)
+> SELECT device_id,
+       sum(temperature),min(temperature),avg(temperature) AS avg_temp
+FROM iiot_monitor.sensor_data
+where device_id = 10
+GROUP BY device_id;
+  device_id |        sum         | min |     avg_temp
+------------+--------------------+-----+--------------------
+         10 | 12.399999999999999 | 1.2 | 6.199999999999999
+(1 row)
+> SELECT device_id,
+       sum(temperature),
+       min(temperature),
+       avg(temperature) AS avg_temp,
+       count(temperature) AS valid_cnt,
+       count(*) AS total_cnt
+FROM iiot_monitor.sensor_data
+where device_id = 10 GROUP BY device_id;
+  device_id |        sum         | min |     avg_temp      | valid_cnt | total_cnt
+------------+--------------------+-----+-------------------+-----------+------------
+         10 | 12.399999999999999 | 1.2 | 6.199999999999999 |         2 |         2
+(1 row)
+> SELECT device_id,
+       sum(temperature),max(temperature), avg(temperature),
+       count(temperature),min(temperature) FROM iiot_monitor.sensor_data
+where device_id = 10 GROUP BY device_id;
+  device_id |        sum         | max  |        avg        | count | min
+------------+--------------------+------+-------------------+-------+------
+         10 | 12.399999999999999 | 11.2 | 6.199999999999999 |     2 | 1.2
+(1 row)
+> drop database if EXISTS iiot_monitor cascade;
+DROP DATABASE
+> drop database if EXISTS d1 cascade;
+DROP DATABASE
+> create ts database d1;
+CREATE TS DATABASE
+> use d1;
+SET
+> CREATE TABLE d1.t1 (
+    ts TIMESTAMPTZ(3) NOT NULL,
+    e1 int,
+    e2 int,
+    e3 int,
+    e4 int
+) TAGS (
+    tag1 INT4 NOT NULL,
+    tag2 VARCHAR(30)
+) PRIMARY TAGS(tag1);
+CREATE TABLE
+> insert into t1 values ('2020-1-1', 1, 2, 3, 4, 10, 'abc');
+INSERT 1
+> SELECT tag1,
+       max(e1),
+       count(e2),
+       count(e3),
+       avg(e3),
+       count(e4),
+       count(*)
+FROM d1.t1
+GROUP BY tag1;
+  tag1 | max | count | count | avg | count | count
+-------+-----+-------+-------+-----+-------+--------
+    10 |   1 |     1 |     1 |   3 |     1 |     1
+(1 row)
+> SELECT tag1, count(e1), avg(e1), sum(e2), min(e2), count(*) FROM d1.t1 GROUP BY tag1;
+  tag1 | count | avg | sum | min | count
+-------+-------+-----+-----+-----+--------
+    10 |     1 |   1 |   2 |   2 |     1
+(1 row)
+> drop database if EXISTS d1 cascade;
+DROP DATABASE
