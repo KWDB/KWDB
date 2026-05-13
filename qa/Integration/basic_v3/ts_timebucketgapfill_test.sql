@@ -439,3 +439,57 @@ GROUP BY time, equipment_code_id, capture_tag_id );
 select count(*) from lingshou_station_10m_test ;
 
 drop database test cascade;
+
+-- bug-IJMOOS
+USE defaultdb;DROP DATABASE if exists test_interpolate_output_types cascade;
+CREATE ts DATABASE test_interpolate_output_types;
+
+CREATE TABLE test_interpolate_output_types.gapfill_interp_types(
+    k_timestamp TIMESTAMPTZ NOT NULL,
+    id INT NOT NULL,
+    temperature FLOAT4,
+    humidity FLOAT8
+) ATTRIBUTES (
+    location VARCHAR(32) NOT NULL
+) PRIMARY TAGS(location);
+
+INSERT INTO test_interpolate_output_types.gapfill_interp_types VALUES
+    ('2026-04-20T16:00:00Z', 1, 10, 10, 'workshop_A'),
+    ('2026-04-20T16:15:00Z', 5, 20, 16, 'workshop_A'),
+    ('2026-04-20T16:16:00Z', 6, 21, 16, 'workshop_A');
+
+SELECT time_bucket_gapfill(k_timestamp, '5m') AS bucket, interpolate(count(temperature), 'linear')
+FROM test_interpolate_output_types.gapfill_interp_types
+GROUP BY bucket
+ORDER BY bucket;
+
+SELECT
+    time_bucket_gapfill(k_timestamp, '5m') AS bucket,
+    interpolate(count(temperature), 9.5) AS count_constant,
+    interpolate(count(temperature), 'prev') AS count_prev,
+    interpolate(count(temperature), 'next') AS count_next,
+    interpolate(count(temperature), 'linear') AS count_linear
+FROM test_interpolate_output_types.gapfill_interp_types
+GROUP BY bucket
+ORDER BY bucket;
+
+SELECT
+    time_bucket_gapfill(k_timestamp, '5m') AS bucket,
+    interpolate(avg(humidity), 9) AS avg_constant,
+    interpolate(avg(humidity), 'prev') AS avg_prev,
+    interpolate(avg(humidity), 'next') AS avg_next,
+    interpolate(avg(humidity), 'linear') AS avg_linear
+FROM test_interpolate_output_types.gapfill_interp_types
+GROUP BY bucket
+ORDER BY bucket;
+
+SELECT
+    time_bucket_gapfill(k_timestamp, '5m') AS bucket,
+    interpolate(sum(id), 9.5) AS sum_constant,
+    interpolate(sum(id), 'prev') AS sum_prev,
+    interpolate(sum(id), 'next') AS sum_next,
+    interpolate(sum(id), 'linear') AS sum_linear
+FROM test_interpolate_output_types.gapfill_interp_types
+GROUP BY bucket
+ORDER BY bucket;
+USE defaultdb;DROP DATABASE test_interpolate_output_types cascade;
