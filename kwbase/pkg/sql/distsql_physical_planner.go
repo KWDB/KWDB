@@ -4254,6 +4254,22 @@ func getAggFuncAndType(
 			}
 			aggs[position].Func = execinfrapb.AggregatorSpec_Func(funcIdx)
 			aggs[position].ColIdx = append(aggs[position].ColIdx, uint32(fholder.argRenderIdxs[0]))
+			// Set Arguments, TimestampConstant and aggColTyps for interpolate
+			aggs[position].Arguments = make([]execinfrapb.Expression, len(fholder.arguments))
+			aggs[position].TimestampConstant = make([]int64, len(fholder.arguments))
+			aggColTyps[position] = make([]types.T, len(fholder.arguments))
+			for j, argument := range fholder.arguments {
+				var err error
+				aggs[position].Arguments[j], err = physicalplan.MakeExpression(argument, planCtx, nil, canLocal, false)
+				if err != nil {
+					return aggs, aggColTyps, canNotDist, errors.Wrapf(err, "%s", argument)
+				}
+				if ti, ok1 := argument.(*tree.DTimestampTZ); ok1 {
+					// Use microsecond precision for interpolate timestamp arguments
+					aggs[position].TimestampConstant[j] = ti.UnixMicro()
+				}
+				aggColTyps[position][j] = *argument.ResolvedType()
+			}
 			if strings.ToLower(funcStr) == sqlbase.LastAgg || strings.ToLower(funcStr) == sqlbase.LastRowAgg ||
 				strings.ToLower(funcStr) == sqlbase.FirstAgg || strings.ToLower(funcStr) == sqlbase.FirstRowAgg {
 				for _, v := range aggs {
