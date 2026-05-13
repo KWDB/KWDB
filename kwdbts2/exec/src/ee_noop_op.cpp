@@ -117,6 +117,19 @@ EEIteratorErrCode NoopOperator::Next(kwdbContext_p ctx, DataChunkPtr &chunk) {
       break;
     }
 
+    if (filter_ == nullptr && num_ == 0) {  // no filter and no render
+      if (offset_ >= read_rows) {
+        offset_ -= read_rows;
+        continue;
+      }
+
+      if (offset_ == 0 && limit_ > 0 && examined_rows_ + read_rows <= limit_) {
+        chunk = std::move(data_batch);
+        examined_rows_ += read_rows;
+        break;
+      }
+    }
+
     DataChunk *input_chunk = data_batch.get();
     thd->SetDataChunk(input_chunk);
     input_chunk->ResetLine();
