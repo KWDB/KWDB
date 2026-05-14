@@ -1717,7 +1717,7 @@ vector<KwTsSpan> timeBucketAgg_ts_span = {
 
 vector<vector<k_uint32>> timeBucketAgg_scan_cols = {
   // test case 1
-  {0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 7, 7, 7, 8, 8, 8},
+  {0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 7, 7, 7, 8, 8, 8, 1, 3},
   // test case 2
   {0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 7, 7, 7, 8, 8, 8},
   // test case 3
@@ -1734,7 +1734,7 @@ vector<vector<k_uint32>> timeBucketAgg_scan_cols = {
 
 vector<vector<k_int32>> timeBucketAgg_agg_extend_cols = {
   // test case 1
-  {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+  {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
   // test case 2
   {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
   // test case 3
@@ -1755,7 +1755,8 @@ vector<vector<Sumfunctype>> timeBucketAgg_scan_agg_types = {
     Sumfunctype::TIME_BUCKET, Sumfunctype::COUNT, Sumfunctype::SUM, Sumfunctype::MAX, Sumfunctype::MIN,
     Sumfunctype::COUNT, Sumfunctype::SUM, Sumfunctype::MAX, Sumfunctype::MIN, Sumfunctype::COUNT, Sumfunctype::SUM, Sumfunctype::MAX, Sumfunctype::MIN,
     Sumfunctype::COUNT, Sumfunctype::SUM, Sumfunctype::MAX, Sumfunctype::MIN, Sumfunctype::COUNT, Sumfunctype::SUM, Sumfunctype::MAX, Sumfunctype::MIN,
-    Sumfunctype::COUNT, Sumfunctype::MAX, Sumfunctype::MIN, Sumfunctype::COUNT, Sumfunctype::MAX, Sumfunctype::MIN, Sumfunctype::COUNT, Sumfunctype::MAX, Sumfunctype::MIN
+    Sumfunctype::COUNT, Sumfunctype::MAX, Sumfunctype::MIN, Sumfunctype::COUNT, Sumfunctype::MAX, Sumfunctype::MIN, Sumfunctype::COUNT, Sumfunctype::MAX,
+    Sumfunctype::MIN, Sumfunctype::MAX, Sumfunctype::MIN
   },
   // test case 2
   {
@@ -1815,7 +1816,8 @@ vector<vector<DATATYPE>> timeBucketAgg_out_type = {
     DATATYPE::TIMESTAMP64, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT32, DATATYPE::INT32, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT16, DATATYPE::INT16,
     DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::DOUBLE, DATATYPE::FLOAT, DATATYPE::FLOAT,
     DATATYPE::INT64, DATATYPE::DOUBLE, DATATYPE::DOUBLE, DATATYPE::DOUBLE, DATATYPE::INT64, DATATYPE::CHAR, DATATYPE::CHAR,
-    DATATYPE::INT64, DATATYPE::VARSTRING, DATATYPE::VARSTRING, DATATYPE::INT64, DATATYPE::VARBINARY, DATATYPE::VARBINARY
+    DATATYPE::INT64, DATATYPE::VARSTRING, DATATYPE::VARSTRING, DATATYPE::INT64, DATATYPE::VARBINARY, DATATYPE::VARBINARY,
+    DATATYPE::INT32, DATATYPE::INT64
   },
   // test case 2
   {
@@ -1859,20 +1861,20 @@ vector<vector<vector<vector<string>>>> timeBucketAgg_expected_data = {
   {
     // tag 1
     {
-      {"2026-3-22 12:10:10.000", "2", "336", "198", "138", "2", "22", "19", "3", "2", "99999999", "87654321", "12345678", "2", "33.15999984741211", "20.18", "12.98", "2", "237.96", "218.58", "19.38", "2", "b", "a", "2", "varchar data 2", "varchar data 1", "2", "varbinary data 2", "varbinary data 1"},
-      {"2026-3-22 12:10:15.000", "1", "20", "20", "20", "1", "28", "28", "28", "1", "35367782", "35367782", "35367782", "1", "386.1969909667969", "386.196991", "386.196991", "1", "538.186", "538.186", "538.186", "1", "c", "c", "1", "varchar data 3", "varchar data 3", "1", "varbinary data 3", "varbinary data 3"}
+      {"2026-3-22 12:10:10.000", "2", "336", "198", "138", "2", "22", "19", "3", "2", "99999999", "87654321", "12345678", "2", "33.15999984741211", "20.18", "12.98", "2", "237.96", "218.58", "19.38", "2", "b", "a", "2", "varchar data 2", "varchar data 1", "2", "varbinary data 2", "varbinary data 1", "198", "12345678"},
+      {"2026-3-22 12:10:15.000", "1", "20", "20", "20", "1", "28", "28", "28", "1", "35367782", "35367782", "35367782", "1", "386.1969909667969", "386.196991", "386.196991", "1", "538.186", "538.186", "538.186", "1", "c", "c", "1", "varchar data 3", "varchar data 3", "1", "varbinary data 3", "varbinary data 3", "20", "35367782"}
     },
     // tag 2
     {
-      {"2026-3-22 12:10:10.000", "2", "336", "198", "138", "2", "22", "19", "3", "2", "99999999", "87654321", "12345678", "2", "33.15999984741211", "20.18", "12.98", "2", "237.96", "218.58", "19.38", "2", "b", "a", "2", "varchar data 2", "varchar data 1", "2", "varbinary data 2", "varbinary data 1"},
-      {"2026-3-22 12:10:15.000", "1", "20", "20", "20", "1", "28", "28", "28", "1", "35367782", "35367782", "35367782", "1", "386.1969909667969", "386.196991", "386.196991", "1", "538.186", "538.186", "538.186", "1", "c", "c", "1", "varchar data 3", "varchar data 3", "1", "varbinary data 3", "varbinary data 3"},
+      {"2026-3-22 12:10:10.000", "2", "336", "198", "138", "2", "22", "19", "3", "2", "99999999", "87654321", "12345678", "2", "33.15999984741211", "20.18", "12.98", "2", "237.96", "218.58", "19.38", "2", "b", "a", "2", "varchar data 2", "varchar data 1", "2", "varbinary data 2", "varbinary data 1", "198", "12345678"},
+      {"2026-3-22 12:10:15.000", "1", "20", "20", "20", "1", "28", "28", "28", "1", "35367782", "35367782", "35367782", "1", "386.1969909667969", "386.196991", "386.196991", "1", "538.186", "538.186", "538.186", "1", "c", "c", "1", "varchar data 3", "varchar data 3", "1", "varbinary data 3", "varbinary data 3", "20", "35367782"},
     },
     // tag 3
     {
-      {"2026-3-22 12:10:10.000", "1", "198", "198", "198", "1", "3", "3", "3", "1", "12345678", "12345678", "12345678", "1", "20.18000030517578", "20.18", "20.18", "1", "19.38", "19.38", "19.38", "1", "a", "a", "1", "varchar data 1", "varchar data 1", "1", "varbinary data 1", "varbinary data 1"},
-      {"2026-3-22 12:10:15.000", "1", "138", "138", "138", "1", "19", "19", "19", "1", "87654321", "87654321", "87654321", "1", "12.979999542236328", "12.98", "12.98", "1", "218.58", "218.58", "218.58", "1", "b", "b", "1", "varchar data 2", "varchar data 2", "1", "varbinary data 2", "varbinary data 2"},
-      {"2026-3-22 12:10:30.000", "1", "20", "20", "20", "1", "28", "28", "28", "1", "35367782", "35367782", "35367782", "1", "386.1969909667969", "386.196991", "386.196991", "1", "538.186", "538.186", "538.186", "1", "c", "c", "1", "varchar data 3", "varchar data 3", "1", "varbinary data 3", "varbinary data 3"},
-      {"2026-3-22 12:10:50.000", "1", "89", "89", "89", "1", "180", "180", "180", "1", "87932", "87932", "87932", "1", "2509.300048828125", "2509.300049", "2509.300049", "1", "873.982102", "873.982102", "873.982102", "1", "d", "d", "1", "varchar data 4", "varchar data 4", "1", "varbinary data 4", "varbinary data 4"}
+      {"2026-3-22 12:10:10.000", "1", "198", "198", "198", "1", "3", "3", "3", "1", "12345678", "12345678", "12345678", "1", "20.18000030517578", "20.18", "20.18", "1", "19.38", "19.38", "19.38", "1", "a", "a", "1", "varchar data 1", "varchar data 1", "1", "varbinary data 1", "varbinary data 1", "198", "12345678"},
+      {"2026-3-22 12:10:15.000", "1", "138", "138", "138", "1", "19", "19", "19", "1", "87654321", "87654321", "87654321", "1", "12.979999542236328", "12.98", "12.98", "1", "218.58", "218.58", "218.58", "1", "b", "b", "1", "varchar data 2", "varchar data 2", "1", "varbinary data 2", "varbinary data 2", "138", "87654321"},
+      {"2026-3-22 12:10:30.000", "1", "20", "20", "20", "1", "28", "28", "28", "1", "35367782", "35367782", "35367782", "1", "386.1969909667969", "386.196991", "386.196991", "1", "538.186", "538.186", "538.186", "1", "c", "c", "1", "varchar data 3", "varchar data 3", "1", "varbinary data 3", "varbinary data 3", "20", "35367782"},
+      {"2026-3-22 12:10:50.000", "1", "89", "89", "89", "1", "180", "180", "180", "1", "87932", "87932", "87932", "1", "2509.300048828125", "2509.300049", "2509.300049", "1", "873.982102", "873.982102", "873.982102", "1", "d", "d", "1", "varchar data 4", "varchar data 4", "1", "varbinary data 4", "varbinary data 4", "89", "87932"}
     }
   },
   // test case 2
@@ -2324,6 +2326,89 @@ TEST_F(TestV2Iterator, blockfilter1) {
     ASSERT_EQ(count, 3);
     ASSERT_EQ(KTimestamp(res.data[0][0]->mem), convertMSToPrecisionTS(start_ts, ts_col_type));
 
+    ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
+    ASSERT_EQ(count, 0);
+
+    delete ts_iter;
+  }
+}
+
+TEST_F(TestV2Iterator, multipleMinMax) {
+  TSTableID table_id = 999;
+  roachpb::CreateTsTable pb_meta;
+  std::vector<roachpb::DataType> col_types = {roachpb::DataType::TIMESTAMP, roachpb::DataType::INT, roachpb::DataType::DOUBLE, roachpb::DataType::VARCHAR};
+  ConstructRoachpbTable(&pb_meta, table_id, 1, col_types);
+  std::shared_ptr<TsTable> ts_table;
+  auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  bool is_dropped = false;
+  s = engine_->GetTsTable(ctx_, table_id, ts_table, is_dropped);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, table_schema_mgr);
+  ASSERT_EQ(s , KStatus::SUCCESS);
+
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = table_schema_mgr->GetMetricMeta(1, &metric_schema);
+  ASSERT_EQ(s , KStatus::SUCCESS);
+
+  std::vector<TagInfo> tag_schema;
+  s = table_schema_mgr->GetTagMeta(1, tag_schema);
+  ASSERT_EQ(s , KStatus::SUCCESS);
+
+  uint16_t inc_entity_cnt;
+  uint32_t inc_unordered_cnt = 0;
+  DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
+
+  timestamp64 start_ts = 3600;
+  std::vector<timestamp64> ts_vecs = {start_ts, start_ts + 100, start_ts + 200};
+  std::vector<int> col1_value_vecs = {100, 200, 300};
+  std::vector<bool> col1_isnull_vecs = {true, false, false};
+  std::vector<double> col2_value_vecs = {1.0, 2.0, 3.0};
+  std::vector<bool> col2_isnull_vecs = {false, true, true};
+  auto payload1 = GenRowPayload(*metric_schema, tag_schema, table_id, 1, 1, 3, ts_vecs, col1_value_vecs, col1_isnull_vecs, col2_value_vecs, col2_isnull_vecs);
+
+  s = engine_->PutData(ctx_, table_id, 0, &payload1, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  free(payload1.data);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = engine_->GetTsVGroups();
+  for (const auto& vgroup : *ts_vgroups) {
+    if (!vgroup || vgroup->GetMaxEntityID() < 1) {
+      continue;
+    }
+    TsStorageIterator* ts_iter;
+    k_uint32 entity_id = 1;
+    KwTsSpan ts_span = {INT64_MIN, INT64_MAX};
+    DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
+    ts_span = ConvertMsToPrecision(ts_span, ts_col_type);
+    std::vector<k_uint32> scan_cols = {0, 1, 2, 3, 2, 1, 2, 1};
+    std::vector<Sumfunctype> scan_agg_types = {MAX, MIN, SUM, COUNT, MAX, MIN, MAX, LAST};
+
+    std::shared_ptr<MMapMetricsTable> schema;
+    ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+    std::vector<uint32_t> entity_ids = {entity_id};
+    std::vector<KwTsSpan> ts_spans = {ts_span};
+    std::vector<BlockFilter> block_filter = {};
+    std::vector<k_int32> agg_extend_cols = {-1, -1, -1, -1, -1, -1, -1, -1};
+    std::vector<timestamp64> ts_points = {};
+    FillParams fill_params;
+
+    s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
+                        scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
+                        schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+
+    ResultSet res{(k_uint32) scan_cols.size()};
+    k_uint32 count;
+    bool is_finished = false;
+    ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
+    ASSERT_EQ(count, 1);
+    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), start_ts + 200);
+    ASSERT_EQ(KDouble64(res.data[4][0]->mem), 1.0);
+    ASSERT_EQ(KInt32(res.data[5][0]->mem), 200);
+    ASSERT_EQ(KDouble64(res.data[6][0]->mem), 1.0);
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 0);
 
