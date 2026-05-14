@@ -53,6 +53,8 @@ void LogRemainingDirectoryEntries(const fs::path& dir_path) {
 
 }  // namespace
 
+int64_t g_free_space_alert_threshold = 0;
+
 bool IsExists(const fs::path& path) {
   return fs::exists(path);
 }
