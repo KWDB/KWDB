@@ -2298,8 +2298,10 @@ KStatus TsAggIteratorImpl::GenerateTimeBucketAggData() {
       continue;
     }
     if (agg_type == Sumfunctype::MAX || agg_type == Sumfunctype::MIN) {
-      if ((agg_type == Sumfunctype::MAX && max_map_[kw_scan_cols_[i]] != i)
-          || (agg_type ==Sumfunctype::MIN && min_map_[kw_scan_cols_[i]] != i)) {
+      if (agg_type == Sumfunctype::MAX && max_map_[kw_scan_cols_[i]] != i) {
+        final_agg_data_[i].len = final_agg_data_[max_map_[kw_scan_cols_[i]]].len;
+        memcpy(final_agg_data_[i].data, final_agg_data_[max_map_[kw_scan_cols_[i]]].data, final_agg_data_[i].len);
+      } else if (agg_type ==Sumfunctype::MIN && min_map_[kw_scan_cols_[i]] != i) {
         final_agg_data_[i].len = final_agg_data_[min_map_[kw_scan_cols_[i]]].len;
         memcpy(final_agg_data_[i].data, final_agg_data_[min_map_[kw_scan_cols_[i]]].data, final_agg_data_[i].len);
       }
@@ -2392,8 +2394,11 @@ KStatus TsAggIteratorImpl::GenerateAggData() {
       continue;
     }
     if (agg_type == Sumfunctype::MAX || agg_type == Sumfunctype::MIN) {
-      if ((agg_type == Sumfunctype::MAX && max_map_[kw_scan_cols_[i]] != i)
-          || (agg_type ==Sumfunctype::MIN && min_map_[kw_scan_cols_[i]] != i)) {
+      if (agg_type == Sumfunctype::MAX && max_map_[kw_scan_cols_[i]] != i) {
+        final_agg_data_[i].len = final_agg_data_[max_map_[kw_scan_cols_[i]]].len;
+        final_agg_data_[i].data = static_cast<char*>(malloc(final_agg_data_[i].len));
+        memcpy(final_agg_data_[i].data, final_agg_data_[max_map_[kw_scan_cols_[i]]].data, final_agg_data_[i].len);
+      } else if (agg_type ==Sumfunctype::MIN && min_map_[kw_scan_cols_[i]] != i) {
         final_agg_data_[i].len = final_agg_data_[min_map_[kw_scan_cols_[i]]].len;
         final_agg_data_[i].data = static_cast<char*>(malloc(final_agg_data_[i].len));
         memcpy(final_agg_data_[i].data, final_agg_data_[min_map_[kw_scan_cols_[i]]].data, final_agg_data_[i].len);
