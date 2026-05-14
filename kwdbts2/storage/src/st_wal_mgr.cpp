@@ -113,9 +113,12 @@ KStatus WALMgr::Init(kwdbContext_p ctx, bool for_eng_wal) {
       LOG_ERROR("Failed to Remove Tmp WAL file.")
       return KStatus::FAIL;
     }
-    if (-1 == rename(file_mgr_->getChkFilePath().c_str(), file_mgr_->getFilePath().c_str())) {
-      LOG_ERROR("Failed to rename WAL file.")
-      return KStatus::FAIL;
+    // Only rename chk file if it exists
+    if (IsExists(file_mgr_->getChkFilePath())) {
+      if (-1 == rename(file_mgr_->getChkFilePath().c_str(), file_mgr_->getFilePath().c_str())) {
+        LOG_ERROR("Failed to rename WAL file.")
+        return KStatus::FAIL;
+      }
     }
   }
   KStatus s;
