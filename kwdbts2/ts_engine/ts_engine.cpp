@@ -2761,13 +2761,21 @@ KStatus TSEngineImpl::FlushBuffer(kwdbContext_p ctx) {
   if (options_.wal_level != WALMode::OFF && !options_.use_raft_log_as_wal) {
     {
       wal_mgr_->Lock();
-      wal_mgr_->Flush(ctx);
+      if (wal_mgr_->Flush(ctx) != KStatus::SUCCESS) {
+        wal_mgr_->Unlock();
+        LOG_ERROR("failed to flush wal manager");
+        return KStatus::FAIL;
+      }
       wal_mgr_->Unlock();
     }
     for (auto& vg : vgroups_) {
       auto wal = vg->GetWALManager();
       wal->Lock();
-      wal->Flush(ctx);
+      if (wal->Flush(ctx) != KStatus::SUCCESS) {
+        wal->Unlock();
+        LOG_ERROR("failed to flush wal[vg=%d]", vg->GetVGroupID());
+        return KStatus::FAIL;
+      }
       wal->Unlock();
     }
   }

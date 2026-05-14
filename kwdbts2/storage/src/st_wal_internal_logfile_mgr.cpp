@@ -13,6 +13,7 @@
 
 #include <utility>
 #include "sys_utils.h"
+#include "ts_io.h"
 
 namespace kwdbts {
 
@@ -216,7 +217,11 @@ KStatus WALFileMgr::writeBlocks(std::vector<EntryBlock*>& entry_blocks, HeaderBl
       };
       return static_cast<Helper*>(fb)->handle();
     };
-    fsync(helper(file_.rdbuf()));
+    if (unlikely(fsync(helper(file_.rdbuf())) < 0)) {
+      auto ec = MakeErrorCode(errno);
+      LOG_ERROR("fsync failed, reason: %s", ec.message().c_str());
+      return FAIL;
+    }
   } else {
     file_.flush();
   }

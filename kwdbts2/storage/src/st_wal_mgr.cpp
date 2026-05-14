@@ -458,8 +458,7 @@ KStatus WALMgr::CreateCheckpoint(kwdbContext_p ctx) {
   buffer_mgr_->setHeaderBlockCheckpointInfo(meta_.current_lsn, meta_.current_checkpoint_no);
   meta_.checkpoint_lsn = meta_.current_lsn;
   // 6 flush log buffer to disk
-  Flush(ctx);
-  return SUCCESS;
+  return Flush(ctx);
 }
 KStatus WALMgr::CreateCheckpointWithoutFlush(kwdbts::kwdbContext_p ctx) {
   meta_.current_checkpoint_no++;
@@ -1123,9 +1122,16 @@ KStatus WALMgr::flushMeta(kwdbContext_p ctx) {
       };
       return static_cast<Helper*>(fb)->handle();
     };
-    fsync(helper(meta_file_.rdbuf()));
+    if (unlikely(fsync(helper(meta_file_.rdbuf())) < 0)) {
+      auto ec = MakeErrorCode(errno);
+      LOG_ERROR("fsync failed, reason: %s", ec.message().c_str());
+      return FAIL;
+    }
   } else {
-    meta_file_.flush();
+    if (unlikely(!meta_file_.flush())) {
+      LOG_ERROR("meta file flush failed");
+      return FAIL;
+    }
   }
   return SUCCESS;
 }
