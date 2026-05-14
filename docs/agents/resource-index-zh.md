@@ -7,7 +7,7 @@
 ## 核心文件
 
 - `AGENTS.md`：仓库级运行规则与稳定验证期望
-- `.agents/skills/README.md`：仓库内工作流技能的候选清单
+- `.agents/skills/README.md`：可选本地 skills 占位说明
 
 ## 外部任务工件
 
@@ -21,8 +21,7 @@
 - `docs/agents/*-zh.md`：重要条目的中文对应版；开源默认仍以英文正文为准
 - `docs/agents/architecture-index.md`：模块地图与任务路由提示
 - `docs/agents/coding-style-go-cpp.md`：面向 KWDB 维护的 OSS 代码的 Go/C++ 约定
-- `docs/agents/ai-collaboration-model.md`：人机协作的阶段、门禁与度量
-- `docs/agents/ci-release-guide.md`：当前可用的验证面与推荐的 CI/发布门禁
+- `docs/agents/ci-release-guide.md`：Makefile/脚本验证面与合并检查项
 - `docs/agents/testing-flow.md`：验证层级与常用命令
 - `docs/agents/logging.md`：共享日志约束与评审清单
 - `docs/agents/errors.md`：错误码及兼容性约束
@@ -40,7 +39,7 @@
 
 ## 技能目录
 
-- `.agents/skills/README.md`：未来仓库级技能的候选说明
+- `.agents/skills/README.md`：可选 skills 占位说明
 
 ## 模块级参考路径
 
