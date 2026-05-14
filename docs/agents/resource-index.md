@@ -5,7 +5,7 @@ This file is the stable map of agent-facing resources in this repository.
 ## Core Files
 
 - `AGENTS.md`: repository-wide operating rules and stable verification expectations
-- `.agents/skills/README.md`: repository-local workflow skill candidates
+- `.agents/skills/README.md`: placeholder layout for optional local skills
 
 ## External Task Artifacts
 
@@ -20,8 +20,7 @@ This file is the stable map of agent-facing resources in this repository.
   remain the OSS default
 - `docs/agents/architecture-index.md`: module map and task routing hints
 - `docs/agents/coding-style-go-cpp.md`: Go/C++ norms for KWDB-maintained OSS code
-- `docs/agents/ai-collaboration-model.md`: AI-assisted delivery stages, gates, and metrics
-- `docs/agents/ci-release-guide.md`: current CI/test/release surfaces and recommended gates
+- `docs/agents/ci-release-guide.md`: Makefile/script verification surfaces plus merge checks
 - `docs/agents/testing-flow.md`: verification levels and common commands
 - `docs/agents/logging.md`: shared logging constraints and review checklist
 - `docs/agents/errors.md`: shared error-code and compatibility constraints
@@ -37,9 +36,9 @@ This file is the stable map of agent-facing resources in this repository.
 - `qa/run_test_local_v2.sh`: local regression entry script
 - `qa/run_tsbs_test.sh`: TSBS test entry script
 
-## Skills
+## Skills directory
 
-- `.agents/skills/README.md`: candidate list for future repository-local skills
+- `.agents/skills/README.md`: optional skills placeholder
 
 ## Module-Specific References
 

@@ -119,7 +119,6 @@ If the work is intended for review or merge, also follow `docs/agents/pr-guide.m
 
 - architecture and module map: `docs/agents/architecture-index.md`
 - agent docs overview: `docs/agents/README.md`
-- AI collaboration model: `docs/agents/ai-collaboration-model.md`
 - CI and release guidance: `docs/agents/ci-release-guide.md`
 - component-specific index: `docs/agents/components/README.md`
 - testing and verification flow: `docs/agents/testing-flow.md`
