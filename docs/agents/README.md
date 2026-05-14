@@ -4,14 +4,6 @@ This directory is the repository-local knowledge base for coding agents.
 It keeps stable, reusable guidance in the repo while leaving volatile task
 specs and day-to-day requirement documents in external systems.
 
-Adoption starts with root `AGENTS.md` plus the files listed here.
-Repository-local procedural skills stay optional until repeatable workflows prove
-they are worth packaging under `.agents/skills/` (see `.agents/skills/README.md`).
-
-**Initial onboarding path:** read `AGENTS.md`, then `architecture-index.md` and
-`testing-flow.md`, then use `resource-index.md` as the map into topic guides such
-as `logging.md`, `errors.md`, `pr-guide.md`, and `coding-style-go-cpp.md`.
-
 Companion files use the `-zh.md` suffix (for example `README-zh.md`) and align
 with selected English originals; English files remain the default source of
 truth for open-source publishing.
@@ -27,7 +19,6 @@ kwdb/
 └── docs/
     └── agents/
         ├── README.md
-        ├── ai-collaboration-model.md
         ├── architecture-index.md
         ├── ci-release-guide.md
         ├── coding-style-go-cpp.md
@@ -56,7 +47,6 @@ edition is helpful alongside the default English text.
 | `resource-index.md` | `resource-index-zh.md` |
 | `architecture-index.md` | `architecture-index-zh.md` |
 | `testing-flow.md` | `testing-flow-zh.md` |
-| `ai-collaboration-model.md` | `ai-collaboration-model-zh.md` |
 | `coding-style-go-cpp.md` | `coding-style-go-cpp-zh.md` |
 | `pr-guide.md` | `pr-guide-zh.md` |
 | `logging.md` | `logging-zh.md` |
@@ -84,8 +74,6 @@ edition is helpful alongside the default English text.
 - Good fit: task intake, CI triage, test selection, perf investigation, PR
   preparation, release readiness.
 - Keep skills task-oriented and bounded.
-- At the current stage, keep this as a candidate list only unless the team
-  agrees a workflow is stable enough to formalize.
 
 ### External requirement docs
 
@@ -105,24 +93,9 @@ edition is helpful alongside the default English text.
 - `errors.md`: shared error and compatibility constraints
 - `pr-guide.md`: PR summary and review expectations
 - `resource-index.md`: quick map to repo-local resources
-- `ai-collaboration-model.md`: stage-by-stage AI-assisted delivery model
-- `ci-release-guide.md`: current validation surfaces plus recommended CI/release gates
+- `ci-release-guide.md`: verification surfaces anchored in `Makefile`/scripts plus merge/release checks
 
 ### Component area
 
 - `components/README.md`: where component-specific notes should live
 - `components/common/README.md`: shared-surface notes for common runtime behavior
-
-## Design Posture
-
-- Global policy stays in `AGENTS.md`.
-- Stable facts stay under `docs/agents/*`.
-- Repeatable procedures may later move under `.agents/skills/*`, but only after
-  the team has used and reviewed them enough to stabilize.
-- Volatile task specs stay outside the repository.
-
-## Remaining Gaps
-
-- Add component-specific notes once repeated module-level patterns stabilize.
-- Add child `AGENTS.md` files only when a subtree really needs tighter local rules.
-- Extend CI/release guidance once the owning platform and pipelines are explicit.
