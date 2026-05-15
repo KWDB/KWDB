@@ -31,8 +31,7 @@ Deeper module guidance lives in `docs/agents/architecture-index.md`. Build and
 verification command details live in `docs/agents/testing-flow.md`.
 
 Go and C++ norms: `docs/agents/coding-style-go-cpp.md`. Also listed under
-[Agent Resources](#8-agent-resources); this file ends with a short **Go and C++
-coding style** overview pointing to that document.
+[Agent Resources](#8-agent-resources).
 
 ## 3. Working Rules
 
