@@ -2159,7 +2159,7 @@ KStatus TsVGroup::Vacuum(kwdbContext_p ctx, bool force, bool only_agg) {
       partition = version_manager_->GetPartitionVersion(partition_id);
 
       s = partition->NeedVacuumEntitySegment(root_path, schema_mgr_, vgroup_id_, force, need_vacuum);
-      LOG_INFO("NeedVacuumEntitySegment, need_vacuum=%d", need_vacuum ? 1 : 0)
+      // LOG_INFO("NeedVacuumEntitySegment, need_vacuum=%d", need_vacuum ? 1 : 0)
       if (s != SUCCESS) {
         LOG_ERROR("NeedVacuumEntitySegment failed.");
         return FAIL;
@@ -2749,6 +2749,9 @@ KStatus TsVGroup::CalcPartitionAgg(bool force) {
     return s;
   }
   for (auto& tbl_schema : tbl_schema_managers) {
+    if (tbl_schema->IsDropped()) {
+      continue;
+    }
     std::shared_ptr<TagTable> tag_table;
     s = tbl_schema->GetTagSchema(ctx_p, &tag_table);
     if (s != KStatus::SUCCESS) {
@@ -2770,6 +2773,17 @@ KStatus TsVGroup::CalcPartitionAgg(bool force) {
   TsIOEnv* env = &TsIOEnv::GetInstance();
   TsVersionUpdate update;
   for (auto& [par_id, par_version] : all_partitions) {
+    if (force) {
+      while (!par_version->TrySetBusy(PartitionStatus::CalculatingAgg)) {
+        std::this_thread::sleep_for(std::chrono::seconds(2));
+      }
+    } else if (!par_version->TrySetBusy(PartitionStatus::CalculatingAgg)) {
+      LOG_INFO("Skip CalcPartitionAgg for partition[%s], partition is busy.",
+               par_version->GetPartitionIdentifierStr().c_str());
+      continue;
+    }
+    Defer partition_status_defer{[&]() { par_version->ResetStatus(); }};
+
 #ifndef WITH_TESTS
     if (!force) {
       bool need_calc = false;
@@ -2803,6 +2817,9 @@ KStatus TsVGroup::CalcPartitionAgg(bool force) {
       partition_agg_builder->Close();
     }};
     for (auto& [tb_schema, classified_entities] : cla_entities) {
+      if (tb_schema->IsDropped()) {
+        continue;
+      }
       std::shared_ptr<MMapMetricsTable> metric_schema = tb_schema->GetCurrentMetricsTable();
       const vector<AttributeInfo>& attrs = *metric_schema->getSchemaInfoExcludeDroppedPtr();
       DATATYPE ts_col_type = tb_schema->GetTsColDataType();

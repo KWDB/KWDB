@@ -248,8 +248,15 @@ TsBlockSpan::TsBlockSpan(const TsBlockSpan& src, std::shared_ptr<TsBlock> tmp_bl
       entity_id_(e_id == 0 ? src.entity_id_ : e_id),
       start_row_(start),
       nrow_(nrow),
+      scan_schema_(src.scan_schema_),
       scan_attrs_(src.scan_attrs_),
       convert_(src.convert_) {
+  // NOTE: scan_schema_ MUST be copied together with scan_attrs_, because scan_attrs_ is a bare
+  // pointer into the AttributeInfo vector owned by the MMapMetricsTable referenced by scan_schema_.
+  // Without holding the shared_ptr here, this span would only borrow scan_attrs_ from `src` and
+  // become dangling once `src` (or any other span sharing that schema) is destroyed.  That used to
+  // crash background partition aggregation in TsEntityBlock::GetMetricColValue when LoadColData
+  // cached the dangling schema pointer in TsEntityBlock::metric_schema_.
   assert(src.block_->GetTableVersion() == block_->GetTableVersion());
   has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_) && convert_ == nullptr;
 }

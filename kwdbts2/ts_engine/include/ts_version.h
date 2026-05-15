@@ -51,6 +51,7 @@ enum class PartitionStatus : uint32_t {
   Vacuuming,
   Compacting,
   BatchDataWriting,
+  CalculatingAgg,
 };
 
 enum class CountStatsStatus {
