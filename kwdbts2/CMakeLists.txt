@@ -151,19 +151,23 @@ set(DEDUCTED_PARALLEL_DEGREE "1024")
 # if result1 is 0, assign the result to DEDUCTED_PARALLEL_DEGREE
 if (${result1} EQUAL 0)
     string(STRIP "${value1}" value1)
-    math(EXPR mem_by_four "${value1}")
-    message(STATUS "Parallel degree estimation by memory is ${mem_by_four}")
-    set(DEDUCTED_PARALLEL_DEGREE ${mem_by_four})
+    if (NOT value1 STREQUAL "")
+      math(EXPR mem_by_four "${value1}")
+      message(STATUS "Parallel degree estimation by memory is ${mem_by_four}")
+      set(DEDUCTED_PARALLEL_DEGREE ${mem_by_four})
+    endif()
 endif ()
 
 # if nproc returns, and if it's smaller than current value, take it
 if (${result2} EQUAL 0)
     string(STRIP "${value2}" value2)
-    math(EXPR proc_num "${value2}")
-    message(STATUS "Parallel degree by nproc is ${proc_num}")
-    if (${DEDUCTED_PARALLEL_DEGREE} GREATER ${proc_num})
-      set(DEDUCTED_PARALLEL_DEGREE ${proc_num})
-    endif ()
+    if (NOT value2 STREQUAL "")
+      math(EXPR proc_num "${value2}")
+      message(STATUS "Parallel degree by nproc is ${proc_num}")
+      if (${DEDUCTED_PARALLEL_DEGREE} GREATER ${proc_num})
+        set(DEDUCTED_PARALLEL_DEGREE ${proc_num})
+      endif ()
+    endif()
 endif ()
 
 # to prevent the original big value.  In case it's still very big
@@ -231,7 +235,7 @@ if (NOT PROTOBUF_FOUND OR USE_SOURCE)
     BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/third_party/protobuf-3.12.4/build
     BUILD_IN_SOURCE 0
     CONFIGURE_COMMAND
-      cmake -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_CXX_FLAGS=-fPIC -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${NATIVE}/kwdbts2/third_party -S ${PROJECT_SOURCE_DIR}/third_party/protobuf-3.12.4/cmake
+      ${CMAKE_CMD} -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_CXX_FLAGS=-fPIC -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${NATIVE}/kwdbts2/third_party -S ${PROJECT_SOURCE_DIR}/third_party/protobuf-3.12.4/cmake
     BUILD_COMMAND
       $(MAKE) -j${DEDUCTED_PARALLEL_DEGREE}
   )
@@ -259,7 +263,7 @@ if (NOT Gflags_FOUND  OR USE_SOURCE)
     BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/third_party/gflags-2.2.2/build
     BUILD_IN_SOURCE 0
     CONFIGURE_COMMAND
-      cmake -DCMAKE_CXX_FLAGS=-fPIC -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_STATIC_LIBS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${NATIVE}/kwdbts2/third_party -S ${PROJECT_SOURCE_DIR}/third_party/gflags-2.2.2
+      ${CMAKE_CMD} -DCMAKE_CXX_FLAGS=-fPIC -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_STATIC_LIBS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${NATIVE}/kwdbts2/third_party -S ${PROJECT_SOURCE_DIR}/third_party/gflags-2.2.2
     BUILD_COMMAND
       $(MAKE) -j${DEDUCTED_PARALLEL_DEGREE}
   )
@@ -281,7 +285,7 @@ if (NOT LZ4_FOUND  OR USE_SOURCE)
     BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/third_party/lz4-1.9.3/build
     BUILD_IN_SOURCE 0
     CONFIGURE_COMMAND
-      cmake -DBUILD_SHARED_LIBS=OFF -DBUILD_STATIC_LIBS=ON -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_BUILD_TYPE=Release -DLZ4_BUILD_CLI=OFF -DLZ4_BUILD_LEGACY_LZ4C=OFF -DCMAKE_INSTALL_PREFIX=${NATIVE}/kwdbts2/third_party -S ${PROJECT_SOURCE_DIR}/third_party/lz4-1.9.3/build/cmake
+      ${CMAKE_CMD} -DBUILD_SHARED_LIBS=OFF -DBUILD_STATIC_LIBS=ON -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_BUILD_TYPE=Release -DLZ4_BUILD_CLI=OFF -DLZ4_BUILD_LEGACY_LZ4C=OFF -DCMAKE_INSTALL_PREFIX=${NATIVE}/kwdbts2/third_party -S ${PROJECT_SOURCE_DIR}/third_party/lz4-1.9.3/build/cmake
     BUILD_COMMAND
       $(MAKE) -j${DEDUCTED_PARALLEL_DEGREE}
   )

@@ -1,5 +1,21 @@
 cmake_minimum_required(VERSION 3.6 FATAL_ERROR)
 
+# binary file name setting
+set (KWBASE_FN "kwbase")
+set (CMAKE_CMD "cmake")
+#Windows compile
+if(WIN32)
+    message("Compile with Windows architecture")
+    message(STATUS "Add XGOOS windows")
+    set(XGOOS windows)
+    message(STATUS "Add XGOARCH amd64")
+    set(XGOARCH amd64)
+    message(STATUS "Add XCMAKE_SYSTEM_NAME windows")
+    set(XCMAKE_SYSTEM_NAME Windows)
+    set(KWBASE_FN "kwbase.exe")
+    set(CMAKE_CMD "/ucrt64/bin/cmake")
+endif()
+
 PROJECT(KWDB)
 message(STATUS "Project:KWDB")
 
@@ -41,12 +57,11 @@ endif ()
 message(STATUS "Git commit:${GIT_COMMIT_ID}")
 add_definitions(-DGIT_COMMIT_ID=\"${GIT_COMMIT_ID}\")
 
-add_definitions(-DIOT_MODE)
-
 # Used for third-party library search and introduction
 include(ExternalProject)
 include(FindPkgConfig)
 include(GNUInstallDirs)
+
 
 if (NOT WIN32)
     add_definitions(-DOS_LINUX -Werror)
@@ -77,14 +92,6 @@ message(STATUS "Build type:${CMAKE_BUILD_TYPE}")
 
 # Whether to enable memory pool analysis parameter
 option(KMALLOC_DEBUGGER "Enable memory pool analysis" OFF)
-
-option(MULTI_CLIENT_BENCHMARK "disable pubsub context reuse" OFF)
-if (MULTI_CLIENT_BENCHMARK)
-    message(STATUS "PubSubContext reuse disabled")
-    add_definitions(-DMULTI_CLIENT_BENCHMARK)
-else()
-    message(STATUS "PubSubContext reuse enabled")
-endif()
 
 option(KWBASE_OSS "Whether to compile an open-source edition" ON)
 if (KWBASE_OSS)
@@ -230,22 +237,23 @@ if (BUILD_KWBASE)
         PROTOBUF_C=${PROTOBUF_C}
         PROTOBUF_INC=${PROTOBUF_INC}
         OUTPUT_PATH=${CMAKE_BINARY_DIR}/bin
+        XGOOS=${XGOOS} XGOARCH=${XGOARCH} XCMAKE_SYSTEM_NAME=${XCMAKE_SYSTEM_NAME}
         KWDB_LIB_DIR=${CMAKE_BINARY_DIR}/lib WITH_ASAN=${WITH_ASAN}
         KWBASE_MAKEFILE=${KWBASE_MAKEFILE}
         ${PARALLEL_LEVEL}
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/kwbase
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/${KWBASE_FN}
         COMMENT "====== compile kwbase ======"
         DEPENDS kwdbts2 common
         )
 endif()
 
-if (${CMAKE_BUILD_TYPE} STREQUAL "Release")
+if ( CMAKE_BUILD_TYPE STREQUAL "Release" AND NOT CMAKE_SYSTEM_NAME STREQUAL "Windows")
     add_custom_target(
         strip_kwbase
-        COMMAND objcopy --only-keep-debug ${CMAKE_BINARY_DIR}/bin/kwbase ${CMAKE_BINARY_DIR}/bin/kwbase.debug &&
+        COMMAND objcopy --only-keep-debug ${CMAKE_BINARY_DIR}/bin/${KWBASE_FN} ${CMAKE_BINARY_DIR}/bin/kwbase.debug &&
         objcopy --only-keep-debug ${CMAKE_BINARY_DIR}/lib/libcommon.so ${CMAKE_BINARY_DIR}/lib/libcommon.debug &&
         objcopy --only-keep-debug ${CMAKE_BINARY_DIR}/lib/libkwdbts2.so ${CMAKE_BINARY_DIR}/lib/libkwdbts2.debug &&
-        strip --strip-all ${CMAKE_BINARY_DIR}/bin/kwbase && strip --strip-all ${CMAKE_BINARY_DIR}/lib/libcommon.so &&
+        strip --strip-all ${CMAKE_BINARY_DIR}/bin/${KWBASE_FN} && strip --strip-all ${CMAKE_BINARY_DIR}/lib/libcommon.so &&
         strip --strip-all ${CMAKE_BINARY_DIR}/lib/libkwdbts2.so
         DEPENDS kwbase
     )
@@ -268,6 +276,7 @@ file(GLOB_RECURSE UTIL_SCRIPTS
         common/util/script/df.sh
         common/util/script/utils.sh
         )
+
 INSTALL(FILES ${UTIL_SCRIPTS}
         DESTINATION ${CMAKE_INSTALL_PREFIX}/bin
         PERMISSIONS
@@ -278,7 +287,7 @@ INSTALL(FILES ${UTIL_SCRIPTS}
 # install kwbase
 if (BUILD_KWBASE)
     INSTALL(FILES
-            ${CMAKE_BINARY_DIR}/bin/kwbase
+            ${CMAKE_BINARY_DIR}/bin/${KWBASE_FN}
             DESTINATION ${CMAKE_INSTALL_PREFIX}/bin
             PERMISSIONS
             OWNER_EXECUTE OWNER_WRITE OWNER_READ

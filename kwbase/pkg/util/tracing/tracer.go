@@ -33,12 +33,12 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
-	"time"
 	"unsafe"
 
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/util/caller"
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
+	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"github.com/cockroachdb/logtags"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
@@ -297,7 +297,7 @@ func (t *Tracer) StartSpan(
 		logTags:   logTags,
 	}
 	if s.startTime.IsZero() {
-		s.startTime = time.Now()
+		s.startTime = timeutil.Now()
 	}
 	s.mu.duration = -1
 
@@ -391,7 +391,7 @@ func (t *Tracer) StartRootSpan(
 		},
 		tracer:    t,
 		operation: opName,
-		startTime: time.Now(),
+		startTime: timeutil.Now(),
 		logTags:   logTags,
 	}
 	s.mu.duration = -1
@@ -451,7 +451,7 @@ func StartChildSpan(
 	s := &span{
 		tracer:       tr,
 		operation:    opName,
-		startTime:    time.Now(),
+		startTime:    timeutil.Now(),
 		parentSpanID: pSpan.SpanID,
 		logTags:      logTags,
 	}
@@ -471,7 +471,7 @@ func StartChildSpan(
 	// convert it to an int value, then add the length of opName,
 	// the result as a random number to enhance randomness.
 	getRandom := func() int64 {
-		rand.Seed(time.Now().UnixNano())
+		rand.Seed(timeutil.Now().UnixNano())
 		if len(opName) > 0 {
 			randomIndex := rand.Intn(len(opName))
 			randomChar := opName[randomIndex]
@@ -484,7 +484,7 @@ func StartChildSpan(
 	randomNum := getRandom()
 
 	// Create random numbers, add seed to enhance randomness,3600000000000 is 1 hour.
-	rand.Seed(time.Now().UnixNano() + int64(seed)*3600000000000*randomNum)
+	rand.Seed(timeutil.Now().UnixNano() + int64(seed)*3600000000000*randomNum)
 	s.SpanID = uint64(rand.Int63())
 
 	if pSpan.shadowTr != nil {

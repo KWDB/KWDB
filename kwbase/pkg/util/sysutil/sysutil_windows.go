@@ -32,7 +32,19 @@ import (
 	"os"
 	"os/user"
 	"syscall"
+	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
+
+// DumpBacktraceSignal is used to dump all thread and goroutine stack backtrace
+var DumpBacktraceSignal os.Signal = syscall.Signal(0x1e) // syscall.SIGUSR1
+
+// NotifyThreadDumpSignal is used signal thread to dump stack backtrace
+var NotifyThreadDumpSignal os.Signal = syscall.Signal(0x1f) //syscall.SIGUSR2
+
+// AeDiedSignal is used to detect the ae died event
+var AeDiedSignal os.Signal = syscall.Signal(0x14) //syscall.SIGCHLD
 
 // ProcessIdentity returns a string describing the user and group that this
 // process is running as.
@@ -63,4 +75,65 @@ func IsCrossDeviceLinkErrno(errno error) bool {
 	// 0x11 is Win32 Error Code ERROR_NOT_SAME_DEVICE
 	// See: https://msdn.microsoft.com/en-us/library/cc231199.aspx
 	return errno == syscall.Errno(0x11)
+}
+
+// GetPid call syscall.Getpid()
+func GetPid() int {
+	return os.Getpid()
+}
+
+// GetDeviceNumber call syscall.Stat_t
+func GetDeviceNumber(path string) (int64, error) {
+	volumePath := getVolumePath(path)
+	if volumePath == "" {
+		return 0, fmt.Errorf("failed to get volume path for %s", path)
+	}
+
+	return getVolumeSerialNumber(volumePath)
+}
+
+// getVolumePath return volume path.
+func getVolumePath(path string) string {
+	absPath, err := windows.FullPath(path)
+	if err != nil {
+		return ""
+	}
+
+	var volumePath [windows.MAX_PATH]uint16
+	ret, _, _ := windows.NewLazyDLL("kernel32.dll").NewProc("GetVolumePathNameW").Call(
+		uintptr(unsafe.Pointer(windows.StringToUTF16Ptr(absPath))),
+		uintptr(unsafe.Pointer(&volumePath[0])),
+		windows.MAX_PATH,
+	)
+
+	if ret == 0 {
+		return ""
+	}
+
+	return windows.UTF16ToString(volumePath[:])
+}
+
+// getVolumeSerialNumber return volume serial number.
+func getVolumeSerialNumber(volumePath string) (int64, error) {
+	var volumeSerialNumber uint32
+	var maxComponentLength uint32
+	var fileSystemFlags uint32
+	var fileSystemNameBuffer [windows.MAX_PATH]uint16
+
+	ret, _, err := windows.NewLazyDLL("kernel32.dll").NewProc("GetVolumeInformationW").Call(
+		uintptr(unsafe.Pointer(windows.StringToUTF16Ptr(volumePath))),
+		0,
+		0,
+		uintptr(unsafe.Pointer(&volumeSerialNumber)),
+		uintptr(unsafe.Pointer(&maxComponentLength)),
+		uintptr(unsafe.Pointer(&fileSystemFlags)),
+		uintptr(unsafe.Pointer(&fileSystemNameBuffer[0])),
+		windows.MAX_PATH,
+	)
+
+	if ret == 0 {
+		return 0, err
+	}
+
+	return int64(volumeSerialNumber), nil
 }

@@ -21,6 +21,9 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+//go:build !windows
+// +build !windows
+
 package tse
 
 // #cgo CPPFLAGS: -I../../../kwdbts2/include

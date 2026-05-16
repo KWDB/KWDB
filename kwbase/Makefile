@@ -185,6 +185,9 @@ INSTALL      := install
 prefix       := /usr/local
 bindir       := $(prefix)/bin
 
+host-is-macos := $(findstring Darwin,$(UNAME))
+host-is-mingw := $(findstring MINGW,$(UNAME))
+
 ifeq "$(findstring -j,$(shell ps -o args= $$PPID))" ""
 ifdef NCPUS
 MAKEFLAGS += -j$(NCPUS)
@@ -242,6 +245,8 @@ CGO_LDFLAGS = $(filter-out -static,$(LDFLAGS)) -ldl
 
 export CFLAGS CXXFLAGS LDFLAGS CGO_CFLAGS CGO_CXXFLAGS CGO_LDFLAGS
 
+$(shell [ -d $(KWDB_LIB_DIR) ] || mkdir -p $(KWDB_LIB_DIR))
+
 KWDB_LIB_DIR := $(PWD)/../build/lib
 ifdef KWDB_BUILD_DIR
 	KWDB_LIB_DIR = $(KWDB_BUILD_DIR)/lib
@@ -276,7 +281,7 @@ BUILD_DIR := $(GOPATH)/native/$(TARGET_TRIPLE)
 # TODO(benesch): Figure out why. MinGW transparently converts Unix-style paths
 # everywhere else.
 ifdef host-is-mingw
-BUILD_DIR := $(shell cygpath -m $(BUILD_DIR))
+	CMAKE_CMD = /ucrt64/bin/cmake
 endif
 
 # User-requested build variants.
@@ -290,7 +295,8 @@ SNAPPY_DIR   := $(BUILD_DIR)/snappy$(if $(use-msan),_msan)
 LIBEDIT_DIR  := $(BUILD_DIR)/libedit$(if $(use-msan),_msan)
 LIBROACH_DIR := $(BUILD_DIR)/libroach$(if $(use-msan),_msan)$(if $(ENABLE_LIBROACH_ASSERTIONS),_assert)
 
-LDFLAGS := $(LDFLAGS) -L$(KWDB_LIB_DIR) -L$(ROCKSDB_DIR) -L$(SNAPPY_DIR) -Wl,--as-needed -Wl,-rpath,$(KWDB_LIB_DIR),-rpath,$(ROCKSDB_DIR),-rpath,$(SNAPPY_DIR),-rpath,$$ORIGIN/../lib,-rpath,$$ORIGIN
+LDFLAGS := $(LDFLAGS) -L$(KWDB_LIB_DIR) -L$(ROCKSDB_DIR) -L$(SNAPPY_DIR) \
+	$(if $(host-is-mingw),,-Wl,-rpath,$(KWDB_LIB_DIR):$(ROCKSDB_DIR):$(SNAPPY_DIR):$$ORIGIN/../lib:$$ORIGIN)
 # We intentionally use LINKFLAGS instead of the more traditional LDFLAGS
 # because LDFLAGS has built-in semantics that don't make sense with the Go
 # toolchain.
@@ -425,9 +431,6 @@ IGNORE_GOVERS :=
 # The following section handles building our C/C++ dependencies. These are
 # common because both the root Makefile and protobuf.mk have C dependencies.
 
-host-is-macos := $(findstring Darwin,$(UNAME))
-host-is-mingw := $(findstring MINGW,$(UNAME))
-
 ifdef host-is-macos
 # On macOS 10.11, XCode SDK v8.1 (and possibly others) indicate the presence of
 # symbols that don't exist until macOS 10.12. Setting MACOSX_DEPLOYMENT_TARGET
@@ -455,6 +458,12 @@ is-cross-compile := 1
 endif
 
 target-is-windows := $(findstring w64,$(TARGET_TRIPLE))
+EXCLUDE_UNWIND := $(or $(findstring aarch64,$(TARGET_TRIPLE)), \
+                       $(findstring windows,$(TARGET_TRIPLE)), \
+                       $(findstring mingw,$(TARGET_TRIPLE)), \
+                       $(findstring win32,$(TARGET_TRIPLE)))
+$(info target-is-windows: $(target-is-windows))
+$(info EXCLUDE_UNWIND: $(EXCLUDE_UNWIND))
 
 # CMAKE_TARGET_MESSAGES=OFF prevents CMake from printing progress messages
 # whenever a target is fully built to prevent spammy output from make when
@@ -489,7 +498,7 @@ use-stdmalloc          := $(findstring stdmalloc,$(TAGS))
 use-msan               := $(findstring msan,$(GOFLAGS))
 
 LIBCRYPTOPP := $(CRYPTOPP_DIR)/libcryptopp.a
-LIBJEMALLOC := $(JEMALLOC_DIR)/lib/libjemalloc.a
+LIBJEMALLOC := $(JEMALLOC_DIR)/lib/$(if $(host-is-mingw),jemalloc_s.lib,libjemalloc.a)
 LIBPROTOBUF := ${LIBPROTOBUF}
 LIBROCKSDB  := $(ROCKSDB_DIR)/librocksdb.a
 LIBSNAPPY   := $(SNAPPY_DIR)/libsnappy.a
@@ -497,12 +506,26 @@ LIBEDIT     := $(LIBEDIT_DIR)/src/.libs/libedit.a
 LIBROACH    := $(LIBROACH_DIR)/libroach.a
 PROTOC 		:= ${PROTOBUF_C}
 
+ifndef LIBPROTOBUF
+	LIBPROTOBUF = $(GOPATH)/native/kwdbts2/third_party/lib/libprotobuf.a
+endif
+
+ifndef PROTOC
+	PROTOC = $(GOPATH)/native/kwdbts2/third_party/bin/protoc
+endif
+
+ifndef PROTOBUF_INC
+	PROTOBUF_INC = $(GOPATH)/native/kwdbts2/third_party/include
+endif
+
+
 LDFLAGS += -L$(GOPATH)/native/kwdbts2/third_party/lib -L$(GOPATH)/native/kwdbts2/third_party/lib64 -Wl,-Bstatic -lz -Wl,-Bdynamic -lstdc++
 
 C_LIBS_COMMON = \
 	$(if $(use-stdmalloc),,$(LIBJEMALLOC)) \
 	$(if $(target-is-windows),,$(LIBEDIT)) \
-	$(LIBPROTOBUF) $(LIBSNAPPY) $(LIBROCKSDB)
+	$(LIBPROTOBUF) $(LIBSNAPPY) $(LIBROCKSDB) \
+	$(if $(EXCLUDE_UNWIND),,$(LIBUNWIND))
 C_LIBS_OSS = $(C_LIBS_COMMON) $(LIBROACH)
 C_LIBS = $(C_LIBS_COMMON) $(LIBROACH)
 
@@ -548,7 +571,7 @@ $(BASE_CGO_FLAGS_FILES): $(MAKEFILE_LIST) build/defs.mk.sig | bin/.submodules-in
 	@echo 'package $(if $($(@D)-package),$($(@D)-package),$(notdir $(@D)))' >> $@
 	@echo >> $@
 	@echo '// #cgo CPPFLAGS: $(addprefix -I,$(JEMALLOC_DIR)/include $(KRB5_DIR)/include)' >> $@
-	@echo '// #cgo LDFLAGS: $(addprefix -L,$(CRYPTOPP_DIR) $(JEMALLOC_DIR)/lib $(SNAPPY_DIR) $(LIBEDIT_DIR)/src/.libs $(ROCKSDB_DIR) $(LIBROACH_DIR) $(LIBINJECTION_DIR) $(KRB5_DIR))' >> $@
+	@echo '// #cgo LDFLAGS: $(addprefix -L,$(CRYPTOPP_DIR) $(JEMALLOC_DIR)/lib $(SNAPPY_DIR) $(LIBEDIT_DIR)/src/.libs $(ROCKSDB_DIR) $(LIBROACH_DIR) )' >> $@
 	@echo 'import "C"' >> $@
 
 vendor/github.com/knz/go-libedit/unix/zcgo_flags_extra.go: $(MAKEFILE_LIST) | bin/.submodules-initialized
@@ -590,7 +613,7 @@ $(CRYPTOPP_DIR)/Makefile: $(C_DEPS_DIR)/cryptopp-rebuild | bin/.submodules-initi
 	mkdir -p $(CRYPTOPP_DIR)
 	@# NOTE: If you change the CMake flags below, bump the version in
 	@# $(C_DEPS_DIR)/cryptopp-rebuild. See above for rationale.
-	cd $(CRYPTOPP_DIR) && CFLAGS+=" $(aes)" && CXXFLAGS+=" $(aes)" cmake $(xcmake-flags) $(CRYPTOPP_SRC_DIR) \
+	cd $(CRYPTOPP_DIR) && CFLAGS+=" $(aes)" && CXXFLAGS+=" $(aes)" ${CMAKE_CMD} $(xcmake-flags) $(CRYPTOPP_SRC_DIR) \
 	  -DCMAKE_BUILD_TYPE=Release
 
 $(JEMALLOC_SRC_DIR)/configure.ac: | bin/.submodules-initialized
@@ -606,7 +629,11 @@ $(JEMALLOC_DIR)/Makefile: $(C_DEPS_DIR)/jemalloc-rebuild $(JEMALLOC_SRC_DIR)/con
 	@#
 	@# jemalloc profiling deadlocks when built against musl. See
 	@# https://github.com/jemalloc/jemalloc/issues/585.
-	cd $(JEMALLOC_DIR) && $(JEMALLOC_SRC_DIR)/configure $(xconfigure-flags) $(if $(findstring musl,$(TARGET_TRIPLE)),,--enable-prof)
+	cd $(JEMALLOC_DIR) && $(JEMALLOC_SRC_DIR)/configure $(xconfigure-flags) \
+	$(if $(host-is-mingw), --enable-static --enable-shared --disable-debug --disable-stats --disable-prof --disable-fill --disable-utrace,) \
+	$(if $(host-is-mingw), --disable-cache-oblivious --disable-xmalloc --disable-readlinkat --disable-uaf-detection --disable-syscall,) \
+	$(if $(host-is-mingw), --disable-lazy-lock --disable-zone-allocator --disable-initial-exec-tls  --disable-doc --disable-cxx,) \
+	$(if $(findstring musl,$(TARGET_TRIPLE)),,--enable-prof $(if $(EXCLUDE_UNWIND),,--enable-prof-libunwind --with-static-libunwind=$(LIBUNWIND) CFLAGS='-I$(LIBUNWIND_DIR)/include' LDFLAGS='-L$(LIBUNWIND_DIR)/src/.libs'))$(if $(findstring musl,$(TARGET_TRIPLE)),,--enable-prof)
 
 $(ROCKSDB_DIR)/Makefile: sse := $(if $(findstring x86_64,$(TARGET_TRIPLE)),-msse3)
 $(ROCKSDB_DIR)/Makefile: $(C_DEPS_DIR)/rocksdb-rebuild | bin/.submodules-initialized $(LIBSNAPPY) $(if $(use-stdmalloc),,$(LIBJEMALLOC))
@@ -617,7 +644,7 @@ $(ROCKSDB_DIR)/Makefile: $(C_DEPS_DIR)/rocksdb-rebuild | bin/.submodules-initial
 	@#
 	@# NOTE 2: We pass PORTABLE=ON to RocksDB in order to disable usage of -march=native which can
 	@# create non-portable binaries that die with "illegal instruction" when run on some x86 CPUs.
-	cd $(ROCKSDB_DIR) && CFLAGS+=" $(sse)" && CXXFLAGS+=" $(sse)" && cmake $(xcmake-flags) $(ROCKSDB_SRC_DIR) \
+	cd $(ROCKSDB_DIR) && CFLAGS+=" $(sse)" && CXXFLAGS+=" $(sse)" && ${CMAKE_CMD} $(xcmake-flags) $(ROCKSDB_SRC_DIR) \
 	  -DPORTABLE=ON -DWITH_GFLAGS=OFF \
 	  -DSNAPPY_LIBRARIES=$(LIBSNAPPY) -DSNAPPY_INCLUDE_DIR="$(SNAPPY_SRC_DIR);$(SNAPPY_DIR)" -DWITH_SNAPPY=ON \
 	  $(if $(use-stdmalloc),,-DJEMALLOC_LIBRARIES=$(LIBJEMALLOC) -DJEMALLOC_INCLUDE_DIR=$(JEMALLOC_DIR)/include -DWITH_JEMALLOC=ON) \
@@ -629,7 +656,7 @@ $(SNAPPY_DIR)/Makefile: $(C_DEPS_DIR)/snappy-rebuild | bin/.submodules-initializ
 	mkdir -p $(SNAPPY_DIR)
 	@# NOTE: If you change the CMake flags below, bump the version in
 	@# $(C_DEPS_DIR)/snappy-rebuild. See above for rationale.
-	cd $(SNAPPY_DIR) && cmake $(xcmake-flags) $(SNAPPY_SRC_DIR) \
+	cd $(SNAPPY_DIR) && ${CMAKE_CMD} $(xcmake-flags) $(SNAPPY_SRC_DIR) \
 	  -DCMAKE_BUILD_TYPE=Release
 
 $(LIBEDIT_SRC_DIR)/configure.ac: | bin/.submodules-initialized
@@ -652,7 +679,7 @@ $(LIBROACH_DIR)/Makefile: $(C_DEPS_DIR)/libroach-rebuild | bin/.submodules-initi
 	mkdir -p $(LIBROACH_DIR)
 	@# NOTE: If you change the CMake flags below, bump the version in
 	@# $(C_DEPS_DIR)/libroach-rebuild. See above for rationale.
-	cd $(LIBROACH_DIR) && cmake $(xcmake-flags) $(LIBROACH_SRC_DIR) \
+	cd $(LIBROACH_DIR) && ${CMAKE_CMD} $(xcmake-flags) $(LIBROACH_SRC_DIR) \
 		-DCMAKE_BUILD_TYPE=$(if $(ENABLE_LIBROACH_ASSERTIONS),Debug,Release) \
 		-DPROTOBUF_LIB=$(LIBPROTOBUF) -DROCKSDB_LIB=$(LIBROCKSDB) \
 		-DPROTOBUF_INC=$(PROTOBUF_INC) \
@@ -1148,7 +1175,7 @@ $(ERRORS_PROTO): bin/.submodules-initialized
 bin/.go_protobuf_sources: $(GO_PROTOS) $(GOGOPROTO_PROTO) $(ERRORS_PROTO) bin/.bootstrap bin/protoc-gen-gogoroach
 	$(FIND_RELEVANT) -type f -name '*.pb.go' -exec rm {} +
 	set -e; for dir in $(sort $(dir $(GO_PROTOS))); do \
-	  build/werror.sh $(PROTOC) -Ipkg:./vendor/github.com:$(GOGO_PROTOBUF_PATH):$(PROTOBUF_PATH):$(COREOS_PATH):$(GRPC_GATEWAY_GOOGLEAPIS_PATH):$(ERRORS_PATH) --gogoroach_out=$(PROTO_MAPPINGS),plugins=grpc,import_prefix=gitee.com/kwbasedb/kwbase/pkg/:./pkg $$dir/*.proto; \
+	  build/werror.sh $(PROTOC) -I./pkg -I./vendor/github.com -I$(GOGO_PROTOBUF_PATH) -I$(PROTOBUF_PATH) -I$(COREOS_PATH) -I$(GRPC_GATEWAY_GOOGLEAPIS_PATH) -I$(ERRORS_PATH) --gogoroach_out=$(PROTO_MAPPINGS),plugins=grpc,import_prefix=gitee.com/kwbasedb/kwbase/pkg/:./pkg $$dir/*.proto; \
 	done
 	$(SED_INPLACE) -E \
 		-e '/import _ /d' \
@@ -1164,8 +1191,8 @@ bin/.go_protobuf_sources: $(GO_PROTOS) $(GOGOPROTO_PROTO) $(ERRORS_PROTO) bin/.b
 
 bin/.gw_protobuf_sources: $(GW_SERVER_PROTOS) $(GW_TS_PROTOS) $(GO_PROTOS) $(GOGOPROTO_PROTO) $(ERRORS_PROTO) bin/.bootstrap
 	$(FIND_RELEVANT) -type f -name '*.pb.gw.go' -exec rm {} +
-	build/werror.sh $(PROTOC) -Ipkg:./vendor/github.com:$(GOGO_PROTOBUF_PATH):$(PROTOBUF_PATH):$(ERRORS_PATH):$(COREOS_PATH):$(GRPC_GATEWAY_GOOGLEAPIS_PATH) --grpc-gateway_out=logtostderr=true,request_context=true:./pkg $(GW_SERVER_PROTOS)
-	build/werror.sh $(PROTOC) -Ipkg:./vendor/github.com:$(GOGO_PROTOBUF_PATH):$(PROTOBUF_PATH):$(ERRORS_PATH):$(COREOS_PATH):$(GRPC_GATEWAY_GOOGLEAPIS_PATH) --grpc-gateway_out=logtostderr=true,request_context=true:./pkg $(GW_TS_PROTOS)
+	build/werror.sh $(PROTOC) -I./pkg -I./vendor/github.com -I$(GOGO_PROTOBUF_PATH) -I$(PROTOBUF_PATH) -I$(ERRORS_PATH) -I$(COREOS_PATH) -I$(GRPC_GATEWAY_GOOGLEAPIS_PATH) --grpc-gateway_out=logtostderr=true,request_context=true:./pkg $(GW_SERVER_PROTOS); \
+	build/werror.sh $(PROTOC) -I./pkg -I./vendor/github.com -I$(GOGO_PROTOBUF_PATH) -I$(PROTOBUF_PATH) -I$(ERRORS_PATH) -I$(COREOS_PATH) -I$(GRPC_GATEWAY_GOOGLEAPIS_PATH) --grpc-gateway_out=logtostderr=true,request_context=true:./pkg $(GW_TS_PROTOS)
 	@# TODO(benesch): Remove after https://github.com/grpc/grpc-go/issues/711.
 	$(SED_INPLACE) -E 's!golang.org/x/net/context!context!g' $(GW_SOURCES)
 	gofmt -s -w $(GW_SOURCES)
@@ -1176,7 +1203,7 @@ bin/.gw_protobuf_sources: $(GW_SERVER_PROTOS) $(GW_TS_PROTOS) $(GO_PROTOS) $(GOG
 bin/.cpp_protobuf_sources: $(CPP_PROTOS) bin/.bootstrap
 	rm -rf $(CPP_PROTO_ROOT)
 	mkdir -p $(CPP_PROTO_ROOT)
-	build/werror.sh $(PROTOC) -Ipkg:$(GOGO_PROTOBUF_PATH):$(PROTOBUF_PATH) --cpp_out=lite:$(CPP_PROTO_ROOT) $(CPP_PROTOS)
+	build/werror.sh $(PROTOC) -I./pkg -I$(GOGO_PROTOBUF_PATH) -I$(PROTOBUF_PATH) --cpp_out=$(CPP_PROTO_ROOT) $(CPP_PROTOS)
 	$(SED_INPLACE) -E '/gogoproto/d' $(CPP_HEADERS) $(CPP_SOURCES)
 	touch $@
 
