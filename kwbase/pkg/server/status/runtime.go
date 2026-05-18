@@ -479,11 +479,12 @@ func GetCGoMemStats(ctx context.Context) *CGoMemStats {
 
 // GetKmallocStats collects Kmalloc statistics.
 func GetKmallocStats(ctx context.Context) *KmallocMemStats {
-	var kmallocTotal uint
-	kmallocTotal = uint(C.malloc_used_bytes())
-	return &KmallocMemStats{
-		KmallocTotalBytes: int64(kmallocTotal),
-	}
+	// var kmallocTotal uint
+	// kmallocTotal = uint(C.malloc_used_bytes())
+	// return &KmallocMemStats{
+	// 	KmallocTotalBytes: int64(kmallocTotal),
+	// }  douzt TODO
+	return nil
 }
 
 // GetMmapStatsBySysFile collects memory map size by system file.

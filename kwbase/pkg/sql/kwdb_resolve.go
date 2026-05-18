@@ -87,7 +87,7 @@ func IsObjectCannotFoundError(err error) bool {
 	return false
 }
 
-//export checkTableMetaExist
+// douzt TODO export checkTableMetaExist
 func checkTableMetaExist(id C.TSTableID) C.bool {
 	ctx := context.Background()
 	tableID := uint64(id)
@@ -124,7 +124,7 @@ func checkTableMetaExist(id C.TSTableID) C.bool {
 	return C.bool(!tb.Dropped())
 }
 
-//export getTableMetaByVersion
+// douzt TODO export getTableMetaByVersion
 func getTableMetaByVersion(
 	id C.TSTableID, tsVer C.uint64_t, outputLen *C.size_t, errMsg **C.char,
 ) *C.char {

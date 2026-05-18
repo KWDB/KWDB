@@ -124,6 +124,8 @@ type TsRaftLogEngine struct {
 	syncPeriod time.Duration
 	asyncWrite bool
 
+	asyncConsensus bool
+
 	committer struct {
 		syncutil.Mutex
 		cond       sync.Cond
@@ -157,6 +159,11 @@ func (t *TsRaftLogEngine) IsAsyncWrite() bool {
 	return t.asyncWrite
 }
 
+// IsAsyncConsensus returns whether async consensus enabled.
+func (t *TsRaftLogEngine) IsAsyncConsensus() bool {
+	return t.asyncConsensus
+}
+
 // GetSyncPeriod get sync period
 func (t *TsRaftLogEngine) GetSyncPeriod() time.Duration {
 	return t.syncPeriod
@@ -180,6 +187,7 @@ func (t *TsRaftLogEngine) Close() {
 
 // asyncLoop asynchronous synchronous data
 func (t *TsRaftLogEngine) asyncLoop() {
+	// douzt: TOOD
 	// s := &t.asyncer
 	// s.Lock()
 
@@ -258,6 +266,7 @@ func (t *TsRaftLogEngine) NotifySyncPeriodChange() {
 func (t *TsRaftLogEngine) GetRaftLog(
 	rangeID uint64, lIndex uint64, hIndex uint64, transfer func([]byte) error,
 ) error {
+	// douzt: TOOD
 	// cnt := hIndex - lIndex
 	// if cnt == 0 {
 	// 	return nil

@@ -1577,13 +1577,13 @@ func (s *Server) dumpAllBackTrace(ctx context.Context) {
 	defer C.free(unsafe.Pointer(dumpPathCstr))
 	defer C.free(unsafe.Pointer(nowTimeStampCstr))
 
-	// dump thread backtrace
-	if true == C.TSDumpAllThreadBacktrace(dumpPathCstr, nowTimeStampCstr) {
-		dumpThreadFile := dumpPath + "/thread_backtrace." + nowTimeStamp + ".txt"
-		log.Info(context.Background(), "Thread backtrace have been written to ", dumpThreadFile)
-	} else {
-		log.Error(context.Background(), "Dump all thread backtrace failed.")
-	}
+	// dump thread backtrace  douzt TODO
+	// if true == C.TSDumpAllThreadBacktrace(dumpPathCstr, nowTimeStampCstr) {
+	// 	dumpThreadFile := dumpPath + "/thread_backtrace." + nowTimeStamp + ".txt"
+	// 	log.Info(context.Background(), "Thread backtrace have been written to ", dumpThreadFile)
+	// } else {
+	// 	log.Error(context.Background(), "Dump all thread backtrace failed.")
+	// }
 	return
 }
 
@@ -1609,7 +1609,7 @@ func (s *Server) Start(ctx context.Context) error {
 	if !s.cfg.ForbidCatchCoreDump {
 		dir := C.CString(s.cfg.LogConfig.Dir)
 		defer C.free(unsafe.Pointer(dir))
-		C.TSRegisterExceptionHandler(dir)
+		// C.TSRegisterExceptionHandler(dir)  douzt TODO
 	}
 
 	ctx = s.AnnotateCtx(ctx)
@@ -3209,7 +3209,7 @@ func (s *Server) RestfulLogout(ctx context.Context) error {
 	return nil
 }
 
-//export goPrepareFlush
+// douzt TODO export goPrepareFlush
 func goPrepareFlush() C.int {
 	ctx := context.Background()
 	log.VEventf(ctx, 3, "prepare flush")
@@ -3220,7 +3220,7 @@ func goPrepareFlush() C.int {
 	return 0
 }
 
-//export goFlushed
+// douzt TODO export goFlushed
 func goFlushed() C.int {
 	ctx := context.Background()
 	log.VEventf(ctx, 3, "set flushed")

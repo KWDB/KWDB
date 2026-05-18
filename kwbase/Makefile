@@ -273,7 +273,8 @@ endif
 
 $(info GOPATH set to $(GOPATH))
 
-BUILD_DIR := $(GOPATH)/native/$(TARGET_TRIPLE)
+# ru xiang sui su
+BUILD_DIR := $(GOPATH)/native
 
 # In MinGW, cgo flags don't handle Unix-style paths, so convert our base path to
 # a Windows-style path.
@@ -302,13 +303,19 @@ LDFLAGS := $(LDFLAGS) -L$(KWDB_LIB_DIR) -L$(ROCKSDB_DIR) -L$(SNAPPY_DIR) \
 # toolchain.
 #override LINKFLAGS = -X gitee.com/kwbasedb/kwbase/pkg/build.typ=$(BUILDTYPE) -linkmode "external" -extldflags "$(LDFLAGS) -lasan"
 
+# this is needed for CGO code 
+ifndef CGO_CPPFLAGS
+	CGO_CPPFLAGS := -I$(JEMALLOC_DIR)/include
+	export CGO_CPPFLAGS
+endif
+
 WITH_ASAN ?=
 ifeq ($(WITH_ASAN), ON)
-WITH_ASAN_LINK = -X gitee.com/kwbasedb/kwbase/pkg/build.typ=$(BUILDTYPE) -extldflags "$(LDFLAGS) -lasan"
-export LD_PRELOAD = $(shell $(CC) -print-file-name=libasan.so)
-export ASAN_OPTIONS = alloc_dealloc_mismatch=0:halt_on_error=false:detect_leaks=false
+	WITH_ASAN_LINK = -X gitee.com/kwbasedb/kwbase/pkg/build.typ=$(BUILDTYPE) -extldflags "$(LDFLAGS) -lasan"
+	export LD_PRELOAD = $(shell $(CC) -print-file-name=libasan.so)
+	export ASAN_OPTIONS = alloc_dealloc_mismatch=0:halt_on_error=false:detect_leaks=false
 else
-WITH_ASAN_LINK = -X gitee.com/kwbasedb/kwbase/pkg/build.typ=$(BUILDTYPE) -extldflags "$(LDFLAGS)"
+	WITH_ASAN_LINK = -X gitee.com/kwbasedb/kwbase/pkg/build.typ=$(BUILDTYPE) -extldflags "$(LDFLAGS)"
 endif
 override LINKFLAGS = $(WITH_ASAN_LINK)
 
@@ -498,7 +505,7 @@ use-stdmalloc          := $(findstring stdmalloc,$(TAGS))
 use-msan               := $(findstring msan,$(GOFLAGS))
 
 LIBCRYPTOPP := $(CRYPTOPP_DIR)/libcryptopp.a
-LIBJEMALLOC := $(JEMALLOC_DIR)/lib/$(if $(host-is-mingw),jemalloc_s.lib,libjemalloc.a)
+LIBJEMALLOC := $(JEMALLOC_DIR)/lib/libjemalloc.a
 LIBPROTOBUF := ${LIBPROTOBUF}
 LIBROCKSDB  := $(ROCKSDB_DIR)/librocksdb.a
 LIBSNAPPY   := $(SNAPPY_DIR)/libsnappy.a
@@ -518,8 +525,13 @@ ifndef PROTOBUF_INC
 	PROTOBUF_INC = $(GOPATH)/native/kwdbts2/third_party/include
 endif
 
+ifdef host-is-mingw
+	GOPATH_WIN = $(shell cygpath -m $(GOPATH))
+	LDFLAGS += -L$(GOPATH_WIN)/native/kwdbts2/third_party/lib -L$(GOPATH_WIN)/native/jemalloc/lib -L$(GOPATH_WIN)/native/libroach -L$(GOPATH_WIN)/native/rocksdb -L$(GOPATH_WIN)/native/snappy -Wl,-Bstatic -lz -Wl,-Bdynamic -lstdc++
+else
+	LDFLAGS += -L$(GOPATH)/native/kwdbts2/third_party/lib -L$(GOPATH)/native/kwdbts2/third_party/lib64 -Wl,-Bstatic -lz -Wl,-Bdynamic -lstdc++
+endif
 
-LDFLAGS += -L$(GOPATH)/native/kwdbts2/third_party/lib -L$(GOPATH)/native/kwdbts2/third_party/lib64 -Wl,-Bstatic -lz -Wl,-Bdynamic -lstdc++
 
 C_LIBS_COMMON = \
 	$(if $(use-stdmalloc),,$(LIBJEMALLOC)) \

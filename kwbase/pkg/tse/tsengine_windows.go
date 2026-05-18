@@ -32,7 +32,6 @@ import (
 	"time"
 	"unsafe"
 
-	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/col/coldata"
 	"gitee.com/kwbasedb/kwbase/pkg/col/coltypes"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
@@ -46,7 +45,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/metric"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
 	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
-	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 	"github.com/lib/pq/oid"
 	"github.com/pkg/errors"
 )
@@ -95,7 +93,7 @@ var TsPayloadSizeLimit = settings.RegisterNonNegativeIntSetting(
 	"ts.payload_size_limit",
 	"max size of payload(bytes)",
 	1<<20, // (1MiB)
-).WithSystemAdmin()
+) //.WithSystemAdmin() // douzt: TOOD
 
 var ErrNotSupportTsEngine = errors.New("ts engine does not support Windows environment.")
 
@@ -265,20 +263,18 @@ func makeTsEngineMetrics() *TsEngineMetrics {
 
 // TsEngineConfig configuration of TsEngine
 type TsEngineConfig struct {
-	Attrs            roachpb.Attributes
-	Dir              string
-	ThreadPoolSize   int
-	TaskQueueSize    int
-	BufferPoolSize   int
-	Settings         *cluster.Settings
-	LogCfg           log.Config
-	ExtraOptions     []byte
-	IsSingleNode     bool
-	ClusterID        func() uuid.UUID
-	ReplicationKnobs base.ModuleTestingKnobs
-	BRPCAddr         string
-	NodeID           roachpb.NodeID
-	TsIDGen          *sqlbase.TSIDGenerator
+	Attrs          roachpb.Attributes
+	Dir            string
+	ThreadPoolSize int
+	TaskQueueSize  int
+	BufferPoolSize int
+	Settings       *cluster.Settings
+	LogCfg         log.Config
+	ExtraOptions   []byte
+	IsSingleNode   bool
+	BRPCAddr       string
+	ClusterID      string
+	TsIDGen        *sqlbase.TSIDGenerator
 }
 
 // TsQueryInfo the parameter and return value passed by the query
@@ -380,16 +376,6 @@ func (r *TsEngine) IsSingleNode() bool {
 	return r.cfg.IsSingleNode
 }
 
-// GetClusterID Returns cluster id
-func (r *TsEngine) GetClusterID() string {
-	return r.cfg.ClusterID().String()
-}
-
-// ReplicationKnobs Returns replication knobs
-func (r *TsEngine) ReplicationKnobs() base.ModuleTestingKnobs {
-	return r.cfg.ReplicationKnobs
-}
-
 // DeDuplicateRule indicates the deduplicate rule of the ts engine
 var DeDuplicateRule = settings.RegisterPublicStringSetting(
 	"ts.dedup.rule",
@@ -426,14 +412,14 @@ var TsWALCheckpointInterval = settings.RegisterPublicDurationSetting(
 	"ts.wal.checkpoint_interval",
 	"ts WAL checkpoint interval in TsEngine",
 	time.Minute,
-).WithSystemAdmin()
+) //.WithSystemAdmin() // douzt: TOOD
 
 // SQLTimeseriesTrace set trace for timeseries.
 var SQLTimeseriesTrace = settings.RegisterStringSetting(
 	"ts.trace.on_off_list",
 	"collection/push switch",
 	"",
-).WithSystemAdmin()
+) //.WithSystemAdmin()
 
 // TsFreeSpaceAlertThreshold indicates alarm threshold of the available disk space of TsEngine
 var TsFreeSpaceAlertThreshold = settings.RegisterPublicValidatedByteSizeSetting(
@@ -461,7 +447,7 @@ var TsFreeSpaceAlertThreshold = settings.RegisterPublicValidatedByteSizeSetting(
 
 // NewTsEngine new ts engine
 func NewTsEngine(
-	ctx context.Context, cfg TsEngineConfig, stopper *stop.Stopper, rangeIndex []roachpb.RangeIndex,
+	ctx context.Context, cfg TsEngineConfig, stopper *stop.Stopper,
 ) (*TsEngine, error) {
 	if cfg.Dir == "" {
 		return nil, errors.New("dir must be non-empty")
@@ -498,7 +484,8 @@ func (r *TsEngine) CheckOrWaitForOpen() {
 }
 
 // Open opens the ts engine.
-func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex, replicationRole int) error {
+func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
+	// douzt TODO
 	return nil
 }
 
@@ -652,6 +639,8 @@ func (r *TsEngine) AlterTSColumnType(
 	transactionID []byte,
 	colMeta []byte,
 	originColMeta []byte,
+	isAlterType bool,
+	isAlterCompress bool,
 ) error {
 	// r.checkOrWaitForOpen()
 	// status := C.TSAlterColumnType(
@@ -912,6 +901,7 @@ type TsFetcherStats struct {
 	MemoryBlockCount   int32   // scanned memory block count
 	LastBlockCount     int32   // scanned last block count
 	EntityBlockCount   int64   // scanned entity block count
+	PartitionAggCount  int64   // partition pre-aggregation usage count
 	BlockCacheHitRatio float32 //entity block cache hit ratio
 	BlockBytes         int64   // scanned block bytes
 	AggBytes           int64   // scanned agg bytes
@@ -994,7 +984,7 @@ func (r *TsEngine) CountRangeData(
 }
 
 // Vacuum vacuum partitions
-func (r *TsEngine) Vacuum(ctx context.Context, manual bool) error {
+func (r *TsEngine) Vacuum(ctx context.Context, manual bool, onlyAgg bool) error {
 	// if r == nil {
 	// 	return nil
 	// }
@@ -1471,6 +1461,55 @@ func (r *TsEngine) RollbackFromLSN(tableIDs, lsns []uint64) error {
 // WriteWALForReceiver  write  wal to receiver engine
 func (r *TsEngine) WriteWALForReceiver(
 	tableID uint64, walLog []byte, length uint64,
+) (uint64, error) {
+	return 0, nil
+}
+
+// TsDeleteMetricByTag deletes metric data by specific tag values and ts span
+// Parameters:
+//
+//	beginHash - Start value of the replica hash range
+//	endHash - End value of the replica hash range
+//	primaryTags - List of primary tag values
+//	indexColumns - List of tag IDs (uint32) corresponding to the primaryTags
+//	tsSpans - Time range spans to filter data (only delete data within these time ranges)
+//
+// Returns:
+//
+//	uint64 - Number of rows successfully deleted
+func (r *TsEngine) TsDeleteMetricByTag(
+	tableID uint64,
+	beginHash uint64,
+	endHash uint64,
+	primaryTags [][]byte,
+	indexColumns []uint32,
+	tsSpans []*roachpb.TsSpan,
+	tsTxnID uint64,
+	osnID uint64,
+) (uint64, error) {
+	return 0, nil
+}
+
+// TsDeleteEntitiesByTag delete entity, including tag data and ts data
+// Parameters:
+//
+//	beginHash - Start value of the replica hash range
+//	endHash - End value of the replica hash range
+//	primaryTags - List of part primary tag values
+//	indexColumns - List of tag IDs corresponding to the primaryTags
+//
+// Returns:
+//
+//	uint64 - Number of rows successfully deleted
+func (r *TsEngine) TsDeleteEntitiesByTag(
+	tableID uint64,
+	beginHash uint64,
+	endHash uint64,
+	primaryTags [][]byte,
+	indexColumns []uint32,
+	isDrop bool,
+	tsTxnID uint64,
+	osnID uint64,
 ) (uint64, error) {
 	return 0, nil
 }
