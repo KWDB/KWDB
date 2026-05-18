@@ -719,7 +719,7 @@ void SketchSpec::addRow(BaseOperator* input, RowBatch* data_handle) {
 
   if (useFastPath) {
     k_int64 val = render->ValInt();
-    PutUint64LittleEndian(&buf, static_cast<u_int64_t>(val));
+    PutUint64LittleEndian(&buf, static_cast<uint64_t>(val));
     sketch->Insert(buf);
     return;
   } else {

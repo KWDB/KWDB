@@ -24,9 +24,58 @@
 #include "settings.h"
 #include "ts_vgroup.h"
 
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <condition_variable>
+#include <mutex>
+#endif
+
 namespace kwdbts {
 
 class TsMemSegment;
+#ifdef _WIN32
+
+class WinMutex {
+private:
+    CRITICAL_SECTION cs_;
+public:
+    WinMutex() { InitializeCriticalSection(&cs_); }
+    ~WinMutex() { DeleteCriticalSection(&cs_); }
+    void lock() { EnterCriticalSection(&cs_); }
+    void unlock() { LeaveCriticalSection(&cs_); }
+    CRITICAL_SECTION* native_handle() { return &cs_; }
+    WinMutex(const WinMutex&) = delete;
+    WinMutex& operator=(const WinMutex&) = delete;
+};
+
+class WinCondVar {
+private:
+    CONDITION_VARIABLE cv_;
+public:
+    WinCondVar() { InitializeConditionVariable(&cv_); }
+    ~WinCondVar() {}
+
+    void wait(WinMutex* mutex) {
+        SleepConditionVariableCS(&cv_, mutex->native_handle(), INFINITE);
+    }
+
+    template<typename Predicate>
+    void wait(WinMutex* mutex, Predicate pred) {
+        while (!pred()) {
+            wait(mutex);
+        }
+    }
+
+    void notify_one() { WakeConditionVariable(&cv_); }
+    void notify_all() { WakeAllConditionVariable(&cv_); }
+
+    WinCondVar(const WinCondVar&) = delete;
+    WinCondVar& operator=(const WinCondVar&) = delete;
+};
+
+#endif
+
 class TsFlushJobPool {
  private:
   TsFlushJobPool() {
@@ -78,19 +127,26 @@ class TsFlushJobPool {
   int kMaxConcurrentJobNum = EngineOptions::vgroup_max_num * 2;
   std::vector<std::thread> workers_;
 
-  std::condition_variable queue_non_empty_cv_;
-  std::condition_variable queue_non_full_cv_;
-  std::condition_variable stop_cv_;
+  #ifdef _WIN32
+    WinMutex job_mutex_;
+    WinCondVar queue_non_empty_cv_;
+    WinCondVar queue_non_full_cv_;
+    WinCondVar stop_cv_;
+  #else
+    std::mutex job_mutex_;
+    std::condition_variable queue_non_empty_cv_;
+    std::condition_variable queue_non_full_cv_;
+    std::condition_variable stop_cv_;
+  #endif
   std::atomic_int bg_running_jobs_ = 0;
-  std::mutex job_mutex_;
 
-  std::atomic_bool stop_flag_{false};
+  std::atomic<k_bool> stop_flag_{false};
   KStatus job_status_ = KStatus::SUCCESS;
 
   void WorkerFunc() {
     while (true) {
       std::unique_lock lk{job_mutex_};
-      queue_non_empty_cv_.wait(lk, [this]() { return !jobs_.empty(); });
+      queue_non_empty_cv_.wait(lk.mutex(), [this]() { return !jobs_.empty(); });
       auto job = jobs_.front();
       bg_running_jobs_++;
       jobs_.pop_front();
@@ -145,7 +201,7 @@ class TsFlushJobPool {
       std::unique_lock lk{job_mutex_};
       if (jobs_.size() >= kMaxConcurrentJobNum) {
         LOG_INFO("Flush job queue is full, wait for a job to finish");
-        queue_non_full_cv_.wait(lk, [this]() { return jobs_.size() < kMaxConcurrentJobNum; });
+        queue_non_full_cv_.wait(lk.mutex(), [this]() { return jobs_.size() < kMaxConcurrentJobNum; });
       }
       if (stop_flag_.load() != true) {
         jobs_.push_back(job_info);
@@ -157,7 +213,7 @@ class TsFlushJobPool {
   void StopAndWait() {
     stop_flag_.store(true);
     std::unique_lock lk{job_mutex_};
-    stop_cv_.wait(lk, [this]() { return jobs_.empty() && bg_running_jobs_.load() == 0; });
+    stop_cv_.wait(lk.mutex(), [this]() { return jobs_.empty() && bg_running_jobs_.load() == 0; });
   }
 
   void Start() {

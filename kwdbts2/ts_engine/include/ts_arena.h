@@ -129,7 +129,11 @@ template <typename T> TLSArray<T>::TLSArray() {
 }
 
 inline int GetCPUID() {
-#if defined(__x86_64__) && (__GNUC__ > 2 || (__GNUC__ == 2 && __GNUC_MINOR__ >= 22))
+#if defined(_WIN32) && defined(__x86_64__)
+  unsigned int eax, ebx = 0, ecx, edx;
+  __asm__ __volatile__("cpuid" : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx) : "a"(1));
+  return ebx >> 24;
+#elif defined(__x86_64__) && (__GNUC__ > 2 || (__GNUC__ == 2 && __GNUC_MINOR__ >= 22))
   return sched_getcpu();
 #elif defined(__x86_64__) || defined(__i386__)
   unsigned eax, ebx = 0, ecx, edx;

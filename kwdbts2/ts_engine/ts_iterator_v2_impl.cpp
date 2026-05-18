@@ -433,15 +433,15 @@ KStatus TsStorageIteratorImpl::isBlockFiltered(std::shared_ptr<TsBlockSpan>& blo
           if (!min_addr || !max_addr) continue;
 
           switch (attrs_[col_id].type) {
-            case DATATYPE::BYTE:
-            case DATATYPE::BOOL: {
+            case DATATYPE::K_BYTE:
+            case DATATYPE::K_BOOL: {
               min.data = static_cast<char*>(min_addr);
               max.data = static_cast<char*>(max_addr);
               min.len = max.len = attrs_[col_id].size;
               break;
             }
             case DATATYPE::BINARY:
-            case DATATYPE::CHAR:
+            case DATATYPE::K_CHAR:
             case DATATYPE::STRING: {
               min.data = static_cast<char*>(min_addr);
               max.data = static_cast<char*>(max_addr);
@@ -449,23 +449,23 @@ KStatus TsStorageIteratorImpl::isBlockFiltered(std::shared_ptr<TsBlockSpan>& blo
               max.len = strlen(max.data);
               break;
             }
-            case DATATYPE::INT8: {
+            case DATATYPE::K_INT8: {
               min.ival = (k_int64)(*(static_cast<k_int8*>(min_addr)));
               max.ival = (k_int64)(*(static_cast<k_int8*>(max_addr)));
               break;
             }
-            case DATATYPE::INT16: {
+            case DATATYPE::K_INT16: {
               min.ival = (k_int64)(*(static_cast<k_int16*>(min_addr)));
               max.ival = (k_int64)(*(static_cast<k_int16*>(max_addr)));
               break;
             }
-            case DATATYPE::INT32:
+            case DATATYPE::K_INT32:
             case DATATYPE::TIMESTAMP: {
               min.ival = (k_int64)(*(static_cast<k_int32*>(min_addr)));
               max.ival = (k_int64)(*(static_cast<k_int32*>(max_addr)));
               break;
             }
-            case DATATYPE::INT64:
+            case DATATYPE::K_INT64:
             case DATATYPE::TIMESTAMP64:
             case DATATYPE::TIMESTAMP64_MICRO:
             case DATATYPE::TIMESTAMP64_NANO: {
@@ -473,12 +473,12 @@ KStatus TsStorageIteratorImpl::isBlockFiltered(std::shared_ptr<TsBlockSpan>& blo
               max.ival = *static_cast<k_int64*>(max_addr);
               break;
             }
-            case DATATYPE::FLOAT: {
+            case DATATYPE::K_FLOAT: {
               min.dval = static_cast<double>(*static_cast<float*>(min_addr));
               max.dval = static_cast<double>(*static_cast<float*>(max_addr));
               break;
             }
-            case DATATYPE::DOUBLE: {
+            case DATATYPE::K_DOUBLE: {
               min.dval = *static_cast<double*>(min_addr);
               max.dval = *static_cast<double*>(max_addr);
               break;
@@ -862,63 +862,63 @@ bool TsFillRawDataIteratorImpl::isConstFillTypeIllegal(uint32_t col_idx) {
     case DATATYPE::NO_TYPE: {
       return true;
     }
-    case DATATYPE::BOOL:
-    case DATATYPE::BYTE: {
-      if (col_type == DATATYPE::INT8 || col_type == DATATYPE::INT16 || col_type == DATATYPE::INT32 ||
-          col_type == DATATYPE::INT64 || col_type == DATATYPE::FLOAT || col_type == DATATYPE::DOUBLE ||
+    case DATATYPE::K_BOOL:
+    case DATATYPE::K_BYTE: {
+      if (col_type == DATATYPE::K_INT8 || col_type == DATATYPE::K_INT16 || col_type == DATATYPE::K_INT32 ||
+          col_type == DATATYPE::K_INT64 || col_type == DATATYPE::K_FLOAT || col_type == DATATYPE::K_DOUBLE ||
           col_type == DATATYPE::TIMESTAMP || col_type == DATATYPE::TIMESTAMP64 ||
           col_type == DATATYPE::TIMESTAMP64_MICRO || col_type == DATATYPE::TIMESTAMP64_NANO) {
         return true;
       }
       break;
     }
-    case DATATYPE::INT16: {
-      if (col_type == DATATYPE::BOOL || col_type == DATATYPE::BYTE || col_type == DATATYPE::INT8) {
+    case DATATYPE::K_INT16: {
+      if (col_type == DATATYPE::K_BOOL || col_type == DATATYPE::K_BYTE || col_type == DATATYPE::K_INT8) {
         return true;
       }
       break;
     }
-    case DATATYPE::INT32: {
-      if (col_type == DATATYPE::BOOL || col_type == DATATYPE::BYTE ||
-          col_type == DATATYPE::INT8 || col_type == DATATYPE::INT16) {
+    case DATATYPE::K_INT32: {
+      if (col_type == DATATYPE::K_BOOL || col_type == DATATYPE::K_BYTE ||
+          col_type == DATATYPE::K_INT8 || col_type == DATATYPE::K_INT16) {
         return true;
       }
       break;
     }
-    case DATATYPE::INT64: {
-      if (col_type == DATATYPE::BOOL || col_type == DATATYPE::BYTE ||
-          col_type == DATATYPE::INT8 || col_type == DATATYPE::INT16 || col_type == DATATYPE::INT32 ||
+    case DATATYPE::K_INT64: {
+      if (col_type == DATATYPE::K_BOOL || col_type == DATATYPE::K_BYTE ||
+          col_type == DATATYPE::K_INT8 || col_type == DATATYPE::K_INT16 || col_type == DATATYPE::K_INT32 ||
           col_type == DATATYPE::TIMESTAMP) {
         return true;
       }
       break;
     }
-    case DATATYPE::FLOAT: {
-      if (col_type == DATATYPE::BOOL || col_type == DATATYPE::BYTE || col_type == DATATYPE::INT8 ||
-          col_type == DATATYPE::INT16 || col_type == DATATYPE::INT32 || col_type == DATATYPE::INT64 ||
+    case DATATYPE::K_FLOAT: {
+      if (col_type == DATATYPE::K_BOOL || col_type == DATATYPE::K_BYTE || col_type == DATATYPE::K_INT8 ||
+          col_type == DATATYPE::K_INT16 || col_type == DATATYPE::K_INT32 || col_type == DATATYPE::K_INT64 ||
           col_type == DATATYPE::TIMESTAMP || col_type == DATATYPE::TIMESTAMP64 ||
           col_type == DATATYPE::TIMESTAMP64_MICRO || col_type == DATATYPE::TIMESTAMP64_NANO) {
         return true;
       }
       break;
     }
-    case DATATYPE::DOUBLE: {
-      if (col_type == DATATYPE::BOOL || col_type == DATATYPE::BYTE || col_type == DATATYPE::INT8 ||
-          col_type == DATATYPE::INT16 || col_type == DATATYPE::INT32 || col_type == DATATYPE::INT64 ||
+    case DATATYPE::K_DOUBLE: {
+      if (col_type == DATATYPE::K_BOOL || col_type == DATATYPE::K_BYTE || col_type == DATATYPE::K_INT8 ||
+          col_type == DATATYPE::K_INT16 || col_type == DATATYPE::K_INT32 || col_type == DATATYPE::K_INT64 ||
           col_type == DATATYPE::TIMESTAMP || col_type == DATATYPE::TIMESTAMP64 ||
           col_type == DATATYPE::TIMESTAMP64_MICRO || col_type == DATATYPE::TIMESTAMP64_NANO ||
-          col_type == DATATYPE::FLOAT) {
+          col_type == DATATYPE::K_FLOAT) {
         return true;
       }
       break;
     }
-    case DATATYPE::CHAR:
+    case DATATYPE::K_CHAR:
     case DATATYPE::BINARY:
     case DATATYPE::VARSTRING:
     case DATATYPE::VARBINARY: {
-      if (col_type == DATATYPE::BOOL || col_type == DATATYPE::BYTE ||
-          col_type == DATATYPE::INT8 || col_type == DATATYPE::INT16 || col_type == DATATYPE::INT32 ||
-          col_type == DATATYPE::INT64 || col_type == DATATYPE::FLOAT || col_type == DATATYPE::DOUBLE) {
+      if (col_type == DATATYPE::K_BOOL || col_type == DATATYPE::K_BYTE ||
+          col_type == DATATYPE::K_INT8 || col_type == DATATYPE::K_INT16 || col_type == DATATYPE::K_INT32 ||
+          col_type == DATATYPE::K_INT64 || col_type == DATATYPE::K_FLOAT || col_type == DATATYPE::K_DOUBLE) {
         return true;
       }
       if (col_type == DATATYPE::TIMESTAMP || col_type == DATATYPE::TIMESTAMP64 ||
@@ -930,14 +930,14 @@ bool TsFillRawDataIteratorImpl::isConstFillTypeIllegal(uint32_t col_idx) {
     default:
       break;
   }
-  if (col_type == DATATYPE::CHAR || col_type == DATATYPE::BINARY ||
+  if (col_type == DATATYPE::K_CHAR || col_type == DATATYPE::BINARY ||
       col_type == DATATYPE::VARSTRING || col_type == DATATYPE::VARBINARY) {
     uint32_t col_size = attrs_[col_idx].length;
     if (varbytes_cols_.count(col_idx)) {
       return const_data_length_ > col_size;
     }
     col_size -= 1;
-    if (col_type == DATATYPE::CHAR || col_type == DATATYPE::VARSTRING) {
+    if (col_type == DATATYPE::K_CHAR || col_type == DATATYPE::VARSTRING) {
       return const_data_length_ > col_size;
     } else {
       return const_n_data_length_ > (col_size / 4);
@@ -976,8 +976,8 @@ KStatus TsFillRawDataIteratorImpl::fillColumnResultSet(ResultSet* res, uint32_t 
   k_uint32 col_idx = fill_kw_scan_cols_[idx];
   if (!isConstFillTypeIllegal(col_idx)) {
     switch (attrs_[col_idx].type) {
-      case DATATYPE::BYTE:
-      case DATATYPE::BOOL: {
+      case DATATYPE::K_BYTE:
+      case DATATYPE::K_BOOL: {
         value = static_cast<char*>(malloc(sizeof(k_bool)));
         if (value == nullptr) {
           LOG_ERROR("malloc failed, cannot allocate memory, size: %lu", sizeof(k_bool));
@@ -986,7 +986,7 @@ KStatus TsFillRawDataIteratorImpl::fillColumnResultSet(ResultSet* res, uint32_t 
         KBool(value) = (data_value == "1") || (data_value == "true") ? 1 : 0;
         break;
       }
-      case DATATYPE::INT8: {
+      case DATATYPE::K_INT8: {
         value = static_cast<char*>(malloc(sizeof(k_int8)));
         if (value == nullptr) {
           LOG_ERROR("malloc failed, cannot allocate memory, size: %lu", sizeof(k_int8));
@@ -1001,7 +1001,7 @@ KStatus TsFillRawDataIteratorImpl::fillColumnResultSet(ResultSet* res, uint32_t 
         }
         break;
       }
-      case DATATYPE::INT16: {
+      case DATATYPE::K_INT16: {
         value = static_cast<char*>(malloc(sizeof(k_int16)));
         if (value == nullptr) {
           LOG_ERROR("malloc failed, cannot allocate memory, size: %lu", sizeof(k_int16));
@@ -1016,7 +1016,7 @@ KStatus TsFillRawDataIteratorImpl::fillColumnResultSet(ResultSet* res, uint32_t 
         }
         break;
       }
-      case DATATYPE::INT32: {
+      case DATATYPE::K_INT32: {
         value = static_cast<char*>(malloc(sizeof(k_int32)));
         if (value == nullptr) {
           LOG_ERROR("malloc failed, cannot allocate memory, size: %lu", sizeof(k_int32));
@@ -1048,7 +1048,7 @@ KStatus TsFillRawDataIteratorImpl::fillColumnResultSet(ResultSet* res, uint32_t 
         }
         break;
       }
-      case DATATYPE::INT64: {
+      case DATATYPE::K_INT64: {
         value = static_cast<char*>(malloc(sizeof(k_int64)));
         if (value == nullptr) {
           LOG_ERROR("malloc failed, cannot allocate memory, size: %lu", sizeof(k_int64));
@@ -1082,7 +1082,7 @@ KStatus TsFillRawDataIteratorImpl::fillColumnResultSet(ResultSet* res, uint32_t 
         }
         break;
       }
-      case DATATYPE::FLOAT: {
+      case DATATYPE::K_FLOAT: {
         value = static_cast<char*>(malloc(sizeof(k_float32)));
         if (value == nullptr) {
           LOG_ERROR("malloc failed, cannot allocate memory, size: %lu", sizeof(k_float32));
@@ -1097,7 +1097,7 @@ KStatus TsFillRawDataIteratorImpl::fillColumnResultSet(ResultSet* res, uint32_t 
         }
         break;
       }
-      case DATATYPE::DOUBLE: {
+      case DATATYPE::K_DOUBLE: {
         value = static_cast<char*>(malloc(sizeof(k_double64)));
         if (value == nullptr) {
           LOG_ERROR("malloc failed, cannot allocate memory, size: %lu", sizeof(k_double64));
@@ -1113,7 +1113,7 @@ KStatus TsFillRawDataIteratorImpl::fillColumnResultSet(ResultSet* res, uint32_t 
         break;
       }
       case DATATYPE::BINARY:
-      case DATATYPE::CHAR:
+      case DATATYPE::K_CHAR:
       case DATATYPE::STRING: {
         size_t alloc_size = attrs_[col_idx].size;
         value = static_cast<char*>(malloc(alloc_size));
@@ -1220,7 +1220,7 @@ KStatus TsFillRawDataIteratorImpl::calculateLinearResultSet(ResultSet* res, uint
   k_uint32 col_idx = fill_kw_scan_cols_[idx];
   double ratio = static_cast<double>(fill_ts_point_ - t1) / (t2 - t1);
   switch (attrs_[col_idx].type) {
-    case DATATYPE::INT8: {
+    case DATATYPE::K_INT8: {
       k_int8 v1 = KInt8(before_value), v2 = KInt8(after_value);
       k_int8 v = static_cast<k_int8>(v1 + (v2 - v1) * ratio);
       value = static_cast<char*>(malloc(sizeof(k_int8)));
@@ -1231,7 +1231,7 @@ KStatus TsFillRawDataIteratorImpl::calculateLinearResultSet(ResultSet* res, uint
       KInt8(value) = v;
       break;
     }
-    case DATATYPE::INT16: {
+    case DATATYPE::K_INT16: {
       k_int16 v1 = KInt16(before_value), v2 = KInt16(after_value);
       k_int16 v = static_cast<k_int16>(v1 + (v2 - v1) * ratio);
       value = static_cast<char*>(malloc(sizeof(k_int16)));
@@ -1242,7 +1242,7 @@ KStatus TsFillRawDataIteratorImpl::calculateLinearResultSet(ResultSet* res, uint
       KInt16(value) = v;
       break;
     }
-    case DATATYPE::INT32:
+    case DATATYPE::K_INT32:
     case DATATYPE::TIMESTAMP: {
       k_int32 v1 = KInt32(before_value), v2 = KInt32(after_value);
       k_int32 v = static_cast<k_int32>(v1 + (v2 - v1) * ratio);
@@ -1254,7 +1254,7 @@ KStatus TsFillRawDataIteratorImpl::calculateLinearResultSet(ResultSet* res, uint
       KInt32(value) = v;
       break;
     }
-    case DATATYPE::INT64:
+    case DATATYPE::K_INT64:
     case DATATYPE::TIMESTAMP64:
     case DATATYPE::TIMESTAMP64_MICRO:
     case DATATYPE::TIMESTAMP64_NANO: {
@@ -1268,7 +1268,7 @@ KStatus TsFillRawDataIteratorImpl::calculateLinearResultSet(ResultSet* res, uint
       KInt64(value) = v;
       break;
     }
-    case DATATYPE::FLOAT: {
+    case DATATYPE::K_FLOAT: {
       k_float32 v1 = KFloat32(before_value), v2 = KFloat32(after_value);
       k_float32 v = v1 + (v2 - v1) * ratio;
       value = static_cast<char*>(malloc(sizeof(k_float32)));
@@ -1279,7 +1279,7 @@ KStatus TsFillRawDataIteratorImpl::calculateLinearResultSet(ResultSet* res, uint
       KFloat32(value) = round_to_n_decimals(v, 2);
       break;
     }
-    case DATATYPE::DOUBLE: {
+    case DATATYPE::K_DOUBLE: {
       k_double64 v1 = KDouble64(before_value), v2 = KDouble64(after_value);
       k_double64 v = v1 + (v2 - v1) * ratio;
       value = static_cast<char*>(malloc(sizeof(k_double64)));
@@ -2309,7 +2309,7 @@ KStatus TsAggIteratorImpl::GenerateTimeBucketAggData() {
     }
     if (agg_type == Sumfunctype::TIME_BUCKET) {
       final_agg_data_[i].len = sizeof(timestamp64);
-      KTimestamp(final_agg_data_[i].data) = time_bucket_begin_ts_
+      *reinterpret_cast<KTimestamp*>(final_agg_data_[i].data) = time_bucket_begin_ts_
                   + time_bucket_info_.interval * time_bucket_index_;
       continue;
     }
@@ -2408,7 +2408,7 @@ KStatus TsAggIteratorImpl::GenerateAggData() {
     if (agg_type == Sumfunctype::TIME_BUCKET) {
       final_agg_data_[i].len = sizeof(timestamp64);
       final_agg_data_[i].data = static_cast<char*>(malloc(final_agg_data_[i].len));
-      KTimestamp(final_agg_data_[i].data) = time_bucket_begin_ts_
+      *reinterpret_cast<KTimestamp*>(final_agg_data_[i].data) = time_bucket_begin_ts_
                   + time_bucket_info_.interval * time_bucket_index_;
       continue;
     }
@@ -2882,15 +2882,15 @@ inline void TsAggIteratorImpl::InitAggData(TSSlice& agg_data) {
 
 inline void TsAggIteratorImpl::InitSumValue(void* data, int32_t type) {
   switch (type) {
-    case DATATYPE::INT8:
-    case DATATYPE::INT16:
-    case DATATYPE::INT32:
+    case DATATYPE::K_INT8:
+    case DATATYPE::K_INT16:
+    case DATATYPE::K_INT32:
     case DATATYPE::TIMESTAMP:
-    case DATATYPE::INT64:
+    case DATATYPE::K_INT64:
       *static_cast<int64_t*>(data) = 0;
       break;
-    case DATATYPE::FLOAT:
-    case DATATYPE::DOUBLE:
+    case DATATYPE::K_FLOAT:
+    case DATATYPE::K_DOUBLE:
       *static_cast<double*>(data) = 0.0;
       break;
     default:
@@ -2911,36 +2911,36 @@ inline KStatus TsAggIteratorImpl::AddSumNotOverflowYet(uint32_t col_idx,
                                                           TSSlice& agg_data) {
   bool over_flow = false;
   switch (type) {
-    case DATATYPE::INT8:
+    case DATATYPE::K_INT8:
       over_flow = AddAggInteger<int64_t>(
           *reinterpret_cast<int64_t*>(agg_data.data),
           *reinterpret_cast<int8_t*>(current));
       ConvertToDoubleIfOverflow(col_idx, over_flow, agg_data);
       break;
-    case DATATYPE::INT16:
+    case DATATYPE::K_INT16:
       over_flow = AddAggInteger<int64_t>(
           *reinterpret_cast<int64_t*>(agg_data.data),
           *reinterpret_cast<int16_t*>(current));
       ConvertToDoubleIfOverflow(col_idx, over_flow, agg_data);
       break;
-    case DATATYPE::INT32:
+    case DATATYPE::K_INT32:
       over_flow = AddAggInteger<int64_t>(
           *reinterpret_cast<int64_t*>(agg_data.data),
           *reinterpret_cast<int32_t*>(current));
       ConvertToDoubleIfOverflow(col_idx, over_flow, agg_data);
       break;
-    case DATATYPE::INT64:
+    case DATATYPE::K_INT64:
       over_flow = AddAggInteger<int64_t>(
           *reinterpret_cast<int64_t*>(agg_data.data),
           *reinterpret_cast<int64_t*>(current));
       ConvertToDoubleIfOverflow(col_idx, over_flow, agg_data);
       break;
-    case DATATYPE::FLOAT:
+    case DATATYPE::K_FLOAT:
       AddAggFloat<double>(
           *reinterpret_cast<double*>(agg_data.data),
           *reinterpret_cast<float*>(current));
       break;
-    case DATATYPE::DOUBLE:
+    case DATATYPE::K_DOUBLE:
       AddAggFloat<double>(
           *reinterpret_cast<double*>(agg_data.data),
           *reinterpret_cast<double*>(current));
@@ -2960,10 +2960,10 @@ inline KStatus TsAggIteratorImpl::AddSumNotOverflowYetByPreSum(uint32_t col_idx,
                                                                  TSSlice& agg_data,
                                                                  bool is_overflow) {
   switch (type) {
-    case DATATYPE::INT8:
-    case DATATYPE::INT16:
-    case DATATYPE::INT32:
-    case DATATYPE::INT64: {
+    case DATATYPE::K_INT8:
+    case DATATYPE::K_INT16:
+    case DATATYPE::K_INT32:
+    case DATATYPE::K_INT64: {
       if (!is_overflow) {
         if (AddAggInteger<int64_t>(*reinterpret_cast<int64_t*>(agg_data.data),
                                    *reinterpret_cast<int64_t*>(current))) {
@@ -2978,8 +2978,8 @@ inline KStatus TsAggIteratorImpl::AddSumNotOverflowYetByPreSum(uint32_t col_idx,
       }
       break;
     }
-    case DATATYPE::FLOAT:
-    case DATATYPE::DOUBLE: {
+    case DATATYPE::K_FLOAT:
+    case DATATYPE::K_DOUBLE: {
       if (!is_overflow) {
         AddAggFloat<double, double>(*reinterpret_cast<double*>(agg_data.data), *reinterpret_cast<double*>(current));
       } else {
@@ -2999,28 +2999,28 @@ inline KStatus TsAggIteratorImpl::AddSumOverflow(int32_t type,
                                                     void* current,
                                                     TSSlice& agg_data) {
   switch (type) {
-    case DATATYPE::INT8:
+    case DATATYPE::K_INT8:
       AddAggFloat<double, int64_t>(
           *reinterpret_cast<double*>(agg_data.data),
           *reinterpret_cast<int8_t*>(current));
       break;
-    case DATATYPE::INT16:
+    case DATATYPE::K_INT16:
       AddAggFloat<double, int64_t>(
           *reinterpret_cast<double*>(agg_data.data),
           *reinterpret_cast<int16_t*>(current));
       break;
-    case DATATYPE::INT32:
+    case DATATYPE::K_INT32:
       AddAggFloat<double, int64_t>(
           *reinterpret_cast<double*>(agg_data.data),
           *reinterpret_cast<int32_t*>(current));
       break;
-    case DATATYPE::INT64:
+    case DATATYPE::K_INT64:
       AddAggFloat<double, int64_t>(
           *reinterpret_cast<double*>(agg_data.data),
           *reinterpret_cast<int64_t*>(current));
       break;
-    case DATATYPE::FLOAT:
-    case DATATYPE::DOUBLE:
+    case DATATYPE::K_FLOAT:
+    case DATATYPE::K_DOUBLE:
       LOG_ERROR("Overflow not supported for sum, datatype: %d  table_id: %lu", type, table_id_);
       return KStatus::FAIL;
       break;
@@ -3037,10 +3037,10 @@ inline KStatus TsAggIteratorImpl::AddSumOverflowByPreSum(int32_t type,
                                                            TSSlice& agg_data,
                                                            bool is_overflow) {
   switch (type) {
-    case DATATYPE::INT8:
-    case DATATYPE::INT16:
-    case DATATYPE::INT32:
-    case DATATYPE::INT64: {
+    case DATATYPE::K_INT8:
+    case DATATYPE::K_INT16:
+    case DATATYPE::K_INT32:
+    case DATATYPE::K_INT64: {
       if (!is_overflow) {
         AddAggFloat<double, int64_t>(*reinterpret_cast<double*>(agg_data.data), *reinterpret_cast<int64_t*>(current));
       } else {
@@ -3048,8 +3048,8 @@ inline KStatus TsAggIteratorImpl::AddSumOverflowByPreSum(int32_t type,
       }
       break;
     }
-    case DATATYPE::FLOAT:
-    case DATATYPE::DOUBLE:
+    case DATATYPE::K_FLOAT:
+    case DATATYPE::K_DOUBLE:
       LOG_ERROR("Overflow not supported for sum, datatype: %d  table_id: %lu", type, table_id_);
       return KStatus::FAIL;
     default:

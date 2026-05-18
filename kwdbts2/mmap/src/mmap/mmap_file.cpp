@@ -9,8 +9,13 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+#ifdef _WIN32
+#include "platform.h"
+#include <windows.h>
+#else
 #include <unistd.h>
 #include <sys/mman.h>
+#endif
 #include <iostream>
 #include "mmap/mmap_file.h"
 #include "ts_object_error.h"
@@ -34,8 +39,13 @@ int MMapFile::reportError() {
 }
 
 void MMapFile::LogMMapFileError(const std::string &op) {
+#ifdef _WIN32
+  LOG_ERROR("%lx [KWFTL] %s failed: os system err_no %d, \"%s\", len: %lu", GetCurrentThreadId(),
+            op.c_str(), errno, absolute_file_path_.c_str(), file_length_);
+#else
   LOG_ERROR("%lx [KWFTL] %s failed: os system err_no %d, \"%s\", len: %lu", pthread_self(),
             op.c_str(), errno, absolute_file_path_.c_str(), file_length_);
+#endif
 }
 
 int MMapFile::open() {
@@ -179,7 +189,11 @@ int MMapFile::resize(size_t length) {
     if (ftruncate(fd, length) < 0) {
 #else
     if (length >= file_length_) {
+#ifdef _WIN32
+      if ((err_code = fallocate(fd, 0, 0, length)) != 0) {
+#else
       if ((err_code = posix_fallocate(fd, 0, length)) != 0) {
+#endif
         close(fd);
         LogMMapFileError("resize file");
         return errnumToErrorCode(err_code);
@@ -263,6 +277,10 @@ void MMapFile::copyMember(MMapFile& other) {
 }
 
 void MMapFile::checkError() {
+#ifdef _WIN32
+  // Windows does not have /proc/self/maps
+  LOG_WARN("Likely out of memory on Windows");
+#else
   FILE* maps_file = fopen("/proc/self/maps", "r");
   if (maps_file) {
     int map_count = 0;
@@ -289,4 +307,5 @@ void MMapFile::checkError() {
       }
     }
   }
+#endif
 }

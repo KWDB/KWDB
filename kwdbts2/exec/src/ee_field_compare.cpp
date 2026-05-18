@@ -11,8 +11,6 @@
 
 #include "ee_field_compare.h"
 
-#include <regex.h>
-
 #include <regex>
 
 #include "ee_global.h"

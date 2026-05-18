@@ -11,7 +11,14 @@
 
 #include "ts_compressor_impl.h"
 
+#ifndef _WIN32
 #include <endian.h>
+#endif
+
+#ifdef _WIN32
+// MinGW int64_t is long long, not long
+#define __builtin_ssubl_overflow __builtin_ssubll_overflow
+#endif
 
 #include <algorithm>
 #include <cassert>
@@ -380,8 +387,8 @@ bool Chimp<T>::Compress(TSSlice data, uint64_t count, TsBufferBuilder *out, int 
     }
     int trail, lead;
     if constexpr (sizeof(xored) == 8) {
-      trail = __builtin_ctzl(xored);
-      lead = __builtin_clzl(xored);
+      trail = __builtin_ctzll(xored);
+      lead = __builtin_clzll(xored);
     } else {
       trail = __builtin_ctz(xored);
       lead = __builtin_clz(xored);
@@ -1243,17 +1250,17 @@ CompressorManager::CompressorManager() {
     default_encode_algs_[i] = EncodeAlgo::kSimple8B_V2_s64;
   }
 
-  default_encode_algs_[DATATYPE::INT16] = EncodeAlgo::kSimple8B_V2_s16;
-  default_encode_algs_[DATATYPE::INT32] = EncodeAlgo::kSimple8B_V2_s32;
-  default_encode_algs_[DATATYPE::INT64] = EncodeAlgo::kSimple8B_V2_s64;
-  default_encode_algs_[DATATYPE::FLOAT] = EncodeAlgo::kChimp_32;
-  default_encode_algs_[DATATYPE::DOUBLE] = EncodeAlgo::kChimp_64;
+  default_encode_algs_[DATATYPE::K_INT16] = EncodeAlgo::kSimple8B_V2_s16;
+  default_encode_algs_[DATATYPE::K_INT32] = EncodeAlgo::kSimple8B_V2_s32;
+  default_encode_algs_[DATATYPE::K_INT64] = EncodeAlgo::kSimple8B_V2_s64;
+  default_encode_algs_[DATATYPE::K_FLOAT] = EncodeAlgo::kChimp_32;
+  default_encode_algs_[DATATYPE::K_DOUBLE] = EncodeAlgo::kChimp_64;
   // char string
-  default_encode_algs_[DATATYPE::BYTE] = EncodeAlgo::kPlain;
-  default_encode_algs_[DATATYPE::CHAR] = EncodeAlgo::kPlain;
+  default_encode_algs_[DATATYPE::K_BYTE] = EncodeAlgo::kPlain;
+  default_encode_algs_[DATATYPE::K_CHAR] = EncodeAlgo::kPlain;
   default_encode_algs_[DATATYPE::BINARY] = EncodeAlgo::kPlain;
 
-  default_encode_algs_[DATATYPE::BOOL] = EncodeAlgo::kBitPacking;
+  default_encode_algs_[DATATYPE::K_BOOL] = EncodeAlgo::kBitPacking;
 
   /* customized pre-defined levels */
   // lz4: level is ignored when using LZ4_compress_default.
@@ -1335,13 +1342,13 @@ auto CompressorManager::GetAlgorithm(DATATYPE dtype,
     }
     case roachpb::ENCODE_ALGO_SIMPLE8B: {
       switch (dtype) {
-        case DATATYPE::INT16:
+        case DATATYPE::K_INT16:
           encode_algo = EncodeAlgo::kSimple8B_V2_s16;
           break;
-        case DATATYPE::INT32:
+        case DATATYPE::K_INT32:
           encode_algo = EncodeAlgo::kSimple8B_V2_s32;
           break;
-        case DATATYPE::INT64:
+        case DATATYPE::K_INT64:
         case DATATYPE::TIMESTAMP64:
         case DATATYPE::TIMESTAMP64_MICRO:
         case DATATYPE::TIMESTAMP64_NANO:
@@ -1358,10 +1365,10 @@ auto CompressorManager::GetAlgorithm(DATATYPE dtype,
       break;
     case roachpb::ENCODE_ALGO_CHIMP:
       switch (dtype) {
-        case DATATYPE::FLOAT:
+        case DATATYPE::K_FLOAT:
           encode_algo = EncodeAlgo::kChimp_32;
           break;
-        case DATATYPE::DOUBLE:
+        case DATATYPE::K_DOUBLE:
           encode_algo = EncodeAlgo::kChimp_64;
           break;
         default:

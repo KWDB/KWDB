@@ -10,7 +10,9 @@
 // NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE. See the
 // Mulan PSL v2 for more details.
 
+#ifndef _WIN32
 #include "br_internal_service_recoverable_stub.h"
+#endif
 #include "ee_global.h"
 #include "ee_protobuf_serde.h"
 #include "lg_api.h"

@@ -180,7 +180,7 @@ KStatus TsEntityBlockBuilder::Append(const shared_ptr<TsBlockSpan>& span, bool& 
                         EngineOptions::max_rows_per_block - n_rows_ : span->GetRowNum();
   assert(span->GetRowNum() >= written_rows);
   for (int col_idx = 0; col_idx < n_cols_; ++col_idx) {
-    DATATYPE d_type = col_idx == 0 ? DATATYPE::INT64 : static_cast<DATATYPE>(metric_schema_[col_idx - 1].type);
+    DATATYPE d_type = col_idx == 0 ? DATATYPE::K_INT64 : static_cast<DATATYPE>(metric_schema_[col_idx - 1].type);
     size_t d_size = col_idx == 0 ? 8 : metric_schema_[col_idx - 1].size;
     // osn column do not contain bitmaps
     bool has_bitmap = col_idx != 0;
@@ -261,7 +261,7 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
   assert(n_cols_ == metric_schema_.size() + 1);
   AttributeInfo attr_info;
   for (int col_idx = 0; col_idx < n_cols_; ++col_idx) {
-    DATATYPE d_type = col_idx == 0 ? DATATYPE::INT64 : col_idx != 1 ?
+    DATATYPE d_type = col_idx == 0 ? DATATYPE::K_INT64 : col_idx != 1 ?
                       static_cast<DATATYPE>(metric_schema_[col_idx - 1].type) : DATATYPE::TIMESTAMP64;
     bool has_bitmap = col_idx > 1;  // && !metric_schema_[col_idx - 1].isFlag(AINFO_NOT_NULL);
     bool is_var_col = isVarLenType(d_type);
@@ -555,7 +555,7 @@ KStatus TsEntitySegmentBuilder::Open() {
 
   // 1. create entityitem file builder;
   {
-    std::string file_path = root_path_ / EntityHeaderFileName(entity_item_file_number_);
+    std::string file_path = (root_path_ / EntityHeaderFileName(entity_item_file_number_)).string();
     entity_item_builder_ =
         std::make_unique<TsEntitySegmentEntityItemFileBuilder>(io_env_, file_path, entity_item_file_number_);
     if (entity_item_builder_->Open() == FAIL) {
@@ -565,7 +565,7 @@ KStatus TsEntitySegmentBuilder::Open() {
   }
   // 2. create blockitem file builder;
   {
-    std::string file_path = root_path_ / BlockHeaderFileName(block_header_file_num);
+    std::string file_path = (root_path_ / BlockHeaderFileName(block_header_file_num)).string();
     block_item_builder_ = std::make_unique<TsEntitySegmentBlockItemFileBuilder>(
         io_env_, file_path, block_header_file_num, block_header_file_size);
     if (block_item_builder_->Open() == FAIL) {
@@ -576,7 +576,7 @@ KStatus TsEntitySegmentBuilder::Open() {
 
   // 3. create block file builder;
   {
-    std::string file_path = root_path_ / DataBlockFileName(block_file_num);
+    std::string file_path = (root_path_ / DataBlockFileName(block_file_num)).string();
     block_file_builder_ =
         std::make_unique<TsEntitySegmentBlockFileBuilder>(io_env_, file_path, block_file_num, block_file_size);
     if (block_file_builder_->Open() == FAIL) {
@@ -587,7 +587,7 @@ KStatus TsEntitySegmentBuilder::Open() {
 
   // 4. create agg file builder;
   {
-    std::string file_path = root_path_ / EntityAggFileName(agg_file_num);
+    std::string file_path = (root_path_ / EntityAggFileName(agg_file_num)).string();
     agg_file_builder_ =
         std::make_unique<TsEntitySegmentAggFileBuilder>(io_env_, file_path, agg_file_num, agg_file_size);
     if (agg_file_builder_->Open() == FAIL) {
@@ -920,11 +920,11 @@ KStatus TsEntitySegmentBuilder::WriteBatchFinish(TsVersionUpdate *update) {
   KStatus s = KStatus::SUCCESS;
   write_batch_finished_ = true;
   std::unique_lock lock{mutex_};
-  LOG_DEBUG("TsEntitySegmentBuilder WriteBatchFinish begin, root_path: %s, entity_header_file_num: %lu", root_path_.c_str(),
+  LOG_DEBUG("TsEntitySegmentBuilder WriteBatchFinish begin, root_path: %s, entity_header_file_num: %lu", root_path_.string().c_str(),
            entity_item_file_number_);
   Defer defer([&]() {
     LOG_DEBUG("TsEntitySegmentBuilder WriteBatchFinish end, success: %d , root_path: %s, update info: %s", s == SUCCESS,
-              root_path_.c_str(), update->DebugStr().c_str());
+              root_path_.string().c_str(), update->DebugStr().c_str());
   });
   // write entity header
   uint32_t cur_entity_id = 0;
@@ -994,10 +994,10 @@ void TsEntitySegmentBuilder::WriteBatchCancel() {
   write_batch_finished_ = true;
   std::unique_lock lock{mutex_};
   LOG_INFO("TsEntitySegmentBuilder WriteBatchCancel begin, root_path: %s, entity_header_file_num: %lu",
-           root_path_.c_str(), entity_item_file_number_);
+           root_path_.string().c_str(), entity_item_file_number_);
   Defer defer([this]() {
     LOG_INFO("TsEntitySegmentBuilder WriteBatchCancel end, root_path: %s, entity_header_file_num: %lu",
-             root_path_.c_str(), entity_item_file_number_);
+             root_path_.string().c_str(), entity_item_file_number_);
   });
   entity_item_builder_->MarkDelete();
 }
@@ -1010,25 +1010,25 @@ TsEntitySegmentVacuumer::TsEntitySegmentVacuumer(const std::string& root_path,
   TsIOEnv* env = &TsIOEnv::GetInstance();
   fs::path root(root_path);
   uint64_t entity_header_file_number = version_manager->NewFileNumber();
-  std::string entity_header_file_path = root / EntityHeaderFileName(entity_header_file_number);
+  std::string entity_header_file_path = (root / EntityHeaderFileName(entity_header_file_number)).string();
   entity_item_builder_ =
       std::make_unique<TsEntitySegmentEntityItemFileBuilder>(env, entity_header_file_path, entity_header_file_number);
 
   // block header file
   uint64_t block_item_file_number = version_manager->NewFileNumber();
-  std::string block_header_file_path = root / BlockHeaderFileName(block_item_file_number);
+  std::string block_header_file_path = (root / BlockHeaderFileName(block_item_file_number)).string();
   block_item_builder_ =
       std::make_unique<TsEntitySegmentBlockItemFileBuilder>(env, block_header_file_path, block_item_file_number, false);
 
   // block data file
   uint64_t block_data_file_number = version_manager->NewFileNumber();
-  std::string block_file_path = root / DataBlockFileName(block_data_file_number);
+  std::string block_file_path = (root / DataBlockFileName(block_data_file_number)).string();
   block_file_builder_ =
       std::make_unique<TsEntitySegmentBlockFileBuilder>(env, block_file_path, block_data_file_number, false);
 
   // block agg file
   uint64_t agg_file_number = version_manager->NewFileNumber();
-  std::string agg_file_path = root / EntityAggFileName(agg_file_number);
+  std::string agg_file_path = (root / EntityAggFileName(agg_file_number)).string();
   agg_file_builder_ = std::make_unique<TsEntitySegmentAggFileBuilder>(env, agg_file_path, agg_file_number, false);
 }
 

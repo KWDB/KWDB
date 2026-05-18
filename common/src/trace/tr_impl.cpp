@@ -10,7 +10,15 @@
 // See the Mulan PSL v2 for more details.
 #include "tr_impl.h"
 #include "lg_impl.h"
+
+#ifdef OS_LINUX
 #include <sys/time.h>
+#endif
+
+#ifdef OS_WIN32
+#include <windows.h>
+#include <time.h>
+#endif
 
 #include <mutex>
 

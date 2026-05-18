@@ -11,7 +11,20 @@
 
 #include "cm_config.h"
 
+#ifdef OS_LINUX
 #include <arpa/inet.h>
+#endif
+
+#ifdef OS_WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+// Ensure winsock2.h is included before windows.h
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
+
 #include <iostream>
 #include <algorithm>
 

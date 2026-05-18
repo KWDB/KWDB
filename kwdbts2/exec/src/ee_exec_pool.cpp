@@ -17,6 +17,7 @@
 #include "cm_fault_injection.h"
 #include "ee_cpuinfo.h"
 #include "ee_pipeline_task_poller.h"
+#include <unistd.h>
 
 namespace kwdbts {
 

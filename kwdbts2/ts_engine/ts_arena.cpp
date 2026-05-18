@@ -11,6 +11,9 @@
 
 #include "ts_arena.h"
 #include "lg_api.h"
+#ifdef _WIN32
+#include <windows.h>
+#endif
 #if defined(__i386__) || defined(__x86_64__)
 #include <cpuid.h>
 #endif

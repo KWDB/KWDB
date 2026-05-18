@@ -13,7 +13,11 @@
 #include <algorithm>
 #include <cstring>
 #include <atomic>
+#ifdef _WIN32
+#include "platform.h"
+#else
 #include <sys/mman.h>
+#endif
 #include "cm_func.h"
 #include "dirent.h"
 #include "mmap/mmap_metrics_table.h"
@@ -31,13 +35,13 @@ impl_latch_virtual_func(MMapMetricsTable, &rw_latch_)
 int MMapMetricsTable::open(const std::string& table_name, const fs::path& table_path, int flags, ErrorInfo& err_info) {
   const fs::path absolute_path = table_path / table_name;
   if ((err_info.errcode = TsTableObject::open(table_name, absolute_path, magic(), flags)) < 0) {
-    err_info.setError(err_info.errcode, absolute_path);
+    err_info.setError(err_info.errcode, absolute_path.string());
     return err_info.errcode;
   }
   name_ = getTsObjectName(path());
   if (metaDataLen() < (off_t) sizeof(TSTableFileMetadata)) {
     if (!(bt_file_.flags() & O_CREAT)) {
-      err_info.setError(KWECORR, absolute_path);
+      err_info.setError(KWECORR, absolute_path.string());
     }
     return err_info.errcode;
   }

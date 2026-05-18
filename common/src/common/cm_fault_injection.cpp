@@ -11,8 +11,27 @@
 
 #include "cm_fault_injection.h"
 
-#include <bits/stdc++.h>
+#include <algorithm>
+#include <cstring>
+#include <sstream>
+#include <fstream>
+#include <iomanip>
+
+#ifdef OS_LINUX
 #include <arpa/inet.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#endif
+
+#ifdef OS_WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+// Ensure winsock2.h is included before windows.h
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
 
 #include<algorithm>
 
@@ -138,7 +157,13 @@ k_int32 ProcInjectFault(const KString &cmd, std::ostringstream &oss) {
 void HandleInjectFaultCmd(void* args) {
   k_int64* conn_args = static_cast<k_int64*>(args);
   char cmd[100] = {0};
+
+#ifdef OS_LINUX
   recv(conn_args[0], cmd, 100, MSG_NOSIGNAL);
+#elif defined(OS_WIN32)
+  recv((SOCKET)conn_args[0], cmd, 100, 0);
+#endif
+
   std::ostringstream oss;
   k_int32 ret = ProcInjectFault(cmd, oss);
   if (ret < 0) {
@@ -147,8 +172,18 @@ void HandleInjectFaultCmd(void* args) {
     oss << "Success\n";
   }
   KString status = oss.str();
+
+#ifdef OS_LINUX
   send(conn_args[0], status.c_str(), status.length() + 1, MSG_NOSIGNAL);
+#elif defined(OS_WIN32)
+  send((SOCKET)conn_args[0], status.c_str(), status.length() + 1, 0);
+#endif
+
+#ifdef OS_LINUX
   close(conn_args[0]);
+#elif defined(OS_WIN32)
+  closesocket((SOCKET)conn_args[0]);
+#endif
 }
 
 k_int32 InitFaultInjection() {
@@ -187,10 +222,20 @@ k_int32 InitFaultInjection() {
 
 void InjectFaultServer(void* args) {
   k_int64 listen_port = static_cast<k_int64*>(args)[0];
+
+#ifdef OS_LINUX
   int listen_sock = -1;
+#elif defined(OS_WIN32)
+  SOCKET listen_sock = INVALID_SOCKET;
+#endif
+
   try {
     listen_sock = socket(AF_INET, SOCK_STREAM, 0);
+#ifdef OS_LINUX
     if (listen_sock < 0) {
+#elif defined(OS_WIN32)
+    if (listen_sock == INVALID_SOCKET) {
+#endif
       LOG_ERROR("InjectFaultServer socket failed, err: %s \n", strerror(errno));
       return;
     }
@@ -234,7 +279,12 @@ void InjectFaultServer(void* args) {
   kwdb_operator_info.SetOperatorOwner("InjectFaultServer");
 
   while (true) {
-    k_int32 socket_id = 0;
+#ifdef OS_LINUX
+    int socket_id = 0;
+#elif defined(OS_WIN32)
+    SOCKET socket_id = INVALID_SOCKET;
+#endif
+
     try {
       sockaddr_in clnt_addr;
       socklen_t clnt_addr_size = sizeof(clnt_addr);
@@ -245,20 +295,34 @@ void InjectFaultServer(void* args) {
     }
 
     if (thread_pool.IsStop()) {
+#ifdef OS_LINUX
       if (socket_id != -1) {
         close(socket_id);
       }
+#elif defined(OS_WIN32)
+      if (socket_id != INVALID_SOCKET) {
+        closesocket(socket_id);
+      }
+#endif
       break;
     }
 
+#ifdef OS_LINUX
     if (socket_id < 0) {
+#elif defined(OS_WIN32)
+    if (socket_id == INVALID_SOCKET) {
+#endif
       continue;
     }
 
     if (thread_pool.IsAvailable()) {
       time_t now;
       kwdb_operator_info.SetOperatorStartTime((k_uint64) time(&now));
+#ifdef OS_LINUX
       k_int32 args[1] = {socket_id};
+#elif defined(OS_WIN32)
+      k_int64 args[1] = {(k_int64)socket_id};
+#endif
       thread_pool.ApplyThread(HandleInjectFaultCmd, &args, &kwdb_operator_info);
     }
   }

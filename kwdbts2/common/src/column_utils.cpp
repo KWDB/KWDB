@@ -23,25 +23,25 @@ bool ParseToAttributeInfo(const roachpb::KWDBKTSColumn& col, AttributeInfo& attr
       attr_info.max_len = 3;
       break;
     case roachpb::SMALLINT:
-      attr_info.type = DATATYPE::INT16;
+      attr_info.type = DATATYPE::K_INT16;
       break;
     case roachpb::INT:
-      attr_info.type = DATATYPE::INT32;
+      attr_info.type = DATATYPE::K_INT32;
       break;
     case roachpb::BIGINT:
-      attr_info.type = DATATYPE::INT64;
+      attr_info.type = DATATYPE::K_INT64;
       break;
     case roachpb::FLOAT:
-      attr_info.type = DATATYPE::FLOAT;
+      attr_info.type = DATATYPE::K_FLOAT;
       break;
     case roachpb::DOUBLE:
-      attr_info.type = DATATYPE::DOUBLE;
+      attr_info.type = DATATYPE::K_DOUBLE;
       break;
     case roachpb::BOOL:
-      attr_info.type = DATATYPE::BYTE;
+      attr_info.type = DATATYPE::K_BYTE;
       break;
     case roachpb::CHAR:
-      attr_info.type = DATATYPE::CHAR;
+      attr_info.type = DATATYPE::K_CHAR;
       attr_info.max_len = col.storage_len();
       break;
     case roachpb::BINARY:
@@ -94,25 +94,25 @@ bool ParseToColumnInfo(struct AttributeInfo& attr_info, roachpb::KWDBKTSColumn& 
     case DATATYPE::TIMESTAMP64:
       col.set_storage_type(roachpb::TIMESTAMP);
       break;
-    case DATATYPE::INT16:
+    case DATATYPE::K_INT16:
       col.set_storage_type(roachpb::SMALLINT);
       break;
-    case DATATYPE::INT32:
+    case DATATYPE::K_INT32:
       col.set_storage_type(roachpb::INT);
       break;
-    case DATATYPE::INT64:
+    case DATATYPE::K_INT64:
       col.set_storage_type(roachpb::BIGINT);
       break;
-    case DATATYPE::FLOAT:
+    case DATATYPE::K_FLOAT:
       col.set_storage_type(roachpb::FLOAT);
       break;
-    case DATATYPE::DOUBLE:
+    case DATATYPE::K_DOUBLE:
       col.set_storage_type(roachpb::DOUBLE);
       break;
-    case DATATYPE::BYTE:
+    case DATATYPE::K_BYTE:
       col.set_storage_type(roachpb::BOOL);
       break;
-    case DATATYPE::CHAR:
+    case DATATYPE::K_CHAR:
       col.set_storage_type(roachpb::CHAR);
       col.set_storage_len(attr_info.max_len);
       break;
@@ -165,25 +165,25 @@ bool ParseTagColumnInfo(struct TagInfo& tag_info, roachpb::KWDBKTSColumn& col) {
     case DATATYPE::TIMESTAMP64:
       col.set_storage_type(roachpb::TIMESTAMP);
       break;
-    case DATATYPE::INT16:
+    case DATATYPE::K_INT16:
       col.set_storage_type(roachpb::SMALLINT);
       break;
-    case DATATYPE::INT32:
+    case DATATYPE::K_INT32:
       col.set_storage_type(roachpb::INT);
       break;
-    case DATATYPE::INT64:
+    case DATATYPE::K_INT64:
       col.set_storage_type(roachpb::BIGINT);
       break;
-    case DATATYPE::FLOAT:
+    case DATATYPE::K_FLOAT:
       col.set_storage_type(roachpb::FLOAT);
       break;
-    case DATATYPE::DOUBLE:
+    case DATATYPE::K_DOUBLE:
       col.set_storage_type(roachpb::DOUBLE);
       break;
-    case DATATYPE::BYTE:
+    case DATATYPE::K_BYTE:
       col.set_storage_type(roachpb::BOOL);
       break;
-    case DATATYPE::CHAR:
+    case DATATYPE::K_CHAR:
       col.set_storage_type(roachpb::CHAR);
       break;
     case DATATYPE::BINARY:

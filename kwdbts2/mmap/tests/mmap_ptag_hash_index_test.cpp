@@ -11,8 +11,12 @@
 
 #include <gtest/gtest.h>
 #include <sys/stat.h>
+#ifdef _WIN32
+#include "platform.h"
+#else
 #include <sys/mman.h>
 #include <unistd.h>
+#endif
 #include <cstring>
 #include <cstdint>
 #include <vector>

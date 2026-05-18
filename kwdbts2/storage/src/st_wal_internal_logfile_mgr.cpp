@@ -12,6 +12,7 @@
 #include "st_wal_internal_logfile_mgr.h"
 
 #include <utility>
+#include "platform.h"
 #include "sys_utils.h"
 #include "ts_io.h"
 

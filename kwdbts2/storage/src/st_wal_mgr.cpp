@@ -13,6 +13,7 @@
 #include "ts_vgroup.h"
 #include "sys_utils.h"
 #include "ts_io.h"
+#include "platform.h"
 
 namespace kwdbts {
 WALMgr::WALMgr(const string& db_path, const KTableKey& table_id, uint64_t entity_grp_id, EngineOptions* opt) :
@@ -115,7 +116,7 @@ KStatus WALMgr::Init(kwdbContext_p ctx, bool for_eng_wal) {
     }
     // Only rename chk file if it exists
     if (IsExists(file_mgr_->getChkFilePath())) {
-      if (-1 == rename(file_mgr_->getChkFilePath().c_str(), file_mgr_->getFilePath().c_str())) {
+      if (-1 == kwdb_rename(file_mgr_->getChkFilePath().c_str(), file_mgr_->getFilePath().c_str())) {
         LOG_ERROR("Failed to rename WAL file.")
         return KStatus::FAIL;
       }
@@ -1172,7 +1173,7 @@ KStatus WALMgr::SwitchNextFile(TS_OSN first_lsn) {
       return FAIL;
     }
     file_mgr_->Close();
-    if (-1 == rename(file_mgr_->getFilePath().c_str(), file_mgr_->getChkFilePath().c_str())) {
+    if (-1 == kwdb_rename(file_mgr_->getFilePath().c_str(), file_mgr_->getChkFilePath().c_str())) {
       LOG_ERROR("Failed to rename WAL file.")
       return KStatus::FAIL;
     }
@@ -1202,7 +1203,7 @@ KStatus WALMgr::SwitchNextFile(TS_OSN first_lsn) {
     LOG_ERROR("Failed to FlushWithoutLock.")
     return FAIL;
   }
-  if (-1 == rename(file_mgr_->getTmpFilePath().c_str(), file_mgr_->getFilePath().c_str())) {
+  if (-1 == kwdb_rename(file_mgr_->getTmpFilePath().c_str(), file_mgr_->getFilePath().c_str())) {
     LOG_ERROR("Failed to rename WAL file.")
     return KStatus::FAIL;
   }
@@ -1216,7 +1217,7 @@ KStatus WALMgr::SwitchLastFile(kwdbContext_p ctx, TS_OSN last_lsn) {
       LOG_ERROR("Failed to Remove WAL file.")
       return KStatus::FAIL;
     }
-    if (-1 == rename(file_mgr_->getChkFilePath().c_str(), file_mgr_->getFilePath().c_str())) {
+    if (-1 == kwdb_rename(file_mgr_->getChkFilePath().c_str(), file_mgr_->getFilePath().c_str())) {
       LOG_ERROR("Failed to rename WAL file.")
       return KStatus::FAIL;
     }

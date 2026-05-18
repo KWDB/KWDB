@@ -468,7 +468,11 @@ k_bool RouterOutboundOperator::CheckReady(kwdbContext_p ctx) {
       ready = false;
       break;
     }
+#ifndef _WIN32
     usleep(1);
+#else
+    Sleep(0);
+#endif
   }
   Return(ready);
 }

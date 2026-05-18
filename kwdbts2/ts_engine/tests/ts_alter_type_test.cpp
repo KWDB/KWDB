@@ -40,15 +40,15 @@ class TsAlterTypeTest : public TsEngineTestBase {
       case roachpb::VARCHAR:
         return DATATYPE::VARSTRING;
       case roachpb::SMALLINT:
-        return DATATYPE::INT16;
+        return DATATYPE::K_INT16;
       case roachpb::INT:
-        return DATATYPE::INT32;
+        return DATATYPE::K_INT32;
       case roachpb::BIGINT:
-        return DATATYPE::INT64;
+        return DATATYPE::K_INT64;
       case roachpb::FLOAT:
-        return DATATYPE::FLOAT;
+        return DATATYPE::K_FLOAT;
       case roachpb::DOUBLE:
-        return DATATYPE::DOUBLE;
+        return DATATYPE::K_DOUBLE;
       default:
         return DATATYPE::INVALID;
     }
@@ -66,31 +66,31 @@ class TsAlterTypeTest : public TsEngineTestBase {
         builder->SetColumnValue(row_idx, col_idx, const_cast<char*>(current.c_str()), current.size() + 1);
         break;
       }
-      case DATATYPE::INT16: {
+      case DATATYPE::K_INT16: {
         ASSERT_TRUE(std::holds_alternative<int16_t>(value));
         auto current = std::get<int16_t>(value);
         builder->SetColumnValue(row_idx, col_idx, reinterpret_cast<char*>(&current), sizeof(current));
         break;
       }
-      case DATATYPE::INT32: {
+      case DATATYPE::K_INT32: {
         ASSERT_TRUE(std::holds_alternative<int32_t>(value));
         auto current = std::get<int32_t>(value);
         builder->SetColumnValue(row_idx, col_idx, reinterpret_cast<char*>(&current), sizeof(current));
         break;
       }
-      case DATATYPE::INT64: {
+      case DATATYPE::K_INT64: {
         ASSERT_TRUE(std::holds_alternative<int64_t>(value));
         auto current = std::get<int64_t>(value);
         builder->SetColumnValue(row_idx, col_idx, reinterpret_cast<char*>(&current), sizeof(current));
         break;
       }
-      case DATATYPE::FLOAT: {
+      case DATATYPE::K_FLOAT: {
         ASSERT_TRUE(std::holds_alternative<float>(value));
         auto current = std::get<float>(value);
         builder->SetColumnValue(row_idx, col_idx, reinterpret_cast<char*>(&current), sizeof(current));
         break;
       }
-      case DATATYPE::DOUBLE: {
+      case DATATYPE::K_DOUBLE: {
         ASSERT_TRUE(std::holds_alternative<double>(value));
         auto current = std::get<double>(value);
         builder->SetColumnValue(row_idx, col_idx, reinterpret_cast<char*>(&current), sizeof(current));
@@ -199,31 +199,31 @@ class TsAlterTypeTest : public TsEngineTestBase {
                                    const_cast<char*>(value.c_str()), value.size() + 1);
             break;
           }
-          case DATATYPE::DOUBLE: {
+          case DATATYPE::K_DOUBLE: {
             double value = 55.555 + static_cast<double>(row_idx);
             builder.SetColumnValue(static_cast<int>(row_idx), static_cast<int>(col_idx),
                                    reinterpret_cast<char*>(&value), sizeof(value));
             break;
           }
-          case DATATYPE::FLOAT: {
+          case DATATYPE::K_FLOAT: {
             float value = 33.25f + static_cast<float>(row_idx);
             builder.SetColumnValue(static_cast<int>(row_idx), static_cast<int>(col_idx),
                                    reinterpret_cast<char*>(&value), sizeof(value));
             break;
           }
-          case DATATYPE::INT16: {
+          case DATATYPE::K_INT16: {
             auto value = static_cast<int16_t>(row_idx + 10);
             builder.SetColumnValue(static_cast<int>(row_idx), static_cast<int>(col_idx),
                                    reinterpret_cast<char*>(&value), sizeof(value));
             break;
           }
-          case DATATYPE::INT32: {
+          case DATATYPE::K_INT32: {
             auto value = static_cast<int32_t>(row_idx + 100);
             builder.SetColumnValue(static_cast<int>(row_idx), static_cast<int>(col_idx),
                                    reinterpret_cast<char*>(&value), sizeof(value));
             break;
           }
-          case DATATYPE::INT64: {
+          case DATATYPE::K_INT64: {
             auto value = static_cast<int64_t>(row_idx + 1000);
             builder.SetColumnValue(static_cast<int>(row_idx), static_cast<int>(col_idx),
                                    reinterpret_cast<char*>(&value), sizeof(value));
@@ -545,7 +545,7 @@ TEST_F(TsAlterTypeTest, SchemaManagerAlterTableAlterColumnType) {
   bool found = false;
   for (const auto& col : cols) {
     if (col.id == 4) {
-      ASSERT_EQ(col.type, static_cast<int32_t>(DATATYPE::DOUBLE));
+      ASSERT_EQ(col.type, static_cast<int32_t>(DATATYPE::K_DOUBLE));
       found = true;
       break;
     }
@@ -600,7 +600,7 @@ TEST_F(TsAlterTypeTest, EngineSchemaManagerAlterTableAlterColumnType) {
   bool found = false;
   for (const auto& col : cols) {
     if (col.id == 4) {
-      ASSERT_EQ(col.type, static_cast<int32_t>(DATATYPE::DOUBLE));
+      ASSERT_EQ(col.type, static_cast<int32_t>(DATATYPE::K_DOUBLE));
       found = true;
       break;
     }

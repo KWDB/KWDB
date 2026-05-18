@@ -74,7 +74,7 @@ class TsRawPayloadRowParser {
 
   // ts used frequently,so optimize it.
   inline timestamp64 GetTimestamp(const TSSlice& row_data) const {
-    return KTimestamp(row_data.data + col_offset_[0]);
+    return KTimestampCast(row_data.data + col_offset_[0]);
   }
 };
 

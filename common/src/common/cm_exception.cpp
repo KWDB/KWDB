@@ -9,17 +9,19 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-#include <cstdio> 
-#include <signal.h>
-#include <execinfo.h>
-#include <cxxabi.h>
-#include <unistd.h>
-#include <fcntl.h>
+#include <cstdio>
 #include <atomic>
 #include <string>
 #include <iostream>
 #include <fstream>
 #include <sstream>
+
+#ifdef OS_LINUX
+#include <signal.h>
+#include <execinfo.h>
+#include <unistd.h>
+#include <fcntl.h>
+#endif
 
 #include "cm_exception.h"
 #include "cm_kwdb_context.h"
@@ -34,17 +36,21 @@ k_char kErrlogPath[FULL_FILE_NAME_MAX_LEN];
 char kEmergencyBuf[512];
 PostExceptionCb kPostExceptionCb = nullptr;
 
+#ifdef OS_LINUX
 #define EXCEPTION_SIGNAL_CNT (6)
 static k_int32 kExceptionSignals[EXCEPTION_SIGNAL_CNT] = {
   SIGSEGV, SIGABRT, SIGBUS, SIGSYS, SIGFPE, SIGILL
 };
 static struct sigaction kOldSigactions[EXCEPTION_SIGNAL_CNT];
+#endif
 
+#ifdef OS_LINUX
 extern void DumpThreadBacktraceToFile(int fd);
 extern char* AppendLiteral(char* cursor, char* end, const char* text);
 extern char* AppendUInt64(char* cursor, char* end, uint64_t value);
 extern char* AppendPtr(char* cursor, char* end, uintptr_t ptr_value);
 extern char* AppendInt32(char* cursor, char* end, int32_t value);
+#endif
 
 static int FastSecondToDate(const time_t& unix_sec, struct tm* tm, int time_zone) {
     static const int kHoursInDay = 24;
@@ -72,6 +78,7 @@ static int FastSecondToDate(const time_t& unix_sec, struct tm* tm, int time_zone
     return 0;
 }
 
+#ifdef OS_LINUX
 void GenExceptionHeader(char* buff, size_t* length, const char* sigstr, int sig, int si_code, uintptr_t ptr) {
   //  "Exception time(UTC):%s\nsignal:%s(%d)\npid=%d tid=%d si_code=%d si_addr=%p\n",
   char* cursor = buff;
@@ -138,7 +145,7 @@ void ExceptionHandler(const int sig, siginfo_t* const info, void*) {
     signal(sig, SIG_DFL);
     return;
   }
-  
+
   StoreExceptionStackToFile(sig, info);
   // https://pkg.go.dev/os/signal#hdr-Go_programs_that_use_cgo_or_SWIG
   // pass to GO or default
@@ -148,8 +155,10 @@ void ExceptionHandler(const int sig, siginfo_t* const info, void*) {
     }
   }
 }
+#endif  // OS_LINUX
 
 int32_t RegisterExceptionHandler(char *dir, PostExceptionCb cb) {
+#ifdef OS_LINUX
   const char* kwdb_data_root;
   if ( (kwdb_data_root = std::getenv("KWDB_DATA_ROOT")) &&
     ((std::strlen(kwdb_data_root) + 1 + std::strlen(kErrlogName)) < FULL_FILE_NAME_MAX_LEN) ) {
@@ -179,10 +188,17 @@ int32_t RegisterExceptionHandler(char *dir, PostExceptionCb cb) {
     }
   }
   return 0;
+#else
+  (void)dir;
+  (void)cb;
+  return 0;
+#endif
 }
 
+#ifdef OS_LINUX
 void ExceptionHandlerForTest(int signr, siginfo_t *info, void *secret) {
   ExceptionHandler(signr, info, secret);
 }
+#endif
 
 }  // namespace kwdbts

@@ -23,7 +23,7 @@ namespace kwdbts {
 #define NEWPOOL_MAX_SIZE (4096)  // default number of memory pool
 #define ROW_BUFFER_SIZE (65536)  // default buffer size = 64k
 // default string heap size = 1G
-const int64_t MAX_STRING_HEAP_SIZE =  1024 * 1024 * 1024 * 6L;
+const int64_t MAX_STRING_HEAP_SIZE =  1024LL * 1024LL * 1024LL * 6LL;
 
 typedef struct {
   k_uint32 iNumOfFreeBlock;  // amount of free block in the pool

@@ -10,9 +10,11 @@
 // See the Mulan PSL v2 for more details.
 #include "ee_timer_event.h"
 
+#include <chrono>
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <thread>
 
 #include "gtest/gtest.h"
 namespace kwdbts {
@@ -40,13 +42,13 @@ TEST_F(TestTimerEvent, TestTimerEventPool) {
   // PushTimeEvent
   pool.PushTimeEvent(te_ptr);
   pool.PushTimeEvent(te_ptr2);
-  sleep(3);
+  std::this_thread::sleep_for(std::chrono::seconds(3));
   bool succ = te_ptr2->StopEvent();
   EXPECT_TRUE(succ);
   if (succ == true) {
     std::cout << "time event stop succ!" << std::endl;
   }
-  sleep(2);
+  std::this_thread::sleep_for(std::chrono::seconds(2));
   pool.Stop();
 }
 

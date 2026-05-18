@@ -34,7 +34,7 @@ struct UserArg {
 
 constexpr int A_LARGE_SIZE = {2000};
 
-std::vector<uint> g_count_calls = std::vector<uint>(A_LARGE_SIZE, 0);
+std::vector<unsigned int> g_count_calls = std::vector<unsigned int>(A_LARGE_SIZE, 0);
 std::vector<UserArg*> g_args(A_LARGE_SIZE, nullptr);
 
 void SubUserRoutineLarge(void *arg) {
@@ -93,7 +93,7 @@ TEST_F(TestKWDBDynamicThreadPoolStress, Apply_a_large_size_of_threads) {
   }
 
   std::deque<int> running_tasks;
-  uint total_calls = 0;
+  unsigned int total_calls = 0;
 
   for (int i = 0; i < g_count_calls.size(); ++i) {
     total_calls += g_count_calls[i];
@@ -137,9 +137,9 @@ TEST_F(TestKWDBDynamicThreadPoolStress, Apply_a_large_size_of_threads) {
   std::cout << count << " threads are not completed..." << std::endl;
 
 #ifdef WITH_TESTS
-  uint startThreadCnt = g_thread_pool.DebugGetEnterStartThreadCount();
-  uint routineCnt = g_thread_pool.DebugGetEnterRoutineCount();
-  uint userRoutineCnt = g_thread_pool.DebugGetUserRoutineCount();
+  unsigned int startThreadCnt = g_thread_pool.DebugGetEnterStartThreadCount();
+  unsigned int routineCnt = g_thread_pool.DebugGetEnterRoutineCount();
+  unsigned int userRoutineCnt = g_thread_pool.DebugGetUserRoutineCount();
   std::cout << "Enter start thread count is "<< startThreadCnt << std::endl;
   std::cout << "Enter routine count is "<< routineCnt << std::endl;
   std::cout << "Hookup user routine count is "<< userRoutineCnt << std::endl;

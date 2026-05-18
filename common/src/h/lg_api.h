@@ -12,7 +12,10 @@
 #ifndef COMMON_SRC_H_LG_API_H_
 #define COMMON_SRC_H_LG_API_H_
 
+#ifdef OS_LINUX
 #include <unistd.h>
+#endif
+
 #include "cm_module.h"
 #include "kwdb_compatible.h"
 #include "lg_impl.h"
@@ -26,7 +29,7 @@ namespace kwdbts {
  * @param ... sunch as input for printf（fmt,...）
  */
 #define LOG_INFO(...)                                                     \
-  kwdbts::LOGGER.Log(kwdbts::INFO, gettid(), __FILE__, __LINE__, __VA_ARGS__); \
+  kwdbts::LOGGER.Log(kwdbts::LOG_INFO, gettid(), __FILE__, __LINE__, __VA_ARGS__); \
   LOG_INFO_SPAN(__VA_ARGS__);
 
 /*!
@@ -34,7 +37,7 @@ namespace kwdbts {
  * @param ... sunch as input for printf（fmt,...）
  */
 #define LOG_WARN(...)                                                     \
-  kwdbts::LOGGER.Log(kwdbts::WARN, gettid(), __FILE__, __LINE__, __VA_ARGS__); \
+  kwdbts::LOGGER.Log(kwdbts::LOG_WARN, gettid(), __FILE__, __LINE__, __VA_ARGS__); \
   LOG_WARN_SPAN(__VA_ARGS__);
 
 /*!
@@ -42,7 +45,7 @@ namespace kwdbts {
  * @param ... sunch as input for printf（fmt,...）
  */
 #define LOG_ERROR(...)                                                     \
-  kwdbts::LOGGER.Log(kwdbts::ERROR, gettid(), __FILE__, __LINE__, __VA_ARGS__); \
+  kwdbts::LOGGER.Log(kwdbts::LOG_ERROR, gettid(), __FILE__, __LINE__, __VA_ARGS__); \
   LOG_ERROR_SPAN(__VA_ARGS__);
 
 /*!
@@ -52,7 +55,7 @@ namespace kwdbts {
  * @param ... sunch as input for printf（fmt,...）
  */
 #define LOG_FATAL(...)                                                     \
-  kwdbts::LOGGER.Log(kwdbts::FATAL, gettid(), __FILE__, __LINE__, __VA_ARGS__); \
+  kwdbts::LOGGER.Log(kwdbts::LOG_FATAL, gettid(), __FILE__, __LINE__, __VA_ARGS__); \
   LOG_ERROR_SPAN(__VA_ARGS__);
 
 /*!
@@ -60,7 +63,7 @@ namespace kwdbts {
  * @param ... sunch as input for printf（fmt,...）
  */
 #ifdef K_DEBUG
-#define LOG_DEBUG(...) kwdbts::LOGGER.Log(kwdbts::DEBUG, gettid(), __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_DEBUG(...) kwdbts::LOGGER.Log(kwdbts::LOG_DEBUG, gettid(), __FILE__, __LINE__, __VA_ARGS__)
 #else
 #define LOG_DEBUG(...)
 #endif

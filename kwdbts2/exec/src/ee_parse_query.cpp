@@ -118,8 +118,11 @@ k_int64 getGMT(KString *value_) {
       unixMs += hour * 3600 * 1000000000;
     }
     // change UTC to GMT
-    // auto offset = t.tm_gmtoff;
+#ifdef _WIN32
+    unixMs += kwdbts_get_gmtoff_sec() * 1000000000;
+#else
     unixMs += t.tm_gmtoff * 1000000000;
+#endif
   }
   return unixMs;
 }

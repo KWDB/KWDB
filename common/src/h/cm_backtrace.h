@@ -31,7 +31,13 @@ void RegisterBacktraceSignalHandler();
  * @brief just used for unit test.
  * @return  void
 */
-void DumpThreadBacktraceForTest(char* folder, char* nowTimeStamp, int signr, siginfo_t *info, void *secret);
+void DumpThreadBacktraceForTest(char* folder, char* nowTimeStamp, int signr,
+#ifdef OS_LINUX
+  siginfo_t *info,
+#else
+  void *info,
+#endif
+  void *secret);
 
 }  // namespace kwdbts
 

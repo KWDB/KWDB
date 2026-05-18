@@ -43,9 +43,14 @@ include(ExternalProject)
 include(FindPkgConfig)
 include(GNUInstallDirs)
 
-if (NOT WIN32)
+if (WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Windows" OR MINGW)
+  add_definitions(-DOS_WIN32 -D_NO_BYTES -D_CRT_NO_BYTES)
+  set(BUILD_BRPC OFF)
+  message(STATUS "Windows build: disabling brpc compilation")
+else()
   add_definitions(-DOS_LINUX -Wno-error)
-endif ()
+  set(BUILD_BRPC ON)
+endif()
 
 # gcc version verification
 message(STATUS "GCC version:" ${CMAKE_CXX_COMPILER_VERSION})
@@ -115,6 +120,9 @@ endif ()
 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -Wreturn-type")
+if (WIN32)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations")
+endif ()
 
 if (ENABLE_COVERAGE)
   message(STATUS "Code coverage check:${ENABLE_COVERAGE}")
@@ -131,12 +139,22 @@ add_definitions(-DNEW_COUNT)
 # try to do some estimate on parallel digree used by make -j
 # first, check total memory, assuming we can have one compile job for every 4GB mem
 # second, take nproc result.  We take the smaller one as -j parameter
-execute_process(
-    COMMAND bash -c "free -t -g | tail -n 1 | awk '{print $2}' | xargs -I {} expr {} / 4"
-    RESULT_VARIABLE result1
-    OUTPUT_VARIABLE value1
-    ERROR_VARIABLE error_output1
-)
+if (WIN32)
+    # Use PowerShell to get total physical memory in GB, then divide by 4
+    execute_process(
+        COMMAND powershell -Command "[math]::Floor((Get-WmiObject Win32_ComputerSystem).TotalPhysicalMemory / 1GB / 4)"
+        RESULT_VARIABLE result1
+        OUTPUT_VARIABLE value1
+        ERROR_VARIABLE error_output1
+    )
+else()
+    execute_process(
+        COMMAND bash -c "free -t -g | tail -n 1 | awk '{print $2}' | xargs -I {} expr {} / 4"
+        RESULT_VARIABLE result1
+        OUTPUT_VARIABLE value1
+        ERROR_VARIABLE error_output1
+    )
+endif()
 
 execute_process(
     COMMAND nproc
@@ -195,26 +213,28 @@ if (NOT BRPC_FOUND)
   set(BRPC_VERSION 1.9.0)
   set(BRPC_STATIC_LIB "${NATIVE}/kwdbts2/third_party/lib/libbrpc.a")
   set(BRPC_INCLUDE_DIRS "${NATIVE}/kwdbts2/third_party/include")
-  ExternalProject_Add(
-      brpc
-      SOURCE_DIR "${PROJECT_SOURCE_DIR}/third_party/brpc-${BRPC_VERSION}"
-      PREFIX "${CMAKE_CURRENT_BINARY_DIR}/third_party/brpc-${BRPC_VERSION}"
-      BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/third_party/brpc-${BRPC_VERSION}/build"
-      LIST_SEPARATOR ","
-      CMAKE_ARGS
-        -S "${PROJECT_SOURCE_DIR}/third_party/brpc-${BRPC_VERSION}"
-        -B "${CMAKE_CURRENT_BINARY_DIR}/third_party/brpc-${BRPC_VERSION}/build"
-        -DCMAKE_INSTALL_LIBDIR=lib
-        -DCMAKE_BUILD_TYPE=Release
-        -DWITH_DEBUG_SYMBOLS=OFF
-        -DDOWNLOAD_GTEST=OFF
-        -DBUILD_BRPC_TOOLS=OFF
-        -DCMAKE_PREFIX_PATH=${NATIVE}/kwdbts2/third_party
-        -DCMAKE_INSTALL_PREFIX=${NATIVE}/kwdbts2/third_party
-      BUILD_COMMAND
-          $(MAKE) -j${DEDUCTED_PARALLEL_DEGREE}
-      BUILD_IN_SOURCE 0
-  )
+  if (NOT WIN32)
+      ExternalProject_Add(
+          brpc
+          SOURCE_DIR "${PROJECT_SOURCE_DIR}/third_party/brpc-${BRPC_VERSION}"
+          PREFIX "${CMAKE_CURRENT_BINARY_DIR}/third_party/brpc-${BRPC_VERSION}"
+          BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/third_party/brpc-${BRPC_VERSION}/build"
+          LIST_SEPARATOR ","
+          CMAKE_ARGS
+            -S "${PROJECT_SOURCE_DIR}/third_party/brpc-${BRPC_VERSION}"
+            -B "${CMAKE_CURRENT_BINARY_DIR}/third_party/brpc-${BRPC_VERSION}/build"
+            -DCMAKE_INSTALL_LIBDIR=lib
+            -DCMAKE_BUILD_TYPE=Release
+            -DWITH_DEBUG_SYMBOLS=OFF
+            -DDOWNLOAD_GTEST=OFF
+            -DBUILD_BRPC_TOOLS=OFF
+            -DCMAKE_PREFIX_PATH=${NATIVE}/kwdbts2/third_party
+            -DCMAKE_INSTALL_PREFIX=${NATIVE}/kwdbts2/third_party
+          BUILD_COMMAND
+              $(MAKE) -j${DEDUCTED_PARALLEL_DEGREE}
+          BUILD_IN_SOURCE 0
+      )
+  endif()
 else()
   set(BRPC_INCLUDE_DIRS ${BRPC_INCLUDE_DIRS})
   set(BRPC_STATIC_LIB "${BRPC_LIBRARY_DIRS}/libbrpc.a")
@@ -235,7 +255,7 @@ if (NOT PROTOBUF_FOUND OR USE_SOURCE)
     BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/third_party/protobuf-3.12.4/build
     BUILD_IN_SOURCE 0
     CONFIGURE_COMMAND
-      ${CMAKE_CMD} -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_CXX_FLAGS=-fPIC -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${NATIVE}/kwdbts2/third_party -S ${PROJECT_SOURCE_DIR}/third_party/protobuf-3.12.4/cmake
+      ${CMAKE_CMD} -G "Unix Makefiles" -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_CXX_FLAGS=-fPIC -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${NATIVE}/kwdbts2/third_party -S ${PROJECT_SOURCE_DIR}/third_party/protobuf-3.12.4/cmake
     BUILD_COMMAND
       $(MAKE) -j${DEDUCTED_PARALLEL_DEGREE}
   )
@@ -263,7 +283,7 @@ if (NOT Gflags_FOUND  OR USE_SOURCE)
     BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/third_party/gflags-2.2.2/build
     BUILD_IN_SOURCE 0
     CONFIGURE_COMMAND
-      ${CMAKE_CMD} -DCMAKE_CXX_FLAGS=-fPIC -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_STATIC_LIBS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${NATIVE}/kwdbts2/third_party -S ${PROJECT_SOURCE_DIR}/third_party/gflags-2.2.2
+      ${CMAKE_CMD} -G "Unix Makefiles" -DCMAKE_CXX_FLAGS=-fPIC -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_STATIC_LIBS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${NATIVE}/kwdbts2/third_party -S ${PROJECT_SOURCE_DIR}/third_party/gflags-2.2.2
     BUILD_COMMAND
       $(MAKE) -j${DEDUCTED_PARALLEL_DEGREE}
   )
@@ -285,7 +305,7 @@ if (NOT LZ4_FOUND  OR USE_SOURCE)
     BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/third_party/lz4-1.9.3/build
     BUILD_IN_SOURCE 0
     CONFIGURE_COMMAND
-      ${CMAKE_CMD} -DBUILD_SHARED_LIBS=OFF -DBUILD_STATIC_LIBS=ON -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_BUILD_TYPE=Release -DLZ4_BUILD_CLI=OFF -DLZ4_BUILD_LEGACY_LZ4C=OFF -DCMAKE_INSTALL_PREFIX=${NATIVE}/kwdbts2/third_party -S ${PROJECT_SOURCE_DIR}/third_party/lz4-1.9.3/build/cmake
+      ${CMAKE_CMD} -G "Unix Makefiles" -DBUILD_SHARED_LIBS=OFF -DBUILD_STATIC_LIBS=ON -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_BUILD_TYPE=Release -DLZ4_BUILD_CLI=OFF -DLZ4_BUILD_LEGACY_LZ4C=OFF -DCMAKE_INSTALL_PREFIX=${NATIVE}/kwdbts2/third_party -S ${PROJECT_SOURCE_DIR}/third_party/lz4-1.9.3/build/cmake
     BUILD_COMMAND
       $(MAKE) -j${DEDUCTED_PARALLEL_DEGREE}
   )
@@ -475,6 +495,7 @@ list(APPEND KWDBTS2_SERVER_LIB_SRC
     roachpb/me_metadata.pb.cc
     roachpb/br_internal_service.pb.cc
 )
+# Exclude brpc source files on Windows
 if (WIN32)
     list(FILTER KWDBTS2_SERVER_LIB_SRC EXCLUDE REGEX ".*/brpc/src/.*")
     list(FILTER KWDBTS2_SERVER_LIB_SRC EXCLUDE REGEX ".*/ee_remote_inbound_op\\.cpp$")
@@ -495,10 +516,12 @@ set(PROTOBUF_C ${PROTOBUF_C} PARENT_SCOPE)
 set(PROTOBUF_INC ${PROTOBUF_INCLUDE_DIR} PARENT_SCOPE)
 set(LIBPROTOBUF ${PROTOBUF_LIBRARY_DIR}/libprotobuf.a PARENT_SCOPE)
 if (NOT BRPC_FOUND)
-  add_dependencies(${KWDBTS2_SERVER_LIB} brpc)
-  if (NOT PROTOBUF_FOUND OR USE_SOURCE)
-    add_dependencies(brpc protobuf_src)
-    add_dependencies(${KWDBTS2_SERVER_LIB} ee_pb_plan_proto me_metadata_proto br_internal_service_proto)
+  if(BUILD_BRPC)
+      add_dependencies(${KWDBTS2_SERVER_LIB} brpc)
+      if (NOT PROTOBUF_FOUND OR USE_SOURCE)
+        add_dependencies(brpc protobuf_src)
+        add_dependencies(${KWDBTS2_SERVER_LIB} ee_pb_plan_proto me_metadata_proto br_internal_service_proto)
+      endif()
   endif()
 endif()
 if (NOT Gflags_FOUND OR USE_SOURCE)
@@ -510,8 +533,25 @@ endif()
 add_dependencies(${KWDBTS2_SERVER_LIB} snappy zstd)
 
 # Set brpc library dependency
-target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE ${BRPC_STATIC_LIB} libssl.a libcrypto.a z ${SNAPPY_LIB} ${LZ4_STATIC_LIB} ${GFLAGS_STATIC_LIB} ${PROTOBUF_STATIC_LIB} ${ZSTD_LIB})
-
+if(BUILD_BRPC)
+  target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE ${BRPC_STATIC_LIB} libssl.a libcrypto.a z ${SNAPPY_LIB} ${LZ4_STATIC_LIB} ${GFLAGS_STATIC_LIB} ${PROTOBUF_STATIC_LIB} ${ZSTD_LIB})
+else()
+  target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE ${GFLAGS_LINK_TARGET} ${PROTOBUF_STATIC_LIB} ${SNAPPY_LIB}
+        absl_log_internal_message absl_log_internal_check_op absl_log_internal_conditions
+        absl_log_internal_globals absl_log_internal_format absl_str_format_internal
+        absl_log_internal_nullguard absl_log_internal_log_sink_set absl_log_globals
+        absl_hash absl_city absl_vlog_config_internal absl_log_internal_fnmatch
+        absl_log_sink absl_log_entry absl_log_internal_proto absl_synchronization
+        absl_graphcycles_internal absl_kernel_timeout_internal absl_stacktrace
+        absl_symbolize absl_debugging_internal absl_demangle_internal absl_malloc_internal
+        absl_time absl_civil_time absl_strings absl_strings_internal absl_string_view
+        absl_int128 absl_base absl_spinlock_wait absl_throw_delegate
+        absl_raw_logging_internal absl_log_severity absl_time_zone
+        absl_status absl_statusor absl_cord absl_cord_internal absl_cordz_functions
+        absl_cordz_handle absl_cordz_info absl_cordz_sample_token
+        absl_raw_hash_set absl_hashtablez_sampler
+        ${LZ4_STATIC_LIB} ${ZSTD_LIB} z common ws2_32)
+endif()
 # Import the header files required by the server module
 target_include_directories(${KWDBTS2_SERVER_LIB} PRIVATE
     ${PROTOBUF_INCLUDE_DIR}
@@ -520,6 +560,10 @@ target_include_directories(${KWDBTS2_SERVER_LIB} PRIVATE
     ${GFLAGS_INCLUDE_DIR}
     ${BRPC_INCLUDE_DIRS}
 	)
+if(BUILD_BRPC)
+    target_include_directories(${KWDBTS2_SERVER_LIB} PRIVATE
+        ${BRPC_INCLUDE_DIRS})
+endif()
 
 set_target_properties(${KWDBTS2_SERVER_LIB} PROPERTIES
   COMPILE_FLAGS " -fno-plt -Wno-deprecated-declarations"
@@ -527,7 +571,7 @@ set_target_properties(${KWDBTS2_SERVER_LIB} PROPERTIES
 )
 
 include(CheckCXXCompilerFlag)
-set(STV3_CXX_BASIC_FLAGS "-Werror -Wfatal-errors -Wall -Wextra -Wno-sign-compare -Wno-unused-parameter -Wno-unused-variable -Wno-strict-aliasing")
+set(STV3_CXX_BASIC_FLAGS "-Werror -Wfatal-errors -Wall -Wextra -Wno-sign-compare -Wno-unused-parameter -Wno-unused-variable -Wno-strict-aliasing -Wno-format")
 if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 9.0)
     set(STV3_CXX_EXTRA_FLAGS "-Wno-overloaded-virtual -Wnon-virtual-dtor -Winit-self -Wuninitialized -Wno-return-local-addr -Wpointer-arith -Wno-redundant-move")
 else()
@@ -584,6 +628,10 @@ if (WITH_TESTS)
               brpc/tests/*.cpp
       )
   endif()
+  # Exclude brpc tests on Windows
+  if (WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Windows")
+      list(FILTER KWDBTS2_SERVER_TEST_SRC EXCLUDE REGEX ".*/brpc/tests/.*")
+  endif()
   foreach (tsrc ${KWDBTS2_SERVER_TEST_SRC})
     # Build target name from filename (eg: icl_db_test.cc for icl/db_test.cc).
     get_filename_component(filename ${tsrc} NAME_WE)
@@ -606,12 +654,16 @@ if (WITH_TESTS)
                 ${PROTOBUF_INCLUDE_DIR}
                 third_party/gtest-1.8.1/fused-src
                 )
-
-        target_link_libraries(${tname} PRIVATE ${KWDBTS2_SERVER_LIB} common ${PROTOBUF_STATIC_LIB} gtest dl rt z ${LZ4_STATIC_LIB} ${ZSTD_LIB})
+        if (WIN32)
+            target_link_libraries(${tname} PRIVATE ${KWDBTS2_SERVER_LIB} ${PROTOBUF_STATIC_LIB} common ${LZ4_STATIC_LIB} ${ZSTD_LIB} gtest)
+            target_link_options(${tname} PRIVATE -Wl,--allow-multiple-definition)
+        else()
+            target_link_libraries(${tname} PRIVATE ${KWDBTS2_SERVER_LIB} common ${PROTOBUF_STATIC_LIB} gtest dl rt z ${LZ4_STATIC_LIB} ${ZSTD_LIB})
+        endif()
         set_target_properties(${tname} PROPERTIES
                 CXX_STANDARD_REQUIRED YES
                 CXX_EXTENSIONS NO
-                COMPILE_OPTIONS "-Wno-error;-Wall;-Wno-sign-compare;-Wno-deprecated-declarations"
+                COMPILE_OPTIONS "-Wno-error;-Wall;-Wno-sign-compare;-Wno-deprecated-declarations;-Wno-format"
                 RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${tname}.dir
                 )
     endif()
@@ -619,6 +671,23 @@ if (WITH_TESTS)
     add_test(NAME ${tname}
       COMMAND ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${tname}.dir/${tname}
       WORKING_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${tname}.dir)
+    set_tests_properties(${tname} PROPERTIES TIMEOUT 120)
+    if (WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Windows")
+      add_custom_command(TARGET ${tname} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          ${CMAKE_BINARY_DIR}/lib/libkwdbts2.dll
+          ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${tname}.dir/
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          ${CMAKE_BINARY_DIR}/bin/libcommon.dll
+          ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${tname}.dir/)
+      file(GLOB PROTOBUF_DLLS "${CMAKE_BINARY_DIR}/lib/libprotobuf-*.dll")
+      foreach(dll ${PROTOBUF_DLLS})
+        add_custom_command(TARGET ${tname} POST_BUILD
+          COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${dll}
+            ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${tname}.dir/)
+      endforeach()
+    endif()
     add_dependencies(check ${tname})
   endforeach ()
 endif ()

@@ -11,9 +11,13 @@
 
 #pragma once
 
+#if defined(_WIN32) || defined(__MINGW32__)
+#include "platform.h"
+#else
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#endif
 
 #include <cassert>
 #include <cerrno>
@@ -154,7 +158,8 @@ class TsMMapAppendOnlyFile : public TsAppendOnlyFile {
 
  public:
   TsMMapAppendOnlyFile(const std::string& path, int fd, size_t offset /*append from offset*/)
-      : TsAppendOnlyFile(path), fd_(fd), page_size_(getpagesize()), mmap_size_(16 * page_size_), file_size_(offset) {}
+      : TsAppendOnlyFile(path), fd_(fd), page_size_(getpagesize()),
+        mmap_size_(16 * get_allocation_granularity()), file_size_(offset) {}
   ~TsMMapAppendOnlyFile() {
     if (fd_ >= 0) {
       auto s = this->Close();
@@ -528,9 +533,14 @@ class TsMMapAllocFile : public FileWithIndex {
       if (fd_ == -1) {
         return KStatus::FAIL;
       }
-      file_len = getpagesize();
+      file_len = get_allocation_granularity();
       fallocate(fd_, 0, 0, file_len);
       base = mmap(nullptr, file_len, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0);
+    }
+    if (base == MAP_FAILED) {
+      close(fd_);
+      fd_ = -1;
+      return KStatus::FAIL;
     }
     addrs_.push_back({reinterpret_cast<char*>(base), file_len});
     if (!exists) {
@@ -634,10 +644,10 @@ class TsMMapAllocFile : public FileWithIndex {
   KStatus Close() {
     if (fd_ != -1) {
       Sync();
-      close(fd_);
       for (auto addr : addrs_) {
         munmap(addr.data, addr.len);
       }
+      close(fd_);
       fd_ = -1;
       addrs_.clear();
     }

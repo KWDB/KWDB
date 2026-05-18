@@ -292,7 +292,7 @@ KStatus TsBlockSpan::BuildCompressedData(TsBufferBuilder* data) {
   agg_data.append(reinterpret_cast<char*>(agg_col_offset.data()), agg_col_offsets_len);
   // init lsn col data
   {
-    DATATYPE d_type = DATATYPE::INT64;
+    DATATYPE d_type = DATATYPE::K_INT64;
     size_t d_size = sizeof(uint64_t);
     TsBufferBuilder lsn_data;
     for (int row_idx = 0; row_idx < nrow_; ++row_idx) {

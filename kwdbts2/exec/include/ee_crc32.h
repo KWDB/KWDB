@@ -14,10 +14,20 @@
 #ifndef _EE_CRC32_H
 #define _EE_CRC32_H
 
-#include <endian.h>
 #include <ctype.h>
 
 #include "kwdb_type.h"
+
+// Windows doesn't have endian.h, define byte order macros
+#ifdef _WIN32
+#include <winsock2.h>
+// Assume little-endian for Windows (x86/x64)
+#define __LITTLE_ENDIAN 1234
+#define __BIG_ENDIAN 4321
+#define __BYTE_ORDER __LITTLE_ENDIAN
+#else
+#include <endian.h>
+#endif
 
 #if __BYTE_ORDER == __BIG_ENDIAN
     #define CRC32_WORDS_BIGENDIAN 1

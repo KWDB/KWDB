@@ -26,6 +26,7 @@
 #include "ee_global.h"
 #include "ee_timestamp_utils.h"
 #include "pgcode.h"
+#include "platform.h"
 
 namespace kwdbts {
 
@@ -1933,20 +1934,20 @@ void FieldFuncCastCheckTs::CalcDataType() {
   String str = args_[1]->ValStr();
   if (0 == str.compare("int2", strlen("int2")) ||
       0 == str.compare("smallint", strlen("smallint"))) {
-    datatype_ = DATATYPE::INT16;
+    datatype_ = DATATYPE::K_INT16;
   } else if (0 == str.compare("int4", strlen("int4")) ||
              0 == str.compare("int", strlen("int")) ||
              0 == str.compare("integer", strlen("integer"))) {
-    datatype_ = DATATYPE::INT32;
+    datatype_ = DATATYPE::K_INT32;
   } else if (0 == str.compare("int8", strlen("int8")) ||
              0 == str.compare("bigint", strlen("bigint")) ||
              0 == str.compare("int64", strlen("int64"))) {
-    datatype_ = DATATYPE::INT64;
+    datatype_ = DATATYPE::K_INT64;
   } else if (0 == str.compare("real", strlen("real")) ||
              0 == str.compare("float4", strlen("float4"))) {
-    datatype_ = DATATYPE::FLOAT;
+    datatype_ = DATATYPE::K_FLOAT;
   } else {
-    datatype_ = DATATYPE::DOUBLE;
+    datatype_ = DATATYPE::K_DOUBLE;
   }
 }
 
@@ -1991,7 +1992,11 @@ char *FieldFuncCurrentTimeStamp::get_ptr(RowBatch *batch) {
   time_t t = time(nullptr);
   struct tm ltm;
   ToGMT(t, ltm);
+#ifdef _WIN32
+  ns_since_epoch += (kwdbts_get_gmtoff_sec() - time_zone_ * 3600) * 1000000000;
+#else
   ns_since_epoch += (ltm.tm_gmtoff - time_zone_ * 3600) * 1000000000;
+#endif
   // add precision handle
   if (arg_count_ > 0) {
     char *ptr = args_[0]->get_ptr(batch);
@@ -2024,7 +2029,11 @@ k_int64 FieldFuncCurrentTimeStamp::ValInt() {
   time_t t = time(nullptr);
   struct tm ltm;
   ToGMT(t, ltm);
+#ifdef _WIN32
+  ns_since_epoch += (kwdbts_get_gmtoff_sec() - time_zone_ * 3600) * 1000000000;
+#else
   ns_since_epoch += (ltm.tm_gmtoff - time_zone_ * 3600) * 1000000000;
+#endif
   // add precision handle
   if (arg_count_ > 0) {
     k_int64 prec = args_[0]->ValInt();
@@ -2254,7 +2263,9 @@ String FieldFuncTimeOfDay::ValStr() {
   struct tm t;
   memset(&t, 0, sizeof(t));
   ToGMT(timestamp, t);
+#ifndef _WIN32
   t.tm_gmtoff = time_zone * 3600;
+#endif
   std::strftime(s.ptr_, kArraySize, "%a %b %d %H:%M:%S.xxxxxxxxx %Y %z", &t);
   std::string formattedTime(s.ptr_);
   auto pos = formattedTime.find("xxxxxxxxx");

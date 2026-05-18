@@ -10,9 +10,11 @@
 // See the Mulan PSL v2 for more details.
 
 #include <utility>
+#include <cfloat>
 #include "engine.h"
 #include "iterator.h"
 #include "perf_stat.h"
+#include "ee_field_common.h"
 
 enum NextBlkStatus {
   find_one = 1,
@@ -39,9 +41,9 @@ bool TsStorageIterator::matchesFilterRange(const BlockFilter& filter, SpanValue 
     }
     int min_res = 0, max_res = 0;
     switch (datatype) {
-      case DATATYPE::BYTE:
-      case DATATYPE::BOOL:
-      case DATATYPE::CHAR:
+      case DATATYPE::K_BYTE:
+      case DATATYPE::K_BOOL:
+      case DATATYPE::K_CHAR:
       case DATATYPE::BINARY:
       case DATATYPE::STRING:
       case DATATYPE::VARBINARY:
@@ -60,10 +62,10 @@ bool TsStorageIterator::matchesFilterRange(const BlockFilter& filter, SpanValue 
         }
         break;
       }
-      case DATATYPE::INT8:
-      case DATATYPE::INT16:
-      case DATATYPE::INT32:
-      case DATATYPE::INT64:
+      case DATATYPE::K_INT8:
+      case DATATYPE::K_INT16:
+      case DATATYPE::K_INT32:
+      case DATATYPE::K_INT64:
       case DATATYPE::TIMESTAMP:
       case DATATYPE::TIMESTAMP64:
       case DATATYPE::TIMESTAMP64_MICRO:
@@ -72,14 +74,14 @@ bool TsStorageIterator::matchesFilterRange(const BlockFilter& filter, SpanValue 
         max_res = (max.ival > filter_span.start.ival) ? 1 : ((max.ival < filter_span.start.ival) ? -1 : 0);
         break;
       }
-      case DATATYPE::FLOAT: {
+      case DATATYPE::K_FLOAT: {
         bool is_min_equal = FLT_EQUAL(min.dval, filter_span.end.dval);
         bool is_max_equal = FLT_EQUAL(max.dval, filter_span.start.dval);
         min_res = is_min_equal ? 0 : ((min.dval > filter_span.end.dval) ? 1 : -1);
         max_res = is_max_equal ? 0 : ((max.dval > filter_span.start.dval) ? 1 : -1);
         break;
       }
-      case DATATYPE::DOUBLE: {
+      case DATATYPE::K_DOUBLE: {
         min_res = (min.dval > filter_span.end.dval) ? 1 : ((min.dval < filter_span.end.dval) ? -1 : 0);
         max_res = (max.dval > filter_span.start.dval) ? 1 : ((max.dval < filter_span.start.dval) ? -1 : 0);
         break;

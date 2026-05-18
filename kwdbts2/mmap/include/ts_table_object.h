@@ -61,7 +61,11 @@ struct TSTableFileMetadata {
   char user_defined[115]; ///< reserved for user-defined meta data information.
 };
 
+#if defined(_WIN32) || defined(__MINGW32__)
+static_assert(sizeof(TSTableFileMetadata) == 240, "wrong size of TSTableFileMetadata on Windows/MinGW, please check compatibility.");
+#else
 static_assert(sizeof(TSTableFileMetadata) == 264, "wrong size of TSTableFileMetadata, please check compatibility.");
+#endif
 
 class TsTableObject {
  protected:

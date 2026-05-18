@@ -10,7 +10,11 @@
 // See the Mulan PSL v2 for more details.
 
 #include <sys/types.h>
+#ifdef _WIN32
+#include "platform.h"
+#else
 #include <sys/mman.h>
+#endif
 #include <dirent.h>
 #include <errno.h>
 #include <cstdio>

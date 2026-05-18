@@ -41,6 +41,7 @@ void CpuInfo::Init() {
   num_cores_ = std::thread::hardware_concurrency();
   int num_cores = 0;
 
+#ifdef OS_LINUX
   // Read from /sys/fs/cgroup/cpu/cpu.cfs_quota_us
   std::ifstream quota_info("/sys/fs/cgroup/cpu/cpu.cfs_quota_us");
   if (quota_info.is_open()) {
@@ -74,6 +75,10 @@ void CpuInfo::Init() {
       }
     }
   }
+#else
+  // Other platforms
+  num_cores = std::thread::hardware_concurrency();
+#endif
 
   if (num_cores > 0) {
     num_cores_ = num_cores;

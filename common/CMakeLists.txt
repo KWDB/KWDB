@@ -22,14 +22,16 @@ endif ()
 message(STATUS "COMMON version:${VERSION}")
 add_definitions(-DPROJECT_VERSION=\"${VERSION}\")
 
-if (NOT WIN32)
+if (WIN32)
+    add_definitions(-DOS_WIN32)
+else()
     add_definitions(-DOS_LINUX -Werror)
-endif ()
+endif()
 
 # gcc version verification
 message(STATUS "GCC version:" ${CMAKE_CXX_COMPILER_VERSION})
 if (CMAKE_COMPILER_IS_GNUCC)
-    if(CMAKE_C_COMPILER_VERSION VERSION_LESS 7.3 OR 
+    if(CMAKE_C_COMPILER_VERSION VERSION_LESS 7.3 OR
         CMAKE_CXX_COMPILER_VERSION VERSION_LESS 7.3)
         message(WARNING "GNU C/C++ compiler version should greater and equal than 7.3")
     endif()
@@ -138,7 +140,11 @@ target_include_directories(${COMMON_LIB}
         PUBLIC ../kwdbts2/latch/include
         ../kwdbts2/third_party/gtest-1.8.1/fused-src
         )
-target_link_libraries(${COMMON_LIB} dl)
+if (WIN32)
+    target_link_libraries(${COMMON_LIB} ws2_32 pthread)
+else()
+    target_link_libraries(${COMMON_LIB} dl pthread)
+endif()
 
 if (KMALLOC_OVERRIDE)
     set(COMMON_SRC_OVERRIDE ${COMMON_SRC})
@@ -153,7 +159,11 @@ if (KMALLOC_OVERRIDE)
             PRIVATE ../kwdbts2/common/include
             ../kwdbts2/third_party/gtest-1.8.1/fused-src
             )
-    target_link_libraries(${COMMON_OVERRIDE_LIB} protobuf dl)
+    if (WIN32)
+        target_link_libraries(${COMMON_OVERRIDE_LIB} ws2_32 pthread)
+    else()
+        target_link_libraries(${COMMON_OVERRIDE_LIB} dl pthread)
+    endif()
 endif()
 
 # Compile and generate test case executables
@@ -179,6 +189,10 @@ if (WITH_TESTS)
         list(FILTER KWDB_COMMON_TEST_SRC EXCLUDE REGEX "src/mem/test/mm_debugger_server_test.cpp")
     endif()
 
+    if (WIN32)
+        list(FILTER KWDB_COMMON_TEST_SRC EXCLUDE REGEX "src/common/test/cm_sigaction_test.cpp")
+    endif()
+
     foreach (tsrc ${KWDB_COMMON_TEST_SRC})
         get_filename_component(filename ${tsrc} NAME_WE)
         get_filename_component(dirname ${tsrc} DIRECTORY)
@@ -197,16 +211,29 @@ if (WITH_TESTS)
                 PRIVATE src/mem/test/h
                 ../kwdbts2/third_party/gtest-1.8.1/fused-src
                 )
-        target_link_libraries(${tname} gtest common pthread atomic ${LLVM_DETECTOR})
+        target_link_libraries(${tname} gtest common ${LLVM_DETECTOR})
+        if (NOT WIN32)
+            target_link_libraries(${tname} pthread atomic)
+        else()
+            # On Windows, pthread is provided by winpthreads, may need to link -lpthread
+            target_link_libraries(${tname} pthread)
+        endif()
         set_target_properties(${tname} PROPERTIES
                 CXX_STANDARD_REQUIRED YES
                 CXX_EXTENSIONS NO
-                COMPILE_OPTIONS "-Wno-error;-Wall;-Wno-sign-compare"
+                COMPILE_OPTIONS "-Wno-error;-Wall;-Wno-sign-compare;-Wno-format"
                 RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${tname}.dir
                 )
         add_test(NAME ${tname} 
           COMMAND ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${tname}.dir/${tname}
           WORKING_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${tname}.dir)
+        set_tests_properties(${tname} PROPERTIES TIMEOUT 60)
+        if (WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Windows")
+          add_custom_command(TARGET ${tname} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+              ${CMAKE_BINARY_DIR}/bin/libcommon.dll
+              ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${tname}.dir/)
+        endif()
         add_dependencies(commoncheck ${tname})
     endforeach ()
 endif ()

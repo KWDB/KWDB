@@ -146,7 +146,7 @@ TEST_F(TestV2DeleteTest, MultiInsertAndDelete) {
     free(pay_load.data);
     ASSERT_EQ(s, KStatus::SUCCESS);
   }
-  
+
   std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = engine_->GetTsVGroups();
   std::shared_ptr<TsVGroup> entity_v_group;
   for (const auto& vgroup : *ts_vgroups) {

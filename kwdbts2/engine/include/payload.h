@@ -248,7 +248,7 @@ class Payload {
 
   // Get the timestamp of the ith row
   KTimestamp GetTimestamp(int row) {
-    return KTimestamp(GetColumnAddr(row, 0));
+    return KTimestampCast(GetColumnAddr(row, 0));
   }
 
   bool IsDisordered(int start_row, int count) {

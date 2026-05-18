@@ -271,24 +271,24 @@ int tryAlterType(const std::string& str, DATATYPE new_type, ErrorInfo& err_info)
   std::string value_str = " '" + str + "'";
   try {
     switch (new_type) {
-    case DATATYPE::INT16 : {
+    case DATATYPE::K_INT16 : {
         res = std::stoi(str, &pos);
         break;
     }
-    case DATATYPE::INT32 : {
+    case DATATYPE::K_INT32 : {
         auto value = std::stoi(str, &pos);
         break;
     }
-    case DATATYPE::INT64 : {
+    case DATATYPE::K_INT64 : {
         auto value = std::stoll(str, &pos);
         break;
     }
-    case DATATYPE::FLOAT : {
+    case DATATYPE::K_FLOAT : {
         incorrect_str = "Incorrect floating value";
         auto value = std::stof(str, &pos);
         break;
     }
-    case DATATYPE::DOUBLE : {
+    case DATATYPE::K_DOUBLE : {
         incorrect_str = "Incorrect floating value";
         auto value = std::stod(str, &pos);
         break;
@@ -306,7 +306,7 @@ int tryAlterType(const std::string& str, DATATYPE new_type, ErrorInfo& err_info)
   if (pos < str.size()) {
     return err_info.setError(KWEPERM, incorrect_str + value_str);
   }
-  if (new_type == DATATYPE::INT16) {
+  if (new_type == DATATYPE::K_INT16) {
     if (res > INT16_MAX || res < INT16_MIN) {
       return err_info.setError(KWEPERM, "Out of range value" + value_str);
     }

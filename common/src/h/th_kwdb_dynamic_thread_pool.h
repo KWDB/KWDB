@@ -33,7 +33,7 @@ namespace kwdbts {
 #define TH_TRACE_4(...) kwdbts::TRACER.Trace(ctx, __FILE__, __LINE__, 4, __VA_ARGS__)
 
 // These are the output interfaces without context.
-#define LOG_TH_WARN(...) kwdbts::LOGGER.Log(kwdbts::WARN, gettid(), __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_TH_WARN(...) kwdbts::LOGGER.Log(kwdbts::LOG_WARN, gettid(), __FILE__, __LINE__, __VA_ARGS__)
 #define TRACE_TH_WARN(...) kwdbts::TRACER.Trace(nullptr, __FILE__, __LINE__, 3, __VA_ARGS__)
 
 class KWDBDynamicThreadPool;
@@ -46,9 +46,9 @@ struct Telemetry{
     hook_user_routine_count(0) {
   }
 
-  std::atomic<uint> enter_start_thread_count;
-  std::atomic<uint> enter_routine_count;
-  std::atomic<uint> hook_user_routine_count;
+  std::atomic<unsigned int> enter_start_thread_count;
+  std::atomic<unsigned int> enter_routine_count;
+  std::atomic<unsigned int> hook_user_routine_count;
 };
 #endif
 
@@ -77,9 +77,9 @@ struct KWDBWrappedThread {
   // Condition variables that control thread operations
   std::condition_variable m_cond_var;
   // An atomic variable identifier that checks whether the thread state is stop
-  std::atomic_bool m_thread_stop;
+  std::atomic<k_bool> m_thread_stop;
   // An atomic variable identifier that checks whether the task performed by the thread is marked cancel
-  std::atomic_bool m_is_cancel;
+  std::atomic<k_bool> m_is_cancel;
   // Thread State identification, including INIT,WAIT,RUNNING,CANCELLING,ERROR five states. After the KWDBWrappedThread
   // is created by its constructor, its state is set to INIT; startThread is used to create a thread
   // for KWDBWrappedThread. If the thread is successfully created, its state is set to WAIT. If the thread
@@ -91,7 +91,7 @@ struct KWDBWrappedThread {
     WAIT,
     RUNNING,
     CANCELLING,
-    ERROR,
+    THREAD_ERROR,
   };
   std::atomic<ThreadStatus> thread_status;
 #ifdef WITH_TESTS
@@ -339,9 +339,9 @@ class KWDBDynamicThreadPool {
   void SetOperatorContext(kwdbContext_p kwdb_operator_context);
 
 #ifdef WITH_TESTS
-  uint DebugGetEnterStartThreadCount();
-  uint DebugGetEnterRoutineCount();
-  uint DebugGetUserRoutineCount();
+  unsigned int DebugGetEnterStartThreadCount();
+  unsigned int DebugGetEnterRoutineCount();
+  unsigned int DebugGetUserRoutineCount();
 #endif
 
  private:

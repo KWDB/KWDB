@@ -11,7 +11,11 @@
 
 #pragma once
 
+#include "platform.h"
+
 #include <cstdint>
+#include <climits>
+#include <cfloat>
 #include <list>
 #include <map>
 #include <memory>
@@ -22,6 +26,34 @@
 #include <utility>
 #include <vector>
 #include <algorithm>
+
+// Provide Windows alternatives for GCC builtins
+#if defined(_WIN32) || defined(__MINGW__)
+// Windows/MinGW doesn't have __builtin_smull_overflow, provide alternative
+// Note: On Windows, long is 32-bit, but we need 64-bit overflow check
+// Use long long for 64-bit integers
+static inline bool __builtin_smulll_overflow(long long a, long long b, long long* res) {
+#if defined(__SIZEOF_INT128__)
+    __int128 temp = (__int128)a * (__int128)b;
+    *res = (long long)temp;
+    return temp != *res;
+#else
+    // Fallback for compilers without __int128 (e.g., MSVC on x86)
+    if (a == 0 || b == 0) {
+        *res = 0;
+        return false;
+    }
+    if (a == LLONG_MIN || b == LLONG_MIN) {
+        return true;
+    }
+    long long result = a * b;
+    *res = result;
+    return (result / a) != b;
+#endif
+}
+// Alias for compatibility with existing code that uses __builtin_smull_overflow
+#define __builtin_smull_overflow __builtin_smulll_overflow
+#endif
 
 #include "data_type.h"
 #include "kwdb_type.h"
@@ -56,12 +88,13 @@ typedef std::string TS_TABLE_ID;
 
 typedef uint64_t TS_OSN;  // LSN number used for WAL logs
 
-struct DelRowSpan {
+KWDB_PACKED_STRUCT(DelRowSpan) {
   timestamp64 partition_ts;   // Partition timestamp
   uint16_t blockitem_id;      // partition block item id
   char delete_flags[(1000 + 7) / 8] = {
       0};  // Which rows in the data block were deleted when DeleteData() was recorded, with a bit of 1 for the deleted rows
-}__attribute__((packed));
+};
+KWDB_PACKED_STRUCT_END
 
 struct DelRowSpans {
   string primary_tag;
@@ -652,26 +685,26 @@ inline timestamp64 intersectLength(timestamp64 start1, timestamp64 end1, timesta
 // compare two values
 inline int cmp(void* l, void* r, int32_t type, int32_t size) {
   switch (type) {
-    case DATATYPE::INT8:
-    case DATATYPE::BYTE:
-    case DATATYPE::CHAR:
-    case DATATYPE::BOOL:
+    case DATATYPE::K_INT8:
+    case DATATYPE::K_BYTE:
+    case DATATYPE::K_CHAR:
+    case DATATYPE::K_BOOL:
     case DATATYPE::BINARY: {
       k_int32 ret = memcmp(l, r, size);
       return ret;
     }
-    case DATATYPE::INT16: {
+    case DATATYPE::K_INT16: {
       k_int16 lv = *(static_cast<k_int16*>(l));
       k_int16 rv = *(static_cast<k_int16*>(r));
       return lv == rv ? 0 : (lv > rv ? 1 : -1);
     }
-    case DATATYPE::INT32:
+    case DATATYPE::K_INT32:
     case DATATYPE::TIMESTAMP: {
       k_int32 lv = *(static_cast<k_int32*>(l));
       k_int32 rv = *(static_cast<k_int32*>(r));
       return lv == rv ? 0 : (lv > rv ? 1 : -1);
     }
-    case DATATYPE::INT64:
+    case DATATYPE::K_INT64:
     case DATATYPE::TIMESTAMP64:
     case DATATYPE::TIMESTAMP64_MICRO:
     case DATATYPE::TIMESTAMP64_NANO: {
@@ -679,12 +712,12 @@ inline int cmp(void* l, void* r, int32_t type, int32_t size) {
       k_int64 rv = *(static_cast<k_int64*>(r));
       return lv == rv ? 0 : (lv > rv ? 1 : -1);
     }
-    case DATATYPE::FLOAT: {
+    case DATATYPE::K_FLOAT: {
       float lv = *(static_cast<float*>(l));
       float rv = *(static_cast<float*>(r));
       return lv == rv ? 0 : (lv > rv ? 1 : -1);
     }
-    case DATATYPE::DOUBLE: {
+    case DATATYPE::K_DOUBLE: {
       double lv = *(static_cast<double*>(l));
       double rv = *(static_cast<double*>(r));
       return lv == rv ? 0 : (lv > rv ? 1 : -1);
@@ -712,35 +745,35 @@ inline std::pair<void*, void*> cmpWithSpanBatch(void* addr, int32_t type, int ro
   char* start = static_cast<char*>(addr);
   assert(rownum > 0);
   switch (type) {
-    case DATATYPE::INT8:
-    case DATATYPE::BOOL: {
+    case DATATYPE::K_INT8:
+    case DATATYPE::K_BOOL: {
       auto [min, max] = cmpWithSpanBatchImpl<int8_t>(start, rownum);
       return {min, max};
     }
 
-    case DATATYPE::INT16: {
+    case DATATYPE::K_INT16: {
       auto [min, max] = cmpWithSpanBatchImpl<int16_t>(start, rownum);
       return {min, max};
     }
 
-    case DATATYPE::INT32:
+    case DATATYPE::K_INT32:
     case DATATYPE::TIMESTAMP: {
       auto [min, max] = cmpWithSpanBatchImpl<int32_t>(start, rownum);
       return {min, max};
     }
 
-    case DATATYPE::INT64:
+    case DATATYPE::K_INT64:
     case DATATYPE::TIMESTAMP64:
     case DATATYPE::TIMESTAMP64_MICRO:
     case DATATYPE::TIMESTAMP64_NANO: {
       auto [min, max] = cmpWithSpanBatchImpl<int64_t>(start, rownum);
       return {min, max};
     }
-    case DATATYPE::FLOAT: {
+    case DATATYPE::K_FLOAT: {
       auto [min, max] = cmpWithSpanBatchImpl<float>(start, rownum);
       return {min, max};
     }
-    case DATATYPE::DOUBLE: {
+    case DATATYPE::K_DOUBLE: {
       auto [min, max] = cmpWithSpanBatchImpl<double>(start, rownum);
       return {min, max};
     }
@@ -753,10 +786,10 @@ inline std::pair<void*, void*> cmpWithSpanBatch(void* addr, int32_t type, int ro
 
 inline int cmpWithSpan(void* s, void* e, void* m, int32_t type, int32_t size) {
   switch (type) {
-    case DATATYPE::INT8:
-    case DATATYPE::BYTE:
-    case DATATYPE::CHAR:
-    case DATATYPE::BOOL:
+    case DATATYPE::K_INT8:
+    case DATATYPE::K_BYTE:
+    case DATATYPE::K_CHAR:
+    case DATATYPE::K_BOOL:
     case DATATYPE::BINARY: {
       k_int32 ret = memcmp(s, m, size);
       if (ret < 0) {
@@ -768,7 +801,7 @@ inline int cmpWithSpan(void* s, void* e, void* m, int32_t type, int32_t size) {
       }
       return ret == 0 ? 0 : -1;
     }
-    case DATATYPE::INT16: {
+    case DATATYPE::K_INT16: {
       k_int16 ls = *(static_cast<k_int16*>(s));
       k_int16 le = *(static_cast<k_int16*>(e));
       k_int16 mm = *(static_cast<k_int16*>(m));
@@ -780,7 +813,7 @@ inline int cmpWithSpan(void* s, void* e, void* m, int32_t type, int32_t size) {
       }
       return ls == mm ? 0 : -1;
     }
-    case DATATYPE::INT32:
+    case DATATYPE::K_INT32:
     case DATATYPE::TIMESTAMP: {
       k_int32 ls = *(static_cast<k_int32*>(s));
       k_int32 le = *(static_cast<k_int32*>(e));
@@ -793,7 +826,7 @@ inline int cmpWithSpan(void* s, void* e, void* m, int32_t type, int32_t size) {
       }
       return ls == mm ? 0 : -1;
     }
-    case DATATYPE::INT64:
+    case DATATYPE::K_INT64:
     case DATATYPE::TIMESTAMP64:
     case DATATYPE::TIMESTAMP64_MICRO:
     case DATATYPE::TIMESTAMP64_NANO: {
@@ -808,7 +841,7 @@ inline int cmpWithSpan(void* s, void* e, void* m, int32_t type, int32_t size) {
       }
       return ls == mm ? 0 : -1;
     }
-    case DATATYPE::FLOAT: {
+    case DATATYPE::K_FLOAT: {
       float ls = *(static_cast<float*>(s));
       float le = *(static_cast<float*>(e));
       float mm = *(static_cast<float*>(m));
@@ -820,7 +853,7 @@ inline int cmpWithSpan(void* s, void* e, void* m, int32_t type, int32_t size) {
       }
       return ls == mm ? 0 : -1;
     }
-    case DATATYPE::DOUBLE: {
+    case DATATYPE::K_DOUBLE: {
       double ls = *(static_cast<double*>(s));
       double le = *(static_cast<double*>(e));
       double mm = *(static_cast<double*>(m));
@@ -893,7 +926,7 @@ inline bool isTsType(DATATYPE type) {
 
 
 inline bool isSumType(DATATYPE type) {
-  if (type == INT8 || type == INT16 || type == INT32 || type == INT64 || type == FLOAT || type == DOUBLE) {
+  if (type == K_INT8 || type == K_INT16 || type == K_INT32 || type == K_INT64 || type == K_FLOAT || type == K_DOUBLE) {
     return true;
   }
   return false;
@@ -902,15 +935,15 @@ inline bool isSumType(DATATYPE type) {
 inline DATATYPE getSumType(DATATYPE type) {
   DATATYPE sum_type{INVALID};
   switch (type) {
-    case INT8:
-    case INT16:
-    case INT32:
-    case INT64:
-      sum_type = INT64;
+    case K_INT8:
+    case K_INT16:
+    case K_INT32:
+    case K_INT64:
+      sum_type = K_INT64;
       break;
-    case FLOAT:
-    case DOUBLE:
-      sum_type = DOUBLE;
+    case K_FLOAT:
+    case K_DOUBLE:
+      sum_type = K_DOUBLE;
       break;
     default:
       break;
@@ -921,12 +954,12 @@ inline DATATYPE getSumType(DATATYPE type) {
 inline k_uint32 getSumSize(DATATYPE type) {
   k_uint32 sum_size{0};
   switch (type) {
-    case FLOAT:
-    case INT8:
-    case INT16:
-    case INT32:
-    case INT64:
-    case DOUBLE:
+    case K_FLOAT:
+    case K_INT8:
+    case K_INT16:
+    case K_INT32:
+    case K_INT64:
+    case K_DOUBLE:
       sum_size = 8;
       break;
     default:

@@ -783,7 +783,7 @@ KStatus TsTableImpl::GetDataVolumeHalfTS(kwdbContext_p ctx, uint64_t begin_hash,
       return s;
     }
     for (size_t i = 0; i < count; i++) {
-      range_tss.push_back(KTimestamp(reinterpret_cast<char*>(res.data[0][0]->mem) + i * 8));
+      range_tss.push_back(KTimestampCast(reinterpret_cast<char*>(res.data[0][0]->mem) + i * 8));
     }
   } while (count > 0);
   range_tss.sort();
@@ -1338,25 +1338,25 @@ KStatus TsTableImpl::GetColAttributeInfo(kwdbContext_p ctx, const roachpb::KWDBK
       attr_info.max_len = 9;
       break;
     case roachpb::SMALLINT:
-      attr_info.type = DATATYPE::INT16;
+      attr_info.type = DATATYPE::K_INT16;
       break;
     case roachpb::INT:
-      attr_info.type = DATATYPE::INT32;
+      attr_info.type = DATATYPE::K_INT32;
       break;
     case roachpb::BIGINT:
-      attr_info.type = DATATYPE::INT64;
+      attr_info.type = DATATYPE::K_INT64;
       break;
     case roachpb::FLOAT:
-      attr_info.type = DATATYPE::FLOAT;
+      attr_info.type = DATATYPE::K_FLOAT;
       break;
     case roachpb::DOUBLE:
-      attr_info.type = DATATYPE::DOUBLE;
+      attr_info.type = DATATYPE::K_DOUBLE;
       break;
     case roachpb::BOOL:
-      attr_info.type = DATATYPE::BYTE;
+      attr_info.type = DATATYPE::K_BYTE;
       break;
     case roachpb::CHAR:
-      attr_info.type = DATATYPE::CHAR;
+      attr_info.type = DATATYPE::K_CHAR;
       attr_info.max_len = col.storage_len();
       break;
     case roachpb::BINARY:
@@ -1408,25 +1408,25 @@ KStatus TsTableImpl::GetMetricColumnInfo(kwdbContext_p ctx, struct AttributeInfo
     case DATATYPE::TIMESTAMP64_NANO:
       col.set_storage_type(roachpb::TIMESTAMP_NANO);
       break;
-    case DATATYPE::INT16:
+    case DATATYPE::K_INT16:
       col.set_storage_type(roachpb::SMALLINT);
       break;
-    case DATATYPE::INT32:
+    case DATATYPE::K_INT32:
       col.set_storage_type(roachpb::INT);
       break;
-    case DATATYPE::INT64:
+    case DATATYPE::K_INT64:
       col.set_storage_type(roachpb::BIGINT);
       break;
-    case DATATYPE::FLOAT:
+    case DATATYPE::K_FLOAT:
       col.set_storage_type(roachpb::FLOAT);
       break;
-    case DATATYPE::DOUBLE:
+    case DATATYPE::K_DOUBLE:
       col.set_storage_type(roachpb::DOUBLE);
       break;
-    case DATATYPE::BYTE:
+    case DATATYPE::K_BYTE:
       col.set_storage_type(roachpb::BOOL);
       break;
-    case DATATYPE::CHAR:
+    case DATATYPE::K_CHAR:
       col.set_storage_type(roachpb::CHAR);
       col.set_storage_len(attr_info.max_len);
       break;
@@ -1482,25 +1482,25 @@ KStatus TsTableImpl::GetTagColumnInfo(kwdbContext_p ctx, struct TagInfo& tag_inf
     case DATATYPE::TIMESTAMP64_NANO:
       col.set_storage_type(roachpb::TIMESTAMP_NANO);
       break;
-    case DATATYPE::INT16:
+    case DATATYPE::K_INT16:
       col.set_storage_type(roachpb::SMALLINT);
       break;
-    case DATATYPE::INT32:
+    case DATATYPE::K_INT32:
       col.set_storage_type(roachpb::INT);
       break;
-    case DATATYPE::INT64:
+    case DATATYPE::K_INT64:
       col.set_storage_type(roachpb::BIGINT);
       break;
-    case DATATYPE::FLOAT:
+    case DATATYPE::K_FLOAT:
       col.set_storage_type(roachpb::FLOAT);
       break;
-    case DATATYPE::DOUBLE:
+    case DATATYPE::K_DOUBLE:
       col.set_storage_type(roachpb::DOUBLE);
       break;
-    case DATATYPE::BYTE:
+    case DATATYPE::K_BYTE:
       col.set_storage_type(roachpb::BOOL);
       break;
-    case DATATYPE::CHAR:
+    case DATATYPE::K_CHAR:
       col.set_storage_type(roachpb::CHAR);
       break;
     case DATATYPE::BINARY:

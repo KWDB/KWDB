@@ -13,7 +13,11 @@
 #define COMMON_SRC_H_CM_FAULT_INJECTION_H_
 
 #include <assert.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <unistd.h>
+#endif
 
 #include <atomic>
 #include <string>
@@ -128,9 +132,17 @@ class FaultInjectorRunTime {
         }
       } else if (type_ == InjectorType::FAULT_DELAY) {
         if (conf->GetInput().empty()) {
+#ifdef _WIN32
+          Sleep(((*static_cast<int *>(static_cast<void *>(&defval_))) + 999) / 1000);
+#else
           usleep(*static_cast<int *>(static_cast<void *>(&defval_)));
+#endif
         } else {
+#ifdef _WIN32
+          Sleep((std::atol(conf->GetInput().c_str()) + 999) / 1000);
+#else
           usleep(std::atol(conf->GetInput().c_str()));
+#endif
         }
       } else if (type_ == InjectorType::FAULT_ABORT) {
         abort();

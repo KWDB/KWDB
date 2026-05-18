@@ -20,6 +20,7 @@
 #include <string>
 #include "cm_new.h"
 #include "default_conf.h"
+#include "kwdb_compatible.h"
 
 namespace kwdbts {
 
@@ -69,7 +70,13 @@ typedef k_int64 KQueryId;
 typedef k_int32 KProcessorId;
 
 // the log level of log report
-typedef enum LogSeverity { DEBUG = 0, INFO, WARN, ERROR, FATAL } LogSeverity;
+typedef enum LogSeverity {
+  LOG_DEBUG = 0,
+  LOG_INFO,
+  LOG_WARN,
+  LOG_ERROR,
+  LOG_FATAL
+} LogSeverity;
 
 typedef uint32_t EntityID;
 
@@ -153,7 +160,7 @@ enum KWDB_TYPE {
 #define KAbs(x) ((x) >= 0 ? (x) : -(x))
 
 // change char* memory to KTimestamp.
-#define KTimestamp(buf) (*(static_cast<KTimestamp *>(static_cast<void *>(buf))))
+#define KTimestampCast(buf) (*(static_cast<KTimestamp *>(static_cast<void *>(buf))))
 
 // change char* memory to k_uint8.
 #define KUint8(buf) (*(static_cast<k_uint8 *>(static_cast<void *>(buf))))

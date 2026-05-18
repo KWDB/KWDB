@@ -162,7 +162,7 @@ class TsBlockSpanSortedIteratorTest : public ::testing::Test {
       datas_.push_back(data);
       char* row = reinterpret_cast<char*>(malloc(16));
       row_datas_.push_back(row);
-      KTimestamp(row) = tss[i];
+      KTimestampCast(row) = tss[i];
       KUint64(row + 8) = osn;
       data->SetData(tss[i], osn);
       data->SetRowData(TSSlice{row, 16});

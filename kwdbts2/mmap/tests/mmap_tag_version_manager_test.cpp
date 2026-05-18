@@ -73,7 +73,7 @@ TEST_F(TestTagTableVersionManager, CreateTagVersionObject_FirstVersion) {
   std::vector<TagInfo> schema;
   TagInfo info;
   info.m_id = 1;
-  info.m_data_type = INT32;
+  info.m_data_type = K_INT32;
   info.m_length = sizeof(int32_t);
   info.m_size = sizeof(int32_t);
   info.m_tag_type = GENERAL_TAG;
@@ -98,7 +98,7 @@ TEST_F(TestTagTableVersionManager, CreateTagVersionObject_DuplicateVersion) {
   std::vector<TagInfo> schema;
   TagInfo info;
   info.m_id = 1;
-  info.m_data_type = INT32;
+  info.m_data_type = K_INT32;
   info.m_length = sizeof(int32_t);
   info.m_size = sizeof(int32_t);
   info.m_tag_type = GENERAL_TAG;
@@ -124,7 +124,7 @@ TEST_F(TestTagTableVersionManager, OpenTagVersionObject_OpenExisting) {
   std::vector<TagInfo> schema;
   TagInfo info;
   info.m_id = 1;
-  info.m_data_type = INT32;
+  info.m_data_type = K_INT32;
   info.m_length = sizeof(int32_t);
   info.m_size = sizeof(int32_t);
   info.m_tag_type = GENERAL_TAG;
@@ -153,7 +153,7 @@ TEST_F(TestTagTableVersionManager, GetVersionObject_RetrieveFromCache) {
   std::vector<TagInfo> schema;
   TagInfo info;
   info.m_id = 1;
-  info.m_data_type = INT32;
+  info.m_data_type = K_INT32;
   info.m_length = sizeof(int32_t);
   info.m_size = sizeof(int32_t);
   info.m_tag_type = GENERAL_TAG;
@@ -192,7 +192,7 @@ TEST_F(TestTagTableVersionManager, UpdateNewestTableVersion_SetLatestVersion) {
   std::vector<TagInfo> schema;
   TagInfo info;
   info.m_id = 1;
-  info.m_data_type = INT32;
+  info.m_data_type = K_INT32;
   info.m_length = sizeof(int32_t);
   info.m_size = sizeof(int32_t);
   info.m_tag_type = GENERAL_TAG;
@@ -215,7 +215,7 @@ TEST_F(TestTagTableVersionManager, SyncCurrentTableVersion_SyncMetadata) {
   std::vector<TagInfo> schema;
   TagInfo info;
   info.m_id = 1;
-  info.m_data_type = INT32;
+  info.m_data_type = K_INT32;
   info.m_length = sizeof(int32_t);
   info.m_size = sizeof(int32_t);
   info.m_tag_type = GENERAL_TAG;
@@ -236,7 +236,7 @@ TEST_F(TestTagTableVersionManager, UpdataTagTableVersionManager_UpdateToMax) {
   std::vector<TagInfo> schema;
   TagInfo info;
   info.m_id = 1;
-  info.m_data_type = INT32;
+  info.m_data_type = K_INT32;
   info.m_length = sizeof(int32_t);
   info.m_size = sizeof(int32_t);
   info.m_tag_type = GENERAL_TAG;
@@ -261,7 +261,7 @@ TEST_F(TestTagTableVersionManager, RemoveAll_DeleteAllVersions) {
   std::vector<TagInfo> schema;
   TagInfo info;
   info.m_id = 1;
-  info.m_data_type = INT32;
+  info.m_data_type = K_INT32;
   info.m_length = sizeof(int32_t);
   info.m_size = sizeof(int32_t);
   info.m_tag_type = GENERAL_TAG;
@@ -290,7 +290,7 @@ TEST_F(TestTagTableVersionManager, RollbackTableVersion_RemoveSpecificVersion) {
   std::vector<TagInfo> schema;
   TagInfo info;
   info.m_id = 1;
-  info.m_data_type = INT32;
+  info.m_data_type = K_INT32;
   info.m_length = sizeof(int32_t);
   info.m_size = sizeof(int32_t);
   info.m_tag_type = GENERAL_TAG;
@@ -319,7 +319,7 @@ TEST_F(TestTagTableVersionManager, Resource_MultipleVersions) {
   std::vector<TagInfo> schema;
   TagInfo info;
   info.m_id = 1;
-  info.m_data_type = INT32;
+  info.m_data_type = K_INT32;
   info.m_length = sizeof(int32_t);
   info.m_size = sizeof(int32_t);
   info.m_tag_type = GENERAL_TAG;
@@ -347,7 +347,7 @@ TEST_F(TestTagTableVersionManager, TagVersionObject_CreateAndOpen) {
   std::vector<TagInfo> schema;
   TagInfo info;
   info.m_id = 1;
-  info.m_data_type = DATATYPE::INT32;
+  info.m_data_type = DATATYPE::K_INT32;
   info.m_length = sizeof(int32_t);
   info.m_size = sizeof(int32_t);
   info.m_tag_type = GENERAL_TAG;
@@ -372,14 +372,14 @@ TEST_F(TestTagTableVersionManager, TagVersionObject_GetTagColumnIndex) {
   std::vector<TagInfo> schema;
   TagInfo info1, info2;
   info1.m_id = 1;
-  info1.m_data_type = DATATYPE::INT32;
+  info1.m_data_type = DATATYPE::K_INT32;
   info1.m_length = sizeof(int32_t);
   info1.m_size = sizeof(int32_t);
   info1.m_tag_type = PRIMARY_TAG;
   info1.m_flag = 0;
 
   info2.m_id = 2;
-  info2.m_data_type = DATATYPE::INT64;
+  info2.m_data_type = DATATYPE::K_INT64;
   info2.m_length = sizeof(int64_t);
   info2.m_size = sizeof(int64_t);
   info2.m_tag_type = GENERAL_TAG;
@@ -410,7 +410,7 @@ TEST_F(TestTagTableVersionManager, TagVersionObject_IsValid) {
   std::vector<TagInfo> schema;
   TagInfo info;
   info.m_id = 1;
-  info.m_data_type = DATATYPE::INT32;
+  info.m_data_type = DATATYPE::K_INT32;
   info.m_length = sizeof(int32_t);
   info.m_size = sizeof(int32_t);
   info.m_tag_type = GENERAL_TAG;
@@ -435,7 +435,7 @@ TEST_F(TestTagTableVersionManager, TagVersionObject_SchemaManagement) {
   for (int i = 0; i < 3; ++i) {
     TagInfo info;
     info.m_id = i + 1;
-    info.m_data_type = DATATYPE::INT32;
+    info.m_data_type = DATATYPE::K_INT32;
     info.m_length = sizeof(int32_t);
     info.m_size = sizeof(int32_t);
     info.m_tag_type = (i == 0) ? PRIMARY_TAG : GENERAL_TAG;
@@ -462,7 +462,7 @@ TEST_F(TestTagTableVersionManager, SyncFromMetricsTableVersion_Basic) {
   std::vector<TagInfo> schema;
   TagInfo info;
   info.m_id = 1;
-  info.m_data_type = DATATYPE::INT32;
+  info.m_data_type = DATATYPE::K_INT32;
   info.m_length = sizeof(int32_t);
   info.m_size = sizeof(int32_t);
   info.m_tag_type = GENERAL_TAG;
@@ -489,7 +489,7 @@ TEST_F(TestTagTableVersionManager, GetNewestTableVersion_Basic) {
   std::vector<TagInfo> schema;
   TagInfo info;
   info.m_id = 1;
-  info.m_data_type = DATATYPE::INT32;
+  info.m_data_type = DATATYPE::K_INT32;
   info.m_length = sizeof(int32_t);
   info.m_size = sizeof(int32_t);
   info.m_tag_type = GENERAL_TAG;
@@ -512,7 +512,7 @@ TEST_F(TestTagTableVersionManager, GetCurrentTableVersion_Basic) {
   std::vector<TagInfo> schema;
   TagInfo info;
   info.m_id = 1;
-  info.m_data_type = DATATYPE::INT32;
+  info.m_data_type = DATATYPE::K_INT32;
   info.m_length = sizeof(int32_t);
   info.m_size = sizeof(int32_t);
   info.m_tag_type = GENERAL_TAG;
@@ -534,7 +534,7 @@ TEST_F(TestTagTableVersionManager, OpenTagVersionObject_FromDisk) {
   std::vector<TagInfo> schema;
   TagInfo info;
   info.m_id = 1;
-  info.m_data_type = DATATYPE::INT32;
+  info.m_data_type = DATATYPE::K_INT32;
   info.m_length = sizeof(int32_t);
   info.m_size = sizeof(int32_t);
   info.m_tag_type = GENERAL_TAG;

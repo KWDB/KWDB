@@ -15,6 +15,7 @@
 #include "utils/big_table_utils.h"
 #include "utils/string_utils.h"
 #include "cm_func.h"
+#include "kwdb_type.h"
 
 #if defined(__GNUC__) && __GNUC__ >= 4
 #define LIKELY(x)   (__builtin_expect((x), 1))
@@ -1085,10 +1086,10 @@ BasicDateTime * getDateTime(int type, int precision) {
     case DATETIME64: bdt = (BasicDateTime *)new DateTime64(); break;
     case DATETIMEDOS: bdt = (BasicDateTime *)new DateTimeDOS(); break;
     case TIMESTAMP:
-    case INT32:
+    case K_INT32:
       bdt = (BasicDateTime *)new TimeStampDateTime(); break;
     case TIMESTAMP64:
-    case INT64:
+    case K_INT64:
       bdt = (BasicDateTime *)new TimeStamp64DateTime(); break;
     case TIME: bdt = (BasicDateTime *)new Time(); break;
     case TIME64: bdt = (BasicDateTime *)new Time64(precision); break;

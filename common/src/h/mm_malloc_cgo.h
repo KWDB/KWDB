@@ -2,7 +2,14 @@
 
 #ifndef COMMON_SRC_H_MM_MALLOC_CGO_H_
 #define COMMON_SRC_H_MM_MALLOC_CGO_H_
+
+#ifdef OS_LINUX
 #include <sys/types.h>
+#endif
+
+#ifdef OS_WIN32
+#include <stddef.h>
+#endif
 
 size_t malloc_used_bytes();
 

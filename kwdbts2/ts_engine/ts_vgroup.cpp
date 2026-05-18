@@ -67,7 +67,7 @@ TsVGroup::TsVGroup(EngineOptions* engine_options, uint32_t vgroup_id, TsEngineSc
       max_entity_id_(0),
       engine_options_(engine_options),
       engine_wal_level_mutex_(engine_mutex),
-      version_manager_(std::make_unique<TsVersionManager>(&TsIOEnv::GetInstance(), path_)),
+      version_manager_(std::make_unique<TsVersionManager>(&TsIOEnv::GetInstance(), path_.string())),
       mem_segment_mgr_(std::make_unique<TsMemSegmentManager>(this, version_manager_.get())),
       enable_compact_thread_(enable_compact_thread) {}
 
@@ -81,7 +81,7 @@ TsVGroup::TsVGroup(EngineOptions* engine_options, uint32_t vgroup_id, TsEngineSc
       max_entity_id_(0),
       engine_options_(engine_options),
       engine_wal_level_mutex_(engine_mutex),
-      version_manager_(std::make_unique<TsVersionManager>(&TsIOEnv::GetInstance(), path_)),
+      version_manager_(std::make_unique<TsVersionManager>(&TsIOEnv::GetInstance(), path_.string())),
       mem_segment_mgr_(std::make_unique<TsMemSegmentManager>(this, version_manager_.get())),
       enable_compact_thread_(enable_compact_thread) {
   if (!user_defined_path.empty()) {
@@ -105,17 +105,17 @@ TsVGroup::~TsVGroup() {
 KStatus TsVGroup::Init(kwdbContext_p ctx) {
   KStatus s;
   if (user_defined_path_.empty()) {
-    s = TsIOEnv::GetInstance().NewDirectory(path_);
+    s = TsIOEnv::GetInstance().NewDirectory(path_.string());
   } else {
-    s = TsIOEnv::GetInstance().NewDirectory(user_defined_path_);
-    bool ok = CreateDirSymLink(user_defined_path_, path_);
+    s = TsIOEnv::GetInstance().NewDirectory(user_defined_path_.string());
+    bool ok = CreateDirSymLink(user_defined_path_.string(), path_.string());
     if (!ok) {
       LOG_ERROR("Init VGroup %u failed, please check user defined vgroup path", vgroup_id_);
       return FAIL;
     }
   }
   if (s == FAIL) {
-    LOG_ERROR("Failed to create directory: %s", path_.c_str());
+    LOG_ERROR("Failed to create directory: %s", path_.string().c_str());
     return s;
   }
 
@@ -127,7 +127,7 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
 
   s = version_manager_->Recover(force_recover);
   if (s == FAIL) {
-    LOG_ERROR("recover vgroup version failed, path: %s", path_.c_str());
+    LOG_ERROR("recover vgroup version failed, path: %s", path_.string().c_str());
     return s;
   }
 
@@ -154,7 +154,7 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
     wal_manager_ = std::make_unique<WALMgr>(engine_options_->db_path, VGroupDirName(vgroup_id_), engine_options_);
   } else {
     wal_manager_ = std::make_unique<WALMgr>(engine_options_->db_path, VGroupDirName(vgroup_id_),
-      engine_options_, user_defined_path_);
+      engine_options_, user_defined_path_.string());
   }
   tsx_manager_ = std::make_unique<TSxMgr>(wal_manager_.get());
   auto res = wal_manager_->Init(ctx);
@@ -761,13 +761,13 @@ KStatus TsVGroup::PartitionCompactNoLockImpl(kwdbContext_p ctx, bool force_write
 
     KStatus s = builder.Open();
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("partition[%s] compact failed, TsEntitySegmentBuilder open failed", path_.c_str());
+      LOG_ERROR("partition[%s] compact failed, TsEntitySegmentBuilder open failed", path_.string().c_str());
       return s;
     }
 
     s = builder.Compact(force_write_entity, &update, &residual_spans, &entity_stats);
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("partition[%s] compact failed, TsEntitySegmentBuilder build failed", path_.c_str());
+      LOG_ERROR("partition[%s] compact failed, TsEntitySegmentBuilder build failed", path_.string().c_str());
       return s;
     }
 
@@ -793,7 +793,7 @@ KStatus TsVGroup::PartitionCompactNoLockImpl(kwdbContext_p ctx, bool force_write
     for (auto it = grouped_spans.begin(); it != grouped_spans.end(); ++it) {
       std::unique_ptr<TsAppendOnlyFile> last_segment;
       uint64_t file_number = version_manager_->NewFileNumber();
-      auto filepath = root_path / LastSegmentFileName(file_number);
+      auto filepath = (root_path / LastSegmentFileName(file_number)).string();
       auto s = env->NewAppendOnlyFile(filepath, &last_segment);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("TsEntitySegmentBuilder::Compact failed, new last segment failed.")
@@ -977,7 +977,7 @@ static KStatus FlushToLastSegment(TsIOEnv* env, TsEngineSchemaManager* schema_mg
                                   const std::vector<std::shared_ptr<TsBlockSpan>>& spans, TsVersionUpdate* update,
                                   TsSegmentWriteStats* stats) {
   auto lastseg_file_number = version_mgr->NewFileNumber();
-  auto filepath = partition->GetPartitionPath() / LastSegmentFileName(lastseg_file_number);
+  auto filepath = (partition->GetPartitionPath() / LastSegmentFileName(lastseg_file_number)).string();
   std::unique_ptr<TsAppendOnlyFile> lastseg_file;
   auto s = env->NewAppendOnlyFile(filepath, &lastseg_file);
   if (s != KStatus::SUCCESS) {
@@ -1050,7 +1050,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
     if (flushed_partitions.find(partition) == flushed_partitions.end()) {
       if (!partition->HasDirectoryCreated()) {
         auto path = this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier());
-        auto s = env->NewDirectory(path);
+        auto s = env->NewDirectory(path.string());
         if (s != SUCCESS) {
           LOG_ERROR("cannot create directory for partition.");
           return FAIL;
@@ -1067,7 +1067,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
       auto root_path = this->GetPath() / PartitionDirName(partition_id);
       std::vector<std::shared_ptr<TsBlockSpan>> lastseg_spans;
       {
-        TsEntitySegmentBuilder entityseg_builder(mem_env, root_path, schema_mgr_, version_manager_.get(),
+        TsEntitySegmentBuilder entityseg_builder(mem_env, root_path.string(), schema_mgr_, version_manager_.get(),
                                                  partition->GetPartitionIdentifier(), nullptr, TsDataSource::Flush);
         auto s = entityseg_builder.Open();
         if (s == FAIL) {
@@ -2189,7 +2189,7 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
   auto partition_id = partition->GetPartitionIdentifier();
   auto root_path = this->GetPath() / PartitionDirName(partition_id);
   TsDataSource source = force ? TsDataSource::ManualVacuum : TsDataSource::ScheduleVacuum;
-  auto vacuumer = std::make_unique<TsEntitySegmentVacuumer>(root_path, this->version_manager_.get(), source);
+  auto vacuumer = std::make_unique<TsEntitySegmentVacuumer>(root_path.string(), this->version_manager_.get(), source);
   bool cancel_vacuumer = false;
   auto s = vacuumer->Open();
   if (s != SUCCESS) {
@@ -2618,7 +2618,7 @@ KStatus TsVGroup::RecalcCountStat() {
       update.SetMaxLSN(max_osn);
       s = version_manager_->ApplyUpdate(&update);
       if (s != KStatus::SUCCESS) {
-        LOG_ERROR("partition [%s] count stat recalculate failed.", par_version->GetPartitionPath().c_str());
+        LOG_ERROR("partition [%s] count stat recalculate failed.", par_version->GetPartitionPath().string().c_str());
       }
     }
   }

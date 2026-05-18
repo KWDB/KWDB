@@ -11,27 +11,49 @@
 
 #include "mm_kmalloc.h"
 
-#include <sys/shm.h>
 #include <cmath>
+
+#ifdef OS_LINUX
+#include <sys/shm.h>
 #include <malloc.h>
+#endif
+
+#ifdef OS_WIN32
+#include <malloc.h>
+#endif
+
+// Platform-specific malloc usable size function
+static inline size_t malloc_usable_size_impl(void* ptr) {
+#ifdef OS_LINUX
+    return malloc_usable_size(ptr);
+#elif defined(OS_WIN32)
+    // Windows: use _msize
+    #ifdef _MSC_VER
+        return _msize(ptr);
+    #else
+        // MinGW provides _msize
+        return _msize(ptr);
+    #endif
+#endif
+}
 
 std::atomic<int64_t> g_malloc_memory_size = 0; //  The requested memory size
 
 void *k_malloc(std::size_t size) noexcept {
   void *p = malloc(size);
-  g_malloc_memory_size.fetch_add(malloc_usable_size(p));
+  g_malloc_memory_size.fetch_add(malloc_usable_size_impl(p));
   return p;
 }
 
 void *k_realloc(void *ptr, std::size_t size) noexcept {
-  g_malloc_memory_size.fetch_sub(malloc_usable_size(ptr));
+  g_malloc_memory_size.fetch_sub(malloc_usable_size_impl(ptr));
   void *p = realloc(ptr, size);
-  g_malloc_memory_size.fetch_add(malloc_usable_size(p));
+  g_malloc_memory_size.fetch_add(malloc_usable_size_impl(p));
   return p;
 }
 
 void k_free(void *ptr) noexcept {
-  g_malloc_memory_size.fetch_sub(malloc_usable_size(ptr));
+  g_malloc_memory_size.fetch_sub(malloc_usable_size_impl(ptr));
   free(ptr);
 }
 

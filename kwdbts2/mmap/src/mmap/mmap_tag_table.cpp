@@ -10,7 +10,11 @@
 // See the Mulan PSL v2 for more details.
 
 #include <algorithm>
+#ifdef _WIN32
+#include "platform.h"
+#else
 #include <sys/mman.h>
+#endif
 #include "sys_utils.h"
 #include "dirent.h"
 #include "mmap/mmap_tag_table.h"
@@ -46,7 +50,7 @@ TagTable::~TagTable() {
 int TagTable::create(const vector<TagInfo> &schema, uint32_t table_version,
                      const std::vector<roachpb::NTagIndexInfo>& idx_info, ErrorInfo &err_info) {
   LOG_INFO("Create TagTable table_version:%d", table_version)
-  auto s = TsIOEnv::GetInstance().NewDirectory(fs::path(m_db_path_) / fs::path(m_tbl_sub_path_));
+  auto s = TsIOEnv::GetInstance().NewDirectory((fs::path(m_db_path_) / fs::path(m_tbl_sub_path_)).string());
   if (s != SUCCESS) {
     return -1;
   }

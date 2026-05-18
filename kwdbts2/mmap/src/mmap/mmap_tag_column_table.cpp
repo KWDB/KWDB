@@ -10,7 +10,11 @@
 // See the Mulan PSL v2 for more details.
 
 #include <sys/types.h>
+#ifdef _WIN32
+#include "platform.h"
+#else
 #include <sys/mman.h>
+#endif
 #include <dirent.h>
 #include <errno.h>
 #include <cstdio>
@@ -1282,7 +1286,7 @@ kwdbts::Batch* MMapTagColumnTable::convertToFixedLen(size_t start_row, size_t en
         }
         batch->setNotNull(row_idx);
         char* old_mem = m_cols_[col]->rowAddrNoNullBitmap(row);
-        if (new_data_type == DATATYPE::CHAR || new_data_type == DATATYPE::BINARY) {
+        if (new_data_type == DATATYPE::K_CHAR || new_data_type == DATATYPE::BINARY) {
           err_code = convertFixedToStr(old_data_type, (char*) old_mem, batch->getRowAddr(row_idx), err_info);
           if (err_code < 0) {
             err_info.errcode = 0;
@@ -1391,7 +1395,7 @@ kwdbts::Batch* MMapTagColumnTable::convertToVarLen(size_t start_row, size_t end_
           rec_ptr = m_cols_[col]->rowAddrNoNullBitmap(row);
           data_len = old_tag_schema.m_size;
           // char convert to varchar use real size
-          if (old_tag_schema.m_data_type == DATATYPE::CHAR) {
+          if (old_tag_schema.m_data_type == DATATYPE::K_CHAR) {
             data_len = std::min(old_tag_schema.m_size, static_cast<uint32_t>(strlen(rec_ptr)));
           }
         }

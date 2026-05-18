@@ -693,7 +693,7 @@ k_int32 EncodeNonsortingDecimal(CKSlice *slice, k_int32 offset, const CKDecimal&
   }
   // Determine the exponent of the decimal, with the
   // exponent defined as .xyz * 10^exp.
-  uint count = 0;
+  unsigned int count = 0;
   k_int32 nDigits = 1;
   if (d.my_coeff.abs_size != 0) {
     k_int64 n = d.my_coeff.abs[0];

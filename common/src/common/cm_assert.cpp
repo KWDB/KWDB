@@ -10,11 +10,20 @@
 // See the Mulan PSL v2 for more details.
 #include "cm_assert.h"
 
-#include <execinfo.h>
 #include <stdlib.h>
 #include <time.h>
 #include <stdio.h>
 #include <mutex>
+
+#ifdef OS_LINUX
+#include <execinfo.h>
+#endif
+
+#ifdef OS_WIN32
+#include <windows.h>
+#include <dbghelp.h>
+#endif
+
 #include "cm_func.h"
 #include "cm_kwdb_context.h"
 
@@ -27,6 +36,7 @@ kwdbContext_p g_kwdb_context = &_ctx;
 
 /* dump call stack to a file */
 void dumpCallStack(FILE* file) {
+#ifdef OS_LINUX
   void *frames[MAX_STACK_TRACE_SIZE];
   int num_traces;
   char **traces;
@@ -42,6 +52,12 @@ void dumpCallStack(FILE* file) {
     printf("--End of Call Stack--\n\n");
   }
   free(traces);
+#elif defined(OS_WIN32)
+  // Windows implementation using CaptureStackBackTrace and SymFromAddr
+  // For now, just output a placeholder
+  fprintf(file, "Call stack not available on Windows\n");
+  printf("Call stack not available on Windows\n");
+#endif
 }
 
 // Print an error message
@@ -68,7 +84,11 @@ void dumpAssertContext(  //  KContextP ctx,
   char time_buffer[32];
   struct tm curr_time_info;
   curr_time = time(NULL);
+#ifdef OS_LINUX
   localtime_r(&curr_time, &curr_time_info);
+#elif defined(OS_WIN32)
+  localtime_s(&curr_time_info, &curr_time);
+#endif
   strftime(time_buffer, 32, "%Y-%m-%d %H:%M:%S", &curr_time_info);
   fprintf(file, "\n%s:\n", time_buffer);
   printf("\n%s:\n", time_buffer);

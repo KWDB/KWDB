@@ -67,8 +67,8 @@ class TsSplitBlockSpansTest : public ::testing::Test {
       datas_.push_back(data);
       char* row = reinterpret_cast<char*>(malloc(16));
       row_datas_.push_back(row);
-      KTimestamp(row) = tss[i];
-      KUint64(row + 8) = osn;
+      *reinterpret_cast<int64_t*>(row) = tss[i];
+      *reinterpret_cast<uint64_t*>(row + 8) = osn;
       data->SetData(tss[i], osn);
       data->SetRowData(TSSlice{row, 16});
       bool ok = cur_block->InsertRow(data);

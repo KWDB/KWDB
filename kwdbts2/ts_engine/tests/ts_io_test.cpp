@@ -127,6 +127,8 @@ TEST(TsFIOEnv, Write) {
   sv = std::string_view{result.data(), result.size()};
   EXPECT_EQ(sv, "abcdeAtestTESTTeSt");
 
+  rfile.reset();
+  wfile.reset();
   fs::remove(filename);
 
   // write large data
@@ -161,6 +163,7 @@ TEST(TsFIOEnv, Write) {
       ASSERT_EQ(result.data()[iloc], expected);
     }
   }
+  rfile.reset();
   fs::remove(filename);
 }
 
@@ -358,6 +361,7 @@ TEST(TsFIOEnv, FailedCases) {
   EXPECT_EQ(result.size(), 1);
   std::string_view sv{result.data(), result.size()};
   EXPECT_EQ(sv, "9");
+  rfile.reset();
   fs::remove(filename);
 }
 
@@ -400,8 +404,8 @@ TEST(TsFIOEnv, ReadAfterAllocate) {
 TEST(TsFIOEnv, ConcurrentReadWrite) {
   TsIOEnv* env = &TsIOEnv::GetInstance();
   std::atomic<size_t> file_size{0};
-  std::atomic_bool finished{false};
-  std::atomic_bool start{false};
+  std::atomic<k_bool> finished{false};
+  std::atomic<k_bool> start{false};
   std::string filename = "concurrent_test";
   fs::remove(filename);
 

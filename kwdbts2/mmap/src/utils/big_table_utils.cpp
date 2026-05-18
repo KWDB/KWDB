@@ -14,7 +14,9 @@
 #include <cctype>
 #include <fstream>
 #include <sstream>
+#ifndef _WIN32
 #include <netinet/in.h>
+#endif
 #include <parallel/algorithm>
 #include "utils/big_table_utils.h"
 #include "mmap/mmap_file.h"
@@ -82,29 +84,29 @@ int getDataTypeSize(int type) {
       return sizeof(IDTYPE);
     case DATETIME64:
       return sizeof(int64_t);
-    case BOOL:
+    case K_BOOL:
       return sizeof(bool);
-    case BYTE:
-    case INT8:
+    case K_BYTE:
+    case K_INT8:
       return sizeof(int8_t);
-    case INT16:
+    case K_INT16:
       return sizeof(int16_t);
-    case INT32:
+    case K_INT32:
     case DATE32:
     case DATETIME32:
     case DATETIMEDOS:
     case TIMESTAMP:
     case TIME:
       return sizeof(int32_t);
-    case INT64:
+    case K_INT64:
     case TIME64:
     case TIMESTAMP64:
     case TIMESTAMP64_MICRO:
     case TIMESTAMP64_NANO:
       return sizeof(int64_t);
-    case FLOAT:
+    case K_FLOAT:
       return sizeof(float);
-    case DOUBLE:
+    case K_DOUBLE:
       return sizeof(double);
     case VARSTRING:
     case VARBINARY:
@@ -127,26 +129,26 @@ int getDataTypeSize(AttributeInfo &info) {
       return sizeof(int32_t);
     case DATETIME64:
       return sizeof(int64_t);
-    case BOOL:
+    case K_BOOL:
       return sizeof(bool);
-    case BYTE:
-    case INT8:
+    case K_BYTE:
+    case K_INT8:
       return sizeof(int8_t);
-    case INT16:
+    case K_INT16:
       return sizeof(int16_t);
-    case INT32:
+    case K_INT32:
       return sizeof(int32_t);
-    case INT64:
+    case K_INT64:
     case TIME64:
     case TIMESTAMP64:
     case TIMESTAMP64_MICRO:
     case TIMESTAMP64_NANO:
       return sizeof(int64_t);
-    case FLOAT:
+    case K_FLOAT:
       return sizeof(float);
-    case DOUBLE:
+    case K_DOUBLE:
       return sizeof(double);
-    case CHAR:
+    case K_CHAR:
     case STRING_CONST:
     case BINARY:
       if (info.max_len == 0)

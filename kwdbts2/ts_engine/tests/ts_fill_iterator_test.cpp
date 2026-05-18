@@ -640,7 +640,7 @@ TEST_F(TestFillIterator, CONSTANT) {
     std::vector<timestamp64> ts_points = {};
     FillParams fill_params;
     fill_params.fill_type = FillType::CONSTANT;
-    fill_params.const_data_type = DATATYPE::INT32;
+    fill_params.const_data_type = DATATYPE::K_INT32;
     fill_params.const_data_value = "123";
 
     s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
@@ -663,7 +663,7 @@ TEST_F(TestFillIterator, CONSTANT) {
     res.clear();
     delete ts_iter;
 
-    fill_params.const_data_type = DATATYPE::INT64;
+    fill_params.const_data_type = DATATYPE::K_INT64;
     s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                             scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
                             schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
@@ -683,7 +683,7 @@ TEST_F(TestFillIterator, CONSTANT) {
     res.clear();
     delete ts_iter;
 
-    fill_params.const_data_type = DATATYPE::CHAR;
+    fill_params.const_data_type = DATATYPE::K_CHAR;
     s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                             scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
                             schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);

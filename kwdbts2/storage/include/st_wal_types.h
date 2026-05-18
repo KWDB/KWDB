@@ -15,6 +15,12 @@
 #include <cstdio>
 #include <string>
 #include "ts_common.h"
+
+// Undefine Windows conflict macro (must be after ts_common.h which includes windows.h)
+#ifdef _WIN32
+#undef DELETE
+#endif
+
 #include "libkwdbts2.h"
 #include "settings.h"
 

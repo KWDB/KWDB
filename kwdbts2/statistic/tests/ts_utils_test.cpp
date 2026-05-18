@@ -152,43 +152,43 @@ TEST(TestUtils, testHash64) {
     std::vector<byte> buf;
     uint64_t hash = 0;
 
-    PutUint64LittleEndian(&buf, static_cast<u_int64_t>(1));
+    PutUint64LittleEndian(&buf, static_cast<uint64_t>(1));
     hash = Hash64(buf, 1337);
     EXPECT_EQ(hash, 17760762384136597300U);
 
-    PutUint64LittleEndian(&buf, static_cast<u_int64_t>(2));
+    PutUint64LittleEndian(&buf, static_cast<uint64_t>(2));
     hash = Hash64(buf, 1337);
     EXPECT_EQ(hash, 712574109729348829U);
 
-    PutUint64LittleEndian(&buf, static_cast<u_int64_t>(3));
+    PutUint64LittleEndian(&buf, static_cast<uint64_t>(3));
     hash = Hash64(buf, 1337);
     EXPECT_EQ(hash, 11369381369180892191U);
 
-    PutUint64LittleEndian(&buf, static_cast<u_int64_t>(4));
+    PutUint64LittleEndian(&buf, static_cast<uint64_t>(4));
     hash = Hash64(buf, 1337);
     EXPECT_EQ(hash, 2480255666032686445U);
 
-    PutUint64LittleEndian(&buf, static_cast<u_int64_t>(5));
+    PutUint64LittleEndian(&buf, static_cast<uint64_t>(5));
     hash = Hash64(buf, 1337);
     EXPECT_EQ(hash, 10527935691117287462U);
 
-    PutUint64LittleEndian(&buf, static_cast<u_int64_t>(6));
+    PutUint64LittleEndian(&buf, static_cast<uint64_t>(6));
     hash = Hash64(buf, 1337);
     EXPECT_EQ(hash, 4394461812288986596U);
 
-    PutUint64LittleEndian(&buf, static_cast<u_int64_t>(7));
+    PutUint64LittleEndian(&buf, static_cast<uint64_t>(7));
     hash = Hash64(buf, 1337);
     EXPECT_EQ(hash, 2187079352818243175U);
 
-    PutUint64LittleEndian(&buf, static_cast<u_int64_t>(8));
+    PutUint64LittleEndian(&buf, static_cast<uint64_t>(8));
     hash = Hash64(buf, 1337);
     EXPECT_EQ(hash, 9448573243880564272U);
 
-    PutUint64LittleEndian(&buf, static_cast<u_int64_t>(9));
+    PutUint64LittleEndian(&buf, static_cast<uint64_t>(9));
     hash = Hash64(buf, 1337);
     EXPECT_EQ(hash, 7973676079474108436U);
 
-    PutUint64LittleEndian(&buf, static_cast<u_int64_t>(10));
+    PutUint64LittleEndian(&buf, static_cast<uint64_t>(10));
     hash = Hash64(buf, 1337);
     EXPECT_EQ(hash, 1936381698930858804U);
 }

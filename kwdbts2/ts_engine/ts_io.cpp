@@ -13,8 +13,14 @@
 
 #include <fcntl.h>
 #include <sys/file.h>
+#ifndef _WIN32
 #include <sys/mman.h>
 #include <unistd.h>
+#else
+#include "platform.h"
+#include <thread>
+#include <chrono>
+#endif
 
 #include <cstddef>
 #include <cstring>
@@ -706,7 +712,7 @@ KStatus TsMemoryIOEnv::NewRandomReadFileImpl(const std::string& filepath, std::u
     std::shared_lock lk(mutex_);
     auto it = files_.find(abs.string());
     if (it == files_.end()) {
-      LOG_ERROR("mem file %s not found", abs.c_str());
+      LOG_ERROR("mem file %s not found", abs.string().c_str());
       return FAIL;
     }
     data = it->second;
@@ -716,7 +722,7 @@ KStatus TsMemoryIOEnv::NewRandomReadFileImpl(const std::string& filepath, std::u
     LOG_ERROR("unexpected file size, input: %lu, larger than actual: %lu", file_size, data->size());
     return FAIL;
   }
-  *file = std::make_unique<TsMemoryRandomReadFile>(abs, std::move(data), file_size);
+  *file = std::make_unique<TsMemoryRandomReadFile>(abs.string(), std::move(data), file_size);
   return SUCCESS;
 }
 
@@ -728,7 +734,7 @@ KStatus TsMemoryIOEnv::NewSequentialReadFileImpl(const std::string& filepath,
     std::shared_lock lk(mutex_);
     auto it = files_.find(abs.string());
     if (it == files_.end()) {
-      LOG_ERROR("mem file %s not found", abs.c_str());
+      LOG_ERROR("mem file %s not found", abs.string().c_str());
       return FAIL;
     }
     data = it->second;
@@ -738,7 +744,7 @@ KStatus TsMemoryIOEnv::NewSequentialReadFileImpl(const std::string& filepath,
     LOG_ERROR("unexpected file size, input: %lu, larger than actual: %lu", file_size, data->size());
     return FAIL;
   }
-  *file = std::make_unique<TsMemorySequentialReadFile>(abs, std::move(data), file_size);
+  *file = std::make_unique<TsMemorySequentialReadFile>(abs.string(), std::move(data), file_size);
   return SUCCESS;
 }
 

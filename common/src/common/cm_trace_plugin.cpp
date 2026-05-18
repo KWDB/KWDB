@@ -9,10 +9,26 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 #include <cm_kwdb_context.h>
+#ifdef OS_WIN32
+#include <windows.h>
+#else
 #include <dlfcn.h>
+#endif
 #include <cm_config.h>
 #include <lg_api.h>
 #include "cm_trace_plugin.h"
+
+#ifdef OS_WIN32
+#define DLOPEN(filename) LoadLibrary(filename)
+#define DLSYM(handle, symbol) GetProcAddress((HMODULE)handle, symbol)
+#define DLCLOSE(handle) FreeLibrary((HMODULE)handle)
+#define DLERROR() GetLastError()
+#else
+#define DLOPEN(filename) dlopen(filename, RTLD_LAZY | RTLD_GLOBAL)
+#define DLSYM(handle, symbol) dlsym(handle, symbol)
+#define DLCLOSE(handle) dlclose(handle)
+#define DLERROR() dlerror()
+#endif
 
 namespace kwdbts {
 TracePlugin* g_trace_instance;
@@ -29,13 +45,13 @@ void DestroyTracePlugin(kwdbContext_p ctx) {
   if (plugin_lib != nullptr) {
     if (g_trace_instance != nullptr) {
       // destroy the trace instance
-      destroy_t* destroy = reinterpret_cast<destroy_t*>(dlsym(plugin_lib, "destroyTracePlugin"));
+      destroy_t* destroy = reinterpret_cast<destroy_t*>(DLSYM(plugin_lib, "destroyTracePlugin"));
       destroy(g_trace_instance);
       g_trace_instance = nullptr;
     }
 
     // close the plugin so file
-    dlclose(plugin_lib);
+    DLCLOSE(plugin_lib);
     plugin_lib = nullptr;
   }
   return;
@@ -55,13 +71,17 @@ void InitTracePlugin(kwdbContext_p ctx, const char* service) {
   if (so_name == nullptr) {
     return;
   }
-  plugin_lib = dlopen(so_name, RTLD_LAZY | RTLD_GLOBAL);
+  plugin_lib = DLOPEN(so_name);
   if (plugin_lib == nullptr) {
+#ifdef OS_WIN32
+    LOG_ERROR("load trace plugin lib error : %lu", GetLastError());
+#else
     LOG_ERROR("load trace plugin lib error : %s", dlerror());
+#endif
     return;
   }
-  create_t* create = reinterpret_cast<create_t*>(dlsym(plugin_lib, "createTracePlugin"));
-  destroy_t* destroy = reinterpret_cast<destroy_t*>(dlsym(plugin_lib, "destroyTracePlugin"));
+  create_t* create = reinterpret_cast<create_t*>(DLSYM(plugin_lib, "createTracePlugin"));
+  destroy_t* destroy = reinterpret_cast<destroy_t*>(DLSYM(plugin_lib, "destroyTracePlugin"));
   if (!create || !destroy) {
     LOG_ERROR("Cannot find symbols of trace plugin.");
     DestroyTracePlugin(ctx);

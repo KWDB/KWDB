@@ -33,7 +33,7 @@ KStatus MetricsVersionManager::Init(std::vector<uint32_t>& remove_versions,
                                     std::vector<uint32_t>& invalid_metric_versions, uint32_t tag_cur_version) {
   uint32_t max_table_version = 0;
   // load all versions
-  DIR* dir_ptr = opendir(metric_schema_path_.c_str());
+  DIR* dir_ptr = opendir(metric_schema_path_.string().c_str());
   if (dir_ptr) {
     string prefix = std::to_string(table_id_) + s_bt + '_';
     size_t prefix_len = prefix.length();
@@ -44,8 +44,8 @@ KStatus MetricsVersionManager::Init(std::vector<uint32_t>& remove_versions,
       }
       fs::path full_path = metric_schema_path_ / entry->d_name;
       struct stat file_stat{};
-      if (stat(full_path.c_str(), &file_stat) != 0) {
-        LOG_ERROR("stat[%s] failed", full_path.c_str());
+      if (stat(full_path.string().c_str(), &file_stat) != 0) {
+        LOG_ERROR("stat[%s] failed", full_path.string().c_str());
         closedir(dir_ptr);
         return FAIL;
       }
@@ -109,7 +109,7 @@ KStatus MetricsVersionManager::CreateTable(kwdbContext_p ctx, std::vector<Attrib
                                            uint64_t hash_num, ErrorInfo& err_info) {
   wrLock();
   Defer defer([&]() { unLock(); });
-  auto s = TsIOEnv::GetInstance().NewDirectory(metric_schema_path_);
+  auto s = TsIOEnv::GetInstance().NewDirectory(metric_schema_path_.string());
   if (s != SUCCESS) {
     return s;
   }
@@ -267,7 +267,7 @@ KStatus MetricsVersionManager::RemoveAll() {
   // Remove all schemas
   for (auto& root_table : metric_tables_) {
     if (!root_table.second) {
-      Remove(metric_schema_path_ / IdToSchemaFileName(table_id_, root_table.first));
+      Remove((metric_schema_path_ / IdToSchemaFileName(table_id_, root_table.first)).string());
     } else {
       root_table.second->remove();
     }

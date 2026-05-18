@@ -43,7 +43,7 @@ KStatus TsEngineSchemaManager::Init(kwdbContext_p ctx) {
   std::regex num_regex("^[0-9]+$");
   try {
     if (!fs::exists(schema_root_path_)) {
-      LOG_ERROR("Schema directory '%s' does not exist", schema_root_path_.c_str());
+      LOG_ERROR("Schema directory '%s' does not exist", schema_root_path_.string().c_str());
       return KStatus::FAIL;
     }
     if (!table_schema_mgrs_.empty()) {
@@ -143,7 +143,7 @@ KStatus TsEngineSchemaManager::GetTableList(std::vector<TSTableID>* table_ids) {
   }
   for (const auto& it : dir_iter) {
     try {
-      std::string fname = it.path().filename();
+      std::string fname = it.path().filename().string();
       TSTableID tbl_id = 0;
       auto split_pos = fname.find('.');
       if (split_pos != std::string::npos) {

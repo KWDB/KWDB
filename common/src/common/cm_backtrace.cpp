@@ -9,16 +9,26 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-
-#include <sys/syscall.h>
-#include <sys/stat.h>
-#include <cxxabi.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <dlfcn.h>
+#ifdef OS_LINUX
 #include <signal.h>
 #include <execinfo.h>
 #include <dirent.h>
+#include <sys/syscall.h>
+#include <sys/stat.h>
+#include <cxxabi.h>
+#include <dlfcn.h>
+#endif
+
+#ifdef OS_WIN32
+#include <windows.h>
+#include <psapi.h>
+#include <dbghelp.h>
+#include <direct.h>
+#include <io.h>
+#endif
+
+#include <fcntl.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <memory>
 #include <string>
@@ -38,7 +48,9 @@
 namespace kwdbts {
 const char* kThreadBtName = "thread_backtrace";
 k_char kThreadBtPath[FULL_FILE_NAME_MAX_LEN];
+#ifdef OS_LINUX
 struct sigaction oldsa;
+#endif
 static constexpr size_t kDemangleBufferSize = 8 * 1024;
 
 void DumpLatchInfo();
@@ -55,6 +67,7 @@ void GetThreadBtFilePath(char *threadBtPath, char* folder, char* nowTimeStamp) {
   }
 }
 
+#ifdef OS_LINUX
 // Signal SIGUSR2 to thread by syscall.
 int SignalThreadDump(pid_t pid, uid_t uid, pid_t tid) {
   // Similar to pthread_sigqueue(), but usable with a tid since we
@@ -69,6 +82,7 @@ int SignalThreadDump(pid_t pid, uid_t uid, pid_t tid) {
   info.si_value = nullVal;
   return syscall(SYS_rt_tgsigqueueinfo, pid, tid, SIGUSR2, &info);
 }
+#endif
 
 void SetThreadBtPath(char* folder, char* nowTimeStamp) {
   memset(kThreadBtPath, 0, sizeof(kThreadBtPath));
@@ -77,6 +91,7 @@ void SetThreadBtPath(char* folder, char* nowTimeStamp) {
 
 // Send signal SIGUSR2 to all threads in /proc/<PID>/task.
 bool DumpAllThreadBacktrace(char* folder, char* nowTimeStamp) {
+#ifdef OS_LINUX
   DIR *dir;
   struct dirent *entry;
   // dump latch info
@@ -110,8 +125,13 @@ bool DumpAllThreadBacktrace(char* folder, char* nowTimeStamp) {
 
   closedir(dir);
   return true;
+#elif defined(OS_WIN32)
+  // Not supported on Windows
+  return false;
+#endif
 }
 
+#ifdef OS_LINUX
 void demangle(const char* symbol, char* buffer, size_t buffer_size) {
   if (!symbol || !buffer || buffer_size == 0) {
     return;
@@ -150,6 +170,8 @@ void demangle(const char* symbol, char* buffer, size_t buffer_size) {
     buffer[buffer_size - 1] = '\0';
   }
 }
+#endif
+
 char* AppendLiteral(char* cursor, char* end, const char* text) {
   while (*text != '\0' && cursor < end) {
     *cursor++ = *text++;
@@ -201,6 +223,8 @@ char* AppendPtr(char* cursor, char* end, uintptr_t ptr_value) {
   }
   return cursor;
 }
+
+#ifdef OS_LINUX
 void GenThreadHeader(char* header, size_t* head_size, size_t frame_size) {
   char* cursor = header;
   char* end = header + *head_size;
@@ -285,9 +309,11 @@ void DumpThreadBacktraceToFile(int fd) {
     return;
   }
 }
+#endif  // OS_LINUX
 
 std::mutex lock_4_backtrace;
 // the callback function of SIGUSR2 for dump thread backtrace.
+#ifdef OS_LINUX
 static void DumpThreadBacktrace(int signr, siginfo_t *info, void *secret) {
   if (kThreadBtPath[0] == '\0') {
     return;
@@ -302,9 +328,11 @@ static void DumpThreadBacktrace(int signr, siginfo_t *info, void *secret) {
   close(fd);
   lock_4_backtrace.unlock();
 }
+#endif
 
 // Register signal SIGUSR2 action function.
 void RegisterBacktraceSignalHandler() {
+#ifdef OS_LINUX
   // Register SIGUSR2 for dump thread backtrace
   struct sigaction sa;
   sigfillset(&sa.sa_mask);
@@ -316,6 +344,9 @@ void RegisterBacktraceSignalHandler() {
   const k_int32 MAX_FRAME_LEVEL = 2;
   void *array[MAX_FRAME_LEVEL];
   backtrace(array, MAX_FRAME_LEVEL);
+#elif defined(OS_WIN32)
+  // Not supported on Windows
+#endif
 }
 
 // dump latchs stats
@@ -369,9 +400,15 @@ void DumpLatchInfo() {
   fclose(fp2);
 }
 
+#ifdef OS_LINUX
 void DumpThreadBacktraceForTest(char* folder, char* nowTimeStamp, int signr, siginfo_t *info, void *secret) {
   SetThreadBtPath(folder, nowTimeStamp);
   DumpThreadBacktrace(signr, info, secret);
 }
+#elif defined(OS_WIN32)
+void DumpThreadBacktraceForTest(char* folder, char* nowTimeStamp, int signr, void *info, void *secret) {
+  // Not supported on Windows - stub implementation
+}
+#endif
 
 }  // namespace kwdbts

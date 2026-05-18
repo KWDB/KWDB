@@ -183,18 +183,18 @@ class TSBSSchema {
       if (tag_schema[i].isAttrType(COL_PRIMARY_TAG)) {
         switch (tag_schema[i].type) {
           case DATATYPE::TIMESTAMP64:
-            KTimestamp(primary_start_ptr) = start_ts;
+            KTimestampCast(primary_start_ptr) = start_ts;
             primary_start_ptr += tag_schema[i].size;
             break;
-          case DATATYPE::INT8:
+          case DATATYPE::K_INT8:
             *(static_cast<k_int8*>(static_cast<void*>(primary_start_ptr))) = atoi(row_data[i + metric_col_count].c_str());
             primary_start_ptr += tag_schema[i].size;
             break;
-          case DATATYPE::INT32:
+          case DATATYPE::K_INT32:
             KInt32(primary_start_ptr) = start_ts;
             primary_start_ptr += tag_schema[i].size;
             break;
-          case DATATYPE::CHAR:
+          case DATATYPE::K_CHAR:
             strcpy(primary_start_ptr, row_data[i + metric_col_count].c_str());
             primary_start_ptr += tag_schema[i].size;
             break;
@@ -209,18 +209,18 @@ class TSBSSchema {
       // Generate the tag part
       switch (tag_schema[i].type) {
         case DATATYPE::TIMESTAMP64:
-          KTimestamp(tag_data_start_ptr) = start_ts;
+          KTimestampCast(tag_data_start_ptr) = start_ts;
           tag_data_start_ptr += tag_schema[i].size;
           break;
-        case DATATYPE::INT8:
+        case DATATYPE::K_INT8:
           *(static_cast<k_int8*>(static_cast<void*>(tag_data_start_ptr))) = atoi(row_data[i + metric_col_count].c_str());
           tag_data_start_ptr += tag_schema[i].size;
           break;
-        case DATATYPE::INT32:
+        case DATATYPE::K_INT32:
           KInt32(tag_data_start_ptr) = start_ts;
           tag_data_start_ptr += tag_schema[i].size;
           break;
-        case DATATYPE::CHAR:
+        case DATATYPE::K_CHAR:
           strcpy(tag_data_start_ptr, row_data[i + metric_col_count].c_str());
           tag_data_start_ptr += tag_schema[i].size;
           break;
@@ -299,26 +299,26 @@ class TSBSSchema {
       switch (schema[i].type) {
         case DATATYPE::TIMESTAMP64:
           for (int j = 0; j < count; j++) {
-            KTimestamp(p.GetColumnAddr(j, i)) = start_ts;
+            KTimestampCast(p.GetColumnAddr(j, i)) = start_ts;
             start_ts += ms_interval;
           }
           break;
-        case DATATYPE::INT16:
+        case DATATYPE::K_INT16:
           for (int j = 0; j < count; j++) {
             KInt16(p.GetColumnAddr(j, i)) = atoi(row_data[i].c_str());
           }
           break;
-        case DATATYPE::INT32:
+        case DATATYPE::K_INT32:
           for (int j = 0; j < count; j++) {
             KInt32(p.GetColumnAddr(j, i)) = atoi(row_data[i].c_str());
           }
           break;
-        case DATATYPE::INT64:
+        case DATATYPE::K_INT64:
           for (int j = 0; j < count; j++) {
             KInt32(p.GetColumnAddr(j, i)) = atol(row_data[i].c_str());
           }
           break;
-        case DATATYPE::CHAR:
+        case DATATYPE::K_CHAR:
           for (int j = 0; j < count; j++) {
             strncpy(p.GetColumnAddr(j, i), row_data[i].c_str(), schema[i].size);
           }
@@ -359,18 +359,18 @@ class TSBSSchema {
       if (tag_schema[i].isAttrType(COL_PRIMARY_TAG)) {
         switch (tag_schema[i].type) {
           case DATATYPE::TIMESTAMP64:
-            KTimestamp(primary_start_ptr) = start_ts;
+            KTimestampCast(primary_start_ptr) = start_ts;
             primary_start_ptr += tag_schema[i].size;
             break;
-          case DATATYPE::INT8:
+          case DATATYPE::K_INT8:
             *(static_cast<k_int8*>(static_cast<void*>(primary_start_ptr))) = 10;
             primary_start_ptr += tag_schema[i].size;
             break;
-          case DATATYPE::INT32:
+          case DATATYPE::K_INT32:
             KInt32(primary_start_ptr) = start_ts;
             primary_start_ptr += tag_schema[i].size;
             break;
-          case DATATYPE::CHAR:
+          case DATATYPE::K_CHAR:
             memset(primary_start_ptr, '1', tag_schema[i].size);
             primary_start_ptr += tag_schema[i].size;
             break;
@@ -386,18 +386,18 @@ class TSBSSchema {
       // Generate the tag part
       switch (tag_schema[i].type) {
         case DATATYPE::TIMESTAMP64:
-          KTimestamp(tag_data_start_ptr) = start_ts;
+          KTimestampCast(tag_data_start_ptr) = start_ts;
           tag_data_start_ptr += tag_schema[i].size;
           break;
-        case DATATYPE::INT8:
+        case DATATYPE::K_INT8:
           *(static_cast<k_int8*>(static_cast<void*>(tag_data_start_ptr))) = 10;
           tag_data_start_ptr += tag_schema[i].size;
           break;
-        case DATATYPE::INT32:
+        case DATATYPE::K_INT32:
           KInt32(tag_data_start_ptr) = start_ts;
           tag_data_start_ptr += tag_schema[i].size;
           break;
-        case DATATYPE::CHAR:
+        case DATATYPE::K_CHAR:
           memset(tag_data_start_ptr, '1', tag_schema[i].size);
           memset(tag_data_start_ptr + tag_schema[i].size - 1, '\0', 1);
           tag_data_start_ptr += tag_schema[i].size;
@@ -476,26 +476,26 @@ class TSBSSchema {
       switch (schema[i].type) {
         case DATATYPE::TIMESTAMP64:
           for (int j = 0; j < count; j++) {
-            KTimestamp(p.GetColumnAddr(j, i)) = start_ts;
+            KTimestampCast(p.GetColumnAddr(j, i)) = start_ts;
             start_ts += ms_interval;
           }
           break;
-        case DATATYPE::INT16:
+        case DATATYPE::K_INT16:
           for (int j = 0; j < count; j++) {
             KInt16(p.GetColumnAddr(j, i)) = 11;
           }
           break;
-        case DATATYPE::INT32:
+        case DATATYPE::K_INT32:
           for (int j = 0; j < count; j++) {
             KInt32(p.GetColumnAddr(j, i)) = 2222;
           }
           break;
-        case DATATYPE::INT64:
+        case DATATYPE::K_INT64:
           for (int j = 0; j < count; j++) {
             KInt32(p.GetColumnAddr(j, i)) = 33333;
           }
           break;
-        case DATATYPE::CHAR:
+        case DATATYPE::K_CHAR:
           for (int j = 0; j < count; j++) {
             strncpy(p.GetColumnAddr(j, i), test_str.c_str(), schema[i].size);
           }

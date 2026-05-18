@@ -99,7 +99,7 @@ TEST_F(TestOffsetIteratorV2, basic) {
   do {
     ASSERT_EQ(iter1->Next(&res, &count), KStatus::SUCCESS);
     for (int i = 0; i < count; ++i) {
-      ts.emplace_back(KTimestamp(reinterpret_cast<void*>((intptr_t)res.data[0][0]->mem + 8 * i)));
+      ts.emplace_back(KTimestampCast(reinterpret_cast<char*>((intptr_t)res.data[0][0]->mem + 8 * i)));
     }
     res.clear();
     total_cnt += count;
@@ -130,7 +130,7 @@ TEST_F(TestOffsetIteratorV2, basic) {
   do {
     ASSERT_EQ(iter2->Next(&res, &count), KStatus::SUCCESS);
     for (int i = 0; i < count; ++i) {
-      ts.emplace_back(KTimestamp(reinterpret_cast<void*>((intptr_t)res.data[0][0]->mem + 8 * i)));
+      ts.emplace_back(KTimestampCast(reinterpret_cast<char*>((intptr_t)res.data[0][0]->mem + 8 * i)));
     }
     res.clear();
     total_cnt += count;
@@ -235,7 +235,7 @@ TEST_F(TestOffsetIteratorV2, multi_partition) {
   do {
     ASSERT_EQ(iter1->Next(&res, &count), KStatus::SUCCESS);
     for (int i = 0; i < count; ++i) {
-      ts.emplace_back(KTimestamp(reinterpret_cast<void*>((intptr_t)res.data[0][0]->mem + 8 * i)));
+      ts.emplace_back(KTimestampCast(reinterpret_cast<char*>((intptr_t)res.data[0][0]->mem + 8 * i)));
     }
     res.clear();
     total_cnt += count;
@@ -266,7 +266,7 @@ TEST_F(TestOffsetIteratorV2, multi_partition) {
   do {
     ASSERT_EQ(iter2->Next(&res, &count), KStatus::SUCCESS);
     for (int i = 0; i < count; ++i) {
-      ts.emplace_back(KTimestamp(reinterpret_cast<void*>((intptr_t)res.data[0][0]->mem + 8 * i)));
+      ts.emplace_back(KTimestampCast(reinterpret_cast<char*>((intptr_t)res.data[0][0]->mem + 8 * i)));
     }
     res.clear();
     total_cnt += count;
@@ -359,7 +359,7 @@ TEST_F(TestOffsetIteratorV2, extreme) {
   do {
     ASSERT_EQ(iter1->Next(&res, &count), KStatus::SUCCESS);
     for (int i = 0; i < count; ++i) {
-      ts.emplace_back(KTimestamp(reinterpret_cast<void*>((intptr_t)res.data[0][0]->mem + 8 * i)));
+      ts.emplace_back(KTimestampCast(reinterpret_cast<char*>((intptr_t)res.data[0][0]->mem + 8 * i)));
     }
     res.clear();
     total_cnt += count;
@@ -393,7 +393,7 @@ TEST_F(TestOffsetIteratorV2, extreme) {
   do {
     ASSERT_EQ(iter2->Next(&res, &count), KStatus::SUCCESS);
     for (int i = 0; i < count; ++i) {
-      ts.emplace_back(KTimestamp(reinterpret_cast<void*>((intptr_t)res.data[0][0]->mem + 8 * i)));
+      ts.emplace_back(KTimestampCast(reinterpret_cast<char*>((intptr_t)res.data[0][0]->mem + 8 * i)));
     }
     res.clear();
     total_cnt += count;
@@ -474,7 +474,7 @@ TEST_F(TestOffsetIteratorV2, extreme) {
 //  do {
 //    ASSERT_EQ(iter1->Next(&res1, &count), KStatus::SUCCESS);
 //    for (int i = 0; i < count; ++i) {
-//      ts.emplace_back(KTimestamp(reinterpret_cast<void*>((intptr_t)res1.data[0][0]->mem + 8 * i)));
+//      ts.emplace_back(KTimestampCast(reinterpret_cast<void*>((intptr_t)res1.data[0][0]->mem + 8 * i)));
 //    }
 //    res1.clear();
 //    total_cnt += count;
@@ -503,7 +503,7 @@ TEST_F(TestOffsetIteratorV2, extreme) {
 //  do {
 //    ASSERT_EQ(iter2->Next(&res2, &count), KStatus::SUCCESS);
 //    for (int i = 0; i < count; ++i) {
-//      ts.emplace_back(KTimestamp(reinterpret_cast<void*>((intptr_t)res2.data[0][0]->mem + 8 * i)));
+//      ts.emplace_back(KTimestampCast(reinterpret_cast<void*>((intptr_t)res2.data[0][0]->mem + 8 * i)));
 //    }
 //    res2.clear();
 //    total_cnt += count;
@@ -534,7 +534,7 @@ TEST_F(TestOffsetIteratorV2, extreme) {
 //  do {
 //    ASSERT_EQ(iter3->Next(&res3, &count), KStatus::SUCCESS);
 //    for (int i = 0; i < count; ++i) {
-//      ts.emplace_back(KTimestamp(reinterpret_cast<void*>((intptr_t)res3.data[0][0]->mem + 8 * i)));
+//      ts.emplace_back(KTimestampCast(reinterpret_cast<void*>((intptr_t)res3.data[0][0]->mem + 8 * i)));
 //    }
 //    res3.clear();
 //    total_cnt += count;
