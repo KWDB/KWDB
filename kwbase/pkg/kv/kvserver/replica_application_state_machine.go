@@ -619,16 +619,26 @@ func (b *replicaAppBatch) stageWriteBatch(ctx context.Context, cmd *replicatedCm
 			if isLocal && cmd.proposal.Local.Reply != nil {
 				responses = cmd.proposal.Local.Reply.Responses
 			}
+			// todo(qzy): no need to put ts twice later
+			//isAllTsRowPut := true
+			//for _, req := range reqs.Requests {
+			//	if req.GetTsRowPut() == nil {
+			//		isAllTsRowPut = false
+			//	}
+			//}
+			//if !(isLocal) || !isAllTsRowPut {
 			if b.tableID, b.rangeGroupID, b.TSTxnID, b.needAutoCommit, err = b.r.stageTsBatchRequest(
 				ctx, &reqs, responses, isLocal, &b.state); err != nil {
 				return err
 			}
+			log.VEventf(ctx, 3, "mode2: stageWriteBatch replica machine replica_raft write, with mode2 maybe ansyc, tableID is %d rangeID is %d", b.tableID, b.r.RangeID)
 			if b.TSTxnID != 0 && b.needAutoCommit {
 				err := b.r.store.TsEngine.MtrCommit(b.tableID, b.rangeGroupID, b.TSTxnID, nil)
 				if err != nil {
 					return wrapWithNonDeterministicFailure(err, "unable to commit mini-transaction")
 				}
 			}
+			//}
 		}
 	}
 	if wb == nil {
@@ -654,6 +664,7 @@ func (r *Replica) stageTsBatchRequest(
 	replicaState *storagepb.ReplicaState,
 ) (tableID, rangeGroupID, tsTxnID uint64, needAutoCommit bool, err error) {
 	var isTsRequest bool
+	log.VEventf(ctx, 3, "xxxx stageTsBatchRequest. rangeID is %d, batchSize is %d", r.RangeID, ba.Size())
 	needAutoCommit = true
 	for _, union := range ba.Requests {
 		switch union.GetInner().(type) {

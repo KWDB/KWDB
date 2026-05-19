@@ -531,25 +531,69 @@ KStatus TsEntitySegmentBuilder::WriteBlock(TsEntityKey& entity_key, TsSegmentWri
 }
 
 KStatus TsEntitySegmentBuilder::Open() {
-  KStatus s = entity_item_builder_->Open();
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("Open Entity Item File Failed");
-    return s;
+  uint64_t block_header_file_num;
+  size_t block_header_file_size = 0;
+  uint64_t block_file_num;
+  size_t block_file_size = 0;
+  uint64_t agg_file_num;
+  size_t agg_file_size = 0;
+  if (cur_entity_segment_ == nullptr) {
+    // brand new entity segment, allocate all file numbers
+    block_header_file_num = version_manager_->NewFileNumber();
+    block_file_num = version_manager_->NewFileNumber();
+    agg_file_num = version_manager_->NewFileNumber();
+  } else {
+    //  entity segment exists, reuse file numbers
+    auto info = cur_entity_segment_->GetHandleInfo();
+    block_header_file_num = info.header_b_info.file_number;
+    block_header_file_size = info.header_b_info.length;
+    block_file_num = info.datablock_info.file_number;
+    block_file_size = info.datablock_info.length;
+    agg_file_num = info.agg_info.file_number;
+    agg_file_size = info.agg_info.length;
   }
-  s = block_item_builder_->Open();
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("Open Block Item File Failed");
-    return s;
+
+  // 1. create entityitem file builder;
+  {
+    std::string file_path = root_path_ / EntityHeaderFileName(entity_item_file_number_);
+    entity_item_builder_ =
+        std::make_unique<TsEntitySegmentEntityItemFileBuilder>(io_env_, file_path, entity_item_file_number_);
+    if (entity_item_builder_->Open() == FAIL) {
+      LOG_ERROR("TsEntitySegmentBuilder::Open() failed, open entity item file failed.");
+      return FAIL;
+    }
   }
-  s = block_file_builder_->Open();
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("Open Block File Failed");
-    return s;
+  // 2. create blockitem file builder;
+  {
+    std::string file_path = root_path_ / BlockHeaderFileName(block_header_file_num);
+    block_item_builder_ = std::make_unique<TsEntitySegmentBlockItemFileBuilder>(
+        io_env_, file_path, block_header_file_num, block_header_file_size);
+    if (block_item_builder_->Open() == FAIL) {
+      LOG_ERROR("TsEntitySegmentBuilder::Open() failed, open block item file failed.");
+      return FAIL;
+    }
   }
-  s = agg_file_builder_->Open();
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("Open Agg File Failed");
-    return s;
+
+  // 3. create block file builder;
+  {
+    std::string file_path = root_path_ / DataBlockFileName(block_file_num);
+    block_file_builder_ =
+        std::make_unique<TsEntitySegmentBlockFileBuilder>(io_env_, file_path, block_file_num, block_file_size);
+    if (block_file_builder_->Open() == FAIL) {
+      LOG_ERROR("TsEntitySegmentBuilder::Open() failed, open block file failed.");
+      return FAIL;
+    }
+  }
+
+  // 4. create agg file builder;
+  {
+    std::string file_path = root_path_ / EntityAggFileName(agg_file_num);
+    agg_file_builder_ =
+        std::make_unique<TsEntitySegmentAggFileBuilder>(io_env_, file_path, agg_file_num, agg_file_size);
+    if (agg_file_builder_->Open() == FAIL) {
+      LOG_ERROR("TsEntitySegmentBuilder::Open() failed, open agg file failed.");
+      return FAIL;
+    }
   }
   return SUCCESS;
 }
@@ -603,11 +647,28 @@ KStatus TsEntitySegmentBuilder::WriteCachedBlockSpan(bool call_by_vacuum, TsEnti
   return s;
 }
 
-void TsEntitySegmentBuilder::ReleaseBuilders() {
+KStatus TsEntitySegmentBuilder::Finalize() {
+  if (entity_item_builder_->Finalize() == FAIL) {
+    LOG_ERROR("TsEntitySegmentBuilder::Finalize() failed, finalize entity item file failed.");
+    return FAIL;
+  }
+  if (block_item_builder_->Finalize() == FAIL) {
+    LOG_ERROR("TsEntitySegmentBuilder::Finalize() failed, finalize block item file failed.");
+    return FAIL;
+  }
+  if (block_file_builder_->Finalize() == FAIL) {
+    LOG_ERROR("TsEntitySegmentBuilder::Finalize() failed, finalize block file failed.");
+    return FAIL;
+  }
+  if (agg_file_builder_->Finalize() == FAIL) {
+    LOG_ERROR("TsEntitySegmentBuilder::Finalize() failed, finalize agg file failed.");
+    return FAIL;
+  }
   entity_item_builder_.reset();
   block_item_builder_.reset();
   block_file_builder_.reset();
   agg_file_builder_.reset();
+  return SUCCESS;
 }
 
 KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* update,
@@ -710,7 +771,10 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
   }
 
   if (cur_entity_item_.entity_id != 0) {
-    entity_item_builder_->AppendEntityItem(cur_entity_item_);
+    auto s = entity_item_builder_->AppendEntityItem(cur_entity_item_);
+    if (s == FAIL) {
+      LOG_ERROR("TsEntitySegmentBuilder::Compact failed, append entity item failed.");
+    }
   }
   if (cur_entity_segment_) {
     uint64_t max_entity_id = cur_entity_segment_->GetEntityNum();
@@ -742,6 +806,10 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
   info.header_b_info = block_item_builder_->GetFileInfo();
   info.header_e_file_number = entity_item_builder_->GetFileNumber();
   assert((info.header_b_info.length - sizeof(TsBlockItemFileHeader)) % sizeof(TsEntitySegmentBlockItem) == 0);
+  if (this->Finalize() != SUCCESS) {
+    LOG_ERROR("TsEntitySegmentBuilder::Compact failed, finalize failed.");
+    return FAIL;
+  }
   update->SetEntitySegment(partition_id_, info, false);
   return KStatus::SUCCESS;
 }
@@ -849,17 +917,16 @@ KStatus TsEntitySegmentBuilder::WriteBatch(TSTableID tbl_id, uint32_t entity_id,
 }
 
 KStatus TsEntitySegmentBuilder::WriteBatchFinish(TsVersionUpdate *update) {
+  KStatus s = KStatus::SUCCESS;
   write_batch_finished_ = true;
   std::unique_lock lock{mutex_};
   LOG_DEBUG("TsEntitySegmentBuilder WriteBatchFinish begin, root_path: %s, entity_header_file_num: %lu", root_path_.c_str(),
            entity_item_file_number_);
   Defer defer([&]() {
-    LOG_DEBUG("TsEntitySegmentBuilder WriteBatchFinish end, root_path: %s, update info: %s",
-             root_path_.c_str(), update->DebugStr().c_str());
-    ReleaseBuilders();
+    LOG_DEBUG("TsEntitySegmentBuilder WriteBatchFinish end, success: %d , root_path: %s, update info: %s", s == SUCCESS,
+              root_path_.c_str(), update->DebugStr().c_str());
   });
   // write entity header
-  KStatus s = KStatus::SUCCESS;
   uint32_t cur_entity_id = 0;
   for (auto kv : entity_items_) {
     for (uint32_t entity_id = cur_entity_id + 1; entity_id < kv.first; ++entity_id) {
@@ -914,6 +981,11 @@ KStatus TsEntitySegmentBuilder::WriteBatchFinish(TsVersionUpdate *update) {
   info.header_b_info = block_item_builder_->GetFileInfo();
   info.header_e_file_number = entity_item_builder_->GetFileNumber();
   assert((info.header_b_info.length - sizeof(TsBlockItemFileHeader)) % sizeof(TsEntitySegmentBlockItem) == 0);
+  s = Finalize();
+  if (s == FAIL) {
+    LOG_ERROR("WriteBatchFinish failed, Finalize failed.");
+    return FAIL;
+  }
   update->SetEntitySegment(partition_id_, info, false);
   return KStatus::SUCCESS;
 }
@@ -921,12 +993,11 @@ KStatus TsEntitySegmentBuilder::WriteBatchFinish(TsVersionUpdate *update) {
 void TsEntitySegmentBuilder::WriteBatchCancel() {
   write_batch_finished_ = true;
   std::unique_lock lock{mutex_};
-  LOG_INFO("TsEntitySegmentBuilder WriteBatchCancel begin, root_path: %s, entity_header_file_num: %lu", root_path_.c_str(),
-           entity_item_file_number_);
+  LOG_INFO("TsEntitySegmentBuilder WriteBatchCancel begin, root_path: %s, entity_header_file_num: %lu",
+           root_path_.c_str(), entity_item_file_number_);
   Defer defer([this]() {
     LOG_INFO("TsEntitySegmentBuilder WriteBatchCancel end, root_path: %s, entity_header_file_num: %lu",
              root_path_.c_str(), entity_item_file_number_);
-    ReleaseBuilders();
   });
   entity_item_builder_->MarkDelete();
 }

@@ -13,6 +13,7 @@
 
 #include <utility>
 #include "sys_utils.h"
+#include "ts_io.h"
 
 namespace kwdbts {
 
@@ -113,7 +114,7 @@ KStatus WALFileMgr::initWalFileWithHeader(HeaderBlock& header, bool tmp_file) {
 
     uint64_t first_block_no = (header.getFirstLSN() - header.getStartLSN()) / BLOCK_SIZE +
             header.getStartBlockNo();
-    file_.seekg(first_block_no * BLOCK_SIZE, std::ios::beg);
+    file_.seekp(first_block_no * BLOCK_SIZE, std::ios::beg);
     EntryBlock eb = EntryBlock();
     eb.reset(first_block_no - 1);
     char* eb_value = eb.encode();
@@ -131,13 +132,18 @@ KStatus WALFileMgr::initWalFileWithHeader(HeaderBlock& header, bool tmp_file) {
       }
 
     file_.open(path, std::ios::in | std::ios::out | std::ios::trunc);
+    if (file_.fail()) {
+      LOG_ERROR("Failed to open the WAL log file for truncation %s", path.c_str())
+      return FAIL;
+    }
+
     char* header_value = header.encode();
     file_.write(header_value, BLOCK_SIZE);
     delete[] header_value;
 
     uint64_t first_block_no = (header.getFirstLSN() - header.getStartLSN()) / BLOCK_SIZE +
                               header.getStartBlockNo();
-    file_.seekg(first_block_no * BLOCK_SIZE, std::ios::beg);
+    file_.seekp(first_block_no * BLOCK_SIZE, std::ios::beg);
     EntryBlock eb = EntryBlock();
     eb.reset(first_block_no - 1);
     char* eb_value = eb.encode();
@@ -169,15 +175,34 @@ KStatus WALFileMgr::writeBlocks(std::vector<EntryBlock*>& entry_blocks, HeaderBl
   }
   EntryBlock* first_block = entry_blocks[0];
 
+  // Check if file is open before writing
+  if (!file_.is_open()) {
+    LOG_ERROR("WAL file is not open when calling writeBlocks. table_id=%ld", table_id_)
+    return FAIL;
+  }
+
   uint64_t offset = (first_block->getBlockNo() - header.getStartBlockNo() + 1) * BLOCK_SIZE;
+
+  // Clear error flags before seeking and writing
+  file_.clear();
   file_.seekp(offset, std::ios::beg);
 
-  for (auto entry_block : entry_blocks) {
+  // Check if seek was successful
+  if (file_.fail()) {
+    LOG_ERROR("Failed to seek to offset in WAL file. offset=%lu, block_no=%lu, table_id=%ld",
+              offset, first_block->getBlockNo(), table_id_)
+    return FAIL;
+  }
+
+  for (int i = 0; i < entry_blocks.size(); i++) {
+    auto entry_block = entry_blocks[i];
     char* data = entry_block->encode();
     file_.write(data, BLOCK_SIZE);
     delete[] data;
     if (file_.fail()) {
-      LOG_ERROR("Failed to write the WAL log file_.")
+      // Get more detailed error information
+      LOG_ERROR("Failed to write the WAL log file_. errno=%d, file is open=%d, offset=%lu, block_no=%lu, table_id=%ld,"
+                , errno, file_.is_open(), offset, entry_block->getBlockNo(), table_id_)
       return FAIL;
     }
   }
@@ -192,7 +217,11 @@ KStatus WALFileMgr::writeBlocks(std::vector<EntryBlock*>& entry_blocks, HeaderBl
       };
       return static_cast<Helper*>(fb)->handle();
     };
-    fsync(helper(file_.rdbuf()));
+    if (unlikely(fsync(helper(file_.rdbuf())) < 0)) {
+      auto ec = MakeErrorCode(errno);
+      LOG_ERROR("fsync failed, reason: %s", ec.message().c_str());
+      return FAIL;
+    }
   } else {
     file_.flush();
   }
@@ -215,6 +244,8 @@ KStatus WALFileMgr::readEntryBlocks(std::vector<EntryBlock*>& entry_blocks,
   HeaderBlock header = header_block_;
   std::string file_path = getFilePath();
   uint64_t min_block_no = header.getStartBlockNo() + 1;
+
+  // Navigate to the correct file if start_block_no is in a previous file
   while (start_block_no < header.getStartBlockNo()) {
     if (header.getStartBlockNo() < min_block_no) {
       min_block_no = header.getStartBlockNo();
@@ -242,11 +273,16 @@ KStatus WALFileMgr::readEntryBlocks(std::vector<EntryBlock*>& entry_blocks,
     delete[] data;
   }
 
-  uint64_t offset = (start_block_no - header.getStartBlockNo() + 1) * BLOCK_SIZE;
+  // Open the file if not already opened
   if (!wal_file.is_open()) {
     wal_file.open(file_path, std::ios::binary);
+    if (!wal_file.is_open()) {
+      LOG_ERROR("Failed to open wal_file for reading entry blocks, file_path: %s", file_path.c_str())
+      return FAIL;
+    }
   }
 
+  uint64_t offset = (start_block_no - header.getStartBlockNo() + 1) * BLOCK_SIZE;
   wal_file.seekg(offset, std::ios::beg);
 
   char* data = new char[BLOCK_SIZE]();
@@ -258,6 +294,12 @@ KStatus WALFileMgr::readEntryBlocks(std::vector<EntryBlock*>& entry_blocks,
       if (index + 1 > header.getStartBlockNo() + header.getBlockNum()) {
         file_path = getFilePath();
         wal_file.open(file_path, std::ios::binary);
+        if (!wal_file.is_open()) {
+          LOG_ERROR("Failed to reopen wal_file for reading, index[%lu], StartBlockNo[%lu], BlockNum[%u].",
+                    index, header.getStartBlockNo(), header.getBlockNum())
+          s = FAIL;
+          break;
+        }
         wal_file.seekg(BLOCK_SIZE, std::ios::beg);
       }
 

@@ -393,7 +393,7 @@ func (p *Parser) parseWithDepth(depth int, sql string, nakedIntType *types.T) (S
 		sql, tokens, done := p.scanOneStmt()
 		if p.scanner.shortinsert.isInsert && p.scanner.shortinsert.isTsTable {
 			p.Customize = p.scanner.shortinsert.Customize
-			if p.scanner.shortinsert.PrePlaceholder {
+			if p.scanner.shortinsert.PrepareMode {
 				_, err := p.parse(depth+1, sql, tokens, nakedIntType)
 				if err != nil {
 					return nil, err

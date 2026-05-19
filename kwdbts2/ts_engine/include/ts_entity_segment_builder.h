@@ -49,20 +49,28 @@ class TsEntitySegmentEntityItemFileBuilder {
     memset(&header_, 0, sizeof(TsEntityItemFileHeader));
   }
 
-  ~TsEntitySegmentEntityItemFileBuilder() {
+  ~TsEntitySegmentEntityItemFileBuilder() {}
+
+  [[nodiscard]] KStatus Finalize() {
+    assert(w_file_ != nullptr);
     header_.magic = TS_ENTITY_SEGMENT_ENTITY_ITEM_FILE_MAGIC;
     header_.status = TsFileStatus::READY;
     header_.entity_num = w_file_->GetFileSize() / sizeof(TsEntityItem);
     KStatus s = w_file_->Append(TSSlice{reinterpret_cast<char*>(&header_), sizeof(TsEntityItemFileHeader)});
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsEntitySegmentEntityItemFileBuilder Append failed, file_path=%s", file_path_.c_str())
-      assert(false);
+      return FAIL;
     }
+    if (w_file_->Close() == KStatus::FAIL) {
+      LOG_ERROR("TsEntitySegmentEntityItemFileBuilder Close failed, file_path=%s", file_path_.c_str())
+      return FAIL;
+    }
+    return SUCCESS;
   }
 
-  KStatus Open();
+  [[nodiscard]] KStatus Open();
 
-  KStatus AppendEntityItem(TsEntityItem& entity_item);
+  [[nodiscard]] KStatus AppendEntityItem(TsEntityItem& entity_item);
 
   void MarkDelete() { w_file_->MarkDelete(); }
 
@@ -87,8 +95,16 @@ class TsEntitySegmentBlockItemFileBuilder {
 
   ~TsEntitySegmentBlockItemFileBuilder() {}
 
-  KStatus Open();
-  KStatus AppendBlockItem(TsEntitySegmentBlockItem& block_item);
+  [[nodiscard]] KStatus Open();
+  [[nodiscard]] KStatus AppendBlockItem(TsEntitySegmentBlockItem& block_item);
+  [[nodiscard]] KStatus Finalize() {
+    assert(w_file_ != nullptr);
+    if (w_file_->Close() == KStatus::FAIL) {
+      LOG_ERROR("TsEntitySegmentBlockItemFileBuilder Close failed, file_path=%s", file_path_.c_str());
+      return FAIL;
+    }
+    return SUCCESS;
+  }
   MetaFileInfo GetFileInfo() { return {file_number_, w_file_->GetFileSize()}; }
 
   void MarkDelete() { w_file_->MarkDelete(); }
@@ -112,9 +128,17 @@ class TsEntitySegmentBlockFileBuilder {
 
   ~TsEntitySegmentBlockFileBuilder() {}
 
-  KStatus Open();
-  KStatus AppendBlock(const TSSlice& block, uint64_t* offset);
+  [[nodiscard]] KStatus Open();
+  [[nodiscard]] KStatus AppendBlock(const TSSlice& block, uint64_t* offset);
   MetaFileInfo GetFileInfo() { return {file_number_, w_file_->GetFileSize()}; }
+  [[nodiscard]] KStatus Finalize() {
+    assert(w_file_ != nullptr);
+    if (w_file_->Close() == KStatus::FAIL) {
+      LOG_ERROR("TsEntitySegmentBlockFileBuilder Close failed, file_path=%s", file_path_.c_str());
+      return FAIL;
+    }
+    return SUCCESS;
+  }
 
   void MarkDelete() { w_file_->MarkDelete(); }
 };
@@ -136,9 +160,17 @@ class TsEntitySegmentAggFileBuilder {
 
   ~TsEntitySegmentAggFileBuilder() {}
 
-  KStatus Open();
-  KStatus AppendAggBlock(const TSSlice& agg, uint64_t* offset);
+  [[nodiscard]] KStatus Open();
+  [[nodiscard]] KStatus AppendAggBlock(const TSSlice& agg, uint64_t* offset);
   MetaFileInfo GetFileInfo() { return {file_number_, w_file_->GetFileSize()}; }
+  [[nodiscard]] KStatus Finalize() {
+    assert(w_file_ != nullptr);
+    if (w_file_->Close() == KStatus::FAIL) {
+      LOG_ERROR("TsEntitySegmentAggFileBuilder Close failed, file_path=%s", file_path_.c_str());
+      return FAIL;
+    }
+    return SUCCESS;
+  }
 
   void MarkDelete() { w_file_->MarkDelete(); }
 };
@@ -185,12 +217,13 @@ class TsEntityBlockBuilder {
 
   timestamp64 GetTimestamp(uint32_t row_idx);
 
-  KStatus GetMetricValue(uint32_t row_idx, std::vector<TSSlice>& value, std::vector<DataFlags>& data_flags);
+  [[nodiscard]] KStatus GetMetricValue(uint32_t row_idx, std::vector<TSSlice>& value,
+                                       std::vector<DataFlags>& data_flags);
 
-  KStatus Append(const shared_ptr<TsBlockSpan>& span, bool& is_full);
+  [[nodiscard]] KStatus Append(const shared_ptr<TsBlockSpan>& span, bool& is_full);
 
-  KStatus GetCompressData(TsEntitySegmentBlockItem& blk_item, TsBufferBuilder* data_buffer,
-                          TsBufferBuilder* agg_buffer);
+  [[nodiscard]] KStatus GetCompressData(TsEntitySegmentBlockItem& blk_item, TsBufferBuilder* data_buffer,
+                                        TsBufferBuilder* agg_buffer);
 
   void Clear();
 
@@ -213,13 +246,12 @@ class TsEntitySegmentBuilder {
     bool operator!=(const TsEntityKey& other) const { return !(*this == other); }
   };
 
-  KStatus UpdateEntityItem(TsEntityKey& entity_key, TsEntitySegmentBlockItem& block_item);
+  [[nodiscard]] KStatus UpdateEntityItem(TsEntityKey& entity_key, TsEntitySegmentBlockItem& block_item);
 
-  KStatus WriteBlock(TsEntityKey& entity_key, TsSegmentWriteStats *stats);
+  [[nodiscard]] KStatus WriteBlock(TsEntityKey& entity_key, TsSegmentWriteStats* stats);
 
-  KStatus WriteCachedBlockSpan(bool call_by_vacuum, TsEntityKey& entity_key, TsSegmentWriteStats *stats);
+  [[nodiscard]] KStatus WriteCachedBlockSpan(bool call_by_vacuum, TsEntityKey& entity_key, TsSegmentWriteStats* stats);
 
-  void ReleaseBuilders();
 
   TsIOEnv* io_env_;
   fs::path root_path_;
@@ -261,66 +293,30 @@ class TsEntitySegmentBuilder {
         schema_manager_(schema_manager),
         version_manager_(version_manager),
         partition_id_(partition_id),
-        cur_entity_segment_(entity_segment),
+        cur_entity_segment_(std::move(entity_segment)),
         source_(source) {
     entity_item_file_number_ = version_manager_->NewFileNumber();
-    // entity header file
-    std::string entity_header_file_path = root_path_ / EntityHeaderFileName(entity_item_file_number_);
-    entity_item_builder_ = std::make_unique<TsEntitySegmentEntityItemFileBuilder>(io_env_, entity_header_file_path,
-                                                                                  entity_item_file_number_);
-    bool override = cur_entity_segment_ == nullptr ? true : false;
-    uint64_t block_header_file_num;
-    size_t block_header_file_size = 0;
-    uint64_t block_file_num;
-    size_t block_file_size = 0;
-    uint64_t agg_file_num;
-    size_t agg_file_size = 0;
-    if (entity_segment == nullptr) {
-      // brand new entity segment, allocate all file numbers
-      block_header_file_num = version_manager_->NewFileNumber();
-      block_file_num = version_manager_->NewFileNumber();
-      agg_file_num = version_manager_->NewFileNumber();
-    } else {
-      //  entity segment exists, reuse file numbers
-      auto info = entity_segment->GetHandleInfo();
-      block_header_file_num = info.header_b_info.file_number;
-      block_header_file_size = info.header_b_info.length;
-      block_file_num = info.datablock_info.file_number;
-      block_file_size = info.datablock_info.length;
-      agg_file_num = info.agg_info.file_number;
-      agg_file_size = info.agg_info.length;
-    }
-
-    // block header file
-    std::string block_header_file_path = root_path_ / BlockHeaderFileName(block_header_file_num);
-    block_item_builder_ = std::make_unique<TsEntitySegmentBlockItemFileBuilder>(
-        io_env_, block_header_file_path, block_header_file_num, block_header_file_size);
-    // block data file
-    std::string block_file_path = root_path_ / DataBlockFileName(block_file_num);
-    block_file_builder_ =
-        std::make_unique<TsEntitySegmentBlockFileBuilder>(io_env_, block_file_path, block_file_num, block_file_size);
-    // block agg file
-    std::string agg_file_path = root_path_ / EntityAggFileName(agg_file_num);
-    agg_file_builder_ =
-        std::make_unique<TsEntitySegmentAggFileBuilder>(io_env_, agg_file_path, agg_file_num, agg_file_size);
   }
 
-  ~TsEntitySegmentBuilder() { ReleaseBuilders(); }
+  ~TsEntitySegmentBuilder() = default;
 
-  KStatus Open();
+  [[nodiscard]] KStatus Open();
+  [[nodiscard]] KStatus Finalize();
+
 
   void PutBlockSpan(std::shared_ptr<TsBlockSpan> span) { block_spans_.push_back(std::move(span)); }
   void PutBlockSpans(std::vector<std::shared_ptr<TsBlockSpan>> spans) {
     std::move(spans.begin(), spans.end(), std::back_inserter(block_spans_));
   }
 
-  KStatus Compact(bool call_by_vacuum, TsVersionUpdate* update,
-                  std::vector<std::shared_ptr<TsBlockSpan>>* residual_spans, TsSegmentWriteStats* stats);
+  [[nodiscard]] KStatus Compact(bool call_by_vacuum, TsVersionUpdate* update,
+                                std::vector<std::shared_ptr<TsBlockSpan>>* residual_spans, TsSegmentWriteStats* stats);
 
-  KStatus WriteBatch(TSTableID tbl_id, uint32_t entity_id, uint32_t table_version, uint32_t batch_version,
-                     TSSlice data);
+  [[nodiscard]] KStatus WriteBatch(TSTableID tbl_id, uint32_t entity_id, uint32_t table_version, uint32_t batch_version,
+                                   TSSlice data);
 
-  KStatus WriteBatchFinish(TsVersionUpdate* update);
+  [[nodiscard]] KStatus WriteBatchFinish(TsVersionUpdate* update);
+
 
   void WriteBatchCancel();
 
@@ -332,22 +328,35 @@ class TsEntitySegmentBuilder {
 class TsEntitySegmentVacuumer {
  public:
   explicit TsEntitySegmentVacuumer(const std::string& root_path, TsVersionManager* version_manager, TsDataSource source);
-  KStatus Open();
+  [[nodiscard]] KStatus Open();
   void Cancel();
-  KStatus AppendEntityItem(TsEntityItem& entity_item);
-  KStatus AppendBlock(const TSSlice& block, uint64_t* offset);
-  KStatus AppendAgg(const TSSlice& agg, uint64_t* offset);
-  KStatus AppendBlockItem(TsEntitySegmentBlockItem& block_item);
+  [[nodiscard]] KStatus AppendEntityItem(TsEntityItem& entity_item);
+  [[nodiscard]] KStatus AppendBlock(const TSSlice& block, uint64_t* offset);
+  [[nodiscard]] KStatus AppendAgg(const TSSlice& agg, uint64_t* offset);
+  [[nodiscard]] KStatus AppendBlockItem(TsEntitySegmentBlockItem& block_item);
+  [[nodiscard]] KStatus Finalize() {
+    if (entity_item_builder_->Finalize() == FAIL) {
+      return FAIL;
+    }
+    if (block_item_builder_->Finalize() == FAIL) {
+      return FAIL;
+    }
+    if (block_file_builder_->Finalize() == FAIL) {
+      return FAIL;
+    }
+    return agg_file_builder_->Finalize();
+  }
+
   EntitySegmentMetaInfo GetHandleInfo();
 
  private:
   fs::path root_path_;
   TsVersionManager* version_manager_;
 
-  std::shared_ptr<TsEntitySegmentEntityItemFileBuilder> entity_item_builder_ = nullptr;
-  std::shared_ptr<TsEntitySegmentBlockItemFileBuilder> block_item_builder_ = nullptr;
-  std::shared_ptr<TsEntitySegmentBlockFileBuilder> block_file_builder_ = nullptr;
-  std::shared_ptr<TsEntitySegmentAggFileBuilder> agg_file_builder_ = nullptr;
+  std::unique_ptr<TsEntitySegmentEntityItemFileBuilder> entity_item_builder_ = nullptr;
+  std::unique_ptr<TsEntitySegmentBlockItemFileBuilder> block_item_builder_ = nullptr;
+  std::unique_ptr<TsEntitySegmentBlockFileBuilder> block_file_builder_ = nullptr;
+  std::unique_ptr<TsEntitySegmentAggFileBuilder> agg_file_builder_ = nullptr;
 
   TsDataSource source_;
 };
@@ -363,12 +372,12 @@ class TsMemEntitySegmentModifier {
   auto GetEntityAndBlockItems(TsEntitySegment* target);
   auto Modify(TsEntitySegment* base);
 
-  KStatus FirstFlushBypass(EntitySegmentMetaInfo* info);
-  KStatus NormalFlush(TsEntitySegment* base, EntitySegmentMetaInfo* info);
+  [[nodiscard]] KStatus FirstFlushBypass(EntitySegmentMetaInfo* info);
+  [[nodiscard]] KStatus NormalFlush(TsEntitySegment* base, EntitySegmentMetaInfo* info);
 
  public:
   explicit TsMemEntitySegmentModifier(TsEntitySegment* entity_segment) : entity_segment_(entity_segment) {}
 
-  KStatus PersistToDisk(TsEntitySegment* base, EntitySegmentMetaInfo* info);
+  [[nodiscard]] KStatus PersistToDisk(TsEntitySegment* base, EntitySegmentMetaInfo* info);
 };
 }  // namespace kwdbts

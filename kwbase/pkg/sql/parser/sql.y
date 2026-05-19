@@ -8123,11 +8123,15 @@ rebalance_stmt:
 // %Help: VACUUM - vacuum ts databases
 // %Category: Misc
 // %Text:
-// VACUUM TS DATABASES
+// VACUUM TS DATABASES [AGGREGATE ONLY]
 vacuum_stmt:
   VACUUM TS DATABASES
   {
     $$.val = &tree.Vacuum{}
+  }
+| VACUUM TS DATABASES AGGREGATE ONLY
+  {
+    $$.val = &tree.Vacuum{AggregateOnly: true}
   }
 | VACUUM error // SHOW HELP: VACUUM
 

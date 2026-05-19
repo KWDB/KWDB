@@ -84,7 +84,6 @@ type Shortinsert struct {
 	NeedReparse        bool
 	isValues           bool
 	Customize          bool
-	PrePlaceholder     bool
 }
 
 var intervalUnit = map[string]struct{}{
@@ -129,7 +128,6 @@ func (s *Shortinsert) init() {
 	s.ValueBracketCount = 0
 	s.NeedReparse = false
 	s.isValues = false
-	s.PrePlaceholder = false
 }
 
 func makeScanner(str string) scanner {
@@ -706,7 +704,9 @@ func (s *scanner) scanIdent(lval *sqlSymType) {
 				s.shortinsert.ValuesType = append(s.shortinsert.ValuesType, NORMALTYPE)
 			}
 		}
-		return
+		if !s.shortinsert.PrepareMode {
+			return
+		}
 	}
 
 	isExperimental := false
@@ -811,7 +811,9 @@ func (s *scanner) scanNumber(lval *sqlSymType, ch int) {
 		}
 		s.shortinsert.InsertValues = append(s.shortinsert.InsertValues, s.in[start:s.pos])
 		s.shortinsert.ValuesType = append(s.shortinsert.ValuesType, NUMTYPE)
-		return
+		if !s.shortinsert.PrepareMode {
+			return
+		}
 	}
 	var tempLval sqlSymType
 	// Disallow identifier after numerical constants e.g. "124foo".
@@ -877,9 +879,6 @@ func (s *scanner) scanPlaceholder(lval *sqlSymType) {
 	}
 	lval.str = s.in[start:s.pos]
 
-	if s.shortinsert.PrepareMode {
-		s.shortinsert.PrePlaceholder = true
-	}
 	if s.shortinsert.isTsTable {
 		s.shortinsert.Prepareplaceholder++
 	}
@@ -1085,7 +1084,9 @@ outer:
 	if s.shortinsert.isValues && s.shortinsert.isTsTable {
 		s.shortinsert.InsertValues = append(s.shortinsert.InsertValues, s.finishString(buf))
 		s.shortinsert.ValuesType = append(s.shortinsert.ValuesType, STRINGTYPE)
-		return true
+		if !s.shortinsert.PrepareMode {
+			return true
+		}
 	}
 	// tsinsert_direct handling of "column" situation
 	if len(s.shortinsert.bracket.elements) != 0 {

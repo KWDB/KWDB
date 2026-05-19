@@ -1205,7 +1205,7 @@ func (s *scope) VisitPre(expr tree.Expr) (recurse bool, newExpr tree.Expr) {
 
 	case *tree.FuncExpr:
 		if n, ok := t.Func.FunctionReference.(*tree.UnresolvedName); ok && (s.context == exprTypeSelect) {
-			if n.Parts[0] == Gapfill {
+			if n.Parts[0] == Gapfill || n.Parts[0] == Gapfillinternal {
 				if s.hasGapfill {
 					panic(pgerror.Newf(pgcode.Warning, "%s can only be used once in the select list", Gapfill))
 				} else {

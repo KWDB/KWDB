@@ -1299,8 +1299,7 @@ func TestUpdateTableStatistics_SuccessSkipsTagColumns(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// There are two data columns, each with delete and insert operations,
-	// for a total of four exec operations
+	// 两个 data 列，每列 delete + insert，共 4 次 exec
 	if len(fakeEx.execCalls) != 4 {
 		t.Fatalf("expected 4 exec calls, got %d", len(fakeEx.execCalls))
 	}

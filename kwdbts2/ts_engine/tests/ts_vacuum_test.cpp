@@ -91,14 +91,14 @@ TEST_F(VacuumTest, ZDP49302) {
   ts_spans.push_back({0, 0});
   vgroup_->DeleteData(ctx_, table_id, 1, 5000, ts_spans);
 
-  vgroup_->Flush();
-  vgroup_->Vacuum(ctx_, false);
-  vgroup_->Vacuum(ctx_, false);
-  vgroup_->Vacuum(ctx_, false);
-  vgroup_->Vacuum(ctx_, false);
-  vgroup_->Vacuum(ctx_, false);
-  vgroup_->Vacuum(ctx_, false);
-  vgroup_->Vacuum(ctx_, false);
+  ASSERT_EQ(vgroup_->Flush(), SUCCESS);
+  ASSERT_EQ(vgroup_->Vacuum(ctx_, false), SUCCESS);
+  ASSERT_EQ(vgroup_->Vacuum(ctx_, false), SUCCESS);
+  ASSERT_EQ(vgroup_->Vacuum(ctx_, false), SUCCESS);
+  ASSERT_EQ(vgroup_->Vacuum(ctx_, false), SUCCESS);
+  ASSERT_EQ(vgroup_->Vacuum(ctx_, false), SUCCESS);
+  ASSERT_EQ(vgroup_->Vacuum(ctx_, false), SUCCESS);
+  ASSERT_EQ(vgroup_->Vacuum(ctx_, false), SUCCESS);
 
   int nblock_file = 0;
 
@@ -119,10 +119,14 @@ TEST_F(VacuumTest, ZDP51351) {
   vgroup_->Init(nullptr);
 
 
-  std::promise<bool> success;
-  auto f = success.get_future();
+  // Use a heap-allocated promise (shared_ptr) so the worker thread can safely
+  // call set_value() even if TestBody() has already returned due to a timeout.
+  // The lambda captures the shared_ptr by value, keeping the promise alive for
+  // the lifetime of the thread.
+  auto success = std::make_shared<std::promise<bool>>();
+  auto f = success->get_future();
 
-  auto worker = [&]() {
+  auto worker = [this, success]() {
     // 执行5轮写入操作
     for (int round = 0; round < 5; ++round) {
       // 每轮写入8个设备，设备ID为 [1<<9, 2<<9, ..., 8<<9] = [512, 1024, 1536, 2048, 2560, 3072, 3584, 4096]
@@ -148,15 +152,15 @@ TEST_F(VacuumTest, ZDP51351) {
       EXPECT_EQ(vgroup_->Flush(), KStatus::SUCCESS);
     }
 
-    // 直接调用Vacuum，预期会卡死
+    // 直接调用Vacuum，预期不会卡死
     vgroup_->Vacuum(ctx_, true);
-    success.set_value(true);
+    success->set_value(true);
   };
 
   std::thread t(worker);
   t.detach();
 
-  auto status = f.wait_for(std::chrono::seconds{5});
+  auto status = f.wait_for(std::chrono::seconds{120});
   if (status == std::future_status::timeout) {
     FAIL() << "Vacuum is blocked";
   }

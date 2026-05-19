@@ -220,9 +220,8 @@ void TsTableSchemaManager::ReleaseOwnedSchemaResources() {
 TsTableSchemaManager::~TsTableSchemaManager() {
   if (dropped_) {
     ReleaseOwnedSchemaResources();
-    ErrorInfo err_info;
-    if (!Remove(table_path_, err_info)) {
-      LOG_WARN("remove dropped table path [%s] failed: %s", table_path_.string().c_str(), err_info.errmsg.c_str());
+    if (!Remove(table_path_)) {
+      LOG_WARN("remove dropped table path [%s] failed", table_path_.string().c_str());
     } else {
       LOG_INFO("Drop table %lu succeeded", table_id_);
     }

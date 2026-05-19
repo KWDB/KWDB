@@ -37,14 +37,13 @@ class TestTagColumn : public testing::Test {
     std::string full_path = db_path_ + db_name_;
     
     // Remove existing directory if any
-    ErrorInfo err_info;
-    if (!Remove(full_path, err_info)) {
-      LOG_WARN("Failed to remove directory %s: %s", full_path.c_str(), err_info.errmsg.c_str());
+    if (!Remove(full_path)) {
+      LOG_WARN("Failed to remove directory %s", full_path.c_str());
     }
     
     // Create directories with proper permissions using MakeDirectory
-    if (!MakeDirectory(full_path, err_info)) {
-      FAIL() << "Failed to create directory: " << full_path << " - " << err_info.errmsg;
+    if (!MakeDirectory(full_path)) {
+      FAIL() << "Failed to create directory: " << full_path;
     }
 
     tag_info_.m_id = 1;
@@ -58,9 +57,8 @@ class TestTagColumn : public testing::Test {
 
   void TearDown() override {
     std::string full_path = db_path_ + db_name_;
-    ErrorInfo err_info;
-    if (!Remove(full_path, err_info)) {
-      LOG_WARN("Failed to clean up directory %s: %s", full_path.c_str(), err_info.errmsg.c_str());
+    if (!Remove(full_path)) {
+      LOG_WARN("Failed to clean up directory %s", full_path.c_str());
     }
   }
 
@@ -245,14 +243,13 @@ class TestMMapTagColumnTable : public testing::Test {
     std::string full_path = db_path_ + tbl_sub_path_;
     
     // Remove existing directory if any
-    ErrorInfo err_info;
-    if (!Remove(full_path, err_info)) {
-      LOG_WARN("Failed to remove directory %s: %s", full_path.c_str(), err_info.errmsg.c_str());
+    if (!Remove(full_path)) {
+      LOG_WARN("Failed to remove directory %s", full_path.c_str());
     }
     
     // Create directories with proper permissions using MakeDirectory
-    if (!MakeDirectory(full_path, err_info)) {
-      FAIL() << "Failed to create directory: " << full_path << " - " << err_info.errmsg;
+    if (!MakeDirectory(full_path)) {
+      FAIL() << "Failed to create directory: " << full_path;
     }
 
     schema_.clear();
@@ -277,9 +274,8 @@ class TestMMapTagColumnTable : public testing::Test {
 
   void TearDown() override {
     // Clean up test directory
-    ErrorInfo err_info;
-    if (!Remove(db_path_ + tbl_sub_path_, err_info)) {
-      LOG_WARN("Failed to clean up directory: %s", err_info.errmsg.c_str());
+    if (!Remove(db_path_ + tbl_sub_path_)) {
+      LOG_WARN("Failed to clean up directory");
     }
   }
 

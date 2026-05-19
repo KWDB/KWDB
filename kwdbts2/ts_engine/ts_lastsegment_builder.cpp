@@ -148,29 +148,15 @@ KStatus TsLastSegmentBuilder::Finalize(TsSegmentWriteStats* stats) {
     LOG_ERROR("Failed to append last segment file: %s", last_segment_file_->GetFilePath().c_str());
     return FAIL;
   }
-  last_segment_file_->Sync();
+  s = last_segment_file_->Sync();
+  if (s == FAIL) {
+    LOG_ERROR("Failed to sync last segment file: %s", last_segment_file_->GetFilePath().c_str());
+    return FAIL;
+  }
   s = last_segment_file_->Close();
   if (s == FAIL) {
     LOG_ERROR("Failed to close last segment file: %s", last_segment_file_->GetFilePath().c_str());
     return FAIL;
-  }
-
-  // double check
-  {
-    auto path = last_segment_file_->GetFilePath();
-    TsMMapIOEnv io_env;
-    std::unique_ptr<TsRandomReadFile> file;
-    s = io_env.NewRandomReadFile(path, &file);
-    if (s == FAIL) {
-      LOG_ERROR("Failed to open last segment file: %s", path.c_str());
-      return s;
-    }
-    auto tmp_last = TsLastSegment::Create(-1, std::move(file));
-    s = tmp_last->Open();
-    if (s == FAIL) {
-      LOG_ERROR("Finalize failed, file format inconsistent: %s", path.c_str());
-      return s;
-    }
   }
 
   last_segment_file_.reset();

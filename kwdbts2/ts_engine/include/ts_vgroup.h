@@ -475,7 +475,7 @@ class TsVGroup {
     }
   }
 
-  KStatus Vacuum(kwdbContext_p ctx, bool force);
+  KStatus Vacuum(kwdbContext_p ctx, bool force, bool only_agg = false);
 
   KStatus VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitionVersion> partition, bool force);
 
@@ -518,12 +518,14 @@ class TsVGroup {
     const std::map<std::shared_ptr<TsTableSchemaManager>, std::vector<uint32_t>>& table_entity_map,
     std::map<std::shared_ptr<TsTableSchemaManager>, ClassifiedEntities>& cla_entities, bool* should_calc);
 
-  KStatus PartitionCompactNoLockImpl(kwdbContext_p ctx, bool force_write_entity,
-                                     const std::shared_ptr<const TsPartitionVersion>& partition, int level, int group,
-                                     const std::vector<std::shared_ptr<TsLastSegment>>& lastsegments);
+  [[nodiscard]] KStatus PartitionCompactNoLockImpl(kwdbContext_p ctx, bool force_write_entity,
+                                                   const std::shared_ptr<const TsPartitionVersion>& partition,
+                                                   int level, int group,
+                                                   const std::vector<std::shared_ptr<TsLastSegment>>& lastsegments);
 
-  KStatus PartitionCompact(kwdbContext_p ctx, std::shared_ptr<const TsPartitionVersion> partition,
-                           bool call_by_vacuum = false, bool force_vacuum = false, bool* skipped = nullptr);
+  [[nodiscard]] KStatus PartitionCompact(kwdbContext_p ctx, std::shared_ptr<const TsPartitionVersion> partition,
+                                         bool call_by_vacuum = false, bool force_vacuum = false,
+                                         bool* skipped = nullptr);
 
   KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, const TsBlockSpan& ts_blk_span,
                                       const vector<AttributeInfo>& attrs, ResultSet* res);

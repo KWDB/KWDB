@@ -587,7 +587,7 @@ KwTsSpan ts_span, TS_OSN osn, uint64_t* count) {
     LOG_ERROR("GetEntityIdByHashSpan failed.");
     return s;
   }
-  LOG_INFO("GetEntityIdByHashSpan entity num[%lu]", entity_store.size());
+  // LOG_INFO("GetEntityIdByHashSpan entity num[%lu]", entity_store.size());
   s = GetEntityRowCount(ctx, entity_store, {ts_span}, osn, count);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetEntityRowCount failed.");

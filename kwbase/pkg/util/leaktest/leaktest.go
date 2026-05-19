@@ -50,7 +50,7 @@ import (
 // interestingGoroutines returns all goroutines we care about for the purpose
 // of leak checking. It excludes testing or runtime ones.
 func interestingGoroutines() map[int64]string {
-	buf := make([]byte, 2<<20)
+	buf := make([]byte, 2<<24)
 	buf = buf[:runtime.Stack(buf, true)]
 	gs := make(map[int64]string)
 	for _, g := range strings.Split(string(buf), "\n\n") {

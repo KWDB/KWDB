@@ -50,7 +50,7 @@ bool IsExists(const fs::path& path);
  * @param path The path of file or directory
  * @return false/true
  */
-bool Remove(const string& path, ErrorInfo& error_info = getDummyErrorInfo());
+bool Remove(const string& path);
 
 /**
  * @brief Remove directory contents
@@ -64,7 +64,7 @@ bool RemoveDirContents(const string& dir_path);
  * @param dir_path The path of directory
  * @return true/false
  */
-bool MakeDirectory(const fs::path& dir_path, ErrorInfo& error_info = getDummyErrorInfo());
+bool MakeDirectory(const fs::path& dir_path);
 
 /**
  * @brief Get the modify time of file
@@ -79,23 +79,6 @@ std::time_t ModifyTime(const std::string& filePath);
  * @return true/false
  */
 bool System(const string& cmd,  bool print_log = true, ErrorInfo& error_info = getDummyErrorInfo());
-
-
-/**
- * Change link directory for link_path
- * @param link_path source directory path
- * @param new_path dest directory path
- * @return true/false
- */
-bool ChangeDirLink(string link_path, string new_path, ErrorInfo& error_info);
-
-/**
- * Resolve a symbolic link to its real (or absolute) path
- * @param link_path
- * @param error_info
- * @return
- */
-std::string ParseLinkDirToReal(string link_path, ErrorInfo& error_info);
 
 bool DirExists(const std::string& path);
 

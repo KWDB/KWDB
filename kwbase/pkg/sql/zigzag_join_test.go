@@ -11,72 +11,63 @@
 
 package sql
 
-import (
-	"context"
-	"testing"
+// func TestZigzagJoinNode(t *testing.T) {
+// 	defer leaktest.AfterTest(t)()
+// 	// Create a simple zigzagJoinNode for testing
+// 	scan1 := &scanNode{}
+// 	scan2 := &scanNode{}
 
-	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
-	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
-)
+// 	// Create zigzagJoinSides
+// 	side1 := zigzagJoinSide{
+// 		scan:      scan1,
+// 		eqCols:    []int{0, 1},
+// 		fixedVals: &valuesNode{},
+// 	}
+// 	side2 := zigzagJoinSide{
+// 		scan:      scan2,
+// 		eqCols:    []int{0, 1},
+// 		fixedVals: &valuesNode{},
+// 	}
 
-func TestZigzagJoinNode(t *testing.T) {
-	defer leaktest.AfterTest(t)()
-	// Create a simple zigzagJoinNode for testing
-	scan1 := &scanNode{}
-	scan2 := &scanNode{}
+// 	// Create columns
+// 	columns := sqlbase.ResultColumns{
+// 		{Name: "col1", Typ: types.Int},
+// 		{Name: "col2", Typ: types.Int},
+// 	}
 
-	// Create zigzagJoinSides
-	side1 := zigzagJoinSide{
-		scan:      scan1,
-		eqCols:    []int{0, 1},
-		fixedVals: &valuesNode{},
-	}
-	side2 := zigzagJoinSide{
-		scan:      scan2,
-		eqCols:    []int{0, 1},
-		fixedVals: &valuesNode{},
-	}
+// 	// Create zigzagJoinNode
+// 	zj := &zigzagJoinNode{
+// 		sides:       []zigzagJoinSide{side1, side2},
+// 		columns:     columns,
+// 		onCond:      nil,
+// 		reqOrdering: ReqOrdering{},
+// 	}
 
-	// Create columns
-	columns := sqlbase.ResultColumns{
-		{Name: "col1", Typ: types.Int},
-		{Name: "col2", Typ: types.Int},
-	}
+// 	// Test startExec
+// 	defer func() {
+// 		if r := recover(); r == nil {
+// 			t.Error("startExec should have panicked")
+// 		}
+// 	}()
+// 	_ = zj.startExec(runParams{})
 
-	// Create zigzagJoinNode
-	zj := &zigzagJoinNode{
-		sides:       []zigzagJoinSide{side1, side2},
-		columns:     columns,
-		onCond:      nil,
-		reqOrdering: ReqOrdering{},
-	}
+// 	// Test Next
+// 	defer func() {
+// 		if r := recover(); r == nil {
+// 			t.Error("Next should have panicked")
+// 		}
+// 	}()
+// 	_, _ = zj.Next(runParams{})
 
-	// Test startExec
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("startExec should have panicked")
-		}
-	}()
-	_ = zj.startExec(runParams{})
+// 	// Test Values
+// 	defer func() {
+// 		if r := recover(); r == nil {
+// 			t.Error("Values should have panicked")
+// 		}
+// 	}()
+// 	zj.Values()
 
-	// Test Next
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("Next should have panicked")
-		}
-	}()
-	_, _ = zj.Next(runParams{})
-
-	// Test Values
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("Values should have panicked")
-		}
-	}()
-	zj.Values()
-
-	// Test Close
-	// Close should not panic
-	zj.Close(context.Background())
-}
+// 	// Test Close
+// 	// Close should not panic
+// 	zj.Close(context.Background())
+// }

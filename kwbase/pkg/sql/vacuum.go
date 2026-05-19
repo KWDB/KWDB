@@ -18,11 +18,12 @@ import (
 )
 
 type vacuumNode struct {
+	aggregateOnly bool
 }
 
 // Vacuum creates a vacuum plan node.
 func (p *planner) Vacuum(ctx context.Context, n *tree.Vacuum) (planNode, error) {
-	return &vacuumNode{}, nil
+	return &vacuumNode{aggregateOnly: n.AggregateOnly}, nil
 }
 
 func (*vacuumNode) startExec(params runParams) error {

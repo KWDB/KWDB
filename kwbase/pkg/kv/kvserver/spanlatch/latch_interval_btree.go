@@ -112,32 +112,28 @@ func upperBound(c *latch) keyBound {
 	return keyBound{key: c.Key(), inc: true}
 }
 
-type leafNode struct {
+type node struct {
 	ref   int32
 	count int16
 	leaf  bool
 	max   keyBound
 	items [maxItems]*latch
-}
 
-type node struct {
-	leafNode
+	// place holder for children pointers
 	children [maxItems + 1]*node
 }
 
-func leafToNode(ln *leafNode) *node {
-	return (*node)(unsafe.Pointer(ln))
-}
+type leafNode = node
 
 func nodeToLeaf(n *node) *leafNode {
 	return (*leafNode)(unsafe.Pointer(n))
 }
 
-var leafPool = sync.Pool{
-	New: func() interface{} {
-		return new(leafNode)
-	},
-}
+// var leafPool = sync.Pool{
+// 	New: func() interface{} {
+// 		return new(node)
+// 	},
+// }
 
 var nodePool = sync.Pool{
 	New: func() interface{} {
@@ -146,7 +142,7 @@ var nodePool = sync.Pool{
 }
 
 func newLeafNode() *node {
-	n := leafToNode(leafPool.Get().(*leafNode))
+	n := nodePool.Get().(*node)
 	n.leaf = true
 	n.ref = 1
 	return n
@@ -154,6 +150,7 @@ func newLeafNode() *node {
 
 func newNode() *node {
 	n := nodePool.Get().(*node)
+	n.leaf = false
 	n.ref = 1
 	return n
 }
@@ -200,7 +197,7 @@ func (n *node) decRef(recursive bool) {
 	if n.leaf {
 		ln := nodeToLeaf(n)
 		*ln = leafNode{}
-		leafPool.Put(ln)
+		nodePool.Put(ln)
 	} else {
 		// Release child references first, if requested.
 		if recursive {

@@ -756,7 +756,6 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
   }
   assert(end_it > begin_it);
 
-  std::shared_ptr<TsLastBlock> block = nullptr;
   TsBlockSpan* template_blk_span = nullptr;
   for (const auto& span : filter.spans_) {
     if (span.ts_span.begin > span.ts_span.end) {
@@ -781,11 +780,10 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       //  we need to read the block to do further filtering.
       int block_idx = it - block_indices.begin();
 
-      if (block == nullptr || block->GetBlockID() != block_idx) {
-        s = this->GetBlock(block_idx, &block);
-        if (s == FAIL) {
-          return s;
-        }
+      std::shared_ptr<TsLastBlock> block;
+      s = this->GetBlock(block_idx, &block);
+      if (s == FAIL) {
+        return s;
       }
       auto ts = block->GetTimestamps();
       auto entities = block->GetEntities();
@@ -822,8 +820,9 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
         // all osn in the block is in the span, we can directly use the end_idx;
         if (end_idx - start_idx > 0) {
           std::shared_ptr<TsBlockSpan> cur_span;
-          auto s = TsBlockSpan::MakeNewBlockSpan(template_blk_span, filter.vgroup_id, filter.entity_id, block, start_idx,
-                                        end_idx - start_idx, scan_schema, tbl_schema_mgr, cur_span);
+          auto s =
+              TsBlockSpan::MakeNewBlockSpan(template_blk_span, filter.vgroup_id, filter.entity_id, std::move(block),
+                                            start_idx, end_idx - start_idx, scan_schema, tbl_schema_mgr, cur_span);
           if (s != KStatus::SUCCESS) {
              LOG_ERROR("TsBlockSpan::GenDataConvertfailed, entity_id=%lu.", filter.entity_id);
               return s;

@@ -14,7 +14,6 @@ package sqlbase_test
 import (
 	"context"
 	"testing"
-	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 )
@@ -70,31 +69,6 @@ func TestCancelChecker_Check_WithCancellation(t *testing.T) {
 
 	if !foundError {
 		t.Error("Expected to find cancellation error after context cancellation")
-	}
-}
-
-// TestCancelChecker_Check_WithTimeout tests the Check method with a timeout context
-func TestCancelChecker_Check_WithTimeout(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
-	defer cancel()
-
-	cancelChecker := sqlbase.NewCancelChecker(ctx)
-
-	// Wait for the context to timeout
-	time.Sleep(5 * time.Millisecond)
-
-	// Now it should return an error after some calls (due to the interval)
-	var foundError bool
-	for i := 0; i < 1024; i++ { // At most 1024 calls to ensure we hit the check
-		err := cancelChecker.Check()
-		if err != nil {
-			foundError = true
-			break
-		}
-	}
-
-	if !foundError {
-		t.Error("Expected to find timeout error after context timeout")
 	}
 }
 

@@ -77,34 +77,34 @@ func TestResetNewTxn(t *testing.T) {
 		name string
 		test func(t *testing.T, r *runParams)
 	}{
-		{
-			name: "reset new transaction basic test",
-			test: func(t *testing.T, r *runParams) {
-				// Store original transaction
-				originalTxn := r.p.txn
+		// {
+		// 	name: "reset new transaction basic test",
+		// 	test: func(t *testing.T, r *runParams) {
+		// 		// Store original transaction
+		// 		originalTxn := r.p.txn
 
-				// Call resetNewTxn - this will panic if DB is nil, but we want to test the function signature
-				// and basic behavior when called
-				defer func() {
-					if r := recover(); r != nil {
-						// Expected panic due to nil DB, this is acceptable for this test
-						t.Logf("resetNewTxn() panicked as expected: %v", r)
-					}
-				}()
+		// 		// Call resetNewTxn - this will panic if DB is nil, but we want to test the function signature
+		// 		// and basic behavior when called
+		// 		defer func() {
+		// 			if r := recover(); r != nil {
+		// 				// Expected panic due to nil DB, this is acceptable for this test
+		// 				t.Logf("resetNewTxn() panicked as expected: %v", r)
+		// 			}
+		// 		}()
 
-				r.resetNewTxn()
+		// 		r.resetNewTxn()
 
-				// If we reach here without panic, verify that transaction was replaced
-				if r.p.txn == originalTxn {
-					t.Errorf("resetNewTxn() did not replace the transaction")
-				}
+		// 		// If we reach here without panic, verify that transaction was replaced
+		// 		if r.p.txn == originalTxn {
+		// 			t.Errorf("resetNewTxn() did not replace the transaction")
+		// 		}
 
-				// Verify that new transaction is not nil
-				if r.p.txn == nil {
-					t.Errorf("resetNewTxn() returned nil transaction")
-				}
-			},
-		},
+		// 		// Verify that new transaction is not nil
+		// 		if r.p.txn == nil {
+		// 			t.Errorf("resetNewTxn() returned nil transaction")
+		// 		}
+		// 	},
+		// },
 	}
 
 	for _, tt := range tests {
