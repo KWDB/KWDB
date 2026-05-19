@@ -1,0 +1,437 @@
+&#x20;
+
+&#x20;
+
+&#x20;
+
+*开务数据库*
+
+# **设计文档**
+
+&#x20;
+
+<<需求标题>>
+
+<<副标题，必要时>>
+
+&#x20;
+
+&#x20;&#x20;
+
+**<span style="color: rgb(216,57,49); background-color: inherit">浪潮机密，上海沄熹机密</span>**
+
+&#x20;
+
+文件控制信息
+
+**<span style="color: rgb(216,57,49); background-color: inherit">本文档全文可以中英文混杂，但描述和用词务必统一和准确</span>**
+
+&#x20;
+
+# 1. 文档说明
+
+## 1.1 术语与缩写解释
+
+
+
+## 1.2 关联文档
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 需求文档</span>*
+
+| 序号 | 需求池ID<br /> | Devops ID<br /> | 需求标题<br /> | 功能规格书审批链接 | 备注 |
+| -- | ----------- | --------------- | ---------- | --------- | -- |
+|    |             |                 |            |           |    |
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 本特性功能规格书</span>*
+
+
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 本特性历史规格和设计文档， 密切相关特性的文档</span>*
+
+
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 参考的外部设计文档和材料信息</span>*
+
+
+
+# 2. 需求与设计目标
+
+## 2.1 需求概述
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 需求的核心诉求，交付目标和边界</span>*
+
+
+
+## 2.2 需求的技术拆解
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//  从技术的角度讲, 当前需求意味着要采取什么样的手段,  解决什么样的问题，是否/为什么需要做设计变更或调整</span>*
+
+
+
+## 2.3 设计目标 vs 不支持的目标
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//  哪些需求/功能/性能指标 是本次设计要保证的</span>*
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//  本次设计明确放弃了哪些功能/性能/兼容性/扩展性指标</span>*
+
+
+
+# 3. 设计概述
+
+## 3.1 设计背景
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//  与这次设计相关的代码架构、模块划分、线程/协程现状; </span>*
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//  当前产品和模块存在的架构约束/限制/要求, 本次设计是否会突破或者调整, 突破和调整了什么</span>*
+
+
+
+## 3.2 设计哲学/思路/参照
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 当前设计思路的基础是什么?  是仿照其它竞品的思路, 参照已有的材料, 还是独创思路?</span>*
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 是完全复刻某个设计, 还是在已知的方案上做调整? </span>*
+
+
+
+## 3.3 整体介绍
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//概要设计，设计文档总体介绍，比如整体背景、整体架构图、各大模块关系等等。</span>*
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//视情况可以添加多个小节</span>*
+
+&#x20;
+
+## 3.4 线程/协程变化
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 是否有新进程/线程/协程的引入?  与原有线程/协程之间的关联关系   需使用活动图等方式进行描述</span>*
+
+
+
+## 3.5 模块新增或变化
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 简述为了实现功能新增了哪些模块; 或者哪些现有模块发生了什么变化</span>*
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 对于新增模块, 除了文字描述, 最好使用类图等机制描述清楚与原有模块之间的关系</span>*
+&#x20;
+
+## 3.6 运行流程变化
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 简述原有的处理流程哪里发生了变化。 结合上面模块变化的描述，把流程变化和模块变化使用活动图等形式进行差异说明</span>*
+
+
+## 3.7 外部依赖变化
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 当前设计是否引起对外依赖（ 如第三方库，OS版本，硬件）等的变化</span>*
+
+
+
+## 3.8 其它设计方案及分析
+
+*/<span style="color: rgb(36,91,219); background-color: inherit">/ 除了当前的推荐方案，还有哪些考虑过的备选方案，描述备选的优缺点以及落选原因</span>*
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// </span> <span style="color: rgb(36,91,219); background-color: inherit"> 为什么采取目前这个设计方案;   </span> <span style="color: rgb(36,91,219); background-color: inherit">产品整体架构, 功能/性能等限制造成的设计限制等因素</span>*&#x20;
+
+
+
+## 3.9 重构考量
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//  针对目前设计存在的功能限制, 未来进行重构的方向是什么，哪些设计部分是比较问题不需要重构的； 哪些部分大概率需要重构</span>*
+
+*&#x20;*
+
+# 4. 详细设计
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 对应第三章的协程/线程, 模块, 流程3个大的方向, 这个章节做详细介绍</span>*
+
+## 4.1 线程/协程设计
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//针对每个新增或发生变化的线程/协程做出说明, 没有此类变化的写不适用</span>*
+
+### 4.1.1 线程/协程创建和生命周期
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//  父线程/协程是谁, 创建时机, 设计生命周期</span>*
+
+&#x20;
+
+### 4.1.2 与其它线程/协程的协作关系
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 与哪些其它线程/协程协作, 彼此同步协调机制是什么</span>*
+
+
+
+### 4.1.3 异常退出或中止
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//  有无异常退出的情况,如何退出, 如何中止</span>*
+
+
+
+## 4.2 模块设计
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 把下面小节中的&quot;模块1&quot; 等替换为实际模块名称, 对涉及模块分别进行描述</span>*
+
+### 4.2.1 <u>模块1 </u>具体变化
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//说明特性核心逻辑运行时模块1与其它模块之间的调用流程或运行过程；如果是单一模块内的功能，需要写类或者函数间的调用关系</span>*
+
+#### 4.2.1.1 模块内部类/数据结构设计
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 新增或改变了哪些类或数据结构 </span>*
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 类/数据结构的可见范围是什么, 或发生了什么变化;   类/数据结构的声明周期是什么, 或发生了什么变化</span>*
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 考虑使用类图的方式标明变化内容</span>*
+
+
+
+#### 4.2.1.2 流程变化
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//视情况使用时序图/流程图/状态图等，并配有文字描述该模块的逻辑设计，需要细化到主干流程的具体支线流程等。</span>*
+
+*&#x20;*
+
+#### 4.2.1.3 对其它模块接口变化
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 此模块对其它模块接口是否发生变化, 如何变化</span>*
+
+
+
+#### 4.2.1.4 错误处理
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//   提供的接口是否会校验输入参数的合法性；  </span>*
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// </span> <span style="color: rgb(36,91,219); background-color: inherit">返回值是否保证合法有效；  </span>*
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//</span> <span style="color: rgb(36,91,219); background-color: inherit">如果内部出错, 接口如何反馈错误情况；  </span>*
+
+
+
+### 4.2.2 <u>模块2 </u>具体变化
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//说明特性核心逻辑运行时模块1与其它模块之间的调用流程或运行过程；如果是单一模块内的功能，需要写类或者函数间的调用关系</span>*
+
+#### 4.2.2.1 模块内部类/数据结构设计
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 新增或改变了哪些类或数据结构 </span>*
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 类/数据结构的可见范围是什么, 或发生了什么变化;   类/数据结构的声明周期是什么, 或发生了什么变化</span>*
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 考虑使用类图的方式标明变化内容</span>*
+
+
+
+#### 4.2.2.2 流程变化
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//视情况使用时序图/流程图/状态图等，并配有文字描述该模块的逻辑设计，需要细化到主干流程的具体支线流程等。</span>*
+
+*&#x20;*
+
+#### 4.2.2.3 对其它模块接口变化
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 此模块对其它模块接口是否发生变化, 如何变化</span>*
+
+
+
+#### 4.2.2.4 错误处理
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//   提供的接口是否会校验输入参数的合法性；  </span>*
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// </span> <span style="color: rgb(36,91,219); background-color: inherit">返回值是否保证合法有效；  </span>*
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//</span> <span style="color: rgb(36,91,219); background-color: inherit">如果内部出错, 接口如何反馈错误情况；  </span>*
+
+
+
+## 4.3 重点流程变化
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 除了第二章概述部分意外, 如果本特性开发涉及非典型, 或者特殊流程, 需要在这里说明.   典型的的重点流程包括:</span>*
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 1)  在软件分层 + 逐层调用的架构下, 而本次设计引入了 跨层调用</span>*
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 2) 模块间或模块内递归/循环调用</span>*
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 3) </span> <span style="color: rgb(36,91,219); background-color: inherit">明显偏离原有架构的调用流程, 例如各种短接</span>*
+
+
+
+# 5. 外部接口设计
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 外部接口是指用户可见的接口</span>*
+
+## 5.1 新增外部接口或接口变化
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 外部用户可见的接口发生了什么变化，描述所有外部使用本模块的接口定义及行为(正常返回、错误处理等)，比如：</span>*
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//说明：添加2个整数，作为指针返回</span>*
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//Input:</span>*
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//         int arg1，第一个整数</span>*
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//         int arg2，第二个整数</span>*
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//         输入*结果，指向计算结果的指针</span>*
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//Output:</span>*
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//         int，错误代码的指示符，-1表示溢出；</span>*
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//                       -2表示XX；0表示成功；当指标为-1时</span>*
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//                       或-2，结果是未定义。</span>*
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//int添加(int arg1、int arg2、int*结果）</span>*
+
+
+
+## 5.2 接口设计背景
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 为什么做出如此设计, 是否参照其它产品的接口</span>*
+
+
+
+## 5.3 接口兼容性
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 是否具备兼容性, 如何解决不兼容的问题</span>*
+
+
+
+## 5.4 接口扩展或重构考量
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 未来可能的新增场景或用户功能如何扩展;  如果考虑重构, 思路是什么</span>*
+
+
+
+# 6. 关键算法
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//对于某些算法密集的特性，如加密、压缩，或为了提高计算性能的算法优化，在本章阐述算法设计；对于包含特定关键算法的特性，如</span> <span style="color: rgb(36,91,219); background-color: inherit">内存</span> <span style="color: rgb(36,91,219); background-color: inherit">管理、</span> <span style="color: rgb(36,91,219); background-color: inherit">消息队列</span> <span style="color: rgb(36,91,219); background-color: inherit">、也需要在本章进行阐述；不涉及写 N/A </span>*
+
+
+
+# 7. 非功能性设计
+
+## 7.1 性能分析设计
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 对于涉及密集数据计算，数据迁移等性能相关场景，描述设计方案在性能方面的考虑 </span>*
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 非计算密集型模块或特性是否会有性能敏感点, 例如全局/局部锁等等, 在这里明确说明</span>*
+
+
+
+## 7.2 资源占用分析和设计
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 本次设计对于各种资源的使用是什么样的, 各种资源主要包括 CPU、内存、硬盘、网络  等硬件资源， 以及线程、文件句柄等 OS 内软件资源</span>*
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 本次设计如果显著增加了某种资源的使用， 需要说明在哪个模块/流程中增加了资源占用, 资源占用量(最小值, 最大值, 抖动情况),  资源持有时长, 资源回收机制和时机等</span>*
+
+
+
+## 7.3 安全性设计
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 对于非安全方面的特性, 描述这个特性设计方案在安全及隐私保护方面的考虑，包括用户认证、权限管理、数据加密等</span>*
+
+
+
+## 7.4 低版本兼容性设计
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//描述设计方案在</span> <span style="color: rgb(36,91,219); background-color: inherit">兼容</span> <span style="color: rgb(36,91,219); background-color: inherit">低版本方面的设计</span>*
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 是否支持原址升级/滚动升级, 如何实现原址升级;  如果有不兼容特性, 处理思路是什么?</span>*
+
+
+
+## 7.5 高可用设计
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 当前设计是否涉及/如何支持高可用性?  包括不同集群形态和主备模模式等</span>*
+
+
+
+## 7.6 监控运维设计
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 当前设计如何支持用户监控/观测和运维本特性/产品</span>*
+
+
+
+## 7.7 部署, 运行和底层依赖
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 涉及到部署/运行和底层依赖的部分，此次设计的原理是什么？ 不涉及写N/A, 例：新的独立部署组件，需要改变部署路径权限;  如果依赖特定第三库, 如何在启动或调用时确认版本正确和兼容性?</span>*
+
+
+
+## 7.8 代码结构改变
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//代码结构改变情况，主要针对有大量代码增加或者重构的情况，描述新增或改动的代码在代码树中的位置 </span>*
+
+&#x20;
+
+## 7.9 其它非功能性设计
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//描述设计方案在其它非功能性方面的考虑</span>*
+
+
+
+# 8. 测试设计考虑
+
+## 8.1 单元测试设计
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//描述单元测试的设计考量、覆盖度以及策略</span>*
+
+
+
+## 8.2 功能测试方案和建议
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//描述功能集成需要考虑的方面，本小节是给测试团队提供相应方面的建议</span>*
+
+
+
+## 8.3 性能测试方案和建议
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//描述性能需要考虑的方面，本小节是给测试团队提供相应方面的建议</span>*
+
+
+
+## 8.4 Regression Test测试建议
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//描述</span> <span style="color: rgb(36,91,219); background-color: inherit">Regression Test</span> <span style="color: rgb(36,91,219); background-color: inherit">需要考虑的方面，本小节是给测试团队提供相应方面的建议</span>*
+
+## 8.5 压力测试建议
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//描述压力需要考虑的方面，本小节是给测试团队提供相应方面的建议</span>*
+
+## 8.6 故障注入测试建议
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//描述</span> <span style="color: rgb(36,91,219); background-color: inherit">故障注入</span> <span style="color: rgb(36,91,219); background-color: inherit">需要考虑的方面，本小节是给测试团队提供相应方面的建议</span>*
+
+
+
+# 9. 专利内容
+
+*<span style="color: rgb(36,91,219); background-color: inherit">// 可以申请专利的算法，数据结构、系统架构等</span>*
+
+
+
+# 10. 参考资料
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//描述本设计依赖、引用或参考的文献或设计文档</span>*
+
+&#x20;
+
+# 11. 设计变更请求 (DCR)
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//本章节列举设计改变需求，在总体设计结束后如有需要进行小的设计改变，则需要提出设计改变需求，设计改变需求视情况可有多次</span>*
+
+## 11.1 DCR1概述
+
+*<span style="color: rgb(36,91,219); background-color: inherit"> //概要描述本设计需求所要解决的问题和本需求提出的解决方案。</span>*
+
+
+
+## 11.2 DCR1详细描述
+
+*<span style="color: rgb(36,91,219); background-color: inherit">//详细描述本需求提出的解决方案。</span>*
+
+
+## 11.3 DCR Review成员
+
+
+
