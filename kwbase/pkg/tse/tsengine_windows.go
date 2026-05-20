@@ -93,7 +93,7 @@ var TsPayloadSizeLimit = settings.RegisterNonNegativeIntSetting(
 	"ts.payload_size_limit",
 	"max size of payload(bytes)",
 	1<<20, // (1MiB)
-) //.WithSystemAdmin() // douzt: TOOD
+) //.WithSystemAdmin() // douzt: TODO
 
 var ErrNotSupportTsEngine = errors.New("ts engine does not support Windows environment.")
 
@@ -412,7 +412,7 @@ var TsWALCheckpointInterval = settings.RegisterPublicDurationSetting(
 	"ts.wal.checkpoint_interval",
 	"ts WAL checkpoint interval in TsEngine",
 	time.Minute,
-) //.WithSystemAdmin() // douzt: TOOD
+) //.WithSystemAdmin() // douzt: TODO
 
 // SQLTimeseriesTrace set trace for timeseries.
 var SQLTimeseriesTrace = settings.RegisterStringSetting(

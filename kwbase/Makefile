@@ -470,8 +470,7 @@ EXCLUDE_UNWIND := $(or $(findstring aarch64,$(TARGET_TRIPLE)), \
                        $(findstring windows,$(TARGET_TRIPLE)), \
                        $(findstring mingw,$(TARGET_TRIPLE)), \
                        $(findstring win32,$(TARGET_TRIPLE)))
-$(info target-is-windows: $(target-is-windows))
-$(info EXCLUDE_UNWIND: $(EXCLUDE_UNWIND))
+$(info EXCLUDE_UNWIND: $(EXCLUDE_UNWIND) in Env $(target-is-windows))
 
 # CMAKE_TARGET_MESSAGES=OFF prevents CMake from printing progress messages
 # whenever a target is fully built to prevent spammy output from make when
@@ -534,7 +533,6 @@ LDFLAGS += -L$(GOPATH)/native/kwdbts2/third_party/lib -L$(GOPATH)/native/kwdbts2
 endif
 
 CGO_LDFLAGS = $(filter-out -static,$(LDFLAGS)) -ldl
-$(info $(CGO_LDFLAGS))
 export LDFLAGS CGO_LDFLAGS
 
 C_LIBS_COMMON = \
@@ -1023,6 +1021,7 @@ testoptlogic: TESTS := TestExecBuild/$(logic-test-selector)
 # -config, the extra initialization overhead is averted.
 testbaselogic testoptlogic: TESTFLAGS := -test.v $(if $(FILES),-show-sql) $(if $(SHOWLOGS),-show-logs $(SHOWLOGS)) $(if $(TESTCONFIG),-config $(TESTCONFIG))
 testbaselogic testoptlogic:
+	@echo  $(<F) -test.run "$(TESTS)" -test.timeout $(TESTTIMEOUT) $(TESTFLAGS)
 	cd $($(<F)-package) && $(<F) -test.run "$(TESTS)" -test.timeout $(TESTTIMEOUT) $(TESTFLAGS)
 
 testraceslow: override GOFLAGS += -race

@@ -305,7 +305,7 @@ select regexp_replace(kwdb_internal.node_executable_version()::string, '(-\d+)?$
 20.1
 
 query ITTT colnames
-select node_id, component, field, regexp_replace(regexp_replace(value, '^\d+$', '<port>'), e':\\d+', ':<port>') as value from kwdb_internal.node_runtime_info
+select node_id, component, field, regexp_replace(regexp_replace(regexp_replace(value, '%5C', '%2F', 'g'), '^\d+$', '<port>'), e':\\d+', ':<port>') as value from kwdb_internal.node_runtime_info
 ----
 node_id  component  field   value
 1        DB         URL     postgresql://root@127.0.0.1:<port>?sslcert=test_certs%2Fclient.root.crt&sslkey=test_certs%2Fclient.root.key&sslmode=verify-full&sslrootcert=test_certs%2Fca.crt
