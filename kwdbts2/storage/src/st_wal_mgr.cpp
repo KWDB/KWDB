@@ -1203,10 +1203,12 @@ KStatus WALMgr::SwitchNextFile(TS_OSN first_lsn) {
     LOG_ERROR("Failed to FlushWithoutLock.")
     return FAIL;
   }
+  file_mgr_->Close();
   if (-1 == kwdb_rename(file_mgr_->getTmpFilePath().c_str(), file_mgr_->getFilePath().c_str())) {
     LOG_ERROR("Failed to rename WAL file.")
     return KStatus::FAIL;
   }
+  file_mgr_->Open();
   return KStatus::SUCCESS;
 }
 KStatus WALMgr::SwitchLastFile(kwdbContext_p ctx, TS_OSN last_lsn) {
