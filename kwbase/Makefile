@@ -185,6 +185,7 @@ INSTALL      := install
 prefix       := /usr/local
 bindir       := $(prefix)/bin
 
+UNAME = $(shell uname)
 host-is-macos := $(findstring Darwin,$(UNAME))
 host-is-mingw := $(findstring MINGW,$(UNAME))
 
@@ -452,6 +453,7 @@ endif
 # path and override the rest of the variables that immediately follow as
 # necessary. For an example, see build/builder/cmd/mkrelease, which sets these
 # variables appropriately for the toolchains baked into the builder image.
+HOST_TRIPLE = $(shell gcc -dumpmachine)
 TARGET_TRIPLE := $(HOST_TRIPLE)
 XCMAKE_SYSTEM_NAME :=
 XGOOS :=
@@ -643,11 +645,11 @@ $(JEMALLOC_DIR)/Makefile: $(C_DEPS_DIR)/jemalloc-rebuild $(JEMALLOC_SRC_DIR)/con
 	@#
 	@# jemalloc profiling deadlocks when built against musl. See
 	@# https://github.com/jemalloc/jemalloc/issues/585.
-	cd $(JEMALLOC_DIR) && $(JEMALLOC_SRC_DIR)/configure $(xconfigure-flags) \
-	$(if $(host-is-mingw), --enable-static --enable-shared --disable-debug --disable-stats --disable-prof --disable-fill --disable-utrace,) \
+	cd $(JEMALLOC_DIR) && $(JEMALLOC_SRC_DIR)/configure $(xconfigure-flags) --enable-prof --enable-stats \
+	$(if $(host-is-mingw), --enable-static --disable-debug --disable-fill --disable-utrace,) \
 	$(if $(host-is-mingw), --disable-cache-oblivious --disable-xmalloc --disable-readlinkat --disable-uaf-detection --disable-syscall,) \
 	$(if $(host-is-mingw), --disable-lazy-lock --disable-zone-allocator --disable-initial-exec-tls  --disable-doc --disable-cxx,) \
-	$(if $(findstring musl,$(TARGET_TRIPLE)),,--enable-prof $(if $(EXCLUDE_UNWIND),,--enable-prof-libunwind --with-static-libunwind=$(LIBUNWIND) CFLAGS='-I$(LIBUNWIND_DIR)/include' LDFLAGS='-L$(LIBUNWIND_DIR)/src/.libs'))$(if $(findstring musl,$(TARGET_TRIPLE)),,--enable-prof)
+	$(if $(EXCLUDE_UNWIND),,--enable-prof-libunwind --with-static-libunwind=$(LIBUNWIND) CFLAGS='-I$(LIBUNWIND_DIR)/include' LDFLAGS='-L$(LIBUNWIND_DIR)/src/.libs')
 
 $(ROCKSDB_DIR)/Makefile: sse := $(if $(findstring x86_64,$(TARGET_TRIPLE)),-msse3)
 $(ROCKSDB_DIR)/Makefile: $(C_DEPS_DIR)/rocksdb-rebuild | bin/.submodules-initialized $(LIBSNAPPY) $(if $(use-stdmalloc),,$(LIBJEMALLOC))

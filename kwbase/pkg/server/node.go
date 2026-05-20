@@ -417,7 +417,6 @@ func (n *Node) start(
 	}
 	n.startedAt = n.storeCfg.Clock.Now().WallTime
 	brpcAddress := util.UnresolvedAddr{}
-	brpcAddress := util.UnresolvedAddr{}
 	if !base.IsWindows() {
 		brpcAddress = util.MakeUnresolvedAddr(brpcAddr.Network(), brpcAddr.String())
 	}
