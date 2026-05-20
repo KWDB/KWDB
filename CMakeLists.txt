@@ -12,7 +12,6 @@ if(WIN32)
     set(XGOARCH amd64)
     message(STATUS "Add XCMAKE_SYSTEM_NAME windows")
     set(XCMAKE_SYSTEM_NAME Windows)
-    set(KWBASE_FN "kwbase.exe")
     set(CMAKE_CMD "/ucrt64/bin/cmake")
 endif()
 
