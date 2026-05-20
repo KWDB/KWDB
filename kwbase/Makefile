@@ -243,7 +243,7 @@ CGO_CFLAGS = $(CFLAGS)
 CGO_CXXFLAGS = $(CXXFLAGS)
 CGO_LDFLAGS = $(filter-out -static,$(LDFLAGS)) -ldl
 
-export CFLAGS CXXFLAGS LDFLAGS CGO_CFLAGS CGO_CXXFLAGS CGO_LDFLAGS
+export CFLAGS CXXFLAGS CGO_CFLAGS CGO_CXXFLAGS 
 
 $(shell [ -d $(KWDB_LIB_DIR) ] || mkdir -p $(KWDB_LIB_DIR))
 
@@ -282,7 +282,8 @@ BUILD_DIR := $(GOPATH)/native
 # TODO(benesch): Figure out why. MinGW transparently converts Unix-style paths
 # everywhere else.
 ifdef host-is-mingw
-	CMAKE_CMD = /ucrt64/bin/cmake
+BUILD_DIR := $(shell cygpath -m $(BUILD_DIR))
+CMAKE_CMD = /ucrt64/bin/cmake
 endif
 
 # User-requested build variants.
@@ -311,11 +312,11 @@ endif
 
 WITH_ASAN ?=
 ifeq ($(WITH_ASAN), ON)
-	WITH_ASAN_LINK = -X gitee.com/kwbasedb/kwbase/pkg/build.typ=$(BUILDTYPE) -extldflags "$(LDFLAGS) -lasan"
-	export LD_PRELOAD = $(shell $(CC) -print-file-name=libasan.so)
-	export ASAN_OPTIONS = alloc_dealloc_mismatch=0:halt_on_error=false:detect_leaks=false
+WITH_ASAN_LINK = -X gitee.com/kwbasedb/kwbase/pkg/build.typ=$(BUILDTYPE) -extldflags "$(LDFLAGS) -lasan"
+export LD_PRELOAD = $(shell $(CC) -print-file-name=libasan.so)
+export ASAN_OPTIONS = alloc_dealloc_mismatch=0:halt_on_error=false:detect_leaks=false
 else
-	WITH_ASAN_LINK = -X gitee.com/kwbasedb/kwbase/pkg/build.typ=$(BUILDTYPE) -extldflags "$(LDFLAGS)"
+WITH_ASAN_LINK = -X gitee.com/kwbasedb/kwbase/pkg/build.typ=$(BUILDTYPE) -extldflags "$(LDFLAGS)"
 endif
 override LINKFLAGS = $(WITH_ASAN_LINK)
 
@@ -469,8 +470,7 @@ EXCLUDE_UNWIND := $(or $(findstring aarch64,$(TARGET_TRIPLE)), \
                        $(findstring windows,$(TARGET_TRIPLE)), \
                        $(findstring mingw,$(TARGET_TRIPLE)), \
                        $(findstring win32,$(TARGET_TRIPLE)))
-$(info target-is-windows: $(target-is-windows))
-$(info EXCLUDE_UNWIND: $(EXCLUDE_UNWIND))
+$(info EXCLUDE_UNWIND: $(EXCLUDE_UNWIND) in Env $(target-is-windows))
 
 # CMAKE_TARGET_MESSAGES=OFF prevents CMake from printing progress messages
 # whenever a target is fully built to prevent spammy output from make when
@@ -526,12 +526,14 @@ ifndef PROTOBUF_INC
 endif
 
 ifdef host-is-mingw
-	GOPATH_WIN = $(shell cygpath -m $(GOPATH))
-	LDFLAGS += -L$(GOPATH_WIN)/native/kwdbts2/third_party/lib -L$(GOPATH_WIN)/native/jemalloc/lib -L$(GOPATH_WIN)/native/libroach -L$(GOPATH_WIN)/native/rocksdb -L$(GOPATH_WIN)/native/snappy -Wl,-Bstatic -lz -Wl,-Bdynamic -lstdc++
+GOPATH_WIN = $(shell cygpath -m $(GOPATH))
+LDFLAGS += -L$(GOPATH_WIN)/native/kwdbts2/third_party/lib -L$(GOPATH_WIN)/native/jemalloc/lib -L$(GOPATH_WIN)/native/libroach -L$(GOPATH_WIN)/native/rocksdb -L$(GOPATH_WIN)/native/snappy -Wl,-Bstatic -lz -Wl,-Bdynamic -lstdc++
 else
-	LDFLAGS += -L$(GOPATH)/native/kwdbts2/third_party/lib -L$(GOPATH)/native/kwdbts2/third_party/lib64 -Wl,-Bstatic -lz -Wl,-Bdynamic -lstdc++
+LDFLAGS += -L$(GOPATH)/native/kwdbts2/third_party/lib -L$(GOPATH)/native/kwdbts2/third_party/lib64 -Wl,-Bstatic -lz -Wl,-Bdynamic -lstdc++
 endif
 
+CGO_LDFLAGS = $(filter-out -static,$(LDFLAGS)) -ldl
+export LDFLAGS CGO_LDFLAGS
 
 C_LIBS_COMMON = \
 	$(if $(use-stdmalloc),,$(LIBJEMALLOC)) \
@@ -657,10 +659,11 @@ $(ROCKSDB_DIR)/Makefile: $(C_DEPS_DIR)/rocksdb-rebuild | bin/.submodules-initial
 	@# NOTE 2: We pass PORTABLE=ON to RocksDB in order to disable usage of -march=native which can
 	@# create non-portable binaries that die with "illegal instruction" when run on some x86 CPUs.
 	cd $(ROCKSDB_DIR) && CFLAGS+=" $(sse)" && CXXFLAGS+=" $(sse)" && ${CMAKE_CMD} $(xcmake-flags) $(ROCKSDB_SRC_DIR) \
-	  -DPORTABLE=ON -DWITH_GFLAGS=OFF \
+	  -DPORTABLE=ON -DWITH_GFLAGS=OFF -DWITH_TESTS=OFF -DWITH_TOOLS=OFF \
 	  -DSNAPPY_LIBRARIES=$(LIBSNAPPY) -DSNAPPY_INCLUDE_DIR="$(SNAPPY_SRC_DIR);$(SNAPPY_DIR)" -DWITH_SNAPPY=ON \
 	  $(if $(use-stdmalloc),,-DJEMALLOC_LIBRARIES=$(LIBJEMALLOC) -DJEMALLOC_INCLUDE_DIR=$(JEMALLOC_DIR)/include -DWITH_JEMALLOC=ON) \
 	  -DCMAKE_BUILD_TYPE=$(if $(ENABLE_ROCKSDB_ASSERTIONS),Debug,Release) \
+	  -DWITH_RUNTIME_DEBUG=$(if $(ENABLE_ROCKSDB_ASSERTIONS),ON,OFF) \
 	  -DUSE_RTTI=1 -DFAIL_ON_WARNINGS=0
 
 $(SNAPPY_DIR)/Makefile: $(C_DEPS_DIR)/snappy-rebuild | bin/.submodules-initialized
@@ -1018,6 +1021,7 @@ testoptlogic: TESTS := TestExecBuild/$(logic-test-selector)
 # -config, the extra initialization overhead is averted.
 testbaselogic testoptlogic: TESTFLAGS := -test.v $(if $(FILES),-show-sql) $(if $(SHOWLOGS),-show-logs $(SHOWLOGS)) $(if $(TESTCONFIG),-config $(TESTCONFIG))
 testbaselogic testoptlogic:
+	@echo  $(<F) -test.run "$(TESTS)" -test.timeout $(TESTTIMEOUT) $(TESTFLAGS)
 	cd $($(<F)-package) && $(<F) -test.run "$(TESTS)" -test.timeout $(TESTTIMEOUT) $(TESTFLAGS)
 
 testraceslow: override GOFLAGS += -race
@@ -1212,10 +1216,16 @@ bin/.gw_protobuf_sources: $(GW_SERVER_PROTOS) $(GW_TS_PROTOS) $(GO_PROTOS) $(GOG
 	goimports -w $(GW_SOURCES)
 	touch $@
 
+# the lite: keyword messes up on Windows, we have to make a workaround here
+ifdef host-is-mingw
+CPP_PROTO_ROOT_WIN := $(shell cygpath -m $(CPP_PROTO_ROOT))
+override CPP_PROTO_ROOT := $(CPP_PROTO_ROOT_WIN)
+endif
+
 bin/.cpp_protobuf_sources: $(CPP_PROTOS) bin/.bootstrap
 	rm -rf $(CPP_PROTO_ROOT)
 	mkdir -p $(CPP_PROTO_ROOT)
-	build/werror.sh $(PROTOC) -I./pkg -I$(GOGO_PROTOBUF_PATH) -I$(PROTOBUF_PATH) --cpp_out=$(CPP_PROTO_ROOT) $(CPP_PROTOS)
+	build/werror.sh $(PROTOC) -I./pkg -I$(GOGO_PROTOBUF_PATH) -I$(PROTOBUF_PATH) --cpp_out=lite:$(CPP_PROTO_ROOT) $(CPP_PROTOS)
 	$(SED_INPLACE) -E '/gogoproto/d' $(CPP_HEADERS) $(CPP_SOURCES)
 	touch $@
 

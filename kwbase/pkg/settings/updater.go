@@ -25,7 +25,6 @@ package settings
 
 // #cgo CPPFLAGS: -I../../../kwdbts2/include
 // #cgo LDFLAGS: -lkwdbts2 -lcommon -lsnappy -lm  -lstdc++
-// #cgo LDFLAGS: -lprotobuf
 // #cgo linux LDFLAGS: -lrt -lpthread
 //
 // #include <stdlib.h>
@@ -139,7 +138,7 @@ func (u updater) Set(key, rawValue string, vt string) error {
 		return errors.Errorf("setting '%s' defined as type %s, not %s", key, expected, vt)
 	}
 
-	// douzt: TOOD
+	// douzt: TODO
 	// if needSendToAE(key) {
 	// 	lowerValue := rawValue
 	// 	if key == "ts.compress.level" || key == "ts.compress.algorithm" {
@@ -164,12 +163,12 @@ func (u updater) Set(key, rawValue string, vt string) error {
 			return err
 		}
 		if key == "ts.wal.file_size" || key == "ts.wal.buffer_size" {
-			// douzt: TOOD
+			// douzt: TODO
 			// fileSize := strconv.Itoa(i >> 20)
 			// C.TSSetClusterSetting(goToTSSlice([]byte(key)), goToTSSlice([]byte(fileSize)))
 		}
 		if key == "ts.wal.wal_level" {
-			// douzt: TOOD
+			// douzt: TODO
 			// walLevel := strconv.Itoa(i)
 			// C.TSSetClusterSetting(goToTSSlice([]byte(key)), goToTSSlice([]byte(walLevel)))
 		}
@@ -185,7 +184,7 @@ func (u updater) Set(key, rawValue string, vt string) error {
 		if err != nil {
 			return err
 		}
-		// douzt: TOOD
+		// douzt: TODO
 		// if key == "ts.wal.flush_interval" {
 		// 	var walLevel string
 		// 	if d < 0 {

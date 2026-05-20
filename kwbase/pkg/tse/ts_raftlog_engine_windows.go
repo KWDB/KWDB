@@ -187,7 +187,7 @@ func (t *TsRaftLogEngine) Close() {
 
 // asyncLoop asynchronous synchronous data
 func (t *TsRaftLogEngine) asyncLoop() {
-	// douzt: TOOD
+	// douzt: TODO
 	// s := &t.asyncer
 	// s.Lock()
 
@@ -266,7 +266,7 @@ func (t *TsRaftLogEngine) NotifySyncPeriodChange() {
 func (t *TsRaftLogEngine) GetRaftLog(
 	rangeID uint64, lIndex uint64, hIndex uint64, transfer func([]byte) error,
 ) error {
-	// douzt: TOOD
+	// douzt: TODO
 	// cnt := hIndex - lIndex
 	// if cnt == 0 {
 	// 	return nil
