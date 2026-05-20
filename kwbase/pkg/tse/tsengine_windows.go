@@ -26,7 +26,6 @@
 
 package tse
 
-import "C"
 import (
 	"context"
 	"time"
