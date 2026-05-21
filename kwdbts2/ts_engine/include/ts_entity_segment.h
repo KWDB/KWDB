@@ -251,7 +251,6 @@ class TsEntityBlock : public TsBlock {
   uint32_t table_version_ = 0;
   uint64_t entity_id_ = 0;
   uint32_t block_id_ = 0;
-  const std::vector<AttributeInfo>* metric_schema_ = nullptr;
 
   TsEntitySegmentBlockInfo block_info_;
   std::vector<std::shared_ptr<TsEntitySegmentColumnBlock>> column_blocks_;
@@ -337,7 +336,8 @@ class TsEntityBlock : public TsBlock {
 
   char* GetMetricColAddr(uint32_t col_idx);
 
-  KStatus GetMetricColValue(uint32_t row_idx, uint32_t col_idx, TSSlice& value);
+  KStatus GetMetricColValue(uint32_t row_idx, uint32_t col_idx,
+                            const std::vector<AttributeInfo>* schema, TSSlice& value);
 
   KStatus LoadColData(int32_t col_idx, const std::vector<AttributeInfo>* metric_schema, TsSliceGuard&& buffer);
 

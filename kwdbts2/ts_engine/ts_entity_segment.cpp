@@ -318,12 +318,13 @@ char* TsEntityBlock::GetMetricColAddr(uint32_t col_idx) {
   return column_blocks_[col_idx + 1]->buffer.data();
 }
 
-KStatus TsEntityBlock::GetMetricColValue(uint32_t row_idx, uint32_t col_idx, TSSlice& value) {
+KStatus TsEntityBlock::GetMetricColValue(uint32_t row_idx, uint32_t col_idx,
+                                         const std::vector<AttributeInfo>* schema, TSSlice& value) {
   assert(col_idx < column_blocks_.size() - 1);
   assert(row_idx < n_rows_);
-  assert(metric_schema_ != nullptr);
+  assert(schema != nullptr);
 
-  if (isVarLenType((*metric_schema_)[col_idx].type)) {
+  if (isVarLenType((*schema)[col_idx].type)) {
     char* ptr = column_blocks_[col_idx + 1]->buffer.data();
     uint32_t offset = 0;
     if (row_idx != 0) {
@@ -334,7 +335,7 @@ KStatus TsEntityBlock::GetMetricColValue(uint32_t row_idx, uint32_t col_idx, TSS
     value.data = column_blocks_[col_idx + 1]->buffer.data() + var_offsets_len + offset;
     value.len = next_row_offset - offset;
   } else {
-    size_t d_size = col_idx == 0 ? 8 : static_cast<DATATYPE>((*metric_schema_)[col_idx].size);
+    size_t d_size = col_idx == 0 ? 8 : static_cast<DATATYPE>((*schema)[col_idx].size);
     value.data = column_blocks_[col_idx + 1]->buffer.data() + row_idx * d_size;
     value.len = d_size;
   }
@@ -346,9 +347,6 @@ KStatus TsEntityBlock::LoadColData(int32_t col_idx, const std::vector<AttributeI
   bool is_var_type = col_idx > 0 && isVarLenType((*metric_schema)[col_idx].type);
   bool is_not_null = col_idx <= 0 || (*metric_schema)[col_idx].isFlag(AINFO_NOT_NULL);
   const auto& mgr = CompressorManager::GetInstance();
-  if (metric_schema_ == nullptr) {
-    metric_schema_ = metric_schema;
-  }
 
   size_t bitmap_len = 0;
   if (column_blocks_[col_idx + 1] == nullptr) {
@@ -617,7 +615,7 @@ KStatus TsEntityBlock::GetValueSlice(int row_num, int col_id, const std::vector<
       return s;
     }
   }
-  return GetMetricColValue(row_num, col_id, value);
+  return GetMetricColValue(row_num, col_id, schema, value);
 }
 
 bool TsEntityBlock::IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>* schema,

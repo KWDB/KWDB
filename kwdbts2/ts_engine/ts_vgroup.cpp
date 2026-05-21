@@ -2233,13 +2233,15 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
           cancel_vacuumer = true;
           return s;
         }
-        auto tag_row = tb_schema_mgr->GetTagTable()->GetEntityTag(vgroup_id_, entity_id, UINT64_MAX);
-        if (tag_row.second == 0) {
-          entity_invalid = true;
+        if (!is_dropped) {
+          auto tag_row = tb_schema_mgr->GetTagTable()->GetEntityTag(vgroup_id_, entity_id, UINT64_MAX);
+          if (tag_row.second == 0) {
+            entity_invalid = true;
+          }
         }
       }
     }
-    if (entity_invalid || !has_entity_item || 0 == entity_item.cur_block_id || is_dropped) {
+    if (is_dropped || entity_invalid || !has_entity_item || 0 == entity_item.cur_block_id) {
       TsEntityItem empty_entity_item{entity_id};
       empty_entity_item.table_id = entity_item.table_id;
       s = vacuumer->AppendEntityItem(empty_entity_item);
