@@ -537,19 +537,19 @@ if(BUILD_BRPC)
   target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE ${BRPC_STATIC_LIB} libssl.a libcrypto.a z ${SNAPPY_LIB} ${LZ4_STATIC_LIB} ${GFLAGS_STATIC_LIB} ${PROTOBUF_STATIC_LIB} ${ZSTD_LIB})
 else()
   target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE ${GFLAGS_LINK_TARGET} ${PROTOBUF_STATIC_LIB} ${SNAPPY_LIB}
-        absl_log_internal_message absl_log_internal_check_op absl_log_internal_conditions
-        absl_log_internal_globals absl_log_internal_format absl_str_format_internal
-        absl_log_internal_nullguard absl_log_internal_log_sink_set absl_log_globals
-        absl_hash absl_city absl_vlog_config_internal absl_log_internal_fnmatch
-        absl_log_sink absl_log_entry absl_log_internal_proto absl_synchronization
-        absl_graphcycles_internal absl_kernel_timeout_internal absl_stacktrace
-        absl_symbolize absl_debugging_internal absl_demangle_internal absl_malloc_internal
-        absl_time absl_civil_time absl_strings absl_strings_internal absl_string_view
-        absl_int128 absl_base absl_spinlock_wait absl_throw_delegate
-        absl_raw_logging_internal absl_log_severity absl_time_zone
-        absl_status absl_statusor absl_cord absl_cord_internal absl_cordz_functions
-        absl_cordz_handle absl_cordz_info absl_cordz_sample_token
-        absl_raw_hash_set absl_hashtablez_sampler
+        # absl_log_internal_message absl_log_internal_check_op absl_log_internal_conditions
+        # absl_log_internal_globals absl_log_internal_format absl_str_format_internal
+        # absl_log_internal_nullguard absl_log_internal_log_sink_set absl_log_globals
+        # absl_hash absl_city absl_vlog_config_internal absl_log_internal_fnmatch
+        # absl_log_sink absl_log_entry absl_log_internal_proto absl_synchronization
+        # absl_graphcycles_internal absl_kernel_timeout_internal absl_stacktrace
+        # absl_symbolize absl_debugging_internal absl_demangle_internal absl_malloc_internal
+        # absl_time absl_civil_time absl_strings absl_strings_internal absl_string_view
+        # absl_int128 absl_base absl_spinlock_wait absl_throw_delegate
+        # absl_raw_logging_internal absl_log_severity absl_time_zone
+        # absl_status absl_statusor absl_cord absl_cord_internal absl_cordz_functions
+        # absl_cordz_handle absl_cordz_info absl_cordz_sample_token
+        # absl_raw_hash_set absl_hashtablez_sampler
         ${LZ4_STATIC_LIB} ${ZSTD_LIB} z common ws2_32)
 endif()
 # Import the header files required by the server module
