@@ -32,7 +32,7 @@ package settings
 import "C"
 import (
 	"strconv"
-	// "strings"
+	"strings"
 	"time"
 	"unsafe"
 
@@ -138,14 +138,13 @@ func (u updater) Set(key, rawValue string, vt string) error {
 		return errors.Errorf("setting '%s' defined as type %s, not %s", key, expected, vt)
 	}
 
-	// douzt: TODO
-	// if needSendToAE(key) {
-	// 	lowerValue := rawValue
-	// 	if key == "ts.compress.level" || key == "ts.compress.algorithm" {
-	// 		lowerValue = strings.ToLower(rawValue)
-	// 	}
-	// 	// C.TSSetClusterSetting(goToTSSlice([]byte(key)), goToTSSlice([]byte(lowerValue)))
-	// }
+	if needSendToAE(key) {
+		lowerValue := rawValue
+		if key == "ts.compress.level" || key == "ts.compress.algorithm" {
+			lowerValue = strings.ToLower(rawValue)
+		}
+		C.TSSetClusterSetting(goToTSSlice([]byte(key)), goToTSSlice([]byte(lowerValue)))
+	}
 
 	switch setting := d.(type) {
 	case *StringSetting:
@@ -163,14 +162,12 @@ func (u updater) Set(key, rawValue string, vt string) error {
 			return err
 		}
 		if key == "ts.wal.file_size" || key == "ts.wal.buffer_size" {
-			// douzt: TODO
-			// fileSize := strconv.Itoa(i >> 20)
-			// C.TSSetClusterSetting(goToTSSlice([]byte(key)), goToTSSlice([]byte(fileSize)))
+			fileSize := strconv.Itoa(i >> 20)
+			C.TSSetClusterSetting(goToTSSlice([]byte(key)), goToTSSlice([]byte(fileSize)))
 		}
 		if key == "ts.wal.wal_level" {
-			// douzt: TODO
-			// walLevel := strconv.Itoa(i)
-			// C.TSSetClusterSetting(goToTSSlice([]byte(key)), goToTSSlice([]byte(walLevel)))
+			walLevel := strconv.Itoa(i)
+			C.TSSetClusterSetting(goToTSSlice([]byte(key)), goToTSSlice([]byte(walLevel)))
 		}
 		return setting.set(u.sv, int64(i))
 	case *FloatSetting:
@@ -184,18 +181,17 @@ func (u updater) Set(key, rawValue string, vt string) error {
 		if err != nil {
 			return err
 		}
-		// douzt: TODO
-		// if key == "ts.wal.flush_interval" {
-		// 	var walLevel string
-		// 	if d < 0 {
-		// 		walLevel = "0"
-		// 	} else if d >= 0 && d <= 200*time.Millisecond {
-		// 		walLevel = "2"
-		// 	} else {
-		// 		walLevel = "1"
-		// 	}
-		// C.TSSetClusterSetting(goToTSSlice([]byte("ts.wal.wal_level")), goToTSSlice([]byte(walLevel)))
-		// }
+		if key == "ts.wal.flush_interval" {
+			var walLevel string
+			if d < 0 {
+				walLevel = "0"
+			} else if d >= 0 && d <= 200*time.Millisecond {
+				walLevel = "2"
+			} else {
+				walLevel = "1"
+			}
+			C.TSSetClusterSetting(goToTSSlice([]byte("ts.wal.wal_level")), goToTSSlice([]byte(walLevel)))
+		}
 		return setting.set(u.sv, d)
 	case *StateMachineSetting:
 		return setting.set(u.sv, []byte(rawValue))

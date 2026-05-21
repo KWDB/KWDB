@@ -31,6 +31,19 @@ package server
 //
 // #include <stdlib.h>
 // #include <libkwdbts2.h>
+// // On Windows/MinGW, Go's //export creates symbols that conflict with
+// // the DLL's .refptr references (PE symbol type mismatch: function vs data).
+// // We work around this by exporting Go callback functions with different names
+// // and providing C bridge functions with the original weak symbol names.
+// // The C bridge functions are compiled locally and won't conflict with DLL symbols.
+// extern int goFlushedImp();
+// extern int goPrepareFlushImp();
+// int goFlushed() {
+//     return goFlushedImp();
+// }
+// int goPrepareFlush() {
+//     return goPrepareFlushImp();
+// }
 import "C"
 import (
 	"compress/gzip"
@@ -1577,13 +1590,13 @@ func (s *Server) dumpAllBackTrace(ctx context.Context) {
 	defer C.free(unsafe.Pointer(dumpPathCstr))
 	defer C.free(unsafe.Pointer(nowTimeStampCstr))
 
-	// dump thread backtrace  douzt TODO
-	// if true == C.TSDumpAllThreadBacktrace(dumpPathCstr, nowTimeStampCstr) {
-	// 	dumpThreadFile := dumpPath + "/thread_backtrace." + nowTimeStamp + ".txt"
-	// 	log.Info(context.Background(), "Thread backtrace have been written to ", dumpThreadFile)
-	// } else {
-	// 	log.Error(context.Background(), "Dump all thread backtrace failed.")
-	// }
+	// dump thread backtrace
+	if true == C.TSDumpAllThreadBacktrace(dumpPathCstr, nowTimeStampCstr) {
+		dumpThreadFile := dumpPath + "/thread_backtrace." + nowTimeStamp + ".txt"
+		log.Info(context.Background(), "Thread backtrace have been written to ", dumpThreadFile)
+	} else {
+		log.Error(context.Background(), "Dump all thread backtrace failed.")
+	}
 	return
 }
 
@@ -1609,7 +1622,7 @@ func (s *Server) Start(ctx context.Context) error {
 	if !s.cfg.ForbidCatchCoreDump {
 		dir := C.CString(s.cfg.LogConfig.Dir)
 		defer C.free(unsafe.Pointer(dir))
-		// C.TSRegisterExceptionHandler(dir)  douzt TODO
+		C.TSRegisterExceptionHandler(dir)
 	}
 
 	ctx = s.AnnotateCtx(ctx)
@@ -3215,8 +3228,8 @@ func (s *Server) RestfulLogout(ctx context.Context) error {
 	return nil
 }
 
-// douzt TODO export goPrepareFlush
-func goPrepareFlush() C.int {
+//export goPrepareFlushImp
+func goPrepareFlushImp() C.int {
 	ctx := context.Background()
 	log.VEventf(ctx, 3, "prepare flush")
 	if err := kvserver.SetTsPrepareFlushedIndexForAllReplicas(ctx); err != nil {
@@ -3226,8 +3239,8 @@ func goPrepareFlush() C.int {
 	return 0
 }
 
-// douzt TODO export goFlushed
-func goFlushed() C.int {
+//export goFlushedImp
+func goFlushedImp() C.int {
 	ctx := context.Background()
 	log.VEventf(ctx, 3, "set flushed")
 	if err := kvserver.SetTsFlushedIndexForAllReplicas(ctx); err != nil {

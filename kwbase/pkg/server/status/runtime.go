@@ -481,7 +481,7 @@ func GetCGoMemStats(ctx context.Context) *CGoMemStats {
 func GetKmallocStats(ctx context.Context) *KmallocMemStats {
 	var kmallocTotal uint
 	kmallocTotal = 0
-	// kmallocTotal = uint(C.malloc_used_bytes())  //douzt TODO
+	kmallocTotal = uint(C.malloc_used_bytes())
 	return &KmallocMemStats{
 		KmallocTotalBytes: int64(kmallocTotal),
 	}
