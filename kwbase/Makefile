@@ -275,7 +275,7 @@ endif
 $(info GOPATH set to $(GOPATH))
 
 # ru xiang sui su
-BUILD_DIR := $(GOPATH)/native
+CMAKE_BUILD_TOP := $(GOPATH)/native
 
 # In MinGW, cgo flags don't handle Unix-style paths, so convert our base path to
 # a Windows-style path.
@@ -283,7 +283,7 @@ BUILD_DIR := $(GOPATH)/native
 # TODO(benesch): Figure out why. MinGW transparently converts Unix-style paths
 # everywhere else.
 ifdef host-is-mingw
-BUILD_DIR := $(shell cygpath -m $(BUILD_DIR))
+CMAKE_BUILD_TOP := $(shell cygpath -m $(CMAKE_BUILD_TOP))
 CMAKE_CMD = /ucrt64/bin/cmake
 endif
 
@@ -291,15 +291,20 @@ endif
 ENABLE_LIBROACH_ASSERTIONS ?=
 ENABLE_ROCKSDB_ASSERTIONS ?=
 
-CRYPTOPP_DIR := $(BUILD_DIR)/cryptopp$(if $(use-msan),_msan)
-JEMALLOC_DIR := $(BUILD_DIR)/jemalloc$(if $(use-msan),_msan)
-ROCKSDB_DIR  := $(BUILD_DIR)/rocksdb$(if $(use-msan),_msan)$(if $(use-stdmalloc),_stdmalloc)$(if $(ENABLE_ROCKSDB_ASSERTIONS),_assert)
-SNAPPY_DIR   := $(BUILD_DIR)/snappy$(if $(use-msan),_msan)
-LIBEDIT_DIR  := $(BUILD_DIR)/libedit$(if $(use-msan),_msan)
-LIBROACH_DIR := $(BUILD_DIR)/libroach$(if $(use-msan),_msan)$(if $(ENABLE_LIBROACH_ASSERTIONS),_assert)
+CRYPTOPP_DIR := $(CMAKE_BUILD_TOP)/cryptopp$(if $(use-msan),_msan)
+JEMALLOC_DIR := $(CMAKE_BUILD_TOP)/jemalloc$(if $(use-msan),_msan)
+ROCKSDB_DIR  := $(CMAKE_BUILD_TOP)/rocksdb$(if $(use-msan),_msan)$(if $(use-stdmalloc),_stdmalloc)$(if $(ENABLE_ROCKSDB_ASSERTIONS),_assert)
+SNAPPY_DIR   := $(CMAKE_BUILD_TOP)/snappy$(if $(use-msan),_msan)
+LIBEDIT_DIR  := $(CMAKE_BUILD_TOP)/libedit$(if $(use-msan),_msan)
+LIBROACH_DIR := $(CMAKE_BUILD_TOP)/libroach$(if $(use-msan),_msan)$(if $(ENABLE_LIBROACH_ASSERTIONS),_assert)
+
+ifdef host-is-mingw
+KWDB_LIB_DIR := $(shell cygpath -m $(KWDB_LIB_DIR))
+endif
 
 LDFLAGS := $(LDFLAGS) -L$(KWDB_LIB_DIR) -L$(ROCKSDB_DIR) -L$(SNAPPY_DIR) \
 	$(if $(host-is-mingw),,-Wl,-rpath,$(KWDB_LIB_DIR):$(ROCKSDB_DIR):$(SNAPPY_DIR):$$ORIGIN/../lib:$$ORIGIN)
+
 # We intentionally use LINKFLAGS instead of the more traditional LDFLAGS
 # because LDFLAGS has built-in semantics that don't make sense with the Go
 # toolchain.
@@ -528,11 +533,11 @@ ifndef PROTOBUF_INC
 endif
 
 ifdef host-is-mingw
-GOPATH_WIN = $(shell cygpath -m $(GOPATH))
-LDFLAGS += -L$(GOPATH_WIN)/native/kwdbts2/third_party/lib -L$(GOPATH_WIN)/native/jemalloc/lib -L$(GOPATH_WIN)/native/libroach -L$(GOPATH_WIN)/native/rocksdb -L$(GOPATH_WIN)/native/snappy -Wl,-Bstatic -lz -Wl,-Bdynamic -lstdc++
+LDFLAGS += -L$(CMAKE_BUILD_TOP)/kwdbts2/third_party/lib -L$(JEMALLOC_DIR)/lib -L$(LIBROACH_DIR) -L$(ROCKSDB_DIR) -L$(SNAPPY_DIR) -Wl,-Bstatic -lz -Wl,-Bdynamic -lstdc++
 else
 LDFLAGS += -L$(GOPATH)/native/kwdbts2/third_party/lib -L$(GOPATH)/native/kwdbts2/third_party/lib64 -Wl,-Bstatic -lz -Wl,-Bdynamic -lstdc++
 endif
+$(info $(LDFLAGS))
 
 CGO_LDFLAGS = $(filter-out -static,$(LDFLAGS)) -ldl
 export LDFLAGS CGO_LDFLAGS
