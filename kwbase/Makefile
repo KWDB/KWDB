@@ -274,7 +274,8 @@ endif
 
 $(info GOPATH set to $(GOPATH))
 
-# ru xiang sui su
+# this is NOT correct because there should be "HOST_TRIPLE" before native
+# but it has been modified to this for long, take it as default
 CMAKE_BUILD_TOP := $(GOPATH)/native
 
 # In MinGW, cgo flags don't handle Unix-style paths, so convert our base path to
@@ -299,11 +300,18 @@ LIBEDIT_DIR  := $(CMAKE_BUILD_TOP)/libedit$(if $(use-msan),_msan)
 LIBROACH_DIR := $(CMAKE_BUILD_TOP)/libroach$(if $(use-msan),_msan)$(if $(ENABLE_LIBROACH_ASSERTIONS),_assert)
 
 ifdef host-is-mingw
+# copy the dll's needed by bin/tools
+KWBASE_TOP := $(realpath $(dir $(abspath $(firstword $(MAKEFILE_LIST))) ) )
+$(shell [ -d $(KWBASE_TOP)/bin ] || rm -f $(KWBASE_TOP)/bin ; mkdir -p $(KWBASE_TOP)/bin)
+$(shell [ -f $(KWBASE_TOP)/bin/libkwdbts2.dll ] || cp $(KWDB_LIB_DIR)/libkwdbts2.dll  $(KWBASE_TOP)/bin/libkwdbts2.dll)
+$(shell [ -f $(KWBASE_TOP)/bin/libcommon.dll ]  || cp $(KWDB_LIB_DIR)/../bin/libcommon.dll  $(KWBASE_TOP)/bin/libcommon.dll)
+
 KWDB_LIB_DIR := $(shell cygpath -m $(KWDB_LIB_DIR))
 endif
 
-LDFLAGS := $(LDFLAGS) -L$(KWDB_LIB_DIR) -L$(ROCKSDB_DIR) -L$(SNAPPY_DIR) \
-	$(if $(host-is-mingw),,-Wl,-rpath,$(KWDB_LIB_DIR):$(ROCKSDB_DIR):$(SNAPPY_DIR):$$ORIGIN/../lib:$$ORIGIN)
+# LDFLAGS := $(LDFLAGS) -L$(KWDB_LIB_DIR) -L$(ROCKSDB_DIR) -L$(SNAPPY_DIR) -Wl,-rpath,$$ORIGIN/../../build/lib 
+LDFLAGS := $(LDFLAGS) -L$(KWDB_LIB_DIR) -L$(ROCKSDB_DIR) -L$(SNAPPY_DIR) -Wl,-rpath,$$ORIGIN:$$ORIGIN/../lib:$$ORIGIN/../../build/bin:$$ORIGIN/../../build/lib
+# 	$(if $(host-is-mingw),,-Wl,-rpath,$(KWDB_LIB_DIR):$(ROCKSDB_DIR):$(SNAPPY_DIR))
 
 # We intentionally use LINKFLAGS instead of the more traditional LDFLAGS
 # because LDFLAGS has built-in semantics that don't make sense with the Go
@@ -537,7 +545,6 @@ LDFLAGS += -L$(CMAKE_BUILD_TOP)/kwdbts2/third_party/lib -L$(JEMALLOC_DIR)/lib -L
 else
 LDFLAGS += -L$(GOPATH)/native/kwdbts2/third_party/lib -L$(GOPATH)/native/kwdbts2/third_party/lib64 -Wl,-Bstatic -lz -Wl,-Bdynamic -lstdc++
 endif
-$(info $(LDFLAGS))
 
 CGO_LDFLAGS = $(filter-out -static,$(LDFLAGS)) -ldl
 export LDFLAGS CGO_LDFLAGS
@@ -1514,7 +1521,7 @@ $(bins): bin/%: bin/%.d | bin/prereqs bin/.submodules-initialized
 	@echo go install -v $*
 	bin/prereqs $(if $($*-package),$($*-package),./pkg/cmd/$*) > $@.d.tmp
 	mv -f $@.d.tmp $@.d
-	@$(GO_INSTALL) -v $(if $($*-package),$($*-package),./pkg/cmd/$*)
+	@$(GO_INSTALL) -v -ldflags='$(LINKFLAGS)' $(if $($*-package),$($*-package),./pkg/cmd/$*) 
 
 $(xbins): bin/%: bin/%.d | bin/prereqs bin/.submodules-initialized
 	@echo go build -v $(GOFLAGS) $(GOMODVENDORFLAGS) -tags '$(TAGS)' -ldflags '$(LINKFLAGS)' -o $@ $*
