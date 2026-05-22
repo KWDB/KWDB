@@ -285,6 +285,8 @@ CMAKE_BUILD_TOP := $(GOPATH)/native
 # everywhere else.
 ifdef host-is-mingw
 CMAKE_BUILD_TOP := $(shell cygpath -m $(CMAKE_BUILD_TOP))
+KWBASE_TOP := $(realpath $(dir $(abspath $(firstword $(MAKEFILE_LIST))) ) )
+KWDB_LIB_DIR := $(shell cygpath -m $(KWDB_LIB_DIR))
 CMAKE_CMD = /ucrt64/bin/cmake
 endif
 
@@ -299,24 +301,7 @@ SNAPPY_DIR   := $(CMAKE_BUILD_TOP)/snappy$(if $(use-msan),_msan)
 LIBEDIT_DIR  := $(CMAKE_BUILD_TOP)/libedit$(if $(use-msan),_msan)
 LIBROACH_DIR := $(CMAKE_BUILD_TOP)/libroach$(if $(use-msan),_msan)$(if $(ENABLE_LIBROACH_ASSERTIONS),_assert)
 
-ifdef host-is-mingw
-# copy the dll's needed by bin/tools
-KWBASE_TOP := $(realpath $(dir $(abspath $(firstword $(MAKEFILE_LIST))) ) )
-$(shell [ -d $(KWBASE_TOP)/bin ] || rm -f $(KWBASE_TOP)/bin ; mkdir -p $(KWBASE_TOP)/bin)
-$(shell [ -f $(KWBASE_TOP)/bin/libkwdbts2.dll ] || cp $(KWDB_LIB_DIR)/libkwdbts2.dll  $(KWBASE_TOP)/bin/libkwdbts2.dll)
-$(shell [ -f $(KWBASE_TOP)/bin/libcommon.dll ]  || cp $(KWDB_LIB_DIR)/../bin/libcommon.dll  $(KWBASE_TOP)/bin/libcommon.dll)
-
-KWDB_LIB_DIR := $(shell cygpath -m $(KWDB_LIB_DIR))
-endif
-
-# LDFLAGS := $(LDFLAGS) -L$(KWDB_LIB_DIR) -L$(ROCKSDB_DIR) -L$(SNAPPY_DIR) -Wl,-rpath,$$ORIGIN/../../build/lib 
 LDFLAGS := $(LDFLAGS) -L$(KWDB_LIB_DIR) -L$(ROCKSDB_DIR) -L$(SNAPPY_DIR) -Wl,-rpath,$$ORIGIN:$$ORIGIN/../lib:$$ORIGIN/../../build/bin:$$ORIGIN/../../build/lib
-# 	$(if $(host-is-mingw),,-Wl,-rpath,$(KWDB_LIB_DIR):$(ROCKSDB_DIR):$(SNAPPY_DIR))
-
-# We intentionally use LINKFLAGS instead of the more traditional LDFLAGS
-# because LDFLAGS has built-in semantics that don't make sense with the Go
-# toolchain.
-#override LINKFLAGS = -X gitee.com/kwbasedb/kwbase/pkg/build.typ=$(BUILDTYPE) -linkmode "external" -extldflags "$(LDFLAGS) -lasan"
 
 # this is needed for CGO code 
 ifndef CGO_CPPFLAGS
@@ -1518,6 +1503,12 @@ bin/workload bin/roachtest $(logictest-bins): $(EXECGEN_TARGETS)
 bin/roachtest $(logictest-bins): $(C_LIBS) $(CGO_FLAGS_FILES) $(OPTGEN_TARGETS)
 
 $(bins): bin/%: bin/%.d | bin/prereqs bin/.submodules-initialized
+# copy the dll's needed by bin/tools
+ifdef host-is-mingw
+	@[ -d $(KWBASE_TOP)/bin ] || rm -f $(KWBASE_TOP)/bin ; mkdir -p $(KWBASE_TOP)/bin
+	@[ -f $(KWBASE_TOP)/bin/libkwdbts2.dll ] || cp $(KWDB_LIB_DIR)/libkwdbts2.dll  $(KWBASE_TOP)/bin/libkwdbts2.dll
+	@[ -f $(KWBASE_TOP)/bin/libcommon.dll ]  || cp $(KWDB_LIB_DIR)/../bin/libcommon.dll  $(KWBASE_TOP)/bin/libcommon.dll
+endif
 	@echo go install -v $*
 	bin/prereqs $(if $($*-package),$($*-package),./pkg/cmd/$*) > $@.d.tmp
 	mv -f $@.d.tmp $@.d
