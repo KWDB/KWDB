@@ -80,8 +80,8 @@ int MMapFile::open() {
   #else
     char file_name_template[] = "/tmp/kwdb_XXXXXX";
     if ((fd = ::mkstemp(file_name_template)) < 0) {
-        LOG_ERROR("mkstemp failed: errno[%d]", errno);
-        return reportError();
+      LOG_ERROR("open() temporary file failed: errno[%d]", errno);
+      return reportError();
     }
     absolute_file_path_ = file_name_template;
   #endif
