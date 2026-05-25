@@ -39,7 +39,7 @@ func (s *statusServer) Distribution(
 	if len(req.NodeID) > 0 {
 		requestedNodeID, local, err := s.parseNodeID(req.NodeID)
 		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, err.Error())
+			return nil, status.Errorf(codes.InvalidArgument, "parseNodeID error: %s", err.Error())
 		}
 		if local {
 			return s.DistributionLocal(ctx, req.IsDB, req.ID, requestedNodeID.String())
