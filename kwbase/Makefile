@@ -189,13 +189,16 @@ UNAME = $(shell uname)
 host-is-macos := $(findstring Darwin,$(UNAME))
 host-is-mingw := $(findstring MINGW,$(UNAME))
 
-ifeq "$(findstring -j,$(shell ps -o args= $$PPID))" ""
-ifdef NCPUS
-MAKEFLAGS += -j$(NCPUS)
-$(info Running make with -j$(NCPUS))
-endif
-else
-$(info Running make with -j$(shell ps -o args= $$PPID | grep -oE '(-j)[1-9]+' | sed 's/-j//'))
+# there's not good substitution for ps -o in mingw
+ifndef host-is-mingw
+	ifeq "$(findstring -j,$(shell ps -o args= $$PPID))" ""
+		ifdef NCPUS
+			MAKEFLAGS += -j$(NCPUS)
+			$(info Running make with -j$(NCPUS))
+		endif
+	else
+		$(info Running make with -j$(shell ps -o args= $$PPID | grep -oE '(-j)[1-9]+' | sed 's/-j//'))
+	endif
 endif
 
 help: ## Print help for targets with comments.
