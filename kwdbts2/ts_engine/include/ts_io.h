@@ -482,10 +482,9 @@ class TsMemoryIOEnv : public TsIOEnv {
   }
 
  public:
-  static TsMemoryIOEnv& GetInstance() {
-    static TsMemoryIOEnv instance;
-    return instance;
-  }
+  // Implementation in cpp — must not be inline to guarantee a single singleton
+  // across DLL/EXE boundaries on Windows.
+  static TsMemoryIOEnv& GetInstance();
   KStatus NewAppendOnlyFileImpl(const std::string& filepath, std::unique_ptr<TsAppendOnlyFile>* file, bool overwrite = true,
                             size_t offset = -1) override;
   KStatus NewRandomReadFileImpl(const std::string& filepath, std::unique_ptr<TsRandomReadFile>* file,
@@ -523,13 +522,23 @@ class TsMMapAllocFile : public FileWithIndex {
     void* base = nullptr;
     size_t file_len;
     if (exists) {
+      // O_BINARY on Windows: avoids text-mode translation that corrupts binary data
+#ifdef _WIN32
+      int oflag = O_RDWR | O_BINARY;
+#else
       int oflag = O_RDWR;
+#endif
       fd_ = open(path_.c_str(), oflag);
       file_len = lseek(fd_, 0, SEEK_END);
       int prot = PROT_READ | PROT_WRITE;
       base = mmap(nullptr, file_len, prot, MAP_SHARED, fd_, 0);
     } else {
+      // O_BINARY on Windows: avoids text-mode translation that corrupts binary data
+#ifdef _WIN32
+      fd_ = open(path_.c_str(), O_RDWR | O_CREAT | O_BINARY, 0644);
+#else
       fd_ = open(path_.c_str(), O_RDWR | O_CREAT, 0644);
+#endif
       if (fd_ == -1) {
         return KStatus::FAIL;
       }

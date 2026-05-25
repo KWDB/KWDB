@@ -257,7 +257,13 @@ KStatus TsMMapSequentialReadFile::ReadImpl(size_t n, TsSliceGuard* slice) {
 KStatus TsMMapIOEnv::NewAppendOnlyFileImpl(const std::string& filepath, std::unique_ptr<TsAppendOnlyFile>* file,
                                            bool overwrite, size_t offset) {
   int fd = -1;
+  // On Windows, open() defaults to text mode where _read() stops at Ctrl+Z (0x1A),
+  // causing pread to return incomplete data. Add O_BINARY to ensure binary mode I/O.
+#ifdef _WIN32
+  int flag = O_RDWR | O_CREAT | O_BINARY;
+#else
   int flag = O_RDWR | O_CREAT;
+#endif
   if (overwrite) {
     flag |= O_TRUNC;
     offset = -1;
@@ -308,7 +314,12 @@ TsMemoryRandomReadFile::~TsMemoryRandomReadFile() {
 static std::pair<int, size_t> OpenReadOnlyFile(const std::string& filepath, size_t file_size) {
   int fd = -1;
   do {
+    // O_BINARY is required on Windows to avoid text-mode translation in pread()
+#ifdef _WIN32
+    fd = open(filepath.c_str(), O_RDONLY | O_BINARY);
+#else
     fd = open(filepath.c_str(), O_RDONLY);
+#endif
   } while (fd < 0 && errno == EINTR);
   if (fd < 0) {
     auto ec = MakeErrorCode(errno);
@@ -757,6 +768,14 @@ KStatus TsMemoryIOEnv::DeleteFileImpl(const std::string& path) {
   }
   files_.erase(it);
   return SUCCESS;
+}
+
+// Moved from header to cpp to ensure a single singleton instance across DLL boundaries.
+// When inlined in the header, the DLL and EXE each get their own static instance,
+// causing RegisterFile() and NewRandomReadFileImpl() to operate on different maps.
+TsMemoryIOEnv& TsMemoryIOEnv::GetInstance() {
+  static TsMemoryIOEnv instance;
+  return instance;
 }
 
 KStatus FileRangeCopy(TsRandomReadFile* src, TsAppendOnlyFile* dst, size_t start, size_t end) {
