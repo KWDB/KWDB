@@ -70,6 +70,7 @@ workspace=/home/inspur/src/gitee.com
 data_dir=${workspace}/kwbasedb/tsbs_test
 
 wait_kwbase_exit ${ip} ${listenport} ${httpport} ${brpcport}
+pkill -9 kwbase || true
 store=${data_dir}/kwbase-data1
 rm -rf ${store}
 
