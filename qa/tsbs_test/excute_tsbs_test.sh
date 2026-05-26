@@ -447,7 +447,7 @@ load_data_for_scale() {
         --case="${TSBS_CASE}" \
         --workers="${LOAD_WORKERS}" > "${load_result_file}"
 
-    record_metric "load" "${scale}" "${load_result_file}" "${load_result_dir}" "${PRIMARY_QUERY_WORKER}"
+    record_metric "load" "${scale}" "${load_result_file}" "${load_result_dir}" "${LOAD_WORKERS}"
 }
 
 resolve_query_types() {
