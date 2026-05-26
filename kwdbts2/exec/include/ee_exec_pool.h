@@ -166,10 +166,7 @@ class ExecPool {
   bool IsActive() { return active_threads_ > 0 || task_queue_.size() > 0; }
   KStatus Init(kwdbContext_p ctx);
   void Stop();
-  static ExecPool &GetInstance(k_uint32 tq_num = 1024, k_uint32 tp_size = 10) {
-    static ExecPool instance(tq_num, tp_size);
-    return instance;
-  }
+  static ExecPool &GetInstance(k_uint32 tq_num = 1024, k_uint32 tp_size = 10);
   k_bool IsFull();
   k_bool IsInited();
   k_bool IsStopped();

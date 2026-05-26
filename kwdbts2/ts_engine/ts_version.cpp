@@ -261,6 +261,9 @@ KStatus TsVersionManager::Recover(bool force_recover) {
     }
     builder.AddUpdate(update);
   } while (!eof);
+  // Close reader and rfile before rename to release file locks on Windows
+  reader.reset();
+  rfile.reset();
   TsVersionUpdate update;
   builder.Finalize(&update);
   assert(logger_ != nullptr);
@@ -269,6 +272,18 @@ KStatus TsVersionManager::Recover(bool force_recover) {
     int64_t interval = end - start;
     recorder_->RecordInterval(dbid, interval);
   }
+  // Truncate files BEFORE ApplyUpdate to avoid Windows file locks
+  for (const auto &par_id : update.partitions_created_) {
+    auto root = root_path_ / PartitionDirName(par_id);
+    auto it = update.entity_segment_.find(par_id);
+    if (it != update.entity_segment_.end()) {
+      auto &info = it->second;
+      TruncateFile(root / BlockHeaderFileName(info.header_b_info.file_number), info.header_b_info.length);
+      TruncateFile(root / DataBlockFileName(info.datablock_info.file_number), info.datablock_info.length);
+      TruncateFile(root / EntityAggFileName(info.agg_info.file_number), info.agg_info.length);
+    }
+  }
+
   s = ApplyUpdate(&update, force_recover);
   LOG_INFO("recovered update: %s", update.DebugStr().c_str());
   if (s == FAIL) {
@@ -290,6 +305,9 @@ KStatus TsVersionManager::Recover(bool force_recover) {
     }
     tmp_current_file.reset();
     std::error_code ec;
+    // On Windows, fs::rename may fail if the target file exists.
+    // Remove the target first, then rename.
+    fs::remove(root_path_ / CurrentVersionName(), ec);
     fs::rename((root_path_ / TempFileName(CurrentVersionName())).string(), root_path_ / CurrentVersionName(), ec);
     if (ec.value() != 0) {
       LOG_ERROR("can not rename temp current version file, reason: %s", ec.message().c_str());

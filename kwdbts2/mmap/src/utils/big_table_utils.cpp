@@ -208,6 +208,8 @@ string toString(const char *str, size_t len) {
 
 string normalizePath(const string &path) {
   string rpath = path;
+  // Normalize backslashes to forward slashes for consistency
+  std::replace(rpath.begin(), rpath.end(), '\\', '/');
   size_t pos = 0;
 
   ///TODO: optimization
@@ -226,7 +228,11 @@ string normalizePath(const string &path) {
       break;
   }
 
-  return makeDirectoryPath(rpath);
+  // Always use forward slash as path separator for internal paths
+  if (!rpath.empty() && rpath.back() != '/') {
+    rpath.push_back('/');
+  }
+  return rpath;
 }
 
 string makeDirectoryPath(const string &tbl_sub_path) {

@@ -631,6 +631,9 @@ if (WITH_TESTS)
   # Exclude brpc tests on Windows
   if (WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Windows")
       list(FILTER KWDBTS2_SERVER_TEST_SRC EXCLUDE REGEX ".*/brpc/tests/.*")
+      # Exclude tests that require brpc (multi-processor communication)
+      list(FILTER KWDBTS2_SERVER_TEST_SRC EXCLUDE REGEX "ee_agg_scan_op_test\\.cpp$")
+      list(FILTER KWDBTS2_SERVER_TEST_SRC EXCLUDE REGEX "ee_noop_op_test\\.cpp$")
   endif()
   foreach (tsrc ${KWDBTS2_SERVER_TEST_SRC})
     # Build target name from filename (eg: icl_db_test.cc for icl/db_test.cc).

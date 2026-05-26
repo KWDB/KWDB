@@ -92,6 +92,7 @@ TEST_F(TestExecPool, TestThreadExpansion) {
   ASSERT_EQ(exec_pool.GetTotalThreadNum(), 2);
   // two normal tasks should be complete
   ASSERT_EQ(exec_pool.GetWaitThreadNum(), 2);
+  exec_pool.Stop();
 }
 
 }  // namespace kwdbts

@@ -53,7 +53,7 @@ class TestV2Iterator : public TsEngineTestBase {
           ASSERT_EQ(is_null, false);
           switch (col_type[k]) {
             case DATATYPE::TIMESTAMP64:
-              ASSERT_EQ(KTimestamp(res.data[k][0]->mem + j * sizeof(KTimestamp)), parseTimestamp((expected[i][j][k])));
+              ASSERT_EQ(KTimestampCast(res.data[k][0]->mem + j * sizeof(KTimestamp)), parseTimestamp((expected[i][j][k])));
               break;
             case DATATYPE::K_INT16:
               ASSERT_EQ(KInt16(res.data[k][0]->mem + j * sizeof(int16_t)), stoi(expected[i][j][k]));
@@ -956,6 +956,7 @@ TEST_F(TestV2Iterator, mulitEntityInvalidCount) {
   }
 }
 
+#ifndef _WIN32
 TEST_F(TestV2Iterator, blockCacheDetachMMAP) {
   EngineOptions::max_rows_per_block = 30;
   EngineOptions::min_rows_per_block = 15;
@@ -1154,6 +1155,7 @@ TEST_F(TestV2Iterator, blockCacheDetachMMAP) {
    */
   ASSERT_EQ(created_entity_block_file_count - destroyed_entity_block_file_count, 4);
 }
+#endif  // _WIN32
 
 TEST_F(TestV2Iterator, overflow) {
   TSTableID table_id = 999;
@@ -2169,7 +2171,7 @@ TEST_F(TestV2Iterator, aggregation) {
     bool is_finished = false;
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 1);
-    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), start_ts1 + 90);
+    ASSERT_EQ(KTimestampCast(res.data[0][0]->mem), start_ts1 + 90);
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 0);
 
@@ -2184,7 +2186,7 @@ TEST_F(TestV2Iterator, aggregation) {
     res.clear();
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 1);
-    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), start_ts1);
+    ASSERT_EQ(KTimestampCast(res.data[0][0]->mem), start_ts1);
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 0);
 
@@ -2199,7 +2201,7 @@ TEST_F(TestV2Iterator, aggregation) {
     res.clear();
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 1);
-    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), start_ts1 + 90);
+    ASSERT_EQ(KTimestampCast(res.data[0][0]->mem), start_ts1 + 90);
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 0);
 
@@ -2215,7 +2217,7 @@ TEST_F(TestV2Iterator, aggregation) {
     res.clear();
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 1);
-    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), start_ts1 + 90);
+    ASSERT_EQ(KTimestampCast(res.data[0][0]->mem), start_ts1 + 90);
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 0);
 
@@ -2307,7 +2309,7 @@ TEST_F(TestV2Iterator, blockfilter1) {
     bool is_finished = false;
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 3);
-    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), convertMSToPrecisionTS(start_ts, ts_col_type));
+    ASSERT_EQ(KTimestampCast(res.data[0][0]->mem), convertMSToPrecisionTS(start_ts, ts_col_type));
 
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 0);
@@ -2324,7 +2326,7 @@ TEST_F(TestV2Iterator, blockfilter1) {
     res.clear();
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 3);
-    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), convertMSToPrecisionTS(start_ts, ts_col_type));
+    ASSERT_EQ(KTimestampCast(res.data[0][0]->mem), convertMSToPrecisionTS(start_ts, ts_col_type));
 
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 0);
@@ -2405,7 +2407,7 @@ TEST_F(TestV2Iterator, multipleMinMax) {
     bool is_finished = false;
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 1);
-    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), start_ts + 200);
+    ASSERT_EQ(KTimestampCast(res.data[0][0]->mem), start_ts + 200);
     ASSERT_EQ(KDouble64(res.data[4][0]->mem), 1.0);
     ASSERT_EQ(KInt32(res.data[5][0]->mem), 200);
     ASSERT_EQ(KDouble64(res.data[6][0]->mem), 1.0);

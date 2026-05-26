@@ -16,6 +16,7 @@
 #include "ee_aggregate_func.h"
 #include "ee_hash_table.h"
 #include "ee_mempool.h"
+#include "ee_exec_pool.h"
 #include "gtest/gtest.h"
 
 namespace kwdbts {
@@ -40,6 +41,7 @@ void SetFixedStringLenOne(DatumPtr col, char v) {
 class HashTableTest : public ::testing::Test {
  protected:
   void SetUp() override {
+    ExecPool::GetInstance().db_path_ = "./";
     g_pstBufferPoolInfo = EE_MemPoolInit(1024, ROW_BUFFER_SIZE);
     ASSERT_NE(g_pstBufferPoolInfo, nullptr);
   }

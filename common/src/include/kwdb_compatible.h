@@ -120,44 +120,69 @@ static inline int setenv(const char* name, const char* value, int overwrite) {
 static inline char* strptime(const char* buf, const char* fmt, struct tm* tm) {
     // This is a very simplified implementation that only handles common formats
     // For production use, a full implementation should be used
+    // IMPORTANT: Returns pointer to the FIRST character NOT parsed, so callers
+    // can detect trailing content like sub-second fractions (.123).
     memset(tm, 0, sizeof(struct tm));
 
     // Try to parse common formats
     if (strcmp(fmt, "%Y-%m-%d %H:%M:%S") == 0) {
-        if (sscanf(buf, "%d-%d-%d %d:%d:%d",
-                   &tm->tm_year, &tm->tm_mon, &tm->tm_mday,
-                   &tm->tm_hour, &tm->tm_min, &tm->tm_sec) == 6) {
-            tm->tm_year -= 1900;
-            tm->tm_mon -= 1;
-            return (char*)(buf + strlen(buf));
+        int y, m, d, H, M, S;
+        int consumed = 0;
+        if (sscanf(buf, "%d-%d-%d %d:%d:%d%n",
+                   &y, &m, &d, &H, &M, &S, &consumed) >= 6) {
+            tm->tm_year = y - 1900;
+            tm->tm_mon = m - 1;
+            tm->tm_mday = d;
+            tm->tm_hour = H;
+            tm->tm_min = M;
+            tm->tm_sec = S;
+            return (char*)(buf + consumed);
         }
     } else if (strcmp(fmt, "%Y-%m-%dT%H:%M:%S") == 0) {
-        if (sscanf(buf, "%d-%d-%dT%d:%d:%d",
-                   &tm->tm_year, &tm->tm_mon, &tm->tm_mday,
-                   &tm->tm_hour, &tm->tm_min, &tm->tm_sec) == 6) {
-            tm->tm_year -= 1900;
-            tm->tm_mon -= 1;
-            return (char*)(buf + strlen(buf));
+        int y, m, d, H, M, S;
+        int consumed = 0;
+        if (sscanf(buf, "%d-%d-%dT%d:%d:%d%n",
+                   &y, &m, &d, &H, &M, &S, &consumed) >= 6) {
+            tm->tm_year = y - 1900;
+            tm->tm_mon = m - 1;
+            tm->tm_mday = d;
+            tm->tm_hour = H;
+            tm->tm_min = M;
+            tm->tm_sec = S;
+            return (char*)(buf + consumed);
         }
     } else if (strcmp(fmt, "%Y-%m-%d") == 0) {
-        if (sscanf(buf, "%d-%d-%d",
-                   &tm->tm_year, &tm->tm_mon, &tm->tm_mday) == 3) {
-            tm->tm_year -= 1900;
-            tm->tm_mon -= 1;
-            return (char*)(buf + strlen(buf));
+        int y, m, d;
+        int consumed = 0;
+        if (sscanf(buf, "%d-%d-%d%n",
+                   &y, &m, &d, &consumed) >= 3) {
+            tm->tm_year = y - 1900;
+            tm->tm_mon = m - 1;
+            tm->tm_mday = d;
+            return (char*)(buf + consumed);
         }
     } else if (strcmp(fmt, "%H:%M:%S") == 0) {
-        if (sscanf(buf, "%d:%d:%d",
-                   &tm->tm_hour, &tm->tm_min, &tm->tm_sec) == 3) {
-            return (char*)(buf + strlen(buf));
+        int H, M, S;
+        int consumed = 0;
+        if (sscanf(buf, "%d:%d:%d%n",
+                   &H, &M, &S, &consumed) >= 3) {
+            tm->tm_hour = H;
+            tm->tm_min = M;
+            tm->tm_sec = S;
+            return (char*)(buf + consumed);
         }
     } else if (strcmp(fmt, "%Y/%m/%d-%H:%M:%S") == 0) {
-        if (sscanf(buf, "%d/%d/%d-%d:%d:%d",
-                   &tm->tm_year, &tm->tm_mon, &tm->tm_mday,
-                   &tm->tm_hour, &tm->tm_min, &tm->tm_sec) == 6) {
-            tm->tm_year -= 1900;
-            tm->tm_mon -= 1;
-            return (char*)(buf + strlen(buf));
+        int y, m, d, H, M, S;
+        int consumed = 0;
+        if (sscanf(buf, "%d/%d/%d-%d:%d:%d%n",
+                   &y, &m, &d, &H, &M, &S, &consumed) >= 6) {
+            tm->tm_year = y - 1900;
+            tm->tm_mon = m - 1;
+            tm->tm_mday = d;
+            tm->tm_hour = H;
+            tm->tm_min = M;
+            tm->tm_sec = S;
+            return (char*)(buf + consumed);
         }
     }
 

@@ -9,6 +9,8 @@
 // NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE. See the
 // Mulan PSL v2 for more details.
 
+#include <inttypes.h>
+
 #include "ee_field_func.h"
 
 #include <time.h>
@@ -1262,7 +1264,7 @@ k_double64 FieldFuncMod::ValReal() { return ValInt(); }
 
 String FieldFuncMod::ValStr() {
   String s(storage_len_);
-  snprintf(s.ptr_, storage_len_ + 1, "%ld", ValInt());
+  snprintf(s.ptr_, storage_len_ + 1, "%" PRId64, ValInt());
   s.length_ = strlen(s.ptr_);
   return s;
   // return std::to_string(ValInt());
@@ -1360,7 +1362,7 @@ k_double64 FieldFuncAndCal::ValReal() { return ValInt(); }
 
 String FieldFuncAndCal::ValStr() {
   String s(storage_len_);
-  snprintf(s.ptr_, storage_len_ + 1, "%ld", ValInt());
+  snprintf(s.ptr_, storage_len_ + 1, "%" PRId64, ValInt());
   s.length_ = strlen(s.ptr_);
   return s;
   // return std::to_string(ValInt());
@@ -1457,7 +1459,7 @@ k_double64 FieldFuncOrCal::ValReal() { return ValInt(); }
 
 String FieldFuncOrCal::ValStr() {
   String s(storage_len_);
-  snprintf(s.ptr_, storage_len_ + 1, "%ld", ValInt());
+  snprintf(s.ptr_, storage_len_ + 1, "%" PRId64, ValInt());
   s.length_ = strlen(s.ptr_);
   return s;
   // return std::to_string(ValInt());
@@ -1546,7 +1548,7 @@ k_double64 FieldFuncNotCal::ValReal() { return ValInt(); }
 
 String FieldFuncNotCal::ValStr() {
   String s(storage_len_);
-  snprintf(s.ptr_, storage_len_ + 1, "%ld", ValInt());
+  snprintf(s.ptr_, storage_len_ + 1, "%" PRId64, ValInt());
   s.length_ = strlen(s.ptr_);
   return s;
   // return std::to_string(ValInt());
@@ -1652,7 +1654,7 @@ k_double64 FieldFuncLeftShift::ValReal() { return ValInt(); }
 
 String FieldFuncLeftShift::ValStr() {
   String s(storage_len_);
-  snprintf(s.ptr_, storage_len_ + 1, "%ld", ValInt());
+  snprintf(s.ptr_, storage_len_ + 1, "%" PRId64, ValInt());
   s.length_ = strlen(s.ptr_);
   return s;
   // return std::to_string(ValInt());
@@ -1757,7 +1759,7 @@ k_double64 FieldFuncRightShift::ValReal() { return ValInt(); }
 
 String FieldFuncRightShift::ValStr() {
   String s(storage_len_);
-  snprintf(s.ptr_, storage_len_ + 1, "%ld", ValInt());
+  snprintf(s.ptr_, storage_len_ + 1, "%" PRId64, ValInt());
   s.length_ = strlen(s.ptr_);
   return s;
   // return std::to_string(ValInt());
@@ -1844,7 +1846,7 @@ k_double64 FieldFuncTimeBucket::ValReal() { return ValInt(); }
 
 String FieldFuncTimeBucket::ValStr() {
   String s(storage_len_);
-  snprintf(s.ptr_, storage_len_ + 1, "%ld", ValInt());
+  snprintf(s.ptr_, storage_len_ + 1, "%" PRId64, ValInt());
   s.length_ = strlen(s.ptr_);
   return s;
   // return std::to_string(ValInt());
@@ -2054,7 +2056,7 @@ k_double64 FieldFuncCurrentTimeStamp::ValReal() { return ValInt(); }
 
 String FieldFuncCurrentTimeStamp::ValStr() {
   String s(storage_len_);
-  snprintf(s.ptr_, storage_len_ + 1, "%ld", ValInt());
+  snprintf(s.ptr_, storage_len_ + 1, "%" PRId64, ValInt());
   s.length_ = strlen(s.ptr_);
   return s;
   // return std::to_string(ValInt());
@@ -2084,7 +2086,7 @@ k_double64 FieldFuncNow::ValReal() { return ValInt(); }
 
 String FieldFuncNow::ValStr() {
   String s(storage_len_);
-  snprintf(s.ptr_, storage_len_ + 1, "%ld", ValInt());
+  snprintf(s.ptr_, storage_len_ + 1, "%" PRId64, ValInt());
   s.length_ = strlen(s.ptr_);
   return s;
   // return std::to_string(ValInt());
@@ -2130,7 +2132,7 @@ k_double64 FieldFuncDateTrunc::ValReal() { return ValInt(); }
 
 String FieldFuncDateTrunc::ValStr() {
   String s(storage_len_);
-  snprintf(s.ptr_, storage_len_ + 1, "%ld", ValInt());
+  snprintf(s.ptr_, storage_len_ + 1, "%" PRId64, ValInt());
   s.length_ = strlen(s.ptr_);
   return s;
   // return std::to_string(ValInt());
@@ -2192,7 +2194,7 @@ k_double64 FieldFuncExtract::ValReal() {
 
 String FieldFuncExtract::ValStr() {
   String s(storage_len_);
-  snprintf(s.ptr_, storage_len_ + 1, "%ld", ValInt());
+  snprintf(s.ptr_, storage_len_ + 1, "%" PRId64, ValInt());
   s.length_ = strlen(s.ptr_);
   return s;
   // return std::to_string(ValInt());
@@ -2427,7 +2429,7 @@ k_double64 FieldFuncRandom::ValReal() {
 
 String FieldFuncRandom::ValStr() {
   String s(storage_len_);
-  snprintf(s.ptr_, storage_len_ + 1, "%ld", ValInt());
+  snprintf(s.ptr_, storage_len_ + 1, "%" PRId64, ValInt());
   s.length_ = strlen(s.ptr_);
   return s;
 }
@@ -2536,7 +2538,7 @@ k_double64 FieldFuncWidthBucket::ValReal() { return ValInt(); }
 
 String FieldFuncWidthBucket::ValStr() {
   String s(storage_len_);
-  snprintf(s.ptr_, storage_len_ + 1, "%ld", ValInt());
+  snprintf(s.ptr_, storage_len_ + 1, "%" PRId64, ValInt());
   s.length_ = strlen(s.ptr_);
   return s;
 }
@@ -3228,7 +3230,7 @@ k_double64 FieldFuncFnv32::ValReal() { return ValInt(); }
 
 String FieldFuncFnv32::ValStr() {
   String s(storage_len_);
-  snprintf(s.ptr_, storage_len_ + 1, "%ld", ValInt());
+  snprintf(s.ptr_, storage_len_ + 1, "%" PRId64, ValInt());
   s.length_ = strlen(s.ptr_);
   return s;
 }
@@ -3304,7 +3306,7 @@ k_double64 FieldFuncFnv32a::ValReal() { return ValInt(); }
 
 String FieldFuncFnv32a::ValStr() {
   String s(storage_len_);
-  snprintf(s.ptr_, storage_len_ + 1, "%ld", ValInt());
+  snprintf(s.ptr_, storage_len_ + 1, "%" PRId64, ValInt());
   s.length_ = strlen(s.ptr_);
   return s;
 }
@@ -3381,7 +3383,7 @@ k_double64 FieldFuncFnv64::ValReal() { return ValInt(); }
 
 String FieldFuncFnv64::ValStr() {
   String s(storage_len_);
-  snprintf(s.ptr_, storage_len_ + 1, "%ld", ValInt());
+  snprintf(s.ptr_, storage_len_ + 1, "%" PRId64, ValInt());
   s.length_ = strlen(s.ptr_);
   return s;
 }
@@ -3458,7 +3460,7 @@ k_double64 FieldFuncFnv64a::ValReal() { return ValInt(); }
 
 String FieldFuncFnv64a::ValStr() {
   String s(storage_len_);
-  snprintf(s.ptr_, storage_len_ + 1, "%ld", ValInt());
+  snprintf(s.ptr_, storage_len_ + 1, "%" PRId64, ValInt());
   s.length_ = strlen(s.ptr_);
   return s;
 }

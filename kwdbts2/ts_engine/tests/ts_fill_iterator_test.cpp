@@ -97,7 +97,7 @@ TEST_F(TestFillIterator, NONE) {
     bool is_finished = false;
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 1);
-    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), convertMSToPrecisionTS(start_ts, ts_col_type));
+    ASSERT_EQ(KTimestampCast(res.data[0][0]->mem), convertMSToPrecisionTS(start_ts, ts_col_type));
 
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 0);
@@ -191,7 +191,7 @@ TEST_F(TestFillIterator, EXACT) {
     bool is_finished = false;
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 1);
-    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), convertMSToPrecisionTS(start_ts, ts_col_type));
+    ASSERT_EQ(KTimestampCast(res.data[0][0]->mem), convertMSToPrecisionTS(start_ts, ts_col_type));
     bool is_null = false;
     res.data[1][0]->isNull(0, &is_null);
     ASSERT_EQ(is_null, false);
@@ -212,7 +212,7 @@ TEST_F(TestFillIterator, EXACT) {
 
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 1);
-    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), convertMSToPrecisionTS(start_ts - 1, ts_col_type));
+    ASSERT_EQ(KTimestampCast(res.data[0][0]->mem), convertMSToPrecisionTS(start_ts - 1, ts_col_type));
     is_null = false;
     res.data[1][0]->isNull(0, &is_null);
     ASSERT_EQ(is_null, true);
@@ -297,7 +297,7 @@ TEST_F(TestFillIterator, PREVIOUS) {
     bool is_finished = false;
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 1);
-    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), convertMSToPrecisionTS(fill_ts, ts_col_type));
+    ASSERT_EQ(KTimestampCast(res.data[0][0]->mem), convertMSToPrecisionTS(fill_ts, ts_col_type));
     ASSERT_EQ(KInt32(res.data[1][0]->mem), 300);
     ASSERT_EQ(KDouble64(res.data[2][0]->mem), 1.0);
 
@@ -318,7 +318,7 @@ TEST_F(TestFillIterator, PREVIOUS) {
 
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 1);
-    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), convertMSToPrecisionTS(fill_ts, ts_col_type));
+    ASSERT_EQ(KTimestampCast(res.data[0][0]->mem), convertMSToPrecisionTS(fill_ts, ts_col_type));
     ASSERT_EQ(KInt32(res.data[1][0]->mem), 200);
     ASSERT_EQ(KDouble64(res.data[2][0]->mem), 1.0);
 
@@ -401,7 +401,7 @@ TEST_F(TestFillIterator, NEXT) {
     bool is_finished = false;
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 1);
-    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), convertMSToPrecisionTS(fill_ts, ts_col_type));
+    ASSERT_EQ(KTimestampCast(res.data[0][0]->mem), convertMSToPrecisionTS(fill_ts, ts_col_type));
     ASSERT_EQ(KInt32(res.data[1][0]->mem), 200);
     ASSERT_EQ(KDouble64(res.data[2][0]->mem), 1.0);
 
@@ -422,7 +422,7 @@ TEST_F(TestFillIterator, NEXT) {
 
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 1);
-    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), convertMSToPrecisionTS(fill_ts, ts_col_type));
+    ASSERT_EQ(KTimestampCast(res.data[0][0]->mem), convertMSToPrecisionTS(fill_ts, ts_col_type));
     ASSERT_EQ(KInt32(res.data[1][0]->mem), 200);
     ASSERT_EQ(KDouble64(res.data[2][0]->mem), 3.0);
 
@@ -444,7 +444,7 @@ TEST_F(TestFillIterator, NEXT) {
 
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 1);
-    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), convertMSToPrecisionTS(fill_ts, ts_col_type));
+    ASSERT_EQ(KTimestampCast(res.data[0][0]->mem), convertMSToPrecisionTS(fill_ts, ts_col_type));
     ASSERT_EQ(KInt32(res.data[1][0]->mem), 200);
     bool is_null = false;
     res.data[2][0]->isNull(0, &is_null);
@@ -528,7 +528,7 @@ TEST_F(TestFillIterator, CLOSER) {
     bool is_finished = false;
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 1);
-    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), convertMSToPrecisionTS(fill_ts, ts_col_type));
+    ASSERT_EQ(KTimestampCast(res.data[0][0]->mem), convertMSToPrecisionTS(fill_ts, ts_col_type));
     ASSERT_EQ(KInt32(res.data[1][0]->mem), 300);
     ASSERT_EQ(KDouble64(res.data[2][0]->mem), 3.0);
 
@@ -552,7 +552,7 @@ TEST_F(TestFillIterator, CLOSER) {
 
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 1);
-    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), convertMSToPrecisionTS(fill_ts, ts_col_type));
+    ASSERT_EQ(KTimestampCast(res.data[0][0]->mem), convertMSToPrecisionTS(fill_ts, ts_col_type));
     ASSERT_EQ(KInt32(res.data[1][0]->mem), 400);
     ASSERT_EQ(KDouble64(res.data[2][0]->mem), 1.0);
 
@@ -572,7 +572,7 @@ TEST_F(TestFillIterator, CLOSER) {
 
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 1);
-    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), convertMSToPrecisionTS(fill_ts, ts_col_type));
+    ASSERT_EQ(KTimestampCast(res.data[0][0]->mem), convertMSToPrecisionTS(fill_ts, ts_col_type));
     ASSERT_EQ(KInt32(res.data[1][0]->mem), 400);
     bool is_null = false;
     res.data[2][0]->isNull(0, &is_null);
@@ -653,7 +653,7 @@ TEST_F(TestFillIterator, CONSTANT) {
     bool is_finished = false;
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 1);
-    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), convertMSToPrecisionTS(start_ts - 1, ts_col_type));
+    ASSERT_EQ(KTimestampCast(res.data[0][0]->mem), convertMSToPrecisionTS(start_ts - 1, ts_col_type));
     ASSERT_EQ(KInt32(res.data[1][0]->mem), 123);
     ASSERT_EQ(KDouble64(res.data[2][0]->mem), 123);
 
@@ -671,7 +671,7 @@ TEST_F(TestFillIterator, CONSTANT) {
 
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 1);
-    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), convertMSToPrecisionTS(start_ts - 1, ts_col_type));
+    ASSERT_EQ(KTimestampCast(res.data[0][0]->mem), convertMSToPrecisionTS(start_ts - 1, ts_col_type));
     bool is_null = false;
     res.data[1][0]->isNull(0, &is_null);
     ASSERT_EQ(is_null, true);
@@ -691,7 +691,7 @@ TEST_F(TestFillIterator, CONSTANT) {
 
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 1);
-    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), convertMSToPrecisionTS(start_ts - 1, ts_col_type));
+    ASSERT_EQ(KTimestampCast(res.data[0][0]->mem), convertMSToPrecisionTS(start_ts - 1, ts_col_type));
     is_null = false;
     res.data[1][0]->isNull(0, &is_null);
     ASSERT_EQ(is_null, true);
@@ -778,7 +778,7 @@ TEST_F(TestFillIterator, LINEAR) {
     bool is_finished = false;
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 1);
-    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), convertMSToPrecisionTS(fill_ts, ts_col_type));
+    ASSERT_EQ(KTimestampCast(res.data[0][0]->mem), convertMSToPrecisionTS(fill_ts, ts_col_type));
     ASSERT_EQ(KInt32(res.data[1][0]->mem), 350);
     ASSERT_EQ(KDouble64(res.data[2][0]->mem), 3.22);
 
@@ -798,7 +798,7 @@ TEST_F(TestFillIterator, LINEAR) {
 
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 1);
-    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), convertMSToPrecisionTS(fill_ts, ts_col_type));
+    ASSERT_EQ(KTimestampCast(res.data[0][0]->mem), convertMSToPrecisionTS(fill_ts, ts_col_type));
     ASSERT_EQ(KInt32(res.data[1][0]->mem), 350);
     bool is_null = false;
     res.data[2][0]->isNull(0, &is_null);
@@ -820,7 +820,7 @@ TEST_F(TestFillIterator, LINEAR) {
 
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 1);
-    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), convertMSToPrecisionTS(fill_ts, ts_col_type));
+    ASSERT_EQ(KTimestampCast(res.data[0][0]->mem), convertMSToPrecisionTS(fill_ts, ts_col_type));
     is_null = false;
     res.data[1][0]->isNull(0, &is_null);
     ASSERT_EQ(is_null, true);

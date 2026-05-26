@@ -31,6 +31,11 @@ ExecPool::ExecPool(k_uint32 tq_num, k_uint32 tp_size) {
   is_tp_stop_ = true;
 }
 
+ExecPool &ExecPool::GetInstance(k_uint32 tq_num, k_uint32 tp_size) {
+  static ExecPool instance(tq_num, tp_size);
+  return instance;
+}
+
 void ExecPool::CreateThread() {
   std::thread thr([this]() {
     this->Routine(this);

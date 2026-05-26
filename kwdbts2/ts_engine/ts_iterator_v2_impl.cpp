@@ -1479,8 +1479,8 @@ KStatus TsFillRawDataIteratorImpl::Next(ResultSet* res, k_uint32* count, bool* i
           } else if (is_after_null) {
             mem = previous_res.data[2 * i + 1][0]->mem;
           } else {
-            timestamp64 before_fill_ts = KTimestamp(previous_res.data[2 * i][0]->mem);
-            timestamp64 after_fill_ts = KTimestamp(after_res.data[2 * i][0]->mem);
+            timestamp64 before_fill_ts = KTimestampCast(previous_res.data[2 * i][0]->mem);
+            timestamp64 after_fill_ts = KTimestampCast(after_res.data[2 * i][0]->mem);
             timestamp64 before_interval = fill_ts_point_ - before_fill_ts;
             timestamp64 after_interval = after_fill_ts - fill_ts_point_;
             mem = before_interval <= after_interval
@@ -1576,8 +1576,8 @@ KStatus TsFillRawDataIteratorImpl::Next(ResultSet* res, k_uint32* count, bool* i
           Batch* batch = new AggBatch(nullptr, 0);
           res->push_back(fill_cols_map_[i], batch);
         } else {
-          timestamp64 t1 = KTimestamp(previous_res.data[2 * i][0]->mem);
-          timestamp64 t2 = KTimestamp(after_res.data[2 * i][0]->mem);
+          timestamp64 t1 = KTimestampCast(previous_res.data[2 * i][0]->mem);
+          timestamp64 t2 = KTimestampCast(after_res.data[2 * i][0]->mem);
           calculateLinearResultSet(res, i, t1, t2, previous_res.data[2 * i + 1][0]->mem,
                                    after_res.data[2 * i + 1][0]->mem);
         }
