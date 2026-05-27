@@ -19,7 +19,6 @@ This file is the stable map of agent-facing resources in this repository.
 - `docs/agents/*-zh.md`: optional Chinese-language editions; English sources
   remain the OSS default
 - `docs/agents/architecture-index.md`: module map and task routing hints
-- `docs/agents/coding-style-go-cpp.md`: Go/C++ norms for KWDB-maintained OSS code
 - `docs/agents/ci-release-guide.md`: Makefile/script verification surfaces plus merge checks
 - `docs/agents/testing-flow.md`: verification levels and common commands
 - `docs/agents/logging.md`: shared logging constraints and review checklist

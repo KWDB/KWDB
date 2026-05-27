@@ -1,174 +1,175 @@
 ---
 name: kwdb-document-writing
 description: |
-  Use when 用户要求编写功能规格书、设计文档、PRD、技术设计文档，或需要分析KWDB数据库需求。
+  Use when the user requests writing functional specifications, design documents,
+  PRDs, technical design documents, or needs to analyze KWDB database requirements.
 ---
 
-# KWDB 文档编写技能
+# KWDB Document Writing Skill
 
-本技能帮助用户编写 KWDB 数据库的功能规格书和设计文档。
+This skill assists users in writing functional specifications and design documents for the KWDB database.
 
-## 工作流程
-
-```
-需求理解 → 澄清问题 → 代码库分析 → 功能规格书生成 → 设计文档生成 → 输出文件
-```
-
-**重要**：本技能位于 KWDB 代码仓库内，在生成设计文档前必须分析代码仓库中的现有实现，
-引用实际的代码路径、函数名、模块结构。
-
-## 第一阶段：需求理解与分析
-
-当用户提出需求时，首先进行**需求澄清**，确保理解完整。
-
-### 1.1 基础信息提取
-
-请先阅读模板文件以了解文档结构：
-- 功能规格书模板：`references/功能规格书模板.md`
-- 设计文档模板：`references/设计文档模板.md`
-
-### 1.2 多轮澄清提问
-
-如果用户需求不够清晰，使用以下问题框架进行澄清：
-
-**需求背景类：**
-- 这个功能解决什么问题？用户痛点是什么？
-- 是否有相关的需求文档或 issue 链接？
-- 目标用户群体是谁？（DBA、应用开发人员、运维等）
-
-**技术范围类：**
-- 这个功能涉及哪些模块？（SQL 层、存储层、集群管理...）
-- 是否需要修改现有模块？修改哪些？
-- 是否依赖第三方库或外部系统？
-
-**约束条件类：**
-- 是否有性能指标要求？
-- 是否有兼容性要求？（如需支持低版本兼容）
-- 是否需要考虑高可用场景？
-
-**产出期望类：**
-- 是否需要同时产出功能规格书和设计文档？
-- 是否有特定的输出目录要求？
-
-### 1.3 需求分类框架
-
-根据用户提供的信息，将需求归类：
-
-| 类别 | 特征 | 文档重点 |
-|------|------|----------|
-| 新功能 | 全新功能，不依赖现有机制 | 需求背景、用户场景、功能范围 |
-| 功能增强 | 扩展现有功能 | 现有功能分析、增量变更 |
-| 性能优化 | 优化现有实现 | 性能指标、基准测试 |
-| Bug修复 | 修复已知问题 | 问题根因、解决方案 |
-| 架构调整 | 调整系统架构 | 模块划分、调用关系 |
-
-### 1.4 AI 友好文档
-
-如有必要，你可以阅读下面文档了解更多关于KWDB代码仓库的信息：
-- `AGENTS.md` - AI 代理工作指南
-- `docs/agents/architecture-index.md` - KWDB 模块和代码索引
-- `docs/resource-index.md` - AI 可用资源索引
-
-
-## 第二阶段：代码库分析
-
-设计文档中的模块设计、接口设计必须引用实际的代码结构。
-
-**步骤**：
-1. 阅读 `docs/agents/architecture-index.md`，了解 KWDB 架构和模块划分
-2. 根据需求涉及的模块，搜索相关代码文件和实现位置
-3. 分析目录结构，确认核心文件位置
-4. 记录调用关系和现有实现
-
-**要求**：代码引用必须经过实际搜索确认，如无法找到标注 `[待确认]`。
-
-## 第三阶段：功能规格书生成
-
-参照 `references/功能规格书模板.md` 填写，严格遵从模板中的章节和格式。
-
-**必填章节（必须有实质内容）：**
-- 2.1 摘要 - 需求和解决方案的简要说明
-- 2.4 详细的问题声明和解决方案大纲 - 核心问题分析
-- 3.x 功能规格详述 - 详细的功能规格
-- 5.x 场景演示 - 至少一个完整用例
-
-**KWDB 特定注意事项：**
-- SQL 语法变更需明确说明语法示例
-- 命令行工具（kwbase）变更需列出所有受影响命令
-- 配置参数变更需说明默认值和取值范围
-- 版本兼容性需说明支持哪些版本的滚动升级
-
-**术语处理**：在 1.1 节自动添加 KWDB 特定术语（节点、集群、时序表、关系表、kwbase），根据功能类型可添加更多。
-
-对于 KWDB 特定术语，在 1.1 节自动添加以下术语：
-
-| 缩写/术语 | 解释 |
-|-----------|------|
-| 节点 | KaiwuDB节点，是运行数据库服务的物理服务器，多个节点构成一个集群 |
-| 集群 | 多个KaiwuDB数据库服务拓扑形态，至少由3个节点构成 |
-| 时序表 | 支持时间戳索引的表，适用于IoT等时序场景 |
-| 关系表 | 标准的SQL关系表 |
-| kwbase | KaiwuDB的命令行管理工具 |
-
-根据功能类型，可添加更多相关术语。
-
-## 第四阶段：设计文档生成
-
-参照 `references/设计文档模板.md` 填写，严格遵从模板中的章节和格式。
-
-**技术深度要求：**
-- 3.x 设计概述 - 从架构层面描述
-- 4.x 详细设计 - 到类/函数级别，包括调用关系
-- 5.x 外部接口 - 明确的 API 签名
-- 6.x 关键算法 - 时间/空间复杂度
-
-**KWDB 架构参考：** 详见 `docs/agents/architecture-index.md`
-
-**关联功能规格书：** 在 1.2 节关联文档中自动添加功能规格书的引用链接。
-
-## 第五阶段：输出与保存
-
-### 5.1 文件命名规范
+## Workflow
 
 ```
-功能规格书: {功能名称}_功能规格书_{日期}.md
-设计文档: {功能名称}_设计文档_{日期}.md
+Requirement Understanding → Clarify Questions → Codebase Analysis → Functional Spec Generation → Design Doc Generation → Output Files
 ```
 
-### 5.2 输出确认
+**Important**: This skill is located within the KWDB code repository. Before generating design documents,
+you must analyze existing implementations in the codebase, referencing actual code paths, function names,
+and module structures.
 
-生成文档后，向用户确认：
-1. 文档内容是否需要调整
-2. 是否需要补充特定章节
-3. 确认保存路径
+## Phase 1: Requirement Understanding and Analysis
 
-### 5.3 双文档关联
+When the user proposes a requirement, first perform **requirement clarification** to ensure complete understanding.
 
-确保设计文档中：
-- 1.2 节引用对应的功能规格书
-- DCR 编号与功能规格书保持一致
+### 1.1 Basic Information Extraction
 
-## 示例对话
+First, read the template files to understand the document structure:
+- Functional spec template: `references/functional-spec-template.md`
+- Design doc template: `references/design-template.md`
 
-**用户**: "我想给 KaiwuDB 添加一个 time_bucket_gapfill 函数，用于时间序列数据的缺失值填充"
+### 1.2 Multi-Round Clarification Questions
 
-**助手**:
-1. 阅读模板了解文档结构
-2. 澄清问题：填补策略、聚合函数、依赖库等
-3. 代码库分析：阅读 architecture-index.md，搜索相关代码实现
-4. 生成功能规格书
-5. 生成设计文档（引用实际代码路径）
-6. 保存并确认
+If the user's requirements are not clear enough, use the following question framework for clarification:
 
-## 质量检查清单
+**Requirement Background:**
+- What problem does this feature solve? What is the user's pain point?
+- Is there a related requirements document or issue link?
+- Who is the target user group? (DBA, application developers, operations, etc.)
 
-- [ ] 术语表已填充（1.1 节）
-- [ ] 需求背景清晰（2.1/2.4 节）
-- [ ] 至少一个完整场景演示（5.x 节）
-- [ ] SQL 语法有具体示例
-- [ ] 配置参数有默认值和范围
-- [ ] 版本兼容性已说明
-- [ ] 设计文档引用功能规格书
-- [ ] 设计文档包含代码分析（引用实际文件路径和函数名）
-- [ ] 代码引用经过实际搜索确认
-- [ ] 文档使用中文，术语统一
+**Technical Scope:**
+- Which modules does this feature involve? (SQL layer, storage layer, cluster management...)
+- Does it require modifying existing modules? Which ones?
+- Does it depend on third-party libraries or external systems?
+
+**Constraints:**
+- Are there performance indicator requirements?
+- Are there compatibility requirements? (e.g., backward compatibility with older versions)
+- Does it need to consider high-availability scenarios?
+
+**Output Expectations:**
+- Do you need both a functional spec and a design document?
+- Is there a specific output directory requirement?
+
+### 1.3 Requirement Classification Framework
+
+Classify the requirement based on the information provided by the user:
+
+| Category          | Characteristics                              | Document Focus                              |
+|-------------------|----------------------------------------------|---------------------------------------------|
+| New Feature       | Brand new feature, no existing dependencies  | Requirement background, user scenarios, scope |
+| Feature Enhancement | Extends existing functionality             | Existing feature analysis, incremental changes |
+| Performance Optimization | Optimizes existing implementation      | Performance metrics, benchmark tests         |
+| Bug Fix           | Fixes a known issue                          | Root cause, solution                        |
+| Architecture Adjustment | Adjusts system architecture             | Module partitioning, call relationships      |
+
+### 1.4 AI-Friendly Documentation
+
+If necessary, you can read the following documents to learn more about the KWDB code repository:
+- `AGENTS.md` — AI agent working guide
+- `docs/agents/architecture-index.md` — KWDB module and code index
+- `docs/agents/resource-index.md` — AI-available resource index
+
+## Phase 2: Codebase Analysis
+
+The module design and interface design in the design document MUST reference actual code structures.
+
+**Steps**:
+1. Read `docs/agents/architecture-index.md` to understand KWDB architecture and module partitioning
+2. Based on the modules involved in the requirement, search for relevant code files and implementation locations
+3. Analyze the directory structure and confirm core file locations
+4. Record call relationships and existing implementations
+
+**Requirement**: Code references must be confirmed through actual searches. Mark as `[TBD]` if unverifiable.
+
+## Phase 3: Functional Specification Generation
+
+Fill in based on `references/functional-spec-template.md` using Chinese, strictly following the chapters and format in the template.
+
+**Required chapters (must have substantive content):**
+- 2.1 Summary — brief description of the requirement and solution
+- 2.4 Detailed problem statement and solution outline — core problem analysis
+- 3.x Functional specification details — detailed functional specs
+- 5.x Scenario demonstrations — at least one complete use case
+
+**KWDB-Specific Considerations:**
+- SQL syntax changes must include explicit syntax examples
+- Command-line tool (kwbase) changes must list all affected commands
+- Configuration parameter changes must state default values and value ranges
+- Version compatibility must explain which versions support rolling upgrades
+
+**Terminology**: In section 1.1, automatically add KWDB-specific terms (node, cluster, time-series table, relational table, kwbase). Depending on the feature type, more terms may be added.
+
+For KWDB-specific terms, automatically add the following terms in section 1.1:
+
+| Abbreviation/Term | Explanation                                                              |
+|-------------------|--------------------------------------------------------------------------|
+| Node              | A KaiwuDB node, a physical server running database services. Multiple nodes form a cluster |
+| Cluster           | A topological form of multiple KaiwuDB database services, consisting of at least 3 nodes |
+| Time-series Table  | A table supporting timestamp indexes, suitable for IoT and other time-series scenarios |
+| Relational Table  | A standard SQL relational table                                          |
+| kwbase            | KaiwuDB command-line management tool                                     |
+
+Additional relevant terms may be added based on the feature type.
+
+## Phase 4: Design Document Generation
+
+Fill in based on `references/design-template.md` using Chinese, strictly following the chapters and format in the template.
+
+**Technical Depth Requirements:**
+- 3.x Design Overview — describe at the architectural level
+- 4.x Detailed Design — down to class/function level, including call relationships
+- 5.x External Interfaces — explicit API signatures
+- 6.x Key Algorithms — time/space complexity
+
+**KWDB Architecture Reference:** See `docs/agents/architecture-index.md`
+
+**Related Functional Spec:** In section 1.2 related documents, automatically add a reference link to the functional spec.
+
+## Phase 5: Output and Save
+
+### 5.1 File Naming Convention
+
+```
+Functional Spec: {feature_name}_功能规格书_{date}.md
+Design Doc:      {feature_name}_设计文档_{date}.md
+```
+
+### 5.2 Output Confirmation
+
+After generating documents, confirm with the user:
+1. Whether the document content needs adjustment
+2. Whether specific chapters need to be supplemented
+3. Confirm the save path
+
+### 5.3 Cross-Document Linking
+
+Ensure the design document includes:
+- Section 1.2 references the corresponding functional spec
+- DCR number is consistent with the functional spec
+
+## Example Dialog
+
+**User**: "I want to add a time_bucket_gapfill function to KaiwuDB for filling missing values in time-series data"
+
+**Assistant**:
+1. Read templates to understand document structure
+2. Clarify questions: fill strategy, aggregation functions, dependencies, etc.
+3. Codebase analysis: read architecture-index.md, search for related code implementations
+4. Generate functional spec
+5. Generate design doc (referencing actual code paths)
+6. Save and confirm
+
+## Quality Checklist
+
+- [ ] Glossary is populated (section 1.1)
+- [ ] Requirement background is clear (sections 2.1/2.4)
+- [ ] At least one complete scenario demonstration (section 5.x)
+- [ ] SQL syntax has concrete examples
+- [ ] Configuration parameters have default values and ranges
+- [ ] Version compatibility is stated
+- [ ] Design doc references the functional spec
+- [ ] Design doc includes code analysis (referencing actual file paths and function names)
+- [ ] Code references have been confirmed through actual searches
+- [ ] Documents use Chinese, terminology is consistent
