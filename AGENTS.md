@@ -30,8 +30,6 @@ optional.
 Deeper module guidance lives in `docs/agents/architecture-index.md`. Build and
 verification command details live in `docs/agents/testing-flow.md`.
 
-Go and C++ norms: `docs/agents/coding-style-go-cpp.md`. Also listed under
-[Agent Resources](#8-agent-resources).
 
 ## 3. Working Rules
 
@@ -40,7 +38,6 @@ Go and C++ norms: `docs/agents/coding-style-go-cpp.md`. Also listed under
 - Do not manually edit generated files unless the owning workflow requires it.
 - Do not weaken tests to make a change pass.
 - Match existing file-local and module-local patterns before introducing a new abstraction.
-  For Go and C++, also align with `docs/agents/coding-style-go-cpp.md`.
 - Comments should explain intent, constraints, or tradeoffs, not restate obvious code.
 - Preserve observability when changing retries, background work, storage paths, state transitions, or failure handling.
 - If a task is ambiguous, reduce scope or record assumptions explicitly in the output.
@@ -125,7 +122,6 @@ If the work is intended for review or merge, also follow `docs/agents/pr-guide.m
 - error handling guidance: `docs/agents/errors.md`
 - resource index: `docs/agents/resource-index.md`
 - repository-local skills index: `.agents/skills/README.md`
-- Go / C++ coding style: `docs/agents/coding-style-go-cpp.md`
 
 ## 9. Output Contract
 
@@ -142,17 +138,13 @@ Agents **SHOULD NOT** claim completion without evidence aligned with
 
 ## 10. Go and C++ coding style
 
-Maintain the OSS-facing guide here (no proprietary doc links):
-
-- `docs/agents/coding-style-go-cpp.md`
-
-When project code and this guide diverge slightly, defer to dominant local
-patterns in the subtree you touched, then converge via normal review rather than
-silent drift.
-
-Cross-links: [Repository Facts](#2-repository-facts) lists the primary Go and
-C++ trees; [Agent Resources](#8-agent-resources) lists this repository's agent
-documents, including the coding-style guide above.
+- Because KWDB is a complex system, code SHOULD remain maintainable for future readers with basic KWDB familiarity.
+- Follow existing package-local conventions first and keep style consistent with nearby files.
+- Code SHOULD be self-documenting through clear naming and structure.
+  - Example: when implementing a well-known algorithm, naming SHOULD be clear enough to make the approach recognizable; if naming alone may not make intent obvious, add a brief comment.
+- Keep error handling actionable and contextual; avoid silently swallowing errors.
+- For new source files (for example *.go or *.cpp), include the standard KWDB license header (Shanghai Yunxi Technology Co copyright + Mulan PSL v2) by copying from a nearby file and updating year if needed.
+- Comments SHOULD explain non-obvious intent, constraints, invariants, concurrency guarantees, SQL/compatibility contracts, or important performance trade-offs, and SHOULD NOT restate what the code already makes clear.
 
 ## 11. Maintenance Rules
 

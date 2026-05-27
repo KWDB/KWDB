@@ -9,7 +9,7 @@
 
 带 `-zh` 后缀的中文版与同名英文正文对应。**不含 `-zh` 的英文文件仍是开源场景的默认权威条目**。
 
-下列文件与英文 [`README.md`](README.md) 中 **Chinese-language companions** 对照表一致：`README-zh.md`、`resource-index-zh.md`、`architecture-index-zh.md`、`testing-flow-zh.md`、`coding-style-go-cpp-zh.md`、`pr-guide-zh.md`、`logging-zh.md`、`errors-zh.md`、`ci-release-guide-zh.md`。
+下列文件与英文 [`README.md`](README.md) 中 **Chinese-language companions** 对照表一致：`README-zh.md`、`resource-index-zh.md`、`architecture-index-zh.md`、`testing-flow-zh.md`、`pr-guide-zh.md`、`logging-zh.md`、`errors-zh.md`、`ci-release-guide-zh.md`。
 
 ## 目录布局
 
