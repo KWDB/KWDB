@@ -800,7 +800,9 @@ TEST_F(TsEntitySegmentTest, simpleCount) {
 // for concurrent crash issue: ICXWWD
 TEST_F(TsEntitySegmentTest, concurrentLRUBlockCacheAccess) {
   EngineOptions::block_cache_max_size = 1024 * 1024 * 1024;
+#ifndef _WIN32
   TsLRUBlockCache::GetInstance().unit_test_enabled = true;
+#endif
   Defer defer([&]() { TsLRUBlockCache::GetInstance().unit_test_enabled = false; });
   EngineOptions::max_rows_per_block = 1000;
   EngineOptions::min_rows_per_block = 1000;
@@ -852,7 +854,8 @@ TEST_F(TsEntitySegmentTest, concurrentLRUBlockCacheAccess) {
     std::shared_ptr<std::thread> entity_block_accessor;
     entity_block_accessor = std::make_shared<std::thread>(AccessEntityBlock);
 
-    while (TsLRUBlockCache::GetInstance().unit_test_phase != TsLRUBlockCache::UNIT_TEST_PHASE::PHASE_FIRST_INITIALIZING) {
+    while (TsLRUBlockCache::GetInstance().unit_test_enabled &&
+           TsLRUBlockCache::GetInstance().unit_test_phase != TsLRUBlockCache::UNIT_TEST_PHASE::PHASE_FIRST_INITIALIZING) {
       usleep(1000);
     }
 
@@ -874,7 +877,9 @@ TEST_F(TsEntitySegmentTest, concurrentLRUBlockCacheAccess) {
 // for accessing column block crash issue: ZDP-49328
 TEST_F(TsEntitySegmentTest, columnBlockCrashTest) {
   EngineOptions::block_cache_max_size = 1024 * 1024 * 1024;
+  #ifndef _WIN32
   TsLRUBlockCache::GetInstance().unit_test_enabled = true;
+  #endif
   TsLRUBlockCache::GetInstance().unit_test_phase = TsLRUBlockCache::UNIT_TEST_PHASE::COLUMN_BLOCK_CRASH_PHASE_NONE;
   EngineOptions::max_rows_per_block = 1000;
   EngineOptions::min_rows_per_block = 1000;
@@ -958,7 +963,8 @@ TEST_F(TsEntitySegmentTest, columnBlockCrashTest) {
     std::shared_ptr<std::thread> column_block_accessor;
     column_block_accessor = std::make_shared<std::thread>(AccessColumnBlock);
 
-    while (TsLRUBlockCache::GetInstance().unit_test_phase != TsLRUBlockCache::UNIT_TEST_PHASE::COLUMN_BLOCK_CRASH_PHASE_FIRST_INITIALIZING) {
+    while (TsLRUBlockCache::GetInstance().unit_test_enabled &&
+           TsLRUBlockCache::GetInstance().unit_test_phase != TsLRUBlockCache::UNIT_TEST_PHASE::COLUMN_BLOCK_CRASH_PHASE_FIRST_INITIALIZING) {
       usleep(1000);
     }
 
@@ -1014,13 +1020,15 @@ TEST_F(TsEntitySegmentTest, columnBlockCrashTest) {
 // for accessing var column block issue
 TEST_F(TsEntitySegmentTest, varColumnBlockTest) {
   EngineOptions::block_cache_max_size = 1024 * 1024 * 1024;
+#ifndef _WIN32
   TsLRUBlockCache::GetInstance().unit_test_enabled = true;
+#endif
   TsLRUBlockCache::GetInstance().unit_test_phase = TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_NONE;
   Defer defer([&]() {
     if (TsLRUBlockCache::GetInstance().unit_test_phase == TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_FIRST_APPEND_ONE_DONE) {
       TsLRUBlockCache::GetInstance().unit_test_phase = TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_SECOND_GET_VAR_COL_ADDR_DONE;
-      while (TsLRUBlockCache::GetInstance().unit_test_phase !=
-              TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_FIRST_APPEND_TWO_DONE) {
+      while (TsLRUBlockCache::GetInstance().unit_test_enabled &&
+	     TsLRUBlockCache::GetInstance().unit_test_phase != TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_FIRST_APPEND_TWO_DONE) {
         usleep(1000);
       }
     }
@@ -1097,7 +1105,8 @@ TEST_F(TsEntitySegmentTest, varColumnBlockTest) {
     std::shared_ptr<std::thread> var_column_block_accessor;
     var_column_block_accessor = std::make_shared<std::thread>(AccessVarColumnBlock);
 
-    while (TsLRUBlockCache::GetInstance().unit_test_phase != TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_FIRST_APPEND_ONE_DONE) {
+    while (TsLRUBlockCache::GetInstance().unit_test_enabled &&
+           TsLRUBlockCache::GetInstance().unit_test_phase != TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_FIRST_APPEND_ONE_DONE) {
       usleep(1000);
     }
 
@@ -1124,8 +1133,8 @@ TEST_F(TsEntitySegmentTest, varColumnBlockTest) {
     if (TsLRUBlockCache::GetInstance().unit_test_phase !=
         TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_FIRST_APPEND_TWO_DONE) {
       TsLRUBlockCache::GetInstance().unit_test_phase = TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_SECOND_GET_VAR_COL_ADDR_DONE;
-      while (TsLRUBlockCache::GetInstance().unit_test_phase !=
-          TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_FIRST_APPEND_TWO_DONE) {
+      while (TsLRUBlockCache::GetInstance().unit_test_enabled &&
+	     TsLRUBlockCache::GetInstance().unit_test_phase != TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_FIRST_APPEND_TWO_DONE) {
         usleep(1000);
       }
     }
@@ -1224,7 +1233,7 @@ TEST_F(TsEntitySegmentTest, BUG_IEOYSN) {
     ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
   }
 
-  
+
   auto current = v_mgr.Current();
   ASSERT_TRUE(current != nullptr);
   auto partitions = current->GetAllPartitions();
