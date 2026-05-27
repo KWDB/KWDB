@@ -43,7 +43,7 @@ KStatus WALFileMgr::OpenTmp() {
       file_.close();
     }
 
-    file_.open(path, std::ios::in | std::ios::out);
+    file_.open(path, std::ios::in | std::ios::out | std::ios::binary);
     if (file_.is_open()) {
       header_block_ = readHeaderBlock();
       return SUCCESS;
@@ -63,7 +63,7 @@ KStatus WALFileMgr::Open() {
       file_.close();
     }
 
-    file_.open(path, std::ios::in | std::ios::out);
+    file_.open(path, std::ios::in | std::ios::out | std::ios::binary);
     if (file_.is_open()) {
       header_block_ = readHeaderBlock();
       return SUCCESS;
@@ -104,7 +104,7 @@ KStatus WALFileMgr::initWalFileWithHeader(HeaderBlock& header, bool tmp_file) {
     if (tmp_file) {
       path = tmp_path;
     }
-    file_.open(path, std::ios::in | std::ios::out | std::ios::trunc);
+    file_.open(path, std::ios::in | std::ios::out | std::ios::trunc | std::ios::binary);
     if (file_.fail()) {
       // failed to open the new log file, report an error.
       LOG_ERROR("Failed to open the WAL log file from %s", path.c_str())
@@ -132,7 +132,7 @@ KStatus WALFileMgr::initWalFileWithHeader(HeaderBlock& header, bool tmp_file) {
         return FAIL;
       }
 
-    file_.open(path, std::ios::in | std::ios::out | std::ios::trunc);
+    file_.open(path, std::ios::in | std::ios::out | std::ios::trunc | std::ios::binary);
     if (file_.fail()) {
       LOG_ERROR("Failed to open the WAL log file for truncation %s", path.c_str())
       return FAIL;

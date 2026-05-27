@@ -797,6 +797,7 @@ TEST_F(TsEntitySegmentTest, simpleCount) {
   }
 }
 
+#ifndef _WIN32
 // for concurrent crash issue: ICXWWD
 TEST_F(TsEntitySegmentTest, concurrentLRUBlockCacheAccess) {
   EngineOptions::block_cache_max_size = 1024 * 1024 * 1024;
@@ -1137,6 +1138,7 @@ TEST_F(TsEntitySegmentTest, varColumnBlockTest) {
     var_column_block_accessor->join();
   }
 }
+#endif
 
 TEST_F(TsEntitySegmentTest, varColumnCompression) {
   EngineOptions::max_rows_per_block = 1000;

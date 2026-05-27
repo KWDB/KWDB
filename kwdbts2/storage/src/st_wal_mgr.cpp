@@ -1061,7 +1061,7 @@ TS_OSN WALMgr::FetchCheckpointLSN() const {
 KStatus WALMgr::initWalMeta(kwdbContext_p ctx, bool is_create) {
   std::string meta_path = wal_path_ + "kwdb_wal.meta";
   if (is_create) {
-    meta_file_.open(meta_path, std::ios::in | std::ios::out | std::ios::trunc);
+    meta_file_.open(meta_path, std::ios::in | std::ios::out | std::ios::trunc | std::ios::binary);
     if (!meta_file_.is_open()) {
       LOG_ERROR("Failed to open the WAL metadata")
       return FAIL;
@@ -1072,7 +1072,7 @@ KStatus WALMgr::initWalMeta(kwdbContext_p ctx, bool is_create) {
     flushMeta(ctx);
     return SUCCESS;
   }
-  meta_file_.open(meta_path, std::ios::in | std::ios::out);
+  meta_file_.open(meta_path, std::ios::in | std::ios::out | std::ios::binary);
   if (!meta_file_.is_open()) {
     LOG_WARN("Failed to open the WAL metadata. Now Reset WAL File.")
     KStatus s = file_mgr_->Close();
@@ -1092,7 +1092,7 @@ KStatus WALMgr::initWalMeta(kwdbContext_p ctx, bool is_create) {
         return KStatus::FAIL;
       }
     }
-    meta_file_.open(meta_path, std::ios::in | std::ios::out | std::ios::trunc);
+    meta_file_.open(meta_path, std::ios::in | std::ios::out | std::ios::trunc | std::ios::binary);
     if (!meta_file_.is_open()) {
       LOG_ERROR("Failed to open the WAL metadata")
       return FAIL;

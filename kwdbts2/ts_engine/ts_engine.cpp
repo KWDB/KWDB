@@ -102,7 +102,7 @@ KStatus loadVGroupCfg(const fs::path& ts_store_path, std::map<int, std::string>&
 
     dir_path.erase(0, dir_path.find_first_not_of(" \t\n\r"));
     dir_path.erase(dir_path.find_last_not_of(" \t\n\r") + 1);
-    while (!dir_path.empty() && dir_path.back() == '/') {
+    while (!dir_path.empty() && (dir_path.back() == '/' || dir_path.back() == '\\')) {
       dir_path.pop_back();
     }
     if (dir_path.empty()) {

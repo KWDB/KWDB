@@ -231,6 +231,14 @@ int MMapFile::resize(size_t length) {
     }
 #endif
     if (length) {
+#ifdef _WIN32
+      // On Windows, mremap creates an anonymous mapping which breaks
+      // file persistence. Instead, flush + unmap + remap the file.
+      if (mem_) {
+        msync(mem_, file_length_, MS_SYNC);
+        munmap();
+      }
+#endif
 #if !defined(__x86_64__) && !defined(_M_X64)
       // On non-x86_64 platforms, munmap first then remmap
       munmap();

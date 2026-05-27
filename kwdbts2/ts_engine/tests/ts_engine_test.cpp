@@ -337,7 +337,7 @@ TEST_F(TsEngineV2Test, LoadVGroupCfgTest) {
     EXPECT_EQ(valid_cfg.size(), EngineOptions::vgroup_max_num);
     // Verify each vgroup configuration (Note: paths are normalized, removing ./ prefix)
     for (int i = 1; i <= EngineOptions::vgroup_max_num; i++) {
-      std::string expected_path = "tsdb/valid_vg" + std::to_string(i);
+      std::string expected_path = "tsdb" + std::string(1, fs::path::preferred_separator) + "valid_vg" + std::to_string(i);
       EXPECT_EQ(valid_cfg[i], expected_path);
     }
     // Cleanup
@@ -459,7 +459,7 @@ TEST_F(TsEngineV2Test, LoadVGroupCfgTest) {
     EXPECT_EQ(comment_cfg.size(), EngineOptions::vgroup_max_num);
     // Verify paths are correctly trimmed (Note: paths are normalized, removing ./ prefix)
     for (int i = 1; i <= EngineOptions::vgroup_max_num; i++) {
-      std::string expected_path = "tsdb/comment_vg" + std::to_string(i);
+      std::string expected_path = "tsdb" + std::string(1, fs::path::preferred_separator) + "comment_vg" + std::to_string(i);
       EXPECT_EQ(comment_cfg[i], expected_path);
     }
     // Cleanup
@@ -487,7 +487,7 @@ TEST_F(TsEngineV2Test, LoadVGroupCfgTest) {
     EXPECT_EQ(slash_cfg.size(), EngineOptions::vgroup_max_num);
     // Verify paths are normalized (removing trailing slashes and ./ prefix)
     for (int i = 1; i <= EngineOptions::vgroup_max_num; i++) {
-      std::string expected_path = "tsdb/slash_vg" + std::to_string(i);
+      std::string expected_path = "tsdb" + std::string(1, fs::path::preferred_separator) + "slash_vg" + std::to_string(i);
       EXPECT_EQ(slash_cfg[i], expected_path);
     }
     // Cleanup

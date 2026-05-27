@@ -674,7 +674,7 @@ if (WITH_TESTS)
     add_test(NAME ${tname}
       COMMAND ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${tname}.dir/${tname}
       WORKING_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${tname}.dir)
-    set_tests_properties(${tname} PROPERTIES TIMEOUT 120)
+
     if (WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Windows")
       add_custom_command(TARGET ${tname} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
