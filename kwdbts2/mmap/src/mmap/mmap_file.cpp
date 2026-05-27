@@ -12,8 +12,6 @@
 #ifdef _WIN32
 #include "platform.h"
 #include <windows.h>
-#include <io.h>
-#include <sys/stat.h>
 #else
 #include <unistd.h>
 #include <sys/mman.h>
@@ -57,34 +55,12 @@ int MMapFile::open() {
 
   if (absolute_file_path_.empty()) {
     // create a temporary file for mmap file since absolute_file_path_ is empty
-  #ifdef _WIN32
-    char temp_path[MAX_PATH];
-    char temp_file[MAX_PATH];
-
-    if (GetTempPathA(MAX_PATH, temp_path) == 0) {
-        LOG_ERROR("GetTempPathA failed: error[%d]", GetLastError());
-        return reportError();
-    }
-
-    if (GetTempFileNameA(temp_path, "kwdb", 0, temp_file) == 0) {
-        LOG_ERROR("GetTempFileNameA failed: error[%d]", GetLastError());
-        return reportError();
-    }
-
-    fd = _open(temp_file, _O_RDWR | _O_BINARY, _S_IREAD | _S_IWRITE);
-    if (fd < 0) {
-        LOG_ERROR("_open failed: errno[%d], file[%s]", errno, temp_file);
-        return reportError();
-    }
-    absolute_file_path_ = temp_file;
-  #else
     char file_name_template[] = "/tmp/kwdb_XXXXXX";
     if ((fd = ::mkstemp(file_name_template)) < 0) {
       LOG_ERROR("open() temporary file failed: errno[%d]", errno);
       return reportError();
     }
     absolute_file_path_ = file_name_template;
-  #endif
   } else {
     if ((fd = ::open(absolute_file_path_.c_str(), flags_,
       S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP)) < 0) {

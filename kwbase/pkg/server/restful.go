@@ -482,18 +482,15 @@ func (s *restfulServer) checkUser(ctx context.Context, username string, password
 	// Call the verifySession/verifyPassword function from authentication.go
 	valid, expired, err := s.server.authentication.verifyPassword(ctx, username, password)
 	if err != nil {
-		desc := "auth err:" + err.Error()
-		return fmt.Errorf(desc)
+		return fmt.Errorf("auth err: %s", err.Error())
 	}
 
 	if expired {
-		desc := "the password for user has expired."
-		return fmt.Errorf(desc)
+		return fmt.Errorf("the password for user has expired.")
 	}
 
 	if !valid {
-		desc := "the provided username and password did not match any credentials on the server."
-		return fmt.Errorf(desc)
+		return fmt.Errorf("the provided username and password did not match any credentials on the server.")
 	}
 	return nil
 }
@@ -1158,7 +1155,7 @@ func (s *restfulServer) checkFormat(
 	if r.Method != method {
 		desc := "only support " + method + " method"
 		s.sendJSONResponse(ctx, w, RestfulResponseCodeFail, nil, desc)
-		return fmt.Errorf(desc)
+		return fmt.Errorf("only support %s method", method)
 	}
 	return nil
 }

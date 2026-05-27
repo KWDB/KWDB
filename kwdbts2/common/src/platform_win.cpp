@@ -17,6 +17,8 @@
 #include <errno.h>
 #include <map>
 #include <mutex>
+#include <string>
+#include <sys/stat.h>
 
 // Global map to track file mappings and their alignment info
 struct MappingInfo {
@@ -24,6 +26,10 @@ struct MappingInfo {
     void* view_base;         // Original MapViewOfFile returned pointer
     size_t view_size;        // Size passed to MapViewOfFile
     size_t alignment_offset; // Offset adjustment (for alignment)
+    std::string file_path;
+    int prot;
+    int flags;
+    off_t offset;
 };
 static std::mutex g_mapping_mutex;
 static std::map<void*, MappingInfo> g_file_mappings;
@@ -103,7 +109,7 @@ void* mmap(void* addr, size_t length, int prot, int flags, int fd, off_t offset)
         protect = PAGE_READONLY;
         access = FILE_MAP_READ;
     }
-
+    std::string file_path_str;
     HANDLE h = INVALID_HANDLE_VALUE;
     HANDLE h_delete = INVALID_HANDLE_VALUE;  // handle with FILE_SHARE_DELETE
     if (fd != -1) {
@@ -122,6 +128,7 @@ void* mmap(void* addr, size_t length, int prot, int flags, int fd, off_t offset)
             if (strncmp(fname, "\\\\?\\", 4) == 0) {
                 fname += 4;
             }
+	          file_path_str = fname;
             DWORD desired_access = (prot & PROT_WRITE)
                 ? (GENERIC_READ | GENERIC_WRITE)
                 : GENERIC_READ;
@@ -217,6 +224,10 @@ void* mmap(void* addr, size_t length, int prot, int flags, int fd, off_t offset)
     info.view_base = view_base;
     info.view_size = mapping_size;
     info.alignment_offset = offset_align_diff;
+    info.file_path = file_path_str;
+    info.prot = prot;
+    info.flags = flags;
+    info.offset = offset;
 
     std::lock_guard<std::mutex> lock(g_mapping_mutex);
     g_file_mappings[result] = info;
@@ -259,21 +270,52 @@ int munmap(void* addr, size_t length) {
 
 void* mremap(void* old_address, size_t old_size, size_t new_size, int flags) {
     // Windows doesn't support mremap directly.
-    // Allocate a new anonymous mapping, copy data, then free the old one.
-    void* new_addr = mmap(NULL, new_size, PROT_READ | PROT_WRITE,
-                          MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
-    if (new_addr == MAP_FAILED) {
-        return MAP_FAILED;
+    MappingInfo old_info;
+    bool is_file_mapping = false;
+
+    {
+      std::lock_guard<std::mutex> lock(g_mapping_mutex);
+      auto it = g_file_mappings.find(old_address);
+      if (it != g_file_mappings.end()) {
+        is_file_mapping = true;
+        old_info = it->second;
+      }
     }
-    memcpy(new_addr, old_address, old_size < new_size ? old_size : new_size);
-    munmap(old_address, old_size);
-    return new_addr;
+
+    if (is_file_mapping && !old_info.file_path.empty()) {
+      int fd = open(old_info.file_path.c_str(), O_RDWR);
+      if (fd < 0) {
+        return MAP_FAILED;
+      }
+
+      munmap(old_address, old_size);
+
+      void* new_addr = mmap(NULL, new_size,
+                            old_info.prot, old_info.flags,
+                            fd, old_info.offset);
+      close(fd);
+      return new_addr;
+    } else {
+      void* new_addr = mmap(NULL, new_size, PROT_READ | PROT_WRITE,
+                         MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+      if (new_addr == MAP_FAILED) {
+        return MAP_FAILED;
+      }
+      memcpy(new_addr, old_address, old_size < new_size ? old_size : new_size);
+      munmap(old_address, old_size);
+      return new_addr;
+    }
 }
 
 int msync(void* addr, size_t length, int flags) {
-    if (!FlushViewOfFile(addr, length)) {
+    std::lock_guard<std::mutex> lock(g_mapping_mutex);
+    auto it = g_file_mappings.find(addr);
+    if (it != g_file_mappings.end()) {
+      MappingInfo& info = it->second;
+      if (!FlushViewOfFile(info.view_base, info.view_size)) {
         errno = EIO;
         return -1;
+      }
     }
     return 0;
 }
@@ -333,10 +375,23 @@ int symlink(const char* target, const char* linkpath) {
 }
 
 int mkstemp(char* template_name) {
-    if (_mktemp_s(template_name, strlen(template_name) + 1) != 0) {
+    char temp_path[MAX_PATH];
+    char temp_file[MAX_PATH];
+
+    if (GetTempPathA(MAX_PATH, temp_path) == 0) {
         return -1;
     }
-    return _open(template_name, _O_RDWR | _O_CREAT | _O_EXCL | _O_BINARY, _S_IREAD | _S_IWRITE);
+
+    if (GetTempFileNameA(temp_path, "kwdb", 0, temp_file) == 0) {
+        return -1;
+    }
+
+    int fd = _open(temp_file, _O_RDWR | _O_BINARY, _S_IREAD | _S_IWRITE);
+    if (fd < 0) {
+        return fd;
+    }
+    strcpy(template_name, temp_file);
+    return fd;
 }
 
 int kwdb_rename(const char* oldpath, const char* newpath) {

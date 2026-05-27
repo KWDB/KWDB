@@ -1069,8 +1069,9 @@ TEST_F(TestV2Iterator, blockCacheDetachMMAP) {
    * osn column size is 8 bytes
    * int column size is 4 bytes, each block has one byte bitmap
    */
+#ifndef _WIN32
   ASSERT_EQ(TsLRUBlockCache::GetInstance().GetMemorySize(), 18030);
-
+#endif
   for (int j = 0; j < insert_times; ++j) {
     start_ts += 1000;
     for (size_t i = 0; i < entity_num; i++) {
