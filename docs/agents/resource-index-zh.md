@@ -20,7 +20,6 @@
 - `docs/agents/README.md`：agent 文档与技能目录布局的总览
 - `docs/agents/*-zh.md`：重要条目的中文对应版；开源默认仍以英文正文为准
 - `docs/agents/architecture-index.md`：模块地图与任务路由提示
-- `docs/agents/coding-style-go-cpp.md`：面向 KWDB 维护的 OSS 代码的 Go/C++ 约定
 - `docs/agents/ci-release-guide.md`：Makefile/脚本验证面与合并检查项
 - `docs/agents/testing-flow.md`：验证层级与常用命令
 - `docs/agents/logging.md`：共享日志约束与评审清单
