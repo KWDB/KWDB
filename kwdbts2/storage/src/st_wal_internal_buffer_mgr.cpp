@@ -57,6 +57,8 @@ KStatus WALBufferMgr::init(TS_OSN start_lsn) {
     //    }
   }
 
+  ResetMeta();
+
   for (auto& block : first_block) {
     delete block;
   }

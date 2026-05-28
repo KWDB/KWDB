@@ -2098,6 +2098,14 @@ int TagTable::InsertForRedo(uint32_t group_id, uint32_t entity_id, kwdbts::Paylo
     }
     tag_partition_table->NtagIndexRWMutexUnLock();
 
+    // entity row index, delete and put
+    uint64_t joint_entity_id = (static_cast<uint64_t>(entity_id) << 32) | group_id;
+    m_entity_row_index_->delete_data(reinterpret_cast<const char *>(&joint_entity_id), sizeof(uint64_t));
+    if (m_entity_row_index_->put(reinterpret_cast<const char *>(&joint_entity_id), sizeof(uint64_t), ret.first, ret.second) < 0) {
+      LOG_ERROR("insert entity row hash index data failed. table_version: %u row_no: %lu ", ret.first, ret.second);
+      return -1;
+    }
+
     return 0;
   }
   // 2. redo insert
@@ -2120,6 +2128,7 @@ int TagTable::DeleteForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash
 
     std::vector<TagInfo> schemas;
     TagTuplePack tag_tuple(schemas, tag_pack.data, tag_pack.len);
+    osn = tag_tuple.getOSN();
     // remove and insert normal index
     tag_partition_table->NtagIndexRWMutexSLock();
     for (auto ntag_index : tag_partition_table->getMmapNTagHashIndex()) {
@@ -2160,6 +2169,7 @@ int TagTable::DeleteForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash
     tag_partition_table->NtagIndexRWMutexUnLock();
 
     tag_partition_table->startRead();
+    tag_partition_table->AddTagStatus(ret.second, OperateType::Insert, osn);
     tag_partition_table->unsetDeleteMark(ret.second);
     tag_partition_table->stopRead();
     return 0;
@@ -2184,6 +2194,7 @@ int TagTable::DeleteForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash
   uint32_t tag_hash_point = GetConsistentHashId(primary_tag.data, primary_tag.len, hash_num);
   std::vector<TagInfo> schemas;
   TagTuplePack tag_tuple(schemas, tag_pack.data, tag_pack.len);
+  osn = tag_tuple.getOSN();
 
   // 3. insert partition data
   size_t row_no = 0;
@@ -2254,6 +2265,9 @@ int TagTable::DeleteForRedo(uint32_t group_id, uint32_t entity_id,
   // 1. search primary tag
   auto ret = m_index_->get(primary_tag.data, primary_tag.len);
   if (ret.first == INVALID_TABLE_VERSION_ID) {
+    // clean entity row index, maybe not exist.
+    uint64_t joint_entity_id = (static_cast<uint64_t>(entity_id) << 32) | group_id;
+    m_entity_row_index_->delete_data(reinterpret_cast<const char *>(&joint_entity_id));
     // not found
     return 0;
   }
@@ -2428,13 +2442,9 @@ int TagTable::UpdateForRedo(uint32_t group_id, uint32_t entity_id, const TSSlice
       tag_partition_table->stopRead();
       return 0;
     }
-    if (type != OperateType::Insert || op_osn == payload.GetOSN()) {
-      LOG_WARN("no need redo. GetOpTypeAtOSN osn[%lu] type[%u], update osn[%lu]",
-          op_osn, type, payload.GetOSN());
-      tag_partition_table->stopRead();
-      return 0;
+    if (type != OperateType::Update) {
+      tag_partition_table->AddTagStatus(ret.second, OperateType::Update, payload.GetOSN());
     }
-    tag_partition_table->AddTagStatus(ret.second, OperateType::Update, payload.GetOSN());
     tag_partition_table->setDeleteMark(ret.second);
     tag_partition_table->stopRead();
     // delete index data
@@ -2511,7 +2521,7 @@ int TagTable::UpdateForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash
   std::vector<TagInfo> schemas;
   TagTuplePack tag_tuple(schemas, old_tag.data, old_tag.len);
   size_t row_no = 0;
-  if (tag_partition_table->insert(entity_id, group_id, tag_hash_point, osn, OperateType::Insert,
+  if (tag_partition_table->insert(entity_id, group_id, tag_hash_point, tag_tuple.getOSN(), OperateType::Insert,
                                   tag_tuple.getTags().data, &row_no) < 0) {
     LOG_ERROR("UpdateForUndo insert tag failed.");
     return -1;

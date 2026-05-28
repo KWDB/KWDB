@@ -1327,8 +1327,8 @@ KStatus TsVGroup::rollback(kwdbContext_p ctx, LogEntry* wal_log, bool from_chk) 
         auto log = reinterpret_cast<DeleteLogTagsEntry*>(del_log);
         TSSlice primary_tag = log->getPrimaryTag();
         TSSlice tags = log->getTags();
-        uint64_t osn = log->getOSN();
-        return undoDeleteTag(ctx, log->getTableID(), primary_tag, lsn, log->group_id_, log->entity_id_, tags, osn);
+        uint64_t old_osn = log->getOldLSN();
+        return undoDeleteTag(ctx, log->getTableID(), primary_tag, lsn, log->group_id_, log->entity_id_, tags, old_osn);
       }
     }
 
@@ -1486,7 +1486,7 @@ KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::strin
     }
     LockSharedLevelMutex();
     s = wal_manager_->WriteDeleteTagWAL(ctx, mtr_id, p_tag, vgroup_id_, e_id, tag_pack->getData(), vgroup_id_,
-                                        table_id, osn);
+                                        table_id, tag_pack->getOSN(), osn);
     UnLockSharedLevelMutex();
     if (s == KStatus::FAIL) {
       LOG_ERROR("WriteDeleteTagWAL failed.");
