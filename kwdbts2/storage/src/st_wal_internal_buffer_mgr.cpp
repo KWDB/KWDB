@@ -115,6 +115,15 @@ KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries, TS_OSN st
     } while (buffer_[index].getBlockNo() <= end_block);
   }
 
+  uint64_t data_len = file_mgr_->GetLSNFromBlockNo(read_queue.back()->getBlockNo()) + read_queue.back()->getDataLen();
+  if (data_len < end_lsn) {
+    // This could happen if the operating system flushes the entryblock file before an explicit flush/sync,
+    // and then a crash occurs. After recovery, meta.current_lsn ends up exceeding entry_block.data_len.(ZDP-51353)
+    // Add a check for entryblock.data_len < end_lsn to avoid crash during reading.
+    LOG_WARN("ReadWALLogs entryblock.data_len(%ld) < end_lsn(%ld)", data_len, end_lsn);
+    return SUCCESS;
+  }
+
   TS_OSN current_offset = start_lsn;
   TS_OSN current_lsn;
 
