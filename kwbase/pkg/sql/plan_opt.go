@@ -64,8 +64,16 @@ func (p *planner) prepareUsingOptimizer(
 ) (planFlags, error) {
 	stmt := p.stmt
 
-	opc := &p.optPlanningCtx
-	opc.reset()
+	var opc *optPlanningCtx
+	if insidePrepareOfProcFlag == optbuilder.InsidePrepareOfProcDef {
+		newOpc := optPlanningCtx{}
+		newOpc.init(p)
+		newOpc.reset()
+		opc = &newOpc
+	} else {
+		opc = &p.optPlanningCtx
+		opc.reset()
+	}
 
 	stmt.Prepared.AnonymizedStr = anonymizeStmt(stmt.AST)
 

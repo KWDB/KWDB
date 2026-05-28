@@ -806,3 +806,91 @@ END\\
 delimiter ;
 set cluster setting sql.trace.log_statement_execute=default;
 drop database if exists d1 cascade;
+
+CREATE DATABASE IF NOT EXISTS test_sp_opt_dxy;
+SET DATABASE = test_sp_opt_dxy;
+CREATE TABLE test_sp_opt_dxy.t1 (
+                                    id INT PRIMARY KEY,
+                                    name VARCHAR(100),
+                                    amount DECIMAL(10,2),
+                                    status INT DEFAULT 1,
+                                    ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE test_sp_opt_dxy.t2 (
+                                    id INT PRIMARY KEY,
+                                    ref_id INT,
+                                    log_msg VARCHAR(200),
+                                    ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+INSERT INTO test_sp_opt_dxy.t1 VALUES (1, 'Alice', 100.00, 1, CURRENT_TIMESTAMP);
+INSERT INTO test_sp_opt_dxy.t1 VALUES (2, 'Bob', 200.00, 1, CURRENT_TIMESTAMP);
+INSERT INTO test_sp_opt_dxy.t1 VALUES (3, 'Charlie', 300.00, 0, CURRENT_TIMESTAMP);
+
+delimiter \\
+CREATE PROCEDURE test_sp_opt_dxy.p27(check_id INT)
+BEGIN
+  DECLARE v_count INT;
+  SET @cid = check_id;
+  PREPARE cnt_stmt AS SELECT COUNT(*) AS cnt FROM test_sp_opt_dxy.t1 WHERE id = $1;
+  EXECUTE cnt_stmt (@cid);
+  DEALLOCATE PREPARE cnt_stmt;
+  SELECT COUNT(*) INTO v_count FROM test_sp_opt_dxy.t1 WHERE id = check_id;
+  IF v_count > 0 THEN
+    SET @update_id = check_id;
+    PREPARE upd_stmt AS UPDATE test_sp_opt_dxy.t1 SET status = status + 1 WHERE id = $1;
+    EXECUTE upd_stmt (@update_id);
+    DEALLOCATE PREPARE upd_stmt;
+    SELECT 'updated' AS action;
+  ELSE
+    SELECT 'not found' AS action;
+  ENDIF;
+END\\
+delimiter ;
+
+call test_sp_opt_dxy.p27(1);
+call test_sp_opt_dxy.p27(2);
+
+drop procedure test_sp_opt_dxy.p27;
+
+delimiter \\
+CREATE PROCEDURE test_sp_opt_dxy.p42(base_id INT, count INT)
+BEGIN
+  DECLARE i INT DEFAULT 0;
+  DECLARE cur_id INT;
+  WHILE i < count DO
+    SET cur_id = base_id + i;
+    SET @cid = cur_id;
+    SET @cval = (i + 1) * 10;
+PREPARE ins AS INSERT INTO test_sp_opt_dxy.t2 VALUES ($1, $2, 'batch_insert', CURRENT_TIMESTAMP);
+EXECUTE ins (@cid, @cval);
+DEALLOCATE PREPARE ins;
+SET i = i + 1;
+  ENDWHILE;
+SELECT i::string || ' rows inserted' AS info;
+END\\
+delimiter ;
+call test_sp_opt_dxy.p42(1, 2);
+call test_sp_opt_dxy.p42(3, 4);
+
+select id from test_sp_opt_dxy.t2 order by id;
+drop procedure test_sp_opt_dxy.p42;
+
+delimiter \\
+CREATE PROCEDURE test_sp_opt_dxy.pc47()
+BEGIN
+  DECLARE i INT;
+  DECLARE count INT;
+  set i = 0;
+  set count = 3;
+  WHILE i < count DO
+  PREPARE ins AS select 1;
+  DEALLOCATE PREPARE ins;
+  set i=i+1;
+  ENDWHILE;
+END\\
+delimiter ;
+call test_sp_opt_dxy.pc47();
+
+drop procedure test_sp_opt_dxy.pc47;
+
+drop DATABASE IF EXISTS test_sp_opt_dxy;
