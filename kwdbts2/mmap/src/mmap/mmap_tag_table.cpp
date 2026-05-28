@@ -2666,15 +2666,14 @@ int32_t entity_id, TS_OSN osn) {
     p_tag.second->startRead();
     Defer defer{[&]() { p_tag.second->stopRead(); }};
     for (size_t i = 1; i <= p_tag.second->size(); i++) {
-      p_tag.second->getEntityIdGroupId(i, e_id, group_id);
-      if (sub_group_id != group_id || entity_id != e_id) {
-        continue;
-      }
       if (p_tag.second->GetOpTypeAtOSN(i, osn, type, op_osn)) {
         if (type == OperateType::Insert) {
-          ret.first = p_tag.first;
-          ret.second = i;
-          break;
+          p_tag.second->getEntityIdGroupId(i, e_id, group_id);
+          if (sub_group_id == group_id && entity_id == e_id) {
+            ret.first = p_tag.first;
+            ret.second = i;
+            break;
+          }
         }
       }
     }

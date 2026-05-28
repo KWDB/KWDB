@@ -2233,11 +2233,8 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
           cancel_vacuumer = true;
           return s;
         }
-        if (!is_dropped) {
-          auto tag_row = tb_schema_mgr->GetTagTable()->GetEntityTag(vgroup_id_, entity_id, UINT64_MAX);
-          if (tag_row.second == 0) {
-            entity_invalid = true;
-          }
+        if (!is_dropped && !tb_schema_mgr->GetTagTable()->HasEntityTag(vgroup_id_, entity_id)) {
+          entity_invalid = true;
         }
       }
     }
