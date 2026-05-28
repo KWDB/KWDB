@@ -1879,6 +1879,7 @@ func createSchemaChangeEvalCtx(
 			Sequence:           &sqlbase.DummySequenceOperators{},
 			Planner:            &sqlbase.DummyEvalPlanner{},
 			SessionAccessor:    &sqlbase.DummySessionAccessor{},
+			TsDBAccessor:       &sqlbase.DummyTsDBAccessor{},
 			PrivilegedAccessor: &sqlbase.DummyPrivilegedAccessor{},
 		},
 	}
