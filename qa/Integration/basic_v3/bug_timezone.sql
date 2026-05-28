@@ -1,7 +1,7 @@
 set timezone = 'Asia/Shanghai';
 create ts database test_experimental_strftime;
 create table test_experimental_strftime.tb(k_timestamp timestamptz not null,id int,e1 timestamptz,e2 int2,e3 int,e4 int8,e5 float4,e6 float8,e7 bool,e8 char,e9 char(100),e10 nchar,e11 nchar(255),e12 varchar,e13 varchar(254),e14 varchar(4096),e15 nvarchar,e16 nvarchar(255),e17 nvarchar(4096),e18 varbytes,e19 varbytes(100),e20 varbytes,e21 varbytes(254),e22 varbytes(4096)) tags (t1 int2 not null,t2 int,t3 int8,t4 bool not null,t5 float4,t6 float8,t7 char,t8 char(100) not null,t9 nchar,t10 nchar(254),t11 varchar,t12 varchar(128) not null,t13 varbytes,t14 varbytes(100),t15 varbytes,t16 varbytes(255)) primary tags(t1,t4,t8,t12);
-insert into test_experimental_strftime.tb values('2000-05-01 22:30:11',1,'2000-05-01 22:30:11',500,5000,50000,-500000.505,-5000000.505055,true,'h', 'ar2 ', 'c', 'r255测试2()&^%{}','\', 'v2551cdf~# ', ' 测试%&!','ar-1', 'ar255()&^%{} ','6_1测试1&^%{} ','y', 's1023_1','ytes_2', null,b'\xcc\xcc\xdd\xdd',3,300,300,false,60.666,600.678,'','\test测试！！！@TEST1',' ','test测试！T EST1xaa','查询查询 ','\','',' ','',' ');
+insert into test_experimental_strftime.tb values('2000-05-01 22:30:11.123',1,'2000-05-01 22:30:11',500,5000,50000,-500000.505,-5000000.505055,true,'h', 'ar2 ', 'c', 'r255测试2()&^%{}','\', 'v2551cdf~# ', ' 测试%&!','ar-1', 'ar255()&^%{} ','6_1测试1&^%{} ','y', 's1023_1','ytes_2', null,b'\xcc\xcc\xdd\xdd',3,300,300,false,60.666,600.678,'','\test测试！！！@TEST1',' ','test测试！T EST1xaa','查询查询 ','\','',' ','',' ');
 insert into test_experimental_strftime.tb values('1970-01-01 08:00:00',2,'1970-01-01 08:00:00',700,7000,70000,700000.707,7000000.1010101,true,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1,null,7000,false,70.7077,700.5675675,'a','test测试！！！@TEST1','e','\a',null,'vvvaa64_1','b','test测试1023_1','vwwws测试_1','aaabbb');
 insert into test_experimental_strftime.tb values('1999-02-06 18:10:23',3,'1999-02-06 18:10:23',100,3000,40000,600000.60612,4000000.4040404,false,' ',' ',' ',' ',' ',' ',' ',null,'','','','','','',null,-32768,-2147483648,-9223372036854775808,false,-9223372036854775807.12345,100.111111,'b','test测试！！！@烟小白吖 ','','test测试！TEST1xaa','\0test查询 @TEST1\0','e','y','test@@测试！1023_1','vwwws测试_1','cccddde');
 insert into test_experimental_strftime.tb values('2000-03-01 20:30:00',4,'2000-03-01 20:30:00',500,5000,50000,-500000.505,-5000000.505055,true,'h', 'ar2 ', 'c', 'r255测试2()&^%{}','\\', 'v255测试1cdf~# ', 'lengthis4096 测试%&!','ar-1', 'ar255()&^%{} ','6_1测试1&^%{} ','y', 's1023_1','ytes_2', null,b'\xcc\xcc\xdd\xdd',4,400,4000,false,50.555,500.578578,'d','\test测试！！！@TEST1','e','test测试！T EST1xaa','查询查询 ','\','e','es1023_2','s_ 4','ww4096_2');
@@ -9,5 +9,25 @@ insert into test_experimental_strftime.tb values('2000-05-01 17:00:00',5,'2000-0
 
 SELECT id,k_timestamp FROM test_experimental_strftime.tb order by k_timestamp;
 SELECT experimental_strftime(k_timestamp,'%Y-%m %H:%M:%S'),k_timestamp FROM test_experimental_strftime.tb order by k_timestamp;
+
+
+set timezone = -8;
+SELECT k_timestamp::VARCHAR, k_timestamp::STRING, k_timestamp::TEXT FROM test_experimental_strftime.tb order by k_timestamp;
+
+SELECT k_timestamp,
+k_timestamp::TIMESTAMP(0) AS p0, k_timestamp::TIMESTAMP(1) AS p1,
+k_timestamp::TIMESTAMP(2) AS p2, k_timestamp::TIMESTAMP(3) AS p3,
+k_timestamp::TIMESTAMP(4) AS p4, k_timestamp::TIMESTAMP(5) AS p5,
+k_timestamp::TIMESTAMP(6) AS p6, k_timestamp::TIMESTAMP(7) AS p7,
+k_timestamp::TIMESTAMP(8) AS p8, k_timestamp::TIMESTAMP(9) AS p9
+FROM test_experimental_strftime.tb order by k_timestamp;
+
+SELECT k_timestamp ,EXTRACT('HOUR', k_timestamp) FROM test_experimental_strftime.tb order by k_timestamp;
+
+SELECT k_timestamp::text ,EXTRACT('HOUR', k_timestamp) FROM test_experimental_strftime.tb order by k_timestamp;
+
+select k_timestamp,date_trunc('day', k_timestamp) FROM test_experimental_strftime.tb order by k_timestamp;
+
+select k_timestamp,date_trunc('day', k_timestamp)::text FROM test_experimental_strftime.tb order by k_timestamp;
 
 drop database test_experimental_strftime cascade;

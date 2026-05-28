@@ -196,44 +196,6 @@ inline KStatus timestamptzToString(Field *field, char *output, k_uint32 length, 
     type_scale /= 10;
     while (type_scale > seconds_after_decimal) {
       milli_second_str += '0';
-      type_scale /=10;
-    }
-    while (seconds_after_decimal % 10 == 0) {
-      seconds_after_decimal /= 10;
-    }
-    milli_second_str += to_string(seconds_after_decimal);
-  }
-  KString time_zone_str = "";
-  if (time_zone < 10) {
-    time_zone_str = "0";
-  }
-  time_zone_str += to_string(time_zone);
-  strncpy(output,
-          (std::string(buffer) + milli_second_str + "+" + time_zone_str + ":00")
-              .c_str(),
-          length - 1);
-  output[length - 1] = '\0';
-  return SUCCESS;
-}
-
-inline KStatus GetPtrTimestamptzToString(k_int64 timestamp, char *output, k_uint32 length, k_int64 type_scale,
-                                   k_int8 time_zone) {
-  time_t time = static_cast<time_t>(timestamp / type_scale) + time_zone * 3600;
-  struct tm local_time;
-  memset(&local_time, 0, sizeof(local_time));
-  ToGMT(time, local_time);
-
-  char buffer[30] = {0};
-  std::strftime(buffer, 30, "%04Y-%m-%d %H:%M:%S", &local_time);
-
-  int seconds_after_decimal = timestamp % type_scale;
-  KString milli_second_str = ".";
-  if (seconds_after_decimal == 0) {
-    milli_second_str = "";
-  } else {
-    type_scale /= 10;
-    while (type_scale > seconds_after_decimal) {
-      milli_second_str += '0';
       type_scale /= 10;
     }
     while (seconds_after_decimal % 10 == 0) {
@@ -242,11 +204,20 @@ inline KStatus GetPtrTimestamptzToString(k_int64 timestamp, char *output, k_uint
     milli_second_str += to_string(seconds_after_decimal);
   }
   KString time_zone_str = "";
-  if (time_zone < 10) {
+  KString sign = "+";
+  k_int8 abs_tz = time_zone;
+  if (time_zone < 0) {
+    sign = "-";
+    abs_tz = -time_zone;
+  }
+  if (abs_tz < 10) {
     time_zone_str = "0";
   }
-  time_zone_str += to_string(time_zone);
-  strncpy(output, (std::string(buffer) + milli_second_str + "+" + time_zone_str + ":00").c_str(), length - 1);
+  time_zone_str += to_string(abs_tz);
+  strncpy(output,
+          (std::string(buffer) + milli_second_str + sign + time_zone_str + ":00")
+              .c_str(),
+          length - 1);
   output[length - 1] = '\0';
   return SUCCESS;
 }
@@ -290,7 +261,7 @@ inline KStatus stringToString(Field *field, char *output, k_uint32 length) {
 inline KStatus integerToTimestampTz(Field *field, k_int64 &output, k_int64 scale,
                                     k_int64 time_zone_diff, roachpb::DataType out_type) {
   output = field->ValInt();
-  if (!I64_SAFE_ADD_CHECK(out_type, time_zone_diff)) {
+  if (!I64_SAFE_ADD_CHECK(output, time_zone_diff)) {
     return FAIL;
   }
   output += time_zone_diff;
@@ -311,13 +282,14 @@ inline KStatus stringToTimestampTz(Field *field, k_int64 &output, k_int64 scale,
 inline KStatus timestamptzToTimestampTz(Field *field, k_int64 &output, k_int64 scale,
                                     k_int64 time_zone_diff, roachpb::DataType out_type) {
   output = field->ValInt();
-  if (!I64_SAFE_ADD_CHECK(out_type, time_zone_diff)) {
+  if (!convertTimePrecision(&output, field->get_storage_type(), out_type)) {
+    return FAIL;
+  }
+  if (!I64_SAFE_ADD_CHECK(output, time_zone_diff)) {
     return FAIL;
   }
   output += time_zone_diff;
-  return convertTimePrecision(&output, field->get_storage_type(), out_type)
-             ? SUCCESS
-             : FAIL;
+  return SUCCESS;
 }
 inline KStatus numToBool(Field *field, k_bool &output) {
   output = field->ValInt() != 0 ? 1 : 0;
@@ -912,8 +884,7 @@ char *FieldTypeCastTimestamptz2String::get_ptr(RowBatch *batch) {
                                       "could not parse \"\" as type cast_timestamptz2_string, get null value .");
         return const_cast<char *>("");
       }
-      k_int64 timestamp = field_->ValInt(ptr);
-      KStatus err = GetPtrTimestamptzToString(timestamp, in_v, storage_len_, type_scale_, time_zone_);
+      KStatus err = timestamptzToString(field_, in_v, storage_len_, type_scale_, time_zone_);
       if (err == SUCCESS) {
         String s(storage_len_);
         snprintf(s.getptr(), storage_len_ + 1, "%s", in_v);
@@ -971,26 +942,26 @@ FieldTypeCastTimestampTz::FieldTypeCastTimestampTz(Field *field,
       sql_type_ = roachpb::DataType::TIMESTAMP;
       storage_type_ = roachpb::DataType::TIMESTAMP;
       type_scale_ = 1;
-      timezone_diff_ = timezone * 3600 * 1000;
+      timezone_diff_ = (k_int64)timezone * 3600 * 1000;
       break;
     case 6:
       sql_type_ = roachpb::DataType::TIMESTAMP_MICRO;
       storage_type_ = roachpb::DataType::TIMESTAMP_MICRO;
       type_scale_ = 1000;
-      timezone_diff_ = timezone * 3600 * 1000000;
+      timezone_diff_ = (k_int64)timezone * 3600 * 1000000;
       break;
     case 9:
       sql_type_ = roachpb::DataType::TIMESTAMP_NANO;
       storage_type_ = roachpb::DataType::TIMESTAMP_NANO;
       type_scale_ = 1000000;
-      timezone_diff_ = timezone * 3600 * 1000000000;
+      timezone_diff_ = (k_int64)timezone * 3600 * 1000000000;
 
       break;
     default:
       sql_type_ = roachpb::DataType::TIMESTAMP;
       storage_type_ = roachpb::DataType::TIMESTAMP;
       type_scale_ = 1;
-      timezone_diff_ = timezone * 3600 * 1000;
+      timezone_diff_ = (k_int64)timezone * 3600 * 1000;
       break;
   }
   storage_len_ = sizeof(k_int64);
