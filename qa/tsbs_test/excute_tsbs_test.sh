@@ -340,6 +340,29 @@ resolve_query_ts_end() {
     esac
 }
 
+resolve_load_partition() {
+    case "$NODE_NUM" in
+        1)
+            echo "false"
+            ;;
+        *)
+            echo "true"
+            ;;
+    esac
+}
+
+resolve_query_compress() {
+    local scale="$1"
+    case "$scale" in
+        1000000)
+            echo "snappy_compress"
+            ;;
+        *)
+            echo "off"
+            ;;
+    esac
+}
+
 apply_cluster_settings() {
     local scale="$1"
     apply_sql_file "${CLUSTER_SETTINGS_DIR}/general.sql" true
@@ -432,8 +455,10 @@ load_data_for_scale() {
     local load_data="$2"
     local load_result_dir="$3"
     local load_result_file="${load_result_dir}/${TSBS_CASE}_${FORMAT}_scale_${scale}.log"
+    local partition
+    partition="$(resolve_load_partition)"
 
-    log "loading data for scale ${scale}"
+    log "loading data for scale ${scale} with partition=${partition}"
     LD_LIBRARY_PATH="${TSBS_PATH}/lib" "${TSBS_PATH}/tsbs_load_kwdb_${ARCH}" \
         --file="${load_data}" \
         --user=root \
@@ -442,12 +467,32 @@ load_data_for_scale() {
         --port="${ME_HOST_PORT}" \
         --insert-type="${INSERT_TYPE}" \
         --db-name="${DB_NAME}" \
-        --partition=false \
+        --partition="${partition}" \
         --batch-size="${LOAD_BATCH_SIZES}" \
         --case="${TSBS_CASE}" \
         --workers="${LOAD_WORKERS}" > "${load_result_file}"
 
     record_metric "load" "${scale}" "${load_result_file}" "${load_result_dir}" "${LOAD_WORKERS}"
+}
+
+verify_loaded_data() {
+    local load_result_dir="$1"
+    local query_result_dir="$2"
+    local ranges_info_file="${query_result_dir}/ranges_info.log"
+    local count_info_file="${load_result_dir}/count_info.log"
+    local count_result
+
+    log "collecting range and row-count diagnostics after load"
+    "$KWBIN" sql --insecure --host="${ME_HOST_IP}:${ME_HOST_PORT}" \
+        --execute="select * from kwdb_internal.ranges where table_name='cpu';" > "${ranges_info_file}"
+    "$KWBIN" sql --insecure --host="${ME_HOST_IP}:${ME_HOST_PORT}" \
+        --execute="select count(1) from benchmark.cpu;" > "${count_info_file}"
+
+    count_result="$(sed -n '2p' "${count_info_file}" | tr -d '[:space:]')"
+    if [[ -z "${count_result}" || "${count_result}" == "0" ]]; then
+        die "load verification failed: benchmark.cpu row count is ${count_result:-<empty>}"
+    fi
+    log "load verification succeeded: benchmark.cpu row count is ${count_result}"
 }
 
 resolve_query_types() {
@@ -516,8 +561,10 @@ run_query() {
     local query_result_dir="$4"
     local query_worker="$5"
     local query_result="${query_result_dir}/${FORMAT}_scale${scale}_${TSBS_CASE}_${query_type}_worker${query_worker}.log"
+    local query_compress
+    query_compress="$(resolve_query_compress "${scale}")"
 
-    log "running query ${query_type} for scale ${scale} with worker ${query_worker}"
+    log "running query ${query_type} for scale ${scale} with worker ${query_worker}, compress=${query_compress}"
     LD_LIBRARY_PATH="${TSBS_PATH}/lib" "${TSBS_PATH}/tsbs_run_queries_kwdb_${ARCH}" \
         --file="${query_data}" \
         --user=root \
@@ -525,6 +572,8 @@ run_query() {
         --host="${ME_HOST_IP}" \
         --port="${ME_HOST_PORT}" \
         --query-type="${query_type}" \
+        --prepare=false \
+        --compress="${query_compress}" \
         --workers="${query_worker}" > "${query_result}"
 
     record_metric "${query_type}" "${scale}" "${query_result}" "${query_result_dir}" "${query_worker}"
@@ -549,6 +598,7 @@ run_scale() {
     local load_data
     load_data="$(generate_load_data "${scale}" "${load_ts_end}")"
     load_data_for_scale "${scale}" "${load_data}" "${load_result_dir}"
+    verify_loaded_data "${load_result_dir}" "${query_result_dir}"
 
     apply_after_load_settings "${scale}"
 
