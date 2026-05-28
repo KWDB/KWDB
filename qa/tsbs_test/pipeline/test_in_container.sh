@@ -46,7 +46,7 @@ compare_threshold=${29:-"false"}
 workspace=/home/inspur/src/gitee.com
 bin_dir="${workspace}/kwbasedb/install/bin"
 kwbin="${bin_dir}/kwbase"
-execute_script="${workspace}/kwbasedb/qa/tsbs_test/excute_tsbs_test.sh"
+execute_script="${workspace}/kwbasedb/qa/tsbs_test/execute_tsbs_test.sh"
 
 cd "${bin_dir}"
 

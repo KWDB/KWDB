@@ -67,8 +67,8 @@ resolve_primary_query_worker() {
 usage() {
     cat <<'EOF'
 Usage:
-  excute_tsbs_test.sh [legacy positional args]
-  excute_tsbs_test.sh [options]
+  execute_tsbs_test.sh [legacy positional args]
+  execute_tsbs_test.sh [options]
 
 Legacy positional args:
   1  node_num
@@ -481,10 +481,24 @@ verify_loaded_data() {
     local ranges_info_file="${query_result_dir}/ranges_info.log"
     local count_info_file="${load_result_dir}/count_info.log"
     local count_result
+    local attempt
+    local ranges_ok=false
 
     log "collecting range and row-count diagnostics after load"
-    "$KWBIN" sql --insecure --host="${ME_HOST_IP}:${ME_HOST_PORT}" \
-        --execute="select * from kwdb_internal.ranges where table_name='cpu';" > "${ranges_info_file}"
+    for attempt in 1 2 3; do
+        if "$KWBIN" sql --insecure --host="${ME_HOST_IP}:${ME_HOST_PORT}" \
+            --execute="select * from kwdb_internal.ranges where table_name='cpu';" > "${ranges_info_file}" 2>"${ranges_info_file}.err"; then
+            rm -f "${ranges_info_file}.err"
+            ranges_ok=true
+            break
+        fi
+        log "warning: failed to collect ranges_info on attempt ${attempt}, retrying"
+        sleep 1
+    done
+    if [[ "${ranges_ok}" != "true" ]]; then
+        log "warning: failed to collect ranges_info.log after retries; continuing with count verification"
+    fi
+
     "$KWBIN" sql --insecure --host="${ME_HOST_IP}:${ME_HOST_PORT}" \
         --execute="select count(1) from benchmark.cpu;" > "${count_info_file}"
 
