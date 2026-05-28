@@ -52,6 +52,7 @@
 #include "ts_version.h"
 #include "ts_partition_interval_recorder.h"
 #include "ts_ts_lsn_span_utils.h"
+#include "ts_go_exported.h"
 
 namespace kwdbts {
 
@@ -2224,7 +2225,7 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
     bool is_dropped = false;
     if (has_entity_item) {
       if (force) {
-        is_dropped = checkTableMetaExist == nullptr ? false : !checkTableMetaExist(entity_item.table_id);
+        is_dropped = !CheckTableMetaExist(entity_item.table_id);
       }
       if (!is_dropped) {
         s = schema_mgr_->GetTableSchemaMgr(entity_item.table_id, tb_schema_mgr, &is_dropped);

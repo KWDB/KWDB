@@ -139,22 +139,22 @@ add_definitions(-DNEW_COUNT)
 # try to do some estimate on parallel digree used by make -j
 # first, check total memory, assuming we can have one compile job for every 4GB mem
 # second, take nproc result.  We take the smaller one as -j parameter
-if (WIN32)
-    # Use PowerShell to get total physical memory in GB, then divide by 4
-    execute_process(
-        COMMAND powershell -Command "[math]::Floor((Get-WmiObject Win32_ComputerSystem).TotalPhysicalMemory / 1GB / 4)"
-        RESULT_VARIABLE result1
-        OUTPUT_VARIABLE value1
-        ERROR_VARIABLE error_output1
-    )
-else()
+# if (WIN32)
+#     # Use PowerShell to get total physical memory in GB, then divide by 4
+#     execute_process(
+#         COMMAND powershell -Command "[math]::Floor((Get-WmiObject Win32_ComputerSystem).TotalPhysicalMemory / 1GB / 4)"
+#         RESULT_VARIABLE result1
+#         OUTPUT_VARIABLE value1
+#         ERROR_VARIABLE error_output1
+#     )
+# else()
     execute_process(
         COMMAND bash -c "free -t -g | tail -n 1 | awk '{print $2}' | xargs -I {} expr {} / 4"
         RESULT_VARIABLE result1
         OUTPUT_VARIABLE value1
         ERROR_VARIABLE error_output1
     )
-endif()
+# endif()
 
 execute_process(
     COMMAND nproc
@@ -659,7 +659,7 @@ if (WITH_TESTS)
                 )
         if (WIN32)
             target_link_libraries(${tname} PRIVATE ${KWDBTS2_SERVER_LIB} ${PROTOBUF_STATIC_LIB} common ${LZ4_STATIC_LIB} ${ZSTD_LIB} gtest)
-            target_link_options(${tname} PRIVATE -Wl,--allow-multiple-definition)
+            target_link_options(${tname} PRIVATE -Wl,--allow-multiple-definition )
         else()
             target_link_libraries(${tname} PRIVATE ${KWDBTS2_SERVER_LIB} common ${PROTOBUF_STATIC_LIB} gtest dl rt z ${LZ4_STATIC_LIB} ${ZSTD_LIB})
         endif()

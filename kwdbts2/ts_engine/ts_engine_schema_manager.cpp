@@ -19,6 +19,7 @@
 #include "lg_api.h"
 #include "sys_utils.h"
 #include "ts_table_schema_manager.h"
+#include "ts_go_exported.h"
 
 unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 std::mt19937 gen(seed);
@@ -171,7 +172,7 @@ KStatus TsEngineSchemaManager::GetTableSchemaMgr(TSTableID tbl_id, std::shared_p
   const auto it = table_schema_mgrs_.find(tbl_id);
   if (it == table_schema_mgrs_.end()) {
     unLock();
-    if (checkTableMetaExist != nullptr && checkTableMetaExist(tbl_id)) {
+    if (CheckTableMetaExist(tbl_id)) {
       LOG_WARN("table %ld schema not found", tbl_id);
       return KStatus::FAIL;
     }

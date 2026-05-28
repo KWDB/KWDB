@@ -12,22 +12,14 @@
 package sql
 
 // #cgo CPPFLAGS: -I../../../kwdbts2/include
-// #cgo LDFLAGS: -lkwdbts2 -lcommon  -lstdc++
-// #cgo LDFLAGS: -lprotobuf
+// #cgo LDFLAGS: -lkwdbts2 -lcommon -lprotobuf -lstdc++
 // #cgo linux LDFLAGS: -lrt -lpthread
 //
 // #include <libkwdbts2.h>
-// extern char* getTableMetaByVersionImp(TSTableID id, uint64_t tsVer,
+// char* GetTableMetaByVersion(TSTableID id, uint64_t tsVer,
 //                                      size_t* outputLen, char** errMsg);
-// char* getTableMetaByVersion(TSTableID id, uint64_t tsVer,
-//                                      size_t* outputLen, char** errMsg) {
-//     return getTableMetaByVersionImp(id, tsVer, outputLen, errMsg);
-// }
 //
-// extern bool checkTableMetaExistImp(TSTableID id);
-// bool checkTableMetaExist(TSTableID id) {
-//    return checkTableMetaExistImp(id);
-// }
+// bool CheckTableMetaExist(TSTableID id);
 import "C"
 import (
 	"context"
@@ -97,8 +89,8 @@ func IsObjectCannotFoundError(err error) bool {
 	return false
 }
 
-//export checkTableMetaExistImp
-func checkTableMetaExistImp(id C.TSTableID) C.bool {
+//export CheckTableMetaExist
+func CheckTableMetaExist(id C.TSTableID) C.bool {
 	ctx := context.Background()
 	tableID := uint64(id)
 	var tb *sqlbase.TableDescriptor
@@ -134,8 +126,8 @@ func checkTableMetaExistImp(id C.TSTableID) C.bool {
 	return C.bool(!tb.Dropped())
 }
 
-//export getTableMetaByVersionImp
-func getTableMetaByVersionImp(
+//export GetTableMetaByVersion
+func GetTableMetaByVersion(
 	id C.TSTableID, tsVer C.uint64_t, outputLen *C.size_t, errMsg **C.char,
 ) *C.char {
 	ctx := context.Background()
