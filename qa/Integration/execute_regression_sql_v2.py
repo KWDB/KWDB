@@ -12,6 +12,8 @@
 from os import path, getenv  # NOQA
 from sys import path as syspath  # NOQA
 syspath.append(getenv('QA_DIR'))  # NOQA
+from sys import platform as sysplatform
+import os as _os
 
 from util.kwbase_exec_basic_v2 import NodeExecuter
 import util.utils as utils
@@ -22,6 +24,7 @@ from re import search as research, match as rematch
 from glob import glob
 from datetime import datetime
 from threading import Lock
+import subprocess as _subprocess
 
 
 def shrink_sign(sign: str, token: str) -> str:
@@ -188,12 +191,44 @@ class Executer(object):
     _exec_nodes.clear()
     return rs
 
+  # On Widnows, we do file-wise execution with kwbase sql command
+  # All the paths should be in windows format
+  # I.e. we don't split cases.   TODO: the code below only runs each file and
+  # dump output to a file.  There should be some logic in upper level to handle result
+  # comparison, etc
+  def ExecuteFileWin(self, sql_file: str, sql_dir: str) -> List[Tuple[bool, str]]:
+    node = 'n1'
+    f = open(path.join(path.join(getenv("DEPLOY_ROOT"), node), 'kwbase.listen-addr'))
+    outfile = getenv("DEPLOY_ROOT") + '\\' + path.basename(sql_file) + '_' + self.__topology +'.out'
+    host = f.readline()
+    kwbin = _os.getenv('KWBIN')
+    # make it work in mingw env
+    sql_file = path.abspath(sql_file)
+    
+    cmd0 = f"{kwbin} sql --insecure --host={host} --format=table --set \"errexit=false\" --echo-sql --set \"show_times=false\""
+    cmd1 = cmd0 + " < " + sql_file + " > " + outfile+ " 2>&1"
+    print (cmd1)
+    result = _subprocess.run(
+      cmd1,
+      shell=True,
+      capture_output=True,
+      text=True
+    )
+    if result.returncode == 0 :
+      rs.append((True, sql_file))
+    else:
+      rs.append((False, sql_file))
+    return rs
+
   def ExecuteDir(self, sql_root: str, sql_dir: str) -> List[Tuple[bool, str]]:
     rs = list()
     sql_files = glob(path.join(sql_root, self.__filter))
     sql_files.sort()
     for sql_file in sql_files:
-      rs += self.ExecuteFile(sql_file, sql_dir=sql_dir)
+      if sysplatform == 'win32':
+        rs += self.ExecuteFileWin(sql_file, sql_dir=sql_dir)
+      else:
+        rs += self.ExecuteFile(sql_file, sql_dir=sql_dir)
     return rs
 
 
