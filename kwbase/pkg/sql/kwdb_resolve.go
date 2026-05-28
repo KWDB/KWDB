@@ -16,13 +16,15 @@ package sql
 // #cgo linux LDFLAGS: -lrt -lpthread
 //
 // #include <libkwdbts2.h>
-// char* GetTableMetaByVersion(TSTableID id, uint64_t tsVer,
+// extern int GoAdd(int a, int b);
+// extern char* GetTableMetaByVersion(long long unsigned id, long long unsigned tsVer,
 //                                      size_t* outputLen, char** errMsg);
 //
-// bool CheckTableMetaExist(TSTableID id);
+// extern bool CheckTableMetaExist(long long unsigned id);
 import "C"
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -89,8 +91,15 @@ func IsObjectCannotFoundError(err error) bool {
 	return false
 }
 
+//export GoAdd
+func GoAdd(a, b C.int) C.int {
+	result := int(a) + int(b)
+	fmt.Printf("Go: Adding %d + %d = %d\n", int(a), int(b), result)
+	return C.int(result)
+}
+
 //export CheckTableMetaExist
-func CheckTableMetaExist(id C.TSTableID) C.bool {
+func CheckTableMetaExist(id C.ulonglong) C.bool {
 	ctx := context.Background()
 	tableID := uint64(id)
 	var tb *sqlbase.TableDescriptor
@@ -128,7 +137,7 @@ func CheckTableMetaExist(id C.TSTableID) C.bool {
 
 //export GetTableMetaByVersion
 func GetTableMetaByVersion(
-	id C.TSTableID, tsVer C.uint64_t, outputLen *C.size_t, errMsg **C.char,
+	id C.ulonglong, tsVer C.ulonglong, outputLen *C.size_t, errMsg **C.char,
 ) *C.char {
 	ctx := context.Background()
 	var res []byte

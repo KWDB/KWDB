@@ -13,5 +13,8 @@
 
 #include <libkwdbts2.h>
 
-char* __attribute__((weak)) GetTableMetaByVersion(TSTableID id, uint64_t tsVer, size_t* data_len, char** error);
-bool __attribute__((weak)) CheckTableMetaExist(TSTableID id);
+extern "C" {
+char* __attribute__((weak))  GetTableMetaByVersion(long long unsigned, long long unsigned, size_t*, char** );
+bool __attribute__((weak)) CheckTableMetaExist(long long unsigned);
+int  __attribute__((weak)) GoAdd(int, int);
+}

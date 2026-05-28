@@ -175,7 +175,7 @@ NCPUS := $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/d
 
 DUPLFLAGS    := -t 100
 # -gcflags=all="-N -l"  go attach need add this param
-GOFLAGS      :=
+GOFLAGS      := -gcflags=all="-N -l"
 TAGS         :=
 ARCHIVE      := kwbase.src.tgz
 STARTFLAGS   := -s type=mem,size=1GiB --logtostderr
@@ -529,7 +529,7 @@ ifndef PROTOBUF_INC
 endif
 
 ifdef host-is-mingw
-LDFLAGS += -L$(CMAKE_BUILD_TOP)/kwdbts2/third_party/lib -L$(JEMALLOC_DIR)/lib -L$(LIBROACH_DIR) -L$(ROCKSDB_DIR) -L$(SNAPPY_DIR) -Wl,-Bstatic -lz -Wl,-Bdynamic -lstdc++
+LDFLAGS += -L$(CMAKE_BUILD_TOP)/kwdbts2/third_party/lib -L$(JEMALLOC_DIR)/lib -L$(LIBROACH_DIR) -L$(ROCKSDB_DIR) -L$(SNAPPY_DIR) -Wl,-Bstatic -llz4 -Wl,-Bdynamic -lz -lstdc++ -lws2_32
 else
 LDFLAGS += -L$(GOPATH)/native/kwdbts2/third_party/lib -L$(GOPATH)/native/kwdbts2/third_party/lib64 -Wl,-Bstatic -lz -Wl,-Bdynamic -lstdc++
 endif
