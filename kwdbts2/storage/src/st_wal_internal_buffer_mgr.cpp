@@ -286,16 +286,20 @@ KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries, TS_OSN st
           LOG_ERROR("Failed to parse the WAL log.")
           break;
         }
-        auto* mtr_entry = new TTREntry(current_lsn, typ, x_id, read_buf);
-        delete[] read_buf;
-        read_buf = nullptr;
-        if (mtr_entry == nullptr) {
-          LOG_ERROR("Failed to construct entry.")
-          status = FAIL;
-          break;
+        if (txn_id == 0 || txn_id == x_id) {
+          auto* mtr_entry = new TTREntry(current_lsn, typ, x_id, read_buf);
+          delete[] read_buf;
+          read_buf = nullptr;
+          if (mtr_entry == nullptr) {
+            LOG_ERROR("Failed to construct entry.")
+            status = FAIL;
+            break;
+          }
+          log_entries.push_back(mtr_entry);
+        } else {
+          delete[] read_buf;
+          read_buf = nullptr;
         }
-
-        log_entries.push_back(mtr_entry);
         break;
       }
       case DDL_CREATE: {

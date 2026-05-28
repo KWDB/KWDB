@@ -17,6 +17,8 @@
 #include <cstdio>
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
+#include <algorithm>
 #include <map>
 #include <string>
 #include <memory>
@@ -1489,6 +1491,11 @@ KStatus TSEngineImpl::CreateCheckpoint(kwdbContext_p ctx) {
   // 2.read mtr id first, only read uncommitted txn from all vgroups.
   auto vgroup_mtr = GetVGroupByID(ctx, 1);
   std::vector<uint64_t> uncommitted_xid;
+  for (auto& log : logs) {
+    if (log->getType() == WALLogType::TS_BEGIN || log->getType() == WALLogType::MTR_BEGIN) {
+      uncommitted_xid.push_back(log->getXID());
+    }
+  }
   s = vgroup_mtr->GetWALManager()->ReadUncommittedTxnID(uncommitted_xid);
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to ReadUncommittedTxnID.")
@@ -1510,6 +1517,24 @@ KStatus TSEngineImpl::CreateCheckpoint(kwdbContext_p ctx) {
     vgrp_lsn.emplace(vgrp_id, lsn);
 
     logs.insert(logs.end(), vlogs.begin(), vlogs.end());
+  }
+
+  std::unordered_set<uint64_t> committed_xid;
+  for (auto& log : logs) {
+    if (log->getType() == WALLogType::MTR_COMMIT || log->getType() == WALLogType::MTR_ROLLBACK ||
+        log->getType() == WALLogType::TS_COMMIT || log->getType() == WALLogType::TS_ROLLBACK) {
+      committed_xid.insert(log->getXID());
+    }
+  }
+  if (!committed_xid.empty()) {
+    for (auto it = logs.begin(); it != logs.end();) {
+      if (committed_xid.find((*it)->getXID()) != committed_xid.end()) {
+        delete *it;
+        it = logs.erase(it);
+      } else {
+        ++it;
+      }
+    }
   }
 
   // 4. rewrite incomplete wal

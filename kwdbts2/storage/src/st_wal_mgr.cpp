@@ -1112,7 +1112,7 @@ KStatus WALMgr::initWalMeta(kwdbContext_p ctx, bool is_create) {
 KStatus WALMgr::flushMeta(kwdbContext_p ctx) {
   streamsize size = sizeof(WALMeta);
   memcpy(meta_flush_buf_, &meta_, size);
-  meta_file_.seekg(0, std::ios::beg);
+  meta_file_.seekp(0, std::ios::beg);
   meta_file_.write(meta_flush_buf_, size);
   if (opt_->wal_level == WALMode::SYNC) {
     auto helper = [](std::filebuf *fb) -> int {
