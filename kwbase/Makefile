@@ -175,7 +175,7 @@ NCPUS := $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/d
 
 DUPLFLAGS    := -t 100
 # -gcflags=all="-N -l"  go attach need add this param
-GOFLAGS      := -gcflags=all="-N -l"
+GOFLAGS      := 
 TAGS         :=
 ARCHIVE      := kwbase.src.tgz
 STARTFLAGS   := -s type=mem,size=1GiB --logtostderr

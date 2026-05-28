@@ -172,10 +172,6 @@ KStatus TsEngineSchemaManager::GetTableSchemaMgr(TSTableID tbl_id, std::shared_p
   const auto it = table_schema_mgrs_.find(tbl_id);
   if (it == table_schema_mgrs_.end()) {
     unLock();
-    if (GoAdd(2, 4) == 6) {
-      LOG_WARN("table %ld schema not found", tbl_id);
-      return KStatus::FAIL;
-    }
     if (CheckTableMetaExist(tbl_id)) {
       LOG_WARN("table %ld schema not found", tbl_id);
       return KStatus::FAIL;
