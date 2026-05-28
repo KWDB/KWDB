@@ -916,6 +916,18 @@ func (expr *FuncExpr) TypeCheck(ctx *SemaContext, desired *types.T) (TypedExpr, 
 			"%s()", def.Name)
 	}
 
+	// Handle all CITEXT-related retries for function overload
+	if len(fns) != 1 {
+		if typedFallback, fnsFallback, ok, err2 := tryTypeCheckFuncExprWithCITextFallbacks(
+			ctx, desired, def, expr.Exprs...,
+		); err2 != nil {
+			return nil, err2
+		} else if ok {
+			typedSubExprs = typedFallback
+			fns = fnsFallback
+		}
+	}
+
 	// If the function is an aggregate that does not accept null arguments and we
 	// have arguments of unknown type, see if we can assign type string instead.
 	// TODO(rytaft): If there are no overloads with string inputs, Postgres
@@ -1875,6 +1887,15 @@ func typeCheckComparisonOpWithSubOperator(
 	foldedOp, _, _, _, _ := foldComparisonExpr(subOp, nil, nil)
 	ops := CmpOps[foldedOp]
 
+	// CITEXT-aware ANY/SOME/ALL handling.
+	if typedLeft, typedRight, fn, ok, err := tryTypeCheckCITextSubOperatorComparison(
+		ctx, subOp, ops, left, right,
+	); err != nil {
+		return nil, nil, nil, false, err
+	} else if ok {
+		return typedLeft, typedRight, fn, false, nil
+	}
+
 	var cmpTypeLeft, cmpTypeRight *types.T
 	var leftTyped, rightTyped TypedExpr
 	if array, isConstructor := right.(*Array); isConstructor {
@@ -2032,62 +2053,85 @@ func typeCheckComparisonOp(
 		copy(sameTypeExprs[1:], rightTuple.Exprs)
 
 		typedSubExprs, retType, err := TypeCheckSameTypedExprs(ctx, types.Any, sameTypeExprs...)
+		if err == nil {
+			if fn, ok := ops.LookupImpl(retType, types.AnyTuple); ok {
+				typedLeft := typedSubExprs[0]
+				typedSubExprs = typedSubExprs[1:]
+
+				rightTuple.typ = types.MakeTuple(make([]types.T, len(typedSubExprs)))
+				for i, typedExpr := range typedSubExprs {
+					rightTuple.Exprs[i] = typedExpr
+					rightTuple.typ.TupleContents()[i] = *retType
+				}
+				if switched {
+					return rightTuple, typedLeft, fn, false, nil
+				}
+				return typedLeft, rightTuple, fn, false, nil
+			}
+		}
+
+		// Retry CITEXT handling only after the original IN tuple typing fails.
+		if typedLeft, typedRight, fn, ok, err2 := tryTypeCheckComparisonOpWithCITextFallbacks(
+			ctx, foldedOp, ops, foldedLeft, foldedRight,
+		); err2 != nil {
+			return nil, nil, nil, false, err2
+		} else if ok {
+			if switched {
+				return typedRight, typedLeft, fn, false, nil
+			}
+			return typedLeft, typedRight, fn, false, nil
+		}
+
+		// Preserve original error message.
 		if err != nil {
 			sigWithErr := fmt.Sprintf(compExprsFmt, left, op, right, err)
 			return nil, nil, nil, false,
 				pgerror.Newf(pgcode.InvalidParameterValue, unsupportedCompErrFmt, sigWithErr)
 		}
-
-		fn, ok := ops.LookupImpl(retType, types.AnyTuple)
-		if !ok {
-			sig := fmt.Sprintf(compSignatureFmt, retType, op, types.AnyTuple)
-			return nil, nil, nil, false,
-				pgerror.Newf(pgcode.InvalidParameterValue, unsupportedCompErrFmt, sig)
-		}
-
-		typedLeft := typedSubExprs[0]
-		typedSubExprs = typedSubExprs[1:]
-
-		rightTuple.typ = types.MakeTuple(make([]types.T, len(typedSubExprs)))
-		for i, typedExpr := range typedSubExprs {
-			rightTuple.Exprs[i] = typedExpr
-			rightTuple.typ.TupleContents()[i] = *retType
-		}
-		if switched {
-			return rightTuple, typedLeft, fn, false, nil
-		}
-		return typedLeft, rightTuple, fn, false, nil
+		sig := fmt.Sprintf(compSignatureFmt, retType, op, types.AnyTuple)
+		return nil, nil, nil, false,
+			pgerror.Newf(pgcode.InvalidParameterValue, unsupportedCompErrFmt, sig)
 
 	case foldedOp == In && rightIsSubquery:
+		var preServeSubErr error
 		typedLeft, err := foldedLeft.TypeCheck(ctx, types.Any)
+		if err == nil {
+			typ := typedLeft.ResolvedType()
+			if fn, ok := ops.LookupImpl(typ, types.AnyTuple); ok {
+				desired := types.MakeTuple([]types.T{*typ})
+				typedRight, err := foldedRight.TypeCheck(ctx, desired)
+				if err == nil {
+					if preServeSubErr = typeCheckSubqueryWithIn(typedLeft.ResolvedType(), typedRight.ResolvedType()); preServeSubErr == nil {
+						return typedLeft, typedRight, fn, false, nil
+					}
+				}
+			}
+		}
+
+		// Retry CITEXT handling only after the original IN subquery typing fails.
+		if typedLeft, typedRight, fn, ok, err2 := tryTypeCheckComparisonOpWithCITextFallbacks(
+			ctx, foldedOp, ops, foldedLeft, foldedRight,
+		); err2 != nil {
+			return nil, nil, nil, false, err2
+		} else if ok {
+			if switched {
+				return typedRight, typedLeft, fn, false, nil
+			}
+			return typedLeft, typedRight, fn, false, nil
+		}
+
+		// Preserve original error message.
 		if err != nil {
 			sigWithErr := fmt.Sprintf(compExprsFmt, left, op, right, err)
 			return nil, nil, nil, false,
 				pgerror.Newf(pgcode.InvalidParameterValue, unsupportedCompErrFmt, sigWithErr)
 		}
-
-		typ := typedLeft.ResolvedType()
-		fn, ok := ops.LookupImpl(typ, types.AnyTuple)
-		if !ok {
-			sig := fmt.Sprintf(compSignatureFmt, typ, op, types.AnyTuple)
-			return nil, nil, nil, false,
-				pgerror.Newf(pgcode.InvalidParameterValue, unsupportedCompErrFmt, sig)
+		if preServeSubErr != nil {
+			return nil, nil, nil, false, preServeSubErr
 		}
-
-		desired := types.MakeTuple([]types.T{*typ})
-		typedRight, err := foldedRight.TypeCheck(ctx, desired)
-		if err != nil {
-			sigWithErr := fmt.Sprintf(compExprsFmt, left, op, right, err)
-			return nil, nil, nil, false,
-				pgerror.Newf(pgcode.InvalidParameterValue, unsupportedCompErrFmt, sigWithErr)
-		}
-
-		if err := typeCheckSubqueryWithIn(
-			typedLeft.ResolvedType(), typedRight.ResolvedType(),
-		); err != nil {
-			return nil, nil, nil, false, err
-		}
-		return typedLeft, typedRight, fn, false, nil
+		sig := fmt.Sprintf(compSignatureFmt, typedLeft.ResolvedType(), op, types.AnyTuple)
+		return nil, nil, nil, false,
+			pgerror.Newf(pgcode.InvalidParameterValue, unsupportedCompErrFmt, sig)
 
 	case leftIsTuple && rightIsTuple:
 		fn, ok := ops.LookupImpl(types.AnyTuple, types.AnyTuple)
@@ -2137,6 +2181,37 @@ func typeCheckComparisonOp(
 			}
 		}
 	}
+
+	// Handle comparisons where one side is citext and the other side is string constant.
+	typedFoldedLeft, typedFoldedRight := typedSubExprs[0], typedSubExprs[1]
+	foldedLeftReturn := typedFoldedLeft.ResolvedType()
+	foldedRightReturn := typedFoldedRight.ResolvedType()
+	if IsCITextType(foldedLeftReturn) && isBareStringExpr(foldedRight) {
+		if typedLeft, typedRight, fn, ok, err := tryTypeCheckCITextComparison(
+			ctx, ops, foldedRight, typedFoldedLeft, foldedLeftReturn,
+		); err != nil {
+			return nil, nil, nil, false, err
+		} else if ok {
+			if switched {
+				return typedRight, typedLeft, fn, false, nil
+			}
+			return typedLeft, typedRight, fn, false, nil
+		}
+	}
+
+	if IsCITextType(foldedRightReturn) && isBareStringExpr(foldedLeft) {
+		if typedRight, typedLeft, fn, ok, err := tryTypeCheckCITextComparison(
+			ctx, ops, foldedLeft, typedFoldedRight, foldedRightReturn,
+		); err != nil {
+			return nil, nil, nil, false, err
+		} else if ok {
+			if switched {
+				return typedRight, typedLeft, fn, false, nil
+			}
+			return typedLeft, typedRight, fn, false, nil
+		}
+	}
+
 	// Return early if at least one overload is possible, NULL is an argument,
 	// and none of the overloads accept NULL.
 	nullComparison := false
@@ -2742,3 +2817,1307 @@ func (v stripFuncsVisitor) VisitPre(expr Expr) (recurse bool, newExpr Expr) {
 }
 
 func (stripFuncsVisitor) VisitPost(expr Expr) Expr { return expr }
+
+// IsCITextType checks whether t is CITEXT or CITEXT[].
+func IsCITextType(t *types.T) bool {
+	if t == nil {
+		return false
+	}
+
+	if t.Oid() == types.T_citext && t.Family() == types.CollatedStringFamily {
+		return true
+	}
+
+	if t.Family() == types.ArrayFamily {
+		return IsCITextType(t.ArrayContents())
+	}
+
+	return false
+}
+
+// IsCITextTypeWithOutArray checks whether t is CITEXT.
+func IsCITextTypeWithOutArray(t *types.T) bool {
+	if t == nil {
+		return false
+	}
+
+	if t.Oid() == types.T_citext && t.Family() == types.CollatedStringFamily {
+		return true
+	}
+
+	return false
+}
+
+// typeContainsCIText checks whether t contains CITEXT at any level.
+// It is used only as a guard before entering CITEXT fallback logic.
+func typeContainsCIText(t *types.T) bool {
+	if t == nil {
+		return false
+	}
+
+	if IsCITextType(t) {
+		return true
+	}
+
+	switch t.Family() {
+	case types.ArrayFamily:
+		return typeContainsCIText(t.ArrayContents())
+
+	case types.TupleFamily:
+		for i := range t.TupleContents() {
+			if typeContainsCIText(&t.TupleContents()[i]) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// IsStringType checks whether t is a plain string type or a plain string array
+// type. This includes STRING/TEXT/VARCHAR-style types, but does not include
+// CITEXT or CITEXT[].
+func IsStringType(t *types.T) bool {
+	if t == nil {
+		return false
+	}
+
+	if t.Family() == types.StringFamily {
+		return true
+	}
+
+	if t.Family() == types.ArrayFamily {
+		return IsStringType(t.ArrayContents())
+	}
+
+	return false
+}
+
+func isBPCharType(t *types.T) bool {
+	if t == nil {
+		return false
+	}
+	return t.Family() == types.StringFamily && t.Oid() == oid.T_bpchar
+}
+
+// supportsCITextStringFallback checks string functions which allows using citext as string.
+func supportsCITextStringFallback(fnName string) bool {
+	switch strings.ToLower(fnName) {
+	case "lower",
+		"upper",
+		"initcap",
+		"substring",
+		"substr",
+		"trim",
+		"btrim",
+		"ltrim",
+		"rtrim",
+		"length",
+		"char_length",
+		"character_length",
+		"octet_length",
+		"bit_length",
+		"left",
+		"right",
+		"reverse",
+		"repeat",
+		"overlay",
+		"ascii",
+		"decode",
+		"covert_to",
+		"lpad",
+		"rpad",
+		"quote_ident",
+		"str_to_date",
+		"to_timestamp",
+		"concat":
+		return true
+	default:
+		return false
+	}
+}
+
+// supportsCITextStringFallback checks string functions which allows using citext.
+func supportsCITextSensitiveStringFallback(fnName string) bool {
+	switch strings.ToLower(fnName) {
+	case "split_part",
+		"strpos",
+		"replace",
+		"translate",
+		"regexp_replace",
+		"like_escape",
+		"not_like_escape",
+		"ilike_escape",
+		"not_ilike_escape",
+		"similar_to_escape",
+		"not_similar_to_escape":
+		return true
+	default:
+		return false
+	}
+}
+
+// ciTextSensitiveArgIndexes checks string functions parameters.
+func ciTextSensitiveArgIndexes(fnName string) []int {
+	switch strings.ToLower(fnName) {
+	case "split_part":
+		return []int{0, 1}
+	case "strpos":
+		return []int{0, 1}
+	case "replace":
+		return []int{0, 1, 2}
+	case "translate":
+		return []int{0, 1, 2}
+	case "regexp_replace":
+		return []int{0, 1, 2}
+	case "like_escape", "not_like_escape", "ilike_escape", "not_ilike_escape":
+		return []int{0, 1, 2}
+	case "similar_to_escape", "not_similar_to_escape":
+		return []int{0, 1, 2}
+	default:
+		return nil
+	}
+}
+
+type ciTextResolutionMode int
+
+const (
+	ciTextResolutionModeNone ciTextResolutionMode = iota
+	ciTextResolutionModePreferCIText
+	ciTextResolutionModeForceString
+)
+
+// isTypedPlainStringType is plain string type
+func isTypedPlainStringType(t *types.T) bool {
+	if t == nil {
+		return false
+	}
+	if IsCITextType(t) {
+		return false
+	}
+	return t.Family() == types.StringFamily ||
+		t.Family() == types.CollatedStringFamily
+}
+
+// isBareStringExpr is string constant expr.
+func isBareStringExpr(e Expr) bool {
+	e = StripParens(e)
+
+	switch t := e.(type) {
+	case *DString:
+		return true
+
+	case *StrVal:
+		return true
+
+	case *CollateExpr:
+		return true
+
+	case *Array:
+		// Empty ARRAY[] can follow the desired type supplied by the caller.
+		if len(t.Exprs) == 0 {
+			return true
+		}
+
+		for _, elem := range t.Exprs {
+			elem = StripParens(elem)
+
+			// NULL array elements can follow the desired element type.
+			if elem == DNull {
+				continue
+			}
+
+			if !isBareStringExpr(elem) {
+				return false
+			}
+		}
+		return true
+
+	default:
+		return false
+	}
+}
+
+// classifyCITextSensitiveFuncMode classifies string functions mode.
+func classifyCITextSensitiveFuncMode(
+	ctx *SemaContext, fnName string, exprs ...Expr,
+) (ciTextResolutionMode, error) {
+	argIdx := ciTextSensitiveArgIndexes(fnName)
+	if len(argIdx) == 0 {
+		return ciTextResolutionModeNone, nil
+	}
+
+	hasCIText := false
+	hasTypedPlainString := false
+
+	for _, idx := range argIdx {
+		if idx >= len(exprs) {
+			continue
+		}
+		e := exprs[idx]
+
+		if isBareStringExpr(e) {
+			continue
+		}
+
+		typed, err := e.TypeCheck(ctx, types.Any)
+		if err != nil {
+			return ciTextResolutionModeNone, err
+		}
+		typ := typed.ResolvedType()
+
+		if IsCITextTypeWithOutArray(typ) {
+			hasCIText = true
+			continue
+		}
+		if isTypedPlainStringType(typ) {
+			hasTypedPlainString = true
+		}
+	}
+
+	switch {
+	case hasCIText && hasTypedPlainString:
+		return ciTextResolutionModeForceString, nil
+	case hasCIText:
+		return ciTextResolutionModePreferCIText, nil
+	default:
+		return ciTextResolutionModeNone, nil
+	}
+}
+
+// rewriteExprsForCITextSensitiveFunc retries overload resolution for
+// ordinary string functions by implicitly casting STRING arguments to citext.
+func rewriteExprsForCITextSensitiveFunc(
+	ctx *SemaContext, fnName string, mode ciTextResolutionMode, exprs ...Expr,
+) (_ []Expr, changed bool, _ error) {
+	argIdx := ciTextSensitiveArgIndexes(fnName)
+	if len(argIdx) == 0 || mode == ciTextResolutionModeNone {
+		return exprs, false, nil
+	}
+
+	rewritten := make([]Expr, len(exprs))
+	copy(rewritten, exprs)
+
+	for _, idx := range argIdx {
+		if idx >= len(exprs) {
+			continue
+		}
+		e := exprs[idx]
+
+		switch mode {
+		case ciTextResolutionModeForceString:
+			typed, err := e.TypeCheck(ctx, types.Any)
+			if err != nil {
+				return nil, false, err
+			}
+			if IsCITextTypeWithOutArray(typed.ResolvedType()) {
+				rewritten[idx] = &CastExpr{
+					Expr:       e,
+					Type:       types.String,
+					SyntaxMode: CastShort,
+				}
+				changed = true
+			}
+
+		case ciTextResolutionModePreferCIText:
+			if isBareStringExpr(e) {
+				rewritten[idx] = &CastExpr{
+					Expr:       e,
+					Type:       types.CIText,
+					SyntaxMode: CastShort,
+				}
+				changed = true
+			}
+		}
+	}
+
+	return rewritten, changed, nil
+}
+
+// tryTypeCheckFuncExprWithCITextStringFallback retries overload resolution for
+// ordinary string functions by implicitly casting citext arguments to STRING.
+//
+// This helper is intentionally conservative:
+//   - only used for a whitelist of ordinary string functions
+//   - does not affect LIKE/regex/strpos/replace/split_part/translate/regexp_replace
+//   - only retries when at least one argument is exact citext.
+func tryTypeCheckFuncExprWithCITextStringFallback(
+	ctx *SemaContext, desired *types.T, overloads []overloadImpl, isInterpolate bool, exprs ...Expr,
+) (_ []TypedExpr, _ []overloadImpl, ok bool, _ error) {
+	rewritten := make([]Expr, len(exprs))
+	changed := false
+
+	for i, e := range exprs {
+		typed, err := e.TypeCheck(ctx, types.Any)
+		if err != nil {
+			return nil, nil, false, nil
+		}
+		if IsCITextTypeWithOutArray(typed.ResolvedType()) {
+			rewritten[i] = &CastExpr{
+				Expr:       e,
+				Type:       types.String,
+				SyntaxMode: CastShort,
+			}
+			changed = true
+		} else {
+			rewritten[i] = e
+		}
+	}
+
+	if !changed {
+		return nil, nil, false, nil
+	}
+
+	typedExprs, fns, err := typeCheckOverloadedExprs(
+		ctx, desired, overloads, isInterpolate, false /* inBinOp */, rewritten...,
+	)
+	if err != nil {
+		return nil, nil, false, nil
+	}
+	if len(fns) != 1 {
+		return nil, nil, false, nil
+	}
+	return typedExprs, fns, true, nil
+}
+
+// tryTypeCheckFuncExprWithDesiredCITextResultFallback retries overload
+// resolution with desired=ANY when the outer desired type is CITEXT.
+func tryTypeCheckFuncExprWithDesiredCITextResultFallback(
+	ctx *SemaContext, overloads []overloadImpl, isInterpolate bool, exprs ...Expr,
+) (_ []TypedExpr, _ []overloadImpl, ok bool, _ error) {
+	typedExprs, fns, err := typeCheckOverloadedExprs(
+		ctx, types.Any, overloads, isInterpolate, false /* inBinOp */, exprs...,
+	)
+	if err != nil {
+		return nil, nil, false, nil
+	}
+	if len(fns) != 1 {
+		return nil, nil, false, nil
+	}
+
+	retTyp := fns[0].returnType()(typedExprs)
+	if retTyp == UnknownReturnType {
+		return nil, nil, false, nil
+	}
+
+	// Accept ordinary string-family results and CITEXT results.
+	if retTyp.Family() == types.StringFamily || IsCITextType(retTyp) {
+		return typedExprs, fns, true, nil
+	}
+	return nil, nil, false, nil
+}
+
+// tryTypeCheckFuncExprWithCITextFallbacks handles all CITEXT-related
+// retries for function overload resolution.
+//
+// The retries are intentionally ordered:
+//  1. special CITEXT-sensitive string functions
+//  2. ordinary string-function citext->string fallback
+//  3. outer desired=CITEXT result fallback
+func tryTypeCheckFuncExprWithCITextFallbacks(
+	ctx *SemaContext, desired *types.T, def *FunctionDefinition, exprs ...Expr,
+) (_ []TypedExpr, _ []overloadImpl, ok bool, _ error) {
+	isInterpolate := def.Name == "interpolate"
+
+	// 1. Retry special CITEXT-sensitive string functions.
+	if supportsCITextSensitiveStringFallback(def.Name) {
+		mode, err := classifyCITextSensitiveFuncMode(ctx, def.Name, exprs...)
+		if err != nil {
+			return nil, nil, false, err
+		}
+		if mode != ciTextResolutionModeNone {
+			rewritten, changed, err := rewriteExprsForCITextSensitiveFunc(
+				ctx, def.Name, mode, exprs...,
+			)
+			if err != nil {
+				return nil, nil, false, err
+			}
+			if changed {
+				typedExprs, fns, err := typeCheckOverloadedExprs(
+					ctx, desired, def.Definition, isInterpolate, false, rewritten...,
+				)
+				if err == nil && len(fns) == 1 {
+					return typedExprs, fns, true, nil
+				}
+			}
+		}
+	}
+
+	// 2. Retry ordinary string functions by implicitly casting CITEXT -> STRING.
+	if supportsCITextStringFallback(def.Name) {
+		if typedExprs, fns, ok, err := tryTypeCheckFuncExprWithCITextStringFallback(
+			ctx, desired, def.Definition, isInterpolate, exprs...,
+		); err != nil {
+			return nil, nil, false, err
+		} else if ok {
+			return typedExprs, fns, true, nil
+		}
+	}
+
+	// 3. If the outer desired type is CITEXT, allow ordinary string-returning
+	// functions to resolve with desired=ANY first.
+	if desired != nil && IsCITextType(desired) {
+		if typedExprs, fns, ok, err := tryTypeCheckFuncExprWithDesiredCITextResultFallback(
+			ctx, def.Definition, isInterpolate, exprs...,
+		); err != nil {
+			return nil, nil, false, err
+		} else if ok {
+			return typedExprs, fns, true, nil
+		}
+	}
+
+	return nil, nil, false, nil
+}
+
+// classifyCITextSensitiveInTupleMode decides how an IN tuple expression
+// should treat CITEXT and plain string inputs.
+func classifyCITextSensitiveInTupleMode(
+	ctx *SemaContext, left Expr, tupleExprs Exprs,
+) (ciTextResolutionMode, error) {
+	hasCIText := false
+	hasTypedPlainString := false
+
+	checkOne := func(e Expr) error {
+		if isBareStringExpr(e) {
+			return nil
+		}
+		typed, err := e.TypeCheck(ctx, types.Any)
+		if err != nil {
+			return err
+		}
+		typ := typed.ResolvedType()
+		if IsCITextType(typ) {
+			hasCIText = true
+			return nil
+		}
+		if isTypedPlainStringType(typ) {
+			hasTypedPlainString = true
+		}
+		return nil
+	}
+
+	if err := checkOne(left); err != nil {
+		return ciTextResolutionModeNone, err
+	}
+	for _, e := range tupleExprs {
+		if err := checkOne(e); err != nil {
+			return ciTextResolutionModeNone, err
+		}
+	}
+
+	switch {
+	case hasCIText && hasTypedPlainString:
+		return ciTextResolutionModeForceString, nil
+	case hasCIText:
+		return ciTextResolutionModePreferCIText, nil
+	default:
+		return ciTextResolutionModeNone, nil
+	}
+}
+
+// rewriteCITextSensitiveInTupleExprs rewrites the left side and tuple elements
+// of an IN expression according to the selected CITEXT resolution mode.
+func rewriteCITextSensitiveInTupleExprs(
+	ctx *SemaContext, mode ciTextResolutionMode, left Expr, tupleExprs Exprs,
+) (_ Expr, _ Exprs, _ error) {
+	if mode == ciTextResolutionModeNone {
+		return left, tupleExprs, nil
+	}
+
+	rewriteOne := func(e Expr) (Expr, error) {
+		switch mode {
+		case ciTextResolutionModeForceString:
+			typed, err := e.TypeCheck(ctx, types.Any)
+			if err != nil {
+				return nil, err
+			}
+			if IsCITextType(typed.ResolvedType()) {
+				return &CastExpr{
+					Expr:       e,
+					Type:       types.String,
+					SyntaxMode: CastShort,
+				}, nil
+			}
+			return e, nil
+
+		case ciTextResolutionModePreferCIText:
+			if isBareStringExpr(e) {
+				return &CastExpr{
+					Expr:       e,
+					Type:       types.CIText,
+					SyntaxMode: CastShort,
+				}, nil
+			}
+			return e, nil
+		}
+		return e, nil
+	}
+
+	newLeft, err := rewriteOne(left)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	newExprs := make(Exprs, len(tupleExprs))
+	for i, e := range tupleExprs {
+		newExpr, err := rewriteOne(e)
+		if err != nil {
+			return nil, nil, err
+		}
+		newExprs[i] = newExpr
+	}
+	return newLeft, newExprs, nil
+}
+
+// getSingleColumnTupleType returns the element type of a single-column tuple.
+// It returns false if the input is nil, not a tuple, or not a single-column tuple.
+func getSingleColumnTupleType(typ *types.T) (*types.T, bool) {
+	if typ == nil || typ.Family() != types.TupleFamily {
+		return nil, false
+	}
+	contents := typ.TupleContents()
+	if len(contents) != 1 {
+		return nil, false
+	}
+	t := contents[0]
+	return &t, true
+}
+
+// typeCheckSubqueryWithInCITextCompat relaxes the normal IN-subquery type check
+// for STRING/CITEXT-compatible combinations.
+func typeCheckSubqueryWithInCITextCompat(leftTyp, rightTyp *types.T) error {
+	var err error
+	if err = typeCheckSubqueryWithIn(leftTyp, rightTyp); err == nil {
+		return nil
+	}
+
+	elemTyp, ok := getSingleColumnTupleType(rightTyp)
+	if ok && isCITextStringAssignmentCompatible(leftTyp, elemTyp) {
+		return nil
+	}
+	return err
+}
+
+// shouldPreferCITextForInSubquery reports whether a string constant on the
+// left side of IN should be treated as CITEXT because the subquery produces a
+// single CITEXT column.
+func shouldPreferCITextForInSubquery(left Expr, subqueryTyp *types.T) bool {
+	if !isBareStringExpr(left) {
+		return false
+	}
+	elemTyp, ok := getSingleColumnTupleType(subqueryTyp)
+	return ok && IsCITextType(elemTyp)
+}
+
+// isCITextStringAssignmentCompatible reports whether two types are compatible
+// under the special STRING/CITEXT comparison rules.
+func isCITextStringAssignmentCompatible(src, dst *types.T) bool {
+	if src.Equivalent(dst) {
+		return true
+	}
+	if IsCITextType(src) && dst.Family() == types.StringFamily {
+		return true
+	}
+	if src.Family() == types.StringFamily && IsCITextType(dst) {
+		return true
+	}
+	return false
+}
+
+// IsCITextStringMixed reports whether two types are mixed.
+func IsCITextStringMixed(src, dst *types.T) bool {
+	if IsCITextType(src) && IsStringType(dst) {
+		return true
+	}
+	if IsStringType(src) && IsCITextType(dst) {
+		return true
+	}
+	return false
+}
+
+// tryTypeCheckComparisonOpWithCITextFallbacks applies CITEXT-specific fallback
+// handling for IN tuple and IN subquery comparisons.
+func tryTypeCheckComparisonOpWithCITextFallbacks(
+	ctx *SemaContext, op ComparisonOperator, ops cmpOpOverload, left Expr, right Expr,
+) (_ TypedExpr, _ TypedExpr, _ *CmpOp, ok bool, _ error) {
+	_, rightIsTuple := right.(*Tuple)
+	_, rightIsSubquery := right.(SubqueryExpr)
+
+	switch {
+	case op == In && rightIsTuple:
+		return tryTypeCheckCITextInTupleComparison(ctx, ops, left, right.(*Tuple))
+
+	case op == In && rightIsSubquery:
+		return tryTypeCheckCITextInSubqueryComparison(ctx, ops, left, right)
+	}
+
+	return nil, nil, nil, false, nil
+}
+
+// tryTypeCheckCITextInTupleComparison retries IN-tuple type checking with
+// CITEXT-aware rewriting when the normal path is not sufficient.
+func tryTypeCheckCITextInTupleComparison(
+	ctx *SemaContext, ops cmpOpOverload, left Expr, rightTuple *Tuple,
+) (_ TypedExpr, _ TypedExpr, _ *CmpOp, ok bool, _ error) {
+	mode, err := classifyCITextSensitiveInTupleMode(ctx, left, rightTuple.Exprs)
+	if err != nil {
+		return nil, nil, nil, false, err
+	}
+	if mode == ciTextResolutionModeNone {
+		return nil, nil, nil, false, nil
+	}
+
+	leftForIn, rightExprsForIn, err := rewriteCITextSensitiveInTupleExprs(
+		ctx, mode, left, rightTuple.Exprs,
+	)
+	if err != nil {
+		return nil, nil, nil, false, err
+	}
+
+	sameTypeExprs := make([]Expr, len(rightExprsForIn)+1)
+	sameTypeExprs[0] = leftForIn
+	copy(sameTypeExprs[1:], rightExprsForIn)
+
+	typedSubExprs, retType, err := TypeCheckSameTypedExprs(ctx, types.Any, sameTypeExprs...)
+	if err != nil {
+		return nil, nil, nil, false, nil
+	}
+
+	fn, ok := ops.LookupImpl(retType, types.AnyTuple)
+	if !ok {
+		return nil, nil, nil, false, nil
+	}
+
+	typedLeft := typedSubExprs[0]
+	typedSubExprs = typedSubExprs[1:]
+
+	newRightTuple := &Tuple{Exprs: make(Exprs, len(typedSubExprs))}
+	newRightTuple.typ = types.MakeTuple(make([]types.T, len(typedSubExprs)))
+	for i, typedExpr := range typedSubExprs {
+		newRightTuple.Exprs[i] = typedExpr
+		newRightTuple.typ.TupleContents()[i] = *retType
+	}
+	return typedLeft, newRightTuple, fn, true, nil
+}
+
+// tryTypeCheckCITextInSubqueryComparison retries IN-subquery type checking with
+// CITEXT-aware handling for bare string literals and STRING/CITEXT-compatible
+// comparisons.
+func tryTypeCheckCITextInSubqueryComparison(
+	ctx *SemaContext, ops cmpOpOverload, left Expr, right Expr,
+) (_ TypedExpr, _ TypedExpr, _ *CmpOp, ok bool, _ error) {
+	typedRightPreview, err := right.TypeCheck(ctx, types.AnyTuple)
+	if err != nil {
+		return nil, nil, nil, false, err
+	}
+
+	// string constant on the left follows CITEXT if the subquery produces
+	// a single CITEXT column.
+	leftForIn := left
+	if shouldPreferCITextForInSubquery(left, typedRightPreview.ResolvedType()) {
+		leftForIn = &CastExpr{
+			Expr:       left,
+			Type:       types.CIText,
+			SyntaxMode: CastShort,
+		}
+	}
+
+	typedLeft, err := leftForIn.TypeCheck(ctx, types.Any)
+	if err != nil {
+		return nil, nil, nil, false, err
+	}
+
+	// If this is not a STRING/CITEXT-compatible shape after the optional
+	// bare-string rewrite, there is nothing special to do here.
+	actualElemTyp, ok := getSingleColumnTupleType(typedRightPreview.ResolvedType())
+	if !ok || !isCITextStringAssignmentCompatible(typedLeft.ResolvedType(), actualElemTyp) {
+		return nil, nil, nil, false, nil
+	}
+
+	fn, ok := ops.LookupImpl(typedLeft.ResolvedType(), types.AnyTuple)
+	if !ok {
+		return nil, nil, nil, false, nil
+	}
+
+	desired := types.MakeTuple([]types.T{*typedLeft.ResolvedType()})
+	typedRight, err := right.TypeCheck(ctx, desired)
+	if err != nil {
+		return nil, nil, nil, false, nil
+	}
+
+	if err := typeCheckSubqueryWithInCITextCompat(
+		typedLeft.ResolvedType(), typedRight.ResolvedType(),
+	); err != nil {
+		return nil, nil, nil, false, err
+	}
+
+	return typedLeft, typedRight, fn, true, nil
+}
+
+// containsUnresolvedPlaceholder reports whether expr contains an unresolved
+// placeholder somewhere inside the expression tree.
+func containsUnresolvedPlaceholder(ctx *SemaContext, expr Expr) bool {
+	found := false
+	WalkExprConst(&containsPlaceholderVisitor{
+		ctx:   ctx,
+		found: &found,
+	}, expr)
+	return found
+}
+
+type containsPlaceholderVisitor struct {
+	ctx   *SemaContext
+	found *bool
+}
+
+func (v *containsPlaceholderVisitor) VisitPre(expr Expr) (recurse bool, newExpr Expr) {
+	if *v.found {
+		return false, expr
+	}
+	if v.ctx != nil && v.ctx.isUnresolvedPlaceholder(expr) {
+		*v.found = true
+		return false, expr
+	}
+	return true, expr
+}
+
+func (v *containsPlaceholderVisitor) VisitPost(expr Expr) Expr {
+	return expr
+}
+
+// isStringLikeOverloadParam reports whether a parameter type is one of the
+// string-like families that can participate in LIKE/ILIKE-style overload
+// resolution. We intentionally prefer plain STRING for placeholder inference.
+func isStringLikeOverloadParam(typ *types.T) bool {
+	if typ == nil {
+		return false
+	}
+	switch typ.Family() {
+	case types.StringFamily, types.CollatedStringFamily:
+		return true
+	default:
+		return false
+	}
+}
+
+// shouldPreferStringForResolvableExprWithPlaceholder reports whether a
+// resolvable expression that still contains an unresolved placeholder should be
+// type-checked with desired STRING, based on the remaining overload candidates.
+func shouldPreferStringForResolvableExprWithPlaceholder(
+	ctx *SemaContext, expr Expr, overloads []overloadImpl, overloadIdxs []uint8, argIdx int,
+) bool {
+	if !containsUnresolvedPlaceholder(ctx, expr) {
+		return false
+	}
+	if len(overloadIdxs) == 0 {
+		return false
+	}
+	for _, ovIdx := range overloadIdxs {
+		paramTyp := overloads[ovIdx].params().GetAt(argIdx)
+		if !isStringLikeOverloadParam(paramTyp) {
+			return false
+		}
+	}
+	return true
+}
+
+// targetTypeForCITextStringComparison returns the type used when an explicitly
+// typed plain string value wins over CITEXT.
+//
+// BPCHAR/CHAR is normalized to STRING because casting a CITEXT value directly
+// to BPCHAR may truncate it to CHAR(1).
+func targetTypeForCITextStringComparison(t *types.T) *types.T {
+	if isBPCharType(t) {
+		return types.String
+	}
+	return t
+}
+
+// tryTypeCheckCITextVsTypedStringComparison handles comparisons where one side
+// is citext and the other side is already a typed non-citext string expression.
+//
+// This is intended to cover cases like:
+//
+//	c1 = c2              -- c1 is citext, c2 is STRING/TEXT/VARCHAR column
+//	c1 = 'A'::text
+//	c1 > some_string_expr
+//
+// Rule:
+//   - if the non-citext side is already typed, that side wins
+//   - we explicitly cast the citext side to that type
+func tryTypeCheckCITextVsTypedStringComparison(
+	ctx *SemaContext, ops cmpOpOverload, left Expr, right Expr,
+) (_ TypedExpr, _ TypedExpr, _ *CmpOp, ok bool, _ error) {
+	typedLeft, err := left.TypeCheck(ctx, types.Any)
+	if err != nil {
+		return nil, nil, nil, false, nil
+	}
+	typedRight, err := right.TypeCheck(ctx, types.Any)
+	if err != nil {
+		return nil, nil, nil, false, nil
+	}
+
+	leftTyp := typedLeft.ResolvedType()
+	rightTyp := typedRight.ResolvedType()
+
+	// Case 1: left is citext-like, right is already a typed non-citext string expr.
+	if IsCITextType(leftTyp) &&
+		IsStringType(rightTyp) &&
+		!isBareStringExpr(right) {
+		targetTyp := targetTypeForCITextStringComparison(rightTyp)
+		leftCast := &CastExpr{
+			Expr:       left,
+			Type:       targetTyp,
+			SyntaxMode: CastShort,
+		}
+		typedLeftCast, err := leftCast.TypeCheck(ctx, targetTyp)
+		if err != nil {
+			return nil, nil, nil, false, nil
+		}
+		fn, ok := ops.LookupImpl(typedLeftCast.ResolvedType(), targetTyp)
+		if !ok {
+			return nil, nil, nil, false, nil
+		}
+		return typedLeftCast, typedRight, fn, true, nil
+	}
+
+	// Case 2: right is citext-like, left is already a typed non-citext string expr.
+	if IsCITextType(rightTyp) &&
+		IsStringType(leftTyp) &&
+		!isBareStringExpr(left) {
+		targetTyp := targetTypeForCITextStringComparison(leftTyp)
+		rightCast := &CastExpr{
+			Expr:       right,
+			Type:       targetTyp,
+			SyntaxMode: CastShort,
+		}
+		typedRightCast, err := rightCast.TypeCheck(ctx, targetTyp)
+		if err != nil {
+			return nil, nil, nil, false, nil
+		}
+		fn, ok := ops.LookupImpl(targetTyp, typedRightCast.ResolvedType())
+		if !ok {
+			return nil, nil, nil, false, nil
+		}
+		return typedLeft, typedRightCast, fn, true, nil
+	}
+
+	return nil, nil, nil, false, nil
+}
+
+// typeCheckExprWithCast casts a bare string expression, including
+// ARRAY['...'] literals, to the exact target type. This is used for CITEXT
+// inference only; explicitly typed STRING/TEXT/VARCHAR values should not use
+// this path.
+func typeCheckExprWithCast(ctx *SemaContext, expr Expr, target *types.T) (TypedExpr, error) {
+	cast := &CastExpr{
+		Expr:       expr,
+		Type:       target,
+		SyntaxMode: CastShort,
+	}
+	return cast.TypeCheck(ctx, target)
+}
+
+// tryTypeCheckCITextComparison tries to force the "other" side to the exact
+// type of "anchor" when the anchor is citext.
+func tryTypeCheckCITextComparison(
+	ctx *SemaContext, ops cmpOpOverload, other Expr, typedAnchor TypedExpr, anchorTyp *types.T,
+) (_ TypedExpr, _ TypedExpr, _ *CmpOp, ok bool, _ error) {
+	typedOther, err := typeCheckExprWithCast(ctx, other, anchorTyp)
+	if err != nil {
+		return nil, nil, nil, false, err
+	}
+	otherResolvedTyp := typedOther.ResolvedType()
+
+	// Only accept exact-equivalent types here, so that string constant
+	// become CITEXT, but generic mixed-type behavior is not widened here.
+	if !anchorTyp.Equivalent(otherResolvedTyp) {
+		return nil, nil, nil, false, nil
+	}
+
+	fn, ok := ops.LookupImpl(anchorTyp, otherResolvedTyp)
+	if !ok {
+		return nil, nil, nil, false, nil
+	}
+
+	return typedAnchor, typedOther, fn, true, nil
+}
+
+func isBareStringAnyRightExpr(e Expr) bool {
+	e = StripParens(e)
+
+	if isBareStringExpr(e) {
+		return true
+	}
+
+	if tuple, ok := e.(*Tuple); ok {
+		for _, elem := range tuple.Exprs {
+			elem = StripParens(elem)
+			if elem == DNull {
+				continue
+			}
+			if !isBareStringExpr(elem) {
+				return false
+			}
+		}
+		return true
+	}
+
+	return false
+}
+
+// tryTypeCheckCITextSubOperatorComparison handles: left <subOp> ANY/SOME/ALL right
+func tryTypeCheckCITextSubOperatorComparison(
+	ctx *SemaContext, subOp ComparisonOperator, ops cmpOpOverload, left Expr, right Expr,
+) (_ TypedExpr, _ TypedExpr, _ *CmpOp, ok bool, _ error) {
+	left = StripParens(left)
+	right = StripParens(right)
+
+	typedLeft, err := left.TypeCheck(ctx, types.Any)
+	if err != nil {
+		return nil, nil, nil, false, nil
+	}
+	leftTyp := typedLeft.ResolvedType()
+
+	if !IsCITextType(leftTyp) && !IsStringType(leftTyp) {
+		return nil, nil, nil, false, nil
+	}
+
+	// ------------------------------------------------------------
+	// Case 1:
+	//   CITEXT = ANY(ARRAY['a', 'b'])
+	//   CITEXT = SOME(ARRAY['a', 'b'])
+	//   CITEXT = ALL(ARRAY['a', 'A'])
+	//   CITEXT = ANY(('a', 'b'))
+	//
+	// Bare RHS must follow the CITEXT left type.
+	//
+	// This block must be before classifyAnyRightStringCIText(), otherwise a
+	// bare ARRAY[...] will be preview-typed as STRING[] and then incorrectly
+	// treated as an explicitly typed plain string array.
+	// ------------------------------------------------------------
+	if IsCITextType(leftTyp) && isBareStringAnyRightExpr(right) {
+		typedRight, err := typeCheckAnyRightAsElemType(ctx, right, leftTyp)
+		if err != nil {
+			return nil, nil, nil, false, err
+		}
+
+		fn, ok := ops.LookupImpl(leftTyp, leftTyp)
+		if !ok || !deepCheckValidCmpOp(ops, leftTyp, leftTyp) {
+			return nil, nil, nil, false, nil
+		}
+		return typedLeft, typedRight, fn, true, nil
+	}
+
+	if !IsCITextType(leftTyp) && isBareStringAnyRightExpr(right) {
+		return nil, nil, nil, false, nil
+	}
+
+	rightInfo, ok := classifyAnyRightStringCIText(ctx, right)
+	if !ok {
+		return nil, nil, nil, false, nil
+	}
+
+	if !IsCITextType(leftTyp) && !rightInfo.hasCIText {
+		return nil, nil, nil, false, nil
+	}
+
+	// Case 2:
+	//   'AB' = ANY (ARRAY['ab']::CITEXT[])
+	//   'AB' = ANY ('ab'::CITEXT, 'b')
+	//
+	// Bare string left follows CITEXT unless RHS also contains an explicitly
+	// typed plain string. If RHS contains explicit TEXT/STRING/VARCHAR, typed
+	// string wins.
+	if isBareStringExpr(left) {
+		if rightInfo.hasString {
+			targetTyp := targetTypeForCITextStringComparison(rightInfo.stringTyp)
+
+			typedLeftCast, err := typeCheckExprWithCast(ctx, left, targetTyp)
+			if err != nil {
+				return nil, nil, nil, false, err
+			}
+			typedRight, err := typeCheckAnyRightAsElemType(ctx, right, targetTyp)
+			if err != nil {
+				return nil, nil, nil, false, err
+			}
+
+			fn, ok := ops.LookupImpl(targetTyp, targetTyp)
+			if !ok || !deepCheckValidCmpOp(ops, targetTyp, targetTyp) {
+				return nil, nil, nil, false, nil
+			}
+			return typedLeftCast, typedRight, fn, true, nil
+		}
+
+		if rightInfo.hasCIText {
+			targetTyp := rightInfo.ciTextTyp
+
+			typedLeftCast, err := typeCheckExprWithCast(ctx, left, targetTyp)
+			if err != nil {
+				return nil, nil, nil, false, err
+			}
+			typedRight, err := typeCheckAnyRightAsElemType(ctx, right, targetTyp)
+			if err != nil {
+				return nil, nil, nil, false, err
+			}
+
+			fn, ok := ops.LookupImpl(targetTyp, targetTyp)
+			if !ok || !deepCheckValidCmpOp(ops, targetTyp, targetTyp) {
+				return nil, nil, nil, false, nil
+			}
+			return typedLeftCast, typedRight, fn, true, nil
+		}
+
+		return nil, nil, nil, false, nil
+	}
+
+	// Case 3:
+	//   TEXT = ANY(CITEXT[])
+	//
+	// Explicit plain string left wins. Rewrite RHS collection elements to the
+	// left type.
+	if IsStringType(leftTyp) && rightInfo.hasCIText {
+		targetTyp := targetTypeForCITextStringComparison(leftTyp)
+
+		typedLeftOut := typedLeft
+		if !leftTyp.Equivalent(targetTyp) {
+			typedLeftOut, err = typeCheckExprWithCast(ctx, left, targetTyp)
+			if err != nil {
+				return nil, nil, nil, false, err
+			}
+		}
+
+		typedRight, err := typeCheckAnyRightAsElemType(ctx, right, targetTyp)
+		if err != nil {
+			return nil, nil, nil, false, err
+		}
+
+		fn, ok := ops.LookupImpl(targetTyp, targetTyp)
+		if !ok || !deepCheckValidCmpOp(ops, targetTyp, targetTyp) {
+			return nil, nil, nil, false, nil
+		}
+		return typedLeftOut, typedRight, fn, true, nil
+	}
+
+	// Case 4:
+	//   CITEXT = ANY(TEXT[])
+	//   CITEXT = ANY(('ab'::CITEXT, 'b'::TEXT))
+	//
+	// Explicit plain string RHS wins. Rewrite left and all RHS elements to that
+	// string type.
+	if IsCITextType(leftTyp) && rightInfo.hasString {
+		targetTyp := targetTypeForCITextStringComparison(rightInfo.stringTyp)
+
+		typedLeftCast, err := typeCheckExprWithCast(ctx, left, targetTyp)
+		if err != nil {
+			return nil, nil, nil, false, err
+		}
+		typedRight, err := typeCheckAnyRightAsElemType(ctx, right, targetTyp)
+		if err != nil {
+			return nil, nil, nil, false, err
+		}
+
+		fn, ok := ops.LookupImpl(targetTyp, targetTyp)
+		if !ok || !deepCheckValidCmpOp(ops, targetTyp, targetTyp) {
+			return nil, nil, nil, false, nil
+		}
+		return typedLeftCast, typedRight, fn, true, nil
+	}
+
+	return nil, nil, nil, false, nil
+}
+
+type anyRightStringCITextInfo struct {
+	hasCIText bool
+	hasString bool
+
+	ciTextTyp *types.T
+	stringTyp *types.T
+}
+
+// classifyAnyRightStringCIText inspects the RHS collection of ANY/SOME/ALL.
+//
+// It understands:
+//
+//	ARRAY[...]::CITEXT[]
+//	ARRAY[...]::TEXT[]
+//	tuple RHS: ('a'::CITEXT, 'b'::TEXT)
+//	column RHS: citext[] column
+func classifyAnyRightStringCIText(ctx *SemaContext, right Expr) (anyRightStringCITextInfo, bool) {
+	right = StripParens(right)
+
+	var info anyRightStringCITextInfo
+
+	// Tuple RHS needs element-by-element inspection. Do not rely on the first
+	// tuple element type, because mixed tuples like
+	// ('a'::CITEXT, 'b'::TEXT) would otherwise be misclassified.
+	if tuple, ok := right.(*Tuple); ok {
+		for _, elem := range tuple.Exprs {
+			elem = StripParens(elem)
+
+			if elem == DNull || isBareStringExpr(elem) {
+				continue
+			}
+
+			typedElem, err := elem.TypeCheck(ctx, types.Any)
+			if err != nil {
+				return info, false
+			}
+			typ := typedElem.ResolvedType()
+
+			if IsCITextType(typ) {
+				info.hasCIText = true
+				if info.ciTextTyp == nil {
+					info.ciTextTyp = typ
+				}
+			}
+
+			if IsStringType(typ) {
+				info.hasString = true
+				if info.stringTyp == nil {
+					info.stringTyp = typ
+				}
+			}
+		}
+
+		return info, info.hasCIText || info.hasString || isBareStringAnyRightExpr(right)
+	}
+
+	// For ARRAY[...]::CITEXT[], ARRAY[...]::TEXT[], column arrays, subqueries,
+	// use normal type-checking to discover the collection type.
+	var typedRight TypedExpr
+	var err error
+
+	if _, ok := right.(SubqueryExpr); ok {
+		typedRight, err = right.TypeCheck(ctx, types.AnyTuple)
+	} else {
+		typedRight, err = right.TypeCheck(ctx, types.Any)
+	}
+	if err != nil {
+		return info, false
+	}
+
+	rightTyp := typedRight.ResolvedType()
+
+	switch rightTyp.Family() {
+	case types.ArrayFamily:
+		elem := rightTyp.ArrayContents()
+
+		if IsCITextType(elem) {
+			info.hasCIText = true
+			info.ciTextTyp = elem
+		}
+
+		if IsStringType(elem) {
+			info.hasString = true
+			info.stringTyp = elem
+		}
+
+	case types.TupleFamily:
+		contents := rightTyp.TupleContents()
+		for i := range contents {
+			elem := &contents[i]
+
+			if IsCITextType(elem) {
+				info.hasCIText = true
+				if info.ciTextTyp == nil {
+					info.ciTextTyp = elem
+				}
+			}
+
+			if IsStringType(elem) {
+				info.hasString = true
+				if info.stringTyp == nil {
+					info.stringTyp = elem
+				}
+			}
+		}
+	}
+
+	return info, info.hasCIText || info.hasString || isBareStringAnyRightExpr(right)
+}
+
+//	typeCheckAnyRightAsElemType type-checks the RHS collection of ANY/SOME/ALL
+//
+// so that every element has targetElemType.
+func typeCheckAnyRightAsElemType(
+	ctx *SemaContext, right Expr, targetElemType *types.T,
+) (TypedExpr, error) {
+	right = StripParens(right)
+
+	if tuple, ok := right.(*Tuple); ok {
+		return typeCheckTupleElemsAs(ctx, tuple, targetElemType)
+	}
+
+	if array, ok := unwrapArrayConstructor(right); ok {
+		return typeCheckArrayElemsAs(ctx, array, targetElemType)
+	}
+
+	if _, ok := right.(SubqueryExpr); ok {
+		desired := types.MakeTuple([]types.T{*targetElemType})
+		return right.TypeCheck(ctx, desired)
+	}
+
+	// Non-literal RHS, for example a column of type CITEXT[].
+	// For columns we have no elements to rewrite, so cast the whole expression.
+	desiredArrayType := types.MakeArray(targetElemType)
+	cast := &CastExpr{
+		Expr:       right,
+		Type:       desiredArrayType,
+		SyntaxMode: CastShort,
+	}
+	return cast.TypeCheck(ctx, desiredArrayType)
+}
+
+// unwrapArrayConstructor returns ARRAY[...] even if it is wrapped by an
+// explicit cast, for example ARRAY['a']::CITEXT[].
+func unwrapArrayConstructor(expr Expr) (*Array, bool) {
+	expr = StripParens(expr)
+
+	if array, ok := expr.(*Array); ok {
+		return array, true
+	}
+
+	if cast, ok := expr.(*CastExpr); ok {
+		if array, ok := StripParens(cast.Expr).(*Array); ok {
+			return array, true
+		}
+	}
+
+	return nil, false
+}
+
+// typeCheckArrayElemsAs casts every ARRAY[...] element to targetElemType.
+func typeCheckArrayElemsAs(
+	ctx *SemaContext, array *Array, targetElemType *types.T,
+) (TypedExpr, error) {
+	for i, elem := range array.Exprs {
+		typedElem, err := typeCheckExprWithCast(ctx, elem, targetElemType)
+		if err != nil {
+			return nil, err
+		}
+		array.Exprs[i] = typedElem
+	}
+
+	array.typ = types.MakeArray(targetElemType)
+	return array, nil
+}
+
+// typeCheckTupleElemsAs casts every tuple element to targetElemType.
+func typeCheckTupleElemsAs(
+	ctx *SemaContext, tuple *Tuple, targetElemType *types.T,
+) (TypedExpr, error) {
+	contents := make([]types.T, len(tuple.Exprs))
+
+	for i, elem := range tuple.Exprs {
+		typedElem, err := typeCheckExprWithCast(ctx, elem, targetElemType)
+		if err != nil {
+			return nil, err
+		}
+		tuple.Exprs[i] = typedElem
+		contents[i] = *targetElemType
+	}
+
+	tuple.typ = types.MakeTuple(contents)
+	return tuple, nil
+}

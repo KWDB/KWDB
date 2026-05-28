@@ -97,7 +97,7 @@ func (b *Builder) buildCallProcedure(cp *tree.CallProcedure, inScope *scope) (ou
 
 func checkProcParamType(typ *types.T) error {
 	switch typ.Family() {
-	case types.IntFamily, types.FloatFamily, types.DecimalFamily, types.StringFamily, types.TimestampFamily, types.TimestampTZFamily:
+	case types.IntFamily, types.FloatFamily, types.DecimalFamily, types.StringFamily, types.CollatedStringFamily, types.TimestampFamily, types.TimestampTZFamily:
 	default:
 		return pgerror.Newf(pgcode.InvalidFunctionDefinition, "unsupported type %s inside stored procedure", typ.SQLString())
 	}

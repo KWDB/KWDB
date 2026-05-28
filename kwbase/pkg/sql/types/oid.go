@@ -108,6 +108,7 @@ var OidToType = map[oid.Oid]*T{
 	T_nvarchar:         NVarChar,
 	T_varbytea:         VarBytes,
 	T_geometry:         Geometry,
+	T_citext:           CIText,
 }
 
 // oidToArrayOid maps scalar type Oids to their corresponding array type Oid.
@@ -151,6 +152,7 @@ var oidToArrayOid = map[oid.Oid]oid.Oid{
 	T_nvarchar:         T__nvarchar,
 	T_varbytea:         T__varbytea,
 	T_geometry:         T__geometry,
+	T_citext:           T__citext,
 }
 
 // familyToOid maps each type family to a default OID value that is used when

@@ -2941,6 +2941,9 @@ func checkTSColValidity(d *tree.ColumnTableDef) error {
 	if d.Type.Family() == types.DecimalFamily || d.Type.Oid() == oid.T_bytea {
 		return pgerror.Newf(pgcode.WrongObjectType, "column %s: unsupported column type %s in timeseries table", d.Name, d.Type.Name())
 	}
+	if d.Type.Family() == types.CollatedStringFamily || d.Type.Oid() == types.T_citext {
+		return pgerror.Newf(pgcode.WrongObjectType, "column %s: unsupported column type %s in timeseries table", d.Name, d.Type.Name())
+	}
 
 	if d.IsSerial {
 		return makeTsErr("serial column")

@@ -533,6 +533,14 @@ func typeCheckOverloadedExprs(
 			// Once we get down to a single overload candidate, begin desiring its
 			// parameter types for the corresponding argument expressions.
 			paramDesired = s.overloads[s.overloadIdxs[0]].params().GetAt(i)
+		} else if shouldPreferStringForResolvableExprWithPlaceholder(
+			ctx, exprs[i], s.overloads, s.overloadIdxs, i,
+		) {
+			// For expressions like $1[2] used in LIKE/ILIKE-style contexts, adding
+			// CITEXT overloads can make the candidate set ambiguous. Prefer STRING
+			// here so unresolved placeholders inside resolvable expressions still
+			// type-check successfully.
+			paramDesired = types.String
 		}
 		typ, err := exprs[i].TypeCheck(ctx, paramDesired)
 		if err != nil {

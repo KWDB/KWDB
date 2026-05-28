@@ -1382,6 +1382,24 @@ func (d *DCollatedString) IsComposite() bool {
 	return true
 }
 
+// IsComposite implements the CompositeDatum interface.
+func (d *DOidWrapper) IsComposite() bool {
+	if cdatum, ok := d.Wrapped.(CompositeDatum); ok {
+		return cdatum.IsComposite()
+	}
+	return false
+}
+
+// NewDCIText is a helper routine to create a *DCIText (implemented as a *DOidWrapper)
+// initialized from a string.
+func NewDCIText(contents string, env *CollationEnvironment) (Datum, error) {
+	d, err := NewDCollatedString(contents, types.CaseInsensitiveLocale, env)
+	if err != nil {
+		return nil, err
+	}
+	return wrapWithOid(d, types.T_citext), nil
+}
+
 // DBytes is the bytes Datum. The underlying type is a string because we want
 // the immutability, but this may contain arbitrary bytes.
 type DBytes string
@@ -2971,6 +2989,12 @@ func MustBeDJSON(e Expr) DJSON {
 
 // AsJSON converts a datum into our standard json representation.
 func AsJSON(d Datum, loc *time.Location) (json.JSON, error) {
+	if w, ok := d.(*DOidWrapper); ok && w.Oid == types.T_citext {
+		if ds, ok := w.Wrapped.(*DCollatedString); ok {
+			d = ds
+		}
+	}
+
 	switch t := d.(type) {
 	case *DBool:
 		return json.FromBool(bool(*t)), nil
@@ -3939,6 +3963,7 @@ func (d *DOid) Min(ctx *EvalContext) (Datum, bool) {
 //
 // Types that currently benefit from DOidWrapper are:
 // - DName => DOidWrapper(*DString, oid.T_name)
+// - DCIText => DOidWrapper(*DCollatedString, types.T_citext)
 type DOidWrapper struct {
 	Wrapped Datum
 	Oid     oid.Oid
@@ -3957,10 +3982,11 @@ func wrapWithOid(d Datum, oid oid.Oid) Datum {
 	case *DInt:
 	case *DString:
 	case *DArray:
+	case *DCollatedString:
 	case dNull, *DOidWrapper:
 		panic(errors.AssertionFailedf("cannot wrap %T with an Oid", v))
 	default:
-		// Currently only *DInt, *DString, *DArray are hooked up to work with
+		// Currently only *DInt, *DString, *DCollatedString, *DArray are hooked up to work with
 		// *DOidWrapper. To support another base Datum type, replace all type
 		// assertions to that type with calls to functions like AsDInt and
 		// MustBeDInt.
