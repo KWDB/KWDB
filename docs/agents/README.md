@@ -21,7 +21,6 @@ kwdb/
         ├── README.md
         ├── architecture-index.md
         ├── ci-release-guide.md
-        ├── coding-style-go-cpp.md
         ├── components/
         │   ├── README.md
         │   └── common/
@@ -47,7 +46,6 @@ edition is helpful alongside the default English text.
 | `resource-index.md` | `resource-index-zh.md` |
 | `architecture-index.md` | `architecture-index-zh.md` |
 | `testing-flow.md` | `testing-flow-zh.md` |
-| `coding-style-go-cpp.md` | `coding-style-go-cpp-zh.md` |
 | `pr-guide.md` | `pr-guide-zh.md` |
 | `logging.md` | `logging-zh.md` |
 | `errors.md` | `errors-zh.md` |
@@ -87,7 +85,6 @@ edition is helpful alongside the default English text.
 ### Core references
 
 - `architecture-index.md`: top-level module map and task routing hints
-- `coding-style-go-cpp.md`: Go and C++ style expectations for KWDB OSS trees
 - `testing-flow.md`: verification levels and common entrypoints
 - `logging.md`: shared logging constraints
 - `errors.md`: shared error and compatibility constraints

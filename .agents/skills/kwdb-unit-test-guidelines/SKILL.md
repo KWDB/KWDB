@@ -1,13 +1,12 @@
 ---
 name: kwdb-unit-test-guidelines
-description: MUST USE this skill for ANY Go unit test task in KWDB — even a simple "generate a _test.go" or "add tests" request. Covers file naming, 单元测试 conventions, package foo vs foo_test, leaktest goroutine detection, table-driven give/want tests with t.Run, testutils.IsError error assertions, testutils.SucceedsSoon async helpers, skip.UnderShort/UnderRace, TestMain + serverutils.InitTestServerFactory, StartServer for in-process SQL tests, testcluster.New for multi-node cluster tests, benchmark templates, testdata directories, and Makefile targets (test/testshort/testrace/stress/bench). Trigger whenever user says 单元测试/单测/测试文件/测试/unit test, references _test.go files, asks about testing conventions, or needs to write/generate/add tests for any Go code under kwbase/. Even for trivial one-file requests, the skill enforces leaktest, table-driven patterns, and proper error assertions. C++ unit test guidelines are a TODO.
+description: MUST USE this skill for ANY Go unit test task in KWDB — even a simple "generate a _test.go" or "add tests" request. Covers file naming, 单元测试 conventions, package foo vs foo_test, leaktest goroutine detection, table-driven give/want tests with t.Run, testutils.IsError error assertions, testutils.SucceedsSoon async helpers, skip.UnderShort/UnderRace, TestMain + serverutils.InitTestServerFactory, StartServer for in-process SQL tests, testcluster.New for multi-node cluster tests, benchmark templates, testdata directories, and Makefile targets (test/testshort/testrace/stress/bench). Trigger whenever user says 单元测试/单测/测试文件/测试/unit test, references _test.go files, asks about testing conventions, or needs to write/generate/add tests for any Go code under kwbase/. Even for trivial one-file requests, the skill enforces leaktest, table-driven patterns, and proper error assertions. Covers kwdbts2 Google Test conventions as well.
 ---
 
 # KWDB Unit Test Guidelines
 
 This skill covers writing unit tests in the KWDB repository. It is organized by
-language: **Go** tests are covered in full below; **C++** test guidelines are
-under development.
+language: **Go** and **C++**. Tests are covered in full below.
 
 When asked to write or modify tests, use the workflow in this skill. The
 conventions here are flexible — follow them unless the surrounding package
@@ -444,9 +443,219 @@ After writing a test, confirm each item:
 
 ---
 
-## C++ Unit Test Guidelines
+## C++ Unit Test Workflow
 
-**TODO** — This section is under development by another team member. For now,
-follow the existing C++ test patterns in the repository (`kwdbts2/`,
-`common/src/`). Run C++ tests via `make kwdbts2-test` and `make cpplint` from
-the repository root.
+Follow these steps when generating or modifying C++ tests.
+
+### Step 1 — Understand the test setup
+
+C++ unit tests live in `kwdbts2/*/tests/` and use **Google Test 1.8.1**
+(`#include "gtest/gtest.h"`). Each test file compiles to a standalone
+executable, auto-discovered by CMake via `file(GLOB_RECURSE ...)`.
+
+### Step 2 — Check existing test patterns
+
+Before writing, read at least one existing test file in the same directory. Note:
+
+- Fixture class naming (`FooTest` / `TestFoo`)
+- `TEST()` vs `TEST_F()` vs `TEST_P()` usage
+- Whether shared test base classes exist (e.g., `ee_op_test_base.h`)
+- How resources are acquired (`SetUp`/`TearDown`, or `SetUpTestCase`/`TearDownTestCase`)
+
+### Step 3 — Write the test file
+
+Templates below.
+
+### Step 4 — Add to the build system
+
+Test files in `kwdbts2/*/tests/` are auto-discovered by
+`kwdbts2/CMakeLists.txt` via `file(GLOB_RECURSE ...)`. No CMake changes needed
+as long as the file is in the correct `tests/` directory.
+
+### Step 5 — Self-check against the checklist
+
+Verify every item in the C++ Self-Checklist below.
+
+### Step 6 — Run verification
+
+```bash
+# Run all kwdbts2 tests:
+make kwdbts2-test
+
+# Code style check:
+make cpplint
+
+# Memory leak check on kwdbts2 tests:
+make memcheck
+
+# With AddressSanitizer (reconfigure required):
+# add -DWITH_ASAN=ON to CMAKE_CONFIG_OPTIONS
+```
+
+---
+
+## Google Test Conventions
+
+### File layout
+
+```cpp
+// Copyright (c) 2022-present, Shanghai Yunxi Technology Co, Ltd.
+//
+// This software (KWDB) is licensed under Mulan PSL v2.
+// ...
+
+#include "gtest/gtest.h"
+#include "ee_thing.h"          // header of code under test
+
+namespace kwdbts {
+
+class ThingTest : public ::testing::Test {
+ protected:
+  static void SetUpTestCase() {}
+  static void TearDownTestCase() {}
+
+  void SetUp() override {}
+  void TearDown() override {}
+};
+
+TEST_F(ThingTest, DoesXxx) {
+  // test body
+}
+
+}  // namespace kwdbts
+```
+
+### Key points
+
+- **License header**: Every file must start with the Mulan PSL v2 copyright block.
+- **Namespace**: Tests are inside `namespace kwdbts {}`.
+- **Include order**: Google Test header first, then project headers.
+- **Fixture naming**: `FooTest` or `TestFoo` — match the surrounding files.
+- **SetUp/TearDown** (per-test) and **SetUpTestCase/TearDownTestCase** (per-suite) — only override what you need.
+
+### Test function styles
+
+```cpp
+// TEST: no fixture needed (simple standalone tests)
+TEST(SafeMacrosTest, SafeDeletePointer) {
+  int* ptr = new int(42);
+  SafeDeletePointer(ptr);
+  EXPECT_EQ(ptr, nullptr);
+}
+
+// TEST_F: with fixture
+TEST_F(TestMempool, TestCreateMempool) {
+  kwdbts::EE_PoolInfoDataPtr pool = kwdbts::EE_MemPoolInit(1, 16);
+  EXPECT_NE(pool, nullptr);
+  // ...
+}
+```
+
+### Common assertions
+
+| Assertion | Meaning |
+|-----------|---------|
+| `EXPECT_EQ(val1, val2)` | Non-fatal equality |
+| `EXPECT_NE(val1, val2)` | Non-fatal inequality |
+| `EXPECT_TRUE(cond)` | Non-fatal boolean |
+| `EXPECT_FALSE(cond)` | Non-fatal boolean |
+| `ASSERT_EQ(val1, val2)` | Fatal equality (stops test on failure) |
+| `ASSERT_NE(val1, val2)` | Fatal inequality |
+
+Use `EXPECT_*` when the test can continue after a failure; use `ASSERT_*` when
+subsequent code depends on the assertion (e.g., checking a pointer before
+dereferencing it).
+
+### Custom test base classes
+
+Some packages provide shared test base classes. Example from `kwdbts2/exec/tests/`:
+
+```cpp
+#include "ee_op_test_base.h"
+
+class TestAggOp : public OperatorTestBase {
+ public:
+  TestAggOp() : OperatorTestBase() {}
+
+ protected:
+  void SetUp() override {
+    OperatorTestBase::SetUp();
+  }
+  void TearDown() override {
+    OperatorTestBase::TearDown();
+  }
+};
+
+TEST_F(TestAggOp, TestDmlExecAgg) {
+  // Common ctx_, table_id_ etc. provided by OperatorTestBase
+}
+```
+
+### Parametrized tests
+
+When a test body should run over multiple parameter sets, use `TEST_P`:
+
+```cpp
+class FooParamTest : public ::testing::TestWithParam<int> {};
+
+TEST_P(FooParamTest, BehavesCorrectly) {
+  int val = GetParam();
+  // ...
+}
+
+INSTANTIATE_TEST_SUITE_P(Values, FooParamTest, ::testing::Values(1, 2, 3, 10));
+```
+
+---
+
+## C++ Test Build System
+
+### Makefile targets
+
+From repository root:
+
+| Command | What it does |
+|---------|-------------|
+| `make kwdbts2-test` | Build and run all kwdbts2 unit tests via CTest |
+| `make cpplint` | Lint-check kwdbts2 code (cpplint, line length 125) |
+| `make memcheck` | Run kwdbts2 tests under valgrind memcheck |
+| `make test` | Run cpplint + kwdbts2-test + kwbase-test |
+
+### CMake options for kwdbts2
+
+| Option | Purpose |
+|--------|---------|
+| `-DWITH_TESTS=ON` | Enable test target (required for kwdbts2-test) |
+| `-DCMAKE_BUILD_TYPE=Debug` | Debug build (default) |
+| `-DWITH_ASAN=ON` | Enable AddressSanitizer |
+| `-DENABLE_COVERAGE=ON` | Enable code coverage (gcov) |
+
+### Running individual kwdbts2 tests
+
+```bash
+# Locate the test executable in the build dir:
+find build-kwdbts2-test/tests -name '*_test_executable_name*' -type f
+
+# Run it directly:
+./build-kwdbts2-test/tests/<test_name>.dir/<test_name>
+
+# Or via ctest with a filter:
+cd build-kwdbts2-test && ctest -R <test_name>
+```
+
+---
+
+## C++ Self-Checklist
+
+After writing a C++ test, confirm:
+
+- [ ] File placed in `kwdbts2/*/tests/` directory
+- [ ] Mulan PSL v2 copyright header
+- [ ] `#include "gtest/gtest.h"` as the first project include
+- [ ] Code under test included via its own header
+- [ ] Test inside `namespace kwdbts {}`
+- [ ] Fixture class inherits `::testing::Test` with `SetUp`/`TearDown` if resources needed
+- [ ] `ASSERT_*` for preconditions that must hold to continue; `EXPECT_*` for value checks
+- [ ] No hardcoded file paths; use temp directories or inline data
+- [ ] `make cpplint` passes
+- [ ] Test builds and runs locally before claiming completion
