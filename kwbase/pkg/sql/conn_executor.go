@@ -760,8 +760,20 @@ func (s *Server) populateMinimalSessionData(sd *sessiondata.SessionData) {
 		sd.SequenceState = sessiondata.NewSequenceState()
 	}
 	if sd.DataConversion == (sessiondata.DataConversionConfig{}) {
+		location := time.UTC
+		if s.cfg.Settings != nil {
+			tzStr := ServerTimezoneClusterSetting.Get(&s.cfg.Settings.SV)
+			if tzStr != "" {
+				if parsedLoc, err := timeutil.TimeZoneStringToLocation(
+					tzStr,
+					timeutil.TimeZoneStringToLocationISO8601Standard,
+				); err == nil {
+					location = parsedLoc
+				}
+			}
+		}
 		sd.DataConversion = sessiondata.DataConversionConfig{
-			Location: time.UTC,
+			Location: location,
 		}
 	}
 	if len(sd.SearchPath.GetPathArray()) == 0 {

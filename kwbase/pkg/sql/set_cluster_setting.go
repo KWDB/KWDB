@@ -51,6 +51,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/humanizeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/retry"
+	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"github.com/cockroachdb/errors"
 )
 
@@ -87,6 +88,9 @@ func (p *planner) SetClusterSetting(
 	}
 
 	name := strings.ToLower(n.Name)
+	if name == "server.restful_service.default_request_timezone" {
+		return nil, errors.Errorf("the cluster setting '%s' has expired. Please use cluster.connection.timezone", name)
+	}
 	st := p.EvalContext().Settings
 	v, ok := settings.Lookup(name, settings.LookupForLocalAccess)
 	if !ok {
@@ -154,6 +158,38 @@ func checkTsQueryOptMode(encodedValue string) error {
 	value, err := strconv.ParseInt(encodedValue, 2, 64)
 	if err != nil || value < 0 || value > 63 {
 		return pgerror.Newf(pgcode.InvalidParameterValue, "invalid value for ts.sql.query_opt_mode")
+	}
+	return nil
+}
+
+// checkServerTimezone checks whether the time zone value set is valid
+func checkServerTimezone(encodedValue string) error {
+	// The first execution of the TimeZoneStringToLocation function
+	// is to obtain the standardized loc string
+	loc, err := timeutil.TimeZoneStringToLocation(
+		encodedValue,
+		timeutil.TimeZoneStringToLocationISO8601Standard,
+	)
+	if err != nil {
+		return pgerror.Newf(pgcode.InvalidParameterValue,
+			"invalid value, could not parse %s as time zone", encodedValue)
+	}
+	if loc == nil {
+		loc = timeutil.FixedOffsetTimeZoneToLocation(0, encodedValue)
+	}
+
+	standardLoc := loc.String()
+
+	// The second execution of the TimeZoneStringToLocation function
+	// is to check whether the standardized loc string can be parsed
+	// into time zone information
+	_, err1 := timeutil.TimeZoneStringToLocation(
+		standardLoc,
+		timeutil.TimeZoneStringToLocationISO8601Standard,
+	)
+	if err1 != nil {
+		return pgerror.Newf(pgcode.InvalidParameterValue,
+			"invalid value, could not parse %s as time zone", encodedValue)
 	}
 	return nil
 }
@@ -294,6 +330,7 @@ var CheckClusterSetting = map[string]CheckOperation{
 	"ts.dedup.rule":                      checkTsDedupRule,
 	"ts.rows_per_block.max_limit":        checkTsRowsPerBlockMaxLimit,
 	"ts.sql.query_opt_mode":              checkTsQueryOptMode,
+	"cluster.connection.timezone":        checkServerTimezone,
 	"ts.count.use_statistics.enabled":    checkBool,
 	"capacity.stats.period":              checkCapacityStatsPeriod,
 	"ts.table_cache.capacity":            checkTsTableCacheCapacity,

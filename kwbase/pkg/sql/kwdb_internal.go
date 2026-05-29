@@ -922,6 +922,10 @@ CREATE TABLE kwdb_internal.cluster_settings (
 			}
 			setting, _ := settings.Lookup(k, settings.LookupForLocalAccess)
 			strVal := setting.String(&p.ExecCfg().Settings.SV)
+			// For cluster.connection.timezone, format it for human-readable display
+			if k == "cluster.connection.timezone" {
+				strVal = serverTimezoneFormat(strVal)
+			}
 			isPublic := setting.Visibility() == settings.Public
 			desc := setting.Description()
 			if err := addRow(

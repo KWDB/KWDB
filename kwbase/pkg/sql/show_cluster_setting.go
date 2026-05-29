@@ -151,7 +151,12 @@ func (p *planner) ShowClusterSetting(
 			case *settings.IntSetting:
 				d = tree.NewDInt(tree.DInt(s.Get(&st.SV)))
 			case *settings.StringSetting:
-				d = tree.NewDString(s.String(&st.SV))
+				strVal := s.String(&st.SV)
+				// For cluster.connection.timezone, format it for human-readable display
+				if name == "cluster.connection.timezone" {
+					strVal = serverTimezoneFormat(strVal)
+				}
+				d = tree.NewDString(strVal)
 			case *settings.StateMachineSetting:
 				var err error
 				valStr, err := p.showStateMachineSetting(ctx, st, s, name)
