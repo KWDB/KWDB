@@ -13,11 +13,18 @@ package sql
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
+	"gitee.com/kwbasedb/kwbase/pkg/base"
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
+	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
+	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
+	"gitee.com/kwbasedb/kwbase/pkg/testutils/sqlutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
+	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 )
 
 // TestStmtBufReader tests the StmtBufReader methods
@@ -93,5 +100,54 @@ func TestStmtBufReader(t *testing.T) {
 	cmd, err = reader.CurCmd()
 	if err == nil {
 		t.Error("CurCmd should return EOF after buffer is closed")
+	}
+}
+
+// TestDistSQLPlannerExec tests the DistSQLPlanner.Exec method
+func TestDistSQLPlannerExec(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	logScope := log.Scope(t)
+	defer logScope.Close(t)
+	ctx := context.Background()
+
+	// Start a test server
+	s, conn, _ := serverutils.StartServer(t, base.TestServerArgs{})
+	defer s.Stopper().Stop(ctx)
+
+	// Create a test database and table
+	r := sqlutils.MakeSQLRunner(conn)
+	r.Exec(t, "CREATE DATABASE test_db; CREATE TABLE test_db.test_table (k INT);")
+
+	// Get the executor config and DistSQLPlanner
+	execCfg := s.ExecutorConfig().(ExecutorConfig)
+	dsp := execCfg.DistSQLPlanner
+
+	// Test both distributed and non-distributed execution
+	for _, distribute := range []bool{true, false} {
+		t.Run(fmt.Sprintf("distribute=%t", distribute), func(t *testing.T) {
+			// Create an internal planner
+			planner, cleanup := NewInternalPlanner(
+				"test",
+				kv.NewTxn(ctx, s.DB(), s.NodeID()),
+				security.RootUser,
+				&MemoryMetrics{},
+				&execCfg,
+			)
+			defer cleanup()
+
+			// Test a simple SELECT statement
+			sql := "SELECT k FROM test_db.test_table WHERE k=1"
+			err := dsp.Exec(ctx, planner, sql, distribute)
+			if err != nil {
+				t.Fatalf("Exec failed: %v", err)
+			}
+
+			// Test a more complex statement
+			sql = "SELECT count(*) FROM test_db.test_table"
+			err = dsp.Exec(ctx, planner, sql, distribute)
+			if err != nil {
+				t.Fatalf("Exec failed: %v", err)
+			}
+		})
 	}
 }

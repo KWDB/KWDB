@@ -2564,17 +2564,43 @@ func (p *PhysicalPlan) PushAggToStatisticReader(
 		inputColTypeArray := make([]*types.T, 0)
 		colIndex := 0
 
+		// renderAggColsMap records the correspondence between
+		// the index of the original agg
+		// and
+		// the index of the columns output by the statistic reader.
+		//
+		// key: The index of the original agg
+		//
+		// val: The index of the columns output by the statistic reader.
+		// 			This index is needed when building the projection layer,
+		//      where avg has two members and other functions have one member.
+		renderAggColsMap := make(map[int][]int)
+
 		var addMap = func(key uint32, value int, destMap map[uint32]int) {
 			if _, ok := destMap[key]; !ok {
 				destMap[key] = value
 			}
 		}
+
+		var addRenderAggColsMap = func(key int, value int, targetMap map[int][]int) {
+			if _, ok := targetMap[key]; ok {
+				targetMap[key] = append(targetMap[key], value)
+			} else {
+				targetMap[key] = []int{value}
+			}
+		}
+
 		aggMap := make(map[execinfrapb.AggregatorSpec_Func]AggKey)
 		addStatScan := func(
-			params []uint32, constArguments []int64, typ execinfrapb.AggregatorSpec_Func, colType *types.T,
+			params []uint32, constArguments []int64, typ execinfrapb.AggregatorSpec_Func, colType *types.T, originAggIdx int,
 		) error {
 			// prune repeat agg
 			if checkRepeat(&aggMap, params, constArguments, typ) {
+				if typ == execinfrapb.AggregatorSpec_SUM {
+					addRenderAggColsMap(originAggIdx, sumMap[params[0]], renderAggColsMap)
+				} else if typ == execinfrapb.AggregatorSpec_COUNT {
+					addRenderAggColsMap(originAggIdx, countMap[params[0]], renderAggColsMap)
+				}
 				return nil
 			}
 
@@ -2624,21 +2650,22 @@ func (p *PhysicalPlan) PushAggToStatisticReader(
 			} else if typ == execinfrapb.AggregatorSpec_COUNT {
 				addMap(params[0], colIndex, countMap)
 			}
+			addRenderAggColsMap(originAggIdx, colIndex, renderAggColsMap)
 			colIndex++
 			return nil
 		}
 
 		for i, agg := range aggSpecs.Aggregations {
 			if agg.Func == execinfrapb.AggregatorSpec_AVG {
-				if err := addStatScan(agg.ColIdx, agg.TimestampConstant, execinfrapb.AggregatorSpec_SUM, nil); err != nil {
+				if err := addStatScan(agg.ColIdx, agg.TimestampConstant, execinfrapb.AggregatorSpec_SUM, nil, i); err != nil {
 					return err
 				}
 
-				if err := addStatScan(agg.ColIdx, agg.TimestampConstant, execinfrapb.AggregatorSpec_COUNT, nil); err != nil {
+				if err := addStatScan(agg.ColIdx, agg.TimestampConstant, execinfrapb.AggregatorSpec_COUNT, nil, i); err != nil {
 					return err
 				}
 			} else {
-				if err := addStatScan(agg.ColIdx, agg.TimestampConstant, agg.Func, &aggResTypes[i]); err != nil {
+				if err := addStatScan(agg.ColIdx, agg.TimestampConstant, agg.Func, &aggResTypes[i], i); err != nil {
 					return err
 				}
 			}
@@ -2661,24 +2688,13 @@ func (p *PhysicalPlan) PushAggToStatisticReader(
 			return nil
 		}
 
-		// posIdx records the real position of each agg functions,
-		// can not use i because avg will be split into sum and count
-		posIdx := 0
 		for i, agg := range aggSpecs.Aggregations {
 			switch agg.Func {
 			case execinfrapb.AggregatorSpec_AVG:
 				varIdxs := make([]int, 2)
-				v, ok := sumMap[agg.ColIdx[0]]
-				if !ok {
-					return pgerror.New(pgcode.Internal, fmt.Sprintf("statistic table could not find sum col %d",
-						agg.ColIdx[0]))
-				}
+				v := renderAggColsMap[i][0]
 				varIdxs[0] = v
-				v1, ok1 := countMap[agg.ColIdx[0]]
-				if !ok1 {
-					return pgerror.New(pgcode.Internal, fmt.Sprintf("statistic table could not find count col %d",
-						agg.ColIdx[0]))
-				}
+				v1 := renderAggColsMap[i][1]
 				varIdxs[1] = v1
 
 				// create dev render for avg
@@ -2692,30 +2708,11 @@ func (p *PhysicalPlan) PushAggToStatisticReader(
 					return err2
 				}
 				scanPost.RenderExprs = append(scanPost.RenderExprs, expr)
-				posIdx += 2
-			case execinfrapb.AggregatorSpec_SUM:
-				v, ok := sumMap[agg.ColIdx[0]]
-				if !ok {
-					v = i
-				}
-				if err := addRender(v); err != nil {
-					return err
-				}
-				posIdx++
-			case execinfrapb.AggregatorSpec_COUNT:
-				v, ok := countMap[agg.ColIdx[0]]
-				if !ok {
-					v = i
-				}
-				if err := addRender(v); err != nil {
-					return err
-				}
-				posIdx++
 			default:
-				if err := addRender(posIdx); err != nil {
+				v := renderAggColsMap[i][0]
+				if err := addRender(v); err != nil {
 					return err
 				}
-				posIdx++
 			}
 		}
 

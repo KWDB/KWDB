@@ -1321,6 +1321,8 @@ func (m *Memo) dealWithGroupBy(src RelExpr, child RelExpr, ret *aggCrossEngCheck
 		}
 	}
 
+	ret.commonRet.canTimeBucketOptimize = false
+
 	// if twa can exec in ae, then set ts scan use ordered scan table
 	if m.CheckFlag(opt.TwaUseOrderScan) {
 		walkDealTSScan(src, setOrderedForce)
@@ -1478,6 +1480,10 @@ func (m *Memo) getRangeFromTimeBucket(timeBucket *FunctionExpr) uint64 {
 	for _, arg := range timeBucket.Args {
 		if v, ok := arg.(*VariableExpr); ok {
 			tableID := m.Metadata().ColumnMeta(v.Col).Table
+			// col must be from table, not from project or select, otherwise return 0.
+			if tableID == 0 {
+				return 0
+			}
 			tsColMetaID := m.Metadata().FirstColumnMetaFromTable(tableID).MetaID
 			// only timeBucket of tsCol can use statistics optimization.
 			if v.Col != tsColMetaID {
@@ -1913,6 +1919,7 @@ func (m *Memo) CheckWhiteListAndAddSynchronizeImp(src *RelExpr) (ret CrossEngChe
 				m.checklimitOptimize(source, &ret)
 			}
 		}
+		ret.canTimeBucketOptimize = false
 		return ret
 	case *ScanExpr:
 		return ret
@@ -1925,6 +1932,7 @@ func (m *Memo) CheckWhiteListAndAddSynchronizeImp(src *RelExpr) (ret CrossEngChe
 			addSynchronize(&ret.hasAddSynchronizer, source)
 			source.SetEngineTS()
 		}
+		ret.canTimeBucketOptimize = false
 		return ret
 	case *ValuesExpr:
 		return ret
@@ -1949,6 +1957,7 @@ func (m *Memo) CheckWhiteListAndAddSynchronizeImp(src *RelExpr) (ret CrossEngChe
 		if !m.CheckFlag(opt.OrderGroupBy) {
 			m.dealWithOrderBy(source, &ret, nil)
 		}
+		ret.canTimeBucketOptimize = false
 		return ret
 	case *WithExpr:
 		ret1 := m.dealCanNotAddSynchronize(&source.Binding)

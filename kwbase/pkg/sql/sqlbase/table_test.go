@@ -1839,17 +1839,17 @@ func TestDecodeTableValue(t *testing.T) {
 }
 
 func TestSanitizeVarFreeExpr(t *testing.T) {
-	// Create a simple expression for testing
+	// 创建一个简单的表达式用于测试
 	evalCtx := tree.SemaContext{}
 	// defer evalCtx.Close(context.Background())
 
-	// Test valid expressions
+	// 测试合法的表达式
 	expr, err := parser.ParseExpr("1 + 2")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// It should be able to successfully verify simple expressions
+	// 应该能够成功验证简单表达式
 	typedExpr, err := SanitizeVarFreeExpr(expr, types.Any, "test context", &evalCtx, false, false, "")
 	if err != nil {
 		t.Errorf("SanitizeVarFreeExpr failed unexpectedly: %v", err)
@@ -1858,7 +1858,7 @@ func TestSanitizeVarFreeExpr(t *testing.T) {
 		t.Error("SanitizeVarFreeExpr returned nil for valid expression")
 	}
 
-	// Test expressions with placeholders - this should fail
+	// 测试带有占位符的表达式 - 这应该失败
 	_, err = parser.ParseExpr("SELECT $1")
 	if err == nil {
 		t.Fatal(err)
@@ -1873,7 +1873,7 @@ func TestTableDescriptor_GetConstraintInfo(t *testing.T) {
 		Privileges: NewDefaultPrivilegeDescriptor(),
 	}
 
-	// Test the empty constraint information
+	// 测试空约束信息
 	constraints, err := tableDesc.GetConstraintInfo(context.Background(), nil)
 	if err != nil {
 		t.Errorf("GetConstraintInfo failed: %v", err)
@@ -1890,12 +1890,12 @@ func TestTableDescriptor_GetConstraintInfoWithLookup(t *testing.T) {
 		ID:   50,
 	}
 
-	// Create a simple table lookup function
+	// 创建一个简单的表查找函数
 	tableLookup := func(id ID) (*TableDescriptor, error) {
 		return nil, nil
 	}
 
-	// Test the empty constraint information
+	// 测试空约束信息
 	constraints, err := tableDesc.GetConstraintInfoWithLookup(tableLookup)
 	if err != nil {
 		t.Errorf("GetConstraintInfoWithLookup failed: %v", err)
@@ -1913,7 +1913,7 @@ func TestTableDescriptor_CheckUniqueConstraints(t *testing.T) {
 		Privileges: NewDefaultPrivilegeDescriptor(),
 	}
 
-	// The test empty table should have no uniqueness constraint error
+	// 测试空表应该没有唯一性约束错误
 	err := tableDesc.CheckUniqueConstraints()
 	if err != nil {
 		t.Errorf("CheckUniqueConstraints failed: %v", err)
@@ -1926,14 +1926,14 @@ func TestIndexDescriptor_IsValidOriginIndex(t *testing.T) {
 		ColumnIDs: []ColumnID{1, 2},
 	}
 
-	// Test the effective source index situation
+	// 测试有效的源索引情况
 	validColIDs := ColumnIDs{1, 2}
 	isValid := idx.IsValidOriginIndex(validColIDs)
 	if !isValid {
 		t.Error("Expected index to be valid origin index for matching columns")
 	}
 
-	// Test the invalid source index situation
+	// 测试无效的源索引情况
 	invalidColIDs := ColumnIDs{3, 4}
 	isValid = idx.IsValidOriginIndex(invalidColIDs)
 	if isValid {
@@ -1944,21 +1944,21 @@ func TestIndexDescriptor_IsValidOriginIndex(t *testing.T) {
 func TestIndexDescriptor_IsValidReferencedIndex(t *testing.T) {
 	idx := &IndexDescriptor{
 		ID:        1,
-		Unique:    true, // The reference index must be unique
+		Unique:    true, // 引用索引必须是唯一的
 		ColumnIDs: []ColumnID{1, 2},
 	}
 
-	// Test the effective referenced index situation
+	// 测试有效的被引用索引情况
 	validColIDs := ColumnIDs{1, 2}
 	isValid := idx.IsValidReferencedIndex(validColIDs)
 	if !isValid {
 		t.Error("Expected index to be valid referenced index for matching unique columns")
 	}
 
-	// Test the situation where non-unique indexes are used as referenced indexes
+	// 测试非唯一索引作为被引用索引的情况
 	nonUniqueIdx := &IndexDescriptor{
 		ID:        1,
-		Unique:    false, // Not unique
+		Unique:    false, // 非唯一
 		ColumnIDs: []ColumnID{1, 2},
 	}
 	isValid = nonUniqueIdx.IsValidReferencedIndex(validColIDs)
@@ -1968,26 +1968,26 @@ func TestIndexDescriptor_IsValidReferencedIndex(t *testing.T) {
 }
 
 func TestConditionalGetTableDescFromTxn(t *testing.T) {
-	// This function depends on the transaction context and simply tests its basic behavior
-	// As a database connection is required, we mainly test the boundary conditions
+	// 这个函数依赖于事务上下文，简单测试其基本行为
+	// 由于需要数据库连接，我们主要测试边界条件
 	t.Skip("ConditionalGetTableDescFromTxn requires database connection for full testing")
 }
 
 func TestGetTableDescriptorWithErr(t *testing.T) {
-	// This function also requires a database connection
+	// 这个函数也需要数据库连接
 	t.Skip("GetTableDescriptorWithErr requires database connection for full testing")
 }
 
 func TestTableTypeMap_Insert(t *testing.T) {
 	tableMap := make(TableTypeMap)
 
-	// Insert relational table type
+	// 插入关系表类型
 	tableMap.Insert(tree.RelationalTable)
 	if _, exists := tableMap[tree.RelationalTable]; !exists {
 		t.Error("RelationalTable was not inserted into map")
 	}
 
-	// Insert the view type
+	// 插入视图表类型
 	tableMap.Insert(tree.TimeseriesTable)
 	if _, exists := tableMap[tree.TimeseriesTable]; !exists {
 		t.Error("TimeseriesTable was not inserted into map")
@@ -1995,13 +1995,13 @@ func TestTableTypeMap_Insert(t *testing.T) {
 }
 
 func TestTableTypeMap_IncludeTSTable(t *testing.T) {
-	// Test the empty mapping
+	// 测试空映射
 	tableMap := make(TableTypeMap)
 	if tableMap.IncludeTSTable() {
 		t.Error("Empty map should not include TS table")
 	}
 
-	// Add the type of time series table
+	// 添加时间序列表类型
 	tableMap[tree.TimeseriesTable] = 1
 	if !tableMap.IncludeTSTable() {
 		t.Error("Map with TSObject should include TS table")
@@ -2014,7 +2014,7 @@ func TestTableTypeMap_HasMultiTSTable(t *testing.T) {
 		t.Error("Empty map should not have multi TS table")
 	}
 
-	// Add multiple time series table types
+	// 添加多时间序列表类型
 	tableMap[tree.TimeseriesTable] = 1
 	tableMap[tree.InstanceTable] = 1
 	if !tableMap.HasMultiTSTable() {
@@ -2071,6 +2071,6 @@ func TestTableTypeMap_HasRtable(t *testing.T) {
 }
 
 func TestGetTableDescriptorUseTxn(t *testing.T) {
-	// This function also requires a database connection
+	// 这个函数也需要数据库连接
 	t.Skip("GetTableDescriptorUseTxn requires database connection for full testing")
 }

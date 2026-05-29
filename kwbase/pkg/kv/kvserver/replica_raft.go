@@ -317,7 +317,7 @@ func (r *Replica) evalAndProposeTS(
 			EncounteredIntents: proposal.Local.DetachEncounteredIntents(),
 		}
 		proposal.signalProposalResult(pr)
-
+		log.VEventf(ctx, 3, "mode2: AsyncConsensus replica_raft and should be return, rangeID is %d", r.RangeID)
 		// Continue with proposal...
 	}
 

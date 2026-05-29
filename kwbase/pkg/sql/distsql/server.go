@@ -315,6 +315,7 @@ func (ds *ServerImpl) setupFlow(
 			Context:            ctx,
 			Planner:            &sqlbase.DummyEvalPlanner{},
 			SessionAccessor:    &sqlbase.DummySessionAccessor{},
+			TsDBAccessor:       &sqlbase.DummyTsDBAccessor{},
 			PrivilegedAccessor: &sqlbase.DummyPrivilegedAccessor{},
 			Sequence:           &sqlbase.DummySequenceOperators{},
 			ClientNoticeSender: &sqlbase.DummyClientNoticeSender{},

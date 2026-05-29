@@ -34,8 +34,8 @@ class TsVersionTest : public testing::Test {
   KwTsSpan all_data{INT64_MIN, INT64_MAX};
 
   void SetUp() override {
-    env->DeleteDir(vgroup_root);
-    env->NewDirectory(vgroup_root);
+    ASSERT_EQ(env->DeleteDir(vgroup_root), SUCCESS);
+    ASSERT_EQ(env->NewDirectory(vgroup_root), SUCCESS);
   }
 
   void BrandNewEntitySegment(TsVersionManager *mgr, const fs::path &root, EntitySegmentMetaInfo *info) {
@@ -48,7 +48,7 @@ class TsVersionTest : public testing::Test {
       memset(&header_b, 0, sizeof(TsBlockItemFileHeader));
       header_b.status = TsFileStatus::READY;
       header_b.magic = TS_ENTITY_SEGMENT_BLOCK_ITEM_FILE_MAGIC;
-      file_b->Append(TSSlice{(char *)&header_b, sizeof(TsBlockItemFileHeader)});
+      EXPECT_EQ(file_b->Append(TSSlice{(char *)&header_b, sizeof(TsBlockItemFileHeader)}), SUCCESS);
       info->header_b_info.length = file_b->GetFileSize();
     }
     {
@@ -60,7 +60,7 @@ class TsVersionTest : public testing::Test {
       std::memset(&header_agg, 0, sizeof(header_agg));
       header_agg.magic = TS_ENTITY_SEGMENT_AGG_FILE_MAGIC;
       header_agg.status = TsFileStatus::READY;
-      file_agg->Append(TSSlice{(char *)&header_agg, sizeof(TsAggAndBlockFileHeader)});
+      EXPECT_EQ(file_agg->Append(TSSlice{(char *)&header_agg, sizeof(TsAggAndBlockFileHeader)}), SUCCESS);
       info->agg_info.length = file_agg->GetFileSize();
     }
     {
@@ -72,7 +72,7 @@ class TsVersionTest : public testing::Test {
       std::memset(&header_block, 0, sizeof(header_block));
       header_block.magic = TS_ENTITY_SEGMENT_BLOCK_FILE_MAGIC;
       header_block.status = TsFileStatus::READY;
-      data_file->Append(TSSlice{(char *)&header_block, sizeof(TsAggAndBlockFileHeader)});
+      EXPECT_EQ(data_file->Append(TSSlice{(char *)&header_block, sizeof(TsAggAndBlockFileHeader)}), SUCCESS);
       info->datablock_info.length = data_file->GetFileSize();
     }
   }
@@ -85,7 +85,7 @@ class TsVersionTest : public testing::Test {
       std::unique_ptr<TsAppendOnlyFile> file_b;
       ASSERT_EQ(env->NewAppendOnlyFile(header_b_filename, &file_b, false, prev_info.header_b_info.length), SUCCESS);
       std::string data(sizeof(TsEntitySegmentBlockItem), 0);
-      file_b->Append(data);
+      EXPECT_EQ(file_b->Append(data), SUCCESS);
       info->header_b_info.file_number = prev_info.header_b_info.file_number;
       info->header_b_info.length = file_b->GetFileSize();
     }
@@ -94,7 +94,7 @@ class TsVersionTest : public testing::Test {
       std::unique_ptr<TsAppendOnlyFile> file_agg;
       ASSERT_EQ(env->NewAppendOnlyFile(agg_filename, &file_agg, false, prev_info.agg_info.length), SUCCESS);
       std::string data(17, 0);
-      file_agg->Append(data);
+      EXPECT_EQ(file_agg->Append(data), SUCCESS);
       info->agg_info.file_number = prev_info.agg_info.file_number;
       info->agg_info.length = file_agg->GetFileSize();
     }
@@ -103,7 +103,7 @@ class TsVersionTest : public testing::Test {
       std::unique_ptr<TsAppendOnlyFile> data_file;
       ASSERT_EQ(env->NewAppendOnlyFile(data_filename, &data_file, false, prev_info.datablock_info.length), SUCCESS);
       std::string data(97, 0);
-      data_file->Append(data);
+      EXPECT_EQ(data_file->Append(data), SUCCESS);
       info->datablock_info.file_number = prev_info.datablock_info.file_number;
       info->datablock_info.length = data_file->GetFileSize();
     }
@@ -125,8 +125,8 @@ class TsVersionTest : public testing::Test {
       header_e.status = TsFileStatus::READY;
 
       TsEntityItem item;
-      file_e->Append(TSSlice{(char *)&item, sizeof(TsEntityItem)});
-      file_e->Append(TSSlice{(char *)&header_e, sizeof(TsEntityItemFileHeader)});
+      EXPECT_EQ(file_e->Append(TSSlice{(char *)&item, sizeof(TsEntityItem)}), SUCCESS);
+      EXPECT_EQ(file_e->Append(TSSlice{(char *)&header_e, sizeof(TsEntityItemFileHeader)}), SUCCESS);
     }
     if (segment == nullptr) {
       BrandNewEntitySegment(mgr, root, info);
@@ -399,7 +399,7 @@ TEST_F(TsVersionTest, RecoverFromExistingDirTest) {
 
     TsVersionUpdate update;
     for (auto pid : par_ids) {
-      env->NewDirectory(vgroup_root / PartitionDirName(pid));
+      ASSERT_EQ(env->NewDirectory(vgroup_root / PartitionDirName(pid)), SUCCESS);
       update.PartitionDirCreated(pid);
     }
     s = mgr->ApplyUpdate(&update);
@@ -421,7 +421,7 @@ TEST_F(TsVersionTest, RecoverFromExistingDirTest) {
 
     {
       TsVersionUpdate update;
-      env->NewDirectory(vgroup_root / PartitionDirName({1, 9, 10}));
+      ASSERT_EQ(env->NewDirectory(vgroup_root / PartitionDirName({1, 9, 10})), SUCCESS);
       update.PartitionDirCreated({1, 9, 10});
       s = mgr->ApplyUpdate(&update);
       EXPECT_EQ(s, SUCCESS);
@@ -473,7 +473,7 @@ TEST_F(TsVersionTest, RecoverFromCorruptedDirTest) {
   PartitionIdentifier par_id = {1, 2, 3};
   auto partition_dir = vgroup_root / PartitionDirName(par_id);
   {
-    env->NewDirectory(partition_dir);
+    ASSERT_EQ(env->NewDirectory(partition_dir), SUCCESS);
     auto mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
     auto s = mgr->Recover(false);
     EXPECT_EQ(s, SUCCESS);
@@ -577,7 +577,7 @@ TEST_F(TsVersionTest, RecoverAndDeletePartitionDir) {
 TEST_F(TsVersionTest, RecoverAndDelete_UnfinishedFlushing) {
   PartitionIdentifier par_id = {1, 2, 3};
   auto partition_dir = vgroup_root / PartitionDirName(par_id);
-  env->NewDirectory(partition_dir);
+  ASSERT_EQ(env->NewDirectory(partition_dir), SUCCESS);
   auto mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
   auto s = mgr->Recover(false);
   EXPECT_EQ(s, SUCCESS);
@@ -603,7 +603,7 @@ TEST_F(TsVersionTest, RecoverAndDelete_UnfinishedFlushing) {
 TEST_F(TsVersionTest, RecoverAndDelete_UnfinishedCompaction) {
   PartitionIdentifier par_id = {1, 2, 3};
   auto partition_dir = vgroup_root / PartitionDirName(par_id);
-  env->NewDirectory(partition_dir);
+  ASSERT_EQ(env->NewDirectory(partition_dir), SUCCESS);
   auto mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
   auto s = mgr->Recover(false);
   EXPECT_EQ(s, SUCCESS);
@@ -666,7 +666,7 @@ TEST_F(TsVersionTest, RecoverAndDelete_UnfinishedCompaction) {
 TEST_F(TsVersionTest, RecoverAndDelete_UnfinishedVacuum) {
   PartitionIdentifier par_id = {1, 2, 3};
   auto partition_dir = vgroup_root / PartitionDirName(par_id);
-  env->NewDirectory(partition_dir);
+  ASSERT_EQ(env->NewDirectory(partition_dir), SUCCESS);
   auto mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
   auto s = mgr->Recover(false);
   EXPECT_EQ(s, SUCCESS);
@@ -763,7 +763,7 @@ TEST_F(TsVersionTest, RecoverAndDelete_UnfinishedVacuum) {
 TEST_F(TsVersionTest, RecoverAndDelete_UnfinishedCountFlushing) {
   PartitionIdentifier par_id = {1, 2, 3};
   auto partition_dir = vgroup_root / PartitionDirName(par_id);
-  env->NewDirectory(partition_dir);
+  ASSERT_EQ(env->NewDirectory(partition_dir), SUCCESS);
   auto mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
   auto s = mgr->Recover(false);
   EXPECT_EQ(s, SUCCESS);
@@ -792,7 +792,7 @@ TEST_F(TsVersionTest, RecoverAndDelete_UnfinishedCountFlushing) {
 TEST_F(TsVersionTest, ForceRecover) {
   PartitionIdentifier par_id = {1, 2, 3};
   auto partition_dir = vgroup_root / PartitionDirName(par_id);
-  env->NewDirectory(partition_dir);
+  ASSERT_EQ(env->NewDirectory(partition_dir), SUCCESS);
   auto mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
   auto s = mgr->Recover(false);
   EXPECT_EQ(s, SUCCESS);
@@ -842,7 +842,7 @@ TEST_F(TsVersionTest, ForceRecover) {
 TEST_F(TsVersionTest, RecoverAndDelete_UnfinishedCalcPartitionAgg) {
   PartitionIdentifier par_id = {1, 2, 3};
   auto partition_dir = vgroup_root / PartitionDirName(par_id);
-  env->NewDirectory(partition_dir);
+  ASSERT_EQ(env->NewDirectory(partition_dir), SUCCESS);
   auto mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
   auto s = mgr->Recover(false);
   EXPECT_EQ(s, SUCCESS);

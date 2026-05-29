@@ -271,6 +271,15 @@ func (mb *mutationBuilder) addUpdateCols(exprs tree.UpdateExprs) {
 		// Add new column to the projections scope.
 		desiredType := mb.md.ColumnMeta(targetColID).Type
 		texpr := inScope.resolveType(expr, desiredType)
+		// If the target column type is known, allow assignment casts between CITEXT
+		// and the string family here.
+		if tree.IsCITextStringMixed(texpr.ResolvedType(), desiredType) {
+			var err error
+			texpr, err = tree.NewTypedCastExpr(texpr, desiredType)
+			if err != nil {
+				panic(err)
+			}
+		}
 		scopeCol := mb.b.addColumn(projectionsScope, "" /* alias */, texpr, false)
 		scopeColOrd := scopeOrdinal(len(projectionsScope.cols) - 1)
 		if scalar := mb.b.buildScalar(texpr, inScope, projectionsScope, scopeCol, nil); scalar != nil {

@@ -659,31 +659,6 @@ bool DataChunk::IsNull(k_uint32 col) {
   return IsNull(current_line_, col);
 }
 
-// 1 null，0 not null
-void DataChunk::SetNull(k_uint32 row, k_uint32 col) {
-  char* bitmap = reinterpret_cast<char*>(data_ + bitmap_offset_[col]);
-  if (bitmap == nullptr) {
-    return;
-  }
-
-  // bitmap[row >> 3] |= (1 << 7) >> (row & 7);
-  bitmap[row >> 3] |= 1 << (row & 7);
-}
-
-void DataChunk::SetNotNull(k_uint32 row, k_uint32 col) {
-  char* bitmap = reinterpret_cast<char*>(data_ + bitmap_offset_[col]);
-  if (bitmap == nullptr) {
-    return;
-  }
-
-  // k_uint32 index = row >> 3;     // row / 8
-  // unsigned int pos = 1 << 7;    // binary 1000 0000
-  // unsigned int mask = pos >> (row & 7);     // pos >> (row % 8)
-  // bitmap[index] &= ~mask;
-
-  bitmap[row >> 3] &= ~(1 << (row & 7));
-}
-
 void DataChunk::SetAllNull() {
   for (int col_idx = 0; col_idx < col_num_; col_idx++) {
     char* bitmap = reinterpret_cast<char*>(data_ + bitmap_offset_[col_idx]);

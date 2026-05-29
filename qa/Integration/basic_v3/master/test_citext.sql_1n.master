@@ -1,0 +1,4411 @@
+> SELECT pg_typeof(CITEXT 'Foo');
+  pg_typeof
+-------------
+  citext
+(1 row)
+> SELECT pg_typeof('Foo'::CITEXT);
+  pg_typeof
+-------------
+  citext
+(1 row)
+> SELECT pg_typeof('Foo'::CITEXT::TEXT::CITEXT);
+  pg_typeof
+-------------
+  citext
+(1 row)
+> SELECT 'Foo'::CITEXT;
+  citext
+----------
+  Foo
+(1 row)
+> CREATE DATABASE citext_regression;
+CREATE DATABASE
+> USE citext_regression;
+SET
+> CREATE TABLE t (
+    c CITEXT
+);
+CREATE TABLE
+> SHOW CREATE TABLE t;
+  table_name |        create_statement
+-------------+----------------------------------
+  t          | CREATE TABLE t (
+             |     c CITEXT NULL,
+             |     FAMILY "primary" (c, rowid)
+             | )
+(1 row)
+> INSERT INTO t VALUES ('test');
+INSERT 1
+> SELECT pg_typeof(c) FROM t LIMIT 1;
+  pg_typeof
+-------------
+  citext
+(1 row)
+> SELECT c FROM t WHERE c = 'tEsT';
+   c
+--------
+  test
+(1 row)
+> CREATE TABLE r (
+    c CITEXT[]
+);
+CREATE TABLE
+> SHOW CREATE TABLE r;
+  table_name |        create_statement
+-------------+----------------------------------
+  r          | CREATE TABLE r (
+             |     c CITEXT[] NULL,
+             |     FAMILY "primary" (c, rowid)
+             | )
+(1 row)
+> INSERT INTO r VALUES (ARRAY['test', 'TESTER']);
+INSERT 1
+> SELECT pg_typeof(c) FROM r LIMIT 1;
+  pg_typeof
+-------------
+  citext[]
+(1 row)
+> SELECT c FROM r WHERE c = ARRAY['test', 'TESTER'];
+        c
+-----------------
+  {test,TESTER}
+(1 row)
+> SELECT c FROM r WHERE c = ARRAY['tEsT', 'tEsTeR']::CITEXT[];
+        c
+-----------------
+  {test,TESTER}
+(1 row)
+> SELECT 'test'::CITEXT = 'TEST'::CITEXT;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT 'test'::CITEXT = 'TEST';
+  ?column?
+------------
+    true
+(1 row)
+> SELECT 'test' = 'TEST'::CITEXT;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT 'test'::CITEXT = 'TESTER';
+  ?column?
+------------
+   false
+(1 row)
+> SELECT e'\u047D'::CITEXT = e'\u047C'::CITEXT;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT e'\u00E9'::CITEXT = e'\u00E8'::CITEXT;
+  ?column?
+------------
+   false
+(1 row)
+> SELECT e'\u00E9'::CITEXT = e'\u0065\u0301'::CITEXT;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT e'\u00C9'::CITEXT = e'\u0065\u0301'::CITEXT;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT e'\u0065\u0301'::CITEXT = e'\u0045\u0301'::CITEXT;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT e'\u00E9'::CITEXT = e'\u00C9'::CITEXT;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT 'I'::CITEXT = 'ı'::CITEXT;
+  ?column?
+------------
+   false
+(1 row)
+> SELECT 'ß'::CITEXT = 'SS'::CITEXT;
+  ?column?
+------------
+   false
+(1 row)
+> SELECT NULL::CITEXT = NULL::CITEXT IS NULL;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT 'A'::CITEXT < 'a'::CITEXT;
+  ?column?
+------------
+   false
+(1 row)
+> SELECT 'a'::CITEXT < 'A'::CITEXT;
+  ?column?
+------------
+   false
+(1 row)
+> SELECT 'test'::CITEXT LIKE 'TEST';
+  ?column?
+------------
+    true
+(1 row)
+> SELECT 'test'::CITEXT ILIKE 'TEST'::CITEXT;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT ARRAY['test', 'TESTER']::CITEXT[] = ARRAY['tEsT', 'tEsTeR']::CITEXT[];
+  ?column?
+------------
+    true
+(1 row)
+> SELECT ARRAY['test', 'TESTER']::CITEXT[] = ARRAY['TESTING', 'TESTER']::CITEXT[];
+  ?column?
+------------
+   false
+(1 row)
+> SELECT ARRAY[]::CITEXT[] = ARRAY['TESTING', 'TESTER']::CITEXT[];
+  ?column?
+------------
+   false
+(1 row)
+> CREATE TABLE citext_with_width_tbl (a CITEXT(10));
+ERROR: at or near "(": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+CREATE TABLE citext_with_width_tbl (a CITEXT(10))
+                                            ^
+HINT: try \h CREATE TABLE
+> CREATE TABLE t_func (c CITEXT);
+CREATE TABLE
+> INSERT INTO t_func VALUES ('TeSting'), ('Alpha-Beta');
+INSERT 2
+> SELECT strpos(c, 'test') FROM t_func WHERE c = 'TeSting';
+  strpos
+----------
+       1
+(1 row)
+> SELECT strpos(c, 'TEST') FROM t_func WHERE c = 'TeSting';
+  strpos
+----------
+       1
+(1 row)
+> SELECT replace(c, 'test', 'X') FROM t_func WHERE c = 'TeSting';
+  replace
+-----------
+  Xing
+(1 row)
+> SELECT replace( c, 'TEST', 'X') FROM t_func WHERE c = 'TeSting';
+  replace
+-----------
+  Xing
+(1 row)
+> SELECT split_part(c, '-', 1) FROM t_func WHERE c = 'Alpha-Beta';
+  split_part
+--------------
+  Alpha
+(1 row)
+> SELECT split_part(c, '-', 2) FROM t_func WHERE c = 'Alpha-Beta';
+  split_part
+--------------
+  Beta
+(1 row)
+> SELECT translate(c, 'ab', '12') FROM t_func WHERE c = 'Alpha-Beta';
+  translate
+--------------
+  1lph1-2et1
+(1 row)
+> SELECT translate(c, 'AB', '12') FROM t_func WHERE c = 'Alpha-Beta';
+  translate
+--------------
+  1lph1-2et1
+(1 row)
+> SELECT regexp_replace(c, 'test', 'X') FROM t_func WHERE c = 'TeSting';
+  regexp_replace
+------------------
+  Xing
+(1 row)
+> SELECT regexp_replace(c, 'TEST', 'X') FROM t_func WHERE c = 'TeSting';
+  regexp_replace
+------------------
+  Xing
+(1 row)
+> SELECT regexp_replace(c, 'test', 'X', 'g') FROM t_func WHERE c = 'TeSting';
+  regexp_replace
+------------------
+  Xing
+(1 row)
+> SELECT 'À'::citext =  'À'::citext AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'À'::citext =  'à'::citext AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'À'::text   =  'à'::text   AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT 'À'::citext <> 'B'::citext AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'Ä'::text   <> 'Ä'::text   AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'Ä'::citext <> 'Ä'::citext AS t;
+    t
+---------
+  false
+(1 row)
+> SELECT 'i'::citext = 'İ'::citext AS t;
+    t
+---------
+  false
+(1 row)
+> SELECT 'láska'::citext <> 'laská'::citext AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'Ask Bjørn Hansen'::citext = 'Ask Bjørn Hansen'::citext AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'Ask Bjørn Hansen'::citext = 'ASK BJØRN HANSEN'::citext AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'Ask Bjørn Hansen'::citext <> 'Ask Bjorn Hansen'::citext AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'Ask Bjørn Hansen'::citext <> 'ASK BJORN HANSEN'::citext AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'a'::citext = 'a'::citext AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'a'::citext = 'A'::citext AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'a'::citext = 'A'::text AS f;        -- text wins the discussion
+    f
+---------
+  false
+(1 row)
+> SELECT 'a'::citext = 'b'::citext AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT 'a'::citext = 'ab'::citext AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT 'a'::citext <> 'ab'::citext AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'B'::citext > 'a'::citext AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'b'::citext >  'A'::citext AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'B'::citext >  'b'::citext AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT 'B'::citext >= 'b'::citext AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'a'::citext <  'B'::citext AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'a'::citext <= 'B'::citext AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'a'::citext = 'a'::text   AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'A'::text  <> 'a'::citext AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'B'::citext <  'a'::text AS t;  -- text wins.
+   t
+--------
+  true
+(1 row)
+> SELECT 'B'::citext <= 'a'::text AS t;  -- text wins.
+   t
+--------
+  true
+(1 row)
+> SELECT 'a'::citext >  'B'::text AS t;  -- text wins.
+   t
+--------
+  true
+(1 row)
+> SELECT 'a'::citext >= 'B'::text AS t;  -- text wins.
+   t
+--------
+  true
+(1 row)
+> SELECT 'a'::citext = 'a'::varchar   AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'A'::varchar  <> 'a'::citext AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'B'::citext <  'a'::varchar AS t;  -- varchar wins.
+   t
+--------
+  true
+(1 row)
+> SELECT 'B'::citext <= 'a'::varchar AS t;  -- varchar wins.
+   t
+--------
+  true
+(1 row)
+> SELECT 'a'::citext >  'B'::varchar AS t;  -- varchar wins.
+   t
+--------
+  true
+(1 row)
+> SELECT 'a'::citext >= 'B'::varchar AS t;  -- varchar wins.
+   t
+--------
+  true
+(1 row)
+> SELECT 'aardvark'::citext = 'aardvark'::citext AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'aardvark'::citext = 'aardVark'::citext AS t;
+   t
+--------
+  true
+(1 row)
+> CREATE TABLE try (
+   name citext PRIMARY KEY
+);
+CREATE TABLE
+> INSERT INTO try (name)
+VALUES ('a'), ('ab'), ('â'), ('aba'), ('b'), ('ba'), ('bab'), ('AZ');
+INSERT 8
+> SELECT name, 'a' = name AS eq_a   FROM try WHERE name <> 'â' order by name;
+  name | eq_a
+-------+--------
+  a    | true
+  ab   | false
+  aba  | false
+  AZ   | false
+  b    | false
+  ba   | false
+  bab  | false
+(7 rows)
+> SELECT name, 'a' = name AS t      FROM try where name = 'a' order by name;
+  name |  t
+-------+-------
+  a    | true
+(1 row)
+> SELECT name, 'A' = name AS "eq_A" FROM try WHERE name <> 'â' order by name;
+  name | eq_A
+-------+--------
+  a    | true
+  ab   | false
+  aba  | false
+  AZ   | false
+  b    | false
+  ba   | false
+  bab  | false
+(7 rows)
+> SELECT name, 'A' = name AS t      FROM try where name = 'A' order by name;
+  name |  t
+-------+-------
+  a    | true
+(1 row)
+> SELECT name, 'A' = name AS t      FROM try where name = 'A' order by name;
+  name |  t
+-------+-------
+  a    | true
+(1 row)
+> INSERT INTO try (name) VALUES ('a');
+ERROR: duplicate key value (name)=('a' COLLATE en_us_u_ks_level2) violates unique constraint "primary"
+SQLSTATE: 23505
+> INSERT INTO try (name) VALUES ('A');
+ERROR: duplicate key value (name)=('a' COLLATE en_us_u_ks_level2) violates unique constraint "primary"
+SQLSTATE: 23505
+> INSERT INTO try (name) VALUES ('aB');
+ERROR: duplicate key value (name)=('ab' COLLATE en_us_u_ks_level2) violates unique constraint "primary"
+SQLSTATE: 23505
+> CREATE TABLE srt (
+   name CITEXT
+);
+CREATE TABLE
+> INSERT INTO srt (name)
+VALUES ('abb'),
+       ('ABA'),
+       ('ABC'),
+       ('abd');
+INSERT 4
+> CREATE INDEX srt_name ON srt (name);
+CREATE INDEX
+> SELECT MIN(name) AS "ABA" FROM srt;
+  ABA
+-------
+  ABA
+(1 row)
+> SELECT MAX(name) AS abd FROM srt;
+  abd
+-------
+  abd
+(1 row)
+> SELECT MIN(name) AS "ABA" FROM srt;
+  ABA
+-------
+  ABA
+(1 row)
+> SELECT MAX(name) AS abd FROM srt;
+  abd
+-------
+  abd
+(1 row)
+> SELECT name FROM srt ORDER BY name;
+  name
+--------
+  ABA
+  abb
+  ABC
+  abd
+(4 rows)
+> SELECT name FROM srt ORDER BY name;
+  name
+--------
+  ABA
+  abb
+  ABC
+  abd
+(4 rows)
+> SELECT LOWER(name) as aba FROM srt WHERE name = 'ABA'::text order by name;
+  aba
+-------
+  aba
+(1 row)
+> SELECT LOWER(name) as aba FROM srt WHERE name = 'ABA'::varchar order by name;
+  aba
+-------
+  aba
+(1 row)
+> SELECT LOWER(name) as aba FROM srt WHERE name = 'ABA'::bpchar order by name;
+  aba
+-------
+  aba
+(1 row)
+> SELECT LOWER(name) as aba FROM srt WHERE name = 'ABA' order by name;
+  aba
+-------
+  aba
+(1 row)
+> SELECT LOWER(name) as aba FROM srt WHERE name = 'ABA'::citext order by name;
+  aba
+-------
+  aba
+(1 row)
+> SELECT name FROM srt WHERE name     LIKE '%a%' ORDER BY name;
+  name
+--------
+  ABA
+  abb
+  ABC
+  abd
+(4 rows)
+> SELECT name FROM srt WHERE name NOT LIKE '%b%' ORDER BY name;
+  name
+--------
+(0 rows)
+> SELECT name FROM srt WHERE name     LIKE '%A%' ORDER BY name;
+  name
+--------
+  ABA
+  abb
+  ABC
+  abd
+(4 rows)
+> SELECT name FROM srt WHERE name NOT LIKE '%B%' ORDER BY name;
+  name
+--------
+(0 rows)
+> SELECT name FROM srt WHERE name ~  '^a' ORDER BY name;
+  name
+--------
+  ABA
+  abb
+  ABC
+  abd
+(4 rows)
+> SELECT name FROM srt WHERE name !~ 'a$' ORDER BY name;
+  name
+--------
+  abb
+  ABC
+  abd
+(3 rows)
+> SELECT name FROM srt WHERE name ~  '^A' ORDER BY name;
+  name
+--------
+  ABA
+  abb
+  ABC
+  abd
+(4 rows)
+> SELECT name FROM srt WHERE name !~ 'A$' ORDER BY name;
+  name
+--------
+  abb
+  ABC
+  abd
+(3 rows)
+> SELECT name FROM srt WHERE name SIMILAR TO '%a.*';
+  name
+--------
+  ABA
+(1 row)
+> SELECT name FROM srt WHERE name SIMILAR TO '%A.*';
+  name
+--------
+  ABA
+(1 row)
+> SELECT 'ABA'::citext IN ('aba', 'zzz') AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'ABA'::citext IN ('ABC', 'abd') AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT 'ABA'::citext IN ('aba'::text) AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT 'ABA'::citext IN ('ABA'::text) AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'ABA'::citext IN ('aba'::varchar) AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT 'ABA'::citext IN ('ABA'::varchar) AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT name FROM srt WHERE name IN ('aba', 'ABC') ORDER BY name;
+  name
+--------
+  ABA
+  ABC
+(2 rows)
+> SELECT name FROM srt WHERE name IN ('ABA'::text, 'abc'::text) ORDER BY name;
+  name
+--------
+  ABA
+(1 row)
+> SELECT 'ABA' IN (SELECT name FROM srt) AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'zzz' IN (SELECT name FROM srt) AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT 'ABA'::text IN (SELECT name FROM srt) AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'aba'::text IN (SELECT name FROM srt) AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT 'ABA'::citext IN (SELECT name::text FROM srt) AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'aba'::citext IN (SELECT name::text FROM srt) AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT 'ABC'::citext BETWEEN 'aba' AND 'abd' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'abb'::citext BETWEEN 'ABA' AND 'ABC' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'zzz'::citext BETWEEN 'aba' AND 'abd' AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT 'ABC'::citext BETWEEN 'aba'::text AND 'abd'::text AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT 'ABC'::citext BETWEEN 'ABA'::text AND 'abd'::text AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'abb'::citext BETWEEN 'ABA'::varchar AND 'abc'::varchar AS f;
+   f
+--------
+  true
+(1 row)
+> SELECT 'abb'::citext BETWEEN 'ABA'::varchar AND 'abd'::varchar AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT name, name BETWEEN 'aba' AND 'abd' AS in_range FROM srt ORDER BY name;
+  name | in_range
+-------+-----------
+  ABA  |   true
+  abb  |   true
+  ABC  |   true
+  abd  |   true
+(4 rows)
+> SELECT name, name BETWEEN 'aba'::text AND 'abd'::text AS in_range_text FROM srt ORDER BY name;
+  name | in_range_text
+-------+----------------
+  ABA  |     false
+  abb  |     true
+  ABC  |     false
+  abd  |     true
+(4 rows)
+> CREATE TABLE srt_distinct (
+    name CITEXT
+);
+CREATE TABLE
+> INSERT INTO srt_distinct (name)
+VALUES ('abb'),
+       ('ABB'),
+       ('aba'),
+       ('ABA'),
+       ('abc');
+INSERT 5
+> SELECT DISTINCT name FROM srt_distinct ORDER BY name;
+  name
+--------
+  aba
+  abb
+  abc
+(3 rows)
+> SELECT COUNT(DISTINCT name) = 3::bigint AS t FROM srt_distinct;
+   t
+--------
+  true
+(1 row)
+> SELECT name FROM srt WHERE name SIMILAR TO '%a.*' ORDER BY name;
+  name
+--------
+  ABA
+(1 row)
+> SELECT name FROM srt WHERE name SIMILAR TO '%A.*' ORDER BY name;
+  name
+--------
+  ABA
+(1 row)
+> SELECT 'ABC'::citext SIMILAR TO 'a.*' AS t;
+    t
+---------
+  false
+(1 row)
+> SELECT 'ABC'::citext SIMILAR TO 'A.*' AS t;
+    t
+---------
+  false
+(1 row)
+> SELECT 'ABC'::citext NOT SIMILAR TO 'z.*' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'ABC'::citext SIMILAR TO 'a.*'::text AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT 'ABC'::citext SIMILAR TO 'A.*'::text AS t;
+    t
+---------
+  false
+(1 row)
+> SELECT 'D'::citext || 'avid'::citext = 'David'::citext AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'AB'::citext || 'C' = 'abc'::citext AS t;
+    t
+---------
+  false
+(1 row)
+> SELECT 'AB' || 'C'::citext = 'abc'::citext AS t;
+    t
+---------
+  false
+(1 row)
+> SELECT name || '_x' = lower(name) || '_X'::citext AS t FROM srt ORDER BY name;
+    t
+---------
+  false
+  false
+  false
+  false
+(4 rows)
+> SELECT concat('D'::citext, 'avid'::citext) = 'David'::citext AS t;  -- fail
+   t
+--------
+  true
+(1 row)
+> SELECT concat('A'::citext, 'B', 'C') = 'abc'::citext AS t;          -- fail
+    t
+---------
+  false
+(1 row)
+> SELECT concat(name, '_x') = lower(name) || '_X'::citext AS t FROM srt ORDER BY name; -- fail
+    t
+---------
+  false
+  false
+  false
+  false
+(4 rows)
+> SELECT 'ABA'::citext IS DISTINCT FROM 'aba'::citext AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT 'ABA'::citext IS NOT DISTINCT FROM 'aba'::citext AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'ABA'::citext IS DISTINCT FROM 'abc'::citext AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'ABA'::citext IS NOT DISTINCT FROM 'abc'::citext AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT 'ABA'::citext IS DISTINCT FROM 'aba'::text AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'ABA'::citext IS NOT DISTINCT FROM 'ABA'::text AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'ABA'::citext IS DISTINCT FROM 'aba'::varchar AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'ABA'::citext IS NOT DISTINCT FROM 'ABA'::varchar AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT NULL::citext IS DISTINCT FROM NULL::citext AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT NULL::citext IS NOT DISTINCT FROM NULL::citext AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT NULL::citext IS DISTINCT FROM 'abc'::citext AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT NULL::citext IS NOT DISTINCT FROM 'abc'::citext AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT true::citext = 'true' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'true'::citext::boolean = true AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 4::citext = '4' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 4::int4::citext = '4' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT '4'::citext::int4 = 4 AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 4::integer::citext = '4' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT '4'::citext::integer = 4 AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 4::int8::citext = '4' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT '4'::citext::int8 = 4 AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 4::bigint::citext = '4' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT '4'::citext::bigint = 4 AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 4::int2::citext = '4' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT '4'::citext::int2 = 4 AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 4::smallint::citext = '4' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT '4'::citext::smallint = 4 AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 4.0::numeric = '4.0' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT '4.0'::citext::numeric = 4.0 AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 4.0::decimal = '4.0' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT '4.0'::citext::decimal = 4.0 AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 4.0::real = '4.0' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT '4.0'::citext::real = 4.0 AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 4.0::float4 = '4.0' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT '4.0'::citext::float4 = 4.0 AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 4.0::double precision = '4.0' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT '4.0'::citext::double precision = 4.0 AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 4.0::float8 = '4.0' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT '4.0'::citext::float8 = 4.0 AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'foo'::name::citext = 'foo' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'foo'::citext::name = 'foo'::name AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'f'::char::citext = 'f' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'f'::citext::char = 'f'::char AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'f'::"char"::citext = 'f' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'f'::citext::"char" = 'f'::"char" AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'a'::char::citext = 'a' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'a'::citext::char = 'a'::char AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'foo'::varchar::citext = 'foo' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'foo'::citext::varchar = 'foo'::varchar AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'foo'::text::citext = 'foo' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'foo'::citext::text = 'foo'::text AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT '192.168.100.128'::inet::citext = '192.168.100.128/32' AS t;
+    t
+---------
+  false
+(1 row)
+> SELECT '192.168.100.128'::citext::inet = '192.168.100.128'::inet AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT '1999-01-08 04:05:06'::timestamp::citext = '1999-01-08 04:05:06'::timestamp::text AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT '1999-01-08 04:05:06'::citext::timestamp = '1999-01-08 04:05:06'::timestamp AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT '1999-01-08 04:05:06'::timestamptz::citext = '1999-01-08 04:05:06'::timestamptz::text AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT '1999-01-08 04:05:06'::citext::timestamptz = '1999-01-08 04:05:06'::timestamptz AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT '1 hour'::interval::citext = '1 hour'::interval::text AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT '1 hour'::citext::interval = '1 hour'::interval AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT '1999-01-08'::date::citext = '1999-01-08'::date::text AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT '1999-01-08'::citext::date = '1999-01-08'::date AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT '04:05:06'::time::citext = '04:05:06' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT '04:05:06'::citext::time = '04:05:06'::time AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT '04:05:06'::timetz::citext = '04:05:06'::timetz::text AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT '04:05:06'::citext::timetz = '04:05:06'::timetz AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT '101'::bit::citext = '101'::bit::text AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT '101'::citext::bit = '101'::text::bit AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT '101'::bit varying::citext = '101'::bit varying::text AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT '101'::citext::bit varying = '101'::text::bit varying AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid::citext = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::citext::uuid = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid AS t;
+   t
+--------
+  true
+(1 row)
+> CREATE TABLE caster (
+                        citext      citext,
+                        text        text,
+                        varchar     varchar,
+                        bpchar      bpchar,
+                        char        char,
+                        chr         "char",
+                        name        name,
+                        bytea       bytea,
+                        boolean     boolean,
+                        float4      float4,
+                        float8      float8,
+                        numeric     numeric,
+                        int8        int8,
+                        int4        int4,
+                        int2        int2,
+                        inet        inet,
+                        timestamp   timestamp,
+                        timestamptz timestamptz,
+                        interval    interval,
+                        date        date,
+                        time        time,
+                        timetz      timetz,
+                        bit         bit,
+                        bitv        bit varying,
+                        uuid        uuid
+);
+CREATE TABLE
+> INSERT INTO caster (text)          VALUES ('foo'::citext);
+INSERT 1
+> INSERT INTO caster (citext)        VALUES ('foo'::text);
+INSERT 1
+> INSERT INTO caster (varchar)       VALUES ('foo'::text);
+INSERT 1
+> INSERT INTO caster (text)          VALUES ('foo'::varchar);
+INSERT 1
+> INSERT INTO caster (varchar)       VALUES ('foo'::citext);
+INSERT 1
+> INSERT INTO caster (citext)        VALUES ('foo'::varchar);
+INSERT 1
+> INSERT INTO caster (bpchar)        VALUES ('foo'::text);
+INSERT 1
+> INSERT INTO caster (text)          VALUES ('foo'::bpchar);
+INSERT 1
+> INSERT INTO caster (bpchar)        VALUES ('foo'::citext);
+INSERT 1
+> INSERT INTO caster (citext)        VALUES ('foo'::bpchar);
+INSERT 1
+> INSERT INTO caster (char)          VALUES ('f'::text);
+INSERT 1
+> INSERT INTO caster (text)          VALUES ('f'::char);
+INSERT 1
+> INSERT INTO caster (char)          VALUES ('f'::citext);
+INSERT 1
+> INSERT INTO caster (citext)        VALUES ('f'::char);
+INSERT 1
+> INSERT INTO caster (chr)           VALUES ('f'::text);
+INSERT 1
+> INSERT INTO caster (text)          VALUES ('f'::"char");
+INSERT 1
+> INSERT INTO caster (chr)           VALUES ('f'::citext);  -- requires cast
+INSERT 1
+> INSERT INTO caster (chr)           VALUES ('f'::citext::text);
+INSERT 1
+> INSERT INTO caster (citext)        VALUES ('f'::"char");
+INSERT 1
+> INSERT INTO caster (name)          VALUES ('foo'::text);
+INSERT 1
+> INSERT INTO caster (text)          VALUES ('foo'::name);
+INSERT 1
+> INSERT INTO caster (name)          VALUES ('foo'::citext);
+INSERT 1
+> INSERT INTO caster (citext)        VALUES ('foo'::name);
+INSERT 1
+> INSERT INTO caster (bytea)         VALUES ('foo'::text);
+ERROR: value type string doesn't match type bytes of column "bytea"
+SQLSTATE: 42804
+> INSERT INTO caster (text)          VALUES ('foo'::bytea);
+ERROR: value type bytes doesn't match type string of column "text"
+SQLSTATE: 42804
+> INSERT INTO caster (bytea)         VALUES ('foo'::citext);
+ERROR: value type citext doesn't match type bytes of column "bytea"
+SQLSTATE: 42804
+> INSERT INTO caster (citext)        VALUES ('foo'::bytea);
+ERROR: value type bytes doesn't match type citext of column "citext"
+SQLSTATE: 42804
+> INSERT INTO caster (boolean)       VALUES ('t'::text);
+ERROR: value type string doesn't match type bool of column "boolean"
+SQLSTATE: 42804
+> INSERT INTO caster (text)          VALUES ('t'::boolean);
+ERROR: value type bool doesn't match type string of column "text"
+SQLSTATE: 42804
+> INSERT INTO caster (boolean)       VALUES ('t'::citext);
+ERROR: value type citext doesn't match type bool of column "boolean"
+SQLSTATE: 42804
+> INSERT INTO caster (citext)        VALUES ('t'::boolean);
+ERROR: value type bool doesn't match type citext of column "citext"
+SQLSTATE: 42804
+> INSERT INTO caster (float8)        VALUES ('12.42'::text);
+ERROR: value type string doesn't match type float of column "float8"
+SQLSTATE: 42804
+> INSERT INTO caster (text)          VALUES ('12.42'::float8);
+ERROR: value type float doesn't match type string of column "text"
+SQLSTATE: 42804
+> INSERT INTO caster (float8)        VALUES ('12.42'::citext);
+ERROR: value type citext doesn't match type float of column "float8"
+SQLSTATE: 42804
+> INSERT INTO caster (citext)        VALUES ('12.42'::float8);
+ERROR: value type float doesn't match type citext of column "citext"
+SQLSTATE: 42804
+> INSERT INTO caster (float4)        VALUES ('12.42'::text);
+ERROR: value type string doesn't match type float4 of column "float4"
+SQLSTATE: 42804
+> INSERT INTO caster (text)          VALUES ('12.42'::float4);
+ERROR: value type float4 doesn't match type string of column "text"
+SQLSTATE: 42804
+> INSERT INTO caster (float4)        VALUES ('12.42'::citext);
+ERROR: value type citext doesn't match type float4 of column "float4"
+SQLSTATE: 42804
+> INSERT INTO caster (citext)        VALUES ('12.42'::float4);
+ERROR: value type float4 doesn't match type citext of column "citext"
+SQLSTATE: 42804
+> INSERT INTO caster (numeric)       VALUES ('12.42'::text);
+ERROR: value type string doesn't match type decimal of column "numeric"
+SQLSTATE: 42804
+> INSERT INTO caster (text)          VALUES ('12.42'::numeric);
+ERROR: value type decimal doesn't match type string of column "text"
+SQLSTATE: 42804
+> INSERT INTO caster (numeric)       VALUES ('12.42'::citext);
+ERROR: value type citext doesn't match type decimal of column "numeric"
+SQLSTATE: 42804
+> INSERT INTO caster (citext)        VALUES ('12.42'::numeric);
+ERROR: value type decimal doesn't match type citext of column "citext"
+SQLSTATE: 42804
+> INSERT INTO caster (int8)          VALUES ('12'::text);
+ERROR: value type string doesn't match type int of column "int8"
+SQLSTATE: 42804
+> INSERT INTO caster (text)          VALUES ('12'::int8);
+ERROR: value type int doesn't match type string of column "text"
+SQLSTATE: 42804
+> INSERT INTO caster (int8)          VALUES ('12'::citext);
+ERROR: value type citext doesn't match type int of column "int8"
+SQLSTATE: 42804
+> INSERT INTO caster (citext)        VALUES ('12'::int8);
+ERROR: value type int doesn't match type citext of column "citext"
+SQLSTATE: 42804
+> INSERT INTO caster (int4)          VALUES ('12'::text);
+ERROR: value type string doesn't match type int4 of column "int4"
+SQLSTATE: 42804
+> INSERT INTO caster (text)          VALUES ('12'::int4);
+ERROR: value type int4 doesn't match type string of column "text"
+SQLSTATE: 42804
+> INSERT INTO caster (int4)          VALUES ('12'::citext);
+ERROR: value type citext doesn't match type int4 of column "int4"
+SQLSTATE: 42804
+> INSERT INTO caster (citext)        VALUES ('12'::int4);
+ERROR: value type int4 doesn't match type citext of column "citext"
+SQLSTATE: 42804
+> INSERT INTO caster (int2)          VALUES ('12'::text);
+ERROR: value type string doesn't match type int2 of column "int2"
+SQLSTATE: 42804
+> INSERT INTO caster (text)          VALUES ('12'::int2);
+ERROR: value type int2 doesn't match type string of column "text"
+SQLSTATE: 42804
+> INSERT INTO caster (int2)          VALUES ('12'::citext);
+ERROR: value type citext doesn't match type int2 of column "int2"
+SQLSTATE: 42804
+> INSERT INTO caster (citext)        VALUES ('12'::int2);
+ERROR: value type int2 doesn't match type citext of column "citext"
+SQLSTATE: 42804
+> INSERT INTO caster (inet)          VALUES ('192.168.100.128'::text);
+ERROR: value type string doesn't match type inet of column "inet"
+SQLSTATE: 42804
+> INSERT INTO caster (text)          VALUES ('192.168.100.128'::inet);
+ERROR: value type inet doesn't match type string of column "text"
+SQLSTATE: 42804
+> INSERT INTO caster (inet)          VALUES ('192.168.100.128'::citext);
+ERROR: value type citext doesn't match type inet of column "inet"
+SQLSTATE: 42804
+> INSERT INTO caster (citext)        VALUES ('192.168.100.128'::inet);
+ERROR: value type inet doesn't match type citext of column "citext"
+SQLSTATE: 42804
+> INSERT INTO caster (timestamp)     VALUES ('1999-01-08 04:05:06'::text);
+ERROR: value type string doesn't match type timestamp of column "timestamp"
+SQLSTATE: 42804
+> INSERT INTO caster (text)          VALUES ('1999-01-08 04:05:06'::timestamp);
+ERROR: value type timestamp(9) doesn't match type string of column "text"
+SQLSTATE: 42804
+> INSERT INTO caster (timestamp)     VALUES ('1999-01-08 04:05:06'::citext);
+ERROR: value type citext doesn't match type timestamp of column "timestamp"
+SQLSTATE: 42804
+> INSERT INTO caster (citext)        VALUES ('1999-01-08 04:05:06'::timestamp);
+ERROR: value type timestamp(9) doesn't match type citext of column "citext"
+SQLSTATE: 42804
+> INSERT INTO caster (timestamptz)   VALUES ('1999-01-08 04:05:06'::text);
+ERROR: value type string doesn't match type timestamptz of column "timestamptz"
+SQLSTATE: 42804
+> INSERT INTO caster (text)          VALUES ('1999-01-08 04:05:06'::timestamptz);
+ERROR: value type timestamptz(9) doesn't match type string of column "text"
+SQLSTATE: 42804
+> INSERT INTO caster (timestamptz)   VALUES ('1999-01-08 04:05:06'::citext);
+ERROR: value type citext doesn't match type timestamptz of column "timestamptz"
+SQLSTATE: 42804
+> INSERT INTO caster (citext)        VALUES ('1999-01-08 04:05:06'::timestamptz);
+ERROR: value type timestamptz(9) doesn't match type citext of column "citext"
+SQLSTATE: 42804
+> INSERT INTO caster (interval)      VALUES ('1 hour'::text);
+ERROR: value type string doesn't match type interval of column "interval"
+SQLSTATE: 42804
+> INSERT INTO caster (text)          VALUES ('1 hour'::interval);
+ERROR: value type interval doesn't match type string of column "text"
+SQLSTATE: 42804
+> INSERT INTO caster (interval)      VALUES ('1 hour'::citext);
+ERROR: value type citext doesn't match type interval of column "interval"
+SQLSTATE: 42804
+> INSERT INTO caster (citext)        VALUES ('1 hour'::interval);
+ERROR: value type interval doesn't match type citext of column "citext"
+SQLSTATE: 42804
+> INSERT INTO caster (date)          VALUES ('1999-01-08'::text);
+ERROR: value type string doesn't match type date of column "date"
+SQLSTATE: 42804
+> INSERT INTO caster (text)          VALUES ('1999-01-08'::date);
+ERROR: value type date doesn't match type string of column "text"
+SQLSTATE: 42804
+> INSERT INTO caster (date)          VALUES ('1999-01-08'::citext);
+ERROR: value type citext doesn't match type date of column "date"
+SQLSTATE: 42804
+> INSERT INTO caster (citext)        VALUES ('1999-01-08'::date);
+ERROR: value type date doesn't match type citext of column "citext"
+SQLSTATE: 42804
+> INSERT INTO caster (time)          VALUES ('04:05:06'::text);
+ERROR: value type string doesn't match type time of column "time"
+SQLSTATE: 42804
+> INSERT INTO caster (text)          VALUES ('04:05:06'::time);
+ERROR: value type time doesn't match type string of column "text"
+SQLSTATE: 42804
+> INSERT INTO caster (time)          VALUES ('04:05:06'::citext);
+ERROR: value type citext doesn't match type time of column "time"
+SQLSTATE: 42804
+> INSERT INTO caster (citext)        VALUES ('04:05:06'::time);
+ERROR: value type time doesn't match type citext of column "citext"
+SQLSTATE: 42804
+> INSERT INTO caster (timetz)        VALUES ('04:05:06'::text);
+ERROR: value type string doesn't match type timetz of column "timetz"
+SQLSTATE: 42804
+> INSERT INTO caster (text)          VALUES ('04:05:06'::timetz);
+ERROR: value type timetz doesn't match type string of column "text"
+SQLSTATE: 42804
+> INSERT INTO caster (timetz)        VALUES ('04:05:06'::citext);
+ERROR: value type citext doesn't match type timetz of column "timetz"
+SQLSTATE: 42804
+> INSERT INTO caster (citext)        VALUES ('04:05:06'::timetz);
+ERROR: value type timetz doesn't match type citext of column "citext"
+SQLSTATE: 42804
+> INSERT INTO caster (bit)           VALUES ('101'::text);
+ERROR: value type string doesn't match type bit of column "bit"
+SQLSTATE: 42804
+> INSERT INTO caster (text)          VALUES ('101'::bit);
+ERROR: value type bit doesn't match type string of column "text"
+SQLSTATE: 42804
+> INSERT INTO caster (bit)           VALUES ('101'::citext);
+ERROR: value type citext doesn't match type bit of column "bit"
+SQLSTATE: 42804
+> INSERT INTO caster (citext)        VALUES ('101'::bit);
+ERROR: value type bit doesn't match type citext of column "citext"
+SQLSTATE: 42804
+> INSERT INTO caster (bitv)          VALUES ('101'::text);
+ERROR: value type string doesn't match type varbit of column "bitv"
+SQLSTATE: 42804
+> INSERT INTO caster (text)          VALUES ('101'::bit varying);
+ERROR: value type varbit doesn't match type string of column "text"
+SQLSTATE: 42804
+> INSERT INTO caster (bitv)          VALUES ('101'::citext);
+ERROR: value type citext doesn't match type varbit of column "bitv"
+SQLSTATE: 42804
+> INSERT INTO caster (citext)        VALUES ('101'::bit varying);
+ERROR: value type varbit doesn't match type citext of column "citext"
+SQLSTATE: 42804
+> INSERT INTO caster (uuid)          VALUES ('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::text);
+ERROR: value type string doesn't match type uuid of column "uuid"
+SQLSTATE: 42804
+> INSERT INTO caster (text)          VALUES ('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid);
+ERROR: value type uuid doesn't match type string of column "text"
+SQLSTATE: 42804
+> INSERT INTO caster (uuid)          VALUES ('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::citext);
+ERROR: value type citext doesn't match type uuid of column "uuid"
+SQLSTATE: 42804
+> INSERT INTO caster (citext)        VALUES ('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid);
+ERROR: value type uuid doesn't match type citext of column "citext"
+SQLSTATE: 42804
+> SELECT 'D'::citext || 'avid'::citext = 'David'::citext AS citext_concat;
+  citext_concat
+-----------------
+      true
+(1 row)
+> SELECT 'Value: '::citext || 42 = 'Value: 42' AS text_concat;
+ERROR: unsupported binary operator: <citext> || <int>
+SQLSTATE: 22023
+> SELECT  42 || ': value'::citext ='42: value' AS int_concat;
+ERROR: unsupported binary operator: <int> || <citext>
+SQLSTATE: 22023
+> SELECT bit_length('jose'::citext) = 32 AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT bit_length( name ) = bit_length( name::text ) AS t FROM srt;
+   t
+--------
+  true
+  true
+  true
+  true
+(4 rows)
+> SELECT char_length( name ) = char_length( name::text ) AS t FROM srt;
+   t
+--------
+  true
+  true
+  true
+  true
+(4 rows)
+> SELECT lower( name ) = lower( name::text ) AS t FROM srt;
+   t
+--------
+  true
+  true
+  true
+  true
+(4 rows)
+> SELECT octet_length( name ) = octet_length( name::text ) AS t FROM srt;
+   t
+--------
+  true
+  true
+  true
+  true
+(4 rows)
+> SELECT overlay( name placing 'hom' from 2 for 4) = overlay( name::text placing 'hom' from 2 for 4) AS t FROM srt;
+   t
+--------
+  true
+  true
+  true
+  true
+(4 rows)
+> SELECT position( 'a' IN name ) = position( 'a' IN name::text ) AS t FROM srt;
+    t
+---------
+  true
+  false
+  false
+  true
+(4 rows)
+> SELECT substr('alphabet'::citext, 3)       = 'phabet' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT substr('alphabet'::citext, 3, 2)    = 'ph' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT substring('alphabet'::citext, 3)    = 'phabet' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT substring('alphabet'::citext, 3, 2) = 'ph' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT substring('Thomas'::citext from 2 for 3) = 'hom' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT substring('Thomas'::citext from 2) = 'homas' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT substring('Thomas'::citext from '...$') = 'mas' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT trim('    trim    '::citext)               = 'trim' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT trim('xxxxxtrimxxxx'::citext, 'x'::citext) = 'trim' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT trim('xxxxxxtrimxxxx'::text,  'x'::citext) = 'trim' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT trim('xxxxxtrimxxxx'::text,   'x'::citext) = 'trim' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT upper( name ) = upper( name::text ) AS t FROM srt;
+   t
+--------
+  true
+  true
+  true
+  true
+(4 rows)
+> SELECT ascii( name ) = ascii( name::text ) AS t FROM srt;
+   t
+--------
+  true
+  true
+  true
+  true
+(4 rows)
+> SELECT btrim('    trim'::citext                   ) = 'trim' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT btrim('xxxxxtrimxxxx'::citext, 'x'::citext ) = 'trim' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT btrim('xyxtrimyyx'::citext,    'xy'::citext) = 'trim' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT btrim('xyxtrimyyx'::text,      'xy'::citext) = 'trim' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT btrim('xyxtrimyyx'::citext,    'xy'::text  ) = 'trim' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT decode('MTIzAAE='::citext, 'base64') = decode('MTIzAAE='::text, 'base64') AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT initcap('hi THOMAS'::citext) = initcap('hi THOMAS'::text) AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT length( name ) = length( name::text ) AS t FROM srt;
+   t
+--------
+  true
+  true
+  true
+  true
+(4 rows)
+> SELECT lpad('hi'::citext, 5              ) = '   hi' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT lpad('hi'::citext, 5, 'xy'::citext) = 'xyxhi' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT lpad('hi'::text,   5, 'xy'::citext) = 'xyxhi' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT lpad('hi'::citext, 5, 'xy'::text  ) = 'xyxhi' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT ltrim('    trim'::citext               ) = 'trim' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT ltrim('zzzytrim'::citext, 'xyz'::citext) = 'trim' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT ltrim('zzzytrim'::text,   'xyz'::citext) = 'trim' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT ltrim('zzzytrim'::citext, 'xyz'::text  ) = 'trim' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT quote_ident( name ) = quote_ident( name::text ) AS t FROM srt;
+   t
+--------
+  true
+  true
+  true
+  true
+(4 rows)
+> SELECT quote_literal( name ) = quote_literal( name::text ) AS t FROM srt;
+   t
+--------
+  true
+  true
+  true
+  true
+(4 rows)
+> SELECT regexp_replace('Thomas'::citext, '.[mN]a.',         'M') = 'ThM' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT regexp_replace('Thomas'::citext, '.[MN]A.',         'M') = 'ThM' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT regexp_replace('Thomas',         '.[MN]A.'::citext, 'M') = 'ThM' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT regexp_replace('Thomas'::citext, '.[MN]A.'::citext, 'M') = 'ThM' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT regexp_replace('Thomas'::citext, '.[MN]A.'::citext, 'M', 'c') = 'Thomas' AS t;
+    t
+---------
+  false
+(1 row)
+> SELECT repeat('Pg'::citext, 4) = 'PgPgPgPg' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT replace('abcdefabcdef'::citext, 'cd', 'XX') = 'abXXefabXXef' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT replace('abcdefabcdef'::citext, 'CD', 'XX') = 'abXXefabXXef' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT replace('ab^is$abcdef'::citext, '^is$', 'XX') = 'abXXabcdef' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT replace('abcdefabcdef', 'cd'::citext, 'XX') = 'abXXefabXXef' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT replace('abcdefabcdef', 'CD'::citext, 'XX') = 'abXXefabXXef' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT replace('ab^is$abcdef', '^is$'::citext, 'XX') = 'abXXabcdef' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT replace('abcdefabcdef'::citext, 'cd'::citext, 'XX') = 'abXXefabXXef' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT replace('abcdefabcdef'::citext, 'CD'::citext, 'XX') = 'abXXefabXXef' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT replace('ab^is$abcdef'::citext, '^is$'::citext, 'XX') = 'abXXabcdef' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT rpad('hi'::citext, 5              ) = 'hi   ' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT rpad('hi'::citext, 5, 'xy'::citext) = 'hixyx' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT rpad('hi'::text,   5, 'xy'::citext) = 'hixyx' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT rpad('hi'::citext, 5, 'xy'::text  ) = 'hixyx' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT rtrim('trim    '::citext             ) = 'trim' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT rtrim('trimxxxx'::citext, 'x'::citext) = 'trim' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT rtrim('trimxxxx'::text,   'x'::citext) = 'trim' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT rtrim('trimxxxx'::text,   'x'::text  ) = 'trim' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT split_part('abc~@~def~@~ghi'::citext, '~@~', 2) = 'def' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT split_part('abcTdefTghi'::citext, 't', 2) = 'def' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT split_part('abcTdefTghi'::citext, 't'::citext, 2) = 'def' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT split_part('abcTdefTghi', 't'::citext, 2) = 'def' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT strpos('high'::citext, 'gh'        ) = 3 AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT strpos('high',         'gh'::citext) = 3 AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT strpos('high'::citext, 'gh'::citext) = 3 AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT strpos('high'::citext, 'GH'        ) = 3 AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT strpos('high',         'GH'::citext) = 3 AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT strpos('high'::citext, 'GH'::citext) = 3 AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT substr('alphabet', 3, 2) = 'ph' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT translate('abcdefabcdef'::citext, 'cd',         'XX') = 'abXXefabXXef' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT translate('abcdefabcdef'::citext, 'CD',         'XX') = 'abXXefabXXef' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT translate('abcdefabcdef'::citext, 'CD'::citext, 'XX') = 'abXXefabXXef' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT translate('abcdefabcdef',         'CD'::citext, 'XX') = 'abXXefabXXef' AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT str_to_date('2000-01-01'::citext, '%Y-%m-%d'::citext)
+           = str_to_date('2000-01-01',         '%Y-%m-%d') AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT str_to_date('2000-01-01'::citext, '%Y-%m-%d')
+           = str_to_date('2000-01-01',         '%Y-%m-%d') AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT str_to_date('2000-01-01',         '%Y-%m-%d'::citext)
+           = str_to_date('2000-01-01',         '%Y-%m-%d') AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT to_timestamp('2000-01-01 01:01:01.1'::citext, 'YYYY-MM-DD HH24:MI:SS.US'::citext)
+           = to_timestamp('2000-01-01 01:01:01.1',         'YYYY-MM-DD HH24:MI:SS.US') AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT to_timestamp('2000-01-01 01:01:01.1'::citext, 'YYYY-MM-DD HH24:MI:SS.US')
+           = to_timestamp('2000-01-01 01:01:01.1',         'YYYY-MM-DD HH24:MI:SS.US') AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT to_timestamp('2000-01-01 01:01:01.1',         'YYYY-MM-DD HH24:MI:SS.US'::citext)
+           = to_timestamp('2000-01-01 01:01:01.1',         'YYYY-MM-DD HH24:MI:SS.US') AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 8::bigint AS t FROM try;
+   t
+--------
+  true
+(1 row)
+> INSERT INTO try
+VALUES
+    (lower('ABCde')),
+    (upper('abcD')),
+    (substring('abcdef', 1, 3)),
+    (replace('abcabc', 'ab', 'XY')),
+    (concat('D', 'avid')),
+    (CAST(now() AS STRING)),
+    (CAST(current_date AS STRING)),
+    (CAST(125 AS STRING));
+INSERT 8
+> SELECT COUNT(*) = 16::bigint AS t FROM try;
+   t
+--------
+  true
+(1 row)
+> SELECT like_escape( name, '' ) = like_escape( name::text, '' ) AS t FROM srt;
+ERROR: unknown signature: like_escape(citext, STRING)
+SQLSTATE: 42883
+> SELECT like_escape( name,name, '' ) = like_escape( name::text, name::text, '' ) AS t FROM srt;
+   t
+--------
+  true
+  true
+  true
+  true
+(4 rows)
+> SELECT like_escape( name::text, ''::citext ) = like_escape( name::text, '' ) AS t FROM srt;
+ERROR: unknown signature: like_escape(STRING, citext)
+SQLSTATE: 42883
+> SELECT like_escape( name::text,name::text, ''::citext ) = like_escape( name::text,name::text, '' ) AS t FROM srt;
+   t
+--------
+  true
+  true
+  true
+  true
+(4 rows)
+> CREATE TABLE citext_table (
+                              id serial primary key,
+                              name citext
+);
+CREATE TABLE
+> INSERT INTO citext_table (name)
+VALUES ('one'), ('two'), ('three'), (NULL), (NULL);
+INSERT 5
+> CREATE MATERIALIZED VIEW citext_matview AS
+SELECT * FROM citext_table;
+CREATE VIEW
+> CREATE UNIQUE INDEX citext_matview_id
+    ON citext_matview (id);
+ERROR: cannot create unique index on materialized view citext_matview
+SQLSTATE: 42P17
+> SELECT m.name,t.name
+FROM citext_matview m
+         FULL JOIN citext_table t ON (t.name::text = m.name)
+WHERE t.name IS NOT NULL and m.name IS NOT NULL;
+  name  | name
+--------+--------
+  one   | one
+  two   | two
+  three | three
+(3 rows)
+> UPDATE citext_table SET name = 'Two' WHERE name = 'TWO';
+UPDATE 1
+> SELECT m.name,t.name
+FROM citext_matview m
+         FULL JOIN citext_table t ON (t.name::text = m.name)
+WHERE t.name IS NOT NULL and m.name IS NOT NULL;
+  name  | name
+--------+--------
+  one   | one
+  three | three
+(2 rows)
+> REFRESH MATERIALIZED VIEW citext_matview;
+REFRESH MATERIALIZED VIEW
+> SELECT name FROM citext_matview ORDER BY id;
+  name
+---------
+  one
+  Two
+  three
+  NULL
+  NULL
+(5 rows)
+> SELECT 'ABA'::citext NOT IN ('abc', 'abd') AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'ABA'::citext NOT IN ('ABA', 'abd') AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT 'ABA'::citext NOT IN ('ABA'::text) AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT 'aba'::text NOT IN (SELECT name FROM srt) AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'ABA'::citext NOT IN ('zzz', NULL::citext) IS NULL AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'ABA'::text   NOT IN ('zzz'::citext, NULL::citext) IS NULL AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'ABA'::citext NOT IN (SELECT name FROM citext_table) IS NULL AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'ABA'::text   NOT IN (SELECT name FROM citext_table) IS NULL AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 3::bigint AS t
+FROM (
+         SELECT name
+         FROM srt_distinct
+         GROUP BY name
+     ) g;
+   t
+--------
+  true
+(1 row)
+> SELECT SUM(cnt) = 5::bigint AS t
+FROM (
+         SELECT COUNT(*) AS cnt
+         FROM srt_distinct
+         GROUP BY name
+     ) g;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 1::bigint AS t
+FROM (
+         SELECT name
+         FROM srt_distinct
+         GROUP BY name
+         HAVING name = 'ABA'
+     ) g;
+   t
+--------
+  true
+(1 row)
+> CREATE TABLE srt_join (
+                          name CITEXT
+);
+CREATE TABLE
+> INSERT INTO srt_join VALUES ('aba'), ('ABC');
+INSERT 2
+> SELECT COUNT(*) = 2::bigint AS t
+FROM srt a
+         JOIN srt_join b ON a.name = b.name;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 1::bigint AS t
+FROM srt a
+         JOIN srt_join b ON a.name = b.name::text;
+   t
+--------
+  true
+(1 row)
+> SELECT 'ABA'::citext = ANY (ARRAY['aba', 'zzz']::citext[]) AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'aba'::text   = ANY (ARRAY['ABA', 'zzz']::citext[]) AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT 'ABA'::citext = ALL (ARRAY['aba', 'ABA']::citext[]) AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'ABA'::citext = SOME (ARRAY['zzz', 'aba']::citext[]) AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'ABC'::citext LIKE  'a%'::text AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT 'ABC'::citext ILIKE 'a%'::text AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'ABC'::citext ~  '^a'::text AS f;  --fail
+    f
+---------
+  false
+(1 row)
+> SELECT 'ABC'::citext ~* '^a'::text AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'ABC'::citext NOT SIMILAR TO 'z%'::text AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'ab'::citext  = any ('ab'::citext,'b') AS f;
+   f
+--------
+  true
+(1 row)
+> SELECT 'AB'::citext  = any ('ab'::citext,'b') AS f;
+   f
+--------
+  true
+(1 row)
+> SELECT 'AB'  = any ('ab'::citext,'b') AS f;
+   f
+--------
+  true
+(1 row)
+> SELECT 'AB'::text  = any ('ab'::citext,'b') AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT 'AB'::text  = any ('ab'::citext,'b'::text) AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT 'AB'::citext  = any ('ab'::citext,'b'::text) AS f;
+    f
+---------
+  false
+(1 row)
+> CREATE TABLE proc_citext_log (
+                                 msg STRING
+);
+CREATE TABLE
+> CREATE PROCEDURE proc_citext_var_basic()
+BEGIN
+DECLARE
+v CITEXT;
+    set v = 'TeSt';
+INSERT INTO proc_citext_log VALUES (v::STRING);
+END ;
+CREATE PROCEDURE
+> CALL proc_citext_var_basic();
+CALL PROCEDURE
+> SELECT msg FROM proc_citext_log ORDER BY msg;
+  msg
+--------
+  TeSt
+(1 row)
+> drop procedure proc_citext_var_basic;
+DROP PROCEDURE
+> CREATE PROCEDURE proc_citext_assign_from_text()
+BEGIN
+DECLARE
+t TEXT;
+DECLARE
+v CITEXT;
+    set t = 'AbC';
+    set v = t;
+INSERT INTO proc_citext_log VALUES (v::STRING);
+END ;
+CREATE PROCEDURE
+> CALL proc_citext_assign_from_text();
+CALL PROCEDURE
+> SELECT msg FROM proc_citext_log ORDER BY msg;
+  msg
+--------
+  AbC
+  TeSt
+(2 rows)
+> drop procedure proc_citext_assign_from_text;
+DROP PROCEDURE
+> CREATE PROCEDURE proc_citext_assign_from_text2()
+BEGIN
+DECLARE
+t TEXT;
+DECLARE
+v CITEXT;
+    set v = 'abC';
+    set t = v;
+INSERT INTO proc_citext_log VALUES (v::STRING);
+END ;
+CREATE PROCEDURE
+> CALL proc_citext_assign_from_text2();
+CALL PROCEDURE
+> SELECT msg FROM proc_citext_log ORDER BY msg;
+  msg
+--------
+  AbC
+  TeSt
+  abC
+(3 rows)
+> drop procedure proc_citext_assign_from_text2;
+DROP PROCEDURE
+> CREATE TABLE proc_citext_src (
+                                 id   INT PRIMARY KEY,
+                                 name CITEXT
+);
+CREATE TABLE
+> INSERT INTO proc_citext_src VALUES
+                                (1, 'One'),
+                                (2, 'TWO');
+INSERT 2
+> CREATE PROCEDURE proc_citext_select_into()
+BEGIN
+DECLARE
+v CITEXT;
+SELECT name INTO v
+FROM proc_citext_src
+WHERE id = 2;
+
+INSERT INTO proc_citext_log VALUES (v::STRING);
+END ;
+CREATE PROCEDURE
+> CALL proc_citext_select_into();
+CALL PROCEDURE
+> SELECT msg FROM proc_citext_log ORDER BY msg;
+  msg
+--------
+  AbC
+  TWO
+  TeSt
+  abC
+(4 rows)
+> drop procedure proc_citext_select_into;
+DROP PROCEDURE
+> CREATE  PROCEDURE proc_citext_if_compare()
+BEGIN
+DECLARE
+v CITEXT;
+    set v = 'AbC';
+
+    IF v = 'abc' THEN
+        INSERT INTO proc_citext_log VALUES ('eq_true');
+ELSE
+        INSERT INTO proc_citext_log VALUES ('eq_false');
+    ENDIF;
+END ;
+CREATE PROCEDURE
+> CALL proc_citext_if_compare();
+CALL PROCEDURE
+> SELECT msg FROM proc_citext_log ORDER BY msg;
+    msg
+-----------
+  AbC
+  TWO
+  TeSt
+  abC
+  eq_true
+(5 rows)
+> drop procedure proc_citext_if_compare;
+DROP PROCEDURE
+> CREATE PROCEDURE proc_citext_if_compare_text()
+BEGIN
+DECLARE
+v CITEXT;
+DECLARE
+t TEXT;
+    set v = 'AbC';
+    set t = 'abc';
+
+    IF v = t THEN
+        INSERT INTO proc_citext_log VALUES ('text_eq_true');
+ELSE
+        INSERT INTO proc_citext_log VALUES ('text_eq_false');
+    ENDIF;
+END ;
+CREATE PROCEDURE
+> CALL proc_citext_if_compare_text();
+CALL PROCEDURE
+> SELECT msg FROM proc_citext_log ORDER BY msg;
+       msg
+-----------------
+  AbC
+  TWO
+  TeSt
+  abC
+  eq_true
+  text_eq_false
+(6 rows)
+> drop procedure proc_citext_if_compare_text;
+DROP PROCEDURE
+> CREATE PROCEDURE proc_citext_param(p CITEXT)
+BEGIN
+    IF p = 'hello' THEN
+        INSERT INTO proc_citext_log VALUES ('param_match');
+ELSE
+        INSERT INTO proc_citext_log VALUES ('param_no_match');
+    ENDIF;
+END ;
+CREATE PROCEDURE
+> CALL proc_citext_param('HeLLo');
+CALL PROCEDURE
+> SELECT msg FROM proc_citext_log ORDER BY msg;
+       msg
+-----------------
+  AbC
+  TWO
+  TeSt
+  abC
+  eq_true
+  param_match
+  text_eq_false
+(7 rows)
+> drop procedure proc_citext_param;
+DROP PROCEDURE
+> CREATE TABLE proc_citext_dml (
+                                 id   INT PRIMARY KEY,
+                                 name CITEXT
+);
+CREATE TABLE
+> CREATE PROCEDURE proc_citext_insert_update()
+BEGIN
+DECLARE
+v CITEXT;
+    set v = 'TeSt';
+
+INSERT INTO proc_citext_dml VALUES (1, v);
+
+UPDATE proc_citext_dml
+SET name = 'XyZ'
+WHERE name = 'test';
+END ;
+CREATE PROCEDURE
+> CALL proc_citext_insert_update();
+CALL PROCEDURE
+> SELECT id, name FROM proc_citext_dml ORDER BY id;
+  id | name
+-----+-------
+   1 | XyZ
+(1 row)
+> drop procedure proc_citext_insert_update;
+DROP PROCEDURE
+> CREATE PROCEDURE proc_citext_null()
+BEGIN
+DECLARE
+v CITEXT;
+    set v = NULL;
+
+    IF v IS NULL THEN
+        INSERT INTO proc_citext_log VALUES ('null_ok');
+ELSE
+        INSERT INTO proc_citext_log VALUES ('null_bad');
+    ENDIF;
+END ;
+CREATE PROCEDURE
+> CALL proc_citext_null();
+CALL PROCEDURE
+> SELECT msg FROM proc_citext_log ORDER BY msg;
+       msg
+-----------------
+  AbC
+  TWO
+  TeSt
+  abC
+  eq_true
+  null_ok
+  param_match
+  text_eq_false
+(8 rows)
+> drop procedure proc_citext_null;
+DROP PROCEDURE
+> CREATE PROCEDURE proc_citext_string_ops()
+BEGIN
+DECLARE
+v CITEXT;
+    set v = 'Alpha-Beta';
+
+    IF split_part(v, '-', 1) = 'Alpha' THEN
+        INSERT INTO proc_citext_log VALUES ('split_ok');
+    ENDIF;
+
+    IF v LIKE '%beta%' THEN
+        INSERT INTO proc_citext_log VALUES ('like_ok');
+    ENDIF;
+END ;
+CREATE PROCEDURE
+> CALL proc_citext_string_ops();
+CALL PROCEDURE
+> SELECT msg FROM proc_citext_log ORDER BY msg;
+       msg
+-----------------
+  AbC
+  TWO
+  TeSt
+  abC
+  eq_true
+  like_ok
+  null_ok
+  param_match
+  split_ok
+  text_eq_false
+(10 rows)
+> drop procedure proc_citext_string_ops;
+DROP PROCEDURE
+> DROP TABLE IF EXISTS prep_citext_t;
+DROP TABLE
+> CREATE TABLE prep_citext_t (
+                               id   INT PRIMARY KEY,
+                               name CITEXT
+);
+CREATE TABLE
+> INSERT INTO prep_citext_t VALUES
+                              (1, 'AbC'),
+                              (2, 'TeSt'),
+                              (3, 'XYZ');
+INSERT 3
+> PREPARE prep_eq_citext (CITEXT) AS
+SELECT 'ABC'::CITEXT = $1;
+PREPARE
+> EXECUTE prep_eq_citext('abc');
+  ?column?
+------------
+    true
+(1 row)
+> PREPARE prep_eq_text (TEXT) AS
+SELECT 'ABC'::CITEXT = $1;
+PREPARE
+> EXECUTE prep_eq_text('abc');
+  ?column?
+------------
+   false
+(1 row)
+> PREPARE prep_eq_infer AS
+SELECT 'ABC'::CITEXT = $1;
+PREPARE
+> EXECUTE prep_eq_infer('abc');
+  ?column?
+------------
+    true
+(1 row)
+> PREPARE prep_like_citext (CITEXT) AS
+SELECT 'Alpha'::CITEXT LIKE $1;
+PREPARE
+> EXECUTE prep_like_citext('a%');
+  ?column?
+------------
+    true
+(1 row)
+> PREPARE prep_like_text (TEXT) AS
+SELECT 'Alpha'::CITEXT LIKE $1;
+PREPARE
+> EXECUTE prep_like_text('a%');
+  ?column?
+------------
+   false
+(1 row)
+> PREPARE prep_ilike_text (TEXT) AS
+SELECT 'Alpha'::CITEXT ILIKE $1;
+PREPARE
+> EXECUTE prep_ilike_text('a%');
+  ?column?
+------------
+    true
+(1 row)
+> PREPARE prep_regex_citext (CITEXT) AS
+SELECT 'Alpha'::CITEXT ~ $1;
+PREPARE
+> EXECUTE prep_regex_citext('^a');
+  ?column?
+------------
+    true
+(1 row)
+> PREPARE prep_regex_text (TEXT) AS
+SELECT 'Alpha'::CITEXT ~ $1;
+PREPARE
+> EXECUTE prep_regex_text('^a');
+  ?column?
+------------
+   false
+(1 row)
+> PREPARE prep_where_citext (CITEXT) AS
+SELECT id FROM prep_citext_t WHERE name = $1 ORDER BY id;
+PREPARE
+> EXECUTE prep_where_citext('abc');
+  id
+------
+   1
+(1 row)
+> PREPARE prep_where_text (TEXT) AS
+SELECT id FROM prep_citext_t WHERE name = $1 ORDER BY id;
+PREPARE
+> EXECUTE prep_where_text('abc');
+  id
+------
+(0 rows)
+> PREPARE prep_insert_text (INT, TEXT) AS
+    INSERT INTO prep_citext_t VALUES ($1, $2);
+PREPARE
+> EXECUTE prep_insert_text(10, 'MiXeD');
+INSERT 1
+> SELECT name FROM prep_citext_t WHERE id = 10;
+  name
+---------
+  MiXeD
+(1 row)
+> PREPARE prep_update_text (TEXT, INT) AS
+UPDATE prep_citext_t SET name = $1 WHERE id = $2;
+PREPARE
+> EXECUTE prep_update_text('UpDaTeD', 10);
+UPDATE 1
+> SELECT name FROM prep_citext_t WHERE id = 10;
+   name
+-----------
+  UpDaTeD
+(1 row)
+> PREPARE prep_split_citext (CITEXT) AS
+SELECT split_part($1, '-', 1);
+PREPARE
+> EXECUTE prep_split_citext('AbC-DeF');
+  split_part
+--------------
+  AbC
+(1 row)
+> PREPARE prep_replace_citext (CITEXT) AS
+SELECT replace($1, 'abc', 'X');
+PREPARE
+> EXECUTE prep_replace_citext('AbC-AbC');
+  replace
+-----------
+  X-X
+(1 row)
+> PREPARE prep_in_citext (CITEXT) AS
+SELECT $1 IN (SELECT name FROM prep_citext_t);
+PREPARE
+> EXECUTE prep_in_citext('abc');
+  ?column?
+------------
+    true
+(1 row)
+> PREPARE prep_in_text (TEXT) AS
+SELECT $1 IN (SELECT name FROM prep_citext_t);
+PREPARE
+> EXECUTE prep_in_text('abc');
+  ?column?
+------------
+   false
+(1 row)
+> PREPARE prep_eq_null (CITEXT) AS
+SELECT 'ABC'::CITEXT = $1;
+PREPARE
+> EXECUTE prep_eq_null(NULL);
+  ?column?
+------------
+    NULL
+(1 row)
+> PREPARE t1 AS SELECT $1[2] LIKE 'b';
+PREPARE
+> EXECUTE t1(array['a','b']);
+  ?column?
+------------
+    true
+(1 row)
+> PREPARE t2 AS SELECT $1[2] ILIKE 'B';
+PREPARE
+> EXECUTE t2(array['a','B']);
+  ?column?
+------------
+    true
+(1 row)
+> PREPARE t3 AS SELECT $1[2] SIMILAR TO 'b';
+PREPARE
+> EXECUTE t3(array['a','a']);
+  ?column?
+------------
+   false
+(1 row)
+> prepare query_type_delim_plan (int4) as
+select e.typdelim from pg_catalog.pg_type t, pg_catalog.pg_type e where t.oid = $1 and t.typelem = e.oid;
+PREPARE
+> DEALLOCATE prep_eq_citext;
+DEALLOCATE
+> DEALLOCATE prep_eq_text;
+DEALLOCATE
+> DEALLOCATE prep_eq_infer;
+DEALLOCATE
+> DEALLOCATE prep_like_citext;
+DEALLOCATE
+> DEALLOCATE prep_like_text;
+DEALLOCATE
+> DEALLOCATE prep_ilike_text;
+DEALLOCATE
+> DEALLOCATE prep_regex_citext;
+DEALLOCATE
+> DEALLOCATE prep_regex_text;
+DEALLOCATE
+> DEALLOCATE prep_where_citext;
+DEALLOCATE
+> DEALLOCATE prep_where_text;
+DEALLOCATE
+> DEALLOCATE prep_insert_text;
+DEALLOCATE
+> DEALLOCATE prep_update_text;
+DEALLOCATE
+> DEALLOCATE prep_split_citext;
+DEALLOCATE
+> DEALLOCATE prep_replace_citext;
+DEALLOCATE
+> DEALLOCATE prep_in_citext;
+DEALLOCATE
+> DEALLOCATE prep_in_text;
+DEALLOCATE
+> DEALLOCATE prep_in_infer;
+ERROR: prepared statement "prep_in_infer" does not exist
+SQLSTATE: 26000
+> DEALLOCATE prep_eq_null;
+DEALLOCATE
+> DEALLOCATE t1;
+DEALLOCATE
+> DEALLOCATE t2;
+DEALLOCATE
+> DEALLOCATE t3;
+DEALLOCATE
+> DEALLOCATE query_type_delim_plan;
+DEALLOCATE
+> DROP TABLE IF EXISTS citext_udv_t;
+DROP TABLE
+> CREATE TABLE citext_udv_t (
+                              id   INT PRIMARY KEY,
+                              name CITEXT,
+                              dept CITEXT
+);
+CREATE TABLE
+> INSERT INTO citext_udv_t VALUES
+                             (1, 'Alice', 'Sales'),
+                             (2, 'ALICE', 'HR'),
+                             (3, 'Bob',   'Sales'),
+                             (4, 'Charlie', 'Engineering');
+INSERT 4
+> SET @ci_name := 'AbC';
+SET
+> SELECT @ci_name;
+  @ci_name
+------------
+  AbC
+(1 row)
+> SHOW @ci_name;
+  var_name | var_type
+-----------+-----------
+  @ci_name | STRING
+(1 row)
+> SET @CI_name := 'aBc';
+SET
+> SELECT @CI_name;
+  @ci_name
+------------
+  aBc
+(1 row)
+> SHOW @CI_name;
+  var_name | var_type
+-----------+-----------
+  @ci_name | STRING
+(1 row)
+> SET @"CI_name" := 'ABC';
+SET
+> SELECT @"CI_name";
+  @CI_name
+------------
+  ABC
+(1 row)
+> SHOW @"CI_name";
+  var_name | var_type
+-----------+-----------
+  @CI_name | STRING
+(1 row)
+> SET @ci_cast := 'AbC'::CITEXT;
+SET
+> SELECT @ci_cast;
+  @ci_cast
+------------
+  AbC
+(1 row)
+> SHOW @ci_cast;
+  var_name | var_type
+-----------+-----------
+  @ci_cast | CITEXT
+(1 row)
+> SET @ci_cast2 := 'ABC'::CITEXT;
+SET
+> SELECT @ci_cast2 = 'abc'::CITEXT;
+  ?column?
+------------
+    true
+(1 row)
+> SET @first_ci := '';
+SET
+> SELECT name FROM citext_udv_t ORDER BY id LIMIT 1;
+  name
+---------
+  Alice
+(1 row)
+> SELECT name INTO @first_ci FROM citext_udv_t ORDER BY id LIMIT 1;
+SET 1
+> SELECT @first_ci;
+  @first_ci
+-------------
+  Alice
+(1 row)
+> SHOW @first_ci;
+  var_name  | var_type
+------------+-----------
+  @first_ci | CITEXT
+(1 row)
+> SET @first_ci2 := ''::citext;
+SET
+> SELECT name::text FROM citext_udv_t ORDER BY id LIMIT 1;
+  name
+---------
+  Alice
+(1 row)
+> SELECT name::text INTO @first_ci2 FROM citext_udv_t ORDER BY id LIMIT 1;
+SET 1
+> SELECT @first_ci2;
+  @first_ci2
+--------------
+  Alice
+(1 row)
+> SHOW @first_ci2;
+   var_name  | var_type
+-------------+-----------
+  @first_ci2 | STRING
+(1 row)
+> SET @first_dept := '';
+SET
+> SELECT dept INTO @first_dept FROM citext_udv_t ORDER BY id LIMIT 1;
+SET 1
+> SELECT @first_dept;
+  @first_dept
+---------------
+  Sales
+(1 row)
+> SET @ci_key := 'alice';
+SET
+> SELECT id, name FROM citext_udv_t WHERE name = @ci_key ORDER BY id;
+  id | name
+-----+-------
+(0 rows)
+> SELECT id, name FROM citext_udv_t WHERE name = 'ALICE' ORDER BY id;
+  id | name
+-----+--------
+   1 | Alice
+   2 | ALICE
+(2 rows)
+> SET @ci_dept := 'sales';
+SET
+> SELECT id, name, dept FROM citext_udv_t WHERE dept = @ci_dept ORDER BY id;
+  id | name | dept
+-----+------+-------
+(0 rows)
+> SET @plain_txt := 'alice';
+SET
+> SELECT 'Alice'::CITEXT = @plain_txt;
+  ?column?
+------------
+   false
+(1 row)
+> SELECT 'Alice'::CITEXT = @plain_txt::TEXT;
+  ?column?
+------------
+   false
+(1 row)
+> SELECT 'Alice'::CITEXT = @plain_txt::CITEXT;
+  ?column?
+------------
+    true
+(1 row)
+> SET @plain_txt2 := 'sales';
+SET
+> SELECT dept = @plain_txt2 FROM citext_udv_t WHERE id = 1;
+  ?column?
+------------
+   false
+(1 row)
+> SELECT dept = @plain_txt2::TEXT FROM citext_udv_t WHERE id = 1;
+  ?column?
+------------
+   false
+(1 row)
+> SELECT dept = @plain_txt2::CITEXT FROM citext_udv_t WHERE id = 1;
+  ?column?
+------------
+    true
+(1 row)
+> SET @ci_pat := 'a%';
+SET
+> SELECT 'Alice'::CITEXT LIKE @ci_pat;
+  ?column?
+------------
+   false
+(1 row)
+> SELECT 'Alice'::CITEXT ILIKE @ci_pat;
+  ?column?
+------------
+    true
+(1 row)
+> SET @ci_in := 'alice';
+SET
+> SELECT @ci_in::CITEXT IN (SELECT name FROM citext_udv_t);
+  ?column?
+------------
+    true
+(1 row)
+> SELECT @ci_in::TEXT   IN (SELECT name FROM citext_udv_t);
+  ?column?
+------------
+   false
+(1 row)
+> SET @ci_func := 'AbC-DeF'::CITEXT;
+SET
+> SELECT split_part(@ci_func, '-', 1);
+  split_part
+--------------
+  AbC
+(1 row)
+> SELECT strpos(@ci_func, 'bc');
+  strpos
+----------
+       2
+(1 row)
+> SELECT replace(@ci_func, 'abc', 'X');
+  replace
+-----------
+  X-DeF
+(1 row)
+> SELECT translate(@ci_func, 'ad', 'xy');
+  translate
+-------------
+  xbC-yeF
+(1 row)
+> SET @p_name := 'alice';
+SET
+> PREPARE p_ci_1 AS SELECT id, name FROM citext_udv_t WHERE name = $1 ORDER BY id;
+PREPARE
+> EXECUTE p_ci_1(@p_name::CITEXT);
+  id | name
+-----+--------
+   1 | Alice
+   2 | ALICE
+(2 rows)
+> EXECUTE p_ci_1(@p_name::TEXT);
+  id | name
+-----+--------
+   1 | Alice
+   2 | ALICE
+(2 rows)
+> SET @p_pat := 'a%';
+SET
+> PREPARE p_ci_2 AS SELECT 'Alice'::CITEXT LIKE $1;
+PREPARE
+> EXECUTE p_ci_2(@p_pat::CITEXT);
+  ?column?
+------------
+    true
+(1 row)
+> EXECUTE p_ci_2(@p_pat::TEXT);
+  ?column?
+------------
+    true
+(1 row)
+> SET @p_dept := 'sales';
+SET
+> PREPARE p_ci_3 AS SELECT id, name FROM citext_udv_t WHERE dept = $1 ORDER BY id;
+PREPARE
+> EXECUTE p_ci_3(@p_dept::CITEXT);
+  id | name
+-----+--------
+   1 | Alice
+   3 | Bob
+(2 rows)
+> EXECUTE p_ci_3(@p_dept::TEXT);
+  id | name
+-----+--------
+   1 | Alice
+   3 | Bob
+(2 rows)
+> DEALLOCATE PREPARE p_ci_1;
+DEALLOCATE
+> DEALLOCATE PREPARE p_ci_2;
+DEALLOCATE
+> DEALLOCATE PREPARE p_ci_3;
+DEALLOCATE
+> SET @ins_name := 'DaVid'::CITEXT;
+SET
+> SET @ins_dept := 'Sales'::CITEXT;
+SET
+> INSERT INTO citext_udv_t VALUES (10, @ins_name, @ins_dept);
+INSERT 1
+> SELECT * FROM citext_udv_t WHERE id = 10;
+  id | name  | dept
+-----+-------+--------
+  10 | DaVid | Sales
+(1 row)
+> SET @upd_name := 'david';
+SET
+> UPDATE citext_udv_t SET dept = 'HR' WHERE name = @upd_name::CITEXT;
+UPDATE 1
+> SELECT * FROM citext_udv_t WHERE id = 10;
+  id | name  | dept
+-----+-------+-------
+  10 | DaVid | HR
+(1 row)
+> SET @del_name := 'DAVID';
+SET
+> DELETE FROM citext_udv_t WHERE name = @del_name::CITEXT;
+DELETE 1
+> SELECT * FROM citext_udv_t WHERE id = 10;
+  id | name | dept
+-----+------+-------
+(0 rows)
+> SET @ci_null = NULL;
+SET
+> SELECT @ci_null;
+  @ci_null
+------------
+  NULL
+(1 row)
+> SHOW @ci_null;
+  var_name | var_type
+-----------+-----------
+  @ci_null | UNKNOWN
+(1 row)
+> SELECT 'abc'::CITEXT = @ci_null;
+  ?column?
+------------
+  NULL
+(1 row)
+> SELECT @ci_null IS NULL;
+  ?column?
+------------
+    true
+(1 row)
+> DROP TABLE citext_udv_t;
+DROP TABLE
+> CREATE TABLE citext_ins_src (
+     id   INT PRIMARY KEY,
+     name CITEXT,
+     dept CITEXT
+);
+CREATE TABLE
+> INSERT INTO citext_ins_src VALUES
+     (1, 'Alice',   'Sales'),
+     (2, 'ALICE',   'HR'),
+     (3, 'Bob',     'Sales'),
+     (4, 'Charlie', 'Engineering');
+INSERT 4
+> CREATE TABLE citext_ins_dst (
+     id        INT PRIMARY KEY,
+     name      CITEXT,
+     dept      CITEXT,
+     tag_name  STRING,
+     dept_flag STRING
+);
+CREATE TABLE
+> INSERT INTO citext_ins_dst
+SELECT id, name, dept, 'plain_insert_select', 'copied'
+FROM citext_ins_src
+WHERE name = 'alice'::CITEXT
+ORDER BY id;
+INSERT 2
+> SELECT * FROM citext_ins_dst ORDER BY id;
+  id | name  | dept  |      tag_name       | dept_flag
+-----+-------+-------+---------------------+------------
+   1 | Alice | Sales | plain_insert_select | copied
+   2 | ALICE | HR    | plain_insert_select | copied
+(2 rows)
+> INSERT INTO citext_ins_dst
+SELECT id, name, dept, 'text_insert_select', 'copied'
+FROM citext_ins_src
+WHERE name = 'alice'::TEXT
+ORDER BY id;
+INSERT 0
+> SELECT * FROM citext_ins_dst ORDER BY id;
+  id | name  | dept  |      tag_name       | dept_flag
+-----+-------+-------+---------------------+------------
+   1 | Alice | Sales | plain_insert_select | copied
+   2 | ALICE | HR    | plain_insert_select | copied
+(2 rows)
+> INSERT INTO citext_ins_dst
+SELECT
+    id,
+    name,
+    dept,
+    CASE
+        WHEN name = 'alice'::CITEXT THEN 'match_ci'
+        ELSE 'no_match_ci'
+        END,
+    CASE
+        WHEN dept = 'sales'::CITEXT THEN 'sales_ci'
+        ELSE 'other_ci'
+        END
+FROM citext_ins_src
+ORDER BY id;
+ERROR: duplicate key value (id)=(1) violates unique constraint "primary"
+SQLSTATE: 23505
+> SELECT * FROM citext_ins_dst ORDER BY id;
+  id | name  | dept  |      tag_name       | dept_flag
+-----+-------+-------+---------------------+------------
+   1 | Alice | Sales | plain_insert_select | copied
+   2 | ALICE | HR    | plain_insert_select | copied
+(2 rows)
+> SELECT
+    id,
+    name,
+    CASE
+        WHEN name = 'alice'::CITEXT THEN 'match_ci'
+        ELSE 'no_match_ci'
+        END AS case_result_ci
+FROM citext_ins_src
+ORDER BY id;
+  id |  name   | case_result_ci
+-----+---------+-----------------
+   1 | Alice   | match_ci
+   2 | ALICE   | match_ci
+   3 | Bob     | no_match_ci
+   4 | Charlie | no_match_ci
+(4 rows)
+> SELECT
+    id,
+    name,
+    CASE
+        WHEN name = 'alice'::TEXT THEN 'match_text'
+        ELSE 'no_match_text'
+        END AS case_result_text
+FROM citext_ins_src
+ORDER BY id;
+  id |  name   | case_result_text
+-----+---------+-------------------
+   1 | Alice   | no_match_text
+   2 | ALICE   | no_match_text
+   3 | Bob     | no_match_text
+   4 | Charlie | no_match_text
+(4 rows)
+> SELECT
+    id,
+    CASE
+        WHEN name = 'alice'::CITEXT THEN 'name_ci'
+        WHEN dept = 'sales'::CITEXT THEN 'dept_ci'
+        ELSE 'other_ci'
+        END AS multi_branch_case
+FROM citext_ins_src
+ORDER BY id;
+  id | multi_branch_case
+-----+--------------------
+   1 | name_ci
+   2 | name_ci
+   3 | dept_ci
+   4 | other_ci
+(4 rows)
+> SELECT
+    id,
+    CASE
+        WHEN dept = 'sales'::CITEXT THEN name
+        ELSE 'fallback'::CITEXT
+        END AS case_name_ci
+FROM citext_ins_src
+ORDER BY id;
+  id | case_name_ci
+-----+---------------
+   1 | Alice
+   2 | fallback
+   3 | Bob
+   4 | fallback
+(4 rows)
+> DROP TABLE citext_ins_dst;
+DROP TABLE
+> DROP TABLE citext_ins_src;
+DROP TABLE
+> SELECT ARRAY['A', 'B']::CITEXT[] = ARRAY['a', 'b']::CITEXT[] AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT ARRAY['A', 'B']::CITEXT[] <> ARRAY['a', 'b']::CITEXT[] AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT ARRAY['A', 'B']::CITEXT[] = ARRAY['a', 'c']::CITEXT[] AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT ARRAY['A', 'B']::CITEXT[] = ARRAY['a', 'b'] AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT ARRAY['A', 'B'] = ARRAY['a', 'b']::CITEXT[] AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT ARRAY['A', 'B']::CITEXT[] = ARRAY['a', 'b']::TEXT[] AS f;
+ERROR: unsupported comparison operator: <citext[]> = <string[]>
+SQLSTATE: 22023
+> SELECT ARRAY['A', 'B']::TEXT[] = ARRAY['a', 'b']::CITEXT[] AS f;
+ERROR: unsupported comparison operator: <string[]> = <citext[]>
+SQLSTATE: 22023
+> SELECT ARRAY['A', 'B']::CITEXT[] = ARRAY['a', 'b']::VARCHAR[] AS f;
+ERROR: unsupported comparison operator: <citext[]> = <varchar[]>
+SQLSTATE: 22023
+> SELECT ARRAY['A', 'B']::VARCHAR[] = ARRAY['a', 'b']::CITEXT[] AS f;
+ERROR: unsupported comparison operator: <varchar[]> = <citext[]>
+SQLSTATE: 22023
+> SELECT ARRAY['A', 'B']::CITEXT[] = ARRAY['A', 'B']::TEXT[] AS t;
+ERROR: unsupported comparison operator: <citext[]> = <string[]>
+SQLSTATE: 22023
+> SELECT ARRAY['A', 'B']::TEXT[] = ARRAY['A', 'B']::CITEXT[] AS t;
+ERROR: unsupported comparison operator: <string[]> = <citext[]>
+SQLSTATE: 22023
+> SELECT NULL::CITEXT[] IS DISTINCT FROM NULL::CITEXT[] AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT NULL::CITEXT[] IS NOT DISTINCT FROM NULL::CITEXT[] AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT ARRAY['A', NULL]::CITEXT[] IS NOT DISTINCT FROM ARRAY['a', NULL]::CITEXT[] AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT ARRAY['A', NULL]::TEXT[] IS DISTINCT FROM ARRAY['a', NULL]::CITEXT[] AS t;
+ERROR: unsupported comparison operator: <string[]> IS DISTINCT FROM <citext[]>
+SQLSTATE: 22023
+> SELECT ARRAY['A', 'B']::CITEXT[] = ARRAY['a']::CITEXT[] AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT ARRAY['A', 'B']::CITEXT[] = ARRAY['b', 'a']::CITEXT[] AS f;
+    f
+---------
+  false
+(1 row)
+> CREATE TABLE citext_arr_t (
+                              id   INT PRIMARY KEY,
+                              name CITEXT[]
+);
+CREATE TABLE
+> INSERT INTO citext_arr_t VALUES
+    (1, ARRAY['Alpha', 'Beta']::CITEXT[]),
+    (2, ARRAY['ALPHA', 'gamma']::CITEXT[]),
+    (3, ARRAY['Delta']::CITEXT[]),
+    (4, NULL);
+INSERT 4
+> SELECT id, name FROM citext_arr_t ORDER BY id;
+  id |     name
+-----+----------------
+   1 | {Alpha,Beta}
+   2 | {ALPHA,gamma}
+   3 | {Delta}
+   4 | NULL
+(4 rows)
+> SELECT id FROM citext_arr_t
+WHERE name = ARRAY['alpha', 'beta']::CITEXT[]
+ORDER BY id;
+  id
+------
+   1
+(1 row)
+> SELECT id FROM citext_arr_t
+WHERE name = ARRAY['alpha', 'beta']
+ORDER BY id;
+  id
+------
+   1
+(1 row)
+> SELECT id FROM citext_arr_t
+WHERE name = ARRAY['alpha', 'beta']::TEXT[]
+ORDER BY id;
+ERROR: unsupported comparison operator: <citext[]> = <string[]>
+SQLSTATE: 22023
+> SELECT id FROM citext_arr_t
+WHERE name = ARRAY['Alpha', 'Beta']::TEXT[]
+ORDER BY id;
+ERROR: unsupported comparison operator: <citext[]> = <string[]>
+SQLSTATE: 22023
+> SELECT id FROM citext_arr_t
+WHERE name IS NOT DISTINCT FROM ARRAY['alpha', 'beta']::CITEXT[]
+ORDER BY id;
+  id
+------
+   1
+(1 row)
+> SELECT id FROM citext_arr_t
+WHERE name IS DISTINCT FROM ARRAY['alpha', 'beta']::CITEXT[]
+ORDER BY id;
+  id
+------
+   2
+   3
+   4
+(3 rows)
+> SELECT 'ALPHA'::CITEXT = ANY (ARRAY['alpha', 'beta']::CITEXT[]) AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'ALPHA'::CITEXT = SOME (ARRAY['zzz', 'alpha']::CITEXT[]) AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'ALPHA'::CITEXT = ALL (ARRAY['alpha', 'ALPHA']::CITEXT[]) AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'ALPHA'::CITEXT = ALL (ARRAY['alpha', 'beta']::CITEXT[]) AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT 'ALPHA' = ANY (ARRAY['alpha', 'beta']::CITEXT[]) AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'ALPHA' = SOME (ARRAY['zzz', 'alpha']::CITEXT[]) AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'ALPHA' = ALL (ARRAY['alpha', 'ALPHA']::CITEXT[]) AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'ALPHA'::TEXT = ANY (ARRAY['alpha', 'beta']::CITEXT[]) AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT 'ALPHA'::TEXT = ANY (ARRAY['ALPHA', 'beta']::CITEXT[]) AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'ALPHA'::TEXT = ALL (ARRAY['alpha', 'ALPHA']::CITEXT[]) AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT 'ALPHA'::CITEXT = ANY (ARRAY['alpha', 'beta']) AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'ALPHA'::CITEXT = SOME (ARRAY['zzz', 'alpha']) AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'ALPHA'::CITEXT = ALL (ARRAY['alpha', 'ALPHA']) AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'ALPHA'::CITEXT = ANY (ARRAY['alpha', 'beta']::TEXT[]) AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT 'ALPHA'::CITEXT = ANY (ARRAY['ALPHA', 'beta']::TEXT[]) AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'ALPHA'::CITEXT = ALL (ARRAY['alpha', 'ALPHA']::TEXT[]) AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT id FROM citext_arr_t
+WHERE 'alpha'::CITEXT = ANY (name)
+ORDER BY id;
+  id
+------
+   1
+   2
+(2 rows)
+> SELECT id FROM citext_arr_t
+WHERE 'ALPHA' = ANY (name)
+ORDER BY id;
+  id
+------
+   1
+   2
+(2 rows)
+> SELECT id FROM citext_arr_t
+WHERE 'ALPHA'::TEXT = ANY (name)
+ORDER BY id;
+  id
+------
+   2
+(1 row)
+> SELECT id FROM citext_arr_t
+WHERE 'alpha'::CITEXT = SOME (name)
+ORDER BY id;
+  id
+------
+   1
+   2
+(2 rows)
+> SELECT id FROM citext_arr_t
+WHERE 'alpha'::CITEXT = ALL (name)
+ORDER BY id;
+  id
+------
+(0 rows)
+> SELECT 'AB'::CITEXT = ANY ('ab'::CITEXT, 'b') AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'AB'::CITEXT = ANY ('zz'::CITEXT, 'b') AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT 'AB' = ANY ('ab'::CITEXT, 'b') AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'AB'::TEXT = ANY ('ab'::CITEXT, 'b') AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT 'AB'::TEXT = ANY ('AB'::CITEXT, 'b') AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT 'AB'::CITEXT = ANY ('ab'::CITEXT, 'b'::TEXT) AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT 'AB'::CITEXT = ANY ('ab'::TEXT, 'b'::CITEXT) AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT 'AB'::CITEXT = ANY ('AB'::CITEXT, 'b'::TEXT) AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT ARRAY['Alpha', 'Beta']::CITEXT[] @> ARRAY['alpha']::CITEXT[] AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT ARRAY['Alpha', 'Beta']::CITEXT[] @> ARRAY['BETA']::CITEXT[] AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT ARRAY['Alpha', 'Beta']::CITEXT[] @> ARRAY['gamma']::CITEXT[] AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT ARRAY['alpha']::CITEXT[] <@ ARRAY['Alpha', 'Beta']::CITEXT[] AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT ARRAY['GAMMA']::CITEXT[] <@ ARRAY['Alpha', 'Beta']::CITEXT[] AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT ARRAY['Alpha', 'Beta']::CITEXT[] @> ARRAY['alpha'] AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT ARRAY['alpha'] <@ ARRAY['Alpha', 'Beta']::CITEXT[] AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT ARRAY['Alpha', 'Beta']::CITEXT[] @> ARRAY['alpha']::TEXT[] AS f;
+ERROR: unsupported comparison operator: <citext[]> @> <string[]>
+SQLSTATE: 22023
+> SELECT ARRAY['Alpha', 'Beta']::TEXT[] @> ARRAY['alpha']::CITEXT[] AS f;
+ERROR: unsupported comparison operator: <string[]> @> <citext[]>
+SQLSTATE: 22023
+> SELECT ARRAY['Alpha', 'Beta']::CITEXT[] @> ARRAY['Alpha']::TEXT[] AS t;
+ERROR: unsupported comparison operator: <citext[]> @> <string[]>
+SQLSTATE: 22023
+> SELECT ARRAY['Alpha', 'Beta']::TEXT[] @> ARRAY['Alpha']::CITEXT[] AS t;
+ERROR: unsupported comparison operator: <string[]> @> <citext[]>
+SQLSTATE: 22023
+> SELECT id FROM citext_arr_t
+WHERE name @> ARRAY['alpha']::CITEXT[]
+ORDER BY id;
+  id
+------
+   1
+   2
+(2 rows)
+> SELECT id FROM citext_arr_t
+WHERE name @> ARRAY['ALPHA']::CITEXT[]
+ORDER BY id;
+  id
+------
+   1
+   2
+(2 rows)
+> SELECT id FROM citext_arr_t
+WHERE name @> ARRAY['alpha']
+ORDER BY id;
+  id
+------
+   1
+   2
+(2 rows)
+> SELECT id FROM citext_arr_t
+WHERE name @> ARRAY['alpha']::TEXT[]
+ORDER BY id;
+ERROR: unsupported comparison operator: <citext[]> @> <string[]>
+SQLSTATE: 22023
+> SELECT id FROM citext_arr_t
+WHERE name @> ARRAY['Alpha']::TEXT[]
+ORDER BY id;
+ERROR: unsupported comparison operator: <citext[]> @> <string[]>
+SQLSTATE: 22023
+> SELECT id FROM citext_arr_t
+WHERE ARRAY['alpha']::CITEXT[] <@ name
+ORDER BY id;
+  id
+------
+   1
+   2
+(2 rows)
+> SELECT id FROM citext_arr_t
+WHERE ARRAY['ALPHA'] <@ name
+ORDER BY id;
+  id
+------
+   1
+   2
+(2 rows)
+> SELECT id FROM citext_arr_t
+WHERE ARRAY['alpha']::TEXT[] <@ name
+ORDER BY id;
+ERROR: unsupported comparison operator: <string[]> <@ <citext[]>
+SQLSTATE: 22023
+> CREATE TABLE citext_setop_unicode (
+                                      key_col CITEXT
+);
+CREATE TABLE
+> INSERT INTO citext_setop_unicode VALUES
+                                     ('①混合Alpha中文'),
+                                     ('②Greek中文数据'),
+                                     ('②greek中文DATA'),
+                                     ('③日本語データ'),
+                                     ('③日本語データー');
+INSERT 5
+> SELECT COUNT(*) = 5::bigint AS t
+FROM (
+         SELECT key_col FROM citext_setop_unicode
+         UNION
+         SELECT '①混合alpha中文'
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 6::bigint AS t
+FROM (
+         SELECT key_col FROM citext_setop_unicode
+         UNION
+         SELECT '①混合alpha中文'::TEXT
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 5::bigint AS t
+FROM (
+         SELECT key_col FROM citext_setop_unicode
+         UNION
+         SELECT '①混合alpha中文'::CITEXT
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 1::bigint AS t
+FROM (
+         SELECT key_col FROM citext_setop_unicode
+         INTERSECT
+         SELECT '①混合alpha中文'
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 0::bigint AS t
+FROM (
+         SELECT key_col FROM citext_setop_unicode
+         INTERSECT
+         SELECT '①混合alpha中文'::TEXT
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 1::bigint AS t
+FROM (
+         SELECT key_col FROM citext_setop_unicode
+         INTERSECT
+         SELECT '①混合Alpha中文'::TEXT
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 4::bigint AS t
+FROM (
+         SELECT key_col FROM citext_setop_unicode
+         EXCEPT
+         SELECT '①混合alpha中文'
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 5::bigint AS t
+FROM (
+         SELECT key_col FROM citext_setop_unicode
+         EXCEPT
+         SELECT '①混合alpha中文'::TEXT
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 4::bigint AS t
+FROM (
+         SELECT key_col FROM citext_setop_unicode
+         EXCEPT
+         SELECT '①混合Alpha中文'::TEXT
+     ) u;
+   t
+--------
+  true
+(1 row)
+> CREATE TABLE citext_setop_ci (
+                                 name CITEXT
+);
+CREATE TABLE
+> CREATE TABLE citext_setop_ci2 (
+                                  name CITEXT
+);
+CREATE TABLE
+> CREATE TABLE citext_setop_text (
+                                   name TEXT
+);
+CREATE TABLE
+> CREATE TABLE citext_setop_varchar (
+                                      name VARCHAR
+);
+CREATE TABLE
+> INSERT INTO citext_setop_ci VALUES
+                                ('Alpha'),
+                                ('BETA'),
+                                ('gamma');
+INSERT 3
+> INSERT INTO citext_setop_ci2 VALUES
+                                 ('alpha'),
+                                 ('beta'),
+                                 ('delta');
+INSERT 3
+> INSERT INTO citext_setop_text VALUES
+                                  ('alpha'),
+                                  ('BETA'),
+                                  ('delta');
+INSERT 3
+> INSERT INTO citext_setop_varchar VALUES
+                                     ('alpha'),
+                                     ('BETA'),
+                                     ('epsilon');
+INSERT 3
+> SELECT COUNT(*) = 4::bigint AS t
+FROM (
+         SELECT name FROM citext_setop_ci
+         UNION
+         SELECT name FROM citext_setop_ci2
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 2::bigint AS t
+FROM (
+         SELECT name FROM citext_setop_ci
+         INTERSECT
+         SELECT name FROM citext_setop_ci2
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 1::bigint AS t
+FROM (
+         SELECT name FROM citext_setop_ci
+         EXCEPT
+         SELECT name FROM citext_setop_ci2
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 3::bigint AS t
+FROM (
+         SELECT name FROM citext_setop_ci
+         UNION
+         SELECT 'alpha'
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 1::bigint AS t
+FROM (
+         SELECT name FROM citext_setop_ci
+         INTERSECT
+         SELECT 'alpha'
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 2::bigint AS t
+FROM (
+         SELECT name FROM citext_setop_ci
+         EXCEPT
+         SELECT 'alpha'
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 3::bigint AS t
+FROM (
+         SELECT 'alpha'
+         UNION
+         SELECT name FROM citext_setop_ci
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 1::bigint AS t
+FROM (
+         SELECT 'alpha'
+         INTERSECT
+         SELECT name FROM citext_setop_ci
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 0::bigint AS t
+FROM (
+         SELECT 'alpha'
+         EXCEPT
+         SELECT name FROM citext_setop_ci
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 4::bigint AS t
+FROM (
+         SELECT name FROM citext_setop_ci
+         UNION
+         SELECT 'alpha'::TEXT
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 0::bigint AS t
+FROM (
+         SELECT name FROM citext_setop_ci
+         INTERSECT
+         SELECT 'alpha'::TEXT
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 3::bigint AS t
+FROM (
+         SELECT name FROM citext_setop_ci
+         EXCEPT
+         SELECT 'alpha'::TEXT
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 1::bigint AS t
+FROM (
+         SELECT name FROM citext_setop_ci
+         INTERSECT
+         SELECT 'Alpha'::TEXT
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 2::bigint AS t
+FROM (
+         SELECT name FROM citext_setop_ci
+         EXCEPT
+         SELECT 'Alpha'::TEXT
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 4::bigint AS t
+FROM (
+         SELECT 'alpha'::TEXT
+         UNION
+         SELECT name FROM citext_setop_ci
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 0::bigint AS t
+FROM (
+         SELECT 'alpha'::TEXT
+         INTERSECT
+         SELECT name FROM citext_setop_ci
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 1::bigint AS t
+FROM (
+         SELECT 'alpha'::TEXT
+         EXCEPT
+         SELECT name FROM citext_setop_ci
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 4::bigint AS t
+FROM (
+         SELECT name FROM citext_setop_ci
+         UNION
+         SELECT 'alpha'::VARCHAR
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 0::bigint AS t
+FROM (
+         SELECT name FROM citext_setop_ci
+         INTERSECT
+         SELECT 'alpha'::VARCHAR
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 3::bigint AS t
+FROM (
+         SELECT name FROM citext_setop_ci
+         EXCEPT
+         SELECT 'alpha'::VARCHAR
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 5::bigint AS t
+FROM (
+         SELECT name FROM citext_setop_ci
+         UNION
+         SELECT name FROM citext_setop_text
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 1::bigint AS t
+FROM (
+         SELECT name FROM citext_setop_ci
+         INTERSECT
+         SELECT name FROM citext_setop_text
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 2::bigint AS t
+FROM (
+         SELECT name FROM citext_setop_ci
+         EXCEPT
+         SELECT name FROM citext_setop_text
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 2::bigint AS t
+FROM (
+         SELECT name FROM citext_setop_text
+         EXCEPT
+         SELECT name FROM citext_setop_ci
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 5::bigint AS t
+FROM (
+         SELECT name FROM citext_setop_ci
+         UNION
+         SELECT name FROM citext_setop_varchar
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 1::bigint AS t
+FROM (
+         SELECT name FROM citext_setop_ci
+         INTERSECT
+         SELECT name FROM citext_setop_varchar
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 2::bigint AS t
+FROM (
+         SELECT name FROM citext_setop_ci
+         EXCEPT
+         SELECT name FROM citext_setop_varchar
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 4::bigint AS t
+FROM (
+         SELECT name FROM citext_setop_ci
+         UNION ALL
+         SELECT 'alpha'::TEXT
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 0::bigint AS t
+FROM (
+         SELECT name FROM citext_setop_ci
+         INTERSECT ALL
+         SELECT 'alpha'::TEXT
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 3::bigint AS t
+FROM (
+         SELECT name FROM citext_setop_ci
+         EXCEPT ALL
+         SELECT 'alpha'::TEXT
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 3::bigint AS t
+FROM (
+         SELECT name FROM citext_setop_ci
+         UNION
+         SELECT 'alpha'::CITEXT
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 1::bigint AS t
+FROM (
+         SELECT name FROM citext_setop_ci
+         INTERSECT
+         SELECT 'alpha'::CITEXT
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 2::bigint AS t
+FROM (
+         SELECT name FROM citext_setop_ci
+         EXCEPT
+         SELECT 'alpha'::CITEXT
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 2::bigint AS t
+FROM (
+         SELECT 'Alpha'::CITEXT
+         UNION
+         SELECT 'alpha'::TEXT
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 0::bigint AS t
+FROM (
+         SELECT 'Alpha'::CITEXT
+         INTERSECT
+         SELECT 'alpha'::TEXT
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 1::bigint AS t
+FROM (
+         SELECT 'Alpha'::CITEXT
+         EXCEPT
+         SELECT 'alpha'::TEXT
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 1::bigint AS t
+FROM (
+         SELECT 'Alpha'::CITEXT
+         UNION
+         SELECT 'alpha'
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 1::bigint AS t
+FROM (
+         SELECT 'Alpha'::CITEXT
+         INTERSECT
+         SELECT 'alpha'
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 0::bigint AS t
+FROM (
+         SELECT 'Alpha'::CITEXT
+         EXCEPT
+         SELECT 'alpha'
+     ) u;
+   t
+--------
+  true
+(1 row)
+> CREATE TABLE citext_setop_mixed_l (
+                                      a CITEXT,
+                                      b TEXT
+);
+CREATE TABLE
+> CREATE TABLE citext_setop_mixed_r (
+                                      a TEXT,
+                                      b CITEXT
+);
+CREATE TABLE
+> INSERT INTO citext_setop_mixed_l VALUES ('Alpha', 'BRAVO');
+INSERT 1
+> INSERT INTO citext_setop_mixed_r VALUES ('alpha', 'bravo');
+INSERT 1
+> SELECT COUNT(*) = 2::bigint AS t
+FROM (
+         SELECT a, b FROM citext_setop_mixed_l
+         UNION
+         SELECT a, b FROM citext_setop_mixed_r
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 2::bigint AS t
+FROM (
+         SELECT a, b FROM citext_setop_mixed_l
+         UNION ALL
+         SELECT a, b FROM citext_setop_mixed_r
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 1::bigint AS t
+FROM (
+         SELECT a, b::citext FROM citext_setop_mixed_l
+         UNION
+         SELECT a::citext, b FROM citext_setop_mixed_r
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 2::bigint AS t
+FROM (
+         SELECT a, b::citext FROM citext_setop_mixed_l
+         UNION all
+         SELECT a::citext, b FROM citext_setop_mixed_r
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 0::bigint AS t
+FROM (
+         SELECT a, b FROM citext_setop_mixed_l
+         INTERSECT
+         SELECT a, b FROM citext_setop_mixed_r
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 1::bigint AS t
+FROM (
+         SELECT a, b FROM citext_setop_mixed_l
+         EXCEPT
+         SELECT a, b FROM citext_setop_mixed_r
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 1::bigint AS t
+FROM (
+         SELECT a, b FROM citext_setop_mixed_r
+         EXCEPT
+         SELECT a, b FROM citext_setop_mixed_l
+     ) u;
+   t
+--------
+  true
+(1 row)
+> SELECT (ARRAY['a','b']::CITEXT[] || ARRAY['B']::CITEXT[])
+           = ARRAY['A','B','b']::CITEXT[] AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT (ARRAY['a','b']::CITEXT[] || ARRAY['c']::CITEXT[])
+           = ARRAY['a','b','c']::CITEXT[] AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT (ARRAY['a','b']::CITEXT[] || ARRAY['B'])
+           = ARRAY['A','B','b']::TEXT[] AS t;
+    t
+---------
+  false
+(1 row)
+> SELECT (ARRAY['A'] || ARRAY['b','c']::CITEXT[])
+           = ARRAY['a','B','C']::TEXT[] AS t;
+    t
+---------
+  false
+(1 row)
+> SELECT (ARRAY['a','b']::CITEXT[] || ARRAY['B']::TEXT[])
+           = ARRAY['a','b','B']::TEXT[] AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT (ARRAY['a','b']::CITEXT[] || ARRAY['B']::TEXT[])
+           = ARRAY['a','b','b']::TEXT[] AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT (ARRAY['a','b']::TEXT[] || ARRAY['B']::CITEXT[])
+           = ARRAY['a','b','B']::TEXT[] AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT (ARRAY['a','b']::TEXT[] || ARRAY['B']::CITEXT[])
+           = ARRAY['a','b','b']::TEXT[] AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT (ARRAY['a','b']::CITEXT[] || ARRAY['B']::VARCHAR[])
+           = ARRAY['a','b','B']::STRING[] AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT (ARRAY['a','b']::VARCHAR[] || ARRAY['B']::CITEXT[])
+           = ARRAY['a','b','B']::STRING[] AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT (ARRAY['a','b']::CITEXT[] || 'B')
+           = ARRAY['A','B','b']::TEXT[] AS t;
+    t
+---------
+  false
+(1 row)
+> SELECT ('A' || ARRAY['b','c']::CITEXT[])
+           = ARRAY['a','B','C']::TEXT[] AS t;
+    t
+---------
+  false
+(1 row)
+> SELECT (ARRAY['a','b']::CITEXT[] || 'B'::TEXT)
+           = ARRAY['a','b','B']::TEXT[] AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT (ARRAY['a','b']::CITEXT[] || 'B'::TEXT)
+           = ARRAY['a','b','b']::TEXT[] AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT ('A'::TEXT || ARRAY['b','c']::CITEXT[])
+           = ARRAY['A','b','c']::TEXT[] AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT ('A'::TEXT || ARRAY['b','c']::CITEXT[])
+           = ARRAY['a','b','c']::TEXT[] AS f;
+    f
+---------
+  false
+(1 row)
+> SELECT (ARRAY['a','b']::CITEXT[] || 'B'::VARCHAR)
+           = ARRAY['a','b','B']::STRING[] AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT ('A'::VARCHAR || ARRAY['b','c']::CITEXT[])
+           = ARRAY['A','b','c']::STRING[] AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT (ARRAY['a', NULL]::CITEXT[] || 'B')
+           = ARRAY['A', NULL, 'b']::TEXT[] AS t;
+    t
+---------
+  false
+(1 row)
+> SELECT (ARRAY['a', NULL]::CITEXT[] || 'B'::TEXT)
+           = ARRAY['a', NULL, 'B']::TEXT[] AS t;
+   t
+--------
+  true
+(1 row)
+> SELECT (NULL::CITEXT[] || 'B'::CITEXT) IS NULL AS t;
+    t
+---------
+  false
+(1 row)
+> SELECT ('B'::CITEXT || NULL::CITEXT[]) IS NULL AS t;
+    t
+---------
+  false
+(1 row)
+> SELECT (NULL::CITEXT[] || ARRAY['B']::CITEXT[]) IS NULL AS t;
+    t
+---------
+  false
+(1 row)
+> CREATE TABLE citext_arr_concat_t (
+                                     id   INT PRIMARY KEY,
+                                     name CITEXT[]
+);
+CREATE TABLE
+> INSERT INTO citext_arr_concat_t VALUES
+                                    (1, ARRAY['Alpha', 'Beta']::CITEXT[]),
+                                    (2, ARRAY['ALPHA', 'gamma']::CITEXT[]),
+                                    (3, NULL);
+INSERT 3
+> SELECT id
+FROM citext_arr_concat_t
+WHERE name || 'X' = ARRAY['alpha', 'beta', 'x']::TEXT[]
+ORDER BY id;
+  id
+------
+(0 rows)
+> SELECT id
+FROM citext_arr_concat_t
+WHERE 'X' || name = ARRAY['x', 'alpha', 'beta']::TEXT[]
+ORDER BY id;
+  id
+------
+(0 rows)
+> SELECT id
+FROM citext_arr_concat_t
+WHERE name || 'X'::TEXT = ARRAY['Alpha', 'Beta', 'X']::TEXT[]
+ORDER BY id;
+  id
+------
+   1
+(1 row)
+> SELECT id
+FROM citext_arr_concat_t
+WHERE name || 'X'::TEXT = ARRAY['alpha', 'beta', 'X']::TEXT[]
+ORDER BY id;
+  id
+------
+(0 rows)
+> SELECT id
+FROM citext_arr_concat_t
+WHERE name || ARRAY['X'] = ARRAY['alpha', 'beta', 'x']::TEXT[]
+ORDER BY id;
+  id
+------
+(0 rows)
+> SELECT id
+FROM citext_arr_concat_t
+WHERE name || ARRAY['X']::TEXT[] = ARRAY['Alpha', 'Beta', 'X']::TEXT[]
+ORDER BY id;
+  id
+------
+   1
+(1 row)
+> SELECT id
+FROM citext_arr_concat_t
+WHERE name || ARRAY['X']::TEXT[] = ARRAY['alpha', 'beta', 'X']::TEXT[]
+ORDER BY id;
+  id
+------
+(0 rows)
+> DROP TABLE citext_arr_concat_t;
+DROP TABLE
+> SELECT ARRAY['a','b']::CITEXT || ARRAY['b'];
+   ?column?
+---------------
+  {"{a,b}",b}
+(1 row)
+> SELECT ARRAY['a','b']::CITEXT || ARRAY['b']::text[];
+   ?column?
+---------------
+  {"{a,b}",b}
+(1 row)
+> SELECT ARRAY['b']::string[] || ARRAY['a','b']::CITEXT;
+   ?column?
+---------------
+  {b,"{a,b}"}
+(1 row)
+> SELECT ARRAY['b'] || ARRAY['a','b']::CITEXT;
+   ?column?
+---------------
+  {b,"{a,b}"}
+(1 row)
+> SELECT ARRAY['a','b']::CITEXT[] || ARRAY['b']::CITEXT[];
+  ?column?
+------------
+  {a,b,b}
+(1 row)
+> CREATE TS DATABASE ts_citext_regression;
+CREATE TS DATABASE
+> USE ts_citext_regression;
+SET
+> CREATE TABLE ts_citext_col (
+                               k_timestamp TIMESTAMP NOT NULL,
+                               c1 CITEXT
+) TAGS (
+    size INT NOT NULL
+) PRIMARY TAGS (size);
+ERROR: column c1: unsupported column type citext in timeseries table
+SQLSTATE: 42809
+> CREATE TABLE ts_citext_tag (
+                               k_timestamp TIMESTAMP NOT NULL,
+                               c1 VARCHAR(10)
+) TAGS (
+    tag_name CITEXT NOT NULL
+) PRIMARY TAGS (tag_name);
+ERROR: tag tag_name: unsupported tag type citext in timeseries table
+SQLSTATE: 42809
+> CREATE TABLE ts_citext_multi (
+                                 k_timestamp TIMESTAMP NOT NULL,
+                                 c1 CITEXT,
+                                 c2 CITEXT
+) TAGS (
+    size INT NOT NULL
+) PRIMARY TAGS (size);
+ERROR: column c1: unsupported column type citext in timeseries table
+SQLSTATE: 42809
+> CREATE TABLE ts_alter_base (
+                               k_timestamp TIMESTAMP NOT NULL,
+                               c1 VARCHAR(10)
+) TAGS (
+    size INT NOT NULL
+) PRIMARY TAGS (size);
+CREATE TABLE
+> ALTER TABLE ts_alter_base ADD COLUMN c2 CITEXT;
+ERROR: column c2: unsupported column type citext in timeseries table
+SQLSTATE: 42809
+> ALTER TABLE ts_alter_base ALTER COLUMN c1 TYPE CITEXT;
+ERROR: column: "c1": cannot convert VARCHAR(10) to CITEXT
+SQLSTATE: 42846
+> drop database ts_citext_regression;
+DROP DATABASE
+> drop database citext_regression cascade;
+DROP DATABASE

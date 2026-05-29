@@ -11,6 +11,7 @@
 #pragma once
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <list>
 #include <memory>
@@ -110,7 +111,7 @@ class TsEntitySegmentEntityItemFile {
 
   ~TsEntitySegmentEntityItemFile() {}
 
-  KStatus Open();
+  [[nodiscard]] KStatus Open();
 
   KStatus GetEntityItem(uint64_t entity_id, TsEntityItem& entity_item, bool& is_exist);
 
@@ -198,7 +199,7 @@ class TsEntitySegmentMetaManager {
     return entity_header_.SetEntityItemDropped(entity_id);
   }
 
-  KStatus Open();
+  [[nodiscard]] KStatus Open();
 
   KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsEntitySegmentBlockItemWithData>* blk_items);
 
@@ -250,7 +251,6 @@ class TsEntityBlock : public TsBlock {
   uint32_t table_version_ = 0;
   uint64_t entity_id_ = 0;
   uint32_t block_id_ = 0;
-  const std::vector<AttributeInfo>* metric_schema_ = nullptr;
 
   TsEntitySegmentBlockInfo block_info_;
   std::vector<std::shared_ptr<TsEntitySegmentColumnBlock>> column_blocks_;
@@ -326,8 +326,8 @@ class TsEntityBlock : public TsBlock {
 
   inline bool HasDataCachedNoLock(int32_t col_idx) {
     assert(col_idx >= -1);
-    return column_blocks_.size() > col_idx + 1 && column_blocks_[col_idx + 1] != nullptr
-            && (column_blocks_[col_idx + 1]->ready_flag & COLUMN_BLOCK_BUFFER_READY);
+    return column_blocks_.size() > col_idx + 1 && column_blocks_[col_idx + 1] != nullptr &&
+           (column_blocks_[col_idx + 1]->ready_flag.load(std::memory_order_acquire) & COLUMN_BLOCK_BUFFER_READY);
   }
 
   inline bool HasDataCached(int32_t col_idx) {
@@ -336,7 +336,8 @@ class TsEntityBlock : public TsBlock {
 
   char* GetMetricColAddr(uint32_t col_idx);
 
-  KStatus GetMetricColValue(uint32_t row_idx, uint32_t col_idx, TSSlice& value);
+  KStatus GetMetricColValue(uint32_t row_idx, uint32_t col_idx,
+                            const std::vector<AttributeInfo>* schema, TSSlice& value);
 
   KStatus LoadColData(int32_t col_idx, const std::vector<AttributeInfo>* metric_schema, TsSliceGuard&& buffer);
 
@@ -426,7 +427,7 @@ class TsSegmentFile {
 
   ~TsSegmentFile() {}
 
-  KStatus Open();
+  [[nodiscard]] KStatus Open();
 
   uint64_t GetEntityHeaderFileNum() { return meta_mgr_.GetEntityHeaderFileNum(); }
 
@@ -514,9 +515,7 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
 
   ~TsEntitySegment() {}
 
-  KStatus Open() {
-    return segment_file_->Open();
-  }
+  [[nodiscard]] KStatus Open() { return segment_file_->Open(); }
 
   uint64_t GetEntityHeaderFileNum() { return segment_file_->GetEntityHeaderFileNum(); }
 

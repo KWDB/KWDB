@@ -343,8 +343,8 @@ var TsRaftLogCombineWAL = settings.RegisterPublicBoolSetting(
 // TsRaftLogSyncPeriod determine the sync interval of ts raft logs.
 var TsRaftLogSyncPeriod = settings.RegisterPublicDurationSetting(
 	"ts.raft_log.sync_period",
-	"the min duration between every 2 syncs to disk of ts raft logs",
-	10*time.Second,
+	"used to set whether to enable asynchronous raft log consensus, with a default value of 0 (disabled)",
+	0*time.Second,
 )
 
 // TsWALLevelClusterSettingName is the name of the ts wal level cluster setting.
@@ -2041,14 +2041,14 @@ func (r *TsEngine) CountRangeData(
 }
 
 // Vacuum vacuum partitions
-func (r *TsEngine) Vacuum(ctx context.Context, manual bool) error {
+func (r *TsEngine) Vacuum(ctx context.Context, manual bool, onlyAgg bool) error {
 	if r == nil {
 		return nil
 	}
 	r.checkOrWaitForOpen()
 	goCtxPtr, releaseGoCtx := registerGoContextHandle(ctx)
 	defer releaseGoCtx()
-	status := C.TSVacuum(r.tdb, goCtxPtr, C.bool(manual))
+	status := C.TSVacuum(r.tdb, goCtxPtr, C.bool(manual), C.bool(onlyAgg))
 	if err := statusToError(status); err != nil {
 		return errors.Wrap(err, "failed to vacuum ts storage")
 	}
@@ -2126,6 +2126,9 @@ func (r *TsEngine) CancelTsFlow(ctx *context.Context, tsQueryInfo TsQueryInfo) (
 func (r *TsEngine) InitTsHandle(
 	ctx *context.Context, tsQueryInfo TsQueryInfo,
 ) (tsRespInfo TsQueryInfo, err error) {
+	if r == nil {
+		return TsQueryInfo{}, errors.New("TsEngine not initialized")
+	}
 	r.checkOrWaitForOpen()
 	return r.tsExecute(ctx, C.MQ_TYPE_DML_INIT, tsQueryInfo)
 }

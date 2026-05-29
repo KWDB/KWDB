@@ -116,6 +116,15 @@ func SanitizeVarFreeExpr(
 		if err != nil {
 			return nil, err
 		}
+		// If the target column type is known, allow assignment casts between CITEXT
+		// and the string family here.
+		if tree.IsCITextStringMixed(typedExpr.ResolvedType(), expectedType) {
+			var err error
+			typedExpr, err = tree.NewTypedCastExpr(typedExpr, expectedType)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	actualType := typedExpr.ResolvedType()

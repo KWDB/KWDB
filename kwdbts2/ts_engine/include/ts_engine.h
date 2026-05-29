@@ -318,7 +318,7 @@ class TSEngineImpl : public TSEngine {
     return iter->second;
   }
 
-  KStatus Vacuum(kwdbContext_p ctx, bool force) override;
+  KStatus Vacuum(kwdbContext_p ctx, bool force, bool only_agg = false) override;
 
   KStatus GetTableBlocksDistribution(TSTableID table_id, TSSlice* blocks_info) override;
 

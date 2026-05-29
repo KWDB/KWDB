@@ -29,13 +29,11 @@ class TestMMapFile : public testing::Test {
     
     // Ensure clean directory structure
     std::string dir_path = "tmp" + std::to_string(unique_id) + "/kwdb_mmap_test";
-    ErrorInfo err_info;
-    if (!Remove(dir_path, err_info)) {
-      LOG_WARN("Failed to remove directory %s: %s", dir_path.c_str(), err_info.errmsg.c_str());
+    if (!Remove(dir_path)) {
+      LOG_WARN("Failed to remove directory %s", dir_path.c_str());
     }
-    
-    if (!MakeDirectory(dir_path, err_info)) {
-      FAIL() << "Failed to create directory: " << dir_path << " - " << err_info.errmsg;
+    if (!MakeDirectory(dir_path)) {
+      FAIL() << "Failed to create directory: " << dir_path;
     }
   }
 
@@ -43,9 +41,8 @@ class TestMMapFile : public testing::Test {
     unlink(test_file_path_.c_str());
     // Clean up the test directory
     std::string dir_path = test_file_path_.substr(0, test_file_path_.find_last_of('/'));
-    ErrorInfo err_info;
-    if (!Remove(dir_path, err_info)) {
-      LOG_WARN("Failed to clean up directory %s: %s", dir_path.c_str(), err_info.errmsg.c_str());
+    if (!Remove(dir_path)) {
+      LOG_WARN("Failed to clean up directory %s", dir_path.c_str());
     }
   }
 
@@ -360,13 +357,12 @@ class TestMMapStringColumn : public testing::Test {
     
     // Ensure clean directory structure
     std::string dir_path = "tmp" + std::to_string(unique_id) + "/kwdb_mmap_test";
-    ErrorInfo err_info;
-    if (!Remove(dir_path, err_info)) {
-      LOG_WARN("Failed to remove directory %s: %s", dir_path.c_str(), err_info.errmsg.c_str());
+    if (!Remove(dir_path)) {
+      LOG_WARN("Failed to remove directory %s", dir_path.c_str());
     }
     
-    if (!MakeDirectory(dir_path, err_info)) {
-      FAIL() << "Failed to create directory: " << dir_path << " - " << err_info.errmsg;
+    if (!MakeDirectory(dir_path)) {
+      FAIL() << "Failed to create directory: " << dir_path;
     }
     
     str_col_ = new MMapStringColumn(LATCH_ID_TAG_STRING_FILE_MUTEX, RWLATCH_ID_TAG_STRING_FILE_RWLOCK);
@@ -378,9 +374,8 @@ class TestMMapStringColumn : public testing::Test {
     unlink(test_file_path_.c_str());
     // Clean up the test directory
     std::string dir_path = test_file_path_.substr(0, test_file_path_.find_last_of('/'));
-    ErrorInfo err_info;
-    if (!Remove(dir_path, err_info)) {
-      LOG_WARN("Failed to clean up directory %s: %s", dir_path.c_str(), err_info.errmsg.c_str());
+    if (!Remove(dir_path)) {
+      LOG_WARN("Failed to clean up directory %s", dir_path.c_str());
     }
   }
 

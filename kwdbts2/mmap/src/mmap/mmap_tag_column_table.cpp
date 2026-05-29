@@ -1068,18 +1068,15 @@ void MMapTagColumnTable::getEntityIdListByVGroupId(uint32_t vgroup_id, std::vect
 
 int MMapTagColumnTable::getEntityIdByRownum(size_t row, std::vector<kwdbts::EntityResultIndex>* entityIdList) {
   uint32_t* record_ptr = reinterpret_cast<uint32_t*>(entityIdStoreAddr(row));
-  if (CheckGroupID(record_ptr[1], false) == KStatus::FAIL) {
+  if UNLIKELY (CheckGroupID(record_ptr[1], false) == KStatus::FAIL) {
     LOG_ERROR("Failed to obtain the vgroup id!");
   }
-  char* mem = static_cast<char *>(std::malloc(primaryTagSize()));
+  char* mem = static_cast<char*>(std::malloc(primaryTagSize()));
   memcpy(mem, &record_ptr[2], primaryTagSize());
   std::shared_ptr<void> mem_ptr(mem, free);
   // LOG_DEBUG("entityid: %u, groupid: %u", entity_id, subgroup_id);
-  entityIdList->emplace_back(std::move(kwdbts::EntityResultIndex(m_meta_data_->m_entitygroup_id,
-                                                                 record_ptr[0],
-                                                                 record_ptr[1],
-                                                                 std::move(mem_ptr),
-                                                                 primaryTagSize())));
+  entityIdList->push_back(kwdbts::EntityResultIndex(m_meta_data_->m_entitygroup_id, record_ptr[0], record_ptr[1],
+                                                    std::move(mem_ptr), primaryTagSize()));
   return 0;
 }
 

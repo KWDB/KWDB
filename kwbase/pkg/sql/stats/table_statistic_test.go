@@ -131,7 +131,7 @@ func TestTableStatisticProto_Unmarshal_UnexpectedEOF(t *testing.T) {
 }
 
 func TestTableStatisticProto_Unmarshal_WrongWireType(t *testing.T) {
-	// field 1 (TableID) The correct wire type should be 0. Here, it is deliberately written as 2
+	// field 1 (TableID) 正确 wire type 应该是 0，这里故意写成 2
 	// tag = (1 << 3) | 2 = 0x0a
 	data := []byte{
 		0x0a, // wrong wire type for field 1

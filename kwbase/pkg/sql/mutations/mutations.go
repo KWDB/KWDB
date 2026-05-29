@@ -35,6 +35,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/stats"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding"
 )
 
@@ -212,6 +213,12 @@ func statisticsMutator(
 			// If an index appeared before a column definition, col
 			// can be nil.
 			if col == nil {
+				return
+			}
+			// Histograms for collated strings (including CITEXT) are not safe to
+			// round-trip through JSON statistics injection, because histogram upper
+			// bounds are stored as encoded key bytes instead of original text values.
+			if col.Type.Oid() == types.T_citext {
 				return
 			}
 			n := rng.Intn(10)

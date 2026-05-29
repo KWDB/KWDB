@@ -121,10 +121,8 @@ static k_int64 getDateTrunc(k_bool is_unit_const, k_bool type_scale_multi_or_div
   k_int64 original_timestamp = intvalue;
   CKTime ck_time = getCKTime(original_timestamp, date_type, time_zone);
   struct tm ltm;
-  if (return_type == KWDBTypeFamily::TimestampTZFamily) {
-    ck_time.t_timespec.tv_sec += ck_time.t_abbv;
-    original_timestamp += time_diff;
-  }
+  ck_time.t_timespec.tv_sec += ck_time.t_abbv;
+  original_timestamp += time_diff;
   ToGMT(ck_time.t_timespec.tv_sec, ltm);
   if (type_scale != 1) {
     // multi

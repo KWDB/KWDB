@@ -210,10 +210,13 @@ func (ex *connExecutor) addMemAndSavePrepared(
 	ctx context.Context, prepareResult prepare.PreparedResult, name string,
 ) error {
 	prepared := prepareResult.(*PreparedStatement)
-	if err := prepared.memAcc.Grow(ctx, int64(len(name))); err != nil {
+	newPrepared := *prepared
+	res := &newPrepared
+	defer res.memAcc.Clear(ctx)
+	if err := res.memAcc.Grow(ctx, int64(len(name))); err != nil {
 		return err
 	}
-	ex.extraTxnState.prepStmtsNamespace.prepStmts[name] = prepared
+	ex.extraTxnState.prepStmtsNamespace.prepStmts[name] = res
 	return nil
 }
 

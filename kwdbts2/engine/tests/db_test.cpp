@@ -180,21 +180,21 @@ TEST_F(TsDBTest, VacuumAndMaintenance) {
   }
   
   // Test 2: Vacuum with force=false (normal vacuum)
-  s = TSVacuum(engine_, 0, false);
+  s = TSVacuum(engine_, 0, false, false);
   EXPECT_EQ(s.data, nullptr);
   if (s.data != nullptr) {
     free(s.data);
   }
   
   // Test 3: Vacuum with force=true (force flush before vacuum)
-  s = TSVacuum(engine_, 0, true);
+  s = TSVacuum(engine_, 0, true, false);
   EXPECT_EQ(s.data, nullptr);
   if (s.data != nullptr) {
     free(s.data);
   }
   
   // Test 4: Concurrent vacuum request (should be ignored gracefully)
-  s = TSVacuum(engine_, 0, false);
+  s = TSVacuum(engine_, 0, false, false);
   EXPECT_EQ(s.data, nullptr);  // Should still return success
   if (s.data != nullptr) {
     free(s.data);

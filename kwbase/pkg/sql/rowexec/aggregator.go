@@ -1011,6 +1011,111 @@ func (it *imputationtype) GetNextValueFloat() (float64, error) {
 	return 0, errors.Newf("Unexpected type(%T) for value %v", it.nextValue, it.nextValue)
 }
 
+// getImputationDatumFloat converts an imputation datum to a float64 value.
+// The main ones are as follows:
+//   - Accept numeric datum values from aggregate or imputation state.
+//   - Convert DInt, DFloat, and DDecimal to the float64 value used for type normalization.
+//   - Reject unsupported datum types so callers can encode NULL with the planned output type.
+//
+// Parameters:
+//   - datum: The imputation datum that needs to be normalized.
+//
+// Returns:
+//   - val: The float64 value converted from datum.
+//   - ok: Whether datum is a supported numeric datum.
+func getImputationDatumFloat(datum tree.Datum) (float64, bool) {
+	switch t := datum.(type) {
+	case *tree.DInt:
+		return float64(*t), true
+	case *tree.DFloat:
+		return float64(*t), true
+	case *tree.DDecimal:
+		val, err := t.Float64()
+		return val, err == nil
+	default:
+		return 0, false
+	}
+}
+
+// makeImputationDatumByType constructs an imputation datum that matches typ.
+// The main ones are as follows:
+//   - Use the planned aggregate output type as the target datum type.
+//   - Convert the internal float64 interpolation value to DInt, DFloat, or DDecimal.
+//   - Return DNull for unsupported output families to avoid type metadata mismatches.
+//
+// Parameters:
+//   - typ: The planned output type of the imputation column.
+//   - val: The float64 interpolation value that needs to be converted.
+//
+// Returns:
+//   - datum: The datum converted to the planned output type.
+//   - ok: Whether the conversion completed successfully.
+func makeImputationDatumByType(typ *types.T, val float64) (tree.Datum, bool) {
+	switch typ.InternalType.Family {
+	case types.IntFamily:
+		// Integer output columns intentionally round gapfill constants and
+		// interpolated values to the nearest integer before encoding.
+		return tree.NewDInt(tree.DInt(math.Round(val))), true
+	case types.FloatFamily:
+		return tree.NewDFloat(tree.DFloat(val)), true
+	case types.DecimalFamily:
+		datum, err := tree.ParseDDecimal(strconv.FormatFloat(val, 'g', -1, 64))
+		return datum, err == nil
+	default:
+		return tree.DNull, true
+	}
+}
+
+// castImputationDatumByType converts an imputation datum to the planned output type.
+// The main ones are as follows:
+//   - Keep DNull unchanged.
+//   - Convert constants, prev values, and next values through a float64 intermediate value.
+//   - Rebuild the datum with typ before it is encoded into the output row.
+//
+// Parameters:
+//   - typ: The planned output type of the imputation column.
+//   - datum: The imputation datum produced by constant, prev, next, or linear logic.
+//
+// Returns:
+//   - casted: The datum converted to the planned output type.
+//   - ok: Whether the conversion completed successfully.
+func castImputationDatumByType(typ *types.T, datum tree.Datum) (tree.Datum, bool) {
+	if datum == tree.DNull {
+		return tree.DNull, true
+	}
+	if datumTyp := datum.ResolvedType(); datumTyp != nil && datumTyp.Equivalent(typ) {
+		return datum, true
+	}
+	val, ok := getImputationDatumFloat(datum)
+	if !ok {
+		return tree.DNull, false
+	}
+	return makeImputationDatumByType(typ, val)
+}
+
+// bindAggregateResult normalizes an aggregate result while preserving the
+// planned output type for NULL results.
+// The main ones are as follows:
+//   - Convert nil aggregate results to DNull before encoding.
+//   - Keep the existing planned output type when the runtime result type is UnknownFamily.
+//   - Allow concrete non-NULL runtime result types to refine ag.outputTypes.
+//
+// Parameters:
+//   - idx: The index of the aggregate column in ag.outputTypes and the output row.
+//   - result: The aggregate datum returned by the runtime aggregate implementation.
+//
+// Returns:
+//   - result: The normalized aggregate datum ready for encoding into the output row.
+func (ag *aggregatorBase) bindAggregateResult(idx int, result tree.Datum) tree.Datum {
+	if result == nil {
+		result = tree.DNull
+	}
+	if typ := result.ResolvedType(); typ != nil && typ.Family() != types.UnknownFamily {
+		ag.outputTypes[idx] = *typ
+	}
+	return result
+}
+
 // init initializes the aggregatorBase.
 //
 // trailingMetaCallback is passed as part of ProcStateOpts; the inputs to drain
@@ -1804,10 +1909,7 @@ func (ag *aggregatorBase) getAggResults(
 			ag.MoveToDraining(err)
 			return aggStateUnknown, nil, nil
 		}
-		if result == nil {
-			result = tree.DNull
-		}
-		ag.outputTypes[i] = *result.ResolvedType()
+		result = ag.bindAggregateResult(i, result)
 		ag.row[i] = sqlbase.DatumToEncDatum(&ag.outputTypes[i], result)
 	}
 	if !ag.hasTimeBucketGapFill {
@@ -1889,7 +1991,6 @@ func (ag *aggregatorBase) aggGapFillStart() (
 	var curRowData tree.Datum
 	var haveGapFilled bool
 	haveGapFilled = false
-	errorOut := false
 	for i, b := range ag.gapfill.gapfillingbucket {
 		switch t := b.(type) {
 		case *(builtins.TimeBucketAggregate):
@@ -1943,6 +2044,7 @@ func (ag *aggregatorBase) aggGapFillStart() (
 			// row[0] is a group by column
 			//row[0] = sqlbase.DatumToEncDatum(&ag.outputTypes[i], &tree.DTimestampTZ{Time: timeTmp})
 		case *(builtins.ImputationAggregate):
+			writeNull := false
 			imputationMethod := t.Exp
 			switch imputationMethod {
 			case builtins.ConstantIntMethod:
@@ -1964,16 +2066,10 @@ func (ag *aggregatorBase) aggGapFillStart() (
 					pos := float64(ag.gapfill.linearPos) //TODO: potential unnecessary mem alloc
 					gap := float64(ag.gapfill.linearGap)
 					val := (nextval-prevval)*pos/gap + prevval
-					switch t.OriginalType {
-					case types.Float:
-						curRowData = tree.NewDFloat(tree.DFloat(val))
-					case types.Int:
-						curRowData = tree.NewDInt(tree.DInt(math.Round(val)))
-					default:
-						errorOut = true
-					}
-					if !errorOut && ag.outputTypes[i].InternalType.Family == types.DecimalFamily {
-						curRowData, _ = tree.ParseDDecimal(curRowData.String())
+					var ok bool
+					curRowData, ok = makeImputationDatumByType(&ag.outputTypes[i], val)
+					if !ok {
+						writeNull = true
 					}
 					// ag.gapfill.linearPos = ag.gapfill.linearPos + 1
 					haveGapFilled = true
@@ -1981,10 +2077,18 @@ func (ag *aggregatorBase) aggGapFillStart() (
 			case builtins.NullMethod:
 				curRowData = tree.DNull
 			default:
-				errorOut = true
+				writeNull = true
 			}
-			if !errorOut {
-				row[i] = sqlbase.DatumToEncDatum(curRowData.ResolvedType(), curRowData)
+			if !writeNull {
+				// Encode gapfilled values with the output column type rather than
+				// the datum's current type to keep row data consistent with metadata.
+				var ok bool
+				curRowData, ok = castImputationDatumByType(&ag.outputTypes[i], curRowData)
+				if ok {
+					row[i] = sqlbase.DatumToEncDatum(&ag.outputTypes[i], curRowData)
+				} else {
+					row[i] = sqlbase.DatumToEncDatum(&ag.outputTypes[i], tree.DNull)
+				}
 			} else {
 				row[i] = sqlbase.DatumToEncDatum(&ag.outputTypes[i], tree.DNull)
 			}
@@ -2034,6 +2138,10 @@ func (ag *aggregatorBase) aggGapFillInit(
 	isGapFillGroup := ag.isGapFillGroup(bucket)
 	for i, b := range bucket {
 		result, err := b.Result()
+		if err != nil {
+			ag.MoveToDraining(err)
+			return aggStateUnknown, nil, nil
+		}
 		switch t := b.(type) {
 		case *(builtins.TimeBucketAggregate):
 			if ag.gapfill.firstInterval {
@@ -2108,19 +2216,12 @@ func (ag *aggregatorBase) aggGapFillInit(
 			ag.imputation[i].prevValueTmp = result
 		// For normal agg, we use result
 		default:
-			ag.outputTypes[i] = *result.ResolvedType()
+			result = ag.bindAggregateResult(i, result)
 			row[i] = sqlbase.DatumToEncDatum(&ag.outputTypes[i], result)
-		}
-		if err != nil {
-			ag.MoveToDraining(err)
-			return aggStateUnknown, nil, nil
 		}
 		if result == nil {
 			// We can't encode nil into an EncDatum, so we represent it with DNull.
 			result = tree.DNull
-		}
-		if _, ok := b.(*builtins.ImputationAggregate); ok {
-			ag.outputTypes[i] = *result.ResolvedType()
 		}
 	}
 	// We record the original ag.row in imputation struct and emit row. Marks the start of gapfilling.

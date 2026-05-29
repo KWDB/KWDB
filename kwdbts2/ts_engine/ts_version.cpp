@@ -102,8 +102,18 @@ KStatus TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime, int64
     // create directory for new partition
     // TODO(zzr): optimization: create the directory only when flushing
     // this logic is only for deletion and will be removed later after optimize delete
-    env_->DeleteDir(partition_dir);
-    env_->NewDirectory(partition_dir);
+    {
+      auto s = env_->DeleteDir(partition_dir);
+      if (s == FAIL) {
+        LOG_ERROR("Partition directory already exists, but can not delete it: %s", partition_dir.string().c_str());
+        return FAIL;
+      }
+      s = env_->NewDirectory(partition_dir);
+      if (s == FAIL) {
+        LOG_ERROR("can not create partition directory: %s", partition_dir.string().c_str());
+        return FAIL;
+      }
+    }
     LOG_INFO("Partition directory created: %s", partition_dir.string().c_str());
     partition->directory_created_ = true;
 
@@ -288,7 +298,12 @@ KStatus TsVersionManager::Recover(bool force_recover) {
 
     // the older log file is no longer needed, delete it
     // no need to check return value
-    env_->DeleteFile(root_path_ / log_filename);
+    auto log_path = root_path_ / log_filename;
+    s = env_->DeleteFile(root_path_ / log_filename);
+    if (s == FAIL) {
+      // it's ok if the delete failed, it's just a cleanup
+      LOG_WARN("can not delete old update log file: %s", log_path.c_str());
+    }
   }
 
   // delete unexpected files
@@ -992,7 +1007,7 @@ KStatus TsPartitionVersion::GetBlockSpans(const TsScanFilterParams& filter,
 }
 
 KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path, TsEngineSchemaManager* schema_manager,
-                                                    bool force, bool& need_vacuum) const {
+                                                    uint32_t vgroup_id, bool force, bool& need_vacuum) const {
   need_vacuum = false;
   int nlastseg = leveled_last_segments_.Size();
   if (nlastseg == 0 && entity_segment_ == nullptr) {
@@ -1047,7 +1062,6 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path, T
   need_vacuum = has_del_info;
   if (!need_vacuum && entity_segment_ != nullptr) {
     uint64_t max_entity_id = entity_segment_->GetEntityNum();
-    std::unordered_map<TSTableID, bool> traversed_table;
     for (int entity_id = 1; entity_id <= max_entity_id; entity_id++) {
       TsEntityItem entity_item;
       bool found = false;
@@ -1081,29 +1095,32 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path, T
           }
         }
       }
-      if (traversed_table.count(entity_item.table_id) == 0) {
-        bool is_dropped = false;
-        std::shared_ptr<TsTableSchemaManager> tb_schema_mgr{nullptr};
-        s = schema_manager->GetTableSchemaMgr(entity_item.table_id, tb_schema_mgr, &is_dropped);
-        if (s != SUCCESS) {
-          if (is_dropped) {
-            need_vacuum = true;
-            return SUCCESS;
-          }
-          LOG_ERROR("GetTableSchemaMgr failed, table id [%lu]", entity_item.table_id);
-          return FAIL;
+      bool is_dropped = false;
+      std::shared_ptr<TsTableSchemaManager> tb_schema_mgr{nullptr};
+      s = schema_manager->GetTableSchemaMgr(entity_item.table_id, tb_schema_mgr, &is_dropped);
+      if (s != SUCCESS) {
+        if (is_dropped) {
+          need_vacuum = true;
+          return SUCCESS;
         }
-        auto life_time = tb_schema_mgr->GetLifeTime();
-        bool has_lifetime = life_time.ts != 0;
-        if (has_lifetime) {
-          auto start_ts = (now.time_since_epoch().count() - life_time.ts) * life_time.precision;
-          auto end_time = GetTsColTypeEndTime(tb_schema_mgr->GetTsColDataType());
-          if (end_time < start_ts) {
-            need_vacuum = true;
-            return SUCCESS;
-          }
+        LOG_ERROR("GetTableSchemaMgr failed, table id [%lu]", entity_item.table_id);
+        return FAIL;
+      }
+      auto tag_row = tb_schema_mgr->GetTagTable()->GetEntityTag(vgroup_id, entity_id, UINT64_MAX);
+      if (tag_row.second == 0) {
+        // LOG_INFO("Vacuum found entity [%u] has no tag", entity_id);
+        need_vacuum = true;
+        return SUCCESS;
+      }
+      auto life_time = tb_schema_mgr->GetLifeTime();
+      bool has_lifetime = life_time.ts != 0;
+      if (has_lifetime) {
+        auto start_ts = (now.time_since_epoch().count() - life_time.ts) * life_time.precision;
+        auto end_time = GetTsColTypeEndTime(tb_schema_mgr->GetTsColDataType());
+        if (end_time < start_ts) {
+          need_vacuum = true;
+          return SUCCESS;
         }
-        traversed_table[entity_item.table_id] = true;
       }
     }
   }
@@ -1766,11 +1783,17 @@ KStatus TsVersionManager::RecordReader::ReadRecord(std::string *record, bool *eo
   ptr += sizeof(uint16_t);
   uint32_t size = DecodeFixed32(ptr);
 
-  file_->Read(size, &result);
-  if (result.size() != size) {
+  if (file_->Tell() + size > file_->GetFileSize()) {
     *eof = true;
     LOG_WARN("Failed to read a full record data, expect %u, actual %lu, ignore following records", size, result.size());
     return SUCCESS;
+  }
+
+  s = file_->Read(size, &result);
+  if (s == FAIL || result.size() != size) {
+    auto path = file_->GetFilePath();
+    LOG_ERROR("read version update record failed, path: %s, offset: %lu, len: %u", path.c_str(), file_->Tell(), size);
+    return FAIL;
   }
 
   uint16_t tmp = 0;

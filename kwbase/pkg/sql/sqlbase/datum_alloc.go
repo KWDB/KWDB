@@ -105,6 +105,14 @@ func (a *DatumAlloc) NewDString(v tree.DString) *tree.DString {
 	return r
 }
 
+// NewDCIText allocates a DCIText.
+func (a *DatumAlloc) NewDCIText(contents string) (tree.Datum, error) {
+	if a == nil {
+		return tree.NewDCIText(contents, &tree.CollationEnvironment{})
+	}
+	return tree.NewDCIText(contents, &a.env)
+}
+
 // NewDName allocates a DName.
 func (a *DatumAlloc) NewDName(v tree.DString) tree.Datum {
 	return tree.NewDNameFromDString(a.NewDString(v))

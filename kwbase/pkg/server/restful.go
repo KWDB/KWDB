@@ -98,6 +98,7 @@ var transTypeToLength = map[string]int64{
 	"BYTES":       9223372036854775807,
 	"VARBYTES":    9223372036854775807,
 	"_TEXT":       9223372036854775807,
+	"CITEXT":      9223372036854775807,
 	"NAME":        9223372036854775807}
 
 var isBool = map[string]bool{

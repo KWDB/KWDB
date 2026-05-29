@@ -1595,7 +1595,7 @@ func TestColumnTypeIsInvertedIndexable(t *testing.T) {
 	}
 }
 
-// TestTableDescriptorSize tests TableDescriptor_Size
+// TestTableDescriptorSize 测试 TableDescriptor_Size 函数
 func TestTableDescriptorSize(t *testing.T) {
 	testCases := []struct {
 		name     string
@@ -1901,7 +1901,7 @@ func TestGeneratedFamilyName(t *testing.T) {
 	}
 }
 
-// TestColumnDescriptorSize tests ColumnDescriptor_Size
+// TestColumnDescriptorSize 测试 ColumnDescriptor_Size 函数
 func TestColumnDescriptorSize(t *testing.T) {
 	testCases := []struct {
 		name     string
@@ -1933,7 +1933,7 @@ func TestColumnDescriptorSize(t *testing.T) {
 	}
 }
 
-// TestIndexDescriptorSize tests IndexDescriptor_Size
+// TestIndexDescriptorSize 测试 IndexDescriptor_Size 函数
 func TestIndexDescriptorSize(t *testing.T) {
 	testCases := []struct {
 		name     string

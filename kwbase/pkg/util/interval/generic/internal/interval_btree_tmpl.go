@@ -113,18 +113,16 @@ func upperBound(c T) keyBound {
 	return keyBound{key: c.Key(), inc: true}
 }
 
-type leafNode struct {
-	ref   int32
-	count int16
-	leaf  bool
-	max   keyBound
-	items [maxItems]T
-}
-
 type node struct {
-	leafNode
+	ref      int32
+	count    int16
+	leaf     bool
+	max      keyBound
+	items    [maxItems]T
 	children [maxItems + 1]*node
 }
+
+type leafNode = node
 
 func leafToNode(ln *leafNode) *node {
 	return (*node)(unsafe.Pointer(ln))

@@ -1292,7 +1292,11 @@ func TestEncDatumCompare(t *testing.T) {
 		case types.AnyFamily, types.UnknownFamily, types.ArrayFamily, types.JsonFamily, types.TupleFamily:
 			continue
 		case types.CollatedStringFamily:
-			typ = types.MakeCollatedString(types.String, *RandCollationLocale(rng))
+			if typ.Oid() == types.T_citext {
+				typ = types.MakeCollatedString(types.CIText, "")
+			} else {
+				typ = types.MakeCollatedString(types.String, *RandCollationLocale(rng))
+			}
 		}
 
 		// Generate two datums d1 < d2

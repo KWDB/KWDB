@@ -2048,7 +2048,7 @@ func (m *sessionDataMutator) SetUserDefinedVar(name string, v tree.Datum) error 
 	}
 	if val, ok := m.data.UserDefinedVars[name]; ok {
 		oldType := val.(tree.Datum).ResolvedType()
-		if oldType.SQLString() != v.ResolvedType().SQLString() {
+		if oldType.SQLString() != v.ResolvedType().SQLString() && !tree.IsCITextStringMixed(oldType, v.ResolvedType()) {
 			return pgerror.Newf(pgcode.DatatypeMismatch, "new value of %s (type %s) does not match previous type %s", name, v.ResolvedType().SQLString(), oldType.SQLString())
 		}
 	}

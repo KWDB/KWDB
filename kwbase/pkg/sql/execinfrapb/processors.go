@@ -96,9 +96,17 @@ func GetAggregateInfo(
 			return constructAgg, colTyp, nil
 		}
 	}
+
+	// in case input type is NULL, it might cause panic underneath, making a quick fix here
+	if len(inputTypes) == 1 && inputTypes[0].InternalType.Width == 0 && inputTypes[0].InternalType.VisibleType == 0 {
+		return nil, nil, errors.Errorf(
+			"no builtin aggregate for %s on NULL", fn,
+		)
+	}
 	return nil, nil, errors.Errorf(
 		"no builtin aggregate for %s on %+v", fn, inputTypes,
 	)
+
 }
 
 // Equals returns true if two aggregation specifiers are identical (and thus

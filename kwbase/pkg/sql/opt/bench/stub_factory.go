@@ -101,6 +101,11 @@ func (f *stubFactory) ConstructSimpleProject(
 	return struct{}{}, nil
 }
 
+// NumResultColumns is part of the exec.Factory interface.
+func (f *stubFactory) NumResultColumns(node exec.Node) int {
+	return -1
+}
+
 func (f *stubFactory) ConstructRender(
 	n exec.Node,
 	exprs tree.TypedExprs,

@@ -130,7 +130,7 @@ class TsBlockSpan {
   friend TSBlkDataTypeConvert;
 
  public:
-  TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, const std::shared_ptr<TsBlock>& block, int start, int nrow,
+  TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
               std::shared_ptr<TSBlkDataTypeConvert>& convert,
               const std::shared_ptr<MMapMetricsTable>& scan_schema);
 
@@ -139,10 +139,11 @@ class TsBlockSpan {
   static KStatus GenDataConvert(uint32_t blk_version, uint32_t scan_version,
     const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, std::shared_ptr<TSBlkDataTypeConvert>& ret);
 
-  static KStatus MakeNewBlockSpan(TsBlockSpan* src_blk_span, uint32_t vgroup_id,
-    TSEntityID entity_id, const std::shared_ptr<TsBlock>& block, int start, int nrow,
-    const std::shared_ptr<MMapMetricsTable>& scan_schema,
-    const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, std::shared_ptr<TsBlockSpan>& ret);
+  static KStatus MakeNewBlockSpan(TsBlockSpan* src_blk_span, uint32_t vgroup_id, TSEntityID entity_id,
+                                  std::shared_ptr<TsBlock> block, int start, int nrow,
+                                  const std::shared_ptr<MMapMetricsTable>& scan_schema,
+                                  const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
+                                  std::shared_ptr<TsBlockSpan>& ret);
 
   static KStatus GenMergeRowData(std::list<std::shared_ptr<kwdbts::TsBlockSpan>>& dedup_block_spans,
                                  const std::shared_ptr<TsTableSchemaManager>& tbl_schema_manager,

@@ -284,6 +284,64 @@ func initArrayElementConcatenation() {
 			},
 		})
 	}
+	// CITEXT[] || STRING
+	BinOps[Concat] = append(BinOps[Concat], &BinOp{
+		LeftType:     types.MakeArray(types.CIText),
+		RightType:    types.String,
+		ReturnType:   types.MakeArray(types.String),
+		NullableArgs: false,
+		Fn: func(ctx *EvalContext, left Datum, right Datum) (Datum, error) {
+			leftStrArr, err := castCITextArrayDatumToStringArray(ctx, left)
+			if err != nil {
+				return nil, err
+			}
+			return AppendToMaybeNullArray(types.String, leftStrArr, right)
+		},
+	})
+
+	// STRING || CITEXT[]
+	BinOps[Concat] = append(BinOps[Concat], &BinOp{
+		LeftType:     types.String,
+		RightType:    types.MakeArray(types.CIText),
+		ReturnType:   types.MakeArray(types.String),
+		NullableArgs: false,
+		Fn: func(ctx *EvalContext, left Datum, right Datum) (Datum, error) {
+			rightStrArr, err := castCITextArrayDatumToStringArray(ctx, right)
+			if err != nil {
+				return nil, err
+			}
+			return PrependToMaybeNullArray(types.String, left, rightStrArr)
+		},
+	})
+	// CITEXT || STRING[]
+	BinOps[Concat] = append(BinOps[Concat], &BinOp{
+		LeftType:     types.CIText,
+		RightType:    types.MakeArray(types.String),
+		ReturnType:   types.MakeArray(types.String),
+		NullableArgs: false,
+		Fn: func(ctx *EvalContext, left Datum, right Datum) (Datum, error) {
+			leftStr, err := datumToPatternString(ctx, left)
+			if err != nil {
+				return nil, err
+			}
+			return PrependToMaybeNullArray(types.String, NewDString(leftStr), right)
+		},
+	})
+
+	// STRING[] || CITEXT
+	BinOps[Concat] = append(BinOps[Concat], &BinOp{
+		LeftType:     types.MakeArray(types.String),
+		RightType:    types.CIText,
+		ReturnType:   types.MakeArray(types.String),
+		NullableArgs: false,
+		Fn: func(ctx *EvalContext, left Datum, right Datum) (Datum, error) {
+			rightStr, err := datumToPatternString(ctx, right)
+			if err != nil {
+				return nil, err
+			}
+			return AppendToMaybeNullArray(types.String, left, NewDString(rightStr))
+		},
+	})
 }
 
 // ConcatArrays concatenates two arrays.
@@ -367,6 +425,68 @@ func initArrayToArrayConcatenation() {
 			},
 		})
 	}
+	// CITEXT[] || STRING[]
+	BinOps[Concat] = append(BinOps[Concat], &BinOp{
+		LeftType:     types.MakeArray(types.CIText),
+		RightType:    types.MakeArray(types.String),
+		ReturnType:   types.MakeArray(types.String),
+		NullableArgs: false,
+		Fn: func(ctx *EvalContext, left Datum, right Datum) (Datum, error) {
+			leftStrArr, err := castCITextArrayDatumToStringArray(ctx, left)
+			if err != nil {
+				return nil, err
+			}
+			return ConcatArrays(types.String, leftStrArr, right)
+		},
+	})
+
+	// STRING[] || CITEXT[]
+	BinOps[Concat] = append(BinOps[Concat], &BinOp{
+		LeftType:     types.MakeArray(types.String),
+		RightType:    types.MakeArray(types.CIText),
+		ReturnType:   types.MakeArray(types.String),
+		NullableArgs: false,
+		Fn: func(ctx *EvalContext, left Datum, right Datum) (Datum, error) {
+			rightStrArr, err := castCITextArrayDatumToStringArray(ctx, right)
+			if err != nil {
+				return nil, err
+			}
+			return ConcatArrays(types.String, left, rightStrArr)
+		},
+	})
+}
+
+func castCITextArrayDatumToStringArray(ctx *EvalContext, d Datum) (Datum, error) {
+	if d == DNull {
+		return DNull, nil
+	}
+
+	arr, ok := UnwrapDatum(ctx, d).(*DArray)
+	if !ok {
+		return nil, errors.AssertionFailedf("expected array datum, got %T", d)
+	}
+
+	out := NewDArray(types.String)
+
+	for _, elem := range arr.Array {
+		if elem == DNull {
+			if err := out.Append(DNull); err != nil {
+				return nil, err
+			}
+			continue
+		}
+
+		s, err := datumToPatternString(ctx, elem)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := out.Append(NewDString(s)); err != nil {
+			return nil, err
+		}
+	}
+
+	return out, nil
 }
 
 func init() {
@@ -1720,6 +1840,9 @@ var BinOps = map[BinaryOperator]binOpOverload{
 				return &DJSON{j}, nil
 			},
 		},
+		makeCITextConcatBinOp(types.CIText, types.CIText),
+		makeCITextConcatBinOp(types.CIText, types.String),
+		makeCITextConcatBinOp(types.String, types.CIText),
 	},
 
 	// TODO(pmattis): Check that the shift is valid.
@@ -2089,6 +2212,28 @@ func makeCmpOpOverload(
 	}
 }
 
+func makeStringCITextCmpOpOverload(op ComparisonOperator, a, b *types.T) *CmpOp {
+	nullableArgs := op == IsNotDistinctFrom
+	return makeCmpOpOverload(
+		func(ctx *EvalContext, left, right Datum) (Datum, error) {
+			return cmpOpStringCITextFn(ctx, left, right, op), nil
+		},
+		a,
+		b,
+		nullableArgs,
+	)
+}
+
+func makeCITextPatternCmpOpOverload(
+	fn func(ctx *EvalContext, left, right Datum) (Datum, error), leftType, rightType *types.T,
+) *CmpOp {
+	return &CmpOp{
+		LeftType:  leftType,
+		RightType: rightType,
+		Fn:        fn,
+	}
+}
+
 func makeEqFn(a, b *types.T) *CmpOp {
 	return makeCmpOpOverload(cmpOpScalarEQFn, a, b, false /* NullableArgs */)
 }
@@ -2100,6 +2245,51 @@ func makeLeFn(a, b *types.T) *CmpOp {
 }
 func makeIsFn(a, b *types.T) *CmpOp {
 	return makeCmpOpOverload(cmpOpScalarIsFn, a, b, true /* NullableArgs */)
+}
+
+func makeStringCITextEqFn(a, b *types.T) *CmpOp {
+	return makeStringCITextCmpOpOverload(EQ, a, b)
+}
+
+func makeStringCITextLtFn(a, b *types.T) *CmpOp {
+	return makeStringCITextCmpOpOverload(LT, a, b)
+}
+
+func makeStringCITextLeFn(a, b *types.T) *CmpOp {
+	return makeStringCITextCmpOpOverload(LE, a, b)
+}
+
+func makeStringCITextIsFn(a, b *types.T) *CmpOp {
+	return makeStringCITextCmpOpOverload(IsNotDistinctFrom, a, b)
+}
+
+func makeCITextLikePatternCmpFn(leftType, rightType *types.T, caseInsensitive bool) *CmpOp {
+	return makeCITextPatternCmpOpOverload(
+		func(ctx *EvalContext, left, right Datum) (Datum, error) {
+			return matchLikeDatum(ctx, left, right, caseInsensitive)
+		}, leftType, rightType,
+	)
+}
+
+func makeCITextSimilarToPatternCmpFn(leftType, rightType *types.T, caseInsensitive bool) *CmpOp {
+	return makeCITextPatternCmpOpOverload(
+		func(ctx *EvalContext, left, right Datum) (Datum, error) {
+			return matchSimilarToDatum(ctx, left, right, caseInsensitive)
+		}, leftType, rightType,
+	)
+}
+
+func makeCITextRegexpPatternCmpFn(leftType, rightType *types.T, caseInsensitive bool) *CmpOp {
+	return makeCITextPatternCmpOpOverload(
+		func(ctx *EvalContext, left, right Datum) (Datum, error) {
+			pattern, err := datumToPatternString(ctx, right)
+			if err != nil {
+				return nil, err
+			}
+			key := regexpKey{s: pattern, caseInsensitive: caseInsensitive}
+			return matchRegexpWithKeyDatum(ctx, left, key)
+		}, leftType, rightType,
+	)
 }
 
 // CmpOps contains the comparison operations indexed by operation type.
@@ -2142,6 +2332,8 @@ var CmpOps = cmpOpFixups(map[ComparisonOperator]cmpOpOverload{
 		makeEqFn(types.TimestampTZ, types.Timestamp),
 		makeEqFn(types.Time, types.TimeTZ),
 		makeEqFn(types.TimeTZ, types.Time),
+		makeStringCITextEqFn(types.String, types.CIText),
+		makeStringCITextEqFn(types.CIText, types.String),
 
 		// Tuple comparison.
 		&CmpOp{
@@ -2190,6 +2382,8 @@ var CmpOps = cmpOpFixups(map[ComparisonOperator]cmpOpOverload{
 		makeLtFn(types.TimestampTZ, types.Timestamp),
 		makeLtFn(types.Time, types.TimeTZ),
 		makeLtFn(types.TimeTZ, types.Time),
+		makeStringCITextLtFn(types.String, types.CIText),
+		makeStringCITextLtFn(types.CIText, types.String),
 
 		// Tuple comparison.
 		&CmpOp{
@@ -2238,6 +2432,8 @@ var CmpOps = cmpOpFixups(map[ComparisonOperator]cmpOpOverload{
 		makeLeFn(types.TimestampTZ, types.Timestamp),
 		makeLeFn(types.Time, types.TimeTZ),
 		makeLeFn(types.TimeTZ, types.Time),
+		makeStringCITextLeFn(types.String, types.CIText),
+		makeStringCITextLeFn(types.CIText, types.String),
 
 		// Tuple comparison.
 		&CmpOp{
@@ -2293,6 +2489,8 @@ var CmpOps = cmpOpFixups(map[ComparisonOperator]cmpOpOverload{
 		makeIsFn(types.TimestampTZ, types.Timestamp),
 		makeIsFn(types.Time, types.TimeTZ),
 		makeIsFn(types.TimeTZ, types.Time),
+		makeStringCITextIsFn(types.String, types.CIText),
+		makeStringCITextIsFn(types.CIText, types.String),
 
 		// Tuple comparison.
 		&CmpOp{
@@ -2338,6 +2536,9 @@ var CmpOps = cmpOpFixups(map[ComparisonOperator]cmpOpOverload{
 				return matchLike(ctx, left, right, false)
 			},
 		},
+		makeCITextLikePatternCmpFn(types.CIText, types.CIText, true),
+		makeCITextLikePatternCmpFn(types.CIText, types.String, false),
+		makeCITextLikePatternCmpFn(types.String, types.CIText, false),
 	},
 
 	ILike: {
@@ -2348,6 +2549,9 @@ var CmpOps = cmpOpFixups(map[ComparisonOperator]cmpOpOverload{
 				return matchLike(ctx, left, right, true)
 			},
 		},
+		makeCITextLikePatternCmpFn(types.CIText, types.CIText, true),
+		makeCITextLikePatternCmpFn(types.CIText, types.String, true),
+		makeCITextLikePatternCmpFn(types.String, types.CIText, true),
 	},
 
 	SimilarTo: {
@@ -2359,6 +2563,9 @@ var CmpOps = cmpOpFixups(map[ComparisonOperator]cmpOpOverload{
 				return matchRegexpWithKey(ctx, left, key)
 			},
 		},
+		makeCITextSimilarToPatternCmpFn(types.CIText, types.CIText, true),
+		makeCITextSimilarToPatternCmpFn(types.CIText, types.String, false),
+		makeCITextSimilarToPatternCmpFn(types.String, types.CIText, false),
 	},
 
 	RegMatch: {
@@ -2370,6 +2577,9 @@ var CmpOps = cmpOpFixups(map[ComparisonOperator]cmpOpOverload{
 				return matchRegexpWithKey(ctx, left, key)
 			},
 		},
+		makeCITextRegexpPatternCmpFn(types.CIText, types.CIText, true),
+		makeCITextRegexpPatternCmpFn(types.CIText, types.String, false),
+		makeCITextRegexpPatternCmpFn(types.String, types.CIText, false),
 	},
 
 	RegIMatch: {
@@ -2381,6 +2591,9 @@ var CmpOps = cmpOpFixups(map[ComparisonOperator]cmpOpOverload{
 				return matchRegexpWithKey(ctx, left, key)
 			},
 		},
+		makeCITextRegexpPatternCmpFn(types.CIText, types.CIText, true),
+		makeCITextRegexpPatternCmpFn(types.CIText, types.String, true),
+		makeCITextRegexpPatternCmpFn(types.String, types.CIText, true),
 	},
 
 	JSONExists: {
@@ -2585,6 +2798,29 @@ func cmpOpScalarLEFn(ctx *EvalContext, left, right Datum) (Datum, error) {
 }
 func cmpOpScalarIsFn(ctx *EvalContext, left, right Datum) (Datum, error) {
 	return cmpOpScalarFn(ctx, left, right, IsNotDistinctFrom), nil
+}
+
+func cmpOpStringCITextFn(ctx *EvalContext, left, right Datum, op ComparisonOperator) Datum {
+	if left == DNull || right == DNull {
+		switch op {
+		case IsNotDistinctFrom:
+			return MakeDBool((left == DNull) == (right == DNull))
+		default:
+			return DNull
+		}
+	}
+
+	ls, err := datumToPatternString(ctx, left)
+	if err != nil {
+		panic(err)
+	}
+	rs, err := datumToPatternString(ctx, right)
+	if err != nil {
+		panic(err)
+	}
+
+	cmp := strings.Compare(ls, rs)
+	return boolFromCmp(cmp, op)
 }
 
 func cmpOpTupleFn(ctx *EvalContext, left, right DTuple, op ComparisonOperator) Datum {
@@ -2865,6 +3101,173 @@ func matchRegexpWithKey(ctx *EvalContext, str Datum, key RegexpCacheKey) (Datum,
 		return DBoolFalse, err
 	}
 	return MakeDBool(DBool(re.MatchString(string(MustBeDString(str))))), nil
+}
+
+// datumToPatternString converts a datum used in pattern-matching operators or
+// functions into its string form.
+func datumToPatternString(ctx *EvalContext, d Datum) (string, error) {
+	d = UnwrapDatum(ctx, d)
+	switch t := d.(type) {
+	case *DString:
+		return string(*t), nil
+	case *DCollatedString:
+		return t.Contents, nil
+	default:
+		casted, err := PerformCast(ctx, d, types.String)
+		if err != nil {
+			return "", err
+		}
+		return string(MustBeDString(casted)), nil
+	}
+}
+
+// matchLikeDatum evaluates a LIKE/ILIKE-style match on datum inputs.
+func matchLikeDatum(ctx *EvalContext, left, right Datum, caseInsensitive bool) (Datum, error) {
+	if left == DNull || right == DNull {
+		return DNull, nil
+	}
+	s, err := datumToPatternString(ctx, left)
+	if err != nil {
+		return nil, err
+	}
+	pattern, err := datumToPatternString(ctx, right)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(s) == 0 {
+		for _, c := range pattern {
+			if c != '%' {
+				return DBoolFalse, nil
+			}
+		}
+		return DBoolTrue, nil
+	}
+
+	like, err := optimizedLikeFunc(pattern, caseInsensitive, '\\')
+	if err != nil {
+		return DBoolFalse, pgerror.Newf(
+			pgcode.InvalidRegularExpression, "LIKE regexp compilation failed: %v", err,
+		)
+	}
+	if like == nil {
+		re, err := ConvertLikeToRegexp(ctx, pattern, caseInsensitive, '\\')
+		if err != nil {
+			return DBoolFalse, err
+		}
+		like = func(s string) (bool, error) {
+			return re.MatchString(s), nil
+		}
+	}
+	matches, err := like(s)
+	return MakeDBool(DBool(matches)), err
+}
+
+// matchRegexpWithKeyDatum evaluates a regexp match on a datum using the given
+// regexp cache key.
+func matchRegexpWithKeyDatum(ctx *EvalContext, str Datum, key RegexpCacheKey) (Datum, error) {
+	if str == DNull {
+		return DNull, nil
+	}
+	re, err := ctx.ReCache.GetRegexp(key)
+	if err != nil {
+		return DBoolFalse, err
+	}
+	s, err := datumToPatternString(ctx, str)
+	if err != nil {
+		return nil, err
+	}
+	return MakeDBool(DBool(re.MatchString(s))), nil
+}
+
+// makeCITextLikeCmpWithCITextPattern constructs a LIKE/ILIKE comparison
+// operator overload for CITEXT operands.
+func makeCITextLikeCmpWithCITextPattern(caseInsensitive bool) *CmpOp {
+	return &CmpOp{
+		LeftType:  types.CIText,
+		RightType: types.CIText,
+		Fn: func(ctx *EvalContext, left Datum, right Datum) (Datum, error) {
+			return matchLikeDatum(ctx, left, right, caseInsensitive)
+		},
+	}
+}
+
+// makeCITextRegexpCmpWithCITextPattern constructs a regexp comparison operator
+// overload for CITEXT operands.
+func makeCITextRegexpCmpWithCITextPattern(caseInsensitive bool) *CmpOp {
+	return &CmpOp{
+		LeftType:  types.CIText,
+		RightType: types.CIText,
+		Fn: func(ctx *EvalContext, left Datum, right Datum) (Datum, error) {
+			pattern, err := datumToPatternString(ctx, right)
+			if err != nil {
+				return nil, err
+			}
+			key := regexpKey{s: pattern, caseInsensitive: caseInsensitive}
+			return matchRegexpWithKeyDatum(ctx, left, key)
+		},
+	}
+}
+
+// makeCITextSimilarToCmpWithCITextPattern constructs a SIMILAR TO comparison
+// operator overload for CITEXT operands.
+func makeCITextSimilarToCmpWithCITextPattern(caseInsensitive bool) *CmpOp {
+	return &CmpOp{
+		LeftType:  types.CIText,
+		RightType: types.CIText,
+		Fn: func(ctx *EvalContext, left Datum, right Datum) (Datum, error) {
+			return matchSimilarToDatum(ctx, left, right, caseInsensitive)
+		},
+	}
+}
+
+// matchSimilarToDatum evaluates a SIMILAR TO match on datum inputs.
+func matchSimilarToDatum(
+	ctx *EvalContext, left Datum, right Datum, caseInsensitive bool,
+) (Datum, error) {
+	if left == DNull || right == DNull {
+		return DNull, nil
+	}
+
+	s, err := datumToPatternString(ctx, left)
+	if err != nil {
+		return nil, err
+	}
+	pattern, err := datumToPatternString(ctx, right)
+	if err != nil {
+		return nil, err
+	}
+
+	key := similarToKey{
+		s:               pattern,
+		escape:          '\\',
+		caseInsensitive: caseInsensitive,
+	}
+	return matchRegexpWithKey(ctx, NewDString(s), key)
+}
+
+// makeCITextConcatBinOp constructs a string concatenation operator overload for
+// CITEXT-related operands.
+func makeCITextConcatBinOp(leftType, rightType *types.T) *BinOp {
+	return &BinOp{
+		LeftType:   leftType,
+		RightType:  rightType,
+		ReturnType: types.String,
+		Fn: func(ctx *EvalContext, left Datum, right Datum) (Datum, error) {
+			if left == DNull || right == DNull {
+				return DNull, nil
+			}
+			l, err := datumToPatternString(ctx, left)
+			if err != nil {
+				return nil, err
+			}
+			r, err := datumToPatternString(ctx, right)
+			if err != nil {
+				return nil, err
+			}
+			return NewDString(l + r), nil
+		},
+	}
 }
 
 // MultipleResultsError is returned by QueryRow when more than one result is
@@ -3738,6 +4141,10 @@ func formatBitArray(d *DBitArray, t *types.T) *DBitArray {
 // PerformCast performs a cast from the provided Datum to the specified
 // types.T.
 func PerformCast(ctx *EvalContext, d Datum, t *types.T) (Datum, error) {
+	if w, ok := d.(*DOidWrapper); ok && w.Oid == types.T_citext {
+		d = w.Wrapped
+	}
+
 	switch t.Family() {
 	case types.BitFamily:
 		var ba *DBitArray
@@ -3994,6 +4401,10 @@ func PerformCast(ctx *EvalContext, d Datum, t *types.T) (Datum, error) {
 			s = string(*t)
 		case *DCollatedString:
 			s = t.Contents
+		case *DOidWrapper:
+			if w, ok := t.Wrapped.(*DCollatedString); ok && t.Oid == types.T_citext {
+				s = w.Contents
+			}
 		case *DBytes:
 			s = lex.EncodeByteArrayToRawBytes(string(*t),
 				ctx.SessionData.DataConversion.BytesEncodeFormat, false /* skipHexPrefix */)
@@ -4019,6 +4430,9 @@ func PerformCast(ctx *EvalContext, d Datum, t *types.T) (Datum, error) {
 			// Ditto truncation like for TString.
 			if t.Width() > 0 {
 				s = util.TruncateString(s, int(t.Width()))
+			}
+			if t.Oid() == types.T_citext {
+				return NewDCIText(s, &ctx.CollationEnv)
 			}
 			return NewDCollatedString(s, t.Locale(), &ctx.CollationEnv)
 		}
@@ -5710,19 +6124,22 @@ func (k likeKey) Pattern() (string, error) {
 }
 
 type similarToKey struct {
-	s      string
-	escape rune
+	s               string
+	escape          rune
+	caseInsensitive bool
 }
 
 // Pattern implements the RegexpCacheKey interface.
 func (k similarToKey) Pattern() (string, error) {
 	pattern := similarEscapeCustomChar(k.s, k.escape, k.escape != 0)
-	return anchorPattern(pattern, false), nil
+	return anchorPattern(pattern, k.caseInsensitive), nil
 }
 
 // SimilarToEscape checks if 'unescaped' is SIMILAR TO 'pattern' using custom escape token 'escape'
 // which must be either empty (which disables the escape mechanism) or a single unicode character.
-func SimilarToEscape(ctx *EvalContext, unescaped, pattern, escape string) (Datum, error) {
+func SimilarToEscape(
+	ctx *EvalContext, unescaped, pattern, escape string, caseInsensitive bool,
+) (Datum, error) {
 	var escapeRune rune
 	if len(escape) > 0 {
 		var width int
@@ -5731,7 +6148,7 @@ func SimilarToEscape(ctx *EvalContext, unescaped, pattern, escape string) (Datum
 			return DBoolFalse, pgerror.Newf(pgcode.InvalidEscapeSequence, "invalid escape string")
 		}
 	}
-	key := similarToKey{s: pattern, escape: escapeRune}
+	key := similarToKey{s: pattern, escape: escapeRune, caseInsensitive: caseInsensitive}
 	return matchRegexpWithKey(ctx, NewDString(unescaped), key)
 }
 

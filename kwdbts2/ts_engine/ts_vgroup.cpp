@@ -1327,8 +1327,8 @@ KStatus TsVGroup::rollback(kwdbContext_p ctx, LogEntry* wal_log, bool from_chk) 
         auto log = reinterpret_cast<DeleteLogTagsEntry*>(del_log);
         TSSlice primary_tag = log->getPrimaryTag();
         TSSlice tags = log->getTags();
-        uint64_t osn = log->getOSN();
-        return undoDeleteTag(ctx, log->getTableID(), primary_tag, lsn, log->group_id_, log->entity_id_, tags, osn);
+        uint64_t old_osn = log->getOldLSN();
+        return undoDeleteTag(ctx, log->getTableID(), primary_tag, lsn, log->group_id_, log->entity_id_, tags, old_osn);
       }
     }
 
@@ -1486,7 +1486,7 @@ KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::strin
     }
     LockSharedLevelMutex();
     s = wal_manager_->WriteDeleteTagWAL(ctx, mtr_id, p_tag, vgroup_id_, e_id, tag_pack->getData(), vgroup_id_,
-                                        table_id, osn);
+                                        table_id, tag_pack->getOSN(), osn);
     UnLockSharedLevelMutex();
     if (s == KStatus::FAIL) {
       LOG_ERROR("WriteDeleteTagWAL failed.");
@@ -2099,8 +2099,19 @@ KStatus TsVGroup::MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip,
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroup::Vacuum(kwdbContext_p ctx, bool force) {
+KStatus TsVGroup::Vacuum(kwdbContext_p ctx, bool force, bool only_agg) {
   KStatus s = KStatus::SUCCESS;
+  if (force && CLUSTER_SETTING_PARTITION_AGG) {
+    s = CalcPartitionAgg(true);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("CalcPartitionAgg failed after manual vacuum.");
+      return s;
+    }
+  }
+  if (only_agg) {
+    return KStatus::SUCCESS;
+  }
+
   auto current = version_manager_->Current();
   auto all_partitions = current->GetPartitions();
 
@@ -2147,7 +2158,8 @@ KStatus TsVGroup::Vacuum(kwdbContext_p ctx, bool force) {
 
       partition = version_manager_->GetPartitionVersion(partition_id);
 
-      s = partition->NeedVacuumEntitySegment(root_path, schema_mgr_, force, need_vacuum);
+      s = partition->NeedVacuumEntitySegment(root_path, schema_mgr_, vgroup_id_, force, need_vacuum);
+      // LOG_INFO("NeedVacuumEntitySegment, need_vacuum=%d", need_vacuum ? 1 : 0)
       if (s != SUCCESS) {
         LOG_ERROR("NeedVacuumEntitySegment failed.");
         return FAIL;
@@ -2159,14 +2171,6 @@ KStatus TsVGroup::Vacuum(kwdbContext_p ctx, bool force) {
                     partition->GetStartTime(), partition->GetEndTime() - 1);
         }
       }
-    }
-  }
-
-  if (force && CLUSTER_SETTING_PARTITION_AGG) {
-    s = CalcPartitionAgg(true);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("CalcPartitionAgg failed after manual vacuum.");
-      return s;
     }
   }
 
@@ -2209,6 +2213,7 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
   for (uint32_t entity_id = 1; entity_id <= max_entity_id; entity_id++) {
     TsEntityItem entity_item;
     bool has_entity_item = false;
+    bool entity_invalid = false;
     s = entity_segment->GetEntityItem(entity_id, entity_item, has_entity_item);
     if (s != SUCCESS) {
       LOG_ERROR("Vacuum failed, GetEntityItem [%u] failed", entity_id);
@@ -2228,9 +2233,12 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
           cancel_vacuumer = true;
           return s;
         }
+        if (!is_dropped && !tb_schema_mgr->GetTagTable()->HasEntityTag(vgroup_id_, entity_id)) {
+          entity_invalid = true;
+        }
       }
     }
-    if (!has_entity_item || 0 == entity_item.cur_block_id || is_dropped) {
+    if (is_dropped || entity_invalid || !has_entity_item || 0 == entity_item.cur_block_id) {
       TsEntityItem empty_entity_item{entity_id};
       empty_entity_item.table_id = entity_item.table_id;
       s = vacuumer->AppendEntityItem(empty_entity_item);
@@ -2387,7 +2395,11 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
   TsVersionUpdate update;
   auto info = vacuumer->GetHandleInfo();
   update.SetEntitySegment(partition->GetPartitionIdentifier(), info, true);
-  vacuumer.reset();
+  if (vacuumer->Finalize() == FAIL) {
+    LOG_ERROR("Vacuum failed, Finalize failed");
+    cancel_vacuumer = true;
+    return KStatus::FAIL;
+  }
   if (!invalid_counts.empty()) {
     uint64_t file_number = version_manager_->NewFileNumber();
     update.AddCountFile(partition->GetPartitionIdentifier(), {file_number, invalid_counts});
@@ -2684,7 +2696,6 @@ KStatus TsVGroup::GetCalcEntities(PartitionIdentifier par_id, const shared_ptr<c
       agg_index.entity_id = entity;
       auto s = partition->GetAggReader()->GetPartitionAggIndex(agg_index);
       if (s != KStatus::SUCCESS) {
-        LOG_WARN("Failed get entity[%d] agg stats", entity);
         calc_agg_entities.emplace_back(entity);
         continue;
       }
@@ -2737,6 +2748,9 @@ KStatus TsVGroup::CalcPartitionAgg(bool force) {
     return s;
   }
   for (auto& tbl_schema : tbl_schema_managers) {
+    if (tbl_schema->IsDropped()) {
+      continue;
+    }
     std::shared_ptr<TagTable> tag_table;
     s = tbl_schema->GetTagSchema(ctx_p, &tag_table);
     if (s != KStatus::SUCCESS) {
@@ -2758,6 +2772,17 @@ KStatus TsVGroup::CalcPartitionAgg(bool force) {
   TsIOEnv* env = &TsIOEnv::GetInstance();
   TsVersionUpdate update;
   for (auto& [par_id, par_version] : all_partitions) {
+    if (force) {
+      while (!par_version->TrySetBusy(PartitionStatus::CalculatingAgg)) {
+        std::this_thread::sleep_for(std::chrono::seconds(2));
+      }
+    } else if (!par_version->TrySetBusy(PartitionStatus::CalculatingAgg)) {
+      LOG_INFO("Skip CalcPartitionAgg for partition[%s], partition is busy.",
+               par_version->GetPartitionIdentifierStr().c_str());
+      continue;
+    }
+    Defer partition_status_defer{[&]() { par_version->ResetStatus(); }};
+
 #ifndef WITH_TESTS
     if (!force) {
       bool need_calc = false;
@@ -2791,6 +2816,9 @@ KStatus TsVGroup::CalcPartitionAgg(bool force) {
       partition_agg_builder->Close();
     }};
     for (auto& [tb_schema, classified_entities] : cla_entities) {
+      if (tb_schema->IsDropped()) {
+        continue;
+      }
       std::shared_ptr<MMapMetricsTable> metric_schema = tb_schema->GetCurrentMetricsTable();
       const vector<AttributeInfo>& attrs = *metric_schema->getSchemaInfoExcludeDroppedPtr();
       DATATYPE ts_col_type = tb_schema->GetTsColDataType();

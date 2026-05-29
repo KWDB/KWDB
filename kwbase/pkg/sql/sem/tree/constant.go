@@ -556,6 +556,7 @@ var (
 		types.INet,
 		types.Jsonb,
 		types.VarBit,
+		types.CIText,
 	}
 	// StrValAvailBytes is the set of types convertible to byte array.
 	StrValAvailBytes = []*types.T{types.Bytes, types.Uuid, types.String}
@@ -616,6 +617,11 @@ func (expr *StrVal) ResolveAsType(ctx *SemaContext, typ *types.T) (Datum, error)
 		case types.StringFamily:
 			expr.resString = DString(expr.s)
 			return &expr.resString, nil
+		case types.CollatedStringFamily:
+			if typ.Oid() == types.T_citext {
+				return NewDCIText(expr.s, &CollationEnvironment{})
+			}
+			return NewDCollatedString(expr.s, typ.Locale(), &CollationEnvironment{})
 		}
 		return nil, errors.AssertionFailedf("attempt to type byte array literal to %T", typ)
 	}
@@ -629,6 +635,11 @@ func (expr *StrVal) ResolveAsType(ctx *SemaContext, typ *types.T) (Datum, error)
 		}
 		expr.resString = DString(expr.s)
 		return &expr.resString, nil
+	case types.CollatedStringFamily:
+		if typ.Oid() == types.T_citext {
+			return NewDCIText(expr.s, &CollationEnvironment{})
+		}
+		return NewDCollatedString(expr.s, typ.Locale(), &CollationEnvironment{})
 	case types.BytesFamily:
 		return ParseDByte(expr.s)
 	}

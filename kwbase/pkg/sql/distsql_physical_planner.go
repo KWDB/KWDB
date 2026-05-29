@@ -2982,7 +2982,7 @@ func (dsp *DistSQLPlanner) vacuumTSDatabase(
 	}
 	p.ResultRouters = make([]physicalplan.ProcessorIdx, len(nodeID))
 	p.Processors = make([]physicalplan.Processor, 0, len(nodeID))
-
+	tsPro.OnlyAgg = n.aggregateOnly
 	p.GateNoopInput = len(nodeID)
 	tsPro.TsOperator = execinfrapb.OperatorType_TsManualVacuum
 	for i := 0; i < len(nodeID); i++ {

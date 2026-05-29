@@ -15,10 +15,16 @@ import (
 	"context"
 	"testing"
 
+	"gitee.com/kwbasedb/kwbase/pkg/base"
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
+	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
+	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
+	"gitee.com/kwbasedb/kwbase/pkg/testutils/sqlutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
+	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 )
 
 // TestCheckTsDedupRule tests the checkTsDedupRule function
@@ -391,6 +397,90 @@ func TestToSettingString(t *testing.T) {
 			}
 			if !tc.hasError && result != tc.expected {
 				t.Errorf("toSettingString: expected result = %s, got result = %s", tc.expected, result)
+			}
+		})
+	}
+}
+
+// TestSetClusterSetting tests the SetClusterSetting method
+func TestSetClusterSetting(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	logScope := log.Scope(t)
+	defer logScope.Close(t)
+	ctx := context.Background()
+
+	// Start a test server
+	s, conn, _ := serverutils.StartServer(t, base.TestServerArgs{})
+	defer s.Stopper().Stop(ctx)
+
+	// Create a test database
+	r := sqlutils.MakeSQLRunner(conn)
+	r.Exec(t, "CREATE DATABASE test_db")
+
+	// Get the executor config
+	execCfg := s.ExecutorConfig().(ExecutorConfig)
+
+	// Create a planner with admin privileges
+	p, cleanup := NewInternalPlanner(
+		"test",
+		kv.NewTxn(ctx, s.DB(), s.NodeID()),
+		security.RootUser, // Root user has admin privileges
+		&MemoryMetrics{},
+		&execCfg,
+	)
+	planner := p.(*planner)
+	defer cleanup()
+
+	// Test cases for different cluster settings
+	testCases := []struct {
+		name     string
+		setting  string
+		value    tree.TypedExpr
+		expected bool // expected error when calling SetClusterSetting
+	}{
+		{"valid ts.rows_per_block.min_limit", "ts.rows_per_block.min_limit", tree.NewDInt(tree.DInt(1024)), false},
+		{"valid ts.rows_per_block.max_limit", "ts.rows_per_block.max_limit", tree.NewDInt(tree.DInt(4096)), false},
+		{"valid ts.dedup.rule", "ts.dedup.rule", tree.NewDString("merge"), false},
+		{"invalid ts.dedup.rule", "ts.dedup.rule", tree.NewDString("invalid"), false}, // SetClusterSetting doesn't validate values
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create a SetClusterSetting node
+			n := &tree.SetClusterSetting{
+				Name:  tc.setting,
+				Value: tc.value,
+			}
+
+			// Test SetClusterSetting
+			node, err := planner.SetClusterSetting(ctx, n)
+			if (err != nil) != tc.expected {
+				t.Errorf("SetClusterSetting for %s: expected error = %t, got error = %v", tc.name, tc.expected, err)
+			}
+
+			if !tc.expected {
+				// Verify the returned node is a setClusterSettingNode
+				setClusterNode, ok := node.(*setClusterSettingNode)
+				if !ok {
+					t.Error("SetClusterSetting should return a setClusterSettingNode")
+					return
+				}
+
+				// Test startExec for invalid values
+				if tc.setting == "ts.dedup.rule" && tc.value.String() == "'invalid'" {
+					// Create runParams
+					runParams := runParams{
+						ctx:             ctx,
+						p:               planner,
+						extendedEvalCtx: planner.ExtendedEvalContext(),
+					}
+
+					// Test startExec - should return error for invalid dedup rule
+					err := setClusterNode.startExec(runParams)
+					if err == nil {
+						t.Error("startExec should return error for invalid ts.dedup.rule")
+					}
+				}
 			}
 		})
 	}

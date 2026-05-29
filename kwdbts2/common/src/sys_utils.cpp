@@ -53,18 +53,17 @@ void LogRemainingDirectoryEntries(const fs::path& dir_path) {
 
 }  // namespace
 
+int64_t g_free_space_alert_threshold = 0;
+
 bool IsExists(const fs::path& path) {
   return fs::exists(path);
 }
 
-bool Remove(const string& path, ErrorInfo& error_info) {
+bool Remove(const string& path) {
   std::error_code ec;
   fs::remove_all(path, ec);
   if (ec) {
-    error_info.errcode = errnumToErrorCode(ec.value());
-    error_info.errmsg = ec.message();
-    LOG_ERROR("%s remove failed: errcode[%d], errno[%d], errmsg[%s]",
-              path.c_str(), error_info.errcode, ec.value(), error_info.errmsg.c_str());
+    LOG_ERROR("remove '%s' failed: errno[%d], errmsg[%s]", path.c_str(), ec.value(), ec.message().c_str());
     if (ec.value() == ENOTEMPTY) {
       LogRemainingDirectoryEntries(path);
     }
@@ -94,21 +93,18 @@ bool RemoveDirContents(const string& dir_path) {
   return true;
 }
 
-bool MakeDirectory(const fs::path& dir_path, ErrorInfo& error_info) {
+bool MakeDirectory(const fs::path& dir_path) {
   std::error_code ec;
   if (fs::exists(dir_path, ec)) {
     if (fs::is_directory(dir_path, ec)) {
       return true;
     }
-    error_info.errcode = KWEOTHER;
-    error_info.errmsg = dir_path.string() + " exists but is not a directory";
-    LOG_ERROR("MakeDirectory [%s] failed: %s", dir_path.string().c_str(), error_info.errmsg.c_str());
+    std::string errmsg = dir_path.string() + " exists but is not a directory";
+    LOG_ERROR("MakeDirectory [%s] failed: %s", dir_path.string().c_str(), errmsg.c_str());
     return false;
   }
   if (!fs::create_directories(dir_path, ec)) {
-    error_info.errcode = errnumToErrorCode(ec.value());
-    error_info.errmsg = ec.message();
-    LOG_ERROR("MakeDirectory [%s] failed: %s", dir_path.string().c_str(), error_info.errmsg.c_str());
+    LOG_ERROR("MakeDirectory [%s] failed: %s", dir_path.string().c_str(), ec.message().c_str());
     return false;
   }
   LOG_INFO("Make directory [%s] succeeded", dir_path.string().c_str());
@@ -156,55 +152,6 @@ bool System(const string& cmd, bool print_log, ErrorInfo& error_info) {
   error_info.errmsg = strerror(errno);
   LOG_ERROR("system() failed: cmd[%s], errno[%d], strerror[%s]", cmd.c_str(), errno, error_info.errmsg.c_str());
   return false;
-}
-
-bool ChangeDirLink(string link_path, string new_path, ErrorInfo& error_info) {
-  if (link_path.back() == '/') {
-    link_path = link_path.substr(0, link_path.length() - 1);
-  }
-  if (new_path.back() == '/') {
-    new_path = new_path.substr(0, new_path.length() - 1);
-  }
-  std::string link_rm_cmd = "mv " + link_path + " " + link_path + "_tmp";
-  if (System(link_rm_cmd, true, error_info)) {
-    std::string link_cmd = "ln -s " + new_path + " " + link_path;
-    if (System(link_cmd, true, error_info)) {
-      std::string link_rm_cmd = "rm " + link_path + "_tmp";
-      System(link_rm_cmd, true, error_info);
-      return true;
-    } else {
-      System("mv " + link_path + "_tmp " + link_path);
-    }
-  }
-  return false;
-}
-
-std::string ParseLinkDirToReal(string link_path, ErrorInfo& error_info) {
-  if (link_path.back() == '/') {
-    link_path = link_path.substr(0, link_path.length() - 1);
-  }
-  struct stat st;
-  std::string real_path = "";
-  if (lstat(link_path.c_str(), &st) != 0) {
-    error_info.errcode = KWENOOBJ;
-    error_info.errmsg = std::string(link_path) + " cannot stat.";
-    LOG_ERROR("cannot stat directory path [%s].", link_path.c_str());
-    return real_path;
-  }
-  if (!S_ISLNK(st.st_mode)) {
-    return link_path;
-  }
-  const int PATH_MAX_LENGTH = 4096;
-  char rpath[PATH_MAX_LENGTH];
-  memset(rpath, 0, PATH_MAX_LENGTH);
-  int rslt = readlink(link_path.c_str(), rpath, PATH_MAX_LENGTH);
-  if (rslt < 0 || rslt >= PATH_MAX_LENGTH) {
-    LOG_ERROR("read link failed.[%s] errno[%d]", link_path.c_str(), errno);
-    error_info.errcode = KWEINVALPATH;
-    error_info.errmsg = std::string(link_path) + " read link failed.";
-    return real_path;
-  }
-  return std::string(rpath);
 }
 
 bool DirExists(const std::string& path) {

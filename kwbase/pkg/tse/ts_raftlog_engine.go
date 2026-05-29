@@ -284,6 +284,8 @@ type TsRaftLogEngine struct {
 	syncPeriod time.Duration
 	asyncWrite bool
 
+	asyncConsensus bool
+
 	committer struct {
 		syncutil.Mutex
 		cond       sync.Cond
@@ -304,17 +306,31 @@ type TsRaftLogEngine struct {
 
 // SetSyncPeriod sets syncPeriod
 func (t *TsRaftLogEngine) SetSyncPeriod(period time.Duration) {
-	if period > 100*time.Millisecond {
-		t.asyncWrite = true
+	if period > 0 {
 		t.syncPeriod = period
+		t.asyncConsensus = true
 	} else {
-		t.asyncWrite = false
+		t.syncPeriod = 0
+		t.asyncConsensus = false
 	}
+	t.asyncWrite = false
+	// todo(qzy): remove mode2 code later, set asyncWrite always false temporarily
+	//if period > 100*time.Millisecond {
+	//	t.asyncWrite = true
+	//	t.syncPeriod = period
+	//} else {
+	//	t.asyncWrite = false
+	//}
 }
 
 // IsAsyncWrite returns whether write raft log to disk async.
 func (t *TsRaftLogEngine) IsAsyncWrite() bool {
 	return t.asyncWrite
+}
+
+// IsAsyncConsensus returns whether async consensus enabled.
+func (t *TsRaftLogEngine) IsAsyncConsensus() bool {
+	return t.asyncConsensus
 }
 
 // GetSyncPeriod get sync period

@@ -987,6 +987,61 @@ func (r *Replica) evaluateProposal(
 	return &res, needConsensus, nil
 }
 
+// batchRequestOsnRewrite rewrite osn
+func (r *Replica) batchRequestOsnRewrite(
+	ctx context.Context, requests []roachpb.RequestUnion,
+) []roachpb.RequestUnion {
+	for _, ru := range requests {
+		req := ru.GetInner()
+		switch req.(type) {
+		case *roachpb.TsRowPutRequest:
+			originOsn := binary.LittleEndian.Uint64(req.(*roachpb.TsRowPutRequest).HeaderPrefix[:8])
+			if originOsn == 0 {
+				osn := r.TsEngine().TsIDGen.GetNextID()
+				binary.LittleEndian.PutUint64(req.(*roachpb.TsRowPutRequest).HeaderPrefix[:8], osn)
+				log.VEventf(ctx, 3, "The TsRowPutRequest RangeID is : %v, osn is :%v", r.RangeID, osn)
+			}
+		case *roachpb.TsDeleteRequest:
+			originOsn := req.(*roachpb.TsDeleteRequest).OsnId
+			if originOsn == 0 {
+				osn := r.TsEngine().TsIDGen.GetNextID()
+				req.(*roachpb.TsDeleteRequest).OsnId = osn
+				log.VEventf(ctx, 3, "The TsDeleteRequest RangeID is : %v, osn is :%v", r.RangeID, osn)
+			}
+		case *roachpb.TsDeleteMultiEntitiesDataRequest:
+			originOsn := req.(*roachpb.TsDeleteMultiEntitiesDataRequest).OsnId
+			if originOsn == 0 {
+				osn := r.TsEngine().TsIDGen.GetNextID()
+				req.(*roachpb.TsDeleteMultiEntitiesDataRequest).OsnId = osn
+				log.VEventf(ctx, 3, "The TsDeleteMultiEntitiesDataRequest RangeID is : %v, osn is :%v", r.RangeID, osn)
+			}
+		case *roachpb.TsDeleteEntityRequest:
+			originOsn := req.(*roachpb.TsDeleteEntityRequest).OsnId
+			if originOsn == 0 {
+				osn := r.TsEngine().TsIDGen.GetNextID()
+				req.(*roachpb.TsDeleteEntityRequest).OsnId = osn
+				log.VEventf(ctx, 3, "The TsDeleteEntityRequest RangeID is : %v, osn is :%v", r.RangeID, osn)
+			}
+		case *roachpb.TsTagUpdateRequest:
+			originOsn := req.(*roachpb.TsTagUpdateRequest).OsnID
+			if originOsn == 0 {
+				osn := r.TsEngine().TsIDGen.GetNextID()
+				binary.LittleEndian.PutUint64(req.(*roachpb.TsTagUpdateRequest).Tags[:8], osn)
+				req.(*roachpb.TsTagUpdateRequest).OsnID = osn
+				log.VEventf(ctx, 3, "The TsTagUpdateRequest RangeID is : %v, osn is :%v", r.RangeID, osn)
+			}
+		case *roachpb.TsPutTagRequest:
+			originOsn := binary.LittleEndian.Uint64(req.(*roachpb.TsPutTagRequest).Value.RawBytes[:8])
+			if originOsn == 0 {
+				osn := r.TsEngine().TsIDGen.GetNextID()
+				binary.LittleEndian.PutUint64(req.(*roachpb.TsPutTagRequest).Value.RawBytes[:8], osn)
+				log.VEventf(ctx, 3, "The TsPutTagRequest RangeID is : %v, osn is :%v", r.RangeID, osn)
+			}
+		}
+	}
+	return requests
+}
+
 // requestToProposalTS encapsulates the proposal structure, where proposal.Request
 // stores batchRequest. If consensus is required between replicas, it encapsulates
 // proposal.command in RaftCommand format and returns proposal.

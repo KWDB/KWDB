@@ -17,6 +17,8 @@
 #include <cstdio>
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
+#include <algorithm>
 #include <map>
 #include <string>
 #include <memory>
@@ -1489,6 +1491,11 @@ KStatus TSEngineImpl::CreateCheckpoint(kwdbContext_p ctx) {
   // 2.read mtr id first, only read uncommitted txn from all vgroups.
   auto vgroup_mtr = GetVGroupByID(ctx, 1);
   std::vector<uint64_t> uncommitted_xid;
+  for (auto& log : logs) {
+    if (log->getType() == WALLogType::TS_BEGIN || log->getType() == WALLogType::MTR_BEGIN) {
+      uncommitted_xid.push_back(log->getXID());
+    }
+  }
   s = vgroup_mtr->GetWALManager()->ReadUncommittedTxnID(uncommitted_xid);
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to ReadUncommittedTxnID.")
@@ -1510,6 +1517,24 @@ KStatus TSEngineImpl::CreateCheckpoint(kwdbContext_p ctx) {
     vgrp_lsn.emplace(vgrp_id, lsn);
 
     logs.insert(logs.end(), vlogs.begin(), vlogs.end());
+  }
+
+  std::unordered_set<uint64_t> committed_xid;
+  for (auto& log : logs) {
+    if (log->getType() == WALLogType::MTR_COMMIT || log->getType() == WALLogType::MTR_ROLLBACK ||
+        log->getType() == WALLogType::TS_COMMIT || log->getType() == WALLogType::TS_ROLLBACK) {
+      committed_xid.insert(log->getXID());
+    }
+  }
+  if (!committed_xid.empty()) {
+    for (auto it = logs.begin(); it != logs.end();) {
+      if (committed_xid.find((*it)->getXID()) != committed_xid.end()) {
+        delete *it;
+        it = logs.erase(it);
+      } else {
+        ++it;
+      }
+    }
   }
 
   // 4. rewrite incomplete wal
@@ -2761,13 +2786,21 @@ KStatus TSEngineImpl::FlushBuffer(kwdbContext_p ctx) {
   if (options_.wal_level != WALMode::OFF && !options_.use_raft_log_as_wal) {
     {
       wal_mgr_->Lock();
-      wal_mgr_->Flush(ctx);
+      if (wal_mgr_->Flush(ctx) != KStatus::SUCCESS) {
+        wal_mgr_->Unlock();
+        LOG_ERROR("failed to flush wal manager");
+        return KStatus::FAIL;
+      }
       wal_mgr_->Unlock();
     }
     for (auto& vg : vgroups_) {
       auto wal = vg->GetWALManager();
       wal->Lock();
-      wal->Flush(ctx);
+      if (wal->Flush(ctx) != KStatus::SUCCESS) {
+        wal->Unlock();
+        LOG_ERROR("failed to flush wal[vg=%d]", vg->GetVGroupID());
+        return KStatus::FAIL;
+      }
       wal->Unlock();
     }
   }
@@ -2811,9 +2844,9 @@ KStatus TSEngineImpl::GetMaxEntityIdByVGroupId(kwdbContext_p ctx, uint32_t vgrou
   return KStatus::SUCCESS;
 }
 
-KStatus TSEngineImpl::Vacuum(kwdbContext_p ctx, bool force) {
+KStatus TSEngineImpl::Vacuum(kwdbContext_p ctx, bool force, bool only_agg) {
   for (const auto& vgroup : vgroups_) {
-    vgroup->Vacuum(ctx, force);
+    vgroup->Vacuum(ctx, force, only_agg);
   }
   return SUCCESS;
 }

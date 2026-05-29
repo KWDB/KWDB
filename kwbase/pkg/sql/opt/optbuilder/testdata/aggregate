@@ -223,6 +223,7 @@ array_agg(inet) -> inet[]
 array_agg(time) -> time[]
 array_agg(timetz) -> timetz[]
 array_agg(varbit) -> varbit[]
+array_agg(citext) -> citext[]
 array_agg(bool) -> bool[]
 
 # With an explicit cast, this works as expected.

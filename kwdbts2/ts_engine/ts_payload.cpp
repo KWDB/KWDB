@@ -12,6 +12,7 @@
 #include <vector>
 #include <string>
 #include "ts_payload.h"
+#include "data_type.h"
 #include "ts_ts_lsn_span_utils.h"
 
 namespace kwdbts {
@@ -32,39 +33,14 @@ TsRawPayloadRowParser::TsRawPayloadRowParser(const std::vector<AttributeInfo>* d
   }
 }
 
-bool TsRawPayloadRowParser::GetColValueAddr(const TSSlice& row_data, int col_id,
-                                            TSSlice* col_data) {
-  bool parse_ok = false;
-  // run here means column value is not null.
-  if (col_id < schema_->size() && row_data.len > col_offset_[col_id]) {
-    if (!__isVarType((*schema_)[col_id].type)) {
-      col_data->data = row_data.data + col_offset_[col_id];
-      col_data->len = (*schema_)[col_id].size;
-      auto end_offset = col_offset_[col_id] + col_data->len;
-      if (end_offset <= row_data.len) {
-        parse_ok = true;
-      }
-    } else {
-      size_t actual_offset = KUint64(row_data.data + col_offset_[col_id]);
-      col_data->len = KUint16(row_data.data + actual_offset);
-      auto end_offset = actual_offset + col_data->len + kStringLenLen;
-      if (end_offset <= row_data.len) {
-        col_data->data = row_data.data + actual_offset + kStringLenLen;
-        parse_ok = true;
-      }
-    }
+void TsRawPayloadRowParser::FailReport(TSSlice row_data) const {
+  std::string hex_str;
+  BinaryToHexStr(row_data, hex_str);
+  LOG_ERROR("TsRawPayloadRowParser::Parse failed. data len:%lu, hex: %s", row_data.len, hex_str.c_str());
+  LOG_ERROR("print metric schema while payload parse, schema size: %lu", schema_->size());
+  for (size_t i = 0; i < schema_->size(); i++) {
+    LOG_ERROR("scheme idx[%lu]: %s.", i, schema_->at(i).toString().c_str());
   }
-  if (!parse_ok) {
-    std::string hex_str;
-    BinaryToHexStr(row_data, hex_str);
-    LOG_ERROR("TsRawPayloadRowParser::Parse failed. data len:%lu, hex: %s", row_data.len, hex_str.c_str());
-    LOG_ERROR("print metric schema while payload parse, schema size: %lu", schema_->size());
-    for (size_t i = 0; i < schema_->size(); i++) {
-      LOG_ERROR("scheme idx[%lu]: %s.", i, schema_->at(i).toString().c_str());
-    }
-    return false;
-  }
-  return true;
 }
 
 KStatus TsRawPayload::ParsePayLoadStruct(const TSSlice &raw) {

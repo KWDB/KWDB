@@ -57,6 +57,8 @@ KStatus WALBufferMgr::init(TS_OSN start_lsn) {
     //    }
   }
 
+  ResetMeta();
+
   for (auto& block : first_block) {
     delete block;
   }
@@ -113,6 +115,15 @@ KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries, TS_OSN st
       }
       index = nextBlockIndex(index);
     } while (buffer_[index].getBlockNo() <= end_block);
+  }
+
+  uint64_t data_len = file_mgr_->GetLSNFromBlockNo(read_queue.back()->getBlockNo()) + read_queue.back()->getDataLen();
+  if (data_len < end_lsn) {
+    // This could happen if the operating system flushes the entryblock file before an explicit flush/sync,
+    // and then a crash occurs. After recovery, meta.current_lsn ends up exceeding entry_block.data_len.(ZDP-51353)
+    // Add a check for entryblock.data_len < end_lsn to avoid crash during reading.
+    LOG_WARN("ReadWALLogs entryblock.data_len(%ld) < end_lsn(%ld)", data_len, end_lsn);
+    return SUCCESS;
   }
 
   TS_OSN current_offset = start_lsn;
@@ -286,16 +297,20 @@ KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries, TS_OSN st
           LOG_ERROR("Failed to parse the WAL log.")
           break;
         }
-        auto* mtr_entry = new TTREntry(current_lsn, typ, x_id, read_buf);
-        delete[] read_buf;
-        read_buf = nullptr;
-        if (mtr_entry == nullptr) {
-          LOG_ERROR("Failed to construct entry.")
-          status = FAIL;
-          break;
+        if (txn_id == 0 || txn_id == x_id) {
+          auto* mtr_entry = new TTREntry(current_lsn, typ, x_id, read_buf);
+          delete[] read_buf;
+          read_buf = nullptr;
+          if (mtr_entry == nullptr) {
+            LOG_ERROR("Failed to construct entry.")
+            status = FAIL;
+            break;
+          }
+          log_entries.push_back(mtr_entry);
+        } else {
+          delete[] read_buf;
+          read_buf = nullptr;
         }
-
-        log_entries.push_back(mtr_entry);
         break;
       }
       case DDL_CREATE: {

@@ -690,6 +690,11 @@ func DecodeOidDatum(
 			return nil, invalidUTF8Error
 		}
 		return tree.NewDString(string(b)), nil
+	case types.T_citext:
+		if !utf8.Valid(b) {
+			return nil, invalidUTF8Error
+		}
+		return tree.NewDCIText(string(b), &tree.CollationEnvironment{})
 	case oid.T_name:
 		if err := validateStringBytes(b); err != nil {
 			return nil, err

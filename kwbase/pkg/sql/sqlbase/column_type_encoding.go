@@ -480,7 +480,13 @@ func decodeUntaggedDatumWithType(
 		if err != nil {
 			return nil, b, err
 		}
-		d, err := tree.NewDCollatedString(string(data), t.Locale(), &a.env)
+		var d tree.Datum
+		switch t.Oid() {
+		case types.T_citext:
+			d, err = tree.NewDCIText(string(data), &a.env)
+		default:
+			d, err = tree.NewDCollatedString(string(data), t.Locale(), &a.env)
+		}
 		return d, b, err
 	case types.BitFamily:
 		b, data, err := encoding.DecodeUntaggedBitArrayValue(buf)
@@ -633,7 +639,13 @@ func decodeUntaggedDatum(a *DatumAlloc, t *types.T, buf []byte) (tree.Datum, []b
 		if err != nil {
 			return nil, b, err
 		}
-		d, err := tree.NewDCollatedString(string(data), t.Locale(), &a.env)
+		var d tree.Datum
+		switch t.Oid() {
+		case types.T_citext:
+			d, err = tree.NewDCIText(string(data), &a.env)
+		default:
+			d, err = tree.NewDCollatedString(string(data), t.Locale(), &a.env)
+		}
 		return d, b, err
 	case types.BitFamily:
 		b, data, err := encoding.DecodeUntaggedBitArrayValue(buf)
@@ -740,6 +752,12 @@ func decodeUntaggedDatum(a *DatumAlloc, t *types.T, buf []byte) (tree.Datum, []b
 // implemented by this function, an error is returned.
 func MarshalColumnValue(col *ColumnDescriptor, val tree.Datum) (roachpb.Value, error) {
 	var r roachpb.Value
+
+	if w, ok := val.(*tree.DOidWrapper); ok && w.Oid == types.T_citext {
+		if ds, ok := w.Wrapped.(*tree.DCollatedString); ok {
+			val = ds
+		}
+	}
 
 	if val == tree.DNull {
 		return r, nil

@@ -11,6 +11,7 @@
 // Created by liguoliang on 2022/07/18.
 
 #include "ee_storage_handler.h"
+#include <algorithm>
 
 #include "cm_func.h"
 #include "ee_field.h"
@@ -612,16 +613,6 @@ EEIteratorErrCode StorageHandler::GetNextTagData(kwdbContext_p ctx, ScanRowBatch
   return code;
 }
 
-inline bool EntityLessThan(EntityResultIndex& x, EntityResultIndex& y) {
-  if (x.entityGroupId == y.entityGroupId) {
-    if (x.subGroupId == y.subGroupId) {
-      return x.entityId < y.entityId;
-    }
-    return x.subGroupId < y.subGroupId;
-  }
-  return x.subGroupId < y.subGroupId;
-}
-
 EEIteratorErrCode StorageHandler::NewTsIterator(kwdbContext_p ctx) {
   EnterFunc();
   KStatus ret = FAIL;
@@ -644,8 +635,18 @@ EEIteratorErrCode StorageHandler::NewTsIterator(kwdbContext_p ctx) {
       SafeDeletePointer(ts_iterator);
     }
 
+    auto comparator = [](const EntityResultIndex &x, const EntityResultIndex &y) {
+      if (x.entityGroupId != y.entityGroupId) {
+        return x.entityGroupId < y.entityGroupId;
+      }
+      if (x.subGroupId != y.subGroupId) {
+        return x.subGroupId < y.subGroupId;
+      }
+      return x.entityId < y.entityId;
+    };
+
     if (entities_.size() > 1) {
-      std::sort(entities_.begin(), entities_.end(), EntityLessThan);
+      std::sort(entities_.begin(), entities_.end(), comparator);
     }
 
     IteratorParams params = {

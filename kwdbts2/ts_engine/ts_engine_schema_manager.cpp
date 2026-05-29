@@ -29,8 +29,7 @@ TsEngineSchemaManager::TsEngineSchemaManager(const string& schema_root_path) :
     schema_root_path_(schema_root_path), mgrs_rw_latch_(RWLATCH_ID_SCHEMA_MGRS_RWLOCK) {
   auto exists = IsExists(schema_root_path_);
   if (exists == false) {
-    ErrorInfo error_info;
-    MakeDirectory(schema_root_path_, error_info);
+    MakeDirectory(schema_root_path_);
   }
 }
 
@@ -110,11 +109,11 @@ KStatus TsEngineSchemaManager::CreateTable(kwdbContext_p ctx, const uint32_t& db
 
   ErrorInfo err_info;
   fs::path table_path = schema_root_path_ / std::to_string(table_id);
-  MakeDirectory(table_path, err_info);
+  MakeDirectory(table_path);
   fs::path metric_schema_path = table_path / "metric";
-  MakeDirectory(metric_schema_path, err_info);
+  MakeDirectory(metric_schema_path);
   fs::path tag_schema_path = table_path / "tag";
-  MakeDirectory(tag_schema_path, err_info);
+  MakeDirectory(tag_schema_path);
 
   auto tbl_schema_mgr = std::make_unique<TsTableSchemaManager>(schema_root_path_, table_id);
   KStatus s = tbl_schema_mgr->CreateTable(ctx, meta, db_id, ts_version, err_info);

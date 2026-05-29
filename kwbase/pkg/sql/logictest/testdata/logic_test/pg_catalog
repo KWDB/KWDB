@@ -1030,6 +1030,8 @@ oid    typname        typnamespace  typowner  typlen  typbyval  typtype
 91007  _varbytea      2750804390    NULL      -1      false     b
 91008  geometry       2750804390    NULL      -1      false     b
 91009  _geometry      2750804390    NULL      -1      false     b
+91014  citext         2750804390    NULL      -1      false     b
+91015  _citext        2750804390    NULL      -1      false     b
 
 query OTTBBTOOO colnames
 SELECT oid, typname, typcategory, typispreferred, typisdefined, typdelim, typrelid, typelem, typarray
@@ -1116,6 +1118,8 @@ oid    typname        typcategory  typispreferred  typisdefined  typdelim  typre
 91007  _varbytea      A            false           true          ,         0         91006    0
 91008  geometry       S            false           true          ,         0         0        91009
 91009  _geometry      A            false           true          ,         0         91008    0
+91014  citext         S            false           true          ,         0         0        91015
+91015  _citext        A            false           true          ,         0         91014    0
 
 query OTOOOOOOO colnames
 SELECT oid, typname, typinput, typoutput, typreceive, typsend, typmodin, typmodout, typanalyze
@@ -1202,6 +1206,8 @@ oid    typname        typinput        typoutput        typreceive        typsend
 91007  _varbytea      array_in        array_out        array_recv        array_send        0         0          0
 91008  geometry       geometryin      geometryout      geometryrecv      geometrysend      0         0          0
 91009  _geometry      array_in        array_out        array_recv        array_send        0         0          0
+91014  citext         citextin        citextout        citextrecv        citextsend        0         0          0
+91015  _citext        array_in        array_out        array_recv        array_send        0         0          0
 
 query OTTTBOI colnames
 SELECT oid, typname, typalign, typstorage, typnotnull, typbasetype, typtypmod
@@ -1288,6 +1294,8 @@ oid    typname        typalign  typstorage  typnotnull  typbasetype  typtypmod
 91007  _varbytea      NULL      NULL        false       0            -1
 91008  geometry       NULL      NULL        false       0            -1
 91009  _geometry      NULL      NULL        false       0            -1
+91014  citext         NULL      NULL        false       0            -1
+91015  _citext        NULL      NULL        false       0            -1
 
 query OTIOTTT colnames
 SELECT oid, typname, typndims, typcollation, typdefaultbin, typdefault, typacl
@@ -1374,6 +1382,8 @@ oid    typname        typndims  typcollation  typdefaultbin  typdefault  typacl
 91007  _varbytea      0         0             NULL           NULL        NULL
 91008  geometry       0         3903121477    NULL           NULL        NULL
 91009  _geometry      0         3903121477    NULL           NULL        NULL
+91014  citext         0         97238787      NULL           NULL        NULL
+91015  _citext        0         0             NULL           NULL        NULL
 
 user testuser
 
@@ -2061,7 +2071,7 @@ SELECT c FROM (SELECT oid, count(*) as c FROM pg_catalog.pg_proc GROUP BY oid) W
 ## Ensure that unnest works with oid wrapper arrays
 
 query O
-SELECT unnest((SELECT proargtypes FROM pg_proc WHERE proname='split_part'));
+SELECT unnest((SELECT proargtypes FROM pg_proc WHERE proname='split_part' AND proargtypes::STRING = '25 25 20'));
 ----
 25
 25

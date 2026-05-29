@@ -73,7 +73,7 @@ std::string TsTierPartitionManager::parsePartitionDirToOneLevel(const std::strin
 
 KStatus TsTierPartitionManager::MakePartitionDir(const std::string& partition_full_path, int level,
                                                  ErrorInfo& error_info) {
-  if (!MakeDirectory(partition_full_path, error_info)) {
+  if (!MakeDirectory(partition_full_path)) {
     return KStatus::FAIL;
   }
   return KStatus::SUCCESS;

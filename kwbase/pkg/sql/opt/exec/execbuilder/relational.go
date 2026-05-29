@@ -1871,7 +1871,9 @@ func (b *Builder) buildApplyJoin(join memo.RelExpr) (execPlan, error) {
 	for i := range rightRequiredProps.Presentation {
 		rightOutputCols.Set(int(rightRequiredProps.Presentation[i].ID), i)
 	}
-	allCols := joinOutputMap(leftPlan.outputCols, rightOutputCols)
+	allCols := joinOutputMap(
+		leftPlan.outputCols, rightOutputCols, b.factory.NumResultColumns(leftPlan.root),
+	)
 
 	var onExpr tree.TypedExpr
 	if len(*filters) != 0 {
@@ -2243,7 +2245,8 @@ func (b *Builder) initJoinBuild(
 		return execPlan{}, execPlan{}, nil, opt.ColMap{}, err
 	}
 
-	allCols := joinOutputMap(leftPlan.outputCols, rightPlan.outputCols)
+	leftNumResultCols := b.factory.NumResultColumns(leftPlan.root)
+	allCols := joinOutputMap(leftPlan.outputCols, rightPlan.outputCols, leftNumResultCols)
 
 	ctx := buildScalarCtx{
 		ivh:     tree.MakeIndexedVarHelper(nil /* container */, numOutputColsInMap(allCols)),
@@ -2265,9 +2268,13 @@ func (b *Builder) initJoinBuild(
 }
 
 // joinOutputMap determines the outputCols map for a (non-semi/anti) join, given
-// the outputCols maps for its inputs.
-func joinOutputMap(left, right opt.ColMap) opt.ColMap {
+// the outputCols maps for its inputs. If specified, numLeftResultCols is the
+// physical width of the left input.
+func joinOutputMap(left, right opt.ColMap, numLeftResultCols ...int) opt.ColMap {
 	numLeftCols := numOutputColsInMap(left)
+	if len(numLeftResultCols) > 0 && numLeftResultCols[0] >= 0 {
+		numLeftCols = numLeftResultCols[0]
+	}
 
 	res := left.Copy()
 	right.ForEach(func(colIdx, rightIdx int) {
@@ -2944,7 +2951,7 @@ func (b *Builder) buildLookupJoin(join *memo.LookupJoinExpr) (execPlan, error) {
 	lookupCols := join.Cols.Difference(inputCols)
 
 	lookupOrdinals, lookupColMap := b.getColumns(lookupCols, join.Table)
-	allCols := joinOutputMap(input.outputCols, lookupColMap)
+	allCols := joinOutputMap(input.outputCols, lookupColMap, b.factory.NumResultColumns(input.root))
 
 	res := execPlan{outputCols: allCols}
 	if join.JoinType == opt.SemiJoinOp || join.JoinType == opt.AntiJoinOp {
@@ -3613,7 +3620,11 @@ func (b *Builder) needProjection(
 				break
 			}
 		}
-		if identity {
+		numResultCols := b.factory.NumResultColumns(input.root)
+		if numResultCols < 0 {
+			numResultCols = input.numOutputCols()
+		}
+		if identity && numResultCols == len(colList) {
 			return nil, false
 		}
 	}

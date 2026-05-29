@@ -550,7 +550,11 @@ TsWriteBatchDataWorker::~TsWriteBatchDataWorker() {
     const size_t batch_header_size = sizeof(BatchDataHeader);
     std::unique_ptr<TsSequentialReadFile> r_file;
 
-    w_file_->Sync();
+    auto s = w_file_->Sync();
+    if (s == FAIL) {
+      auto path = w_file_->GetFilePath();
+      LOG_WARN("sync file failed, job_id[%lu], file_path=%s", job_id_, path.c_str());
+    }
     TsIOEnv *env = &TsIOEnv::GetInstance();
     s = env->NewSequentialReadFile(w_file_->GetFilePath(), &r_file, w_file_->GetFileSize());
     if (s != KStatus::SUCCESS) {

@@ -15,6 +15,7 @@
 #include "lg_api.h"
 #include "ts_common.h"
 #include "sys_utils.h"
+#include "ts_io.h"
 
 KStatus RaftStore::Open() {
   file_ = open(file_path_.c_str(), O_CREAT | O_RDWR | O_APPEND, 0644);
@@ -223,7 +224,11 @@ KStatus RaftStore::WriteRaftLog(kwdbContext_p ctx, int cnt, TSRaftlog *raftlog, 
   }
   file_len_ += mem.size();
   if (sync) {
-    fsync(file_);
+    if (unlikely(fsync(file_) < 0)) {
+      auto ec = MakeErrorCode(errno);
+      LOG_ERROR("fsync failed, reason: %s", ec.message().c_str());
+      return FAIL;
+    }
   }
   if (file_len_ > file_max_size) {
     createNewFile();
@@ -879,7 +884,11 @@ KStatus RaftStore::Close() {
 }
 
 KStatus RaftStore::Sync(kwdbContext_p ctx) {
-  fsync(file_);
+  if (unlikely(fsync(file_) < 0)) {
+    auto ec = MakeErrorCode(errno);
+    LOG_ERROR("fsync failed, reason: %s", ec.message().c_str());
+    return FAIL;
+  }
   return KStatus::SUCCESS;
 }
 

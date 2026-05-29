@@ -58,6 +58,7 @@ func TestRandParseDatumStringAs(t *testing.T) {
 		types.MakeTimeTZ(6),
 		types.MakeCollatedString(types.String, "en"),
 		types.MakeCollatedString(types.String, "de"),
+		types.MakeCollatedString(types.CIText, ""),
 	},
 		types.Scalar...)
 	for _, ty := range types.Scalar {

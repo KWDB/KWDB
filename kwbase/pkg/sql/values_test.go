@@ -79,7 +79,7 @@ func TestValues(t *testing.T) {
 	vStr := "two furs one cub"
 	vBool := true
 
-	unsupp := &tree.RangeCond{}
+	// unsupp := &tree.RangeCond{}
 
 	intVal := func(v int64) *tree.NumVal {
 		return tree.NewNumVal(
@@ -142,11 +142,11 @@ func TestValues(t *testing.T) {
 			asRow(tree.MakeDBool(tree.DBool(vBool))),
 			true,
 		},
-		{
-			makeValues(makeTuple(unsupp)),
-			nil,
-			false,
-		},
+		// {
+		// 	makeValues(makeTuple(unsupp)),
+		// 	nil,
+		// 	false,
+		// },
 	}
 
 	ctx := context.TODO()

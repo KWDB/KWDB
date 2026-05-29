@@ -233,7 +233,6 @@ func (s *streamReaderProcessor) Start(ctx context.Context) context.Context {
 		}
 	}
 
-	var rowsResend []tree.Datums
 	if s.streamSink.HasAgg {
 		// Read the last window in the target table as the expiredTime.
 		// Data before this expiredTime needs to be recalculated.
@@ -244,19 +243,19 @@ func (s *streamReaderProcessor) Start(ctx context.Context) context.Context {
 		}
 		s.lowWaterMark = timeutil.ToUnixMilli(s.expiredTime)
 		s.emitTimestamp = s.expiredTime
-
-		if s.needResendLastWindow() {
-			rowsResend, err = s.recalculator.loadRowsInLastWindow()
-			if err != nil {
-				s.MoveToDraining(err)
-				return ctx
-			}
-		}
 	}
 
 	s.startAsyncTasks(ctx, s.spec.Metadata, jobDetails.ActiveNodeList)
 	log.Infof(s.Ctx, "successful to start stream %q, id %d.", s.spec.Metadata.Name, s.spec.Metadata.ID)
 
+	var rowsResend []tree.Datums
+	if s.needResendLastWindow() {
+		rowsResend, err = s.recalculator.loadRowsInLastWindow(s.rowBuffer.HasRow)
+		if err != nil {
+			s.MoveToDraining(err)
+			return ctx
+		}
+	}
 	if len(rowsResend) > 0 {
 		// resend rows in last window,
 		// prevent the split-windows of historical data and real-time data.

@@ -89,6 +89,15 @@ func (b *Builder) buildValuesClause(
 			if err != nil {
 				panic(err)
 			}
+
+			// If the target column type is known, allow assignment casts between CITEXT
+			// and the string family here.
+			if tree.IsCITextStringMixed(texpr.ResolvedType(), desired) {
+				texpr, err = tree.NewTypedCastExpr(texpr, desired)
+				if err != nil {
+					panic(err)
+				}
+			}
 			if typ := texpr.ResolvedType(); typ.Family() != types.UnknownFamily {
 				if colTypes[colIdx].Family() == types.UnknownFamily {
 					colTypes[colIdx] = *typ

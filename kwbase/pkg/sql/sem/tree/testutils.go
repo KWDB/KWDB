@@ -57,6 +57,9 @@ func SampleDatum(t *types.T) Datum {
 		return d
 	case types.StringFamily:
 		return NewDString("Carl")
+	case types.CollatedStringFamily:
+		d, _ := NewDCIText("citext", &CollationEnvironment{})
+		return d
 	case types.BytesFamily:
 		return NewDBytes("Princess")
 	case types.DateFamily:

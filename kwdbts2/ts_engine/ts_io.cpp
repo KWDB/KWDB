@@ -24,7 +24,6 @@
 
 #include "kwdb_type.h"
 #include "lg_api.h"
-#include "libkwdbts2.h"
 #include "settings.h"
 #include "ts_bufferbuilder.h"
 #include "ts_sliceguard.h"
@@ -40,7 +39,7 @@ bool CreateDirSymLink(const fs::path& target_path, const fs::path& symbol_path) 
       const fs::path actual_path = fs::read_symlink(symbol_path, ec);
       if (ec) {
         LOG_ERROR("CreateDirSymLink failed: read_symlink [%s] failed: %s", symbol_path.string().c_str(),
-                   ec.message().c_str());
+                  ec.message().c_str());
         return false;
       }
       if (!ec) {
@@ -48,12 +47,13 @@ bool CreateDirSymLink(const fs::path& target_path, const fs::path& symbol_path) 
           return true;
         }
         LOG_ERROR("CreateDirSymLink failed: symlink [%s] exists but link to [%s], configure path is [%s]",
-                   symbol_path.string().c_str(), actual_path.string().c_str(), target_path.string().c_str());
+                  symbol_path.string().c_str(), actual_path.string().c_str(), target_path.string().c_str());
         return false;
       }
     }
   } else if (ec.value() != static_cast<int>(std::errc::no_such_file_or_directory)) {
-    LOG_ERROR("CreateDirSymLink failed: symlink_status [%s] failed: %s", symbol_path.string().c_str(), ec.message().c_str());
+    LOG_ERROR("CreateDirSymLink failed: symlink_status [%s] failed: %s", symbol_path.string().c_str(),
+              ec.message().c_str());
     return false;
   }
 
@@ -61,8 +61,8 @@ bool CreateDirSymLink(const fs::path& target_path, const fs::path& symbol_path) 
     ec.clear();
     fs::create_directory_symlink(target_path, symbol_path, ec);
     if (ec) {
-      LOG_ERROR("create symlink [%s] -> [%s] failed: %s",
-                symbol_path.string().c_str(), target_path.string().c_str(), ec.message().c_str());
+      LOG_ERROR("create symlink [%s] -> [%s] failed: %s", symbol_path.string().c_str(), target_path.string().c_str(),
+                ec.message().c_str());
       return false;
     }
   }
@@ -81,7 +81,8 @@ KStatus TsMMapAppendOnlyFile::UnmapCurrent() {
   // }
   int ok = munmap(mmap_start_, mmap_end_ - mmap_start_);
   if (ok < 0) {
-    LOG_ERROR("munmap failed, reason: %s", strerror(errno));
+    auto ec = MakeErrorCode(errno);
+    LOG_ERROR("munmap failed, reason: %s", ec.message().c_str());
     return FAIL;
   }
   mmap_start_ = mmap_end_ = dest_ = synced_ = nullptr;
@@ -98,18 +99,21 @@ KStatus TsMMapAppendOnlyFile::MMapNew() {
   // int ok = posix_fallocate(fd_, file_size_, mmap_size_);
   int ok = fallocate(fd_, 0, file_size_, mmap_size_);
   if (ok < 0) {
-    LOG_ERROR("can not allocate space %lu on file %s, reason: %s", mmap_size_, path_.c_str(), strerror(errno));
+    auto ec = MakeErrorCode(errno);
+    LOG_ERROR("can not allocate space %lu on file %s, reason: %s", mmap_size_, path_.c_str(), ec.message().c_str());
     return FAIL;
   }
   size_t mmap_offset = TruncateToPage(file_size_, page_size_);
   void* ptr = mmap(nullptr, mmap_size_, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, mmap_offset);
   if (ptr == MAP_FAILED) {
-    LOG_ERROR("mmap failed on %s, reason: %s", path_.c_str(), strerror(errno));
+    auto ec = MakeErrorCode(errno);
+    LOG_ERROR("mmap failed on %s, reason: %s", path_.c_str(), ec.message().c_str());
     return FAIL;
   }
   ok = madvise(ptr, mmap_size_, MADV_SEQUENTIAL);
   if (ok < 0) {
-    LOG_WARN("madvise failed, reason %s", strerror(errno));
+    auto ec = MakeErrorCode(errno);
+    LOG_WARN("madvise failed, reason %s", ec.message().c_str());
   }
   mmap_start_ = static_cast<char*>(ptr);
   mmap_end_ = mmap_start_ + mmap_size_;
@@ -118,7 +122,7 @@ KStatus TsMMapAppendOnlyFile::MMapNew() {
   return SUCCESS;
 }
 
-KStatus TsMMapAppendOnlyFile::Append(std::string_view data) {
+KStatus TsMMapAppendOnlyFile::AppendImpl(std::string_view data) {
   size_t nleft = data.size();
   const char* src = data.data();
   while (nleft != 0) {
@@ -146,7 +150,7 @@ KStatus TsMMapAppendOnlyFile::Append(std::string_view data) {
   return SUCCESS;
 }
 
-KStatus TsMMapAppendOnlyFile::Sync() {
+KStatus TsMMapAppendOnlyFile::SyncImpl() {
   if (synced_ == nullptr) {
     return SUCCESS;
   }
@@ -155,14 +159,15 @@ KStatus TsMMapAppendOnlyFile::Sync() {
   }
   int ok = fsync(fd_);
   if (ok < 0) {
-    LOG_ERROR("fsync failed, reason: %s", strerror(errno));
+    auto ec = MakeErrorCode(errno);
+    LOG_ERROR("fsync failed, reason: %s", ec.message().c_str());
     return FAIL;
   }
   synced_ = dest_;
   return SUCCESS;
 }
 
-KStatus TsMMapAppendOnlyFile::Close() {
+KStatus TsMMapAppendOnlyFile::CloseImpl() {
   if (fd_ == -1) {
     return SUCCESS;
   }
@@ -172,26 +177,30 @@ KStatus TsMMapAppendOnlyFile::Close() {
   }
   int ok = ftruncate(fd_, file_size_);
   if (ok < 0) {
-    LOG_ERROR("ftruncate file %s failed, reason: %s", path_.c_str(), strerror(errno));
+    auto ec = MakeErrorCode(errno);
+    LOG_ERROR("ftruncate file %s failed, reason: %s", path_.c_str(), ec.message().c_str());
     return FAIL;
   }
   ok = flock(fd_, LOCK_UN);
   if (ok < 0) {
-    LOG_ERROR("flock file %s failed, reason: %s", path_.c_str(), strerror(errno));
+    auto ec = MakeErrorCode(errno);
+    LOG_ERROR("flock file %s failed, reason: %s", path_.c_str(), ec.message().c_str());
     return FAIL;
   }
 
   if (EngineOptions::force_sync_file) {
     ok = fsync(fd_);
     if (ok < 0) {
-      LOG_ERROR("fsync failed, reason: %s", strerror(errno));
+      auto ec = MakeErrorCode(errno);
+      LOG_ERROR("fsync failed, reason: %s", ec.message().c_str());
       return FAIL;
     }
   }
 
   ok = close(fd_);
   if (ok < 0) {
-    LOG_ERROR("close file %s failed, reason: %s", path_.c_str(), strerror(errno));
+    auto ec = MakeErrorCode(errno);
+    LOG_ERROR("close file %s failed, reason: %s", path_.c_str(), ec.message().c_str());
     return FAIL;
   }
 
@@ -200,7 +209,7 @@ KStatus TsMMapAppendOnlyFile::Close() {
   return SUCCESS;
 }
 
-KStatus TsMMapRandomReadFile::Prefetch(size_t offset, size_t n) {
+KStatus TsMMapRandomReadFile::PrefetchImpl(size_t offset, size_t n) {
   if (offset + n > file_size_) {
     n = offset > file_size_ ? 0 : file_size_ - offset;
   }
@@ -212,25 +221,26 @@ KStatus TsMMapRandomReadFile::Prefetch(size_t offset, size_t n) {
   char* p1 = mmap_start_ + page_offset;
   int ok = madvise(p1, n + (offset - page_offset), MADV_SEQUENTIAL);
   if (ok < 0) {
-    LOG_WARN("madvise failed, reason %s", strerror(errno));
+    auto ec = MakeErrorCode(errno);
+    LOG_WARN("madvise failed, reason %s", ec.message().c_str());
   }
   return SUCCESS;
 }
 
-KStatus TsMMapRandomReadFile::Read(size_t offset, size_t n, TsSliceGuard* result) const {
+KStatus TsMMapRandomReadFile::ReadImpl(size_t offset, size_t n, TsSliceGuard* result) const {
   if (offset > file_size_ || offset + n > file_size_) {
-    LOG_ERROR("file access overflow, file path: %s, file size: %zu, offset: %zu, length: %zu",
-              path_.c_str(), file_size_, offset, n);
+    LOG_ERROR("file access overflow, file path: %s, file size: %zu, offset: %zu, length: %zu", path_.c_str(),
+              file_size_, offset, n);
     return FAIL;
   }
   *result = TsSliceGuard(mmap_start_ + offset, n);
   return SUCCESS;
 }
 
-KStatus TsMMapSequentialReadFile::Read(size_t n, TsSliceGuard* slice) {
+KStatus TsMMapSequentialReadFile::ReadImpl(size_t n, TsSliceGuard* slice) {
   if (offset_ > file_size_ || offset_ + n > file_size_) {
-    LOG_ERROR("file access overflow, file path: %s, file size: %zu, offset: %zu, length: %zu",
-              path_.c_str(), file_size_, offset_, n);
+    LOG_ERROR("file access overflow, file path: %s, file size: %zu, offset: %zu, length: %zu", path_.c_str(),
+              file_size_, offset_, n);
     return FAIL;
   }
   *slice = TsSliceGuard(mmap_start_ + offset_, n);
@@ -238,8 +248,8 @@ KStatus TsMMapSequentialReadFile::Read(size_t n, TsSliceGuard* slice) {
   return SUCCESS;
 }
 
-KStatus TsMMapIOEnv::NewAppendOnlyFile(const std::string& filepath, std::unique_ptr<TsAppendOnlyFile>* file,
-                                       bool overwrite, size_t offset) {
+KStatus TsMMapIOEnv::NewAppendOnlyFileImpl(const std::string& filepath, std::unique_ptr<TsAppendOnlyFile>* file,
+                                           bool overwrite, size_t offset) {
   int fd = -1;
   int flag = O_RDWR | O_CREAT;
   if (overwrite) {
@@ -250,12 +260,14 @@ KStatus TsMMapIOEnv::NewAppendOnlyFile(const std::string& filepath, std::unique_
     fd = open(filepath.c_str(), flag, 0644);
   } while (fd < 0 && errno == EINTR);
   if (fd < 0) {
-    LOG_ERROR("can not open file %s, reason: %s", filepath.c_str(), strerror(errno));
+    auto ec = MakeErrorCode(errno);
+    LOG_ERROR("can not open file %s, reason: %s", filepath.c_str(), ec.message().c_str());
     return FAIL;
   }
   size_t append_offset = lseek(fd, 0, SEEK_END);
   if (append_offset == -1) {
-    LOG_ERROR("can not seek the end of %s, reason: %s", filepath.c_str(), strerror(errno));
+    auto ec = MakeErrorCode(errno);
+    LOG_ERROR("can not seek the end of %s, reason: %s", filepath.c_str(), ec.message().c_str());
     return FAIL;
   }
   if (offset != -1) {
@@ -268,7 +280,8 @@ KStatus TsMMapIOEnv::NewAppendOnlyFile(const std::string& filepath, std::unique_
 
   int ok = flock(fd, LOCK_EX);
   if (ok < 0) {
-    LOG_ERROR("flock failed, reason: %s", strerror(errno));
+    auto ec = MakeErrorCode(errno);
+    LOG_ERROR("flock failed, reason: %s", ec.message().c_str());
     return FAIL;
   }
   auto new_file = std::make_unique<TsMMapAppendOnlyFile>(filepath, fd, append_offset);
@@ -283,7 +296,7 @@ TsMemoryAppendOnlyFile::~TsMemoryAppendOnlyFile() {
 
 TsMemoryRandomReadFile::~TsMemoryRandomReadFile() {
   if (!delete_after_free) return;
-  TsMemoryIOEnv::GetInstance().DeleteFile(path_);
+  TsMemoryIOEnv::GetInstance().DeleteFileImpl(path_);
 }
 
 static std::pair<int, size_t> OpenReadOnlyFile(const std::string& filepath, size_t file_size) {
@@ -292,12 +305,14 @@ static std::pair<int, size_t> OpenReadOnlyFile(const std::string& filepath, size
     fd = open(filepath.c_str(), O_RDONLY);
   } while (fd < 0 && errno == EINTR);
   if (fd < 0) {
-    LOG_ERROR("cannot open file %s, reason: %s", filepath.c_str(), strerror(errno));
+    auto ec = MakeErrorCode(errno);
+    LOG_ERROR("cannot open file %s, reason: %s", filepath.c_str(), ec.message().c_str());
     return {-1, -1};
   }
   size_t actual_size = lseek(fd, 0, SEEK_END);
   if (actual_size == -1) {
-    LOG_ERROR("lseek failed on file %s, reason: %s", filepath.c_str(), strerror(errno));
+    auto ec = MakeErrorCode(errno);
+    LOG_ERROR("lseek failed on file %s, reason: %s", filepath.c_str(), ec.message().c_str());
     return {-1, -1};
   }
 
@@ -313,8 +328,8 @@ static std::pair<int, size_t> OpenReadOnlyFile(const std::string& filepath, size
   return {fd, file_size};
 }
 
-KStatus TsMMapIOEnv::NewRandomReadFile(const std::string& filepath, std::unique_ptr<TsRandomReadFile>* file,
-                                       size_t file_size) {
+KStatus TsMMapIOEnv::NewRandomReadFileImpl(const std::string& filepath, std::unique_ptr<TsRandomReadFile>* file,
+                                           size_t file_size) {
   auto [fd, readable_size] = OpenReadOnlyFile(filepath, file_size);
   if (fd < 0) {
     return FAIL;
@@ -323,7 +338,8 @@ KStatus TsMMapIOEnv::NewRandomReadFile(const std::string& filepath, std::unique_
   if (readable_size != 0) {
     ptr = mmap(nullptr, readable_size, PROT_READ, MAP_SHARED, fd, 0);
     if (ptr == MAP_FAILED) {
-      LOG_ERROR("mmap failed on file %s, reason: %s", filepath.c_str(), strerror(errno));
+      auto ec = MakeErrorCode(errno);
+      LOG_ERROR("mmap failed on file %s, reason: %s", filepath.c_str(), ec.message().c_str());
       return FAIL;
     }
   }
@@ -332,8 +348,8 @@ KStatus TsMMapIOEnv::NewRandomReadFile(const std::string& filepath, std::unique_
   return SUCCESS;
 }
 
-KStatus TsMMapIOEnv::NewSequentialReadFile(const std::string& filepath, std::unique_ptr<TsSequentialReadFile>* file,
-                                           size_t file_size) {
+KStatus TsMMapIOEnv::NewSequentialReadFileImpl(const std::string& filepath, std::unique_ptr<TsSequentialReadFile>* file,
+                                               size_t file_size) {
   auto [fd, readable_size] = OpenReadOnlyFile(filepath, file_size);
   if (fd < 0) {
     return FAIL;
@@ -343,12 +359,14 @@ KStatus TsMMapIOEnv::NewSequentialReadFile(const std::string& filepath, std::uni
   if (readable_size != 0) {
     ptr = mmap(nullptr, readable_size, PROT_READ, MAP_SHARED, fd, 0);
     if (ptr == MAP_FAILED) {
-      LOG_ERROR("mmap failed on file %s, reason: %s", filepath.c_str(), strerror(errno));
+      auto ec = MakeErrorCode(errno);
+      LOG_ERROR("mmap failed on file %s, reason: %s", filepath.c_str(), ec.message().c_str());
       return FAIL;
     }
     int ok = madvise(ptr, readable_size, MADV_SEQUENTIAL);
     if (ok < 0) {
-      LOG_WARN("madvise failed, reason %s", strerror(errno));
+      auto ec = MakeErrorCode(errno);
+      LOG_WARN("madvise failed, reason %s", ec.message().c_str());
     }
   }
 
@@ -357,7 +375,7 @@ KStatus TsMMapIOEnv::NewSequentialReadFile(const std::string& filepath, std::uni
   return SUCCESS;
 }
 
-KStatus TsMMapIOEnv::NewDirectory(const std::string& path) {
+KStatus TsMMapIOEnv::NewDirectoryImpl(const std::string& path) {
   std::error_code ec;
   bool ok = fs::create_directories(path, ec);
   if (!ok) {
@@ -370,7 +388,7 @@ KStatus TsMMapIOEnv::NewDirectory(const std::string& path) {
   return SUCCESS;
 }
 
-KStatus TsMMapIOEnv::DeleteDir(const std::string& path) {
+KStatus TsMMapIOEnv::DeleteDirImpl(const std::string& path) {
   std::error_code ec;
   uintmax_t n_removed = fs::remove_all(path, ec);
   if (n_removed == -1) {
@@ -380,7 +398,7 @@ KStatus TsMMapIOEnv::DeleteDir(const std::string& path) {
   return SUCCESS;
 }
 
-KStatus TsMMapIOEnv::DeleteFile(const std::string& path) {
+KStatus TsMMapIOEnv::DeleteFileImpl(const std::string& path) {
   std::error_code ec;
   bool ok = fs::remove(path, ec);
   if (!ok) {
@@ -395,25 +413,28 @@ TsIOEnv& TsMMapIOEnv::GetInstance() {
   return inst;
 }
 
-KStatus TsFIOEnv::NewAppendOnlyFile(const std::string& filepath, std::unique_ptr<TsAppendOnlyFile>* file,
-                                   bool overwrite, size_t offset) {
+KStatus TsFIOEnv::NewAppendOnlyFileImpl(const std::string& filepath, std::unique_ptr<TsAppendOnlyFile>* file,
+                                        bool overwrite, size_t offset) {
   FILE* fp;
   if (overwrite) {
     offset = 0;
   }
   if (offset != -1 && fs::exists(filepath) && truncate(filepath.c_str(), offset) != 0) {
-    LOG_ERROR("truncate failed on file %s, offset = %zu", filepath.c_str(), offset);
+    auto ec = MakeErrorCode(errno);
+    LOG_ERROR("truncate failed on file %s, offset = %zu, reason: %s", filepath.c_str(), offset, ec.message().c_str());
     return FAIL;
   }
 
   fp = fopen(filepath.c_str(), "ab");
   if (fp == nullptr) {
-    LOG_ERROR("can not open file %s", filepath.c_str());
+    auto ec = MakeErrorCode(errno);
+    LOG_ERROR("can not open file %s, reason: %s", filepath.c_str(), ec.message().c_str());
     return FAIL;
   }
 
-  if (fseek(fp, 0, SEEK_END) !=0) {
-    LOG_ERROR("fseek failed on file %s", filepath.c_str());
+  if (fseek(fp, 0, SEEK_END) != 0) {
+    auto ec = MakeErrorCode(errno);
+    LOG_ERROR("fseek failed on file %s, reason: %s", filepath.c_str(), ec.message().c_str());
     return FAIL;
   }
   size_t append_offset = ftell(fp);
@@ -422,8 +443,149 @@ KStatus TsFIOEnv::NewAppendOnlyFile(const std::string& filepath, std::unique_ptr
   return SUCCESS;
 }
 
-KStatus TsFIOEnv::NewRandomReadFile(const std::string& filepath, std::unique_ptr<TsRandomReadFile>* file,
-                                   size_t file_size) {
+KStatus TsFIOAppendOnlyFile::AppendImpl(std::string_view data) {
+  if (fp_ == nullptr) {
+    LOG_ERROR("file append error, file_path: %s, file is already closed", path_.c_str());
+    return FAIL;
+  }
+
+  const char* ptr = data.data();
+  size_t remaining = data.size();
+
+  clearerr(fp_);
+  errno = 0;
+  size_t written = fwrite(ptr, 1, remaining, fp_);
+  if (written != remaining) {
+    if (ferror(fp_)) {
+      auto ec = MakeErrorCode(errno);
+      LOG_ERROR("file write error, file_path: %s, expected: %zu, written: %zu, errno: %d, error: %s", path_.c_str(),
+                remaining, written, errno, ec.message().c_str());
+    } else {
+      LOG_ERROR("file write incomplete, file_path: %s, expected: %zu, written: %zu", path_.c_str(), remaining, written);
+    }
+    return FAIL;
+  }
+  file_size_ += remaining;
+  return SUCCESS;
+}
+
+KStatus TsFIOAppendOnlyFile::SyncImpl() {
+  if (fp_ == nullptr) {
+    LOG_ERROR("file sync error, file_path: %s, file is already closed", path_.c_str());
+    return FAIL;
+  }
+
+  errno = 0;
+  if (fflush(fp_) != 0) {
+    auto ec = MakeErrorCode(errno);
+    LOG_ERROR("file flush error, file_path: %s, errno: %d, error: %s", path_.c_str(), ec.value(), ec.message().c_str());
+    return FAIL;
+  }
+  if (EngineOptions::force_sync_file) {
+    errno = 0;
+    int fd = fileno(fp_);
+    if (fd < 0) {
+      auto ec = MakeErrorCode(errno);
+      LOG_ERROR("file get fd error, file_path: %s, errno: %d, error: %s", path_.c_str(), ec.value(),
+                ec.message().c_str());
+      return FAIL;
+    }
+    errno = 0;
+    if (fsync(fd) != 0) {
+      auto ec = MakeErrorCode(errno);
+      LOG_ERROR("file sync error, file_path: %s, errno: %d, error: %s", path_.c_str(), ec.value(),
+                ec.message().c_str());
+      return FAIL;
+    }
+  }
+  return SUCCESS;
+}
+
+KStatus TsFIOAppendOnlyFile::CloseImpl() {
+  if (fp_ == nullptr) {
+    return SUCCESS;
+  }
+  if (SyncImpl() == FAIL) {
+    return FAIL;
+  }
+  errno = 0;
+  if (fclose(fp_) != 0) {
+    auto ec = MakeErrorCode(errno);
+    LOG_ERROR("file close error, file_path: %s, errno: %d, error: %s", path_.c_str(), ec.value(), ec.message().c_str());
+    return FAIL;
+  }
+  fp_ = nullptr;
+  errno = 0;
+  if (truncate(path_.c_str(), file_size_) != 0) {
+    auto ec = MakeErrorCode(errno);
+    LOG_ERROR("file truncate error, file_path: %s, errno: %d, error: %s", path_.c_str(), ec.value(),
+              ec.message().c_str());
+    return FAIL;
+  }
+  return SUCCESS;
+}
+
+KStatus TsFIORandomReadFile::ReadImpl(size_t offset, size_t n, TsSliceGuard* result) const {
+  if (offset > file_size_ || offset + n > file_size_) {
+    *result = TsSliceGuard();
+    LOG_ERROR("file access overflow, file path: %s, file size: %zu, offset: %zu, length: %zu", path_.c_str(),
+              file_size_, offset, n);
+    return FAIL;
+  }
+
+  TsBufferBuilder builder(n);
+  errno = 0;
+  ssize_t bytes_read = pread(fd_, builder.data(), n, offset);
+  if (bytes_read < 0) {
+    auto ec = MakeErrorCode(errno);
+    *result = TsSliceGuard();
+    LOG_ERROR("file read error, file path: %s, errno: %d, error: %s, file size: %zu, offset: %zu, length: %zu",
+              path_.c_str(), ec.value(), ec.message().c_str(), file_size_, offset, n);
+    return FAIL;
+  }
+  if (static_cast<size_t>(bytes_read) != n) {
+    *result = TsSliceGuard();
+    LOG_ERROR("file read incomplete, file path: %s, file size: %zu, offset: %zu, length: %zu, actual: %zd",
+              path_.c_str(), file_size_, offset, n, bytes_read);
+    return FAIL;
+  }
+
+  *result = builder.GetBuffer();
+  return SUCCESS;
+}
+
+KStatus TsFIOSequentialReadFile::ReadImpl(size_t n, TsSliceGuard* result) {
+  if (offset_ > file_size_ || offset_ + n > file_size_) {
+    *result = TsSliceGuard();
+    LOG_ERROR("file access overflow, file path: %s, file size: %zu, offset: %zu, length: %zu", path_.c_str(),
+              file_size_, offset_, n);
+    return FAIL;
+  }
+
+  TsBufferBuilder builder(n);
+  errno = 0;
+  ssize_t bytes_read = pread(fd_, builder.data(), n, offset_);
+  if (bytes_read < 0) {
+    auto ec = MakeErrorCode(errno);
+    *result = TsSliceGuard();
+    LOG_ERROR("file read error, file path: %s, errno: %d, error: %s, file size: %zu, offset: %zu, length: %zu",
+              path_.c_str(), ec.value(), ec.message().c_str(), file_size_, offset_, n);
+    return FAIL;
+  }
+  if (static_cast<size_t>(bytes_read) != n) {
+    *result = TsSliceGuard();
+    LOG_ERROR("file read incomplete, file path: %s, file size: %zu, offset: %zu, length: %zu, actual: %zd",
+              path_.c_str(), file_size_, offset_, n, bytes_read);
+    return FAIL;
+  }
+  offset_ += bytes_read;
+
+  *result = builder.GetBuffer();
+  return SUCCESS;
+}
+
+KStatus TsFIOEnv::NewRandomReadFileImpl(const std::string& filepath, std::unique_ptr<TsRandomReadFile>* file,
+                                        size_t file_size) {
   auto [fd, readable_size] = OpenReadOnlyFile(filepath, file_size);
   if (fd < 0) {
     return FAIL;
@@ -433,8 +595,8 @@ KStatus TsFIOEnv::NewRandomReadFile(const std::string& filepath, std::unique_ptr
   return SUCCESS;
 }
 
-KStatus TsFIOEnv::NewSequentialReadFile(const std::string& filepath, std::unique_ptr<TsSequentialReadFile>* file,
-                                       size_t file_size) {
+KStatus TsFIOEnv::NewSequentialReadFileImpl(const std::string& filepath, std::unique_ptr<TsSequentialReadFile>* file,
+                                            size_t file_size) {
   auto [fd, readable_size] = OpenReadOnlyFile(filepath, file_size);
   if (fd < 0) {
     return FAIL;
@@ -445,7 +607,7 @@ KStatus TsFIOEnv::NewSequentialReadFile(const std::string& filepath, std::unique
   return SUCCESS;
 }
 
-KStatus TsFIOEnv::NewDirectory(const std::string& path) {
+KStatus TsFIOEnv::NewDirectoryImpl(const std::string& path) {
   std::error_code ec;
   bool ok = fs::create_directories(path, ec);
   if (!ok) {
@@ -458,7 +620,7 @@ KStatus TsFIOEnv::NewDirectory(const std::string& path) {
   return SUCCESS;
 }
 
-KStatus TsFIOEnv::DeleteDir(const std::string& path) {
+KStatus TsFIOEnv::DeleteDirImpl(const std::string& path) {
   std::error_code ec;
   uintmax_t n_removed = fs::remove_all(path, ec);
   if (n_removed == -1) {
@@ -468,7 +630,7 @@ KStatus TsFIOEnv::DeleteDir(const std::string& path) {
   return SUCCESS;
 }
 
-KStatus TsFIOEnv::DeleteFile(const std::string& path) {
+KStatus TsFIOEnv::DeleteFileImpl(const std::string& path) {
   std::error_code ec;
   bool ok = fs::remove(path, ec);
   if (!ok) {
@@ -510,8 +672,8 @@ static fs::path Regularization(const fs::path& p) {
   return res;
 }
 
-KStatus TsMemoryIOEnv::NewAppendOnlyFile(const std::string& filepath, std::unique_ptr<TsAppendOnlyFile>* file,
-                                         bool overwrite, size_t offset) {
+KStatus TsMemoryIOEnv::NewAppendOnlyFileImpl(const std::string& filepath, std::unique_ptr<TsAppendOnlyFile>* file,
+                                             bool overwrite, size_t offset) {
   fs::path abs = Regularization(filepath);
   std::shared_ptr<TsSliceGuard> data;
   {
@@ -536,8 +698,8 @@ KStatus TsMemoryIOEnv::NewAppendOnlyFile(const std::string& filepath, std::uniqu
   return SUCCESS;
 }
 
-KStatus TsMemoryIOEnv::NewRandomReadFile(const std::string& filepath, std::unique_ptr<TsRandomReadFile>* file,
-                                         size_t file_size) {
+KStatus TsMemoryIOEnv::NewRandomReadFileImpl(const std::string& filepath, std::unique_ptr<TsRandomReadFile>* file,
+                                             size_t file_size) {
   fs::path abs = Regularization(filepath);
   std::shared_ptr<TsSliceGuard> data;
   {
@@ -558,8 +720,8 @@ KStatus TsMemoryIOEnv::NewRandomReadFile(const std::string& filepath, std::uniqu
   return SUCCESS;
 }
 
-KStatus TsMemoryIOEnv::NewSequentialReadFile(const std::string& filepath, std::unique_ptr<TsSequentialReadFile>* file,
-                                             size_t file_size) {
+KStatus TsMemoryIOEnv::NewSequentialReadFileImpl(const std::string& filepath,
+                                                 std::unique_ptr<TsSequentialReadFile>* file, size_t file_size) {
   fs::path abs = Regularization(filepath);
   std::shared_ptr<TsSliceGuard> data;
   {
@@ -580,7 +742,7 @@ KStatus TsMemoryIOEnv::NewSequentialReadFile(const std::string& filepath, std::u
   return SUCCESS;
 }
 
-KStatus TsMemoryIOEnv::DeleteFile(const std::string& path) {
+KStatus TsMemoryIOEnv::DeleteFileImpl(const std::string& path) {
   std::unique_lock lock(mutex_);
   auto it = files_.find(path);
   if (it == files_.end()) {
@@ -606,13 +768,7 @@ KStatus FileRangeCopy(TsRandomReadFile* src, TsAppendOnlyFile* dst, size_t start
     return FAIL;
   }
 
-  // std::printf("\e[33m File: %s\e[0m\n", dst->GetFilePath().c_str());
-  // std::printf("\e[31m Before copy, dst size: %lu\e[0m\n", dst->GetFileSize());
   s = dst->Append(slice.AsSlice());
-  // std::printf("\e[31m After copy, dst size: %lu\e[0m\n", dst->GetFileSize());
   return s;
 }
-
-// KStatus FileRangeCopy(TsSequentialReadFile* src, TsAppendOnlyFile* dst, size_t start, size_t end) { return FAIL; }
-
 }  // namespace kwdbts

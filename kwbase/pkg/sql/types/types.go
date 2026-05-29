@@ -261,6 +261,11 @@ var (
 	VarChar = &T{InternalType: InternalType{
 		Family: StringFamily, Oid: oid.T_varchar, Locale: &emptyLocale}}
 
+	// CIText is the type of a case-insensitive string and is similar to AnyCollatedString,
+	// but has a differing Locale (case-insensitive) and a differing OID (T_citext).
+	CIText = &T{InternalType: InternalType{
+		Family: CollatedStringFamily, Oid: T_citext, Locale: &CaseInsensitiveLocale}}
+
 	NVarChar = &T{InternalType: InternalType{
 		Family: StringFamily, Oid: T_nvarchar, Locale: &emptyLocale}}
 
@@ -405,6 +410,7 @@ var (
 		TimeTZ,
 		Jsonb,
 		VarBit,
+		CIText,
 	}
 
 	// Any is a special type used only during static analysis as a wildcard type
@@ -557,6 +563,8 @@ const (
 
 	visibleBLOB = 18
 
+	visibleCITEXT = 19
+
 	// OID returned for the unknown[] array type. PG has no OID for this case.
 	unknownArrayOid = 0
 )
@@ -570,6 +578,10 @@ const (
 var (
 	emptyLocale = ""
 )
+
+// CaseInsensitiveLocale is the locale used for case-insensitive collations and
+// types such as CITEXT.
+var CaseInsensitiveLocale = "en_us_u_ks_level2"
 
 // Engine stands which engine support this type
 type Engine uint32
@@ -823,13 +835,17 @@ func MakeQChar(width int32) *T {
 // that is collated according to the given locale. The new type is based upon
 // the given string type, having the same oid and width values. For example:
 //
-//	STRING      => STRING COLLATE EN
-//	VARCHAR(20) => VARCHAR(20) COLLATE EN
+//		STRING      => STRING COLLATE EN
+//		VARCHAR(20) => VARCHAR(20) COLLATE EN
+//	  CITEXT      => STRING COLLATE en_us_u_ks_level2
 func MakeCollatedString(strType *T, locale string) *T {
 	switch strType.Oid() {
 	case oid.T_text, oid.T_varchar, oid.T_bpchar, oid.T_char, oid.T_name, T_nchar, T_nvarchar, T_clob:
 		return &T{InternalType: InternalType{
 			Family: CollatedStringFamily, Oid: strType.Oid(), Width: strType.Width(), Locale: &locale}}
+	case T_citext:
+		return &T{InternalType: InternalType{
+			Family: CollatedStringFamily, Oid: strType.Oid(), Locale: &CaseInsensitiveLocale}}
 	}
 	panic(errors.AssertionFailedf("cannot apply collation to non-string type: %s", strType))
 }
@@ -1253,6 +1269,8 @@ func (t *T) Name() string {
 			return "name"
 		case T_clob:
 			return "clob"
+		case T_citext:
+			return "citext"
 		}
 		panic(errors.AssertionFailedf("unexpected OID: %d", t.Oid()))
 	case TimeFamily:
@@ -1478,6 +1496,8 @@ func (t *T) SQLStandardNameWithTypmod(haveTypmod bool, typmod int) string {
 			buf.WriteString("geometry")
 		case T_clob:
 			buf.WriteString("clob")
+		case T_citext:
+			buf.WriteString("citext")
 		default:
 			panic(errors.AssertionFailedf("unexpected OID: %d", t.Oid()))
 		}
@@ -1939,6 +1959,8 @@ func (t *T) upgradeType() error {
 			t.InternalType.Oid = oid.T_text
 		case visibleCLOB:
 			t.InternalType.Oid = T_clob
+		case visibleCITEXT:
+			t.InternalType.Oid = T_citext
 		default:
 			return errors.AssertionFailedf("unexpected visible type: %d", t.InternalType.VisibleType)
 		}
@@ -2110,6 +2132,8 @@ func (t *T) downgradeType() error {
 			t.InternalType.VisibleType = visibleQCHAR
 		case oid.T_name:
 			t.InternalType.Family = name
+		case T_citext:
+			t.InternalType.VisibleType = visibleCITEXT
 		default:
 			return errors.AssertionFailedf("unexpected Oid: %d", t.Oid())
 		}
@@ -2157,6 +2181,9 @@ func (t *T) downgradeType() error {
 func (t *T) String() string {
 	switch t.Family() {
 	case CollatedStringFamily:
+		if t.Oid() == T_citext {
+			return t.Name()
+		}
 		if t.Locale() == "" {
 			// Used in telemetry.
 			return fmt.Sprintf("collated%s{*}", t.Name())
@@ -2313,6 +2340,13 @@ func IsWildcardTupleType(t *T) bool {
 //	STRING COLLATE EN
 //	VARCHAR(20)[] COLLATE DE
 func (t *T) collatedStringTypeSQL(isArray bool) string {
+	if t.Oid() == T_citext {
+		if isArray {
+			return "CITEXT[]"
+		}
+		return "CITEXT"
+	}
+
 	var buf bytes.Buffer
 	buf.WriteString(t.stringTypeSQL())
 	if isArray {
@@ -2398,6 +2432,10 @@ func (t *T) SupportTimeCalc() bool {
 func (t *T) DetailedName() string {
 	switch t.Family() {
 	case CollatedStringFamily:
+		if t.Oid() == T_citext {
+			return "citext"
+		}
+
 		if t.Locale() == "" {
 			return fmt.Sprintf("COLLATED%s{*}", strings.ToUpper(t.Name()))
 		}
@@ -2471,6 +2509,8 @@ const (
 	T__clob     = oid.Oid(91011)
 	T_blob      = oid.Oid(91012)
 	T__blob     = oid.Oid(91013)
+	T_citext    = oid.Oid(91014)
+	T__citext   = oid.Oid(91015)
 )
 
 // ExtensionTypeName returns a mapping from extension oids
@@ -2490,6 +2530,8 @@ var ExtensionTypeName = map[oid.Oid]string{
 	T__clob:     "_CLOB",
 	T_blob:      "BLOB",
 	T__blob:     "_BLOB",
+	T_citext:    "CITEXT",
+	T__citext:   "_CITEXT",
 }
 
 // CsvOptionCharset is used for IMPORT/EXPORT

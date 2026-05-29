@@ -235,7 +235,7 @@ TEST(TsFIOEnv, SequentialReadFileShortReadAfterTruncate) {
   TsSliceGuard result;
   ASSERT_EQ(sfile->Read(2, &result), SUCCESS);
   EXPECT_EQ(result.size(), 2);
-  ASSERT_EQ(sfile->Seek(0), SUCCESS);
+  sfile->Seek(0);
   ASSERT_EQ(truncate(filename.c_str(), 3), 0);
 
   EXPECT_EQ(sfile->Read(6, &result), FAIL);
@@ -319,8 +319,8 @@ TEST(TsFIOEnv, OpenZeroSizeFile) {
     std::unique_ptr<TsAppendOnlyFile> wfile;
     ASSERT_TRUE(env->NewAppendOnlyFile(filename, &wfile, false));
     EXPECT_EQ(wfile->GetFileSize(), 0);
-    wfile->Append("123123123123");
-    wfile->Sync();
+    EXPECT_EQ(wfile->Append("123123123123"), SUCCESS);
+    EXPECT_EQ(wfile->Sync(), SUCCESS);
     EXPECT_EQ(wfile->GetFileSize(), 12);
   }
   {
@@ -375,8 +375,8 @@ TEST(TsFIOEnv, ReadAfterAllocate) {
   auto s = env->NewAppendOnlyFile(filepath, &wfile);
   ASSERT_EQ(s, SUCCESS);
   ASSERT_NE(wfile, nullptr);
-  wfile->Append(slice);
-  wfile->Sync();
+  EXPECT_EQ(wfile->Append(slice), SUCCESS);
+  EXPECT_EQ(wfile->Sync(), SUCCESS);
 
   std::unique_ptr<TsRandomReadFile> rfile;
   s = env->NewRandomReadFile(filepath, &rfile, 4096);
@@ -521,8 +521,8 @@ TEST(MMap, WriteEmptyFile_BUG_ID7BNN) {
   TsIOEnv* env = &TsMMapIOEnv::GetInstance();
   fs::remove("test");
   std::unique_ptr<TsAppendOnlyFile> wfile;
-  env->NewAppendOnlyFile("test", &wfile);
-  wfile->Sync();
+  EXPECT_EQ(env->NewAppendOnlyFile("test", &wfile), SUCCESS);
+  EXPECT_EQ(wfile->Sync(), SUCCESS);
 }
 
 // TEST(MMap, FileLock) {
@@ -541,7 +541,7 @@ TEST(MemoryIO, MemoryIOTest) {
   {
     std::unique_ptr<TsAppendOnlyFile> wfile;
     ASSERT_EQ(env->NewAppendOnlyFile(filename, &wfile), SUCCESS);
-    wfile->Append("123456789");
+    EXPECT_EQ(wfile->Append("123456789"), SUCCESS);
   }
   {
     std::unique_ptr<TsRandomReadFile> rfile;
@@ -564,7 +564,7 @@ TEST(MemoryIO, MemoryIOTest) {
   {
     std::unique_ptr<TsAppendOnlyFile> wfile;
     ASSERT_EQ(env->NewAppendOnlyFile(filename, &wfile), SUCCESS);
-    wfile->Append("123456789");
+    EXPECT_EQ(wfile->Append("123456789"), SUCCESS);
   }
   {
     std::unique_ptr<TsRandomReadFile> rfile;

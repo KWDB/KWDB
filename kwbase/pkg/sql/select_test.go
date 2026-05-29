@@ -15,8 +15,13 @@ import (
 	"context"
 	"testing"
 
+	"gitee.com/kwbasedb/kwbase/pkg/base"
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
+	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
+	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
+	"gitee.com/kwbasedb/kwbase/pkg/testutils/sqlutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 )
 
@@ -236,4 +241,59 @@ func TestSelectIntoNode(t *testing.T) {
 		n.Close(context.Background())
 		// No error expected
 	})
+}
+
+// TestResolveNames tests the resolveNames method
+func TestResolveNames(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	// Create a planner
+	// Start a test server
+	ctx := context.Background()
+	s, conn, _ := serverutils.StartServer(t, base.TestServerArgs{})
+	defer s.Stopper().Stop(ctx)
+
+	// Create a test database
+	r := sqlutils.MakeSQLRunner(conn)
+	r.Exec(t, "CREATE DATABASE test_db")
+
+	// Get the executor config
+	execCfg := s.ExecutorConfig().(ExecutorConfig)
+
+	// Create a planner with admin privileges
+	p, cleanup := NewInternalPlanner(
+		"test",
+		kv.NewTxn(ctx, s.DB(), s.NodeID()),
+		security.RootUser, // Root user has admin privileges
+		&MemoryMetrics{},
+		&execCfg,
+	)
+	planner := p.(*planner)
+	defer cleanup()
+
+	// Create a simple expression
+	expr := tree.NewDInt(1)
+
+	// Test resolveNames with nil source and ivarHelper
+	resolvedExpr, hasColumns, err := planner.resolveNames(expr, nil, tree.IndexedVarHelper{})
+	if err != nil {
+		t.Errorf("resolveNames should not return error, got %v", err)
+	}
+	if resolvedExpr == nil {
+		t.Error("resolveNames should return non-nil expression")
+	}
+	if hasColumns {
+		t.Error("resolveNames should return false for hasColumns for simple expression")
+	}
+
+	// Test resolveNames with nil expr
+	resolvedExpr, hasColumns, err = planner.resolveNames(nil, nil, tree.IndexedVarHelper{})
+	if err != nil {
+		t.Errorf("resolveNames should not return error for nil expr, got %v", err)
+	}
+	if resolvedExpr != nil {
+		t.Error("resolveNames should return nil for nil expr")
+	}
+	if hasColumns {
+		t.Error("resolveNames should return false for hasColumns for nil expr")
+	}
 }

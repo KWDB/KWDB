@@ -546,11 +546,11 @@ struct EntityResultIndex {
   EntityResultIndex(uint64_t entityGroupId, uint32_t entityId, uint32_t subGroupId,
                     std::shared_ptr<void> mem, size_t p_tags_size) :
                      entityGroupId(entityGroupId), entityId(entityId), subGroupId(subGroupId),
-                     mem(mem), p_tags_size(p_tags_size) {}
+                     mem(std::move(mem)), p_tags_size(p_tags_size) {}
   EntityResultIndex(uint64_t entityGroupId, uint32_t entityId, uint32_t subGroupId, uint32_t hash_point,
                     std::shared_ptr<void> mem, size_t p_tags_size) :
                      entityGroupId(entityGroupId), entityId(entityId), subGroupId(subGroupId),
-                     hash_point(hash_point), mem(mem), p_tags_size(p_tags_size) {}
+                     hash_point(hash_point), mem(std::move(mem)), p_tags_size(p_tags_size) {}
   uint64_t entityGroupId{0};
   uint32_t entityId{0};
   uint32_t subGroupId{0};
@@ -698,6 +698,57 @@ inline int cmp(void* l, void* r, int32_t type, int32_t size) {
       break;
   }
   return false;
+}
+
+template <class T>
+auto cmpWithSpanBatchImpl(char* addr, int rownum) {
+  T* start = reinterpret_cast<T*>(addr);
+  T* end = start + rownum;
+  return std::minmax_element(start, end);
+}
+
+inline std::pair<void*, void*> cmpWithSpanBatch(void* addr, int32_t type, int rownum) {
+  assert(isArithmeticType(type));
+  char* start = static_cast<char*>(addr);
+  assert(rownum > 0);
+  switch (type) {
+    case DATATYPE::INT8:
+    case DATATYPE::BOOL: {
+      auto [min, max] = cmpWithSpanBatchImpl<int8_t>(start, rownum);
+      return {min, max};
+    }
+
+    case DATATYPE::INT16: {
+      auto [min, max] = cmpWithSpanBatchImpl<int16_t>(start, rownum);
+      return {min, max};
+    }
+
+    case DATATYPE::INT32:
+    case DATATYPE::TIMESTAMP: {
+      auto [min, max] = cmpWithSpanBatchImpl<int32_t>(start, rownum);
+      return {min, max};
+    }
+
+    case DATATYPE::INT64:
+    case DATATYPE::TIMESTAMP64:
+    case DATATYPE::TIMESTAMP64_MICRO:
+    case DATATYPE::TIMESTAMP64_NANO: {
+      auto [min, max] = cmpWithSpanBatchImpl<int64_t>(start, rownum);
+      return {min, max};
+    }
+    case DATATYPE::FLOAT: {
+      auto [min, max] = cmpWithSpanBatchImpl<float>(start, rownum);
+      return {min, max};
+    }
+    case DATATYPE::DOUBLE: {
+      auto [min, max] = cmpWithSpanBatchImpl<double>(start, rownum);
+      return {min, max};
+    }
+    default:
+      break;
+  }
+  assert(false);
+  return {nullptr, nullptr};
 }
 
 inline int cmpWithSpan(void* s, void* e, void* m, int32_t type, int32_t size) {

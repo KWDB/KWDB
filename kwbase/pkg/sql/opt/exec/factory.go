@@ -129,6 +129,10 @@ type Factory interface {
 		n Node, cols []ColumnOrdinal, colNames []string, reqOrdering OutputOrdering, execInTSEngine bool,
 	) (Node, error)
 
+	// NumResultColumns returns the number of physical result columns produced by
+	// the execution node. A negative value means the factory cannot determine it.
+	NumResultColumns(node Node) int
+
 	// ConstructRender returns a node that applies a projection on the results of
 	// the given input node. The projection can contain new expressions.
 	ConstructRender(

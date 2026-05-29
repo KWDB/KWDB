@@ -41,6 +41,7 @@ type tsProcessor struct {
 
 	tsOperatorType execinfrapb.OperatorType
 	dropMEInfo     []sqlbase.DeleteMeMsg
+	onlyAgg        bool
 
 	notFirst bool
 	success  bool
@@ -62,6 +63,7 @@ func newTsProcessor(
 	tct := &tsProcessor{
 		tsOperatorType: tdt.TsOperator,
 		dropMEInfo:     tdt.DropMEInfo,
+		onlyAgg:        tdt.OnlyAgg,
 	}
 	if err := tct.Init(
 		tct,
@@ -124,13 +126,13 @@ func (tp *tsProcessor) Start(ctx context.Context) context.Context {
 		}
 	case execinfrapb.OperatorType_TsVacuum:
 		errPrefix = "Vacuum Failed, reason:%s"
-		err = tp.FlowCtx.Cfg.TsEngine.Vacuum(ctx, false)
+		err = tp.FlowCtx.Cfg.TsEngine.Vacuum(ctx, false, tp.onlyAgg)
 		if err != nil {
 			log.Errorf(context.Background(), "Vacuum Failed, reason:%s \n", err.Error())
 		}
 	case execinfrapb.OperatorType_TsManualVacuum:
 		errPrefix = "Vacuum Failed, reason:%s"
-		err = tp.FlowCtx.Cfg.TsEngine.Vacuum(ctx, true)
+		err = tp.FlowCtx.Cfg.TsEngine.Vacuum(ctx, true, tp.onlyAgg)
 		if err != nil {
 			log.Errorf(context.Background(), "Vacuum Failed, reason:%s \n", err.Error())
 		}

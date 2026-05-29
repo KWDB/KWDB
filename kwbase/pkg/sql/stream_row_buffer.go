@@ -22,6 +22,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlutil"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
+	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/mon"
 	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
 )
@@ -107,7 +108,10 @@ func newStreamReaderRowBuffer(
 
 	{
 		memRowBuffer := &streamMemRowBuffer{}
-		memRowBuffer.memMonitor = execinfra.NewMonitor(buffer.ctx, flowCtx.EvalCtx.Mon, "stream-reader-disorder-buffer")
+		monitor := mon.MakeMonitorInheritWithLimit(
+			"stream-reader-disorder-buffer-limit", int64(streamOpts.BufferSize) /* limit */, flowCtx.EvalCtx.Mon)
+		monitor.Start(buffer.ctx, flowCtx.EvalCtx.Mon, mon.BoundAccount{})
+		memRowBuffer.memMonitor = &monitor
 
 		memRowBuffer.rows = &rowcontainer.MemRowContainer{}
 		memRowBuffer.rows.InitWithMon(
@@ -217,6 +221,25 @@ func (s *streamReaderRowBuffer) Next() {
 	s.outputRowsBuffer.iter.Next()
 }
 
+// HasRow checks if there is data received.
+func (s *streamReaderRowBuffer) HasRow() bool {
+	s.rowBufferRWMutex.RLock()
+	defer s.rowBufferRWMutex.RUnlock()
+	if s.receivedRowsBuffer.iter != nil {
+		if ok, _ := s.receivedRowsBuffer.iter.Valid(); ok {
+			return true
+		}
+	}
+
+	if s.outputRowsBuffer.iter != nil {
+		if ok, _ := s.outputRowsBuffer.iter.Valid(); ok {
+			return true
+		}
+	}
+
+	return s.outOfOrderRowBuffer.rows.Len() > 0
+}
+
 // HasOutputRow checks if there is data ready for output.
 func (s *streamReaderRowBuffer) HasOutputRow() (bool, error) {
 	s.rowBufferRWMutex.RLock()
@@ -267,7 +290,6 @@ func (s *streamReaderRowBuffer) emitReceivedRowsToOutputBuffer(
 		return err
 	}
 
-	var rowTs time.Time
 	var row sqlbase.EncDatumRow
 
 	// the received row buffer is not empty
@@ -300,17 +322,29 @@ func (s *streamReaderRowBuffer) emitReceivedRowsToOutputBuffer(
 		}
 	}
 
+	if _, err = s.processOrderBuffer(validReceived, expiredTime, emitTimestamp); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *streamReaderRowBuffer) processOrderBuffer(
+	validReceived bool, expiredTime time.Time, emitTimestamp time.Time,
+) (time.Time, error) {
+	maxTime := expiredTime
 	recordNum := s.outOfOrderRowBuffer.rows.Len()
 	// the out-of-order buffer is empty
 	if recordNum == 0 {
-		return nil
+		return maxTime, nil
 	}
 
 	// has new incoming rows
 	if validReceived {
 		s.outOfOrderRowBuffer.rows.Sort(s.ctx)
 	}
-
+	discardNum := 0
+	var rowTs time.Time
 	for idx := 0; idx < recordNum; idx++ {
 		outRow := s.outOfOrderRowBuffer.rows.EncRow(0)
 		s.outOfOrderRowBuffer.rows.PopFirst()
@@ -331,26 +365,40 @@ func (s *streamReaderRowBuffer) emitReceivedRowsToOutputBuffer(
 				if !s.streamOpts.IgnoreExpired {
 					// copy the original row to a new EncDatumRow
 					s.recalculator.HandleExpiredRows(outRow.Copy())
+				} else {
+					discardNum++
 				}
+
 				continue
 			} else if rowTs.After(emitTimestamp) {
 				err := s.outOfOrderRowBuffer.rows.AddRow(s.ctx, outRow)
 				if err != nil {
-					return err
+					return maxTime, err
+				}
+				if rowTs.After(maxTime) {
+					maxTime = rowTs
 				}
 				continue
 			}
 		}
 
 		if err := s.outputRowsBuffer.rows.AddRow(s.ctx, outRow); err != nil {
-			return err
+			return maxTime, err
 		}
+	}
+
+	if discardNum > 0 {
+		log.Info(s.ctx, "send: ", recordNum-s.outOfOrderRowBuffer.rows.Len()-discardNum,
+			" discard: ", discardNum,
+			" remain: ", s.outOfOrderRowBuffer.rows.Len(),
+			" total: ", recordNum,
+			expiredTime, emitTimestamp)
 	}
 
 	s.outputRowsBuffer.iter = s.outputRowsBuffer.rows.NewFinalIterator(s.ctx)
 	s.outputRowsBuffer.iter.Rewind()
 
-	return nil
+	return maxTime, nil
 }
 
 // Lock locks the buffer.

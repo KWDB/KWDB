@@ -77,6 +77,18 @@ func ParseAndRequireString(t *types.T, s string, ctx ParseTimeContext) (Datum, e
 			s = util.TruncateString(s, int(t.Width()))
 		}
 		return NewDString(s), nil
+	case types.CollatedStringFamily:
+		// If the string type specifies a limit we truncate to that limit:
+		//   'hello'::CHAR(2) -> 'he'
+		// This is true of all the string type variants.
+		if t.Oid() == types.T_citext {
+			if t.Width() > 0 {
+				s = util.TruncateString(s, int(t.Width()))
+			}
+			d, err := NewDCIText(s, &CollationEnvironment{})
+			return d, err
+		}
+		return nil, errors.AssertionFailedf("unknown type %s (%T)", t, t)
 	case types.TimeFamily:
 		return ParseDTime(ctx, s, TimeFamilyPrecisionToRoundDuration(t.Precision()))
 	case types.TimeTZFamily:

@@ -813,6 +813,37 @@ var builtins = map[string]builtinDefinition{
 				"position (starting at 1). \n\nFor example, `split_part('123.456.789.0','.',3)`" +
 				"returns `789`.",
 		},
+		tree.Overload{
+			Types: tree.ArgTypes{
+				{"input", types.CIText},
+				{"delimiter", types.CIText},
+				{"return_index_pos", types.Int},
+			},
+			ReturnType: tree.FixedReturnType(types.String),
+			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				text, err := citextDatumToString(evalCtx, args[0])
+				if err != nil {
+					return nil, err
+				}
+				sep, err := citextDatumToString(evalCtx, args[1])
+				if err != nil {
+					return nil, err
+				}
+				field := int(tree.MustBeDInt(args[2]))
+				if field <= 0 {
+					return nil, pgerror.Newf(
+						pgcode.InvalidParameterValue, "field position %d must be greater than zero", field,
+					)
+				}
+				splits := ciSplitAll(text, sep)
+				if field > len(splits) {
+					return tree.NewDString(""), nil
+				}
+				return tree.NewDString(splits[field-1]), nil
+			},
+			Info: "Splits `input` on `delimiter` and returns the value in the `return_index_pos` +" +
+				"position (starting at 1) using case-insensitive delimiter matching for CITEXT.",
+		},
 	),
 
 	"repeat": makeBuiltin(defProps(),
@@ -1092,7 +1123,20 @@ var builtins = map[string]builtinDefinition{
 
 			return tree.NewDInt(tree.DInt(utf8.RuneCountInString(s[:index]) + 1)), nil
 		}, types.Int, "Calculates the position where the string `find` begins in `input`. \n\nFor"+
-			" example, `strpos('doggie', 'gie')` returns `4`.")),
+			" example, `strpos('doggie', 'gie')` returns `4`."),
+		citextOnlyOverload2(
+			"input", "find",
+			func(_ *tree.EvalContext, s, substring string) (tree.Datum, error) {
+				index := ciIndexFold(s, substring)
+				if index < 0 {
+					return tree.DZero, nil
+				}
+				return tree.NewDInt(tree.DInt(utf8.RuneCountInString(s[:index]) + 1)), nil
+			},
+			types.Int,
+			"Calculates the position where the string `find` begins in `input` using case-insensitive matching for CITEXT.",
+		),
+	),
 
 	"overlay": makeBuiltin(defProps(),
 		tree.Overload{
@@ -1329,7 +1373,33 @@ var builtins = map[string]builtinDefinition{
 			},
 			types.String,
 			"Replaces all occurrences of `find` with `replace` in `input`",
-		)),
+		),
+		citextOnlyOverload3(
+			"input", "find", "replace",
+			func(_ *tree.EvalContext, input, from, to string) (tree.Datum, error) {
+				maxResultLen := int64(len(input))
+				if len(from) > 0 && len(to) > len(from) {
+					occurrences := 0
+					cur := 0
+					for cur < len(input) {
+						idx := ciIndexFold(input[cur:], from)
+						if idx < 0 {
+							break
+						}
+						occurrences++
+						cur += idx + len(from)
+					}
+					maxResultLen += int64(occurrences * (len(to) - len(from)))
+				}
+				if maxResultLen > maxAllocatedStringSize {
+					return nil, errStringTooLarge
+				}
+				return tree.NewDString(ciReplaceAll(input, from, to)), nil
+			},
+			types.String,
+			"Replaces all occurrences of `find` with `replace` in `input` using case-insensitive matching for CITEXT.",
+		),
+	),
 
 	"translate": makeBuiltin(defProps(),
 		stringOverload3("input", "find", "replace",
@@ -1359,7 +1429,16 @@ var builtins = map[string]builtinDefinition{
 				return tree.NewDString(string(runes)), nil
 			}, types.String, "In `input`, replaces the first character from `find` with the first "+
 				"character in `replace`; repeat for each character in `find`. \n\nFor example, "+
-				"`translate('doggie', 'dog', '123');` returns `1233ie`.")),
+				"`translate('doggie', 'dog', '123');` returns `1233ie`."),
+		citextOnlyOverload3(
+			"input", "find", "replace",
+			func(_ *tree.EvalContext, s, from, to string) (tree.Datum, error) {
+				return tree.NewDString(ciTranslate(s, from, to)), nil
+			},
+			types.String,
+			"In `input`, replaces characters from `find` with the corresponding characters in `replace` using case-insensitive matching for CITEXT.",
+		),
+	),
 
 	"regexp_extract": makeBuiltin(defProps(),
 		tree.Overload{
@@ -1436,6 +1515,57 @@ CockroachDB supports the following flags:
 | p    | no                               | no                                   |
 | m/n  | no                               | yes                                  |`,
 		},
+		tree.Overload{
+			Types: tree.ArgTypes{
+				{"input", types.CIText},
+				{"regex", types.CIText},
+				{"replace", types.CIText},
+			},
+			ReturnType: tree.FixedReturnType(types.String),
+			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				s, err := citextDatumToString(evalCtx, args[0])
+				if err != nil {
+					return nil, err
+				}
+				pattern, err := citextDatumToString(evalCtx, args[1])
+				if err != nil {
+					return nil, err
+				}
+				to, err := citextDatumToString(evalCtx, args[2])
+				if err != nil {
+					return nil, err
+				}
+				return regexpReplace(evalCtx, s, pattern, to, "i")
+			},
+			Info:       "Replaces matches for the regular expression `regex` in `input` with `replace` using case-insensitive matching for CITEXT.",
+			Volatility: tree.VolatilityImmutable,
+		},
+		tree.Overload{
+			Types: tree.ArgTypes{
+				{"input", types.CIText},
+				{"regex", types.CIText},
+				{"replace", types.CIText},
+				{"flags", types.String},
+			},
+			ReturnType: tree.FixedReturnType(types.String),
+			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				s, err := citextDatumToString(evalCtx, args[0])
+				if err != nil {
+					return nil, err
+				}
+				pattern, err := citextDatumToString(evalCtx, args[1])
+				if err != nil {
+					return nil, err
+				}
+				to, err := citextDatumToString(evalCtx, args[2])
+				if err != nil {
+					return nil, err
+				}
+				sqlFlags := ensureCaseInsensitiveRegexpFlags(string(tree.MustBeDString(args[3])))
+				return regexpReplace(evalCtx, s, pattern, to, sqlFlags)
+			},
+			Info: "Replaces matches for the regular expression `regex` in `input` with `replace` using `flags`; for CITEXT, matching is case-insensitive.",
+		},
 	),
 
 	"like_escape": makeBuiltin(defProps(),
@@ -1446,7 +1576,13 @@ CockroachDB supports the following flags:
 			},
 			types.Bool,
 			"Matches `unescaped` with `pattern` using 'escape' as an escape token.",
-		)),
+		),
+		citextLikeEscapeOverload(
+			true,  /* caseInsensitive */
+			false, /* negate */
+			"Matches `unescaped` with `pattern` using 'escape' as an escape token. For CITEXT, matching is case-insensitive.",
+		),
+	),
 
 	"not_like_escape": makeBuiltin(defProps(),
 		stringOverload3(
@@ -1461,7 +1597,13 @@ CockroachDB supports the following flags:
 			},
 			types.Bool,
 			"Checks whether `unescaped` not matches with `pattern` using 'escape' as an escape token.",
-		)),
+		),
+		citextLikeEscapeOverload(
+			true, /* caseInsensitive */
+			true, /* negate */
+			"Checks whether `unescaped` does not match `pattern` using 'escape' as an escape token. For CITEXT, matching is case-insensitive.",
+		),
+	),
 
 	"ilike_escape": makeBuiltin(defProps(),
 		stringOverload3(
@@ -1471,7 +1613,13 @@ CockroachDB supports the following flags:
 			},
 			types.Bool,
 			"Matches case insensetively `unescaped` with `pattern` using 'escape' as an escape token.",
-		)),
+		),
+		citextLikeEscapeOverload(
+			true,  /* caseInsensitive */
+			false, /* negate */
+			"Matches case-insensitively `unescaped` with `pattern` using 'escape' as an escape token.",
+		),
+	),
 
 	"not_ilike_escape": makeBuiltin(defProps(),
 		stringOverload3(
@@ -1486,23 +1634,34 @@ CockroachDB supports the following flags:
 			},
 			types.Bool,
 			"Checks whether `unescaped` not matches case insensetively with `pattern` using 'escape' as an escape token.",
-		)),
+		),
+		citextLikeEscapeOverload(
+			true, /* caseInsensitive */
+			true, /* negate */
+			"Checks whether `unescaped` does not match case-insensitively with `pattern` using 'escape' as an escape token.",
+		),
+	),
 
 	"similar_to_escape": makeBuiltin(defProps(),
 		stringOverload3(
 			"unescaped", "pattern", "escape",
 			func(evalCtx *tree.EvalContext, unescaped, pattern, escape string) (tree.Datum, error) {
-				return tree.SimilarToEscape(evalCtx, unescaped, pattern, escape)
+				return tree.SimilarToEscape(evalCtx, unescaped, pattern, escape, false)
 			},
 			types.Bool,
 			"Matches `unescaped` with `pattern` using 'escape' as an escape token.",
-		)),
+		),
+		citextSimilarToEscapeOverload(
+			false, /* negate */
+			"Matches `unescaped` with `pattern` using 'escape' as an escape token. For CITEXT, matching is case-insensitive.",
+		),
+	),
 
 	"not_similar_to_escape": makeBuiltin(defProps(),
 		stringOverload3(
 			"unescaped", "pattern", "escape",
 			func(evalCtx *tree.EvalContext, unescaped, pattern, escape string) (tree.Datum, error) {
-				dmatch, err := tree.SimilarToEscape(evalCtx, unescaped, pattern, escape)
+				dmatch, err := tree.SimilarToEscape(evalCtx, unescaped, pattern, escape, false)
 				if err != nil {
 					return dmatch, err
 				}
@@ -1511,7 +1670,12 @@ CockroachDB supports the following flags:
 			},
 			types.Bool,
 			"Checks whether `unescaped` not matches with `pattern` using 'escape' as an escape token.",
-		)),
+		),
+		citextSimilarToEscapeOverload(
+			true, /* negate */
+			"Checks whether `unescaped` does not match `pattern` using 'escape' as an escape token. For CITEXT, matching is case-insensitive.",
+		),
+	),
 
 	"initcap": makeBuiltin(defProps(),
 		stringOverload1(func(evalCtx *tree.EvalContext, s string) (tree.Datum, error) {
@@ -7373,4 +7537,265 @@ func recentTimestamp(ctx *tree.EvalContext) (time.Time, error) {
 		return time.Time{}, err
 	}
 	return ctx.StmtTimestamp.Add(offset), nil
+}
+
+// citextDatumToString converts a datum used by CITEXT overloads into its
+// string representation.
+func citextDatumToString(evalCtx *tree.EvalContext, d tree.Datum) (string, error) {
+	d = tree.UnwrapDatum(evalCtx, d)
+	switch t := d.(type) {
+	case *tree.DString:
+		return string(*t), nil
+	case *tree.DCollatedString:
+		return t.Contents, nil
+	default:
+		casted, err := tree.PerformCast(evalCtx, d, types.String)
+		if err != nil {
+			return "", err
+		}
+		return string(tree.MustBeDString(casted)), nil
+	}
+}
+
+// citextLikeEscapeOverload builds a LIKE/ILIKE-style overload for CITEXT.
+func citextLikeEscapeOverload(caseInsensitive bool, negate bool, info string) tree.Overload {
+	return tree.Overload{
+		Types: tree.ArgTypes{
+			{"unescaped", types.CIText},
+			{"pattern", types.CIText},
+			{"escape", types.CIText},
+		},
+		ReturnType: tree.FixedReturnType(types.Bool),
+		Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			unescaped, err := citextDatumToString(evalCtx, args[0])
+			if err != nil {
+				return nil, err
+			}
+			pattern, err := citextDatumToString(evalCtx, args[1])
+			if err != nil {
+				return nil, err
+			}
+			escape, err := citextDatumToString(evalCtx, args[2])
+			if err != nil {
+				return nil, err
+			}
+
+			dmatch, err := tree.MatchLikeEscape(evalCtx, unescaped, pattern, escape, caseInsensitive)
+			if err != nil {
+				return dmatch, err
+			}
+			if !negate {
+				return dmatch, nil
+			}
+			bmatch, err := tree.GetBool(dmatch)
+			if err != nil {
+				return nil, err
+			}
+			return tree.MakeDBool(!bmatch), nil
+		},
+		Info: info,
+	}
+}
+
+// ensureCaseInsensitiveRegexpFlags makes sure the regexp flag string contains
+// 'i', so the regexp is evaluated case-insensitively.
+func ensureCaseInsensitiveRegexpFlags(sqlFlags string) string {
+	if strings.ContainsRune(sqlFlags, 'i') {
+		return sqlFlags
+	}
+	return sqlFlags + "i"
+}
+
+// ciIndexFold returns the byte index of the first case-insensitive match of
+// substr in s. It returns -1 if no match is found.
+func ciIndexFold(s, substr string) int {
+	if len(substr) == 0 {
+		return 0
+	}
+	for i := range s {
+		if i+len(substr) > len(s) {
+			break
+		}
+		if strings.EqualFold(s[i:i+len(substr)], substr) {
+			return i
+		}
+	}
+	return -1
+}
+
+// ciReplaceAll replaces all case-insensitive matches of from in input with to.
+func ciReplaceAll(input, from, to string) string {
+	if from == "" {
+		return input
+	}
+	var b strings.Builder
+	cur := 0
+	for cur < len(input) {
+		idx := ciIndexFold(input[cur:], from)
+		if idx < 0 {
+			b.WriteString(input[cur:])
+			break
+		}
+		idx += cur
+		b.WriteString(input[cur:idx])
+		b.WriteString(to)
+		cur = idx + len(from)
+	}
+	return b.String()
+}
+
+// ciSplitAll splits input by sep using case-insensitive delimiter matching.
+func ciSplitAll(input, sep string) []string {
+	if sep == "" {
+		return []string{input}
+	}
+	var parts []string
+	cur := 0
+	for cur <= len(input) {
+		idx := ciIndexFold(input[cur:], sep)
+		if idx < 0 {
+			parts = append(parts, input[cur:])
+			break
+		}
+		idx += cur
+		parts = append(parts, input[cur:idx])
+		cur = idx + len(sep)
+	}
+	return parts
+}
+
+// ciTranslate performs a case-insensitive translate operation.
+func ciTranslate(input, from, to string) string {
+	fromRunes := []rune(from)
+	toRunes := []rune(to)
+
+	type mapping struct {
+		repl   rune
+		delete bool
+	}
+	m := make(map[string]mapping, len(fromRunes))
+	for i, fr := range fromRunes {
+		key := strings.ToLower(string(fr))
+		if i < len(toRunes) {
+			m[key] = mapping{repl: toRunes[i]}
+		} else {
+			m[key] = mapping{delete: true}
+		}
+	}
+
+	var out []rune
+	for _, r := range input {
+		key := strings.ToLower(string(r))
+		if v, ok := m[key]; ok {
+			if !v.delete {
+				out = append(out, v.repl)
+			}
+		} else {
+			out = append(out, r)
+		}
+	}
+	return string(out)
+}
+
+// citextOnlyOverload2 constructs a two-argument overload that only accepts
+// CITEXT inputs.
+func citextOnlyOverload2(
+	arg1, arg2 string,
+	fn func(*tree.EvalContext, string, string) (tree.Datum, error),
+	retType *types.T,
+	info string,
+) tree.Overload {
+	return tree.Overload{
+		Types: tree.ArgTypes{
+			{arg1, types.CIText},
+			{arg2, types.CIText},
+		},
+		ReturnType: tree.FixedReturnType(retType),
+		Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			s1, err := citextDatumToString(evalCtx, args[0])
+			if err != nil {
+				return nil, err
+			}
+			s2, err := citextDatumToString(evalCtx, args[1])
+			if err != nil {
+				return nil, err
+			}
+			return fn(evalCtx, s1, s2)
+		},
+		Info: info,
+	}
+}
+
+// citextOnlyOverload3 constructs a three-argument overload that only accepts
+// CITEXT inputs.
+func citextOnlyOverload3(
+	arg1, arg2, arg3 string,
+	fn func(*tree.EvalContext, string, string, string) (tree.Datum, error),
+	retType *types.T,
+	info string,
+) tree.Overload {
+	return tree.Overload{
+		Types: tree.ArgTypes{
+			{arg1, types.CIText},
+			{arg2, types.CIText},
+			{arg3, types.CIText},
+		},
+		ReturnType: tree.FixedReturnType(retType),
+		Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			s1, err := citextDatumToString(evalCtx, args[0])
+			if err != nil {
+				return nil, err
+			}
+			s2, err := citextDatumToString(evalCtx, args[1])
+			if err != nil {
+				return nil, err
+			}
+			s3, err := citextDatumToString(evalCtx, args[2])
+			if err != nil {
+				return nil, err
+			}
+			return fn(evalCtx, s1, s2, s3)
+		},
+		Info: info,
+	}
+}
+
+// citextSimilarToEscapeOverload builds a SIMILAR TO ESCAPE overload for CITEXT.
+func citextSimilarToEscapeOverload(negate bool, info string) tree.Overload {
+	return tree.Overload{
+		Types: tree.ArgTypes{
+			{"unescaped", types.CIText},
+			{"pattern", types.CIText},
+			{"escape", types.CIText},
+		},
+		ReturnType: tree.FixedReturnType(types.Bool),
+		Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+			unescaped, err := citextDatumToString(evalCtx, args[0])
+			if err != nil {
+				return nil, err
+			}
+			pattern, err := citextDatumToString(evalCtx, args[1])
+			if err != nil {
+				return nil, err
+			}
+			escape, err := citextDatumToString(evalCtx, args[2])
+			if err != nil {
+				return nil, err
+			}
+
+			dmatch, err := tree.SimilarToEscape(evalCtx, unescaped, pattern, escape, true)
+			if err != nil {
+				return dmatch, err
+			}
+			if !negate {
+				return dmatch, nil
+			}
+			bmatch, err := tree.GetBool(dmatch)
+			if err != nil {
+				return nil, err
+			}
+			return tree.MakeDBool(!bmatch), nil
+		},
+		Info: info,
+	}
 }
