@@ -420,7 +420,7 @@ record_metric() {
     local worker="$5"
 
     local cmd=(python3 "${QA_DIR}/tsbs_test/record_result.py"
-        -v tsbs
+        -v "${BRANCH_NAME}"
         -p "${RUN_TS}"
         -f "${FORMAT}"
         -s "${scale}"

@@ -13,7 +13,7 @@ import os
 import utils
 import argparse
 
-CSV_HEADER = "source,dbname,timestamp,query_type,scale,worker,query_count,min_ms,mean_ms,max_ms,med_ms,stddev_ms,result_count"
+CSV_HEADER = "branch,format,pipe name,query type,scale,worker,query count,min(ms),mean(ms),max(ms),med(ms),stddev(ms),dop"
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--kwdb_version','-v',type=str, default="develop",help='kwdb_version')
@@ -56,7 +56,7 @@ if __name__ == '__main__':
         if load_rate == -1:
             print(f"场景 {str(scale)} {case_name} 测试失败：加载速率 {load_rate}")
             exit(1)
-        resStr = kwdb_version+","+tsbs_format+","+pipe_name+","+case_name+","+str(scale)+","+str(workers)+","+str(query_times)+",,,,,,"+load_rate
+        resStr = kwdb_version+","+tsbs_format+","+pipe_name+","+case_name+","+str(scale)+","+str(workers)+",,,,,,,"+load_rate
         utils.write_csv_line_with_header(os.path.join(result_dir, 'TSBS_TEST_RESULT.csv'), CSV_HEADER, resStr)
         compare_num = float(load_rate)
         
@@ -75,7 +75,7 @@ if __name__ == '__main__':
             print('count', count)
             exit(1)
             
-        resStr=kwdb_version+","+tsbs_format+","+pipe_name+","+case_name+","+str(scale)+","+str(workers)+","+str(query_times)+","+min_ms+","+mean_ms+","+max_ms+","+med_ms+","+stddev_ms+","+count
+        resStr=kwdb_version+","+tsbs_format+","+pipe_name+","+case_name+","+str(scale)+","+str(workers)+","+str(query_times)+","+min_ms+","+mean_ms+","+max_ms+","+med_ms+","+stddev_ms+","+dop
         utils.write_csv_line_with_header(os.path.join(result_dir, 'TSBS_TEST_RESULT.csv'), CSV_HEADER, resStr)
         compare_num = float(mean_ms)
             
