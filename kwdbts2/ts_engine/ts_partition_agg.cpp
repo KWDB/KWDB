@@ -62,9 +62,20 @@ KStatus TsPartitionAggBuilder::Close() {
 }
 
 KStatus TsPartitionAggBuilder::AppendEntityAgg(const TSSlice& agg, TsEntityPartitionAggIndex& agg_index) {
-  assert(w_file_ != nullptr);
-  assert(agg.len != 0);
-  assert(agg_index.entity_id > 0 && agg_index.entity_id <= max_entity_id_);
+  if (w_file_ == nullptr) {
+    LOG_ERROR("Append partition agg data failed, file is not open, file_path='%s'", file_path_.c_str());
+    return FAIL;
+  }
+  if (agg.len == 0) {
+    LOG_ERROR("Append partition agg data failed, empty agg, file_path='%s', entity_id=%lu",
+              file_path_.c_str(), agg_index.entity_id);
+    return FAIL;
+  }
+  if (agg_index.entity_id == 0 || agg_index.entity_id > max_entity_id_) {
+    LOG_ERROR("Append partition agg data failed, entity_id=%lu out of range [1, %u], file_path='%s'",
+              agg_index.entity_id, max_entity_id_, file_path_.c_str());
+    return FAIL;
+  }
   uint64_t offset = w_file_->GetFileSize();
   auto s = w_file_->Append(agg);
   if (s != SUCCESS) {

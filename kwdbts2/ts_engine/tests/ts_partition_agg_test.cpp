@@ -14,6 +14,7 @@
 #include "test_util.h"
 #include "ts_engine.h"
 #include "ts_lru_block_cache.h"
+#include "ts_partition_agg.h"
 #include "ts_table.h"
 #include <atomic>
 
@@ -39,6 +40,25 @@ class TestPartitionAgg : public TsEngineTestBase {
     InitEngine(engine_root_path);
   }
 };
+
+TEST(TestPartitionAggBuilder, InvalidAppendInputReturnsFail) {
+  fs::path filename = "./partition_agg_invalid_append_test";
+  fs::remove(filename);
+  TsPartitionAggBuilder builder(&TsIOEnv::GetInstance(), filename, 1);
+  ASSERT_EQ(builder.Open(), KStatus::SUCCESS);
+
+  char agg_data[] = "agg";
+  TsEntityPartitionAggIndex invalid_entity;
+  invalid_entity.entity_id = 2;
+  ASSERT_EQ(builder.AppendEntityAgg({agg_data, sizeof(agg_data)}, invalid_entity), KStatus::FAIL);
+
+  TsEntityPartitionAggIndex empty_agg;
+  empty_agg.entity_id = 1;
+  ASSERT_EQ(builder.AppendEntityAgg({agg_data, 0}, empty_agg), KStatus::FAIL);
+
+  ASSERT_EQ(builder.Close(), KStatus::SUCCESS);
+  fs::remove(filename);
+}
 
 TEST_F(TestPartitionAgg, basicPartitionAgg) {
   TSTableID table_id = 999;
