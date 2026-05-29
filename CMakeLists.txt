@@ -68,6 +68,7 @@ else ()
     add_compile_options(-Wno-error=format)
     add_compile_options(-Wno-error=format-extra-args)
     add_compile_options(-Wno-format)
+    add_compile_options(-Wno-maybe-uninitialized)
 endif ()
 
 # gcc version verification
