@@ -56,14 +56,26 @@ public:
     WinCondVar() { InitializeConditionVariable(&cv_); }
     ~WinCondVar() {}
 
-    void wait(WinMutex* mutex) {
-        SleepConditionVariableCS(&cv_, mutex->native_handle(), INFINITE);
+    // Accept std::unique_lock to keep its internal state in sync with the
+    // underlying CRITICAL_SECTION.  SleepConditionVariableCS atomically
+    // releases the CS and re-acquires it before returning, mirroring what
+    // std::condition_variable does with std::unique_lock<std::mutex>.
+    void wait(std::unique_lock<WinMutex>& lk) {
+        // unique_lock must own the lock before we hand control to the OS.
+        assert(lk.owns_lock());
+        // Temporarily release ownership so unique_lock's destructor does not
+        // double-unlock after SleepConditionVariableCS re-acquires the CS.
+        WinMutex* m = lk.release();
+        SleepConditionVariableCS(&cv_, m->native_handle(), INFINITE);
+        // Re-establish ownership so callers (and the destructor) see a
+        // consistently locked unique_lock.
+        lk = std::unique_lock<WinMutex>(*m, std::adopt_lock);
     }
 
     template<typename Predicate>
-    void wait(WinMutex* mutex, Predicate pred) {
+    void wait(std::unique_lock<WinMutex>& lk, Predicate pred) {
         while (!pred()) {
-            wait(mutex);
+            wait(lk);
         }
     }
 
@@ -146,7 +158,7 @@ class TsFlushJobPool {
   void WorkerFunc() {
     while (true) {
       std::unique_lock lk{job_mutex_};
-      queue_non_empty_cv_.wait(lk.mutex(), [this]() { return !jobs_.empty(); });
+      queue_non_empty_cv_.wait(lk, [this]() { return !jobs_.empty(); });
       auto job = jobs_.front();
       bg_running_jobs_++;
       jobs_.pop_front();
@@ -201,7 +213,7 @@ class TsFlushJobPool {
       std::unique_lock lk{job_mutex_};
       if (jobs_.size() >= kMaxConcurrentJobNum) {
         LOG_INFO("Flush job queue is full, wait for a job to finish");
-        queue_non_full_cv_.wait(lk.mutex(), [this]() { return jobs_.size() < kMaxConcurrentJobNum; });
+        queue_non_full_cv_.wait(lk, [this]() { return jobs_.size() < kMaxConcurrentJobNum; });
       }
       if (stop_flag_.load() != true) {
         jobs_.push_back(job_info);
@@ -213,7 +225,7 @@ class TsFlushJobPool {
   void StopAndWait() {
     stop_flag_.store(true);
     std::unique_lock lk{job_mutex_};
-    stop_cv_.wait(lk.mutex(), [this]() { return jobs_.empty() && bg_running_jobs_.load() == 0; });
+    stop_cv_.wait(lk, [this]() { return jobs_.empty() && bg_running_jobs_.load() == 0; });
   }
 
   void Start() {

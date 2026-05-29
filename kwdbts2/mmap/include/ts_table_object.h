@@ -39,17 +39,17 @@ struct TSTableFileMetadata {
   uint32_t db_id ;          // database id
   uint64_t partition_interval;  // unit: second
   int cols_num;                    // number of cols.
-  time_t create_time;       // TSTable object (vtree) create time.
-  off_t meta_data_length;   // length of meta data section.
+  int64_t create_time;       // TSTable object (vtree) create time.
+  int64_t meta_data_length;   // length of meta data section.
 
-  off_t attribute_offset;   // offset to tree attributes.
-  off_t record_size;        // size of record (in bytes).
+  int64_t attribute_offset;   // offset to tree attributes.
+  int64_t record_size;        // size of record (in bytes).
   int encoding;             // Encoding scheme.
   int32_t precision;        // precision of life time
   bool is_dropped;
   // Updatable data, start from 512 bytes for recoverability.
   size_t num_node;          // total number of nodes.
-  off_t length;             // file data length.
+  int64_t length;             // file data length.
   int status;               // status flag.
   size_t num_leaf_node;     // total number of leaf nodes;
   size_t actul_size;        // Actual table size.
@@ -61,15 +61,11 @@ struct TSTableFileMetadata {
   char user_defined[115]; ///< reserved for user-defined meta data information.
 };
 
-#if defined(_WIN32) || defined(__MINGW32__)
-static_assert(sizeof(TSTableFileMetadata) == 240, "wrong size of TSTableFileMetadata on Windows/MinGW, please check compatibility.");
-#else
 static_assert(sizeof(TSTableFileMetadata) == 264, "wrong size of TSTableFileMetadata, please check compatibility.");
-#endif
 
 class TsTableObject {
  protected:
-  off_t meta_data_length_;
+  int64_t meta_data_length_;
   TSTableFileMetadata* meta_data_;
   void* mem_data_;        ///< data section starting address.
   string obj_name_;
@@ -95,7 +91,7 @@ class TsTableObject {
 
   virtual ~TsTableObject();
   MMapFile bt_file_;
-  off_t& metaDataLen() { return meta_data_length_; }
+  int64_t& metaDataLen() { return meta_data_length_; }
 
   /**
    * @brief	open a big object.

@@ -32,6 +32,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <time.h>
+#include <cstdint>
 
 // Windows compatibility definitions
 #ifndef PROT_READ
@@ -124,23 +125,34 @@
 #define S_IXOTH 0
 #endif
 
-// Inline POSIX compatibility functions
+// Thread-safe pread/pwrite using OVERLAPPED (no seek, no race condition)
 static inline ssize_t pread(int fd, void* buf, size_t count, off_t offset) {
-    off_t old_pos = _lseeki64(fd, 0, SEEK_CUR);
-    if (old_pos == -1) return -1;
-    if (_lseeki64(fd, offset, SEEK_SET) == -1) return -1;
-    ssize_t bytes_read = _read(fd, buf, count);
-    _lseeki64(fd, old_pos, SEEK_SET);
-    return bytes_read;
+    HANDLE h = (HANDLE)_get_osfhandle(fd);
+    if (h == INVALID_HANDLE_VALUE) { errno = EBADF; return -1; }
+    OVERLAPPED ov = {};
+    ov.Offset = (DWORD)((uint64_t)offset & 0xFFFFFFFF);
+    ov.OffsetHigh = (DWORD)((uint64_t)offset >> 32);
+    DWORD bytes_read = 0;
+    if (!ReadFile(h, buf, (DWORD)count, &bytes_read, &ov)) {
+        if (GetLastError() == ERROR_HANDLE_EOF) return 0;
+        errno = EIO;
+        return -1;
+    }
+    return (ssize_t)bytes_read;
 }
 
 static inline ssize_t pwrite(int fd, const void* buf, size_t count, off_t offset) {
-    off_t old_pos = _lseeki64(fd, 0, SEEK_CUR);
-    if (old_pos == -1) return -1;
-    if (_lseeki64(fd, offset, SEEK_SET) == -1) return -1;
-    ssize_t bytes_written = _write(fd, buf, count);
-    _lseeki64(fd, old_pos, SEEK_SET);
-    return bytes_written;
+    HANDLE h = (HANDLE)_get_osfhandle(fd);
+    if (h == INVALID_HANDLE_VALUE) { errno = EBADF; return -1; }
+    OVERLAPPED ov = {};
+    ov.Offset = (DWORD)((uint64_t)offset & 0xFFFFFFFF);
+    ov.OffsetHigh = (DWORD)((uint64_t)offset >> 32);
+    DWORD bytes_written = 0;
+    if (!WriteFile(h, buf, (DWORD)count, &bytes_written, &ov)) {
+        errno = EIO;
+        return -1;
+    }
+    return (ssize_t)bytes_written;
 }
 
 static inline int madvise(void* addr, size_t length, int advice) {

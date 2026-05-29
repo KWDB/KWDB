@@ -1208,6 +1208,10 @@ KStatus WALMgr::SwitchNextFile(TS_OSN first_lsn) {
 #endif
   if (-1 == kwdb_rename(file_mgr_->getTmpFilePath().c_str(), file_mgr_->getFilePath().c_str())) {
     LOG_ERROR("Failed to rename WAL file.")
+#ifdef _WIN32
+    // Restore file handle so subsequent WAL writes don't operate on a closed fd
+    file_mgr_->Open();
+#endif
     return KStatus::FAIL;
   }
 #ifdef _WIN32

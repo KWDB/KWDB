@@ -86,7 +86,7 @@ int MMapMetricsTable::init(const vector<AttributeInfo>& schema, ErrorInfo& err_i
   if (err_info.errcode < 0) {
     return err_info.errcode;
   }
-  assign(meta_data_->attribute_offset, col_off);
+  assign(meta_data_->attribute_offset, (int64_t)col_off);
 
   meta_data_->cols_num = cols_info_include_dropped_.size();
   meta_data_->struct_type = (ST_VTREE | ST_NS_EXT);
