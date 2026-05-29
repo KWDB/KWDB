@@ -54,9 +54,47 @@ void dumpCallStack(FILE* file) {
   free(traces);
 #elif defined(OS_WIN32)
   // Windows implementation using CaptureStackBackTrace and SymFromAddr
-  // For now, just output a placeholder
-  fprintf(file, "Call stack not available on Windows\n");
-  printf("Call stack not available on Windows\n");
+  const int MAX_FRAMES = 64;
+  void* frames[MAX_FRAMES];
+  USHORT numFrames = CaptureStackBackTrace(0, MAX_FRAMES, frames, NULL);
+
+  HANDLE hProcess = GetCurrentProcess();
+  // Ensure symbol handler is initialized
+  static bool symInitialized = false;
+  if (!symInitialized) {
+    SymSetOptions(SYMOPT_DEFERRED_LOADS | SYMOPT_LOAD_LINES);
+    SymInitialize(hProcess, NULL, TRUE);
+    symInitialized = true;
+  }
+
+  char symbol_buffer[sizeof(SYMBOL_INFO) + MAX_SYM_NAME * sizeof(TCHAR)];
+  SYMBOL_INFO* symbol = reinterpret_cast<SYMBOL_INFO*>(symbol_buffer);
+  symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+  symbol->MaxNameLen = MAX_SYM_NAME;
+
+  for (USHORT i = 0; i < numFrames; i++) {
+    DWORD64 displacement = 0;
+    if (SymFromAddr(hProcess, reinterpret_cast<DWORD64>(frames[i]),
+                    &displacement, symbol)) {
+      char undecorated[MAX_SYM_NAME];
+      if (UnDecorateSymbolName(symbol->Name, undecorated, MAX_SYM_NAME, UNDNAME_COMPLETE)) {
+        fprintf(file, "#%u %s+0x%llx [%p]\n", i, undecorated,
+                static_cast<unsigned long long>(displacement), frames[i]);
+        printf("#%u %s+0x%llx [%p]\n", i, undecorated,
+               static_cast<unsigned long long>(displacement), frames[i]);
+      } else {
+        fprintf(file, "#%u %s+0x%llx [%p]\n", i, symbol->Name,
+                static_cast<unsigned long long>(displacement), frames[i]);
+        printf("#%u %s+0x%llx [%p]\n", i, symbol->Name,
+               static_cast<unsigned long long>(displacement), frames[i]);
+      }
+    } else {
+      fprintf(file, "#%u [0x%p]\n", i, frames[i]);
+      printf("#%u [0x%p]\n", i, frames[i]);
+    }
+  }
+  fprintf(file, "--End of Call Stack--\n\n");
+  printf("--End of Call Stack--\n\n");
 #endif
 }
 

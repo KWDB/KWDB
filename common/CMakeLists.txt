@@ -141,7 +141,7 @@ target_include_directories(${COMMON_LIB}
         ../kwdbts2/third_party/gtest-1.8.1/fused-src
         )
 if (WIN32)
-    target_link_libraries(${COMMON_LIB} ws2_32 pthread)
+    target_link_libraries(${COMMON_LIB} ws2_32 pthread dbghelp)
 else()
     target_link_libraries(${COMMON_LIB} dl pthread)
 endif()
@@ -160,7 +160,7 @@ if (KMALLOC_OVERRIDE)
             ../kwdbts2/third_party/gtest-1.8.1/fused-src
             )
     if (WIN32)
-        target_link_libraries(${COMMON_OVERRIDE_LIB} ws2_32 pthread)
+        target_link_libraries(${COMMON_OVERRIDE_LIB} ws2_32 pthread dbghelp)
     else()
         target_link_libraries(${COMMON_OVERRIDE_LIB} dl pthread)
     endif()
