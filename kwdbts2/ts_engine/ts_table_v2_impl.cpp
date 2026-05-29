@@ -24,6 +24,7 @@
 #include "ts_vgroup.h"
 #include "ts_iterator_v2_impl.h"
 #include "ts_ts_lsn_span_utils.h"
+#include "ts_go_exported.h"
 
 
 namespace kwdbts {
@@ -449,10 +450,10 @@ KStatus TsTableImpl::CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableKey
 
   char* error;
   size_t data_len = 0;
-  char* data = getTableMetaByVersion(table_id, version, &data_len, &error);
+  char* data = GetTableMetaByVersion(table_id, version, &data_len, &error);
   Defer defer{[&]() { free(data); }};
   if (error != nullptr) {
-    LOG_ERROR("getTableMetaByVersion failed. msg: %s", error);
+    LOG_ERROR("GetTableMetaByVersion failed. msg: %s", error);
     free(error);
     return KStatus::FAIL;
   }

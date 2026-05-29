@@ -16,6 +16,7 @@
 #include "sys_utils.h"
 #include "column_utils.h"
 #include "ts_partition_interval_recorder.h"
+#include "ts_go_exported.h"
 
 namespace kwdbts {
 inline string IdToSchemaFileName(const KTableKey& table_id, uint32_t ts_version) {
@@ -449,10 +450,10 @@ KStatus TsTableSchemaManager::parseMetaToSchema(roachpb::CreateTsTable* meta,
 KStatus TsTableSchemaManager::removeTagVersion(uint32_t version) {
   char* error = nullptr;
   size_t data_len = 0;
-  char* data = getTableMetaByVersion(table_id_, version, &data_len, &error);
+  char* data = GetTableMetaByVersion(table_id_, version, &data_len, &error);
   Defer defer{[&]() { free(data); }};
   if (error != nullptr) {
-    LOG_ERROR("getTableMetaByVersion failed. table id %lu, version %u, msg: %s", table_id_, version, error);
+    LOG_ERROR("GetTableMetaByVersion failed. table id %lu, version %u, msg: %s", table_id_, version, error);
     free(error);
     return FAIL;
   }

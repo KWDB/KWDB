@@ -46,6 +46,7 @@
 #include "ts_lru_block_cache.h"
 #include "ts_mem_segment_proxy.h"
 #include "ts_ts_lsn_span_utils.h"
+#include "ts_go_exported.h"
 
 namespace kwdbts {
 // static const int64_t interval = 3600 * 24 * 10;  // 10 days.
@@ -1093,7 +1094,7 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path, T
       }
 
       if (force) {
-        auto is_exist = checkTableMetaExist == nullptr ? false : checkTableMetaExist(entity_item.table_id);
+        auto is_exist = CheckTableMetaExist(entity_item.table_id);
         if (!is_exist) {
           need_vacuum = true;
           return SUCCESS;

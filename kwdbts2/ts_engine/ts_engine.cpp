@@ -32,6 +32,7 @@
 #include "ts_table_v2_impl.h"
 #include "sys_utils.h"
 #include "ts_std_utils.h"
+#include "ts_go_exported.h"
 
 // V2
 int EngineOptions::vgroup_max_num = 4;
@@ -616,10 +617,10 @@ KStatus TSEngineImpl::GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, s
 #endif
     char* error;
     size_t data_len = 0;
-    char* data = getTableMetaByVersion(table_id, version, &data_len, &error);
+    char* data = GetTableMetaByVersion(table_id, version, &data_len, &error);
     Defer defer{[&]() { free(data); }};
     if (error != nullptr) {
-      LOG_ERROR("getTableMetaByVersion error: %s.", error);
+      LOG_ERROR("GetTableMetaByVersion error: %s.", error);
       free(error);
       return KStatus::FAIL;
     }
@@ -1928,7 +1929,7 @@ KStatus TSEngineImpl::DropResidualTsTable(kwdbContext_p ctx) {
   for (auto table_id : tables) {
     bool is_exist = false;
 #ifndef WITH_TESTS
-    is_exist = checkTableMetaExist(table_id);
+    is_exist = CheckTableMetaExist(table_id);
 #endif
     if (!is_exist) {
       s = DropTsTable(ctx, table_id);
