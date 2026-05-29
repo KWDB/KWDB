@@ -1,10 +1,10 @@
-> SET CLUSTER SETTING ts.rows_per_block.min_limit = 10;
+> SET CLUSTER SETTING ts.rows_per_block.min_limit = 10; 
 SET CLUSTER SETTING
-> SET CLUSTER SETTING ts.rows_per_block.max_limit = 10;
+> SET CLUSTER SETTING ts.rows_per_block.max_limit = 10; 
 SET CLUSTER SETTING
 > SET CLUSTER SETTING server.time_until_store_dead = '1min15s'; 
 SET CLUSTER SETTING
-> SET CLUSTER SETTING kv.allocator.ts_consider_rebalance.enabled = true;
+> SET CLUSTER SETTING kv.allocator.ts_consider_rebalance.enabled = true; 
 SET CLUSTER SETTING
 > import database csv data ("nodelocal://1/tsdb1");
   job_id |  status   | fraction_completed |  rows  | abandon_rows | reject_rows | note
@@ -51,18 +51,24 @@ SET CLUSTER SETTING
 ----------
   250000
 (1 row)
-> alter range default configure zone using num_replicas = 5;
-ERROR: set zone config num_replicas when node unhealthy or dead is not supported
-SQLSTATE: 0A000
-Failed running "sql"
-> alter range default configure zone using num_replicas = 5;
-ERROR: set zone config num_replicas when node unhealthy or dead is not supported
-SQLSTATE: 0A000
-Failed running "sql"
+> alter range default configure zone using num_replicas = 5; 
+CONFIGURE ZONE 1
 > SET statement_timeout = '30s';SELECT COUNT(*) = 0 FROM kwdb_internal.ranges WHERE 4=ANY(replicas); 
   ?column?
 ------------
     true
+(1 row)
+> show zone configuration for range default; 
+     target     |              raw_config_sql
+----------------+-------------------------------------------
+  RANGE default | ALTER RANGE default CONFIGURE ZONE USING
+                |     range_min_bytes = 134217728,
+                |     range_max_bytes = 536870912,
+                |     gc.ttlseconds = 60,
+                |     num_replicas = 5,
+                |     ts_merge.days = 240h0m0s,
+                |     constraints = '[]',
+                |     lease_preferences = '[]'
 (1 row)
 > SELECT COUNT(*) FROM tsdb1.ts_t3; 
   count
@@ -108,4 +114,17 @@ Failed running "sql"
   count
 ----------
   250000
+(1 row)
+> alter database tsdb1 configure zone using num_replicas = 3; 
+CONFIGURE ZONE 1
+> show zone configuration for database tsdb1; 
+      target     |              raw_config_sql
+-----------------+--------------------------------------------
+  DATABASE tsdb1 | ALTER DATABASE tsdb1 CONFIGURE ZONE USING
+                 |     range_min_bytes = 134217728,
+                 |     range_max_bytes = 536870912,
+                 |     gc.ttlseconds = 60,
+                 |     num_replicas = 3,
+                 |     constraints = '[]',
+                 |     lease_preferences = '[]'
 (1 row)

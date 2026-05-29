@@ -25,8 +25,8 @@ SELECT COUNT(1) FROM tsdb1.ts_t4;
 alter range default configure zone using num_replicas = 5;
 -- sleep: 90s
 -- wait-zero-replica: c4
-alter range default configure zone using num_replicas = 5;
 SET statement_timeout = '30s';SELECT COUNT(*) = 0 FROM kwdb_internal.ranges WHERE 4=ANY(replicas);
+show zone configuration for range default;
 SELECT COUNT(*) FROM tsdb1.ts_t3;
 SELECT COUNT(*) FROM tsdb1.ts_t4;
 SELECT COUNT(1) FROM tsdb1.ts_t3;
@@ -40,6 +40,8 @@ SELECT COUNT(*) FROM tsdb1.ts_t3;
 SELECT COUNT(*) FROM tsdb1.ts_t4;
 SELECT COUNT(1) FROM tsdb1.ts_t3;
 SELECT COUNT(1) FROM tsdb1.ts_t4;
+alter database tsdb1 configure zone using num_replicas = 3;
+show zone configuration for database tsdb1;
 
 -- sleep: 10s
 -- kill: c6
