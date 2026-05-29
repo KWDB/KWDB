@@ -10,6 +10,7 @@
 # See the Mulan PSL v2 for more details.
 
 import re
+import os
 
 def get_file_contents(file):
     f = open(file, 'r')
@@ -23,6 +24,15 @@ def write_lines_to_file(file, lines):
     f.write(lines)
     f.write("\n")
     f.close()
+
+def write_csv_line_with_header(file, header, line):
+    need_header = (not os.path.exists(file)) or os.path.getsize(file) == 0
+    with open(file, 'a') as f:
+        if need_header:
+            f.write(header)
+            f.write("\n")
+        f.write(line)
+        f.write("\n")
     
 def get_threshold_from_file(file):
     f = open(file, 'r')

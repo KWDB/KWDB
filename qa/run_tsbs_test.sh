@@ -45,7 +45,7 @@ if [ $? = 1 ]; then
     return 1
 fi
 
-$cur_dir/tsbs_test/excute_tsbs_test.sh ${custer_node} $scales
+$cur_dir/tsbs_test/execute_tsbs_test.sh ${custer_node} $scales
 
 test_success=$?
 

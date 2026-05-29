@@ -34,6 +34,8 @@ BLOCK_CACHE_MEMORY_SIZE="${18:-"16106127360"}"
 PERF_TYPE="${19:-""}"
 UPDATE_THRESHOLD="${UPDATE_THRESHOLD:-"false"}"
 KWBASE_LICENSE="${KWBASE_LICENSE:-""}"
+QUERY_TYPES_PARAM="${QUERY_TYPES_PARAM:-""}"
+COMPARE_THRESHOLD="${COMPARE_THRESHOLD:-"false"}"
 
 echo "KWDB_CT_NAME ${KWDB_CT_NAME}"
 echo "TSBS_SCALE ${TSBS_SCALE}"
@@ -48,6 +50,8 @@ echo "INSERT_DIRECT ${INSERT_DIRECT}"
 echo "PARALLEL_DEGREE ${PARALLEL_DEGREE}"
 echo "PERF_TYPE ${PERF_TYPE}"
 echo "ENABLE_BUFFER_POOL ${ENABLE_BUFFER_POOL}"
+echo "QUERY_TYPES_PARAM ${QUERY_TYPES_PARAM}"
+echo "COMPARE_THRESHOLD ${COMPARE_THRESHOLD}"
 
 IFS=',' read -ra TSBS_SCALE_LIST <<< "${TSBS_SCALE}"
 IFS=',' read -ra INSERT_TYPE_LIST <<< "${INSERT_TYPE}"
@@ -70,8 +74,37 @@ for scale in "${TSBS_SCALE_LIST[@]}"; do
     sh -c "docker exec -i ${CONTAINER_NAME_1} /home/inspur/src/gitee.com/kwbasedb/qa/tsbs_test/pipeline/start_in_container.sh ${CLUSTER_NODE_NUM} ${CURR_HOST_IP} 27257 8181 37357 ${ENABLE_BUFFER_POOL}"
     sh -c "docker exec -i ${CONTAINER_NAME_2} /home/inspur/src/gitee.com/kwbasedb/qa/tsbs_test/pipeline/start_in_container.sh ${CLUSTER_NODE_NUM} ${CURR_HOST_IP} 27258 8182 37358 ${ENABLE_BUFFER_POOL}"
     sh -c "docker exec -i ${CONTAINER_NAME_3} /home/inspur/src/gitee.com/kwbasedb/qa/tsbs_test/pipeline/start_in_container.sh ${CLUSTER_NODE_NUM} ${CURR_HOST_IP} 27259 8183 37359 ${ENABLE_BUFFER_POOL}"
-    sh -c "docker exec -i ${CONTAINER_NAME_1} /home/inspur/src/gitee.com/kwbasedb/qa/tsbs_test/pipeline/test_in_container.sh ${scale} ${TSBS_FORMAT} ${KWDB_CT_NAME} ${BRANCH_NAME} ${QUERY_WORKERS} ${QUERY_TIMES} ${ENABLE_PERF} ${INSERT_TYPE} ${CLUSTER_NODE_NUM} ${CURR_HOST_IP} ${WAL} ${REPLICA_MODE} ${LOAD_WORKERS} ${INSERT_DIRECT} ${PARALLEL_DEGREE} ${ENABLE_BUFFER_POOL} ${TS_AUTOMATIC_COLLECTION} ${PIPELINE} ${VECTORIZE} ${BLOCK_CACHE_MEMORY_SIZE} /home/inspur/src/reports true 27257 8181 37357 ${UPDATE_THRESHOLD} ${KWBASE_LICENSE}"
-    
+    "$(dirname -- "${BASH_SOURCE[0]}")/test_in_container.sh" \
+        "${scale}" \
+        "${TSBS_FORMAT}" \
+        "${KWDB_CT_NAME}" \
+        "${BRANCH_NAME}" \
+        "${QUERY_WORKERS}" \
+        "${QUERY_TIMES}" \
+        "${ENABLE_PERF}" \
+        "${INSERT_TYPE}" \
+        "${CLUSTER_NODE_NUM}" \
+        "${CURR_HOST_IP}" \
+        "${WAL}" \
+        "${REPLICA_MODE}" \
+        "${LOAD_WORKERS}" \
+        "${INSERT_DIRECT}" \
+        "${PARALLEL_DEGREE}" \
+        "${ENABLE_BUFFER_POOL}" \
+        "${TS_AUTOMATIC_COLLECTION}" \
+        "${PIPELINE}" \
+        "${VECTORIZE}" \
+        "${BLOCK_CACHE_MEMORY_SIZE}" \
+        "/home/inspur/src/reports" \
+        "false" \
+        "27257" \
+        "8181" \
+        "37357" \
+        "${UPDATE_THRESHOLD}" \
+        "${KWBASE_LICENSE}" \
+        "${QUERY_TYPES_PARAM}" \
+        "${COMPARE_THRESHOLD}"
+
     exit_code=$?
     if [ $exit_code -ne 0 ]; then
         echo "FAILED: Multi node Scale ${scale} TSBS test failed"

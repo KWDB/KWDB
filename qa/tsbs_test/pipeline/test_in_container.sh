@@ -10,6 +10,8 @@
 # MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 # See the Mulan PSL v2 for more details.
 
+set -euo pipefail
+
 scale=$1
 format=$2
 KWDB_CT_NAME=$3
@@ -33,31 +35,48 @@ block_cache_memory_size=${20}
 tsbs_result_dir=${21}
 
 is_test_container=${22:-"false"}
-
-
 listenport=${23:-"27257"}
 httpport=${24:-"8181"}
 brpcport=${25:-"37357"}
 update_threshold=${26:-"false"}
 license=${27:-""}
+query_types_param=${28:-""}
+compare_threshold=${29:-"false"}
+
 workspace=/home/inspur/src/gitee.com
-data_dir=${workspace}/kwbasedb/tsbs_test
+bin_dir="${workspace}/kwbasedb/install/bin"
+kwbin="${bin_dir}/kwbase"
+execute_script="${workspace}/kwbasedb/qa/tsbs_test/execute_tsbs_test.sh"
 
-cd /home/inspur/src/gitee.com/kwbasedb/install/bin
+cd "${bin_dir}"
 
-if [[ ${is_test_container} == "true" ]]; then
-  if [[ ${replica_mode} == 3 ]]; then
-    LD_LIBRARY_PATH=../lib ./kwbase init --insecure --host=${ip}:$listenport
-  fi
-  
-  if [[ -n ${license} ]]; then
-    LD_LIBRARY_PATH=../lib ./kwbase sql --insecure --host=${ip}:$listenport --execute="set cluster setting cluster.license ='${license}';"
-  fi
-
-  UPDATE_THRESHOLD=${update_threshold} /home/inspur/src/gitee.com/kwbasedb/qa/tsbs_test/excute_tsbs_test.sh ${cluster_node_num} ${scale} ${tsbs_result_dir} ${KWDB_CT_NAME} ${ip} ${listenport} /home/inspur/src/gitee.com ${query_workers}
-  exit_code=$?
-  if [ $exit_code -ne 0 ]; then
-    exit 1
-  fi
+if [[ ${cluster_node_num} == 3 ]]; then
+  LD_LIBRARY_PATH=../lib ./kwbase init --insecure --host="${ip}:${listenport}"
 fi
-exit 0
+
+if [[ -n ${license} ]]; then
+  LD_LIBRARY_PATH=../lib ./kwbase sql --insecure --host="${ip}:${listenport}" --execute="set cluster setting cluster.license ='${license}';"
+fi
+
+QUERY_TYPES_PARAM="${query_types_param}" \
+COMPARE_THRESHOLD="${compare_threshold}" \
+UPDATE_THRESHOLD="${update_threshold}" \
+"${execute_script}" \
+  --node-num "${cluster_node_num}" \
+  --scales "${scale}" \
+  --result-dir "${tsbs_result_dir}" \
+  --cluster-name "${KWDB_CT_NAME}" \
+  --host "${ip}" \
+  --port "${listenport}" \
+  --data-dir "${workspace}" \
+  --query-workers "${query_workers}" \
+  --query-types "${query_types_param}" \
+  --insert-type "${insert_type}" \
+  --insert-direct "${insert_direct}" \
+  --wal "${wal}" \
+  --replica-mode "${replica_mode}" \
+  --parallel-degree "${parallel_degree}" \
+  --format "${format}" \
+  --query-times "${query_times}" \
+  --load-workers "${load_workers}" \
+  --branch-name "${BRANCH_NAME}"
