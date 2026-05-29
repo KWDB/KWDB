@@ -111,12 +111,23 @@ void FieldFuncOp::CalcStorageType() {
   storage_len_ = sizeof(k_int64);
 }
 
+static inline k_bool isTimestampTzType(roachpb::DataType type) {
+  switch (type) {
+    case roachpb::DataType::TIMESTAMPTZ:
+    case roachpb::DataType::TIMESTAMPTZ_MICRO:
+    case roachpb::DataType::TIMESTAMPTZ_NANO:
+      return KTRUE;
+    default:
+      return KFALSE;
+  }
+}
+
 static k_int64 getDateTrunc(k_bool is_unit_const, k_bool type_scale_multi_or_divde, k_int8 time_zone,
-                            k_int64 type_scale, k_int64 time_diff, KWDBTypeFamily return_type,
+                            k_int64 type_scale, k_int64 time_diff, roachpb::DataType result_type,
                             roachpb::DataType date_type, KString &unit, String strvalue, k_int64 intvalue) {
   if (!is_unit_const) {
     unit = replaceTimeUnit({strvalue.getptr(), strvalue.length_});
-    getTimeFieldType(date_type, unit, &time_diff, &type_scale, &type_scale_multi_or_divde);
+    result_type = getTimeFieldType(date_type, unit, &time_diff, &type_scale, &type_scale_multi_or_divde);
   }
   k_int64 original_timestamp = intvalue;
   CKTime ck_time = getCKTime(original_timestamp, date_type, time_zone);
@@ -195,8 +206,8 @@ static k_int64 getDateTrunc(k_bool is_unit_const, k_bool type_scale_multi_or_div
     }
     break;
   }
-  return return_type == KWDBTypeFamily::TimestampTZFamily ? (timegm(&ltm) - time_zone * 3600) * 1000
-                                                          : timegm(&ltm) * 1000;
+  return isTimestampTzType(result_type) ? (timegm(&ltm) - time_zone * 3600) * 1000
+                                        : timegm(&ltm) * 1000;
 }
 
 char *FieldFuncPlus::get_ptr(RowBatch *batch) {
@@ -2097,8 +2108,8 @@ char *FieldFuncDateTrunc::get_ptr(RowBatch *batch) {
 
   String strvalue = args_[0]->ValStr(ptr0);
   k_int64 intvalue = args_[1]->ValInt(ptr1);
-  intvalue_ = getDateTrunc(is_unit_const_, type_scale_multi_or_divde_, time_zone_, type_scale_,  time_diff_,
-                           this->return_type_, args_[1]->get_storage_type(), unit_, strvalue, intvalue);
+  intvalue_ = getDateTrunc(is_unit_const_, type_scale_multi_or_divde_, time_zone_, type_scale_, time_diff_,
+                           storage_type_, args_[1]->get_storage_type(), unit_, strvalue, intvalue);
   return reinterpret_cast<char *>(&intvalue_);
 }
 
@@ -2110,7 +2121,7 @@ k_int64 FieldFuncDateTrunc::ValInt() {
     String strvalue = args_[0]->ValStr();
     k_int64 intvalue = args_[1]->ValInt();
     k_int64 value = getDateTrunc(is_unit_const_, type_scale_multi_or_divde_, time_zone_, type_scale_, time_diff_,
-                                 this->return_type_, args_[1]->get_storage_type(), unit_, strvalue, intvalue);
+                                 storage_type_, args_[1]->get_storage_type(), unit_, strvalue, intvalue);
     return value;
   }
 }
