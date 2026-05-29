@@ -139,6 +139,7 @@ add_definitions(-DNEW_COUNT)
 # try to do some estimate on parallel digree used by make -j
 # first, check total memory, assuming we can have one compile job for every 4GB mem
 # second, take nproc result.  We take the smaller one as -j parameter
+# TODO: below block is diabled because it causes hang condition sometimes
 # if (WIN32)
 #     # Use PowerShell to get total physical memory in GB, then divide by 4
 #     execute_process(
@@ -511,7 +512,13 @@ if (ENABLE_COVERAGE)
   list(APPEND KWDBTS2_SERVER_LIB_SRC ${KWDBTS2_SERVER_EXEC_SRCS})
 endif()
 # Add the server module source files to the dynamic library
-add_library(${KWDBTS2_SERVER_LIB} STATIC ${KWDBTS2_SERVER_LIB_SRC})
+if (WIN32)
+  add_library(${KWDBTS2_SERVER_LIB} STATIC ${KWDBTS2_SERVER_LIB_SRC})
+  set(DYN_DEPEDENT_LIB )
+else()
+  add_library(${KWDBTS2_SERVER_LIB} SHARED ${KWDBTS2_SERVER_LIB_SRC})
+  set(DYN_DEPEDENT_LIB z)
+endif()
 set(PROTOBUF_C ${PROTOBUF_C} PARENT_SCOPE)
 set(PROTOBUF_INC ${PROTOBUF_INCLUDE_DIR} PARENT_SCOPE)
 set(LIBPROTOBUF ${PROTOBUF_LIBRARY_DIR}/libprotobuf.a PARENT_SCOPE)
@@ -550,7 +557,7 @@ else()
         # absl_status absl_statusor absl_cord absl_cord_internal absl_cordz_functions
         # absl_cordz_handle absl_cordz_info absl_cordz_sample_token
         # absl_raw_hash_set absl_hashtablez_sampler
-        ${LZ4_STATIC_LIB} ${ZSTD_LIB} z common ws2_32)
+        ${LZ4_STATIC_LIB} ${ZSTD_LIB} common ${DYN_DEPEDENT_LIB})
 endif()
 # Import the header files required by the server module
 target_include_directories(${KWDBTS2_SERVER_LIB} PRIVATE

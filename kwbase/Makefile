@@ -529,9 +529,9 @@ ifndef PROTOBUF_INC
 endif
 
 ifdef host-is-mingw
-LDFLAGS += -L$(CMAKE_BUILD_TOP)/kwdbts2/third_party/lib -L$(JEMALLOC_DIR)/lib -L$(LIBROACH_DIR) -L$(ROCKSDB_DIR) -L$(SNAPPY_DIR) -Wl,-Bstatic -llz4 -Wl,-Bdynamic -lz -lstdc++ -lws2_32
+LDFLAGS += -L$(CMAKE_BUILD_TOP)/kwdbts2/third_party/lib -L$(JEMALLOC_DIR)/lib -L$(LIBROACH_DIR) -L$(ROCKSDB_DIR) -L$(SNAPPY_DIR) -Wl,-Bstatic -lkwdbts2 -lprotobuf -llz4 -Wl,-Bdynamic -lz -lstdc++ -lws2_32
 else
-LDFLAGS += -L$(GOPATH)/native/kwdbts2/third_party/lib -L$(GOPATH)/native/kwdbts2/third_party/lib64 -Wl,-Bstatic -lz -Wl,-Bdynamic -lstdc++
+LDFLAGS += -L$(CMAKE_BUILD_TOP)/kwdbts2/third_party/lib -L$(CMAKE_BUILD_TOP)/kwdbts2/third_party/lib64 -Wl,-Bdynamic -lstdc++ -lz
 endif
 
 CGO_LDFLAGS = $(filter-out -static,$(LDFLAGS)) -ldl
@@ -1509,13 +1509,13 @@ $(bins): bin/%: bin/%.d | bin/prereqs bin/.submodules-initialized
 # copy the dll's needed by bin/tools
 ifdef host-is-mingw
 	@[ -d $(KWBASE_TOP)/bin ] || rm -f $(KWBASE_TOP)/bin ; mkdir -p $(KWBASE_TOP)/bin
-	@[ -f $(KWBASE_TOP)/bin/libkwdbts2.dll ] || cp $(KWDB_LIB_DIR)/libkwdbts2.dll  $(KWBASE_TOP)/bin/libkwdbts2.dll
+# 	@[ -f $(KWBASE_TOP)/bin/libkwdbts2.dll ] || cp $(KWDB_LIB_DIR)/libkwdbts2.dll  $(KWBASE_TOP)/bin/libkwdbts2.dll
 	@[ -f $(KWBASE_TOP)/bin/libcommon.dll ]  || cp $(KWDB_LIB_DIR)/../bin/libcommon.dll  $(KWBASE_TOP)/bin/libcommon.dll
 endif
 	@echo go install -v $*
 	bin/prereqs $(if $($*-package),$($*-package),./pkg/cmd/$*) > $@.d.tmp
 	mv -f $@.d.tmp $@.d
-	@$(GO_INSTALL) -v -ldflags='$(LINKFLAGS)' $(if $($*-package),$($*-package),./pkg/cmd/$*) 
+	$(GO_INSTALL) -v -ldflags='$(LINKFLAGS)' $(if $($*-package),$($*-package),./pkg/cmd/$*) 
 
 $(xbins): bin/%: bin/%.d | bin/prereqs bin/.submodules-initialized
 	@echo go build -v $(GOFLAGS) $(GOMODVENDORFLAGS) -tags '$(TAGS)' -ldflags '$(LINKFLAGS)' -o $@ $*
