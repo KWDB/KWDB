@@ -26,6 +26,7 @@
 #include <tlhelp32.h>
 #include <direct.h>
 #include <io.h>
+#include <cxxabi.h>
 #endif
 
 #include <fcntl.h>
@@ -53,6 +54,9 @@ k_char kThreadBtPath[FULL_FILE_NAME_MAX_LEN];
 struct sigaction oldsa;
 #endif
 static constexpr size_t kDemangleBufferSize = 8 * 1024;
+
+// Protects backtrace file writes from concurrent threads (both Linux and Windows).
+std::mutex lock_4_backtrace;
 
 void DumpLatchInfo();
 
@@ -136,7 +140,8 @@ bool DumpAllThreadBacktrace(char* folder, char* nowTimeStamp) {
   DumpLatchInfo();
   SetThreadBtPath(folder, nowTimeStamp);
 
-  FILE* fp = fopen(kThreadBtPath, "a");
+  std::lock_guard<std::mutex> guard(lock_4_backtrace);
+  FILE* fp = fopen(kThreadBtPath, "ab");
   if (fp == nullptr) {
     return false;
   }
@@ -242,8 +247,21 @@ void demangle(const char* symbol, char* buffer, size_t buffer_size) {
     buffer[buffer_size - 1] = '\0';
     return;
   }
-  if (!UnDecorateSymbolName(symbol, buffer, static_cast<DWORD>(buffer_size),
-                             UNDNAME_COMPLETE)) {
+  // MinGW/GCC uses Itanium ABI mangling (_Z prefix), same as Linux.
+  // Use __cxa_demangle instead of UnDecorateSymbolName (which is MSVC-only).
+  if (symbol[0] == '_' && symbol[1] == 'Z') {
+    int status = 0;
+    size_t len = buffer_size;
+    char* ret = abi::__cxa_demangle(symbol, buffer, &len, &status);
+    if (status != 0 || ret == nullptr) {
+      strncpy(buffer, symbol, buffer_size - 1);
+      buffer[buffer_size - 1] = '\0';
+    } else if (ret != buffer) {
+      strncpy(buffer, ret, buffer_size - 1);
+      buffer[buffer_size - 1] = '\0';
+      free(ret);
+    }
+  } else {
     strncpy(buffer, symbol, buffer_size - 1);
     buffer[buffer_size - 1] = '\0';
   }
@@ -270,17 +288,6 @@ char* AppendUInt64(char* cursor, char* end, uint64_t value) {
   return cursor;
 }
 
-char* AppendInt32(char* cursor, char* end, int32_t value) {
-  bool is_negative = false;
-  uint64_t num;
-  if (value < 0) {
-    *cursor++ = '-';
-    num = static_cast<unsigned int>(-(value + 1)) + 1;
-  } else {
-    num = static_cast<unsigned int>(value);
-  }
-  return AppendUInt64(cursor, end, num);
-}
 char* AppendPtr(char* cursor, char* end, uintptr_t ptr_value) {
   const char hex_digits[] = "0123456789abcdef";
   const int ptr_bytes = sizeof(ptr_value);
@@ -556,7 +563,6 @@ void DumpSuspendedThreadBacktrace(HANDLE hProcess, HANDLE hThread, DWORD tid,
 }
 #endif  // OS_WIN32
 
-std::mutex lock_4_backtrace;
 // the callback function of SIGUSR2 for dump thread backtrace.
 #ifdef OS_LINUX
 static void DumpThreadBacktrace(int signr, siginfo_t *info, void *secret) {
