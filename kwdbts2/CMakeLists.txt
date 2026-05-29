@@ -552,6 +552,7 @@ else()
         # absl_raw_hash_set absl_hashtablez_sampler
         ${LZ4_STATIC_LIB} ${ZSTD_LIB} z common ws2_32)
 endif()
+
 # Import the header files required by the server module
 target_include_directories(${KWDBTS2_SERVER_LIB} PRIVATE
     ${PROTOBUF_INCLUDE_DIR}
@@ -658,8 +659,7 @@ if (WITH_TESTS)
                 third_party/gtest-1.8.1/fused-src
                 )
         if (WIN32)
-            target_link_libraries(${tname} PRIVATE ${KWDBTS2_SERVER_LIB} ${PROTOBUF_STATIC_LIB} common ${LZ4_STATIC_LIB} ${ZSTD_LIB} gtest)
-            target_link_options(${tname} PRIVATE -Wl,--allow-multiple-definition)
+            target_link_libraries(${tname} PRIVATE ${KWDBTS2_SERVER_LIB} common ${LZ4_STATIC_LIB} ${ZSTD_LIB} gtest)
         else()
             target_link_libraries(${tname} PRIVATE ${KWDBTS2_SERVER_LIB} common ${PROTOBUF_STATIC_LIB} gtest dl rt z ${LZ4_STATIC_LIB} ${ZSTD_LIB})
         endif()
