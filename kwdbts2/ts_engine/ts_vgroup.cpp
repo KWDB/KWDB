@@ -1020,6 +1020,13 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
       LOG_ERROR("cannot get block spans.");
       return FAIL;
     }
+    if (all_block_spans.empty()) {
+      // All data in this memseg belongs to dropped tables.  GetBlockSpans
+      // skips rows for dropped tables, producing an empty list.  There is
+      // nothing to flush to disk, so just remove the memseg from the version.
+      update.RemoveMemSegment(mem_seg->GetId());
+      return version_manager_->ApplyUpdate(&update);
+    }
     sorted_spans.reserve(all_block_spans.size());
     std::move(all_block_spans.begin(), all_block_spans.end(), std::back_inserter(sorted_spans));
     update.SetMaxLSN(GetMaxOsn(sorted_spans));
