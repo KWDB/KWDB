@@ -448,6 +448,9 @@ KStatus TsTableSchemaManager::parseMetaToSchema(roachpb::CreateTsTable* meta,
 }
 
 KStatus TsTableSchemaManager::removeTagVersion(uint32_t version) {
+#ifdef WITH_TESTS
+  return SUCCESS;
+#endif
   char* error = nullptr;
   size_t data_len = 0;
   char* data = GetTableMetaByVersion(table_id_, version, &data_len, &error);

@@ -28,15 +28,6 @@ using namespace kwdbts;  // NOLINT
 
 std::shared_ptr<TSBlkDataTypeConvert> empty_convert = nullptr;
 
-void TsBlockSpan::SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span) {
-  EXPECT_TRUE(row_num <= nrow_);
-  SplitFrontImpl(row_num, front_span);
-}
-
-void TsBlockSpan::SplitBack(int row_num, shared_ptr<TsBlockSpan>& back_span) {
-  EXPECT_TRUE(row_num <= nrow_);
-  SplitBackImpl(row_num, back_span);
-}
 
 class SimulatedTsEntityBlock : public TsBlock {
  private:

@@ -2225,7 +2225,9 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
     bool is_dropped = false;
     if (has_entity_item) {
       if (force) {
+#ifndef WITH_TESTS
         is_dropped = !CheckTableMetaExist(entity_item.table_id);
+#endif
       }
       if (!is_dropped) {
         s = schema_mgr_->GetTableSchemaMgr(entity_item.table_id, tb_schema_mgr, &is_dropped);

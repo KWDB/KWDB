@@ -666,7 +666,7 @@ if (WITH_TESTS)
                 third_party/gtest-1.8.1/fused-src
                 )
         if (WIN32)
-            target_link_libraries(${tname} PRIVATE ${KWDBTS2_SERVER_LIB} common ${LZ4_STATIC_LIB} ${ZSTD_LIB} gtest)
+            target_link_libraries(${tname} PRIVATE ${KWDBTS2_SERVER_LIB} common ${PROTOBUF_STATIC_LIB} gtest z ${LZ4_STATIC_LIB} ${ZSTD_LIB})
         else()
             target_link_libraries(${tname} PRIVATE ${KWDBTS2_SERVER_LIB} common ${PROTOBUF_STATIC_LIB} gtest dl rt z ${LZ4_STATIC_LIB} ${ZSTD_LIB})
         endif()
@@ -684,9 +684,6 @@ if (WITH_TESTS)
 
     if (WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Windows")
       add_custom_command(TARGET ${tname} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-          ${CMAKE_BINARY_DIR}/lib/libkwdbts2.dll
-          ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${tname}.dir/
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
           ${CMAKE_BINARY_DIR}/bin/libcommon.dll
           ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${tname}.dir/)

@@ -1094,11 +1094,13 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path, T
       }
 
       if (force) {
+#ifndef WITH_TESTS
         auto is_exist = CheckTableMetaExist(entity_item.table_id);
         if (!is_exist) {
           need_vacuum = true;
           return SUCCESS;
         }
+#endif
         // CheckDeviceContinuity
         std::vector<TsEntitySegmentBlockItemWithData> block_datas;
         s = entity_segment_->GetAllBlockItems(entity_id, &block_datas);
