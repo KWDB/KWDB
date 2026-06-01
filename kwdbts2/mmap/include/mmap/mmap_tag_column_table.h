@@ -478,6 +478,13 @@ class MMapTagColumnTable: public TSObject {
     tag_info->operate_idx  = next_idx;
   }
 
+  inline void setTagDataInfo(size_t row, uint8_t operate_idx, TS_OSN osn, OperateType type) {
+    auto tag_info = getTagDataInfoByRowNum(row);
+    tag_info->operate_type[operate_idx] = type;
+    tag_info->osn[operate_idx] = osn;
+    tag_info->operate_idx = operate_idx;
+  }
+
   // init   (0xFF)
   // valid  (0x00)
   // delete (0x01)

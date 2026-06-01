@@ -2169,7 +2169,8 @@ int TagTable::DeleteForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash
     tag_partition_table->NtagIndexRWMutexUnLock();
 
     tag_partition_table->startRead();
-    tag_partition_table->AddTagStatus(ret.second, OperateType::Insert, osn);
+    TagDataInfo tagInfo{OperateType::Insert, 0, 0, 0, 0, 0, 0, 0, osn, 0, 0};
+    tag_partition_table->setTagDataInfo(ret.second, &tagInfo);
     tag_partition_table->unsetDeleteMark(ret.second);
     tag_partition_table->stopRead();
     return 0;
@@ -2305,7 +2306,7 @@ int TagTable::DeleteForRedo(uint32_t group_id, uint32_t entity_id,
     }
   }
   if (!already_done) {
-    tag_partition_table->AddTagStatus(ret.second, OperateType::Delete, osn);
+    tag_partition_table->setTagDataInfo(ret.second, 1, osn, OperateType::Delete);
   }
   tag_partition_table->setDeleteMark(ret.second);
   tag_partition_table->stopRead();
@@ -2443,7 +2444,7 @@ int TagTable::UpdateForRedo(uint32_t group_id, uint32_t entity_id, const TSSlice
       return 0;
     }
     if (type != OperateType::Update) {
-      tag_partition_table->AddTagStatus(ret.second, OperateType::Update, payload.GetOSN());
+      tag_partition_table->setTagDataInfo(ret.second, 1, payload.GetOSN(), OperateType::Update);
     }
     tag_partition_table->setDeleteMark(ret.second);
     tag_partition_table->stopRead();
