@@ -378,6 +378,15 @@ apply_after_load_settings() {
     fi
 }
 
+dump_cluster_settings_before_load() {
+    local output_dir="$1"
+    local cluster_settings_file="${output_dir}/cluster_settings_before_load.log"
+
+    log "dumping cluster settings before load to ${cluster_settings_file}"
+    "$KWBIN" sql --insecure --host="${ME_HOST_IP}:${ME_HOST_PORT}" \
+        --execute="show cluster settings;" > "${cluster_settings_file}"
+}
+
 get_result_base_dir() {
     local scale="$1"
     local safe_branch_name
@@ -608,6 +617,7 @@ run_scale() {
     query_ts_end="$(resolve_query_ts_end "${scale}")"
 
     apply_cluster_settings "${scale}"
+    dump_cluster_settings_before_load "${load_result_dir}"
 
     local load_data
     load_data="$(generate_load_data "${scale}" "${load_ts_end}")"
