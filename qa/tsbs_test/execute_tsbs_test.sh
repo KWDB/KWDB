@@ -252,34 +252,19 @@ validate_config() {
 apply_sql_file() {
     local sql_file="$1"
     local optional_unknown_setting="${2:-false}"
-    local statement=""
-    local line=""
     local output=""
 
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        if [[ -z "${line//[[:space:]]/}" || "${line}" =~ ^[[:space:]]*-- ]]; then
-            continue
-        fi
+    if output="$("$KWBIN" sql --host="${ME_HOST_IP}" --port="${ME_HOST_PORT}" --insecure < "${sql_file}" 2>&1)"; then
+        return
+    fi
 
-        statement+="${line}"$'\n'
-        if [[ "$line" != *";" ]]; then
-            continue
-        fi
+    if [[ "$optional_unknown_setting" == "true" && "$output" == *"unknown cluster setting"* ]]; then
+        log "skip sql file with unsupported cluster setting: ${sql_file}"
+        return
+    fi
 
-        if output="$("$KWBIN" sql --host="${ME_HOST_IP}" --port="${ME_HOST_PORT}" --insecure --execute "${statement}" 2>&1)"; then
-            statement=""
-            continue
-        fi
-
-        if [[ "$optional_unknown_setting" == "true" && "$output" == *"unknown cluster setting"* ]]; then
-            log "skip unsupported cluster setting: ${statement//$'\n'/ }"
-            statement=""
-            continue
-        fi
-
-        echo "$output" >&2
-        die "failed to execute sql from ${sql_file}: ${statement//$'\n'/ }"
-    done < "${sql_file}"
+    echo "$output" >&2
+    die "failed to execute sql file: ${sql_file}"
 }
 
 wait_cluster_ready() {
