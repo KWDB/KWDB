@@ -365,7 +365,7 @@ resolve_query_compress() {
 
 apply_cluster_settings() {
     local scale="$1"
-    apply_sql_file "${CLUSTER_SETTINGS_DIR}/general.sql" true
+    apply_sql_file "${CLUSTER_SETTINGS_DIR}/general.sql" false
     if [[ -f "${CLUSTER_SETTINGS_DIR}/scale${scale}.sql" ]]; then
         apply_sql_file "${CLUSTER_SETTINGS_DIR}/scale${scale}.sql" true
     fi
