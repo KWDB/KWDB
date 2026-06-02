@@ -39,9 +39,6 @@ func (b *Builder) buildCreateView(cv *tree.CreateView, inScope *scope) (outScope
 	b.DisableMemoReuse = true
 	sch, _ := b.resolveSchemaForCreate(&cv.Name, tree.RelationalTable)
 	schID := b.factory.Metadata().AddSchema(sch)
-	if sch.GetDatabaseType() == tree.EngineTypeTimeseries {
-		panic(sqlbase.TSUnsupportedError("create view"))
-	}
 
 	// We build the select statement to:
 	//  - check the statement semantically,
@@ -61,9 +58,12 @@ func (b *Builder) buildCreateView(cv *tree.CreateView, inScope *scope) (outScope
 	b.pushWithFrame()
 	defScope := b.buildStmtAtRoot(cv.AsSource, nil /* desiredTypes */, inScope)
 
-	// create view not applicable to timeseries table or in timeseries database.
-	if b.PhysType == tree.TS || sch.GetDatabaseType() == tree.EngineTypeTimeseries {
-		panic(pgerror.New(pgcode.FeatureNotSupported, "create view is not supported in timeseries databases"))
+	// create materialized view not applicable to timeseries table or in timeseries database.
+	if (b.PhysType == tree.TS || sch.GetDatabaseType() == tree.EngineTypeTimeseries) && cv.Materialized {
+		panic(pgerror.New(pgcode.FeatureNotSupported, "create materialized view is not supported in ts engine"))
+	}
+	if sch.GetDatabaseType() == tree.EngineTypeTimeseries && cv.Temporary {
+		panic(pgerror.New(pgcode.FeatureNotSupported, "create temp view is not supported in timeseries databases"))
 	}
 	b.popWithFrame(defScope)
 
