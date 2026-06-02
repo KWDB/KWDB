@@ -28,6 +28,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -942,9 +943,11 @@ var varGen = map[string]sessionVar{
 		Get: func(evalCtx *extendedEvalContext) string {
 			return sessionDataTimeZoneFormat(evalCtx.SessionData.DataConversion.Location)
 		},
-		GetStringVal:  timeZoneVarGetStringVal,
-		Set:           timeZoneVarSet,
-		GlobalDefault: func(_ *settings.Values) string { return "UTC" },
+		GetStringVal: timeZoneVarGetStringVal,
+		Set:          timeZoneVarSet,
+		GlobalDefault: func(sv *settings.Values) string {
+			return ServerTimezoneClusterSetting.Get(sv)
+		},
 	},
 
 	// This is not directly documented in PG's docs but does indeed behave this way.
@@ -1206,6 +1209,34 @@ func sessionDataTimeZoneFormat(loc *time.Location) string {
 		return origRepr
 	}
 	return locStr
+}
+
+// serverTimezoneFormat returns a human-readable representation of the cluster.connection.timezone
+// cluster setting value. Empty string means use UTC timezone.
+func serverTimezoneFormat(tzStr string) string {
+	if tzStr == "" {
+		return "UTC"
+	}
+	// Try to parse as numeric offset
+	if offset, err := strconv.ParseFloat(tzStr, 64); err == nil {
+		// Convert to formatted offset string like "+08:00" or "-05:00"
+		absOffset := math.Abs(offset)
+		hours := int(absOffset)
+		minutes := int((absOffset - float64(hours)) * 60)
+		if offset < 0 {
+			return fmt.Sprintf("-%02d:%02d", hours, minutes)
+		}
+		return fmt.Sprintf("+%02d:%02d", hours, minutes)
+	}
+	// For named timezones, try to parse and format
+	if loc, err := timeutil.TimeZoneStringToLocation(
+		tzStr,
+		timeutil.TimeZoneStringToLocationISO8601Standard,
+	); err == nil {
+		return sessionDataTimeZoneFormat(loc)
+	}
+	// Fall back to original string
+	return tzStr
 }
 
 func makeCompatBoolVar(varName string, displayValue, anyValAllowed bool) sessionVar {

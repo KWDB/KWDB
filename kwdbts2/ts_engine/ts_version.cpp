@@ -413,7 +413,6 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update, bool force_apply)
     std::unique_lock lk{mu_};
     auto new_vgroup_version = std::make_unique<TsVGroupVersion>(*current_);
     auto [valid_memsegs, removed_memseg] = BuildValidMemSegment(update);
-    assert(removed_memseg == nullptr);
     new_vgroup_version->valid_memseg_ = std::move(valid_memsegs);
     for (const auto &[par_id, par] : new_vgroup_version->partitions_) {
       auto new_partition_version = std::make_unique<TsPartitionVersion>(*par);
@@ -424,7 +423,7 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update, bool force_apply)
     return SUCCESS;
   }
 
-  if (update->has_next_file_number_) {
+  if (update->flags_ & TsVersionUpdate::kHasNextFile) {
     assert(this->next_file_number_.load(std::memory_order_relaxed) == 0);
     this->next_file_number_.store(update->next_file_number_, std::memory_order_relaxed);
   }
@@ -451,19 +450,20 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update, bool force_apply)
 
   // Create a new vgroup version based on current version
   auto new_vgroup_version = std::make_unique<TsVGroupVersion>(*current_);
-  if (update->has_max_lsn_) {
+  if (update->flags_ & TsVersionUpdate::kHasMaxLSN) {
     new_vgroup_version->max_osn_ = std::max(new_vgroup_version->max_osn_, update->max_lsn_);
   }
 
-  if (update->has_count_stats_ && update->count_stats_status_ == CountStatsStatus::FlushImmOrWriteBatch) {
-    update->has_new_version_number_ = true;
+  if ((update->flags_ & TsVersionUpdate::kHasCountStats) &&
+      update->count_stats_status_ == CountStatsStatus::FlushImmOrWriteBatch) {
+    update->flags_ |= TsVersionUpdate::kHasNewVersion;
     update->version_num_ = version_num_.fetch_add(1, std::memory_order_relaxed);
     encoded_update.push_back(static_cast<char>(VersionUpdateType::kNewVersionNumber));
     PutVarint64(&encoded_update, update->version_num_);
     new_vgroup_version->version_num_ = update->version_num_;
   }
 
-  if (update->has_new_partition_) {
+  if (update->flags_ & TsVersionUpdate::kHasNewPart) {
     for (const auto &p : update->partitions_created_) {
       if (new_vgroup_version->partitions_.find(p) != new_vgroup_version->partitions_.end()) {
         continue;
@@ -479,11 +479,11 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update, bool force_apply)
   }
 
   std::shared_ptr<TsMemSegmentProxy> removed_memseg;
-  if (update->has_new_mem_segments_ || update->has_del_mem_segments_) {
+  if (update->flags_ & (TsVersionUpdate::kHasNewMemSeg | TsVersionUpdate::kHasDelMemSeg)) {
     auto [valid_memsegs, tmp_removed_memseg] = BuildValidMemSegment(update);
     new_vgroup_version->valid_memseg_ = std::move(valid_memsegs);
     removed_memseg = std::move(tmp_removed_memseg);
-    assert((update->has_del_mem_segments_) == (removed_memseg != nullptr));
+    assert(((update->flags_ & TsVersionUpdate::kHasDelMemSeg) != 0) == (removed_memseg != nullptr));
   }
   assert(new_vgroup_version->valid_memseg_ != nullptr);
   // looping over all partitions
@@ -498,7 +498,7 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update, bool force_apply)
       new_partition_version->flushed_ = true;
     }
 
-    if (update->has_new_mem_segments_ || update->has_del_mem_segments_) {
+    if (update->flags_ & (TsVersionUpdate::kHasNewMemSeg | TsVersionUpdate::kHasDelMemSeg)) {
       new_partition_version->valid_memseg_ = new_vgroup_version->valid_memseg_;
     }
 
@@ -708,7 +708,7 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update, bool force_apply)
     removed_memseg->SwitchToDisk(std::move(disk_handle));
   }
 
-  if (update->count_stats_status_ == CountStatsStatus::Recover && update->has_new_version_number_) {
+  if (update->count_stats_status_ == CountStatsStatus::Recover && (update->flags_ & TsVersionUpdate::kHasNewVersion)) {
     this->version_num_.store(update->version_num_, std::memory_order_relaxed);
   }
 
@@ -1539,7 +1539,7 @@ const char *DecodeAggFile(const char *ptr, const char *limit,
 
 TsBufferBuilder TsVersionUpdate::EncodeToString() const {
   TsBufferBuilder result;
-  if (has_new_partition_) {
+  if (flags_ & kHasNewPart) {
     result.push_back(static_cast<char>(VersionUpdateType::kNewPartition));
     uint32_t npartition = partitions_created_.size();
     PutVarint32(&result, npartition);
@@ -1547,38 +1547,38 @@ TsBufferBuilder TsVersionUpdate::EncodeToString() const {
       EncodePartitionID(&result, par_id);
     }
   }
-  if (has_new_lastseg_) {
+  if (flags_ & kHasNewLastSeg) {
     result.push_back(static_cast<char>(VersionUpdateType::kNewLastSegmentWithMeta));
     EncodeLastSegmentMetas(&result, new_lastsegs_);
   }
 
-  if (has_delete_lastseg_) {
+  if (flags_ & kHasDelLastSeg) {
     result.push_back(static_cast<char>(VersionUpdateType::kDeleteLastSegment));
     EncodePartitionFiles(&result, delete_lastsegs_);
   }
 
   // TODO(zzr): encode entity segment update
-  if (has_entity_segment_) {
+  if (flags_ & kHasEntitySeg) {
     result.push_back(static_cast<char>(VersionUpdateType::kSetEntitySegment));
     EncodeEntitySegment(&result, entity_segment_);
   }
 
-  if (has_next_file_number_) {
+  if (flags_ & kHasNextFile) {
     result.push_back(static_cast<char>(VersionUpdateType::kNextFileNumber));
     PutVarint64(&result, next_file_number_);
   }
 
-  if (has_max_lsn_) {
+  if (flags_ & kHasMaxLSN) {
     result.push_back(static_cast<char>(VersionUpdateType::kMaxLSN));
     PutVarint64(&result, max_lsn_);
   }
 
-  if (has_count_stats_) {
+  if (flags_ & kHasCountStats) {
     result.push_back(static_cast<char>(VersionUpdateType::kNewCountStatFile));
     EncodeCountStatFile(&result, count_flush_infos_);
   }
 
-  if (has_new_agg_) {
+  if (flags_ & kHasNewAgg) {
     result.push_back(static_cast<char>(VersionUpdateType::kNewAggFile));
     EncodeAggFile(&result, new_agg_files_);
   }
@@ -1609,7 +1609,7 @@ KStatus TsVersionUpdate::DecodeFromSlice(TSSlice input) {
           }
           this->partitions_created_.insert(par_id);
         }
-        this->has_new_partition_ = true;
+        this->flags_ |= kHasNewPart;
         break;
       }
 
@@ -1629,7 +1629,7 @@ KStatus TsVersionUpdate::DecodeFromSlice(TSSlice input) {
           }
           this->new_lastsegs_.insert_or_assign(par_id, std::move(meta_vec));
         }
-        this->has_new_lastseg_ = true;
+        this->flags_ |= kHasNewLastSeg;
         break;
       }
 
@@ -1639,7 +1639,7 @@ KStatus TsVersionUpdate::DecodeFromSlice(TSSlice input) {
           LOG_ERROR("Corrupted version update slice");
           return FAIL;
         }
-        this->has_new_lastseg_ = true;
+        this->flags_ |= kHasNewLastSeg;
         break;
       }
       case VersionUpdateType::kDeleteLastSegment: {
@@ -1648,7 +1648,7 @@ KStatus TsVersionUpdate::DecodeFromSlice(TSSlice input) {
           LOG_ERROR("Corrupted version update slice");
           return FAIL;
         }
-        this->has_delete_lastseg_ = true;
+        this->flags_ |= kHasDelLastSeg;
         break;
       }
 
@@ -1659,7 +1659,7 @@ KStatus TsVersionUpdate::DecodeFromSlice(TSSlice input) {
           LOG_ERROR("Corrupted version update slice");
           return FAIL;
         }
-        this->has_entity_segment_ = true;
+        this->flags_ |= kHasEntitySeg;
         break;
       }
 
@@ -1669,7 +1669,7 @@ KStatus TsVersionUpdate::DecodeFromSlice(TSSlice input) {
           LOG_ERROR("Corrupted version update slice");
           return FAIL;
         }
-        this->has_next_file_number_ = true;
+        this->flags_ |= kHasNextFile;
         break;
       }
 
@@ -1679,7 +1679,7 @@ KStatus TsVersionUpdate::DecodeFromSlice(TSSlice input) {
           LOG_ERROR("Corrupted version update slice");
           return FAIL;
         }
-        this->has_max_lsn_ = true;
+        this->flags_ |= kHasMaxLSN;
         break;
       }
 
@@ -1689,7 +1689,7 @@ KStatus TsVersionUpdate::DecodeFromSlice(TSSlice input) {
           LOG_ERROR("Corrupted version update slice");
           return FAIL;
         }
-        this->has_count_stats_ = true;
+        this->flags_ |= kHasCountStats;
         break;
       }
 
@@ -1699,7 +1699,7 @@ KStatus TsVersionUpdate::DecodeFromSlice(TSSlice input) {
           LOG_ERROR("Corrupted version update slice");
           return FAIL;
         }
-        this->has_new_version_number_ = true;
+        this->flags_ |= kHasNewVersion;
         break;
       }
       case VersionUpdateType::kNewAggFile: {
@@ -1708,7 +1708,7 @@ KStatus TsVersionUpdate::DecodeFromSlice(TSSlice input) {
           LOG_ERROR("Corrupted version update slice");
           return FAIL;
         }
-        this->has_new_agg_ = true;
+        this->flags_ |= kHasNewAgg;
         break;
       }
       default:
@@ -1810,19 +1810,19 @@ KStatus TsVersionManager::RecordReader::ReadRecord(std::string *record, bool *eo
 }
 
 KStatus TsVersionManager::VersionBuilder::AddUpdate(const TsVersionUpdate &update) {
-  if (update.has_new_partition_) {
-    all_updates_.has_new_partition_ = true;
+  if (update.flags_ & TsVersionUpdate::kHasNewPart) {
+    all_updates_.flags_ |= TsVersionUpdate::kHasNewPart;
     all_updates_.partitions_created_.insert(update.partitions_created_.begin(), update.partitions_created_.end());
   }
 
-  if (update.has_new_lastseg_) {
-    all_updates_.has_new_lastseg_ = true;
+  if (update.flags_ & TsVersionUpdate::kHasNewLastSeg) {
+    all_updates_.flags_ |= TsVersionUpdate::kHasNewLastSeg;
     for (const auto &[par_id, metas] : update.new_lastsegs_) {
       std::copy(metas.begin(), metas.end(), std::back_inserter(all_updates_.new_lastsegs_[par_id]));
     }
   }
 
-  if (update.has_delete_lastseg_) {
+  if (update.flags_ & TsVersionUpdate::kHasDelLastSeg) {
     for (const auto &pair : update.delete_lastsegs_) {
       auto &par_id = pair.first;
       auto &file_number = pair.second;
@@ -1836,38 +1836,38 @@ KStatus TsVersionManager::VersionBuilder::AddUpdate(const TsVersionUpdate &updat
     }
   }
 
-  if (update.has_entity_segment_) {
-    all_updates_.has_entity_segment_ = true;
+  if (update.flags_ & TsVersionUpdate::kHasEntitySeg) {
+    all_updates_.flags_ |= TsVersionUpdate::kHasEntitySeg;
     for (auto [par_id, info] : update.entity_segment_) {
       all_updates_.entity_segment_[par_id] = info;
     }
   }
 
-  if (update.has_next_file_number_) {
-    all_updates_.has_next_file_number_ = true;
+  if (update.flags_ & TsVersionUpdate::kHasNextFile) {
+    all_updates_.flags_ |= TsVersionUpdate::kHasNextFile;
     all_updates_.next_file_number_ = update.next_file_number_;
   }
 
-  if (update.has_max_lsn_) {
-    all_updates_.has_max_lsn_ = true;
+  if (update.flags_ & TsVersionUpdate::kHasMaxLSN) {
+    all_updates_.flags_ |= TsVersionUpdate::kHasMaxLSN;
     all_updates_.max_lsn_ = std::max(all_updates_.max_lsn_, update.max_lsn_);
   }
 
-  if (update.has_count_stats_) {
-    all_updates_.has_count_stats_ = true;
+  if (update.flags_ & TsVersionUpdate::kHasCountStats) {
+    all_updates_.flags_ |= TsVersionUpdate::kHasCountStats;
     all_updates_.count_stats_status_ = CountStatsStatus::Recover;
     for (const auto& [par_id, info] : update.count_flush_infos_) {
       all_updates_.count_flush_infos_[par_id] = info;
     }
   }
 
-  if (update.has_new_version_number_) {
-    all_updates_.has_new_version_number_ = true;
+  if (update.flags_ & TsVersionUpdate::kHasNewVersion) {
+    all_updates_.flags_ |= TsVersionUpdate::kHasNewVersion;
     all_updates_.version_num_ = std::max(all_updates_.version_num_, update.version_num_);
   }
 
-  if (update.has_new_agg_) {
-    all_updates_.has_new_agg_ = true;
+  if (update.flags_ & TsVersionUpdate::kHasNewAgg) {
+    all_updates_.flags_ |= TsVersionUpdate::kHasNewAgg;
     for (auto [par_id, agg] : update.new_agg_files_) {
       all_updates_.new_agg_files_[par_id] = agg;
     }
@@ -1876,34 +1876,17 @@ KStatus TsVersionManager::VersionBuilder::AddUpdate(const TsVersionUpdate &updat
 }
 
 void TsVersionManager::VersionBuilder::Finalize(TsVersionUpdate *update) {
-  update->has_new_partition_ = all_updates_.has_new_partition_;
+  update->flags_ |= all_updates_.flags_;
   update->partitions_created_ = std::move(all_updates_.partitions_created_);
-
-  update->has_new_lastseg_ = all_updates_.has_new_lastseg_;
   update->new_lastsegs_ = std::move(all_updates_.new_lastsegs_);
-
-  update->has_delete_lastseg_ = all_updates_.has_delete_lastseg_;
   update->delete_lastsegs_ = std::move(all_updates_.delete_lastsegs_);
-
-  update->has_entity_segment_ = all_updates_.has_entity_segment_;
   update->entity_segment_ = std::move(all_updates_.entity_segment_);
-
-  update->has_next_file_number_ = all_updates_.has_next_file_number_;
   update->next_file_number_ = all_updates_.next_file_number_;
-
-  update->has_max_lsn_ = all_updates_.has_max_lsn_;
   update->max_lsn_ = all_updates_.max_lsn_;
-
-  update->has_count_stats_ = all_updates_.has_count_stats_;
   update->count_stats_status_ = all_updates_.count_stats_status_;
   update->count_flush_infos_ = std::move(all_updates_.count_flush_infos_);
-  update->has_new_version_number_ = all_updates_.has_new_version_number_;
   update->version_num_ = all_updates_.version_num_;
-
-  update->has_new_agg_ = all_updates_.has_new_agg_;
-  update->new_agg_files_ = all_updates_.new_agg_files_;
-
-  update->need_record_ = true;
+  update->new_agg_files_ = std::move(all_updates_.new_agg_files_);
 }
 
 static std::ostream &operator<<(std::ostream &os, const PartitionIdentifier &p) {

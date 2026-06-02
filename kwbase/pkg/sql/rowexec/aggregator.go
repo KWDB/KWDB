@@ -266,7 +266,23 @@ func (gw *groupWindow) Close(ctx context.Context) {
 func (gw *groupWindow) CheckAndGetWindowDatum(
 	typ []types.T, flowCtx *execinfra.FlowCtx, row *sqlbase.EncDatumRow,
 ) error {
-	switch flowCtx.EvalCtx.GroupWindow.GroupWindowFunc {
+	if gw.groupWindowColID < 0 {
+		return nil
+	}
+	if *row != nil && int(gw.groupWindowColID) >= len(*row) {
+		return errors.AssertionFailedf(
+			"group window column ordinal %d out of range for row with %d columns",
+			gw.groupWindowColID,
+			len(*row),
+		)
+	}
+	groupWindowFunc := flowCtx.EvalCtx.GroupWindow.GroupWindowFunc
+	if *row != nil && flowCtx.EvalCtx.GroupWindow.CountWindowHelper.WindowNum > 0 {
+		if _, ok := (*row)[gw.groupWindowColID].Datum.(*tree.DInt); ok {
+			groupWindowFunc = tree.CountWindow
+		}
+	}
+	switch groupWindowFunc {
 	case tree.StateWindow:
 		if *row == nil {
 			return nil
@@ -1711,7 +1727,7 @@ func (ag *orderedAggregator) accumulateRows() (
 			return aggAccumulating, nil, meta
 		}
 
-		if haveGroupWindow(ag.EvalCtx) {
+		if haveGroupWindowCol(ag.EvalCtx, ag.groupWindow.groupWindowColID) {
 			if ag.FlowCtx.EvalCtx.GroupWindow.GroupWindowFunc == tree.EventWindow ||
 				ag.FlowCtx.EvalCtx.GroupWindow.GroupWindowFunc == tree.CountWindow ||
 				ag.FlowCtx.EvalCtx.GroupWindow.GroupWindowFunc == tree.TimeWindow ||
@@ -1821,7 +1837,7 @@ func (ag *orderedAggregator) accumulateRows() (
 
 		if ag.lastOrdGroupCols == nil {
 			ag.lastOrdGroupCols = ag.rowAlloc.CopyRow(row)
-			if haveGroupWindow(ag.EvalCtx) && ag.FlowCtx.EvalCtx.GroupWindow.GroupWindowFunc == tree.EventWindow {
+			if haveGroupWindowCol(ag.EvalCtx, ag.groupWindow.groupWindowColID) && ag.FlowCtx.EvalCtx.GroupWindow.GroupWindowFunc == tree.EventWindow {
 				if ag.groupWindow.eventEnd {
 					for i := 0; i < len(ag.groupWindow.eventRows); i++ {
 						if err := ag.accumulateRow(ag.groupWindow.eventRows[i]); err != nil {
@@ -1841,7 +1857,7 @@ func (ag *orderedAggregator) accumulateRows() (
 				return aggStateUnknown, nil, nil
 			}
 			if !matched {
-				if haveGroupWindow(ag.EvalCtx) && ag.FlowCtx.EvalCtx.GroupWindow.GroupWindowFunc == tree.EventWindow {
+				if haveGroupWindowCol(ag.EvalCtx, ag.groupWindow.groupWindowColID) && ag.FlowCtx.EvalCtx.GroupWindow.GroupWindowFunc == tree.EventWindow {
 					if ag.groupWindow.eventEnd {
 						for i := 0; i < len(ag.groupWindow.eventRows); i++ {
 							if err := ag.accumulateRow(ag.groupWindow.eventRows[i]); err != nil {
@@ -1857,7 +1873,7 @@ func (ag *orderedAggregator) accumulateRows() (
 				break
 			}
 		}
-		if haveGroupWindow(ag.EvalCtx) && ag.FlowCtx.EvalCtx.GroupWindow.GroupWindowFunc == tree.EventWindow {
+		if haveGroupWindowCol(ag.EvalCtx, ag.groupWindow.groupWindowColID) && ag.FlowCtx.EvalCtx.GroupWindow.GroupWindowFunc == tree.EventWindow {
 			if ag.groupWindow.eventEnd {
 				for i := 0; i < len(ag.groupWindow.eventRows); i++ {
 					if err := ag.accumulateRow(ag.groupWindow.eventRows[i]); err != nil {
@@ -1894,6 +1910,10 @@ func (ag *orderedAggregator) accumulateRows() (
 
 func haveGroupWindow(evalCtx *tree.EvalContext) bool {
 	return evalCtx != nil && evalCtx.GroupWindow != nil && evalCtx.GroupWindow.GroupWindowFunc > 0
+}
+
+func haveGroupWindowCol(evalCtx *tree.EvalContext, groupWindowColID int32) bool {
+	return haveGroupWindow(evalCtx) && groupWindowColID >= 0
 }
 
 // getAggResults returns the new aggregatorState and the results from the
@@ -2338,7 +2358,7 @@ func (ag *orderedAggregator) emitRow() (
 				f.seen = make(map[string]struct{})
 			}
 		}
-		if !(haveGroupWindow(ag.EvalCtx) && ag.FlowCtx.EvalCtx.GroupWindow.GroupWindowFunc == tree.EventWindow) {
+		if !(haveGroupWindowCol(ag.EvalCtx, ag.groupWindow.groupWindowColID) && ag.FlowCtx.EvalCtx.GroupWindow.GroupWindowFunc == tree.EventWindow) {
 			if err := ag.accumulateRow(ag.lastOrdGroupCols); err != nil {
 				ag.MoveToDraining(err)
 				return aggStateUnknown, nil, nil

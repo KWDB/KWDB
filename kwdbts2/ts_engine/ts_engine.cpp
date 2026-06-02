@@ -1392,6 +1392,14 @@ KStatus TSEngineImpl::CreateCheckpoint(kwdbContext_p ctx) {
    * 8. remove vgroup wal file and old chk file
    */
   if (!EnableWAL()) {
+    // triger all vgroup flush
+    for (const auto &vgrp : vgroups_) {
+      KStatus s = vgrp->Flush();
+      if (s == KStatus::FAIL) {
+        LOG_ERROR("Failed to flush metric file.")
+        return s;
+      }
+    }
     return KStatus::SUCCESS;
   } else if (EngineOptions::isSingleNode() || !exist_explict_txn.load()) {
     // 1. switch engine wal file

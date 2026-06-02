@@ -5071,21 +5071,19 @@ may increase either contention or retry errors, or both.`,
 			Types:      tree.ArgTypes{{"timestamp", types.Timestamp}, {"interval", types.String}},
 			ReturnType: tree.FixedReturnType(types.Timestamp),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
-				if evalCtx.GroupWindow.GroupWindowFunc == tree.GroupWindowUnknown {
-					if _, ok := args[0].(*tree.DTimestamp); !ok {
-						return &tree.DTimestamp{}, pgerror.New(pgcode.InvalidParameterValue, "first arg should be Timestamp or TimestampTZ.")
-					}
-					intervalStr, ok := args[1].(*tree.DString)
-					if !ok {
-						return &tree.DTimestamp{}, pgerror.New(pgcode.InvalidParameterValue, "first arg should be string.")
-					}
-					dur, err := parseIntervalForSessionWindow(string(*intervalStr))
-					if err != nil {
-						return nil, err
-					}
-					evalCtx.GroupWindow.SessionWindowHelper = tree.SessionWindowHelper{Dur: dur}
-					evalCtx.GroupWindow.GroupWindowFunc = tree.SessionWindow
+				if _, ok := args[0].(*tree.DTimestamp); !ok {
+					return &tree.DTimestamp{}, pgerror.New(pgcode.InvalidParameterValue, "first arg should be Timestamp or TimestampTZ.")
 				}
+				intervalStr, ok := args[1].(*tree.DString)
+				if !ok {
+					return &tree.DTimestamp{}, pgerror.New(pgcode.InvalidParameterValue, "first arg should be string.")
+				}
+				dur, err := parseIntervalForSessionWindow(string(*intervalStr))
+				if err != nil {
+					return nil, err
+				}
+				evalCtx.GroupWindow.SessionWindowHelper = tree.SessionWindowHelper{Dur: dur}
+				evalCtx.GroupWindow.GroupWindowFunc = tree.SessionWindow
 				return args[0], nil
 			},
 			Info: "group based on the session_window.",
@@ -5094,21 +5092,19 @@ may increase either contention or retry errors, or both.`,
 			Types:      tree.ArgTypes{{"timestamptz", types.TimestampTZ}, {"interval", types.String}},
 			ReturnType: tree.FixedReturnType(types.TimestampTZ),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
-				if evalCtx.GroupWindow.GroupWindowFunc == tree.GroupWindowUnknown {
-					if _, ok := args[0].(*tree.DTimestampTZ); !ok {
-						return &tree.DTimestampTZ{}, pgerror.New(pgcode.InvalidParameterValue, "first arg should be Timestamp or TimestampTZ.")
-					}
-					intervalStr, ok := args[1].(*tree.DString)
-					if !ok {
-						return &tree.DTimestampTZ{}, pgerror.New(pgcode.InvalidParameterValue, "first arg should be string.")
-					}
-					dur, err := parseIntervalForSessionWindow(string(*intervalStr))
-					if err != nil {
-						return nil, err
-					}
-					evalCtx.GroupWindow.SessionWindowHelper = tree.SessionWindowHelper{Dur: dur}
-					evalCtx.GroupWindow.GroupWindowFunc = tree.SessionWindow
+				if _, ok := args[0].(*tree.DTimestampTZ); !ok {
+					return &tree.DTimestampTZ{}, pgerror.New(pgcode.InvalidParameterValue, "first arg should be Timestamp or TimestampTZ.")
 				}
+				intervalStr, ok := args[1].(*tree.DString)
+				if !ok {
+					return &tree.DTimestampTZ{}, pgerror.New(pgcode.InvalidParameterValue, "first arg should be string.")
+				}
+				dur, err := parseIntervalForSessionWindow(string(*intervalStr))
+				if err != nil {
+					return nil, err
+				}
+				evalCtx.GroupWindow.SessionWindowHelper = tree.SessionWindowHelper{Dur: dur}
+				evalCtx.GroupWindow.GroupWindowFunc = tree.SessionWindow
 				return args[0], nil
 			},
 			Info: "group based on the session_window.",
@@ -5121,23 +5117,21 @@ may increase either contention or retry errors, or both.`,
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
 				var windowNum, slidingWindowSize *tree.DInt
 				var ok bool
-				if evalCtx.GroupWindow.GroupWindowFunc == tree.GroupWindowUnknown {
-					if windowNum, ok = args[0].(*tree.DInt); !ok {
-						return &tree.DTimestamp{}, pgerror.New(pgcode.InvalidParameterValue, "first arg should be int.")
-					}
-					if slidingWindowSize, ok = args[1].(*tree.DInt); !ok {
-						return &tree.DTimestamp{}, pgerror.New(pgcode.InvalidParameterValue, "second arg should be int.")
-					}
-					if *windowNum < *slidingWindowSize || *slidingWindowSize <= 0 || *windowNum <= 0 {
-						return &tree.DTimestamp{}, pgerror.New(pgcode.InvalidParameterValue, "ERROR: invalid sliding value.")
-					}
-					evalCtx.GroupWindow.CountWindowHelper = tree.CountWindowHelper{
-						WindowNum:         int(*windowNum),
-						SlidingWindowSize: int(*slidingWindowSize),
-						IsSlide:           *windowNum != *slidingWindowSize,
-					}
-					evalCtx.GroupWindow.GroupWindowFunc = tree.CountWindow
+				if windowNum, ok = args[0].(*tree.DInt); !ok {
+					return &tree.DTimestamp{}, pgerror.New(pgcode.InvalidParameterValue, "first arg should be int.")
 				}
+				if slidingWindowSize, ok = args[1].(*tree.DInt); !ok {
+					return &tree.DTimestamp{}, pgerror.New(pgcode.InvalidParameterValue, "second arg should be int.")
+				}
+				if *windowNum < *slidingWindowSize || *slidingWindowSize <= 0 || *windowNum <= 0 {
+					return &tree.DTimestamp{}, pgerror.New(pgcode.InvalidParameterValue, "ERROR: invalid sliding value.")
+				}
+				evalCtx.GroupWindow.CountWindowHelper = tree.CountWindowHelper{
+					WindowNum:         int(*windowNum),
+					SlidingWindowSize: int(*slidingWindowSize),
+					IsSlide:           *windowNum != *slidingWindowSize,
+				}
+				evalCtx.GroupWindow.GroupWindowFunc = tree.CountWindow
 				return tree.NewDInt(0), nil
 			},
 			Info: "group based on the count of data.",
@@ -5148,20 +5142,18 @@ may increase either contention or retry errors, or both.`,
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
 				var windowNum *tree.DInt
 				var ok bool
-				if evalCtx.GroupWindow.GroupWindowFunc == tree.GroupWindowUnknown {
-					if windowNum, ok = args[0].(*tree.DInt); !ok {
-						return &tree.DTimestamp{}, pgerror.New(pgcode.InvalidParameterValue, "first arg should be int.")
-					}
-					if *windowNum <= 0 {
-						return &tree.DTimestamp{}, pgerror.New(pgcode.InvalidParameterValue, "ERROR: invalid sliding value.")
-					}
-					evalCtx.GroupWindow.CountWindowHelper = tree.CountWindowHelper{
-						WindowNum:         int(*windowNum),
-						SlidingWindowSize: int(*windowNum),
-						IsSlide:           false,
-					}
-					evalCtx.GroupWindow.GroupWindowFunc = tree.CountWindow
+				if windowNum, ok = args[0].(*tree.DInt); !ok {
+					return &tree.DTimestamp{}, pgerror.New(pgcode.InvalidParameterValue, "first arg should be int.")
 				}
+				if *windowNum <= 0 {
+					return &tree.DTimestamp{}, pgerror.New(pgcode.InvalidParameterValue, "ERROR: invalid sliding value.")
+				}
+				evalCtx.GroupWindow.CountWindowHelper = tree.CountWindowHelper{
+					WindowNum:         int(*windowNum),
+					SlidingWindowSize: int(*windowNum),
+					IsSlide:           false,
+				}
+				evalCtx.GroupWindow.GroupWindowFunc = tree.CountWindow
 				return tree.NewDInt(0), nil
 			},
 			Info: "group based on the count of data.",

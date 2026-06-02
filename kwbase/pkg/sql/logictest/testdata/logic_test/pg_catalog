@@ -1847,7 +1847,7 @@ sql_safe_updates                          off                 NULL  user     NUL
 standard_conforming_strings               on                  NULL  user     NULL      on                  on
 statement_timeout                         0                   NULL  user     NULL      0                   0
 synchronize_seqscans                      on                  NULL  user     NULL      on                  on
-timezone                                  UTC                 NULL  user     NULL      UTC                 UTC
+timezone                                  UTC                 NULL  user     NULL      ·                   ·
 tracing                                   off                 NULL  user     NULL      off                 off
 transaction_isolation                     serializable        NULL  user     NULL      serializable        serializable
 transaction_priority                      normal              NULL  user     NULL      normal              normal

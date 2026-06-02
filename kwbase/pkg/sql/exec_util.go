@@ -246,6 +246,13 @@ var insertShortCircuitClusterMode = settings.RegisterBoolSetting(
 	true,
 )
 
+// ServerTimezoneClusterSetting controls the cluster time zone.
+var ServerTimezoneClusterSetting = settings.RegisterStringSetting(
+	"cluster.connection.timezone",
+	"cluster default timezone, supports both numeric offset (e.g., 8 for +08:00) or timezone name (e.g., Asia/Shanghai)",
+	"",
+)
+
 // VectorizeClusterSettingName is the name for the cluster setting that controls
 // the VectorizeClusterMode below.
 const VectorizeClusterSettingName = "sql.defaults.vectorize"

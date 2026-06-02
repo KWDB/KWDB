@@ -1020,6 +1020,13 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
       LOG_ERROR("cannot get block spans.");
       return FAIL;
     }
+    if (all_block_spans.empty()) {
+      // All data in this memseg belongs to dropped tables.  GetBlockSpans
+      // skips rows for dropped tables, producing an empty list.  There is
+      // nothing to flush to disk, so just remove the memseg from the version.
+      update.RemoveMemSegment(mem_seg->GetId());
+      return version_manager_->ApplyUpdate(&update);
+    }
     sorted_spans.reserve(all_block_spans.size());
     std::move(all_block_spans.begin(), all_block_spans.end(), std::back_inserter(sorted_spans));
     update.SetMaxLSN(GetMaxOsn(sorted_spans));
@@ -2766,6 +2773,12 @@ KStatus TsVGroup::CalcPartitionAgg(bool force) {
   if (table_entity_map.empty()) {
     return KStatus::SUCCESS;
   }
+  TSEntityID max_agg_entity_id = GetMaxEntityID();
+  for (const auto& [tb_schema, entities] : table_entity_map) {
+    for (auto entity_id : entities) {
+      max_agg_entity_id = std::max(max_agg_entity_id, static_cast<TSEntityID>(entity_id));
+    }
+  }
 
   std::shared_ptr<const TsVGroupVersion> cur_version = version_manager_->Current();
   auto all_partitions = cur_version->GetAllPartitions();
@@ -2806,7 +2819,7 @@ KStatus TsVGroup::CalcPartitionAgg(bool force) {
     auto file_number = version_manager_->NewFileNumber();
     fs::path agg_path = par_version->GetPartitionPath() / AggFileName(file_number);
     auto partition_agg_builder =
-          std::make_shared<TsPartitionAggBuilder>(env, agg_path, GetMaxEntityID());
+          std::make_shared<TsPartitionAggBuilder>(env, agg_path, max_agg_entity_id);
     s = partition_agg_builder->Open();
     if (s != SUCCESS) {
       LOG_ERROR("Open partition[%s] agg file failed", agg_path.c_str());
@@ -3005,7 +3018,11 @@ KStatus TsVGroup::CalcPartitionAgg(bool force) {
         }
       }
     }
-    partition_agg_builder->Finalize();
+    s = partition_agg_builder->Finalize();
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("Finalize partition[%s] agg file failed", par_version->GetPartitionPath().c_str());
+      return s;
+    }
     update.AddAggFile(par_id, file_number);
     LOG_INFO("Calc partition[%s] agg success", par_version->GetPartitionPath().c_str());
   }

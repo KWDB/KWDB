@@ -192,20 +192,6 @@ var SQLRestfulTimeOut = settings.RegisterPublicIntSetting(
 	60,
 )
 
-// SQLRestfulTimeZone information of timezone
-var SQLRestfulTimeZone = settings.RegisterValidatedIntSetting(
-	"server.restful_service.default_request_timezone",
-	"set time zone for restful api",
-	0,
-	func(v int64) error {
-		if v < -12 || v > 14 {
-			return pgerror.Newf(pgcode.InvalidParameterValue,
-				"server.restful_service.default_request_timezone must be set between -12 and 14")
-		}
-		return nil
-	},
-)
-
 // loginResponseSuccess is use for return login success
 type loginResponseSuccess struct {
 	Code  int    `json:"code"`
@@ -1106,8 +1092,8 @@ func (s *restfulServer) checkConn(
 	tempStr := ""
 	// get dbname by path.
 	if paraTimeZone == "" {
-		timezone := SQLRestfulTimeZone.Get(&s.server.cfg.Settings.SV)
-		tempStr = fmt.Sprintf("%d", timezone)
+		timezone := sql.ServerTimezoneClusterSetting.Get(&s.server.cfg.Settings.SV)
+		tempStr = fmt.Sprintf("%s", timezone)
 	} else {
 		tempStr = strings.TrimPrefix(paraTimeZone, "'")
 		tempStr = strings.TrimSuffix(tempStr, "'")

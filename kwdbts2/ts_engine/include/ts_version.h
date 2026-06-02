@@ -343,101 +343,93 @@ class TsVersionUpdate {
   friend class TsVersionManager;
 
  private:
-  bool has_new_partition_ = false;
+  static constexpr uint16_t kHasNewMemSeg     = 1 << 0;
+  static constexpr uint16_t kHasDelMemSeg     = 1 << 1;
+  static constexpr uint16_t kHasNewPart       = 1 << 2;
+  static constexpr uint16_t kHasNewLastSeg    = 1 << 3;
+  static constexpr uint16_t kHasDelLastSeg    = 1 << 4;
+  static constexpr uint16_t kHasEntitySeg     = 1 << 5;
+  static constexpr uint16_t kHasNextFile      = 1 << 6;
+  static constexpr uint16_t kHasMaxLSN        = 1 << 7;
+  static constexpr uint16_t kHasCountStats    = 1 << 8;
+  static constexpr uint16_t kHasNewVersion    = 1 << 9;
+  static constexpr uint16_t kHasNewAgg        = 1 << 10;
+
+  uint16_t flags_ = 0;
+
   std::set<PartitionIdentifier> partitions_created_;
 
-  bool has_new_lastseg_ = false;
   std::map<PartitionIdentifier, std::vector<LastSegmentMetaInfo>> new_lastsegs_;
 
-  bool has_delete_lastseg_ = false;
   std::map<PartitionIdentifier, std::set<uint64_t>> delete_lastsegs_;
 
   // std::list<std::shared_ptr<TsMemSegment>> valid_memseg_;
-  bool has_new_mem_segments_ = false;
   std::shared_ptr<TsMemSegment> new_memseg_;
-  bool has_del_mem_segments_ = false;
   int64_t del_memseg_id_ = -1;
 
-  bool has_entity_segment_ = false;
   bool delete_all_prev_entity_segment_ = false;
   std::map<PartitionIdentifier, EntitySegmentMetaInfo> entity_segment_;
 
-  bool has_next_file_number_ = false;
   uint64_t next_file_number_ = 0;
 
-  bool has_max_lsn_ = false;
   TS_OSN max_lsn_ = 0;
-
-  bool need_record_ = false;
 
   std::set<PartitionIdentifier> updated_partitions_;
 
-  bool has_count_stats_ = false;
   CountStatsStatus count_stats_status_ = CountStatsStatus::FlushImmOrWriteBatch;
-  bool has_new_version_number_ = false;
   uint64_t version_num_ = 0;
   std::map<PartitionIdentifier, CountStatMetaInfo> count_flush_infos_;
 
-  bool has_new_agg_ = false;
   std::map<PartitionIdentifier, uint64_t> new_agg_files_;
 
+  static constexpr uint16_t kMemSegMask = kHasNewMemSeg | kHasDelMemSeg;
+
   bool NeedRecordFileNumber() const {
-    return has_new_lastseg_ || has_entity_segment_ || has_delete_lastseg_ || has_count_stats_ || has_new_agg_;
+    return (flags_ & (kHasNewLastSeg | kHasEntitySeg | kHasDelLastSeg | kHasCountStats | kHasNewAgg)) != 0;
   }
-  bool NeedRecord() const { return need_record_; }
-  bool MemSegmentsOnly() const {
-    return (has_new_mem_segments_ || has_del_mem_segments_) && !has_new_partition_ && !has_new_lastseg_ &&
-           !has_delete_lastseg_ && !has_entity_segment_ && !has_next_file_number_ && !has_count_stats_ && !has_new_agg_;
-  }
+  bool NeedRecord() const { return (flags_ & ~kMemSegMask) != 0; }
+  bool MemSegmentsOnly() const { return (flags_ & kMemSegMask) && !(flags_ & ~kMemSegMask); }
 
  public:
-  bool Empty() const {
-    return !(has_new_partition_ || has_new_lastseg_ || has_delete_lastseg_ || has_new_mem_segments_ ||
-             has_del_mem_segments_ || has_entity_segment_ || has_max_lsn_ || has_count_stats_ || has_new_agg_);
-  }
+  bool Empty() const { return flags_ == 0; }
 
   void PartitionDirCreated(const PartitionIdentifier &partition_id) {
     partitions_created_.insert(partition_id);
     updated_partitions_.insert(partition_id);
-    has_new_partition_ = true;
-    need_record_ = true;
+    flags_ |= kHasNewPart;
   }
   void AddLastSegment(const PartitionIdentifier &partition_id, LastSegmentMetaInfo meta) {
     updated_partitions_.insert(partition_id);
     new_lastsegs_[partition_id].push_back(meta);
-    has_new_lastseg_ = true;
-    need_record_ = true;
+    flags_ |= kHasNewLastSeg;
   }
 
   void SetMaxLSN(TS_OSN lsn) {
     max_lsn_ = std::max(max_lsn_, lsn);
-    has_max_lsn_ = true;
-    need_record_ = true;
+    flags_ |= kHasMaxLSN;
   }
 
   void DeleteLastSegment(const PartitionIdentifier &partition_id, uint64_t file_number) {
     updated_partitions_.insert(partition_id);
     delete_lastsegs_[partition_id].insert(file_number);
-    has_delete_lastseg_ = true;
-    need_record_ = true;
+    flags_ |= kHasDelLastSeg;
   }
 
   void RemoveMemSegment(int64_t mem_id) {
-    has_del_mem_segments_ = true;
+    flags_ |= kHasDelMemSeg;
     del_memseg_id_ = mem_id;
   }
 
   void AddMemSegment(std::shared_ptr<TsMemSegment> mem) {
-    has_new_mem_segments_ = true;
+    flags_ |= kHasNewMemSeg;
     new_memseg_ = std::move(mem);
   }
 
   void SetEntitySegment(const PartitionIdentifier &partition_id, EntitySegmentMetaInfo info, bool delete_all_prev_files) {
     updated_partitions_.insert(partition_id);
     entity_segment_[partition_id] = info;
-    has_entity_segment_ = true;
+    flags_ |= kHasEntitySeg;
     delete_all_prev_entity_segment_ = delete_all_prev_files;
-    need_record_ = true;
   }
 
   void GetEntitySegmentInfo(const PartitionIdentifier &partition_id, EntitySegmentMetaInfo *info) {
@@ -447,15 +439,13 @@ class TsVersionUpdate {
 
   void SetNextFileNumber(uint64_t file_number) {
     next_file_number_ = file_number;
-    has_next_file_number_ = true;
-    need_record_ = true;
+    flags_ |= kHasNextFile;
   }
 
   void AddCountFile(const PartitionIdentifier& partition_id, CountStatMetaInfo info) {
     updated_partitions_.insert(partition_id);
     count_flush_infos_[partition_id] = std::move(info);
-    has_count_stats_ = true;
-    need_record_ = true;
+    flags_ |= kHasCountStats;
   }
 
   void SetCountStatsType(CountStatsStatus status) {
@@ -469,8 +459,7 @@ class TsVersionUpdate {
   void AddAggFile(const PartitionIdentifier& partition_id, uint64_t agg_file_num) {
     updated_partitions_.insert(partition_id);
     new_agg_files_[partition_id] = agg_file_num;
-    has_new_agg_ = true;
-    need_record_ = true;
+    flags_ |= kHasNewAgg;
   }
 
   TsBufferBuilder EncodeToString() const;
@@ -513,7 +502,7 @@ class TsVersionManager {
       tmp_memseg_container->insert({id, mem});
     }
 
-    if (update->has_new_mem_segments_) {
+    if (update->flags_ & TsVersionUpdate::kHasNewMemSeg) {
       [[maybe_unused]] auto [_, ok] = tmp_memseg_container->insert(
           {update->new_memseg_->GetId(), std::make_shared<TsMemSegmentProxy>(std::move(update->new_memseg_))});
       assert(ok);
