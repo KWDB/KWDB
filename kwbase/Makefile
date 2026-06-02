@@ -291,6 +291,8 @@ ifdef host-is-mingw
   KWBASE_TOP := $(realpath $(dir $(abspath $(firstword $(MAKEFILE_LIST))) ) )
   KWDB_LIB_DIR := $(shell cygpath -m $(KWDB_LIB_DIR))
   CMAKE_CMD := /ucrt64/bin/cmake
+else
+  CMAKE_CMD := cmake
 endif
 
 # User-requested build variants.
@@ -458,13 +460,6 @@ ifneq ($(HOST_TRIPLE),$(TARGET_TRIPLE))
 is-cross-compile := 1
 endif
 
-target-is-windows := $(findstring w64,$(TARGET_TRIPLE))
-EXCLUDE_UNWIND := $(or $(findstring aarch64,$(TARGET_TRIPLE)), \
-                       $(findstring windows,$(TARGET_TRIPLE)), \
-                       $(findstring mingw,$(TARGET_TRIPLE)), \
-                       $(findstring win32,$(TARGET_TRIPLE)))
-$(info EXCLUDE_UNWIND: $(EXCLUDE_UNWIND) in Env $(target-is-windows))
-
 # CMAKE_TARGET_MESSAGES=OFF prevents CMake from printing progress messages
 # whenever a target is fully built to prevent spammy output from make when
 # c-deps are all already built. Progress messages are still printed when actual
@@ -523,9 +518,8 @@ export LDFLAGS CGO_LDFLAGS
 
 C_LIBS_COMMON = \
 	$(if $(use-stdmalloc),,$(LIBJEMALLOC)) \
-	$(if $(target-is-windows),,$(LIBEDIT)) \
-	$(LIBPROTOBUF) $(LIBSNAPPY) $(LIBROCKSDB) \
-	$(if $(EXCLUDE_UNWIND),,$(LIBUNWIND))
+	$(if $(host-is-mingw),,$(LIBEDIT)) \
+	$(LIBPROTOBUF) $(LIBSNAPPY) $(LIBROCKSDB) 
 C_LIBS_OSS = $(C_LIBS_COMMON) $(LIBROACH)
 C_LIBS = $(C_LIBS_COMMON) $(LIBROACH)
 
@@ -652,8 +646,7 @@ $(JEMALLOC_DIR)/Makefile: $(C_DEPS_DIR)/jemalloc-rebuild $(JEMALLOC_SRC_DIR)/con
 	cd $(JEMALLOC_DIR) && $(JEMALLOC_SRC_DIR)/configure $(xconfigure-flags) --enable-prof --enable-stats \
 	$(if $(host-is-mingw), --with-jemalloc-prefix="" --enable-static --disable-debug --disable-fill --disable-utrace,) \
 	$(if $(host-is-mingw), --disable-cache-oblivious --disable-xmalloc --disable-readlinkat --disable-uaf-detection --disable-syscall,) \
-	$(if $(host-is-mingw), --disable-lazy-lock --disable-zone-allocator --disable-initial-exec-tls  --disable-doc --disable-cxx,) \
-	$(if $(EXCLUDE_UNWIND),,--enable-prof-libunwind --with-static-libunwind=$(LIBUNWIND) CFLAGS='-I$(LIBUNWIND_DIR)/include' LDFLAGS='-L$(LIBUNWIND_DIR)/src/.libs')
+	$(if $(host-is-mingw), --disable-lazy-lock --disable-zone-allocator --disable-initial-exec-tls  --disable-doc --disable-cxx,) 
 
 $(ROCKSDB_DIR)/Makefile: sse := $(if $(findstring x86_64,$(TARGET_TRIPLE)),-msse3)
 $(ROCKSDB_DIR)/Makefile: $(C_DEPS_DIR)/rocksdb-rebuild | bin/.submodules-initialized $(LIBSNAPPY) $(if $(use-stdmalloc),,$(LIBJEMALLOC))
@@ -741,7 +734,7 @@ $(LIBCRYPTOPP): $(CRYPTOPP_DIR)/Makefile bin/uptodate .ALWAYS_REBUILD
 	@uptodate $@ $(CRYPTOPP_SRC_DIR) || $(MAKE) --no-print-directory -C $(CRYPTOPP_DIR) static
 
 $(LIBJEMALLOC): $(JEMALLOC_DIR)/Makefile bin/uptodate .ALWAYS_REBUILD
-	@uptodate $@ $(JEMALLOC_SRC_DIR) || $(MAKE) --no-print-directory -C $(JEMALLOC_DIR) build_lib_static
+	@uptodate $@ $(JEMALLOC_SRC_DIR) || $(MAKE) --no-print-directory -C $(JEMALLOC_DIR) -j4 build_lib_static
 
 $(LIBSNAPPY): $(SNAPPY_DIR)/Makefile bin/uptodate .ALWAYS_REBUILD
 	@uptodate $@ $(SNAPPY_SRC_DIR) || $(MAKE) --no-print-directory -C $(SNAPPY_DIR) snappy
@@ -750,12 +743,12 @@ $(LIBEDIT): $(LIBEDIT_DIR)/Makefile bin/uptodate .ALWAYS_REBUILD
 	@uptodate $@ $(LIBEDIT_SRC_DIR) || $(MAKE) --no-print-directory -C $(LIBEDIT_DIR)/src
 
 $(LIBROCKSDB): $(ROCKSDB_DIR)/Makefile bin/uptodate .ALWAYS_REBUILD
-	@uptodate $@ $(ROCKSDB_SRC_DIR) || $(MAKE) --no-print-directory -C $(ROCKSDB_DIR) rocksdb
+	@uptodate $@ $(ROCKSDB_SRC_DIR) || $(MAKE) --no-print-directory -C $(ROCKSDB_DIR) -j4 rocksdb
 
 libroach-inputs := $(LIBROACH_SRC_DIR) $(ROCKSDB_SRC_DIR)/include
 
 $(LIBROACH): $(LIBROACH_DIR)/Makefile bin/uptodate .ALWAYS_REBUILD
-	@uptodate $@ $(libroach-inputs) || $(MAKE) --no-print-directory -C $(LIBROACH_DIR) roach
+	@uptodate $@ $(libroach-inputs) || $(MAKE) --no-print-directory -C $(LIBROACH_DIR) -j4 roach
 
 # Convenient names for maintainers. Not used by other targets in the Makefile.
 .PHONY: protoc libcryptopp libjemalloc libprotobuf libsnappy librocksdb libroach
