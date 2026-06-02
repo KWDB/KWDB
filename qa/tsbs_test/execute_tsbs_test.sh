@@ -356,6 +356,30 @@ apply_cluster_settings() {
     fi
 }
 
+apply_runtime_cluster_settings() {
+    local enabled_value
+    case "${INSERT_DIRECT}" in
+        0)
+            enabled_value="false"
+            ;;
+        1)
+            enabled_value="true"
+            ;;
+        *)
+            die "invalid insert_direct value: ${INSERT_DIRECT}, expected 0 or 1"
+            ;;
+    esac
+
+    log "setting server.tsinsert_direct.enabled=${enabled_value} from insert_direct=${INSERT_DIRECT}"
+    "$KWBIN" sql --insecure --host="${ME_HOST_IP}:${ME_HOST_PORT}" \
+        --execute="set cluster setting server.tsinsert_direct.enabled = ${enabled_value};"
+
+    [[ "${PARALLEL_DEGREE}" =~ ^[0-9]+$ ]] || die "invalid parallel_degree value: ${PARALLEL_DEGREE}"
+    log "setting ts.parallel_degree=${PARALLEL_DEGREE} from parallel_degree=${PARALLEL_DEGREE}"
+    "$KWBIN" sql --insecure --host="${ME_HOST_IP}:${ME_HOST_PORT}" \
+        --execute="set cluster setting ts.parallel_degree = ${PARALLEL_DEGREE};"
+}
+
 apply_after_load_settings() {
     local scale="$1"
     if [[ -f "${CLUSTER_SETTINGS_DIR}/after_load_scale${scale}.sql" ]]; then
@@ -602,6 +626,7 @@ run_scale() {
     query_ts_end="$(resolve_query_ts_end "${scale}")"
 
     apply_cluster_settings "${scale}"
+    apply_runtime_cluster_settings
     dump_cluster_settings_before_load "${load_result_dir}"
 
     local load_data
