@@ -820,7 +820,7 @@ EEIteratorErrCode StorageHandler::GetTagDataChunkWithPrimaryTags(kwdbContext_p c
   do {
     KStatus ret = ts_table_->GetEntityIdList(ctx, primary_tags, tags_index_id, tags, TSTagOpType::opUnKnow,
                                              table_->scan_tags_, &(table_->hash_spans_), &tag_rowbatch_->entity_indexs_,
-                                             &tag_rowbatch_->res_, &tag_rowbatch_->count_, 1, osn);
+                                             &tag_rowbatch_->res_, &tag_rowbatch_->count_, table_->table_version_, osn);
     if (ret != SUCCESS) {
       break;
     }
