@@ -287,10 +287,10 @@ CMAKE_BUILD_TOP := $(GOPATH)/native
 # TODO(benesch): Figure out why. MinGW transparently converts Unix-style paths
 # everywhere else.
 ifdef host-is-mingw
-CMAKE_BUILD_TOP := $(shell cygpath -m $(CMAKE_BUILD_TOP))
-KWBASE_TOP := $(realpath $(dir $(abspath $(firstword $(MAKEFILE_LIST))) ) )
-KWDB_LIB_DIR := $(shell cygpath -m $(KWDB_LIB_DIR))
-CMAKE_CMD = /ucrt64/bin/cmake
+  CMAKE_BUILD_TOP := $(shell cygpath -m $(CMAKE_BUILD_TOP))
+  KWBASE_TOP := $(realpath $(dir $(abspath $(firstword $(MAKEFILE_LIST))) ) )
+  KWDB_LIB_DIR := $(shell cygpath -m $(KWDB_LIB_DIR))
+  CMAKE_CMD := /ucrt64/bin/cmake
 endif
 
 # User-requested build variants.
@@ -311,16 +311,6 @@ ifndef CGO_CPPFLAGS
 	CGO_CPPFLAGS := -I$(JEMALLOC_DIR)/include
 	export CGO_CPPFLAGS
 endif
-
-WITH_ASAN ?=
-ifeq ($(WITH_ASAN), ON)
-WITH_ASAN_LINK = -X gitee.com/kwbasedb/kwbase/pkg/build.typ=$(BUILDTYPE) -extldflags "$(LDFLAGS) -lasan"
-export LD_PRELOAD = $(shell $(CC) -print-file-name=libasan.so)
-export ASAN_OPTIONS = alloc_dealloc_mismatch=0:halt_on_error=false:detect_leaks=false
-else
-WITH_ASAN_LINK = -X gitee.com/kwbasedb/kwbase/pkg/build.typ=$(BUILDTYPE) -extldflags "$(LDFLAGS)"
-endif
-override LINKFLAGS = $(WITH_ASAN_LINK)
 
 GOFLAGS ?=
 TAR     ?= tar 
@@ -528,12 +518,6 @@ ifndef PROTOBUF_INC
 	PROTOBUF_INC = $(GOPATH)/native/kwdbts2/third_party/include
 endif
 
-ifdef host-is-mingw
-LDFLAGS += -L$(CMAKE_BUILD_TOP)/kwdbts2/third_party/lib -L$(JEMALLOC_DIR)/lib -L$(LIBROACH_DIR) -L$(ROCKSDB_DIR) -L$(SNAPPY_DIR) -Wl,-Bstatic -lkwdbts2 -lprotobuf -llz4 -Wl,-Bdynamic -lz -lstdc++ -lws2_32
-else
-LDFLAGS += -L$(CMAKE_BUILD_TOP)/kwdbts2/third_party/lib -L$(CMAKE_BUILD_TOP)/kwdbts2/third_party/lib64 -Wl,-Bdynamic -lstdc++ -lz
-endif
-
 CGO_LDFLAGS = $(filter-out -static,$(LDFLAGS)) -ldl
 export LDFLAGS CGO_LDFLAGS
 
@@ -544,6 +528,26 @@ C_LIBS_COMMON = \
 	$(if $(EXCLUDE_UNWIND),,$(LIBUNWIND))
 C_LIBS_OSS = $(C_LIBS_COMMON) $(LIBROACH)
 C_LIBS = $(C_LIBS_COMMON) $(LIBROACH)
+
+
+# use a new var BIN_LD_FLAGS to avoid polution of LDFLAGS, which is used later in jemalloc, etc, components
+ifdef host-is-mingw
+  BIN_LD_FLAGS := $(LDFLAGS) -L$(CMAKE_BUILD_TOP)/kwdbts2/third_party/lib -L$(JEMALLOC_DIR)/lib -L$(LIBROACH_DIR) -L$(ROCKSDB_DIR) -L$(SNAPPY_DIR) -g -Wl,-Bstatic -lkwdbts2 -lrocksdb -lroach -lprotobuf -llz4 -lsnappy -ljemalloc -Wl,-Bdynamic -lz -lstdc++ -lws2_32
+else
+  BIN_LD_FLAGS := $(LDFLAGS) -L$(CMAKE_BUILD_TOP)/kwdbts2/third_party/lib -L$(CMAKE_BUILD_TOP)/kwdbts2/third_party/lib64 -Wl,-Bdynamic -lstdc++ -lz
+endif
+
+# logically WITH_ASAN_LINK and LINKFLAG depends on BIN_LD_FLAGS, move it here to make it clearer and avoid confusion
+WITH_ASAN ?=
+ifeq ($(WITH_ASAN), ON)
+  WITH_ASAN_LINK = -X gitee.com/kwbasedb/kwbase/pkg/build.typ=$(BUILDTYPE) -extldflags "$(BIN_LD_FLAGS) -lasan"
+  export LD_PRELOAD = $(shell $(CC) -print-file-name=libasan.so)
+  export ASAN_OPTIONS = alloc_dealloc_mismatch=0:halt_on_error=false:detect_leaks=false
+else
+  WITH_ASAN_LINK = -X gitee.com/kwbasedb/kwbase/pkg/build.typ=$(BUILDTYPE) -extldflags "$(BIN_LD_FLAGS)"
+endif
+override LINKFLAGS := $(WITH_ASAN_LINK)
+
 
 # Go does not permit dashes in build tags. This is undocumented.
 native-tag := $(subst -,_,$(TARGET_TRIPLE))$(if $(use-stdmalloc),_stdmalloc)$(if $(use-msan),_msan)
@@ -646,7 +650,7 @@ $(JEMALLOC_DIR)/Makefile: $(C_DEPS_DIR)/jemalloc-rebuild $(JEMALLOC_SRC_DIR)/con
 	@# jemalloc profiling deadlocks when built against musl. See
 	@# https://github.com/jemalloc/jemalloc/issues/585.
 	cd $(JEMALLOC_DIR) && $(JEMALLOC_SRC_DIR)/configure $(xconfigure-flags) --enable-prof --enable-stats \
-	$(if $(host-is-mingw), --enable-static --disable-debug --disable-fill --disable-utrace,) \
+	$(if $(host-is-mingw), --with-jemalloc-prefix="" --enable-static --disable-debug --disable-fill --disable-utrace,) \
 	$(if $(host-is-mingw), --disable-cache-oblivious --disable-xmalloc --disable-readlinkat --disable-uaf-detection --disable-syscall,) \
 	$(if $(host-is-mingw), --disable-lazy-lock --disable-zone-allocator --disable-initial-exec-tls  --disable-doc --disable-cxx,) \
 	$(if $(EXCLUDE_UNWIND),,--enable-prof-libunwind --with-static-libunwind=$(LIBUNWIND) CFLAGS='-I$(LIBUNWIND_DIR)/include' LDFLAGS='-L$(LIBUNWIND_DIR)/src/.libs')
@@ -664,6 +668,7 @@ $(ROCKSDB_DIR)/Makefile: $(C_DEPS_DIR)/rocksdb-rebuild | bin/.submodules-initial
 	  -DPORTABLE=ON -DWITH_GFLAGS=OFF -DWITH_TESTS=OFF -DWITH_TOOLS=OFF \
 	  -DSNAPPY_LIBRARIES=$(LIBSNAPPY) -DSNAPPY_INCLUDE_DIR="$(SNAPPY_SRC_DIR);$(SNAPPY_DIR)" -DWITH_SNAPPY=ON \
 	  $(if $(use-stdmalloc),,-DJEMALLOC_LIBRARIES=$(LIBJEMALLOC) -DJEMALLOC_INCLUDE_DIR=$(JEMALLOC_DIR)/include -DWITH_JEMALLOC=ON) \
+	  $(if $(host-is-mingw), -DCMAKE_C_FLAGS="${CMAKE_C_FLAGS} -DJEMALLOC_NO_DEMANGLE" -DCMAKE_CXX_FLAGS="${CMAKE_C_FLAGS} -DJEMALLOC_NO_DEMANGLE", ) \
 	  -DCMAKE_BUILD_TYPE=$(if $(ENABLE_ROCKSDB_ASSERTIONS),Debug,Release) \
 	  -DWITH_RUNTIME_DEBUG=$(if $(ENABLE_ROCKSDB_ASSERTIONS),ON,OFF) \
 	  -DUSE_RTTI=1 -DFAIL_ON_WARNINGS=0
@@ -1500,12 +1505,12 @@ logictest-bins := bin/logictest bin/logictestopt
 # Additional dependencies for binaries that depend on generated code.
 #
 # TODO(benesch): Derive this automatically. This is getting out of hand.
-bin/execgen: $(LIBROCKSDB) $(LIBSNAPPY) $(LIBJEMALLOC)
+bin/execgen: $(LIBROCKSDB) $(LIBSNAPPY) $(LIBJEMALLOC) $(C_LIBS)
 bin/workload bin/execgen bin/roachtest $(logictest-bins): $(SQLPARSER_TARGETS) $(PROTOBUF_TARGETS)
 bin/workload bin/roachtest $(logictest-bins): $(EXECGEN_TARGETS)
 bin/roachtest $(logictest-bins): $(C_LIBS) $(CGO_FLAGS_FILES) $(OPTGEN_TARGETS)
 
-$(bins): bin/%: bin/%.d | bin/prereqs bin/.submodules-initialized
+$(bins): bin/%: bin/%.d | bin/prereqs bin/.submodules-initialized 
 # copy the dll's needed by bin/tools
 ifdef host-is-mingw
 	@[ -d $(KWBASE_TOP)/bin ] || rm -f $(KWBASE_TOP)/bin ; mkdir -p $(KWBASE_TOP)/bin
