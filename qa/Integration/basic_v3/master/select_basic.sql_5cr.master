@@ -423,5 +423,22 @@ INSERT 1
                | filter           | e6 IS NOT NULL
                | block filter[e6] | NOT NULL
 (8 rows)
+> CREATE TABLE crash_min (
+	ts TIMESTAMPTZ(3) NOT NULL,
+	col_dummy INT8 NULL
+	) TAGS (
+	tag_a INT8,
+	tag_b INT2,
+	tag_pk VARCHAR(64) NOT NULL
+) PRIMARY TAGS(tag_pk);
+CREATE TABLE
+> INSERT INTO crash_min (ts, col_dummy, tag_a, tag_b, tag_pk) VALUES ('2026-06-01 00:00:00+00:00', 1, 100, 10, 'pk');
+INSERT 1
+> SELECT t.*, CASE WHEN t.tag_a <> t.tag_a THEN t.tag_b ELSE t.col_dummy END, t.* FROM crash_min t
+WHERE ts >= now() - INTERVAL '184 days' ORDER BY ts DESC;
+             ts             | col_dummy | tag_a | tag_b | tag_pk | col_dummy |            ts             | col_dummy | tag_a | tag_b | tag_pk
+----------------------------+-----------+-------+-------+--------+-----------+---------------------------+-----------+-------+-------+---------
+  2026-06-01 00:00:00+00:00 |         1 |   100 |    10 | pk     |         1 | 2026-06-01 00:00:00+00:00 |         1 |   100 |    10 | pk
+(1 row)
 > drop database test_ts cascade;
 DROP DATABASE
