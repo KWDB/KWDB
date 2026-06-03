@@ -2181,6 +2181,115 @@ SELECT ARRAY['b'] || ARRAY['a','b']::CITEXT;
 SELECT ARRAY['a','b']::CITEXT[] || ARRAY['b']::CITEXT[];
 
 
+-- ALTER COLUMN TYPE: STRING/TEXT/VARCHAR -> CITEXT
+-- STRING -> CITEXT
+DROP TABLE IF EXISTS alter_string_to_citext;
+CREATE TABLE alter_string_to_citext (
+                                        id INT PRIMARY KEY,
+                                        name STRING
+);
+
+INSERT INTO alter_string_to_citext VALUES
+                                       (1, 'Tom'),
+                                       (2, 'TOM'),
+                                       (3, 'Alice');
+
+ALTER TABLE alter_string_to_citext ALTER COLUMN name TYPE CITEXT;
+
+SELECT pg_typeof(name) FROM alter_string_to_citext LIMIT 1;
+
+SELECT COUNT(*) = 2::BIGINT AS t
+FROM alter_string_to_citext
+WHERE name = 'tom';
+
+
+-- VARCHAR(10) -> CITEXT
+DROP TABLE IF EXISTS alter_varchar_to_citext;
+CREATE TABLE alter_varchar_to_citext (
+    id INT PRIMARY KEY,
+    name VARCHAR(10)
+);
+
+INSERT INTO alter_varchar_to_citext VALUES
+                                        (1, 'Hello'),
+                                        (2, 'HELLO');
+
+ALTER TABLE alter_varchar_to_citext ALTER COLUMN name TYPE CITEXT;
+
+SELECT pg_typeof(name) FROM alter_varchar_to_citext LIMIT 1;
+
+SELECT COUNT(*) = 2::BIGINT AS t
+FROM alter_varchar_to_citext
+WHERE name = 'hello';
+
+
+-- CITEXT -> STRING
+DROP TABLE IF EXISTS alter_citext_to_string;
+CREATE TABLE alter_citext_to_string (
+                                        id INT PRIMARY KEY,
+                                        name CITEXT
+);
+
+INSERT INTO alter_citext_to_string VALUES
+                                       (1, 'Tom'),
+                                       (2, 'TOM');
+
+ALTER TABLE alter_citext_to_string ALTER COLUMN name TYPE STRING;
+
+SELECT pg_typeof(name) FROM alter_citext_to_string LIMIT 1;
+
+-- Converted back to STRING, comparison should be case-sensitive.
+SELECT COUNT(*) = 0::BIGINT AS t
+FROM alter_citext_to_string
+WHERE name = 'tom';
+
+SELECT COUNT(*) = 1::BIGINT AS t
+FROM alter_citext_to_string
+WHERE name = 'Tom';
+
+-- CITEXT -> VARCHAR
+DROP TABLE IF EXISTS alter_citext_to_varchar;
+CREATE TABLE alter_citext_to_varchar (
+                                         id INT PRIMARY KEY,
+                                         name CITEXT
+);
+
+INSERT INTO alter_citext_to_varchar VALUES
+    (1, 'AbC');
+
+ALTER TABLE alter_citext_to_varchar ALTER COLUMN name TYPE VARCHAR(20);
+
+SELECT pg_typeof(name) FROM alter_citext_to_varchar LIMIT 1;
+
+SELECT COUNT(*) = 1::BIGINT AS t
+FROM alter_citext_to_varchar
+WHERE name = 'AbC';
+
+SELECT COUNT(*) = 0::BIGINT AS t
+FROM alter_citext_to_varchar
+WHERE name = 'abc';
+
+CREATE TABLE alter_string_to_citext_idx (
+                                            id INT PRIMARY KEY,
+                                            name STRING,
+                                            INDEX idx_name (name)
+);
+
+ALTER TABLE alter_string_to_citext_idx ALTER COLUMN name TYPE CITEXT;
+
+CREATE TABLE alter_string_to_citext_unique (
+                                               id INT PRIMARY KEY,
+                                               name STRING UNIQUE
+);
+
+ALTER TABLE alter_string_to_citext_unique ALTER COLUMN name TYPE CITEXT;
+
+CREATE TABLE alter_string_to_citext_pk (
+                                           name STRING PRIMARY KEY
+);
+
+ALTER TABLE alter_string_to_citext_pk ALTER COLUMN name TYPE CITEXT;
+
 
 -- Timeseries engine: CITEXT is not supported
 CREATE TS DATABASE ts_citext_regression;

@@ -2874,6 +2874,19 @@ func typeContainsCIText(t *types.T) bool {
 	return false
 }
 
+// IsStringTypeWithOutArray checks whether t is type of stringFamily.
+func IsStringTypeWithOutArray(t *types.T) bool {
+	if t == nil {
+		return false
+	}
+
+	if t.Family() == types.StringFamily {
+		return true
+	}
+
+	return false
+}
+
 // IsStringType checks whether t is a plain string type or a plain string array
 // type. This includes STRING/TEXT/VARCHAR-style types, but does not include
 // CITEXT or CITEXT[].
@@ -3430,6 +3443,17 @@ func IsCITextStringMixed(src, dst *types.T) bool {
 		return true
 	}
 	if IsStringType(src) && IsCITextType(dst) {
+		return true
+	}
+	return false
+}
+
+// IsCITextStringMixedWithOutArray reports whether two types are mixed without array type.
+func IsCITextStringMixedWithOutArray(src, dst *types.T) bool {
+	if IsCITextTypeWithOutArray(src) && IsStringTypeWithOutArray(dst) {
+		return true
+	}
+	if IsStringTypeWithOutArray(src) && IsCITextTypeWithOutArray(dst) {
 		return true
 	}
 	return false

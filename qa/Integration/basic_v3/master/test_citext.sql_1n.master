@@ -4363,6 +4363,152 @@ DROP TABLE
 ------------
   {a,b,b}
 (1 row)
+> DROP TABLE IF EXISTS alter_string_to_citext;
+DROP TABLE
+> CREATE TABLE alter_string_to_citext (
+                                        id INT PRIMARY KEY,
+                                        name STRING
+);
+CREATE TABLE
+> INSERT INTO alter_string_to_citext VALUES
+                                       (1, 'Tom'),
+                                       (2, 'TOM'),
+                                       (3, 'Alice');
+INSERT 3
+> ALTER TABLE alter_string_to_citext ALTER COLUMN name TYPE CITEXT;
+ALTER TABLE
+> SELECT pg_typeof(name) FROM alter_string_to_citext LIMIT 1;
+  pg_typeof
+-------------
+  citext
+(1 row)
+> SELECT COUNT(*) = 2::BIGINT AS t
+FROM alter_string_to_citext
+WHERE name = 'tom';
+   t
+--------
+  true
+(1 row)
+> DROP TABLE IF EXISTS alter_varchar_to_citext;
+DROP TABLE
+> CREATE TABLE alter_varchar_to_citext (
+    id INT PRIMARY KEY,
+    name VARCHAR(10)
+);
+CREATE TABLE
+> INSERT INTO alter_varchar_to_citext VALUES
+                                        (1, 'Hello'),
+                                        (2, 'HELLO');
+INSERT 2
+> ALTER TABLE alter_varchar_to_citext ALTER COLUMN name TYPE CITEXT;
+ALTER TABLE
+> SELECT pg_typeof(name) FROM alter_varchar_to_citext LIMIT 1;
+  pg_typeof
+-------------
+  citext
+(1 row)
+> SELECT COUNT(*) = 2::BIGINT AS t
+FROM alter_varchar_to_citext
+WHERE name = 'hello';
+   t
+--------
+  true
+(1 row)
+> DROP TABLE IF EXISTS alter_citext_to_string;
+DROP TABLE
+> CREATE TABLE alter_citext_to_string (
+                                        id INT PRIMARY KEY,
+                                        name CITEXT
+);
+CREATE TABLE
+> INSERT INTO alter_citext_to_string VALUES
+                                       (1, 'Tom'),
+                                       (2, 'TOM');
+INSERT 2
+> ALTER TABLE alter_citext_to_string ALTER COLUMN name TYPE STRING;
+ALTER TABLE
+> SELECT pg_typeof(name) FROM alter_citext_to_string LIMIT 1;
+  pg_typeof
+-------------
+  string
+(1 row)
+> SELECT COUNT(*) = 0::BIGINT AS t
+FROM alter_citext_to_string
+WHERE name = 'tom';
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 1::BIGINT AS t
+FROM alter_citext_to_string
+WHERE name = 'Tom';
+   t
+--------
+  true
+(1 row)
+> DROP TABLE IF EXISTS alter_citext_to_varchar;
+DROP TABLE
+> CREATE TABLE alter_citext_to_varchar (
+                                         id INT PRIMARY KEY,
+                                         name CITEXT
+);
+CREATE TABLE
+> INSERT INTO alter_citext_to_varchar VALUES
+    (1, 'AbC');
+INSERT 1
+> ALTER TABLE alter_citext_to_varchar ALTER COLUMN name TYPE VARCHAR(20);
+ERROR: unimplemented: type conversion not yet implemented
+SQLSTATE: 0A000
+HINT: You have attempted to use a feature that is not yet implemented.
+
+Please check our website to find out whether this problem is already 
+tracked.  If you cannot find it there, please contact us with the 
+available channels published on website.
+
+We appreciate your feedback.
+> SELECT pg_typeof(name) FROM alter_citext_to_varchar LIMIT 1;
+  pg_typeof
+-------------
+  citext
+(1 row)
+> SELECT COUNT(*) = 1::BIGINT AS t
+FROM alter_citext_to_varchar
+WHERE name = 'AbC';
+   t
+--------
+  true
+(1 row)
+> SELECT COUNT(*) = 0::BIGINT AS t
+FROM alter_citext_to_varchar
+WHERE name = 'abc';
+    t
+---------
+  false
+(1 row)
+> CREATE TABLE alter_string_to_citext_idx (
+                                            id INT PRIMARY KEY,
+                                            name STRING,
+                                            INDEX idx_name (name)
+);
+CREATE TABLE
+> ALTER TABLE alter_string_to_citext_idx ALTER COLUMN name TYPE CITEXT;
+ERROR: alter column type from STRING to CITEXT requiring rewrite of on-disk data is currently not supported for columns name that are part of an index
+SQLSTATE: 0A000
+> CREATE TABLE alter_string_to_citext_unique (
+                                               id INT PRIMARY KEY,
+                                               name STRING UNIQUE
+);
+CREATE TABLE
+> ALTER TABLE alter_string_to_citext_unique ALTER COLUMN name TYPE CITEXT;
+ERROR: alter column type from STRING to CITEXT requiring rewrite of on-disk data is currently not supported for columns name that are part of an index
+SQLSTATE: 0A000
+> CREATE TABLE alter_string_to_citext_pk (
+                                           name STRING PRIMARY KEY
+);
+CREATE TABLE
+> ALTER TABLE alter_string_to_citext_pk ALTER COLUMN name TYPE CITEXT;
+ERROR: alter column type from STRING to CITEXT requiring rewrite of on-disk data is currently not supported for columns name that are part of an index
+SQLSTATE: 0A000
 > CREATE TS DATABASE ts_citext_regression;
 CREATE TS DATABASE
 > USE ts_citext_regression;

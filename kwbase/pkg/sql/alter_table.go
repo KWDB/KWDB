@@ -1821,6 +1821,17 @@ func applyColumnMutation(
 			return false, err
 		}
 
+		// STRING/TEXT/VARCHAR/CHAR <-> CITEXT is only for non-indexed columns.
+		// If the column used in any index, without rebuilding indexes is unsafe.
+		if tree.IsCITextStringMixedWithOutArray(&col.Type, typ) &&
+			kind == schemachange.ColumnConversionTrivial {
+			if ok := columnUsedInIndex(tableDesc, col.ID); ok {
+				return false, pgerror.Newf(pgcode.FeatureNotSupported,
+					"alter column type from %s to %s requiring rewrite of on-disk data is currently "+
+						"not supported for columns %s that are part of an index", col.Type.SQLString(), typ.SQLString(), col.Name)
+			}
+		}
+
 		switch kind {
 		case schemachange.ColumnConversionDangerous, schemachange.ColumnConversionImpossible:
 			// We're not going to make it impossible for the user to perform
@@ -2400,4 +2411,30 @@ func checkIndexOnTag(n *alterTableNode, colToDrop *sqlbase.ColumnDescriptor) err
 		}
 	}
 	return nil
+}
+
+// columnUsedInIndex checks whether the given column is used by primary or secondary index.
+func columnUsedInIndex(tableDesc *sqlbase.MutableTableDescriptor, colID sqlbase.ColumnID) bool {
+	if indexDescriptorContainsColumnID(&tableDesc.PrimaryIndex, colID) {
+		return true
+	}
+
+	for i := range tableDesc.Indexes {
+		idx := &tableDesc.Indexes[i]
+		if indexDescriptorContainsColumnID(idx, colID) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// indexDescriptorContainsColumnID checks whether the index descriptor references the given column.
+func indexDescriptorContainsColumnID(idx *sqlbase.IndexDescriptor, colID sqlbase.ColumnID) bool {
+	for _, id := range idx.ColumnIDs {
+		if id == colID {
+			return true
+		}
+	}
+	return false
 }
