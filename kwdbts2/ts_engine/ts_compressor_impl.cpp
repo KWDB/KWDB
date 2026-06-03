@@ -1162,10 +1162,6 @@ size_t ZLIBString::GetUncompressedSize(TSSlice data, uint64_t count) const {
   return org_size == 0 ? -1 : org_size;
 }
 
-// Reuse the thread local buffer to avoid memory allocation
-thread_local TsBufferBuilder tl_first_out;
-thread_local TsBufferBuilder tl_second_out;
-
 bool CompressorManager::TwoLevelCompressor::Compress(TSSlice raw, const TsBitmapBase *bitmap, uint32_t count,
                                                      TsBufferBuilder *out, int level) const {
   auto first = first_algo_;
@@ -1175,14 +1171,18 @@ bool CompressorManager::TwoLevelCompressor::Compress(TSSlice raw, const TsBitmap
     out->append(raw);
     return true;
   }
+
+  TsBufferBuilder first_out;
+  TsBufferBuilder second_out;
+
   TSSlice data;
   bool ok = true;
   if (first_ == nullptr) {
     data = raw;
   } else {
-    tl_first_out.clear();
-    ok = first_->Compress(raw, bitmap, count, &tl_first_out);
-    data = tl_first_out.AsSlice();
+    first_out.clear();
+    ok = first_->Compress(raw, bitmap, count, &first_out);
+    data = first_out.AsSlice();
   }
   if (!ok || data.len > raw.len) {
     first = EncodeAlgo::kPlain;
@@ -1193,12 +1193,12 @@ bool CompressorManager::TwoLevelCompressor::Compress(TSSlice raw, const TsBitmap
     out->append(data);
     return true;
   }
-  tl_second_out.clear();
-  ok = second_->Compress(data, &tl_second_out, level);
-  if (!ok || tl_second_out.size() > data.len) {
+  second_out.clear();
+  ok = second_->Compress(data, &second_out, level);
+  if (!ok || second_out.size() > data.len) {
     second = CompressAlgo::kPlain;
   } else {
-    data = tl_second_out.AsSlice();
+    data = second_out.AsSlice();
   }
   EncodeAlgorithm(out, first, second);
   out->append(data);

@@ -30,6 +30,7 @@
 #include "st_wal_mgr.h"
 #include "ts_engine_schema_manager.h"
 #include "ts_hash_latch.h"
+#include "ts_lastsegment_builder.h"
 #include "ts_mem_segment_mgr.h"
 #include "ts_partition_interval_recorder.h"
 #include "ts_version.h"
@@ -197,7 +198,8 @@ class TsVGroup {
     }
     if (mem_segment_mgr_->SwitchMemSegment(current.get(), false)) {
       // Flush imm segment.
-      return FlushImmSegment(current);
+      std::unique_ptr<TsLastSegmentBuilder> builder;
+      return FlushImmSegment(builder, current);
     }
     return SUCCESS;
   }
@@ -216,8 +218,7 @@ class TsVGroup {
 
   KStatus Compact(bool *compacted = nullptr);
 
-
-  KStatus FlushImmSegment(const std::shared_ptr<TsMemSegment>& segment);
+  KStatus FlushImmSegment(std::unique_ptr<TsLastSegmentBuilder>&, const std::shared_ptr<TsMemSegment>& segment);
 
   KStatus RemoveChkFile(kwdbContext_p ctx);
 

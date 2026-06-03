@@ -22,6 +22,7 @@
 
 #include "kwdb_type.h"
 #include "settings.h"
+#include "ts_lastsegment_builder.h"
 #include "ts_vgroup.h"
 
 namespace kwdbts {
@@ -116,7 +117,8 @@ class TsFlushJobPool {
   static void BackgroundFlushJob(JobInfo* job) {
     assert(job->status == JOB_CREATED);
     job->status = JOB_RUNNING;
-    auto s = job->vgroup->FlushImmSegment(job->imm_segment);
+    thread_local std::unique_ptr<TsLastSegmentBuilder> last_segment_builder;
+    auto s = job->vgroup->FlushImmSegment(last_segment_builder, job->imm_segment);
     if (s == FAIL) {
       if (job->retry_times < 2) {
         job->retry_times++;

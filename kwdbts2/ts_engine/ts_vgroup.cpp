@@ -55,8 +55,6 @@
 
 namespace kwdbts {
 
-thread_local std::unique_ptr<TsLastSegmentBuilder> tl_lastseg_builder = nullptr;
-
 // todo(liangbo01) using normal path for mem_segment.
 TsVGroup::TsVGroup(EngineOptions* engine_options, uint32_t vgroup_id, TsEngineSchemaManager* schema_mgr,
                    std::shared_mutex* engine_mutex, TsHashRWLatch* tag_lock, bool enable_compact_thread)
@@ -99,7 +97,6 @@ TsVGroup::~TsVGroup() {
     }
   }
   cur_mem_size_ = 0;
-  tl_lastseg_builder = nullptr;
 }
 
 KStatus TsVGroup::Init(kwdbContext_p ctx) {
@@ -972,7 +969,8 @@ static uint64_t GetMaxOsn(const std::vector<std::shared_ptr<TsBlockSpan>>& sorte
   return max_osn;
 }
 
-static KStatus FlushToLastSegment(TsIOEnv* env, TsEngineSchemaManager* schema_mgr, TsVersionManager* version_mgr,
+static KStatus FlushToLastSegment(TsIOEnv* env, std::unique_ptr<TsLastSegmentBuilder>& lastseg_builder,
+                                  TsEngineSchemaManager* schema_mgr, TsVersionManager* version_mgr,
                                   const TsPartitionVersion* partition,
                                   const std::vector<std::shared_ptr<TsBlockSpan>>& spans, TsVersionUpdate* update,
                                   TsSegmentWriteStats* stats) {
@@ -984,19 +982,19 @@ static KStatus FlushToLastSegment(TsIOEnv* env, TsEngineSchemaManager* schema_mg
     LOG_ERROR("flush failed, new last segment failed.");
     return s;
   }
-  if (tl_lastseg_builder == nullptr) {
-    tl_lastseg_builder = std::make_unique<TsLastSegmentBuilder>(schema_mgr, std::move(lastseg_file), lastseg_file_number);
+  if (lastseg_builder == nullptr) {
+    lastseg_builder = std::make_unique<TsLastSegmentBuilder>(schema_mgr, std::move(lastseg_file), lastseg_file_number);
   } else {
-    tl_lastseg_builder->Reset(std::move(lastseg_file), lastseg_file_number);
+    lastseg_builder->Reset(std::move(lastseg_file), lastseg_file_number);
   }
   for (auto& span : spans) {
-    s = tl_lastseg_builder->PutBlockSpan(span);
+    s = lastseg_builder->PutBlockSpan(span);
     if (s == FAIL) {
       LOG_ERROR("flush failed, TsLastSegmentBuilder put failed.");
       return FAIL;
     }
   }
-  s = tl_lastseg_builder->Finalize(stats);
+  s = lastseg_builder->Finalize(stats);
   if (s == FAIL) {
     LOG_ERROR("flush failed, TsLastSegmentBuilder finalize failed.");
     return s;
@@ -1005,7 +1003,8 @@ static KStatus FlushToLastSegment(TsIOEnv* env, TsEngineSchemaManager* schema_mg
   return SUCCESS;
 }
 
-KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) {
+KStatus TsVGroup::FlushImmSegment(std::unique_ptr<TsLastSegmentBuilder>& lastseg_builder,
+                                  const std::shared_ptr<TsMemSegment>& mem_seg) {
   assert(mem_seg->GetRowNum() != 0);
   TsIOEnv* env = &TsIOEnv::GetInstance();
 
@@ -1094,8 +1093,8 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
 
       if (!lastseg_spans.empty()) {
         TsSegmentWriteStats lastseg_stats;
-        auto s = FlushToLastSegment(env, schema_mgr_, version_manager_.get(), partition, lastseg_spans, &update,
-                                    &lastseg_stats);
+        auto s = FlushToLastSegment(env, lastseg_builder, schema_mgr_, version_manager_.get(), partition, lastseg_spans,
+                                    &update, &lastseg_stats);
         total_last_stats += lastseg_stats;
         if (s == FAIL) {
           return s;
@@ -1125,7 +1124,8 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
     } else {
       // cannot fetch lock, drop all memory entity segment data and flush to last segment.
       TsSegmentWriteStats lastseg_stats;
-      auto s = FlushToLastSegment(env, schema_mgr_, version_manager_.get(), partition, spans, &update, &lastseg_stats);
+      auto s = FlushToLastSegment(env, lastseg_builder, schema_mgr_, version_manager_.get(), partition, spans, &update,
+                                  &lastseg_stats);
       if (s == FAIL) {
         return FAIL;
       }
