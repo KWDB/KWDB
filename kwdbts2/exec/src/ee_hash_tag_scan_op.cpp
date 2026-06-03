@@ -585,8 +585,11 @@ EEIteratorErrCode HashTagScanOperator::Next(kwdbContext_p ctx) {
     std::vector<void*> other_join_columns_values(rel_other_join_cols_.size());
     std::vector<void *> intersect_primary_tags;
     Defer defer{[&]() {
-      free(primary_column_values[0]);
-      free(other_column_value);
+      // TODO: this is a workaround for the assert condition
+      // the clear call in later code might empty this vector, don't try to free the same pointer twice
+      if (primary_column_values.size() > 0){ 
+        free(primary_column_values[0]); }
+      free(other_column_value); 
     }};
 
     DataChunkPtr rel_data_chunk;
