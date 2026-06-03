@@ -9,7 +9,11 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+#define private public
+#define protected public
 #include "ee_io_cache_handler.h"
+#undef protected
+#undef private
 
 #include <chrono>
 #include <iostream>
@@ -84,4 +88,56 @@ TEST_F(IOCacheHandlerTest, ResetTest) {
 
   KStatus status = handler->Reset();
   EXPECT_EQ(status, KStatus::SUCCESS);
+}
+
+TEST_F(IOCacheHandlerTest, ReadBufferAndFileBoundaryPaths) {
+  const char test_data[] = "abcdefghijklmnopqrstuvwxyz";
+  ASSERT_EQ(handler->Write(test_data, strlen(test_data)), KStatus::SUCCESS);
+
+  char read_buffer[6] = {0};
+  ASSERT_EQ(handler->Read(read_buffer, 5, 5), KStatus::SUCCESS);
+  EXPECT_STREQ(read_buffer, "fghij");
+
+  char cached_buffer[4] = {0};
+  EXPECT_EQ(handler->ReadFromBuffer(cached_buffer, 7, 3), KStatus::SUCCESS);
+  EXPECT_STREQ(cached_buffer, "hij");
+
+  char invalid_buffer[4] = {0};
+  EXPECT_EQ(handler->ReadFromBuffer(invalid_buffer, USER_BUFFER_SIZE, 3),
+            KStatus::FAIL);
+  EXPECT_EQ(handler->ReadFromFile(invalid_buffer, strlen(test_data), 1),
+            KStatus::FAIL);
+}
+
+TEST_F(IOCacheHandlerTest, SmallFileRotationAndLruEviction) {
+  IOCacheHandler small_handler(4);
+  const char test_data[] = "0123456789";
+  ASSERT_EQ(small_handler.Write(test_data, strlen(test_data)), KStatus::SUCCESS);
+  ASSERT_EQ(small_handler.Flush(), KStatus::SUCCESS);
+  EXPECT_GT(small_handler.current_file_id_, 0U);
+  EXPECT_GT(small_handler.io_info_.size(), 1U);
+
+  for (k_uint32 i = 0; i <= MAX_OPEN_FILE_NUM; ++i) {
+    EXPECT_EQ(small_handler.Open(i, cache_type::CACHE_READ), KStatus::SUCCESS);
+  }
+  EXPECT_LE(small_handler.lru_map_.size(), MAX_OPEN_FILE_NUM);
+  EXPECT_EQ(small_handler.io_info_[0].fd_, -1);
+}
+
+TEST_F(IOCacheHandlerTest, OpenReuseAndResetInternalState) {
+  IOCacheHandler small_handler(8);
+  ASSERT_EQ(small_handler.Open(0, cache_type::CACHE_WRITE), KStatus::SUCCESS);
+  int first_fd = small_handler.io_info_[0].fd_;
+  ASSERT_NE(first_fd, -1);
+  ASSERT_EQ(small_handler.Open(0, cache_type::CACHE_WRITE), KStatus::SUCCESS);
+  EXPECT_EQ(small_handler.io_info_[0].fd_, first_fd);
+
+  const char payload[] = "reset-me";
+  ASSERT_EQ(small_handler.Write(payload, strlen(payload)), KStatus::SUCCESS);
+  ASSERT_EQ(small_handler.Reset(), KStatus::SUCCESS);
+  EXPECT_EQ(small_handler.current_file_id_, 0U);
+  EXPECT_EQ(small_handler.total_size_, 0U);
+  EXPECT_EQ(small_handler.write_buffer_offset_, 0U);
+  ASSERT_FALSE(small_handler.io_info_.empty());
+  EXPECT_EQ(small_handler.io_info_[0].type_, cache_type::CACHE_UNKNOW);
 }

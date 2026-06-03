@@ -156,7 +156,7 @@ class HashTagScanOperator : public TagScanBaseOperator {
    * Relational batch container used to keep the relational
    * data chunk pushed down from ME.
    */
-  RelBatchQueue* rel_batch_queue_;
+  RelBatchQueue* rel_batch_queue_{nullptr};;
   // Dynamic hash index built with build side data.
   DynamicHashIndex* dynamic_hash_index_{nullptr};
   // The map from tags to output columns.

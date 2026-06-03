@@ -77,7 +77,7 @@ class OperatorTestBase : public ::testing::Test {
     free(pay_load.data);
   }
 
- protected:
+ public:
   void SetUp() override {
     ExecPool::GetInstance().Init(ctx_);
     roachpb::CreateTsTable meta;

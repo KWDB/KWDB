@@ -20,9 +20,9 @@ struct CKBigInt {
   CKBigInt();
   CKBigInt(const CKBigInt &big);
   ~CKBigInt();
-  bool neg;  // sign
-             // The flag bit, which represents positive or negative, is always
-             // false in decimal, and the flag is meaningless in decimal
+  bool neg = false;  // sign
+                     // The flag bit, which represents positive or negative, is always
+                     // false in decimal, and the flag is meaningless in decimal
   k_uint64 *abs = nullptr;  // absolute value of the integer
   k_int32 abs_size = 0;
   k_int32 Sign() const;
@@ -51,9 +51,9 @@ extern struct CKDecimal DoubleToDecimal(k_double64 val, k_bool unsigned_flag);
 
 struct CKBigInt2 {
   ~CKBigInt2();
-  bool neg;  // sign
-             // The flag bit, which represents positive or negative, is always
-             // false in decimal, and the flag is meaningless in decimal
+  bool neg = false;  // sign
+                     // The flag bit, which represents positive or negative, is always
+                     // false in decimal, and the flag is meaningless in decimal
   k_uint64 abs[4] = {0};  // absolute value of the integer
   k_int32 abs_size = 0;
   k_int32 Sign();

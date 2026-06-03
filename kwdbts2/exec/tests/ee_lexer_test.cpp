@@ -11,11 +11,33 @@
 #include "ee_lexer.h"
 #include "ee_iparser.h"
 
+#include <vector>
+
 #include "string"
 
 #include "gtest/gtest.h"
 
 namespace kwdbts {
+namespace {
+
+std::vector<TokenType> CollectSignificantTokens(const KString& query,
+                                                k_int64 max_query_size = 0) {
+  Lexer lexer(query.data(), query.data() + query.size(), max_query_size);
+  std::vector<TokenType> tokens;
+  while (true) {
+    Token token = lexer.nextToken();
+    if (token.isSignificant()) {
+      tokens.push_back(token.type);
+    }
+    if (token.isEnd() || token.type == TokenType::ErrorMaxQuerySizeExceeded) {
+      break;
+    }
+  }
+  return tokens;
+}
+
+}  // namespace
+
 class TestLexer : public ::testing::Test {};
 
 // verify lexer
@@ -633,6 +655,71 @@ TEST_F(TestLexer, TestLexerInFunction) {
   kwdbts::IParser::Pos token_iterator(tokens_ptr, max_parser_depth);
   ASSERT_EQ(token_iterator->type, kwdbts::TokenType::In);
 }
+
+TEST_F(TestLexer, TestLexerAdvancedOperatorsFunction) {
+  const auto tokens = CollectSignificantTokens(
+      "0x1f 12.5e-2 @@1 // # !~ !~* << >> | || & && ~ ~*");
+  const std::vector<TokenType> expected = {
+      TokenType::Number,      TokenType::Number,      TokenType::DoubleAt,
+      TokenType::Number,      TokenType::Dividez,     TokenType::Remainder,
+      TokenType::NotRegex,    TokenType::NotIRegex,   TokenType::LeftShift,
+      TokenType::RightShift,  TokenType::ORCAL,       TokenType::OR,
+      TokenType::ANDCAL,      TokenType::AND,         TokenType::Tilde,
+      TokenType::ITilde,      TokenType::EndOfStream};
+  EXPECT_EQ(tokens, expected);
+}
+
+TEST_F(TestLexer, TestLexerKeywordFamiliesFunction) {
+  const auto tokens = CollectSignificantTokens(
+      "LIKE ILIKE IS UNKNOWN NULL CASE WHEN THEN ELSE END COALESCE ANY ALL");
+  const std::vector<TokenType> expected = {
+      TokenType::Like,    TokenType::ILike, TokenType::Is,
+      TokenType::Unknown, TokenType::Null,  TokenType::Case,
+      TokenType::When,    TokenType::Then,  TokenType::Else,
+      TokenType::End,     TokenType::COALESCE, TokenType::Any,
+      TokenType::All,     TokenType::EndOfStream};
+  EXPECT_EQ(tokens, expected);
+}
+
+TEST_F(TestLexer, TestLexerMaxQuerySizeExceededFunction) {
+  Lexer limited("1234", "1234" + 4, 3);
+  EXPECT_EQ(limited.nextToken().type, TokenType::ErrorMaxQuerySizeExceeded);
+}
+
+TEST_F(TestLexer, TestLexerKeywordsTypedStringsAndErrorsFunction) {
+  {
+    const auto tokens = CollectSignificantTokens(
+        "e'abc':::STRING IN((1)) IS NULL NOT ILIKE LIKE NAN SOME CASE WHEN "
+        "THEN ELSE END CAST COALESCE Functiondemo(");
+    const std::vector<TokenType> expected = {
+        TokenType::StringLiteral, TokenType::TypeAnotation,
+        TokenType::BareWord,      TokenType::In,
+        TokenType::ClosingRoundBracket,
+        TokenType::Is,            TokenType::Null,
+        TokenType::Not,           TokenType::ILike,
+        TokenType::Like,          TokenType::Nan,
+        TokenType::Any,           TokenType::Case,
+        TokenType::When,          TokenType::Then,
+        TokenType::Else,          TokenType::End,
+        TokenType::Cast,          TokenType::COALESCE,
+        TokenType::Function,      TokenType::OpeningRoundBracket,
+        TokenType::EndOfStream};
+    EXPECT_EQ(tokens, expected);
+  }
+
+  {
+    Lexer lexer(":", ":" + 1, 0);
+    EXPECT_EQ(lexer.nextToken().type, TokenType::Error);
+  }
+
+  {
+    Lexer lexer("/*", "/*" + 2, 0);
+    EXPECT_EQ(lexer.nextToken().type, TokenType::Error);
+  }
+
+  {
+    Lexer lexer("e'unterminated", "e'unterminated" + 14, 0);
+    EXPECT_EQ(lexer.nextToken().type, TokenType::Error);
+  }
+}
 }  // namespace kwdbts
-
-

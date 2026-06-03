@@ -10,6 +10,10 @@
 // See the Mulan PSL v2 for more details.
 
 #include "ee_common.h"
+
+#include <chrono>
+#include <thread>
+
 #include "ee_tag_row_batch.h"
 #include "ee_kwthd_context.h"
 #include "ee_data_chunk.h"
@@ -22,6 +26,34 @@
 #include "ee_rel_batch_queue.h"
 
 using namespace kwdbts;  // NOLINT
+
+namespace {
+
+std::vector<Field*> MakeSingleIntOutputFields() {
+  std::vector<Field*> output_fields;
+  output_fields.push_back(new FieldInt(0, roachpb::DataType::INT, sizeof(k_int32)));
+  return output_fields;
+}
+
+void DeleteFields(std::vector<Field*>& output_fields) {
+  for (auto* field : output_fields) {
+    SafeDeletePointer(field);
+  }
+  output_fields.clear();
+}
+
+std::unique_ptr<DataChunk> MakeSingleIntChunk(k_int32 value) {
+  ColumnInfo col_info[1];
+  col_info[0] = ColumnInfo(sizeof(k_int32), roachpb::DataType::INT,
+                           KWDBTypeFamily::IntFamily);
+  auto chunk = std::make_unique<DataChunk>(col_info, 1, 1);
+  EXPECT_TRUE(chunk->Initialize());
+  chunk->AddCount();
+  chunk->InsertData(0, 0, reinterpret_cast<char*>(&value), sizeof(value));
+  return chunk;
+}
+
+}  // namespace
 
 // TestRelBatchQueue for multiple model processing
 class TestRelBatchQueue : public ::testing::Test {  // inherit testing::Test
@@ -177,5 +209,62 @@ TEST_F(TestRelBatchQueue, TestPutAndGetBatch) {
 
   for (auto field : output_fields) {
     SafeDeletePointer(field);
+  }
+}
+
+TEST_F(TestRelBatchQueue, TestDoneNullBatchAndNotifyErrorBranches) {
+  kwdbContext_t context;
+  kwdbContext_p ctx = &context;
+  InitServerKWDBContext(ctx);
+
+  {
+    RelBatchQueue queue;
+    auto output_fields = MakeSingleIntOutputFields();
+    ASSERT_EQ(queue.Init(output_fields), KStatus::SUCCESS);
+    EXPECT_EQ(queue.Add(ctx, nullptr, 0), KStatus::SUCCESS);
+    DataChunkPtr chunk = nullptr;
+    EXPECT_EQ(queue.Next(ctx, chunk), EEIteratorErrCode::EE_END_OF_RECORD);
+    DeleteFields(output_fields);
+  }
+
+  {
+    RelBatchQueue queue;
+    auto output_fields = MakeSingleIntOutputFields();
+    ASSERT_EQ(queue.Init(output_fields), KStatus::SUCCESS);
+    EXPECT_EQ(queue.Add(ctx, nullptr, 1), KStatus::FAIL);
+    DeleteFields(output_fields);
+  }
+
+  {
+    RelBatchQueue queue;
+    auto output_fields = MakeSingleIntOutputFields();
+    ASSERT_EQ(queue.Init(output_fields), KStatus::SUCCESS);
+    EEIteratorErrCode next_code = EEIteratorErrCode::EE_OK;
+    std::thread waiter([&]() {
+      kwdbContext_t worker_ctx;
+      InitServerKWDBContext(&worker_ctx);
+      DataChunkPtr chunk = nullptr;
+      next_code = queue.Next(&worker_ctx, chunk);
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    queue.NotifyError();
+    waiter.join();
+    EXPECT_EQ(next_code, EEIteratorErrCode::EE_ERROR);
+    DeleteFields(output_fields);
+  }
+
+  {
+    RelBatchQueue queue;
+    auto chunk = MakeSingleIntChunk(42);
+    KStatus add_status = KStatus::SUCCESS;
+    std::thread producer([&]() {
+      kwdbContext_t worker_ctx;
+      InitServerKWDBContext(&worker_ctx);
+      add_status = queue.Add(&worker_ctx, chunk->GetData(), 1);
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    queue.NotifyError();
+    producer.join();
+    EXPECT_EQ(add_status, KStatus::FAIL);
   }
 }

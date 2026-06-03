@@ -597,7 +597,7 @@ KStatus StorageHandler::Close() {
     tag_iterator->Close();
     SafeDeletePointer(tag_iterator);
   }
-
+  total_read_rows_ = 0;
   return ret;
 }
 EEIteratorErrCode StorageHandler::GetNextTagData(kwdbContext_p ctx, ScanRowBatch *row_batch) {

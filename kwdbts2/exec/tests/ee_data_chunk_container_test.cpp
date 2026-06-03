@@ -158,3 +158,114 @@ TEST_F(TestDataChunkContainer, TestAddAndGetData) {
     SafeDeletePointer(field);
   }
 }
+
+TEST_F(TestDataChunkContainer, TestGetBatchCount) {
+  kwdbContext_t context;
+  kwdbContext_p ctx = &context;
+  InitServerKWDBContext(ctx);
+
+  k_uint32 capacity{1024};
+  k_int32 col_num = 2;
+  ColumnInfo col_info[2];
+
+  col_info[0] = ColumnInfo(8, roachpb::DataType::TIMESTAMPTZ, KWDBTypeFamily::TimestampTZFamily);
+  col_info[1] = ColumnInfo(8, roachpb::DataType::DOUBLE, KWDBTypeFamily::DecimalFamily);
+
+  DataChunkContainer* data_chunk_container = new DataChunkContainer(DEFAULT_DATA_SIZE_THRESHOLD_IN_MEMORY);
+  
+  // Test GetBatchCount with no data chunks
+  ASSERT_EQ(data_chunk_container->GetBatchCount(), 0);
+  
+  // Add one data chunk and test
+  DataChunkPtr chunk1 = std::make_unique<kwdbts::DataChunk>(col_info, col_num, capacity);
+  ASSERT_EQ(chunk1->Initialize(), true);
+  chunk1->AddCount();
+  k_int64 v1 = 15600000000;
+  k_double64 v2 = 10.55;
+  chunk1->InsertData(0, 0, reinterpret_cast<char*>(&v1), sizeof(k_int64));
+  chunk1->InsertData(0, 1, reinterpret_cast<char*>(&v2), sizeof(k_double64));
+  ASSERT_EQ(data_chunk_container->AddDataChunk(chunk1), KStatus::SUCCESS);
+  ASSERT_EQ(data_chunk_container->GetBatchCount(), 1);
+  
+  // Add another data chunk and test
+  DataChunkPtr chunk2 = std::make_unique<kwdbts::DataChunk>(col_info, col_num, capacity);
+  ASSERT_EQ(chunk2->Initialize(), true);
+  chunk2->AddCount();
+  chunk2->InsertData(0, 0, reinterpret_cast<char*>(&v1), sizeof(k_int64));
+  chunk2->InsertData(0, 1, reinterpret_cast<char*>(&v2), sizeof(k_double64));
+  ASSERT_EQ(data_chunk_container->AddDataChunk(chunk2), KStatus::SUCCESS);
+  ASSERT_EQ(data_chunk_container->GetBatchCount(), 2);
+  
+  delete data_chunk_container;
+}
+
+TEST_F(TestDataChunkContainer, TestReserveEnoughCapacity) {
+  kwdbContext_t context;
+  kwdbContext_p ctx = &context;
+  InitServerKWDBContext(ctx);
+
+  k_uint32 capacity{1024};
+  k_int32 col_num = 2;
+  ColumnInfo col_info[2];
+
+  col_info[0] = ColumnInfo(8, roachpb::DataType::TIMESTAMPTZ, KWDBTypeFamily::TimestampTZFamily);
+  col_info[1] = ColumnInfo(8, roachpb::DataType::DOUBLE, KWDBTypeFamily::DecimalFamily);
+
+  // Create container with small threshold to force mmap usage
+  DataChunkContainer* data_chunk_container = new DataChunkContainer(1024);
+  
+  // Add first chunk to trigger mmap creation
+  DataChunkPtr chunk1 = std::make_unique<kwdbts::DataChunk>(col_info, col_num, capacity);
+  ASSERT_EQ(chunk1->Initialize(), true);
+  chunk1->AddCount();
+  k_int64 v1 = 15600000000;
+  k_double64 v2 = 10.55;
+  chunk1->InsertData(0, 0, reinterpret_cast<char*>(&v1), sizeof(k_int64));
+  chunk1->InsertData(0, 1, reinterpret_cast<char*>(&v2), sizeof(k_double64));
+  ASSERT_EQ(data_chunk_container->AddDataChunk(chunk1), KStatus::SUCCESS);
+  
+  // Add second chunk - this should test Reserve with enough capacity
+  DataChunkPtr chunk2 = std::make_unique<kwdbts::DataChunk>(col_info, col_num, capacity);
+  ASSERT_EQ(chunk2->Initialize(), true);
+  chunk2->AddCount();
+  chunk2->InsertData(0, 0, reinterpret_cast<char*>(&v1), sizeof(k_int64));
+  chunk2->InsertData(0, 1, reinterpret_cast<char*>(&v2), sizeof(k_double64));
+  ASSERT_EQ(data_chunk_container->AddDataChunk(chunk2), KStatus::SUCCESS);
+  
+  // Verify both chunks were added
+  ASSERT_EQ(data_chunk_container->GetBatchCount(), 2);
+  
+  delete data_chunk_container;
+}
+
+TEST_F(TestDataChunkContainer, TestEdgeCases) {
+  kwdbContext_t context;
+  kwdbContext_p ctx = &context;
+  InitServerKWDBContext(ctx);
+
+  k_uint32 capacity{1024};
+  k_int32 col_num = 2;
+  ColumnInfo col_info[2];
+
+  col_info[0] = ColumnInfo(8, roachpb::DataType::TIMESTAMPTZ, KWDBTypeFamily::TimestampTZFamily);
+  col_info[1] = ColumnInfo(8, roachpb::DataType::DOUBLE, KWDBTypeFamily::DecimalFamily);
+
+  // Test with zero capacity threshold
+  DataChunkContainer* data_chunk_container = new DataChunkContainer(0);
+  
+  // Add a chunk - should go directly to mmap
+  DataChunkPtr chunk = std::make_unique<kwdbts::DataChunk>(col_info, col_num, capacity);
+  ASSERT_EQ(chunk->Initialize(), true);
+  chunk->AddCount();
+  k_int64 v1 = 15600000000;
+  k_double64 v2 = 10.55;
+  chunk->InsertData(0, 0, reinterpret_cast<char*>(&v1), sizeof(k_int64));
+  chunk->InsertData(0, 1, reinterpret_cast<char*>(&v2), sizeof(k_double64));
+  ASSERT_EQ(data_chunk_container->AddDataChunk(chunk), KStatus::SUCCESS);
+  
+  // Verify the chunk was added
+  ASSERT_EQ(data_chunk_container->GetBatchCount(), 1);
+  ASSERT_TRUE(data_chunk_container->IsMaterialized());
+  
+  delete data_chunk_container;
+}

@@ -17,6 +17,7 @@
 
 #include "../../roachpb/ee_pb_plan.pb.h"
 #include "gtest/gtest.h"
+#include "libkwdbts2.h"
 
 namespace kwdbts {
 
@@ -52,6 +53,24 @@ TEST_F(TestExecutor, ExecutorInitAndDestroy) {
   EXPECT_EQ(kwdbts::DestoryExecutor(), SUCCESS);
   std::cout << "Executor Destory ok. " << std::endl;
   EXPECT_TRUE(true);
+}
+
+// Test GetWaitThreadNum function
+TEST_F(TestExecutor, TestGetWaitThreadNum) {
+  // Initialize ThreadInfo structure
+  ThreadInfo thread_info;
+  thread_info.wait_threads = 0;
+  
+  // Call GetWaitThreadNum function
+  KStatus status = GetWaitThreadNum(ctx, &thread_info);
+  
+  // Verify return status is SUCCESS
+  EXPECT_EQ(status, KStatus::SUCCESS);
+  
+  // Verify wait_threads is set (should be >= 0)
+  EXPECT_GE(thread_info.wait_threads, 0);
+  
+  std::cout << "GetWaitThreadNum test passed. Wait threads: " << thread_info.wait_threads << std::endl;
 }
 
 }  // namespace kwdbts

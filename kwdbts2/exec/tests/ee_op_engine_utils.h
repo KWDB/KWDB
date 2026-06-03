@@ -17,6 +17,8 @@
 
 #include "ts_engine.h"
 #include "libkwdbts2.h"
+#include "../../ts_engine/tests/test_util.h"
+#include "../../ts_engine/tests/ts_test_base.h"
 
 namespace kwdbts {
 
@@ -42,4 +44,42 @@ void CloseTestTsEngine(kwdbContext_p ctx) {
   }
   KWDBDynamicThreadPool::GetThreadPool().Stop();
 }
+
+void CreateTableAndPrepareData(kwdbContext_p ctx_, TSTableID table_id, roachpb::CreateTsTable pb_meta,
+                               TSEngineImpl* engine_) {
+  std::shared_ptr<TsTable> ts_table;
+  auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  bool is_dropped = false;
+  s = engine_->GetTsTable(ctx_, table_id, ts_table, is_dropped);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, table_schema_mgr);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = table_schema_mgr->GetMetricMeta(1, &metric_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::vector<TagInfo> tag_schema;
+  s = table_schema_mgr->GetTagMeta(1, tag_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  timestamp64 start_ts = 3600;
+  auto pay_load = GenRowPayload(*metric_schema, tag_schema, table_id, 1, 1, 10, start_ts);
+  uint16_t inc_entity_cnt;
+  uint32_t inc_unordered_cnt = 0;
+  DedupResult dedup_result{0, 0, 0, TSSlice{nullptr, 0}};
+  s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  free(pay_load.data);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  start_ts = 3600;
+  pay_load = GenRowPayload(*metric_schema, tag_schema, table_id, 1, 2, 10, start_ts);
+  s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  free(pay_load.data);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+}
+
 }  // namespace kwdbts

@@ -118,6 +118,85 @@ class SpecBase {
     synchronizer->set_allocated_post(sync_post);
   }
 
+  void PrepareStatisticReaderProcessor(TSFlowSpec& flow, int processor_id) {
+    auto* statistic_read_processor = flow.add_processors();
+    statistic_read_processor->set_processor_id(processor_id);
+
+    auto statistic_reader_input = statistic_read_processor->add_input();
+    statistic_reader_input->set_type(TSInputSyncSpec_Type::TSInputSyncSpec_Type_UNORDERED);
+
+    auto statistic_reader_core = KNEW TSProcessorCoreUnion();
+    statistic_read_processor->set_allocated_core(statistic_reader_core);
+
+    statistic_reader_ = KNEW TSStatisticReaderSpec();
+    statistic_reader_->set_tableid(table_id_);
+    statistic_reader_->set_tableversion(1);
+    statistic_reader_->set_scalar(false);
+    statistic_reader_->set_lastrowopt(false);
+
+    // Add paramidx and aggtypes
+    auto param = statistic_reader_->add_paramidx();
+    auto param_info = param->add_param();
+    param_info->set_typ(TSStatisticReaderSpec_ParamInfo_type_colID);
+    param_info->set_value(0);  // data field
+    param_info->set_func_value("");
+    
+    statistic_reader_->add_aggtypes(Sumfunctype::SUM);
+
+    // Add tsspans
+    auto span = statistic_reader_->add_tsspans();
+    span->set_fromtimestamp(0);
+    span->set_totimestamp(1000000);
+    
+    // Add tscols
+    auto tscol = statistic_reader_->add_tscols();
+    tscol->set_sql_type(roachpb::DataType::INT);
+    tscol->set_storage_type(roachpb::DataType::INT);
+    tscol->set_storage_len(4);
+
+    statistic_reader_core->set_allocated_statisticreader(statistic_reader_);
+
+    auto reader_post = KNEW PostProcessSpec();
+    initStatisticReaderPostSpec(*reader_post);
+    statistic_read_processor->set_allocated_post(reader_post);
+  }
+
+  void PrepareSortReaderProcessor(TSFlowSpec& flow, int processor_id) {
+    auto* sort_read_processor = flow.add_processors();
+    sort_read_processor->set_processor_id(processor_id);
+
+    auto sort_reader_input = sort_read_processor->add_input();
+    sort_reader_input->set_type(TSInputSyncSpec_Type::TSInputSyncSpec_Type_UNORDERED);
+
+    auto sort_reader_core = KNEW TSProcessorCoreUnion();
+    sort_read_processor->set_allocated_core(sort_reader_core);
+
+    table_reader_ = KNEW TSReaderSpec();
+    table_reader_->set_tableid(table_id_);
+    table_reader_->set_offsetopt(false);
+    table_reader_->set_orderedscan(false);
+    table_reader_->set_aggpushdown(agg_push_down_);
+    table_reader_->set_tableversion(1);
+    table_reader_->set_tstablereaderid(1);
+
+    // Add ts_spans
+    auto span = table_reader_->add_ts_spans();
+    span->set_fromtimestamp(0);
+    span->set_totimestamp(1000000);
+
+    // Add sorter
+    auto* order = table_reader_->mutable_sorter();
+    auto* column = order->add_columns();
+    column->set_col_idx(1);  // sort by usage_system
+    column->set_direction(TSOrdering_Column_Direction::TSOrdering_Column_Direction_DESC);
+
+    sort_reader_core->set_allocated_tablereader(table_reader_);
+
+    auto reader_post = KNEW PostProcessSpec();
+    initTableReaderPostSpec(*reader_post);
+    sort_read_processor->set_allocated_post(reader_post);
+  }
+
   void PrepareDistinctProcessor(TSFlowSpec& flow, int processor_id) {
     auto* distinct_processor = flow.add_processors();
     distinct_processor->set_processor_id(processor_id);
@@ -277,6 +356,26 @@ class SpecBase {
     post.set_projection(true);
   }
 
+  // include all columns of TSBS in the Statistic Reader Post Spec.
+  virtual void initStatisticReaderPostSpec(PostProcessSpec& post) {
+    // timestamp columns
+    post.add_output_columns(0);
+    post.add_output_types(MarshalToOutputType(KWDBTypeFamily::TimestampTZFamily, 8));
+
+    // metrics columns
+    post.add_output_columns(1);
+    post.add_output_types(MarshalToOutputType(KWDBTypeFamily::IntFamily, 4));
+
+    post.add_output_columns(2);
+    post.add_output_types(MarshalToOutputType(KWDBTypeFamily::IntFamily, 4));
+
+    post.add_output_columns(3);
+    post.add_output_types(MarshalToOutputType(KWDBTypeFamily::StringFamily, 10));
+
+    initTagReaderPostSpec(post);
+    post.set_projection(true);
+  }
+
   // include all columns of TSBS in the Output list.
   virtual void initOutputTypes(PostProcessSpec& post) {
     // timestamp columns
@@ -300,6 +399,7 @@ class SpecBase {
   k_uint64 table_id_;
 
   TSReaderSpec* table_reader_{nullptr};
+  TSStatisticReaderSpec* statistic_reader_{nullptr};
   TSAggregatorSpec* agg_spec_{nullptr};
   PostProcessSpec* agg_post_{nullptr};
   bool agg_push_down_{false};
@@ -774,6 +874,108 @@ class TestNoopSpec : public AggScanSpec {
 
     PrepareNoopProcessor(flow, 4);
   }
+};
+
+// Window function test spec
+class SpecWindow : public SpecBase {
+ public:
+  explicit SpecWindow(k_uint64 table_id) : SpecBase(table_id) {
+  }
+
+  void PrepareFlowSpec(TSFlowSpec& flow) override {
+    // tag reader
+    PrepareTagReaderProcessor(flow, 0);
+
+    // table reader
+    PrepareTableReaderProcessor(flow, 1);
+
+    // window
+    PrepareWindowProcessor(flow, 2);
+
+    // synchronizer
+    PrepareSynchronizerProcessor(flow, 3);
+  }
+
+ protected:
+  void PrepareWindowProcessor(TSFlowSpec& flow, int processor_id) {
+    auto* window_processor = flow.add_processors();
+    window_processor->set_processor_id(processor_id);
+
+    auto window_core = KNEW TSProcessorCoreUnion();
+    window_processor->set_allocated_core(window_core);
+
+    window_spec_ = KNEW WindowerSpec();
+    window_core->set_allocated_window(window_spec_);
+
+    initWindowFuncs(*window_spec_);
+
+    window_post_ = KNEW PostProcessSpec();
+    initWindowOutputTypes(*window_post_);
+    window_processor->set_allocated_post(window_post_);
+  }
+
+  // include hostname in the Tag Reader Spec.
+  void initTagReaderPostSpec(PostProcessSpec& post) override {
+    // primary tag
+    post.add_output_columns(4);
+    post.add_output_types(MarshalToOutputType(KWDBTypeFamily::TimestampFamily, 8));
+  }
+
+  // output columns: usage_user,usage_system,usage_idle,usage_nice,hostname
+  void initTableReaderPostSpec(PostProcessSpec& post) override {
+    // metrics columns
+    for (int i = 1; i <= 2; i++) {
+      post.add_output_columns(i);
+      post.add_output_types(MarshalToOutputType(KWDBTypeFamily::IntFamily, 4));
+    }
+    // primary tag column
+    initTagReaderPostSpec(post);
+    post.set_projection(true);
+  }
+
+  // output column types: usage_user,usage_system,usage_idle,usage_nice,hostname
+  void initOutputTypes(PostProcessSpec& post) override {
+    // metrics columns
+    post.add_output_types(MarshalToOutputType(IntFamily, 4));
+    post.add_output_types(MarshalToOutputType(IntFamily, 4));
+    // primary tag
+    post.add_output_types(MarshalToOutputType(TimestampFamily, 8));
+    // window function result
+    post.add_output_types(MarshalToOutputType(IntFamily, 4));
+  }
+
+  void initAggFuncs(TSAggregatorSpec& agg) override {
+  }
+
+  void initAggOutputTypes(PostProcessSpec& post) override {
+  }
+
+  void initWindowFuncs(WindowerSpec& window) {
+    // partition by hostname
+    window.add_partitionby(4);
+
+    // add DIFF function on usage_user
+    auto window_fn = window.add_windowfns();
+    auto func = window_fn->mutable_func();
+    func->set_windowfunc(WindowerSpec_WindowFunc_DIFF);
+    window_fn->add_argsidxs(1);
+  }
+
+  void initWindowOutputTypes(PostProcessSpec& post) {
+    // primary tag
+    post.add_output_types(MarshalToOutputType(TimestampFamily, 8));
+
+    // metrics columns
+    post.add_output_types(MarshalToOutputType(IntFamily, 4));
+    post.add_output_types(MarshalToOutputType(IntFamily, 4));
+
+    // window function result
+    post.add_output_types(MarshalToOutputType(IntFamily, 4));
+  }
+
+ protected:
+  WindowerSpec* window_spec_{nullptr};
+  PostProcessSpec* window_post_{nullptr};
 };
 
 }  // namespace kwdbts

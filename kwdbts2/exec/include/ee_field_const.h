@@ -19,6 +19,8 @@
 
 namespace kwdbts {
 
+KStatus getYMDFormTimestamp(KString *value_, k_int32 *startPos, k_int32 *year, k_int32 *month, k_int32 *day);
+
 // base const class
 class FieldConst : public Field {
  public:

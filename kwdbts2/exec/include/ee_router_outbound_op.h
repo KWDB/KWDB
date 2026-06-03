@@ -39,11 +39,11 @@ class RouterOutboundOperator : public OutboundOperator {
             k_int32 dest_processor_id, k_int32 target_node_id, k_int32 stream_id,
             PassThroughChunkBuffer* pass_through_chunk_buffer)
         : parent_(parent),
-          rpc_dest_addr_(brpc_dest),
-          query_id_(query_id),
           dest_processor_id_(dest_processor_id),
+          query_id_(query_id),
           target_node_id_(target_node_id),
           stream_id_(stream_id),
+          rpc_dest_addr_(brpc_dest),
           pass_through_context_(pass_through_chunk_buffer, query_id, dest_processor_id_) {
     }
     // ~Channel() = default;

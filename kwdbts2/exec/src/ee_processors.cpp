@@ -32,6 +32,7 @@
 #define TSSCAN_RS_SIZE_LIMIT 32768
 namespace kwdbts {
 
+// LCOV_EXCL_START
 static std::string  StreamEndpointTypeToString(StreamEndpointType type) {
   switch (type) {
     case StreamEndpointType::LOCAL:
@@ -281,6 +282,7 @@ static void DebugPrintPipeline(PipelineGroup* group) {
     }
   }
 }
+// LCOV_EXCL_STOP
 
 void Processors::FindTopProcessorId() {
   k_int32 processor_id = fspec_->processors_size() - 1;

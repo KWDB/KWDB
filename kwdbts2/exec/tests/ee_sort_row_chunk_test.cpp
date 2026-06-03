@@ -41,19 +41,13 @@ class TestSortRowChunk : public ::testing::Test {  // inherit testing::Test
     kwdbContext_p ctx = &context;
     InitServerKWDBContext(ctx);
 
-    col_info[0] = ColumnInfo(8, roachpb::DataType::TIMESTAMPTZ,
-                             KWDBTypeFamily::TimestampTZFamily);
-    col_info[1] =
-        ColumnInfo(8, roachpb::DataType::DOUBLE, KWDBTypeFamily::DecimalFamily);
-    col_info[2] = ColumnInfo(8, roachpb::DataType::DECIMAL,
-                             KWDBTypeFamily::DecimalFamily);
-    col_info[3] =
-        ColumnInfo(31, roachpb::DataType::CHAR, KWDBTypeFamily::StringFamily);
-    col_info[4] =
-        ColumnInfo(1, roachpb::DataType::BOOL, KWDBTypeFamily::BoolFamily);
+    col_info[0] = ColumnInfo(8, roachpb::DataType::TIMESTAMPTZ, KWDBTypeFamily::TimestampTZFamily);
+    col_info[1] = ColumnInfo(8, roachpb::DataType::DOUBLE, KWDBTypeFamily::DecimalFamily);
+    col_info[2] = ColumnInfo(8, roachpb::DataType::DECIMAL, KWDBTypeFamily::DecimalFamily);
+    col_info[3] = ColumnInfo(31, roachpb::DataType::CHAR, KWDBTypeFamily::StringFamily);
+    col_info[4] = ColumnInfo(1, roachpb::DataType::BOOL, KWDBTypeFamily::BoolFamily);
 
-    chunk = std::make_unique<kwdbts::DataChunk>(col_info, col_num,
-                                                total_sample_rows);
+    chunk = std::make_unique<kwdbts::DataChunk>(col_info, col_num, total_sample_rows);
     ASSERT_EQ(chunk->Initialize(), true);
     k_int32 row = chunk->NextLine();
     ASSERT_EQ(row, -1);
@@ -71,8 +65,10 @@ class TestSortRowChunk : public ::testing::Test {  // inherit testing::Test
     EXPECT_EQ(status, kwdbts::SUCCESS);
     g_pstBufferPoolInfo = nullptr;
   }
-  void SetUp() override {}
-  void TearDown() override {}
+  void SetUp() override {
+  }
+  void TearDown() override {
+  }
 
  public:
   TestSortRowChunk() = default;
@@ -80,15 +76,12 @@ class TestSortRowChunk : public ::testing::Test {  // inherit testing::Test
 
 TEST_F(TestSortRowChunk, TestChunk) {
   std::vector<ColumnOrderInfo> order_info;
-  order_info.push_back(
-      {0, TSOrdering_Column_Direction::TSOrdering_Column_Direction_ASC});
-  order_info.push_back(
-      {3, TSOrdering_Column_Direction::TSOrdering_Column_Direction_DESC});
+  order_info.push_back({0, TSOrdering_Column_Direction::TSOrdering_Column_Direction_ASC});
+  order_info.push_back({3, TSOrdering_Column_Direction::TSOrdering_Column_Direction_DESC});
 
   // check append
   k_uint64 chunk_size = 64 * 1024;
-  row_chunk_1 = std::make_unique<kwdbts::SortRowChunk>(
-      col_info, order_info, col_num, chunk_size, UINT32_MAX, 0, false);
+  row_chunk_1 = std::make_unique<kwdbts::SortRowChunk>(col_info, order_info, col_num, chunk_size, UINT32_MAX, 0, false);
   ASSERT_EQ(row_chunk_1->Initialize(), true);
   k_uint32 i = 0;
   ASSERT_EQ(row_chunk_1->Append(chunk, i, i + 1), KStatus::SUCCESS);
@@ -96,8 +89,7 @@ TEST_F(TestSortRowChunk, TestChunk) {
   ASSERT_EQ(row_chunk_1->Count(), 1);
   ASSERT_EQ(row_chunk_1->GetColumnInfo(), static_cast<ColumnInfo*>(col_info));
 
-  row_chunk_2 = std::make_unique<kwdbts::SortRowChunk>(
-      col_info, order_info, col_num, chunk_size, UINT32_MAX, 0, false);
+  row_chunk_2 = std::make_unique<kwdbts::SortRowChunk>(col_info, order_info, col_num, chunk_size, UINT32_MAX, 0, false);
 
   ASSERT_EQ(row_chunk_2->Initialize(), true);
 
@@ -147,8 +139,7 @@ TEST_F(TestSortRowChunk, TestChunk) {
   // check Append
   row_chunk_2->Reset();
 
-  ASSERT_EQ(row_chunk_2->Append(row_chunk_1, row_chunk_1->GetData()),
-            KStatus::SUCCESS);
+  ASSERT_EQ(row_chunk_2->Append(row_chunk_1, row_chunk_1->GetData()), KStatus::SUCCESS);
 
   ASSERT_EQ(row_chunk_2->NextLine(), 0);
   ASSERT_EQ(row_chunk_2->Count(), 1);
@@ -169,14 +160,12 @@ TEST_F(TestSortRowChunk, TestChunk) {
 
   // check one sortrowchunk append to other
   k_uint64 one_row_chunk_size = 100;
-  auto row_chunk_3 = std::make_unique<kwdbts::SortRowChunk>(
-      col_info, order_info, col_num, one_row_chunk_size, UINT32_MAX, 0, false);
+  auto row_chunk_3 =
+      std::make_unique<kwdbts::SortRowChunk>(col_info, order_info, col_num, one_row_chunk_size, UINT32_MAX, 0, false);
   ASSERT_EQ(row_chunk_3->Initialize(), true);
-  ASSERT_EQ(row_chunk_3->Append(row_chunk_1, row_chunk_1->GetData()),
-            KStatus::SUCCESS);
+  ASSERT_EQ(row_chunk_3->Append(row_chunk_1, row_chunk_1->GetData()), KStatus::SUCCESS);
   // check append fail
-  ASSERT_EQ(row_chunk_3->Append(row_chunk_1, row_chunk_1->GetData()),
-            KStatus::FAIL);
+  ASSERT_EQ(row_chunk_3->Append(row_chunk_1, row_chunk_1->GetData()), KStatus::FAIL);
 
   // check expand fail
   ASSERT_EQ(row_chunk_3->Expand(100, true), KStatus::FAIL);

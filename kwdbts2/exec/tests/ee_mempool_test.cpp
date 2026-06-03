@@ -78,4 +78,28 @@ TEST_F(TestMempool, TestWriteAndRead) {
   pstPoolTestInfo = nullptr;
 }
 
+TEST_F(TestMempool, TestInvalidArgumentsAndExternalBuffers) {
+  EXPECT_EQ(kwdbts::EE_MemPoolInit(0, 16), nullptr);
+  EXPECT_EQ(kwdbts::EE_MemPoolInit(1, 0), nullptr);
+  EXPECT_EQ(kwdbts::EE_MemPoolMalloc(nullptr, 8), nullptr);
+  EXPECT_EQ(kwdbts::EE_MemPoolFree(nullptr, reinterpret_cast<kwdbts::k_char*>(1)),
+            kwdbts::FAIL);
+  EXPECT_EQ(kwdbts::EE_MemPoolCleanUp(nullptr), kwdbts::FAIL);
+
+  kwdbts::EE_PoolInfoDataPtr pool = kwdbts::EE_MemPoolInit(2, 16);
+  ASSERT_NE(pool, nullptr);
+
+  EXPECT_EQ(kwdbts::EE_MemPoolFree(pool, nullptr), kwdbts::FAIL);
+
+  kwdbts::k_char* oversized = kwdbts::EE_MemPoolMalloc(pool, 32);
+  ASSERT_NE(oversized, nullptr);
+  EXPECT_EQ(kwdbts::EE_MemPoolFree(pool, oversized), kwdbts::SUCCESS);
+
+  kwdbts::k_char* pooled = kwdbts::EE_MemPoolMalloc(pool, 16);
+  ASSERT_NE(pooled, nullptr);
+  EXPECT_EQ(kwdbts::EE_MemPoolFree(pool, pool->data_ + 1), kwdbts::FAIL);
+  EXPECT_EQ(kwdbts::EE_MemPoolFree(pool, pooled), kwdbts::SUCCESS);
+  EXPECT_EQ(kwdbts::EE_MemPoolCleanUp(pool), kwdbts::SUCCESS);
+}
+
 }  // namespace kwdbts

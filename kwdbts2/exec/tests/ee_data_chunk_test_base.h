@@ -21,7 +21,7 @@
 
 namespace kwdbts {
 struct TestRowData {
-  k_int64 v1;
+  k_double64 v1;
   k_double64 v2;
   string v3;
   bool v4;
@@ -52,8 +52,8 @@ class DataChunkTestBase : public ::testing::Test {
 
  public:
   void CreateColInfo(ColumnInfo* col_info) {
-    col_info[0] = ColumnInfo(8, roachpb::DataType::TIMESTAMPTZ,
-                             KWDBTypeFamily::TimestampTZFamily);
+    col_info[0] = ColumnInfo(8, roachpb::DataType::DOUBLE,
+                             KWDBTypeFamily::DecimalFamily);
     col_info[1] =
         ColumnInfo(8, roachpb::DataType::DOUBLE, KWDBTypeFamily::DecimalFamily);
     col_info[2] =
@@ -73,7 +73,7 @@ class DataChunkTestBase : public ::testing::Test {
     std::shuffle(indices_.begin(), indices_.end(), g);
     for (int i = 0; i < row_num; i++) {
       int j = indices_[i];
-      row_data[j].v1 = i;
+      row_data[j].v1 = i * 1.1;
       row_data[j].v2 = i * 1.1;
       row_data[j].v3 = "host_" + std::to_string(i);
       row_data[j].v4 = i % 2 == 0;
@@ -87,7 +87,7 @@ class DataChunkTestBase : public ::testing::Test {
     for (int i = 0; i < row_num; i++) {
       chunk->AddCount();
       chunk->InsertData(i, 0, reinterpret_cast<char*>(&row_data[i].v1),
-                        sizeof(k_int64));
+                        sizeof(k_double64));
       chunk->InsertData(i, 1, reinterpret_cast<char*>(&row_data[i].v2),
                         sizeof(k_double64));
       chunk->InsertData(i, 2, const_cast<char*>(row_data[i].v3.c_str()),

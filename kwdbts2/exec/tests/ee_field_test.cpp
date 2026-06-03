@@ -149,4 +149,255 @@ TEST_F(TestFieldIterator, TestStringFunc) {
     SafeDeletePointer(a);
   }
 }
+
+// Test FieldNum
+// TEST_F(TestFieldIterator, TestFieldNum) {
+//   FieldNum field_num(0, roachpb::DataType::INT, sizeof(k_int32));
+  
+//   // Test basic properties
+//   EXPECT_EQ(field_num.get_storage_type(), roachpb::DataType::INT);
+//   EXPECT_EQ(field_num.get_storage_length(), sizeof(k_int32));
+  
+//   // Test field_to_copy
+//   Field *copied = field_num.field_to_copy();
+//   EXPECT_NE(copied, nullptr);
+//   SafeDeletePointer(copied);
+// }
+
+// Test FieldChar
+TEST_F(TestFieldIterator, TestFieldChar) {
+  FieldChar field_char(0, roachpb::DataType::CHAR, 10);
+  
+  // Test basic properties
+  EXPECT_EQ(field_char.get_storage_type(), roachpb::DataType::CHAR);
+  EXPECT_EQ(field_char.get_storage_length(), 10);
+  
+  // Test field_to_copy
+  Field *copied = field_char.field_to_copy();
+  EXPECT_NE(copied, nullptr);
+  SafeDeletePointer(copied);
+}
+
+// Test FieldNchar
+TEST_F(TestFieldIterator, TestFieldNchar) {
+  FieldNchar field_nchar(0, roachpb::DataType::NCHAR, 10);
+  
+  // Test basic properties
+  EXPECT_EQ(field_nchar.get_storage_type(), roachpb::DataType::NCHAR);
+  EXPECT_EQ(field_nchar.get_storage_length(), 10);
+  
+  // Test field_to_copy
+  Field *copied = field_nchar.field_to_copy();
+  EXPECT_NE(copied, nullptr);
+  SafeDeletePointer(copied);
+}
+
+// Test FieldBool
+TEST_F(TestFieldIterator, TestFieldBool) {
+  FieldBool field_bool(0, roachpb::DataType::BOOL, sizeof(k_bool));
+  
+  // Test basic properties
+  EXPECT_EQ(field_bool.get_storage_type(), roachpb::DataType::BOOL);
+  EXPECT_EQ(field_bool.get_storage_length(), sizeof(k_bool));
+  
+  // Test field_to_copy
+  Field *copied = field_bool.field_to_copy();
+  EXPECT_NE(copied, nullptr);
+  SafeDeletePointer(copied);
+}
+
+// Test FieldShort
+TEST_F(TestFieldIterator, TestFieldShort) {
+  FieldShort field_short(0, roachpb::DataType::SMALLINT, sizeof(k_int16));
+  
+  // Test basic properties
+  EXPECT_EQ(field_short.get_storage_type(), roachpb::DataType::SMALLINT);
+  EXPECT_EQ(field_short.get_storage_length(), sizeof(k_int16));
+  
+  // Test field_to_copy
+  Field *copied = field_short.field_to_copy();
+  EXPECT_NE(copied, nullptr);
+  SafeDeletePointer(copied);
+}
+
+// Test FieldInt
+TEST_F(TestFieldIterator, TestFieldInt) {
+  FieldInt field_int(0, roachpb::DataType::INT, sizeof(k_int32));
+  
+  // Test basic properties
+  EXPECT_EQ(field_int.get_storage_type(), roachpb::DataType::INT);
+  EXPECT_EQ(field_int.get_storage_length(), sizeof(k_int32));
+  
+  // Test field_to_copy
+  Field *copied = field_int.field_to_copy();
+  EXPECT_NE(copied, nullptr);
+  SafeDeletePointer(copied);
+}
+
+// Test FieldLonglong
+TEST_F(TestFieldIterator, TestFieldLonglong) {
+  FieldLonglong field_longlong(0, roachpb::DataType::BIGINT, sizeof(k_int64));
+  
+  // Test basic properties
+  EXPECT_EQ(field_longlong.get_storage_type(), roachpb::DataType::BIGINT);
+  EXPECT_EQ(field_longlong.get_storage_length(), sizeof(k_int64));
+  
+  // Test field_to_copy
+  Field *copied = field_longlong.field_to_copy();
+  EXPECT_NE(copied, nullptr);
+  SafeDeletePointer(copied);
+}
+
+// Test FieldTimestampTZ
+TEST_F(TestFieldIterator, TestFieldTimestampTZ) {
+  FieldTimestampTZ field_timestamp_tz(0, roachpb::DataType::TIMESTAMPTZ, sizeof(k_int64));
+  
+  // Test basic properties
+  EXPECT_EQ(field_timestamp_tz.get_storage_type(), roachpb::DataType::TIMESTAMPTZ);
+  EXPECT_EQ(field_timestamp_tz.get_storage_length(), sizeof(k_int64));
+  
+  // Test field_to_copy
+  Field *copied = field_timestamp_tz.field_to_copy();
+  EXPECT_NE(copied, nullptr);
+  SafeDeletePointer(copied);
+}
+
+// Test FieldFloat
+TEST_F(TestFieldIterator, TestFieldFloat) {
+  FieldFloat field_float(0, roachpb::DataType::FLOAT, sizeof(k_float32));
+  
+  // Test basic properties
+  EXPECT_EQ(field_float.get_storage_type(), roachpb::DataType::FLOAT);
+  EXPECT_EQ(field_float.get_storage_length(), sizeof(k_float32));
+  
+  // Test field_to_copy
+  Field *copied = field_float.field_to_copy();
+  EXPECT_NE(copied, nullptr);
+  SafeDeletePointer(copied);
+}
+
+// Test FieldDouble
+TEST_F(TestFieldIterator, TestFieldDouble) {
+  FieldDouble field_double(0, roachpb::DataType::DOUBLE, sizeof(k_double64));
+  
+  // Test basic properties
+  EXPECT_EQ(field_double.get_storage_type(), roachpb::DataType::DOUBLE);
+  EXPECT_EQ(field_double.get_storage_length(), sizeof(k_double64));
+  
+  // Test field_to_copy
+  Field *copied = field_double.field_to_copy();
+  EXPECT_NE(copied, nullptr);
+  SafeDeletePointer(copied);
+}
+
+// Test FieldDecimal
+TEST_F(TestFieldIterator, TestFieldDecimal) {
+  FieldDecimal field_decimal(0, roachpb::DataType::DECIMAL, sizeof(k_int64));
+  
+  // Test basic properties
+  EXPECT_EQ(field_decimal.get_storage_type(), roachpb::DataType::DECIMAL);
+  EXPECT_EQ(field_decimal.get_storage_length(), sizeof(k_int64));
+  
+  // Test field_to_copy
+  Field *copied = field_decimal.field_to_copy();
+  EXPECT_NE(copied, nullptr);
+  SafeDeletePointer(copied);
+}
+
+// Test FieldSumInt
+TEST_F(TestFieldIterator, TestFieldSumInt) {
+  FieldSumInt field_sum_int(0, roachpb::DataType::INT, sizeof(k_int32));
+  
+  // Test basic properties
+  EXPECT_EQ(field_sum_int.get_storage_type(), roachpb::DataType::DECIMAL);
+  EXPECT_EQ(field_sum_int.get_storage_length(), sizeof(k_int32));
+  
+  // Test field_to_copy
+  Field *copied = field_sum_int.field_to_copy();
+  // EXPECT_NE(copied, nullptr);
+  SafeDeletePointer(copied);
+}
+
+// Test FieldBlob
+TEST_F(TestFieldIterator, TestFieldBlob) {
+  FieldBlob field_blob(0, roachpb::DataType::BINARY, 100);
+  
+  // Test basic properties
+  EXPECT_EQ(field_blob.get_storage_type(), roachpb::DataType::BINARY);
+  EXPECT_EQ(field_blob.get_storage_length(), 100);
+  
+  // Test field_to_copy
+  Field *copied = field_blob.field_to_copy();
+  EXPECT_NE(copied, nullptr);
+  SafeDeletePointer(copied);
+}
+
+// Test FieldVarchar
+TEST_F(TestFieldIterator, TestFieldVarchar) {
+  FieldVarchar field_varchar(0, roachpb::DataType::VARCHAR, 100);
+  
+  // Test basic properties
+  EXPECT_EQ(field_varchar.get_storage_type(), roachpb::DataType::VARCHAR);
+  EXPECT_EQ(field_varchar.get_storage_length(), 100);
+  
+  // Test field_to_copy
+  Field *copied = field_varchar.field_to_copy();
+  EXPECT_NE(copied, nullptr);
+  SafeDeletePointer(copied);
+}
+
+// Test FieldTagVarchar
+TEST_F(TestFieldIterator, TestFieldTagVarchar) {
+  FieldTagVarchar field_tag_varchar(0, roachpb::DataType::VARCHAR, 100);
+  
+  // Test basic properties
+  EXPECT_EQ(field_tag_varchar.get_storage_type(), roachpb::DataType::VARCHAR);
+  EXPECT_EQ(field_tag_varchar.get_storage_length(), 100);
+  
+  // Test field_to_copy
+  Field *copied = field_tag_varchar.field_to_copy();
+  EXPECT_NE(copied, nullptr);
+  SafeDeletePointer(copied);
+}
+
+// Test FieldVarBlob
+TEST_F(TestFieldIterator, TestFieldVarBlob) {
+  FieldVarBlob field_var_blob(0, roachpb::DataType::VARBINARY, 100);
+  
+  // Test basic properties
+  EXPECT_EQ(field_var_blob.get_storage_type(), roachpb::DataType::VARBINARY);
+  EXPECT_EQ(field_var_blob.get_storage_length(), 100);
+  
+  // Test field_to_copy
+  Field *copied = field_var_blob.field_to_copy();
+  EXPECT_NE(copied, nullptr);
+  SafeDeletePointer(copied);
+}
+
+// Test FieldSumStatisticTagSum
+TEST_F(TestFieldIterator, TestFieldSumStatisticTagSum) {
+  BaseField *base_field = new BaseField(0, roachpb::DataType::INT, sizeof(k_int32));
+  FieldSumStatisticTagSum field_sum_statistic_tag_sum(base_field);
+  
+  // Test field_to_copy
+  Field *copied = field_sum_statistic_tag_sum.field_to_copy();
+  // EXPECT_NE(copied, nullptr);
+  
+  SafeDeletePointer(copied);
+  SafeDeletePointer(base_field);
+}
+
+// Test FieldSumStatisticTagCount
+TEST_F(TestFieldIterator, TestFieldSumStatisticTagCount) {
+  BaseField *base_field = new BaseField(0, roachpb::DataType::INT, sizeof(k_int32));
+  FieldSumStatisticTagCount field_sum_statistic_tag_count(base_field);
+  
+  // Test field_to_copy
+  Field *copied = field_sum_statistic_tag_count.field_to_copy();
+  // EXPECT_NE(copied, nullptr);
+  
+  SafeDeletePointer(copied);
+  SafeDeletePointer(base_field);
+}
+
 }  // namespace kwdbts

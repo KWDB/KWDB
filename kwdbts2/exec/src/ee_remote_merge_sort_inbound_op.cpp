@@ -114,7 +114,7 @@ KStatus RemoteMergeSortInboundOperator::GetNextMerging(kwdbContext_p ctx,
     DataChunkPtr tmp_chunk = nullptr;
     while (is_finished_ && !should_exit && num_rows_input_ < offset_) {
       DataChunkPtr empty_chunk = nullptr;
-      if (stream_recvr_->GetNextForPipeline(&empty_chunk, &is_finished_,
+      if (KStatus::SUCCESS != stream_recvr_->GetNextForPipeline(&empty_chunk, &is_finished_,
                                             &should_exit)) {
         LOG_ERROR("RemoteMergeSortInboundOperator to Get DataChunk, faild");
         return KStatus::FAIL;
@@ -136,6 +136,9 @@ KStatus RemoteMergeSortInboundOperator::GetNextMerging(kwdbContext_p ctx,
       }
       chunk = std::make_unique<DataChunk>(tmp_chunk->GetColumnInfo(),
                                           tmp_chunk->ColumnNum(), rewind_size);
+      if (!chunk->Initialize()) {
+        return KStatus::FAIL;
+      }
       chunk->Append(tmp_chunk.get(), offset_in_chunk, rewind_size);
       num_rows_input_ = offset_;
       num_rows_returned_ += rewind_size;

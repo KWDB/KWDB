@@ -187,6 +187,10 @@ KStatus TABLE::InitField(kwdbContext_p ctx, const TSCol &col, k_uint32 index,
       *field = new FieldDouble();
       break;
     }
+    case roachpb::DataType::DECIMAL: {
+      *field = new FieldDecimal();
+      break;
+    }
     case roachpb::DataType::BOOL: {
       *field = new FieldBool();
       break;
@@ -203,7 +207,8 @@ KStatus TABLE::InitField(kwdbContext_p ctx, const TSCol &col, k_uint32 index,
       *field = new FieldNchar();
       break;
     }
-    case roachpb::DataType::VARCHAR: {
+    case roachpb::DataType::VARCHAR:
+    case roachpb::DataType::DATE: {
       if (col.column_type() == roachpb::KWDBKTSColumn::TYPE_PTAG) {
         // ptag: varchar is fixed length type
         sql_type = roachpb::DataType::CHAR;
