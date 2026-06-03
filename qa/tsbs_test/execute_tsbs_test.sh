@@ -233,6 +233,8 @@ validate_config() {
     [[ -x "$KWBIN" ]] || die "KWBIN not found or not executable: $KWBIN"
     [[ -d "$TSBS_PATH" ]] || die "TSBS_PATH not found: $TSBS_PATH"
     [[ -f "${CLUSTER_SETTINGS_DIR}/general.sql" ]] || die "general.sql not found: ${CLUSTER_SETTINGS_DIR}/general.sql"
+    [[ -f "${CLUSTER_SETTINGS_DIR}/general_single.sql" ]] || die "general_single.sql not found: ${CLUSTER_SETTINGS_DIR}/general_single.sql"
+    [[ -f "${CLUSTER_SETTINGS_DIR}/general_distributed.sql" ]] || die "general_distributed.sql not found: ${CLUSTER_SETTINGS_DIR}/general_distributed.sql"
 
     mkdir -p "${LOAD_DATA_DIR}" "${QUERY_DATA_DIR}" "${THRESHOLD_DIR}"
 
@@ -301,7 +303,7 @@ resolve_load_ts_end() {
         100000)
             echo "2020-01-01T03:00:00Z"
             ;;
-        1000000)
+        1000000|10000000)
             echo "2020-01-01T00:03:00Z"
             ;;
         *)
@@ -351,6 +353,11 @@ resolve_query_compress() {
 apply_cluster_settings() {
     local scale="$1"
     apply_sql_file "${CLUSTER_SETTINGS_DIR}/general.sql" false
+    if [[ "$NODE_NUM" == "1" ]]; then
+        apply_sql_file "${CLUSTER_SETTINGS_DIR}/general_single.sql" false
+    else
+        apply_sql_file "${CLUSTER_SETTINGS_DIR}/general_distributed.sql" false
+    fi
     if [[ -f "${CLUSTER_SETTINGS_DIR}/scale${scale}.sql" ]]; then
         apply_sql_file "${CLUSTER_SETTINGS_DIR}/scale${scale}.sql" true
     fi
