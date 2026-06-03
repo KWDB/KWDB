@@ -288,6 +288,18 @@ char* AppendUInt64(char* cursor, char* end, uint64_t value) {
   return cursor;
 }
 
+char* AppendInt32(char* cursor, char* end, int32_t value) {
+  bool is_negative = false;
+  uint64_t num;
+  if (value < 0) {
+    *cursor++ = '-';
+    num = static_cast<unsigned int>(-(value + 1)) + 1;
+  } else {
+    num = static_cast<unsigned int>(value);
+  }
+  return AppendUInt64(cursor, end, num);
+}
+
 char* AppendPtr(char* cursor, char* end, uintptr_t ptr_value) {
   const char hex_digits[] = "0123456789abcdef";
   const int ptr_bytes = sizeof(ptr_value);
