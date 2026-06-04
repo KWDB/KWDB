@@ -1166,22 +1166,24 @@ type TsFetcher struct {
 
 // TsFetcherStats collect information in explain analyse
 type TsFetcherStats struct {
-	ProcessorID        int32
-	ProcessorName      int8
-	RowNum             int64
-	StallTime          int64   // time of execute
-	BytesRead          int64   // byte of rows
-	MaxAllocatedMem    int64   // maximum number of memory
-	MaxAllocatedDisk   int64   // Maximum number of disk
-	OutputRowNum       int64   // row of aggregation
-	MemoryBlockCount   int32   // scanned memory block count
-	LastBlockCount     int32   // scanned last block count
-	EntityBlockCount   int64   // scanned entity block count
-	PartitionAggCount  int64   // partition pre-aggregation usage count
-	BlockCacheHitRatio float32 //entity block cache hit ratio
-	BlockBytes         int64   // scanned block bytes
-	AggBytes           int64   // scanned agg bytes
-	HeaderBytes        int64   // scanned header bytes
+	ProcessorID          int32
+	ProcessorName        int8
+	RowNum               int64
+	StallTime            int64   // time of execute
+	BytesRead            int64   // byte of rows
+	MaxAllocatedMem      int64   // maximum number of memory
+	MaxAllocatedDisk     int64   // Maximum number of disk
+	OutputRowNum         int64   // row of aggregation
+	MemoryBlockCount     int32   // scanned memory block count
+	LastBlockCount       int32   // scanned last block count
+	EntityBlockCount     int64   // scanned entity block count
+	PartitionAggCount    int64   // partition pre-aggregation usage count
+	BlockCacheHitRatio   float32 //entity block cache hit ratio
+	BlockBytes           int64   // scanned block bytes
+	AggBytes             int64   // scanned agg bytes
+	HeaderBytes          int64   // scanned header bytes
+	BlockPreAggHitCount  int64   // block count that used block pre-aggregation
+	BlockPreAggMissCount int64   // block count that fell back to raw aggregation
 	// BuildTime only be used for hash tag scan op for multiple model processing
 	// when the switch is on and the server starts with single node mode.
 	BuildTime int64 // hash tag build time
@@ -2557,6 +2559,12 @@ func AddStatsList(tsFetcher TsFetcher, statss []TsFetcherStats) []TsFetcherStats
 		}
 		if fetcher.header_bytes > 0 {
 			statss[i].HeaderBytes = int64(fetcher.header_bytes)
+		}
+		if fetcher.block_pre_agg_hit_count > 0 {
+			statss[i].BlockPreAggHitCount = int64(fetcher.block_pre_agg_hit_count)
+		}
+		if fetcher.block_pre_agg_miss_count > 0 {
+			statss[i].BlockPreAggMissCount = int64(fetcher.block_pre_agg_miss_count)
 		}
 		// build_time only be used for hash tag scan op for multiple model processing
 		// when the switch is on and the server starts with single node mode.

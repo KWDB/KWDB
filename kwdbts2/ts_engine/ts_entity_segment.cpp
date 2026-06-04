@@ -16,6 +16,7 @@
 
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
+#include "ts_agg.h"
 #include "ts_bitmap.h"
 #include "ts_bufferbuilder.h"
 #include "ts_compressor.h"
@@ -29,6 +30,18 @@
 #include "ts_version.h"
 
 namespace kwdbts {
+
+namespace {
+
+inline KStatus CheckBlockVersionForRead(uint32_t block_version) {
+  if (block_version >= BLOCK_VERSION_LIMIT) {
+    LOG_ERROR("unexpected block version %u", block_version);
+    return KStatus::FAIL;
+  }
+  return KStatus::SUCCESS;
+}
+
+}  // namespace
 
 KStatus TsEntitySegmentEntityItemFile::Open() {
   if (io_env_->NewRandomReadFile(file_path_, &r_file_) != KStatus::SUCCESS) {
@@ -475,18 +488,18 @@ KStatus TsEntityBlock::LoadColData(int32_t col_idx, const std::vector<AttributeI
   return KStatus::SUCCESS;
 }
 
-KStatus TsEntityBlock::LoadAggData(int32_t col_idx, TsSliceGuard&& buffer) {
+KStatus TsEntityBlock::StoreAggData(int32_t col_idx, TsSliceGuard&& buffer) {
   if (column_blocks_[col_idx + 1] == nullptr) {
     column_blocks_[col_idx + 1] = std::make_shared<TsEntitySegmentColumnBlock>();
   }
   size_t buffer_len = buffer.size();
+  column_blocks_[col_idx + 1]->agg = std::move(buffer);
   if (buffer_len > 0) {
-    column_blocks_[col_idx + 1]->agg = std::move(buffer);
     if (EngineOptions::block_cache_max_size > 0) {
       TsLRUBlockCache::GetInstance().AddMemory(this, buffer_len);
     }
-    column_blocks_[col_idx + 1]->ready_flag.fetch_or(COLUMN_BLOCK_AGG_READY);
   }
+  column_blocks_[col_idx + 1]->ready_flag.fetch_or(COLUMN_BLOCK_AGG_READY);
   return KStatus::SUCCESS;
 }
 
@@ -495,8 +508,8 @@ KStatus TsEntityBlock::LoadBlockInfo(TsSliceGuard&& buffer) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsEntityBlock::LoadAggInfo(TsSliceGuard&& buffer) {
-  block_info_.col_agg_offset = std::move(buffer);
+KStatus TsEntityBlock::StoreAggMeta(TsSliceGuard&& buffer) {
+  block_info_.col_agg_meta = std::move(buffer);
   return KStatus::SUCCESS;
 }
 
@@ -723,9 +736,15 @@ inline bool TsEntityBlock::HasPreAgg(uint32_t begin_row_idx, uint32_t row_num) {
   return 0 == begin_row_idx && row_num == n_rows_;
 }
 
-inline KStatus TsEntityBlock::GetPreCount(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, uint16_t& count) {
+inline KStatus TsEntityBlock::GetPreCount(uint32_t blk_col_idx,
+                                          const std::vector<FixedBlockAggColumnLayout>* fixed_block_agg_layout,
+                                          TsScanStats* ts_scan_stats, uint16_t& count) {
+  auto s = CheckBlockVersionForRead(block_version_);
+  if (s != KStatus::SUCCESS) {
+    return s;
+  }
   if (!HasAggData(blk_col_idx)) {
-    auto s = segment_block_container_->GetColumnAgg(blk_col_idx, this, ts_scan_stats);
+    s = segment_block_container_->GetColumnAgg(blk_col_idx, fixed_block_agg_layout, this, ts_scan_stats);
     if (s != SUCCESS) {
       return s;
     }
@@ -739,10 +758,16 @@ inline KStatus TsEntityBlock::GetPreCount(uint32_t blk_col_idx, TsScanStats* ts_
   return KStatus::SUCCESS;
 }
 
-inline KStatus TsEntityBlock::GetPreSum(uint32_t blk_col_idx, int32_t size, TsScanStats* ts_scan_stats,
+inline KStatus TsEntityBlock::GetPreSum(uint32_t blk_col_idx,
+                                        const std::vector<FixedBlockAggColumnLayout>* fixed_block_agg_layout,
+                                        int32_t size, TsScanStats* ts_scan_stats,
                                         void* &pre_sum, bool& is_overflow) {
+  auto s = CheckBlockVersionForRead(block_version_);
+  if (s != KStatus::SUCCESS) {
+    return s;
+  }
   if (!HasAggData(blk_col_idx)) {
-    auto s = segment_block_container_->GetColumnAgg(blk_col_idx, this, ts_scan_stats);
+    s = segment_block_container_->GetColumnAgg(blk_col_idx, fixed_block_agg_layout, this, ts_scan_stats);
     if (s != SUCCESS) {
       return s;
     }
@@ -752,14 +777,23 @@ inline KStatus TsEntityBlock::GetPreSum(uint32_t blk_col_idx, int32_t size, TsSc
     return KStatus::SUCCESS;
   }
   char* pre_agg = col_blk->agg.data();
+  if (*reinterpret_cast<const uint16_t*>(pre_agg) == 0) {
+    return KStatus::SUCCESS;
+  }
   is_overflow = *reinterpret_cast<bool*>(pre_agg + sizeof(uint16_t) + size * 2);
   pre_sum = pre_agg + sizeof(uint16_t) + size * 2 + 1;
   return KStatus::SUCCESS;
 }
 
-inline KStatus TsEntityBlock::GetPreMax(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, void* &pre_max) {
+inline KStatus TsEntityBlock::GetPreMax(uint32_t blk_col_idx,
+                                        const std::vector<FixedBlockAggColumnLayout>* fixed_block_agg_layout,
+                                        TsScanStats* ts_scan_stats, void* &pre_max) {
+  auto s = CheckBlockVersionForRead(block_version_);
+  if (s != KStatus::SUCCESS) {
+    return s;
+  }
   if (!HasAggData(blk_col_idx)) {
-    auto s = segment_block_container_->GetColumnAgg(blk_col_idx, this, ts_scan_stats);
+    s = segment_block_container_->GetColumnAgg(blk_col_idx, fixed_block_agg_layout, this, ts_scan_stats);
     if (s != SUCCESS) {
       return s;
     }
@@ -768,21 +802,33 @@ inline KStatus TsEntityBlock::GetPreMax(uint32_t blk_col_idx, TsScanStats* ts_sc
   if (col_blk->agg.empty()) {
     return KStatus::SUCCESS;
   }
+  if (*reinterpret_cast<const uint16_t*>(col_blk->agg.data()) == 0) {
+    return KStatus::SUCCESS;
+  }
   pre_max = static_cast<void*>(col_blk->agg.data() + sizeof(uint16_t));
 
   return KStatus::SUCCESS;
 }
 
-inline KStatus TsEntityBlock::GetPreMin(uint32_t blk_col_idx, int32_t size, TsScanStats* ts_scan_stats,
+inline KStatus TsEntityBlock::GetPreMin(uint32_t blk_col_idx,
+                                        const std::vector<FixedBlockAggColumnLayout>* fixed_block_agg_layout,
+                                        int32_t size, TsScanStats* ts_scan_stats,
                                         void* &pre_min) {
+  auto s = CheckBlockVersionForRead(block_version_);
+  if (s != KStatus::SUCCESS) {
+    return s;
+  }
   if (!HasAggData(blk_col_idx)) {
-    auto s = segment_block_container_->GetColumnAgg(blk_col_idx, this, ts_scan_stats);
+    s = segment_block_container_->GetColumnAgg(blk_col_idx, fixed_block_agg_layout, this, ts_scan_stats);
     if (s != SUCCESS) {
       return s;
     }
   }
   auto& col_blk = column_blocks_[blk_col_idx + 1];
   if (col_blk->agg.empty()) {
+    return KStatus::SUCCESS;
+  }
+  if (*reinterpret_cast<const uint16_t*>(col_blk->agg.data()) == 0) {
     return KStatus::SUCCESS;
   }
   if (blk_col_idx == 0) {
@@ -793,40 +839,6 @@ inline KStatus TsEntityBlock::GetPreMin(uint32_t blk_col_idx, int32_t size, TsSc
   return KStatus::SUCCESS;
 }
 
-inline KStatus TsEntityBlock::GetVarPreMax(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, TSSlice& pre_max) {
-  if (!HasAggData(blk_col_idx)) {
-    auto s = segment_block_container_->GetColumnAgg(blk_col_idx, this, ts_scan_stats);
-    if (s != SUCCESS) {
-      return s;
-    }
-  }
-  auto& col_blk = column_blocks_[blk_col_idx + 1];
-  if (col_blk->agg.empty()) {
-    return KStatus::SUCCESS;
-  }
-  const char* pre_agg = col_blk->agg.data();
-  auto len = *reinterpret_cast<const uint32_t*>(pre_agg + sizeof(uint16_t));
-  pre_max = col_blk->agg.SubSlice(sizeof(uint16_t) + sizeof(uint32_t) * 2, len);
-  return KStatus::SUCCESS;
-}
-
-inline KStatus TsEntityBlock::GetVarPreMin(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, TSSlice& pre_min) {
-  if (!HasAggData(blk_col_idx)) {
-    auto s = segment_block_container_->GetColumnAgg(blk_col_idx, this, ts_scan_stats);
-    if (s != SUCCESS) {
-      return s;
-    }
-  }
-  auto& col_blk = column_blocks_[blk_col_idx + 1];
-  if (col_blk->agg.empty()) {
-    return KStatus::SUCCESS;
-  }
-  const char* pre_agg = col_blk->agg.data();
-  uint32_t max_len = *reinterpret_cast<const uint32_t*>(pre_agg + sizeof(uint16_t));
-  auto len = *reinterpret_cast<const uint32_t*>(pre_agg + sizeof(uint16_t) + sizeof(uint32_t));
-  pre_min = col_blk->agg.SubSlice(sizeof(uint16_t) + sizeof(uint32_t) * 2 + max_len, len);
-  return KStatus::SUCCESS;
-}
 
 std::string TsEntityBlock::GetEntitySegmentPath() {
   return segment_block_container_->GetPath();
@@ -970,18 +982,88 @@ inline KStatus TsSegmentFile::GetAggData(TsEntityBlock* block, TsSliceGuard* dat
   return KStatus::SUCCESS;
 }
 
-KStatus TsSegmentFile::GetColumnAgg(int32_t col_idx, TsEntityBlock *block, TsScanStats* ts_scan_stats) {
+KStatus TsSegmentFile::GetColumnAgg(int32_t col_idx,
+                                    const std::vector<FixedBlockAggColumnLayout>* fixed_block_agg_layout,
+                                    TsEntityBlock *block, TsScanStats* ts_scan_stats) {
   block->WrLock();
   Defer defer([&]() { block->Unlock(); });
-  if (block->GetBlockInfo().col_agg_offset.empty()) {
+  auto s = CheckBlockVersionForRead(block->GetBlockVersion());
+  if (s != KStatus::SUCCESS) {
+    return s;
+  }
+  if (block->GetBlockVersion() >= BLOCK_AGG_SPARSE_LAYOUT_VERSION) {
+    if (fixed_block_agg_layout == nullptr || col_idx < 0 || col_idx >= fixed_block_agg_layout->size()) {
+      LOG_ERROR("TsSegmentFile::GetColumnAgg invalid sparse block agg layout, col_idx=%d", col_idx);
+      return KStatus::FAIL;
+    }
+    const auto& layout = *fixed_block_agg_layout;
+    size_t bitmap_len = GetSparseBlockAggBitmapSize(layout.size());
+    if (bitmap_len > block->GetAggLength()) {
+      LOG_ERROR("TsSegmentFile::GetColumnAgg sparse bitmap range invalid, bitmap_len=%lu, agg_len=%u",
+                bitmap_len, block->GetAggLength());
+      return KStatus::FAIL;
+    }
+    if (block->GetBlockInfo().col_agg_meta.empty()) {
+      TsSliceGuard agg_bitmap;
+      s = agg_file_.ReadAggData(block->GetAggOffset(), &agg_bitmap, bitmap_len);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("TsEntitySegment::GetColumnBlock read sparse agg bitmap failed")
+        return s;
+      }
+      size_t agg_bitmap_size = agg_bitmap.size();
+      s = block->StoreAggMeta(std::move(agg_bitmap));
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("TsEntitySegment::GetColumnBlock sparse agg bitmap init failed")
+        return s;
+      }
+      if (ts_scan_stats) {
+        ts_scan_stats->agg_bytes += agg_bitmap_size;
+      }
+    }
+    const char* agg_bitmap = block->GetBlockInfo().col_agg_meta.data();
+    if (!SparseBlockAggHasColumn(agg_bitmap, col_idx)) {
+      if (!block->HasAggDataNoLock(col_idx)) {
+        s = block->StoreAggData(col_idx, TsSliceGuard{});  // all-null column
+        if (s != KStatus::SUCCESS) {
+          return s;
+        }
+      }
+      return KStatus::SUCCESS;
+    }
+    if (!block->HasAggDataNoLock(col_idx)) {
+      uint64_t start_offset = GetSparseBlockAggColumnOffset(layout, agg_bitmap, col_idx);
+      uint64_t len = layout[col_idx].size;
+      if (start_offset + len > block->GetAggLength()) {
+        LOG_ERROR("TsSegmentFile::GetColumnAgg sparse agg range invalid, col_idx=%d, offset=%lu, len=%lu, agg_len=%u",
+                  col_idx, start_offset, len, block->GetAggLength());
+        return KStatus::FAIL;
+      }
+      TsSliceGuard col_agg_buffer;
+      s = agg_file_.ReadAggData(block->GetAggOffset() + start_offset, &col_agg_buffer, len);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("TsEntitySegment::GetColumnBlock read sparse column[%u] agg data failed", col_idx + 1);
+        return s;
+      }
+      size_t col_agg_buffer_size = col_agg_buffer.size();
+      s = block->StoreAggData(col_idx, std::move(col_agg_buffer));
+      if (s != KStatus::SUCCESS) {
+        return s;
+      }
+      if (ts_scan_stats) {
+        ts_scan_stats->agg_bytes += col_agg_buffer_size;
+      }
+    }
+    return KStatus::SUCCESS;
+  }
+  if (block->GetBlockInfo().col_agg_meta.empty()) {
     TsSliceGuard agg_offsets;
-    KStatus s = agg_file_.ReadAggData(block->GetAggOffset(), &agg_offsets, sizeof(uint32_t) * (block->GetNCols() - 1));
+    s = agg_file_.ReadAggData(block->GetAggOffset(), &agg_offsets, sizeof(uint32_t) * (block->GetNCols() - 1));
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsEntitySegment::GetColumnBlock read agg data failed")
       return s;
     }
     size_t agg_offsets_size = agg_offsets.size();
-    s = block->LoadAggInfo(std::move(agg_offsets));
+    s = block->StoreAggMeta(std::move(agg_offsets));
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsEntitySegment::GetColumnBlock agg info init failed")
       return s;
@@ -993,19 +1075,24 @@ KStatus TsSegmentFile::GetColumnAgg(int32_t col_idx, TsEntityBlock *block, TsSca
   if (!block->HasAggDataNoLock(col_idx)) {
     uint32_t agg_offsets_len = sizeof(uint32_t) * (block->GetNCols() - 1);
     uint32_t start_offset = 0;
-    if (col_idx != 0) {
-      start_offset = reinterpret_cast<const uint32_t*>(block->GetBlockInfo().col_agg_offset.data())[col_idx - 1];
+    uint32_t end_offset = 0;
+    s = GetOffsetAggColumnRange(block->GetBlockInfo().col_agg_meta.data(), block->GetBlockInfo().col_agg_meta.size(),
+                                col_idx, &start_offset, &end_offset);
+    if (s != KStatus::SUCCESS || block->GetAggLength() < agg_offsets_len ||
+        end_offset > block->GetAggLength() - agg_offsets_len) {
+      LOG_ERROR("TsSegmentFile::GetColumnAgg legacy agg range invalid, col_idx=%d, start=%u, end=%u, agg_len=%u",
+                col_idx, start_offset, end_offset, block->GetAggLength());
+      return KStatus::FAIL;
     }
-    uint32_t end_offset = reinterpret_cast<const uint32_t*>(block->GetBlockInfo().col_agg_offset.data())[col_idx];
     TsSliceGuard col_agg_buffer;
-    KStatus s = agg_file_.ReadAggData(block->GetAggOffset() + agg_offsets_len + start_offset,
-                                      &col_agg_buffer, end_offset - start_offset);
+    s = agg_file_.ReadAggData(block->GetAggOffset() + agg_offsets_len + start_offset,
+                              &col_agg_buffer, end_offset - start_offset);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsEntitySegment::GetColumnBlock read column[%u] block data failed", col_idx + 1);
       return s;
     }
     size_t col_agg_buffer_size = col_agg_buffer.size();
-    block->LoadAggData(col_idx, std::move(col_agg_buffer));
+    block->StoreAggData(col_idx, std::move(col_agg_buffer));
     if (ts_scan_stats) {
       ts_scan_stats->agg_bytes += col_agg_buffer_size;
     }

@@ -44,6 +44,8 @@ struct OperatorFetcher {
       block_bytes_ += ts_scan_stats->block_bytes;
       agg_bytes_ += ts_scan_stats->agg_bytes;
       header_bytes_ += ts_scan_stats->header_bytes;
+      block_pre_agg_hit_count_ += ts_scan_stats->block_pre_agg_hit_count;
+      block_pre_agg_miss_count_ += ts_scan_stats->block_pre_agg_miss_count;
     }
   }
 
@@ -62,6 +64,8 @@ struct OperatorFetcher {
     block_bytes_ = 0;
     agg_bytes_ = 0;
     header_bytes_ = 0;
+    block_pre_agg_hit_count_ = 0;
+    block_pre_agg_miss_count_ = 0;
     build_time_ = 0;
   }
 
@@ -79,6 +83,8 @@ struct OperatorFetcher {
   k_int64 block_bytes_{0};
   k_int64 agg_bytes_{0};
   k_int64 header_bytes_{0};
+  k_int64 block_pre_agg_hit_count_{0};
+  k_int64 block_pre_agg_miss_count_{0};
   k_int64 build_time_{0};
 };
 
@@ -118,6 +124,8 @@ class TsFetcherCollection {
             fetcher->block_bytes += f->block_bytes_;
             fetcher->agg_bytes += f->agg_bytes_;
             fetcher->header_bytes += f->header_bytes_;
+            fetcher->block_pre_agg_hit_count += f->block_pre_agg_hit_count_;
+            fetcher->block_pre_agg_miss_count += f->block_pre_agg_miss_count_;
             fetcher->build_time += f->build_time_;
           }
         }

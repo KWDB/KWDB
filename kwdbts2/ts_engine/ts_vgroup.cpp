@@ -50,6 +50,7 @@
 #include "ts_std_utils.h"
 #include "ts_table_schema_manager.h"
 #include "ts_version.h"
+#include "ts_agg.h"
 #include "ts_partition_interval_recorder.h"
 #include "ts_ts_lsn_span_utils.h"
 
@@ -2323,7 +2324,11 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
       blk_item.last_osn = block_span->GetLastOSN();
       blk_item.block_len = block_data.len;
       blk_item.agg_len = block_agg.len;
-      blk_item.block_version = CURRENT_BLOCK_VERSION;
+      blk_item.block_version = block_span->GetBlockVersion();
+      if (EngineOptions::force_re_compress || block_span->GetRowNum() != block_span->GetTsBlock()->GetRowNum() ||
+          block_span->GetScanVersion() != block_span->GetTableVersion()) {
+        blk_item.block_version = CURRENT_BLOCK_VERSION;
+      }
       s = vacuumer->AppendBlock(block_data, &blk_item.block_offset);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("Vacuum failed, AppendBlock failed");
@@ -2690,6 +2695,17 @@ KStatus TsVGroup::GetCalcEntities(PartitionIdentifier par_id, const shared_ptr<c
     *should_calc = true;
     return SUCCESS;
   }
+  if (!partition->GetAggReader()->IsSparseLayout()) {
+    for (auto& [tb_schema, table_entity_id_list] : table_entity_map) {
+      if (tb_schema->GetDbID() != std::get<0>(par_id)) {
+        continue;
+      }
+      ClassifiedEntities entities = {table_entity_id_list, {}};
+      cla_entities.insert_or_assign(tb_schema, std::move(entities));
+    }
+    *should_calc = true;
+    return SUCCESS;
+  }
   for (auto& [tb_schema, table_entity_id_list] : table_entity_map) {
     if (tb_schema->GetDbID() != std::get<0>(par_id)) {
       continue;
@@ -2843,13 +2859,17 @@ KStatus TsVGroup::CalcPartitionAgg(bool force) {
       std::vector<k_uint32> scan_cols;
       std::vector<Sumfunctype> scan_agg_types;
       for (int i = 0; i < attrs.size(); i++) {
+        auto type = i == 0 ? DATATYPE::TIMESTAMP64 : static_cast<DATATYPE>(attrs[i].type);
         scan_cols.push_back(i);
         scan_agg_types.push_back(Sumfunctype::COUNT);
+        if (IsBlockAggCountOnlyType(type)) {
+          continue;
+        }
         scan_cols.push_back(i);
         scan_agg_types.push_back(Sumfunctype::MAX);
         scan_cols.push_back(i);
         scan_agg_types.push_back(Sumfunctype::MIN);
-        if (isSumType(static_cast<DATATYPE>(attrs[i].type))) {
+        if (isSumType(type)) {
           scan_cols.push_back(i);
           scan_agg_types.push_back(Sumfunctype::SUM);
         }
@@ -2879,20 +2899,16 @@ KStatus TsVGroup::CalcPartitionAgg(bool force) {
           continue;
         }
         TsBufferBuilder agg_buffer;
-        uint32_t agg_header_size = attrs.size() * sizeof(uint32_t);
-        agg_buffer.resize(agg_header_size);
+        std::string agg_bitmap(GetSparsePartitionAggBitmapSize(attrs.size()), '\0');
+        TsBufferBuilder agg_payload;
         int res_idx = 0;
         timestamp64 max_ts{INVALID_TS};
         timestamp64 min_ts{INVALID_TS};
         for (int idx = 0; idx < attrs.size(); idx++) {
           string col_agg;
-          Defer agg_defer {[&]() {
-            agg_buffer.append(col_agg);
-            const uint32_t offset = agg_buffer.size() - agg_header_size;
-            memcpy(agg_buffer.data() + idx * sizeof(uint32_t), &offset, sizeof(uint32_t));
-          }};
 
           DATATYPE col_type = idx == 0 ? DATATYPE::TIMESTAMP64 : static_cast<DATATYPE>(attrs[idx].type);
+          bool is_count_only_type = IsBlockAggCountOnlyType(col_type);
           bool is_var_col = isVarLenType(col_type);
           bool is_sum_type = isSumType(col_type);
           bool is_null{false};
@@ -2902,7 +2918,9 @@ KStatus TsVGroup::CalcPartitionAgg(bool force) {
             agg_count = *reinterpret_cast<uint64_t*>(res_set.data[res_idx][0]->mem);
           }
           if (is_null || agg_count == 0) {
-            if (is_sum_type) {
+            if (is_count_only_type) {
+              res_idx++;
+            } else if (is_sum_type) {
               res_idx += agg_func_num_with_sum;
             } else {
               res_idx += agg_func_num_without_sum;
@@ -2910,7 +2928,13 @@ KStatus TsVGroup::CalcPartitionAgg(bool force) {
             continue;
           }
 
-          if (!is_var_col) {
+          if (is_count_only_type) {
+            col_agg.resize(sizeof(uint64_t), '\0');
+            if (res_set.data[res_idx][0]->mem != nullptr) {
+              memcpy(col_agg.data(), res_set.data[res_idx][0]->mem, sizeof(uint64_t));
+            }
+            res_idx++;
+          } else if (!is_var_col) {
             int col_agg_size = 0;
             if (is_sum_type) {
               col_agg_size = sizeof(uint64_t) + attrs[idx].size * 2 + 9;  // 1 byte overflow, 8 bytes value
@@ -2974,7 +2998,11 @@ KStatus TsVGroup::CalcPartitionAgg(bool force) {
             }
             res_idx++;
           }
+          SetSparseAggColumn(agg_bitmap.data(), idx);
+          agg_payload.append(col_agg.data(), col_agg.size());
         }
+        agg_buffer.append(agg_bitmap.data(), agg_bitmap.size());
+        agg_buffer.append(agg_payload.AsSlice());
         TsEntityPartitionAggIndex stats{tb_schema->GetTableId(), entity_id, metric_schema->GetVersion(),
           min_ts, max_ts, 0, 0, 0, ""};
         par_version->GetMaxOSN(tb_schema->GetDbID(), tb_schema->GetTableId(), entity_id, ts_col_type, stats.max_osn);

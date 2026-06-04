@@ -26,30 +26,31 @@ inline bool TsBlock::HasPreAgg(uint32_t begin_row_idx, uint32_t row_num) {
   return false;
 }
 
-inline KStatus TsBlock::GetPreCount(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, uint16_t& count) {
+inline KStatus TsBlock::GetPreCount(uint32_t blk_col_idx,
+                                    const std::vector<FixedBlockAggColumnLayout>* fixed_block_agg_layout,
+                                    TsScanStats* ts_scan_stats, uint16_t& count) {
   return KStatus::FAIL;
 }
 
-inline KStatus TsBlock::GetPreSum(uint32_t blk_col_idx, int32_t size, TsScanStats* ts_scan_stats,
+inline KStatus TsBlock::GetPreSum(uint32_t blk_col_idx,
+                                  const std::vector<FixedBlockAggColumnLayout>* fixed_block_agg_layout,
+                                  int32_t size, TsScanStats* ts_scan_stats,
                                   void* &pre_sum, bool& is_overflow) {
   return KStatus::FAIL;
 }
 
-inline KStatus TsBlock::GetPreMax(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, void* &pre_max) {
+inline KStatus TsBlock::GetPreMax(uint32_t blk_col_idx,
+                                  const std::vector<FixedBlockAggColumnLayout>* fixed_block_agg_layout,
+                                  TsScanStats* ts_scan_stats, void* &pre_max) {
   return KStatus::FAIL;
 }
 
-inline KStatus TsBlock::GetPreMin(uint32_t blk_col_idx, int32_t size, TsScanStats* ts_scan_stats, void* &pre_min) {
+inline KStatus TsBlock::GetPreMin(uint32_t blk_col_idx,
+                                  const std::vector<FixedBlockAggColumnLayout>* fixed_block_agg_layout,
+                                  int32_t size, TsScanStats* ts_scan_stats, void* &pre_min) {
   return KStatus::FAIL;
 }
 
-inline KStatus TsBlock::GetVarPreMax(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, TSSlice& pre_max) {
-  return KStatus::FAIL;
-}
-
-inline KStatus TsBlock::GetVarPreMin(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, TSSlice& pre_min) {
-  return KStatus::FAIL;
-}
 
 inline KStatus TsBlock::UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_scan_cols,
                                                 const std::vector<AttributeInfo>* schema,
@@ -287,9 +288,7 @@ KStatus TsBlockSpan::BuildCompressedData(TsBufferBuilder* data) {
   std::vector<uint32_t> col_offset((col_offsets_len / sizeof(uint32_t)), 0);
   data->append(reinterpret_cast<char*>(col_offset.data()), col_offsets_len);
   TsBufferBuilder agg_data;
-  size_t agg_col_offsets_len = scan_attrs_->size() * sizeof(uint32_t);
-  std::vector<uint32_t> agg_col_offset((col_offsets_len / sizeof(uint32_t)), 0);
-  agg_data.append(reinterpret_cast<char*>(agg_col_offset.data()), agg_col_offsets_len);
+  std::string sparse_agg_bitmap(GetSparseBlockAggBitmapSize(scan_attrs_->size()), '\0');
   // init lsn col data
   {
     DATATYPE d_type = DATATYPE::INT64;
@@ -417,8 +416,8 @@ KStatus TsBlockSpan::BuildCompressedData(TsBufferBuilder* data) {
 
     // column agg data
     TsBufferBuilder col_agg;
-    if (!is_var_col) {
-      uint16_t count = 0;
+    uint16_t count = 0;
+    if (!is_var_col && !IsBlockAggCountOnlyType(col_type)) {
       string max, min, sum;
       int32_t col_size = scan_idx == 0 ? 8 : d_size;
       max.resize(col_size, '\0');
@@ -437,15 +436,15 @@ KStatus TsBlockSpan::BuildCompressedData(TsBufferBuilder* data) {
         return s;
       }
       *reinterpret_cast<bool *>(sum.data()) = is_overflow;
+      int agg_size = 0;
+      if (isSumType(col_type)) {
+        agg_size = sizeof(uint16_t) + 2 * static_cast<size_t>(col_size) + 9;
+      } else {
+        agg_size = sizeof(uint16_t) + 2 * static_cast<size_t>(col_size);
+      }
+      col_agg.resize(agg_size);
+      memcpy(col_agg.data(), &count, sizeof(uint16_t));
       if (0 != count) {
-        int agg_size = 0;
-        if (isSumType(col_type)) {
-          agg_size = sizeof(uint16_t) + 2 * static_cast<size_t>(col_size) + 9;
-        } else {
-          agg_size = sizeof(uint16_t) + 2 * static_cast<size_t>(col_size);
-        }
-        col_agg.resize(agg_size);
-        memcpy(col_agg.data(), &count, sizeof(uint16_t));
         memcpy(col_agg.data() + sizeof(uint16_t), max.data(), col_size);
         memcpy(col_agg.data() + sizeof(uint16_t) + col_size, min.data(), col_size);
         if (isSumType(col_type)) {
@@ -453,25 +452,18 @@ KStatus TsBlockSpan::BuildCompressedData(TsBufferBuilder* data) {
         }
       }
     } else {
-      VarColAggCalculatorV2 aggCalc(var_rows);
-      string max;
-      string min;
-      uint64_t count = 0;
-      aggCalc.CalcAggForFlush(max, min, count);
-      if (0 != count) {
-        col_agg.resize(sizeof(uint16_t) + 2 * sizeof(uint32_t));
-        memcpy(col_agg.data(), &count, sizeof(uint16_t));
-        col_agg.append(max);
-        col_agg.append(min);
-        *reinterpret_cast<uint32_t*>(col_agg.data() + sizeof(uint16_t)) = max.size();
-        *reinterpret_cast<uint32_t*>(col_agg.data() + sizeof(uint16_t) + sizeof(uint32_t)) = min.size();
-      }
+      count = is_var_col ? static_cast<uint16_t>(var_rows.size())
+                         : static_cast<uint16_t>(bitmap->GetValidCount());
+      col_agg.resize(sizeof(uint16_t));
+      memcpy(col_agg.data(), &count, sizeof(uint16_t));
     }
-    agg_data.append(col_agg.AsSlice());
-    uint32_t offset = agg_data.size()- agg_col_offsets_len;
-    memcpy(agg_data.data() + scan_idx * sizeof(uint32_t), &offset, sizeof(uint32_t));
+    if (count != 0) {
+      SetSparseBlockAggColumn(sparse_agg_bitmap.data(), scan_idx);
+      agg_data.append(col_agg.AsSlice());
+    }
   }
   // append column agg data
+  data->append(sparse_agg_bitmap);
   data->append(agg_data.AsSlice());
   return s;
 }

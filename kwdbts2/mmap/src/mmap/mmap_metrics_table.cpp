@@ -28,6 +28,13 @@ MMapMetricsTable::~MMapMetricsTable() {
 
 impl_latch_virtual_func(MMapMetricsTable, &rw_latch_)
 
+void MMapMetricsTable::InitFixedBlockAggLayout() {
+  fixed_block_agg_layout_ = BuildFixedBlockAggLayout(cols_info_exclude_dropped_);
+  fixed_block_agg_total_size_ = fixed_block_agg_layout_.empty()
+                                 ? 0
+                                 : fixed_block_agg_layout_.back().offset + fixed_block_agg_layout_.back().size;
+}
+
 int MMapMetricsTable::open(const std::string& table_name, const fs::path& table_path, int flags, ErrorInfo& err_info) {
   const fs::path absolute_path = table_path / table_name;
   if ((err_info.errcode = TsTableObject::open(table_name, absolute_path, magic(), flags)) < 0) {
@@ -41,6 +48,7 @@ int MMapMetricsTable::open(const std::string& table_name, const fs::path& table_
     }
     return err_info.errcode;
   }
+  InitFixedBlockAggLayout();
   setObjectReady();
   return err_info.errcode;
 }
@@ -93,6 +101,8 @@ int MMapMetricsTable::init(const vector<AttributeInfo>& schema, ErrorInfo& err_i
       idx_for_valid_cols_.emplace_back(i);
     }
   }
+
+  InitFixedBlockAggLayout();
 
   return err_info.errcode;
 }

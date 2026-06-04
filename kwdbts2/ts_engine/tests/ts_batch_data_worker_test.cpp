@@ -11,6 +11,8 @@
 
 #include <unistd.h>
 
+#include <cassert>
+
 #include "ts_batch_data_worker.h"
 #include "ts_coding.h"
 #include "ts_test_base.h"
@@ -18,6 +20,10 @@
 #include "me_metadata.pb.h"
 #include "sys_utils.h"
 #include "test_util.h"
+#include "ts_agg.h"
+#include "ts_bitmap.h"
+#include "ts_compressor.h"
+#include "ts_compatibility.h"
 #include "ts_engine.h"
 #include "ts_entity_segment.h"
 
@@ -33,6 +39,177 @@ TSSlice ExtractBatchTags(const TSSlice& batch) {
   uint32_t tags_data_offset = p_tag_offset + p_tag_size + sizeof(uint32_t);
   uint32_t tags_data_size = DecodeFixed32(batch.data + tags_data_offset - sizeof(uint32_t));
   return {batch.data + tags_data_offset, tags_data_size};
+}
+
+TSSlice ExtractBatchBlockSpanData(const TSSlice& batch) {
+  uint16_t p_tag_size = DecodeFixed16(batch.data + TsBatchData::header_size_);
+  uint32_t p_tag_offset = TsBatchData::header_size_ + sizeof(p_tag_size);
+  uint32_t tags_data_offset = p_tag_offset + p_tag_size + sizeof(uint32_t);
+  uint32_t tags_data_size = DecodeFixed32(batch.data + tags_data_offset - sizeof(uint32_t));
+  uint32_t block_span_offset = tags_data_offset + tags_data_size;
+  if (block_span_offset >= batch.len) {
+    return {nullptr, 0};
+  }
+  uint32_t block_span_size = DecodeFixed32(batch.data + block_span_offset + TsBatchData::length_offset_in_span_data_);
+  return {batch.data + block_span_offset, block_span_size};
+}
+
+class ScopedForceReCompress {
+ public:
+  explicit ScopedForceReCompress(bool enabled) : old_value_(EngineOptions::force_re_compress) {
+    EngineOptions::force_re_compress = enabled;
+  }
+
+  ~ScopedForceReCompress() {
+    EngineOptions::force_re_compress = old_value_;
+  }
+
+ private:
+  bool old_value_;
+};
+
+void AppendRaw(TsBufferBuilder* dst, const void* data, size_t len) {
+  dst->append(reinterpret_cast<const char*>(data), len);
+}
+
+std::string BuildLegacyOffsetAggData() {
+  constexpr uint32_t metric_col_count = 2;
+  const uint16_t count = 3;
+
+  const timestamp64 ts_max = 3000;
+  const timestamp64 ts_min = 1000;
+  TsBufferBuilder ts_agg;
+  AppendRaw(&ts_agg, &count, sizeof(count));
+  AppendRaw(&ts_agg, &ts_max, sizeof(ts_max));
+  AppendRaw(&ts_agg, &ts_min, sizeof(ts_min));
+
+  const int32_t int_max = 11;
+  const int32_t int_min = 7;
+  const bool int_sum_overflow = false;
+  const int64_t int_sum = 27;
+  TsBufferBuilder int_agg;
+  AppendRaw(&int_agg, &count, sizeof(count));
+  AppendRaw(&int_agg, &int_max, sizeof(int_max));
+  AppendRaw(&int_agg, &int_min, sizeof(int_min));
+  AppendRaw(&int_agg, &int_sum_overflow, sizeof(int_sum_overflow));
+  AppendRaw(&int_agg, &int_sum, sizeof(int_sum));
+
+  TsBufferBuilder legacy_agg;
+  PutFixed32(&legacy_agg, ts_agg.size());
+  PutFixed32(&legacy_agg, ts_agg.size() + int_agg.size());
+  static_assert(metric_col_count == 2, "legacy offsets must match metric column count");
+  legacy_agg.append(ts_agg.AsSlice());
+  legacy_agg.append(int_agg.AsSlice());
+  return std::string(legacy_agg.data(), legacy_agg.size());
+}
+
+std::string BuildLegacyV0BlockData(const std::vector<AttributeInfo>& metric_schema) {
+  const auto& mgr = CompressorManager::GetInstance();
+  constexpr uint32_t n_rows = 3;
+  const uint32_t n_cols = metric_schema.size() + 1;
+
+  TsBufferBuilder block_data;
+  block_data.resize(n_cols * sizeof(uint32_t));
+
+  auto append_column = [&](uint32_t col_idx, const TSSlice& payload) {
+    block_data.append(payload);
+    uint32_t col_offset = block_data.size() - n_cols * sizeof(uint32_t);
+    std::memcpy(block_data.data() + col_idx * sizeof(uint32_t), &col_offset, sizeof(uint32_t));
+  };
+
+  std::vector<uint64_t> osns{10, 11, 12};
+  TsBufferBuilder osn_compressed;
+  AttributeInfo osn_attr{};
+  osn_attr.encode_algo = roachpb::ENCODE_ALGO_SIMPLE8B;
+  osn_attr.compress_algo = roachpb::COMPRESS_ALGO_DISABLED;
+  osn_attr.compress_level = roachpb::COMPRESS_LEVEL_UNSPECIFIED;
+  auto [osn_encode, osn_compress] = mgr.GetAlgorithm(DATATYPE::INT64, osn_attr);
+  bool ok = mgr.CompressData({reinterpret_cast<char*>(osns.data()), osns.size() * sizeof(uint64_t)}, nullptr,
+                             n_rows, &osn_compressed, osn_encode, osn_compress, osn_attr.compress_level);
+  assert(ok);
+  append_column(0, osn_compressed.AsSlice());
+
+  std::vector<timestamp64> timestamps{1000, 2000, 3000};
+  TsBufferBuilder ts_compressed;
+  auto [ts_encode, ts_compress] = mgr.GetAlgorithm(DATATYPE::TIMESTAMP64, metric_schema[0]);
+  ok = mgr.CompressData({reinterpret_cast<char*>(timestamps.data()), timestamps.size() * sizeof(timestamp64)}, nullptr,
+                        n_rows, &ts_compressed, ts_encode, ts_compress, metric_schema[0].compress_level);
+  assert(ok);
+  append_column(1, ts_compressed.AsSlice());
+
+  std::vector<int32_t> int_values{7, 9, 11};
+  TsBitmap int_bitmap(n_rows);
+  TsBufferBuilder int_col;
+  int_col.append(int_bitmap.GetData());
+  TsBufferBuilder int_compressed;
+  auto [int_encode, int_compress] = mgr.GetAlgorithm(DATATYPE::INT32, metric_schema[1]);
+  ok = mgr.CompressData({reinterpret_cast<char*>(int_values.data()), int_values.size() * sizeof(int32_t)}, &int_bitmap,
+                        n_rows, &int_compressed, int_encode, int_compress, metric_schema[1].compress_level);
+  assert(ok);
+  int_col.append(int_compressed.AsSlice());
+  append_column(2, int_col.AsSlice());
+
+  return std::string(block_data.data(), block_data.size());
+}
+
+std::string BuildLegacyV0BatchFromTagPrefix(std::string tag_prefix, const std::vector<AttributeInfo>& metric_schema) {
+  constexpr uint32_t n_rows = 3;
+  const uint32_t n_cols = metric_schema.size() + 1;
+  std::string block_data = BuildLegacyV0BlockData(metric_schema);
+  std::string agg_data = BuildLegacyOffsetAggData();
+
+  TsBufferBuilder block_span;
+  const uint32_t block_span_len = 60 + block_data.size() + agg_data.size();
+  PutFixed32(&block_span, block_span_len);
+  PutFixed64(&block_span, 1000);
+  PutFixed64(&block_span, 3000);
+  PutFixed64(&block_span, 10);
+  PutFixed64(&block_span, 12);
+  PutFixed64(&block_span, 10);
+  PutFixed64(&block_span, 12);
+  PutFixed32(&block_span, n_cols);
+  PutFixed32(&block_span, n_rows);
+  assert(block_span.size() == 60U);
+  block_span.append(block_data);
+  block_span.append(agg_data);
+
+  tag_prefix.append(block_span.data(), block_span.size());
+  EncodeFixed32(tag_prefix.data() + TsBatchData::batch_version_offset_, 0);
+  EncodeFixed32(tag_prefix.data() + TsBatchData::data_length_offset_, tag_prefix.size());
+  EncodeFixed32(tag_prefix.data() + TsBatchData::row_num_offset_, n_rows);
+  tag_prefix[TsBatchData::row_type_offset_] = DataTagFlag::DATA_AND_TAG;
+  return tag_prefix;
+}
+
+std::string BuildLegacyV1BatchFromTagPrefix(std::string tag_prefix, const std::vector<AttributeInfo>& metric_schema,
+                                            uint32_t block_version) {
+  constexpr uint32_t n_rows = 3;
+  const uint32_t n_cols = metric_schema.size() + 1;
+  std::string block_data = BuildLegacyV0BlockData(metric_schema);
+  std::string agg_data = BuildLegacyOffsetAggData();
+
+  TsBufferBuilder block_span;
+  const uint32_t block_span_len = TsBatchData::block_span_data_header_size_ + block_data.size() + agg_data.size();
+  PutFixed32(&block_span, block_span_len);
+  PutFixed64(&block_span, 1000);
+  PutFixed64(&block_span, 3000);
+  PutFixed64(&block_span, 10);
+  PutFixed64(&block_span, 12);
+  PutFixed64(&block_span, 10);
+  PutFixed64(&block_span, 12);
+  PutFixed32(&block_span, n_cols);
+  PutFixed32(&block_span, n_rows);
+  PutFixed32(&block_span, block_version);
+  assert(block_span.size() == static_cast<size_t>(TsBatchData::block_span_data_header_size_));
+  block_span.append(block_data);
+  block_span.append(agg_data);
+
+  tag_prefix.append(block_span.data(), block_span.size());
+  EncodeFixed32(tag_prefix.data() + TsBatchData::batch_version_offset_, 1);
+  EncodeFixed32(tag_prefix.data() + TsBatchData::data_length_offset_, tag_prefix.size());
+  EncodeFixed32(tag_prefix.data() + TsBatchData::row_num_offset_, n_rows);
+  tag_prefix[TsBatchData::row_type_offset_] = DataTagFlag::DATA_AND_TAG;
+  return tag_prefix;
 }
 
 }  // namespace
@@ -267,6 +444,322 @@ TEST_F(TsBatchDataWorkerTest, CacheTagValueAcrossBlockSpansOfSameEntity) {
   EXPECT_FALSE(isRowDeleted(first_tags.data, 1));
   EXPECT_FALSE(isRowDeleted(second_tags.data, 1));
   EXPECT_EQ(memcmp(first_tags.data, second_tags.data, first_tags.len), 0);
+}
+
+// When a backup batch is generated by rebuilding block bytes, block agg bytes are
+// emitted in the current sparse layout. The batch header and the block item
+// written by restore must therefore both carry CURRENT_BLOCK_VERSION.
+TEST_F(TsBatchDataWorkerTest, RecompressedSparseAggBatchRestoresCurrentBlockVersion) {
+  TSTableID table_id = 10033;
+  roachpb::CreateTsTable pb_meta;
+  using namespace roachpb;
+  std::vector<DataType> metric_type{roachpb::TIMESTAMP, roachpb::INT, roachpb::DOUBLE,
+                                    roachpb::VARCHAR};
+  ConstructRoachpbTableWithTypes(&pb_meta, table_id, metric_type);
+
+  std::shared_ptr<TsTable> ts_table;
+  auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::shared_ptr<TsTableSchemaManager> schema_mgr;
+  bool is_dropped = false;
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = schema_mgr->GetMetricMeta(1, &metric_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  std::vector<TagInfo> tag_schema;
+  s = schema_mgr->GetTagMeta(1, tag_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  timestamp64 start_ts = 10086000;
+  auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, 1, 1000, start_ts);
+  uint16_t inc_entity_cnt = 0;
+  uint32_t inc_unordered_cnt = 0;
+  DedupResult dedup_result{0, 0, 0, TSSlice{nullptr, 0}};
+  s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  free(payload.data);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(engine_->FlushVGroups(ctx_), KStatus::SUCCESS);
+
+  std::string backup_data;
+  uint32_t backup_row_num = 0;
+  {
+    ScopedForceReCompress force_recompress(true);
+    uint64_t read_job_id = 1;
+    TSSlice backup_batch;
+    s = engine_->ReadBatchData(ctx_, table_id, 1, 0, UINT32_MAX, {INT64_MIN, INT64_MAX}, read_job_id,
+                               &backup_batch, &backup_row_num, is_dropped);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    ASSERT_GT(backup_row_num, 0U);
+
+    TSSlice block_span_data = ExtractBatchBlockSpanData(backup_batch);
+    ASSERT_NE(block_span_data.data, nullptr);
+    ASSERT_GE(block_span_data.len, static_cast<size_t>(TsBatchData::block_span_data_header_size_));
+    EXPECT_EQ(DecodeFixed32(block_span_data.data + TsBatchData::block_version_offset_in_span_data_),
+              CURRENT_BLOCK_VERSION);
+
+    backup_data.assign(backup_batch.data, backup_batch.len);
+    s = engine_->BatchJobFinish(ctx_, read_job_id);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+  }
+
+  DestroyEngine();
+  InitEngine(engine_root_path);
+  MakeDirectory(engine_root_path + "/temp_db_");
+  s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  TSSlice restore_batch{backup_data.data(), backup_data.size()};
+  uint32_t restored_row_num = 0;
+  uint64_t write_job_id = 2;
+  s = engine_->WriteBatchData(ctx_, table_id, 1, write_job_id, &restore_batch, &restored_row_num,
+                              TsDataSource::Restore, is_dropped);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(restored_row_num, backup_row_num);
+  s = engine_->BatchJobFinish(ctx_, write_job_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = engine_->GetTsTable(ctx_, table_id, ts_table, is_dropped, true, 1);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::vector<EntityResultIndex> entity_indexes;
+  s = ts_table->GetEntityIdByHashSpan(ctx_, {0, UINT32_MAX}, UINT64_MAX, entity_indexes);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(entity_indexes.size(), 1UL);
+
+  auto vgroup = engine_->GetTsVGroup(entity_indexes[0].subGroupId);
+  auto current_version = vgroup->CurrentVersion();
+  std::list<std::shared_ptr<TsBlockSpan>> block_spans;
+  s = vgroup->GetBlockSpans(table_id, entity_indexes[0].entityId, {INT64_MIN, INT64_MAX},
+                            DATATYPE::TIMESTAMP64, schema_mgr, 1, current_version, &block_spans);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(block_spans.size(), 1UL);
+  EXPECT_EQ(block_spans.front()->GetBlockVersion(), CURRENT_BLOCK_VERSION);
+}
+
+// Simulates a snapshot generated by a very old node: batch_version=0 has no
+// block_version field in its 60-byte block-span header, and the agg payload uses
+// the legacy offset layout. New restore code must persist it as block_version=0
+// and keep reading pre-agg values through the legacy offset path.
+TEST_F(TsBatchDataWorkerTest, LegacyBatchVersionZeroRestoresOffsetAggAsBlockVersionZero) {
+  TSTableID table_id = 10034;
+  roachpb::CreateTsTable pb_meta;
+  using namespace roachpb;
+  std::vector<DataType> metric_type{roachpb::TIMESTAMP, roachpb::INT};
+  ConstructRoachpbTableWithTypes(&pb_meta, table_id, metric_type);
+
+  std::shared_ptr<TsTable> ts_table;
+  auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::shared_ptr<TsTableSchemaManager> schema_mgr;
+  bool is_dropped = false;
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = schema_mgr->GetMetricMeta(1, &metric_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(metric_schema->size(), metric_type.size());
+  std::vector<TagInfo> tag_schema;
+  s = schema_mgr->GetTagMeta(1, tag_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, 1, 1, 1000);
+  uint16_t inc_entity_cnt = 0;
+  uint32_t inc_unordered_cnt = 0;
+  DedupResult dedup_result{0, 0, 0, TSSlice{nullptr, 0}};
+  s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  free(payload.data);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  uint64_t read_job_id = 1;
+  TSSlice current_batch;
+  uint32_t current_row_num = 0;
+  s = engine_->ReadBatchData(ctx_, table_id, 1, 0, UINT32_MAX, {INT64_MIN, INT64_MAX}, read_job_id,
+                             &current_batch, &current_row_num, is_dropped);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  TSSlice block_span_data = ExtractBatchBlockSpanData(current_batch);
+  ASSERT_NE(block_span_data.data, nullptr);
+  std::string tag_prefix(current_batch.data, block_span_data.data - current_batch.data);
+  s = engine_->BatchJobFinish(ctx_, read_job_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::string legacy_batch_data = BuildLegacyV0BatchFromTagPrefix(tag_prefix, *metric_schema);
+
+  DestroyEngine();
+  InitEngine(engine_root_path);
+  MakeDirectory(engine_root_path + "/temp_db_");
+  s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  TSSlice legacy_batch{legacy_batch_data.data(), legacy_batch_data.size()};
+  uint32_t restored_row_num = 0;
+  uint64_t write_job_id = 2;
+  s = engine_->WriteBatchData(ctx_, table_id, 1, write_job_id, &legacy_batch, &restored_row_num,
+                              TsDataSource::Restore, is_dropped);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(restored_row_num, 3U);
+  s = engine_->BatchJobFinish(ctx_, write_job_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = engine_->GetTsTable(ctx_, table_id, ts_table, is_dropped, true, 1);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::vector<EntityResultIndex> entity_indexes;
+  s = ts_table->GetEntityIdByHashSpan(ctx_, {0, UINT32_MAX}, UINT64_MAX, entity_indexes);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(entity_indexes.size(), 1UL);
+
+  auto vgroup = engine_->GetTsVGroup(entity_indexes[0].subGroupId);
+  auto current_version = vgroup->CurrentVersion();
+  std::list<std::shared_ptr<TsBlockSpan>> block_spans;
+  s = vgroup->GetBlockSpans(table_id, entity_indexes[0].entityId, {INT64_MIN, INT64_MAX},
+                            DATATYPE::TIMESTAMP64, schema_mgr, 1, current_version, &block_spans);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(block_spans.size(), 1UL);
+  auto block_span = block_spans.front();
+  ASSERT_EQ(block_span->GetBlockVersion(), 0U);
+  ASSERT_TRUE(block_span->HasPreAgg());
+
+  uint16_t pre_count = 0;
+  ASSERT_EQ(block_span->GetPreCount(1, nullptr, pre_count), KStatus::SUCCESS);
+  EXPECT_EQ(pre_count, 3U);
+  void* pre_max = nullptr;
+  ASSERT_EQ(block_span->GetPreMax(1, nullptr, pre_max), KStatus::SUCCESS);
+  ASSERT_NE(pre_max, nullptr);
+  EXPECT_EQ(*reinterpret_cast<int32_t*>(pre_max), 11);
+  void* pre_min = nullptr;
+  ASSERT_EQ(block_span->GetPreMin(1, nullptr, pre_min), KStatus::SUCCESS);
+  ASSERT_NE(pre_min, nullptr);
+  EXPECT_EQ(*reinterpret_cast<int32_t*>(pre_min), 7);
+  void* pre_sum = nullptr;
+  bool is_overflow = true;
+  ASSERT_EQ(block_span->GetPreSum(1, nullptr, pre_sum, is_overflow), KStatus::SUCCESS);
+  ASSERT_NE(pre_sum, nullptr);
+  EXPECT_FALSE(is_overflow);
+  EXPECT_EQ(*reinterpret_cast<int64_t*>(pre_sum), 27);
+
+  char* ts_col = nullptr;
+  std::unique_ptr<TsBitmapBase> bitmap;
+  ASSERT_EQ(block_span->GetFixLenColAddr(0, &ts_col, &bitmap), KStatus::SUCCESS);
+  ASSERT_NE(ts_col, nullptr);
+  EXPECT_EQ(*reinterpret_cast<timestamp64*>(ts_col), 1000);
+  char* int_col = nullptr;
+  ASSERT_EQ(block_span->GetFixLenColAddr(1, &int_col, &bitmap), KStatus::SUCCESS);
+  ASSERT_NE(int_col, nullptr);
+  EXPECT_EQ(*reinterpret_cast<int32_t*>(int_col + sizeof(int32_t) * 2), 11);
+}
+
+// Simulates an intermediate old snapshot: batch_version=1 already carries a
+// block_version field, but block_version=1 is still below the sparse agg layout
+// threshold. Restore must preserve block_version=1 and read legacy offset agg.
+TEST_F(TsBatchDataWorkerTest, LegacyBatchVersionOneRestoresOffsetAggAsBlockVersionOne) {
+  TSTableID table_id = 10035;
+  roachpb::CreateTsTable pb_meta;
+  using namespace roachpb;
+  std::vector<DataType> metric_type{roachpb::TIMESTAMP, roachpb::INT};
+  ConstructRoachpbTableWithTypes(&pb_meta, table_id, metric_type);
+
+  std::shared_ptr<TsTable> ts_table;
+  auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::shared_ptr<TsTableSchemaManager> schema_mgr;
+  bool is_dropped = false;
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = schema_mgr->GetMetricMeta(1, &metric_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(metric_schema->size(), metric_type.size());
+  std::vector<TagInfo> tag_schema;
+  s = schema_mgr->GetTagMeta(1, tag_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, 1, 1, 1000);
+  uint16_t inc_entity_cnt = 0;
+  uint32_t inc_unordered_cnt = 0;
+  DedupResult dedup_result{0, 0, 0, TSSlice{nullptr, 0}};
+  s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  free(payload.data);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  uint64_t read_job_id = 1;
+  TSSlice current_batch;
+  uint32_t current_row_num = 0;
+  s = engine_->ReadBatchData(ctx_, table_id, 1, 0, UINT32_MAX, {INT64_MIN, INT64_MAX}, read_job_id,
+                             &current_batch, &current_row_num, is_dropped);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  TSSlice block_span_data = ExtractBatchBlockSpanData(current_batch);
+  ASSERT_NE(block_span_data.data, nullptr);
+  std::string tag_prefix(current_batch.data, block_span_data.data - current_batch.data);
+  s = engine_->BatchJobFinish(ctx_, read_job_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::string legacy_batch_data = BuildLegacyV1BatchFromTagPrefix(tag_prefix, *metric_schema, 1);
+
+  DestroyEngine();
+  InitEngine(engine_root_path);
+  MakeDirectory(engine_root_path + "/temp_db_");
+  s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  TSSlice legacy_batch{legacy_batch_data.data(), legacy_batch_data.size()};
+  uint32_t restored_row_num = 0;
+  uint64_t write_job_id = 2;
+  s = engine_->WriteBatchData(ctx_, table_id, 1, write_job_id, &legacy_batch, &restored_row_num,
+                              TsDataSource::Restore, is_dropped);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(restored_row_num, 3U);
+  s = engine_->BatchJobFinish(ctx_, write_job_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = engine_->GetTsTable(ctx_, table_id, ts_table, is_dropped, true, 1);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::vector<EntityResultIndex> entity_indexes;
+  s = ts_table->GetEntityIdByHashSpan(ctx_, {0, UINT32_MAX}, UINT64_MAX, entity_indexes);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(entity_indexes.size(), 1UL);
+
+  auto vgroup = engine_->GetTsVGroup(entity_indexes[0].subGroupId);
+  auto current_version = vgroup->CurrentVersion();
+  std::list<std::shared_ptr<TsBlockSpan>> block_spans;
+  s = vgroup->GetBlockSpans(table_id, entity_indexes[0].entityId, {INT64_MIN, INT64_MAX},
+                            DATATYPE::TIMESTAMP64, schema_mgr, 1, current_version, &block_spans);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(block_spans.size(), 1UL);
+  auto block_span = block_spans.front();
+  ASSERT_EQ(block_span->GetBlockVersion(), 1U);
+  ASSERT_TRUE(block_span->HasPreAgg());
+
+  uint16_t pre_count = 0;
+  ASSERT_EQ(block_span->GetPreCount(1, nullptr, pre_count), KStatus::SUCCESS);
+  EXPECT_EQ(pre_count, 3U);
+  void* pre_max = nullptr;
+  ASSERT_EQ(block_span->GetPreMax(1, nullptr, pre_max), KStatus::SUCCESS);
+  ASSERT_NE(pre_max, nullptr);
+  EXPECT_EQ(*reinterpret_cast<int32_t*>(pre_max), 11);
+  void* pre_min = nullptr;
+  ASSERT_EQ(block_span->GetPreMin(1, nullptr, pre_min), KStatus::SUCCESS);
+  ASSERT_NE(pre_min, nullptr);
+  EXPECT_EQ(*reinterpret_cast<int32_t*>(pre_min), 7);
+  void* pre_sum = nullptr;
+  bool is_overflow = true;
+  ASSERT_EQ(block_span->GetPreSum(1, nullptr, pre_sum, is_overflow), KStatus::SUCCESS);
+  ASSERT_NE(pre_sum, nullptr);
+  EXPECT_FALSE(is_overflow);
+  EXPECT_EQ(*reinterpret_cast<int64_t*>(pre_sum), 27);
 }
 
 // Corrupts the persisted block-span length inside one batch payload and verifies

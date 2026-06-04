@@ -15,10 +15,15 @@
 #include "utils/date_time_util.h"
 #include "ts_table_object.h"
 #include "ts_common.h"
+#include "ts_agg.h"
 
 class MMapMetricsTable : public TSObject, public TsTableObject {
  private:
   KRWLatch rw_latch_;
+  std::vector<FixedBlockAggColumnLayout> fixed_block_agg_layout_;
+  size_t fixed_block_agg_total_size_{0};
+
+  void InitFixedBlockAggLayout();
 
  protected:
   string name_;
@@ -55,6 +60,19 @@ class MMapMetricsTable : public TSObject, public TsTableObject {
   const vector<AttributeInfo>* getSchemaInfoExcludeDroppedPtr() const {
     return &cols_info_exclude_dropped_;
   }
+
+  [[nodiscard]] const std::vector<FixedBlockAggColumnLayout>* GetFixedBlockAggLayout() const {
+    return &fixed_block_agg_layout_;
+  }
+
+  [[nodiscard]] const FixedBlockAggColumnLayout* GetFixedBlockAggColumnLayout(uint32_t col_idx) const {
+    if (col_idx >= fixed_block_agg_layout_.size()) {
+      return nullptr;
+    }
+    return &fixed_block_agg_layout_[col_idx];
+  }
+
+  [[nodiscard]] size_t GetFixedBlockAggSize() const { return fixed_block_agg_total_size_; }
 
   DATATYPE GetTsColDataType() {
     return static_cast<DATATYPE>(cols_info_exclude_dropped_[0].type);

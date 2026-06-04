@@ -599,39 +599,33 @@ KStatus TSBlkDataTypeConvert::getColBitmapConverted(const TsBlockSpan* blk_span,
 KStatus TSBlkDataTypeConvert::GetPreCount(TsBlockSpan* blk_span, uint32_t scan_idx,
                                           TsScanStats* ts_scan_stats, uint16_t &count) {
   assert(blk_span->GetTableVersion() == block_version_);
-  return blk_span->block_->GetPreCount(version_conv_->blk_cols_extended_[scan_idx], ts_scan_stats, count);
+  return blk_span->block_->GetPreCount(version_conv_->blk_cols_extended_[scan_idx],
+                                       version_conv_->blk_metric_->GetFixedBlockAggLayout(), ts_scan_stats, count);
 }
 
 KStatus TSBlkDataTypeConvert::GetPreSum(TsBlockSpan* blk_span, uint32_t scan_idx, int32_t size,
                                         TsScanStats* ts_scan_stats, void *&pre_sum, bool &is_overflow) {
   assert(blk_span->GetTableVersion() == block_version_);
-  return blk_span->block_->GetPreSum(version_conv_->blk_cols_extended_[scan_idx], size,
-                                      ts_scan_stats, pre_sum, is_overflow);
+  return blk_span->block_->GetPreSum(version_conv_->blk_cols_extended_[scan_idx],
+                                     version_conv_->blk_metric_->GetFixedBlockAggLayout(), size, ts_scan_stats,
+                                     pre_sum, is_overflow);
 }
 
 KStatus TSBlkDataTypeConvert::GetPreMax(TsBlockSpan* blk_span, uint32_t scan_idx,
                                         TsScanStats* ts_scan_stats, void *&pre_max) {
   assert(blk_span->GetTableVersion() == block_version_);
-  return blk_span->block_->GetPreMax(version_conv_->blk_cols_extended_[scan_idx], ts_scan_stats, pre_max);
+  return blk_span->block_->GetPreMax(version_conv_->blk_cols_extended_[scan_idx],
+                                     version_conv_->blk_metric_->GetFixedBlockAggLayout(), ts_scan_stats, pre_max);
 }
 
 KStatus TSBlkDataTypeConvert::GetPreMin(TsBlockSpan* blk_span, uint32_t scan_idx, int32_t size,
                                         TsScanStats* ts_scan_stats, void *&pre_min) {
   assert(blk_span->GetTableVersion() == block_version_);
-  return blk_span->block_->GetPreMin(version_conv_->blk_cols_extended_[scan_idx], size, ts_scan_stats, pre_min);
+  return blk_span->block_->GetPreMin(version_conv_->blk_cols_extended_[scan_idx],
+                                     version_conv_->blk_metric_->GetFixedBlockAggLayout(), size, ts_scan_stats,
+                                     pre_min);
 }
 
-KStatus TSBlkDataTypeConvert::GetVarPreMax(TsBlockSpan* blk_span, uint32_t scan_idx,
-                                            TsScanStats* ts_scan_stats, TSSlice &pre_max) {
-  assert(blk_span->GetTableVersion() == block_version_);
-  return blk_span->block_->GetVarPreMax(version_conv_->blk_cols_extended_[scan_idx], ts_scan_stats, pre_max);
-}
-
-KStatus TSBlkDataTypeConvert::GetVarPreMin(TsBlockSpan* blk_span, uint32_t scan_idx,
-                                            TsScanStats* ts_scan_stats, TSSlice &pre_min) {
-  assert(blk_span->GetTableVersion() == block_version_);
-  return blk_span->block_->GetVarPreMin(version_conv_->blk_cols_extended_[scan_idx], ts_scan_stats, pre_min);
-}
 
 KStatus TSBlkDataTypeConvert::GetFixLenColAddr(const TsBlockSpan* blk_span, uint32_t scan_idx, char** value,
                                                std::unique_ptr<TsBitmapBase>* bitmap, TsScanStats* ts_scan_stats) {

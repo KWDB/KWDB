@@ -32,6 +32,166 @@ TsBitmap MakeBitmap(int n, std::initializer_list<int> null_rows) {
 // Existing baseline tests (kept as-is for regression coverage).
 // ===========================================================================
 
+TEST(TsAgg, FixedBlockAggLayoutComputesSchemaDerivedOffsets) {
+  std::vector<AttributeInfo> attrs(7);
+  attrs[0].type = DATATYPE::TIMESTAMP64;
+  attrs[0].size = sizeof(timestamp64);
+  attrs[1].type = DATATYPE::INT32;
+  attrs[1].size = sizeof(int32_t);
+  attrs[2].type = DATATYPE::VARSTRING;
+  attrs[2].size = sizeof(uint32_t);
+  attrs[3].type = DATATYPE::CHAR;
+  attrs[3].size = 16;
+  attrs[4].type = DATATYPE::BINARY;
+  attrs[4].size = 16;
+  attrs[5].type = DATATYPE::STRING;
+  attrs[5].size = 16;
+  attrs[6].type = DATATYPE::DOUBLE;
+  attrs[6].size = sizeof(double);
+
+  const size_t ts_size = sizeof(uint16_t) + sizeof(timestamp64) * 2;
+  const size_t int32_size = sizeof(uint16_t) + sizeof(int32_t) * 2 + sizeof(bool) + sizeof(int64_t);
+  const size_t count_only_size = sizeof(uint16_t);
+  const size_t double_size = sizeof(uint16_t) + sizeof(double) * 2 + sizeof(bool) + sizeof(int64_t);
+
+  EXPECT_EQ(GetFixedBlockAggColumnSize(attrs, 0), ts_size);
+  EXPECT_EQ(GetFixedBlockAggColumnSize(attrs, 1), int32_size);
+  EXPECT_EQ(GetFixedBlockAggColumnSize(attrs, 2), count_only_size);
+  EXPECT_EQ(GetFixedBlockAggColumnSize(attrs, 3), count_only_size);
+  EXPECT_EQ(GetFixedBlockAggColumnSize(attrs, 4), count_only_size);
+  EXPECT_EQ(GetFixedBlockAggColumnSize(attrs, 5), count_only_size);
+  EXPECT_EQ(GetFixedBlockAggColumnSize(attrs, 6), double_size);
+
+  auto layout = BuildFixedBlockAggLayout(attrs);
+  ASSERT_EQ(layout.size(), attrs.size());
+  for (uint32_t i = 0; i < attrs.size(); ++i) {
+    EXPECT_EQ(layout[i].size, GetFixedBlockAggColumnSize(attrs, i));
+  }
+}
+
+TEST(TsAgg, SparseBlockAggBitmapComputesPayloadOffsets) {
+  std::vector<AttributeInfo> attrs(4);
+  attrs[0].type = DATATYPE::TIMESTAMP64;
+  attrs[0].size = sizeof(timestamp64);
+  attrs[1].type = DATATYPE::INT32;
+  attrs[1].size = sizeof(int32_t);
+  attrs[2].type = DATATYPE::VARSTRING;
+  attrs[2].size = sizeof(uint32_t);
+  attrs[3].type = DATATYPE::DOUBLE;
+  attrs[3].size = sizeof(double);
+
+  auto layout = BuildFixedBlockAggLayout(attrs);
+  std::string bitmap(GetSparseBlockAggBitmapSize(layout.size()), '\0');
+  SetSparseBlockAggColumn(bitmap.data(), 1);
+  SetSparseBlockAggColumn(bitmap.data(), 3);
+
+  ASSERT_FALSE(SparseBlockAggHasColumn(bitmap.data(), 0));
+  ASSERT_TRUE(SparseBlockAggHasColumn(bitmap.data(), 1));
+  ASSERT_FALSE(SparseBlockAggHasColumn(bitmap.data(), 2));
+  ASSERT_TRUE(SparseBlockAggHasColumn(bitmap.data(), 3));
+  EXPECT_EQ(GetSparseBlockAggColumnOffset(layout, bitmap.data(), 1), bitmap.size());
+  EXPECT_EQ(GetSparseBlockAggColumnOffset(layout, bitmap.data(), 3), bitmap.size() + layout[1].size);
+}
+
+TEST(TsAgg, SparsePartitionAggExtractsFixedAndVariableColumns) {
+  std::vector<AttributeInfo> attrs(3);
+  attrs[0].type = DATATYPE::TIMESTAMP64;
+  attrs[0].size = sizeof(timestamp64);
+  attrs[1].type = DATATYPE::VARSTRING;
+  attrs[1].size = sizeof(uint32_t);
+  attrs[2].type = DATATYPE::INT32;
+  attrs[2].size = sizeof(int32_t);
+
+  std::string bitmap(GetSparsePartitionAggBitmapSize(attrs.size()), '\0');
+  SetSparseAggColumn(bitmap.data(), 1);
+  SetSparseAggColumn(bitmap.data(), 2);
+
+  uint64_t var_count = 2;
+  std::string var_col(GetFixedPartitionAggColumnSize(attrs, 1), '\0');
+  ASSERT_EQ(var_col.size(), PARTITION_AGG_COUNT_SIZE);
+  std::memcpy(var_col.data(), &var_count, sizeof(uint64_t));
+
+  uint64_t int_count = 2;
+  int32_t int_max = 10;
+  int32_t int_min = 3;
+  bool overflow = false;
+  int64_t sum = 13;
+  std::string int_col(GetFixedPartitionAggColumnSize(attrs, 2), '\0');
+  std::memcpy(int_col.data(), &int_count, sizeof(uint64_t));
+  std::memcpy(int_col.data() + sizeof(uint64_t), &int_max, sizeof(int32_t));
+  std::memcpy(int_col.data() + sizeof(uint64_t) + sizeof(int32_t), &int_min, sizeof(int32_t));
+  std::memcpy(int_col.data() + sizeof(uint64_t) + sizeof(int32_t) * 2, &overflow, sizeof(bool));
+  std::memcpy(int_col.data() + sizeof(uint64_t) + sizeof(int32_t) * 2 + sizeof(bool), &sum, sizeof(int64_t));
+
+  std::string entity_agg = bitmap + var_col + int_col;
+  TSSlice col_agg{nullptr, 0};
+  bool has_column = true;
+
+  ASSERT_EQ(GetSparsePartitionAggColumnSlice(attrs, {entity_agg.data(), entity_agg.size()}, 0, &col_agg, &has_column),
+            KStatus::SUCCESS);
+  EXPECT_FALSE(has_column);
+  EXPECT_EQ(col_agg.len, 0);
+
+  ASSERT_EQ(GetSparsePartitionAggColumnSlice(attrs, {entity_agg.data(), entity_agg.size()}, 1, &col_agg, &has_column),
+            KStatus::SUCCESS);
+  ASSERT_TRUE(has_column);
+  EXPECT_EQ(col_agg.len, var_col.size());
+  EXPECT_EQ(ReadAggValue<uint64_t>(col_agg.data), var_count);
+
+  ASSERT_EQ(GetSparsePartitionAggColumnSlice(attrs, {entity_agg.data(), entity_agg.size()}, 2, &col_agg, &has_column),
+            KStatus::SUCCESS);
+  ASSERT_TRUE(has_column);
+  EXPECT_EQ(col_agg.len, int_col.size());
+  EXPECT_EQ(ReadAggValue<int64_t>(col_agg.data + sizeof(uint64_t) + sizeof(int32_t) * 2 + sizeof(bool)), sum);
+}
+
+TEST(TsAgg, LegacyOffsetBlockAggColumnRangeIsReadable) {
+  std::array<uint32_t, 4> offsets{2, 5, 5, 9};
+
+  uint32_t start_offset = 0;
+  uint32_t end_offset = 0;
+  ASSERT_EQ(GetOffsetAggColumnRange(reinterpret_cast<const char*>(offsets.data()), sizeof(uint32_t) * offsets.size(),
+                                    0, &start_offset, &end_offset), KStatus::SUCCESS);
+  EXPECT_EQ(start_offset, 0);
+  EXPECT_EQ(end_offset, 2);
+
+  ASSERT_EQ(GetOffsetAggColumnRange(reinterpret_cast<const char*>(offsets.data()), sizeof(uint32_t) * offsets.size(),
+                                    1, &start_offset, &end_offset), KStatus::SUCCESS);
+  EXPECT_EQ(start_offset, 2);
+  EXPECT_EQ(end_offset, 5);
+
+  ASSERT_EQ(GetOffsetAggColumnRange(reinterpret_cast<const char*>(offsets.data()), sizeof(uint32_t) * offsets.size(),
+                                    2, &start_offset, &end_offset), KStatus::SUCCESS);
+  EXPECT_EQ(start_offset, 5);
+  EXPECT_EQ(end_offset, 5);
+
+  ASSERT_EQ(GetOffsetAggColumnRange(reinterpret_cast<const char*>(offsets.data()), sizeof(uint32_t) * offsets.size(),
+                                    3, &start_offset, &end_offset), KStatus::SUCCESS);
+  EXPECT_EQ(start_offset, 5);
+  EXPECT_EQ(end_offset, 9);
+}
+
+TEST(TsAgg, LegacyOffsetPartitionAggExtractsColumnSlice) {
+  std::array<uint32_t, 3> offsets{2, 5, 5};
+  std::string payload = "aabbc";
+  std::string entity_agg(sizeof(uint32_t) * offsets.size(), '\0');
+  std::memcpy(entity_agg.data(), offsets.data(), sizeof(uint32_t) * offsets.size());
+  entity_agg.append(payload);
+
+  TSSlice col_agg{nullptr, 0};
+  ASSERT_EQ(GetOffsetPartitionAggColumnSlice({entity_agg.data(), entity_agg.size()}, offsets.size(), 0, &col_agg),
+            KStatus::SUCCESS);
+  EXPECT_EQ(std::string(col_agg.data, col_agg.len), "aa");
+
+  ASSERT_EQ(GetOffsetPartitionAggColumnSlice({entity_agg.data(), entity_agg.size()}, offsets.size(), 1, &col_agg),
+            KStatus::SUCCESS);
+  EXPECT_EQ(std::string(col_agg.data, col_agg.len), "bbc");
+
+  ASSERT_EQ(GetOffsetPartitionAggColumnSlice({entity_agg.data(), entity_agg.size()}, offsets.size(), 2, &col_agg),
+            KStatus::SUCCESS);
+  EXPECT_EQ(col_agg.len, 0);
+}
+
 TEST(TsAgg, CalcAggForFlushSkipsNullAndComputesSum) {
   std::array<int32_t, 4> values{10, 5, 7, -2};
   TsBitmap bitmap(static_cast<int>(values.size()));

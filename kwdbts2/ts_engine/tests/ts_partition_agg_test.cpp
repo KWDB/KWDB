@@ -9,9 +9,12 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+#include <array>
 #include <cstdio>
+#include <cstring>
 #include "ts_test_base.h"
 #include "test_util.h"
+#include "ts_agg.h"
 #include "ts_engine.h"
 #include "ts_lru_block_cache.h"
 #include "ts_partition_agg.h"
@@ -23,6 +26,66 @@ using namespace kwdbts;
 const string engine_root_path = "./tsdb";
 extern atomic<int> destroyed_entity_block_file_count;
 extern atomic<int> created_entity_block_file_count;
+
+TEST(TsPartitionAgg, LegacyOffsetLayoutFileCanBeRead) {
+  fs::path file_path = "./partition_agg_legacy_layout_test";
+  std::remove(file_path.c_str());
+
+  TsFIOEnv env;
+  std::unique_ptr<TsAppendOnlyFile> w_file;
+  ASSERT_EQ(env.NewAppendOnlyFile(file_path, &w_file, false), KStatus::SUCCESS);
+
+  std::array<uint32_t, 2> offsets{sizeof(uint64_t), sizeof(uint64_t) * 2};
+  uint64_t count0 = 7;
+  uint64_t count1 = 9;
+  TsBufferBuilder entity_agg;
+  entity_agg.resize(sizeof(uint32_t) * offsets.size());
+  std::memcpy(entity_agg.data(), offsets.data(), sizeof(uint32_t) * offsets.size());
+  entity_agg.append(reinterpret_cast<char*>(&count0), sizeof(count0));
+  entity_agg.append(reinterpret_cast<char*>(&count1), sizeof(count1));
+  ASSERT_EQ(w_file->Append(entity_agg.AsSlice()), KStatus::SUCCESS);
+
+  TsEntityPartitionAggIndex index{123, 1, 1, 10, 20, 3, 0, entity_agg.size(), ""};
+  TSSlice index_slice{reinterpret_cast<char*>(&index), sizeof(index)};
+  ASSERT_EQ(w_file->Append(index_slice), KStatus::SUCCESS);
+
+  TsPartitionAggFooter footer{};
+  footer.entity_agg_stats_idx_offset = entity_agg.size();
+  footer.max_entity_id = 1;
+  footer.file_version = PARTITION_AGG_OFFSET_LAYOUT_VERSION;
+  TSSlice footer_slice{reinterpret_cast<char*>(&footer), sizeof(footer)};
+  ASSERT_EQ(w_file->Append(footer_slice), KStatus::SUCCESS);
+  ASSERT_EQ(w_file->Sync(), KStatus::SUCCESS);
+  ASSERT_EQ(w_file->Close(), KStatus::SUCCESS);
+
+  TsPartitionAggReader reader(&env, file_path);
+  ASSERT_EQ(reader.Open(), KStatus::SUCCESS);
+  EXPECT_FALSE(reader.IsSparseLayout());
+
+  TsEntityPartitionAggIndex read_index;
+  read_index.entity_id = 1;
+  ASSERT_EQ(reader.GetPartitionAggIndex(read_index), KStatus::SUCCESS);
+  EXPECT_EQ(read_index.table_id, 123);
+  EXPECT_EQ(read_index.table_version, 1);
+  EXPECT_EQ(read_index.agg_offset, 0);
+  EXPECT_EQ(read_index.agg_len, entity_agg.size());
+
+  TsSliceGuard agg;
+  ASSERT_EQ(reader.GetPartitionAgg(read_index.agg_offset, read_index.agg_len, agg), KStatus::SUCCESS);
+  TSSlice col_agg{nullptr, 0};
+  ASSERT_EQ(GetOffsetPartitionAggColumnSlice(agg.AsSlice(), offsets.size(), 0, &col_agg), KStatus::SUCCESS);
+  ASSERT_EQ(col_agg.len, sizeof(uint64_t));
+  uint64_t read_count = 0;
+  std::memcpy(&read_count, col_agg.data, sizeof(read_count));
+  EXPECT_EQ(read_count, count0);
+
+  ASSERT_EQ(GetOffsetPartitionAggColumnSlice(agg.AsSlice(), offsets.size(), 1, &col_agg), KStatus::SUCCESS);
+  ASSERT_EQ(col_agg.len, sizeof(uint64_t));
+  std::memcpy(&read_count, col_agg.data, sizeof(read_count));
+  EXPECT_EQ(read_count, count1);
+
+  std::remove(file_path.c_str());
+}
 
 class TestPartitionAgg : public TsEngineTestBase {
  public:
@@ -117,7 +180,7 @@ TEST_F(TestPartitionAgg, basicPartitionAgg) {
   }
   std::shared_ptr<MMapMetricsTable> schema;
   ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
-  uint32_t agg_header_size = schema->getSchemaInfoExcludeDroppedPtr()->size() * sizeof(uint32_t);
+  const auto& attrs = *schema->getSchemaInfoExcludeDroppedPtr();
   for (const auto& vgroup : *ts_vgroups) {
     ASSERT_EQ(vgroup->CalcPartitionAgg(), KStatus::SUCCESS);
     TsStorageIterator* ts_iter;
@@ -130,6 +193,8 @@ TEST_F(TestPartitionAgg, basicPartitionAgg) {
     ASSERT_EQ(partitions.size(), 2);
     for (const auto& partition : partitions) {
       auto agg_reader = partition->GetAggReader();
+      ASSERT_NE(agg_reader, nullptr);
+      ASSERT_TRUE(agg_reader->IsSparseLayout());
       for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
         TsEntityPartitionAggIndex agg_index;
         agg_index.entity_id = entity_id;
@@ -150,17 +215,12 @@ TEST_F(TestPartitionAgg, basicPartitionAgg) {
 
         // verify agg value
         for (auto col_idx : {0, 1}) {
-          TsSliceGuard col_agg;
-          uint32_t start_offset = 0;
-          if (col_idx != 0) {
-            start_offset = *reinterpret_cast<uint32_t*>(slice.data() + (col_idx - 1) * sizeof(uint32_t));
-          }
-          uint32_t end_offset = *reinterpret_cast<uint32_t*>(slice.data() + (col_idx) * sizeof(uint32_t));
-          assert(end_offset >= start_offset);
-          uint32_t len = end_offset - start_offset;
-          if (len) {
-            col_agg = TsSliceGuard(slice.data() + agg_header_size + start_offset, len);
-          }
+          TSSlice col_agg_slice{nullptr, 0};
+          bool has_column = false;
+          ASSERT_EQ(GetSparsePartitionAggColumnSlice(attrs, slice.AsSlice(), col_idx, &col_agg_slice, &has_column),
+                    KStatus::SUCCESS);
+          ASSERT_TRUE(has_column);
+          TsSliceGuard col_agg(col_agg_slice.data, col_agg_slice.len);
           ASSERT_EQ(*reinterpret_cast<uint64_t*>(col_agg.data()), entity_row_num);
           if (col_idx == 0) {
             // verify idx 0 max min
@@ -283,7 +343,7 @@ TEST_F(TestPartitionAgg, basicPartitionAggDelete) {
 
   std::shared_ptr<MMapMetricsTable> schema;
   ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
-  uint32_t agg_header_size = schema->getSchemaInfoExcludeDroppedPtr()->size() * sizeof(uint32_t);
+  const auto& attrs = *schema->getSchemaInfoExcludeDroppedPtr();
   for (const auto& vgroup : *ts_vgroups) {
     ASSERT_EQ(vgroup->CalcPartitionAgg(), KStatus::SUCCESS);
     TsStorageIterator* ts_iter;
@@ -297,6 +357,8 @@ TEST_F(TestPartitionAgg, basicPartitionAggDelete) {
     ASSERT_EQ(partitions.size(), 2);
     for (const auto& partition : partitions) {
       auto agg_reader = partition->GetAggReader();
+      ASSERT_NE(agg_reader, nullptr);
+      ASSERT_TRUE(agg_reader->IsSparseLayout());
       for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
         TsEntityPartitionAggIndex agg_index;
         agg_index.entity_id = entity_id;
@@ -327,17 +389,12 @@ TEST_F(TestPartitionAgg, basicPartitionAggDelete) {
         ASSERT_EQ(agg_reader->GetPartitionAgg(agg_index.agg_offset, agg_index.agg_len, slice), KStatus::SUCCESS);
         // verify agg value
         for (auto col_idx : {0, 1}) {
-          TsSliceGuard col_agg;
-          uint32_t start_offset = 0;
-          if (col_idx != 0) {
-            start_offset = *reinterpret_cast<uint32_t*>(slice.data() + (col_idx - 1) * sizeof(uint32_t));
-          }
-          uint32_t end_offset = *reinterpret_cast<uint32_t*>(slice.data() + (col_idx) * sizeof(uint32_t));
-          assert(end_offset >= start_offset);
-          uint32_t len = end_offset - start_offset;
-          if (len) {
-            col_agg = TsSliceGuard(slice.data() + agg_header_size + start_offset, len);
-          }
+          TSSlice col_agg_slice{nullptr, 0};
+          bool has_column = false;
+          ASSERT_EQ(GetSparsePartitionAggColumnSlice(attrs, slice.AsSlice(), col_idx, &col_agg_slice, &has_column),
+                    KStatus::SUCCESS);
+          ASSERT_TRUE(has_column);
+          TsSliceGuard col_agg(col_agg_slice.data, col_agg_slice.len);
           if (partition->GetStartTime() != 0 && vgroup->GetVGroupID() == v_group_id && entity_id == del_entity_id) {
             ASSERT_EQ(*reinterpret_cast<uint32_t*>(col_agg.data()), entity_row_num / 2);
             if (col_idx == 0) {

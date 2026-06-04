@@ -221,8 +221,6 @@ class TSBlkDataTypeConvert {
                     void* &pre_sum, bool& is_overflow);
   KStatus GetPreMax(TsBlockSpan* blk_span, uint32_t scan_idx, TsScanStats* ts_scan_stats, void* &pre_max);
   KStatus GetPreMin(TsBlockSpan* blk_span, uint32_t scan_idx, int32_t size, TsScanStats* ts_scan_stats, void* &pre_min);
-  KStatus GetVarPreMax(TsBlockSpan* blk_span, uint32_t scan_idx, TsScanStats* ts_scan_stats, TSSlice& pre_max);
-  KStatus GetVarPreMin(TsBlockSpan* blk_span, uint32_t scan_idx, TsScanStats* ts_scan_stats, TSSlice& pre_min);
 };
 
 

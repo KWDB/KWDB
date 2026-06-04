@@ -91,9 +91,10 @@ class TsSegmentBlockContainer {
     return res;
   }
 
-  KStatus GetColumnAgg(int32_t col_idx, TsEntityBlock* block, TsScanStats* ts_scan_stats) {
+  KStatus GetColumnAgg(int32_t col_idx, const std::vector<FixedBlockAggColumnLayout>* fixed_block_agg_layout,
+                       TsEntityBlock* block, TsScanStats* ts_scan_stats) {
     RW_LATCH_S_LOCK(&segment_file_rw_latch_);
-    KStatus res = segment_file_->GetColumnAgg(col_idx, block, ts_scan_stats);
+    KStatus res = segment_file_->GetColumnAgg(col_idx, fixed_block_agg_layout, block, ts_scan_stats);
     RW_LATCH_UNLOCK(&segment_file_rw_latch_);
     return res;
   }

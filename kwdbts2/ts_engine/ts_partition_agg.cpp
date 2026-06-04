@@ -92,6 +92,7 @@ KStatus TsPartitionAggBuilder::Finalize() {
   TsPartitionAggFooter footer{0, 0, 0, 0};
   footer.entity_agg_stats_idx_offset = w_file_->GetFileSize();
   footer.max_entity_id = max_entity_id_;
+  footer.file_version = CURRENT_PARTITION_AGG_VERSION;
   TSSlice agg_index_slice = {entity_index_buffer_.data(), entity_index_buffer_.size()};
   auto s = w_file_->Append(agg_index_slice);
   if (s != SUCCESS) {

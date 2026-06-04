@@ -13,6 +13,7 @@
 
 #include <memory>
 #include "ts_common.h"
+#include "ts_agg.h"
 #include "ts_bufferbuilder.h"
 #include "ts_io.h"
 
@@ -74,6 +75,8 @@ class TsPartitionAggReader {
   KStatus Open();
   KStatus GetPartitionAggIndex(TsEntityPartitionAggIndex& stats);
   KStatus GetPartitionAgg(uint64_t agg_offset, uint64_t agg_len, TsSliceGuard& agg);
+  [[nodiscard]] uint64_t GetFileVersion() const { return footer_.file_version; }
+  [[nodiscard]] bool IsSparseLayout() const { return footer_.file_version >= PARTITION_AGG_SPARSE_LAYOUT_VERSION; }
   void MarkDelete() { delete_after_free_ = true; }
 
  private:

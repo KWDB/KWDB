@@ -53,42 +53,6 @@ class TsEntitySegmentBlockFile {
   bool  IsFIOMode() { return io_env_ && io_env_->IsFIOMode(); }
 };
 
-/*
- * Aggregation block structure
- * +-------------+-------------+-------------+---------------+---------------+---------------+
- * | col1 offset | col2 offset | col3 offset | col1 agg      | col2 agg      | col3 agg      |
- * +-------------+-------------+-------------+---------------+---------------+---------------+
- *
- * Bytes:
- * offset: uint32_t
- * col agg: Which is related to the size of the data type
- */
-
-/*
- * Fixed-length column aggregation structure
- * +-------+-----+-----+
- * | count | max | min |
- * +-------+-----+-----+
- *
- * Bytes:
- * - count: uint16_t
- * - max: column type size, e.g. double type is 8 bytes
- * - min: column type size, e.g. double type is 8 bytes
- */
-
-/*
- * Variable-length column aggregation structure:
- * +-------+---------+---------+---------+---------+
- * | count | max_len | min_len | max_str | min_str |
- * +-------+---------+---------+---------+---------+
-
- * Bytes:
- * - count: uint16_t
- * - max_len: uint32_t
- * - min_len: uint32_t
- * - max_str: Actual string length
- * - min_str: Actual string length
- */
 class TsEntitySegmentAggFile {
   friend class TsMemEntitySegmentModifier;
 

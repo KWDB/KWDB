@@ -77,6 +77,8 @@ struct TsScanStats {
   int64_t block_bytes{0};                // scanned block_bytes
   int64_t agg_bytes{0};                  // scanned agg_bytes
   int64_t header_bytes{0};               // scanned header_bytes
+  int64_t block_pre_agg_hit_count{0};    // block pre-aggregation usage count
+  int64_t block_pre_agg_miss_count{0};   // raw aggregation fallback count
   void reset() {
     memory_block_count = 0;
     last_block_count = 0;
@@ -86,6 +88,8 @@ struct TsScanStats {
     block_bytes = 0;
     agg_bytes = 0;
     header_bytes = 0;
+    block_pre_agg_hit_count = 0;
+    block_pre_agg_miss_count = 0;
   }
 };
 

@@ -219,7 +219,7 @@ class TsEntitySegmentMetaManager {
 
 struct TsEntitySegmentBlockInfo {
   TsSliceGuard col_block_offset{};
-  TsSliceGuard col_agg_offset{};
+  TsSliceGuard col_agg_meta{};  // cache offsets in V1, bitmap in V2
 };
 
 #define COLUMN_BLOCK_BUFFER_READY   1
@@ -341,11 +341,11 @@ class TsEntityBlock : public TsBlock {
 
   KStatus LoadColData(int32_t col_idx, const std::vector<AttributeInfo>* metric_schema, TsSliceGuard&& buffer);
 
-  KStatus LoadAggData(int32_t col_idx, TsSliceGuard&& buffer);
+  KStatus StoreAggData(int32_t col_idx, TsSliceGuard&& buffer);
 
   KStatus LoadBlockInfo(TsSliceGuard&& buffer);
 
-  KStatus LoadAggInfo(TsSliceGuard&& buffer);
+  KStatus StoreAggMeta(TsSliceGuard&& buffer);
 
   KStatus GetRowSpans(const std::vector<STScanRange>& spans, std::vector<std::pair<int, int>>& row_spans,
                       TsScanStats* ts_scan_stats);
@@ -383,13 +383,15 @@ class TsEntityBlock : public TsBlock {
   KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, TsBufferBuilder* data) override;
 
   bool HasPreAgg(uint32_t begin_row_idx, uint32_t row_num) override;
-  KStatus GetPreCount(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, uint16_t& count) override;
-  KStatus GetPreSum(uint32_t blk_col_idx, int32_t size, TsScanStats* ts_scan_stats,
+  KStatus GetPreCount(uint32_t blk_col_idx, const std::vector<FixedBlockAggColumnLayout>* fixed_block_agg_layout,
+                      TsScanStats* ts_scan_stats, uint16_t& count) override;
+  KStatus GetPreSum(uint32_t blk_col_idx, const std::vector<FixedBlockAggColumnLayout>* fixed_block_agg_layout,
+                    int32_t size, TsScanStats* ts_scan_stats,
                     void*& pre_sum, bool& is_overflow) override;
-  KStatus GetPreMax(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, void*& pre_max) override;
-  KStatus GetPreMin(uint32_t blk_col_idx, int32_t size, TsScanStats* ts_scan_stats, void*& pre_max) override;
-  KStatus GetVarPreMax(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, TSSlice& pre_max) override;
-  KStatus GetVarPreMin(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, TSSlice& pre_min) override;
+  KStatus GetPreMax(uint32_t blk_col_idx, const std::vector<FixedBlockAggColumnLayout>* fixed_block_agg_layout,
+                    TsScanStats* ts_scan_stats, void*& pre_max) override;
+  KStatus GetPreMin(uint32_t blk_col_idx, const std::vector<FixedBlockAggColumnLayout>* fixed_block_agg_layout,
+                    int32_t size, TsScanStats* ts_scan_stats, void*& pre_max) override;
 
   std::string GetEntitySegmentPath();
   std::string GetHandleInfoStr();
@@ -480,7 +482,8 @@ class TsSegmentFile {
 
   KStatus GetAggData(TsEntityBlock* block, TsSliceGuard* data);
 
-  KStatus GetColumnAgg(int32_t col_idx, TsEntityBlock* block, TsScanStats* ts_scan_stats);
+  KStatus GetColumnAgg(int32_t col_idx, const std::vector<FixedBlockAggColumnLayout>* fixed_block_agg_layout,
+                       TsEntityBlock* block, TsScanStats* ts_scan_stats);
 
   const EntitySegmentMetaInfo &GetHandleInfo() const { return info_; }
 

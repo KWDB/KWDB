@@ -18,6 +18,7 @@
 #include "ts_batch_data_worker.h"
 #include "ee_tag_row_batch.h"
 #include "libkwdbts2.h"
+#include "ts_compatibility.h"
 #include "ts_engine.h"
 
 namespace kwdbts {
@@ -301,8 +302,13 @@ void TsReadBatchDataWorker::AddTsBlockSpanInfo(const std::shared_ptr<TsBlockSpan
   uint64_t last_osn = block_span->GetLastOSN();
   timestamp64 end_row_ts = block_span->GetTS(block_span->GetRowNum() - 1);
   uint32_t n_rows = block_span->GetRowNum();
+  uint32_t block_version = block_span->GetBlockVersion();
+  if (EngineOptions::force_re_compress || block_span->GetRowNum() != block_span->GetTsBlock()->GetRowNum() ||
+      block_span->GetScanVersion() != block_span->GetTableVersion()) {
+    block_version = CURRENT_BLOCK_VERSION;
+  }
   cur_batch_data_.AddBlockSpanDataHeader(0, first_row_ts, end_row_ts, min_osn, max_osn,
-                                         first_osn, last_osn, n_cols_, n_rows, block_span->GetBlockVersion());
+                                         first_osn, last_osn, n_cols_, n_rows, block_version);
 }
 
 KStatus TsReadBatchDataWorker::NextBlockSpansIterator() {

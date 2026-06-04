@@ -248,9 +248,6 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
   // init col data offsets to data buffer
   uint32_t block_header_size = n_cols_ * sizeof(uint32_t);
   data_buffer->resize(block_header_size);
-  // init col agg offsets to agg buffer, exclude osn col
-  uint32_t agg_header_size = (n_cols_ - 1) * sizeof(uint32_t);
-  agg_buffer->resize(agg_header_size);
   // min osn && max osn
   uint64_t min_osn = UINT64_MAX;
   uint64_t max_osn = 0;
@@ -260,6 +257,8 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
   // write column block data and column agg
   assert(n_cols_ == metric_schema_.size() + 1);
   AttributeInfo attr_info;
+  std::string sparse_agg_bitmap(GetSparseBlockAggBitmapSize(metric_schema_.size()), '\0');
+  TsBufferBuilder sparse_agg_payload;
   for (int col_idx = 0; col_idx < n_cols_; ++col_idx) {
     DATATYPE d_type = col_idx == 0 ? DATATYPE::INT64 : col_idx != 1 ?
                       static_cast<DATATYPE>(metric_schema_[col_idx - 1].type) : DATATYPE::TIMESTAMP64;
@@ -337,17 +336,12 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
       continue;
     }
     string col_agg;
-    Defer defer {[&]() {
-      agg_buffer->append(col_agg);
-      uint32_t offset = agg_buffer->size() - agg_header_size;
-      memcpy(agg_buffer->data() + (col_idx - 1) * sizeof(uint32_t), &offset, sizeof(uint32_t));
-    }};
-    if (!is_var_col) {
+    uint16_t count = 0;
+    if (!is_var_col && !IsBlockAggCountOnlyType(d_type)) {
       TsBitmapBase* bitmap = nullptr;
       if (has_bitmap) {
         bitmap = block.bitmap.get();
       }
-      uint16_t count = 0;
       string max, min, sum;
       int32_t col_size = metric_schema_[col_idx - 1].size;
       max.resize(col_size, '\0');
@@ -366,31 +360,39 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
         return s;
       }
       *reinterpret_cast<bool *>(sum.data()) = is_overflow;
-      if (0 == count) {
-        continue;
+      size_t agg_size = sizeof(uint16_t) + 2 * static_cast<size_t>(col_size);
+      if (isSumType(d_type)) {
+        agg_size += 9;
       }
-      col_agg.resize(sizeof(uint16_t) + 2 * col_size + 9, '\0');
+      col_agg.resize(agg_size, '\0');
       memcpy(col_agg.data(), &count, sizeof(uint16_t));
-      memcpy(col_agg.data() + sizeof(uint16_t), max.data(), col_size);
-      memcpy(col_agg.data() + sizeof(uint16_t) + col_size, min.data(), col_size);
-      memcpy(col_agg.data() + sizeof(uint16_t) + col_size * 2, sum.data(), 9);
+      if (0 != count) {
+        memcpy(col_agg.data() + sizeof(uint16_t), max.data(), col_size);
+        memcpy(col_agg.data() + sizeof(uint16_t) + col_size, min.data(), col_size);
+        if (isSumType(d_type)) {
+          memcpy(col_agg.data() + sizeof(uint16_t) + static_cast<size_t>(col_size) * 2, sum.data(), 9);
+        }
+      }
     } else {
-      VarColAggCalculatorV2 aggCalc(block.var_rows);
-      string max;
-      string min;
-      uint64_t count = 0;
-      aggCalc.CalcAggForFlush(max, min, count);
-      if (0 == count) {
-        continue;
+      if (is_var_col) {
+        count = static_cast<uint16_t>(block.var_rows.size());
+      } else if (!has_bitmap || block.bitmap == nullptr) {
+        count = static_cast<uint16_t>(n_rows_);
+      } else {
+        count = static_cast<uint16_t>(block.bitmap->GetValidCount());
       }
-      col_agg.resize(sizeof(uint16_t) + 2 * sizeof(uint32_t), '\0');
+      col_agg.resize(sizeof(uint16_t), '\0');
       memcpy(col_agg.data(), &count, sizeof(uint16_t));
-      col_agg.append(max);
-      col_agg.append(min);
-      *reinterpret_cast<uint32_t *>(col_agg.data() + sizeof(uint16_t)) = max.size();
-      *reinterpret_cast<uint32_t *>(col_agg.data() + sizeof(uint16_t) + sizeof(uint32_t)) = min.size();
+    }
+    if (count != 0) {
+      uint32_t agg_col_idx = col_idx - 1;
+      SetSparseBlockAggColumn(sparse_agg_bitmap.data(), agg_col_idx);
+      sparse_agg_payload.append(col_agg);
     }
   }
+
+  agg_buffer->append(sparse_agg_bitmap);
+  agg_buffer->append(sparse_agg_payload.AsSlice());
 
   // flush
   timestamp64 min_ts = GetTimestamp(0);
@@ -876,9 +878,11 @@ KStatus TsEntitySegmentBuilder::WriteBatch(TSTableID tbl_id, uint32_t entity_id,
   block_item.first_osn = DecodeFixed64(block_data.data + TsBatchData::first_osn_offset_in_span_data_);
   block_item.last_osn = DecodeFixed64(block_data.data + TsBatchData::last_osn_offset_in_span_data_);
 
-  const char* agg_len_ptr = block_data.data + block_data_header_size + block_item.block_len
-                            + (n_cols - 2) * sizeof(uint32_t);
-  block_item.agg_len = DecodeFixed32(agg_len_ptr) + sizeof(uint32_t) * (n_cols - 1);
+  if (block_data.len < block_data_header_size + block_item.block_len) {
+    LOG_ERROR("TsEntitySegmentBuilder::WriteBatch failed, invalid block data length.")
+    return FAIL;
+  }
+  block_item.agg_len = block_data.len - (block_data_header_size + block_item.block_len);
 
   TSSlice data_buffer = {block_data.data + block_data_header_size, block_item.block_len};
   KStatus s = block_file_builder_->AppendBlock(data_buffer, &block_item.block_offset);

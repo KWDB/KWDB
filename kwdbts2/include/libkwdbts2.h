@@ -170,6 +170,8 @@ typedef struct {
   int64_t block_bytes;                // scanned block_bytes
   int64_t agg_bytes;                  // scanned agg_bytes
   int64_t header_bytes;               // scannned header bytes
+  int64_t block_pre_agg_hit_count;    // block count that used block pre-aggregation
+  int64_t block_pre_agg_miss_count;   // block count that fell back to raw aggregation
   // build_time only be used for showing build time in explain analyze of hash tag scan op
   // for multiple model processing when the switch is on and the server starts with single node mode.
   int64_t build_time;  // time of build

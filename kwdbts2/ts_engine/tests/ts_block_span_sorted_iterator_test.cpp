@@ -105,23 +105,21 @@ class SimulatedTsEntityBlock : public TsBlock {
     return KStatus::FAIL;
   }
 
-  KStatus GetPreCount(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, uint16_t& count) override {
+  KStatus GetPreCount(uint32_t blk_col_idx, const std::vector<FixedBlockAggColumnLayout>* fixed_block_agg_layout,
+                      TsScanStats* ts_scan_stats, uint16_t& count) override {
     return KStatus::FAIL;
   }
-  KStatus GetPreSum(uint32_t blk_col_idx, int32_t size, TsScanStats* ts_scan_stats,
+  KStatus GetPreSum(uint32_t blk_col_idx, const std::vector<FixedBlockAggColumnLayout>* fixed_block_agg_layout,
+                    int32_t size, TsScanStats* ts_scan_stats,
                             void* &pre_sum, bool& is_overflow) override {
     return KStatus::FAIL;
   }
-  KStatus GetPreMax(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, void* &pre_max) override {
+  KStatus GetPreMax(uint32_t blk_col_idx, const std::vector<FixedBlockAggColumnLayout>* fixed_block_agg_layout,
+                    TsScanStats* ts_scan_stats, void* &pre_max) override {
     return KStatus::FAIL;
   }
-  KStatus GetPreMin(uint32_t blk_col_idx, int32_t size, TsScanStats* ts_scan_stats, void* &pre_min) override {
-    return KStatus::FAIL;
-  }
-  KStatus GetVarPreMax(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, TSSlice& pre_max) override {
-    return KStatus::FAIL;
-  }
-  KStatus GetVarPreMin(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, TSSlice& pre_min) override {
+  KStatus GetPreMin(uint32_t blk_col_idx, const std::vector<FixedBlockAggColumnLayout>* fixed_block_agg_layout,
+                    int32_t size, TsScanStats* ts_scan_stats, void* &pre_min) override {
     return KStatus::FAIL;
   }
 };
