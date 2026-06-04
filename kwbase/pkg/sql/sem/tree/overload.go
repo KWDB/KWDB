@@ -533,13 +533,15 @@ func typeCheckOverloadedExprs(
 			// Once we get down to a single overload candidate, begin desiring its
 			// parameter types for the corresponding argument expressions.
 			paramDesired = s.overloads[s.overloadIdxs[0]].params().GetAt(i)
-		} else if shouldPreferStringForResolvableExprWithPlaceholder(
-			ctx, exprs[i], s.overloads, s.overloadIdxs, i,
+		} else if inBinOp && shouldPreferStringForResolvableExprWithPlaceholder(
+			ctx, exprs[i], s.overloads, s.overloadIdxs, i, s.typedExprs,
 		) {
 			// For expressions like $1[2] used in LIKE/ILIKE-style contexts, adding
 			// CITEXT overloads can make the candidate set ambiguous. Prefer STRING
 			// here so unresolved placeholders inside resolvable expressions still
 			// type-check successfully.
+			// Adding STRING/CITEXT mixed overloads can make otherwise string expressions ambiguous
+			// in jdbc prepare mode. For expressions like: nchar_col = $1
 			paramDesired = types.String
 		}
 		typ, err := exprs[i].TypeCheck(ctx, paramDesired)

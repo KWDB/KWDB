@@ -3625,24 +3625,75 @@ func isStringLikeOverloadParam(typ *types.T) bool {
 }
 
 // shouldPreferStringForResolvableExprWithPlaceholder reports whether a
-// resolvable expression that still contains an unresolved placeholder should be
-// type-checked with desired STRING, based on the remaining overload candidates.
+// resolvable expression should be type-checked with desired STRING when the
+// remaining overload candidates are ambiguous because of STRING/CITEXT
+// overloads.
+//
+// It handles two cases:
+//
+//  1. The expression still contains an unresolved placeholder, for example:
+//     $1[2] LIKE 'b'
+//
+//  2. The peer side of a binary operator has already been typed as an string type, for example:
+//     nchar_col = $1
 func shouldPreferStringForResolvableExprWithPlaceholder(
-	ctx *SemaContext, expr Expr, overloads []overloadImpl, overloadIdxs []uint8, argIdx int,
+	ctx *SemaContext,
+	expr Expr,
+	overloads []overloadImpl,
+	overloadIdxs []uint8,
+	argIdx int,
+	typedExprs []TypedExpr,
 ) bool {
-	if !containsUnresolvedPlaceholder(ctx, expr) {
-		return false
-	}
 	if len(overloadIdxs) == 0 {
 		return false
 	}
+
 	for _, ovIdx := range overloadIdxs {
 		paramTyp := overloads[ovIdx].params().GetAt(argIdx)
 		if !isStringLikeOverloadParam(paramTyp) {
 			return false
 		}
 	}
-	return true
+
+	// Only handle direct placeholders or expressions containing unresolved
+	// placeholders.
+	directPlaceholder := false
+	if _, ok := StripParens(expr).(*Placeholder); ok {
+		directPlaceholder = true
+	}
+	containUnresolvedPlaceholder := containsUnresolvedPlaceholder(ctx, expr)
+	if !directPlaceholder && !containUnresolvedPlaceholder {
+		return false
+	}
+
+	// If the other side has already been typed as a string type,
+	// prefer STRING for this side.
+	if hasTypedStringOtherSide(typedExprs, argIdx) {
+		return true
+	}
+
+	return containUnresolvedPlaceholder
+}
+
+// hasTypedStringOtherSide reports whether the other side of a binary expression
+// has already been typed as a string type.
+func hasTypedStringOtherSide(typedExprs []TypedExpr, argIdx int) bool {
+	if len(typedExprs) != 2 {
+		return false
+	}
+
+	otherIdx := 1 - argIdx
+	if otherIdx < 0 || otherIdx >= len(typedExprs) {
+		return false
+	}
+
+	otherExpr := typedExprs[otherIdx]
+	if otherExpr == nil {
+		return false
+	}
+
+	otherTyp := otherExpr.ResolvedType()
+	return otherTyp != nil && otherTyp.Family() == types.StringFamily
 }
 
 // targetTypeForCITextStringComparison returns the type used when an explicitly
