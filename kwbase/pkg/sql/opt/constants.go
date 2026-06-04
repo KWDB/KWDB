@@ -75,7 +75,7 @@ var AutoLimitQuantity = settings.RegisterPublicIntSetting(
 
 // PushdownAll is true when we want to push down the whole query to specific engines
 var PushdownAll = settings.RegisterPublicBoolSetting(
-	"sql.all_push_down.enabled", "push down entire query", true,
+	"sql.all_push_down.enabled", "push down entire query", false,
 )
 
 // TSParallelDegree ts engine parallel exec degree
