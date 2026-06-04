@@ -7025,7 +7025,7 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 	}
 	thisNodeID := dsp.nodeDesc.NodeID
 
-	plan.SetTSEngineReturnEncode()
+	//plan.SetTSEngineReturnEncode()
 	//isDist := false
 	//for _, p := range plan.Processors {
 	//	if p.Node != thisNodeID {
