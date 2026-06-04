@@ -7062,7 +7062,7 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 				InputNum:   uint32(plan.GateNoopInput),
 				TsOperator: plan.TsOperator,
 			}},
-			execinfrapb.PostProcessSpec{},
+			execinfrapb.PostProcessSpec{OutputTypes: plan.ResultTypes},
 			plan.ResultTypes,
 		)
 	}
