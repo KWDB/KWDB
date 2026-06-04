@@ -471,37 +471,38 @@ func TestExportSQL(t *testing.T) {
                 e17 NCHAR(255),
                 e18 CHAR(200),
                 e21 VARCHAR,
-                e22 NVARCHAR);`)
+                e22 NVARCHAR,
+                e23 DATE);`)
 	sqlDB.Exec(t, `INSERT INTO t1 VALUES(3,10001,10000001,100000000001,-1047200.00312001,
 -1109810.113011921,true,'test数据库语法查询测试！！！@TEST3-8','test数据库语法查询测试！！！@TEST3-9',
 'test数据库语法查询测试！！！@TEST3-10','t','test数据库语法查询测试！！！@TEST3-12','中',
 'test数据库语法查询测试！！！@TEST3-14','test数据库语法查询测试！！！@TEST3-15','test数据库语法查询测试！TEST3-16xaa',
 'test数据库语法查询测试！！！@TEST3-17','test数据库语法查询测试！！！@TEST3-18','test数据库语法查询测试！！！@TEST3-21',
-'test数据库语法查询测试！！！@TEST3-22');`)
+'test数据库语法查询测试！！！@TEST3-22','2026-06-03 00:00:00+00:00');`)
 
 	sqlDB.Exec(t, `INSERT INTO t1 VALUES(4,20002,20000002,200000000002,-20873209.0220322201,
 -22012110.113011921,false,'test数据库语法查询测试！！！@TEST4-8','test数据库语法查询测试！！！@TEST4-9',
 'test数据库语法查询测试！！！@TEST4-10','t','test数据库语法查询测试！！！@TEST4-12','中',
 'test数据库语法查询测试！！！@TEST4-14','test数据库语法查询测试！！！@TEST4-15','test数据库语法查询测试！TEST4-16xaa',
 'test数据库语法查询测试！！！@TEST4-17','test数据库语法查询测试！！！@TEST4-18','test数据库语法查询测试！！！@TEST4-21',
-'test数据库语法查询测试！！！@TEST4-22');`)
+'test数据库语法查询测试！！！@TEST4-22','2026-06-02 00:00:00+00:00');`)
 
 	sqlDB.Exec(t, `EXPORT INTO sql "nodelocal://1/testSQL" FROM table t1;`)
 	content, err := ioutil.ReadFile(filepath.Join(dir, "testSQL", "n1.0.sql"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if expected, got := "INSERT INTO defaultdb.public.t1(id,e1,e2,e3,e4,e5,e6,e8,e9,e10,e11,e12,e13,e14,e15,e16,e17,e18,e21,e22) "+
+	if expected, got := "INSERT INTO defaultdb.public.t1(id,e1,e2,e3,e4,e5,e6,e8,e9,e10,e11,e12,e13,e14,e15,e16,e17,e18,e21,e22,e23) "+
 		"VALUES (3,10001,10000001,100000000001,-1.0472e+06,-1.109810113011921e+06,true,'test数据库语法查询测试！！！@TEST3-8',"+
 		"'test数据库语法查询测试！！！@TEST3-9','test数据库语法查询测试！！！@TEST3-10','t','test数据库语法查询测试！！！@TEST3-12',"+
 		"'中','test数据库语法查询测试！！！@TEST3-14','test数据库语法查询测试！！！@TEST3-15','test数据库语法查询测试！TEST3-16xaa',"+
 		"'test数据库语法查询测试！！！@TEST3-17','test数据库语法查询测试！！！@TEST3-18','test数据库语法查询测试！！！@TEST3-21',"+
-		"'test数据库语法查询测试！！！@TEST3-22');\nINSERT INTO defaultdb.public.t1(id,e1,e2,e3,e4,e5,e6,e8,e9,e10,e11,e12,e13,e14,e15,e16,e17,e18,e21,e22) "+
+		"'test数据库语法查询测试！！！@TEST3-22','2026-06-03');\nINSERT INTO defaultdb.public.t1(id,e1,e2,e3,e4,e5,e6,e8,e9,e10,e11,e12,e13,e14,e15,e16,e17,e18,e21,e22,e23) "+
 		"VALUES (4,20002,20000002,200000000002,-2.087321e+07,-2.2012110113011923e+07,false,'test数据库语法查询测试！！！@TEST4-8',"+
 		"'test数据库语法查询测试！！！@TEST4-9','test数据库语法查询测试！！！@TEST4-10','t','test数据库语法查询测试！！！@TEST4-12','中',"+
 		"'test数据库语法查询测试！！！@TEST4-14','test数据库语法查询测试！！！@TEST4-15','test数据库语法查询测试！TEST4-16xaa',"+
 		"'test数据库语法查询测试！！！@TEST4-17','test数据库语法查询测试！！！@TEST4-18','test数据库语法查询测试！！！@TEST4-21',"+
-		"'test数据库语法查询测试！！！@TEST4-22');\n", string(content); expected != got {
+		"'test数据库语法查询测试！！！@TEST4-22','2026-06-02');\n", string(content); expected != got {
 		t.Fatalf("expected %q, got %q", expected, got)
 	}
 }
