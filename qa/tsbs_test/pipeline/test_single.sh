@@ -36,6 +36,8 @@ UPDATE_THRESHOLD="${UPDATE_THRESHOLD:-"false"}"
 KWBASE_LICENSE="${KWBASE_LICENSE:-""}"
 QUERY_TYPES_PARAM="${QUERY_TYPES_PARAM:-""}"
 COMPARE_THRESHOLD="${COMPARE_THRESHOLD:-"false"}"
+QUERY_TYPES_PARAM="${QUERY_TYPES_PARAM:-""}"
+COMPARE_THRESHOLD="${COMPARE_THRESHOLD:-"false"}"
 
 echo "KWDB_CT_NAME ${KWDB_CT_NAME}"
 echo "BRANCH_NAME ${BRANCH_NAME}"
@@ -73,7 +75,7 @@ echo "*******************"
 CURR_HOST_IP=`hostname -I | awk '{print $1}'`
 
 for scale in "${TSBS_SCALE_LIST[@]}"; do
-    sh -c "docker exec -i ${CONTAINER_NAME_SINGLE} /home/inspur/src/gitee.com/kwbasedb/qa/tsbs_test/pipeline/start_in_container.sh ${CLUSTER_NODE_NUM} ${CURR_HOST_IP} 27260 8184 37360 ${ENABLE_BUFFER_POOL}"
+    sh -c "docker exec -i ${CONTAINER_NAME_SINGLE} /home/inspur/src/gitee.com/kwbasedb/qa/tsbs_test/pipeline/start_in_container.sh ${CLUSTER_NODE_NUM} ${CURR_HOST_IP} 27260 8184 37360 ${ENABLE_BUFFER_POOL} ${WAL}"
     "$(dirname -- "${BASH_SOURCE[0]}")/test_in_container.sh" \
         "${scale}" \
         "${TSBS_FORMAT}" \

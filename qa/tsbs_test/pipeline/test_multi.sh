@@ -36,6 +36,8 @@ UPDATE_THRESHOLD="${UPDATE_THRESHOLD:-"false"}"
 KWBASE_LICENSE="${KWBASE_LICENSE:-""}"
 QUERY_TYPES_PARAM="${QUERY_TYPES_PARAM:-""}"
 COMPARE_THRESHOLD="${COMPARE_THRESHOLD:-"false"}"
+QUERY_TYPES_PARAM="${QUERY_TYPES_PARAM:-""}"
+COMPARE_THRESHOLD="${COMPARE_THRESHOLD:-"false"}"
 
 echo "KWDB_CT_NAME ${KWDB_CT_NAME}"
 echo "TSBS_SCALE ${TSBS_SCALE}"
@@ -71,9 +73,9 @@ echo "*******************"
 
 CURR_HOST_IP=`hostname -I | awk '{print $1}'`
 for scale in "${TSBS_SCALE_LIST[@]}"; do
-    sh -c "docker exec -i ${CONTAINER_NAME_1} /home/inspur/src/gitee.com/kwbasedb/qa/tsbs_test/pipeline/start_in_container.sh ${CLUSTER_NODE_NUM} ${CURR_HOST_IP} 27257 8181 37357 ${ENABLE_BUFFER_POOL}"
-    sh -c "docker exec -i ${CONTAINER_NAME_2} /home/inspur/src/gitee.com/kwbasedb/qa/tsbs_test/pipeline/start_in_container.sh ${CLUSTER_NODE_NUM} ${CURR_HOST_IP} 27258 8182 37358 ${ENABLE_BUFFER_POOL}"
-    sh -c "docker exec -i ${CONTAINER_NAME_3} /home/inspur/src/gitee.com/kwbasedb/qa/tsbs_test/pipeline/start_in_container.sh ${CLUSTER_NODE_NUM} ${CURR_HOST_IP} 27259 8183 37359 ${ENABLE_BUFFER_POOL}"
+    sh -c "docker exec -i ${CONTAINER_NAME_1} /home/inspur/src/gitee.com/kwbasedb/qa/tsbs_test/pipeline/start_in_container.sh ${CLUSTER_NODE_NUM} ${CURR_HOST_IP} 27257 8181 37357 ${ENABLE_BUFFER_POOL} ${WAL}"
+    sh -c "docker exec -i ${CONTAINER_NAME_2} /home/inspur/src/gitee.com/kwbasedb/qa/tsbs_test/pipeline/start_in_container.sh ${CLUSTER_NODE_NUM} ${CURR_HOST_IP} 27258 8182 37358 ${ENABLE_BUFFER_POOL} ${WAL}"
+    sh -c "docker exec -i ${CONTAINER_NAME_3} /home/inspur/src/gitee.com/kwbasedb/qa/tsbs_test/pipeline/start_in_container.sh ${CLUSTER_NODE_NUM} ${CURR_HOST_IP} 27259 8183 37359 ${ENABLE_BUFFER_POOL} ${WAL}"
     "$(dirname -- "${BASH_SOURCE[0]}")/test_in_container.sh" \
         "${scale}" \
         "${TSBS_FORMAT}" \

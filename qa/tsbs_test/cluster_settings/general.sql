@@ -7,10 +7,9 @@ set cluster setting sql.all_push_down.enabled=true;
 set cluster setting sql.pg_encode_short_circuit.enabled = true;
 set cluster setting ts.parallel_degree=8;
 set cluster setting sql.stats.ts_automatic_collection.enabled=false;
-set cluster setting sql.stats.tag_automatic_collection.enabled=false;
 -- alter schedule scheduled_table_retention  Recurring  '0 0 1 1 ? 2099';
 
-set cluster setting server.tsinsert_direct.enabled = false;
+set cluster setting server.tsinsert_direct.enabled = true;
 set cluster setting sql.stats.tag_automatic_collection.enabled = false;
 set cluster setting ts.ack_before_application.enabled=true;
 -- set cluster setting ts.raftlog_combine_wal.enabled=true;

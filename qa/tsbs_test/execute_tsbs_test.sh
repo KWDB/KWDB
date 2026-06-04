@@ -233,6 +233,8 @@ validate_config() {
     [[ -x "$KWBIN" ]] || die "KWBIN not found or not executable: $KWBIN"
     [[ -d "$TSBS_PATH" ]] || die "TSBS_PATH not found: $TSBS_PATH"
     [[ -f "${CLUSTER_SETTINGS_DIR}/general.sql" ]] || die "general.sql not found: ${CLUSTER_SETTINGS_DIR}/general.sql"
+    [[ -f "${CLUSTER_SETTINGS_DIR}/general_single.sql" ]] || die "general_single.sql not found: ${CLUSTER_SETTINGS_DIR}/general_single.sql"
+    [[ -f "${CLUSTER_SETTINGS_DIR}/general_distributed.sql" ]] || die "general_distributed.sql not found: ${CLUSTER_SETTINGS_DIR}/general_distributed.sql"
 
     mkdir -p "${LOAD_DATA_DIR}" "${QUERY_DATA_DIR}" "${THRESHOLD_DIR}"
 
@@ -252,34 +254,19 @@ validate_config() {
 apply_sql_file() {
     local sql_file="$1"
     local optional_unknown_setting="${2:-false}"
-    local statement=""
-    local line=""
     local output=""
 
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        if [[ -z "${line//[[:space:]]/}" || "${line}" =~ ^[[:space:]]*-- ]]; then
-            continue
-        fi
+    if output="$("$KWBIN" sql --host="${ME_HOST_IP}" --port="${ME_HOST_PORT}" --insecure < "${sql_file}" 2>&1)"; then
+        return
+    fi
 
-        statement+="${line}"$'\n'
-        if [[ "$line" != *";" ]]; then
-            continue
-        fi
+    if [[ "$optional_unknown_setting" == "true" && "$output" == *"unknown cluster setting"* ]]; then
+        log "skip sql file with unsupported cluster setting: ${sql_file}"
+        return
+    fi
 
-        if output="$("$KWBIN" sql --host="${ME_HOST_IP}" --port="${ME_HOST_PORT}" --insecure --execute "${statement}" 2>&1)"; then
-            statement=""
-            continue
-        fi
-
-        if [[ "$optional_unknown_setting" == "true" && "$output" == *"unknown cluster setting"* ]]; then
-            log "skip unsupported cluster setting: ${statement//$'\n'/ }"
-            statement=""
-            continue
-        fi
-
-        echo "$output" >&2
-        die "failed to execute sql from ${sql_file}: ${statement//$'\n'/ }"
-    done < "${sql_file}"
+    echo "$output" >&2
+    die "failed to execute sql file: ${sql_file}"
 }
 
 wait_cluster_ready() {
@@ -316,7 +303,7 @@ resolve_load_ts_end() {
         100000)
             echo "2020-01-01T03:00:00Z"
             ;;
-        1000000)
+        1000000|10000000)
             echo "2020-01-01T00:03:00Z"
             ;;
         *)
@@ -365,10 +352,39 @@ resolve_query_compress() {
 
 apply_cluster_settings() {
     local scale="$1"
-    apply_sql_file "${CLUSTER_SETTINGS_DIR}/general.sql" true
+    apply_sql_file "${CLUSTER_SETTINGS_DIR}/general.sql" false
+    if [[ "$NODE_NUM" == "1" ]]; then
+        apply_sql_file "${CLUSTER_SETTINGS_DIR}/general_single.sql" false
+    else
+        apply_sql_file "${CLUSTER_SETTINGS_DIR}/general_distributed.sql" false
+    fi
     if [[ -f "${CLUSTER_SETTINGS_DIR}/scale${scale}.sql" ]]; then
         apply_sql_file "${CLUSTER_SETTINGS_DIR}/scale${scale}.sql" true
     fi
+}
+
+apply_runtime_cluster_settings() {
+    local enabled_value
+    case "${INSERT_DIRECT}" in
+        0)
+            enabled_value="false"
+            ;;
+        1)
+            enabled_value="true"
+            ;;
+        *)
+            die "invalid insert_direct value: ${INSERT_DIRECT}, expected 0 or 1"
+            ;;
+    esac
+
+    log "setting server.tsinsert_direct.enabled=${enabled_value} from insert_direct=${INSERT_DIRECT}"
+    "$KWBIN" sql --insecure --host="${ME_HOST_IP}:${ME_HOST_PORT}" \
+        --execute="set cluster setting server.tsinsert_direct.enabled = ${enabled_value};"
+
+    [[ "${PARALLEL_DEGREE}" =~ ^[0-9]+$ ]] || die "invalid parallel_degree value: ${PARALLEL_DEGREE}"
+    log "setting ts.parallel_degree=${PARALLEL_DEGREE} from parallel_degree=${PARALLEL_DEGREE}"
+    "$KWBIN" sql --insecure --host="${ME_HOST_IP}:${ME_HOST_PORT}" \
+        --execute="set cluster setting ts.parallel_degree = ${PARALLEL_DEGREE};"
 }
 
 apply_after_load_settings() {
@@ -376,6 +392,15 @@ apply_after_load_settings() {
     if [[ -f "${CLUSTER_SETTINGS_DIR}/after_load_scale${scale}.sql" ]]; then
         apply_sql_file "${CLUSTER_SETTINGS_DIR}/after_load_scale${scale}.sql" false
     fi
+}
+
+dump_cluster_settings_before_load() {
+    local output_dir="$1"
+    local cluster_settings_file="${output_dir}/cluster_settings_before_load.log"
+
+    log "dumping cluster settings before load to ${cluster_settings_file}"
+    "$KWBIN" sql --insecure --host="${ME_HOST_IP}:${ME_HOST_PORT}" \
+        --execute="show cluster settings;" > "${cluster_settings_file}"
 }
 
 get_result_base_dir() {
@@ -608,6 +633,8 @@ run_scale() {
     query_ts_end="$(resolve_query_ts_end "${scale}")"
 
     apply_cluster_settings "${scale}"
+    apply_runtime_cluster_settings
+    dump_cluster_settings_before_load "${load_result_dir}"
 
     local load_data
     load_data="$(generate_load_data "${scale}" "${load_ts_end}")"
