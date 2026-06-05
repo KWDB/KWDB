@@ -298,9 +298,10 @@ LDFLAGS := $(LDFLAGS) -L$(KWDB_LIB_DIR) -L$(ROCKSDB_DIR) -L$(SNAPPY_DIR) -Wl,--a
 
 WITH_ASAN ?=
 ifeq ($(WITH_ASAN), ON)
-WITH_ASAN_LINK = -X gitee.com/kwbasedb/kwbase/pkg/build.typ=$(BUILDTYPE) -extldflags "$(LDFLAGS) -lasan"
-export LD_PRELOAD = $(shell $(CC) -print-file-name=libasan.so)
-export ASAN_OPTIONS = alloc_dealloc_mismatch=0:halt_on_error=false:detect_leaks=false
+export CGO_CFLAGS += -fsanitize=address -fno-omit-frame-pointer -fsanitize-recover=address
+export CGO_CXXFLAGS += -fsanitize=address -fno-omit-frame-pointer -fsanitize-recover=address
+export CGO_LDFLAGS += -fsanitize=address -fno-omit-frame-pointer -fsanitize-recover=address
+WITH_ASAN_LINK = -X gitee.com/kwbasedb/kwbase/pkg/build.typ=$(BUILDTYPE) -extldflags "$(LDFLAGS) -fsanitize=address -fno-omit-frame-pointer -fsanitize-recover=address"
 else
 WITH_ASAN_LINK = -X gitee.com/kwbasedb/kwbase/pkg/build.typ=$(BUILDTYPE) -extldflags "$(LDFLAGS)"
 endif
@@ -1279,10 +1280,7 @@ pkg/sql/parser/help_messages.go: pkg/sql/parser/sql.y pkg/sql/parser/help.awk | 
 settings-doc-gen := $(KWBASE)
 
 $(SETTINGS_DOC_PAGE): $(settings-doc-gen)
-	if [ $(WITH_ASAN) = 'ON' ]; then \
-	   LD_PRELOAD=$(shell $(CC) -print-file-name=libasan.so) \
-	   ASAN_OPTIONS=alloc_dealloc_mismatch=0:halt_on_error=false:detect_leaks=false; \
-	fi
+
 #	$(settings-doc-gen) gen settings-list --format=html > $@
 
 # Produce the dependency list for all the .eg.go files, to make them
