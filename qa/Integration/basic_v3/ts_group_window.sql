@@ -533,6 +533,8 @@ INSERT INTO t_state_w.tb VALUES ('2023-10-01 11:00:00', '2023-10-01 11:00:00', 9
 SELECT COUNT(*) FROM t_state_w.tb;
 -- handle null status
 SELECT first(k_timestamp) AS first_ts, last(k_timestamp) AS last_ts, count(*) AS record_count, first(e3) AS first_e3 FROM t_state_w.tb GROUP BY t1,t8,t12,state_window(e3) ORDER BY t1;
+SELECT first(k_timestamp) AS first_ts, count(*) AS record_count, avg(e3),t1,t8,t12 FROM
+t_state_w.tb where k_timestamp='2023-10-01 10:15:00+00:00' GROUP BY t1,t4, t8,t12,time_window(k_timestamp, '60m') limit 1;
 drop database t_state_w cascade;
 
 use defaultdb;drop database if exists t_state_w cascade;

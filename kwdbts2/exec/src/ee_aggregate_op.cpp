@@ -955,7 +955,8 @@ EEIteratorErrCode OrderedAggregateOperator::Next(kwdbContext_p ctx, DataChunkPtr
           Return(EEIteratorErrCode::EE_ERROR)
         }
       }
-    } else {
+    }
+    if (is_done_) {
       if (current_data_chunk_ != nullptr && current_data_chunk_->Count() > 0) {
         output_queue_.push(std::move(current_data_chunk_));
       }

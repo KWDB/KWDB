@@ -39210,6 +39210,12 @@ INSERT 5
   2023-10-01 11:00:00+00:00 | 2023-10-01 11:01:00+00:00 |            2 |        9
   2023-10-01 11:05:00+00:00 | 2023-10-02 11:05:00+00:00 |            3 |       10
 (10 rows)
+> SELECT first(k_timestamp) AS first_ts, count(*) AS record_count, avg(e3),t1,t8,t12 FROM
+t_state_w.tb where k_timestamp='2023-10-01 10:15:00+00:00' GROUP BY t1,t4, t8,t12,time_window(k_timestamp, '60m') limit 1;
+          first_ts          | record_count | avg | t1 |   t8   |   t12
+----------------------------+--------------+-----+----+--------+----------
+  2023-10-01 10:00:00+00:00 |            1 |   3 |  2 | Tag8_2 | Tag12_2
+(1 row)
 > drop database t_state_w cascade;
 DROP DATABASE
 > use defaultdb;drop database if exists t_state_w cascade;
