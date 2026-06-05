@@ -25,3 +25,4 @@ kwdbts/server/src/mmap/avro/build/
 !kwdbts/server/src/mmap
 
 .libs-build
+**/FlameGraph/
