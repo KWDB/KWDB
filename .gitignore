@@ -26,3 +26,4 @@ kwdbts/server/src/mmap/avro/build/
 
 .libs-build
 **/FlameGraph/
+.ai-metrics/

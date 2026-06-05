@@ -1,0 +1,58 @@
+#!/usr/bin/env sh
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+AI_PR="$SCRIPT_DIR/ai-pr"
+TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/ai-pr-demo.XXXXXX")
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+export AI_PR_METRICS_DIR="$TMP_DIR/.ai-metrics"
+export AI_PR_BRANCH_NAME="feat/demo-ai-pr-kb-usage"
+export AI_PR_GOCACHE="${AI_PR_GOCACHE:-$TMP_DIR/.go-cache}"
+unset AI_PR_MODEL_NAME
+unset CODEX_MODEL
+unset OPENAI_MODEL
+unset ANTHROPIC_MODEL
+unset OLLAMA_MODEL
+unset MODEL_NAME
+unset AI_PR_TOOL_NAME
+unset CODEX_HOME
+unset CODEX_SANDBOX
+
+printf '== start ==\n'
+"$AI_PR" start --model Claude-4-Sonnet --tool Codex
+
+printf '\n== add sessions ==\n'
+"$AI_PR" session-add
+"$AI_PR" session-add --count 2
+
+printf '\n== add docs with dedupe ==\n'
+"$AI_PR" doc-add DOC-102 DOC-103
+"$AI_PR" doc-add DOC-102
+
+printf '\n== set missed ==\n'
+"$AI_PR" missed --note "WAL replay flow has no single summary doc"
+
+printf '\n== render ==\n'
+"$AI_PR" render
+
+printf '\n== sync check before body sync ==\n'
+if "$AI_PR" sync-check; then
+  printf 'unexpected clean state before sync\n'
+  exit 1
+fi
+
+BODY_FILE="$TMP_DIR/pr-body.md"
+
+printf '\n== pr ready ==\n'
+"$AI_PR" pr-ready --file "$BODY_FILE"
+cat "$BODY_FILE"
+
+printf '\n== clear missed ==\n'
+"$AI_PR" missed-clear
+"$AI_PR" render
+"$AI_PR" pr-ready --file "$BODY_FILE"
+cat "$BODY_FILE"
+
+printf '\n== validate ==\n'
+"$AI_PR" validate-body --file "$BODY_FILE"

@@ -22,6 +22,32 @@ This document defines the minimum review quality bar for agent-generated or huma
 - compatibility, rollout, or operator-facing notes when relevant
 - known risks, gaps, or follow-up items
 
+## PR Body Format
+
+Use this file as the repository-maintained source for PR body structure.
+
+Recommended body sections:
+
+- `## Summary`
+- `## Verification`
+- `## Risks`
+- `## AI / KB Usage`
+
+The `## AI / KB Usage` section is the PR-level disclosure block consumed by CI.
+Its field shape is:
+
+- `AI-Assist: yes|no`
+- `AI-Model: ...`
+- `AI-Agent-Tool: ...`
+- `AI-Session-Count: ...`
+- `KB-Docs-Used: ...`
+- `KB-Missed: yes|no`
+- `KB-Missed-Note: ...`
+
+The local helper under `.agents/skills/ai-pr-kb-usage/` reads this guide and
+can prepare or refresh the PR body section automatically before PR creation or
+update.
+
 ## Linkage Expectations
 
 - link the related issue, defect record, or requirement when one exists
