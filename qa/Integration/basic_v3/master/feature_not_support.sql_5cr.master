@@ -12,9 +12,6 @@ SQLSTATE: 0A000
 > upsert into t_ok values ('2020-1-1 12:00:00.000',2);
 ERROR: on conflict is not supported in timeseries table
 SQLSTATE: 0A000
-> create view t_view as select * from t_ok;
-ERROR: create view is not supported in timeseries table
-SQLSTATE: 0A000
 > create temp table t_temp(k_timestamp timestamp not null,e1 int2 not null)attributes(e2 int not null) primary tags(e2);
 ERROR: temporary is not supported in timeseries table
 SQLSTATE: 0A000

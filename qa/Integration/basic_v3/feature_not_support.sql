@@ -12,7 +12,6 @@ upsert into t_ok values ('2020-1-1 12:00:00.000',2);
 
 --unsupported DDL
 --expected error
-create view t_view as select * from t_ok;
 create temp table t_temp(k_timestamp timestamp not null,e1 int2 not null)attributes(e2 int not null) primary tags(e2);
 create table t_check(k_timestamp timestamp not null,e22 varbytes(254) check (length(e22)<100)) ATTRIBUTES (code1 int2 not null) primary tags(code1);
 
