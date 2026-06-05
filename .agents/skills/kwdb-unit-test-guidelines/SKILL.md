@@ -113,6 +113,20 @@ package keys
 package settings_test
 ```
 
+### License header
+
+When creating a **new** Go test file (not modifying an existing one), the file
+must start with the standard KWDB license header. Copy it from a nearby file or
+use the template below — update the year to the current year if needed:
+
+```go
+// Copyright (c) 2022-present, Shanghai Yunxi Technology Co, Ltd.
+//
+// This software (KWDB) is licensed under Mulan PSL v2.
+```
+
+The license header goes before the `package` declaration.
+
 ### Test function naming
 
 - Functions begin with `Test`: `func TestValidateAddrs(t *testing.T)`
@@ -429,6 +443,7 @@ Variables you can override:
 After writing a test, confirm each item:
 
 - [ ] File named `*_test.go` in the same directory as the tested code
+- [ ] If new file: Mulan PSL v2 license header with correct year
 - [ ] Package name correct (`package foo` for white-box, `package foo_test` for black-box)
 - [ ] Test function named `TestXxx` with `*testing.T` parameter
 - [ ] `defer leaktest.AfterTest(t)()` at the start of each test function
