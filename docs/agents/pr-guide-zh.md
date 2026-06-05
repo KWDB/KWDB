@@ -24,6 +24,30 @@
 - 兼容性、 rollout 或运维可见说明（如适用）；
 - 已知风险、缺口或后续项。
 
+## PR 正文格式
+
+本文件同时作为仓库内维护的 PR 正文结构来源。
+
+建议正文包含以下 section：
+
+- `## Summary`
+- `## Verification`
+- `## Risks`
+- `## AI / KB Usage`
+
+其中 `## AI / KB Usage` 是给 CI 消费的 PR 级披露区块，字段格式为：
+
+- `AI-Assist: yes|no`
+- `AI-Model: ...`
+- `AI-Agent-Tool: ...`
+- `AI-Session-Count: ...`
+- `KB-Docs-Used: ...`
+- `KB-Missed: yes|no`
+- `KB-Missed-Note: ...`
+
+位于 `.agents/skills/ai-pr-kb-usage/` 的本地 helper 会读取本指南，并在
+创建或更新 PR 前自动准备或刷新该区块。
+
 ## 链接期望
 
 - 有关联 issue / 缺陷 / 需求时给出链接；
