@@ -25,3 +25,5 @@ drop database "null" cascade;
 drop database "int" cascade;
 drop database "nul" cascade;
 drop database NULL cascade;
+
+select 1;
