@@ -1176,15 +1176,15 @@ KStatus TsVGroup::GetIterator(kwdbContext_p ctx, uint32_t version, vector<uint32
                               const std::shared_ptr<TsVGroup>& vgroup,
                               const std::vector<timestamp64>& ts_points,
                               bool reverse, bool sorted, TS_OSN scan_osn, const FillParams& fill_params,
-                              const TimeBucketInfo time_bucket_info) {
+                              const TimeBucketInfo time_bucket_info, timestamp64 life_time_acceptable_ts) {
   // TODO(liuwei) update to use read_lsn to fetch Metrics data optimistically.
   // if the read_lsn is 0, ignore the read lsn checking and return all data (it's no WAL support
   // case). TS_OSN read_lsn = GetOptimisticReadLsn();
   TsStorageIterator* ts_iter = nullptr;
   if (fill_params.fill_type != FillType::NONE) {
     ts_iter = new TsFillRawDataIteratorImpl(vgroup, version, entity_ids, ts_spans, block_filter, scan_cols,
-                                            ts_scan_cols, table_schema_mgr, schema, fill_params);
-
+                                            ts_scan_cols, table_schema_mgr, schema, fill_params,
+                                            life_time_acceptable_ts);
   } else if (scan_agg_types.empty()) {
     ts_iter = new TsSortedRawDataIteratorImpl(vgroup, version, entity_ids, ts_spans, block_filter, scan_cols,
                                                 ts_scan_cols, table_schema_mgr, schema, scan_osn, ASC);

@@ -328,12 +328,12 @@ KStatus TsTableImpl::GetNormalIterator(kwdbContext_p ctx, const IteratorParams &
   }
 
   // Update ts_span
+  int64_t acceptable_ts = INT64_MIN;
   auto life_time = metric_schema->GetLifeTime();
-  if (life_time.ts != 0) {
-    int64_t acceptable_ts = INT64_MIN;
+  if (life_time.ts != 0 && FillType::NONE == params.fill_params.fill_type) {
     auto now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
-    acceptable_ts = now.time_since_epoch().count() - life_time.ts;
-    updateTsSpan(acceptable_ts * life_time.precision, params.ts_spans);
+    acceptable_ts = (now.time_since_epoch().count() - life_time.ts) * life_time.precision;
+    updateTsSpan(acceptable_ts, params.ts_spans);
   }
 
   std::map<uint32_t, std::vector<EntityID>> vgroup_ids;
@@ -356,7 +356,7 @@ KStatus TsTableImpl::GetNormalIterator(kwdbContext_p ctx, const IteratorParams &
                             params.block_filter, params.scan_cols, ts_scan_cols, params.agg_extend_cols,
                             params.scan_agg_types, table_schema_mgr_, schema,
                             &ts_iter, vgroup, params.ts_points, params.reverse, params.sorted, params.scan_osn,
-                            params.fill_params, params.time_bucket_info);
+                            params.fill_params, params.time_bucket_info, acceptable_ts);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("cannot create iterator for vgroup[%u].", vgroup_iter.first);
       return s;

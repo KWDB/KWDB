@@ -770,11 +770,12 @@ TsFillRawDataIteratorImpl::TsFillRawDataIteratorImpl(const std::shared_ptr<TsVGr
                                                      std::vector<k_uint32>& ts_scan_cols,
                                                      const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                                                      const std::shared_ptr<MMapMetricsTable>& schema,
-                                                     const FillParams fill_params) :
+                                                     const FillParams fill_params, timestamp64 life_time_acceptable_ts) :
               TsSortedRawDataIteratorImpl(vgroup, version, entity_ids, ts_spans,
                                           block_filter, kw_scan_cols,
                                           ts_scan_cols, table_schema_mgr,
                                           schema, UINT64_MAX),
+              life_time_acceptable_ts_(life_time_acceptable_ts),
               fill_type_(fill_params.fill_type), varbytes_cols_(fill_params.varbytes_col_ids),
               before_range_(fill_params.before_range), after_range_(fill_params.after_range),
               const_fill_type_(fill_params.const_data_type), const_fill_value_(fill_params.const_data_value),
@@ -793,25 +794,40 @@ TsFillRawDataIteratorImpl::TsFillRawDataIteratorImpl(const std::shared_ptr<TsVGr
 
 KStatus TsFillRawDataIteratorImpl::Init(bool is_reversed) {
   if (FillType::PREVIOUS == fill_type_ || FillType::CLOSER == fill_type_ || FillType::LINEAR == fill_type_) {
-    if (before_range_ != 0) {
-      before_ts_span_ = {{fill_ts_point_ - before_range_, fill_ts_point_}};
-    } else {
-      before_ts_span_ = {{INT64_MIN, fill_ts_point_}};
+    if (life_time_acceptable_ts_ == INT64_MIN) {
+      if (before_range_ != 0) {
+        before_ts_span_ = {{fill_ts_point_ - before_range_, fill_ts_point_}};
+      } else {
+        before_ts_span_ = {{INT64_MIN, fill_ts_point_}};
+      }
+    } else if (fill_ts_point_ >= life_time_acceptable_ts_) {
+      if (before_range_ != 0) {
+        before_ts_span_ = {{max(life_time_acceptable_ts_, fill_ts_point_ - before_range_), fill_ts_point_}};
+      } else {
+        before_ts_span_ = {{life_time_acceptable_ts_, fill_ts_point_}};
+      }
     }
   }
 
   if (FillType::NEXT == fill_type_ || FillType::CLOSER == fill_type_ || FillType::LINEAR == fill_type_) {
-    if (after_range_ != 0) {
-      after_ts_span_ = {{fill_ts_point_, fill_ts_point_ + after_range_}};
-    } else {
-      after_ts_span_ = {{fill_ts_point_, INT64_MAX}};
+    if (life_time_acceptable_ts_ == INT64_MIN) {
+      if (after_range_ != 0) {
+        after_ts_span_ = {{fill_ts_point_, fill_ts_point_ + after_range_}};
+      } else {
+        after_ts_span_ = {{fill_ts_point_, INT64_MAX}};
+      }
+    } else if (!after_range_ || fill_ts_point_ + after_range_ >= life_time_acceptable_ts_) {
+      if (after_range_ != 0) {
+        after_ts_span_ = {{max(life_time_acceptable_ts_, fill_ts_point_), fill_ts_point_ + after_range_}};
+      } else {
+        after_ts_span_ = {{max(life_time_acceptable_ts_, fill_ts_point_), INT64_MAX}};
+      }
     }
   }
   db_id_ = scan_schema_->metaData()->db_id;
   table_id_ = table_schema_mgr_->GetTableId();
   attrs_ = *scan_schema_->getSchemaInfoExcludeDroppedPtr();
   vgroup_current_version_ = vgroup_->CurrentVersion();
-  ts_partitions_ = vgroup_current_version_->GetPartitions(db_id_, ts_spans_, ts_col_type_);
   filter_ = std::make_shared<TsScanFilterParams>(db_id_, table_id_, vgroup_->GetVGroupID(),
                                                  0, ts_col_type_, scan_osn_, ts_spans_);
   switchEntity();
@@ -825,11 +841,6 @@ bool TsFillRawDataIteratorImpl::IsDisordered() {
 void TsFillRawDataIteratorImpl::switchEntity() {
   if (++cur_entity_index_ < entity_ids_.size()) {
     cur_entity_id_ = entity_ids_[cur_entity_index_];
-    if (TsMemSegment::IsApproachingLimit()) {
-      for (auto &partition : ts_partitions_) {
-        partition = vgroup_->GetCurrentPartitionVersion(partition->GetPartitionIdentifier());
-      }
-    }
     fill_kw_scan_cols_.clear();
     fill_ts_scan_cols_.clear();
     fill_cols_map_.clear();

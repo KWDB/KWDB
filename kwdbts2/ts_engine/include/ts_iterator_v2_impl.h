@@ -131,7 +131,8 @@ class TsFillRawDataIteratorImpl : public TsSortedRawDataIteratorImpl {
                             std::vector<BlockFilter>& block_filter,
                             std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
                             const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
-                            const std::shared_ptr<MMapMetricsTable>& schema, const FillParams fill_params);
+                            const std::shared_ptr<MMapMetricsTable>& schema, const FillParams fill_params,
+                            timestamp64 life_time_acceptable_ts);
   ~TsFillRawDataIteratorImpl() {}
 
   KStatus Init(bool is_reversed) override;
@@ -155,6 +156,7 @@ class TsFillRawDataIteratorImpl : public TsSortedRawDataIteratorImpl {
 
   uint32_t cur_entity_id_;
   timestamp64 fill_ts_point_;
+  timestamp64 life_time_acceptable_ts_;
   std::vector<KwTsSpan> before_ts_span_;
   std::vector<KwTsSpan> after_ts_span_;
   std::vector<k_uint32> fill_kw_scan_cols_;
