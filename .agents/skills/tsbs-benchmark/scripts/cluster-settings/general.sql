@@ -1,0 +1,17 @@
+set cluster setting sql.distsql.temp_storage.workmem='4096Mib';
+set cluster setting sql.all_push_down.enabled=true;
+set cluster setting sql.pg_encode_short_circuit.enabled = true;
+set cluster setting ts.parallel_degree=8;
+set cluster setting sql.stats.ts_automatic_collection.enabled=false;
+set cluster setting server.tsinsert_direct.enabled = true;
+SET CLUSTER SETTING sql.stats.tag_automatic_collection.enabled = false;
+set cluster setting ts.ack_before_application.enabled=true;
+set cluster setting sql.defaults.vectorize='auto';
+set cluster setting ts.raft_log.sync_period='0s';
+set cluster setting ts.last_row_optimization.enabled=true;
+set cluster setting ts.rows_per_block.min_limit=1024;
+set cluster setting ts.reserved_last_segment.max_limit=2;
+set cluster setting ts.mem_segment_size.max_limit='67108864';
+set cluster setting ts.compress.stage=1;
+set cluster setting ts.force_sync_file.enabled=false;
+set cluster setting ts.compress.last_segment.enabled=false;

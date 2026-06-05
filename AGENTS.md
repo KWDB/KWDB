@@ -122,6 +122,13 @@ If the work is intended for review or merge, also follow `docs/agents/pr-guide.m
 - error handling guidance: `docs/agents/errors.md`
 - resource index: `docs/agents/resource-index.md`
 - repository-local skills index: `.agents/skills/README.md`
+- Current available skills (listed in .agents/skills) :
+    - `kwdb-perf-investigation/`: TSBS-based performance investigation — routes user intent and coordinates tsbs-benchmark + perf-event-profiling pipelines for hotspot analysis
+    - `perf-event-profiling/`: Linux perf profiling for running server processes — capture and analyze perf.data for hot functions, metrics (IPC, cache misses), and source-level hotspot drilldown
+    - `tsbs-benchmark/`: KWDB local TSBS benchmark workflows — full-pipeline write+query benchmarks with threshold comparison
+    - `gitee-pr-review/`: Pull Request review on Gitee kwdb/kwdb repository — batch PR status and AI-generated code review reports
+    - `kwdb-document-writing/`: Functional specification and design document writing for KWDB database features
+- Go / C++ coding style: `docs/agents/coding-style-go-cpp.md`
 
 ## 9. Output Contract
 
