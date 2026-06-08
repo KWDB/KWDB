@@ -4,6 +4,8 @@
 
 本文约定 agent 与贡献者的默认验证工作流。
 
+质量门控与发布标准见 [ci-release-guide-zh.md](ci-release-guide-zh.md)。
+
 ## 原则
 
 - 先用最小但可靠的检查证明具体主张。
@@ -12,6 +14,21 @@
 - 报告成功前应阅读真实输出。
 
 ## 常用入口（仓库根执行）
+
+### 构建命令
+
+- `make` 或 `make all` – 构建整个项目（`build` 的别名）
+- `make build` – 通过 CMake 构建；可配置：
+  - `BUILD_TYPE=Debug`（默认）或 `Release`
+  - `WITH_ASAN=ON` 启用地址消毒器
+  - `WITH_TESTS=ON` 构建测试（用于 `kwdbts2-test`）
+  - `PROTOBUF_DIR=...` 指定 protobuf 路径
+- `make install` – 将产物安装到 `install/` 目录
+- `make clean` – 清理所有构建和测试文件
+
+详细构建依赖与环境配置见根目录 [README.md](../../README.md)。
+
+### 验证命令
 
 - `make cpplint`
 - `make kwdbts2-test`

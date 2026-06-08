@@ -6,6 +6,8 @@ if any, are maintained outside this tree depending on infrastructure.
 Treat this note as factual mapping between code changes and the repository's own
 verification entrypoints (`Makefile`/scripts).
 
+For concrete build and verification commands, see [testing-flow.md](testing-flow.md).
+
 ## Verification Surfaces
 
 - `Makefile` for build and test entrypoints

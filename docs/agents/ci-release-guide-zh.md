@@ -4,6 +4,8 @@
 
 仓库提供本地构建与测试入口；若在托管 CI 上使用 YAML/Jenkinsfile 等，一般由基础设施在源码树之外维护。
 
+具体构建与验证命令见 [testing-flow-zh.md](testing-flow-zh.md)。
+
 ## 验证入口
 
 与英文原版 **Verification Surfaces** 一致：`Makefile`、`qa/` 下相关脚本、`qa/perf_test/*`。

@@ -2,6 +2,8 @@
 
 This document defines the default verification workflow for agents and contributors.
 
+For quality gates and release criteria, see [ci-release-guide.md](ci-release-guide.md).
+
 ## Principles
 
 - Prove the specific claim with the smallest reliable check first.
@@ -9,9 +11,24 @@ This document defines the default verification workflow for agents and contribut
 - Never replace a failing regression with a weaker assertion.
 - Read the actual output before reporting success.
 
-## Common Entry Points
+## Common Build and Verification Commands
 
-From the repository root, the main verification commands are:
+From the repository root, the main build and verification commands are:
+
+### Build Commands
+
+- `make` or `make all` – build the entire project (alias for `build`)
+- `make build` – build via CMake; configurable with:
+  - `BUILD_TYPE=Debug` (default) or `Release`
+  - `WITH_ASAN=ON` for address sanitizer
+  - `WITH_TESTS=ON` to build tests (for `kwdbts2-test`)
+  - `PROTOBUF_DIR=...` to specify protobuf path
+- `make install` – install artifacts to `install/` directory
+- `make clean` – clean all build and test files
+
+For detailed build prerequisites and environment setup, see the root [README.md](../../README.md).
+
+### Verification Commands
 
 - `make cpplint`
 - `make kwdbts2-test`
