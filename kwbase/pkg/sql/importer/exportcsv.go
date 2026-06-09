@@ -350,7 +350,9 @@ func (sp *csvWriter) Run(ctx context.Context) execinfra.RowStats {
 								sp.spec.ColumnTypes[i] == types.TimestampFamily ||
 								sp.spec.ColumnTypes[i] == types.TimeFamily ||
 								sp.spec.ColumnTypes[i] == types.TimeTZFamily ||
-								sp.spec.ColumnTypes[i] == types.DateFamily {
+								sp.spec.ColumnTypes[i] == types.DateFamily ||
+								sp.spec.ColumnTypes[i] == types.UuidFamily ||
+								sp.spec.ColumnTypes[i] == types.INetFamily {
 								csvRow[i] = fieldSQLResolve(f.String())
 							} else {
 								csvRow[i] = f.String()
