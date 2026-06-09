@@ -3603,7 +3603,8 @@ type EvalContext struct {
 	IsProcedure bool
 
 	// IsTrigger is true when the the SQL has trigger.
-	IsTrigger bool
+	IsTrigger        bool
+	IsFloat32Compare bool
 }
 
 // GroupWindow record group_window information.
@@ -4906,6 +4907,11 @@ func (expr *ComparisonExpr) Eval(ctx *EvalContext) (Datum, error) {
 	_, newLeft, newRight, _, not := foldComparisonExpr(op, left, right)
 	if !expr.fn.NullableArgs && (newLeft == DNull || newRight == DNull) {
 		return DNull, nil
+	}
+	ctx.IsFloat32Compare = false
+	leftType := expr.Left.(TypedExpr).ResolvedType()
+	if leftType.Oid() == oid.T_float4 {
+		ctx.IsFloat32Compare = true
 	}
 	d, err := expr.fn.Fn(ctx, newLeft.(Datum), newRight.(Datum))
 	if err != nil {

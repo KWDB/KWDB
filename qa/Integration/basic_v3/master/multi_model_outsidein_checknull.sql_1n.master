@@ -546,12 +546,13 @@ ORDER BY s.work_area_sn;
              └── hash-join              |                       |
                   │                     | type                  | inner
                   │                     | equality              | (column11) = (standard_val)
-                  ├── render            |                       |
-                  │    │                | column11              | second_val + 5.0
-                  │    │                | value                 | value
-                  │    │                | state                 | state
-                  │    │                | second_val            | second_val
-                  │    └── synchronizer |                       |
+                  ├── synchronizer      |                       |
+                  │    └── render       |                       |
+                  │         │           | engine type           | time series
+                  │         │           | column11              | second_val + 5.0
+                  │         │           | value                 | value
+                  │         │           | state                 | state
+                  │         │           | second_val            | second_val
                   │         └── ts scan |                       |
                   │                     | ts-table              | firegases
                   │                     | access mode           | tableTableMeta
@@ -561,7 +562,7 @@ ORDER BY s.work_area_sn;
                                         | filter                | expected_state IS NOT NULL
                                         |                       |
   warning messages                      | multi-model fall back | cast on time series column is not supported in multi-model
-(38 rows)
+(39 rows)
 > SELECT s.work_area_sn,
       AVG(f."value"),
       AVG(s.standard_val),
@@ -1845,12 +1846,13 @@ ORDER BY s.work_area_sn;
              └── hash-join              |                       |
                   │                     | type                  | inner
                   │                     | equality              | (column11) = (standard_val)
-                  ├── render            |                       |
-                  │    │                | column11              | second_val + 5.0
-                  │    │                | value                 | value
-                  │    │                | state                 | state
-                  │    │                | second_val            | second_val
-                  │    └── synchronizer |                       |
+                  ├── synchronizer      |                       |
+                  │    └── render       |                       |
+                  │         │           | engine type           | time series
+                  │         │           | column11              | second_val + 5.0
+                  │         │           | value                 | value
+                  │         │           | state                 | state
+                  │         │           | second_val            | second_val
                   │         └── ts scan |                       |
                   │                     | ts-table              | firegases
                   │                     | access mode           | tableTableMeta
@@ -1860,7 +1862,7 @@ ORDER BY s.work_area_sn;
                                         | filter                | expected_state IS NOT NULL
                                         |                       |
   warning messages                      | multi-model fall back | cast on time series column is not supported in multi-model
-(38 rows)
+(39 rows)
 > SELECT s.work_area_sn,
       AVG(f."value"),
       AVG(s.standard_val),
@@ -3228,12 +3230,13 @@ ORDER BY s.work_area_sn;
              └── hash-join              |                       |
                   │                     | type                  | inner
                   │                     | equality              | (column11) = (standard_val)
-                  ├── render            |                       |
-                  │    │                | column11              | second_val + 5.0
-                  │    │                | value                 | value
-                  │    │                | state                 | state
-                  │    │                | second_val            | second_val
-                  │    └── synchronizer |                       |
+                  ├── synchronizer      |                       |
+                  │    └── render       |                       |
+                  │         │           | engine type           | time series
+                  │         │           | column11              | second_val + 5.0
+                  │         │           | value                 | value
+                  │         │           | state                 | state
+                  │         │           | second_val            | second_val
                   │         └── ts scan |                       |
                   │                     | ts-table              | firegases
                   │                     | access mode           | tableTableMeta
@@ -3243,7 +3246,7 @@ ORDER BY s.work_area_sn;
                                         | filter                | expected_state IS NOT NULL
                                         |                       |
   warning messages                      | multi-model fall back | cast on time series column is not supported in multi-model
-(38 rows)
+(39 rows)
 > SELECT s.work_area_sn,
       AVG(f."value"),
       AVG(s.standard_val),

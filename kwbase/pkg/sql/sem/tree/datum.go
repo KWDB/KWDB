@@ -84,6 +84,12 @@ var (
 	DTimeMaxTimeRegex = regexp.MustCompile(`^([0-9-]*(\s|T))?\s*24:00(:00(.0+)?)?\s*$`)
 )
 
+// FLTEpsilon represents the machine epsilon for float4 (single-precision float)
+const FLTEpsilon = 1.19209290e-7
+
+// FLTComparTolFactor is the comparison tolerance factor for float comparison
+const FLTComparTolFactor = 4
+
 // Datum represents a SQL value.
 type Datum interface {
 	TypedExpr
@@ -831,6 +837,22 @@ func (d *DFloat) Compare(ctx *EvalContext, other Datum) int {
 		return -t.Compare(ctx, d)
 	default:
 		panic(makeUnsupportedComparisonMessage(d, other))
+	}
+	if ctx.IsFloat32Compare {
+		if math.IsNaN(float64(*d)) {
+			if math.IsNaN(float64(v)) {
+				return 0
+			}
+			return -1
+		}
+		diff := float64(*d - v)
+		if diff > FLTComparTolFactor*FLTEpsilon {
+			return 1
+		}
+		if diff < -FLTComparTolFactor*FLTEpsilon {
+			return -1
+		}
+		return 0
 	}
 	if *d < v {
 		return -1

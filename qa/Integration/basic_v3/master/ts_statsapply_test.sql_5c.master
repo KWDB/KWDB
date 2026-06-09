@@ -130,43 +130,46 @@ CREATE TABLE
                 order by
                     l_returnflag,
                     l_linestatus limit 1;
-                  tree                  |                         field                          |                         description
-----------------------------------------+--------------------------------------------------------+--------------------------------------------------------------
-                                        | distributed                                            | false
-                                        | vectorized                                             | false
-  explain plan                          |                                                        |
-   └── limit                            |                                                        |
-        │                               | count                                                  | 1
-        └── group                       |                                                        |
-             │                          | aggregate 0                                            | l_returnflag
-             │                          | aggregate 1                                            | l_linestatus
-             │                          | aggregate 2                                            | sum(l_quantity)
-             │                          | aggregate 3                                            | sum(l_extendedprice)
-             │                          | aggregate 4                                            | sum(l_extendedprice * (1.0 - l_discount))
-             │                          | aggregate 5                                            | sum((l_extendedprice * (1.0 - l_discount)) * (1.0 + l_tax))
-             │                          | aggregate 6                                            | avg(l_quantity)
-             │                          | aggregate 7                                            | avg(l_extendedprice)
-             │                          | aggregate 8                                            | avg(l_discount)
-             │                          | aggregate 9                                            | count_rows()
-             │                          | group by                                               | l_returnflag, l_linestatus
-             │                          | ordered                                                | +l_returnflag,+l_linestatus
-             └── sort                   |                                                        |
-                  │                     | order                                                  | +l_returnflag,+l_linestatus
-                  └── render            |                                                        |
-                       │                | l_extendedprice * (1.0 - l_discount)                   | l_extendedprice * (1.0 - l_discount)
-                       │                | (l_extendedprice * (1.0 - l_discount)) * (1.0 + l_tax) | (l_extendedprice * (1.0 - l_discount)) * (l_tax + 1.0)
-                       │                | l_quantity                                             | l_quantity
-                       │                | l_extendedprice                                        | l_extendedprice
-                       │                | l_discount                                             | l_discount
-                       │                | l_returnflag                                           | l_returnflag
-                       │                | l_linestatus                                           | l_linestatus
-                       └── synchronizer |                                                        |
-                            └── ts scan |                                                        |
-                                        | ts-table                                               | lineitem
-                                        | access mode                                            | metaTable
-                                        | filter                                                 | l_shipdate <= '1998-09-13 00:00:00+00:00'
-                                        | block filter[l_shipdate]                               | [ - 905644800000]
-(34 rows)
+                tree               |                         field                          |                         description
+-----------------------------------+--------------------------------------------------------+--------------------------------------------------------------
+                                   | distributed                                            | false
+                                   | vectorized                                             | false
+  explain plan                     |                                                        |
+   └── limit                       |                                                        |
+        │                          | engine type                                            | time series
+        │                          | count                                                  | 1
+        └── sort                   |                                                        |
+             │                     | engine type                                            | time series
+             │                     | order                                                  | +l_returnflag,+l_linestatus
+             └── group             |                                                        |
+                  │                | engine type                                            | time series
+                  │                | aggregate 0                                            | l_returnflag
+                  │                | aggregate 1                                            | l_linestatus
+                  │                | aggregate 2                                            | sum(l_quantity)
+                  │                | aggregate 3                                            | sum(l_extendedprice)
+                  │                | aggregate 4                                            | sum(l_extendedprice * (1.0 - l_discount))
+                  │                | aggregate 5                                            | sum((l_extendedprice * (1.0 - l_discount)) * (1.0 + l_tax))
+                  │                | aggregate 6                                            | avg(l_quantity)
+                  │                | aggregate 7                                            | avg(l_extendedprice)
+                  │                | aggregate 8                                            | avg(l_discount)
+                  │                | aggregate 9                                            | count_rows()
+                  │                | group by                                               | l_returnflag, l_linestatus
+                  │                | addSynchronizer                                        | true
+                  └── render       |                                                        |
+                       │           | engine type                                            | time series
+                       │           | l_extendedprice * (1.0 - l_discount)                   | l_extendedprice * (1.0 - l_discount)
+                       │           | (l_extendedprice * (1.0 - l_discount)) * (1.0 + l_tax) | (l_extendedprice * (1.0 - l_discount)) * (l_tax + 1.0)
+                       │           | l_quantity                                             | l_quantity
+                       │           | l_extendedprice                                        | l_extendedprice
+                       │           | l_discount                                             | l_discount
+                       │           | l_returnflag                                           | l_returnflag
+                       │           | l_linestatus                                           | l_linestatus
+                       └── ts scan |                                                        |
+                                   | ts-table                                               | lineitem
+                                   | access mode                                            | metaTable
+                                   | filter                                                 | l_shipdate <= '1998-09-13 00:00:00+00:00'
+                                   | block filter[l_shipdate]                               | [ - 905644800000]
+(37 rows)
 > explain select
             s_acctbal,
             s_name,
@@ -538,24 +541,26 @@ CREATE TABLE
           and l_shipdate < date '1994-01-01' + interval '1' year
           and l_discount between 0.04 - 0.01 and 0.04 + 0.01
           and l_quantity < 24 limit 1;
-           tree          |            field             |                                                                                description
--------------------------+------------------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-                         | distributed                  | true
-                         | vectorized                   | false
-  group                  |                              |
-   │                     | aggregate 0                  | sum(l_extendedprice * l_discount)
-   │                     | scalar                       |
-   └── render            |                              |
-        │                | l_extendedprice * l_discount | l_extendedprice * l_discount
-        └── synchronizer |                              |
-             └── ts scan |                              |
-                         | ts-table                     | lineitem
-                         | access mode                  | metaTable
-                         | filter                       | (((l_discount >= 0.03) AND (l_discount <= 0.05)) AND ((l_shipdate >= '1994-01-01 00:00:00+00:00') AND (l_shipdate < '1995-01-01 00:00:00+00:00'))) AND (l_quantity < 24.0)
-                         | block filter[l_discount]     | [0.03 - 0.05]
-                         | block filter[l_shipdate]     | [757382400000 - 788918400000]
-                         | block filter[l_quantity]     | [ - 23.999999999999996]
-(15 rows)
+        tree        |            field             |                                                                                description
+--------------------+------------------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                    | distributed                  | true
+                    | vectorized                   | false
+  group             |                              |
+   │                | engine type                  | time series
+   │                | aggregate 0                  | sum(l_extendedprice * l_discount)
+   │                | scalar                       |
+   │                | addSynchronizer              | true
+   └── render       |                              |
+        │           | engine type                  | time series
+        │           | l_extendedprice * l_discount | l_extendedprice * l_discount
+        └── ts scan |                              |
+                    | ts-table                     | lineitem
+                    | access mode                  | metaTable
+                    | filter                       | (((l_discount >= 0.03) AND (l_discount <= 0.05)) AND ((l_shipdate >= '1994-01-01 00:00:00+00:00') AND (l_shipdate < '1995-01-01 00:00:00+00:00'))) AND (l_quantity < 24.0)
+                    | block filter[l_discount]     | [0.03 - 0.05]
+                    | block filter[l_shipdate]     | [757382400000 - 788918400000]
+                    | block filter[l_quantity]     | [ - 23.999999999999996]
+(17 rows)
 > explain select
             supp_nation,
             cust_nation,
@@ -2084,42 +2089,46 @@ CREATE STATISTICS
                 order by
                     l_returnflag,
                     l_linestatus limit 1;
-                  tree                  |                         field                          |                         description
-----------------------------------------+--------------------------------------------------------+--------------------------------------------------------------
-                                        | distributed                                            | false
-                                        | vectorized                                             | false
-  explain plan                          |                                                        |
-   └── limit                            |                                                        |
-        │                               | count                                                  | 1
-        └── sort                        |                                                        |
-             │                          | order                                                  | +l_returnflag,+l_linestatus
-             └── group                  |                                                        |
-                  │                     | aggregate 0                                            | l_returnflag
-                  │                     | aggregate 1                                            | l_linestatus
-                  │                     | aggregate 2                                            | sum(l_quantity)
-                  │                     | aggregate 3                                            | sum(l_extendedprice)
-                  │                     | aggregate 4                                            | sum(l_extendedprice * (1.0 - l_discount))
-                  │                     | aggregate 5                                            | sum((l_extendedprice * (1.0 - l_discount)) * (1.0 + l_tax))
-                  │                     | aggregate 6                                            | avg(l_quantity)
-                  │                     | aggregate 7                                            | avg(l_extendedprice)
-                  │                     | aggregate 8                                            | avg(l_discount)
-                  │                     | aggregate 9                                            | count_rows()
-                  │                     | group by                                               | l_returnflag, l_linestatus
-                  └── render            |                                                        |
-                       │                | l_extendedprice * (1.0 - l_discount)                   | l_extendedprice * (1.0 - l_discount)
-                       │                | (l_extendedprice * (1.0 - l_discount)) * (1.0 + l_tax) | (l_extendedprice * (1.0 - l_discount)) * (l_tax + 1.0)
-                       │                | l_quantity                                             | l_quantity
-                       │                | l_extendedprice                                        | l_extendedprice
-                       │                | l_discount                                             | l_discount
-                       │                | l_returnflag                                           | l_returnflag
-                       │                | l_linestatus                                           | l_linestatus
-                       └── synchronizer |                                                        |
-                            └── ts scan |                                                        |
-                                        | ts-table                                               | lineitem
-                                        | access mode                                            | metaTable
-                                        | filter                                                 | l_shipdate <= '1998-09-13 00:00:00+00:00'
-                                        | block filter[l_shipdate]                               | [ - 905644800000]
-(33 rows)
+                tree               |                         field                          |                         description
+-----------------------------------+--------------------------------------------------------+--------------------------------------------------------------
+                                   | distributed                                            | false
+                                   | vectorized                                             | false
+  explain plan                     |                                                        |
+   └── limit                       |                                                        |
+        │                          | engine type                                            | time series
+        │                          | count                                                  | 1
+        └── sort                   |                                                        |
+             │                     | engine type                                            | time series
+             │                     | order                                                  | +l_returnflag,+l_linestatus
+             └── group             |                                                        |
+                  │                | engine type                                            | time series
+                  │                | aggregate 0                                            | l_returnflag
+                  │                | aggregate 1                                            | l_linestatus
+                  │                | aggregate 2                                            | sum(l_quantity)
+                  │                | aggregate 3                                            | sum(l_extendedprice)
+                  │                | aggregate 4                                            | sum(l_extendedprice * (1.0 - l_discount))
+                  │                | aggregate 5                                            | sum((l_extendedprice * (1.0 - l_discount)) * (1.0 + l_tax))
+                  │                | aggregate 6                                            | avg(l_quantity)
+                  │                | aggregate 7                                            | avg(l_extendedprice)
+                  │                | aggregate 8                                            | avg(l_discount)
+                  │                | aggregate 9                                            | count_rows()
+                  │                | group by                                               | l_returnflag, l_linestatus
+                  │                | addSynchronizer                                        | true
+                  └── render       |                                                        |
+                       │           | engine type                                            | time series
+                       │           | l_extendedprice * (1.0 - l_discount)                   | l_extendedprice * (1.0 - l_discount)
+                       │           | (l_extendedprice * (1.0 - l_discount)) * (1.0 + l_tax) | (l_extendedprice * (1.0 - l_discount)) * (l_tax + 1.0)
+                       │           | l_quantity                                             | l_quantity
+                       │           | l_extendedprice                                        | l_extendedprice
+                       │           | l_discount                                             | l_discount
+                       │           | l_returnflag                                           | l_returnflag
+                       │           | l_linestatus                                           | l_linestatus
+                       └── ts scan |                                                        |
+                                   | ts-table                                               | lineitem
+                                   | access mode                                            | metaTable
+                                   | filter                                                 | l_shipdate <= '1998-09-13 00:00:00+00:00'
+                                   | block filter[l_shipdate]                               | [ - 905644800000]
+(37 rows)
 > explain select
             s_acctbal,
             s_name,
@@ -2492,24 +2501,26 @@ CREATE STATISTICS
           and l_shipdate < date '1994-01-01' + interval '1' year
           and l_discount between 0.04 - 0.01 and 0.04 + 0.01
           and l_quantity < 24 limit 1;
-           tree          |            field             |                                                                                description
--------------------------+------------------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-                         | distributed                  | true
-                         | vectorized                   | false
-  group                  |                              |
-   │                     | aggregate 0                  | sum(l_extendedprice * l_discount)
-   │                     | scalar                       |
-   └── render            |                              |
-        │                | l_extendedprice * l_discount | l_extendedprice * l_discount
-        └── synchronizer |                              |
-             └── ts scan |                              |
-                         | ts-table                     | lineitem
-                         | access mode                  | metaTable
-                         | filter                       | (((l_shipdate >= '1994-01-01 00:00:00+00:00') AND (l_shipdate < '1995-01-01 00:00:00+00:00')) AND ((l_discount >= 0.03) AND (l_discount <= 0.05))) AND (l_quantity < 24.0)
-                         | block filter[l_shipdate]     | [757382400000 - 788918400000]
-                         | block filter[l_discount]     | [0.03 - 0.05]
-                         | block filter[l_quantity]     | [ - 23.999999999999996]
-(15 rows)
+        tree        |            field             |                                                                                description
+--------------------+------------------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                    | distributed                  | true
+                    | vectorized                   | false
+  group             |                              |
+   │                | engine type                  | time series
+   │                | aggregate 0                  | sum(l_extendedprice * l_discount)
+   │                | scalar                       |
+   │                | addSynchronizer              | true
+   └── render       |                              |
+        │           | engine type                  | time series
+        │           | l_extendedprice * l_discount | l_extendedprice * l_discount
+        └── ts scan |                              |
+                    | ts-table                     | lineitem
+                    | access mode                  | metaTable
+                    | filter                       | (((l_shipdate >= '1994-01-01 00:00:00+00:00') AND (l_shipdate < '1995-01-01 00:00:00+00:00')) AND ((l_discount >= 0.03) AND (l_discount <= 0.05))) AND (l_quantity < 24.0)
+                    | block filter[l_shipdate]     | [757382400000 - 788918400000]
+                    | block filter[l_discount]     | [0.03 - 0.05]
+                    | block filter[l_quantity]     | [ - 23.999999999999996]
+(17 rows)
 > explain select
             supp_nation,
             cust_nation,

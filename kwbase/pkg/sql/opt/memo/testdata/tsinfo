@@ -80,19 +80,20 @@ select
  │    │    ├── 11: 10,20,30,
  │    │    └── 12: 12,100,101,
  │    └── ts engine
- └── filters
-      ├── eq
-      │    ├── variable: e1:3
-      │    └── const: 20
-      ├── gt
-      │    ├── variable: k_timestamp:1
-      │    └── const: '2025-12-19 10:00:02.2+00:00'
-      └── eq
-           ├── function: abs
-           │    └── minus
-           │         ├── variable: e4:6
-           │         └── const: 20
-           └── const: 10.1
+ ├── filters
+ │    ├── eq
+ │    │    ├── variable: e1:3
+ │    │    └── const: 20
+ │    ├── gt
+ │    │    ├── variable: k_timestamp:1
+ │    │    └── const: '2025-12-19 10:00:02.2+00:00'
+ │    └── eq
+ │         ├── function: abs
+ │         │    └── minus
+ │         │         ├── variable: e4:6
+ │         │         └── const: 20
+ │         └── const: 10.1
+ └── ts engine
 
 tsinfo
 SELECT code4 FROM ts1 WHERE k_timestamp > '2026-01-01 00:00:00' and code1 = 10 and code2 = 10 and code3 = 8 group by code1, code2, code4
@@ -404,19 +405,21 @@ scalar-group-by
  │    ├── t-s-scan ts1
  │    │    ├── columns: k_timestamp:1 e1:3 e2:4 e4:6
  │    │    └── ts engine
- │    └── filters
- │         ├── gt
- │         │    ├── variable: k_timestamp:1
- │         │    └── const: '2026-01-01 00:00:00+00:00'
- │         └── eq
- │              ├── function: abs
- │              │    └── minus
- │              │         ├── variable: e4:6
- │              │         └── variable: e1:3
- │              └── const: 10.1
- └── aggregations
-      └── sum [as=sum:16]
-           └── variable: e2:4
+ │    ├── filters
+ │    │    ├── gt
+ │    │    │    ├── variable: k_timestamp:1
+ │    │    │    └── const: '2026-01-01 00:00:00+00:00'
+ │    │    └── eq
+ │    │         ├── function: abs
+ │    │         │    └── minus
+ │    │         │         ├── variable: e4:6
+ │    │         │         └── variable: e1:3
+ │    │         └── const: 10.1
+ │    └── ts engine
+ ├── aggregations
+ │    └── sum [as=sum:16]
+ │         └── variable: e2:4
+ └── ts engine
 
 tsinfo
 SELECT sum(e2) FROM ts1 WHERE k_timestamp > '2026-01-01 00:00:00' group by code1
@@ -448,28 +451,31 @@ SELECT sum(e2) FROM ts1 WHERE k_timestamp > '2026-01-01 00:00:00' and abs(e4 - e
 ----
 project
  ├── columns: sum:16
- └── group-by
-      ├── columns: code1:11 sum:16
-      ├── grouping columns: code1:11
-      ├── OptFlags: 
-      ├── select
-      │    ├── columns: k_timestamp:1 e1:3 e2:4 e4:6 code1:11
-      │    ├── t-s-scan ts1
-      │    │    ├── columns: k_timestamp:1 e1:3 e2:4 e4:6 code1:11
-      │    │    └── ts engine
-      │    └── filters
-      │         ├── gt
-      │         │    ├── variable: k_timestamp:1
-      │         │    └── const: '2026-01-01 00:00:00+00:00'
-      │         └── eq
-      │              ├── function: abs
-      │              │    └── minus
-      │              │         ├── variable: e4:6
-      │              │         └── variable: e1:3
-      │              └── const: 10.1
-      └── aggregations
-           └── sum [as=sum:16]
-                └── variable: e2:4
+ ├── group-by
+ │    ├── columns: code1:11 sum:16
+ │    ├── grouping columns: code1:11
+ │    ├── OptFlags: 
+ │    ├── select
+ │    │    ├── columns: k_timestamp:1 e1:3 e2:4 e4:6 code1:11
+ │    │    ├── t-s-scan ts1
+ │    │    │    ├── columns: k_timestamp:1 e1:3 e2:4 e4:6 code1:11
+ │    │    │    └── ts engine
+ │    │    ├── filters
+ │    │    │    ├── gt
+ │    │    │    │    ├── variable: k_timestamp:1
+ │    │    │    │    └── const: '2026-01-01 00:00:00+00:00'
+ │    │    │    └── eq
+ │    │    │         ├── function: abs
+ │    │    │         │    └── minus
+ │    │    │         │         ├── variable: e4:6
+ │    │    │         │         └── variable: e1:3
+ │    │    │         └── const: 10.1
+ │    │    └── ts engine
+ │    ├── aggregations
+ │    │    └── sum [as=sum:16]
+ │    │         └── variable: e2:4
+ │    └── ts engine
+ └── ts engine
 
 tsinfo
 SELECT sum(e2) FROM ts1 WHERE k_timestamp > '2026-01-01 00:00:00' group by code1 order by code1

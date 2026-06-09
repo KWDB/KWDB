@@ -608,12 +608,13 @@ ORDER BY s.work_area_sn;
              └── hash-join              |              |
                   │                     | type         | inner
                   │                     | equality     | (column11) = (standard_val)
-                  ├── render            |              |
-                  │    │                | column11     | second_val + 5.0
-                  │    │                | value        | value
-                  │    │                | state        | state
-                  │    │                | second_val   | second_val
-                  │    └── synchronizer |              |
+                  ├── synchronizer      |              |
+                  │    └── render       |              |
+                  │         │           | engine type  | time series
+                  │         │           | column11     | second_val + 5.0
+                  │         │           | value        | value
+                  │         │           | state        | state
+                  │         │           | second_val   | second_val
                   │         └── ts scan |              |
                   │                     | ts-table     | firegases
                   │                     | access mode  | tableTableMeta
@@ -621,7 +622,7 @@ ORDER BY s.work_area_sn;
                                         | table        | station_info@primary
                                         | spans        | FULL SCAN
                                         | filter       | expected_state IS NOT NULL
-(36 rows)
+(37 rows)
 > SELECT s.work_area_sn,
       AVG(f."value"),
       AVG(s.standard_val),
@@ -2131,12 +2132,13 @@ ORDER BY s.work_area_sn;
              └── hash-join              |              |
                   │                     | type         | inner
                   │                     | equality     | (column11) = (standard_val)
-                  ├── render            |              |
-                  │    │                | column11     | second_val + 5.0
-                  │    │                | value        | value
-                  │    │                | state        | state
-                  │    │                | second_val   | second_val
-                  │    └── synchronizer |              |
+                  ├── synchronizer      |              |
+                  │    └── render       |              |
+                  │         │           | engine type  | time series
+                  │         │           | column11     | second_val + 5.0
+                  │         │           | value        | value
+                  │         │           | state        | state
+                  │         │           | second_val   | second_val
                   │         └── ts scan |              |
                   │                     | ts-table     | firegases
                   │                     | access mode  | tableTableMeta
@@ -2144,7 +2146,7 @@ ORDER BY s.work_area_sn;
                                         | table        | station_info@primary
                                         | spans        | FULL SCAN
                                         | filter       | expected_state IS NOT NULL
-(36 rows)
+(37 rows)
 > SELECT s.work_area_sn,
       AVG(f."value"),
       AVG(s.standard_val),
@@ -3793,12 +3795,13 @@ ORDER BY s.work_area_sn;
              └── hash-join              |              |
                   │                     | type         | inner
                   │                     | equality     | (column11) = (standard_val)
-                  ├── render            |              |
-                  │    │                | column11     | second_val + 5.0
-                  │    │                | value        | value
-                  │    │                | state        | state
-                  │    │                | second_val   | second_val
-                  │    └── synchronizer |              |
+                  ├── synchronizer      |              |
+                  │    └── render       |              |
+                  │         │           | engine type  | time series
+                  │         │           | column11     | second_val + 5.0
+                  │         │           | value        | value
+                  │         │           | state        | state
+                  │         │           | second_val   | second_val
                   │         └── ts scan |              |
                   │                     | ts-table     | firegases
                   │                     | access mode  | tableTableMeta
@@ -3806,7 +3809,7 @@ ORDER BY s.work_area_sn;
                                         | table        | station_info@primary
                                         | spans        | FULL SCAN
                                         | filter       | expected_state IS NOT NULL
-(36 rows)
+(37 rows)
 > SELECT s.work_area_sn,
       AVG(f."value"),
       AVG(s.standard_val),

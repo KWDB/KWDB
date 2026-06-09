@@ -504,15 +504,15 @@ func decodeUntaggedDatumWithType(
 		if err != nil {
 			return nil, b, err
 		}
-		if t.Oid() == oid.T_float4 {
-			// Reduce output accuracy.
-			str := strconv.FormatFloat(data, 'f', 6, 32)
-			e1, err := tree.ParseDFloat(str)
-			if err != nil {
-				return nil, nil, err
-			}
-			return a.NewDFloat(*e1), b, nil
-		}
+		// if t.Oid() == oid.T_float4 {
+		// 	// Reduce output accuracy.
+		// 	str := strconv.FormatFloat(data, 'f', 6, 32)
+		// 	e1, err := tree.ParseDFloat(str)
+		// 	if err != nil {
+		// 		return nil, nil, err
+		// 	}
+		// 	return a.NewDFloat(*e1), b, nil
+		// }
 		return a.NewDFloat(tree.DFloat(data)), b, nil
 	case types.DecimalFamily:
 		if typ == encoding.Int {

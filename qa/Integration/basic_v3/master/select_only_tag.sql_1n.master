@@ -2368,28 +2368,32 @@ INSERT 10
     400 | 44000
 (2 rows)
 > explain select avg(t1), sum(t2), count(t3) from only_tag.table3 where t1+t2 > 3000 and t3 < 80000 group by ptag1;
-             tree             |    field    |    description
-------------------------------+-------------+---------------------
-                              | distributed | true
-                              | vectorized  | false
-  render                      |             |
-   │                          | avg         | avg
-   │                          | sum         | sum
-   │                          | count       | count
-   └── group                  |             |
-        │                     | aggregate 0 | ptag1
-        │                     | aggregate 1 | avg(t1)
-        │                     | aggregate 2 | sum(t2)
-        │                     | aggregate 3 | count(t3)
-        │                     | group by    | ptag1
-        └── filter            |             |
-             │                | filter      | (t1 + t2) > 3000.0
-             └── synchronizer |             |
-                  └── ts scan |             |
-                              | ts-table    | table3
-                              | access mode | tableTableMeta
-                              | filter      | t3 < 80000.0
-(19 rows)
+           tree          |        field        |    description
+-------------------------+---------------------+---------------------
+                         | distributed         | true
+                         | vectorized          | false
+  synchronizer           |                     |
+   └── render            |                     |
+        │                | engine type         | time series
+        │                | avg                 | avg
+        │                | sum                 | sum
+        │                | count               | count
+        └── group        |                     |
+             │           | engine type         | time series
+             │           | aggregate 0         | ptag1
+             │           | aggregate 1         | avg(t1)
+             │           | aggregate 2         | sum(t2)
+             │           | aggregate 3         | count(t3)
+             │           | group by            | ptag1
+             │           | pushLocalAggToScan  | true
+             │           | pruneFinalAgg       | true
+             └── ts scan |                     |
+                         | ts-table            | table3
+                         | access mode         | tableTableMeta
+                         | use statistic       | true
+                         | tag filter[0]       | t3 < 80000.0
+                         | tag filter[1]       | (t1 + t2) > 3000.0
+(23 rows)
 > select avg(t1), sum(t2), count(t3) from only_tag.table3 where t1+t2 > 3000 and t3 < 80000 group by ptag1 order by avg(t1);
   avg  |  sum  | count
 -------+-------+--------
