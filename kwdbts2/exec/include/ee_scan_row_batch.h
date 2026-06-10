@@ -110,7 +110,7 @@ class ScanRowBatch : public RowBatch {
   k_uint32 GetEffectCount() { return effect_count_; }
   void AddSelection() override {
     if (effect_count_ == 0) {
-      selection_.reserve(count_);
+      selection_.resize(count_);
     }
     selection_[effect_count_] = {current_batch_no_, current_batch_line_};
     ++effect_count_;
