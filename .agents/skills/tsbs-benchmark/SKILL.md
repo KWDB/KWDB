@@ -75,9 +75,30 @@ Entry B is called by the `kwdb-perf-investigation` orchestrator for workload
 setup before perf profiling. Single-node only. Do NOT rely on it for absolute
 latency or throughput numbers, and there is no threshold comparison.
 
+### Prerequisites
+
+`utils.sh` validates that `install/bin/kwbase` exists and is a Release build
+(via `go version -m` checking `build.typ=Release`). If the script dies with
+a non-Release error, rebuild before retrying:
+
+```bash
+cd <KWDB_REPO_ROOT>
+make BUILD_TYPE=Release install -j
+```
+
+### Script architecture
+
+| Script | Sources | Purpose |
+|--------|---------|---------|
+| `setup.sh` | `utils.sh` | Calls `qa/tsbs_test/setup.sh` to ensure TSBS binaries exist. Run once at the very beginning, before kwbase starts. |
+| `utils.sh` | — | Shared environment variables and functions. Sourced by all other scripts. Does NOT call `qa/tsbs_test/setup.sh`. |
+| `start_single_node.sh` | `utils.sh` | Starts single-node kwbase and applies cluster settings. |
+| `generate_wrapper.sh` | `utils.sh` | Generates data files and writes a self-contained workload wrapper script. |
+
 When Entry B is chosen, the agent automatically:
-1. **Start KWDB** — `start_single_node.sh`
-2. **Generate wrapper** — `generate_wrapper.sh <scale> [load] [query_types...]`
+1. **Setup environment** — `setup.sh` (ensures TSBS binaries; also cleans up stale kwbase processes before starting)
+2. **Start KWDB** — `start_single_node.sh`
+3. **Generate wrapper** — `generate_wrapper.sh <scale> [load] [query_types...]`
 
 The agent does NOT execute any write or query operations. Those are exposed as
 functions in the generated wrapper for the downstream consumer to call.
@@ -252,9 +273,9 @@ Requirements for valid comparisons:
 
 ### Missing TSBS binaries
 
-Entry A handles this automatically (`qa/tsbs_test/setup.sh`). For Entry B, run once:
+Entry A handles this automatically (`qa/tsbs_test/setup.sh`). For Entry B, run:
 ```bash
-bash qa/tsbs_test/setup.sh
+bash .agents/skills/tsbs-benchmark/scripts/setup.sh
 ```
 
 ### Port / address conflict
