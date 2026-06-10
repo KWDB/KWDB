@@ -29,12 +29,6 @@ PROJ_BASE_DIR=$(git rev-parse --show-toplevel)
 
 export QA_DIR
 QA_DIR=$PROJ_BASE_DIR/qa
-if ! "$QA_DIR"/tsbs_test/setup.sh; then
-    die "$QA_DIR/tsbs_test/setup.sh not exist"
-fi
-
-# source "$QA_DIR"/env.sh
-# QA_DIR=$PROJ_BASE_DIR/qa
 
 source ${QA_DIR}/tsbs_test/tsbs_env.sh
 TSBS_PATH="${QA_DIR}/tsbs_test/bin"
@@ -52,6 +46,11 @@ mkdir -p $DEPLOY_ROOT
 KWBIN="${PROJ_BASE_DIR}/install/bin/kwbase"
 if [[ ! -x ${KWBIN} ]]; then
     die "${KWBIN} does not exist or is not executable"
+fi
+
+# Verify it's a Release build
+if ! go version -m "${KWBIN}" 2>/dev/null | grep -q 'build.typ=Release'; then
+    die "${KWBIN} is not a Release build. Please build a release version (make release)."
 fi
 
 function set_defaults() {
