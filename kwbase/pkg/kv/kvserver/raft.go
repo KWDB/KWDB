@@ -172,29 +172,29 @@ func logRaftReady(ctx context.Context, ready raft.Ready) {
 
 	var buf bytes.Buffer
 	if ready.SoftState != nil {
-		fmt.Fprintf(&buf, "  SoftState updated: %+v\n", *ready.SoftState)
+		fmt.Fprintf(&buf, "  SoftState updated: %+v ", *ready.SoftState)
 	}
 	if !raft.IsEmptyHardState(ready.HardState) {
-		fmt.Fprintf(&buf, "  HardState updated: %+v\n", ready.HardState)
+		fmt.Fprintf(&buf, "  HardState updated: %+v ", ready.HardState)
 	}
 	for i, e := range ready.Entries {
-		fmt.Fprintf(&buf, "  New Entry[%d]: %.200s\n",
+		fmt.Fprintf(&buf, "  New Entry[%d]: %.200s ",
 			i, raft.DescribeEntry(e, raftEntryFormatter))
 	}
 	for i, e := range ready.CommittedEntries {
-		fmt.Fprintf(&buf, "  Committed Entry[%d]: %.200s\n",
+		fmt.Fprintf(&buf, "  Committed Entry[%d]: %.200s ",
 			i, raft.DescribeEntry(e, raftEntryFormatter))
 	}
 	if !raft.IsEmptySnap(ready.Snapshot) {
 		snap := ready.Snapshot
 		snap.Data = nil
-		fmt.Fprintf(&buf, "  Snapshot updated: %v\n", snap)
+		fmt.Fprintf(&buf, "  Snapshot updated: %v ", snap)
 	}
 	for i, m := range ready.Messages {
-		fmt.Fprintf(&buf, "  Outgoing Message[%d]: %.200s\n",
+		fmt.Fprintf(&buf, "  Outgoing Message[%d]: %.200s ",
 			i, raftDescribeMessage(m, raftEntryFormatter))
 	}
-	log.Infof(ctx, "raft ready (must-sync=%t)\n%s", ready.MustSync, buf.String())
+	log.Infof(ctx, "raft ready (must-sync=%t) %s, size is %d", ready.MustSync, buf.String(), ready.Size())
 }
 
 // This is a fork of raft.DescribeMessage with a tweak to avoid logging

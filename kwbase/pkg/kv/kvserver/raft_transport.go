@@ -38,6 +38,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/rpc"
 	"gitee.com/kwbasedb/kwbase/pkg/rpc/nodedialer"
+	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/storage"
 	"gitee.com/kwbasedb/kwbase/pkg/tse"
@@ -450,6 +451,13 @@ func (t *RaftTransport) Stop(storeID roachpb.StoreID) {
 	t.handlers.Delete(int64(storeID))
 }
 
+// targetRaftOutgoingBatchSize wraps "kv.raft.command.target_batch_size".
+var targetRaftOutgoingBatchSize = settings.RegisterByteSizeSetting(
+	"kv.raft.command.target_batch_size",
+	"size of a batch of raft commands after which it will be sent without further batching",
+	64<<20, // 64 MB
+)
+
 // processQueue opens a Raft client stream and sends messages from the
 // designated queue (ch) via that stream, exiting when an error is received or
 // when it idles out. All messages remaining in the queue at that point are
@@ -506,21 +514,25 @@ func (t *RaftTransport) processQueue(
 		case err := <-errCh:
 			return err
 		case req := <-ch:
+			budget := targetRaftOutgoingBatchSize.Get(&t.st.SV) - int64(req.Size())
 			batch.Requests = append(batch.Requests, *req)
 			req.release()
-			// Pull off as many queued requests as possible.
-			//
-			// TODO(peter): Think about limiting the size of the batch we send.
-			for done := false; !done; {
+			// Pull off as many queued requests as possible, within reason.
+			for budget > 0 {
 				select {
 				case req = <-ch:
+					budget -= int64(req.Size())
 					batch.Requests = append(batch.Requests, *req)
 					req.release()
 				default:
-					done = true
+					budget = -1
 				}
 			}
-
+			if log.V(4) {
+				if batch.Requests != nil && len(batch.Requests) > 0 && batch.Size() >= (64<<20) {
+					log.Infof(context.TODO(), "send raft log message, len is %d, size is %d MB, rangeID is %d", len(batch.Requests), batch.Size()/(1024*1024), batch.Requests[0].RangeID)
+				}
+			}
 			err := stream.Send(batch)
 			batch.Requests = batch.Requests[:0]
 

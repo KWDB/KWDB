@@ -293,6 +293,79 @@ func (r *Replica) evalAndProposeTS(
 		return proposalCh, func() {}, 0, nil
 	}
 
+	// Attach information about the proposer to the command.
+	proposal.command.ProposerLeaseSequence = lease.Sequence
+
+	// Once a command is written to the raft log, it must be loaded into memory
+	// and replayed on all replicas. If a command is too big, stop it here. If
+	// the command is not too big, acquire an appropriate amount of quota from
+	// the replica's proposal quota pool.
+	//
+	// TODO(tschottdorf): blocking a proposal here will leave it dangling in the
+	// closed timestamp tracker for an extended period of time, which will in turn
+	// prevent the node-wide closed timestamp from making progress. This is quite
+	// unfortunate; we should hoist the quota pool before the reference with the
+	// closed timestamp tracker is acquired. This is better anyway; right now many
+	// commands can evaluate but then be blocked on quota, which has worse memory
+	// behavior.
+	quotaSize := uint64(proposal.command.Size() + proposal.Request.Size())
+	if maxSize := uint64(MaxCommandSize.Get(&r.store.cfg.Settings.SV)); quotaSize > maxSize {
+		return nil, nil, 0, roachpb.NewError(errors.Errorf(
+			"command is too large: %d bytes (max: %d)", quotaSize, maxSize,
+		))
+	}
+	var err error
+	proposal.quotaAlloc, err = r.maybeAcquireProposalQuota(ctx, quotaSize)
+	if log.V(4) {
+		if quotaSize >= 1024*1024 {
+			log.Infof(ctx, "batch size is %d MB", quotaSize/(1024*1024))
+		}
+	}
+	if err != nil {
+		log.Warningf(ctx, "quotaAlloc error, err is %s, size is %d, quota max size is %d", err, quotaSize, r.mu.proposalQuota.Capacity())
+		return nil, nil, 0, roachpb.NewError(err)
+	}
+	// Make sure we clean up the proposal if we fail to insert it into the
+	// proposal buffer successfully. This ensures that we always release any
+	// quota that we acquire.
+	defer func() {
+		if pErr != nil {
+			proposal.releaseQuota()
+		}
+	}()
+
+	var storageAsync bool
+	if r.store.TsRaftLogEngine == nil {
+		storageAsync = storage.IsAsyncConsensus()
+	} else {
+		storageAsync = r.store.TsRaftLogEngine.IsAsyncConsensus()
+	}
+	if storageAsync && r.isTsLocked() && len(ba.Requests) != 0 {
+		isAllTsRowPut := true
+		for _, req := range ba.Requests {
+			if req.GetTsRowPut() == nil {
+				isAllTsRowPut = false
+				break
+			}
+		}
+		if isAllTsRowPut {
+			br := &roachpb.BatchResponse{}
+			br.Responses = make([]roachpb.ResponseUnion, len(ba.Requests))
+			ba.Requests = r.batchRequestOsnRewrite(ctx, ba.Requests)
+			tableID, rangeGroupID, tsTxnID, needAutoCommit, err := r.stageTsBatchRequest(ctx, ba, br.Responses, true, nil)
+			if err == nil && tsTxnID != 0 && needAutoCommit {
+				err = r.store.TsEngine.MtrCommit(tableID, rangeGroupID, tsTxnID, nil)
+			}
+			if err != nil {
+				pErr = roachpb.NewError(err)
+				br = nil
+				log.Infof(ctx, "stage error: %v", err)
+			}
+			ba.AsyncConsensus = true
+			log.VEventf(ctx, 3, "mode2: replica_write is async write and apply now, tableID is %d, rangeID is %d", tableID, r.RangeID)
+		}
+	}
+
 	// If the request requested that Raft consensus be performed asynchronously,
 	// return a proposal result immediately on the proposal's done channel.
 	// The channel's capacity will be large enough to accommodate this.
@@ -320,41 +393,6 @@ func (r *Replica) evalAndProposeTS(
 		log.VEventf(ctx, 3, "mode2: AsyncConsensus replica_raft and should be return, rangeID is %d", r.RangeID)
 		// Continue with proposal...
 	}
-
-	// Attach information about the proposer to the command.
-	proposal.command.ProposerLeaseSequence = lease.Sequence
-
-	// Once a command is written to the raft log, it must be loaded into memory
-	// and replayed on all replicas. If a command is too big, stop it here. If
-	// the command is not too big, acquire an appropriate amount of quota from
-	// the replica's proposal quota pool.
-	//
-	// TODO(tschottdorf): blocking a proposal here will leave it dangling in the
-	// closed timestamp tracker for an extended period of time, which will in turn
-	// prevent the node-wide closed timestamp from making progress. This is quite
-	// unfortunate; we should hoist the quota pool before the reference with the
-	// closed timestamp tracker is acquired. This is better anyway; right now many
-	// commands can evaluate but then be blocked on quota, which has worse memory
-	// behavior.
-	quotaSize := uint64(proposal.command.Size())
-	if maxSize := uint64(MaxCommandSize.Get(&r.store.cfg.Settings.SV)); quotaSize > maxSize {
-		return nil, nil, 0, roachpb.NewError(errors.Errorf(
-			"command is too large: %d bytes (max: %d)", quotaSize, maxSize,
-		))
-	}
-	var err error
-	proposal.quotaAlloc, err = r.maybeAcquireProposalQuota(ctx, quotaSize)
-	if err != nil {
-		return nil, nil, 0, roachpb.NewError(err)
-	}
-	// Make sure we clean up the proposal if we fail to insert it into the
-	// proposal buffer successfully. This ensures that we always release any
-	// quota that we acquire.
-	defer func() {
-		if pErr != nil {
-			proposal.releaseQuota()
-		}
-	}()
 
 	if filter := r.store.TestingKnobs().TestingProposalFilter; filter != nil {
 		filterArgs := storagebase.ProposalFilterArgs{
@@ -671,6 +709,8 @@ func (r *Replica) hasPendingProposalQuotaRLocked() bool {
 
 var errRemoved = errors.New("replica removed")
 
+const stepSlowThreshold = 2 * time.Second
+
 // stepRaftGroup calls Step on the replica's RawNode with the provided request's
 // message. Before doing so, it assures that the replica is unquiesced and ready
 // to handle the request.
@@ -683,6 +723,17 @@ func (r *Replica) stepRaftGroup(req *RaftMessageRequest) error {
 		// other replica is not quiesced, so we don't need to wake the leader.
 		// Note that we avoid campaigning when receiving raft messages, because
 		// we expect the originator to campaign instead.
+		startTime := timeutil.Now()
+
+		defer func() {
+			elapsed := timeutil.Since(startTime)
+			if elapsed > stepSlowThreshold {
+				log.Warningf(context.TODO(),
+					"stepRaftGroup took %v (>%v), may cause raft heartbeat timeout; fromReplica=%d, msgType=%v",
+					elapsed, stepSlowThreshold, req.FromReplica.ReplicaID, req.Message.Type)
+			}
+		}()
+
 		r.unquiesceWithOptionsLocked(false /* campaignOnWake */)
 		r.mu.lastUpdateTimes.update(req.FromReplica.ReplicaID, timeutil.Now())
 		err := raftGroup.Step(req.Message)
@@ -1211,7 +1262,6 @@ func (r *Replica) handleRaftTSReadyRaftMuLocked(
 	}
 
 	logRaftReady(ctx, rd)
-
 	refreshReason := noReason
 	if rd.SoftState != nil && leaderID != roachpb.ReplicaID(rd.SoftState.Lead) {
 		// Refresh pending commands if the Raft leader has changed. This is usually
@@ -1368,7 +1418,6 @@ func (r *Replica) handleRaftTSReadyRaftMuLocked(
 	// https://github.com/etcd-io/etcd/issues/7625#issuecomment-489232411
 
 	msgApps, otherMsgs := splitMsgApps(rd.Messages)
-	r.traceMessageSends(msgApps, "sending msgApp")
 	r.sendRaftMessages(ctx, msgApps)
 
 	var batch storage.Batch
@@ -1425,7 +1474,6 @@ func (r *Replica) handleRaftTSReadyRaftMuLocked(
 			return stats, expl, errors.Wrap(err, expl)
 		}
 	}
-
 	var sync bool
 	if tsBatch != nil {
 		sync = true
@@ -2002,9 +2050,6 @@ func (r *Replica) addUnreachableRemoteReplica(remoteReplica roachpb.ReplicaID) {
 // was dropped. It is the caller's responsibility to call ReportUnreachable on
 // the Raft group.
 func (r *Replica) sendRaftMessageRequest(ctx context.Context, req *RaftMessageRequest) bool {
-	if log.V(4) {
-		log.Infof(ctx, "sending raft request %+v", req)
-	}
 	ok := r.store.cfg.Transport.SendAsync(req, r.connectionClass.get())
 	// TODO(peter): Looping over all of the outgoing Raft message queues to
 	// update this stat on every send is a bit expensive.

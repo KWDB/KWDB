@@ -631,7 +631,6 @@ func (b *replicaAppBatch) stageWriteBatch(ctx context.Context, cmd *replicatedCm
 				ctx, &reqs, responses, isLocal, &b.state); err != nil {
 				return err
 			}
-			log.VEventf(ctx, 3, "mode2: stageWriteBatch replica machine replica_raft write, with mode2 maybe ansyc, tableID is %d rangeID is %d", b.tableID, b.r.RangeID)
 			if b.TSTxnID != 0 && b.needAutoCommit {
 				err := b.r.store.TsEngine.MtrCommit(b.tableID, b.rangeGroupID, b.TSTxnID, nil)
 				if err != nil {
@@ -664,7 +663,7 @@ func (r *Replica) stageTsBatchRequest(
 	replicaState *storagepb.ReplicaState,
 ) (tableID, rangeGroupID, tsTxnID uint64, needAutoCommit bool, err error) {
 	var isTsRequest bool
-	log.VEventf(ctx, 3, "xxxx stageTsBatchRequest. rangeID is %d, batchSize is %d", r.RangeID, ba.Size())
+	log.VEventf(ctx, 3, "stageTsBatchRequest begin.request is %s, batchSize is %d ", ba.Summary(), ba.Size())
 	needAutoCommit = true
 	for _, union := range ba.Requests {
 		switch union.GetInner().(type) {
@@ -998,6 +997,7 @@ func (r *Replica) stageTsBatchRequest(
 			}
 		}
 	}
+	log.VEventf(ctx, 3, "stageTsBatchRequest end.request is %s, batchSize is %d ", ba.Summary(), ba.Size())
 	return
 }
 

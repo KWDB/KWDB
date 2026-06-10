@@ -252,7 +252,6 @@ func splitTxnAttempt(
 	isCreateTable bool,
 ) error {
 	txn.SetDebugName(splitTxnName)
-
 	_, dbDescValue, err := conditionalGetDescValueFromDB(ctx, txn, oldDesc.StartKey, checkDescsEqual(oldDesc))
 	if err != nil {
 		return err
@@ -535,6 +534,7 @@ func (r *Replica) adminSplitWithDescriptor(
 		splitKey.StringWithDirs(nil /* valDirs */, 50 /* maxLen */), rightRangeID, reason, extra)
 	for rt := retry.Start(base.DefaultRetryOptions()); rt.Next(); {
 		err := r.store.DB().Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+			// TODO by fyx, not use it for. ts split when disk is busy and ts split maybe retry again.
 			return splitTxnAttempt(
 				ctx,
 				r.store,
@@ -549,6 +549,7 @@ func (r *Replica) adminSplitWithDescriptor(
 				args.IsCreateTsTable,
 			)
 		})
+		log.Warningf(ctx, "split retry, err is %+v", rt.CurrentAttempts(), err)
 		if err == ErrorTableStateAdd {
 			continue
 		}

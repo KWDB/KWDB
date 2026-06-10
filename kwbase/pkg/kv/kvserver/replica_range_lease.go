@@ -59,7 +59,6 @@ package kvserver
 import (
 	"context"
 	"fmt"
-	"runtime/debug"
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/base"
@@ -211,9 +210,6 @@ func (p *pendingLeaseRequest) InitOrJoinRequest(
 	startKey roachpb.Key,
 	transfer bool,
 ) *leaseRequestHandle {
-	if p.repl.isTsLocked() {
-		log.VEventf(ctx, 3, "request lease for %+v:\n %s", nextLeaseHolder, debug.Stack())
-	}
 
 	if nextLease, ok := p.RequestPending(); ok {
 		//The target node of the lease transfer has an ongoing lease operation, so need to wait
