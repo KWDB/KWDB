@@ -294,8 +294,6 @@ class TsBlockSpan {
   KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, TSSlice& data,
                                 TsScanStats* ts_scan_stats = nullptr) const;
 
-  KStatus GetCount(uint32_t scan_idx, uint32_t& count, TsScanStats* ts_scan_stats = nullptr);
-
   bool HasPreAgg() {
     return has_pre_agg_;
   }
@@ -305,6 +303,8 @@ class TsBlockSpan {
     }
     return convert_->GetPreCount(this, scan_idx, ts_scan_stats, count);
   }
+  KStatus GetCount(uint32_t scan_idx, TsScanStats* ts_scan_stats, uint16_t& count);
+
   KStatus GetPreSum(uint32_t scan_idx, TsScanStats* ts_scan_stats, void* &pre_sum, bool& is_overflow) {
     if (!convert_) {
       int32_t size = (*scan_attrs_)[scan_idx].size;
@@ -313,12 +313,18 @@ class TsBlockSpan {
     int32_t size = (*convert_->version_conv_->blk_attrs_)[scan_idx].size;
     return convert_->GetPreSum(this, scan_idx, size, ts_scan_stats, pre_sum, is_overflow);
   }
+  KStatus GetSum(uint32_t scan_idx, TsScanStats* ts_scan_stats, bool can_use_pre_agg,
+                 int64_t& sum_i64, double& sum_f64, bool& has_sum_result, bool& is_overflow);
+
   KStatus GetPreMax(uint32_t scan_idx, TsScanStats* ts_scan_stats, void* &pre_max) {
     if (!convert_) {
       return block_->GetPreMax(scan_idx, GetFixedBlockAggLayout(), ts_scan_stats, pre_max);
     }
     return convert_->GetPreMax(this, scan_idx, ts_scan_stats, pre_max);
   }
+  KStatus GetMax(uint32_t scan_idx, TsScanStats* ts_scan_stats, bool can_use_pre_agg,
+                 void* &max, int32_t& max_row_idx);
+
   KStatus GetPreMin(uint32_t scan_idx, TsScanStats* ts_scan_stats, void* &pre_min) {
     if (!convert_) {
       int32_t size = (*scan_attrs_)[scan_idx].size;
@@ -327,6 +333,8 @@ class TsBlockSpan {
     int32_t size = (*convert_->version_conv_->blk_attrs_)[scan_idx].size;
     return convert_->GetPreMin(this, scan_idx, size, ts_scan_stats, pre_min);
   }
+  KStatus GetMin(uint32_t scan_idx, TsScanStats* ts_scan_stats, bool can_use_pre_agg,
+                 void* &max, int32_t& max_row_idx);
 
   KStatus UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_scan_cols,
                                                 const std::vector<AttributeInfo>* schema,
@@ -369,6 +377,12 @@ class TsBlockSpan {
     // change current span info
     nrow_ -= row_num;
     has_pre_agg_ = false;
+  }
+
+  void ConvertToDoubleIfOverflow(bool overflow, double& sum_f64, int64_t& sum_i64) {
+    if (overflow) {
+      sum_f64 = static_cast<double>(sum_i64);
+    }
   }
 };
 }  // namespace kwdbts

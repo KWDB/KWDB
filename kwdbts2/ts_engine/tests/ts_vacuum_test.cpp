@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <future>
+#include <memory>
 
 #include "cm_kwdb_context.h"
 #include "data_type.h"

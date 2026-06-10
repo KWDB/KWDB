@@ -84,7 +84,9 @@ struct TsEntityItem {
   uint64_t row_written = 0;    // row num that has written into file.
   uint64_t table_id = 0;
   bool is_dropped = false;
-  char reserved[79] = {0};     // reserved for user-defined information.
+  char padding[7] = {0};   //
+  uint64_t max_osn = 0;    // osn of current entity in this Partition
+  char reserved[64] = {0};   // reserved for user-defined information.
 };
 static_assert(sizeof(TsEntityItem) == 128, "wrong size of TsEntityItem, please check compatibility.");
 // static_assert(std::has_unique_object_representations_v<TsEntityItem>, "check padding in TsEntityItem");
@@ -434,7 +436,14 @@ class TsSegmentFile {
   uint64_t GetEntityHeaderFileNum() { return meta_mgr_.GetEntityHeaderFileNum(); }
 
   KStatus GetEntityItem(uint64_t entity_id, TsEntityItem& entity_item, bool& is_exist) {
-    return meta_mgr_.GetEntityItem(entity_id, entity_item, is_exist);
+    auto s = meta_mgr_.GetEntityItem(entity_id, entity_item, is_exist);
+    if (s == FAIL) {
+      return s;
+    }
+    if (entity_item.max_osn == 0) {
+      s = GetMaxOSN(entity_id, entity_item.max_osn, 0);
+    }
+    return s;
   }
 
   KStatus SetEntityItemDropped(uint64_t entity_id) {
@@ -445,9 +454,21 @@ class TsSegmentFile {
   uint64_t GetBlockNum() { return meta_mgr_.GetBlockNum(); }
 
   KStatus GetMaxOSN(TSEntityID entity_id, TS_OSN& max_osn, uint64_t min_readable_block_id) {
+    TsEntityItem e_item;
+    bool is_exist;
+    auto s = meta_mgr_.GetEntityItem(entity_id, e_item, is_exist);
+    if (s == FAIL && is_exist) {
+      return s;
+    }
+
+    if (e_item.max_osn != 0) {
+      max_osn = e_item.max_osn;
+      return KStatus::SUCCESS;
+    }
+
     max_osn = 0;
     std::vector<TsEntitySegmentBlockItemWithData> blk_items;
-    KStatus s = meta_mgr_.GetAllBlockItems(entity_id, &blk_items);
+    s = meta_mgr_.GetAllBlockItems(entity_id, &blk_items);
     if (s != KStatus::SUCCESS) {
       return s;
     }

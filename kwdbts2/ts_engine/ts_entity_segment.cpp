@@ -755,6 +755,9 @@ inline KStatus TsEntityBlock::GetPreCount(uint32_t blk_col_idx,
   } else {
     count = *reinterpret_cast<const uint16_t*>(col_blk->agg.data());
   }
+  if (ts_scan_stats) {
+    ++ts_scan_stats->block_pre_agg_hit_count;
+  }
   return KStatus::SUCCESS;
 }
 
@@ -782,6 +785,9 @@ inline KStatus TsEntityBlock::GetPreSum(uint32_t blk_col_idx,
   }
   is_overflow = *reinterpret_cast<bool*>(pre_agg + sizeof(uint16_t) + size * 2);
   pre_sum = pre_agg + sizeof(uint16_t) + size * 2 + 1;
+  if (ts_scan_stats) {
+    ++ts_scan_stats->block_pre_agg_hit_count;
+  }
   return KStatus::SUCCESS;
 }
 
@@ -806,7 +812,9 @@ inline KStatus TsEntityBlock::GetPreMax(uint32_t blk_col_idx,
     return KStatus::SUCCESS;
   }
   pre_max = static_cast<void*>(col_blk->agg.data() + sizeof(uint16_t));
-
+  if (ts_scan_stats) {
+    ++ts_scan_stats->block_pre_agg_hit_count;
+  }
   return KStatus::SUCCESS;
 }
 
@@ -835,7 +843,9 @@ inline KStatus TsEntityBlock::GetPreMin(uint32_t blk_col_idx,
     size = 8;
   }
   pre_min = static_cast<void*>(col_blk->agg.data() + sizeof(uint16_t) + size);
-
+  if (ts_scan_stats) {
+    ++ts_scan_stats->block_pre_agg_hit_count;
+  }
   return KStatus::SUCCESS;
 }
 

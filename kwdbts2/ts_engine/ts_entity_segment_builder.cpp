@@ -27,6 +27,7 @@
 #include "ts_block_span_sorted_iterator.h"
 #include "ts_bufferbuilder.h"
 #include "ts_coding.h"
+#include "ts_common.h"
 #include "ts_compatibility.h"
 #include "ts_entity_segment.h"
 #include "ts_entity_segment_data.h"
@@ -498,6 +499,8 @@ KStatus TsEntitySegmentBuilder::UpdateEntityItem(TsEntityKey& entity_key, TsEnti
   if (block_item.min_ts < cur_entity_item_.min_ts) {
     cur_entity_item_.min_ts = block_item.min_ts;
   }
+
+  cur_entity_item_.max_osn = std::max(block_item.max_osn, cur_entity_item_.max_osn);
   return s;
 }
 
@@ -915,6 +918,7 @@ KStatus TsEntitySegmentBuilder::WriteBatch(TSTableID tbl_id, uint32_t entity_id,
   if (block_item.min_ts < entity_items_[entity_id].min_ts) {
     entity_items_[entity_id].min_ts = block_item.min_ts;
   }
+  entity_items_[entity_id].max_osn = std::max(block_item.max_osn, entity_items_[entity_id].max_osn);
   TsEntityCountStats info = {tbl_id, entity_id, block_item.min_ts, block_item.max_ts, block_item.n_rows, true, ""};
   flush_infos_.emplace_back(info);
   return KStatus::SUCCESS;
@@ -1134,7 +1138,6 @@ auto TsMemEntitySegmentModifier::GetEntityAndBlockItems(TsEntitySegment* target)
   result.block_items = reinterpret_cast<TsEntitySegmentBlockItem*>(result.block_items_guard_.data());
   result.block_num = result.block_items_guard_.size() / sizeof(TsEntitySegmentBlockItem);
   assert(result.block_num * sizeof(TsEntitySegmentBlockItem) == result.block_items_guard_.size());
-
   return result;
 }
 
@@ -1180,6 +1183,13 @@ auto TsMemEntitySegmentModifier::Modify(TsEntitySegment* base) {
     mem_entity_meta.entity_items[i].min_ts = min_ts;
     mem_entity_meta.entity_items[i].max_ts = max_ts;
     mem_entity_meta.entity_items[i].row_written = row_written;
+
+    TS_OSN dsk_max_osn = dsk_entity_meta.entity_items[i].max_osn;
+    if (dsk_max_osn == 0) {
+      base->GetMaxOSN(mem_entity_meta.entity_items[i].entity_id, dsk_max_osn);
+    }
+    mem_entity_meta.entity_items[i].max_osn =
+        std::max(mem_entity_meta.entity_items[i].max_osn, dsk_max_osn);
     mem_entity_meta.entity_items[i].cur_block_id += dsk_block_num;
   }
 

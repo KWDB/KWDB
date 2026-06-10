@@ -199,6 +199,7 @@ class TsAggIteratorImpl : public TsStorageIteratorImpl {
   void TimeBucketReset();
   void AddAggResult(ResultSet* res);
   std::vector<shared_ptr<TsBlockSpan>> SortBlockSpans(std::list<std::shared_ptr<TsBlockSpan>>& ts_block_spans);
+  std::vector<shared_ptr<TsBlockSpan>> MergeBlockSpans(const std::vector<std::shared_ptr<TsBlockSpan>>& ts_block_spans);
 
  protected:
   KStatus GenerateAggData();
@@ -219,16 +220,14 @@ class TsAggIteratorImpl : public TsStorageIteratorImpl {
   void InitSumValue(void* data, int32_t type);
   void UpdateTsSpans();
   void ConvertToDoubleIfOverflow(uint32_t col_idx, bool over_flow, TSSlice& agg_data);
-  KStatus AddSumNotOverflowYet(uint32_t blk_col_idx,
-                                int32_t type,
-                                void* current,
-                                TSSlice& agg_data);
-  KStatus AddSumOverflow(int32_t type,
-                          void* current,
-                          TSSlice& agg_data);
-  inline KStatus AddSumNotOverflowYetByPreSum(uint32_t col_idx, int32_t type,
-                                              void* current, TSSlice& agg_data, bool is_overflow = false);
-  inline KStatus AddSumOverflowByPreSum(int32_t type, void* current, TSSlice& agg_data, bool is_overflow = false);
+  inline KStatus AddSumNotOverflowYetByPreSum(uint32_t col_idx, int32_t type, int64_t sum_i64, double sum_f64,
+                                              TSSlice& agg_data, bool is_overflow = false);
+  inline KStatus AddSumOverflowByPreSum(int32_t type, int64_t sum_i64, double sum_f64,
+                                        TSSlice& agg_data, bool is_overflow = false);
+
+  void updateMinMaxAggData(TSSlice& agg_data, std::shared_ptr<TsBlockSpan>& block_span, Sumfunctype agg_type,
+                           uint32_t col_idx, uint32_t agg_idx, int32_t row_idx, void* cur_data);
+
   std::vector<Sumfunctype> scan_agg_types_;
   std::vector<timestamp64> last_ts_points_;
   std::vector<k_int32> agg_extend_cols_;
@@ -236,6 +235,7 @@ class TsAggIteratorImpl : public TsStorageIteratorImpl {
   std::vector<TSSlice> final_agg_data_;
   std::vector<bool> final_agg_buffer_is_new_;
   std::vector<AggCandidate> candidates_;
+  bool overflow_occurred_{false};
   std::vector<bool> is_overflow_;
   std::vector<k_uint32> first_col_idxs_;
   std::vector<int64_t> first_col_ts_;

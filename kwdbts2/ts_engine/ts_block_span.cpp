@@ -583,16 +583,6 @@ KStatus TsBlockSpan::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, T
   return convert_->GetVarLenTypeColAddr(this, row_idx, scan_idx, flag, data, ts_scan_stats);
 }
 
-KStatus TsBlockSpan::GetCount(uint32_t scan_idx, uint32_t& count, TsScanStats* ts_scan_stats) {
-  std::unique_ptr<TsBitmapBase> bitmap;
-  auto s = GetColBitmap(scan_idx, &bitmap, ts_scan_stats);
-  if (s != KStatus::SUCCESS) {
-    return s;
-  }
-  count = bitmap->GetValidCount();
-  return KStatus::SUCCESS;
-}
-
 void TsBlockSpan::SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span) {
   assert(row_num <= nrow_);
   assert(block_ != nullptr);
@@ -603,6 +593,259 @@ void TsBlockSpan::SplitBack(int row_num, shared_ptr<TsBlockSpan>& back_span) {
   assert(row_num <= nrow_);
   assert(block_ != nullptr);
   SplitBackImpl(row_num, back_span);
+}
+
+KStatus TsBlockSpan::GetCount(uint32_t scan_idx, TsScanStats* ts_scan_stats, uint16_t& count) {
+  if (has_pre_agg_) {
+    return GetPreCount(scan_idx, ts_scan_stats, count);
+  }
+
+  std::unique_ptr<TsBitmapBase> bitmap;
+  auto s = GetColBitmap(scan_idx, &bitmap, ts_scan_stats);
+  if (s != KStatus::SUCCESS) {
+    return s;
+  }
+  count = bitmap->GetValidCount();
+  if (ts_scan_stats) {
+    ++ts_scan_stats->block_pre_agg_miss_count;
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsBlockSpan::GetSum(uint32_t scan_idx, TsScanStats* ts_scan_stats, bool can_use_pre_agg,
+                            int64_t& sum_i64, double& sum_f64, bool& has_sum_result, bool& is_overflow) {
+  KStatus ret;
+  sum_i64 = 0;
+  sum_f64 = 0.0;
+  has_sum_result = false;
+  int32_t type = GetColType(scan_idx);
+  if (can_use_pre_agg && has_pre_agg_) {
+    void* pre_sum = nullptr;
+    ret = GetPreSum(scan_idx, ts_scan_stats, pre_sum, is_overflow);
+    if (ret != KStatus::SUCCESS) {
+      return ret;
+    }
+    if (pre_sum) {
+      has_sum_result = true;
+      if (DATATYPE::FLOAT == type || DATATYPE::DOUBLE == type || is_overflow) {
+        sum_f64 = KDouble64(pre_sum);
+      } else {
+        sum_i64 = KInt64(pre_sum);
+      }
+    }
+    return KStatus::SUCCESS;
+  }
+
+  TsBitmapBase *pbitmap = nullptr;
+  std::unique_ptr<TsBitmapBase> bitmap;
+
+  char* value = nullptr;
+  auto s = GetFixLenColAddr(scan_idx, &value, &bitmap);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetFixLenColAddr failed.");
+    return s;
+  }
+  pbitmap = bitmap.get();
+  int row_num = GetRowNum();
+  int32_t size = GetColSize(scan_idx);
+  bool all_valid = pbitmap->IsAllValid();
+  bool col_not_null = IsColNotNull(scan_idx);
+
+  for (int row_idx = 0; row_idx < row_num; ++row_idx) {
+    if (!col_not_null && !all_valid && pbitmap->At(row_idx) != DataFlags::kValid) {
+      continue;
+    }
+    has_sum_result = true;
+    void* current = reinterpret_cast<void*>((intptr_t)(value + row_idx * size));
+    switch (type) {
+      case DATATYPE::INT8: {
+        if (!is_overflow) {
+          is_overflow = AddAggInteger<int64_t, int8_t>(sum_i64, *reinterpret_cast<int8_t*>(current));
+          ConvertToDoubleIfOverflow(is_overflow, sum_f64, sum_i64);
+        }
+        if (is_overflow) {
+          AddAggFloat<double, int8_t>(sum_f64, (*(static_cast<int8_t*>(current))));
+        }
+        break;
+      }
+      case DATATYPE::INT16: {
+        if (!is_overflow) {
+          is_overflow = AddAggInteger<int64_t, int16_t>(sum_i64, *reinterpret_cast<int16_t*>(current));
+          ConvertToDoubleIfOverflow(is_overflow, sum_f64, sum_i64);
+        }
+        if (is_overflow) {
+          AddAggFloat<double, int16_t>(sum_f64, (*(static_cast<int16_t*>(current))));
+        }
+        break;
+      }
+      case DATATYPE::INT32: {
+        if (!is_overflow) {
+          is_overflow = AddAggInteger<int64_t, int32_t>(sum_i64, *reinterpret_cast<int32_t*>(current));
+          ConvertToDoubleIfOverflow(is_overflow, sum_f64, sum_i64);
+        }
+        if (is_overflow) {
+          AddAggFloat<double, int32_t>(sum_f64, (*(static_cast<int32_t*>(current))));
+        }
+        break;
+      }
+      case DATATYPE::INT64: {
+        if (!is_overflow) {
+          is_overflow = AddAggInteger<int64_t, int64_t>(sum_i64, *reinterpret_cast<int64_t*>(current));
+          ConvertToDoubleIfOverflow(is_overflow, sum_f64, sum_i64);
+        }
+        if (is_overflow) {
+          AddAggFloat<double, int64_t>(sum_f64, (*(static_cast<int64_t*>(current))));
+        }
+        break;
+      }
+      case DATATYPE::FLOAT: {
+        AddAggFloat<double, float>(sum_f64, (*(static_cast<float*>(current))));
+        break;
+      }
+      case DATATYPE::DOUBLE: {
+        AddAggFloat<double, double>(sum_f64, (*(static_cast<double*>(current))));
+        break;
+      }
+      default:
+        LOG_ERROR("Not supported for sum, datatype: %d", type);
+        return KStatus::FAIL;
+        break;
+    }
+  }
+  if (ts_scan_stats) {
+    ++ts_scan_stats->block_pre_agg_miss_count;
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsBlockSpan::GetMax(uint32_t scan_idx, TsScanStats* ts_scan_stats,  bool can_use_pre_agg,
+                            void* &max, int32_t& max_row_idx) {
+  if (can_use_pre_agg && has_pre_agg_) {
+    return GetPreMax(scan_idx, ts_scan_stats, max);
+  }
+
+  KStatus ret;
+  TsBitmapBase *pbitmap = nullptr;
+  std::unique_ptr<TsBitmapBase> bitmap;
+
+  max = nullptr;
+  max_row_idx = -1;
+  int row_num = GetRowNum();
+  int32_t type = GetColType(scan_idx);
+  int32_t size = scan_idx == 0 ? 8 : GetColSize(scan_idx);
+
+  if (!IsVarLenType(scan_idx)) {
+    char* value = nullptr;
+    auto s = GetFixLenColAddr(scan_idx, &value, &bitmap);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetFixLenColAddr failed.");
+      return s;
+    }
+    pbitmap = bitmap.get();
+    for (int row_idx = 0; row_idx < row_num; ++row_idx) {
+      if (!IsColNotNull(scan_idx) && pbitmap->At(row_idx) != DataFlags::kValid) {
+        continue;
+      }
+      void* current = reinterpret_cast<void*>((intptr_t)(value + row_idx * size));
+      if (nullptr == max || cmp(current, max, type, size) > 0) {
+        max = current;
+        max_row_idx = row_idx;
+      }
+    }
+  } else {
+    std::vector<int> row_idxs;
+    std::vector<string> var_rows;
+    for (int row_idx = 0; row_idx < row_num; ++row_idx) {
+      TSSlice slice;
+      DataFlags flag;
+      ret = GetVarLenTypeColAddr(row_idx, scan_idx, flag, slice, ts_scan_stats);
+      if (ret != KStatus::SUCCESS) {
+        LOG_ERROR("GetVarLenTypeColAddr failed.");
+        return ret;
+      }
+      if (flag == DataFlags::kValid) {
+        var_rows.emplace_back(slice.data, slice.len);
+        row_idxs.push_back(row_idx);
+      }
+    }
+    if (!var_rows.empty()) {
+      auto max_it = std::max_element(var_rows.begin(), var_rows.end());
+      uint16_t len = max_it->length();
+      max = std::malloc(len + kStringLenLen);
+      KUint16(max) = len;
+      memcpy(static_cast<char*>(max) + kStringLenLen, max_it->c_str(), max_it->length());
+      max_row_idx = row_idxs[max_it - var_rows.begin()];
+    }
+  }
+  if (ts_scan_stats) {
+    ++ts_scan_stats->block_pre_agg_miss_count;
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsBlockSpan::GetMin(uint32_t scan_idx, TsScanStats* ts_scan_stats,  bool can_use_pre_agg,
+                            void* &min, int32_t& min_row_idx) {
+  if (can_use_pre_agg && has_pre_agg_) {
+    return GetPreMin(scan_idx, ts_scan_stats, min);
+  }
+
+  KStatus ret;
+  TsBitmapBase *pbitmap = nullptr;
+  std::unique_ptr<TsBitmapBase> bitmap;
+
+  min = nullptr;
+  min_row_idx = -1;
+  int row_num = GetRowNum();
+  int32_t type = GetColType(scan_idx);
+  int32_t size = scan_idx == 0 ? 8 : GetColSize(scan_idx);
+
+  if (!IsVarLenType(scan_idx)) {
+    char* value = nullptr;
+    auto s = GetFixLenColAddr(scan_idx, &value, &bitmap);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetFixLenColAddr failed.");
+      return s;
+    }
+    pbitmap = bitmap.get();
+    for (int row_idx = 0; row_idx < row_num; ++row_idx) {
+      if (!IsColNotNull(scan_idx) && pbitmap->At(row_idx) != DataFlags::kValid) {
+        continue;
+      }
+      void* current = reinterpret_cast<void*>((intptr_t)(value + row_idx * size));
+      if (nullptr == min || cmp(current, min, type, size) < 0) {
+        min = current;
+        min_row_idx = row_idx;
+      }
+    }
+  } else {
+    std::vector<int> row_idxs;
+    std::vector<string> var_rows;
+    for (int row_idx = 0; row_idx < row_num; ++row_idx) {
+      TSSlice slice;
+      DataFlags flag;
+      ret = GetVarLenTypeColAddr(row_idx, scan_idx, flag, slice, ts_scan_stats);
+      if (ret != KStatus::SUCCESS) {
+        LOG_ERROR("GetVarLenTypeColAddr failed.");
+        return ret;
+      }
+      if (flag == DataFlags::kValid) {
+        var_rows.emplace_back(slice.data, slice.len);
+        row_idxs.push_back(row_idx);
+      }
+    }
+    if (!var_rows.empty()) {
+      auto min_it = std::min_element(var_rows.begin(), var_rows.end());
+      uint16_t len = min_it->length();
+      min = std::malloc(len + kStringLenLen);
+      KUint16(min) = len;
+      memcpy(static_cast<char*>(min) + kStringLenLen, min_it->c_str(), min_it->length());
+      min_row_idx = row_idxs[min_it - var_rows.begin()];
+    }
+  }
+  if (ts_scan_stats) {
+    ++ts_scan_stats->block_pre_agg_miss_count;
+  }
+  return KStatus::SUCCESS;
 }
 
 }  // namespace kwdbts
