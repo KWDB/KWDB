@@ -17,6 +17,9 @@
 #include "sys_utils.h"
 #include "ts_io.h"
 
+// Magic value for identifying complete previous files ("MMTT" on little-endian).
+constexpr uint32_t kRaftFileMagic = 0x54544D4D;
+
 KStatus RaftStore::Open() {
   file_ = open(file_path_.c_str(), O_CREAT | O_RDWR | O_APPEND, 0644);
   if (file_ == -1) {
@@ -170,6 +173,11 @@ KStatus RaftStore::createNewFile() {
   fs::path file_path = file_path_;
   std::string previous_file = file_path.parent_path().string() + "/previous_" + previous_id + ".raftlog";
   fs::rename(file_path_.c_str(), previous_file.c_str());
+  ssize_t write_num = write(file_, &kRaftFileMagic, sizeof(uint32_t));
+  if (write_num != sizeof(uint32_t)) {
+    LOG_ERROR("write magic value failed, expected %zu, actual %zd", sizeof(uint32_t), write_num);
+    return KStatus::FAIL;
+  }
   FileHandle previous_handle = FileHandle(file_, previous_file);
   previous_files_.insert(std::pair(current_id_, previous_handle));
   // Create a new file for writing raftlog.
@@ -575,8 +583,36 @@ KStatus RaftStore::loadFile(kwdbContext_p ctx, FileHandle& file_handle, int file
               read_num, len);
     return KStatus::FAIL;
   }
+  int magic_len = 0;
+  // Check if the previous file has a magic identifier. If it does not exist, delete it.
+  if (file_id != current_id_) {
+    magic_len = sizeof(uint32_t);
+    if (len < sizeof(uint32_t)) {
+      LOG_WARN("previous file [%s] is too small (%lu bytes) to contain magic, removing.",
+               file_handle.path.c_str(), len);
+      close(file_handle.file);
+      auto removeFile = previous_files_.find(file_id);
+      if (removeFile != previous_files_.end()) {
+        fs::remove(removeFile->second.path);
+        previous_files_.erase(file_id);
+      }
+      return KStatus::FAIL;
+    }
+    uint32_t magic_val = *reinterpret_cast<uint32_t*>(buffer + (len - magic_len));
+    if (magic_val != kRaftFileMagic) {
+      LOG_WARN("previous file [%s] magic mismatch, removing as incomplete compact artifact.",
+               file_handle.path.c_str());
+      close(file_handle.file);
+      auto removeFile = previous_files_.find(file_id);
+      if (removeFile != previous_files_.end()) {
+        fs::remove(removeFile->second.path);
+        previous_files_.erase(file_id);
+      }
+      return KStatus::FAIL;
+    }
+  }
   uint64_t off = 0;
-  while (off < len) {
+  while (off < (len - magic_len)) {
     auto header = reinterpret_cast<RaftLogHeader*>(buffer + off);
     uint64_t value_off = 0;
     switch (header->type) {
@@ -708,18 +744,8 @@ KStatus RaftStore::init(const std::string& engine_root_path) {
                 files_id.size(), previous_files_.size());
       return KStatus::FAIL;
     }
-    // Delete the new files that are being merged.
-    for (int i = 0; (i + 2) < previous_files_.size(); i++) {
-      // Avoid consecutively numbered files.
-      if (files_id[i + 1] == files_id[i] + 1 && files_id[i + 2] == files_id[i] + 2) {
-        continue;
-      }
-      if (files_id[i + 1] == (std::abs(files_id[i]) + std::abs(files_id[i + 2])) / 2) {
-        auto removeFile = previous_files_.find(files_id[i + 1]);
-        fs::remove(removeFile->second.path);
-        previous_files_.erase(files_id[i + 1]);
-      }
-    }
+    // Note: intermediate files left over from an interrupted compact are now
+    // detected and removed by the magic-value check in loadFile().
     // Read the raftlog recorded in the file.
     for (int i = 1; i < current_id_; i++) {
       if (previous_files_.find(i) != previous_files_.end()) {
@@ -761,14 +787,14 @@ uint64_t RaftStore::compactPut(uint64_t range_id, uint64_t index_id, TSSlice& va
 KStatus RaftStore::compact() {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
+  wrLock();
+  Defer defer{[&]() { isCompact = false; unLock(); }};
   KStatus s = InitServerKWDBContext(ctx_p);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("InitServerKWDBContext Error!");
     return s;
   }
   int files_size;
-  wrLock();
-  Defer defer{[&]() { unLock(); }};
   if (previous_files_.size() % 2 == 1) {
     files_size = previous_files_.size() -1;
   } else {
@@ -839,7 +865,23 @@ KStatus RaftStore::compact() {
       }
     }
     ssize_t write_num = write(compact_file_, mem.c_str(), mem.size());
-    assert(write_num == mem.size());
+    if (write_num != mem.size()) {
+      LOG_ERROR("write compact data failed, expected %zu, actual %zd", mem.size(), write_num);
+      close(compact_file_);
+      previous_files_[previous_id].file = -1;
+      compact_file_ = -1;
+      return KStatus::FAIL;
+    }
+    write_num = write(compact_file_, &kRaftFileMagic, sizeof(uint32_t));
+    if (write_num != sizeof(uint32_t)) {
+      LOG_ERROR("write compact magic value failed, expected %zu, actual %zd", sizeof(uint32_t), write_num);
+      close(compact_file_);
+      previous_files_[previous_id].file = -1;
+      compact_file_ = -1;
+      return KStatus::FAIL;
+    }
+    // Leave compact_file_ open — its fd is stored in previous_files_[previous_id]
+    // and is needed by subsequent getDiskValue calls that reference file_id == previous_id.
     FileHandle remove_file = previous_files_[files_id[i]];
     previous_files_.erase(files_id[i]);
     if (fs::exists(remove_file.path)) {
@@ -857,7 +899,6 @@ KStatus RaftStore::compact() {
       fs::remove(remove_file.path);
     }
   }
-  isCompact = false;
   return KStatus::SUCCESS;
 }
 
