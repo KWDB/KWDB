@@ -583,20 +583,20 @@ ORDER BY
 (44 rows)
 > explain SELECT si.station_name,
        COUNT(DISTINCT point_sn) AS abnormal_point_count
-FROM pipec_r.pipeline_info li,
-     pipec_r.station_info si,
-     db_pipec.t_point t
-WHERE li.pipeline_sn = t.pipeline_sn
-    AND t.station_sn = si.station_sn
-    AND li.pipeline_name = 'pipeline_1'
-    AND t.measure_type = 4
+FROM pipec_r.pipeline_info li,      
+     pipec_r.station_info si,       
+     db_pipec.t_point t             
+WHERE li.pipeline_sn = t.pipeline_sn            
+    AND t.station_sn = si.station_sn             
+    AND li.pipeline_name = 'pipeline_1'         
+    AND t.measure_type = 4                      
     AND t.k_timestamp >= '2023-08-01 00:00:00'
-    AND t.k_timestamp <= '2024-08-01 01:00:00'
+    AND t.k_timestamp <= '2024-08-01 01:00:00'   
     AND t.measure_value < 0.5 * (
-        SELECT AVG(t1.measure_value)
-        FROM db_pipec.t_point t1
-        WHERE t1.pipeline_sn = li.pipeline_sn
-          AND t1.measure_type = 4)
+        SELECT AVG(t1.measure_value) 
+        FROM db_pipec.t_point t1               
+        WHERE t1.pipeline_sn = li.pipeline_sn    
+          AND t1.measure_type = 4)              
 GROUP BY
     si.station_name
 ORDER BY
@@ -657,13 +657,13 @@ ORDER BY
   warning messages                                     | multi-model fall back | join on time-series metrics column
 (52 rows)
 > explain SELECT si.station_name
-FROM pipec_r.station_info si,
-     pipec_r.workarea_info wi,
-     db_pipec.t_point t
-WHERE wi.work_area_name = 'work_area_1'
-  AND wi.work_area_sn = si.work_area_sn
-  AND t.measure_type = cast(si.station_sn as int)
-  AND t.measure_value > 80
+FROM pipec_r.station_info si,              
+     pipec_r.workarea_info wi,             
+     db_pipec.t_point t                   
+WHERE wi.work_area_name = 'work_area_1'    
+  AND wi.work_area_sn = si.work_area_sn        
+  AND t.measure_type = cast(si.station_sn as int)                  
+  AND t.measure_value > 80                
 GROUP BY si.station_name
 ORDER BY si.station_name;
                     tree                    |            field            |               description

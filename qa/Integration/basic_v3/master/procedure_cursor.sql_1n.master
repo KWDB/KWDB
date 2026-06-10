@@ -328,42 +328,42 @@ DROP PROCEDURE
 > CREATE PROCEDURE test_dec25()BEGIN DECLARE x timestamp(6) DEFAULT '2000-1-1 10:00:00.000001';SELECT x;END;
 CREATE PROCEDURE
 > CALL test_dec25();
-                 x
-------------------------------------
-  2000-01-01 10:00:00.000001+00:00
+              x
+------------------------------
+  2000-01-01 10:00:00.000001
 (1 row)
 > CALL test_dec25();
-                 x
-------------------------------------
-  2000-01-01 10:00:00.000001+00:00
+              x
+------------------------------
+  2000-01-01 10:00:00.000001
 (1 row)
 > DROP PROCEDURE test_dec25;
 DROP PROCEDURE
 > CREATE PROCEDURE test_dec26()BEGIN DECLARE x timestamp(3) DEFAULT '2000-1-1 10:00:00.000001';SELECT x;END;
 CREATE PROCEDURE
 > CALL test_dec26();
-              x
------------------------------
-  2000-01-01 10:00:00+00:00
+           x
+-----------------------
+  2000-01-01 10:00:00
 (1 row)
 > CALL test_dec26();
-              x
------------------------------
-  2000-01-01 10:00:00+00:00
+           x
+-----------------------
+  2000-01-01 10:00:00
 (1 row)
 > DROP PROCEDURE test_dec26;
 DROP PROCEDURE
 > CREATE PROCEDURE test_dec27()BEGIN DECLARE x timestamp(9) DEFAULT '2000-1-1 10:00:00.000001';SELECT x;END;
 CREATE PROCEDURE
 > CALL test_dec27();
-                 x
-------------------------------------
-  2000-01-01 10:00:00.000001+00:00
+              x
+------------------------------
+  2000-01-01 10:00:00.000001
 (1 row)
 > CALL test_dec27();
-                 x
-------------------------------------
-  2000-01-01 10:00:00.000001+00:00
+              x
+------------------------------
+  2000-01-01 10:00:00.000001
 (1 row)
 > DROP PROCEDURE test_dec27;
 DROP PROCEDURE

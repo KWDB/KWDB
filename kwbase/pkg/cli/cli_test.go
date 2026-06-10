@@ -612,18 +612,18 @@ func Example_sql_format() {
 	c := newCLITest(cliTestParams{})
 	defer c.cleanup()
 
-	c.RunWithArgs([]string{"sql", "-e", "create database t; create table t.times (bare timestamp, withtz timestamptz)"})
-	c.RunWithArgs([]string{"sql", "-e", "insert into t.times values ('2016-01-25 10:10:10', '2016-01-25 10:10:10-05:00')"})
+	c.RunWithArgs([]string{"sql", "-e", "create database t; create table t.times (bare timestamp, withtz timestamptz, datebare Date, timebare time, timewithtz timetz)"})
+	c.RunWithArgs([]string{"sql", "-e", "insert into t.times values ('2016-01-25 10:10:10', '2016-01-25 10:10:10-05:00', '2026-05-15', '10:14:23','10:14:25+08:00')"})
 	c.RunWithArgs([]string{"sql", "-e", "select * from t.times"})
 
 	// Output:
-	// sql -e create database t; create table t.times (bare timestamp, withtz timestamptz)
+	// sql -e create database t; create table t.times (bare timestamp, withtz timestamptz, datebare Date, timebare time, timewithtz timetz)
 	// CREATE TABLE
-	// sql -e insert into t.times values ('2016-01-25 10:10:10', '2016-01-25 10:10:10-05:00')
+	// sql -e insert into t.times values ('2016-01-25 10:10:10', '2016-01-25 10:10:10-05:00', '2026-05-15', '10:14:23','10:14:25+08:00')
 	// INSERT 1
 	// sql -e select * from t.times
-	// bare	withtz
-	// 2016-01-25 10:10:10+00:00	2016-01-25 15:10:10+00:00
+	// bare	withtz	datebare	timebare	timewithtz
+	// 2016-01-25 10:10:10	2016-01-25 15:10:10+00:00	2026-05-15	10:14:23	10:14:25+08:00
 }
 
 func Example_sql_column_labels() {

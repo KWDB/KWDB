@@ -2268,8 +2268,16 @@ var dMinTimestamp = &DTimestamp{}
 
 // time.Time formats.
 const (
-	// TimestampOutputFormat is used to output all timestamps.
+	// TimestampOutputFormat is used to output timestamptz (timestamps with timezone).
 	TimestampOutputFormat = "2006-01-02 15:04:05.999999999-07:00"
+	// DateTimeOutputFormat is used to output timestamp (timestamps without timezone).
+	DateTimeOutputFormat = "2006-01-02 15:04:05.999999999"
+	// TimeFormat is used to output time without time zone.
+	TimeFormat = "15:04:05.999999999"
+	// TimeTZFormat is used to output time with time zone.
+	TimeTZFormat = TimeFormat + "-07:00"
+	// DateFormat is used to output date.
+	DateFormat = "2006-01-02"
 )
 
 // ParseDTimestamp parses and returns the *DTimestamp Datum value represented by

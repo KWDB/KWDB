@@ -17,9 +17,9 @@ INSERT 1
 > set enable_multimodel=true;
 SET
 > SELECT r.create_time FROM rdb.r r, tsdb.ts ts WHERE ts.tag2 = r.rname;
-            create_time
-------------------------------------
-  2021-01-01 00:00:00.123456+00:00
+         create_time
+------------------------------
+  2021-01-01 00:00:00.123456
 (1 row)
 > set enable_multimodel=false;
 SET

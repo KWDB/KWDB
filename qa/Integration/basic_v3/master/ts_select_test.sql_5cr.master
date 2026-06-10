@@ -27,10 +27,10 @@ CREATE TABLE
 > insert into ts_table2 values('2023-05-31 10:00:00', 1000,1000000,100000000000000000,100000000000000000.101,true, 'test_ts1', 1000, 1000000, 1000000000, 100.11, false, 'test_attr_ts'), ('2023-05-31 11:00:00', 2000,2000000,200000000000000000,200000000000000000.202,true, 'test_ts1', 1000, 1000000, 1000000000, 100.11, false, 'test_attr_ts');
 INSERT 2
 > select 1699496698000::timestamp from ts_table;
-          timestamp
------------------------------
-  2023-11-09 02:24:58+00:00
-  2023-11-09 02:24:58+00:00
+       timestamp
+-----------------------
+  2023-11-09 02:24:58
+  2023-11-09 02:24:58
 (2 rows)
 > select * from test_ts.ts_table;
             time            |  e1  |   e2    |         e3         |  e4   |  e5  |    e6    | attr1 |  attr2  |   attr3    | attr4  | attr5 |    attr6
@@ -282,10 +282,10 @@ SQLSTATE: 22023
   1000
 (1 row)
 > select time::timestamp from test_ts.ts_table;
-            time
------------------------------
-  2023-05-31 10:00:00+00:00
-  2023-05-31 11:00:00+00:00
+         time
+-----------------------
+  2023-05-31 10:00:00
+  2023-05-31 11:00:00
 (2 rows)
 > select time::smallint from test_ts.ts_table;
 ERROR: value is out of range for type int2
@@ -369,10 +369,10 @@ SQLSTATE: 42846
   2023-05-31 11:00:00+00:00
 (2 rows)
 > select e1::timestamp from test_ts.ts_table;
-             e1
------------------------------
-  1970-01-01 00:00:01+00:00
-  1970-01-01 00:00:02+00:00
+          e1
+-----------------------
+  1970-01-01 00:00:01
+  1970-01-01 00:00:02
 (2 rows)
 > select e1::smallint from test_ts.ts_table;
    e1
@@ -465,10 +465,10 @@ SQLSTATE: 42846
   2000
 (2 rows)
 > select e2::timestamp from test_ts.ts_table;
-             e2
------------------------------
-  1970-01-01 00:16:40+00:00
-  1970-01-01 00:33:20+00:00
+          e2
+-----------------------
+  1970-01-01 00:16:40
+  1970-01-01 00:33:20
 (2 rows)
 > select e2::smallint from test_ts.ts_table;
 ERROR: value is out of range for type int2
@@ -558,10 +558,10 @@ SQLSTATE: 22003
   2000000
 (2 rows)
 > select e3::timestamp from test_ts.ts_table;
-               e3
---------------------------------
-  3170843-11-07 09:46:40+00:00
-  6339717-09-13 19:33:20+00:00
+            e3
+--------------------------
+  3170843-11-07 09:46:40
+  6339717-09-13 19:33:20
 (2 rows)
 > select e3::smallint from test_ts.ts_table;
 ERROR: value is out of range for type int2

@@ -843,27 +843,27 @@ ERROR: expected DEFAULT expression to have type timestamp, but '9223372036854775
 > create PROCEDURE prc_declare() begin declare a1 timestamp default '2020-01-02 10:00:00'; SELECT a1 ;end;
 CREATE PROCEDURE
 > CALL prc_declare();
-             a1
------------------------------
-  2020-01-02 10:00:00+00:00
+          a1
+-----------------------
+  2020-01-02 10:00:00
 (1 row)
 > DROP PROCEDURE prc_declare;
 DROP PROCEDURE
 > create PROCEDURE prc_declare() begin declare a1 timestamp(9) default '2020-01-02 10:00:00.123456789'; SELECT a1 ;end;
 CREATE PROCEDURE
 > CALL prc_declare();
-                  a1
----------------------------------------
-  2020-01-02 10:00:00.123456789+00:00
+               a1
+---------------------------------
+  2020-01-02 10:00:00.123456789
 (1 row)
 > DROP PROCEDURE prc_declare;
 DROP PROCEDURE
 > create PROCEDURE prc_declare() begin declare a1 timestamp(3) default '2020-01-02 10:00:00.123456789'; SELECT a1 ;end;
 CREATE PROCEDURE
 > CALL prc_declare();
-               a1
----------------------------------
-  2020-01-02 10:00:00.123+00:00
+            a1
+---------------------------
+  2020-01-02 10:00:00.123
 (1 row)
 > DROP PROCEDURE prc_declare;
 DROP PROCEDURE
@@ -1281,9 +1281,9 @@ CREATE PROCEDURE
   bill
 (1 row)
 > select * from test;
-  old | new  |         mod_time
-------+------+----------------------------
-  new | bill | 2025-05-13 00:00:00+00:00
+  old | new  |      mod_time
+------+------+----------------------
+  new | bill | 2025-05-13 00:00:00
 (1 row)
 > drop procedure if exists upreturn2;
 DROP PROCEDURE
@@ -1305,9 +1305,9 @@ DROP PROCEDURE
 > create procedure delreturn2(X TEXT) begin delete from test returning new into X; select X; end;
 CREATE PROCEDURE
 > select * from test;
-  old | new |         mod_time
-------+-----+----------------------------
-  old | new | 2020-10-13 00:00:00+00:00
+  old | new |      mod_time
+------+-----+----------------------
+  old | new | 2020-10-13 00:00:00
 (1 row)
 > call delreturn2('NEW');
    x

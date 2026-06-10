@@ -1902,14 +1902,14 @@ CREATE TABLE
 > insert into test values (1695139200000, 1695139200000, 1, 1);
 INSERT 1
 > select ts,ts1 from test group by ts,ts1 having max(ts)-last(ts1) = '0h';
-             ts             |            ts1
-----------------------------+----------------------------
-  2023-09-19 16:00:00+00:00 | 2023-09-19 16:00:00+00:00
+             ts             |         ts1
+----------------------------+----------------------
+  2023-09-19 16:00:00+00:00 | 2023-09-19 16:00:00
 (1 row)
 > select ts,ts1 from test group by ts,ts1 having max(ts)-max(ts1) = '0h';
-             ts             |            ts1
-----------------------------+----------------------------
-  2023-09-19 16:00:00+00:00 | 2023-09-19 16:00:00+00:00
+             ts             |         ts1
+----------------------------+----------------------
+  2023-09-19 16:00:00+00:00 | 2023-09-19 16:00:00
 (1 row)
 > select ts,ts1 from test group by ts,ts1 having max(ts)-last(ts1) = 0;
 ERROR: unsupported comparison operator: <interval> = <int>
