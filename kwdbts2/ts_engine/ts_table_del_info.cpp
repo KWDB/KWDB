@@ -356,9 +356,10 @@ KStatus STTableRangeDelAndTagInfo::WriteDelAndTagInfo(kwdbContext_p ctx, TSSlice
     LOG_ERROR("payload hash point[%u] not in span[%lu,%lu]", p_hash_point, begin_hash_, end_hash_);
     return KStatus::FAIL;
   }
-  tag_lock.WrLock(p_hash_point);
+  uint32_t hash_point = t1ha1_le(pkey.data, pkey.len);
+  tag_lock.WrLock(hash_point);
   Defer defer{[&](){
-    tag_lock.Unlock(p_hash_point);
+    tag_lock.Unlock(hash_point);
   }};
 
   std::shared_ptr<TagTable> tag_table;

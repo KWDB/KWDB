@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <list>
 #include <memory>
+#include <set>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -37,6 +38,11 @@ enum TsMemSegmentStatus : uint8_t {
   MEM_SEGMENT_IMMUTABLE = 2,
   MEM_SEGMENT_WRITING = 3,
   MEM_SEGMENT_FLUSHING = 4,
+};
+
+struct EntityDelInfo {
+  TSTableID table_id{0};
+  std::set<PartitionIdentifier> partition_ids;
 };
 
 class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemSegment> {
@@ -74,8 +80,11 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
 
   int64_t id_;
   TsMemSegIndex skiplist_;
+  std::unordered_map<TSEntityID, EntityDelInfo> entity_del_ranges_;
+  KRWLatch rw_latch_;
 
-  explicit TsMemSegment(int64_t id, int32_t max_height) : id_(id), skiplist_(max_height) {
+  explicit TsMemSegment(int64_t id, int32_t max_height) :
+    id_(id), skiplist_(max_height), rw_latch_(RWLATCH_ID_MEM_SEGMENT_DEL_RANGE_RWLOCK) {
     n_mem_segments_.fetch_add(1, std::memory_order_relaxed);
   }
 
@@ -133,6 +142,13 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
   }
 
   void AppendOneRow(TSMemSegRowData* row);
+
+  void DeleteData(TSTableID table_id, TSEntityID entity_id, const std::vector<PartitionIdentifier>& partition_ids);
+
+  // only mem segment is immutable, we can all this function. otherwise we need add RW_LATCH_X_LOCK(&rw_latch_);
+  std::unordered_map<TSEntityID, EntityDelInfo>* GetEntityDelRanges() {
+    return &entity_del_ranges_;
+  }
 
   // bool HasEntityRows(const TsScanFilterParams& filter);
 
@@ -347,6 +363,8 @@ class TsMemSegmentManager {
   bool SwitchMemSegment(TsMemSegment* expected_old_mem_seg, bool flush);
 
   KStatus PutData(const TSSlice& payload, const std::shared_ptr<TsTableSchemaManager>& tb_schema, TSEntityID entity_id);
+
+  KStatus DeleteData(TSTableID table_id, TSEntityID entity_id, const std::vector<PartitionIdentifier>& partition_ids);
 
   bool GetMetricSchemaAndMeta(const std::shared_ptr<TsTableSchemaManager>& tb_schema, uint32_t version,
                               const std::vector<AttributeInfo>** schema, DATATYPE* ts_type, LifeTime* lifetime = nullptr);

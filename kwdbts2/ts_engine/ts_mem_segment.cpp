@@ -94,6 +94,13 @@ bool TsMemSegmentManager::GetMetricSchemaAndMeta(const std::shared_ptr<TsTableSc
   return true;
 }
 
+KStatus TsMemSegmentManager::DeleteData(TSTableID table_id, TSEntityID entity_id,
+                                        const std::vector<PartitionIdentifier>& partition_ids) {
+  auto cur_mem_seg = CurrentMemSegmentAndAllocateRow(1);
+  cur_mem_seg->DeleteData(table_id, entity_id, partition_ids);
+  return KStatus::SUCCESS;
+}
+
 KStatus TsMemSegmentManager::PutData(const TSSlice& payload, const std::shared_ptr<TsTableSchemaManager>& tb_schema,
                                       TSEntityID entity_id) {
   // first of all, check BG flush job status
@@ -325,6 +332,16 @@ void TsMemSegment::AppendOneRow(TSMemSegRowData* row) {
   skiplist_.InsertRowData(row);
   written_row_num_.fetch_add(1, std::memory_order_acq_rel);
   payload_mem_usage_.fetch_add(row->GetRowData().len, std::memory_order_relaxed);
+}
+
+void TsMemSegment::DeleteData(TSTableID table_id, TSEntityID entity_id,
+                              const std::vector<PartitionIdentifier>& partition_ids) {
+  RW_LATCH_X_LOCK(&rw_latch_);
+  auto& del_info = entity_del_ranges_[entity_id];
+  del_info.table_id = table_id;
+  del_info.partition_ids.insert(partition_ids.begin(), partition_ids.end());
+  RW_LATCH_UNLOCK(&rw_latch_);
+  written_row_num_.fetch_add(1, std::memory_order_acq_rel);
 }
 
 bool TsMemSegment::GetEntityRows(const TsBlockItemFilterParams& filter, std::list<const TSMemSegRowData*>* rows) {

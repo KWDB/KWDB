@@ -1021,9 +1021,24 @@ KStatus TsVGroup::FlushImmSegment(std::unique_ptr<TsLastSegmentBuilder>& lastseg
       return FAIL;
     }
     if (all_block_spans.empty()) {
-      // All data in this memseg belongs to dropped tables.  GetBlockSpans
-      // skips rows for dropped tables, producing an empty list.  There is
-      // nothing to flush to disk, so just remove the memseg from the version.
+      // All data in this memseg belongs to dropped tables, or only delete
+      // ranges exist with no data rows. There is nothing to flush to disk,
+      // but we still need to process delete ranges for count stats.
+      auto* del_ranges = mem_seg->GetEntityDelRanges();
+      if (del_ranges && !del_ranges->empty()) {
+        std::map<PartitionIdentifier, std::vector<TsEntityCountStats>> flush_infos;
+        for (const auto& [entity_id, del_info] : *del_ranges) {
+          for (const auto& partition_id : del_info.partition_ids) {
+            TsEntityCountStats invalid_stat{del_info.table_id, entity_id, INT64_MAX, INT64_MIN, 0, false, ""};
+            flush_infos[partition_id].emplace_back(invalid_stat);
+          }
+        }
+        for (auto& [par_id, info] : flush_infos) {
+          uint64_t file_number = version_manager_->NewFileNumber();
+          update.AddCountFile(par_id, {file_number, info});
+        }
+        update.SetCountStatsType(CountStatsStatus::FlushImmOrWriteBatch);
+      }
       update.RemoveMemSegment(mem_seg->GetId());
       return version_manager_->ApplyUpdate(&update);
     }
@@ -1134,6 +1149,16 @@ KStatus TsVGroup::FlushImmSegment(std::unique_ptr<TsLastSegmentBuilder>& lastseg
     }
   }
   update.RemoveMemSegment(mem_seg->GetId());
+
+  auto* del_ranges = mem_seg->GetEntityDelRanges();
+  if (del_ranges && !del_ranges->empty()) {
+    for (const auto& [entity_id, del_info] : *del_ranges) {
+      for (const auto& partition_id : del_info.partition_ids) {
+        TsEntityCountStats invalid_stat{del_info.table_id, entity_id, INT64_MAX, INT64_MIN, 0, false, ""};
+        flush_infos[partition_id].emplace_back(invalid_stat);
+      }
+    }
+  }
 
   for (auto& [par_id, info] : flush_infos) {
     uint64_t file_number = version_manager_->NewFileNumber();
@@ -1572,7 +1597,10 @@ const std::vector<KwTsSpan>& ts_spans, bool user_del) {
     }
   }
   ps = version_manager_->Current()->GetPartitions(db_id, ts_spans, ts_type);
+  std::vector<PartitionIdentifier> par_ids;
+  par_ids.reserve(ps.size());
   for (auto& p : ps) {
+    par_ids.emplace_back(p->GetPartitionIdentifier());
     s = p->DeleteData(e_id, ts_spans, osn, user_del);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("DeleteData partition[%u/%lu] failed!",
@@ -1580,6 +1608,7 @@ const std::vector<KwTsSpan>& ts_spans, bool user_del) {
       return s;
     }
   }
+  mem_segment_mgr_->DeleteData(tbl_id, e_id, par_ids);
   return KStatus::SUCCESS;
 }
 
