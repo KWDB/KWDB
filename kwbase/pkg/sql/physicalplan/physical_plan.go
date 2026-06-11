@@ -53,6 +53,28 @@ import (
 	"github.com/pkg/errors"
 )
 
+// VectorizeDisableReason defines why a plan cannot use the vectorized engine.
+type VectorizeDisableReason int
+
+const (
+	// VectorizeDisableNone is the zero value when vectorization is not disabled for a known reason.
+	VectorizeDisableNone VectorizeDisableReason = iota
+	// VectorizeDisableMismatchedUnionAllPhysicalTypes indicates UNION ALL has mismatched vectorized physical column types.
+	VectorizeDisableMismatchedUnionAllPhysicalTypes
+)
+
+// String formats a vectorization disable reason for logs and explain output.
+func (r VectorizeDisableReason) String() string {
+	switch r {
+	case VectorizeDisableMismatchedUnionAllPhysicalTypes:
+		return "UNION ALL has mismatched vectorized physical column types"
+	case VectorizeDisableNone:
+		return "vectorized execution disabled"
+	default:
+		return "vectorized execution disabled for an unknown reason"
+	}
+}
+
 // Processor contains the information associated with a processor in a plan.
 type Processor struct {
 	// Node where the processor must be instantiated.
@@ -163,6 +185,11 @@ type PhysicalPlan struct {
 	// table readers in the plan.
 	TotalEstimatedScannedRows uint64
 
+	// VectorizeDisableReason and VectorizeDisableDetail describe why this plan
+	// must not be executed with the vectorized engine.
+	VectorizeDisableReason VectorizeDisableReason
+	VectorizeDisableDetail string
+
 	// the processors are all execute on ts engine
 	AllProcessorsExecInTSEngine bool
 
@@ -185,6 +212,31 @@ type PhysicalPlan struct {
 // IsRemotePlan is true when ts plan is dist.
 func (p *PhysicalPlan) IsRemotePlan() bool {
 	return p.remotePlan
+}
+
+// DisableVectorized marks this plan as unsupported by the vectorized engine.
+// The first disable reason wins.
+func (p *PhysicalPlan) DisableVectorized(reason VectorizeDisableReason, detail string) {
+	if reason != VectorizeDisableNone && p.VectorizeDisableReason == VectorizeDisableNone {
+		p.VectorizeDisableReason = reason
+		p.VectorizeDisableDetail = detail
+	}
+}
+
+// IsVectorizeDisabled returns true when this plan must use row execution.
+func (p *PhysicalPlan) IsVectorizeDisabled() bool {
+	return p.VectorizeDisableReason != VectorizeDisableNone
+}
+
+// VectorizeDisabledMessage formats the disable reason for diagnostics.
+func (p *PhysicalPlan) VectorizeDisabledMessage() string {
+	if !p.IsVectorizeDisabled() {
+		return ""
+	}
+	if p.VectorizeDisableDetail == "" {
+		return p.VectorizeDisableReason.String()
+	}
+	return p.VectorizeDisableReason.String() + ": " + p.VectorizeDisableDetail
 }
 
 // LimitInfo limit in time series select
@@ -1982,6 +2034,8 @@ func MergePlans(
 	}
 
 	mergedPlan.SetRowEstimates(left, right)
+	mergedPlan.DisableVectorized(left.VectorizeDisableReason, left.VectorizeDisableDetail)
+	mergedPlan.DisableVectorized(right.VectorizeDisableReason, right.VectorizeDisableDetail)
 
 	return mergedPlan, leftRouters, rightRouters
 }

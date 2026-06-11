@@ -47,6 +47,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/server/serverpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/colexec/typeconv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/distsql"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
@@ -6315,6 +6316,26 @@ func (dsp *DistSQLPlanner) isOnlyOnGateway(plan *PhysicalPlan) bool {
 	return false
 }
 
+func disableVectorizedForMismatchedUnionAllTypes(plan, leftPlan, rightPlan *PhysicalPlan) {
+	leftPhysTypes, err := typeconv.FromColumnTypes(leftPlan.ResultTypes)
+	if err != nil {
+		return
+	}
+	rightPhysTypes, err := typeconv.FromColumnTypes(rightPlan.ResultTypes)
+	if err != nil {
+		return
+	}
+	for i := range leftPhysTypes {
+		if leftPhysTypes[i] != rightPhysTypes[i] {
+			plan.DisableVectorized(
+				physicalplan.VectorizeDisableMismatchedUnionAllPhysicalTypes,
+				fmt.Sprintf("column %d: left=%s right=%s", i+1, leftPhysTypes[i], rightPhysTypes[i]),
+			)
+			return
+		}
+	}
+}
+
 // TODO(abhimadan): Refactor this function to reduce the UNION vs
 // EXCEPT/INTERSECT and DISTINCT vs ALL branching.
 //
@@ -6456,6 +6477,9 @@ func (dsp *DistSQLPlanner) createPlanForSetOp(
 	var leftRouters, rightRouters []physicalplan.ProcessorIdx
 	p.PhysicalPlan, leftRouters, rightRouters = physicalplan.MergePlans(
 		&leftPlan.PhysicalPlan, &rightPlan.PhysicalPlan)
+	if n.unionType == tree.UnionOp && n.all {
+		disableVectorizedForMismatchedUnionAllTypes(&p, &leftPlan, &rightPlan)
+	}
 
 	p.AddNoopForJoinToAgent(findJoinProcessorNodes(leftRouters, rightRouters, p.Processors),
 		leftRouters, rightRouters, dsp.nodeDesc.NodeID, &leftPlan.ResultTypes, &rightPlan.ResultTypes)

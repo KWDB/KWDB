@@ -202,7 +202,10 @@ func (dsp *DistSQLPlanner) setupFlows(
 	}
 
 	if evalCtx.SessionData.VectorizeMode != sessiondata.VectorizeOff && !usePipeline {
-		if !vectorizeThresholdMet && (evalCtx.SessionData.VectorizeMode == sessiondata.VectorizeAuto) {
+		if plan != nil && plan.IsVectorizeDisabled() {
+			log.VEventf(ctx, 1, "vectorized execution disabled: %s", plan.VectorizeDisabledMessage())
+			setupReq.EvalContext.Vectorize = int32(sessiondata.VectorizeOff)
+		} else if !vectorizeThresholdMet && (evalCtx.SessionData.VectorizeMode == sessiondata.VectorizeAuto) {
 			// Vectorization is not justified for this flow because the expected
 			// amount of data is too small and the overhead of pre-allocating data
 			// structures needed for the vectorized engine is expected to dominate
