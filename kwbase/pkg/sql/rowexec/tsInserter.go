@@ -446,7 +446,7 @@ func rowToRowClause(rows sqlbase.EncDatumRow) []tree.Expr {
 
 // TSInsertSelectBlockMemLimit is memory of block written at a time in ts insert select, units: MB
 var TSInsertSelectBlockMemLimit = settings.RegisterPublicIntSetting(
-	"sql.ts_insert_select.block_memory", "memory of block written at a time in ts insert select", 200,
+	"sql.ts_insert_select.block_memory", "memory of block written at a time in ts insert select", 10,
 )
 
 var insBytes int64 = 1024 * 1024
