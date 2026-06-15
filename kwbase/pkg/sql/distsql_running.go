@@ -205,6 +205,15 @@ func (dsp *DistSQLPlanner) setupFlows(
 		if plan != nil && plan.IsVectorizeDisabled() {
 			log.VEventf(ctx, 1, "vectorized execution disabled: %s", plan.VectorizeDisabledMessage())
 			setupReq.EvalContext.Vectorize = int32(sessiondata.VectorizeOff)
+		} else if plan != nil && plan.UseQueryShortCircuit {
+			// The pg-encoding short-circuit fast path streams encoded results
+			// directly from the TS engine and is incompatible with the vectorized
+			// materializer (FlowBase.Run would invoke the no-op
+			// ProcessorBase.RunShortCircuit and yield zero rows). Run such fully
+			// pushed-down TS plans with the row engine, matching the behavior
+			// already applied for VectorizeAuto via vectorizeThresholdMet.
+			log.VEventf(ctx, 1, "vectorized execution disabled: query short circuit")
+			setupReq.EvalContext.Vectorize = int32(sessiondata.VectorizeOff)
 		} else if !vectorizeThresholdMet && (evalCtx.SessionData.VectorizeMode == sessiondata.VectorizeAuto) {
 			// Vectorization is not justified for this flow because the expected
 			// amount of data is too small and the overhead of pre-allocating data

@@ -35,3 +35,23 @@ select code1 from test_select_maxandmin.t1 where (pg_catalog.array_position(cast
 SET vectorize_row_count_threshold = 1000;
 
 USE defaultdb;DROP DATABASE IF exists test_select_maxandmin cascade;
+
+--- bug IJUJDF
+USE defaultdb;DROP DATABASE IF exists test_vectorize cascade;
+CREATE TS DATABASE test_vectorize;
+CREATE TABLE test_vectorize.t1(k_timestamp TIMESTAMPTZ NOT NULL,v INT) ATTRIBUTES (tag1 INT NOT NULL) PRIMARY TAGS(tag1);
+INSERT INTO test_vectorize.t1 VALUES('2026-06-13 10:00:01',1,1),('2026-06-13 10:00:02',2,1);
+
+SET vectorize = on;
+SELECT count(*) AS on_cnt FROM test_vectorize.t1;
+SELECT * FROM test_vectorize.t1 order by k_timestamp;
+
+SET vectorize = off;
+SELECT count(*) AS off_cnt FROM test_vectorize.t1;
+SELECT * FROM test_vectorize.t1 order by k_timestamp;
+
+SET vectorize = auto;
+SELECT count(*) AS auto_cnt FROM test_vectorize.t1;
+SELECT * FROM test_vectorize.t1 order by k_timestamp;
+
+USE defaultdb;DROP DATABASE IF exists test_vectorize cascade;

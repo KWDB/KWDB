@@ -253,3 +253,52 @@ SET
 SET
 > USE defaultdb;DROP DATABASE IF exists test_select_maxandmin cascade;
 DROP DATABASE
+> USE defaultdb;DROP DATABASE IF exists test_vectorize cascade;
+DROP DATABASE
+> CREATE TS DATABASE test_vectorize;
+CREATE TS DATABASE
+> CREATE TABLE test_vectorize.t1(k_timestamp TIMESTAMPTZ NOT NULL,v INT) ATTRIBUTES (tag1 INT NOT NULL) PRIMARY TAGS(tag1);
+CREATE TABLE
+> INSERT INTO test_vectorize.t1 VALUES('2026-06-13 10:00:01',1,1),('2026-06-13 10:00:02',2,1);
+INSERT 2
+> SET vectorize = on;
+SET
+> SELECT count(*) AS on_cnt FROM test_vectorize.t1;
+  on_cnt
+----------
+       2
+(1 row)
+> SELECT * FROM test_vectorize.t1 order by k_timestamp;
+         k_timestamp        | v | tag1
+----------------------------+---+-------
+  2026-06-13 10:00:01+00:00 | 1 |    1
+  2026-06-13 10:00:02+00:00 | 2 |    1
+(2 rows)
+> SET vectorize = off;
+SET
+> SELECT count(*) AS off_cnt FROM test_vectorize.t1;
+  off_cnt
+-----------
+        2
+(1 row)
+> SELECT * FROM test_vectorize.t1 order by k_timestamp;
+         k_timestamp        | v | tag1
+----------------------------+---+-------
+  2026-06-13 10:00:01+00:00 | 1 |    1
+  2026-06-13 10:00:02+00:00 | 2 |    1
+(2 rows)
+> SET vectorize = auto;
+SET
+> SELECT count(*) AS auto_cnt FROM test_vectorize.t1;
+  auto_cnt
+------------
+         2
+(1 row)
+> SELECT * FROM test_vectorize.t1 order by k_timestamp;
+         k_timestamp        | v | tag1
+----------------------------+---+-------
+  2026-06-13 10:00:01+00:00 | 1 |    1
+  2026-06-13 10:00:02+00:00 | 2 |    1
+(2 rows)
+> USE defaultdb;DROP DATABASE IF exists test_vectorize cascade;
+DROP DATABASE
