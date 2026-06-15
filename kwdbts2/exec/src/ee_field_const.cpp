@@ -309,7 +309,7 @@ Field *FieldConstNull::field_to_copy() {
 
 k_int64 FieldConstDate::ValInt() {
   k_int64 val;
-  convertStringToTimestamp(value_, 1000, &val);
+  convertStringToTimestamp(value_, 1, &val);
   val += timezone_ * 3600 * 1000;
   return val;
 }

@@ -11,8 +11,11 @@
 
 #include "ee_field.h"
 
+#include "ee_field_const.h"
 #include "ee_field_func_math.h"
 #include "ee_field_func_string.h"
+#include "ee_field_typecast.h"
+#include "ee_global.h"
 #include "ee_processors.h"
 #include "gtest/gtest.h"
 
@@ -93,6 +96,16 @@ class BaseField : public FieldNum {
   char *get_ptr() { return nullptr; }
 };
 
+class BatchStringField : public FieldConstString {
+ public:
+  BatchStringField(roachpb::DataType datatype, const KString &str)
+      : FieldConstString(datatype, str) {}
+
+  String ValStr(char *ptr) override {
+    return String(ptr, strlen(ptr), false);
+  }
+};
+
 class TestFieldIterator : public ::testing::Test {
  protected:
   virtual void SetUp() {}
@@ -101,6 +114,72 @@ class TestFieldIterator : public ::testing::Test {
   kwdbContext_t g_pool_context;
   kwdbContext_p ctx_ = &g_pool_context;
 };
+
+TEST_F(TestFieldIterator, TypeCastRoundsFloatAndRejectsOverflow) {
+  FieldConstDouble positive(roachpb::DataType::DOUBLE, 1.9);
+  FieldTypeCastSigned<k_int64> positive_cast(&positive);
+  EXPECT_EQ(positive_cast.ValInt(), 2);
+  EXPECT_EQ(*reinterpret_cast<k_int64 *>(positive_cast.get_ptr(nullptr)), 2);
+
+  FieldConstDouble negative(roachpb::DataType::DOUBLE, -1.9);
+  FieldTypeCastSigned<k_int64> negative_cast(&negative);
+  EXPECT_EQ(negative_cast.ValInt(), -2);
+  EXPECT_EQ(*reinterpret_cast<k_int64 *>(negative_cast.get_ptr(nullptr)), -2);
+
+  EEPgErrorInfo::ResetPgErrorInfo();
+  FieldConstDouble overflow(roachpb::DataType::DOUBLE, 1e20);
+  FieldTypeCastSigned<k_int64> overflow_cast(&overflow);
+  EXPECT_EQ(overflow_cast.ValInt(), KStatus::FAIL);
+  EXPECT_TRUE(EEPgErrorInfo::IsError());
+  EXPECT_EQ(EEPgErrorInfo::GetPgErrorInfo().code,
+            ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE);
+  EEPgErrorInfo::ResetPgErrorInfo();
+}
+
+TEST_F(TestFieldIterator, TypeCastBoolHandlesFloatAndStringInputs) {
+  FieldConstDouble positive(roachpb::DataType::DOUBLE, 0.5);
+  FieldTypeCastBool positive_cast(&positive);
+  EXPECT_EQ(positive_cast.ValInt(), 1);
+  EXPECT_TRUE(*reinterpret_cast<k_bool *>(positive_cast.get_ptr(nullptr)));
+
+  FieldConstDouble negative(roachpb::DataType::DOUBLE, -0.5);
+  FieldTypeCastBool negative_cast(&negative);
+  EXPECT_EQ(negative_cast.ValInt(), 1);
+  EXPECT_TRUE(*reinterpret_cast<k_bool *>(negative_cast.get_ptr(nullptr)));
+
+  FieldConstString mixed_case(roachpb::DataType::VARCHAR, "True");
+  FieldTypeCastBool mixed_case_cast(&mixed_case);
+  EXPECT_EQ(mixed_case_cast.ValInt(), 1);
+
+  BatchStringField short_form(roachpb::DataType::VARCHAR, "t");
+  FieldTypeCastBool short_form_cast(&short_form);
+  EXPECT_TRUE(*reinterpret_cast<k_bool *>(short_form_cast.get_ptr(nullptr)));
+
+  BatchStringField false_value(roachpb::DataType::VARCHAR, "FALSE");
+  FieldTypeCastBool false_cast(&false_value);
+  EXPECT_FALSE(*reinterpret_cast<k_bool *>(false_cast.get_ptr(nullptr)));
+}
+
+TEST_F(TestFieldIterator, TypeCastStringTimestampUsesOutputPrecision) {
+  constexpr k_int64 kExpectedMillis = 1767250800000;
+  constexpr k_int64 kExpectedMillisWithTimezone = 1767222000000;
+
+  FieldConstString constant(roachpb::DataType::VARCHAR,
+                            "2026-01-01 07:00:00");
+  FieldTypeCastTimestampTz constant_cast(&constant, 3, 0);
+  EXPECT_EQ(constant_cast.ValInt(), kExpectedMillis);
+
+  BatchStringField batch(roachpb::DataType::VARCHAR,
+                         "2026-01-01 07:00:00");
+  FieldTypeCastTimestampTz batch_cast(&batch, 3, 0);
+  EXPECT_EQ(*reinterpret_cast<k_int64 *>(batch_cast.get_ptr(nullptr)),
+            kExpectedMillis);
+
+  FieldConstString with_timezone(roachpb::DataType::VARCHAR,
+                                 "2026-01-01 07:00:00+08:00");
+  FieldTypeCastTimestampTz timezone_cast(&with_timezone, 3, 0);
+  EXPECT_EQ(timezone_cast.ValInt(), kExpectedMillisWithTimezone);
+}
 
 TEST_F(TestFieldIterator, TestMathFunc) {
   std::list<Field *> args;

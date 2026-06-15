@@ -11,6 +11,9 @@
 
 #include "ee_field_typecast.h"
 
+#include <algorithm>
+#include <cctype>
+
 #include "ee_field.h"
 #include "ee_global.h"
 #include "ee_table.h"
@@ -132,14 +135,28 @@ inline KStatus integerToInteger(Field *field, k_int64 &output) {
   return SUCCESS;
 }
 
-inline KStatus doubleToInteger(Field *field, k_int64 &output) {
-  k_double64 v = field->ValReal();
-  if (isinf(v) || isnan(v)) {
-    // Throw Error
+inline KStatus convertDoubleToInteger(k_double64 value, k_int64 &output) {
+  if (!std::isfinite(value)) {
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE,
+                                  "integer out of range");
     return FAIL;
   }
-  output = v;
+
+  const k_double64 rounded = std::round(value);
+  constexpr k_double64 kInt64UpperBound = 9223372036854775808.0;
+  if (rounded < static_cast<k_double64>(std::numeric_limits<k_int64>::lowest()) ||
+      rounded >= kInt64UpperBound) {
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE,
+                                  "integer out of range");
+    return FAIL;
+  }
+
+  output = static_cast<k_int64>(rounded);
   return SUCCESS;
+}
+
+inline KStatus doubleToInteger(Field *field, k_int64 &output) {
+  return convertDoubleToInteger(field->ValReal(), output);
 }
 
 inline KStatus stringToInteger(Field *field, k_int64 &output) {
@@ -276,8 +293,8 @@ inline KStatus stringToTimestampTz(Field *field, k_int64 &output, k_int64 scale,
         "parsing as type timestamp: empty or blank input");
     return FAIL;
   }
-  convertStringToTimestamp(std::string(str.getptr(), str.length_), scale, &output);
-  return SUCCESS;
+  return convertStringToTimestamp(
+      std::string(str.getptr(), str.length_), scale, &output);
 }
 inline KStatus timestamptzToTimestampTz(Field *field, k_int64 &output, k_int64 scale,
                                     k_int64 time_zone_diff, roachpb::DataType out_type) {
@@ -292,23 +309,39 @@ inline KStatus timestamptzToTimestampTz(Field *field, k_int64 &output, k_int64 s
   return SUCCESS;
 }
 inline KStatus numToBool(Field *field, k_bool &output) {
-  output = field->ValInt() != 0 ? 1 : 0;
+  if (field->get_storage_type() == roachpb::DataType::FLOAT ||
+      field->get_storage_type() == roachpb::DataType::DOUBLE) {
+    output = field->ValReal() != 0 ? 1 : 0;
+  } else {
+    output = field->ValInt() != 0 ? 1 : 0;
+  }
   return SUCCESS;
 }
 
-inline KStatus stringToBool(Field *field, k_bool &output) {
-  String s = field->ValStr();
-  std::string str = std::string(s.getptr(), s.length_);
+inline KStatus parseStringToBool(String value, k_bool &output) {
+  std::string str(value.getptr(), value.length_);
+  str.erase(str.begin(), std::find_if(str.begin(), str.end(), [](unsigned char c) {
+    return !std::isspace(c);
+  }));
+  str.erase(std::find_if(str.rbegin(), str.rend(), [](unsigned char c) {
+    return !std::isspace(c);
+  }).base(), str.end());
+  std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+
   if (str.empty()) {
     EEPgErrorInfo::SetPgErrorInfo(
         ERRCODE_INVALID_TEXT_REPRESENTATION,
         "could not parse \"\" as type bool: invalid bool value");
     return FAIL;
   }
-  if (str == "1" || str == "true") {
+  if (str == "1" || str == "t" || str == "true" ||
+      str == "y" || str == "yes" || str == "on") {
     output = 1;
     return SUCCESS;
-  } else if (str == "0" || str == "false") {
+  } else if (str == "0" || str == "f" || str == "false" ||
+             str == "n" || str == "no" || str == "off") {
     output = 0;
     return SUCCESS;
   } else {
@@ -318,6 +351,10 @@ inline KStatus stringToBool(Field *field, k_bool &output) {
                                   msg.c_str());
     return FAIL;
   }
+}
+
+inline KStatus stringToBool(Field *field, k_bool &output) {
+  return parseStringToBool(field->ValStr(), output);
 }
 
 template class FieldTypeCastSigned<k_int16>;
@@ -354,10 +391,7 @@ char *FieldTypeCastSigned<T>::get_ptr(RowBatch *batch) {
     case roachpb::DataType::FLOAT:
     case roachpb::DataType::DOUBLE:
       v = field_->ValReal(ptr);
-      if (isinf(v) || isnan(v)) {
-        err = FAIL;
-      }
-      intvalue_ = v;
+      err = convertDoubleToInteger(v, intvalue_);
       break;
     case roachpb::DataType::CHAR:
     case roachpb::DataType::BINARY:
@@ -1043,10 +1077,13 @@ char *FieldTypeCastTimestampTz::get_ptr(RowBatch *batch) {
     case roachpb::DataType::VARBINARY: {
       String valstr = field_->ValStr(ptr);
       if (!valstr.empty()) {
-        convertStringToTimestamp(std::string(valstr.getptr(), valstr.length_), type_scale_, &intvalue_);
-        if (!I64_SAFE_ADD_CHECK(intvalue_, timezone_diff_)) {
+        err = convertStringToTimestamp(
+            std::string(valstr.getptr(), valstr.length_), type_scale_,
+            &intvalue_);
+        if (err == SUCCESS &&
+            !I64_SAFE_ADD_CHECK(intvalue_, timezone_diff_)) {
           err = FAIL;
-        } else {
+        } else if (err == SUCCESS) {
           intvalue_ += timezone_diff_;
         }
       } else {
@@ -1143,7 +1180,7 @@ char *FieldTypeCastBool::get_ptr(RowBatch *batch) {
     case roachpb::DataType::BOOL:
     case roachpb::DataType::FLOAT:
     case roachpb::DataType::DOUBLE:
-      value_ = field_->ValInt(ptr) != 0 ? true : false;
+      value_ = field_->ValReal(ptr) != 0;
       break;
     case roachpb::DataType::CHAR:
     case roachpb::DataType::BINARY:
@@ -1152,23 +1189,7 @@ char *FieldTypeCastBool::get_ptr(RowBatch *batch) {
     case roachpb::DataType::NVARCHAR:
     case roachpb::DataType::VARBINARY: {
       String s = field_->ValStr(ptr);
-      std::string str = std::string(s.getptr(), s.length_);
-      if (str.empty()) {
-        EEPgErrorInfo::SetPgErrorInfo(
-            ERRCODE_INVALID_TEXT_REPRESENTATION,
-            "could not parse \"\" as type bool: invalid bool value");
-            err = FAIL;
-      } else {
-        if (str == "1" || str == "true") {
-          value_ = true;
-        } else if (str == "0" || str == "false") {
-          value_ = false;
-        } else {
-          KString msg = "could not parse \"" + str + "\" as type bool: invalid bool value";
-          EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION, msg.c_str());
-          err = FAIL;
-        }
-      }
+      err = parseStringToBool(s, value_);
       break;
     }
     default:

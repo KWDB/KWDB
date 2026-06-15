@@ -736,12 +736,13 @@ KStatus parseLocaltimeDst(KString timestr, k_int64 scale, k_int64 *utime, char d
   }
   fraction /= (1000000 / scale);
 
-  if (!I64_SAFE_MUL_CHECK(seconds, scale)) {
+  const k_int64 factor = 1000 * scale;
+  if (!I64_SAFE_MUL_CHECK(seconds, factor)) {
     EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE,
                                   "Timestamp/TimestampTZ out of range");
+    return FAIL;
   }
-  // *utime = TSDB_TICK_PER_SECOND(timePrec) * seconds + fraction;
-  *utime = scale * seconds + fraction;
+  *utime = factor * seconds + fraction;
   return SUCCESS;
 }
 
