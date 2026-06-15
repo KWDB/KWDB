@@ -127,3 +127,13 @@ alter materialized view m_view rename to test_ts_view.m_view_new;
 use defaultdb;
 drop database test_ts_view_rel cascade;
 drop database test_ts_view cascade;
+
+CREATE TS DATABASE IF NOT EXISTS test_view_ts;
+CREATE DATABASE IF NOT EXISTS test_view_rel;
+CREATE TABLE test_view_ts.sensor_data(ts TIMESTAMP(3) NOT NULL, temperature DOUBLE, humidity INT4, status VARCHAR(16)) TAGS(device_id VARCHAR(16) NOT NULL, site VARCHAR(16)) PRIMARY TAGS(device_id);
+CREATE TABLE test_view_rel.device_meta(device_id VARCHAR(16) PRIMARY KEY, owner VARCHAR(32), active BOOL, install_date DATE, last_reading TIMESTAMP, battery_level DECIMAL(5,2), location GEOMETRY);
+CREATE TABLE test_view_rel.site_meta(site VARCHAR(16) PRIMARY KEY, region VARCHAR(32), area DECIMAL(10,2), manager VARCHAR(32), contact_phone VARCHAR(16));
+CREATE TABLE test_view_rel.sensor_type(sensor_type_id INT4 PRIMARY KEY, sensor_name VARCHAR(32), unit VARCHAR(16), precision INT2, valid_range JSONB, calibration_info JSONB);
+
+CREATE VIEW test_view_ts.v_four_join AS SELECT s.ts, s.temperature, s.humidity, s.status, d.device_id, d.owner, d.active, d.battery_level, d.install_date, st.region, st.area, st.manager, sn.sensor_name, sn.unit FROM test_view_ts.sensor_data s JOIN test_view_rel.device_meta d ON s.device_id = d.device_id JOIN test_view_rel.site_meta st ON s.site = st.site JOIN test_view_rel.sensor_type sn ON sn.sensor_type_id = 1 WHERE d.active = true AND s.temperature >= 22 ORDER BY s.ts, s.device_id;
+SELECT device_id, owner, region, manager, sensor_name, COUNT(*) AS readings FROM test_view_ts.v_four_join GROUP BY device_id, owner, region, manager, sensor_name ORDER BY device_id;
