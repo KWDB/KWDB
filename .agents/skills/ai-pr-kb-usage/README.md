@@ -1,7 +1,8 @@
 # AI / KB PR Usage Helper
 
 This skill provides a local-only helper for recording PR-level AI / KB usage
-and rendering the `## AI / KB Usage` section expected in PR bodies.
+and rendering the `## AI / KB Usage` section expected in PR bodies. Here,
+`KB` means `Knowledge Base`.
 
 ## Why this exists
 
@@ -104,6 +105,7 @@ The validator does not try to infer whether the values are true.
 - `AI_PR_MODEL_NAME`: default model when `start` or a first `session-add` omits `--model`
 - `AI_PR_TOOL_NAME`: default tool when `start` or a first `session-add` omits `--tool`
 - `AI_PR_GUIDE_PATH`: override the PR guide path
+- `AI_PR_REPO_ROOT`: override repository root detection when `git rev-parse --show-toplevel` is unavailable
 - `AI_PR_GOCACHE`: override the Go build cache path used by the wrapper
 
 Explicit `start --model/--tool` values take precedence over environment defaults.

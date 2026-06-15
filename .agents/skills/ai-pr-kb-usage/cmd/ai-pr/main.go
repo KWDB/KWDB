@@ -1,3 +1,14 @@
+// Copyright (c) 2022-present, Shanghai Yunxi Technology Co, Ltd. All rights reserved.
+//
+// This software (KWDB) is licensed under Mulan PSL v2.
+// You can use this software according to the terms and conditions of the Mulan PSL v2.
+// You may obtain a copy of Mulan PSL v2 at:
+//          http://license.coscl.org.cn/MulanPSL2
+// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+// EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+// MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+// See the Mulan PSL v2 for more details.
+
 package main
 
 import (
@@ -12,7 +23,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
 	"time"
 )
@@ -22,9 +32,9 @@ const (
 )
 
 var (
-	headingPattern = regexp.MustCompile(`(?m)^##\s+(.+?)\s*$`)
+	headingPattern  = regexp.MustCompile(`(?m)^##\s+(.+?)\s*$`)
 	defaultSections = []string{"## Summary", "## Verification", "## Risks"}
-	yesNo = map[string]bool{"yes": true, "no": false}
+	yesNo           = map[string]bool{"yes": true, "no": false}
 )
 
 type commandEnvironment struct {
@@ -66,7 +76,7 @@ func main() {
 }
 
 func newDefaultEnvironment() commandEnvironment {
-	repoRoot := mustRepoRoot()
+	repoRoot := mustRepoRoot(os.Getenv)
 	return commandEnvironment{
 		repoRoot:       repoRoot,
 		defaultPRGuide: filepath.Join(repoRoot, "docs", "agents", "pr-guide.md"),
@@ -78,25 +88,27 @@ func newDefaultEnvironment() commandEnvironment {
 		runGit: func(args ...string) (string, error) {
 			cmd := exec.Command("git", args...)
 			cmd.Dir = repoRoot
-			out, err := cmd.Output()
+			out, err := cmd.CombinedOutput()
 			if err != nil {
-				return "", err
+				return "", fmt.Errorf("git %s failed: %w\n%s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 			}
 			return string(out), nil
 		},
 	}
 }
 
-func mustRepoRoot() string {
-	_, file, _, ok := runtime.Caller(0)
-	if ok {
-		return filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..", "..", "..", ".."))
+func mustRepoRoot(getenv func(string) string) string {
+	if value := strings.TrimSpace(getenv("AI_PR_REPO_ROOT")); value != "" {
+		return filepath.Clean(value)
 	}
-	wd, err := os.Getwd()
-	if err != nil {
-		panic(err)
+	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		if root := strings.TrimSpace(string(out)); root != "" {
+			return filepath.Clean(root)
+		}
 	}
-	return wd
+	panic(fmt.Errorf("detect repository root with git rev-parse --show-toplevel: %w\n%s", err, strings.TrimSpace(string(out))))
 }
 
 func (env commandEnvironment) run(argv []string) int {
@@ -407,6 +419,10 @@ func (env commandEnvironment) handleBodyApply(argv []string) int {
 	if err != nil {
 		return env.writeError(err)
 	}
+	guidePath, err := env.resolvePRGuidePath(*prGuide)
+	if err != nil {
+		return env.writeError(err)
+	}
 	target := env.resolveUserPath(*file)
 	original, _ := os.ReadFile(target)
 	updated := replaceSection(string(original), renderSection(ctx.record))
@@ -416,7 +432,6 @@ func (env commandEnvironment) handleBodyApply(argv []string) int {
 	if err := os.WriteFile(target, []byte(updated), 0o644); err != nil {
 		return env.writeError(err)
 	}
-	guidePath := env.resolvePRGuidePath(*prGuide)
 	env.markSynced(&ctx.record, updated, guidePath)
 	if err := env.saveContext(ctx); err != nil {
 		return env.writeError(err)
@@ -484,7 +499,11 @@ func (env commandEnvironment) handlePRTemplate(argv []string) int {
 	if err := fs.Parse(argv); err != nil {
 		return 2
 	}
-	fmt.Fprint(env.stdout, buildPRBodyTemplate(env.resolvePRGuidePath(*prGuide)))
+	guidePath, err := env.resolvePRGuidePath(*prGuide)
+	if err != nil {
+		return env.writeError(err)
+	}
+	fmt.Fprint(env.stdout, buildPRBodyTemplate(guidePath))
 	return 0
 }
 
@@ -503,7 +522,10 @@ func (env commandEnvironment) handlePRReady(argv []string) int {
 	if err != nil {
 		return env.writeError(err)
 	}
-	guidePath := env.resolvePRGuidePath(*prGuide)
+	guidePath, err := env.resolvePRGuidePath(*prGuide)
+	if err != nil {
+		return env.writeError(err)
+	}
 	body := buildPRBodyTemplate(guidePath)
 	targetFile := env.resolveUserPath(*file)
 	if data, err := os.ReadFile(targetFile); err == nil {
@@ -621,14 +643,14 @@ func (env commandEnvironment) resolveMetricsDir(override string) string {
 	return filepath.Join(env.repoRoot, ".ai-metrics")
 }
 
-func (env commandEnvironment) resolvePRGuidePath(override string) string {
+func (env commandEnvironment) resolvePRGuidePath(override string) (string, error) {
 	if strings.TrimSpace(override) != "" {
-		return env.resolveUserPath(override)
+		return env.resolveRepoPath(override)
 	}
 	if value := strings.TrimSpace(env.getenv("AI_PR_GUIDE_PATH")); value != "" {
-		return env.resolveUserPath(value)
+		return env.resolveRepoPath(value)
 	}
-	return env.defaultPRGuide
+	return env.resolveRepoPath(env.defaultPRGuide)
 }
 
 func (env commandEnvironment) resolveUserPath(path string) string {
@@ -639,6 +661,22 @@ func (env commandEnvironment) resolveUserPath(path string) string {
 		return filepath.Join(callerCWD, path)
 	}
 	return path
+}
+
+func (env commandEnvironment) resolveRepoPath(path string) (string, error) {
+	resolved := filepath.Clean(env.resolveUserPath(path))
+	if !filepath.IsAbs(resolved) {
+		resolved = filepath.Join(env.repoRoot, resolved)
+	}
+	root := filepath.Clean(env.repoRoot)
+	rel, err := filepath.Rel(root, resolved)
+	if err != nil {
+		return "", err
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("path escapes repository root: %s", path)
+	}
+	return resolved, nil
 }
 
 func (env commandEnvironment) markSynced(rec *record, body, prGuidePath string) {
@@ -676,13 +714,13 @@ func (env commandEnvironment) writeError(err error) int {
 func defaultRecord(branch string, now func() time.Time) record {
 	timestamp := formatTime(now())
 	return record{
-		Version:       1,
-		Branch:        branch,
-		AIModels:      []string{},
-		AIAgentTools:  []string{},
-		KBDocsUsed:    []string{},
-		CreatedAt:     timestamp,
-		UpdatedAt:     timestamp,
+		Version:         1,
+		Branch:          branch,
+		AIModels:        []string{},
+		AIAgentTools:    []string{},
+		KBDocsUsed:      []string{},
+		CreatedAt:       timestamp,
+		UpdatedAt:       timestamp,
 		LastPRGuidePath: "",
 	}
 }

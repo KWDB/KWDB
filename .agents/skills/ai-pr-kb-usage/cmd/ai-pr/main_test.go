@@ -1,3 +1,14 @@
+// Copyright (c) 2022-present, Shanghai Yunxi Technology Co, Ltd. All rights reserved.
+//
+// This software (KWDB) is licensed under Mulan PSL v2.
+// You can use this software according to the terms and conditions of the Mulan PSL v2.
+// You may obtain a copy of Mulan PSL v2 at:
+//          http://license.coscl.org.cn/MulanPSL2
+// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+// EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+// MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+// See the Mulan PSL v2 for more details.
+
 package main
 
 import (
@@ -9,6 +20,59 @@ import (
 	"testing"
 	"time"
 )
+
+func TestNewDefaultEnvironmentUsesRepoRootOverride(t *testing.T) {
+	t.Setenv("AI_PR_REPO_ROOT", "/tmp/custom-repo-root")
+
+	env := newDefaultEnvironment()
+
+	if env.repoRoot != "/tmp/custom-repo-root" {
+		t.Fatalf("repo root mismatch: %q", env.repoRoot)
+	}
+	if env.defaultPRGuide != filepath.Join("/tmp/custom-repo-root", "docs", "agents", "pr-guide.md") {
+		t.Fatalf("default guide mismatch: %q", env.defaultPRGuide)
+	}
+}
+
+func TestRunGitIncludesStderrOnFailure(t *testing.T) {
+	env := newDefaultEnvironment()
+
+	_, err := env.runGit("rev-parse", "--verify", "definitely-does-not-exist")
+	if err == nil {
+		t.Fatal("expected git error")
+	}
+	if !strings.Contains(err.Error(), "fatal:") {
+		t.Fatalf("expected stderr in error, got: %v", err)
+	}
+}
+
+func TestResolvePRGuidePathRejectsOutsideRepo(t *testing.T) {
+	h := newHarness(t)
+	h.setenv("AI_PR_CALLER_CWD", h.repoRoot)
+
+	stderr := &bytes.Buffer{}
+	h.env.stderr = stderr
+	if code := h.env.run([]string{"pr-template", "--pr-guide", "../outside/pr-guide.md"}); code != 1 {
+		t.Fatalf("unexpected exit code: %d\nstderr:\n%s", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "path escapes repository root") {
+		t.Fatalf("expected path traversal error, got:\n%s", stderr.String())
+	}
+}
+
+func TestResolvePRGuidePathRejectsEnvironmentOverrideOutsideRepo(t *testing.T) {
+	h := newHarness(t)
+	h.setenv("AI_PR_GUIDE_PATH", filepath.Join(h.tempDir, "outside-pr-guide.md"))
+
+	stderr := &bytes.Buffer{}
+	h.env.stderr = stderr
+	if code := h.env.run([]string{"pr-template"}); code != 1 {
+		t.Fatalf("unexpected exit code: %d\nstderr:\n%s", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "path escapes repository root") {
+		t.Fatalf("expected path traversal error, got:\n%s", stderr.String())
+	}
+}
 
 func TestStartAndSessionCountAccumulate(t *testing.T) {
 	h := newHarness(t)
@@ -283,6 +347,7 @@ func TestMissedRequiresNoteWithExample(t *testing.T) {
 
 func TestPRTemplateSupportsChineseGuideLabels(t *testing.T) {
 	h := newHarness(t)
+	h.useTempRepoRoot()
 	guidePath := filepath.Join(h.tempDir, "pr-guide-zh.md")
 	mustWriteFile(t, guidePath, strings.Join([]string{
 		"# PR 说明",
@@ -304,12 +369,12 @@ func TestPRTemplateSupportsChineseGuideLabels(t *testing.T) {
 }
 
 type harness struct {
-	t         *testing.T
-	tempDir   string
-	metricsDir string
-	branch    string
-	repoRoot  string
-	env       commandEnvironment
+	t            *testing.T
+	tempDir      string
+	metricsDir   string
+	branch       string
+	repoRoot     string
+	env          commandEnvironment
 	getenvValues map[string]string
 }
 
@@ -325,11 +390,11 @@ func newHarness(t *testing.T) *harness {
 		"AI_PR_BRANCH_NAME": "feat/test-ai-pr-kb-usage",
 	}
 	h := &harness{
-		t:          t,
-		tempDir:    tempDir,
-		metricsDir: metricsDir,
-		branch:     "feat/test-ai-pr-kb-usage",
-		repoRoot:   repoRoot,
+		t:            t,
+		tempDir:      tempDir,
+		metricsDir:   metricsDir,
+		branch:       "feat/test-ai-pr-kb-usage",
+		repoRoot:     repoRoot,
 		getenvValues: getenvValues,
 	}
 	h.env = commandEnvironment{
@@ -350,6 +415,13 @@ func newHarness(t *testing.T) *harness {
 		},
 	}
 	return h
+}
+
+func (h *harness) useTempRepoRoot() {
+	h.t.Helper()
+	h.repoRoot = h.tempDir
+	h.env.repoRoot = h.tempDir
+	h.env.defaultPRGuide = filepath.Join(h.tempDir, "docs", "agents", "pr-guide.md")
 }
 
 func (h *harness) setenv(key, value string) {

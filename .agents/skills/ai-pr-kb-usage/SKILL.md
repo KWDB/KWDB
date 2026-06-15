@@ -5,7 +5,7 @@ description: Use when a KWDB developer starts AI-assisted work on a local branch
 
 # AI PR / KB Usage
 
-Use this skill when the goal is to maintain PR-level AI / KB summary fields for the current branch, without collecting session logs, prompts, doc search terms, or other sensitive local traces.
+Use this skill when the goal is to maintain PR-level AI / KB summary fields for the current branch, without collecting session logs, prompts, doc search terms, or other sensitive local traces. Here, `KB` means `Knowledge Base`.
 
 Trigger this at the start of AI-assisted implementation on a new local branch, not only when preparing the final PR body. The first action should usually be `start` so branch-local metrics exist before more AI sessions accumulate.
 
