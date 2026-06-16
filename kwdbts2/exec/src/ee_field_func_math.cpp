@@ -11,13 +11,15 @@
 #include "ee_field_func_math.h"
 
 #include <cmath>
-#include <iomanip>
+#include <cstdio>
+#include <cstdlib>
 
 #include "ee_field_common.h"
 #include "ee_global.h"
 #include "pgcode.h"
 #include "ee_string.h"
 #include "ee_kwthd_context.h"
+#include "ee_ryu_dbconvert.h"
 
 namespace kwdbts {
 
@@ -183,11 +185,23 @@ k_double64 kround(k_double64 v) {
 }
 
 k_double64 kround(k_double64 v, k_double64 bits) {
-  k_double64 number = v;
-  stringstream ss;
-  ss << fixed << setprecision(bits) << number;
-  ss >> number;
-  return number;
+  if (!std::isfinite(v) || !std::isfinite(bits)) {
+    return v;
+  }
+  if (bits >= std::numeric_limits<k_double64>::max_digits10) {
+    return v;
+  }
+
+  // Covers the 309 integer digits of DBL_MAX, sign, decimal point, up to
+  // max_digits10 fractional digits, the terminator, and formatting headroom.
+  constexpr size_t kRoundBufferSize = 384;
+  char buffer[kRoundBufferSize];
+  int precision = static_cast<int>(bits);
+  int length = ryu_snprintf_f(v, precision, buffer, sizeof(buffer));
+  if (length < 0) {
+    return v;
+  }
+  return strtod(buffer, nullptr);
 }
 
 k_double64 doubleMod(k_double64 x, k_double64 y) {

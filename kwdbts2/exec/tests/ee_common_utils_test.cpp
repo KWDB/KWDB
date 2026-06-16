@@ -376,6 +376,27 @@ TEST_F(CommonUtilsTest, RyuConversionFunctionsHandleFixedScientificAndSpecialVal
   EXPECT_EQ(std::string(buffer, len), "-42.5");
 
   memset(buffer, 0, sizeof(buffer));
+  len = ryu_snprintf_f(123.25, 2, buffer, sizeof(buffer));
+  EXPECT_EQ(len, 6);
+  EXPECT_STREQ(buffer, "123.25");
+
+  memset(buffer, 0, sizeof(buffer));
+  len = ryu_snprintf_g(3.14159, 17, buffer, sizeof(buffer), false, -1);
+  EXPECT_EQ(len, 7);
+  EXPECT_STREQ(buffer, "3.14159");
+
+  memset(buffer, 0, sizeof(buffer));
+  len = ryu_snprintf_g(-0.0, 17, buffer, sizeof(buffer), false, -1);
+  EXPECT_EQ(len, 2);
+  EXPECT_STREQ(buffer, "-0");
+
+  memset(buffer, 0, sizeof(buffer));
+  len = ryu_snprintf_g(std::numeric_limits<double>::quiet_NaN(), 17,
+                       buffer, sizeof(buffer), false, -1);
+  EXPECT_EQ(len, 3);
+  EXPECT_STREQ(buffer, "nan");
+
+  memset(buffer, 0, sizeof(buffer));
   len = d2exp_buffered_n(-42.5, 1, buffer);
   EXPECT_EQ(std::string(buffer, len), "-4.2e+01");
 

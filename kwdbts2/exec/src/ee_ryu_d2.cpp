@@ -36,14 +36,16 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <cmath>
+#include <type_traits>
 
 #include "ee_ryu_dbconvert.h"
 
 #ifdef RYU_DEBUG
 #include <inttypes.h>
-#include <stdio.h>
 #endif
 
 #include "ee_d2fixed_full_table.h"
@@ -570,6 +572,227 @@ int d2fixed_buffered_n(double d, uint32_t precision, char* result) {
 void d2fixed_buffered(double d, uint32_t precision, char* result) {
   const int len = d2fixed_buffered_n(d, precision, result);
   result[len] = '\0';
+}
+
+typedef union {
+  double d;
+  uint64_t u;
+} DoubleUnion;
+static int fast_exponent(double d) {
+  if (d == 0.0) return 0;
+  DoubleUnion u;
+  u.d = fabs(d);
+  int bias = 1023;
+  int exp_bits = static_cast<int>((u.u >> 52) & 0x7FF);
+  int binary_exp = exp_bits - bias;
+  double log10_2 = 0.30102999566;
+  int decimal_exp = static_cast<int>(floor(binary_exp * log10_2 + 1e-9));
+  double pow10 = 1.0;
+  if (decimal_exp >= 0) {
+    for (int i = 0; i < decimal_exp; i++) pow10 *= 10;
+  } else {
+    for (int i = 0; i < -decimal_exp; i++) pow10 /= 10;
+  }
+  if (u.d >= pow10 * 10)
+    decimal_exp++;
+  else if (u.d < pow10)
+    decimal_exp--;
+  return decimal_exp;
+}
+
+template <typename T>
+static int fastIntToString(T value, char* buffer) {
+  // Handle zero case first
+  if (value == 0) {
+    buffer[0] = '0';
+    buffer[1] = '\0';
+    return 1;
+  }
+
+  int pos = 0;
+
+  // Handle negative numbers
+  using UnsignedT = typename std::make_unsigned<T>::type;
+  UnsignedT abs_value;
+
+  if constexpr (std::is_signed_v<T>) {
+    if (value < 0) {
+      buffer[pos++] = '-';
+      // Handle INT_MIN overflow safely
+      abs_value = static_cast<UnsignedT>(0) - static_cast<UnsignedT>(value);
+    } else {
+      abs_value = static_cast<UnsignedT>(value);
+    }
+  } else {
+    abs_value = value;
+  }
+
+  // Find the number of digits first to avoid array reversal
+  UnsignedT temp_val = abs_value;
+  int digit_count = 0;
+  while (temp_val > 0) {
+    digit_count++;
+    temp_val /= 10;
+  }
+
+  // Write digits directly in correct order
+  int digit_pos = pos + digit_count - 1;
+  temp_val = abs_value;
+
+  while (temp_val > 0) {
+    buffer[digit_pos--] = '0' + (temp_val % 10);
+    temp_val /= 10;
+  }
+
+  pos += digit_count;
+  buffer[pos] = '\0';
+  return pos;
+}
+
+static bool should_use_scientific(int exp, int precision,
+                                  int64_t float_precision) {
+  int effective_precision = (float_precision < 0) ? 6 : precision;
+  return (exp < -4) || (exp >= effective_precision);
+}
+
+static void generate_scientific(double d, int precision, char* buf) {
+  d2exp_buffered(d, precision - 1, buf);
+  char* e = strchr(buf, 'e');
+  if (!e) return;
+  char* dot = strchr(buf, '.');
+  if (!dot || dot >= e) return;
+  int max_fractional = precision - 1;
+  char* end = dot + 1 + max_fractional;
+  if (end > e) end = e;
+  char* last_non_zero = end - 1;
+  while (last_non_zero > dot && *last_non_zero == '0') {
+    last_non_zero--;
+  }
+  if (last_non_zero == dot) {
+    *dot = 'e';
+    memmove(dot + 1, e + 1, strlen(e + 1) + 1);
+  } else {
+    *(last_non_zero + 1) = 'e';
+    memmove(last_non_zero + 2, e + 1, strlen(e + 1) + 1);
+  }
+}
+static void generate_fixed(double d, int precision, int exp, char* buf) {
+  int integer_len = exp + 1;
+  int fractional_digits = (precision > integer_len) ? (precision - integer_len) : 0;
+  d2fixed_buffered(d, fractional_digits, buf);
+  char* dot = strchr(buf, '.');
+  if (!dot) return;
+  char* end = buf + strlen(buf);
+  char* last_non_zero = end - 1;
+  while (last_non_zero > dot && *last_non_zero == '0') {
+    last_non_zero--;
+  }
+  if (last_non_zero == dot) {
+    *dot = '\0';
+  } else {
+    *(last_non_zero + 1) = '\0';
+  }
+}
+
+// Formats a floating-point number using %.g format.
+//
+// This function converts a double-precision floating-point value to a string
+// representation following the printf %.g format specification, with support
+// for custom precision control.
+//
+// Args:
+//   d: The floating-point value to format.
+//   precision: Number of significant digits (valid range: 1-17).
+//   result: Output buffer for the formatted string. Must have sufficient
+//           capacity (recommended: at least 64 bytes).
+//   buf_size: Size of the output buffer.
+//   isDecimal: If true, treats the value as a DECIMAL type, which affects
+//              precision handling behavior.
+//   floatPrec: User-specified precision mode:
+//              * -1: Use default precision (typically 6 significant digits)
+//              * (1-17): Fixed precision with the specified number of digits
+//
+// Returns:
+//   The number of characters written to the buffer (excluding null terminator).
+//
+// Example:
+//   char buf[64];
+//   int len = ryu_snprintf_g(3.14159, 17, buf, false, -1);
+//   // buf now contains "3.14159", len = 7
+int ryu_snprintf_g(double d, int32_t precision, char* result, size_t buf_size,
+                   int is_decimal, int64_t float_precision) {
+  if (std::isnan(d)) {
+    snprintf(result, sizeof(result), "%s", "nan");
+    return 3;  // "nan" length is 3
+  }
+  if (std::isinf(d)) {
+    if (d > 0) {
+      snprintf(result, sizeof(result), "%s", "+Inf");
+      return 4;  // "inf" length is 3
+    } else {
+      snprintf(result, sizeof(result), "%s", "-Inf");
+      return 4;  // "-inf" length is 4
+    }
+  }
+  if (d == 0.0) {
+    if (std::signbit(d)) {  // Check if it is negative zero.
+      snprintf(result, sizeof(result), "%s", "-0");
+      return 2;  // "-0"  length is 2
+    }
+    snprintf(result, sizeof(result), "%s", "0");
+    return 1;  // "0"  length is 1
+  }
+
+  int32_t exp = fast_exponent(d);
+  bool use_scientific =
+      should_use_scientific(exp, precision, float_precision);
+
+  if (use_scientific) {
+    // The maximum length of the result is 30.
+    if (is_decimal && exp > precision && exp < 29) {
+      int32_t scale = exp - precision;
+      double divisor = 1.0;
+      for (int32_t i = 0; i < scale; ++i) {
+        divisor *= 10.0;
+      }
+      double rounded = std::round(d / divisor);
+      int32_t pos =
+          fastIntToString(static_cast<int64_t>(rounded), result);
+      for (int32_t i = 0; i < scale; ++i) {
+        result[pos++] = '0';
+      }
+      result[pos] = '\0';
+    } else {
+      if (float_precision == -1) {
+        d2s_buffered(d, result);
+      } else {
+        generate_scientific(d, precision, result);
+      }
+    }
+  } else {
+    // When float_precision == -1, use d2s_buffered to output the shortest
+    // precise representation.
+    if (float_precision == -1) {
+      d2s_buffered(d, result);
+      d2s_exp_to_fixed(result);
+    } else {
+      generate_fixed(d, precision, exp, result);
+    }
+  }
+
+  // Length same as snprintf behavior.
+  return strlen(result);
+}
+
+int ryu_snprintf_f(double d, int32_t precision, char* buf, size_t buf_size) {
+  int32_t len = d2fixed_buffered_n(d, precision, buf);
+  if (len < buf_size) {
+    buf[len] = '\0';
+    return len;
+  } else {
+    buf[buf_size - 1] = '\0';
+    return buf_size - 1;
+  }
 }
 
 int d2exp_buffered_n(double d, uint32_t precision, char* result) {

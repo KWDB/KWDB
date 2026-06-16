@@ -181,6 +181,15 @@ TEST_F(TestFieldIterator, TypeCastStringTimestampUsesOutputPrecision) {
   EXPECT_EQ(timezone_cast.ValInt(), kExpectedMillisWithTimezone);
 }
 
+TEST_F(TestFieldIterator, TypeCastStringDoesNotAllocateDeclaredLengthOnStack) {
+  FieldConstInt source(roachpb::DataType::INT, 123, sizeof(k_int32));
+  FieldTypeCastString cast(&source, 10000000, "VARCHAR(10000000)");
+
+  EXPECT_EQ(cast.get_storage_length(), 10000000);
+  String result = cast.ValStr();
+  EXPECT_EQ(std::string(result.getptr(), result.length_), "123");
+}
+
 TEST_F(TestFieldIterator, TestMathFunc) {
   std::list<Field *> args;
   args.push_back(KNEW BaseField());
@@ -205,6 +214,23 @@ TEST_F(TestFieldIterator, TestMathFunc) {
   for (auto a : args) {
     SafeDeletePointer(a);
   }
+}
+
+TEST_F(TestFieldIterator, RoundWithPrecisionUsesHalfEven) {
+  const FieldMathFuncion *round_func = nullptr;
+  for (k_int32 i = 0; i < mathFuncBuiltinsNum2; ++i) {
+    if (mathFuncBuiltins2[i].name == "round") {
+      round_func = &mathFuncBuiltins2[i];
+      break;
+    }
+  }
+  ASSERT_NE(round_func, nullptr);
+
+  FieldConstDouble value(roachpb::DataType::DOUBLE, 1.25);
+  FieldConstInt precision(roachpb::DataType::INT, 1, sizeof(k_int32));
+  FieldFuncMath round(&value, &precision, *round_func);
+
+  EXPECT_DOUBLE_EQ(round.ValReal(), 1.2);
 }
 
 TEST_F(TestFieldIterator, LogUsesSecondArgumentAsBase) {

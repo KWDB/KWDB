@@ -12,6 +12,7 @@
 #include "ee_field_typecast.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 
 #include "ee_field.h"
@@ -250,15 +251,9 @@ inline KStatus integerToString(Field *field, char *output, k_uint32 length) {
 }
 
 inline KStatus boolToString(Field *field, char *output, k_uint32 length) {
-  int iBoolLen = 0;
-  if (field->ValInt()) {
-    iBoolLen = 4;
-    strncpy(output, "true", iBoolLen);
-  } else {
-    iBoolLen = 5;
-    strncpy(output, "false", 5);
-  }
-  output[iBoolLen] = '\0';
+  const char *value = field->ValInt() ? "true" : "false";
+  strncpy(output, value, length);
+  output[length - 1] = '\0';
   return SUCCESS;
 }
 
@@ -273,6 +268,33 @@ inline KStatus stringToString(Field *field, char *output, k_uint32 length) {
   strncpy(output, res.c_str(), tmp);
   output[tmp] = '\0';
   return SUCCESS;
+}
+
+inline String makeStringCastResult(const char *value, size_t value_len,
+                                   k_uint32 storage_len,
+                                   k_uint32 letter_len) {
+  const size_t max_result_len = storage_len > 0 ? storage_len - 1 : 0;
+  size_t result_len = std::min(value_len, max_result_len);
+  if (letter_len > 0) {
+    k_uint32 letters = 0;
+    for (size_t i = 0; i < result_len; ++i) {
+      if ((value[i] & 0xc0) != 0x80) {
+        if (letters >= letter_len) {
+          result_len = i;
+          break;
+        }
+        ++letters;
+      }
+    }
+  }
+
+  String result(result_len);
+  if (result_len > 0) {
+    memcpy(result.getptr(), value, result_len);
+  }
+  result.getptr()[result_len] = '\0';
+  result.length_ = result_len;
+  return result;
 }
 
 inline KStatus integerToTimestampTz(Field *field, k_int64 &output, k_int64 scale,
@@ -725,13 +747,15 @@ char *FieldTypeCastString::get_ptr(RowBatch *batch) {
   char *ptr = field_->get_ptr(batch);
   KStatus err = SUCCESS;
 
-  char in_v[storage_len_] = {0};
   if (ptr == nullptr) {
     EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
                                   "could not parse \"\" as type string, get null value");
     return const_cast<char *>("");
   }
 
+  constexpr size_t kScalarBufferLength = 128;
+  std::array<char, kScalarBufferLength> buffer{};
+  char *in_v = buffer.data();
   switch (field_->get_storage_type()) {
     case roachpb::DataType::TIMESTAMP:
     case roachpb::DataType::TIMESTAMPTZ:
@@ -743,8 +767,9 @@ char *FieldTypeCastString::get_ptr(RowBatch *batch) {
     case roachpb::DataType::SMALLINT:
     case roachpb::DataType::INT:
     case roachpb::DataType::BIGINT: {
-      strncpy(in_v, std::to_string(field_->ValInt(ptr)).c_str(), storage_len_);
-      in_v[storage_len_ - 1] = '\0';
+      strncpy(in_v, std::to_string(field_->ValInt(ptr)).c_str(),
+              kScalarBufferLength);
+      in_v[kScalarBufferLength - 1] = '\0';
       break;
     }
     case roachpb::DataType::BOOL: {
@@ -761,7 +786,7 @@ char *FieldTypeCastString::get_ptr(RowBatch *batch) {
     }
     case roachpb::DataType::FLOAT:
     case roachpb::DataType::DOUBLE: {
-      err = doubleToStr(field_->ValReal(ptr), in_v, storage_len_);
+      err = doubleToStr(field_->ValReal(ptr), in_v, kScalarBufferLength);
       break;
     }
     case roachpb::DataType::CHAR:
@@ -771,11 +796,9 @@ char *FieldTypeCastString::get_ptr(RowBatch *batch) {
     case roachpb::DataType::NVARCHAR:
     case roachpb::DataType::VARBINARY: {
       String valstr = field_->ValStr(ptr);
-      k_uint32 tmp = storage_len_ - 1;
-      if (tmp > valstr.length_) tmp = valstr.length_;
-      strncpy(in_v, valstr.c_str(), tmp);
-      in_v[tmp] = '\0';
-      break;
+      strvalue_ = makeStringCastResult(valstr.getptr(), valstr.length_,
+                                       storage_len_, letter_len_);
+      return reinterpret_cast<char *>(strvalue_.ptr_);
     }
     default:
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE, "unsupported data type for field cast string.");
@@ -787,24 +810,8 @@ char *FieldTypeCastString::get_ptr(RowBatch *batch) {
     return const_cast<char *>("");
   }
 
-  // truncate string
-  if (letter_len_ > 0) {
-    k_uint32 num = 0;
-    for (size_t i = 0; i < storage_len_; i++) {
-      if ((in_v[i] & 0xc0) != 0x80) {
-        if (num >= letter_len_) {
-          memset(in_v + i, 0, storage_len_ - 1 - i);
-          break;
-        }
-        num++;
-      }
-    }
-  }
-
-  String s(storage_len_);
-  snprintf(s.getptr(), storage_len_ + 1, "%s", in_v);
-  s.length_ = strlen(in_v);
-  strvalue_ = s;
+  strvalue_ =
+      makeStringCastResult(in_v, strlen(in_v), storage_len_, letter_len_);
   return reinterpret_cast<char *>(strvalue_.ptr_);
 }
 
@@ -817,28 +824,20 @@ String FieldTypeCastString::ValStr() {
   if (nullptr != ptr) {
     return FieldTypeCast::ValStr(ptr);
   } else {
-    char in_v[storage_len_] = {0};
-    auto err = func_(field_, in_v, storage_len_);
+    if (IsStorageString(field_->get_storage_type())) {
+      String value = field_->ValStr();
+      return makeStringCastResult(value.getptr(), value.length_, storage_len_,
+                                  letter_len_);
+    }
+
+    constexpr size_t kScalarBufferLength = 128;
+    std::array<char, kScalarBufferLength> buffer{};
+    auto err = func_(field_, buffer.data(), kScalarBufferLength);
     if (err != SUCCESS) {
       return String("");
     }
-    // truncate string
-    if (letter_len_ > 0) {
-      k_uint32 num = 0;
-      for (size_t i = 0; i < storage_len_; i++) {
-        if ((in_v[i] & 0xc0) != 0x80) {
-          if (num >= letter_len_) {
-            memset(in_v + i, 0, storage_len_ - 1 - i);
-            break;
-          }
-          num++;
-        }
-      }
-    }
-    String s(storage_len_);
-    snprintf(s.getptr(), storage_len_ + 1, "%s", in_v);
-    s.length_ = strlen(in_v);
-    return s;
+    return makeStringCastResult(buffer.data(), strlen(buffer.data()),
+                                storage_len_, letter_len_);
   }
 }
 
@@ -1178,6 +1177,8 @@ char *FieldTypeCastBool::get_ptr(RowBatch *batch) {
     case roachpb::DataType::INT:
     case roachpb::DataType::BIGINT:
     case roachpb::DataType::BOOL:
+      value_ = field_->ValInt(ptr) != 0;
+      break;
     case roachpb::DataType::FLOAT:
     case roachpb::DataType::DOUBLE:
       value_ = field_->ValReal(ptr) != 0;

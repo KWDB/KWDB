@@ -32,6 +32,7 @@ extern "C" {
 #endif
 
 #include <inttypes.h>
+#include <stddef.h>
 
 int d2fixed_buffered_n(double d, uint32_t precision, char* result);
 void d2fixed_buffered(double d, uint32_t precision, char* result);
@@ -41,6 +42,13 @@ void d2exp_buffered(double d, uint32_t precision, char* result);
 
 int d2s_buffered_n(double f, char* result);
 void d2s_buffered(double f, char* result);
+
+// Formats a double in fixed-point notation.
+int ryu_snprintf_f(double d, int32_t precision, char* buf, size_t buf_size);
+
+// Formats a double using printf-style %g selection.
+int ryu_snprintf_g(double d, int32_t precision, char* buf, size_t buf_size,
+                   int is_decimal, int64_t float_precision);
 
 // Convert scientific notation string to fixed-point notation.
 // Input: result from d2s_buffered (e.g., "1.23E+5")
