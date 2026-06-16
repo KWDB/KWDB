@@ -37,7 +37,8 @@ struct TsEntityPartitionAggIndex {
   TS_OSN max_osn = 0;
   uint64_t agg_offset = 0;
   uint64_t agg_len = 0;
-  char reserved[16] = {0};
+  bool agg_invalid = false;
+  char reserved[15] = {0};
 };
 static_assert(sizeof(TsEntityPartitionAggIndex) == 80, "wrong size of TsEntityAggStats, please check TsEntityAggStats");
 

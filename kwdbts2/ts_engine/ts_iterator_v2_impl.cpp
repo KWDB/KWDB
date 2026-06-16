@@ -2630,7 +2630,7 @@ KStatus TsAggIteratorImpl::partitionAggImpl(TsScanStats* ts_scan_stats) {
     }
   }
 
-  if (agg_reader && agg_index.max_osn >= max_osn && agg_index.table_version == table_version_ &&
+  if (agg_reader && !agg_index.agg_invalid && agg_index.max_osn >= max_osn && agg_index.table_version == table_version_ &&
     checkTimestampWithSpans(ts_spans_, agg_index.min_ts,
                             agg_index.max_ts) == TimestampCheckResult::FullyContained) {
     TsSliceGuard entity_agg;

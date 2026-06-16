@@ -261,6 +261,9 @@ class TsVGroup {
 
   KStatus rollback(kwdbContext_p ctx, LogEntry* wal_log, bool from_chk = false);
 
+  KStatus getOsnRangeRollback(kwdbContext_p ctx, LogEntry* wal_log,
+    std::map<uint64_t, std::map<uint32_t, std::pair<TS_OSN, TS_OSN>>>& delete_metric_entity);
+
   KStatus ApplyWal(kwdbContext_p ctx, LogEntry* wal_log, std::unordered_map<TS_OSN, MTRBeginEntry*>& incomplete);
 
   uint32_t GetVGroupID();
@@ -489,6 +492,8 @@ class TsVGroup {
   KStatus AddRecalcEntity(PartitionIdentifier partition_id, TSTableID table_id, TSEntityID entity_id);
   // Reset count stat.
   KStatus ResetCountStat();
+  // Invalidate count stats for specific entities.
+  KStatus InvalidateCountStats(const std::map<TSTableID, std::vector<TSEntityID>>& affected_entities);
   // Recalculate count stat.
   KStatus RecalcCountStat();
 

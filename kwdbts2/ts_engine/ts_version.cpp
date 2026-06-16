@@ -709,7 +709,10 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update, bool force_apply)
   }
 
   if (update->count_stats_status_ == CountStatsStatus::Recover && (update->flags_ & TsVersionUpdate::kHasNewVersion)) {
-    this->version_num_.store(update->version_num_, std::memory_order_relaxed);
+    this->version_num_.store(update->version_num_ + 1, std::memory_order_relaxed);
+    encoded_update.push_back(static_cast<char>(VersionUpdateType::kNewVersionNumber));
+    PutVarint64(&encoded_update, update->version_num_);
+    new_vgroup_version->version_num_ = update->version_num_;
   }
 
   if (update->NeedRecord()) {

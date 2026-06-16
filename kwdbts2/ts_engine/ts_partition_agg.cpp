@@ -32,6 +32,7 @@ void SerializeAggIndex(char* dst, const TsEntityPartitionAggIndex& src) {
   std::memcpy(dst + offsetof(TsEntityPartitionAggIndex, max_osn), &src.max_osn, sizeof(src.max_osn));
   std::memcpy(dst + offsetof(TsEntityPartitionAggIndex, agg_offset), &src.agg_offset, sizeof(src.agg_offset));
   std::memcpy(dst + offsetof(TsEntityPartitionAggIndex, agg_len), &src.agg_len, sizeof(src.agg_len));
+  std::memcpy(dst + offsetof(TsEntityPartitionAggIndex, agg_invalid), &src.agg_invalid, sizeof(src.agg_invalid));
 }
 
 }  // namespace

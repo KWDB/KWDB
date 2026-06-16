@@ -784,7 +784,14 @@ TEST_F(TsVersionTest, RecoverAndDelete_UnfinishedCountFlushing) {
     EXPECT_TRUE(fs::exists(partition_dir / LastSegmentFileName(i * 2)));
     EXPECT_FALSE(fs::exists(partition_dir / CountStatFileName(i * 2 - 1)));
   }
-  EXPECT_EQ(mgr->CurrentVersionNum(), 9);
+  EXPECT_EQ(mgr->CurrentVersionNum(), 10);
+  EXPECT_TRUE(fs::exists(partition_dir / CountStatFileName(19)));
+  EXPECT_FALSE(fs::exists(partition_dir / LastSegmentFileName(20)));
+
+  mgr.reset();
+  mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
+  s = mgr->Recover(false);
+  EXPECT_EQ(mgr->CurrentVersionNum(), 10);
   EXPECT_TRUE(fs::exists(partition_dir / CountStatFileName(19)));
   EXPECT_FALSE(fs::exists(partition_dir / LastSegmentFileName(20)));
 }

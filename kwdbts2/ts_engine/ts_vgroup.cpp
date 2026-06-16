@@ -1419,6 +1419,123 @@ KStatus TsVGroup::rollback(kwdbContext_p ctx, LogEntry* wal_log, bool from_chk) 
   return SUCCESS;
 }
 
+KStatus TsVGroup::getOsnRangeRollback(kwdbContext_p ctx, LogEntry* wal_log,
+    std::map<uint64_t, std::map<uint32_t, std::pair<TS_OSN, TS_OSN>>>& delete_metric_entity) {
+  KStatus s;
+  uint64_t lsn = wal_log->getLSN();
+
+  switch (wal_log->getType()) {
+    case WALLogType::INSERT: {
+      auto insert_log = reinterpret_cast<InsertLogEntry*>(wal_log);
+      if (insert_log->getTableType() == WALTableType::DATA) {
+        auto log = reinterpret_cast<InsertLogMetricsEntry*>(wal_log);
+        TSSlice payload = log->getPayload();
+        auto table_id = TsRawPayload::GetTableIDFromSlice(payload);
+        TSSlice primary_key = TsRawPayload::GetPrimaryKeyFromSlice(payload);
+        auto tbl_version = TsRawPayload::GetTableVersionFromSlice(payload);
+        std::shared_ptr<kwdbts::TsTableSchemaManager> tb_schema_mgr;
+        s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_mgr);
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("GetTableSchemaMgr failed.");
+          return s;
+        }
+        const std::vector<AttributeInfo>* metric_schema{nullptr};
+        tb_schema_mgr->GetColumnsExcludeDroppedPtr(&metric_schema, tbl_version);
+        TsRawPayload p(metric_schema);
+        s = p.ParsePayLoadStruct(payload);
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("ParsePayLoadStruct failed.");
+          return s;
+        }
+        TSEntityID entity_id;
+        s = getEntityIdByPTag(ctx, table_id, primary_key, &entity_id);
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("GetOsnRangeRollback: getEntityIdByPTag failed.");
+          return s;
+        }
+        if (entity_id > 0) {
+          TS_OSN osn = p.GetOSN();
+          auto& entity_map = delete_metric_entity[table_id];
+          auto it = entity_map.find(entity_id);
+          if (it != entity_map.end()) {
+            it->second.first = std::min(it->second.first, osn);
+            it->second.second = std::max(it->second.second, osn);
+          } else {
+            entity_map[entity_id] = {osn, osn};
+          }
+        }
+      } else {
+        auto log = reinterpret_cast<InsertLogTagsEntry*>(wal_log);
+        return undoPutTag(ctx, lsn, log->getPayload());
+      }
+      break;
+    }
+    case WALLogType::UPDATE: {
+      auto update_log = reinterpret_cast<UpdateLogEntry*>(wal_log);
+      if (update_log->getTableType() == WALTableType::TAG) {
+        auto log = reinterpret_cast<UpdateLogTagsEntry*>(wal_log);
+        return undoUpdateTag(ctx, lsn, log->getPayload(), log->getOldPayload());
+      }
+      break;
+    }
+    case WALLogType::DELETE: {
+      auto del_log = reinterpret_cast<DeleteLogEntry*>(wal_log);
+      WALTableType t_type = del_log->getTableType();
+      std::string p_tag;
+      assert(t_type != WALTableType::DATA);
+      if (t_type == WALTableType::DATA_V2) {
+        auto log = reinterpret_cast<DeleteLogMetricsEntryV2*>(del_log);
+        p_tag = log->getPrimaryTag();
+        TSTableID table_id = log->getTableId();
+        vector<KwTsSpan> ts_spans = log->getTsSpans();
+        return undoDeleteData(ctx, table_id, p_tag, lsn, ts_spans);
+      } else {
+        auto log = reinterpret_cast<DeleteLogTagsEntry*>(del_log);
+        TSSlice primary_tag = log->getPrimaryTag();
+        TSSlice tags = log->getTags();
+        uint64_t old_osn = log->getOldLSN();
+        return undoDeleteTag(ctx, log->getTableID(), primary_tag, lsn, log->group_id_, log->entity_id_, tags, old_osn);
+      }
+    }
+
+    case WALLogType::CHECKPOINT:
+    case WALLogType::MTR_BEGIN:
+    case WALLogType::MTR_COMMIT:
+    case WALLogType::MTR_ROLLBACK:
+    case WALLogType::TS_BEGIN:
+    case WALLogType::TS_COMMIT:
+    case WALLogType::TS_ROLLBACK:
+    case WALLogType::DDL_CREATE:
+    case WALLogType::DDL_DROP:
+    case WALLogType::DDL_ALTER_COLUMN:
+    case WALLogType::DB_SETTING:
+      break;
+    case WALLogType::RANGE_SNAPSHOT: {
+    }
+    case WALLogType::SNAPSHOT_TMP_DIRCTORY: {
+      auto temp_path_log = reinterpret_cast<TempDirectoryEntry*>(wal_log);
+      if (temp_path_log == nullptr) {
+        LOG_ERROR(" WAL rollback cannot prase temp dirctory object.");
+        return KStatus::FAIL;
+      }
+      std::string path = temp_path_log->GetPath();
+      if (!Remove(path)) {
+        LOG_ERROR(" WAL rollback cannot remove path[%s]", path.c_str());
+        return KStatus::FAIL;
+      }
+      break;
+    }
+    case WALLogType::CREATE_INDEX:
+    case WALLogType::DROP_INDEX:
+    case WALLogType::END_CHECKPOINT: {
+      LOG_ERROR("unsupported WALLogType: %d", wal_log->getType());
+      return KStatus::FAIL;
+    }
+  }
+
+  return SUCCESS;
+}
+
 KStatus TsVGroup::ApplyWal(kwdbContext_p ctx, LogEntry* wal_log,
                            std::unordered_map<TS_OSN, MTRBeginEntry*>& incomplete) {
   switch (wal_log->getType()) {
@@ -2709,6 +2826,81 @@ KStatus TsVGroup::ResetCountStat() {
   return KStatus::SUCCESS;
 }
 
+KStatus TsVGroup::InvalidateCountStats(const std::map<TSTableID, std::vector<TSEntityID>>& affected_entities) {
+  std::unique_lock<std::mutex> calc_agg_run_lock(calc_agg_run_mutex_, std::defer_lock);
+  calc_agg_run_lock.lock();
+  std::shared_ptr<const TsVGroupVersion> cur_version = version_manager_->Current();
+  auto all_partitions = cur_version->GetAllPartitions();
+
+  TsVersionUpdate update;
+  for (auto& [par_id, par_version] : all_partitions) {
+    std::vector<TsEntityCountStats> flush_infos;
+    std::set<std::pair<TSTableID, TSEntityID>> affected_set;
+    for (auto& [table_id, entities] : affected_entities) {
+      std::shared_ptr<TsTableSchemaManager> tb_schema_mgr;
+      KStatus s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_mgr);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("Get table schema manager [%lu] failed.", table_id);
+        return s;
+      }
+      if (tb_schema_mgr->GetDbID() != std::get<0>(par_id)) {
+        continue;
+      }
+      for (auto entity_id : entities) {
+        TsEntityCountStats flush_info{table_id, entity_id, INT64_MAX, INT64_MIN, 0, false, ""};
+        flush_infos.emplace_back(flush_info);
+        affected_set.emplace(table_id, entity_id);
+      }
+    }
+    if (flush_infos.empty()) continue;
+    uint64_t file_number = version_manager_->NewFileNumber();
+    update.AddCountFile(par_id, {file_number, flush_infos});
+
+    // Invalidate partition agg index for affected entities
+    auto agg_reader = par_version->GetAggReader();
+    if (agg_reader) {
+      TsIOEnv* env = &TsIOEnv::GetInstance();
+      uint64_t agg_file_number = version_manager_->NewFileNumber();
+      fs::path agg_path = par_version->GetPartitionPath() / AggFileName(agg_file_number);
+      auto partition_agg_builder =
+          std::make_shared<TsPartitionAggBuilder>(env, agg_path, GetMaxEntityID());
+      KStatus s = partition_agg_builder->Open();
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("InvalidateCountStats: Open partition[%s] agg file failed", agg_path.c_str());
+        return s;
+      }
+
+      for (uint32_t entity_id = 1; entity_id <= GetMaxEntityID(); entity_id++) {
+        TsEntityPartitionAggIndex agg_index;
+        agg_index.entity_id = entity_id;
+        s = agg_reader->GetPartitionAggIndex(agg_index);
+        if (s != KStatus::SUCCESS) continue;
+
+        if (affected_set.count({agg_index.table_id, entity_id}) > 0) {
+          agg_index.agg_invalid = true;
+        }
+
+        TsSliceGuard slice;
+        s = agg_reader->GetPartitionAgg(agg_index.agg_offset, agg_index.agg_len, slice);
+        if (s != KStatus::SUCCESS) continue;
+
+        s = partition_agg_builder->AppendEntityAgg(slice.AsSlice(), agg_index);
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("InvalidateCountStats: AppendEntityAgg failed, entity=%u", entity_id);
+          partition_agg_builder->Close();
+          return s;
+        }
+      }
+      partition_agg_builder->Finalize();
+      partition_agg_builder->Close();
+      update.AddAggFile(par_id, agg_file_number);
+    }
+  }
+  update.SetCountStatsType(CountStatsStatus::FlushImmOrWriteBatch);
+  version_manager_->ApplyUpdate(&update);
+  return KStatus::SUCCESS;
+}
+
 KStatus TsVGroup::GetCalcEntities(PartitionIdentifier par_id, const shared_ptr<const TsPartitionVersion>& partition,
     const std::map<std::shared_ptr<TsTableSchemaManager>, std::vector<uint32_t>>& table_entity_map,
     std::map<std::shared_ptr<TsTableSchemaManager>, ClassifiedEntities>& cla_entities, bool* should_calc) {
@@ -2748,6 +2940,10 @@ KStatus TsVGroup::GetCalcEntities(PartitionIdentifier par_id, const shared_ptr<c
       agg_index.entity_id = entity;
       auto s = partition->GetAggReader()->GetPartitionAggIndex(agg_index);
       if (s != KStatus::SUCCESS) {
+        calc_agg_entities.emplace_back(entity);
+        continue;
+      }
+      if (agg_index.agg_invalid) {
         calc_agg_entities.emplace_back(entity);
         continue;
       }
@@ -3033,7 +3229,7 @@ KStatus TsVGroup::CalcPartitionAgg(bool force) {
         agg_buffer.append(agg_bitmap.data(), agg_bitmap.size());
         agg_buffer.append(agg_payload.AsSlice());
         TsEntityPartitionAggIndex stats{tb_schema->GetTableId(), entity_id, metric_schema->GetVersion(),
-          min_ts, max_ts, 0, 0, 0, ""};
+          min_ts, max_ts, 0, 0, 0, false};
         par_version->GetMaxOSN(tb_schema->GetDbID(), tb_schema->GetTableId(), entity_id, ts_col_type, stats.max_osn);
         s = partition_agg_builder->AppendEntityAgg({agg_buffer.data(), agg_buffer.size()}, stats);
         if (s != KStatus::SUCCESS) {
