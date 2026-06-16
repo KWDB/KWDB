@@ -16,18 +16,19 @@
 
 #include "mm_kmalloc.h"
 
+
 namespace kwdbts {
 /**
  *
  * @return
  */
-EE_StringInfo ee_makeStringInfo(void) {
+EE_StringInfo ee_makeStringInfo(k_int32 size) {
   EE_StringInfo res;
   res = KNEW(EE_StringInfoData);
   if (res == nullptr) {
     return res;
   }
-  KStatus ret = ee_initStringInfo(res);
+  KStatus ret = ee_initStringInfo(res, size);
   if (ret != SUCCESS) {
     delete res;
     res = nullptr;
@@ -48,9 +49,7 @@ void ee_destroyStringInfo(EE_StringInfo str) {
  *
  * @param str
  */
-KStatus ee_initStringInfo(const EE_StringInfo &str) {
-  int size = 2048; /* initial default buffer size */
-
+KStatus ee_initStringInfo(const EE_StringInfo &str, k_int32 size) {
   str->data = static_cast<char *>(k_malloc(size));
   if (str->data == nullptr) {
     // pusherrN
@@ -68,70 +67,6 @@ KStatus ee_initStringInfo(const EE_StringInfo &str) {
 void ee_resetStringInfo(const EE_StringInfo &str) {
   str->len = 0;
   str->cursor = 0;
-}
-
-/**
- *
- * @param str
- * @param needed
- */
-KStatus ee_enlargeStringInfo(const EE_StringInfo &str, k_int32 needed) {
-  int newlen;
-
-  /*
-   * needed < 0，return err.
-   */
-  if (needed < 0) {
-    // log error
-    return FAIL;
-  }
-  /*
-   * needed > MaxAllocSize，return err.
-   */
-  if (((Size) needed) >= (EE_MaxAllocSize - (Size) str->len)) {
-    // log error
-    return FAIL;
-  }
-
-  needed += str->len; /* calc total size */
-
-  if (needed <= str->cap) return SUCCESS; /* needed < cap，enough */
-
-  /*
-   * needed > newlen，twice
-   */
-  newlen = 2 * str->cap;
-  while (needed > newlen) newlen = 2 * newlen;
-
-  if (newlen > static_cast<int>(EE_MaxAllocSize))
-    newlen = static_cast<int>(EE_MaxAllocSize);
-
-  str->data = static_cast<char *>(k_realloc(str->data, newlen));
-  if (str->data == nullptr) {
-    return FAIL;
-  }
-  str->cap = newlen;
-  return SUCCESS;
-}
-
-/**
- *
- * @param str
- * @param data
- * @param datalen
- * @param with_zero_term
- */
-KStatus ee_appendBinaryStringInfo(const EE_StringInfo &str, const char *data,
-                                  k_int32 datalen) {
-  /*  attempt to expand*/
-  KStatus ret = ee_enlargeStringInfo(str, datalen);
-  if (ret != SUCCESS) {
-    return FAIL;
-  }
-  /* copy byte */
-  memcpy(str->data + str->len, data, datalen);
-  str->len += datalen;
-  return SUCCESS;
 }
 
 KStatus ee_appendBinaryStringInfoWithoutEnlarge(const EE_StringInfo &str, const char *data,

@@ -747,7 +747,6 @@ KStatus DataChunk::Encoding(kwdbContext_p ctx,
   if (encoding_buf_ != nullptr) {
     return st;
   }
-
   EE_StringInfo msgBuffer = ee_makeStringInfo();
   if (msgBuffer == nullptr) {
     return KStatus::FAIL;
@@ -755,6 +754,7 @@ KStatus DataChunk::Encoding(kwdbContext_p ctx,
   if (use_query_compress_type != PgCompressMode::PgCompressOff && use_query_short_circuit) {
     st = PgCompressResultData(ctx, msgBuffer, use_query_compress_type);
     if (st != SUCCESS) {
+      ee_destroyStringInfo(msgBuffer);
       return st;
     }
   } else {
@@ -1418,7 +1418,8 @@ KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row, const EE_String
     }
 
     // get col value
-    KWDBTypeFamily return_type = col_info_[col].return_type;
+    const ColumnInfo& ci = col_info_[col];
+    KWDBTypeFamily return_type = ci.return_type;
     switch (return_type) {
       case KWDBTypeFamily::BoolFamily: {
         // get col value
@@ -1482,7 +1483,7 @@ KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row, const EE_String
         k_int64 val;
         DatumPtr raw = GetData(row, col);
         std::memcpy(&val, raw, sizeof(k_int64));
-        CKTime ck_time = getCKTime(val, col_info_[col].storage_type, ctx->timezone);
+        CKTime ck_time = getCKTime(val, ci.storage_type, ctx->timezone);
         k_uint8 format_len = format_timestamp(ck_time, return_type, ctx, ts_format_buf);
         // write the length of column value
         if (ee_sendint(info, format_len, 4) != SUCCESS) {
@@ -1500,7 +1501,7 @@ KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row, const EE_String
         DatumPtr raw = GetData(row, col);
         k_double64 d;
         // Read data based on storage_type
-        if (col_info_[col].storage_type == roachpb::DataType::FLOAT) {
+        if (ci.storage_type == roachpb::DataType::FLOAT) {
           k_float32 val32;
           std::memcpy(&val32, raw, sizeof(k_float32));
           d = (k_double64)val32;
@@ -1531,7 +1532,7 @@ KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row, const EE_String
         }
       } break;
       case KWDBTypeFamily::DecimalFamily: {
-        switch (col_info_[col].storage_type) {
+        switch (ci.storage_type) {
           case roachpb::DataType::SMALLINT: {
             DatumPtr ptr = GetData(row, col);
             if (PgEncodeDecimal<k_int16>(ptr, info) != SUCCESS) {
@@ -1598,7 +1599,7 @@ KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row, const EE_String
         char buf[32] = {0};
         struct KWDuration duration;
         size_t n;
-        switch (col_info_[col].storage_type) {
+        switch (ci.storage_type) {
           case roachpb::TIMESTAMP_MICRO:
           case roachpb::TIMESTAMPTZ_MICRO:
             n = duration.format_pg_result(ms, buf, 32, 1000);
@@ -1649,7 +1650,7 @@ KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row, const EE_String
       case KWDBTypeFamily::IntFamily: {
         DatumPtr raw = GetData(row, col);
         k_int64 val;
-        switch (col_info_[col].storage_type) {
+        switch (ci.storage_type) {
           case roachpb::DataType::BIGINT:
           case roachpb::DataType::TIMESTAMP:
           case roachpb::DataType::TIMESTAMPTZ:
