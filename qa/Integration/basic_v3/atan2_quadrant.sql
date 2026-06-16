@@ -1,0 +1,19 @@
+DROP DATABASE IF EXISTS bh_atan2 CASCADE;
+CREATE TS DATABASE bh_atan2;
+
+CREATE TABLE bh_atan2.t1 (
+  ts TIMESTAMP NOT NULL,
+  y FLOAT,
+  x FLOAT
+) TAGS (
+  tag1 INT NOT NULL
+) PRIMARY TAGS(tag1);
+
+INSERT INTO bh_atan2.t1 VALUES
+  ('2026-06-15 00:00:00', 0, -1, 1),
+  ('2026-06-15 00:00:01', 1, -1, 1),
+  ('2026-06-15 00:00:02', -1, -1, 1);
+
+SELECT atan2(y, x) FROM bh_atan2.t1 ORDER BY ts;
+
+DROP DATABASE bh_atan2 CASCADE;

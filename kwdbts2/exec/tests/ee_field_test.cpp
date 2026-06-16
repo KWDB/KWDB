@@ -207,6 +207,38 @@ TEST_F(TestFieldIterator, TestMathFunc) {
   }
 }
 
+TEST_F(TestFieldIterator, LogUsesSecondArgumentAsBase) {
+  FieldConstDouble value(roachpb::DataType::DOUBLE, 100);
+  FieldConstDouble base(roachpb::DataType::DOUBLE, 10);
+  FieldFuncMath log(&value, &base, mathFuncBuiltins2[0]);
+
+  EXPECT_DOUBLE_EQ(log.ValReal(), 2);
+}
+
+TEST_F(TestFieldIterator, Atan2HandlesQuadrants) {
+  const FieldMathFuncion *atan2_func = nullptr;
+  for (k_int32 i = 0; i < mathFuncBuiltinsNum2; ++i) {
+    if (mathFuncBuiltins2[i].name == "atan2") {
+      atan2_func = &mathFuncBuiltins2[i];
+      break;
+    }
+  }
+  ASSERT_NE(atan2_func, nullptr);
+
+  FieldConstDouble zero(roachpb::DataType::DOUBLE, 0);
+  FieldConstDouble positive(roachpb::DataType::DOUBLE, 1);
+  FieldConstDouble negative(roachpb::DataType::DOUBLE, -1);
+
+  FieldFuncMath negative_x_axis(&zero, &negative, *atan2_func);
+  EXPECT_DOUBLE_EQ(negative_x_axis.ValReal(), M_PI);
+
+  FieldFuncMath quadrant_two(&positive, &negative, *atan2_func);
+  EXPECT_DOUBLE_EQ(quadrant_two.ValReal(), 3 * M_PI / 4);
+
+  FieldFuncMath quadrant_three(&negative, &negative, *atan2_func);
+  EXPECT_DOUBLE_EQ(quadrant_three.ValReal(), -3 * M_PI / 4);
+}
+
 TEST_F(TestFieldIterator, TestStringFunc) {
   std::list<Field *> args;
   args.push_back(KNEW BaseField());

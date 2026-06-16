@@ -152,14 +152,14 @@ k_bool divPerCheck(Field **args, k_int32 arg_count) {
 k_double64 klog2(k_double64 v, k_double64 base) {
   k_double64 a = log(v);
   k_double64 b = log(base);
-  if (isnan(b) || isinf(b)) {
-    return b;
-  } else if (isnan(a) || isinf(a)) {
+  if (isnan(a) || isinf(a)) {
     return a;
-  } else if (a == 0) {
+  } else if (isnan(b) || isinf(b)) {
+    return b;
+  } else if (b == 0) {
     return INFINITY;
   } else {
-    return b / a;
+    return a / b;
   }
 }
 
@@ -207,7 +207,7 @@ k_double64 kcot(k_double64 val) {
 
 k_double64 kdegrees(k_double64 val) { return (val * (180.0 / M_PI)); }
 
-k_double64 katan2(k_double64 x, k_double64 y) { return atan(x / y); }
+k_double64 katan2(k_double64 x, k_double64 y) { return atan2(x, y); }
 
 k_double64 kdivdouble(k_double64 x, k_double64 y) {
   k_double64 val = x / y;

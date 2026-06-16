@@ -115,18 +115,18 @@ SQLSTATE: 2201E
 ERROR: cannot take logarithm of zero
 SQLSTATE: 2201E
 > SELECT log(e1, e2) FROM ts_db.t2;
-         log
-----------------------
-  1.0963300601362191
-  0.6907243000441768
-  -4.028569152196771
-(3 rows)
-> SELECT log(e2, e1) FROM ts_db.t2;
           log
 -----------------------
    0.9121340701683851
    1.4477556384450971
   -0.2482270906171989
+(3 rows)
+> SELECT log(e2, e1) FROM ts_db.t2;
+         log
+----------------------
+  1.0963300601362191
+  0.6907243000441768
+  -4.028569152196771
 (3 rows)
 > SELECT log(e1, e2) FROM ts_db.t3;
 ERROR: cannot take logarithm of a negative number
@@ -386,9 +386,9 @@ SQLSTATE: 2201F
 ------------------------
     0.5613417658240741
                      0
-   -0.3192649165750693
+  -0.31926491657506934
     1.2918477665654367
-  0.030627674498432397
+    0.0306276744984324
 (5 rows)
 > SELECT cbrt(e4) FROM ts_db.t1;
          cbrt
