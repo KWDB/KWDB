@@ -199,7 +199,10 @@ class TsAggIteratorImpl : public TsStorageIteratorImpl {
   void TimeBucketReset();
   void AddAggResult(ResultSet* res);
   std::vector<shared_ptr<TsBlockSpan>> SortBlockSpans(std::list<std::shared_ptr<TsBlockSpan>>& ts_block_spans);
-  std::vector<shared_ptr<TsBlockSpan>> MergeBlockSpans(const std::vector<std::shared_ptr<TsBlockSpan>>& ts_block_spans);
+  // Pure function — reads no instance state. Kept static so it can be unit-tested without
+  // standing up a full TsAggIteratorImpl (which requires a vgroup, schema manager, etc.).
+  static std::vector<shared_ptr<TsBlockSpan>> MergeBlockSpans(
+      const std::vector<std::shared_ptr<TsBlockSpan>>& ts_block_spans);
 
  protected:
   KStatus GenerateAggData();

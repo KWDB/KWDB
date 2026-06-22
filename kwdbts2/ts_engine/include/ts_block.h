@@ -180,6 +180,11 @@ class TsBlockSpan {
   int GetColCount() const { return scan_attrs_->size(); }
   std::shared_ptr<TsBlock> GetTsBlock() const { return block_; }
   TsBlock* GetTsBlockRaw() const { return block_.get(); }
+  // Process-unique handle for the underlying TsBlock. Unlike GetBlockID(), which is only unique
+  // within a single segment type (mem / last / entity), this is unique across segments because it
+  // is the in-memory address of the TsBlock object. Use this to key on "same physical block" in
+  // maps/sets where cross-segment block_id collisions would corrupt results.
+  uintptr_t GetTsBlockAddr() const { return reinterpret_cast<uintptr_t>(block_.get()); }
   TSTableID GetTableID() const { return block_->GetTableId(); }
   uint64_t GetBlockID() const { return block_->GetBlockID(); }
   uint32_t GetTableVersion() const { return block_->GetTableVersion(); }

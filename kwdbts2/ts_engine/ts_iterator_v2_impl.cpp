@@ -2850,28 +2850,31 @@ std::vector<shared_ptr<TsBlockSpan>> TsAggIteratorImpl::SortBlockSpans(
   return sorted_block_spans;
 }
 
-// Merge contiguous block spans (same block_id, adjacent rows) among middle elements.
+// Merge contiguous block spans (same physical TsBlock, adjacent rows) among middle elements.
 // First and last spans are excluded from merging to preserve boundaries for first/last row aggregation.
+// NOTE: Use GetTsBlockAddr() (NOT GetBlockID()) as the merge key, because block_id is only unique
+// within a single segment type (mem / last / entity); different segments may reuse the same id and
+// must NOT be merged across segments.
 std::vector<shared_ptr<TsBlockSpan>> TsAggIteratorImpl::MergeBlockSpans(
                                                       const std::vector<std::shared_ptr<TsBlockSpan>>& ts_block_spans) {
   if (ts_block_spans.empty()) {
     return {};
   }
-  // block_id -> {merged_end_row, index in result_spans}
-  std::unordered_map<uint64_t, std::pair<int, uint32_t>> block_merge_info;
+  // ts_block_addr -> {merged_end_row, index in result_spans}
+  std::unordered_map<uintptr_t, std::pair<int, uint32_t>> block_merge_info;
   std::vector<shared_ptr<TsBlockSpan>> result_spans;
   // keep first span as-is, not tracked in block_merge_info
   result_spans.push_back(ts_block_spans.front());
   // iterate middle spans [1, size-1), skipping both first and last
   for (size_t i = 1; i < ts_block_spans.size() - 1; ++i) {
     auto& span = ts_block_spans[i];
-    auto it = block_merge_info.find(span->GetBlockID());
+    auto it = block_merge_info.find(span->GetTsBlockAddr());
     if (it != block_merge_info.end()) {
       uint32_t prev_end_row = it->second.first;
       uint32_t prev_idx = it->second.second;
       if (prev_end_row == span->GetStartRow()) {
         // contiguous: extend the merged range, will fix nrow later
-        block_merge_info[span->GetBlockID()] = {span->GetStartRow() + span->GetRowNum(), prev_idx};
+        block_merge_info[span->GetTsBlockAddr()] = {span->GetStartRow() + span->GetRowNum(), prev_idx};
       } else {
         // gap found: finalize the previous merged span, start a new one
         auto& prev_span = result_spans[prev_idx];
@@ -2881,16 +2884,16 @@ std::vector<shared_ptr<TsBlockSpan>> TsAggIteratorImpl::MergeBlockSpans(
 
         result_spans.push_back(span);
         uint32_t idx = result_spans.size() - 1;
-        block_merge_info[span->GetBlockID()] = {span->GetStartRow() + span->GetRowNum(), idx};
+        block_merge_info[span->GetTsBlockAddr()] = {span->GetStartRow() + span->GetRowNum(), idx};
       }
     } else {
       result_spans.push_back(span);
       uint32_t idx = result_spans.size() - 1;
-      block_merge_info[span->GetBlockID()] = {span->GetStartRow() + span->GetRowNum(), idx};
+      block_merge_info[span->GetTsBlockAddr()] = {span->GetStartRow() + span->GetRowNum(), idx};
     }
   }
   // fix nrow for spans that were extended by contiguous merges
-  for (auto& [block_id, merge_info] : block_merge_info) {
+  for (auto& [block_addr, merge_info] : block_merge_info) {
     auto& result_span = result_spans[merge_info.second];
     int current_end_row = result_span->GetStartRow() + result_span->GetRowNum();
     if (current_end_row != merge_info.first) {
