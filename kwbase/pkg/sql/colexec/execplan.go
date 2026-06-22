@@ -63,9 +63,10 @@ func wrapRowSources(
 	inputTypes [][]types.T,
 	acc *mon.BoundAccount,
 	newToWrap func([]execinfra.RowSource) (execinfra.RowSource, error),
-) (*Columnarizer, error) {
+) (*Columnarizer, []*Columnarizer, error) {
 	var (
-		toWrapInputs []execinfra.RowSource
+		toWrapInputs           []execinfra.RowSource
+		unwrappedColumnarizers []*Columnarizer
 		// TODO(asubiotto): Plumb proper processorIDs once we have stats.
 		processorID int32
 	)
@@ -75,6 +76,9 @@ func wrapRowSources(
 		if c, ok := input.(*Columnarizer); ok {
 			// TODO(asubiotto): We might need to do some extra work to remove references
 			// to this operator (e.g. streamIDToOp).
+			// The unwrapped Columnarizer no longer owns this RowSource's metadata
+			// lifecycle; the newly-created Columnarizer below will own it.
+			unwrappedColumnarizers = append(unwrappedColumnarizers, c)
 			toWrapInputs = append(toWrapInputs, c.input)
 		} else {
 			toWrapInput, err := NewMaterializer(
@@ -90,7 +94,7 @@ func wrapRowSources(
 				nil, /* cancelFlow */
 			)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			toWrapInputs = append(toWrapInputs, toWrapInput)
 		}
@@ -98,10 +102,42 @@ func wrapRowSources(
 
 	toWrap, err := newToWrap(toWrapInputs)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return NewColumnarizer(ctx, NewAllocator(ctx, acc), flowCtx, processorID, toWrap)
+	c, err := NewColumnarizer(ctx, NewAllocator(ctx, acc), flowCtx, processorID, toWrap)
+	if err != nil {
+		return nil, nil, err
+	}
+	return c, unwrappedColumnarizers, nil
+}
+
+func removeColumnarizerMetadataSources(
+	metadataSources []execinfrapb.MetadataSource, columnarizers []*Columnarizer,
+) []execinfrapb.MetadataSource {
+	if len(metadataSources) == 0 || len(columnarizers) == 0 {
+		return metadataSources
+	}
+	n := 0
+	for _, src := range metadataSources {
+		remove := false
+		if c, ok := src.(*Columnarizer); ok {
+			for _, unwrapped := range columnarizers {
+				if c == unwrapped {
+					remove = true
+					break
+				}
+			}
+		}
+		if !remove {
+			metadataSources[n] = src
+			n++
+		}
+	}
+	for i := n; i < len(metadataSources); i++ {
+		metadataSources[i] = nil
+	}
+	return metadataSources[:n]
 }
 
 // NewColOperatorArgs is a helper struct that encompasses all of the input
@@ -483,7 +519,7 @@ func (r *NewColOperatorResult) createAndWrapRowSource(
 		spec.Core.JoinReader == nil && spec.Core.BatchLookupJoiner == nil {
 		return errors.New("rowexec processor wrapping for non-JoinReader core unsupported in vectorize=auto mode")
 	}
-	c, err := wrapRowSources(
+	c, unwrappedColumnarizers, err := wrapRowSources(
 		ctx,
 		flowCtx,
 		inputs,
@@ -523,6 +559,7 @@ func (r *NewColOperatorResult) createAndWrapRowSource(
 	// problem for memory accounting because each processor does that on its
 	// own, so the used memory will be accounted for.
 	r.Op, r.IsStreaming = c, true
+	r.MetadataSources = removeColumnarizerMetadataSources(r.MetadataSources, unwrappedColumnarizers)
 	r.MetadataSources = append(r.MetadataSources, c)
 	return nil
 }
