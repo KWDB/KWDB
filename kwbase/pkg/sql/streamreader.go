@@ -27,6 +27,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlutil"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util/ctxgroup"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding"
@@ -98,6 +99,9 @@ type streamReaderProcessor struct {
 	rowBuffer *streamReaderRowBuffer
 	// recalculator is used to process historical data and expired data.
 	recalculator *streamRecalculator
+
+	// expiredCount used to logs expired row count
+	expiredCount int
 }
 
 var _ execinfra.Processor = &streamReaderProcessor{}
@@ -465,6 +469,11 @@ func (s *streamReaderProcessor) Next() (sqlbase.EncDatumRow, *execinfrapb.Produc
 				// notified by checkpoint to trigger the stream aggregator's MAX_DELAY checking
 				return nil, nil
 			}
+		case row := <-s.rowBuffer.GetBufferLowLatency():
+			outRow := s.ProcessRowHelper(row)
+			if outRow != nil {
+				return outRow, nil
+			}
 		default:
 			hasRow, err := s.rowBuffer.HasOutputRow()
 			if err != nil {
@@ -540,6 +549,7 @@ func (s *streamReaderProcessor) handleMessage(event *cdcpb.TsChangeDataCaptureEv
 	case *cdcpb.TsChangeDataCaptureValue:
 		s.rowBuffer.Lock()
 		defer s.rowBuffer.Unlock()
+		var da sqlbase.DatumAlloc
 		for _, rowData := range t.Val {
 			row := make([]sqlbase.EncDatum, len(s.spec.CDCColumns.CDCColumnIDs))
 			buf := rowData
@@ -549,10 +559,19 @@ func (s *streamReaderProcessor) handleMessage(event *cdcpb.TsChangeDataCaptureEv
 				if err != nil {
 					return err
 				}
+				if err = row[idx].EnsureDecoded(&colType, &da); err != nil {
+					return err
+				}
 			}
 
-			if err := s.rowBuffer.AddRowWithoutLock(s.Ctx, row); err != nil {
-				return err
+			if s.streamOpts.SyncTime == 0 {
+				if err = s.processLowLatency(row); err != nil {
+					return err
+				}
+			} else {
+				if err := s.rowBuffer.AddRowWithoutLock(s.Ctx, row); err != nil {
+					return err
+				}
 			}
 		}
 
@@ -574,6 +593,44 @@ func (s *streamReaderProcessor) handleMessage(event *cdcpb.TsChangeDataCaptureEv
 	}
 
 	return err
+}
+
+// processLowLatency process row with low-latency mode.
+func (s *streamReaderProcessor) processLowLatency(row sqlbase.EncDatumRow) error {
+	if row == nil {
+		return nil
+	}
+
+	switch row[0].Datum.ResolvedType().InternalType.Family {
+	case types.TimestampFamily:
+		s.emitTimestamp = row[0].Datum.(*tree.DTimestamp).UTC()
+	case types.TimestampTZFamily:
+		s.emitTimestamp = row[0].Datum.(*tree.DTimestampTZ).UTC()
+	default:
+		return nil
+	}
+
+	if s.streamSink.HasAgg && s.expiredTime.After(s.emitTimestamp) {
+		s.expiredCount++
+		if !s.streamOpts.IgnoreExpired {
+			s.recalculator.HandleExpiredRows(row.Copy())
+		}
+
+		if s.expiredCount == 1 {
+			log.Warningf(s.Ctx, "Handle expired row num: %d, is discard: %v, expired time:%v, row time:%v",
+				s.expiredCount, s.streamOpts.IgnoreExpired, s.expiredTime, s.emitTimestamp)
+		} else if s.expiredCount == streamInsertBatch+1 {
+			log.Warningf(s.Ctx, "Handle expired row num: %d, is discard: %v, expired time:%v, row time:%v",
+				streamInsertBatch, s.streamOpts.IgnoreExpired, s.expiredTime, s.emitTimestamp)
+			s.expiredCount = 1
+		}
+
+		return nil
+	}
+	s.rowBuffer.AddRowLowLatency(row)
+	s.expiredTime = s.emitTimestamp
+
+	return nil
 }
 
 // stopStream sends the STOP message to all active nodes.
@@ -618,6 +675,10 @@ func (s *streamReaderProcessor) checkpoint() error {
 	if err := s.recalculator.checkJobStreamNotExist(s.spec.JobID); err != nil {
 		log.Warningf(s.Ctx, err.Error())
 		return err
+	}
+
+	if s.streamOpts.SyncTime == 0 {
+		return nil
 	}
 
 	lowWaterMark, err := s.extractGlobalHighWaterMark()

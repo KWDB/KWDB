@@ -235,6 +235,7 @@ func (t *StreamTask) Push(ts int64, data [][]byte) error {
 	return t.server.Send(evt)
 }
 
+// initFilter format filter from bytes to ExprHelper.
 func initFilter(bytes []byte, types []types.T) (*execinfra.ExprHelper, error) {
 	filterExp := &execinfrapb.Expression{}
 	if err := protoutil.Unmarshal(bytes, filterExp); err != nil {

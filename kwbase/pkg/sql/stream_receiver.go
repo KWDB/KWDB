@@ -16,6 +16,8 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"sync"
+	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/cdc/cdcpb"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
@@ -34,6 +36,16 @@ import (
 const (
 	// streamInsertBatch defines the number of rows inserted per batch.
 	streamInsertBatch = 1000
+	// streamInsertBatch defines the number of rows inserted per small batch.
+	streamInsertSmallBatch = 100
+	// initialEvalDelay is the duration to wait after receiving the first data point
+	// before performing the initial evaluation.
+	initialEvalDelay = 3 * time.Second
+	// flushInterval is the flush interval.
+	flushInterval = 100 * time.Millisecond
+
+	// ParametersLimitation is the max parameters in BIND message of postgresql protocol(uint16)
+	ParametersLimitation = 65535
 )
 
 // StreamReceiver is a thin wrapper around a RowContainer.
@@ -54,7 +66,7 @@ type StreamReceiver struct {
 	// stopper used to manage goroutines.
 	stopper *stop.Stopper
 	// mutex used to lock rowContainer.
-	mutex syncutil.Mutex
+	mutex syncutil.RWMutex
 	// rowContainer is the cache of data read to insert to target table.
 	rowContainer *rowcontainer.RowContainer
 	// rowsAffected is the number of successfully written rows.
@@ -77,13 +89,21 @@ type StreamReceiver struct {
 	singleInsertStmt string
 	// batchInsertStmt is the SQL for insert batch rows.
 	batchInsertStmt string
-	// batchParameterNumber defines the number of parameters sent in batches.
-	batchParameterNumber int
+	// batchInsertStmt is the SQL for insert small batch rows.
+	smallBatchInsertStmt string
 
 	// originalLowWaterMark is original low-watermark.
 	originalLowWaterMark int64
 	// currentLowWaterMark is current low-watermark.
 	currentLowWaterMark int64
+	// batchSize is current batchsize
+	batchSize int
+	// evalDone define first eval
+	evalOnce sync.Once
+	// checkpointRowCount count rows of one checkpoint period.
+	checkpointRowCount int
+	// checkpointRowCount count rows of one flush period.
+	flushRowCount int
 }
 
 // NewStreamResultWriter creates a new StreamReceiver.
@@ -112,7 +132,7 @@ func NewStreamResultWriter(
 }
 
 func (srw *StreamReceiver) init() {
-	srw.flushCh = make(chan bool, 1)
+	srw.flushCh = make(chan bool, 2)
 
 	ctx, cancel := context.WithCancel(srw.ctx)
 	srw.cancel = cancel
@@ -120,16 +140,35 @@ func (srw *StreamReceiver) init() {
 	srw.options, _ = sqlutil.ParseStreamOpts(&srw.parameters.Options)
 
 	srw.targetTable = fmt.Sprintf("%s.%s", srw.parameters.TargetTable.Database, srw.parameters.TargetTable.Table)
-	srw.batchParameterNumber = streamInsertBatch * srw.rowContainer.NumCols()
 	srw.singleInsertStmt = constructBatchInsertStmt(srw.targetTable, srw.parameters.TargetTable.ColNames, 1)
 	srw.batchInsertStmt = constructBatchInsertStmt(srw.targetTable, srw.parameters.TargetTable.ColNames, streamInsertBatch)
+	srw.smallBatchInsertStmt = constructBatchInsertStmt(srw.targetTable, srw.parameters.TargetTable.ColNames, streamInsertSmallBatch)
+
+	if srw.options.LowLatency {
+		srw.batchSize = 1
+	} else {
+		srw.batchSize = streamInsertBatch
+	}
+
+	srw.checkpointRowCount = 0
+	srw.flushRowCount = 0
 
 	if err := srw.stopper.RunAsyncTask(ctx, "stream-receiver-async-task", func(ctx context.Context) {
 		var checkpointTimer timeutil.Timer
 		defer checkpointTimer.Stop()
 		checkpointTimer.Reset(srw.options.CheckpointInterval)
+
+		var flushTimer timeutil.Timer
+		defer flushTimer.Stop()
+		// low-latency mode start
+		if srw.options.LowLatency {
+			flushTimer.Reset(flushInterval)
+		}
+
 		for {
 			select {
+			case <-ctx.Done():
+				return
 			case flush, _ := <-srw.flushCh:
 				if flush {
 					err := srw.flush()
@@ -141,15 +180,29 @@ func (srw *StreamReceiver) init() {
 				}
 			case <-checkpointTimer.C:
 				checkpointTimer.Read = true
-				err := srw.checkpoint()
-				if err != nil {
+				if err := srw.checkpoint(); err != nil {
 					log.Errorf(srw.ctx, "stream receiver checkpoint error: %v", err)
 					srw.err = err
 					return
 				}
 				checkpointTimer.Reset(srw.options.CheckpointInterval)
-			case <-ctx.Done():
-				return
+			case <-flushTimer.C:
+				srw.mutex.RLock()
+				currentCount := srw.rowContainer.Len()
+				srw.mutex.RUnlock()
+				flushTimer.Read = true
+				// If no new data is received for two consecutive cycles, flush all data.
+				if currentCount > 0 && currentCount < srw.batchSize && currentCount == srw.flushRowCount {
+					if err := srw.flush(); err != nil {
+						log.Errorf(srw.ctx, "stream receiver flush error: %v", err)
+						srw.err = err
+						return
+					}
+					srw.flushRowCount = 0
+				} else {
+					srw.flushRowCount = currentCount
+				}
+				flushTimer.Reset(flushInterval)
 			}
 		}
 	}); err != nil {
@@ -184,15 +237,71 @@ func (srw *StreamReceiver) AddRow(ctx context.Context, row tree.Datums) error {
 		return nil
 	}
 
+	srw.evalOnce.Do(func() {
+		time.AfterFunc(initialEvalDelay, func() {
+			select {
+			case <-srw.ctx.Done():
+				return
+			default:
+				srw.evaluateBatchSize()
+			}
+		})
+	})
+
+	var send bool
 	srw.mutex.Lock()
-	_, err := srw.rowContainer.AddRow(ctx, row)
+	srw.checkpointRowCount++
+	if srw.batchSize == 1 && srw.rowContainer.Len() == 0 {
+		err := srw.writeRow(ctx, row)
+		srw.mutex.Unlock()
+		return err
+	}
+
+	if _, err := srw.rowContainer.AddRow(ctx, row); err != nil {
+		srw.mutex.Unlock()
+		return err
+	}
+
+	send = srw.rowContainer.Len()%srw.batchSize == 0
 	srw.mutex.Unlock()
 
-	if srw.rowContainer.Len() >= streamInsertBatch {
+	if send {
 		srw.flushCh <- true
 	}
 
-	return err
+	return nil
+}
+
+// evaluateBatchSize evaluates the batch size of the current checkpoint period.
+func (srw *StreamReceiver) evaluateBatchSize() {
+	srw.mutex.RLock()
+	defer srw.mutex.RUnlock()
+
+	if srw.checkpointRowCount == 0 {
+		return
+	}
+
+	originSize := srw.batchSize
+	switch {
+	case srw.checkpointRowCount >= streamInsertBatch &&
+		len(srw.resultTypes)*streamInsertBatch < ParametersLimitation:
+		// When the data volume within the checkpoint period exceeds streamInsertBatch
+		// and the parameter does not exceed the limit of 65535, set the batch size to streamInsertBatch.
+		srw.batchSize = streamInsertBatch
+	case srw.checkpointRowCount >= streamInsertSmallBatch &&
+		len(srw.resultTypes)*streamInsertSmallBatch < ParametersLimitation:
+		// When the data volume within the checkpoint period is between streamInsertSmallBatch and streamInsertBatch,
+		// and the parameter does not exceed the limit of 65535, set the batch size to streamInsertSmallBatch.
+		srw.batchSize = streamInsertSmallBatch
+	default:
+		srw.batchSize = 1
+	}
+
+	if originSize != srw.batchSize {
+		log.Infof(srw.ctx, "batch size evaluated: %d (rows in checkpoint: %d)", srw.batchSize, srw.checkpointRowCount)
+	}
+
+	srw.checkpointRowCount = 0
 }
 
 // SetError is part of the rowResultWriter interface.
@@ -214,23 +323,67 @@ func (srw *StreamReceiver) Close() {
 	srw.rowContainer.Close(srw.ctx)
 }
 
+// writeRow write single row.
+func (srw *StreamReceiver) writeRow(ctx context.Context, row tree.Datums) error {
+	currentRow := make([]interface{}, srw.rowContainer.NumCols())
+	for idx, colVal := range row {
+		data, err := datumCheckAndConvert(srw.ctx, srw.parameters.TargetTable.IsTsTable, srw.targetTypes, idx, colVal)
+		if err != nil {
+			return err
+		}
+
+		currentRow[idx] = data
+	}
+	srw.extractsWaterMark(row[0])
+
+	if _, err := srw.executor.Exec(ctx, "stream-receiver-persist-results-latency-mode",
+		nil, srw.singleInsertStmt, currentRow...); err != nil {
+		log.Errorf(
+			ctx,
+			"failed to write stream results to target table using low latency-mode, stream name: %s, error: %v",
+			srw.metadata.Name, err,
+		)
+	}
+
+	return nil
+}
+
 // flush writes the result from rowContainer to target table.
 func (srw *StreamReceiver) flush() error {
 	srw.mutex.Lock()
 	defer srw.mutex.Unlock()
 
-	if srw.rowContainer.Len() == 0 {
-		return nil
-	}
-	stmt := srw.batchInsertStmt
+	var stmt string
 	rowCount := srw.rowContainer.Len()
-	if rowCount != streamInsertBatch {
+
+	if rowCount == 0 {
+		return nil
+	} else if rowCount == 1 || srw.batchSize == 1 {
+		// When rowCount = 1 or batchSize = 1, write row by row
+		stmt = srw.singleInsertStmt
+	} else if rowCount < srw.batchSize {
+		// when rowCount is between 1 and batchSize, dynamically generate SQL for writing;
 		stmt = constructBatchInsertStmt(srw.targetTable, srw.parameters.TargetTable.ColNames, rowCount)
+	} else if srw.batchSize == streamInsertSmallBatch {
+		// when rowCount is greater than streamInsertSmallBatch, write in batches according to streamInsertSmallBatch.
+		stmt = srw.smallBatchInsertStmt
+		rowCount = srw.batchSize
+	} else {
+		// when rowCount is greater than streamInsertBatch, write in batches according to streamInsertBatch.
+		stmt = srw.batchInsertStmt
+		rowCount = srw.batchSize
 	}
 
 	currentBatch, err := srw.constructResultSet(rowCount)
 	if err != nil {
 		return err
+	}
+
+	// When rowCount = 1 or batchSize = 1, write row by row
+	if rowCount == 1 || srw.batchSize == 1 {
+		srw.persistBySingleRow(rowCount, currentBatch)
+
+		return nil
 	}
 
 	// INSERT results using batch mode
@@ -242,29 +395,32 @@ func (srw *StreamReceiver) flush() error {
 			"failed to write stream results to target table using batch mode, stream name: %s, error: %v",
 			srw.metadata.Name, err,
 		)
-
-		colNum := srw.rowContainer.NumCols()
-		errNum := 0
-		// retry to INSERT results using single row mode
-		for idx := 0; idx < rowCount; idx++ {
-			start := idx * colNum
-			end := start + colNum
-			if _, err := srw.executor.Exec(srw.ctx, "stream-receiver-persist-results-single-mode",
-				nil, srw.singleInsertStmt, currentBatch[start:end]...); err != nil {
-				// ignore the error in single mode to avoid too many output messages.
-				errNum++
-			}
-		}
-		if errNum > 0 {
-			log.Errorf(
-				srw.ctx,
-				"write stream results to target table using single-row mode, stream name: %s, failed rows: %d, total rows: %d",
-				srw.metadata.Name, errNum, rowCount,
-			)
-		}
+		srw.persistBySingleRow(rowCount, currentBatch)
 	}
 
 	return nil
+}
+
+func (srw *StreamReceiver) persistBySingleRow(rowCount int, currentBatch []interface{}) {
+	colNum := srw.rowContainer.NumCols()
+	errNum := 0
+	// retry to INSERT results using single row mode
+	for idx := 0; idx < rowCount; idx++ {
+		start := idx * colNum
+		end := start + colNum
+		if _, err := srw.executor.Exec(srw.ctx, "stream-receiver-persist-results-single-mode",
+			nil, srw.singleInsertStmt, currentBatch[start:end]...); err != nil {
+			// ignore the error in single mode to avoid too many output messages.
+			errNum++
+		}
+	}
+	if errNum > 0 {
+		log.Errorf(
+			srw.ctx,
+			"write stream results to target table using single-row mode, stream name: %s, failed rows: %d, total rows: %d",
+			srw.metadata.Name, errNum, rowCount,
+		)
+	}
 }
 
 // checkpoint writes the data and update low-watermark.
@@ -276,6 +432,8 @@ func (srw *StreamReceiver) checkpoint() error {
 	if err := srw.persistLowWatermark(); err != nil {
 		return err
 	}
+
+	srw.evaluateBatchSize()
 
 	return nil
 }

@@ -644,7 +644,11 @@ func (gw *groupWindow) handleTimeTZWindowWithSlide(
 			gw.timeWindowHelper.tsTimeStampEndTZ = *endTimeDur
 			gw.timeWindowHelper.WindowEndTZ = *endTimeDur
 			gw.groupWindowValue++
-			gw.timeWindowHelper.canSlide = false
+			if gw.timeWindowHelper.lastTZ.Compare(evalCtx, &gw.timeWindowHelper.tsTimeStampEndTZ) > -1 {
+				gw.timeWindowHelper.canSlide = true
+			} else {
+				gw.timeWindowHelper.canSlide = false
+			}
 		}
 
 		gw.iter.Next()

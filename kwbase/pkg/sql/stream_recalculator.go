@@ -111,6 +111,8 @@ func (q *splitWindowQueue) DequeueSplitWindow() *splitWindow {
 type recalculatorStmts struct {
 	singleInsertStmt string
 	batchInsertStmt  string
+	// batchsize is the batchsize for insert history data.
+	batchsize int
 	// stmt for unprocessed rows, for example,
 	// SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname
 	// FROM benchmark.public.cpu
@@ -268,7 +270,16 @@ func newRecalculator(
 	)
 	sr.targetColNum = len(sr.targetColTypes)
 	sr.singleInsertStmt = constructBatchInsertStmt(sr.targetTableName, sr.streamParameters.TargetTable.ColNames, 1)
-	sr.batchInsertStmt = constructBatchInsertStmt(sr.targetTableName, sr.streamParameters.TargetTable.ColNames, streamInsertBatch)
+	// When writing in batches, the total parameters (batch size * targetColNum) must be
+	// less than the prepare parameter upper limit of 65535.
+	if sr.targetColNum*streamInsertBatch < ParametersLimitation {
+		sr.batchsize = streamInsertBatch
+	} else if sr.targetColNum*streamInsertSmallBatch < ParametersLimitation {
+		sr.batchsize = streamInsertSmallBatch
+	} else {
+		sr.batchsize = 1
+	}
+	sr.batchInsertStmt = constructBatchInsertStmt(sr.targetTableName, sr.streamParameters.TargetTable.ColNames, sr.batchsize)
 
 	return sr
 }
@@ -276,13 +287,14 @@ func newRecalculator(
 // Run Start listening notifyCh to recalculate.
 func (sr *streamRecalculator) Run(ctx context.Context) error {
 	for {
-		if !sr.splitWindowQueue.IsEmpty() {
-			splitWindow := sr.splitWindowQueue.DequeueSplitWindow()
-			if splitWindow == nil {
+		splitSize := sr.splitWindowQueue.Size()
+		for i := 0; i < splitSize; i++ {
+			sw := sr.splitWindowQueue.DequeueSplitWindow()
+			if sw == nil {
 				return nil
 			}
 
-			if err := sr.calculate(splitWindow); err != nil {
+			if err := sr.calculate(sw); err != nil {
 				return err
 			}
 		}
@@ -330,9 +342,7 @@ func (sr *streamRecalculator) Notify() {
 // addSplitWindow add the splitWindow to queue.
 func (sr *streamRecalculator) addSplitWindow(splitWindow *splitWindow) {
 	sr.splitWindowQueue.EnqueueSplitWindow(splitWindow)
-	if len(sr.notifyCh) == 0 {
-		sr.notifyCh <- true
-	}
+	sr.Notify()
 }
 
 // calculate calculates the splitWindow.
@@ -1280,100 +1290,105 @@ func (sr *streamRecalculator) extractLastEndingTimestampOnTargetTable(
 // if the written data does not meet the target table constraints.
 func (sr *streamRecalculator) persistResults(rows []tree.Datums) error {
 	numRows := len(rows)
-
 	if numRows == 0 {
 		return nil
 	}
 
+	if sr.batchsize <= 0 {
+		return fmt.Errorf("invalid batchsize: %d", sr.batchsize)
+	}
+
 	failedRowsNum := 0
-	batchNum := numRows / streamInsertBatch
-	finalBatchSize := numRows - batchNum*streamInsertBatch
-
-	currentBatch := make([]interface{}, sr.targetColNum*streamInsertBatch)
 	rowIndex := 0
+
+	// Process full batches
+	batchNum := numRows / sr.batchsize
 	for batchIdx := 0; batchIdx < batchNum; batchIdx++ {
-		paraIdx := 0
-		for idx := 0; idx < streamInsertBatch; idx++ {
-			row := rows[rowIndex]
-			for colIdx, colVal := range row {
-				data, err := datumCheckAndConvert(sr.ctx, sr.streamParameters.TargetTable.IsTsTable, sr.targetColTypes, colIdx, colVal)
-				if err != nil {
-					return err
-				}
-				currentBatch[paraIdx] = data
-				paraIdx++
-			}
-			rowIndex++
-		}
-
-		// INSERT results using batch mode
-		// INSERT INTO `srw.targetTable` VALUES ($1,$2,$3, ...), ($n,$n+1,$n+2, ...), ...
-		if _, err := sr.executor.Exec(sr.ctx, "stream-persist-recalculate-results-batch-mode",
-			nil, sr.batchInsertStmt, currentBatch...); err != nil {
-			log.Errorf(
-				sr.ctx,
-				"failed to write stream results to target table using batch mode, stream name: %s, error: %v",
-				sr.streamName, err,
-			)
-
-			// INSERT results using single row mode
-			for idx := 0; idx < streamInsertBatch; idx++ {
-				start := idx * sr.targetColNum
-				end := start + sr.targetColNum
-
-				if _, err := sr.executor.Exec(sr.ctx, "stream-persist-recalculate-results-single-mode",
-					nil, sr.singleInsertStmt, currentBatch[start:end]...); err != nil {
-					// ignore the error in single mode to avoid too many output messages.
-					failedRowsNum++
-				}
-			}
-		}
+		batch := sr.buildBatch(rows[rowIndex:rowIndex+sr.batchsize], sr.batchsize)
+		failed := sr.persistBatch(batch, sr.batchsize, sr.batchInsertStmt)
+		failedRowsNum += failed
+		rowIndex += sr.batchsize
 	}
 
-	finalBatch := make([]interface{}, sr.targetColNum*finalBatchSize)
-	finalStmt := constructBatchInsertStmt(sr.targetTableName, sr.streamParameters.TargetTable.ColNames, finalBatchSize)
-
-	paraIdx := 0
-	for idx := 0; idx < finalBatchSize; idx++ {
-		row := rows[rowIndex]
-		for colIdx, colVal := range row {
-			data, err := datumCheckAndConvert(sr.ctx, sr.streamParameters.TargetTable.IsTsTable, sr.targetColTypes, colIdx, colVal)
-			if err != nil {
-				return err
-			}
-			finalBatch[paraIdx] = data
-			paraIdx++
-		}
-		rowIndex++
-	}
-
-	// INSERT results using batch mode
-	// INSERT INTO `srw.targetTable` VALUES ($1,$2,$3, ...), ($n,$n+1,$n+2, ...), ...
-	if _, err := sr.executor.Exec(sr.ctx, "stream-persist-recalculate-results-batch-mode",
-		nil, finalStmt, finalBatch...); err != nil {
-		log.Errorf(
-			sr.ctx,
-			"failed to write stream results to target table using batch mode, stream name: %s, error: %v",
-			sr.streamName, err,
-		)
-		// INSERT results using single row mode
-		for idx := 0; idx < finalBatchSize; idx++ {
-			start := idx * sr.targetColNum
-			end := start + sr.targetColNum
-			if _, err := sr.executor.Exec(sr.ctx, "stream-persist-recalculate-results-single-mode",
-				nil, sr.singleInsertStmt, finalBatch[start:end]...); err != nil {
-				// ignore the error in single mode to avoid too many output messages.
-				failedRowsNum++
-			}
-		}
+	// Process remaining rows
+	finalBatchSize := numRows % sr.batchsize
+	if finalBatchSize > 0 {
+		batch := sr.buildBatch(rows[rowIndex:rowIndex+finalBatchSize], finalBatchSize)
+		finalStmt := constructBatchInsertStmt(sr.targetTableName, sr.streamParameters.TargetTable.ColNames, finalBatchSize)
+		failed := sr.persistBatch(batch, finalBatchSize, finalStmt)
+		failedRowsNum += failed
 	}
 
 	if failedRowsNum > 0 {
-		log.Infof(sr.ctx, "stream %s persist results completed, total rows: %d, success: %d, failed: %d",
+		log.Errorf(sr.ctx, "stream %s persist results completed, total rows: %d, success: %d, failed: %d",
 			sr.streamName, numRows, numRows-failedRowsNum, failedRowsNum)
 	}
 
 	return nil
+}
+
+// buildBatch converts rows to a flat interface slice for batch insert
+func (sr *streamRecalculator) buildBatch(rows []tree.Datums, batchSize int) []interface{} {
+	batch := make([]interface{}, sr.targetColNum*batchSize)
+	paraIdx := 0
+
+	for _, row := range rows {
+		for colIdx, colVal := range row {
+			data, err := datumCheckAndConvert(sr.ctx, sr.streamParameters.TargetTable.IsTsTable,
+				sr.targetColTypes, colIdx, colVal)
+			if err != nil {
+				// Log conversion error and use NULL as fallback
+				log.Errorf(sr.ctx, "failed to convert data for stream %s, row: %v, error: %v",
+					sr.streamName, row, err)
+				data = nil
+			}
+			batch[paraIdx] = data
+			paraIdx++
+		}
+	}
+
+	return batch
+}
+
+// persistBatch attempts to insert a batch of rows, falling back to single row inserts on failure
+func (sr *streamRecalculator) persistBatch(
+	batch []interface{}, batchSize int, batchStmt string,
+) int {
+	failedRows := 0
+
+	// Attempt batch insert
+	if _, err := sr.executor.Exec(sr.ctx, "stream-persist-recalculate-results-batch-mode",
+		nil, batchStmt, batch...); err != nil {
+		log.Errorf(sr.ctx,
+			"failed to write stream results to target table using batch mode, stream name: %s, batch size: %d, error: %v",
+			sr.streamName, batchSize, err)
+
+		// Fall back to single row inserts
+		failedRows = sr.persistSingleRows(batch, batchSize)
+	}
+
+	return failedRows
+}
+
+// persistSingleRows inserts rows one by one, counting failures
+func (sr *streamRecalculator) persistSingleRows(batch []interface{}, batchSize int) int {
+	failedRows := 0
+
+	for idx := 0; idx < batchSize; idx++ {
+		start := idx * sr.targetColNum
+		end := start + sr.targetColNum
+
+		if _, err := sr.executor.Exec(sr.ctx, "stream-persist-recalculate-results-single-mode",
+			nil, sr.singleInsertStmt, batch[start:end]...); err != nil {
+			failedRows++
+			// Log first failure for debugging purposes
+			if failedRows == 1 {
+				log.Errorf(sr.ctx, "first failed row in batch for stream %s, error: %v", sr.streamName, err)
+			}
+		}
+	}
+
+	return failedRows
 }
 
 // deleteRows deletes data of the split window from the target table.

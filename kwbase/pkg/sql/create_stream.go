@@ -62,6 +62,7 @@ var streamOptionExpectValues = map[string]KVStringOptValidate{
 	sqlutil.OptHeartbeatInterval:      KVStringOptRequireValue,
 	sqlutil.OptRecalculateDelayRounds: KVStringOptRequireValue,
 	sqlutil.OptBufferSize:             KVStringOptRequireValue,
+	sqlutil.OptLowLatency:             KVStringOptRequireValue,
 }
 
 type createStreamNode struct {

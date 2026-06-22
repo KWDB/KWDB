@@ -151,7 +151,7 @@ alter stream test_stream1 set max_delay='1aaa';
 alter stream test_stream1 set sync_time='30s';
 select name,target_table_name,options,query,status,create_by,error_message from [show stream test_stream1];
 alter stream test_stream1 set sync_time='1';
-alter stream test_stream1 set sync_time='0s';
+alter stream test_stream1 set sync_time='-1s';
 alter stream test_stream1 set sync_time='1s';
 alter stream test_stream1 set sync_time='1d';
 alter stream test_stream1 set sync_time='1aaa';
