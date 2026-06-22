@@ -215,19 +215,14 @@ type AliasedColumn struct {
 	Typ *types.T
 }
 
-// AddTSPropertyBool add flag to time series property
-func AddTSPropertyBool(prop int, flag int) int {
-	return DelTsProperty(prop, flag)
-}
-
 // AddTSProperty add flag to time series property
-func AddTSProperty(prop int, flag int) int {
-	return prop | flag
+func AddTSProperty(prop *int, flag int) {
+	*prop = *prop | flag
 }
 
 // DelTsProperty delete flag from time series property
-func DelTsProperty(prop int, flag int) int {
-	return prop &^ flag
+func DelTsProperty(prop *int, flag int) {
+	*prop = *prop &^ flag
 }
 
 // CheckTsProperty check whether flag is in prop.

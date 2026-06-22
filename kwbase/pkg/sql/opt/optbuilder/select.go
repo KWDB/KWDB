@@ -1170,37 +1170,113 @@ func (b *Builder) checkFill(scope *scope, fill tree.Fill) bool {
 	return true
 }
 
+// fill filter type
+const (
+	// whether there exists timestamp condition
+	hasTimestamp = 1 << 0
+
+	// whether there exists a Ptag condition
+	hasPTag = 1 << 1
+
+	// variable of timestamp or pTag condition
+	hasVar = 1 << 2
+
+	// const value of timestamp or pTag condition
+	hasConst = 1 << 3
+)
+
 // deal with filter
 // outParams:
+// fillFilterProp is 4-bit binary integer, each bit position corresponds to a filter type
 // 1. hasTimestamp(check whether there is timestamp condition).
 // 2. hasPTag(check whether there is pTag condition).
 // 3. hasVar(column of timestamp or pTag condition).
 // 4. hasConst(const value of timestamp or pTag condition).
-func (b *Builder) dealFillFilter(
-	expr opt.ScalarExpr,
-) (hasTimestamp, hasPTag, hasConst, hasVar bool) {
+func (b *Builder) dealFillFilter(expr opt.ScalarExpr) (fillFilterProp int) {
 	switch e := expr.(type) {
 	case *memo.VariableExpr:
 		leftCol := b.factory.Metadata().ColumnMeta(e.Col)
 		if e.Col == 1 {
-			hasTimestamp = true
+			opt.AddTSProperty(&fillFilterProp, hasTimestamp)
 		} else if leftCol.TSType == 3 {
-			hasPTag = true
+			opt.AddTSProperty(&fillFilterProp, hasPTag)
 		}
 		// if variable defined in procedure are treated as const.
 		if leftCol.IsProcedureUsed() && leftCol.IsProcedureLocalValue() {
-			hasConst = true
+			opt.AddTSProperty(&fillFilterProp, hasConst)
 		} else {
-			hasVar = true
+			opt.AddTSProperty(&fillFilterProp, hasVar)
 		}
 		break
 	case *memo.ConstExpr, *memo.PlaceholderExpr:
-		hasConst = true
+		opt.AddTSProperty(&fillFilterProp, hasConst)
 		break
 	default:
 		panic(pgerror.New(pgcode.Syntax, "the conditions of FILL clause only supports single column and constant"))
 	}
 	return
+}
+
+// deal with in left filter
+// outParams:
+// 1. inFilterProp is 4-bit binary integer, deal with hasPTag(check whether there is pTag condition) and hasVar(column of timestamp or pTag condition).
+// 2. filterNum(number of filter).
+func (b *Builder) dealFillInLeftFilter(expr opt.ScalarExpr) (inFilterProp int, filterNum int) {
+	dealFilter := func(e opt.ScalarExpr) (prop int) {
+		prop = b.dealFillFilter(e)
+		if opt.CheckTsProperty(prop, hasTimestamp) {
+			panic(pgerror.New(pgcode.Syntax, "the FILL clause is only supported for point-in-time queries."))
+		}
+		return prop
+	}
+	switch e := expr.(type) {
+	case *memo.VariableExpr:
+		inFilterProp = dealFilter(e)
+		filterNum++
+		break
+	case *memo.TupleExpr:
+		opt.AddTSProperty(&inFilterProp, hasPTag)
+		opt.AddTSProperty(&inFilterProp, hasVar)
+		for _, ee := range e.Elems {
+			tuplefillFilterProp := dealFilter(ee)
+			// Slice elements are all Variable, set hasVar to inFilterProp.
+			if !opt.CheckTsProperty(tuplefillFilterProp, hasVar) {
+				opt.DelTsProperty(&inFilterProp, hasVar)
+			}
+			// Slice elements are all PTag, set hasPTag to inFilterProp.
+			if !opt.CheckTsProperty(tuplefillFilterProp, hasPTag) {
+				opt.DelTsProperty(&inFilterProp, hasPTag)
+			}
+			filterNum++
+		}
+		break
+	default:
+		panic(pgerror.New(pgcode.Syntax, "the conditions of PTag illegal in FILL clause"))
+	}
+	return
+}
+
+// deal with in right filter
+// outParams:
+// 1. hasConst(const value of timestamp or pTag condition).
+func (b *Builder) dealFillInRightFilter(expr opt.ScalarExpr) bool {
+	allConst := false
+	switch e := expr.(type) {
+	case *memo.TupleExpr:
+		allConst = true
+		for _, ee := range e.Elems {
+			prop := b.dealFillFilter(ee)
+			// Slice elements are all Const, allConst is true.
+			if !opt.CheckTsProperty(prop, hasConst) {
+				allConst = false
+				break
+			}
+		}
+		break
+	default:
+		allConst = opt.CheckTsProperty(b.dealFillFilter(e), hasConst)
+	}
+	return allConst
 }
 
 // deal with Fill clause and check whether the syntax is standardized.
@@ -1214,106 +1290,57 @@ func (b *Builder) dealFill(
 		}
 		if selectExpr, ok := scope.expr.(*memo.SelectExpr); ok {
 			filterNum := 0
-			hasTimestamp := false
-			hasPTag := false
+			fillFilterProp := 0
 
 			// check filters:
 			// The filters can only contain time-series conditions and ptag column conditions,
 			// and variables or other exprs are not supported.
 			for _, filter := range selectExpr.Filters {
 				if eq, ok1 := filter.Condition.(*memo.EqExpr); ok1 {
-					lTimestamp, lPTag, lVar, lConst := b.dealFillFilter(eq.Left)
-					rTimestamp, rPTag, rVar, rConst := b.dealFillFilter(eq.Right)
-					if !hasTimestamp {
-						hasTimestamp = lTimestamp || rTimestamp
+					lfillFilterProp := b.dealFillFilter(eq.Left)
+					rfillFilterProp := b.dealFillFilter(eq.Right)
+					if !opt.CheckTsProperty(fillFilterProp, hasTimestamp) &&
+						(opt.CheckTsProperty(lfillFilterProp, hasTimestamp) || opt.CheckTsProperty(rfillFilterProp, hasTimestamp)) {
+						opt.AddTSProperty(&fillFilterProp, hasTimestamp)
 					}
-					if !hasPTag {
-						hasPTag = lPTag || rPTag
+					if !opt.CheckTsProperty(fillFilterProp, hasPTag) &&
+						(opt.CheckTsProperty(lfillFilterProp, hasPTag) || opt.CheckTsProperty(rfillFilterProp, hasPTag)) {
+						opt.AddTSProperty(&fillFilterProp, hasPTag)
 					}
-					hasVar := lVar || rVar
-					hasConst := lConst || rConst
-					if !hasConst || !hasVar {
+					bHasVar := opt.CheckTsProperty(lfillFilterProp, hasVar) || opt.CheckTsProperty(rfillFilterProp, hasVar)
+					bHasConst := opt.CheckTsProperty(lfillFilterProp, hasConst) || opt.CheckTsProperty(rfillFilterProp, hasConst)
+					if !bHasVar || !bHasConst {
 						panic(pgerror.New(pgcode.Syntax, "the conditions of FILL clause must contains single column and constant"))
 					}
 					filterNum++
 				} else if in, ok2 := filter.Condition.(*memo.InExpr); ok2 {
-					hasVar := false
-					switch left := in.Left.(type) {
-					case *memo.VariableExpr:
-						if left.Col == 1 {
-							panic(pgerror.New(pgcode.Syntax, "the FILL clause is only supported for point-in-time queries."))
-						} else if b.factory.Metadata().ColumnMeta(left.Col).TSType == 3 {
-							hasPTag = true
-						}
-						hasVar = true
-						filterNum++
-						break
-					case *memo.TupleExpr:
-						hasPTag = true
-						hasVar = true
-						for _, e := range left.Elems {
-							if v, ok3 := e.(*memo.VariableExpr); ok3 {
-								if v.Col == 1 {
-									panic(pgerror.New(pgcode.Syntax, "the FILL clause is only supported for point-in-time queries."))
-								}
-								if b.factory.Metadata().ColumnMeta(v.Col).TSType != 3 {
-									hasPTag = false
-								}
-							} else {
-								hasVar = false
-							}
-							filterNum++
-						}
-						break
-					default:
-						panic(pgerror.New(pgcode.Syntax, "the conditions of PTag illegal in FILL clause"))
+					lfillFilterProp, inNum := b.dealFillInLeftFilter(in.Left)
+					if opt.CheckTsProperty(lfillFilterProp, hasPTag) {
+						opt.AddTSProperty(&fillFilterProp, hasPTag)
 					}
-					hasConst := true
-					if right, ok4 := in.Right.(*memo.TupleExpr); ok4 {
+					filterNum += inNum
+					bHasConst := true
+					if right, isTuple := in.Right.(*memo.TupleExpr); isTuple {
 						for _, elem := range right.Elems {
-							switch e := elem.(type) {
-							case *memo.VariableExpr:
-								rCol := b.factory.Metadata().ColumnMeta(e.Col)
-								if !rCol.IsProcedureUsed() || !rCol.IsProcedureLocalValue() {
-									hasConst = false
-								}
-							case *memo.ConstExpr, *memo.PlaceholderExpr:
+							isConst := b.dealFillInRightFilter(elem)
+							if !isConst {
+								bHasConst = false
 								break
-							case *memo.TupleExpr:
-								for _, ee := range e.Elems {
-									isProcedure := false
-									if declare, ok7 := ee.(*memo.VariableExpr); ok7 {
-										dCol := b.factory.Metadata().ColumnMeta(declare.Col)
-										if dCol.IsProcedureUsed() && dCol.IsProcedureLocalValue() {
-											isProcedure = true
-										}
-									}
-									_, ok5 := ee.(*memo.ConstExpr)
-									_, ok6 := ee.(*memo.PlaceholderExpr)
-									if !ok5 && !ok6 && isProcedure {
-										hasConst = false
-									}
-								}
-								break
-							default:
-								hasConst = false
 							}
 						}
 					} else {
 						panic(pgerror.New(pgcode.Syntax, "the conditions of PTag illegal in FILL clause"))
 					}
-					if !hasConst || !hasVar {
+					if !bHasConst || !opt.CheckTsProperty(lfillFilterProp, hasVar) {
 						panic(pgerror.New(pgcode.Syntax, "the conditions of PTag must contains single column and constants in FILL clause"))
 					}
 				} else {
 					panic(pgerror.New(pgcode.Syntax, "FILL clause only supports equality or in conditions."))
 				}
 			}
-			if filterNum != b.factory.Metadata().TableMeta(tsTableID).PrimaryTagCount+1 {
-				panic(pgerror.New(pgcode.Syntax, "FILL clause requires the use of timestamp and pTag column conditions."))
-			}
-			if !hasTimestamp || !hasPTag {
-				panic(pgerror.New(pgcode.Syntax, "the conditions of FILL clause must contains ts col and pTag"))
+			if filterNum != b.factory.Metadata().TableMeta(tsTableID).PrimaryTagCount+1 ||
+				!opt.CheckTsProperty(fillFilterProp, hasTimestamp) || !opt.CheckTsProperty(fillFilterProp, hasPTag) {
+				panic(pgerror.New(pgcode.Syntax, "the conditions of FILL clause must only be ts col and pTag"))
 			}
 			// check projections:
 			// only a single column is allowed for the projection column.
@@ -1329,7 +1356,7 @@ func (b *Builder) dealFill(
 				panic(pgerror.New(pgcode.Syntax, "FILL is only supported for use in single time series table query."))
 			}
 		} else {
-			panic(pgerror.New(pgcode.Syntax, "FILL clause requires the use of timestamp and pTag column conditions."))
+			panic(pgerror.New(pgcode.Syntax, "the conditions of FILL clause must only be ts col and pTag"))
 		}
 	}
 }

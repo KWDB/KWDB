@@ -694,7 +694,7 @@ func (b *Builder) resolveTableForMutation(
 			if b.factory.CheckFlag(opt.IsPrepare) {
 				b.DisableMemoReuse = true
 			}
-			b.TSInfo.TSProp = opt.AddTSProperty(b.TSInfo.TSProp, TSPropInsertCreateTable)
+			opt.AddTSProperty(&b.TSInfo.TSProp, TSPropInsertCreateTable)
 		} else {
 			stab, _ := b.resolveTable(&t.TableDef.UsingSource, privilege.CREATE)
 			// check if the super table matches the child table.

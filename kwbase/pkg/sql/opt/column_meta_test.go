@@ -217,8 +217,8 @@ func TestAddTSProperty(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := AddTSProperty(tt.prop, tt.flag)
-			require.Equal(t, tt.want, got)
+			AddTSProperty(&tt.prop, tt.flag)
+			require.Equal(t, tt.want, tt.prop)
 		})
 	}
 }
@@ -237,8 +237,8 @@ func TestDelTsProperty(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := DelTsProperty(tt.prop, tt.flag)
-			require.Equal(t, tt.want, got)
+			DelTsProperty(&tt.prop, tt.flag)
+			require.Equal(t, tt.want, tt.prop)
 		})
 	}
 }

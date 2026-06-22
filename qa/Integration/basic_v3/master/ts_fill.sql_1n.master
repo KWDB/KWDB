@@ -16,17 +16,17 @@ DETAIL: source SQL:
 select * from ts_db.metric_ts FILL(EXACT)
                               ^
 > select * from ts_db.metric_ts where device_id = 'device1' FILL(EXACT);
-ERROR: FILL clause requires the use of timestamp and pTag column conditions.
+ERROR: the conditions of FILL clause must only be ts col and pTag
 SQLSTATE: 42601
 > select * from ts_db.metric_ts where k_timestamp = '2025-12-19 10:00:02.200' FILL(EXACT);
-ERROR: FILL clause requires the use of timestamp and pTag column conditions.
+ERROR: the conditions of FILL clause must only be ts col and pTag
 SQLSTATE: 42601
 > select * from ts_db.metric_ts where device_id in ('device1') and k_timestamp = '2025-12-19 10:00:02.200' FILL(EXACT);
   k_timestamp | data1 | data2 | data3 | data4 | data5 | data6 | data7 | data8 | data9 | data10 | data11 | device_id | alias
 --------------+-------+-------+-------+-------+-------+-------+-------+-------+-------+--------+--------+-----------+--------
 (0 rows)
 > select * from ts_db.metric_ts where device_id = 'device1' and k_timestamp = '2025-12-19 10:00:02.200' and data2=22 FILL(EXACT);
-ERROR: FILL clause requires the use of timestamp and pTag column conditions.
+ERROR: the conditions of FILL clause must only be ts col and pTag
 SQLSTATE: 42601
 > select * from ts_db.metric_ts where device_id = 'device1' and k_timestamp = '2025-12-19 10:00:02.200' FILL(EXACT) group by k_timestamp;
 ERROR: at or near "group": syntax error
@@ -4381,6 +4381,26 @@ PREPARE
          k_timestamp        |        tag16         |  e1  | e2  |  e3   |      e4       |  e5  |  e6  |  e7  |  e8  |  e9  | e10  | e11  | e12  | e13  | e14  | e15  | e16  | e17  | e18  | e19
 ----------------------------+----------------------+------+-----+-------+---------------+------+------+------+------+------+------+------+------+------+------+------+------+------+------+-------
   2026-03-06 08:00:08+00:00 | JISCO.BOF2.出钢温度1 | NULL | 101 | 10111 | 1011111111111 | 8.45 | 8.45 | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL
+(1 row)
+> CREATE TABLE select_fill_test.t3 (
+    k_timestamp TIMESTAMP NOT NULL,
+    v INT8
+) TAGS (
+    id INT8 NOT NULL,
+    site INT8 NOT NULL
+) PRIMARY TAGS(id, site);
+CREATE TABLE
+> INSERT INTO select_fill_test.t3 VALUES ('2026-01-01 00:00:00', 1, 1, 10);
+INSERT 1
+> SELECT v FROM select_fill_test.t3 WHERE k_timestamp = '2026-01-01 00:00:00' AND (id, site) IN ((id, site)) FILL (EXACT);
+ERROR: the conditions of PTag must contains single column and constants in FILL clause
+SQLSTATE: 42601
+> CREATE PROCEDURE select_fill_test.bugfix1(t TIMESTAMP, a INT8, b INT8) $$BEGIN SELECT * from select_fill_test.t3 WHERE k_timestamp=t AND (id, site) IN ((a, b)) FILL (EXACT); END $$;
+CREATE PROCEDURE
+> call select_fill_test.bugfix1('2026-01-01 00:00:00', 1, 10);
+         k_timestamp        | v | id | site
+----------------------------+---+----+-------
+  2026-01-01 00:00:00+00:00 | 1 |  1 |   10
 (1 row)
 > use defaultdb;
 SET

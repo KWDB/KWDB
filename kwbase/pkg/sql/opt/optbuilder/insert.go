@@ -1292,7 +1292,7 @@ func (b *Builder) buildTSInsert(
 			NeedCreateTable: opt.CheckTsProperty(b.TSInfo.TSProp, TSPropInsertCreateTable),
 			CT:              ct,
 		})
-	b.TSInfo.TSProp = opt.AddTSProperty(b.TSInfo.TSProp, TSPropNeedTSTypeCheck)
+	opt.AddTSProperty(&b.TSInfo.TSProp, TSPropNeedTSTypeCheck)
 	return outScope
 }
 

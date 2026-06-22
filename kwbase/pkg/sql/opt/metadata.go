@@ -453,7 +453,7 @@ func (md *Metadata) AddDeclareColumn(
 // outParam: new ColumnID
 func (md *Metadata) AddTSColumn(alias string, typ *types.T, columnMetaProp int) ColumnID {
 	colID := md.AddColumn(alias, typ)
-	md.ColumnMeta(colID).TSType = AddTSProperty(md.ColumnMeta(colID).TSType, columnMetaProp)
+	AddTSProperty(&md.ColumnMeta(colID).TSType, columnMetaProp)
 	return colID
 }
 
