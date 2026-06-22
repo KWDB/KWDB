@@ -434,8 +434,11 @@ TEST_F(TestWALMgr, TestWALMgr_ReadWALLogForMtr) {
   EXPECT_EQ(init_result, KStatus::SUCCESS);
   
   // Write some MTR data
-  char tsx_id[] = "1165041921481932801";
-  KStatus begin_result = wal_mgr->WriteMTRWAL(ctx_, 1014, tsx_id, WALLogType::MTR_BEGIN);
+  char tsx_id[] = "1234567890123456";
+  char* wal_log = MTRBeginEntry::construct(WALLogType::MTR_BEGIN, 1014, tsx_id,
+                                           1, 1);
+  size_t wal_len = MTRBeginEntry::fixed_length;
+  KStatus begin_result = wal_mgr->WriteWAL(ctx_, wal_log, wal_len);
   EXPECT_EQ(begin_result, KStatus::SUCCESS);
   
   // Read MTR logs
@@ -451,6 +454,7 @@ TEST_F(TestWALMgr, TestWALMgr_ReadWALLogForMtr) {
     delete log;
   }
   
+  delete[] wal_log;
   delete wal_mgr;
 }
 
@@ -932,13 +936,16 @@ TEST_F(TestWALMgr, TestWALMgr_ReadUncommittedTxnID) {
   KStatus init_result = wal_mgr->Init(ctx_);
   EXPECT_EQ(init_result, KStatus::SUCCESS);
   
-  char tsx_id[] = "uncommitted_tsx";
-  wal_mgr->WriteMTRWAL(ctx_, 5001, tsx_id, WALLogType::MTR_BEGIN);
+  char tsx_id[] = "uncommitted_tsx1";
+  char* wal_log = MTRBeginEntry::construct(WALLogType::MTR_BEGIN, 5001, tsx_id, 1, 1);
+  size_t wal_len = MTRBeginEntry::fixed_length;
+  KStatus begin_result = wal_mgr->WriteWAL(ctx_, wal_log, wal_len);
   
   std::vector<uint64_t> uncommitted_xid;
   KStatus read_result = wal_mgr->ReadUncommittedTxnID(uncommitted_xid);
   EXPECT_EQ(read_result, KStatus::SUCCESS);
   
+  delete[] wal_log;
   delete wal_mgr;
 }
 
@@ -965,8 +972,10 @@ TEST_F(TestWALMgr, TestWALMgr_ReadUncommittedWALLog) {
   KStatus init_result = wal_mgr->Init(ctx_);
   EXPECT_EQ(init_result, KStatus::SUCCESS);
   
-  char tsx_id[] = "uncommitted_wal_tsx";
-  wal_mgr->WriteMTRWAL(ctx_, 6001, tsx_id, WALLogType::MTR_BEGIN);
+  char tsx_id[] = "uncommitted_wal_";
+  char* wal_log = MTRBeginEntry::construct(WALLogType::MTR_BEGIN, 6001, tsx_id, 1, 1);
+  size_t wal_len = MTRBeginEntry::fixed_length;
+  KStatus begin_result = wal_mgr->WriteWAL(ctx_, wal_log, wal_len);
   
   TS_OSN first_lsn = wal_mgr->GetFirstLSN();
   TS_OSN current_lsn = wal_mgr->FetchCurrentLSN();
@@ -982,6 +991,7 @@ TEST_F(TestWALMgr, TestWALMgr_ReadUncommittedWALLog) {
     delete log;
   }
   
+  delete[] wal_log;
   delete wal_mgr;
 }
 

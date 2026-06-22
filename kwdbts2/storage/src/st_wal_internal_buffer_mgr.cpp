@@ -1854,7 +1854,9 @@ KStatus WALBufferMgr::readCreateIndexLog(std::vector<LogEntry*>& log_entries, TS
   uint32_t new_ts_version;
   std::array<int32_t, 10> col_ids{};
 
-  status = readBytes(current_offset, read_queue, CreateIndexEntry::fixed_length, res);
+  uint64_t read_len = sizeof(x_id) + sizeof(object_id) +sizeof(index_id) +
+          sizeof(cur_ts_version) + sizeof(new_ts_version) + sizeof(col_ids);
+  status = readBytes(current_offset, read_queue, read_len, res);
   if (status == FAIL) {
     delete[] res;
     res = nullptr;
@@ -1901,7 +1903,9 @@ KStatus WALBufferMgr::readDropIndexLog(std::vector<LogEntry*>& log_entries, TS_O
   uint32_t new_ts_version;
   std::array<int32_t, 10> col_ids{};
 
-  status = readBytes(current_offset, read_queue, DropIndexEntry::fixed_length, res);
+  uint64_t read_len = sizeof(x_id) + sizeof(object_id) +sizeof(index_id) +
+          sizeof(cur_ts_version) + sizeof(new_ts_version) + sizeof(col_ids);
+  status = readBytes(current_offset, read_queue, read_len, res);
   if (status == FAIL) {
     delete[] res;
     res = nullptr;

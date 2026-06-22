@@ -19,8 +19,8 @@ TSxMgr::~TSxMgr() = default;
 
 KStatus TSxMgr::TSxBegin(kwdbContext_p ctx, const char* ts_trans_id) {
   TS_OSN mini_trans_id = 0;
-  char* wal_log = MTRBeginEntry::construct(WALLogType::TS_BEGIN, mini_trans_id, ts_trans_id, 0, 0);
-  size_t wal_len = MTRBeginEntry::fixed_length;
+  char* wal_log = TTREntry::construct(WALLogType::TS_BEGIN, mini_trans_id, ts_trans_id);
+  size_t wal_len = TTREntry::fixed_length;
   KStatus s = wal_mgr_->WriteWAL(ctx, wal_log, wal_len, mini_trans_id);
   delete[] wal_log;
 
