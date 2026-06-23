@@ -1057,3 +1057,31 @@ ORDER BY tt,fctype;
 INSERT 0
 > drop database test CASCADE;
 DROP DATABASE
+> DROP DATABASE IF EXISTS rowexec_bh_repro CASCADE;
+DROP DATABASE
+> CREATE TS DATABASE rowexec_bh_repro;
+CREATE TS DATABASE
+> CREATE TABLE rowexec_bh_repro.src (
+  k_timestamp TIMESTAMP NOT NULL,
+  v INT
+) TAGS (
+ptag INT NOT NULL
+) PRIMARY TAGS(ptag);
+CREATE TABLE
+> CREATE TABLE rowexec_bh_repro.dst (
+  k_timestamp TIMESTAMP NOT NULL,
+  v INT
+) TAGS (
+ptag INT NOT NULL
+) PRIMARY TAGS(ptag);
+CREATE TABLE
+> INSERT INTO rowexec_bh_repro.src
+VALUES ('2024-01-01 00:00:00', 10, 1);
+INSERT 1
+> SET CLUSTER SETTING sql.ts_insert_select.block_memory = 0;
+ERROR: invalid value, sql.ts_insert_select.block_memory must be greater than 0
+> INSERT INTO rowexec_bh_repro.dst
+SELECT * FROM rowexec_bh_repro.src;
+INSERT 1
+> drop database rowexec_bh_repro CASCADE;
+DROP DATABASE

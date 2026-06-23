@@ -443,6 +443,15 @@ func (n *setClusterSettingNode) startExec(params runParams) error {
 					}
 				}
 			}
+			if n.name == settings.TSInsertSelectBlockMemorySetting {
+				blockMemory, blockErr := strconv.ParseInt(encoded, 10, 64)
+				if blockErr != nil {
+					return blockErr
+				}
+				if blockMemory <= 0 {
+					return errors.New("invalid value, sql.ts_insert_select.block_memory must be greater than 0")
+				}
+			}
 			if _, err = execCfg.InternalExecutor.ExecEx(
 				ctx, "update-setting", txn,
 				sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},

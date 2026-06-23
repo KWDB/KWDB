@@ -444,11 +444,6 @@ func rowToRowClause(rows sqlbase.EncDatumRow) []tree.Expr {
 	return exprs
 }
 
-// TSInsertSelectBlockMemLimit is memory of block written at a time in ts insert select, units: MB
-var TSInsertSelectBlockMemLimit = settings.RegisterPublicIntSetting(
-	"sql.ts_insert_select.block_memory", "memory of block written at a time in ts insert select", 10,
-)
-
 var insBytes int64 = 1024 * 1024
 
 // the number of rows written at a time in ts insert select
@@ -526,7 +521,13 @@ func (tis *tsInsertSelecter) Start(ctx context.Context) context.Context {
 	}
 
 	// memory of block usage for ts insert
-	blockMemLimit := TSInsertSelectBlockMemLimit.Get(&tis.EvalCtx.Settings.SV) * insBytes
+	blockMemLimit := settings.TSInsertSelectBlockMemLimit.Get(&tis.EvalCtx.Settings.SV) * insBytes
+	// blockMemLimit and rowWidth must be greater than 0
+	if blockMemLimit <= 0 || rowWidth <= 0 {
+		tis.insertSuccess = false
+		tis.err = pgerror.Newf(pgcode.InvalidParameterValue, "batch count for TS INSERT SELECT must be greater than 0. blockMemLimit: %v, rowWidth: %v", blockMemLimit, rowWidth)
+		return ctx
+	}
 	// calculate the number of block
 	blockRowNumLimit := blockMemLimit / int64(rowWidth)
 
