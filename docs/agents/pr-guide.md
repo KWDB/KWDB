@@ -44,9 +44,8 @@ Its field shape is:
 - `KB-Missed: yes|no`
 - `KB-Missed-Note: ...`
 
-The local helper under `.agents/skills/ai-pr-kb-usage/` reads this guide and
-can prepare or refresh the PR body section automatically before PR creation or
-update.
+Maintain this section directly in the PR body so the CI parser can consume the
+same field names consistently.
 
 ## Linkage Expectations
 

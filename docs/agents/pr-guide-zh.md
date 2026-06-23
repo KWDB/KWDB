@@ -45,8 +45,7 @@
 - `KB-Missed: yes|no`
 - `KB-Missed-Note: ...`
 
-位于 `.agents/skills/ai-pr-kb-usage/` 的本地 helper 会读取本指南，并在
-创建或更新 PR 前自动准备或刷新该区块。
+请直接在 PR 正文中维护该区块，确保 CI 解析器始终读取一致的字段名。
 
 ## 链接期望
 
