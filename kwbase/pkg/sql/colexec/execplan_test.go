@@ -25,7 +25,9 @@ package colexec
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
@@ -96,7 +98,63 @@ func (p *execPlanTestRowSourceProcessor) InitProcessorProcedure(txn *kv.Txn) {
 	p.input.InitProcessorProcedure(txn)
 }
 
-func TestCreateAndWrapRowSourceRemovesUnwrappedColumnarizerMetadataSource(t *testing.T) {
+type execPlanTestBlockingRowSource struct {
+	typs                   []types.T
+	nextStarted            chan struct{}
+	unblockNext            chan struct{}
+	consumerDone           chan struct{}
+	nextCalls              int32
+	inNext                 int32
+	consumerDoneCalled     int32
+	concurrentConsumerDone int32
+}
+
+var _ execinfra.RowSource = &execPlanTestBlockingRowSource{}
+
+func newExecPlanTestBlockingRowSource(typs []types.T) *execPlanTestBlockingRowSource {
+	return &execPlanTestBlockingRowSource{
+		typs:         typs,
+		nextStarted:  make(chan struct{}),
+		unblockNext:  make(chan struct{}),
+		consumerDone: make(chan struct{}),
+	}
+}
+
+func (s *execPlanTestBlockingRowSource) OutputTypes() []types.T {
+	return s.typs
+}
+
+func (s *execPlanTestBlockingRowSource) Start(ctx context.Context) context.Context {
+	return ctx
+}
+
+func (s *execPlanTestBlockingRowSource) Next() (
+	sqlbase.EncDatumRow,
+	*execinfrapb.ProducerMetadata,
+) {
+	if atomic.AddInt32(&s.nextCalls, 1) == 1 {
+		atomic.StoreInt32(&s.inNext, 1)
+		close(s.nextStarted)
+		<-s.unblockNext
+		atomic.StoreInt32(&s.inNext, 0)
+	}
+	return nil, nil
+}
+
+func (s *execPlanTestBlockingRowSource) ConsumerDone() {
+	if atomic.LoadInt32(&s.inNext) != 0 {
+		atomic.StoreInt32(&s.concurrentConsumerDone, 1)
+	}
+	if atomic.CompareAndSwapInt32(&s.consumerDoneCalled, 0, 1) {
+		close(s.consumerDone)
+	}
+}
+
+func (s *execPlanTestBlockingRowSource) ConsumerClosed() {}
+
+func (s *execPlanTestBlockingRowSource) InitProcessorProcedure(*kv.Txn) {}
+
+func TestCreateAndWrapRowSourceTransfersMetadataSourceOwnership(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
 	ctx := context.Background()
@@ -111,9 +169,10 @@ func TestCreateAndWrapRowSourceRemovesUnwrappedColumnarizerMetadataSource(t *tes
 	require.NoError(t, err)
 
 	otherMetadataSource := execPlanTestMetadataSource{}
-	result := NewColOperatorResult{
-		MetadataSources: []execinfrapb.MetadataSource{oldColumnarizer, otherMetadataSource},
+	metadataSourcesQueue := []execinfrapb.MetadataSource{
+		oldColumnarizer, otherMetadataSource,
 	}
+	result := NewColOperatorResult{}
 	acc := testMemMonitor.MakeBoundAccount()
 	defer acc.Close(ctx)
 
@@ -144,10 +203,14 @@ func TestCreateAndWrapRowSourceRemovesUnwrappedColumnarizerMetadataSource(t *tes
 	require.True(t, ok)
 	require.True(t, oldColumnarizer != newColumnarizer)
 	require.Equal(t, []types.T{*types.Int}, result.ColumnTypes)
-	require.Len(t, result.MetadataSources, 2)
-	require.True(t, result.MetadataSources[0] == otherMetadataSource)
-	require.True(t, result.MetadataSources[1] == newColumnarizer)
-	for _, src := range result.MetadataSources {
+	require.Len(t, result.MetadataSources, 1)
+	require.True(t, result.MetadataSources[0] == newColumnarizer)
+
+	metadataSourcesQueue = result.ReconcileMetadataSources(metadataSourcesQueue)
+	require.Len(t, metadataSourcesQueue, 2)
+	require.True(t, metadataSourcesQueue[0] == otherMetadataSource)
+	require.True(t, metadataSourcesQueue[1] == newColumnarizer)
+	for _, src := range metadataSourcesQueue {
 		require.False(t, src == oldColumnarizer)
 	}
 }
@@ -167,9 +230,10 @@ func TestCreateAndWrapRowSourcePreservesMetadataSourcesOnError(t *testing.T) {
 	require.NoError(t, err)
 
 	otherMetadataSource := execPlanTestMetadataSource{}
-	result := NewColOperatorResult{
-		MetadataSources: []execinfrapb.MetadataSource{oldColumnarizer, otherMetadataSource},
+	metadataSourcesQueue := []execinfrapb.MetadataSource{
+		oldColumnarizer, otherMetadataSource,
 	}
+	result := NewColOperatorResult{}
 	acc := testMemMonitor.MakeBoundAccount()
 	defer acc.Close(ctx)
 
@@ -194,7 +258,109 @@ func TestCreateAndWrapRowSourcePreservesMetadataSourcesOnError(t *testing.T) {
 		ctx, flowCtx, []Operator{oldColumnarizer}, [][]types.T{typs}, &acc, spec, constructor,
 	)
 	require.Equal(t, expectedErr, err)
-	require.Len(t, result.MetadataSources, 2)
-	require.True(t, result.MetadataSources[0] == oldColumnarizer)
-	require.True(t, result.MetadataSources[1] == otherMetadataSource)
+
+	metadataSourcesQueue = result.ReconcileMetadataSources(metadataSourcesQueue)
+	require.Len(t, metadataSourcesQueue, 2)
+	require.True(t, metadataSourcesQueue[0] == oldColumnarizer)
+	require.True(t, metadataSourcesQueue[1] == otherMetadataSource)
+}
+
+func TestReconcileMetadataSourcesSerializesDrainWithNext(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	ctx := context.Background()
+	st := cluster.MakeTestingClusterSettings()
+	evalCtx := tree.MakeTestingEvalContext(st)
+	defer evalCtx.Stop(ctx)
+	flowCtx := &execinfra.FlowCtx{EvalCtx: &evalCtx}
+
+	typs := []types.T{*types.Int}
+	input := newExecPlanTestBlockingRowSource(typs)
+	oldColumnarizer, err := NewColumnarizer(ctx, testAllocator, flowCtx, 1, input)
+	require.NoError(t, err)
+
+	result := NewColOperatorResult{}
+	acc := testMemMonitor.MakeBoundAccount()
+	defer acc.Close(ctx)
+
+	spec := &execinfrapb.ProcessorSpec{
+		Core: execinfrapb.ProcessorCoreUnion{JoinReader: &execinfrapb.JoinReaderSpec{}},
+	}
+	constructor := func(
+		_ context.Context,
+		_ *execinfra.FlowCtx,
+		_ int32,
+		_ *execinfrapb.ProcessorCoreUnion,
+		_ *execinfrapb.PostProcessSpec,
+		inputs []execinfra.RowSource,
+		_ []execinfra.RowReceiver,
+		_ []execinfra.LocalProcessor,
+	) (execinfra.Processor, error) {
+		require.Len(t, inputs, 1)
+		require.True(t, inputs[0] == input)
+		return &execPlanTestRowSourceProcessor{input: inputs[0], typs: typs}, nil
+	}
+
+	err = result.createAndWrapRowSource(
+		ctx, flowCtx, []Operator{oldColumnarizer}, [][]types.T{typs}, &acc, spec, constructor,
+	)
+	require.NoError(t, err)
+
+	newColumnarizer, ok := result.Op.(*Columnarizer)
+	require.True(t, ok)
+	metadataSourcesQueue := result.ReconcileMetadataSources(
+		[]execinfrapb.MetadataSource{oldColumnarizer},
+	)
+	require.Len(t, metadataSourcesQueue, 1)
+	require.True(t, metadataSourcesQueue[0] == newColumnarizer)
+
+	newColumnarizer.Init()
+	nextDone := make(chan struct{})
+	go func() {
+		newColumnarizer.Next(ctx)
+		close(nextDone)
+	}()
+
+	select {
+	case <-input.nextStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for Next to start")
+	}
+
+	drainStarted := make(chan struct{})
+	drainDone := make(chan struct{})
+	go func() {
+		close(drainStarted)
+		for _, src := range metadataSourcesQueue {
+			src.DrainMeta(ctx)
+		}
+		close(drainDone)
+	}()
+	<-drainStarted
+
+	// DrainMeta on the new Columnarizer must wait for its concurrent Next call.
+	// If the old Columnarizer remained in the queue, it would call ConsumerDone
+	// on the shared input immediately using a different mutex.
+	var concurrentDrainErr string
+	select {
+	case <-input.consumerDone:
+		concurrentDrainErr = "shared input was drained concurrently with Next"
+	case <-drainDone:
+		concurrentDrainErr = "metadata draining completed while Next was blocked"
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(input.unblockNext)
+	select {
+	case <-nextDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for Next to finish")
+	}
+	select {
+	case <-drainDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for metadata draining to finish")
+	}
+	require.Empty(t, concurrentDrainErr)
+	require.Equal(t, int32(0), atomic.LoadInt32(&input.concurrentConsumerDone))
 }

@@ -189,12 +189,28 @@ type NewColOperatorResult struct {
 	ColumnTypes      []types.T
 	InternalMemUsage int
 	MetadataSources  []execinfrapb.MetadataSource
+	// unwrappedColumnarizers contains input Columnarizers whose RowSources were
+	// transferred to a newly-created Columnarizer. These old Columnarizers must
+	// be removed from the flow's metadata sources before execution starts.
+	unwrappedColumnarizers []*Columnarizer
 	// ToClose is a slice of components that need to be Closed. Close should be
 	// idempotent.
 	ToClose     []IdempotentCloser
 	IsStreaming bool
 	OpMonitors  []*mon.BytesMonitor
 	OpAccounts  []*mon.BoundAccount
+}
+
+// ReconcileMetadataSources transfers metadata ownership for wrapped row
+// sources and appends the metadata sources created by this result. The caller
+// must not reuse metadataSources after calling this method.
+func (r *NewColOperatorResult) ReconcileMetadataSources(
+	metadataSources []execinfrapb.MetadataSource,
+) []execinfrapb.MetadataSource {
+	metadataSources = removeColumnarizerMetadataSources(
+		metadataSources, r.unwrappedColumnarizers,
+	)
+	return append(metadataSources, r.MetadataSources...)
 }
 
 // resetToState resets r to the state specified in arg. arg may be a shallow
@@ -559,6 +575,7 @@ func (r *NewColOperatorResult) createAndWrapRowSource(
 	// problem for memory accounting because each processor does that on its
 	// own, so the used memory will be accounted for.
 	r.Op, r.IsStreaming = c, true
+	r.unwrappedColumnarizers = append(r.unwrappedColumnarizers, unwrappedColumnarizers...)
 	r.MetadataSources = removeColumnarizerMetadataSources(r.MetadataSources, unwrappedColumnarizers)
 	r.MetadataSources = append(r.MetadataSources, c)
 	return nil
