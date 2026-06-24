@@ -409,36 +409,37 @@ func (rs *storeReplicaVisitor) EstimatedCount() int {
 // A Store maintains a map of ranges by start key. A Store corresponds
 // to one physical device.
 type Store struct {
-	Ident              *roachpb.StoreIdent // pointer to catch access before Start() is called
-	cfg                StoreConfig
-	db                 *kv.DB
-	engine             storage.Engine // The underlying key-value store
-	TsEngine           *tse.TsEngine
-	TsRaftLogEngine    *tse.TsRaftLogEngine
-	compactor          *compactor.Compactor // Schedules compaction of the engine
-	tsCache            tscache.Cache        // Most recent timestamps for keys / key ranges
-	allocator          Allocator            // Makes allocation decisions
-	replRankings       *replicaRankings
-	storeRebalancer    *StoreRebalancer
-	rangeIDAlloc       *idalloc.Allocator          // Range ID allocator
-	gcQueue            *gcQueue                    // Garbage collection queue
-	mergeQueue         *mergeQueue                 // Range merging queue
-	splitQueue         *splitQueue                 // Range splitting queue
-	replicateQueue     *replicateQueue             // Replication queue
-	replicaGCQueue     *replicaGCQueue             // Replica GC queue
-	raftLogQueue       *raftLogQueue               // Raft log truncation queue
-	raftSnapshotQueue  *raftSnapshotQueue          // Raft repair queue
-	tsMaintenanceQueue *timeSeriesMaintenanceQueue // Time series maintenance queue
-	scanner            *replicaScanner             // Replica scanner
-	consistencyQueue   *consistencyQueue           // Replica consistency check queue
-	metrics            *StoreMetrics
-	intentResolver     *intentresolver.IntentResolver
-	recoveryMgr        txnrecovery.Manager
-	raftEntryCache     *raftentry.Cache
-	limiters           batcheval.Limiters
-	txnWaitMetrics     *txnwait.Metrics
-	sstSnapshotStorage SSTSnapshotStorage
-	protectedtsCache   protectedts.Cache
+	Ident                 *roachpb.StoreIdent // pointer to catch access before Start() is called
+	cfg                   StoreConfig
+	db                    *kv.DB
+	engine                storage.Engine // The underlying key-value store
+	TsEngine              *tse.TsEngine
+	TsRaftLogEngine       *tse.TsRaftLogEngine
+	tsForceCheckpointGate tsForceCheckpointGate
+	compactor             *compactor.Compactor // Schedules compaction of the engine
+	tsCache               tscache.Cache        // Most recent timestamps for keys / key ranges
+	allocator             Allocator            // Makes allocation decisions
+	replRankings          *replicaRankings
+	storeRebalancer       *StoreRebalancer
+	rangeIDAlloc          *idalloc.Allocator          // Range ID allocator
+	gcQueue               *gcQueue                    // Garbage collection queue
+	mergeQueue            *mergeQueue                 // Range merging queue
+	splitQueue            *splitQueue                 // Range splitting queue
+	replicateQueue        *replicateQueue             // Replication queue
+	replicaGCQueue        *replicaGCQueue             // Replica GC queue
+	raftLogQueue          *raftLogQueue               // Raft log truncation queue
+	raftSnapshotQueue     *raftSnapshotQueue          // Raft repair queue
+	tsMaintenanceQueue    *timeSeriesMaintenanceQueue // Time series maintenance queue
+	scanner               *replicaScanner             // Replica scanner
+	consistencyQueue      *consistencyQueue           // Replica consistency check queue
+	metrics               *StoreMetrics
+	intentResolver        *intentresolver.IntentResolver
+	recoveryMgr           txnrecovery.Manager
+	raftEntryCache        *raftentry.Cache
+	limiters              batcheval.Limiters
+	txnWaitMetrics        *txnwait.Metrics
+	sstSnapshotStorage    SSTSnapshotStorage
+	protectedtsCache      protectedts.Cache
 
 	// gossipRangeCountdown and leaseRangeCountdown are countdowns of
 	// changes to range and leaseholder counts, after which the store

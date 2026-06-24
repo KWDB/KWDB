@@ -619,6 +619,14 @@ func (rlq *raftLogQueue) process(ctx context.Context, r *Replica, _ *config.Syst
 		r.store.metrics.RaftLogTruncated.Inc(int64(decision.NumTruncatableIndexes()))
 	} else {
 		log.VEventf(ctx, 3, decision.String())
+		if r.isTs() && decision.Input.LogSize >= forceTsCheckpointSizeThreshold {
+			r.mu.Lock()
+			tsFlushedIndex := r.mu.tsFlushedIndex
+			r.mu.Unlock()
+			if tsFlushedIndex > 0 {
+				r.store.maybeForceTsCheckpoint(ctx, r.RangeID, decision.Input.LogSize)
+			}
+		}
 	}
 	return nil
 }
