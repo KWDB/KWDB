@@ -7132,15 +7132,8 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 		plan.Processors[i].Spec.ProcessorID = int32(i)
 	}
 
-	for i := len(plan.Processors) - 1; i >= 0; i-- {
-		if plan.Processors[i].ExecInTSEngine() && planCtx.EvalContext().SessionData.CommandLimit > 0 {
-			if plan.Processors[i].Spec.Core.TsSynchronizer != nil {
-				plan.Processors[i-1].Spec.Post.Limit = uint64(planCtx.EvalContext().SessionData.CommandLimit)
-			} else {
-				plan.Processors[i].Spec.Post.Limit = uint64(planCtx.EvalContext().SessionData.CommandLimit)
-			}
-			break
-		}
+	if planCtx.EvalContext().SessionData.CommandLimit > 0 {
+		plan.UseQueryShortCircuit = false
 	}
 
 	planCtx.EvalContext().SessionData.CommandLimit = 0
