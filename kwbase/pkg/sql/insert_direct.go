@@ -1489,6 +1489,11 @@ func convertFloat(
 		}
 		return nil, tree.NewDatatypeMismatchError(column.Name, rawValue, column.Type.SQLString())
 	}
+	if column.Type.Oid() == oid.T_float4 &&
+		in != 0 && (math.Abs(in) < math.SmallestNonzeroFloat32 || math.Abs(in) > math.MaxFloat32) {
+		return nil, pgerror.Newf(pgcode.NumericValueOutOfRange,
+			"float \"%s\" out of range for type %s (column %s)", rawValue, column.Type.SQLString(), column.Name)
+	}
 	return tree.NewDFloat(tree.DFloat(in)), nil
 }
 
