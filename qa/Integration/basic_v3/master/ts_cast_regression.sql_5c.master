@@ -17,8 +17,10 @@ CREATE TABLE
   ('2026-01-01 00:00:00', 1.9, -1.9, 'True', 1),
   ('2026-01-01 00:01:00', 0.5, -0.5, 'FALSE', 2),
   ('2026-01-01 00:02:00', 1.0, 0.0, 't', 3),
-  ('2026-01-01 00:03:00', 1e20, 0.0, '2026-01-01 07:00:00', 4);
-INSERT 4
+  ('2026-01-01 00:03:00', 1e20, 0.0, '2026-01-01 07:00:00', 4),
+  ('2026-01-01 00:04:00', 1.0, 0.0, 'TrUeX', 5),
+  ('2026-01-01 00:05:00', 1.0, 0.0, 'TrUeX123', 6);
+INSERT 6
 > SELECT
   id,
   CAST(f AS INT8) AS f_int,
@@ -59,6 +61,24 @@ ORDER BY id;
    2 | FALSE | false
    3 | t     |  true
 (3 rows)
+> SELECT
+  id,
+  s,
+  CAST(s AS BOOL) AS s_bool
+FROM ts_cast_regression.t
+WHERE id = 5
+ORDER BY id;
+ERROR: could not parse "TrUeX" as type bool: invalid bool value
+SQLSTATE: 22P02
+> SELECT
+  id,
+  s,
+  CAST(s AS BOOL) AS s_bool
+FROM ts_cast_regression.t
+WHERE id = 6
+ORDER BY id;
+ERROR: could not parse "TrUeX123" as type bool: invalid bool value
+SQLSTATE: 22P02
 > SELECT
   CAST(s AS TIMESTAMPTZ) AS s_timestamptz,
   CAST(s AS TIMESTAMP) AS s_timestamp

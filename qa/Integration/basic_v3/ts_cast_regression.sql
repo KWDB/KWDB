@@ -14,7 +14,9 @@ INSERT INTO ts_cast_regression.t VALUES
   ('2026-01-01 00:00:00', 1.9, -1.9, 'True', 1),
   ('2026-01-01 00:01:00', 0.5, -0.5, 'FALSE', 2),
   ('2026-01-01 00:02:00', 1.0, 0.0, 't', 3),
-  ('2026-01-01 00:03:00', 1e20, 0.0, '2026-01-01 07:00:00', 4);
+  ('2026-01-01 00:03:00', 1e20, 0.0, '2026-01-01 07:00:00', 4),
+  ('2026-01-01 00:04:00', 1.0, 0.0, 'TrUeX', 5),
+  ('2026-01-01 00:05:00', 1.0, 0.0, 'TrUeX123', 6);
 
 SELECT
   id,
@@ -41,6 +43,21 @@ SELECT
   CAST(s AS BOOL) AS s_bool
 FROM ts_cast_regression.t
 WHERE id IN (1, 2, 3)
+ORDER BY id;
+SELECT
+  id,
+  s,
+  CAST(s AS BOOL) AS s_bool
+FROM ts_cast_regression.t
+WHERE id = 5
+ORDER BY id;
+
+SELECT
+  id,
+  s,
+  CAST(s AS BOOL) AS s_bool
+FROM ts_cast_regression.t
+WHERE id = 6
 ORDER BY id;
 
 SELECT

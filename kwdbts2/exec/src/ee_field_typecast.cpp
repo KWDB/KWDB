@@ -350,31 +350,37 @@ inline KStatus parseStringToBool(String value, k_bool &output) {
   str.erase(std::find_if(str.rbegin(), str.rend(), [](unsigned char c) {
     return !std::isspace(c);
   }).base(), str.end());
-  std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) {
-    return static_cast<char>(std::tolower(c));
-  });
-
   if (str.empty()) {
     EEPgErrorInfo::SetPgErrorInfo(
         ERRCODE_INVALID_TEXT_REPRESENTATION,
         "could not parse \"\" as type bool: invalid bool value");
     return FAIL;
   }
-  if (str == "1" || str == "t" || str == "true" ||
-      str == "y" || str == "yes" || str == "on") {
-    output = 1;
-    return SUCCESS;
-  } else if (str == "0" || str == "f" || str == "false" ||
-             str == "n" || str == "no" || str == "off") {
-    output = 0;
-    return SUCCESS;
-  } else {
-    KString msg =
-        "could not parse \"" + str + "\" as type bool: invalid bool value";
-    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
-                                  msg.c_str());
-    return FAIL;
+
+  if (str.length() <= 5) {
+    std::string lower_str = str;
+    std::transform(lower_str.begin(), lower_str.end(), lower_str.begin(),
+                   [](unsigned char c) {
+                     return static_cast<char>(std::tolower(c));
+                   });
+
+    if (lower_str == "1" || lower_str == "t" || lower_str == "true" ||
+        lower_str == "y" || lower_str == "yes" || lower_str == "on") {
+      output = 1;
+      return SUCCESS;
+    } else if (lower_str == "0" || lower_str == "f" ||
+               lower_str == "false" || lower_str == "n" ||
+               lower_str == "no" || lower_str == "off") {
+      output = 0;
+      return SUCCESS;
+    }
   }
+
+  KString msg =
+      "could not parse \"" + str + "\" as type bool: invalid bool value";
+  EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
+                                msg.c_str());
+  return FAIL;
 }
 
 inline KStatus stringToBool(Field *field, k_bool &output) {
