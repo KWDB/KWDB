@@ -26,76 +26,31 @@ run() {
 
 run_counter=-1
 
-# Takes args that produce `go test -json` output. It filters stdout to contain
-# only test output related to failing tests and run/pass/skip events for the
-# other tests (no output). It writes artifacts/failures.txt containing text
-# output for the failing tests.
+# Takes args that produce `go test -json` output and tees stdout to artifacts.
 # It's valid to call this multiple times; all output artifacts will be
 # preserved.
 function run_json_test() {
   run_counter=$((run_counter+1))
   tc_start_block "prep"
-  # TODO(tbg): better to go through builder for all of this.
-  go install gitee.com/kwbasedb/kwbase/pkg/cmd/testfilter
-  go install gitee.com/kwbasedb/kwbase/pkg/cmd/github-post
   mkdir -p artifacts
   tmpfile="artifacts/raw.${run_counter}.json.txt"
   tc_end_block "prep"
 
   tc_start_block "run"
   set +e
-  run "$@" 2>&1 \
-    | tee "${tmpfile}" \
-    | testfilter -mode=strip \
-    | tee artifacts/stripped.txt
+  run "$@" 2>&1 | tee "${tmpfile}"
   status=$?
   set -e
   tc_end_block "run"
 
-  # Post issues, if on a release branch. Note that we're feeding github-post all
-  # of the build output; it also does some slow test analysis.
-  if tc_release_branch; then
-    if [ -z "${GITHUB_API_TOKEN-}" ]; then
-      # GITHUB_API_TOKEN must be in the env or github-post will barf if it's
-      # ever asked to post, so enforce that on all runs.
-      # The way this env var is made available here is quite tricky. The build
-      # calling this method is usually a build that is invoked from PRs, so it
-      # can't have secrets available to it (for the PR could modify
-      # build/teamcity-* to leak the secret). Instead, we provide the secrets
-      # to a higher-level job (Publish Bleeding Edge) and use TeamCity magic to
-      # pass that env var through when it's there. This means we won't have the
-      # env var on PR builds, but we'll have it for builds that are triggered
-      # from the release branches.
-      echo "GITHUB_API_TOKEN must be set"
-      # TODO(tbg): let this bake for a few days and if all looks good make it
-      # an error to not have the token specified when it's needed.
-      # exit 1
-    else
-      tc_start_block "post issues"
-      github-post < "${tmpfile}"
-      tc_end_block "post issues"
-    fi
-  fi
-
   tc_start_block "artifacts"
-  # Create (or append to) failures.txt artifact and delete stripped.txt.
-  testfilter -mode=omit < artifacts/stripped.txt | testfilter -mode convert >> artifacts/failures.txt
-
   if [ $status -ne 0 ]; then
     # Keep the debug file around for failed builds. Compress it to avoid
     # clogging the agents with stuff we'll hopefully rarely ever need to
     # look at.
-    # If the process failed, also save the full human-readable output. This is
-    # helpful in cases in which tests timed out, where it's difficult to blame
-    # the failure on any particular test. It's also a good alternative to poking
-    # around in $tmpfile itself when anything else we don't handle well happens,
-    # whatever that may be.
-    fullfile=artifacts/full_output.txt
-    testfilter -mode convert < "${tmpfile}" >> "${fullfile}"
-    tar --strip-components 1 -czf "${tmpfile}.tgz" "${tmpfile}" "${fullfile}"
-    rm -f "${fullfile}"
+    tar --strip-components 1 -czf "${tmpfile}.tgz" "${tmpfile}"
   fi
-  rm -f "${tmpfile}" artifacts/stripped.txt
+  rm -f "${tmpfile}"
   tc_end_block "artifacts"
 
   # Make it easier to figure out whether we're exiting because of a test failure
@@ -114,26 +69,6 @@ function run_text_test() {
   echo "# ${pkg}"
   echo "$@"
   "$@" 2>&1 | go tool test2json -t -p "${pkg}" | run_json_test cat
-}
-
-function maybe_stress() {
-  # Don't stressrace on the release branches; we only want that to happen on the
-  # PRs. There's no need in making master flakier than it needs to be; nightly
-  # stress will weed out the flaky tests.
-  # NB: as a consequence of the above, this code doesn't know about posting
-  # Github issues.
-  if tc_release_branch; then
-    return 0
-  fi
-
-  target=$1
-  shift
-
-  block="Maybe ${target} pull request"
-  tc_start_block "${block}"
-  run build/builder.sh go install ./pkg/cmd/github-pull-request-make
-  run_json_test build/builder.sh env BUILD_VCS_NUMBER="$BUILD_VCS_NUMBER" TARGET="${target}" github-pull-request-make
-  tc_end_block "${block}"
 }
 
 # Returns the list of release branches from origin (origin/release-*), ordered

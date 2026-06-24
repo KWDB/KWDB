@@ -1299,16 +1299,12 @@ var stageCmd = &cobra.Command{
 Currently available application options are:
   kwbase - Cockroach Unofficial. Can provide an optional SHA, otherwise
               latest build version is used.
-  workload  - Cockroach workload application.
   release   - Official CockroachDB Release. Must provide a specific release
               version.
 
 Some examples of usage:
   -- stage edge build of kwbase build at a specific SHA:
   roachprod stage my-cluster kwbase e90e6903fee7dd0f88e20e345c2ddfe1af1e5a97
-
-  -- Stage the most recent edge build of the workload tool:
-  roachprod stage my-cluster workload
 
   -- Stage the official release binary of CockroachDB at version 2.0.5
   roachprod stage my-cluster release v2.0.5
@@ -1366,11 +1362,6 @@ Some examples of usage:
 				}
 			}
 			return nil
-		case "workload":
-			_, err := install.StageRemoteBinary(
-				c, applicationName, "kwbase/workload", versionArg, "", /* arch */
-			)
-			return err
 		case "release":
 			return install.StageCockroachRelease(c, versionArg, releaseArch)
 		default:

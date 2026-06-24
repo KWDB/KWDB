@@ -25,12 +25,15 @@
 package ts
 
 import (
+	"context"
 	"reflect"
 	"testing"
-	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
+	"gitee.com/kwbasedb/kwbase/pkg/kv/kvclient/kvcoord"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
+	"gitee.com/kwbasedb/kwbase/pkg/testutils"
+	"gitee.com/kwbasedb/kwbase/pkg/testutils/localtestcluster"
 	"gitee.com/kwbasedb/kwbase/pkg/ts/tspb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
@@ -84,9 +87,10 @@ func TestContainsTimeSeries(t *testing.T) {
 
 func TestFindTimeSeries(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	tm := newTestModelRunner(t)
-	tm.Start()
-	defer tm.Stop()
+	ltc := &localtestcluster.LocalTestCluster{}
+	ltc.Start(t, testutils.NewNodeTestBaseContext(), kvcoord.InitFactoryForLocalTestCluster)
+	defer ltc.Stop()
+	db := NewDB(ltc.DB, ltc.Cfg.Settings)
 
 	// Populate data: two metrics, two sources, two resolutions, two keys.
 	metrics := []string{"metric.a", "metric.z"}
@@ -95,7 +99,7 @@ func TestFindTimeSeries(t *testing.T) {
 	for _, metric := range metrics {
 		for _, source := range sources {
 			for _, resolution := range resolutions {
-				tm.storeTimeSeriesData(resolution, []tspb.TimeSeriesData{
+				if err := db.StoreData(context.TODO(), resolution, []tspb.TimeSeriesData{
 					{
 						Name:   metric,
 						Source: source,
@@ -110,12 +114,14 @@ func TestFindTimeSeries(t *testing.T) {
 							},
 						},
 					},
-				})
+				}); err != nil {
+					t.Fatal(err)
+				}
 			}
 		}
 	}
 
-	e := tm.LocalTestCluster.Eng
+	e := ltc.Eng
 	for i, tcase := range []struct {
 		start     roachpb.RKey
 		end       roachpb.RKey
@@ -180,7 +186,7 @@ func TestFindTimeSeries(t *testing.T) {
 		{
 			start:     roachpb.RKeyMin,
 			end:       roachpb.RKeyMax,
-			timestamp: hlc.Timestamp{WallTime: tm.DB.PruneThreshold(Resolution10s)},
+			timestamp: hlc.Timestamp{WallTime: db.PruneThreshold(Resolution10s)},
 			expected: []timeSeriesResolutionInfo{
 				{
 					Name:       metrics[0],
@@ -196,7 +202,7 @@ func TestFindTimeSeries(t *testing.T) {
 		{
 			start:     roachpb.RKeyMin,
 			end:       roachpb.RKeyMax,
-			timestamp: hlc.Timestamp{WallTime: tm.DB.PruneThreshold(Resolution10s) + 1},
+			timestamp: hlc.Timestamp{WallTime: db.PruneThreshold(Resolution10s) + 1},
 			expected: []timeSeriesResolutionInfo{
 				{
 					Name:       metrics[0],
@@ -287,7 +293,7 @@ func TestFindTimeSeries(t *testing.T) {
 		},
 	} {
 		snap := e.NewSnapshot()
-		actual, err := tm.DB.findTimeSeries(snap, tcase.start, tcase.end, tcase.timestamp)
+		actual, err := db.findTimeSeries(snap, tcase.start, tcase.end, tcase.timestamp)
 		snap.Close()
 		if err != nil {
 			t.Fatalf("case %d: unexpected error %q", i, err)
@@ -297,206 +303,4 @@ func TestFindTimeSeries(t *testing.T) {
 			t.Fatalf("case %d: got %v, expected %v", i, actual, tcase.expected)
 		}
 	}
-}
-
-// Verifies that pruning works as expected when the server has not yet switched
-// to columnar format, and thus does not yet support rollups.
-func TestPruneTimeSeries(t *testing.T) {
-	defer leaktest.AfterTest(t)()
-	runTestCaseMultipleFormats(t, func(t *testing.T, tm testModelRunner) {
-		// Arbitrary timestamp
-		var now int64 = 1475700000 * 1e9
-
-		// Populate data: two metrics, two sources, two resolutions, two keys.
-		metrics := []string{"metric.a", "metric.z"}
-		sources := []string{"source1", "source2"}
-		resolutions := []Resolution{Resolution10s, resolution1ns}
-		for _, metric := range metrics {
-			for _, source := range sources {
-				for _, resolution := range resolutions {
-					tm.storeTimeSeriesData(resolution, []tspb.TimeSeriesData{
-						{
-							Name:   metric,
-							Source: source,
-							Datapoints: []tspb.TimeSeriesDatapoint{
-								{
-									TimestampNanos: now - int64(365*24*time.Hour),
-									Value:          2,
-								},
-								{
-									TimestampNanos: now,
-									Value:          1,
-								},
-							},
-						},
-					})
-				}
-			}
-		}
-
-		tm.assertModelCorrect()
-		tm.assertKeyCount(16)
-
-		tm.prune(
-			now,
-			timeSeriesResolutionInfo{
-				Name:       "metric.notexists",
-				Resolution: resolutions[0],
-			},
-		)
-		tm.assertModelCorrect()
-		tm.assertKeyCount(16)
-
-		tm.prune(
-			now,
-			timeSeriesResolutionInfo{
-				Name:       metrics[0],
-				Resolution: resolutions[0],
-			},
-		)
-		tm.assertModelCorrect()
-		tm.assertKeyCount(14)
-
-		tm.prune(
-			now,
-			timeSeriesResolutionInfo{
-				Name:       metrics[0],
-				Resolution: resolutions[1],
-			},
-			timeSeriesResolutionInfo{
-				Name:       metrics[1],
-				Resolution: resolutions[0],
-			},
-			timeSeriesResolutionInfo{
-				Name:       metrics[1],
-				Resolution: resolutions[1],
-			},
-		)
-		tm.assertModelCorrect()
-		tm.assertKeyCount(8)
-
-		tm.prune(
-			now+int64(365*24*time.Hour),
-			timeSeriesResolutionInfo{
-				Name:       metrics[0],
-				Resolution: resolutions[0],
-			},
-			timeSeriesResolutionInfo{
-				Name:       metrics[0],
-				Resolution: resolutions[1],
-			},
-			timeSeriesResolutionInfo{
-				Name:       metrics[1],
-				Resolution: resolutions[0],
-			},
-			timeSeriesResolutionInfo{
-				Name:       metrics[1],
-				Resolution: resolutions[1],
-			},
-		)
-		tm.assertModelCorrect()
-		tm.assertKeyCount(0)
-	})
-}
-
-func TestMaintainTimeSeriesWithRollups(t *testing.T) {
-	defer leaktest.AfterTest(t)()
-	tm := newTestModelRunner(t)
-	tm.Start()
-	defer tm.Stop()
-
-	// Arbitrary timestamp
-	var now int64 = 1475700000 * 1e9
-
-	// Populate data: two metrics, two sources, two resolutions, two keys.
-	metrics := []string{"metric.a", "metric.z"}
-	sources := []string{"source1", "source2"}
-	resolutions := []Resolution{Resolution10s, resolution1ns}
-	for _, metric := range metrics {
-		for _, source := range sources {
-			for _, resolution := range resolutions {
-				tm.storeTimeSeriesData(resolution, []tspb.TimeSeriesData{
-					{
-						Name:   metric,
-						Source: source,
-						Datapoints: []tspb.TimeSeriesDatapoint{
-							{
-								TimestampNanos: now - int64(2*365*24*time.Hour),
-								Value:          2,
-							},
-							{
-								TimestampNanos: now,
-								Value:          1,
-							},
-						},
-					},
-				})
-			}
-		}
-	}
-
-	tm.assertModelCorrect()
-	tm.assertKeyCount(16)
-
-	// First call to maintain will actually create rollups.
-	tm.maintain(now)
-	tm.assertModelCorrect()
-	tm.assertKeyCount(16)
-
-	{
-		query := tm.makeQuery("metric.a", Resolution30m, 0, now)
-		query.assertSuccess(1, 2)
-	}
-
-	// Second call will actually prune the rollups, since they are very far
-	// in the past.
-	tm.maintain(now)
-	tm.assertModelCorrect()
-	tm.assertKeyCount(8)
-}
-
-func TestMaintainTimeSeriesNoRollups(t *testing.T) {
-	defer leaktest.AfterTest(t)()
-	tm := newTestModelRunner(t)
-	tm.Start()
-	defer tm.Stop()
-	tm.DB.forceRowFormat = true
-
-	// Arbitrary timestamp
-	var now int64 = 1475700000 * 1e9
-
-	// Populate data: two metrics, two sources, two resolutions, two keys.
-	metrics := []string{"metric.a", "metric.z"}
-	sources := []string{"source1", "source2"}
-	resolutions := []Resolution{Resolution10s, resolution1ns}
-	for _, metric := range metrics {
-		for _, source := range sources {
-			for _, resolution := range resolutions {
-				tm.storeTimeSeriesData(resolution, []tspb.TimeSeriesData{
-					{
-						Name:   metric,
-						Source: source,
-						Datapoints: []tspb.TimeSeriesDatapoint{
-							{
-								TimestampNanos: now - int64(2*365*24*time.Hour),
-								Value:          2,
-							},
-							{
-								TimestampNanos: now,
-								Value:          1,
-							},
-						},
-					},
-				})
-			}
-		}
-	}
-
-	tm.assertModelCorrect()
-	tm.assertKeyCount(16)
-
-	// First call to maintain will prune time series.
-	tm.maintain(now)
-	tm.assertModelCorrect()
-	tm.assertKeyCount(8)
 }

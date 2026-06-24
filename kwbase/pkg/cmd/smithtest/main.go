@@ -23,7 +23,7 @@
 // See the Mulan PSL v2 for more details.
 
 // smithtest is a tool to execute sqlsmith tests on kwbase demo
-// instances. Failures are tracked, de-duplicated, reduced. Issues are
+// instances. Failures are tracked, de-duplicated. Issues are
 // prefilled for GitHub.
 package main
 
@@ -58,7 +58,6 @@ import (
 var (
 	flags  = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	kwbase = flags.String("kwbase", "./kwbase", "path to kwbase binary")
-	reduce = flags.String("reduce", "./bin/reduce", "path to reduce binary")
 	num    = flags.Int("num", 1, "number of parallel testers")
 )
 
@@ -76,7 +75,6 @@ func main() {
 	ctx := context.Background()
 	setup := WorkerSetup{
 		kwbase: *kwbase,
-		reduce: *reduce,
 		github: github.NewClient(nil),
 	}
 	rand.Seed(timeutil.Now().UnixNano())
@@ -96,8 +94,8 @@ func main() {
 
 // WorkerSetup contains initialization and configuration for running smithers.
 type WorkerSetup struct {
-	kwbase, reduce string
-	github         *github.Client
+	kwbase string
+	github *github.Client
 }
 
 // populateGitHubIssues populates seen with issues already in GitHub.
@@ -131,13 +129,8 @@ func (s WorkerSetup) work(ctx context.Context) error {
 }
 
 var (
-	// lock is used to both protect the seen map from concurrent access
-	// and prevent overuse of system resources. When the reducer needs to
-	// run it gets the exclusive write lock. When normal queries are being
-	// smithed, they use the communal read lock. Thus, the reducer being
-	// executed will pause the other testing queries and prevent 2 reducers
-	// from running at the same time. This should greatly speed up the time
-	// it takes for a single reduction run.
+	// lock protects seenIssues from concurrent access. RLock in run() blocks
+	// new queries while failure() holds the write lock to file an issue.
 	lock syncutil.RWMutex
 	// seenIssues tracks the seen github issues.
 	seenIssues = map[string]bool{}
@@ -150,7 +143,7 @@ var (
 )
 
 // run is a single sqlsmith worker. It starts a new sqlsmither and in-memory
-// single-node cluster. If an error is found it reduces and submits the
+// single-node cluster. If an error is found it submits the
 // issue. If an issue is successfully found, this function returns, causing
 // the started kwbase instance to shut down. An error is only returned if
 // something unexpected happened. That is, panics and internal errors will
@@ -238,7 +231,7 @@ func (s WorkerSetup) run(ctx context.Context, rnd *rand.Rand) error {
 		}
 
 		// If lock is locked for writing (due to a found bug in another
-		// go routine), block here until it has finished reducing.
+		// goroutine), block here until issue filing completes.
 		lock.RLock()
 		stmt := smither.Generate()
 		done := make(chan struct{}, 1)
@@ -301,7 +294,7 @@ func (s WorkerSetup) run(ctx context.Context, rnd *rand.Rand) error {
 	}
 }
 
-// failure de-duplicates, reduces, and files errors. It generally returns nil
+// failure de-duplicates and files errors. It generally returns nil
 // indicating that this was successfully filed and we should continue looking
 // for errors.
 func (s WorkerSetup) failure(ctx context.Context, initSQL, stmt string, err error) error {
@@ -317,8 +310,7 @@ func (s WorkerSetup) failure(ctx context.Context, initSQL, stmt string, err erro
 
 	lock.Lock()
 	// Keep this locked for the remainder of the function so that smither
-	// tests won't run during the reducer, and only one reducer can run
-	// at once.
+	// tests won't run while filing an issue.
 	defer lock.Unlock()
 	sqlFilteredMessage := fmt.Sprintf("sql: %s", filteredMessage)
 	alreadySeen := seenIssues[sqlFilteredMessage]
@@ -333,20 +325,9 @@ func (s WorkerSetup) failure(ctx context.Context, initSQL, stmt string, err erro
 	input := fmt.Sprintf("%s\n\n%s;", initSQL, stmt)
 	fmt.Printf("SQL:\n%s\n\n", input)
 
-	// Run reducer.
-	cmd := exec.CommandContext(ctx, s.reduce, "-v", "-contains", filteredMessage)
-	cmd.Stdin = strings.NewReader(input)
-	cmd.Stderr = os.Stderr
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	if err := cmd.Run(); err != nil {
-		fmt.Println(input)
-		return err
-	}
-
 	// Generate the pre-filled github issue.
 	makeBody := func() string {
-		return fmt.Sprintf("```\n%s\n```\n\n```\n%s\n```", strings.TrimSpace(out.String()), strings.TrimSpace(stack))
+		return fmt.Sprintf("```\n%s\n```\n\n```\n%s\n```", strings.TrimSpace(input), strings.TrimSpace(stack))
 	}
 	query := url.Values{
 		"title":  []string{message},

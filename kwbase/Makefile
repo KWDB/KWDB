@@ -215,10 +215,7 @@ help: ## Print help for targets with comments.
 		"make testbaselogic" "Run all the baseSQL SQL logic tests." \
 		"make testlogic FILES='prepare|fk'" "Run the logic tests in the files named prepare and fk (the full path is not required)." \
 		"make testlogic FILES=fk SUBTESTS='20042|20045'" "Run the logic tests within subtests 20042 and 20045 in the file named fk." \
-		"make testlogic TESTCONFIG=local" "Run the logic tests for the cluster configuration 'local'." \
-		"make fuzz" "Run all fuzz tests for 12m each (or whatever the default TESTTIMEOUT is)." \
-		"make fuzz PKG=./pkg/sql/... TESTTIMEOUT=1m" "Run all fuzz tests under the sql directory for 1m each." \
-		"make fuzz PKG=./pkg/sql/sem/tree TESTS=Decimal TESTTIMEOUT=1m" "Run the Decimal fuzz tests in the tree directory for 1m."
+		"make testlogic TESTCONFIG=local" "Run the logic tests for the cluster configuration 'local'."
 
 ifneq "$(findstring Release,$(KWDB_BUILD_TYPE))" ""
 CFLAGS += -O3 -g
@@ -820,7 +817,6 @@ OPTGEN_TARGETS = \
 
 go-targets := \
 	$(KWBASE) $(KWBASESHORT) $(KWBASEOSS) \
-	bin/workload \
 	go-install \
 	bench benchshort \
 	check test testshort testslow testrace testraceslow testbuild \
@@ -1001,11 +997,6 @@ acceptance: TESTTIMEOUT := $(ACCEPTANCETIMEOUT)
 acceptance: export TESTTIMEOUT := $(TESTTIMEOUT)
 acceptance: ## Run acceptance tests.
 	+@pkg/acceptance/run.sh
-
-.PHONY: compose
-compose: export TESTTIMEOUT := $(TESTTIMEOUT)
-compose: ## Run compose tests.
-	+@pkg/compose/run.sh
 
 .PHONY: dupl
 dupl: bin/.bootstrap
@@ -1405,31 +1396,22 @@ bins = \
   bin/allocsim \
   bin/benchmark \
   bin/execgen \
-  bin/fuzz \
-  bin/generate-binary \
   bin/terraformgen \
-  bin/github-post \
-  bin/github-pull-request-make \
   bin/gossipsim \
   bin/langgen \
   bin/protoc-gen-gogoroach \
-  bin/publish-artifacts \
-  bin/publish-provisional-artifacts \
   bin/optgen \
   bin/returncheck \
   bin/roachvet \
   bin/roachprod \
   bin/roachprod-stress \
   bin/roachtest \
-  bin/teamcity-trigger \
   bin/uptodate \
-  bin/urlcheck \
   bin/zerosum
 
 # `xbins` contains binaries that should be compiled for the target architecture
 # (not the host), and should therefore be built with `xgo`.
-xbins = \
-  bin/workload
+xbins =
 
 testbins = \
   bin/logictest \
@@ -1448,8 +1430,8 @@ logictest-bins := bin/logictest bin/logictestopt
 #
 # TODO(benesch): Derive this automatically. This is getting out of hand.
 bin/execgen: $(LIBROCKSDB) $(LIBSNAPPY) $(LIBJEMALLOC)
-bin/workload bin/execgen bin/roachtest $(logictest-bins): $(SQLPARSER_TARGETS) $(PROTOBUF_TARGETS)
-bin/workload bin/roachtest $(logictest-bins): $(EXECGEN_TARGETS)
+bin/execgen bin/roachtest $(logictest-bins): $(SQLPARSER_TARGETS) $(PROTOBUF_TARGETS)
+bin/roachtest $(logictest-bins): $(EXECGEN_TARGETS)
 bin/roachtest $(logictest-bins): $(C_LIBS) $(CGO_FLAGS_FILES) $(OPTGEN_TARGETS)
 
 $(bins): bin/%: bin/%.d | bin/prereqs bin/.submodules-initialized
@@ -1473,12 +1455,6 @@ $(testbins): bin/%: bin/%.d | bin/prereqs $(SUBMODULES_TARGET)
 bin/prereqs: ./pkg/cmd/prereqs/*.go | bin/.submodules-initialized
 	@echo go install -v ./pkg/cmd/prereqs
 	@$(GO_INSTALL) -v ./pkg/cmd/prereqs
-
-.PHONY: fuzz
-fuzz: ## Run fuzz tests.
-fuzz: bin/fuzz
-	bin/fuzz $(TESTFLAGS) -tests $(TESTS) -timeout $(TESTTIMEOUT) $(PKG)
-
 
 # No need to include all the dependency files if the user is just
 # requesting help or cleanup.

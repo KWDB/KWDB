@@ -17,7 +17,7 @@ tc_end_block "Compile C dependencies"
 
 tc_start_block "Run Benchmarks"
 echo "Test parsing does not work here, see https://youtrack.jetbrains.com/issue/TW-63449"
-echo "Consult artifacts/failures.txt instead"
+echo "Consult artifacts/raw.*.json.txt.tgz on failure instead"
 run_json_test build/builder.sh stdbuf -oL -eL \
   make benchshort GOTESTFLAGS=-json TESTFLAGS='-v'
 tc_end_block "Run Benchmarks"

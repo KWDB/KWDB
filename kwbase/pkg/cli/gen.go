@@ -266,7 +266,6 @@ var genCmd = &cobra.Command{
 var genCmds = []*cobra.Command{
 	genManCmd,
 	genAutocompleteCmd,
-	genExamplesCmd,
 	genHAProxyCmd,
 	genSettingsListCmd,
 	genEncryptionKeyCmd,

@@ -243,10 +243,7 @@ func ExternalStorageConfFromURI(path string) (roachpb.ExternalStorage, error) {
 		conf.LocalFile.Path = uri.Path
 		conf.LocalFile.NodeID = roachpb.NodeID(nodeID)
 	case "experimental-workload", "workload":
-		conf.Provider = roachpb.ExternalStorageProvider_Workload
-		if conf.WorkloadConfig, err = ParseWorkloadConfig(uri); err != nil {
-			return conf, err
-		}
+		return conf, errors.Errorf("unsupported storage scheme: %q", uri.Scheme)
 	default:
 		return conf, errors.Errorf("unsupported storage scheme: %q", uri.Scheme)
 	}
@@ -330,8 +327,7 @@ func MakeExternalStorage(
 		telemetry.Count("external-io.azure")
 		return makeAzureStorage(dest.AzureConfig, settings)
 	case roachpb.ExternalStorageProvider_Workload:
-		telemetry.Count("external-io.workload")
-		return makeWorkloadStorage(dest.WorkloadConfig)
+		return nil, errors.New("workload external storage is no longer supported")
 	}
 	return nil, errors.Errorf("unsupported external destination type: %s", dest.Provider.String())
 }

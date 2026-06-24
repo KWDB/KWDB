@@ -26,11 +26,8 @@ package tree_test
 
 import (
 	"fmt"
-	"io/ioutil"
-	"path/filepath"
 	"testing"
 
-	"gitee.com/kwbasedb/kwbase/pkg/internal/rsg"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
 	_ "gitee.com/kwbasedb/kwbase/pkg/sql/sem/builtins"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
@@ -411,58 +408,4 @@ func TestFormatPgwireText(t *testing.T) {
 			}
 		})
 	}
-}
-
-// BenchmarkFormatRandomStatements measures the time needed to format
-// 1000 random statements.
-func BenchmarkFormatRandomStatements(b *testing.B) {
-	// Generate a bunch of random statements.
-	yBytes, err := ioutil.ReadFile(filepath.Join("..", "..", "parser", "sql.y"))
-	if err != nil {
-		b.Fatalf("error reading grammar: %v", err)
-	}
-	// Use a constant seed so multiple runs are consistent.
-	const seed = 1134
-	r, err := rsg.NewRSG(seed, string(yBytes), false)
-	if err != nil {
-		b.Fatalf("error instantiating RSG: %v", err)
-	}
-	strs := make([]string, 1000)
-	stmts := make([]tree.Statement, 1000)
-	for i := 0; i < 1000; {
-		rdm := r.Generate("stmt", 20)
-		stmt, err := parser.ParseOne(rdm)
-		if err != nil {
-			// Some statements (e.g. those containing error terminals) do
-			// not parse.  It's all right. Just ignore this and continue
-			// until we have all we want.
-			continue
-		}
-		strs[i] = rdm
-		stmts[i] = stmt.AST
-		i++
-	}
-
-	// Benchmark the parses.
-	b.Run("parse", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			for _, sql := range strs {
-				_, err := parser.ParseOne(sql)
-				if err != nil {
-					b.Fatal(err)
-				}
-			}
-		}
-	})
-
-	// Benchmark the formats.
-	b.Run("format", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			for i, stmt := range stmts {
-				f := tree.NewFmtCtx(tree.FmtSimple)
-				f.FormatNode(stmt)
-				strs[i] = f.CloseAndGetString()
-			}
-		}
-	})
 }

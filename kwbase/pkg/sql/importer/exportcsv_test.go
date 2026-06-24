@@ -30,8 +30,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/sqlutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/testcluster"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
-	"gitee.com/kwbasedb/kwbase/pkg/workload/bank"
-	"gitee.com/kwbasedb/kwbase/pkg/workload/workloadsql"
 	"github.com/gogo/protobuf/proto"
 	"github.com/stretchr/testify/require"
 )
@@ -46,11 +44,9 @@ func setupExportableBank(t *testing.T, nodes, rows int) (*sqlutils.SQLRunner, st
 	conn := tc.Conns[0]
 	db := sqlutils.MakeSQLRunner(conn)
 	db.Exec(t, "CREATE DATABASE test")
-
-	wk := bank.FromRows(rows)
-	l := workloadsql.InsertsDataLoader{BatchSize: 100, Concurrency: 3}
-	if _, err := workloadsql.Setup(ctx, conn, wk, l); err != nil {
-		t.Fatal(err)
+	db.Exec(t, `CREATE TABLE bank (id INT PRIMARY KEY, balance INT, payload STRING)`)
+	for i := 0; i < rows; i++ {
+		db.Exec(t, fmt.Sprintf("INSERT INTO bank VALUES (%d, 0, 'payload-%d')", i, i))
 	}
 
 	config.TestingSetupZoneConfigHook(tc.Stopper())
@@ -345,7 +341,7 @@ func TestExportImportBank(t *testing.T) {
 			}
 			currentFile := fmt.Sprintf("t%d/", file)
 
-			schema := bank.FromRows(1).Tables()[0].Schema
+			schema := `(id INT PRIMARY KEY, balance INT, payload STRING)`
 			fileList := "'nodelocal://01/" + currentFile + strings.Join(files, "', 'nodelocal://01/"+currentFile) + "'"
 			db.Exec(t, fmt.Sprintf(`IMPORT TABLE bank2 %s CSV DATA (%s) WITH delimiter = '|'%s`, schema, fileList, nullIf))
 

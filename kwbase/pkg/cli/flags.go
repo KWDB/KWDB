@@ -38,7 +38,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
-	"gitee.com/kwbasedb/kwbase/pkg/util/humanizeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log/logflags"
 	"gitee.com/kwbasedb/kwbase/pkg/util/netutil"
@@ -551,7 +550,6 @@ func init() {
 	}
 	clientCmds = append(clientCmds, authCmds...)
 	clientCmds = append(clientCmds, nodeCmds...)
-	clientCmds = append(clientCmds, systemBenchCmds...)
 	clientCmds = append(clientCmds, nodeLocalCmds...)
 	clientCmds = append(clientCmds, stmtDiagCmds...)
 	for _, cmd := range clientCmds {
@@ -596,32 +594,6 @@ func init() {
 		BoolFlag(f, &nodeCtx.statusShowStats, cliflags.NodeStats, nodeCtx.statusShowStats)
 		BoolFlag(f, &nodeCtx.statusShowAll, cliflags.NodeAll, nodeCtx.statusShowAll)
 		BoolFlag(f, &nodeCtx.statusShowDecommission, cliflags.NodeDecommission, nodeCtx.statusShowDecommission)
-	}
-
-	// HDD Bench command.
-	{
-		f := seqWriteBench.Flags()
-		VarFlag(f, humanizeutil.NewBytesValue(&systemBenchCtx.writeSize), cliflags.WriteSize)
-		VarFlag(f, humanizeutil.NewBytesValue(&systemBenchCtx.syncInterval), cliflags.SyncInterval)
-	}
-
-	// Network Bench command.
-	{
-		f := networkBench.Flags()
-		BoolFlag(f, &networkBenchCtx.server, cliflags.BenchServer, networkBenchCtx.server)
-		IntFlag(f, &networkBenchCtx.port, cliflags.BenchPort, networkBenchCtx.port)
-		StringSlice(f, &networkBenchCtx.addresses, cliflags.BenchAddresses, networkBenchCtx.addresses)
-		BoolFlag(f, &networkBenchCtx.latency, cliflags.BenchLatency, networkBenchCtx.latency)
-	}
-
-	// Bench command.
-	{
-		for _, cmd := range systemBenchCmds {
-			f := cmd.Flags()
-			IntFlag(f, &systemBenchCtx.concurrency, cliflags.BenchConcurrency, systemBenchCtx.concurrency)
-			DurationFlag(f, &systemBenchCtx.duration, cliflags.BenchDuration, systemBenchCtx.duration)
-			StringFlag(f, &systemBenchCtx.tempDir, cliflags.TempDir, systemBenchCtx.tempDir)
-		}
 	}
 
 	// Zip command.
@@ -737,9 +709,7 @@ func init() {
 	// We add this command as a persistent flag so you can do stuff like
 	// ./kwbase demo movr --nodes=3.
 	IntFlag(demoFlags, &demoCtx.nodes, cliflags.DemoNodes, demoCtx.nodes)
-	BoolFlag(demoFlags, &demoCtx.runWorkload, cliflags.RunDemoWorkload, demoCtx.runWorkload)
 	VarFlag(demoFlags, &demoCtx.localities, cliflags.DemoNodeLocality)
-	BoolFlag(demoFlags, &demoCtx.geoPartitionedReplicas, cliflags.DemoGeoPartitionedReplicas, demoCtx.geoPartitionedReplicas)
 	VarFlag(demoFlags, demoNodeSQLMemSizeValue, cliflags.DemoNodeSQLMemSize)
 	VarFlag(demoFlags, demoNodeCacheSizeValue, cliflags.DemoNodeCacheSize)
 	BoolFlag(demoFlags, &demoCtx.insecure, cliflags.ClientInsecure, demoCtx.insecure)

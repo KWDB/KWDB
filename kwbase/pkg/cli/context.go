@@ -161,24 +161,12 @@ func initCLIDefaults() {
 	sqlfmtCtx.align = (cfg.Align != tree.PrettyNoAlign)
 	sqlfmtCtx.execStmts = nil
 
-	systemBenchCtx.concurrency = 1
-	systemBenchCtx.duration = 60 * time.Second
-	systemBenchCtx.tempDir = "."
-	systemBenchCtx.writeSize = 32 << 10
-	systemBenchCtx.syncInterval = 512 << 10
-
-	networkBenchCtx.server = true
-	networkBenchCtx.port = 8081
-	networkBenchCtx.addresses = []string{"localhost:8081"}
-
 	demoCtx.nodes = 1
 	demoCtx.sqlPoolMemorySize = 128 << 20 // 128MB, chosen to fit 9 nodes on 2GB machine.
 	demoCtx.cacheSize = 64 << 20          // 64MB, chosen to fit 9 nodes on 2GB machine.
-	demoCtx.useEmptyDatabase = false
+	demoCtx.useEmptyDatabase = true
 	demoCtx.simulateLatency = false
-	demoCtx.runWorkload = false
 	demoCtx.localities = nil
-	demoCtx.geoPartitionedReplicas = false
 	demoCtx.disableTelemetry = false
 	demoCtx.disableLicenseAcquisition = false
 	demoCtx.transientCluster = nil
@@ -393,23 +381,6 @@ var nodeCtx struct {
 	statusShowAll          bool
 }
 
-// systemBenchCtx captures the command-line parameters of the `systembench` command.
-// Defaults set by InitCLIDefaults() above.
-var systemBenchCtx struct {
-	concurrency  int
-	duration     time.Duration
-	tempDir      string
-	writeSize    int64
-	syncInterval int64
-}
-
-var networkBenchCtx struct {
-	server    bool
-	port      int
-	addresses []string
-	latency   bool
-}
-
 // sqlfmtCtx captures the command-line parameters of the `sqlfmt` command.
 // Defaults set by InitCLIDefaults() above.
 var sqlfmtCtx struct {
@@ -430,9 +401,7 @@ var demoCtx struct {
 	disableTelemetry          bool
 	disableLicenseAcquisition bool
 	useEmptyDatabase          bool
-	runWorkload               bool
 	localities                demoLocalityList
-	geoPartitionedReplicas    bool
 	simulateLatency           bool
 	transientCluster          *transientCluster
 	insecure                  bool

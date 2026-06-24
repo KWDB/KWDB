@@ -40,12 +40,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/log/logflags"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
-	"gitee.com/kwbasedb/kwbase/pkg/workload"
-	"gitee.com/kwbasedb/kwbase/pkg/workload/histogram"
-	"gitee.com/kwbasedb/kwbase/pkg/workload/workloadsql"
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
-	"golang.org/x/time/rate"
 )
 
 type transientCluster struct {
@@ -58,7 +54,7 @@ type transientCluster struct {
 }
 
 func setupTransientCluster(
-	ctx context.Context, cmd *cobra.Command, gen workload.Generator,
+	ctx context.Context, cmd *cobra.Command,
 ) (c transientCluster, err error) {
 	// useSockets is true on unix, false on windows.
 	c.useSockets = useUnixSocketsInDemo()
@@ -273,7 +269,7 @@ func setupTransientCluster(
 	}
 
 	// Prepare the URL for use by the SQL shell.
-	c.connURL, err = c.getNetworkURLForServer(0, gen, true /* includeAppName */)
+	c.connURL, err = c.getNetworkURLForServer(0, true /* includeAppName */)
 	if err != nil {
 		return c, err
 	}
@@ -492,7 +488,7 @@ func generateCerts(certsDir string) (err error) {
 }
 
 func (c *transientCluster) getNetworkURLForServer(
-	serverIdx int, gen workload.Generator, includeAppName bool,
+	serverIdx int, includeAppName bool,
 ) (string, error) {
 	options := url.Values{}
 	if includeAppName {
@@ -501,11 +497,6 @@ func (c *transientCluster) getNetworkURLForServer(
 	sqlURL := url.URL{
 		Scheme: "postgres",
 		Host:   c.servers[serverIdx].ServingSQLAddr(),
-	}
-	if gen != nil {
-		// The generator wants a particular database name to be
-		// pre-filled.
-		sqlURL.Path = gen.Meta().Name
 	}
 	// For a demo cluster we don't use client TLS certs and instead use
 	// password-based authentication with the password pre-filled in the
@@ -529,121 +520,6 @@ func (c *transientCluster) setupUserAuth(ctx context.Context) error {
 		defaultRootPassword,
 	)
 	return err
-}
-
-func (c *transientCluster) setupWorkload(
-	ctx context.Context, gen workload.Generator, licenseDone <-chan error,
-) error {
-	// If there is a load generator, create its database and load its
-	// fixture.
-	if gen != nil {
-		db, err := gosql.Open("postgres", c.connURL)
-		if err != nil {
-			return err
-		}
-		defer db.Close()
-
-		if _, err := db.Exec(`CREATE DATABASE ` + gen.Meta().Name); err != nil {
-			return err
-		}
-
-		ctx := context.TODO()
-		var l workloadsql.InsertsDataLoader
-		if cliCtx.isInteractive {
-			fmt.Printf("#\n# Beginning initialization of the %s dataset, please wait...\n", gen.Meta().Name)
-		}
-		if _, err := workloadsql.Setup(ctx, db, gen, l); err != nil {
-			return err
-		}
-		// Perform partitioning if requested by configuration.
-		if demoCtx.geoPartitionedReplicas {
-			// Wait until the license has been acquired to trigger partitioning.
-			if cliCtx.isInteractive {
-				fmt.Println("#\n# Waiting for license acquisition to complete...")
-			}
-			if err := waitForLicense(licenseDone); err != nil {
-				return err
-			}
-			if cliCtx.isInteractive {
-				fmt.Println("#\n# Partitioning the demo database, please wait...")
-			}
-
-			db, err := gosql.Open("postgres", c.connURL)
-			if err != nil {
-				return err
-			}
-			defer db.Close()
-			// Based on validation done in setup, we know that this workload has a partitioning step.
-			if err := gen.(workload.Hookser).Hooks().Partition(db); err != nil {
-				return errors.Wrapf(err, "partitioning the demo database")
-			}
-		}
-
-		// Run the workload. This must occur after partitioning the database.
-		if demoCtx.runWorkload {
-			var sqlURLs []string
-			for i := range c.servers {
-				sqlURL, err := c.getNetworkURLForServer(i, gen, true /* includeAppName */)
-				if err != nil {
-					return err
-				}
-				sqlURLs = append(sqlURLs, sqlURL)
-			}
-			if err := c.runWorkload(ctx, gen, sqlURLs); err != nil {
-				return errors.Wrapf(err, "starting background workload")
-			}
-		}
-	}
-
-	return nil
-}
-
-func (c *transientCluster) runWorkload(
-	ctx context.Context, gen workload.Generator, sqlUrls []string,
-) error {
-	opser, ok := gen.(workload.Opser)
-	if !ok {
-		return errors.Errorf("default dataset %s does not have a workload defined", gen.Meta().Name)
-	}
-
-	// Dummy registry to prove to the Opser.
-	reg := histogram.NewRegistry(time.Duration(100) * time.Millisecond)
-	ops, err := opser.Ops(ctx, sqlUrls, reg)
-	if err != nil {
-		return errors.Wrap(err, "unable to create workload")
-	}
-
-	// Use a light rate limit of 25 queries per second
-	limiter := rate.NewLimiter(rate.Limit(25), 1)
-
-	// Start a goroutine to run each of the workload functions.
-	for _, workerFn := range ops.WorkerFns {
-		workloadFun := func(f func(context.Context) error) func(context.Context) {
-			return func(ctx context.Context) {
-				for {
-					// Limit how quickly we can generate work.
-					if err := limiter.Wait(ctx); err != nil {
-						// When the limiter throws an error, panic because we don't
-						// expect any errors from it.
-						panic(err)
-					}
-					if err := f(ctx); err != nil {
-						// Only log an error and return when the workload function throws
-						// an error, because errors these errors should be ignored, and
-						// should not interrupt the rest of the demo.
-						log.Warningf(ctx, "Error running workload query: %+v\n", err)
-						return
-					}
-				}
-			}
-		}
-		// As the SQL shell is tied to `c.s`, this means we want to tie the workload
-		// onto this as we want the workload to stop when the server dies,
-		// rather than the cluster. Otherwise, interrupts on kwbase demo hangs.
-		c.s.Stopper().RunWorker(ctx, workloadFun(workerFn))
-	}
-
-	return nil
 }
 
 // acquireDemoLicense begins an asynchronous process to obtain a
@@ -673,15 +549,7 @@ func (c *transientCluster) acquireDemoLicense(ctx context.Context) (chan error, 
 				licenseDone <- err
 				return
 			}
-			if !success {
-				if demoCtx.geoPartitionedReplicas {
-					licenseDone <- errors.WithDetailf(
-						errors.New("unable to acquire a license for this demo"),
-						"Enterprise features are needed for this demo (--%s).",
-						cliflags.DemoGeoPartitionedReplicas.Name)
-					return
-				}
-			}
+			_ = success
 			close(licenseDone)
 		}()
 	}
@@ -762,7 +630,7 @@ func (c *transientCluster) listDemoNodes(w io.Writer, justOne bool) {
 			fmt.Fprintln(w, "  (sql)    ", sock)
 		}
 		// Print network URL if defined.
-		netURL, err := c.getNetworkURLForServer(i, nil, false /*includeAppName*/)
+		netURL, err := c.getNetworkURLForServer(i, false /*includeAppName*/)
 		if err != nil {
 			fmt.Fprintln(stderr, errors.Wrap(err, "retrieving network URL"))
 		} else {

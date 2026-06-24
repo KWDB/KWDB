@@ -28,10 +28,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
-	"gitee.com/kwbasedb/kwbase/pkg/workload"
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 )
 
 var demoCmd = &cobra.Command{
@@ -39,11 +37,7 @@ var demoCmd = &cobra.Command{
 	Short: "open a demo sql shell (not suitable for time-series scenario)",
 	Long: `
 Start an in-memory, standalone, single-node KwDB instance, and open an
-interactive SQL prompt to it. Various datasets are available to be preloaded as
-subcommands: e.g. "kwbase demo startrek". See --help for a full list.
-
-By default, the 'movr' dataset is pre-loaded. You can also use --empty
-to avoid pre-loading a dataset.
+interactive SQL prompt to it.
 
 kwbase demo attempts to connect to a Kw Labs server to obtain a
 temporary enterprise license for demoing enterprise features and enable
@@ -53,17 +47,13 @@ environment variable "KWBASE_SKIP_ENABLING_DIAGNOSTIC_REPORTING" to true.
 	Example: `  kwbase demo`,
 	Args:    cobra.NoArgs,
 	RunE: MaybeDecorateGRPCError(func(cmd *cobra.Command, _ []string) error {
-		return runDemo(cmd, nil /* gen */)
+		return runDemo(cmd)
 	}),
 }
 
 const demoOrg = "Kw Demo"
 
-const defaultGeneratorName = "movr"
-
 const defaultRootPassword = "admin"
-
-var defaultGenerator workload.Generator
 
 // maxNodeInitTime is the maximum amount of time to wait for nodes to be connected.
 const maxNodeInitTime = 30 * time.Second
@@ -124,37 +114,6 @@ func init() {
 	}
 }
 
-func init() {
-	for _, meta := range workload.Registered() {
-		gen := meta.New()
-
-		if meta.Name == defaultGeneratorName {
-			// Save the default for use in the top-level 'demo' command
-			// without argument.
-			defaultGenerator = gen
-		}
-
-		var genFlags *pflag.FlagSet
-		if f, ok := gen.(workload.Flagser); ok {
-			genFlags = f.Flags().FlagSet
-		}
-
-		genDemoCmd := &cobra.Command{
-			Use:   meta.Name,
-			Short: meta.Description,
-			Args:  cobra.ArbitraryArgs,
-			RunE: MaybeDecorateGRPCError(func(cmd *cobra.Command, _ []string) error {
-				return runDemo(cmd, gen)
-			}),
-		}
-		if !meta.PublicFacing {
-			genDemoCmd.Hidden = true
-		}
-		demoCmd.AddCommand(genDemoCmd)
-		genDemoCmd.Flags().AddFlagSet(genFlags)
-	}
-}
-
 // GetAndApplyLicense is not implemented in order to keep OSS/BSL builds successful.
 // The cliccl package sets this function if enterprise features are available to demo.
 var GetAndApplyLicense func(dbConn *gosql.DB, clusterID uuid.UUID, org string) (bool, error)
@@ -167,35 +126,17 @@ func incrementTelemetryCounters(cmd *cobra.Command) {
 	if demoCtx.localities != nil {
 		incrementDemoCounter(demoLocality)
 	}
-	if demoCtx.runWorkload {
-		incrementDemoCounter(withLoad)
-	}
-	if demoCtx.geoPartitionedReplicas {
-		incrementDemoCounter(geoPartitionedReplicas)
-	}
 }
 
-func checkDemoConfiguration(
-	cmd *cobra.Command, gen workload.Generator,
-) (workload.Generator, error) {
-	if gen == nil && !demoCtx.useEmptyDatabase {
-		// Use a default dataset unless prevented by --empty.
-		gen = defaultGenerator
-	}
-
-	// Make sure that the user didn't request a workload and an empty database.
-	if demoCtx.runWorkload && demoCtx.useEmptyDatabase {
-		return nil, errors.New("cannot run a workload against an empty database")
-	}
-
+func checkDemoConfiguration(cmd *cobra.Command) error {
 	// Make sure the number of nodes is valid.
 	if demoCtx.nodes <= 0 {
-		return nil, errors.Newf("--nodes has invalid value (expected positive, got %d)", demoCtx.nodes)
+		return errors.Newf("--nodes has invalid value (expected positive, got %d)", demoCtx.nodes)
 	}
 
 	// If artificial latencies were requested, then the user cannot supply their own localities.
 	if demoCtx.simulateLatency && demoCtx.localities != nil {
-		return nil, errors.New("--global cannot be used with --demo-locality")
+		return errors.New("--global cannot be used with --demo-locality")
 	}
 
 	demoCtx.disableTelemetry = cluster.TelemetryOptOut()
@@ -205,56 +146,11 @@ func checkDemoConfiguration(
 	demoCtx.disableLicenseAcquisition =
 		demoCtx.disableTelemetry || (GetAndApplyLicense == nil) || demoCtx.disableLicenseAcquisition
 
-	if demoCtx.geoPartitionedReplicas {
-		geoFlag := "--" + cliflags.DemoGeoPartitionedReplicas.Name
-		if demoCtx.disableLicenseAcquisition {
-			return nil, errors.Newf("enterprise features are needed for this demo (%s)", geoFlag)
-		}
-
-		// Make sure that the user didn't request to have a topology and an empty database.
-		if demoCtx.useEmptyDatabase {
-			return nil, errors.New("cannot setup geo-partitioned replicas topology on an empty database")
-		}
-
-		// Make sure that the Movr database is selected when automatically partitioning.
-		if gen == nil || gen.Meta().Name != "movr" {
-			return nil, errors.Newf("%s must be used with the Movr dataset", geoFlag)
-		}
-
-		// If the geo-partitioned replicas flag was given and the demo localities have changed, throw an error.
-		if demoCtx.localities != nil {
-			return nil, errors.Newf("--demo-locality cannot be used with %s", geoFlag)
-		}
-
-		// If the geo-partitioned replicas flag was given and the nodes have changed, throw an error.
-		if flagSetForCmd(cmd).Lookup(cliflags.DemoNodes.Name).Changed {
-			if demoCtx.nodes != 9 {
-				return nil, errors.Newf("--nodes with a value different from 9 cannot be used with %s", geoFlag)
-			}
-		} else {
-			const msg = `#
-# --geo-partitioned replicas operates on a 9 node cluster.
-# The cluster size has been changed from the default to 9 nodes.`
-			fmt.Println(msg)
-			demoCtx.nodes = 9
-		}
-
-		// If geo-partition-replicas is requested, make sure the workload has a Partitioning step.
-		configErr := errors.New(fmt.Sprintf("workload %s is not configured to have a partitioning step", gen.Meta().Name))
-		hookser, ok := gen.(workload.Hookser)
-		if !ok {
-			return nil, configErr
-		}
-		if hookser.Hooks().Partition == nil {
-			return nil, configErr
-		}
-	}
-
-	return gen, nil
+	return nil
 }
 
-func runDemo(cmd *cobra.Command, gen workload.Generator) (err error) {
-	if gen, err = checkDemoConfiguration(cmd, gen); err != nil {
+func runDemo(cmd *cobra.Command) (err error) {
+	if err = checkDemoConfiguration(cmd); err != nil {
 		return err
 	}
 	// Record some telemetry about what flags are being used.
@@ -266,7 +162,7 @@ func runDemo(cmd *cobra.Command, gen workload.Generator) (err error) {
 		return err
 	}
 
-	c, err := setupTransientCluster(ctx, cmd, gen)
+	c, err := setupTransientCluster(ctx, cmd)
 	defer c.cleanup(ctx)
 	if err != nil {
 		return checkAndMaybeShout(err)
@@ -300,17 +196,7 @@ func runDemo(cmd *cobra.Command, gen workload.Generator) (err error) {
 		return checkAndMaybeShout(err)
 	}
 
-	// Initialize the workload, if requested.
-	if err := c.setupWorkload(ctx, gen, licenseDone); err != nil {
-		return checkAndMaybeShout(err)
-	}
-
 	if cliCtx.isInteractive {
-		if gen != nil {
-			fmt.Printf("#\n# The cluster has been preloaded with the %q dataset\n# (%s).\n",
-				gen.Meta().Name, gen.Meta().Description)
-		}
-
 		fmt.Println(`#
 # Reminder: your changes to data stored in the demo session will not be saved!
 #
@@ -332,12 +218,6 @@ func runDemo(cmd *cobra.Command, gen workload.Generator) (err error) {
 				defaultRootPassword,
 			)
 		}
-		// If we didn't launch a workload, we still need to inform the
-		// user if the license check fails. Do this asynchronously and print
-		// the final error if any.
-
-		// It's ok to do this twice (if workload setup already waited) because
-		// then the error return is guaranteed to be nil.
 		go func() {
 			if err := waitForLicense(licenseDone); err != nil {
 				_ = checkAndMaybeShout(err)

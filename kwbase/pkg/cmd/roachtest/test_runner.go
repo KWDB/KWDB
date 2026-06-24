@@ -31,7 +31,6 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -41,7 +40,6 @@ import (
 	"sync"
 	"time"
 
-	"gitee.com/kwbasedb/kwbase/pkg/cmd/internal/issues"
 	"gitee.com/kwbasedb/kwbase/pkg/util/ctxgroup"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/quotapool"
@@ -655,37 +653,6 @@ func (r *testRunner) runTest(
 			}
 
 			shout(ctx, l, stdout, "--- FAIL: %s (%s)\n%s", t.Name(), durationStr, output)
-			// NB: check NodeCount > 0 to avoid posting issues from this pkg's unit tests.
-			if issues.CanPost() && t.spec.Run != nil && t.spec.Cluster.NodeCount > 0 {
-				branch := "<unknown branch>"
-				if b := os.Getenv("TC_BUILD_BRANCH"); b != "" {
-					branch = b
-				}
-				msg := fmt.Sprintf("The test failed on branch=%s, cloud=%s:\n%s",
-					branch, cloud, output)
-				artifacts := fmt.Sprintf("/%s", t.Name())
-
-				req := issues.PostRequest{
-					// TODO(tbg): actually use this as a template.
-					TitleTemplate: fmt.Sprintf("roachtest: %s failed", t.Name()),
-					// TODO(tbg): make a template better adapted to roachtest.
-					BodyTemplate: issues.UnitTestFailureBody,
-					PackageName:  "roachtest",
-					TestName:     t.Name(),
-					Message:      msg,
-					Artifacts:    artifacts,
-					// Issues posted from roachtest are identifiable as such and
-					// they are also release blockers (this label may be removed
-					// by a human upon closer investigation).
-					ExtraLabels: []string{"O-roachtest", "release-blocker"},
-				}
-				if err := issues.Post(
-					context.Background(),
-					req,
-				); err != nil {
-					shout(ctx, l, stdout, "failed to post issue: %s", err)
-				}
-			}
 		} else {
 			shout(ctx, l, stdout, "--- PASS: %s (%s)", t.Name(), durationStr)
 			// If `##teamcity[testFailed ...]` is not present before `##teamCity[testFinished ...]`,

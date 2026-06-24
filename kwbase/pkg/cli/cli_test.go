@@ -54,8 +54,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
-	// register some workloads for TestWorkload
-	_ "gitee.com/kwbasedb/kwbase/pkg/workload/examples"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 )
@@ -306,7 +304,7 @@ func isSQLCommand(args []string) bool {
 		return false
 	}
 	switch args[0] {
-	case "sql", "workload", "nodelocal", "statement-diag":
+	case "sql", "nodelocal", "statement-diag":
 		return true
 	case "node":
 		if len(args) == 0 {
@@ -413,8 +411,10 @@ func Example_logging() {
 	// 1
 }
 
-func Example_demo() {
-	c := newCLITest(cliTestParams{noServer: true})
+func TestDemo(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	c := newCLITest(cliTestParams{t: t, noServer: true})
 	defer c.cleanup()
 
 	testData := [][]string{
@@ -425,73 +425,166 @@ func Example_demo() {
 		{`demo`, `-e`, `select 1 as "1"`, `-e`, `select 3 as "3"`},
 		{`demo`, `--echo-sql`, `-e`, `select 1 as "1"`},
 		{`demo`, `--set=errexit=0`, `-e`, `select nonexistent`, `-e`, `select 123 as "123"`},
-		{`demo`, `startrek`, `-e`, `show databases`},
-		{`demo`, `startrek`, `-e`, `show databases`, `--format=table`},
 		// Test that if we start with --insecure=false we can perform
 		// commands that require a secure cluster.
 		{`demo`, `--insecure=false`, `-e`, `CREATE USER test WITH PASSWORD 'testpass'`},
 		{`demo`, `-e`, `CREATE USER test WITH PASSWORD 'testpass'`},
-		{`demo`, `--geo-partitioned-replicas`, `--disable-demo-license`},
 	}
+	const expected = `demo -e show database
+database
+defaultdb
+demo -e show database --empty
+database
+defaultdb
+demo -e show application_name
+application_name
+$ kwbase demo
+demo --format=table -e show database
+  database
+-------------
+  defaultdb
+(1 row)
+demo -e select 1 as "1" -e select 3 as "3"
+1
+1
+3
+3
+demo --echo-sql -e select 1 as "1"
+> select 1 as "1"
+1
+1
+demo --set=errexit=0 -e select nonexistent -e select 123 as "123"
+ERROR: column "nonexistent" does not exist
+SQLSTATE: 42703
+123
+123
+demo --insecure=false -e CREATE USER test WITH PASSWORD 'testpass'
+CREATE USER
+demo -e CREATE USER test WITH PASSWORD 'testpass'
+ERROR: setting or updating a password is not supported in insecure mode
+SQLSTATE: 28P01
+`
+
 	setCLIDefaultsForTests()
 	// We must reset the security asset loader here, otherwise the dummy
 	// asset loader that is set by default in tests will not be able to
 	// find the certs that demo sets up.
 	security.ResetAssetLoader()
-	for _, cmd := range testData {
-		c.RunWithArgs(cmd)
+
+	var got strings.Builder
+	for i, cmd := range testData {
+		out, err := c.RunWithCaptureArgs(cmd)
+		if err != nil {
+			t.Fatal(errors.Wrap(err, strconv.Itoa(i)))
+		}
+		got.WriteString(stripServerLogLines(out))
 	}
 
-	// Output:
-	// demo -e show database
-	// database
-	// movr
-	// demo -e show database --empty
-	// database
-	// defaultdb
-	// demo -e show application_name
-	// application_name
-	// $ kwbase demo
-	// demo --format=table -e show database
-	//   database
-	// ------------
-	//   movr
-	// (1 row)
-	// demo -e select 1 as "1" -e select 3 as "3"
-	// 1
-	// 1
-	// 3
-	// 3
-	// demo --echo-sql -e select 1 as "1"
-	// > select 1 as "1"
-	// 1
-	// 1
-	// demo --set=errexit=0 -e select nonexistent -e select 123 as "123"
-	// ERROR: column "nonexistent" does not exist
-	// SQLSTATE: 42703
-	// 123
-	// 123
-	// demo startrek -e show databases
-	// database_name	engine_type
-	// defaultdb	RELATIONAL
-	// postgres	RELATIONAL
-	// startrek	RELATIONAL
-	// system	RELATIONAL
-	// demo startrek -e show databases --format=table
-	//   database_name | engine_type
-	// ----------------+--------------
-	//   defaultdb     | RELATIONAL
-	//   postgres      | RELATIONAL
-	//   startrek      | RELATIONAL
-	//   system        | RELATIONAL
-	// (4 rows)
-	// demo --insecure=false -e CREATE USER test WITH PASSWORD 'testpass'
-	// CREATE USER
-	// demo -e CREATE USER test WITH PASSWORD 'testpass'
-	// ERROR: setting or updating a password is not supported in insecure mode
-	// SQLSTATE: 28P01
-	// demo --geo-partitioned-replicas --disable-demo-license
-	// ERROR: enterprise features are needed for this demo (--geo-partitioned-replicas)
+	if got.String() != expected {
+		t.Fatalf("expected:\n%s\ngot:\n%s", expected, got.String())
+	}
+}
+
+// serverLogLineRE matches structured KWDB/CockroachDB log lines. The demo
+// command starts in-memory servers whose background goroutines can write these
+// lines while TestDemo is capturing stdout and CLI stderr in one pipe.
+var serverLogLineRE = regexp.MustCompile(
+	`^[IWEF]\d{6} \d{2}:\d{2}:\d{2}\.\d{6} \d+ \S+:\d+\s+.*`,
+)
+
+var serverLogContinuationRE = regexp.MustCompile(
+	`^(?:\t|gitee\.com/|github\.com/|runtime\.|\([0-9]+\) |Wraps:|Error types:)`,
+)
+
+func stripServerLogLines(s string) string {
+	var b strings.Builder
+	skipContinuation := false
+	for _, line := range strings.SplitAfter(s, "\n") {
+		if serverLogLineRE.MatchString(line) {
+			skipContinuation = true
+			continue
+		}
+		if skipContinuation && serverLogContinuationRE.MatchString(line) {
+			continue
+		}
+		skipContinuation = false
+		b.WriteString(line)
+	}
+	return b.String()
+}
+
+func TestStripServerLogLines(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	const cleanDemoOutput = `demo -e show database
+database
+defaultdb
+demo --format=table -e show database
+  database
+-------------
+  defaultdb
+(1 row)
+ERROR: column "nonexistent" does not exist
+SQLSTATE: 42703
+`
+	testData := []struct {
+		name string
+		in   string
+		out  string
+	}{
+		{
+			name: "clean output unchanged",
+			in:   cleanDemoOutput,
+			out:  cleanDemoOutput,
+		},
+		{
+			name: "log before output",
+			in: "W260613 13:56:44.554107 26782 server/status/runtime.go:360  [n?] Could not parse build timestamp\n" +
+				"demo -e show database\n",
+			out: "demo -e show database\n",
+		},
+		{
+			name: "log between output lines",
+			in: "database\n" +
+				"W260613 13:56:44.644887 26970 kv/kvserver/replica_range_lease.go:1206  [n1] lease check failed\n" +
+				"defaultdb\n",
+			out: "database\ndefaultdb\n",
+		},
+		{
+			name: "multiple severities",
+			in: "demo -e show database\n" +
+				"I260613 13:56:23.239374 80 storage/rocksdb.go:636  opening rocksdb instance\n" +
+				"E260613 13:56:45.248477 28480 server/status.go:1056  aborted in distSender: context canceled\n" +
+				"database\n",
+			out: "demo -e show database\ndatabase\n",
+		},
+		{
+			name: "stack continuation",
+			in: "W260613 13:57:04.945793 139551 kv/kvserver/replica_range_lease.go:606  can't determine lease status due to node liveness error: node not in the liveness table\n" +
+				"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver.init\n" +
+				"\t/data1/workspace/src/gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/node_liveness.go:62\n" +
+				"runtime.doInit1\n" +
+				"\t/usr/local/go/src/runtime/proc.go:6735\n" +
+				"demo -e show database\n",
+			out: "demo -e show database\n",
+		},
+		{
+			name: "error continuation",
+			in: "W260613 13:57:34.881707 395498 kv/kvserver/node_liveness.go:634  [n1,liveness-hb] failed node liveness heartbeat: operation timed out\n" +
+				"(1) operation \"node liveness heartbeat\" timed out after 7.5s\n" +
+				"Wraps: (2) aborted in distSender: context deadline exceeded\n" +
+				"Error types: (1) *contextutil.TimeoutError (2) *roachpb.internalError\n" +
+				"(1 row)\n",
+			out: "(1 row)\n",
+		},
+	}
+	for _, tc := range testData {
+		t.Run(tc.name, func(t *testing.T) {
+			if out := stripServerLogLines(tc.in); out != tc.out {
+				t.Fatalf("expected:\n%s\ngot:\n%s", tc.out, out)
+			}
+		})
+	}
 }
 
 func Example_sql() {
@@ -1414,8 +1507,6 @@ Available Commands:
   version              output version information
   debug                debugging commands
   sqlfmt               format SQL statements
-  workload             generators for data and query loads
-  systembench          Run systembench
   help                 Help about any command
 
 Flags:
@@ -1886,38 +1977,34 @@ func TestJunkPositionalArguments(t *testing.T) {
 	c := newCLITest(cliTestParams{t: t, noServer: true})
 	defer c.cleanup()
 
-	for i, test := range []string{
-		"start",
-		"sql",
-		"gen man",
-		"gen example-data intro",
+	for i, test := range []struct {
+		line string
+		exp  string
+	}{
+		{
+			line: "start junk",
+			exp:  "start junk\nERROR: unknown command \"junk\" for \"kwbase start\"\n",
+		},
+		{
+			line: "sql junk",
+			exp:  "sql junk\nERROR: unknown command \"junk\" for \"kwbase sql\"\n",
+		},
+		{
+			line: "gen man junk",
+			exp:  "gen man junk\nERROR: unknown command \"junk\" for \"kwbase gen man\"\n",
+		},
+		{
+			line: "gen junk",
+			exp:  "gen junk\nERROR: unknown sub-command: \"junk\"\n",
+		},
 	} {
-		const junk = "junk"
-		line := test + " " + junk
-		out, err := c.RunWithCapture(line)
+		out, err := c.RunWithCapture(test.line)
 		if err != nil {
 			t.Fatal(errors.Wrap(err, strconv.Itoa(i)))
 		}
-		exp := fmt.Sprintf("%s\nERROR: unknown command %q for \"kwbase %s\"\n", line, junk, test)
-		if exp != out {
-			t.Errorf("expected:\n%s\ngot:\n%s", exp, out)
+		if test.exp != out {
+			t.Errorf("expected:\n%s\ngot:\n%s", test.exp, out)
 		}
-	}
-}
-
-func TestWorkload(t *testing.T) {
-	defer leaktest.AfterTest(t)()
-
-	c := newCLITest(cliTestParams{noServer: true})
-	defer c.cleanup()
-
-	out, err := c.RunWithCapture("workload init --help")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !strings.Contains(out, `startrek`) {
-		t.Fatalf(`startrek workload failed to register got: %s`, out)
 	}
 }
 

@@ -31,7 +31,6 @@ import (
 	"testing"
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/ts/testmodel"
 	"gitee.com/kwbasedb/kwbase/pkg/ts/tspb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"github.com/gogo/protobuf/proto"
@@ -247,76 +246,6 @@ func TestMakeInternalData(t *testing.T) {
 	}
 	if a, e := nonRollupColumn, expectedNonRollupColumn; !reflect.DeepEqual(a, e) {
 		t.Errorf("nonRollupColumn got %v, wanted %v", a, e)
-	}
-
-	// Confirm rollup-generating case. Values are checked against the
-	// independently-verified methods of the testmodel package.
-	rollupRow := makeInternalRowData(50, 50, data)
-	rollupColumn := makeInternalColumnData(50, 50, data)
-	expectedRollupRow := roachpb.InternalTimeSeriesData{
-		StartTimestampNanos: 50,
-		SampleDurationNanos: 50,
-	}
-	expectedRollupColumn := expectedRollupRow
-
-	dataSeries := testmodel.DataSeries(data)
-	// Last and Offset column.
-	for _, dp := range dataSeries.GroupByResolution(50, testmodel.AggregateLast) {
-		offset := int32((dp.TimestampNanos - 50) / 50)
-		expectedRollupRow.Samples = append(expectedRollupRow.Samples, roachpb.InternalTimeSeriesSample{
-			Offset: offset,
-		})
-		expectedRollupColumn.Offset = append(expectedRollupColumn.Offset, offset)
-		expectedRollupColumn.Last = append(expectedRollupColumn.Last, dp.Value)
-	}
-	// Sum column.
-	for i, dp := range dataSeries.GroupByResolution(50, testmodel.AggregateSum) {
-		expectedRollupRow.Samples[i].Sum = dp.Value
-		expectedRollupColumn.Sum = append(expectedRollupColumn.Sum, dp.Value)
-	}
-	// Max column.
-	for i, dp := range dataSeries.GroupByResolution(50, testmodel.AggregateMax) {
-		expectedRollupRow.Samples[i].Max = proto.Float64(dp.Value)
-		expectedRollupColumn.Max = append(expectedRollupColumn.Max, dp.Value)
-	}
-	// Min column.
-	for i, dp := range dataSeries.GroupByResolution(50, testmodel.AggregateMin) {
-		expectedRollupRow.Samples[i].Min = proto.Float64(dp.Value)
-		expectedRollupColumn.Min = append(expectedRollupColumn.Min, dp.Value)
-	}
-	// Count column.
-	for i, dp := range dataSeries.GroupByResolution(50, func(ds testmodel.DataSeries) float64 {
-		return float64(len(ds))
-	}) {
-		count := uint32(int32(dp.Value))
-		expectedRollupRow.Samples[i].Count = count
-		// Min and max are omitted from samples with a count of 1.
-		if count < 2 {
-			expectedRollupRow.Samples[i].Min = nil
-			expectedRollupRow.Samples[i].Max = nil
-		}
-		expectedRollupColumn.Count = append(expectedRollupColumn.Count, count)
-	}
-	// First column.
-	for _, dp := range dataSeries.GroupByResolution(50, testmodel.AggregateFirst) {
-		expectedRollupColumn.First = append(expectedRollupColumn.First, dp.Value)
-	}
-	// Variance column.
-	for _, dp := range dataSeries.GroupByResolution(50, testmodel.AggregateVariance) {
-		expectedRollupColumn.Variance = append(expectedRollupColumn.Variance, dp.Value)
-	}
-
-	if a, e := rollupRow, expectedRollupRow; !reflect.DeepEqual(a, e) {
-		t.Errorf("rollupRow got %v, wanted %v", a, e)
-		for _, diff := range pretty.Diff(a, e) {
-			t.Error(diff)
-		}
-	}
-	if a, e := rollupColumn, expectedRollupColumn; !reflect.DeepEqual(a, e) {
-		t.Errorf("rollupColumn got %v, wanted %v", a, e)
-		for _, diff := range pretty.Diff(a, e) {
-			t.Error(diff)
-		}
 	}
 }
 

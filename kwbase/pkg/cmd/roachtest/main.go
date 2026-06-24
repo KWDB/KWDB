@@ -96,8 +96,6 @@ func main() {
 			"If blank, the current OS user is detected and specified.")
 	rootCmd.PersistentFlags().StringVar(
 		&kwbase, "kwbase", "", "path to kwbase binary to use")
-	rootCmd.PersistentFlags().StringVar(
-		&workload, "workload", "", "path to workload binary to use")
 	f := rootCmd.PersistentFlags().VarPF(
 		&encrypt, "encrypt", "", "start cluster with encryption at rest turned on")
 	f.NoOptDefVal = "true"

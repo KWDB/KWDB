@@ -31,6 +31,15 @@ import (
 	"time"
 )
 
+func elideInsecureDeprecationNotice(csvStr string) string {
+	// v20.1 introduces a deprecation notice for --insecure. Skip over it.
+	lines := strings.SplitN(csvStr, "\n", 3)
+	if len(lines) > 0 && strings.HasPrefix(lines[0], "Flag --insecure has been deprecated") {
+		csvStr = lines[2]
+	}
+	return csvStr
+}
+
 func runCLINodeStatus(ctx context.Context, t *test, c *cluster) {
 	c.Put(ctx, kwbase, "./kwbase")
 	c.Start(ctx, t, c.Range(1, 3))

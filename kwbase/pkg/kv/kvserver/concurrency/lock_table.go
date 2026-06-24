@@ -85,7 +85,7 @@ type treeMu struct {
 	mu syncutil.RWMutex // Protects everything in this struct.
 
 	// For assigning sequence numbers to the lockState objects as required by
-	// the util/interval/generic type contract.
+	// the interval btree.
 	lockIDSeqNum uint64
 
 	// Container for lockState structs. Locks that are not held or reserved and
@@ -508,7 +508,7 @@ func (lh *lockHolderInfo) isEmpty() bool {
 // However, other objects referenced by lockState can be pooled as long as they
 // are removed from all lockStates that reference them first.
 type lockState struct {
-	id     uint64 // needed for implementing util/interval/generic type contract
+	id     uint64 // needed for the interval btree
 	endKey []byte // used in btree iteration and tests
 
 	// The key being locked and the scope of that key. This state is never
@@ -708,9 +708,7 @@ type lockWaitQueue struct {
 	distinguishedWaiter *lockTableGuardImpl
 }
 
-//go:generate ../../../util/interval/generic/gen.sh *lockState concurrency
-
-// Methods required by util/interval/generic type contract.
+// Methods required by the interval btree.
 func (l *lockState) ID() uint64         { return l.id }
 func (l *lockState) Key() []byte        { return l.key }
 func (l *lockState) EndKey() []byte     { return l.endKey }

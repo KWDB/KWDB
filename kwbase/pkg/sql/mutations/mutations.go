@@ -67,13 +67,6 @@ var (
 	PostgresCreateTableMutator MultiStatementMutation = postgresCreateTableMutator
 )
 
-var (
-	// These are used in pkg/compose/compare/compare/compare_test.go, but
-	// it has a build tag so it's not detected by the linter.
-	_ = IndexStoringMutator
-	_ = PostgresCreateTableMutator
-)
-
 // StatementMutator defines a func that can change a statement.
 type StatementMutator func(rng *rand.Rand, stmt tree.Statement) (changed bool)
 

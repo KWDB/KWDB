@@ -103,11 +103,8 @@ func readEncodingTests(t testing.TB) []*encodingTest {
 }
 
 // TestEncodings uses testdata/encodings.json to test expected pgwire encodings
-// and ensure they are identical to what Postgres produces. Regenerate that
-// file by:
-//
-//	Starting a postgres server on :5432 then running:
-//	cd pkg/cmd/generate-binary; go run main.go > ../../sql/pgwire/testdata/encodings.json
+// and ensure they are identical to what Postgres produces. The fixture is
+// checked in as static PostgreSQL compatibility data.
 func TestEncodings(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
