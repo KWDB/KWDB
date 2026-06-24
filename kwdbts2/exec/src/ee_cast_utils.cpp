@@ -399,31 +399,6 @@ void deleteZero(double input, char *str, int32_t length) {
   }
 }
 
-#define MAX_DOUBLE_STR_LENGTH 18
-#define DEFAULT_PRECISION 16
-KStatus doubleToStr(double input, char *str, int32_t length) {
-  int d = numDigit(input);
-  if (d <= MAX_DOUBLE_STR_LENGTH - 2) {
-    int len = MAX_DOUBLE_STR_LENGTH < length? MAX_DOUBLE_STR_LENGTH : length;
-    snprintf(str, len, "%.*f", DEFAULT_PRECISION, input);
-    deleteZero(input, str, len);
-  } else {
-    int len = 0;
-    if (d > 100)
-      len = MAX_DOUBLE_STR_LENGTH - 7;  // e+100 ~ e+307
-    else if (d > 10)  // means (d > MAX_DOUBLE_STR_LENGTH - 2 && d <= 100)
-      len = MAX_DOUBLE_STR_LENGTH - 6;  // <e+99
-    else  // means d <= 10, will never enter here, since this case was handled
-          // by "if (d <= MAX_DOUBLE_STR_LENGTH - 2)"
-      len = MAX_DOUBLE_STR_LENGTH - 5;  // <- this may be meaningless
-
-    len = len < length? len : length;
-    snprintf(str, len , "%.*e", DEFAULT_PRECISION, input);
-    // return strlen(str);
-  }
-  return KStatus::SUCCESS;
-}
-
 int64_t strnatoi(char *num, int32_t len) {
   int64_t ret = 0, i, dig, base = 1;
 

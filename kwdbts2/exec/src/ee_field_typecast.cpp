@@ -17,6 +17,7 @@
 
 #include "ee_field.h"
 #include "ee_global.h"
+#include "ee_ryu_dbconvert.h"
 #include "ee_table.h"
 #include "me_metadata.pb.h"
 #include "ee_timestamp_utils.h"
@@ -258,7 +259,8 @@ inline KStatus boolToString(Field *field, char *output, k_uint32 length) {
 }
 
 inline KStatus doubleToString(Field *field, char *output, k_uint32 length) {
-  return doubleToStr(field->ValReal(), output, length);
+  int n = ryu_snprintf_g(field->ValReal(), 17, output, length, false, -1);
+  return n < 0 ? FAIL : SUCCESS;
 }
 
 inline KStatus stringToString(Field *field, char *output, k_uint32 length) {
@@ -786,7 +788,9 @@ char *FieldTypeCastString::get_ptr(RowBatch *batch) {
     }
     case roachpb::DataType::FLOAT:
     case roachpb::DataType::DOUBLE: {
-      err = doubleToStr(field_->ValReal(ptr), in_v, kScalarBufferLength);
+      int n = ryu_snprintf_g(field_->ValReal(ptr), 17, in_v,
+                             kScalarBufferLength, false, -1);
+      err = n < 0 ? FAIL : SUCCESS;
       break;
     }
     case roachpb::DataType::CHAR:

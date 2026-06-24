@@ -15,6 +15,7 @@
 #include <string>
 
 #include "ee_cast_utils.h"
+#include "ee_ryu_dbconvert.h"
 #include "gtest/gtest.h"
 
 namespace kwdbts {
@@ -166,16 +167,18 @@ TEST(CastUtilsTest, ConvertsBooleansNumbersAndIntegers) {
 }
 
 TEST(CastUtilsTest, FormatsNumbersAndParsesTimeHelpers) {
-  char trimmed_buffer[32] = {0};
-  EXPECT_EQ(doubleToStr(1.230000, trimmed_buffer, sizeof(trimmed_buffer)),
-            KStatus::SUCCESS);
-  EXPECT_STREQ(trimmed_buffer, "1.23");
 
-  char scientific_buffer[32] = {0};
-  EXPECT_EQ(doubleToStr(1e120, scientific_buffer, sizeof(scientific_buffer)),
-            KStatus::SUCCESS);
-  EXPECT_FALSE(std::string(scientific_buffer).empty());
-  EXPECT_STRNE(scientific_buffer, "1.23");
+  char sql_float_buffer[32] = {0};
+  int sql_float_len = ryu_snprintf_g(1e17, 17, sql_float_buffer,
+                                     sizeof(sql_float_buffer), false, -1);
+  EXPECT_EQ(sql_float_len, 5);
+  EXPECT_STREQ(sql_float_buffer, "1e+17");
+
+  memset(sql_float_buffer, 0, sizeof(sql_float_buffer));
+  sql_float_len = ryu_snprintf_g(2e17, 17, sql_float_buffer,
+                                 sizeof(sql_float_buffer), false, -1);
+  EXPECT_EQ(sql_float_len, 5);
+  EXPECT_STREQ(sql_float_buffer, "2e+17");
 
   char zero_buffer[] = "12.3400";
   deleteZero(12.34, zero_buffer, static_cast<int32_t>(strlen(zero_buffer)));
