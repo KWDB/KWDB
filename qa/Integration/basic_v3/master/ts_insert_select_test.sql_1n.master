@@ -489,8 +489,7 @@ SET
 primary attributes (attr1);
 CREATE TABLE
 > insert into test_ts.ts_table4 select 100, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 join test.test_r as t2 on t1.e1=t2.e1;
-ERROR: first column must be timestamp when the target table is table of time series
-SQLSTATE: 42804
+INSERT 5598
 > insert into test_ts.ts_table4 select * from test_ts.ts_table UNION select * from test.test_r;
 INSERT 58
 > insert into test_ts.ts_table4 (select * from test_ts.ts_table order by time) UNION (select * from test.test_r order by e1);

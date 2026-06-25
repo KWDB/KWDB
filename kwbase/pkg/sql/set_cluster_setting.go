@@ -443,6 +443,12 @@ func (n *setClusterSettingNode) startExec(params runParams) error {
 					}
 				}
 			}
+			if n.name == "server.restful_influxdb.batch_params" {
+				batchParams := strings.Split(encoded, ";")
+				if len(batchParams) != 5 {
+					return errors.New("invalid value, server.restful_influxdb.batch_params must contain four values.eg: 'false;100;16;1000;100' ")
+				}
+			}
 			if n.name == settings.TSInsertSelectBlockMemorySetting {
 				blockMemory, blockErr := strconv.ParseInt(encoded, 10, 64)
 				if blockErr != nil {

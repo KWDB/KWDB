@@ -102,7 +102,7 @@ TEST_F(TsVGroupTest, DropTableBeforeFlushCausesAssert) {
   p.ParsePayLoadStruct(payload);
   auto ptag = p.GetPrimaryTag();
 
-  ASSERT_EQ(vgroup->PutData(&ctx, schema_mgr, 0, &ptag, dev_id, &payload, false), KStatus::SUCCESS);
+  ASSERT_EQ(vgroup->PutData(&ctx, schema_mgr, 0, &ptag, dev_id, p, false), KStatus::SUCCESS);
   free(payload.data);
 
   // Drop before flush: GetBlockSpans skips all rows for a dropped table.

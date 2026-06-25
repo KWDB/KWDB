@@ -173,7 +173,7 @@ func ValidateColumnDefType(t *types.T, tableType tree.TableType) error {
 			if t.Precision() > 6 {
 				return pgerror.Newf(pgcode.InvalidColumnDefinition, "precision %d out of range", t.Precision())
 			}
-		case tree.TimeseriesTable, tree.TemplateTable, tree.InstanceTable:
+		case tree.TimeseriesTable, tree.TemplateTable, tree.InstanceTable, tree.SparseTable:
 			switch t.Precision() {
 			case 3, 6, 9:
 				// These precisions are OK.
@@ -327,13 +327,12 @@ func MakeColumnDefDescs(
 // When tableType is relational, the type is not updated.
 // When tableType is time_series and the precision of the time type is 0 and the precision is not specified,
 // the precision is updated to 3.
-func UpdateTimeColPrecision(oldTyp *types.T, tableType tree.TableType) *types.T {
+func UpdateTimeColPrecision(oldTyp *types.T, isTsTable bool) *types.T {
 	newTyp := oldTyp
 	var precision int32
-	switch tableType {
-	case tree.TimeseriesTable, tree.TemplateTable, tree.InstanceTable:
+	if isTsTable {
 		precision = 3
-	default:
+	} else {
 		return newTyp
 	}
 	if oldTyp.InternalType.Precision == 0 && !oldTyp.InternalType.TimePrecisionIsSet {
@@ -461,7 +460,7 @@ func MakeTSColumnDefDescs(
 	}
 
 	// Validate and assign column type.
-	typ = UpdateTimeColPrecision(typ, tree.TimeseriesTable)
+	typ = UpdateTimeColPrecision(typ, true)
 	err := ValidateColumnDefType(typ, tree.TimeseriesTable)
 	if err != nil {
 		return nil, nil, err
@@ -1063,7 +1062,8 @@ func (t TableTypeMap) IncludeTSTable() bool {
 	_, ok1 := t[tree.TemplateTable]
 	_, ok2 := t[tree.InstanceTable]
 	_, ok3 := t[tree.TimeseriesTable]
-	if ok1 || ok2 || ok3 {
+	_, ok4 := t[tree.SparseTable]
+	if ok1 || ok2 || ok3 || ok4 {
 		return true
 	}
 	return false
@@ -1074,7 +1074,8 @@ func (t TableTypeMap) HasMultiTSTable() bool {
 	v1, _ := t[tree.TemplateTable]
 	v2, _ := t[tree.InstanceTable]
 	v3, _ := t[tree.TimeseriesTable]
-	if v1+v2+v3 > 1 {
+	v4, _ := t[tree.SparseTable]
+	if v1+v2+v3+v4 > 1 {
 		return true
 	}
 	return false
@@ -1101,6 +1102,12 @@ func (t TableTypeMap) HasGtable() bool {
 // HasRtable check if there has a RELATIONAL_TABLE.
 func (t TableTypeMap) HasRtable() bool {
 	_, ok := t[tree.RelationalTable]
+	return ok
+}
+
+// HasSparsetable check if there has a SPARSE TABLE.
+func (t TableTypeMap) HasSparsetable() bool {
+	_, ok := t[tree.SparseTable]
 	return ok
 }
 

@@ -22,8 +22,7 @@
 using namespace kwdbts;
 
 void InsertHelper(TsMemSegIndex &skiplist, int data, int id = 1) {
-  TSMemSegRowData *row =
-      skiplist.AllocateMemSegRowData(id, id, id, id, TSSlice{reinterpret_cast<char *>(&data), sizeof(data)});
+  TSMemSegRowData *row = skiplist.AllocateMemSegRowData(id, id, id, id, nullptr, data);
   row->SetData(id, id);
   skiplist.InsertRowData(row);
 }
@@ -42,8 +41,7 @@ TEST(TsMemSegIndexTest, InsertAndSeekOne) {
   auto iter = SeekHelper(skiplist, 1);
   ASSERT_TRUE(iter.Valid());
   auto row_data = skiplist.ParseKey(iter.key());
-  int data = *reinterpret_cast<int *>(row_data->GetRowData().data);
-  ASSERT_EQ(data, 1);
+  ASSERT_EQ(row_data->GetRowIdxInPD(), 1);
 }
 
 TEST(TsMemSegIndexTest, InsertDuplicateKeys) {
@@ -63,8 +61,7 @@ TEST(TsMemSegIndexTest, InsertDuplicateKeys) {
   int i = 0;
   while (iter.Valid()) {
     auto row_data = skiplist.ParseKey(iter.key());
-    int data = *reinterpret_cast<int *>(row_data->GetRowData().data);
-    ASSERT_EQ(data, insert_data[i]);
+    ASSERT_EQ(row_data->GetRowIdxInPD(), insert_data[i]);
     iter.Next();
     ++i;
   }
@@ -110,8 +107,7 @@ TEST(TsMemSegIndexTest, InsertDuplicateKeysAndSeek) {
     int idx = 0;
     while (it.Valid() && it != end) {
       auto row_data = skiplist.ParseKey(it.key());
-      int data = *reinterpret_cast<int *>(row_data->GetRowData().data);
-      ASSERT_EQ(data, insert_data[5][idx]);
+      ASSERT_EQ(row_data->GetRowIdxInPD(), insert_data[5][idx]);
       it.Next();
       ++idx;
     }
@@ -135,7 +131,6 @@ TEST(TsMemSegIndexTest, InsertAndSeekMultiple) {
     auto row_data = skiplist.ParseKey(iter.key());
     ASSERT_EQ(row_data->GetEntityId(), expected_ids[i]);
     ASSERT_EQ(row_data->GetOSN(), expected_ids[i]);
-    int data = *reinterpret_cast<int *>(row_data->GetRowData().data);
-    ASSERT_EQ(data, expected_data[i]);
+    ASSERT_EQ(row_data->GetRowIdxInPD(), expected_data[i]);
   }
 }

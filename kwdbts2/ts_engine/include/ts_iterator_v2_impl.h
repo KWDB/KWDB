@@ -272,8 +272,6 @@ class TsAggIteratorImpl : public TsStorageIteratorImpl {
   AggCandidate first_row_candidate_{INT64_MAX, 0, nullptr};
   AggCandidate last_row_candidate_{INT64_MIN, 0, nullptr};
 
-  std::shared_ptr<TsRawPayloadRowParser> parser_;
-
   TimeBucketInfo time_bucket_info_;
   int64_t time_bucket_index_;
   int64_t time_bucket_block_spans_index_;

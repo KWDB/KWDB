@@ -196,9 +196,19 @@ func (n *alterTableNode) startExec(params runParams) error {
 				if d.Nullable.Nullability == tree.NotNull {
 					return pgerror.Newf(pgcode.FeatureNotSupported, "add NOT-NULL column %s for timeseries table is not supported", d.Name)
 				}
-				if len(n.tableDesc.Columns)+1 > MaxTSDataColumns {
+				dataColNum := 0
+				for _, col := range n.tableDesc.Columns {
+					if col.IsDataCol() {
+						dataColNum++
+					}
+				}
+				if !n.tableDesc.IsSparseTable() && dataColNum+1 > MaxTSDataColumns {
 					return pgerror.Newf(pgcode.TooManyColumns,
-						"on table %s, the number of columns/tags exceeded the maximum value %d", n.tableDesc.Name, MaxTSDataColumns)
+						"on timeseries table %s, the number of columns exceeded the maximum value %d", n.tableDesc.Name, MaxTSDataColumns)
+				}
+				if n.tableDesc.IsSparseTable() && dataColNum+1 > MaxSparseTSDataColumns {
+					return pgerror.Newf(pgcode.TooManyColumns,
+						"on sparse timeseries table %s, the number of columns exceeded the maximum value %d", n.tableDesc.Name, MaxSparseTSDataColumns)
 				}
 				if err := checkTSColValidity(d); err != nil {
 					return err
@@ -1130,10 +1140,6 @@ func (n *alterTableNode) startExec(params runParams) error {
 				return pgerror.Newf(
 					pgcode.WrongObjectType, "can not add tag on instance table \"%s\"", n.tableDesc.Name)
 			}
-			if len(n.tableDesc.Columns)+1 > MaxTSDataColumns {
-				return pgerror.Newf(pgcode.TooManyColumns,
-					"on table %s, the number of columns/tags exceeded the maximum value %d", n.tableDesc.Name, MaxTSDataColumns)
-			}
 			log.Infof(params.ctx, "alter ts table %s 1st txn start, id: %d, content: %s", n.n.Table.String(), n.tableDesc.ID, n.n.Cmds)
 			tagNum := 0
 			for _, column := range n.tableDesc.Columns {
@@ -1357,19 +1363,10 @@ func (n *alterTableNode) startExec(params runParams) error {
 			descriptorChanged = descChanged
 
 		case *tree.AlterTableSetTag:
-			if n.tableDesc.TableType == tree.RelationalTable {
+			if !n.tableDesc.IsInstanceTable() {
 				return pgerror.Newf(
-					pgcode.WrongObjectType, "can not set tag on relational table \"%s\"", n.tableDesc.Name)
+					pgcode.WrongObjectType, "can not set tag on %s \"%s\"", n.tableDesc.TypeName(), n.tableDesc.Name)
 			}
-			if n.tableDesc.TableType == tree.TemplateTable {
-				return pgerror.Newf(
-					pgcode.WrongObjectType, "can not set tag on template table \"%s\"", n.tableDesc.Name)
-			}
-			if n.tableDesc.TableType == tree.TimeseriesTable {
-				return pgerror.Newf(
-					pgcode.WrongObjectType, "can not set tag on time series table \"%s\"", n.tableDesc.Name)
-			}
-
 			// get instance table id
 			db, err := getDatabaseDescByID(params.ctx, params.p.txn, n.tableDesc.ParentID)
 			if err != nil {
@@ -1803,7 +1800,7 @@ func applyColumnMutation(
 			}
 		}
 
-		typ = sqlbase.UpdateTimeColPrecision(typ, tableDesc.TableType)
+		typ = sqlbase.UpdateTimeColPrecision(typ, tableDesc.IsTSTable())
 		err := sqlbase.ValidateColumnDefType(typ, tableDesc.TableType)
 		if err != nil {
 			return false, err
@@ -2234,7 +2231,7 @@ func validateAlterTSType(
 		return false, validateTextType(colName, oldType, newType, colType)
 		// timestamp type
 	case oid.T_timestamp, oid.T_timestamptz:
-		newType = sqlbase.UpdateTimeColPrecision(newType, tree.TimeseriesTable)
+		newType = sqlbase.UpdateTimeColPrecision(newType, true)
 		if newType.Precision() != oldType.Precision() {
 			return false, newTypeConvertError(colName, oldType, newType)
 		}

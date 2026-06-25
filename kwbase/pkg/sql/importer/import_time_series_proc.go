@@ -197,9 +197,11 @@ type timeSeriesImportInfo struct {
 
 	// infos from sql import and table desc
 	colIndexs      map[int]int
+	dataIndexs     map[int]int
 	columns        []*sqlbase.ColumnDescriptor
 	prettyCols     []*sqlbase.ColumnDescriptor
 	primaryTagCols []*sqlbase.ColumnDescriptor
+	dataCols       []*sqlbase.ColumnDescriptor
 	pArgs          execbuilder.PayloadArgs
 	dbID           sqlbase.ID
 	tbID           sqlbase.ID
@@ -242,6 +244,8 @@ type timeSeriesImportInfo struct {
 	// Does the CSV file contain line breaks
 	hasSwap  bool
 	filename string
+	// Is the imported table a sparse table
+	isSparseTable bool
 }
 
 // datumsInfo channel passed datums between readAndConvert and buildPayloadAndSend. which canbe assaigned by priVal
@@ -265,6 +269,7 @@ func initPrettyColsAndComputeColumnSize(
 	immutDesc := sqlbase.NewImmutableTableDescriptor(*spec.Table.Desc)
 	columns := immutDesc.VisibleColumnsWithTagColOrdered()
 	colIndexs := make(map[int]int, len(columns))
+	dataIndexs := make(map[int]int, len(columns))
 	if len(spec.Table.IntoCols) > 0 {
 		var newCols []*sqlbase.ColumnDescriptor
 		bMap := make(map[string]int, len(spec.Table.IntoCols))
@@ -281,6 +286,7 @@ func initPrettyColsAndComputeColumnSize(
 			// If the other columns are NOT NULL, return NewNonNullViolationError in generateDatums below
 			if idx, ok := bMap[col.Name]; ok {
 				colIndexs[int(col.ID)] = idx
+				dataIndexs[idx] = int(col.ID)
 			} else {
 				colIndexs[int(col.ID)] = -1
 			}
@@ -290,6 +296,7 @@ func initPrettyColsAndComputeColumnSize(
 	} else {
 		for i, col := range columns {
 			colIndexs[int(col.ID)] = i
+			dataIndexs[i] = int(col.ID)
 		}
 	}
 
@@ -369,10 +376,16 @@ func initPrettyColsAndComputeColumnSize(
 	} else if batchSize > maxBatchSize {
 		batchSize = maxBatchSize
 	}
+
+	var isSparseTable bool
+	if spec.Table.TableType == tree.SparseTable {
+		isSparseTable = true
+	}
+
 	t := &timeSeriesImportInfo{prettyCols: pArgs.PrettyCols, pArgs: pArgs, columns: columns, colIndexs: colIndexs,
 		autoShrink: autoShrink, logColumnID: logColumnID, batchSize: batchSize, fileSplitInfos: fileSplitInfos,
-		parallelNums: parallelNums, dbID: dbID, tbID: tbID, hashNum: hashNum, flowCtx: flowCtx,
-		datumsCh: datumsCh, txn: txn, primaryTagCols: primaryTagCols,
+		parallelNums: parallelNums, dbID: dbID, tbID: tbID, hashNum: hashNum, flowCtx: flowCtx, dataIndexs: dataIndexs,
+		datumsCh: datumsCh, txn: txn, primaryTagCols: primaryTagCols, isSparseTable: isSparseTable, dataCols: dataCols,
 		OptimizedDispatch: spec.OptimizedDispatch, writeWAL: spec.WriteWAL}
 	t.mu.pTagToWorkerID = pTagToWorkerID
 	t.tsColTypeMap = make(map[int]oid.Oid, pArgs.PTagNum+pArgs.AllTagNum+pArgs.DataColNum)
@@ -789,6 +802,29 @@ func (t *timeSeriesImportInfo) handleCoruptedResult(ctx context.Context, row str
 	t.rejectedHandler <- err.Error() + "\n"
 }
 
+func foundNoEmptyColNumbers(datums []tree.Datums, colNum int) []int {
+	exists := make([]bool, colNum)
+
+	for _, m := range datums {
+		for k, v := range m {
+			if ok := exists[k]; ok {
+				continue
+			}
+			if v != tree.DNull && k <= colNum {
+				exists[k] = true
+			}
+		}
+	}
+
+	var result []int
+	for k, ok := range exists {
+		if ok {
+			result = append(result, k)
+		}
+	}
+	return result
+}
+
 func (t *timeSeriesImportInfo) ingest(
 	ctx context.Context, datums []tree.Datums, workerID int,
 ) error {
@@ -796,11 +832,24 @@ func (t *timeSeriesImportInfo) ingest(
 		return nil
 	}
 
+	// Create an index relationship between non-null data and its corresponding columns, if table is sparse table
+	payloadDataColIdx := make(map[int]int)
+	var noEmptyColNumbers []int
+	if t.isSparseTable {
+		noEmptyColNumbers = foundNoEmptyColNumbers(datums, len(datums[0]))
+		for _, idx := range noEmptyColNumbers {
+			payloadDataColIdx[t.dataIndexs[idx]] = idx
+		}
+	}
+
 	payloadNodeMap, tolerantErr, err := t.BuildPayloadForTsImportStartDistributeMode(
 		t.flowCtx.EvalCtx,
 		t.txn,
 		datums,
 		len(datums),
+		t.columns,
+		t.dataCols,
+		payloadDataColIdx,
 	)
 	if err != nil {
 		for i := range datums {
@@ -1102,10 +1151,27 @@ func (t *timeSeriesImportInfo) BuildPayloadForTsImportStartSingleNode(
 
 // BuildPayloadForTsImportStartDistributeMode construct payload of for StartDistributeMode import ts table.
 func (t *timeSeriesImportInfo) BuildPayloadForTsImportStartDistributeMode(
-	evalCtx *tree.EvalContext, txn *kv.Txn, InputDatums []tree.Datums, rowNum int,
+	evalCtx *tree.EvalContext,
+	txn *kv.Txn,
+	InputDatums []tree.Datums,
+	rowNum int,
+	columns, dataCols []*sqlbase.ColumnDescriptor,
+	colIndexs map[int]int,
 ) (map[int]*sqlbase.PayloadForDistTSInsert, []interface{}, error) {
 	tsPayload := execbuilder.NewTsPayload()
-	tsPayload.SetArgs(t.pArgs)
+	args := t.pArgs
+	var v2DataInfo execbuilder.PayloadV2DataInfo
+	args.PayloadVersion = execbuilder.TSInsertPayloadVersionV2
+	if t.isSparseTable {
+		v2DataInfo = execbuilder.BuildPayloadV2DataInfo(columns, dataCols, colIndexs)
+	} else {
+		v2DataInfo = execbuilder.BuildPayloadV2DataInfo(columns, dataCols, t.colIndexs)
+	}
+	args.V2DataHeader = v2DataInfo.DataHeader
+	args.V2DataCols = v2DataInfo.DataCols
+
+	tsPayload.SetArgs(args)
+
 	tsPayload.SetHeader(execbuilder.PayloadHeader{
 		TxnID:          txn.ID(),
 		PayloadVersion: t.pArgs.PayloadVersion,
@@ -1116,5 +1182,5 @@ func (t *timeSeriesImportInfo) BuildPayloadForTsImportStartDistributeMode(
 		RowNum:         uint32(rowNum),
 	})
 
-	return tsPayload.BuildRowBytesForTsImport(evalCtx, txn, InputDatums, rowNum, t.prettyCols, t.colIndexs, t.pArgs, uint32(t.dbID), uint32(t.tbID), t.hashNum, true)
+	return tsPayload.BuildRowBytesForTsImport(evalCtx, txn, InputDatums, rowNum, t.prettyCols, t.colIndexs, args, uint32(t.dbID), uint32(t.tbID), t.hashNum, true)
 }

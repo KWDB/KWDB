@@ -16,10 +16,11 @@
 #include "big_table.h"
 #include "mmap_hash_index.h"
 #include "mmap_ntag_hash_index.h"
+#include "mmap_tag.h"
 #include "mmap_entity_row_hash_index.h"
 #include "ts_common.h"
 #include "lg_api.h"
-#include "payload.h"
+#include "ts_payload.h"
 #include "lt_rw_latch.h"
 #include "lt_cond.h"
 #include "cm_func.h"
@@ -31,48 +32,12 @@ extern uint64_t BITMAP_PER_ROW_LENGTH;
 
 class TagTuplePack;
 
-enum TagType {
-    UNKNOWN_TAG = -1,
-    GENERAL_TAG = 1,
-    PRIMARY_TAG,
-};
-
-enum OperateType {
-  Invalid = 0,
-  Insert = 1,
-  Update = 2,
-  Delete = 3,
-  DeleteBySnapshot = 4,
-  Ignore = 5,
-};
-
 // This struct use to store tag data info, reserved space is BITMAP_PER_ROW_LENGTH.
 struct TagDataInfo {
   uint8_t operate_type[TAG_INFO_MAX_CHAIN_LEN]; // 1:InsertTag 2:UpdateTag 3.DeleteTag 4.DeleteTagBySnapshot
   char reserved[4];
   uint8_t operate_idx;     // latest operate index for operate_type and osn.
   uint64_t osn[TAG_INFO_MAX_CHAIN_LEN]; // HLC
-};
-
-struct TagInfo {
-  uint32_t  m_id;        //  tag column id
-  int32_t   m_data_type;  // data type
-  uint32_t  m_length;   // data length
-  uint32_t  m_offset;    // offset
-  uint32_t  m_size;      // data size
-  TagType   m_tag_type;  // tag type
-  int32_t   m_flag;      // tag dropped flag
-  bool      isEqual(const TagInfo& other) const { return (m_id == other.m_id) && 
-                                                         (m_data_type == other.m_data_type) &&
-                                                         (m_length == other.m_length); 
-                                                }
-  bool      isDropped() const {return (m_flag & AINFO_DROPPED); }
-
-  void      setFlag(int32_t flag) {m_flag |= flag;}
-
-  bool      isPrimaryTag() { return m_tag_type == PRIMARY_TAG;}
-  // bool      isVarTag() { return (m_tag_type != PRIMARY_TAG) &&((m_data_type == DATATYPE::VARSTRING) || 
-  //                             (m_data_type == DATATYPE::VARBINARY));}
 };
 
 struct TagColumnMetaData {
@@ -278,6 +243,14 @@ class MMapTagColumnTable: public TSObject {
   std::string m_db_path_;
   std::string m_tbl_sub_path_;
 
+  int getValidColumns(size_t row, std::vector<uint32_t>& valid_columns);
+
+  int updateValidColumns(size_t row, const std::vector<uint32_t>& valid_columns);
+
+  bool issparse() const {
+    return m_meta_data_ && m_meta_data_->m_magic == *reinterpret_cast<const uint32_t*>("MTVC");
+  }
+
   std::vector<MMapNTagHashIndex*>& getMmapNTagHashIndex() { return m_ntag_indexes_; }
 
  private:
@@ -288,6 +261,7 @@ class MMapTagColumnTable: public TSObject {
   std::vector<TagColumn*>  m_cols_;
   TagColumn*               m_bitmap_file_{nullptr};
   TagColumn*               m_row_info_file_{nullptr};
+  TagColumn*               m_valid_column_file_{nullptr};
   TagColumn*               m_meta_file_{nullptr};
   TagColumn*               m_hps_file_{nullptr};
   MMapHashIndex*           m_index_{nullptr};
@@ -305,7 +279,7 @@ class MMapTagColumnTable: public TSObject {
   int create_mmap_file(const string &path, const std::string &db_path,
                        const string &tbl_sub_path, int flags, ErrorInfo &err_info);
 
-  int init(const vector<TagInfo> &schema, ErrorInfo &err_info);
+  int init(const vector<TagInfo> &schema, ErrorInfo &err_info, bool issparse = false);
 
   int initMetaData(ErrorInfo &err_info);
 
@@ -315,13 +289,15 @@ class MMapTagColumnTable: public TSObject {
 
   int writeTagInfo(uint64_t start_offset, const std::vector<TagInfo>& tag_schemas);
 
-  int readTagInfo(ErrorInfo &err_info);
+  int readTagInfo(ErrorInfo &err_info, bool issparse = false);
 
   int initBitMapColumn(ErrorInfo &err_info);
 
   int initRowInfoColumn(ErrorInfo& err_info);
 
   int initHashPointColumn(ErrorInfo& err_info);
+
+  int initValidColumn(ErrorInfo& err_info);
 
   int extend(size_t new_record_count, ErrorInfo &err_info);
 
@@ -333,8 +309,7 @@ class MMapTagColumnTable: public TSObject {
   { return reinterpret_cast<char *>((intptr_t)m_hps_file_->startAddr() + n*sizeof(hashPointStorage));}
   // bitmap + primarytags + tags
   int push_back(size_t r, const char *data);
-
-  // void push_back_primary(size_t r, const char * data);
+  int push_back(size_t r, const TSSlice& ptag);
 
   inline void push_back_entityid(size_t r, uint32_t entity_id, uint32_t group_id) {
     if (CheckGroupID(group_id, true) == KStatus::FAIL) {
@@ -433,7 +408,7 @@ class MMapTagColumnTable: public TSObject {
 
   virtual ~MMapTagColumnTable();
 
-  int create(const vector<TagInfo> &schema, int32_t entity_group_id, uint32_t new_ts_version, ErrorInfo &err_info);
+  int create(const vector<TagInfo> &schema, int32_t entity_group_id, uint32_t new_ts_version, ErrorInfo &err_info, bool issparse = false);
 
   int open(const string &table_path, const std::string &db_path, const string &tbl_sub_path,
            int flags, ErrorInfo &err_info) override;
@@ -445,7 +420,8 @@ class MMapTagColumnTable: public TSObject {
   int initNTagHashIndex(ErrorInfo& err_info);
 
   int insert(uint32_t entity_id, uint32_t subgroup_id, uint32_t hashpoint, uint64_t osn, uint8_t operate_type,
-             const char *rec, size_t* row_id);
+             const TSSlice& ptag, const TSSlice& alltag, const std::vector<uint32_t>& valid_columns,
+             size_t* row_id);
 
   inline size_t recordSize() {return m_meta_data_->m_record_size;}
 

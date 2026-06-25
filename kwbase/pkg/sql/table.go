@@ -563,7 +563,7 @@ func (tc *TableCollection) GetObjectDesc(
 	if err != nil {
 		return false, 0, 0, nil, 0, err
 	}
-	if (table.TableType == tree.TimeseriesTable) || (found && table.TableType == tree.TemplateTable) {
+	if (table.IsTimeseriesTable() || table.IsSparseTable()) || (found && table.IsTemplateTable()) {
 		cols := table.TableDescriptor.GetColumns()
 		return true, uint32(table.TableDescriptor.ParentID), uint32(table.TableDescriptor.ID), &cols, 0, nil
 	}

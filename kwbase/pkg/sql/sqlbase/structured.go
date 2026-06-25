@@ -773,8 +773,12 @@ func (desc *TableDescriptor) TypeName() string {
 		return "template table"
 	case tree.InstanceTable:
 		return "instance table"
-	default:
+	case tree.SparseTable:
+		return "sparse table"
+	case tree.RelationalTable:
 		return "relation"
+	default:
+		return ""
 	}
 }
 
@@ -808,11 +812,41 @@ func (desc *TableDescriptor) IsTable() bool {
 // TS Table resource.
 func (desc *TableDescriptor) IsTSTable() bool {
 	switch desc.TableType {
-	case tree.TimeseriesTable, tree.TemplateTable, tree.InstanceTable:
+	case tree.TimeseriesTable, tree.TemplateTable, tree.InstanceTable, tree.SparseTable:
 		return true
 	default:
 		return false
 	}
+}
+
+// IsSparseTable returns true if the TableDescriptor actually describes a
+// Sparse Table resource.
+func (desc *TableDescriptor) IsSparseTable() bool {
+	return desc.TableType == tree.SparseTable
+}
+
+// IsInstanceTable returns true if the TableDescriptor actually describes a
+// Instance Table resource.
+func (desc *TableDescriptor) IsInstanceTable() bool {
+	return desc.TableType == tree.InstanceTable
+}
+
+// IsTemplateTable returns true if the TableDescriptor actually describes a
+// Template Table resource.
+func (desc *TableDescriptor) IsTemplateTable() bool {
+	return desc.TableType == tree.TemplateTable
+}
+
+// IsTimeseriesTable returns true if the TableDescriptor actually describes a
+// Timeseries Table resource.
+func (desc *TableDescriptor) IsTimeseriesTable() bool {
+	return desc.TableType == tree.TimeseriesTable
+}
+
+// IsRelationalTable returns true if the TableDescriptor actually describes a
+// Relational Table resource.
+func (desc *TableDescriptor) IsRelationalTable() bool {
+	return desc.TableType == tree.RelationalTable
 }
 
 // IsView returns true if the TableDescriptor actually describes a
@@ -4311,6 +4345,11 @@ func (desc *ColumnDescriptor) IsOrdinaryTagCol() bool {
 // TsColStorgeLen is part of the cat.Column interface.
 func (desc *ColumnDescriptor) TsColStorgeLen() uint64 {
 	return desc.TsCol.StorageLen
+}
+
+// TsVariableLengthType is part of the cat.Column interface.
+func (desc *ColumnDescriptor) TsVariableLengthType() int32 {
+	return int32(desc.TsCol.VariableLengthType)
 }
 
 // HasNullDefault checks that the column descriptor has a default of NULL.

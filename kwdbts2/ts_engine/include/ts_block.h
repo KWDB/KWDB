@@ -72,8 +72,7 @@ class TsBlock {
                                std::unique_ptr<TsBitmapBase>* bitmap, TsScanStats* ts_scan_stats = nullptr) = 0;
   virtual KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>* schema,
                                 TSSlice& value, TsScanStats* ts_scan_stats = nullptr) = 0;
-  virtual bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>* schema,
-                          TsScanStats* ts_scan_stats = nullptr) = 0;
+
   // if just get timestamp , this function return fast.
   virtual timestamp64 GetTS(int row_num, TsScanStats* ts_scan_stats = nullptr) = 0;
 

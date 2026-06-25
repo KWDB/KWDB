@@ -21,11 +21,12 @@
 #include <limits>
 #include <memory>
 #include <type_traits>
-
+#include <vector>
 #include "data_type.h"
 #include "libkwdbts2.h"
 #include "ts_arena.h"
 #include "ts_compressor.h"
+#include "ts_payload.h"
 
 namespace kwdbts {
 
@@ -40,11 +41,12 @@ struct TSMemSegRowData {
   uint64_t osn = 0;
 
   // the following fields WILL NOT BE used to sort and in little-endian order.
- private:
+ protected:
   TSTableID table_id;
   uint32_t table_version;
   uint32_t database_id;
-  TSSlice row_data;
+  TsRawPayload* payload_obj;
+  uint32_t row_idx_in_payload;
 
  private:
   TS_OSN little_endian_lsn = 0;
@@ -52,9 +54,13 @@ struct TSMemSegRowData {
  public:
   TSMemSegRowData(uint32_t db_id, TSTableID tbl_id, uint32_t tbl_version, TSEntityID en_id)
       : entity_id(htobe64(en_id)), table_id(tbl_id), table_version(tbl_version),
-        database_id(db_id), row_data{nullptr, 0} {}
+        database_id(db_id), payload_obj(nullptr), row_idx_in_payload(0) {}
 
-  void SetRowData(const TSSlice& crow_data) { row_data = crow_data; }
+  virtual ~TSMemSegRowData() {}
+  void SetRowData(TsRawPayload* p, uint32_t row_idx) {
+    payload_obj = p;
+    row_idx_in_payload = row_idx;
+  }
   void SetData(timestamp64 cts, TS_OSN clsn) {
     // the following line has undefined behavior, see: https://godbolt.org/z/1e567j4G5
     // ts = htobe64(cts - INT64_MIN);
@@ -63,45 +69,81 @@ struct TSMemSegRowData {
     osn = htobe64(clsn);
     little_endian_lsn = clsn;
   }
-  static constexpr size_t GetKeyLen() { return offsetof(TSMemSegRowData, table_id); }
+  static constexpr size_t GetKeyLen() { return 24; }  // sizeof(entity_id) + sizeof(ts) + sizeof(osn)
 
   TSEntityID GetEntityId() const { return be64toh(entity_id); }
   timestamp64 GetTS() const { return static_cast<timestamp64>(be64toh(ts) ^ (1ULL << 63)); }
   uint64_t GetOSN() const { return little_endian_lsn; }
   const uint64_t* GetOSNAddr() const { return &little_endian_lsn; }
-
+  virtual const TsRawPayloadSparseRowWithTypeParser* GetRowParser() const { return nullptr; }
+  virtual TSSlice GetRowData() const {
+    return payload_obj->GetRowData(row_idx_in_payload);
+  }
   TSTableID GetTableId() const { return table_id; }
   uint32_t GetTableVersion() const { return table_version; }
   uint32_t GetDatabaseId() const { return database_id; }
-  TSSlice GetRowData() const { return row_data; }
+
+  uint32_t GetPayloadVersion() const { return payload_obj->GetPayloadVersion(); }
+
+  TsRawPayload* GetPayloadObj() const { return payload_obj; }
+  uint32_t GetRowIdxInPD() const { return row_idx_in_payload; }
 
   inline bool SameEntityAndTableVersion(const TSMemSegRowData* b) const {
     return this->entity_id == b->entity_id && this->table_version == b->table_version;
   }
   inline bool SameEntityAndTs(const TSMemSegRowData* b) const {
-    return std::memcmp(this, b, offsetof(TSMemSegRowData, osn)) == 0;
+    return std::memcmp(&(this->entity_id), &(b->entity_id), 16) == 0;  // Compare entity_id and ts only
   }
   inline bool SameTableId(const TSMemSegRowData* b) const { return this->table_id == b->table_id; }
 };
 
-static_assert(sizeof(TSMemSegRowData) == 64, "TSMemSegRowData size is not 64");
+static_assert(sizeof(TSMemSegRowData) == 72, "TSMemSegRowData size is not right.");
 //  static_assert(std::has_unique_object_representations_v<TSMemSegRowData>,
 //                "TSMemSegRowData has some uninitialized padding");
-
 struct TSMemSegRowDataWithGuard : public TSMemSegRowData {
  private:
-  std::shared_ptr<TsSliceGuard> row_data_guard = nullptr;
- public:
-  TSMemSegRowDataWithGuard(uint32_t db_id, TSTableID tbl_id, uint32_t tbl_version, TSEntityID en_id)
-      : TSMemSegRowData(db_id, tbl_id, tbl_version, en_id) {}
+  std::shared_ptr<TsSliceGuard> row_data_guard = nullptr;  // row_data with payload version 2 and row type = 1
+  TsRawPayloadSparseRowWithTypeParser row_parser;
 
+ public:
+  TSMemSegRowDataWithGuard(uint32_t db_id, TSTableID tbl_id, uint32_t tbl_version, TSEntityID en_id,
+    const std::vector<AttributeInfo>* schema)
+      : TSMemSegRowData(db_id, tbl_id, tbl_version, en_id), row_parser(schema) {}
+
+  ~TSMemSegRowDataWithGuard() override {}
   void SetRowData(std::shared_ptr<TsSliceGuard>& crow_data_guard) {
     row_data_guard = crow_data_guard;
-    TSSlice data_slice {row_data_guard->data(), crow_data_guard->size()};
-    TSMemSegRowData::SetRowData(data_slice);
+    TSMemSegRowData::SetRowData(nullptr, 0);
+    row_parser.Init(row_data_guard->AsSlice());
+  }
+  const TsRawPayloadSparseRowWithTypeParser* GetRowParser() const override { return &row_parser; }
+
+  TSSlice GetRowData() const override {
+    return row_data_guard->AsSlice();
   }
 };
+struct TSMemSegRowDataOnlyData : public TSMemSegRowData {
+ private:
+  TSSlice row_data_with_type;  // row_data with payload version 2 and row type = 1
+  TsRawPayloadSparseRowWithTypeParser row_parser;
 
+ public:
+  TSMemSegRowDataOnlyData(uint32_t db_id, TSTableID tbl_id, uint32_t tbl_version, TSEntityID en_id,
+    const std::vector<AttributeInfo>* schema)
+      : TSMemSegRowData(db_id, tbl_id, tbl_version, en_id), row_parser(schema) {}
+
+  ~TSMemSegRowDataOnlyData() override {}
+  void SetRowData(TSSlice& row_data) {
+    row_data_with_type = row_data;
+    TSMemSegRowData::SetRowData(nullptr, 0);
+    row_parser.Init(row_data_with_type);
+  }
+  const TsRawPayloadSparseRowWithTypeParser* GetRowParser() const  override { return &row_parser; }
+
+  TSSlice GetRowData() const override {
+    return row_data_with_type;
+  }
+};
 struct TSRowDataComparator {
   inline const TSMemSegRowData* DecodeKeyValue(const char* b) const {
     return reinterpret_cast<const TSMemSegRowData*>(b);
@@ -199,9 +241,11 @@ class TsMemSegIndex {
 
   // use replacement new outside of this class.
   TSMemSegRowData* AllocateMemSegRowData(uint32_t db_id, TSTableID tbl_id, uint32_t tbl_version, TSEntityID en_id,
-                                         TSSlice row_data);
+                                         TsRawPayload* p, uint32_t row_idx);
 
   void InsertRowData(const TSMemSegRowData* row);
+
+  char* AllocPayload(const TSSlice& payload_data);
 
   inline const TSMemSegRowData* ParseKey(const char* key) {
     return compare_.DecodeKeyValue(key);

@@ -74,8 +74,9 @@ const (
 	DefaultVariableLEN            = 254
 	MaxPrimaryTagWidth            = 128
 	DefaultPrimaryTagVarcharWidth = 64
-	MaxTSDataColumns              = 4096 // the maximum number of data columns for ts table.
-	MaxVariableTupleLen           = 255  // the max length of variable-length type in tuple mode
+	MaxTSDataColumns              = 4096
+	MaxSparseTSDataColumns        = 20000 // the maximum number of data columns for ts table.
+	MaxVariableTupleLen           = 255   // the max length of variable-length type in tuple mode
 )
 
 type createTableNode struct {
@@ -1601,9 +1602,13 @@ func buildTSTableDesc(
 	if len(n.Defs) < 2 {
 		return pgerror.New(pgcode.InvalidTableDefinition, "ts table must have at least 2 columns")
 	}
-	if len(n.Defs) > MaxTSDataColumns {
+	if !desc.IsSparseTable() && len(n.Defs) > MaxTSDataColumns {
 		return pgerror.Newf(pgcode.TooManyColumns, "table %s has too many columns,"+
-			" each timeseries table can have maximum 4096 columns", n.Table.Table())
+			" each timeseries table can have maximum %d columns", n.Table.Table(), MaxTSDataColumns)
+	}
+	if desc.IsSparseTable() && len(n.Defs) > MaxSparseTSDataColumns {
+		return pgerror.Newf(pgcode.TooManyColumns, "table %s has too many columns,"+
+			" each sparse timeseries table can have maximum %d columns", n.Table.Table(), MaxSparseTSDataColumns)
 	}
 	desc.TsTable.TsVersion = 1
 	desc.TsTable.NextTsVersion = desc.TsTable.TsVersion + 1
@@ -1805,7 +1810,7 @@ func checkAndMakeTSColDesc(
 			d.Type = types.MakeTimestampTZ(3)
 		}
 	} else {
-		d.Type = sqlbase.UpdateTimeColPrecision(d.Type, tree.TimeseriesTable)
+		d.Type = sqlbase.UpdateTimeColPrecision(d.Type, true)
 	}
 	if err = checkTSColValidity(d); err != nil {
 		return nil, err
@@ -3009,8 +3014,8 @@ func createInstanceTable(
 		return err
 	}
 
-	if tmplTbl.TableType == tree.TimeseriesTable {
-		return pgerror.Newf(pgcode.WrongObjectType, "can not create instance table use timeseries table: %s", tmplTbl.Name)
+	if !tmplTbl.IsTemplateTable() {
+		return pgerror.Newf(pgcode.WrongObjectType, "can not create instance table use %s table: %s", tmplTbl.TypeName(), tmplTbl.Name)
 	}
 	if err = tmplTbl.CheckTSTableStateValid(); err != nil {
 		return err
@@ -3123,6 +3128,7 @@ func createInstanceTable(
 		colIndexs,
 		uint32(db.ID),
 		uint32(tmplTblID),
+		tmplTbl.TableType,
 		false,
 		uint32(tmplTbl.TsTable.TsVersion),
 		tmplTbl.TsTable.HashNum,

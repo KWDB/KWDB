@@ -177,6 +177,30 @@ type Table interface {
 
 	// GetTSHashNum return hash num of ts table
 	GetTSHashNum() uint64
+
+	// IsRelationalTable returns true if the table actually describes a
+	// Relational Table resource.
+	IsRelationalTable() bool
+
+	// IsTSTable returns true if the table actually describes a
+	// TS Table resource.
+	IsTSTable() bool
+
+	// IsTemplateTable returns true if the table actually describes a
+	// Template Table resource.
+	IsTemplateTable() bool
+
+	// IsInstanceTable returns true if the table actually describes a
+	// Instance Table resource.
+	IsInstanceTable() bool
+
+	// IsSparseTable returns true if the table actually describes a
+	// Sparse Table resource.
+	IsSparseTable() bool
+
+	// IsTimeseriesTable returns true if the table actually describes a
+	// Timeseries Table resource.
+	IsTimeseriesTable() bool
 }
 
 // TriggerMeta stores trigger's metadata in cat.Table

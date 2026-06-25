@@ -29,8 +29,7 @@ k_uint16 ScanRowBatch::GetDataLen(k_uint32 col, k_uint32 offset, roachpb::KWDBKT
   }
 }
 
-k_bool ScanRowBatch::IsOverflow(k_uint32 col,
-                                roachpb::KWDBKTSColumn::ColumnType ctype) {
+k_bool ScanRowBatch::IsOverflow(k_uint32 col, roachpb::KWDBKTSColumn::ColumnType ctype) {
   if (roachpb::KWDBKTSColumn::TYPE_DATA != ctype) {
     return false;
   }
@@ -144,6 +143,7 @@ void ScanRowBatch::CopyColumnData(k_uint32 col_idx, char* dest, k_uint32 data_le
         continue;
       }
       memcpy(dest + offset, batch->mem, total_len);
+      offset += total_len;
     }
   }
 }
@@ -227,7 +227,7 @@ void ReverseScanRowBatch::ResetLine() {
 }
 
 void ReverseScanRowBatch::CopyColumnData(k_uint32 col_idx, char* dest, k_uint32 data_len,
-                                  roachpb::KWDBKTSColumn::ColumnType ctype, roachpb::DataType dt) {
+                                         roachpb::KWDBKTSColumn::ColumnType ctype, roachpb::DataType dt) {
   if (roachpb::KWDBKTSColumn::TYPE_DATA != ctype) {
     auto src = static_cast<char*>(tagdata_[col_idx].tag_data);
     if (src == nullptr) {

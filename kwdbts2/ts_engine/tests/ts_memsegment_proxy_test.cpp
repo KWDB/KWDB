@@ -167,12 +167,11 @@ TEST_F(TsMemSegmentProxyTest, SingleTable_Partition_Device) {
     auto lsn = init_lsn + static_cast<TS_OSN>(i * 54321);
     lsn_vec[i] = lsn;
     std::memcpy(payload.data, &lsn, sizeof(lsn));
-    TsRawPayloadRowParser parser{metric_schema};
     TsRawPayload p{metric_schema};
     p.ParsePayLoadStruct(payload);
     auto ptag = p.GetPrimaryTag();
 
-    ASSERT_EQ(vgroup->PutData(&ctx, schema_mgr, 0, &ptag, dev_id, &payload, false), SUCCESS);
+    ASSERT_EQ(vgroup->PutData(&ctx, schema_mgr, 0, &ptag, dev_id, p, false), SUCCESS);
     free(payload.data);
     versions.push_back(vgroup->CurrentVersion());
     ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);

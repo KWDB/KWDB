@@ -65,10 +65,6 @@ class TsTableImpl : public TsTable {
     return vgroups_[vgroup_id - 1].get();
   }
 
-  KStatus PutData(kwdbContext_p ctx, TsVGroup* v_group, TSSlice* payload, int payload_num,
-                          uint64_t mtr_id, TSEntityID entity_id, uint32_t* inc_unordered_cnt,
-                          DedupResult* dedup_result, const DedupRule& dedup_rule, bool write_wal);
-
   KStatus PutData(kwdbContext_p ctx, TsVGroup* v_group, TsRawPayload& p,
                   TSEntityID entity_id, uint64_t mtr_id, uint32_t* inc_unordered_cnt,
                   DedupResult* dedup_result, const DedupRule& dedup_rule, bool write_wal);

@@ -152,7 +152,7 @@ void ConstructRoachpbTable(roachpb::CreateTsTable* meta, KTableKey table_id, uin
                            std::vector<roachpb::DataType> tag_types = {
                             roachpb::DataType::TIMESTAMP, roachpb::DataType::VARCHAR, roachpb::DataType::VARCHAR, roachpb::DataType::TIMESTAMP
                            },
-                           bool only_one_primary_tag = false) {
+                           bool only_one_primary_tag = false, bool sparse_table = false) {
   // create table :  TIMESTAMP | INT | DOUBLE
   roachpb::KWDBTsTable *table = KNEW roachpb::KWDBTsTable();
   table->set_ts_table_id(table_id);
@@ -161,6 +161,7 @@ void ConstructRoachpbTable(roachpb::CreateTsTable* meta, KTableKey table_id, uin
   table->set_ts_version(1);
   table->set_database_id(db_id);
   table->set_hash_num(2000);
+  table->set_sparse(sparse_table);
   meta->set_allocated_ts_table(table);
 
   std::vector<ZTableColumnMeta> col_meta;
@@ -259,8 +260,8 @@ void GenPayloadTagData(Payload& payload, std::vector<AttributeInfo>& tag_schema,
   }
   char* primary_start_ptr = payload.GetPrimaryTagAddr();
   char* tag_data_start_ptr = payload.GetTagAddr() + (tag_schema.size() + 7) / 8;
-  char* bitmap_ptr = payload.GetTagAddr();
-  char* var_data_ptr = tag_data_start_ptr + (tag_schema.back().offset + tag_schema.back().size);
+  // char* bitmap_ptr = payload.GetTagAddr();
+  // char* var_data_ptr = tag_data_start_ptr + (tag_schema.back().offset + tag_schema.back().size);
   std::string var_str = std::to_string(start_ts);
   for (int i = 0 ; i < tag_schema.size() ; i++) {
     // generating primary tag
@@ -345,9 +346,9 @@ TSSlice GenSomePayloadData(kwdbContext_p ctx, k_uint32 count, KTimestamp start_t
   // set data_len_len
   KInt32(value + header_len + primary_len_len + primary_tag_len + tag_len_len + tag_value_len) = data_len;
   Payload p(schema, actual_cols, {value, data_length});
-  int16_t len = 0;
+  // int16_t len = 0;
   GenPayloadTagData(p, tag_schema, start_ts, true);
-  uint64_t var_exist_len = 0;
+  // uint64_t var_exist_len = 0;
   for (int i = 0; i < schema.size(); i++) {
     switch (schema[i].type) {
       case DATATYPE::TIMESTAMP64:
@@ -391,6 +392,7 @@ void ConstructRoachpbTableWithTypes(roachpb::CreateTsTable* meta, KTableKey tabl
     column->set_column_id(i + 1);
     if (i == 0) {
       column->set_name("k_timestamp");  // first column name: k_timestamp
+      column->set_nullable(false);
     } else {
       column->set_name("column_" + std::to_string(i + 1));
     }
@@ -420,7 +422,8 @@ struct SliceGuard {
 };
 
 TSSlice GenRowPayload(const std::vector<AttributeInfo>& metric, const std::vector<TagInfo>& tag, TSTableID table_id, uint32_t version, TSEntityID dev_id, int num, KTimestamp ts, KTimestamp interval = 1000) {
-  TSRowPayloadBuilder builder(tag, metric, num);
+  TSRowPayloadSparseBuilder builder;
+  builder.Init(tag, metric, num, TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_TUPLE);
   builder.SetTagValue(0, (char*)(&dev_id), sizeof(dev_id));
   string var_str = intToString(dev_id);
   for (size_t i = 1; i < tag.size(); i++) {
@@ -489,7 +492,8 @@ TSSlice GenRowPayload(const std::vector<AttributeInfo>& metric, const std::vecto
 TSSlice GenRowPayloadForSumOverflow(const std::vector<AttributeInfo>& metric, const std::vector<TagInfo>& tag,
                                     TSTableID table_id, uint32_t version, TSEntityID dev_id, int num, KTimestamp ts,
                                     KTimestamp interval = 1000) {
-  TSRowPayloadBuilder builder(tag, metric, num);
+  TSRowPayloadSparseBuilder builder;
+  builder.Init(tag, metric, num, TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_TUPLE);
   builder.SetTagValue(0, (char*)(&dev_id), sizeof(dev_id));
   string var_str = intToString(dev_id);
   for (size_t i = 1; i < tag.size(); i++) {
@@ -547,7 +551,8 @@ TSSlice GenRowPayload(const std::vector<AttributeInfo>& metric, const std::vecto
                       vector<timestamp64>& ts,
                       vector<int32_t>& col1_value, vector<bool>& col1_is_null,
                       vector<double>& col2_value, vector<bool>& col2_is_null) {
-  TSRowPayloadBuilder builder(tag, metric, num);
+  TSRowPayloadSparseBuilder builder;
+  builder.Init(tag, metric, num, TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_TUPLE);
   builder.SetTagValue(0, (char*)(&dev_id), sizeof(dev_id));
   string var_str = intToString(dev_id);
   for (size_t i = 1; i < tag.size(); i++) {
@@ -643,7 +648,10 @@ KStatus InsertData(const std::vector<AttributeInfo>& metric, const std::vector<T
                               kwdbContext_p ctx, TSEngineImpl* engine) {
   assert(metric_data.size() == tag_data.size());
   for (int i = 0; i < tag_data.size(); ++i) {
-    TSRowPayloadBuilder builder(tag, metric, metric_data[i].size());
+    TSRowPayloadSparseBuilder builder;
+    if (!builder.Init(tag, metric, metric_data[i].size(), TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_TUPLE)) {
+      return KStatus::FAIL;
+    }
     for (size_t j = 0; j < tag.size(); j++) {
       if (tag[j].m_data_type == DATATYPE::VARSTRING) {
         builder.SetTagValue(j, (char*)tag_data[i][j].c_str(), tag_data[i][j].length());

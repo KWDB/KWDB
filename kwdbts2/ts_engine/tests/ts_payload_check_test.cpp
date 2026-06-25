@@ -73,7 +73,8 @@ class TestBinaryToHexstr : public testing::Test {
     }
   }
   TSSlice GenPayload(KTimestamp primary_tag, int data_count) {
-    TSRowPayloadBuilder pay_build(tag_schema_, data_schema_, data_count);
+    TSRowPayloadSparseBuilder pay_build;
+    pay_build.Init(tag_schema_, data_schema_, data_count, TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_TUPLE);
     for (size_t i = 0; i < tag_schema_.size(); i++) {
       KTimestamp cur_value = primary_tag + i;
       pay_build.SetTagValue(i, reinterpret_cast<char*>(&cur_value), sizeof(KTimestamp));
@@ -157,7 +158,7 @@ TEST_F(TestBinaryToHexstr, BinaryToHexStrTest) {
 
 TEST_F(TestBinaryToHexstr, payloadToHexStrTest) {
   TSSlice payload = GenPayload(10010, 3);
-  TsRawPayload p;
+  TsRawPayload p(&data_schema_);
   auto s = p.ParsePayLoadStruct(payload);
   ASSERT_EQ(s, KStatus::SUCCESS);
   KUint32(payload.data + TsRawPayload::row_num_offset_) = 2;
@@ -171,19 +172,19 @@ TEST_F(TestBinaryToHexstr, payloadToHexStrTest) {
 
 TEST_F(TestBinaryToHexstr, payloadRowToHexStrTest) {
   TSSlice payload = GenPayload(10010, 3);
-  TsRawPayload p;
+  TsRawPayload p(&data_schema_);
   auto s = p.ParsePayLoadStruct(payload);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  auto row_data = p.GetRowData(0);
-  TsRawPayloadRowParser row_p(&data_schema_);
-  ASSERT_TRUE(!row_p.IsColNull(row_data, data_schema_.size() - 1));
+  TSSlice row_data = p.GetRowData(0);
+  const TsRawPayloadRowParser* row_p = p.GetRowParser();
+  ASSERT_TRUE(row_p->GetColFlags(row_data, data_schema_.size() - 1) == DataFlags::kValid);
   TSSlice col_data;
-  ASSERT_TRUE(row_p.GetColValueAddr(row_data, data_schema_.size() - 1, &col_data));
+  ASSERT_TRUE(row_p->GetColValueAddr(row_data, data_schema_.size() - 1, &col_data));
 
   row_data.len -= 1;
-  ASSERT_TRUE(!row_p.GetColValueAddr(row_data, data_schema_.size() - 1, &col_data));
+  ASSERT_TRUE(!row_p->GetColValueAddr(row_data, data_schema_.size() - 1, &col_data));
   row_data.len += 2;
-  ASSERT_TRUE(row_p.GetColValueAddr(row_data, data_schema_.size() - 1, &col_data));
+  ASSERT_TRUE(row_p->GetColValueAddr(row_data, data_schema_.size() - 1, &col_data));
   free(payload.data);
 }
 
@@ -191,7 +192,7 @@ TEST_F(TestBinaryToHexstr, HexStrToPayloadTest) {
   std::string hex_str = "1111111111111111111111111111111111111111111111111111111111111111111111111111111";
   TSSlice payload;
   HexStrToBinary(hex_str, payload);
-  TsRawPayload p;
+  TsRawPayload p(&data_schema_);
   auto s = p.ParsePayLoadStruct(payload);
   ASSERT_EQ(s, KStatus::FAIL);
   free(payload.data);

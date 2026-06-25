@@ -176,7 +176,7 @@ func (md *Metadata) CheckSingleTsTable() bool {
 		return false
 	}
 	for _, tbl := range allTables {
-		if tbl.Table.GetTableType() != tree.TimeseriesTable {
+		if !tbl.Table.IsTSTable() {
 			return false
 		}
 	}
@@ -282,6 +282,43 @@ func (md *Metadata) AddDependency(name MDDepName, ds cat.DataSource, priv privil
 		name:       name,
 		privileges: (1 << priv),
 	})
+}
+
+// CheckTableNameFn checks table name
+type CheckTableNameFn func(name cat.DataSourceName, tab cat.Table) (bool, error)
+
+// CheckHasSparseTable resolves (again) each data source on which this metadata
+// depends, that has sparse table
+func (md *Metadata) CheckHasSparseTable(checkNameFn CheckTableNameFn) (bool, error) {
+	for i := range md.deps {
+		name := &md.deps[i].name
+		if name.byID != 0 {
+			// check has SparseTable
+			for _, t := range md.tables {
+				if !t.Table.GetTableType().IsSparseTable() {
+					continue
+				}
+				if t.Table.ID() == name.byID {
+					return true, nil
+				}
+			}
+		} else {
+			for _, t := range md.tables {
+				if !t.Table.GetTableType().IsSparseTable() {
+					continue
+				}
+				equal, err := checkNameFn(name.byName, t.Table)
+				if err != nil {
+					return false, err
+				}
+				if equal {
+					return true, nil
+				}
+			}
+		}
+	}
+
+	return false, nil
 }
 
 // CheckDependencies resolves (again) each data source on which this metadata
@@ -429,7 +466,7 @@ func (md *Metadata) AddColumn(alias string, typ *types.T) ColumnID {
 	// label columns based on the type of table, ColumnRel and ColumnTS
 	tsProp := ColNormal
 	switch md.tableType {
-	case int32(tree.TimeseriesTable), int32(tree.InstanceTable), int32(tree.TemplateTable):
+	case int32(tree.TimeseriesTable), int32(tree.InstanceTable), int32(tree.TemplateTable), int32(tree.SparseTable):
 		tsProp = TSColNormal
 	}
 

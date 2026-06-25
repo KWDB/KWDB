@@ -205,6 +205,7 @@ message KWDBTsTable {
   optional uint32 ts_version = 13 [(gogoproto.nullable) = false];
   // hash num
   optional uint64 hash_num = 14 [(gogoproto.nullable) = false];
+  optional bool sparse = 15 [(gogoproto.nullable) = false];
 }
 
 // KWDBAlterType

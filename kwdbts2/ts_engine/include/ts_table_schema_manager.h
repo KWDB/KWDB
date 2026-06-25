@@ -60,6 +60,7 @@ class TsTableSchemaManager {
   fs::path tag_path_;
   uint64_t hash_num_;
   int64_t partition_interval_ = -1;
+  bool sparse_table_ = false;
   std::atomic<bool> dropped_ = false;
 
  protected:
@@ -96,6 +97,10 @@ class TsTableSchemaManager {
 
   uint64_t GetHashNum() const {
     return hash_num_;
+  }
+
+  bool IsSparseTable() const {
+    return sparse_table_;
   }
 
   TSTableID GetTableId() const {

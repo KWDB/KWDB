@@ -19,7 +19,7 @@ constexpr static uint32_t BLOCK_VERSION_LIMIT = CURRENT_BLOCK_VERSION + 1;
 
 // batch version control
 constexpr static uint32_t INVALID_BATCH_VERSION = -1;
-constexpr static uint32_t CURRENT_BATCH_VERSION = 1;
+constexpr static uint32_t CURRENT_BATCH_VERSION = 2;
 constexpr static uint32_t BATCH_VERSION_LIMIT = CURRENT_BATCH_VERSION + 1;
 
 constexpr static uint32_t CURRENT_SNAPSHOT_VERSION = 2;

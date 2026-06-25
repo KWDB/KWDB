@@ -154,10 +154,13 @@ KStatus TsBlockSpan::GenMergeRowData(std::list<std::shared_ptr<kwdbts::TsBlockSp
   size_t var_part_len;
   builder.GetRowInfo(bitmap_len, fixed_tuple_len, var_part_len);
 
-  TsBufferBuilder tmp_builder(bitmap_len + fixed_tuple_len + var_part_len);
+  // generate row struct just as
+  TsBufferBuilder tmp_builder(8 + bitmap_len + fixed_tuple_len + var_part_len);
   row_data = std::make_shared<TsSliceGuard>(tmp_builder.GetBuffer());
-
-  TSSlice result{row_data->data(), row_data->size()};
+  KUint32(row_data->data()) = MAX_PAYLOAD_VERSION;
+  KUint16(row_data->data() + 4) = TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_TUPLE;
+  KUint16(row_data->data() + 6) = 0;
+  TSSlice result{row_data->data() + 8, row_data->size() - 8};
   bool ret = builder.Build(&result, false);
   if (!ret) {
     LOG_ERROR("TSRowPayloadBuilder::BuildNoTagPayload failed.");
@@ -204,7 +207,8 @@ KStatus TsBlockSpan::MakeMergeBlockSpan(std::list<std::shared_ptr<kwdbts::TsBloc
   std::shared_ptr<TsMemSegBlock> mem_block = std::make_shared<TsMemSegBlock>(std::shared_ptr<TsMemSegment>(nullptr));
   TSMemSegRowDataWithGuard& dedup_row_data = mem_block->AllocateRow(tbl_schema_manager->GetDbID(),
                                                                     first_block_span->GetTableID(), scan_version,
-                                                                    first_block_span->GetEntityID());
+                                                                    first_block_span->GetEntityID(),
+                                                                    scan_schema->getSchemaInfoExcludeDroppedPtr());
   dedup_row_data.SetData(first_block_span->GetTS(0), dedup_block_spans.back()->GetLastOSN());
   dedup_row_data.SetRowData(row_data_guard);
   mem_block->SetMemoryAddrSafe();

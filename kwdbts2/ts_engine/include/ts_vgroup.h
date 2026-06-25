@@ -131,7 +131,7 @@ class TsVGroup {
 
   KStatus PutData(kwdbContext_p ctx, const std::shared_ptr<TsTableSchemaManager>& tb_schema,
                   uint64_t mtr_id, TSSlice* primary_tag, TSEntityID entity_id,
-                  TSSlice* payload, bool write_wal);
+                  TsRawPayload& p, bool write_wal);
 
   fs::path GetPath() const;
 
@@ -315,7 +315,7 @@ class TsVGroup {
 
   KStatus undoPutTag(kwdbContext_p ctx, TS_OSN log_lsn, const TSSlice& payload);
 
-  KStatus redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSlice& payload);
+  KStatus redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSlice& payload, const TSSlice& old_payload);
 
   KStatus undoUpdateTag(kwdbContext_p ctx, TS_OSN log_lsn, TSSlice payload, const TSSlice& old_payload);
 
@@ -381,7 +381,6 @@ class TsVGroup {
   KStatus GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_version,
                                 const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                                 const std::shared_ptr<MMapMetricsTable>& scan_schema,
-                                std::shared_ptr<TsRawPayloadRowParser>& parser,
                                 const std::vector<KwTsSpan>& ts_spans, const std::vector<k_uint32>& scan_cols,
                                 timestamp64& entity_last_ts, bool& last_payload_valid, ResultSet* res);
 
@@ -416,7 +415,8 @@ class TsVGroup {
     LOG_INFO("recycled %lu bytes for last cache", recycled_size);
   }
 
-  void UpdateEntityLatestRow(EntityID entity_id, timestamp64 max_ts, const TSSlice& payload, uint32_t version) {
+  void UpdateEntityLatestRow(EntityID entity_id, timestamp64 max_ts,
+    const TSSlice& payload, uint32_t tbl_version) {
     std::unique_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
     if (!entity_latest_row_.count(entity_id) || max_ts >= entity_latest_row_[entity_id].last_ts) {
       TsTableLastRow& last_row = entity_latest_row_[entity_id];
@@ -457,7 +457,7 @@ class TsVGroup {
           payload_data = last_row.last_payload.data;
         }
         last_row.is_payload_valid = true;
-        last_row.version = version;
+        last_row.version = tbl_version;
         last_row.last_payload.len = payload.len;
         if (last_row.last_payload.data != payload_data) {
           last_row.last_payload.data = payload_data;

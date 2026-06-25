@@ -287,10 +287,9 @@ TEST(TsDelItemUtilTest, snapshot_pack_301_version) {
   uint32_t package_id = 10086;
   TSTableID tbl_id = 12345;
   uint32_t tbl_version = 456787;
-  TsBatchData batch_work;
-  batch_work.SetHashPoint(1111);
-  batch_work.UpdateBatchDataInfo();
-  TSSlice batch_data{batch_work.data_.data(), batch_work.data_.size()};
+  char tmp_batch[128];
+  memset(tmp_batch, 0, 128);
+  TSSlice batch_data{tmp_batch,121};
   uint32_t row_num = 300;
   TSSlice del_data{tmp, 100};
   TSSlice data;

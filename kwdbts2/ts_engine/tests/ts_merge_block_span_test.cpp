@@ -71,9 +71,6 @@ class StubTsBlock : public TsBlock {
                         TsScanStats* = nullptr) override {
     return KStatus::FAIL;
   }
-  bool IsColNull(int, int, const std::vector<AttributeInfo>*, TsScanStats* = nullptr) override {
-    return false;
-  }
   void GetMinAndMaxOSN(uint64_t& min_osn, uint64_t& max_osn) override {
     min_osn = osn_; max_osn = osn_;
   }

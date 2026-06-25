@@ -49,6 +49,7 @@ struct R {
   std::shared_ptr<TsMemSegment> memseg;
 };
 
+std::list<TsRawPayload*> payload_objs;
 class LastSegmentReadWriteTest : public testing::Test {
  protected:
   std::shared_ptr<TsEngineSchemaManager> mgr = nullptr;
@@ -62,6 +63,10 @@ class LastSegmentReadWriteTest : public testing::Test {
   void TearDown() override {
     fs::remove_all("schema");
     fs::remove(filename);
+    for (auto p : payload_objs) {
+      delete p;
+    }
+    payload_objs.clear();
   }
 
   void BuilderWithBasicCheck(TSTableID table_id, int nrow);
@@ -112,10 +117,13 @@ void LastSegmentReadWriteTest::BuilderWithBasicCheck(TSTableID table_id, int nro
     pd.ParsePayLoadStruct(payload);
     uint32_t row_num = pd.GetRowCount();
     memseg->AllocRowNum(row_num);
+    TSSlice row_1_data;
+    uint32_t pd_version;
     for (size_t i = 0; i < row_num; i++) {
       auto row_ts = pd.GetTS(i);
+      row_1_data = pd.GetRowData(i);
       // TODO(Yongyan): Somebody needs to update lsn later.
-      TSMemSegRowData *row_data = memseg->AllocOneRow(1, table_id, table_version, 1, pd.GetRowData(i));
+      TSMemSegRowData *row_data = memseg->AllocOneRow(1, table_id, table_version, 1, &pd, i);
       row_data->SetData(row_ts, 0);
       memseg->AppendOneRow(row_data);
     }
@@ -283,18 +291,18 @@ struct FOO<T(Args...)> {
 };
 
 void PushPayloadToBuilder(R *builder, TSSlice *payload, TSTableID table_id, uint32_t version, TSEntityID entity_id) {
-  TsRawPayloadRowParser parser{builder->metric_schema};
-  TsRawPayload p{builder->metric_schema};
-  p.ParsePayLoadStruct(*payload);
-
   auto memseg = builder->memseg;
-
-  uint32_t row_num = p.GetRowCount();
+  char* payload_mem = memseg->AllocPayload(*payload);
+  TsRawPayload* p = new TsRawPayload(builder->metric_schema);
+  payload_objs.push_back(p);
+  p->ParsePayLoadStruct({payload_mem, payload->len});
+  TSSlice row1_data;
+  uint32_t pd_version;
+  uint32_t row_num = p->GetRowCount();
   memseg->AllocRowNum(row_num);
   for (size_t i = 0; i < row_num; i++) {
-    auto row_ts = p.GetTS(i);
-    // TODO(Yongyan): Somebody needs to update lsn later.
-    TSMemSegRowData *row_data = memseg->AllocOneRow(1, table_id, version, entity_id, p.GetRowData(i));
+    auto row_ts = p->GetTS(i);
+    TSMemSegRowData *row_data = memseg->AllocOneRow(1, table_id, version, entity_id, p, i);
     row_data->SetData(row_ts, 0);
     memseg->AppendOneRow(row_data);
   }

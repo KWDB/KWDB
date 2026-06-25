@@ -148,7 +148,10 @@ func (b *Builder) buildDataSource(
 				instance := InstanceTabName{CName: string(resName.TableName), DBName: string(resName.CatalogName), Alias: string(alias)}
 				b.InstanceTabNames = append(b.InstanceTabNames, instance)
 				return b.buildTimeSeriesScan(tabMeta, indexFlags, &resName, inScope)
-			case tree.TimeseriesTable, tree.TemplateTable:
+			case tree.TimeseriesTable, tree.TemplateTable, tree.SparseTable:
+				if t.GetTableType() == tree.SparseTable && b.insideObjectDef.HasFlags(InsideInsertInto) {
+					panic(pgerror.Newf(pgcode.FeatureNotSupported, "Insert ... Select is not supported by sparse tables."))
+				}
 				tabMeta := b.addTable(t, &resName)
 				// case time series table.
 				return b.buildTimeSeriesScan(tabMeta, indexFlags, &resName, inScope)
@@ -1622,7 +1625,7 @@ func (b *Builder) adjustTableSequenceForJoinBuild(
 								mem.QueryType = memo.MultiModel
 							}
 							relTables = append(relTables, tables[i])
-						case tree.TimeseriesTable, tree.TemplateTable:
+						case tree.TimeseriesTable, tree.TemplateTable, tree.SparseTable:
 							//if the table is timeseries table, then check if the query already has at least one relational
 							//table in the query. If not, then set the query type in the memo to "TS_ONLY". If the query already
 							//has a relational table, then set the query type in the memo to MultiModel.

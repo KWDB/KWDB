@@ -45,7 +45,7 @@ class MetricsVersionManager {
   void InsertNull(uint32_t ts_version);
 
   KStatus CreateTable(kwdbContext_p ctx, std::vector<AttributeInfo> meta, uint32_t db_id, uint32_t ts_version,
-                      int64_t life_time, uint64_t partition_interval, uint64_t hash_num, ErrorInfo& err_info);
+                      int64_t life_time, uint64_t partition_interval, uint64_t hash_num, bool sparse, ErrorInfo& err_info);
 
   KStatus AddOneVersion(uint32_t ts_version, std::shared_ptr<MMapMetricsTable> metrics_table);
 
@@ -86,6 +86,8 @@ class MetricsVersionManager {
   KStatus UndoAlterCol(uint32_t old_version, uint32_t new_version);
 
   uint64_t GetHashNum();
+
+  bool IsSparseTable();
 
  private:
   int rdLock();

@@ -361,9 +361,6 @@ class TsEntityBlock : public TsBlock {
   KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>* schema, TSSlice& value,
                         TsScanStats* ts_scan_stats = nullptr) override;
 
-  bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>* schema,
-                  TsScanStats* ts_scan_stats = nullptr) override;
-
   timestamp64 GetTS(int row_num, TsScanStats* ts_scan_stats = nullptr) override;
 
   timestamp64 GetFirstTS() override;

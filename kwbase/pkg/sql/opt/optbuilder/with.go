@@ -42,7 +42,7 @@ func (b *Builder) processWiths(
 	inScope.atRoot = false
 	outScope := buildStmt(inScope)
 	// if table are stable or tstable, return error
-	if with != nil && (outScope.TableType.HasStable() || outScope.TableType.HasGtable()) {
+	if with != nil && (outScope.TableType.HasStable() || outScope.TableType.HasGtable() || outScope.TableType.HasSparsetable()) {
 		panic(pgerror.New(pgcode.Warning, "with...as... is not supported in timeseries table"))
 	}
 	inScope.atRoot = prevAtRoot

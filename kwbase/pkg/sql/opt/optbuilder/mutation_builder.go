@@ -998,7 +998,16 @@ func resultsNeeded(r tree.ReturningClause) bool {
 
 // isTsInsertTimestamp is used to check if the value which insert into time-series table is the type of int8 or timestamptz
 func isTsInsertTimestamp(col cat.Column, typ *types.T) bool {
-	return col.TsColStorgeLen() != 0 && col.DatumType().Oid() == oid.T_timestamp && (typ.Oid() == oid.T_int8 || typ.Oid() == oid.T_timestamptz)
+	if col.TsColStorgeLen() <= 0 {
+		return false
+	}
+	switch col.DatumType().Oid() {
+	case oid.T_timestamptz:
+		return typ.Family() == types.IntFamily || typ.Oid() == oid.T_timestamp
+	case oid.T_timestamp:
+		return typ.Family() == types.IntFamily || typ.Oid() == oid.T_timestamptz
+	}
+	return false
 }
 
 // checkDatumTypeFitsColumnType verifies that a given scalar value type is valid

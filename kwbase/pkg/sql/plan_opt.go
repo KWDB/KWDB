@@ -411,7 +411,7 @@ func (opc *optPlanningCtx) buildReusableMemo(
 	bld.KeepPlaceholders = true
 	bld.PrepareHelper.Origin = p.PrepareHelper.Origin
 	if insidePrepareOfProcFlag == optbuilder.InsidePrepareOfProcDef {
-		bld.SetProcPrepareFlags(insidePrepareOfProcFlag)
+		bld.AddInsideFlag(insidePrepareOfProcFlag)
 	}
 	// find sql of select in insert...select...
 	if err := bld.Build(); err != nil {

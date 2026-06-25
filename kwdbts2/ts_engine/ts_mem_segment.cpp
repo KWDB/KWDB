@@ -101,7 +101,7 @@ KStatus TsMemSegmentManager::DeleteData(TSTableID table_id, TSEntityID entity_id
   return KStatus::SUCCESS;
 }
 
-KStatus TsMemSegmentManager::PutData(const TSSlice& payload, const std::shared_ptr<TsTableSchemaManager>& tb_schema,
+KStatus TsMemSegmentManager::PutData(TsRawPayload* pd, const std::shared_ptr<TsTableSchemaManager>& tb_schema,
                                       TSEntityID entity_id) {
   // first of all, check BG flush job status
   auto bg_status = TsFlushJobPool::GetInstance().GetBackGroundStatus();
@@ -109,7 +109,7 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, const std::shared_p
     return FAIL;
   }
 
-  auto table_version = TsRawPayload::GetTableVersionFromSlice(payload);
+  auto table_version = pd->GetTableVersion();
   // get column info and life time
   const std::vector<AttributeInfo>* schema{nullptr};
   LifeTime life_time{};
@@ -128,44 +128,64 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, const std::shared_p
   uint32_t db_id = tb_schema->GetDbID();
   int64_t p_interval = tb_schema->GetPartitionInterval();
   // TSMemSegRowData row_data(db_id, table_id, table_version, entity_id);
-  TsRawPayload pd(schema);
-  auto s = pd.ParsePayLoadStruct(payload);
+
+  uint32_t row_num = pd->GetRowCount();
+  if (row_num == 0) {
+    LOG_DEBUG("payload metric row_num is zero, ignore into mem segment.");
+    return KStatus::SUCCESS;
+  }
+  auto cur_mem_seg = CurrentMemSegmentAndAllocateRow(row_num);
+  char* seg_pd = cur_mem_seg_->AllocPayload(pd->GetPayload());
+  if (seg_pd == nullptr) {
+    cur_mem_seg->AppendEmptyRow(row_num);
+    LOG_ERROR("[ts_mem_segment] AllocPayload failed. size[%lu]", pd->GetPayload().len);
+    return KStatus::FAIL;
+  }
+  TsRawPayload* pdd = new TsRawPayload(schema, true);
+  if (pdd == nullptr) {
+    cur_mem_seg->AppendEmptyRow(row_num);
+    LOG_ERROR("[ts_mem_segment] TsRawPayload new failed.");
+    return KStatus::FAIL;
+  }
+  cur_mem_seg->AddPayloadObj(pdd);
+  auto s = pdd->ParsePayLoadStruct(TSSlice{seg_pd, pd->GetPayload().len});
   if (s != KStatus::SUCCESS) {
+    cur_mem_seg->AppendEmptyRow(row_num);
     LOG_ERROR("ParsePayLoadStruct failed.");
     return s;
   }
-
-  auto osn = pd.GetOSN();
-  uint32_t row_num = pd.GetRowCount();
-  std::shared_ptr<TsMemSegment> cur_mem_seg;
+  auto osn = pdd->GetOSN();
   {
     size_t actual_row_num = 0;
-
     for (size_t i = 0; i < row_num; i++) {
-      auto row_ts = pd.GetTS(i);
+      auto row_ts = pdd->GetTS(i);
       actual_row_num += (row_ts >= acceptable_ts);
     }
-    cur_mem_seg = CurrentMemSegmentAndAllocateRow(actual_row_num);
     cur_mem_seg->BackPressureIfNecessary(actual_row_num);
   }
 
   size_t max_row_idx = 0;
   timestamp64 max_ts = INT64_MIN;
   timestamp64 last_p_time = INVALID_TS;
+  TSSlice row_in_pd;
   for (size_t i = 0; i < row_num; i++) {
-    auto row_ts = pd.GetTS(i);
-    if (row_ts < acceptable_ts) continue;
+    auto row_ts = pdd->GetTS(i);
+    if (row_ts < acceptable_ts) {
+      cur_mem_seg->AppendEmptyRow(1);
+      continue;
+    }
     auto p_time = convertTsToPTime(row_ts, ts_type);
     if (last_p_time != p_time || last_p_time == INVALID_TS) {
       auto s = version_manager_->AddPartition(db_id, p_time, p_interval);
       if (s != KStatus::SUCCESS) {
+        LOG_ERROR("AddPartition failed");
+        cur_mem_seg->AppendEmptyRow(row_num - i);
         return s;
       }
       last_p_time = p_time;
     }
-
-    TSMemSegRowData* row_data = cur_mem_seg->AllocOneRow(db_id, tb_schema->GetTableId(),
-                                                          table_version, entity_id, pd.GetRowData(i));
+    TSMemSegRowData* row_data = cur_mem_seg->AllocOneRow(db_id,
+       tb_schema->GetTableId(), table_version, entity_id, pdd, i);
     row_data->SetData(row_ts, osn);
     cur_mem_seg->AppendOneRow(row_data);
 
@@ -174,7 +194,9 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, const std::shared_p
       max_ts = row_ts;
     }
   }
-  vgroup_->UpdateEntityLatestRow(entity_id, max_ts, pd.GetRowData(max_row_idx), table_version);
+  row_in_pd = pdd->GenRowDataWithValidInfo(max_row_idx);
+  vgroup_->UpdateEntityLatestRow(entity_id, max_ts, row_in_pd, table_version);
+  free(row_in_pd.data);
   vgroup_->UpdateEntityAndMaxTs(tb_schema->GetTableId(), max_ts, entity_id);
 
   if (cur_mem_seg->GetPayloadMemUsage() > EngineOptions::mem_segment_max_size) {
@@ -185,9 +207,6 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, const std::shared_p
 
 KStatus TsMemSegBlock::GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>* schema,
                                     std::unique_ptr<TsBitmapBase>* bitmap, TsScanStats* ts_scan_stats) {
-  if (parser_ == nullptr) {
-    parser_ = std::make_unique<TsRawPayloadRowParser>(schema);
-  }
   auto iter = col_bitmaps_.find(col_id);
   if (iter != col_bitmaps_.end()) {
     *bitmap = iter->second->AsView();
@@ -195,10 +214,13 @@ KStatus TsMemSegBlock::GetColBitmap(uint32_t col_id, const std::vector<Attribute
   }
   const size_t row_count = row_data_.size();
   auto tmp_bitmap = std::make_unique<TsBitmap>(row_count);
+  TSSlice actual_data;
   for (size_t i = 0; i < row_count; i++) {
-    auto row = row_data_[i];
-    if (parser_->IsColNull(row->GetRowData(), col_id)) {
-      (*tmp_bitmap)[i] = DataFlags::kNull;
+    auto& row = row_data_[i];
+    if (row->GetPayloadObj() != nullptr) {
+      (*tmp_bitmap)[i] = row->GetPayloadObj()->GetColFlags(row->GetRowIdxInPD(), col_id);
+    } else {
+      (*tmp_bitmap)[i] = row->GetRowParser()->GetColFlags(col_id);
     }
   }
   *bitmap = tmp_bitmap->AsView();
@@ -209,24 +231,35 @@ KStatus TsMemSegBlock::GetColBitmap(uint32_t col_id, const std::vector<Attribute
 KStatus TsMemSegBlock::GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>* schema, char** value,
                                   TsScanStats* ts_scan_stats, DirectColumnDataCopy* direct_copy) {
   assert(!isVarLenType((*schema)[col_id].type));
-  if (parser_ == nullptr) {
-    parser_ = std::make_unique<TsRawPayloadRowParser>(schema);
-  }
   TSSlice value_slice;
   if (memory_addr_safe_) {
     assert(row_data_.size() == 1);
     // it is single row and we can return memory address safely
     auto row = row_data_[0];
-    if (!parser_->IsColNull(row->GetRowData(), col_id)) {
-      auto ok = parser_->GetColValueAddr(row->GetRowData(), col_id, &value_slice);
-      if (!ok) {
-        LOG_ERROR("GetColValueAddr failed.");
-        return KStatus::FAIL;
+    if (row->GetPayloadObj() != nullptr) {
+      if (row->GetPayloadObj()->GetColFlags(row->GetRowIdxInPD(), col_id) == DataFlags::kValid) {
+        auto ok = row->GetPayloadObj()->GetColValue(row->GetRowIdxInPD(), col_id, &value_slice);
+        if (!ok) {
+          LOG_ERROR("GetColValue failed.");
+          return KStatus::FAIL;
+        }
+        *value = value_slice.data;
+      } else {
+        // we just return a valid address with invalid value
+        *value = row->GetRowData().data;
       }
-      *value = value_slice.data;
     } else {
-      // we just return a valid address with invalid value
-      *value = row->GetRowData().data;
+      if (row->GetRowParser()->GetColFlags(col_id) == DataFlags::kValid) {
+        auto ok = row->GetRowParser()->GetColValueAddr(col_id, &value_slice);
+        if (!ok) {
+          LOG_ERROR("GetColValueAddr failed.");
+          return KStatus::FAIL;
+        }
+        *value = value_slice.data;
+      } else {
+        // we just return a valid address with invalid value
+        *value = row->GetRowData().data;
+      }
     }
   } else {
     auto iter = col_based_mems_.find(col_id);
@@ -243,16 +276,30 @@ KStatus TsMemSegBlock::GetColAddr(uint32_t col_id, const std::vector<AttributeIn
       assert(direct_copy->start_row + direct_copy->copy_rows <= row_data_.size());
       for (int i = direct_copy->start_row; i < direct_copy->start_row + direct_copy->copy_rows; i++) {
         auto row = row_data_[i];
-        if (!parser_->IsColNull(row->GetRowData(), col_id)) {
-          auto ok = parser_->GetColValueAddr(row->GetRowData(), col_id, &value_slice);
-          if (!ok) {
-            LOG_ERROR("GetColValueAddr failed.");
-            return KStatus::FAIL;
+        if (row->GetPayloadObj() != nullptr) {
+          if (row->GetPayloadObj()->GetColFlags(row->GetRowIdxInPD(), col_id) == DataFlags::kValid) {
+            auto ok = row->GetPayloadObj()->GetColValue(row->GetRowIdxInPD(), col_id, &value_slice);
+            if (!ok) {
+              LOG_ERROR("GetColValue failed.");
+              return KStatus::FAIL;
+            }
+            assert(col_len == value_slice.len);
+            direct_copy->dest_buffer_builder->append(value_slice.data, col_len);
+          } else {
+            direct_copy->dest_buffer_builder->resize(direct_copy->dest_buffer_builder->size() + col_len);
           }
-          assert(col_len == value_slice.len);
-          direct_copy->dest_buffer_builder->append(value_slice.data, col_len);
         } else {
-          direct_copy->dest_buffer_builder->resize(direct_copy->dest_buffer_builder->size() + col_len);
+          if (row->GetRowParser()->GetColFlags(col_id) == DataFlags::kValid) {
+            auto ok = row->GetRowParser()->GetColValueAddr(col_id, &value_slice);
+            if (!ok) {
+              LOG_ERROR("GetColValueAddr failed.");
+              return KStatus::FAIL;
+            }
+            assert(col_len == value_slice.len);
+            direct_copy->dest_buffer_builder->append(value_slice.data, col_len);
+          } else {
+            direct_copy->dest_buffer_builder->resize(direct_copy->dest_buffer_builder->size() + col_len);
+          }
         }
       }
       // The column data has been copied to dest_buffer_builder, so we don't provide valid column address.
@@ -269,14 +316,26 @@ KStatus TsMemSegBlock::GetColAddr(uint32_t col_id, const std::vector<AttributeIn
       char* cur_offset = col_based_mem;
       for (int i = 0; i < row_data_.size(); i++) {
         auto row = row_data_[i];
-        if (!parser_->IsColNull(row->GetRowData(), col_id)) {
-          auto ok = parser_->GetColValueAddr(row->GetRowData(), col_id, &value_slice);
-          if (!ok) {
-            LOG_ERROR("GetColValueAddr failed.");
-            return KStatus::FAIL;
+        if (row->GetPayloadObj() != nullptr) {
+          if (row->GetPayloadObj()->GetColFlags(row->GetRowIdxInPD(), col_id) == DataFlags::kValid) {
+            auto ok = row->GetPayloadObj()->GetColValue(row->GetRowIdxInPD(), col_id, &value_slice);
+            if (!ok) {
+              LOG_ERROR("GetColValue failed.");
+              return KStatus::FAIL;
+            }
+            assert(col_len == value_slice.len);
+            memcpy(cur_offset, value_slice.data, col_len);
           }
-          assert(col_len == value_slice.len);
-          memcpy(cur_offset, value_slice.data, col_len);
+        } else {
+          if (row->GetRowParser()->GetColFlags(col_id) == DataFlags::kValid) {
+            auto ok = row->GetRowParser()->GetColValueAddr(col_id, &value_slice);
+            if (!ok) {
+              LOG_ERROR("GetColValueAddr failed.");
+              return KStatus::FAIL;
+            }
+            assert(col_len == value_slice.len);
+            memcpy(cur_offset, value_slice.data, col_len);
+          }
         }
         cur_offset += col_len;
       }
@@ -289,23 +348,21 @@ KStatus TsMemSegBlock::GetColAddr(uint32_t col_id, const std::vector<AttributeIn
 inline KStatus TsMemSegBlock::GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>* schema,
                                      TSSlice& value, TsScanStats* ts_scan_stats) {
   assert(row_data_.size() > row_num);
-  if (parser_ == nullptr) {
-    parser_ = std::make_unique<TsRawPayloadRowParser>(schema);
-  }
-  auto ok = parser_->GetColValueAddr(row_data_[row_num]->GetRowData(), col_id, &value);
-  if (!ok) {
-    return KStatus::FAIL;
+  auto& row = row_data_[row_num];
+  if (row->GetPayloadObj() != nullptr) {
+    auto ok = row->GetPayloadObj()->GetColValue(row->GetRowIdxInPD(), col_id, &value);
+    if (!ok) {
+      LOG_ERROR("GetColValue failed.");
+      return KStatus::FAIL;
+    }
+  } else {
+    auto ok = row->GetRowParser()->GetColValueAddr(col_id, &value);
+    if (!ok) {
+      LOG_ERROR("GetColValueAddr failed.");
+      return KStatus::FAIL;
+    }
   }
   return KStatus::SUCCESS;
-}
-
-inline bool TsMemSegBlock::IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>* schema,
-                                      TsScanStats* ts_scan_stats) {
-  assert(row_data_.size() > row_num);
-  if (parser_ == nullptr) {
-    parser_ = std::make_unique<TsRawPayloadRowParser>(schema);
-  }
-  return parser_->IsColNull(row_data_[row_num]->GetRowData(), col_id);
 }
 
 void TsMemSegment::BackPressureSlowPath(int row_num) {
@@ -532,7 +589,8 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
             std::make_unique<TsMemSegBlock>(std::shared_ptr<TsMemSegment>(nullptr));
         TSMemSegRowDataWithGuard& dedup_row_data = mem_block->AllocateRow(tbl_schema_mgr->GetDbID(),
                                                                           dedup_table_id, dedup_table_version,
-                                                                          dedup_block_spans.front()->GetEntityID());
+                                                                          dedup_block_spans.front()->GetEntityID(),
+                                                                          scan_schema->getSchemaInfoExcludeDroppedPtr());
         dedup_row_data.SetData(dedup_block_spans.front()->GetTS(0), dedup_block_spans.back()->GetLastOSN());
         dedup_row_data.SetRowData(row_data_guard);
         mem_block->SetMemoryAddrSafe();
@@ -581,7 +639,7 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
         }
         dedup_block_spans.push_back(cur_span);
       }
-      // generate merge mem block
+      // generate merge mem block, using row struct of paylaod verison 1.
       std::shared_ptr<TsSliceGuard> row_data_guard;
       s = TsBlockSpan::GenMergeRowData(dedup_block_spans, tbl_schema_mgr, row_data_guard);
       if (s != SUCCESS) {
@@ -592,7 +650,8 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
           std::make_unique<TsMemSegBlock>(std::shared_ptr<TsMemSegment>(nullptr));
       TSMemSegRowDataWithGuard& dedup_row_data = mem_block->AllocateRow(tbl_schema_mgr->GetDbID(),
                                                                         dedup_table_id, dedup_table_version,
-                                                                        dedup_block_spans.front()->GetEntityID());
+                                                                        dedup_block_spans.front()->GetEntityID(),
+                                                                      scan_schema->getSchemaInfoExcludeDroppedPtr());
       dedup_row_data.SetData(dedup_block_spans.front()->GetTS(0), dedup_block_spans.back()->GetLastOSN());
       dedup_row_data.SetRowData(row_data_guard);
       mem_block->SetMemoryAddrSafe();
@@ -722,7 +781,7 @@ KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter, std::
           }
           dedup_block_spans.push_back(cur_span);
         }
-        // generate merge mem block
+        // generate merge mem block, using row struct of payload version 1.
         std::shared_ptr<TsSliceGuard> row_data_guard;
         KStatus s = TsBlockSpan::GenMergeRowData(dedup_block_spans, tbl_schema_mgr, row_data_guard);
         if (s != SUCCESS) {
@@ -733,7 +792,8 @@ KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter, std::
             std::make_shared<TsMemSegBlock>(std::shared_ptr<TsMemSegment>(nullptr));
         TSMemSegRowDataWithGuard& dedup_row_data = mem_block->AllocateRow(tbl_schema_mgr->GetDbID(),
                                                                           tbl_schema_mgr->GetTableId(),
-                                                                          scan_schema->GetVersion(), filter.entity_id);
+                                                                          scan_schema->GetVersion(), filter.entity_id,
+                                                                        scan_schema->getSchemaInfoExcludeDroppedPtr());
         dedup_row_data.SetData(dedup_block_spans.front()->GetTS(0), dedup_block_spans.back()->GetLastOSN());
         dedup_row_data.SetRowData(row_data_guard);
         mem_blocks.push_back(mem_block);
@@ -770,7 +830,7 @@ KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter, std::
         }
         dedup_block_spans.push_back(cur_span);
       }
-      // generate merge mem block
+      // generate merge mem block, generating row struct of payload version 1.
       std::shared_ptr<TsSliceGuard> row_data_guard;
       KStatus s = TsBlockSpan::GenMergeRowData(dedup_block_spans, tbl_schema_mgr, row_data_guard);
       if (s != SUCCESS) {
@@ -781,7 +841,8 @@ KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter, std::
           std::make_shared<TsMemSegBlock>(std::shared_ptr<TsMemSegment>(nullptr));
       TSMemSegRowDataWithGuard& dedup_row_data = mem_block->AllocateRow(tbl_schema_mgr->GetDbID(),
                                                                         tbl_schema_mgr->GetTableId(),
-                                                                        scan_schema->GetVersion(), filter.entity_id);
+                                                                        scan_schema->GetVersion(), filter.entity_id,
+                                                                      scan_schema->getSchemaInfoExcludeDroppedPtr());
       dedup_row_data.SetData(dedup_block_spans.front()->GetTS(0), dedup_block_spans.back()->GetLastOSN());
       dedup_row_data.SetRowData(row_data_guard);
       mem_blocks.push_back(mem_block);

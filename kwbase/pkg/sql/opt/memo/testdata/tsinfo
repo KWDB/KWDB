@@ -58,32 +58,23 @@ select
  ├── columns: k_timestamp:1 id:2 e1:3 e2:4 e3:5 e4:6 e5:7 e6:8 e7:9 e8:10 code1:11 code2:12 code3:13 code4:14 code5:15
  ├── t-s-scan ts1
  │    ├── columns: k_timestamp:1 id:2 e1:3 e2:4 e3:5 e4:6 e5:7 e6:8 e7:9 e8:10 code1:11 code2:12 code3:13 code4:14 code5:15
- │    ├── readmode: tagIndexTable
- │    ├── blockfilter
- │    │    └── eq
- │    │         ├── variable: e1:3
- │    │         └── const: 20
- │    ├── ptagfilter:
- │    │    ├── in
- │    │    │    ├── variable: code1:11
- │    │    │    └── tuple
- │    │    │         ├── const: 10
- │    │    │         ├── const: 20
- │    │    │         └── const: 30
- │    │    └── in
- │    │         ├── variable: code2:12
- │    │         └── tuple
- │    │              ├── const: 12
- │    │              ├── const: 100
- │    │              └── const: 101
- │    ├── primarytagvalues:
- │    │    ├── 11: 10,20,30,
- │    │    └── 12: 12,100,101,
  │    └── ts engine
  ├── filters
  │    ├── eq
  │    │    ├── variable: e1:3
  │    │    └── const: 20
+ │    ├── in
+ │    │    ├── variable: code1:11
+ │    │    └── tuple
+ │    │         ├── const: 10
+ │    │         ├── const: 20
+ │    │         └── const: 30
+ │    ├── in
+ │    │    ├── variable: code2:12
+ │    │    └── tuple
+ │    │         ├── const: 12
+ │    │         ├── const: 100
+ │    │         └── const: 101
  │    ├── gt
  │    │    ├── variable: k_timestamp:1
  │    │    └── const: '2025-12-19 10:00:02.2+00:00'

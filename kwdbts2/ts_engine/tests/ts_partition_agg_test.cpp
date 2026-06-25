@@ -45,7 +45,7 @@ TEST(TsPartitionAgg, LegacyOffsetLayoutFileCanBeRead) {
   entity_agg.append(reinterpret_cast<char*>(&count1), sizeof(count1));
   ASSERT_EQ(w_file->Append(entity_agg.AsSlice()), KStatus::SUCCESS);
 
-  TsEntityPartitionAggIndex index{123, 1, 1, 10, 20, 3, 0, entity_agg.size(), ""};
+  TsEntityPartitionAggIndex index{123, 1, 1, 10, 20, 3, 0, entity_agg.size(), false, ""};
   TSSlice index_slice{reinterpret_cast<char*>(&index), sizeof(index)};
   ASSERT_EQ(w_file->Append(index_slice), KStatus::SUCCESS);
 

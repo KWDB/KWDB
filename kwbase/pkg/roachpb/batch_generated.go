@@ -194,6 +194,8 @@ func (ru RequestUnion) GetInner() Request {
 		return t.TsRollback
 	case *RequestUnion_TsImportFlush:
 		return t.TsImportFlush
+	case *RequestUnion_TsGetValidColumns:
+		return t.TsGetValidColumns
 	default:
 		return nil
 	}
@@ -312,6 +314,8 @@ func (ru ResponseUnion) GetInner() Response {
 		return t.TsRollback
 	case *ResponseUnion_TsImportFlush:
 		return t.TsImportFlush
+	case *ResponseUnion_TsGetValidColumns:
+		return t.TsGetValidColumns
 	default:
 		return nil
 	}
@@ -506,6 +510,8 @@ func (ru *RequestUnion) SetInner(r Request) bool {
 		union = &RequestUnion_TsRollback{t}
 	case *TsImportFlushRequest:
 		union = &RequestUnion_TsImportFlush{t}
+	case *TsGetValidColumnsRequest:
+		union = &RequestUnion_TsGetValidColumns{t}
 	default:
 		return false
 	}
@@ -627,6 +633,8 @@ func (ru *ResponseUnion) SetInner(r Response) bool {
 		union = &ResponseUnion_TsRollback{t}
 	case *TsImportFlushResponse:
 		union = &ResponseUnion_TsImportFlush{t}
+	case *TsGetValidColumnsResponse:
+		union = &ResponseUnion_TsGetValidColumns{t}
 	default:
 		return false
 	}
@@ -634,7 +642,7 @@ func (ru *ResponseUnion) SetInner(r Response) bool {
 	return true
 }
 
-type reqCounts [56]int32
+type reqCounts [57]int32
 
 // getReqCounts returns the number of times each
 // request type appears in the batch.
@@ -754,6 +762,8 @@ func (ba *BatchRequest) getReqCounts() reqCounts {
 			counts[54]++
 		case *RequestUnion_TsImportFlush:
 			counts[55]++
+		case *RequestUnion_TsGetValidColumns:
+			counts[56]++
 		default:
 			panic(fmt.Sprintf("unsupported request: %+v", ru))
 		}
@@ -818,6 +828,7 @@ var requestNames = []string{
 	"TsCommit",
 	"TsRollback",
 	"TsImportFlush",
+	"TsGetValidColumns",
 }
 
 // Summary prints a short summary of the requests in a batch.
@@ -1073,6 +1084,10 @@ type tsImportFlushResponseAlloc struct {
 	union ResponseUnion_TsImportFlush
 	resp  TsImportFlushResponse
 }
+type tsGetValidColumnsResponseAlloc struct {
+	union ResponseUnion_TsGetValidColumns
+	resp  TsGetValidColumnsResponse
+}
 
 // CreateReply creates replies for each of the contained requests, wrapped in a
 // BatchResponse. The response objects are batch allocated to minimize
@@ -1139,6 +1154,7 @@ func (ba *BatchRequest) CreateReply() *BatchResponse {
 	var buf53 []tsCommitResponseAlloc
 	var buf54 []tsRollbackResponseAlloc
 	var buf55 []tsImportFlushResponseAlloc
+	var buf56 []tsGetValidColumnsResponseAlloc
 
 	for i, r := range ba.Requests {
 		switch r.GetValue().(type) {
@@ -1534,6 +1550,13 @@ func (ba *BatchRequest) CreateReply() *BatchResponse {
 			buf55[0].union.TsImportFlush = &buf55[0].resp
 			br.Responses[i].Value = &buf55[0].union
 			buf55 = buf55[1:]
+		case *RequestUnion_TsGetValidColumns:
+			if buf56 == nil {
+				buf56 = make([]tsGetValidColumnsResponseAlloc, counts[56])
+			}
+			buf56[0].union.TsGetValidColumns = &buf56[0].resp
+			br.Responses[i].Value = &buf56[0].union
+			buf56 = buf56[1:]
 		default:
 			panic(fmt.Sprintf("unsupported request: %+v", r))
 		}

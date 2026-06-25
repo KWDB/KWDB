@@ -1680,6 +1680,44 @@ TSStatus TSSyncRaftLog(RaftStore* engine) {
   return kTsSuccess;
 }
 
+TSStatus TsGetValidColumns(TSEngine* engine, TSTableID table_id, uint32_t table_version,
+                           TSSlice* primary_tags, size_t primary_tags_num,
+                           ValidColumns* valid_columns) {
+  if (valid_columns == nullptr) {
+    return ToTsStatus("TsGetValidColumns: valid_columns is nullptr!");
+  }
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  bool is_dropped = false;
+  std::vector<uint32_t> columns;
+  s = engine->GetValidColumns(ctx_p, table_id, table_version, is_dropped,
+                              primary_tags, primary_tags_num, columns);
+  if (s != KStatus::SUCCESS) {
+    if (is_dropped) {
+      valid_columns[0].valid_column = nullptr;
+      valid_columns[0].len = 0;
+      return kTsSuccess;
+    }
+    return ToTsStatus("TsGetValidColumns Error!");
+  }
+  if (!columns.empty()) {
+    valid_columns[0].valid_column = static_cast<uint32_t*>(malloc(columns.size() * sizeof(uint32_t)));
+    if (valid_columns[0].valid_column == nullptr) {
+      return ToTsStatus("TsGetValidColumns malloc failed!");
+    }
+    memcpy(valid_columns[0].valid_column, columns.data(), columns.size() * sizeof(uint32_t));
+    valid_columns[0].len = static_cast<int32_t>(columns.size());
+  } else {
+    valid_columns[0].valid_column = nullptr;
+    valid_columns[0].len = 0;
+  }
+  return kTsSuccess;
+}
+
 TSStatus TSHasRange(RaftStore* engine, uint64_t range_id) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;

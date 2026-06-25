@@ -63,8 +63,9 @@ class TsEngineSchemaManager {
   KStatus GetMeta(kwdbContext_p ctx, TSTableID table_id, uint32_t version, roachpb::CreateTsTable* meta);
 
   // Get or allocate vgroup_id and entity_id
-  KStatus GetVGroup(kwdbContext_p ctx, const std::shared_ptr<TsTableSchemaManager>& tb_schema, TSSlice primary_key,
-                        uint32_t* vgroup_id, TSEntityID* entity_id, bool* new_tag);
+  KStatus GetVGroupAndUpdateValidCol(kwdbContext_p ctx,
+    const std::shared_ptr<TsTableSchemaManager>& tb_schema, std::vector<uint32_t> valid_col_idx, TSSlice primary_key,
+    uint32_t* vgroup_id, TSEntityID* entity_id, bool* new_tag);
 
   uint32_t GetDBIDByTableID(TSTableID table_id);
 

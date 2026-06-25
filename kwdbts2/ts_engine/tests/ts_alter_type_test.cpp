@@ -54,7 +54,7 @@ class TsAlterTypeTest : public TsEngineTestBase {
     }
   }
 
-  static void SetMetricColumnValue(TSRowPayloadBuilder* builder,
+  static void SetMetricColumnValue(TSRowPayloadSparseBuilder* builder,
                                    DATATYPE metric_storage_type,
                                    int row_idx,
                                    int col_idx,
@@ -172,7 +172,8 @@ class TsAlterTypeTest : public TsEngineTestBase {
     std::vector<TagInfo> tag_schema;
     ASSERT_EQ(schema_mgr->GetTagMeta(version, tag_schema), KStatus::SUCCESS);
 
-    TSRowPayloadBuilder builder(tag_schema, *metric_schema, static_cast<int>(metric_values.size()));
+    TSRowPayloadSparseBuilder builder;
+    builder.Init(tag_schema, *metric_schema, static_cast<int>(metric_values.size()), TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_TUPLE);
     builder.SetTagValue(0, reinterpret_cast<char*>(&dev_id), sizeof(dev_id));
 
     timestamp64 ts = start_ts;

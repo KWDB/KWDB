@@ -61,7 +61,7 @@ func (d *delegator) delegateShowAttributes(n *tree.ShowTags) (tree.Statement, er
 		case tree.TemplateTable:
 			columnName = "stable_name"
 			privateFilter = " AND table_name IS NULL AND NOT is_primary"
-		case tree.TimeseriesTable:
+		case tree.TimeseriesTable, tree.SparseTable:
 			columnName = "table_name"
 		case tree.RelationalTable:
 			return nil, pgerror.Newf(pgcode.WrongObjectType, "relational table %s does not have tag", resName.Table())

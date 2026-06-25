@@ -10,6 +10,7 @@
 // See the Mulan PSL v2 for more details.
 
 #include <algorithm>
+#include <unordered_set>
 #include <sys/mman.h>
 #include "sys_utils.h"
 #include "dirent.h"
@@ -44,7 +45,8 @@ TagTable::~TagTable() {
 }
 
 int TagTable::create(const vector<TagInfo> &schema, uint32_t table_version,
-                     const std::vector<roachpb::NTagIndexInfo>& idx_info, ErrorInfo &err_info) {
+                     const std::vector<roachpb::NTagIndexInfo>& idx_info, ErrorInfo &err_info,
+                     bool issparse) {
   LOG_INFO("Create TagTable table_version:%d", table_version)
   auto s = TsIOEnv::GetInstance().NewDirectory(fs::path(m_db_path_) / fs::path(m_tbl_sub_path_));
   if (s != SUCCESS) {
@@ -67,7 +69,7 @@ int TagTable::create(const vector<TagInfo> &schema, uint32_t table_version,
     LOG_ERROR("KNEW TagPartitionTableManager failed.");
     return -1;
   }
-  if (m_partition_mgr_->CreateTagPartitionTable(schema, table_version, err_info) < 0) {
+  if (m_partition_mgr_->CreateTagPartitionTable(schema, table_version, err_info, 0, issparse) < 0) {
     LOG_ERROR("CreateTagPartitionTable failed, %s", err_info.errmsg.c_str());
     return -1;
   }
@@ -261,6 +263,111 @@ bool TagTable::GetPrimaryKeyRowInfo(const char* primary_tag_val, int len, std::p
   return true;
 }
 
+bool TagTable::issparse() const {
+  std::vector<std::pair<uint32_t, TagPartitionTable*>> tag_part_tables;
+  m_partition_mgr_->GetAllPartitionTables(tag_part_tables);
+  if (tag_part_tables.empty()) {
+    LOG_ERROR("TagTable::issparse: no partition tables found for table %lu", m_table_id);
+    return false;
+  }
+  return tag_part_tables[0].second->issparse();
+}
+
+bool TagTable::GetValidColumns(TSSlice* primary_tags, size_t primary_tags_num,
+                               std::vector<uint32_t>& valid_columns) {
+  if (!issparse()) {
+    LOG_ERROR("Failed get valid columns on non-sparse table");
+    return false;
+  }
+
+  std::unordered_set<uint32_t> union_set;
+  
+  for (size_t i = 0; i < primary_tags_num; ++i) {
+    if (primary_tags[i].data == nullptr || primary_tags[i].len <= 0) {
+      LOG_ERROR("GetValidColumns: invalid primary tag at index %zu", i);
+      return false;
+    }
+    const char* primary_tag_val = primary_tags[i].data;
+    int len = static_cast<int>(primary_tags[i].len);
+    
+    auto ret = m_index_->get(primary_tag_val, len);
+    if (ret.first == INVALID_TABLE_VERSION_ID) {
+      // ptag not exist, skip this ptag,
+      // when primary_tags_num is only one, then return true and valid_columns is empty
+      continue;
+    }
+    auto tag_part_table = m_partition_mgr_->GetPartitionTable(ret.first);
+    if (tag_part_table == nullptr) {
+      LOG_ERROR("Tag Partition Table does not exist. table_version: %u", ret.first);
+      return false;
+    }
+
+    std::vector<uint32_t> columns;
+    tag_part_table->startRead();
+    int err_code = tag_part_table->getValidColumns(ret.second, columns);
+    tag_part_table->stopRead();
+    if (err_code < 0) {
+      LOG_ERROR("failed to get valid columns from tag table %s%s",
+        tag_part_table->m_db_name_.c_str(), tag_part_table->m_name_.c_str());
+      return false;
+    }
+    union_set.insert(columns.begin(), columns.end());
+  }
+  
+  valid_columns.assign(union_set.begin(), union_set.end());
+  return true;
+}
+
+bool TagTable::CheckAndUpdateValidColumns(const char* primary_tag_val, int len,
+                                          const std::vector<uint32_t>& payload_valid_cols) {
+  if (!issparse() || payload_valid_cols.empty()) {
+    return true;
+  }
+  auto ret = m_index_->get(primary_tag_val, len);
+  if (ret.first == INVALID_TABLE_VERSION_ID) {
+    return false;
+  }
+  auto tag_part_table = m_partition_mgr_->GetPartitionTable(ret.first);
+  if (tag_part_table == nullptr) {
+    LOG_ERROR("Tag Partition Table does not exist. table_version: %u", ret.first);
+    return false;
+  }
+
+  // Get existing valid columns
+  std::vector<uint32_t> existing_valid_cols;
+  tag_part_table->startRead();
+  int err_code = tag_part_table->getValidColumns(ret.second, existing_valid_cols);
+  tag_part_table->stopRead();
+  if (err_code < 0) {
+    LOG_ERROR("failed to get valid columns from tag table %s%s",
+      tag_part_table->m_db_name_.c_str(), tag_part_table->m_name_.c_str());
+    return false;
+  }
+
+  assert(std::is_sorted(payload_valid_cols.begin(), payload_valid_cols.end()));
+
+  // Skip update if payload columns are already a subset of existing
+  if (std::includes(existing_valid_cols.begin(), existing_valid_cols.end(),
+                    payload_valid_cols.begin(), payload_valid_cols.end())) {
+    return true;
+  }
+
+  // Merge: union of both, keeping sorted order
+  std::vector<uint32_t> merged_cols;
+  merged_cols.reserve(existing_valid_cols.size() + payload_valid_cols.size());
+  std::set_union(existing_valid_cols.begin(), existing_valid_cols.end(),
+                 payload_valid_cols.begin(), payload_valid_cols.end(),
+                 std::back_inserter(merged_cols));
+
+  err_code = tag_part_table->updateValidColumns(ret.second, merged_cols);
+  if (err_code < 0) {
+    LOG_ERROR("failed to update valid columns for tag table %s%s",
+      tag_part_table->m_db_name_.c_str(), tag_part_table->m_name_.c_str());
+    return false;
+  }
+  return true;
+}
+
 void TagTable::GetMaxEntityIdByVGroupId(uint32_t vgroup_id, uint32_t& entity_id) {
   std::vector<std::pair<uint32_t, TagPartitionTable*>> tag_part_tables;
   m_partition_mgr_->GetAllPartitionTables(tag_part_tables);
@@ -277,91 +384,9 @@ void TagTable::GetEntityIdListByVGroupId(uint32_t vgroup_id, std::vector<uint32_
   }
 }
 
-// insert tag record
-int TagTable::InsertTagRecord(kwdbts::Payload &payload, int32_t sub_group_id, int32_t entity_id) {
-  // 1. check version
-  auto tag_version_object = m_version_mgr_->GetVersionObject(payload.GetTsVersion());
-  if (nullptr == tag_version_object) {
-    LOG_ERROR("Tag table version[%u] doesnot exist.", payload.GetTsVersion());
-    return -1;
-  }
-  TableVersion tag_partition_version = tag_version_object->metaData()->m_real_used_version_;
-  auto tag_partition_table = m_partition_mgr_->GetPartitionTable(tag_partition_version);
-  if (nullptr == tag_partition_table) {
-    LOG_ERROR("Tag partition table version[%u] doesnot exist.", tag_partition_version);
-    return -1;
-  }
-
-  // 2. insert partition data
-  size_t row_no = 0;
-  if (tag_partition_table->insert(entity_id, sub_group_id, payload.getHashPoint(), 0, 0,
-                                  payload.GetTagAddr(), &row_no) < 0) {
-    LOG_ERROR("insert tag partition table[%s/%s] failed. ",
-       tag_partition_table->m_tbl_sub_path_.c_str(), tag_partition_table->m_name_.c_str());
-    return -1;
-  }
-  // 3. insert index data
-  TSSlice tmp_slice = payload.GetPrimaryTag();
-  if (m_index_->insert(tmp_slice.data, tmp_slice.len, tag_partition_version, row_no) < 0) {
-    LOG_ERROR("insert hash index data failed. table_version: %u row_no: %lu ", tag_partition_version, row_no);
-    return -1;
-  }
-
-  // 4. insert normal index data
-  // 1) check exist normal index, loop insert
-  tag_partition_table->NtagIndexRWMutexSLock();
-  for (auto ntag_index : tag_partition_table->getMmapNTagHashIndex()) {
-    std::vector<TSSlice> index_cols;
-    size_t len = 0;
-    auto col_ids = ntag_index->getColIDs();
-    for (auto col_id : col_ids) {
-      uint32_t col_size = tag_partition_table->getTagColSize(col_id);
-      if (col_size == 0) {
-        LOG_ERROR("get tag col size failed, col id [%d}, tag partition table[%s/%s]", col_id,
-          tag_partition_table->m_tbl_sub_path_.c_str(), tag_partition_table->m_name_.c_str())
-        return -1;
-      }
-      uint32_t off = tag_partition_table->getTagColOff(col_id);
-      if (off == 0) {
-        LOG_ERROR("get tag col off failed, col id [%d}, tag partition table[%s/%s]", col_id,
-          tag_partition_table->m_tbl_sub_path_.c_str(), tag_partition_table->m_name_.c_str())
-        return -1;
-      }
-      auto col_val = payload.GetNormalTag(off, col_size);
-      index_cols.emplace_back(col_val);
-      len += col_val.len;
-    }
-    char index_key[len];
-    int num = 0;
-    for(auto r:index_cols){
-      memcpy(&index_key[num], r.data, r.len);
-      num += r.len;
-    }
-    if (ntag_index->insert(index_key, len, tag_partition_version, row_no) < 0) {
-      tag_partition_table->NtagIndexRWMutexUnLock();
-      LOG_ERROR("insert hash index data failed. table_version: %u row_no: %lu ", tag_partition_version, row_no);
-      return -1;
-    }
-  }
-  tag_partition_table->NtagIndexRWMutexUnLock();
-
-  // 5. insert entity row index
-  uint64_t joint_entity_id = (static_cast<uint64_t>(entity_id) << 32) | sub_group_id;
-  if (m_entity_row_index_->put(reinterpret_cast<const char *>(&joint_entity_id), sizeof(uint64_t), tag_partition_version, row_no) < 0) {
-    LOG_ERROR("insert entity row hash index data failed. table_version: %u row_no: %lu ", tag_partition_version, row_no);
-    return -1;
-  }
-
-  // 6. set undelete mark
-  tag_partition_table->startRead();
-  tag_partition_table->unsetDeleteMark(row_no);
-  tag_partition_table->stopRead();
-  return 0;
-}
-
 // V3 insert tag record
 int TagTable::InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id, uint64_t osn,
-                              uint8_t operate_type, std::pair<uint64_t, uint64_t> del_row) {
+                              uint8_t operate_type, std::pair<uint64_t, uint64_t> del_row, const std::vector<uint32_t>& old_valid_columns) {
   // 1. check version
   auto tag_version_object = m_version_mgr_->GetVersionObject(payload.GetTableVersion());
   if (nullptr == tag_version_object) {
@@ -375,10 +400,22 @@ int TagTable::InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_i
     return -1;
   }
 
+  auto payload_valid_columns = payload.GetValidColumns();
+  assert(std::is_sorted(payload_valid_columns.begin(), payload_valid_columns.end()));
+  std::vector<uint32_t> valid_columns;
+  if (!old_valid_columns.empty()) {
+      valid_columns.reserve(old_valid_columns.size() + payload_valid_columns.size());
+      std::set_union(old_valid_columns.begin(), old_valid_columns.end(),
+                 payload_valid_columns.begin(), payload_valid_columns.end(),
+                 std::back_inserter(valid_columns));
+  } else {
+    valid_columns = std::move(payload_valid_columns);
+  }
+
   // 2. insert partition data
   size_t row_no = 0;
   if (tag_partition_table->insert(entity_id, sub_group_id, payload.GetHashPoint(), osn, OperateType::Insert,
-                                  payload.GetTags().data, &row_no) < 0) {
+                                  payload.GetPrimaryTag(), payload.GetTags(), valid_columns, &row_no) < 0) {
     LOG_ERROR("insert tag partition table[%s/%s] failed. ",
               tag_partition_table->m_tbl_sub_path_.c_str(), tag_partition_table->m_name_.c_str());
     return -1;
@@ -402,12 +439,14 @@ int TagTable::InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_i
           if (col_size == 0) {
             LOG_ERROR("get tag col size failed, col id [%d}, tag partition table[%s/%s]", col_id,
               tag_partition_table->m_tbl_sub_path_.c_str(), tag_partition_table->m_name_.c_str())
+            tag_partition_table->NtagIndexRWMutexUnLock();
             return -1;
           }
           uint32_t off = tag_partition_table->getTagColOff(col_id);
           if (off == 0) {
             LOG_ERROR("get tag col off failed, col id [%d}, tag partition table[%s/%s]", col_id,
               tag_partition_table->m_tbl_sub_path_.c_str(), tag_partition_table->m_name_.c_str())
+            tag_partition_table->NtagIndexRWMutexUnLock();
             return -1;
           }
           auto col_val = payload.GetNormalTag(off, col_size);
@@ -481,7 +520,8 @@ int TagTable::InsertDeletedTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_
   row_info.first = tag_partition_version;
   // 2. insert partition data
   if (tag_partition_table->insert(entity_id, sub_group_id, payload.GetHashPoint(), osn, operate_type,
-                                  payload.GetTags().data, &row_info.second) < 0) {
+                                  payload.GetPrimaryTag(), payload.GetTags(), payload.GetValidColumns(),
+                                  &row_info.second) < 0) {
     LOG_ERROR("insert tag partition table[%s/%s] failed. ",
               tag_partition_table->m_tbl_sub_path_.c_str(), tag_partition_table->m_name_.c_str());
     return -1;
@@ -494,28 +534,9 @@ int TagTable::InsertDeletedTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_
   return 0;
 }
 
-// v2 update tag record
-int TagTable::UpdateTagRecord(kwdbts::Payload &payload, int32_t sub_group_id, int32_t entity_id, ErrorInfo& err_info) {
-  // 1. delete
-  TSSlice tmp_primary_tag = payload.GetPrimaryTag();
-  std::pair<uint64_t, uint64_t> ignore;
-  if (this->DeleteTagRecord(tmp_primary_tag.data, tmp_primary_tag.len, err_info, 0, 0, ignore) < 0) {
-    err_info.errmsg = "delete tag data failed";
-    LOG_ERROR("delete tag data failed, error: %s", err_info.errmsg.c_str());
-    return err_info.errcode;
-  }
-
-  // 2. insert
-  if ((err_info.errcode = this->InsertTagRecord(payload, sub_group_id, entity_id)) < 0 ) {
-    err_info.errmsg = "insert tag data fail";
-    return err_info.errcode;
-  }
-  return 0;
-}
-
 // update tag record
 int TagTable::UpdateTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id,
-                              ErrorInfo& err_info, uint64_t osn) {
+                              ErrorInfo& err_info, uint64_t osn, const std::vector<uint32_t>& old_valid_columns) {
   // 1. delete
   TSSlice tmp_primary_tag = payload.GetPrimaryTag();
   std::pair<uint64_t, uint64_t> del_row = {0, 0};
@@ -530,7 +551,7 @@ int TagTable::UpdateTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_i
 
   // 2. insert
   if ((err_info.errcode = this->InsertTagRecord(payload, sub_group_id, entity_id, osn, OperateType::Update,
-                                                del_row)) < 0 ) {
+                                                del_row, old_valid_columns)) < 0 ) {
     err_info.errmsg = "insert tag data fail";
     return err_info.errcode;
   }
@@ -1349,7 +1370,14 @@ int TagTable::addNewPartitionVersion(const vector<TagInfo> &schema, uint32_t new
   }
 
   // 2. create tag partition table
-  if (m_partition_mgr_->CreateTagPartitionTable(schema, new_version, err_info, newest_part_real_ver) < 0) {
+  auto exist_part = m_partition_mgr_->GetPartitionTable(newest_part_real_ver);
+  if (exist_part == nullptr) {
+    LOG_ERROR("exist partition table not found, version: %u", newest_part_real_ver);
+    m_version_mgr_->RollbackTableVersion(new_version, err_info);
+    return -1;
+  }
+  bool sp = exist_part->issparse();
+  if (m_partition_mgr_->CreateTagPartitionTable(schema, new_version, err_info, newest_part_real_ver, sp) < 0) {
     LOG_ERROR("CreateTagPartitionTable failed, %s", err_info.errmsg.c_str());
     m_version_mgr_->RollbackTableVersion(new_version, err_info);
     return -1;
@@ -1455,7 +1483,14 @@ int TagTable::AddNewPartitionVersion(const vector<TagInfo> &schema, uint32_t new
   }
 
   // 2. create tag partition table
-  if (m_partition_mgr_->CreateTagPartitionTable(schema, new_version, err_info, newest_part_real_ver) < 0) {
+  auto exist_part = m_partition_mgr_->GetPartitionTable(newest_part_real_ver);
+  if (exist_part == nullptr) {
+    LOG_ERROR("exist partition table not found, version: %u", newest_part_real_ver);
+    m_version_mgr_->RollbackTableVersion(new_version, err_info);
+    return -1;
+  }
+  bool sp = exist_part->issparse();
+  if (m_partition_mgr_->CreateTagPartitionTable(schema, new_version, err_info, newest_part_real_ver, sp) < 0) {
     LOG_ERROR("CreateTagPartitionTable failed, %s", err_info.errmsg.c_str());
     m_version_mgr_->RollbackTableVersion(new_version, err_info);
     return -1;
@@ -2042,8 +2077,7 @@ int TagTable::InsertForUndo(uint32_t group_id, uint32_t entity_id,
   return DeleteTagRecord(primary_tag.data, primary_tag.len, err_info, osn, OperateType::Ignore, ignore);
 }
 
-// v2 InsertForRedo
-int TagTable::InsertForRedo(uint32_t group_id, uint32_t entity_id, kwdbts::Payload &payload) {
+int TagTable::InsertForRedo(uint32_t group_id, uint32_t entity_id, kwdbts::TsRawPayload &payload) {
   // 1. search ptag
   TSSlice tmp_slice = payload.GetPrimaryTag();
   auto ret = m_index_->get(tmp_slice.data, tmp_slice.len);
@@ -2071,12 +2105,14 @@ int TagTable::InsertForRedo(uint32_t group_id, uint32_t entity_id, kwdbts::Paylo
           if (col_size == 0) {
             LOG_ERROR("get tag col size failed, col id [%d}, tag partition table[%s/%s]", col_id,
               tag_partition_table->m_tbl_sub_path_.c_str(), tag_partition_table->m_name_.c_str())
+            tag_partition_table->NtagIndexRWMutexUnLock();
             return -1;
           }
           uint32_t off = tag_partition_table->getTagColOff(col_id);
           if (off == 0) {
             LOG_ERROR("get tag col off failed, col id [%d}, tag partition table[%s/%s]", col_id,
               tag_partition_table->m_tbl_sub_path_.c_str(), tag_partition_table->m_name_.c_str())
+            tag_partition_table->NtagIndexRWMutexUnLock();
             return -1;
           }
           auto col_val = payload.GetNormalTag(off, col_size);
@@ -2086,7 +2122,7 @@ int TagTable::InsertForRedo(uint32_t group_id, uint32_t entity_id, kwdbts::Paylo
       char index_key[len];
       int num = 0;
       for(auto r:index_cols){
-          strncpy(&index_key[num], r.data, r.len);
+          memcpy(&index_key[num], r.data, r.len);
           num += r.len;
       }
       ntag_index->remove(ret.second, ret.first, index_key, len);
@@ -2109,8 +2145,7 @@ int TagTable::InsertForRedo(uint32_t group_id, uint32_t entity_id, kwdbts::Paylo
     return 0;
   }
   // 2. redo insert
-  return InsertTagRecord(payload, group_id, entity_id);
-
+  return InsertTagRecord(payload, group_id, entity_id, payload.GetOSN(), OperateType::Insert);
 }
 
 int TagTable::DeleteForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash_num,
@@ -2140,12 +2175,14 @@ int TagTable::DeleteForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash
           if (col_size == 0) {
             LOG_ERROR("get tag col size failed, col id [%d}, tag partition table[%s/%s]", col_id,
               tag_partition_table->m_tbl_sub_path_.c_str(), tag_partition_table->m_name_.c_str())
+            tag_partition_table->NtagIndexRWMutexUnLock();
             return -1;
           }
           uint32_t off = tag_partition_table->getTagColOff(col_id);
           if (off == 0) {
             LOG_ERROR("get tag col off failed, col id [%d}, tag partition table[%s/%s]", col_id,
               tag_partition_table->m_tbl_sub_path_.c_str(), tag_partition_table->m_name_.c_str())
+            tag_partition_table->NtagIndexRWMutexUnLock();
             return -1;
           }
           // "tag_tuple.getTags().data" is tag addr
@@ -2156,7 +2193,7 @@ int TagTable::DeleteForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash
       char index_key[len];
       int num = 0;
       for(auto r:index_cols){
-          strncpy(&index_key[num], r.data, r.len);
+          memcpy(&index_key[num], r.data, r.len);
           num += r.len;
       }
       ntag_index->remove(ret.second, ret.first, index_key, len);
@@ -2197,10 +2234,11 @@ int TagTable::DeleteForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash
   TagTuplePack tag_tuple(schemas, tag_pack.data, tag_pack.len);
   osn = tag_tuple.getOSN();
 
+  assert(std::is_sorted(tag_tuple.getValidColumns().begin(), tag_tuple.getValidColumns().end()));
   // 3. insert partition data
   size_t row_no = 0;
   if (tag_partition_table->insert(entity_id, group_id, tag_hash_point, osn, OperateType::Insert,
-                                  tag_tuple.getTags().data, &row_no) < 0) {
+                                  primary_tag, tag_tuple.getTags(), tag_tuple.getValidColumns(), &row_no) < 0) {
     LOG_ERROR("insert tag partition table[%s/%s] failed. ",
        tag_partition_table->m_tbl_sub_path_.c_str(), tag_partition_table->m_name_.c_str());
     return -1;
@@ -2222,12 +2260,14 @@ int TagTable::DeleteForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash
           if (col_size == 0) {
             LOG_ERROR("get tag col size failed, col id [%d}, tag partition table[%s/%s]", col_id,
               tag_partition_table->m_tbl_sub_path_.c_str(), tag_partition_table->m_name_.c_str())
+            tag_partition_table->NtagIndexRWMutexUnLock();
             return -1;
           }
           uint32_t off = tag_partition_table->getTagColOff(col_id);
           if (off == 0) {
             LOG_ERROR("get tag col off failed, col id [%d}, tag partition table[%s/%s]", col_id,
               tag_partition_table->m_tbl_sub_path_.c_str(), tag_partition_table->m_name_.c_str())
+            tag_partition_table->NtagIndexRWMutexUnLock();
             return -1;
           }
           TSSlice col_val{tag_tuple.getTags().data + off, static_cast<size_t>(col_size)};
@@ -2237,7 +2277,7 @@ int TagTable::DeleteForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash
       char index_key[len];
       int num = 0;
       for(auto r:index_cols){
-          strncpy(&index_key[num], r.data, r.len);
+          memcpy(&index_key[num], r.data, r.len);
           num += r.len;
       }
       if (ntag_index->insert(index_key, len, ret.first, ret.second) < 0) {
@@ -2325,12 +2365,14 @@ int TagTable::DeleteForRedo(uint32_t group_id, uint32_t entity_id,
       if (col_size == 0) {
         LOG_ERROR("get tag col size failed, col id [%d}, tag partition table[%s/%s]", col_id,
           tag_partition_table->m_tbl_sub_path_.c_str(), tag_partition_table->m_name_.c_str())
+        tag_partition_table->NtagIndexRWMutexUnLock();
         return -1;
       }
       uint32_t off = tag_partition_table->getTagColOff(col_id);
       if (off == 0) {
         LOG_ERROR("get tag col off failed, col id [%d}, tag partition table[%s/%s]", col_id,
           tag_partition_table->m_tbl_sub_path_.c_str(), tag_partition_table->m_name_.c_str())
+        tag_partition_table->NtagIndexRWMutexUnLock();
         return -1;
       }
       // "tag_tuple.getTags().data" is tag addr
@@ -2341,7 +2383,7 @@ int TagTable::DeleteForRedo(uint32_t group_id, uint32_t entity_id,
     char index_key[len];
     int num = 0;
     for(auto r:index_cols){
-      strncpy(&index_key[num], r.data, r.len);
+      memcpy(&index_key[num], r.data, r.len);
       num += r.len;
     }
     ntag_index->remove(ret.second, ret.first, index_key, len);
@@ -2356,69 +2398,8 @@ int TagTable::DeleteForRedo(uint32_t group_id, uint32_t entity_id,
   return 0;
 }
 
-int TagTable::UpdateForRedo(uint32_t group_id, uint32_t entity_id,
-                    const TSSlice& primary_tag, kwdbts::Payload &payload) {
-  // 1. search primary tag
-  TagPartitionTable* tag_partition_table = nullptr;
-  TableVersion tbl_version = 0;
-  TagPartitionTableRowID tag_row_no = 0;
-  auto ret = m_index_->get(primary_tag.data, primary_tag.len);
-  if (ret.first != INVALID_TABLE_VERSION_ID) {
-    // found
-    tag_partition_table = m_partition_mgr_->GetPartitionTable(ret.first);
-    if (nullptr == tag_partition_table) {
-      LOG_ERROR("primary tag's tag partition table [%u] does not exist.", ret.first);
-      return -1;
-    }
-    // delete mark
-    tag_partition_table->startRead();
-    tag_partition_table->setDeleteMark(ret.second);
-    tag_partition_table->stopRead();
-    // delete index data
-    auto ret_del = m_index_->remove(primary_tag.data, primary_tag.len);
-
-    // drop normal index
-    tag_partition_table->NtagIndexRWMutexSLock();
-    for (auto ntag_index : tag_partition_table->getMmapNTagHashIndex()) {
-      std::vector<TSSlice> index_cols;
-      size_t len = 0;
-      auto col_ids = ntag_index->getColIDs();
-      for (auto col_id : col_ids) {
-          uint32_t col_size = tag_partition_table->getTagColSize(col_id);
-          if (col_size == 0) {
-            LOG_ERROR("get tag col size failed, col id [%d}, tag partition table[%s/%s]", col_id,
-              tag_partition_table->m_tbl_sub_path_.c_str(), tag_partition_table->m_name_.c_str())
-            return -1;
-          }
-          uint32_t off = tag_partition_table->getTagColOff(col_id);
-          if (off == 0) {
-            LOG_ERROR("get tag col off failed, col id [%d}, tag partition table[%s/%s]", col_id,
-              tag_partition_table->m_tbl_sub_path_.c_str(), tag_partition_table->m_name_.c_str())
-            return -1;
-          }
-          auto col_val = payload.GetNormalTag(off, col_size);
-          index_cols.emplace_back(col_val);
-          len += col_val.len;
-      }
-      char index_key[len];
-      int num = 0;
-      for(auto r:index_cols){
-          strncpy(&index_key[num], r.data, r.len);
-          num += r.len;
-      }
-      ntag_index->remove(ret.second, ret.first, index_key, len);
-    }
-    tag_partition_table->NtagIndexRWMutexUnLock();
-
-    // delete entity row index data
-    uint64_t joint_entity_id = (static_cast<uint64_t>(entity_id) << 32) | group_id;
-    ret_del = m_entity_row_index_->delete_data(reinterpret_cast<const char *>(&joint_entity_id));
-  }
-  return InsertTagRecord(payload, group_id, entity_id);
-}
-
 // V3 UpdateFroRedo
-int TagTable::UpdateForRedo(uint32_t group_id, uint32_t entity_id, const TSSlice &primary_tag, TsRawPayload &payload) {
+int TagTable::UpdateForRedo(uint32_t group_id, uint32_t entity_id, const TSSlice &primary_tag, TsRawPayload &payload, const TSSlice& old_tag) {
   // 1. search primary tag
   TagPartitionTable* tag_partition_table = nullptr;
   TableVersion tbl_version = 0;
@@ -2462,12 +2443,14 @@ int TagTable::UpdateForRedo(uint32_t group_id, uint32_t entity_id, const TSSlice
         if (col_size == 0) {
           LOG_ERROR("get tag col size failed, col id [%d}, tag partition table[%s/%s]", col_id,
             tag_partition_table->m_tbl_sub_path_.c_str(), tag_partition_table->m_name_.c_str())
+          tag_partition_table->NtagIndexRWMutexUnLock();
           return -1;
         }
         uint32_t off = tag_partition_table->getTagColOff(col_id);
         if (off == 0) {
           LOG_ERROR("get tag col off failed, col id [%d}, tag partition table[%s/%s]", col_id,
             tag_partition_table->m_tbl_sub_path_.c_str(), tag_partition_table->m_name_.c_str())
+          tag_partition_table->NtagIndexRWMutexUnLock();
           return -1;
         }
         auto col_val = payload.GetNormalTag(off, col_size);
@@ -2477,7 +2460,7 @@ int TagTable::UpdateForRedo(uint32_t group_id, uint32_t entity_id, const TSSlice
       char index_key[len];
       int num = 0;
       for(auto r:index_cols){
-        strncpy(&index_key[num], r.data, r.len);
+        memcpy(&index_key[num], r.data, r.len);
         num += r.len;
       }
       ntag_index->remove(ret.second, ret.first, index_key, len);
@@ -2488,7 +2471,14 @@ int TagTable::UpdateForRedo(uint32_t group_id, uint32_t entity_id, const TSSlice
     uint64_t joint_entity_id = (static_cast<uint64_t>(entity_id) << 32) | group_id;
     ret_del = m_entity_row_index_->delete_data(reinterpret_cast<const char *>(&joint_entity_id));
   }
-  return InsertTagRecord(payload, group_id, entity_id, payload.GetOSN(), OperateType::Update, ret);
+  // extract prev valid columns from old_tag
+  std::vector<uint32_t> old_valid_columns;
+  {
+    std::vector<TagInfo> schemas;
+    TagTuplePack tag_tuple(schemas, old_tag.data, old_tag.len);
+    old_valid_columns = tag_tuple.getValidColumns();
+  }
+  return InsertTagRecord(payload, group_id, entity_id, payload.GetOSN(), OperateType::Update, ret, old_valid_columns);
 }
 
 int TagTable::UpdateForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash_num,
@@ -2521,9 +2511,10 @@ int TagTable::UpdateForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash
   uint32_t tag_hash_point = GetConsistentHashId(primary_tag.data, primary_tag.len, hash_num);
   std::vector<TagInfo> schemas;
   TagTuplePack tag_tuple(schemas, old_tag.data, old_tag.len);
+  assert(std::is_sorted(tag_tuple.getValidColumns().begin(), tag_tuple.getValidColumns().end()));
   size_t row_no = 0;
   if (tag_partition_table->insert(entity_id, group_id, tag_hash_point, tag_tuple.getOSN(), OperateType::Insert,
-                                  tag_tuple.getTags().data, &row_no) < 0) {
+                                  primary_tag, tag_tuple.getTags(), tag_tuple.getValidColumns(), &row_no) < 0) {
     LOG_ERROR("UpdateForUndo insert tag failed.");
     return -1;
   }
@@ -2543,12 +2534,14 @@ int TagTable::UpdateForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash
         if (col_size == 0) {
           LOG_ERROR("get tag col size failed, col id [%d}, tag partition table[%s/%s]", col_id,
             tag_partition_table->m_tbl_sub_path_.c_str(), tag_partition_table->m_name_.c_str())
+          tag_partition_table->NtagIndexRWMutexUnLock();
           return -1;
         }
         uint32_t off = tag_partition_table->getTagColOff(col_id);
         if (off == 0) {
           LOG_ERROR("get tag col off failed, col id [%d}, tag partition table[%s/%s]", col_id,
             tag_partition_table->m_tbl_sub_path_.c_str(), tag_partition_table->m_name_.c_str())
+          tag_partition_table->NtagIndexRWMutexUnLock();
           return -1;
         }
         // "tag_tuple.getTags().data" is tag addr
@@ -2559,7 +2552,7 @@ int TagTable::UpdateForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash
     char index_key[len];
     int num = 0;
     for(auto r:index_cols){
-        strncpy(&index_key[num], r.data, r.len);
+        memcpy(&index_key[num], r.data, r.len);
         num += r.len;
     }
     if (ntag_index->insert(index_key, len, tag_partition_version, row_no) < 0) {
@@ -2779,7 +2772,8 @@ TagPartitionTableManager::~TagPartitionTableManager() {
 }
 
 int TagPartitionTableManager::CreateTagPartitionTable(const std::vector<TagInfo>& schema, uint32_t ts_version,
-                                                      ErrorInfo& err_info, uint32_t newest_part_file_version) {
+                                                      ErrorInfo& err_info, uint32_t newest_part_file_version,
+                                                      bool issparse) {
   // 1. check path
   std::string partition_table_path = m_tbl_sub_path_ + TAG_VERSION_NAME + "_" + std::to_string(ts_version) + "/";
   std::string real_path = m_db_path_ + partition_table_path;
@@ -2807,7 +2801,7 @@ int TagPartitionTableManager::CreateTagPartitionTable(const std::vector<TagInfo>
   TagPartitionTable* tmp_bt = new TagPartitionTable();
   if (tmp_bt->open(m_table_prefix_name_, m_db_path_, partition_table_path, MMAP_CREAT_EXCL, err_info) >= 0 ||
       err_info.errcode == KWECORR) {
-    tmp_bt->create(schema, m_entity_group_id_, ts_version, err_info);
+    tmp_bt->create(schema, m_entity_group_id_, ts_version, err_info, issparse);
   }
   if (err_info.errcode < 0) {
     LOG_ERROR("failed to create tag partition table %s%s, error: %s",

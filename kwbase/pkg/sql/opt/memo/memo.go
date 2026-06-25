@@ -684,6 +684,32 @@ func (m *Memo) HasPlaceholders() bool {
 	return rel.Relational().HasPlaceholder
 }
 
+// IsStaleForSparseTable returns true if the memo has been invalidated by changes for sparse table
+func (m *Memo) IsStaleForSparseTable(
+	ctx context.Context, evalCtx *tree.EvalContext, catalog cat.Catalog,
+) (bool, error) {
+	CheckTableName := func(name cat.DataSourceName, tab cat.Table) (bool, error) {
+		tabParentID := tab.GetParentID()
+		db, err := sqlbase.GetDatabaseDescFromID(ctx, evalCtx.Txn, sqlbase.ID(tabParentID))
+		if err != nil {
+			return false, err
+		}
+		if tab.Name() == name.TableName && ((name.CatalogName != "" && tree.Name(db.Name) == name.CatalogName) || (name.CatalogName == "")) {
+			return true, nil
+		}
+		return false, nil
+	}
+	has, err := m.Metadata().CheckHasSparseTable(CheckTableName)
+	if err != nil {
+		return true, err
+	}
+	if has {
+		return true, nil
+	}
+
+	return false, nil
+}
+
 // IsStale returns true if the memo has been invalidated by changes to any of
 // its dependencies. Once a memo is known to be stale, it must be ejected from
 // any query cache or prepared statement and replaced with a recompiled memo
@@ -734,6 +760,10 @@ func (m *Memo) IsStale(
 		return true, err
 	} else if !depsUpToDate {
 		return true, nil
+	}
+
+	if has, err := m.IsStaleForSparseTable(ctx, evalCtx, catalog); err != nil || has {
+		return has, err
 	}
 
 	return !m.verifyAutoLimitConsistency(evalCtx), nil
@@ -3153,6 +3183,9 @@ func (m *Memo) GetPhyColIDByMetaID(metaID opt.ColumnID) (uint32, error) {
 func (m *Memo) ProcedureCacheIsStale(
 	ctx context.Context, evalCtx *tree.EvalContext, catalog cat.Catalog,
 ) (bool, error) {
+	if has, err := m.IsStaleForSparseTable(ctx, evalCtx, catalog); err != nil || has {
+		return has, err
+	}
 	// Memo is stale if fields from SessionData that can affect planning have
 	// changed.
 	if !m.dataConversion.Equals(&evalCtx.SessionData.DataConversion) ||

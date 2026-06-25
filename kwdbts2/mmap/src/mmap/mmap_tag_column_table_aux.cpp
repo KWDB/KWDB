@@ -39,6 +39,12 @@ void MMapTagColumnTable::setLSN(kwdbts::TS_OSN lsn) {
   }
   m_bitmap_file_->setLSN(lsn);
   m_meta_file_->setLSN(lsn);
+  if (m_row_info_file_) {
+    m_row_info_file_->setLSN(lsn);
+  }
+  if (m_valid_column_file_) {
+    m_valid_column_file_->setLSN(lsn);
+  }
 }
 
 /*
@@ -97,6 +103,12 @@ void MMapTagColumnTable::sync_with_lsn(kwdbts::TS_OSN lsn) {
 
   m_bitmap_file_->sync(MS_SYNC);
   m_meta_file_->sync(MS_SYNC);
+  if (m_row_info_file_) {
+    m_row_info_file_->sync(MS_SYNC);
+  }
+  if (m_valid_column_file_) {
+    m_valid_column_file_->sync(MS_SYNC);
+  }
 
   return ;
 }
@@ -111,6 +123,12 @@ void MMapTagColumnTable::sync(int flags) {
 
   m_bitmap_file_->sync(flags);
   m_meta_file_->sync(flags);
+  if (m_row_info_file_) {
+    m_row_info_file_->sync(flags);
+  }
+  if (m_valid_column_file_) {
+    m_valid_column_file_->sync(flags);
+  }
 }
 
 std::unique_ptr<TagTuplePack> MMapTagColumnTable::GenTagPack(TagTableRowID row) {
@@ -122,14 +140,19 @@ std::unique_ptr<TagTuplePack> MMapTagColumnTable::GenTagPack(TagTableRowID row) 
     schema.push_back(col);
   }
 
-  TagTuplePack* packer = KNEW TagTuplePack(schema);
+  this->startRead();
+
+  std::vector<uint32_t> valid_columns;
+  getValidColumns(row, valid_columns);
+
+  TagTuplePack* packer = KNEW TagTuplePack(schema, valid_columns);
   if (nullptr == packer) {
     LOG_ERROR("new TagTuplePack failed,out of memory");
+    this->stopRead();
     return nullptr;
   }
   const char *valPtr = nullptr;
   size_t valLen = 0;
-  this->startRead();
   for (int col = 0; col < m_cols_.size(); ++col) {
     if (nullptr == m_cols_[col]) {
       continue;
@@ -195,6 +218,7 @@ std::unique_ptr<TagTuplePack> MMapTagColumnTable::GenTagPack(TagTableRowID row) 
   packer->setEntityId(entityId);
   packer->setSubgroupId(subgroupId);
   packer->setVersion(metaData().m_ts_version);
+  packer->setValidColumns(valid_columns);
 
   return std::unique_ptr<TagTuplePack>(packer);
 }
@@ -245,6 +269,9 @@ void TagTuplePack::calcDataMaxSizeAndLens() {
     dataMaxSize_ += fixTagLen_ + varTagLen_;
     dataMaxSize_ += 4; // tagLen: don't contain the 4bytes length.
   }
+
+  // valid_columns: [uint32_t count][uint32_t col_ids...]
+  dataMaxSize_ += sizeof(uint32_t) + valid_columns_.size() * sizeof(uint32_t);
 
   return;
 }
@@ -465,7 +492,8 @@ TagTuplePack::TagTuplePack(TagTuplePack &&tag) noexcept
       priTagLen_(tag.priTagLen_),
       bitMapLen_(tag.bitMapLen_),
       fixTagLen_(tag.fixTagLen_),
-      varTagLen_(tag.varTagLen_) {
+      varTagLen_(tag.varTagLen_),
+      valid_columns_(std::move(tag.valid_columns_)) {
   tag.data_ = nullptr;
 }
 
@@ -482,6 +510,7 @@ TagTuplePack& TagTuplePack::operator=(TagTuplePack &&tag) noexcept {
     bitMapLen_ = tag.bitMapLen_;
     fixTagLen_ = tag.fixTagLen_;
     varTagLen_ = tag.varTagLen_;
+    valid_columns_ = std::move(tag.valid_columns_);
 
     tag.data_ = nullptr;
   }
@@ -493,4 +522,46 @@ void TagTuplePack::free() {
   if (isMemOwner_ && (data_ != nullptr)) {
     delete[] data_;
   }
+}
+
+void TagTuplePack::setValidColumns(const std::vector<uint32_t>& cols) {
+  if (!isMemOwner_ || data_ == nullptr) {
+    return;
+  }
+  uint32_t count = cols.size();
+  size_t append_len = sizeof(uint32_t) + count * sizeof(uint32_t);
+  if (dataLen_ + append_len > dataMaxSize_) {
+    LOG_ERROR("TagTuplePack setValidColumns buffer overflow, dataLen_=%zu, append_len=%zu, dataMaxSize_=%zu",
+              dataLen_, append_len, dataMaxSize_);
+    return;
+  }
+  memcpy(data_ + dataLen_, &count, sizeof(uint32_t));
+  if (count > 0) {
+    memcpy(data_ + dataLen_ + sizeof(uint32_t), cols.data(), count * sizeof(uint32_t));
+  }
+  dataLen_ += append_len;
+}
+
+std::vector<uint32_t> TagTuplePack::getValidColumns() const {
+  std::vector<uint32_t> cols;
+  if (data_ == nullptr || dataLen_ < dataOffset_ + sizeof(uint32_t)) {
+    return cols;
+  }
+  uint16_t pri_len = *reinterpret_cast<const uint16_t*>(data_ + dataOffset_);
+  size_t tag_len_field_offset = dataOffset_ + 2 + pri_len;
+  if (tag_len_field_offset + sizeof(uint32_t) > dataLen_) {
+    return cols;
+  }
+  uint32_t tag_len = *reinterpret_cast<const uint32_t*>(data_ + tag_len_field_offset);
+  size_t tag_data_end = tag_len_field_offset + 4 + tag_len;
+  if (tag_data_end + sizeof(uint32_t) > dataLen_) {
+    return cols;
+  }
+  uint32_t count = *reinterpret_cast<const uint32_t*>(data_ + tag_data_end);
+  if (tag_data_end + sizeof(uint32_t) + count * sizeof(uint32_t) > dataLen_) {
+    return cols;
+  }
+  const uint32_t* data_ptr = reinterpret_cast<const uint32_t*>(data_ + tag_data_end + sizeof(uint32_t));
+  cols.assign(data_ptr, data_ptr + count);
+  return cols;
 }

@@ -255,6 +255,24 @@ message TsPutResponse {
   uint32 unorderedAffected = 5;
 }
 
+// TsGetValidColumnsRequest is used to get IDs of all valid columns for sparse table.
+message TsGetValidColumnsRequest {
+  option (gogoproto.equal) = true;
+
+  RequestHeader header = 1 [(gogoproto.nullable) = false, (gogoproto.embed) = true];
+  uint64 tableId = 2;
+  uint32 version = 3;
+  repeated bytes primaryTags = 4;
+}
+
+// TsGetValidColumnsResponse is used to return the IDs of valid columns.
+message TsGetValidColumnsResponse {
+  ResponseHeader header = 1 [(gogoproto.nullable) = false, (gogoproto.embed) = true];
+
+  // The IDs of valid columns.
+  repeated uint32 validIDs = 2;
+}
+
 // A TsRowPutRequest is the argument to insert row values to TS DB in distribution mode
 message TsRowPutRequest {
   option (gogoproto.equal) = true;
@@ -2112,6 +2130,7 @@ message RequestUnion {
     TsCommitRequest ts_commit = 62;
     TsRollbackRequest ts_rollback = 63;
     TsImportFlushRequest ts_import_flush = 64;
+    TsGetValidColumnsRequest ts_get_valid_columns = 65;
   }
   reserved 8, 15, 23, 25, 27;
 }
@@ -2175,6 +2194,7 @@ message ResponseUnion {
     TsCommitResponse ts_commit = 62;
     TsRollbackResponse ts_rollback = 63;
     TsImportFlushResponse ts_import_flush = 64;
+    TsGetValidColumnsResponse ts_get_valid_columns = 65;
   }
   reserved 8, 15, 23, 25, 27, 28;
 }

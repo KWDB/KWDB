@@ -555,7 +555,7 @@ func TestUpdateTimeColPrecision(t *testing.T) {
 
 	// Test with relational table (should return same type)
 	relationalType := types.MakeTimestamp(0)
-	result := UpdateTimeColPrecision(relationalType, tree.RelationalTable)
+	result := UpdateTimeColPrecision(relationalType, false)
 	if result != relationalType {
 		t.Errorf("UpdateTimeColPrecision should return same type for relational table, got %v", result)
 	}
@@ -563,7 +563,7 @@ func TestUpdateTimeColPrecision(t *testing.T) {
 	// Test with timeseries table and timestamp with precision 0 (should update to 3)
 	tsType := types.MakeTimestamp(0)
 	tsType.InternalType.TimePrecisionIsSet = false
-	result = UpdateTimeColPrecision(tsType, tree.TimeseriesTable)
+	result = UpdateTimeColPrecision(tsType, true)
 	expected := types.MakeTimestamp(3)
 	if result.Precision() != expected.Precision() {
 		t.Errorf("UpdateTimeColPrecision should update precision to 3 for timeseries table, got %d", result.Precision())
@@ -571,7 +571,7 @@ func TestUpdateTimeColPrecision(t *testing.T) {
 
 	// Test with timeseries table and timestamp with precision already set (should not update)
 	tsTypeWithPrec := types.MakeTimestamp(6)
-	result = UpdateTimeColPrecision(tsTypeWithPrec, tree.TimeseriesTable)
+	result = UpdateTimeColPrecision(tsTypeWithPrec, true)
 	if result.Precision() != tsTypeWithPrec.Precision() {
 		t.Errorf("UpdateTimeColPrecision should not update precision when already set, got %d", result.Precision())
 	}
@@ -579,7 +579,7 @@ func TestUpdateTimeColPrecision(t *testing.T) {
 	// Test with timeseries table and timetz with precision 0 (should update to 3)
 	timetzType := types.MakeTimeTZ(0)
 	timetzType.InternalType.TimePrecisionIsSet = false
-	result = UpdateTimeColPrecision(timetzType, tree.TimeseriesTable)
+	result = UpdateTimeColPrecision(timetzType, true)
 	expectedTimetz := types.MakeTimeTZ(3)
 	if result.Precision() != expectedTimetz.Precision() {
 		t.Errorf("UpdateTimeColPrecision should update timetz precision to 3 for timeseries table, got %d", result.Precision())

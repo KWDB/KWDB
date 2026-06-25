@@ -15,6 +15,7 @@ import (
 	"context"
 	"encoding/binary"
 	"math"
+	"sort"
 	"testing"
 
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
@@ -28,6 +29,174 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"github.com/lib/pq/oid"
 )
+
+func makeDirectInsertPrimaryTagGroupingTestSchema() (
+	pTag1, pTag2, tsCol *sqlbase.ColumnDescriptor,
+	tableDesc *sqlbase.ImmutableTableDescriptor,
+) {
+	pTagTyp := types.MakeVarChar(8, 0)
+	pTag1 = &sqlbase.ColumnDescriptor{
+		ID:   1,
+		Name: "ptag1",
+		Type: *pTagTyp,
+		TsCol: sqlbase.TSCol{
+			ColumnType:         sqlbase.ColumnType_TYPE_PTAG,
+			StorageLen:         8,
+			VariableLengthType: sqlbase.StorageTuple,
+		},
+	}
+	pTag2 = &sqlbase.ColumnDescriptor{
+		ID:   2,
+		Name: "ptag2",
+		Type: *pTagTyp,
+		TsCol: sqlbase.TSCol{
+			ColumnType:         sqlbase.ColumnType_TYPE_PTAG,
+			StorageLen:         8,
+			VariableLengthType: sqlbase.StorageTuple,
+		},
+	}
+	tsCol = &sqlbase.ColumnDescriptor{
+		ID:   3,
+		Name: "ts",
+		Type: *types.Timestamp,
+		TsCol: sqlbase.TSCol{
+			ColumnType: sqlbase.ColumnType_TYPE_DATA,
+			StorageLen: 8,
+		},
+	}
+	tableDesc = &sqlbase.ImmutableTableDescriptor{
+		TableDescriptor: sqlbase.TableDescriptor{
+			ID:      1,
+			Columns: []sqlbase.ColumnDescriptor{*pTag1, *pTag2, *tsCol},
+		},
+	}
+	return pTag1, pTag2, tsCol, tableDesc
+}
+
+func makeDirectInsertPrimaryTagGroupingPayloadArgs(
+	t *testing.T,
+) (
+	execbuilder.PayloadArgs,
+	[]*sqlbase.ColumnDescriptor,
+	[]*sqlbase.ColumnDescriptor,
+	map[int]int,
+) {
+	t.Helper()
+	pTag1, pTag2, tsCol, _ := makeDirectInsertPrimaryTagGroupingTestSchema()
+	primaryTagCols := []*sqlbase.ColumnDescriptor{pTag1, pTag2}
+	dataCols := []*sqlbase.ColumnDescriptor{tsCol}
+	pArgs, err := execbuilder.BuildPayloadArgs(
+		1,
+		&sqlbase.TSIDGenerator{},
+		primaryTagCols,
+		nil,
+		dataCols,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v2Info := execbuilder.BuildPayloadV2TupleDataInfo(dataCols)
+	pArgs.V2DataHeader = v2Info.DataHeader
+	pArgs.V2DataCols = v2Info.DataCols
+	return pArgs, primaryTagCols, dataCols, map[int]int{1: 0, 2: 1, 3: 2}
+}
+
+func makeDirectInsertPrimaryTagGroupingTimestamp(v int64) []byte {
+	buf := make([]byte, 8)
+	binary.LittleEndian.PutUint64(buf, uint64(v))
+	return buf
+}
+
+func TestGetRowBytesForTsInsertPrimaryTagGroupingKey(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	pArgs, primaryTagCols, dataCols, colIndexs := makeDirectInsertPrimaryTagGroupingPayloadArgs(t)
+	di := &DirectInsert{
+		RowNum:         2,
+		ColNum:         3,
+		ColIndexs:      colIndexs,
+		PrettyCols:     pArgs.PrettyCols,
+		PrimaryTagCols: primaryTagCols,
+		Dcs:            dataCols,
+		PArgs:          pArgs,
+	}
+	stmt := parser.Statement{
+		Insertdirectstmt: parser.Insertdirectstmt{
+			InsertValues: []string{"a", "bc", "1000", "ab", "c", "2000"},
+			ValuesType: []parser.TokenType{
+				parser.STRINGTYPE, parser.STRINGTYPE, parser.NUMTYPE,
+				parser.STRINGTYPE, parser.STRINGTYPE, parser.NUMTYPE,
+			},
+		},
+	}
+
+	_, priTagValMap, _, err := GetRowBytesForTsInsert(
+		context.Background(),
+		tree.NewParseTimeContext(timeutil.Now()),
+		di,
+		parser.Statements{stmt},
+		make([]int64, di.RowNum),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(priTagValMap) != 2 {
+		t.Fatalf("expected two primary tag groups, got %d: %v", len(priTagValMap), priTagValMap)
+	}
+}
+
+func TestBuildRowBytesForPrepareTsInsertPrimaryTagGroupingKey(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	pArgs, primaryTagCols, dataCols, colIndexs := makeDirectInsertPrimaryTagGroupingPayloadArgs(t)
+	_, _, _, tableDesc := makeDirectInsertPrimaryTagGroupingTestSchema()
+	args := [][]byte{
+		[]byte("a"), []byte("bc"), makeDirectInsertPrimaryTagGroupingTimestamp(1000),
+		[]byte("ab"), []byte("c"), makeDirectInsertPrimaryTagGroupingTimestamp(2000),
+	}
+	evalCtx := tree.MakeTestingEvalContext(cluster.MakeTestingClusterSettings())
+	di := &DirectInsert{
+		RowNum:         len(args),
+		ColNum:         3,
+		ColIndexs:      colIndexs,
+		PrettyCols:     pArgs.PrettyCols,
+		PrimaryTagCols: primaryTagCols,
+		Dcs:            dataCols,
+		PArgs:          pArgs,
+		PayloadNodeMap: make(map[int]*sqlbase.PayloadForDistTSInsert),
+	}
+	dit := DirectInsertTable{
+		DbID:      1,
+		TabID:     uint32(tableDesc.ID),
+		HashNum:   16,
+		ColsDesc:  tableDesc.Columns,
+		TableType: tree.TimeseriesTable,
+	}
+
+	err := BuildRowBytesForPrepareTsInsert(
+		tree.NewParseTimeContext(timeutil.Now()),
+		args,
+		dit,
+		di,
+		evalCtx,
+		tableDesc,
+		1,
+		[]int64{1000, 2000},
+		&ExecutorConfig{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payloads := di.PayloadNodeMap[int(evalCtx.NodeID)].PerNodePayloads
+	counts := make([]int, 0, len(payloads))
+	for _, payload := range payloads {
+		counts = append(counts, int(payload.RowNum))
+	}
+	sort.Ints(counts)
+	if len(counts) != 2 || counts[0] != 1 || counts[1] != 1 {
+		t.Fatalf("expected two one-row primary tag groups, got %v", counts)
+	}
+}
 
 // TestBigEndianToLittleEndian tests the bigEndianToLittleEndian function
 func TestBigEndianToLittleEndian(t *testing.T) {

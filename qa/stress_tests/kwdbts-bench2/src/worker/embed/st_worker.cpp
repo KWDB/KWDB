@@ -77,7 +77,8 @@ KBStatus StWriteWorker::do_work(KTimestamp  new_ts) {
   {
     KWDB_START();
     if (table_schema.build == nullptr) {
-      table_schema.build = std::make_shared<TSRowPayloadBuilder>(table_schema.tag_schema, table_schema.data_schema, params_.BATCH_NUM);
+      table_schema.build = std::make_shared<TSRowPayloadSparseBuilder>();
+      table_schema.build->Init(table_schema.tag_schema, table_schema.data_schema, params_.BATCH_NUM, TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_TUPLE);
     } else {
       table_schema.build->Reset();
     }

@@ -52,6 +52,11 @@ typedef struct {
     int32_t len;
 } IndexColumns;
 
+typedef struct {
+    uint32_t* valid_column;
+    int32_t len;
+} ValidColumns;
+
 // timestamp span
 typedef struct {
   int64_t begin;
@@ -573,6 +578,10 @@ int __attribute__((weak)) goFlushed();
 TSStatus TSGetTableBlocksDistribution(TSEngine* engine, TSTableID table_id, TSSlice* blocks_info);
 
 TSStatus TSGetDBBlocksDistribution(TSEngine* engine, uint32_t db_id, TSSlice* blocks_info);
+
+TSStatus TsGetValidColumns(TSEngine* engine, TSTableID table_id, uint32_t table_version,
+                           TSSlice* primary_tags, size_t primary_tags_num,
+                           ValidColumns* valid_columns);
 
 TSStatus TSRaftOpen(RaftStore** engine, TSSlice dir);
 

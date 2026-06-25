@@ -21,6 +21,8 @@
 #include "../include/mmap/mmap_tag_table.h"
 #include "mmap/mmap_tag_version_manager.h"
 #include "mmap/mmap_tag_column_table_aux.h"
+#include "../../ts_engine/include/ts_payload.h"
+#include "../../ts_engine/tests/test_util.h"
 #include "ts_payload.h"
 
 class TestTagTable : public testing::Test {
@@ -41,7 +43,7 @@ class TestTagTable : public testing::Test {
     
     // Remove existing directory if any
     if (!Remove(full_path)) {
-      LOG_WARN("Failed to remove directory %s: %s", full_path.c_str());
+      LOG_WARN("Failed to remove directory %s", full_path.c_str());
     }
     
     // Create directories with proper permissions using MakeDirectory
@@ -724,26 +726,6 @@ TEST_F(TestTagTable, InsertForUndo_RecordNotExist) {
   EXPECT_EQ(result, 0);
 }
 
-TEST_F(TestTagTable, InsertForRedo_RecordNotExist) {
-  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
-  ErrorInfo err_info;
-  ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
-
-  std::vector<AttributeInfo> schema;
-  AttributeInfo attr;
-  attr.id = 1;
-  attr.type = DATATYPE::STRING;
-  attr.size = 64;
-  attr.length = 64;
-  schema.push_back(attr);
-
-  std::vector<uint8_t> payload_data(256, 0);
-  TSSlice payload_slice{reinterpret_cast<char*>(payload_data.data()), payload_data.size()};
-  kwdbts::Payload payload(schema, payload_slice);
-  
-  int result = tag_table.InsertForRedo(1, 1, payload);
-}
-
 TEST_F(TestTagTable, DeleteForUndo_TagPackNull) {
   TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
   ErrorInfo err_info;
@@ -785,7 +767,8 @@ TEST_F(TestTagTable, DeleteForUndo_ExistingRecord_SetsTagDataInfoCorrectly) {
   const std::vector<TagInfo>& tag_schema = part_table->getIncludeDroppedSchemaInfos();
 
   // 1. Insert a record using InsertTagRecord with TsRawPayload
-  TSRowPayloadBuilder builder(tag_schema, metric_schema_, 1);
+  TSRowPayloadSparseBuilder builder;
+  builder.Init(tag_schema, metric_schema_, 1, TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_VECTOR);
   uint32_t group_id = 1;
   TSEntityID dev_id = 10;
   // builder.SetTagValue(0, reinterpret_cast<char*>(&dev_id), sizeof(dev_id));
@@ -853,7 +836,8 @@ TEST_F(TestTagTable, DeleteForRedo_ExistingRecord_SetsTagDataInfoCorrectly) {
   const std::vector<TagInfo>& tag_schema = part_table->getIncludeDroppedSchemaInfos();
 
   // 1. Insert a record using InsertTagRecord with TsRawPayload
-  TSRowPayloadBuilder builder(tag_schema, metric_schema_, 1);
+  TSRowPayloadSparseBuilder builder;
+  builder.Init(tag_schema, metric_schema_, 1, TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_VECTOR);
   uint32_t group_id = 1;
   TSEntityID dev_id = 20;
   // builder.SetTagValue(0, reinterpret_cast<char*>(&dev_id), sizeof(dev_id));
@@ -918,7 +902,8 @@ TEST_F(TestTagTable, DeleteForRedo_AlreadyDeleted_SkipsSetTagDataInfo) {
   const std::vector<TagInfo>& tag_schema = part_table->getIncludeDroppedSchemaInfos();
 
   // 1. Insert a record using InsertTagRecord with TsRawPayload
-  TSRowPayloadBuilder builder(tag_schema, metric_schema_, 1);
+  TSRowPayloadSparseBuilder builder;
+  builder.Init(tag_schema, metric_schema_, 1, TS_PAYLOAD_ROW_TYPE_TUPLE);
   uint32_t group_id = 1;
   TSEntityID dev_id = 21;
   // builder.SetTagValue(0, reinterpret_cast<char*>(&dev_id), sizeof(dev_id));
@@ -933,7 +918,7 @@ TEST_F(TestTagTable, DeleteForRedo_AlreadyDeleted_SkipsSetTagDataInfo) {
   TsRawPayload::SetHashPoint(pay_load, group_id);
   TsRawPayload::SetOSN(pay_load, 10);
 
-  kwdbts::TsRawPayload raw_payload(nullptr);
+  kwdbts::TsRawPayload raw_payload(&metric_schema_, true);
   ASSERT_EQ(raw_payload.ParsePayLoadStruct(pay_load), KStatus::SUCCESS);
 
   uint32_t entity_id = 21;
@@ -951,7 +936,8 @@ TEST_F(TestTagTable, DeleteForRedo_AlreadyDeleted_SkipsSetTagDataInfo) {
 
   // 3. Re-insert the record so it's found again
   // Build a new payload for re-insert
-  TSRowPayloadBuilder builder2(tag_schema, metric_schema_, 1);
+  TSRowPayloadSparseBuilder builder2;
+  builder2.Init(tag_schema, metric_schema_, 1, TS_PAYLOAD_ROW_TYPE_TUPLE);
   dev_id = 31;
   group_id = 2;
   entity_id = 31;
@@ -1026,7 +1012,8 @@ TEST_F(TestTagTable, UpdateForRedo_TsRawPayloadVersion_SetsDeleteMark) {
   const std::vector<TagInfo>& tag_schema = part_table->getIncludeDroppedSchemaInfos();
 
   // 1. Insert a record using InsertTagRecord with TsRawPayload
-  TSRowPayloadBuilder builder(tag_schema, metric_schema_, 1);
+  TSRowPayloadSparseBuilder builder;
+  builder.Init(tag_schema, metric_schema_, 1, TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_VECTOR);
   uint32_t group_id = 1;
   TSEntityID dev_id = 30;
   // builder.SetTagValue(0, reinterpret_cast<char*>(&dev_id), sizeof(dev_id));
@@ -1061,7 +1048,8 @@ TEST_F(TestTagTable, UpdateForRedo_TsRawPayloadVersion_SetsDeleteMark) {
     size_t old_row = row_info.second;
 
     // Build an update payload
-    TSRowPayloadBuilder update_builder(tag_schema, metric_schema_, 1);
+    TSRowPayloadSparseBuilder update_builder;
+    update_builder.Init(tag_schema, metric_schema_, 1, TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_BITMAP);
     // update_builder.SetTagValue(0, reinterpret_cast<char*>(&dev_id), sizeof(dev_id));
     for (size_t i = 0; i < tag_schema.size(); i++) {
       update_builder.SetTagValue(i, reinterpret_cast<char*>(&dev_id), tag_schema[i].m_size);
@@ -1076,7 +1064,10 @@ TEST_F(TestTagTable, UpdateForRedo_TsRawPayloadVersion_SetsDeleteMark) {
     kwdbts::TsRawPayload update_raw_payload(nullptr);
     ASSERT_EQ(update_raw_payload.ParsePayLoadStruct(update_pay_load), KStatus::SUCCESS);
 
-    int result = tag_table.UpdateForRedo(group_id, entity_id, ptag, update_raw_payload);
+    TSSlice primary_key = update_raw_payload.GetPrimaryTag();
+    auto tag_pack = tag_table.GenTagPack(primary_key.data, primary_key.len);
+    EXPECT_TRUE(tag_pack!= 0);
+    int result = tag_table.UpdateForRedo(group_id, entity_id, ptag, update_raw_payload, tag_pack->getData());
     EXPECT_EQ(result, 0);
 
     // Old row should be marked as deleted
@@ -1103,7 +1094,7 @@ class TestTagPartitionTableSetTagDataInfo : public testing::Test {
 
     std::string full_path = db_path_ + tbl_sub_path_;
     if (!Remove(full_path)) {
-      LOG_WARN("Failed to remove directory %s: %s", full_path.c_str());
+      LOG_WARN("Failed to remove directory %s", full_path.c_str());
     }
     if (!MakeDirectory(full_path)) {
       FAIL() << "Failed to create directory: " << full_path;
@@ -1173,7 +1164,7 @@ TEST_F(TestTagPartitionTableSetTagDataInfo, SetTagDataInfo_PtrOverload_SetsEntir
   memcpy(tag_data.data() + bitmap_size + 64, &ntag_val, sizeof(int32_t));
 
   size_t row_no = 0;
-  ASSERT_GE(part_table->insert(1, 1, 0, 100, OperateType::Insert, tag_data.data(), &row_no), 0);
+  ASSERT_GE(part_table->insert(1, 1, 0, 100, OperateType::Insert, {primary_tag, 64}, {tag_data.data(), sizeof(tag_data)}, {}, &row_no), 0);
 
   // Set TagDataInfo using pointer overload
   TagDataInfo new_info{};
@@ -1217,7 +1208,7 @@ TEST_F(TestTagPartitionTableSetTagDataInfo, SetTagDataInfo_IndexOverload_SetsSpe
   memcpy(tag_data.data() + bitmap_size + 64, &ntag_val, sizeof(int32_t));
 
   size_t row_no = 0;
-  ASSERT_GE(part_table->insert(2, 1, 0, 100, OperateType::Insert, tag_data.data(), &row_no), 0);
+  ASSERT_GE(part_table->insert(2, 1, 0, 100, OperateType::Insert,{primary_tag, 64}, {tag_data.data(), sizeof(tag_data)}, {}, &row_no), 0);
 
   // First, set index 0 to Insert (simulating initial state)
   part_table->startRead();
@@ -1276,7 +1267,7 @@ TEST_F(TestTagPartitionTableSetTagDataInfo, SetTagDataInfo_PtrOverload_ReplacesE
   memcpy(tag_data.data() + bitmap_size + 64, &ntag_val, sizeof(int32_t));
 
   size_t row_no = 0;
-  ASSERT_GE(part_table->insert(3, 1, 0, 100, OperateType::Insert, tag_data.data(), &row_no), 0);
+  ASSERT_GE(part_table->insert(3, 1, 0, 100, OperateType::Insert, {primary_tag, 64}, {tag_data.data(), sizeof(tag_data)}, {}, &row_no), 0);
 
   // First set some data at index 1
   part_table->startRead();
@@ -1318,7 +1309,7 @@ TEST_F(TestTagPartitionTableSetTagDataInfo, SetTagDataInfo_IndexOverload_GetOpTy
   memcpy(tag_data.data() + bitmap_size + 64, &ntag_val, sizeof(int32_t));
 
   size_t row_no = 0;
-  ASSERT_GE(part_table->insert(4, 1, 0, 100, OperateType::Insert, tag_data.data(), &row_no), 0);
+  ASSERT_GE(part_table->insert(4, 1, 0, 100, OperateType::Insert, {primary_tag, 64}, {tag_data.data(), sizeof(tag_data)}, {}, &row_no), 0);
 
   // Set up: Insert at idx 0, Delete at idx 1 (as DeleteForRedo would do)
   part_table->startRead();
@@ -1354,7 +1345,9 @@ TEST_F(TestTagPartitionTableSetTagDataInfo, SetTagDataInfo_PtrOverload_DeletesMa
   const std::vector<TagInfo>& tag_schema = part_table->getIncludeDroppedSchemaInfos();
 
   // Insert a record using InsertTagRecord with TsRawPayload
-  TSRowPayloadBuilder builder(tag_schema, metric_schema_, 1);
+  TSRowPayloadSparseBuilder builder;
+  auto ok = builder.Init(tag_schema, metric_schema_, 1, TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_TUPLE);
+  ASSERT_TRUE(ok);
   uint32_t group_id = 1;
   TSEntityID dev_id = 40;
   // builder.SetTagValue(0, reinterpret_cast<char*>(&dev_id), sizeof(dev_id));
@@ -1393,7 +1386,9 @@ TEST_F(TestTagPartitionTableSetTagDataInfo, SetTagDataInfo_PtrOverload_DeletesMa
   partition_table->stopRead();
 
   // Now re-insert so the record is found again
-  TSRowPayloadBuilder builder2(tag_schema, metric_schema_, 1);
+  TSRowPayloadSparseBuilder builder2;
+  ok = builder2.Init(tag_schema, metric_schema_, 1, TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_TUPLE);
+  ASSERT_TRUE(ok);
   // builder2.SetTagValue(0, reinterpret_cast<char*>(&dev_id), sizeof(dev_id));
   for (size_t i = 0; i < tag_schema.size(); i++) {
     builder2.SetTagValue(i, reinterpret_cast<char*>(&dev_id), tag_schema[i].m_size);
@@ -1431,4 +1426,957 @@ TEST_F(TestTagPartitionTableSetTagDataInfo, SetTagDataInfo_PtrOverload_DeletesMa
   }
   free(pay_load.data);
   free(pay_load2.data);
+}
+
+// ==================== Sparse TagTable Tests ====================
+
+class TestSparseTagTable : public testing::Test {
+ protected:
+  void SetUp() override {
+    static std::atomic<uint64_t> test_counter{2000};
+    uint64_t unique_id = test_counter.fetch_add(1);
+    db_path_ = "tmp" + std::to_string(unique_id) + "/kwdb_mmap_test/sparse_tag_tbl_/";
+    tbl_sub_path_ = "sub_path/";
+    table_id_ = 3001;
+    entity_group_id_ = 1;
+    table_version_ = 1;
+
+    std::string full_path = db_path_ + tbl_sub_path_;
+    if (!Remove(full_path)) {
+      LOG_WARN("Failed to remove directory %s", full_path.c_str());
+    }
+    if (!MakeDirectory(full_path)) {
+      FAIL() << "Failed to create directory: " << full_path;
+    }
+
+    schema_.clear();
+    TagInfo ptag_info;
+    ptag_info.m_id = 1;
+    ptag_info.m_data_type = DATATYPE::STRING;
+    ptag_info.m_length = 64;
+    ptag_info.m_size = 64;
+    ptag_info.m_tag_type = PRIMARY_TAG;
+    ptag_info.m_flag = 0;
+    schema_.push_back(ptag_info);
+
+    TagInfo ntag_info;
+    ntag_info.m_id = 2;
+    ntag_info.m_data_type = DATATYPE::INT32;
+    ntag_info.m_length = sizeof(int32_t);
+    ntag_info.m_size = sizeof(int32_t);
+    ntag_info.m_tag_type = GENERAL_TAG;
+    ntag_info.m_flag = 0;
+    schema_.push_back(ntag_info);
+  }
+
+  void TearDown() override {
+    if (!Remove(db_path_ + tbl_sub_path_)) {
+      LOG_WARN("Failed to clean up directory");
+    }
+  }
+
+  std::string db_path_;
+  std::string tbl_sub_path_;
+  uint64_t table_id_;
+  int32_t entity_group_id_;
+  uint32_t table_version_;
+  std::vector<TagInfo> schema_;
+};
+
+TEST_F(TestSparseTagTable, Create_SparseTable) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+
+  int result = tag_table.create(schema_, table_version_, {}, err_info, true);
+
+  EXPECT_EQ(result, 0);
+}
+
+TEST_F(TestSparseTagTable, Create_NormalTable) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+
+  int result = tag_table.create(schema_, table_version_, {}, err_info, false);
+
+  EXPECT_EQ(result, 0);
+}
+
+TEST_F(TestSparseTagTable, GetValidColumns_NullPrimaryTags) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(tag_table.create(schema_, table_version_, {}, err_info, true), 0);
+
+  TSSlice null_ptag{nullptr, 0};
+  std::vector<uint32_t> valid_columns;
+
+  bool result = tag_table.GetValidColumns(&null_ptag, 1, valid_columns);
+
+  EXPECT_FALSE(result);
+}
+
+TEST_F(TestSparseTagTable, GetValidColumns_NonExistentPrimaryKey) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(tag_table.create(schema_, table_version_, {}, err_info, true), 0);
+
+  char ptag_data[64] = "nonexistent";
+  TSSlice ptag{ptag_data, strlen(ptag_data)};
+  std::vector<uint32_t> valid_columns;
+
+  bool result = tag_table.GetValidColumns(&ptag, 1, valid_columns);
+
+  EXPECT_TRUE(result);
+  ASSERT_EQ(valid_columns.size(), 0);
+}
+
+TEST_F(TestSparseTagTable, IsSparse_TrueAfterSparseCreate) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(tag_table.create(schema_, table_version_, {}, err_info, true), 0);
+
+  EXPECT_TRUE(tag_table.issparse());
+}
+
+TEST_F(TestSparseTagTable, IsSparse_FalseAfterNormalCreate) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(tag_table.create(schema_, table_version_, {}, err_info, false), 0);
+
+  EXPECT_FALSE(tag_table.issparse());
+}
+
+TEST_F(TestSparseTagTable, Open_SparseTable) {
+  {
+    TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+    ErrorInfo err_info;
+    ASSERT_EQ(tag_table.create(schema_, table_version_, {}, err_info, true), 0);
+  }
+
+  {
+    TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+    std::vector<TableVersion> invalid_versions;
+    ErrorInfo err_info;
+
+    int result = tag_table.open(invalid_versions, err_info);
+
+    EXPECT_EQ(result, 0);
+  }
+}
+
+// ==================== TagTable CheckAndUpdateValidColumns Tests ====================
+
+class TestSparseTagTableWithData : public testing::Test {
+ protected:
+  void SetUp() override {
+    static std::atomic<uint64_t> test_counter{5000};
+    uint64_t unique_id = test_counter.fetch_add(1);
+    db_path_ = "tmp" + std::to_string(unique_id) + "/kwdb_mmap_test/sparse_tag_data_/";
+    tbl_sub_path_ = "data_path/";
+    table_id_ = 5001;
+    entity_group_id_ = 1;
+    table_version_ = 1;
+
+    std::string full_path = db_path_ + tbl_sub_path_;
+    if (!Remove(full_path)) {
+      LOG_WARN("Failed to remove directory %s", full_path.c_str());
+    }
+    if (!MakeDirectory(full_path)) {
+      FAIL() << "Failed to create directory: " << full_path;
+    }
+
+    tag_schema_.clear();
+    TagInfo ptag_info;
+    ptag_info.m_id = 1;
+    ptag_info.m_data_type = DATATYPE::STRING;
+    ptag_info.m_length = 64;
+    ptag_info.m_size = 64;
+    ptag_info.m_tag_type = PRIMARY_TAG;
+    ptag_info.m_flag = 0;
+    tag_schema_.push_back(ptag_info);
+
+    TagInfo ntag_info;
+    ntag_info.m_id = 2;
+    ntag_info.m_data_type = DATATYPE::INT32;
+    ntag_info.m_length = sizeof(int32_t);
+    ntag_info.m_size = sizeof(int32_t);
+    ntag_info.m_tag_type = GENERAL_TAG;
+    ntag_info.m_flag = 0;
+    tag_schema_.push_back(ntag_info);
+
+    metric_schema_.clear();
+    AttributeInfo metric_attr;
+    metric_attr.id = 1;
+    metric_attr.type = DATATYPE::INT32;
+    metric_attr.size = sizeof(int32_t);
+    metric_attr.length = sizeof(int32_t);
+    metric_attr.version = 1;
+    metric_schema_.push_back(metric_attr);
+  }
+
+  void TearDown() override {
+    if (!Remove(db_path_ + tbl_sub_path_)) {
+      LOG_WARN("Failed to clean up directory");
+    }
+  }
+
+  std::string db_path_;
+  std::string tbl_sub_path_;
+  uint64_t table_id_;
+  int32_t entity_group_id_;
+  uint32_t table_version_;
+  std::vector<TagInfo> tag_schema_;
+  std::vector<AttributeInfo> metric_schema_;
+};
+
+TEST_F(TestSparseTagTableWithData, CheckAndUpdateValidColumns_NonSparseNoOp) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(tag_table.create(tag_schema_, table_version_, {}, err_info, false), 0);
+
+  // Get tag schema from the created table
+  TagPartitionTable* part_table = tag_table.GetTagPartitionTableManager()->GetPartitionTable(table_version_);
+  ASSERT_NE(part_table, nullptr);
+  const std::vector<TagInfo>& tag_schema = part_table->getIncludeDroppedSchemaInfos();
+
+  // Insert a tag via TsRawPayload
+  auto pay_load = GenRowPayload(metric_schema_, tag_schema, table_id_, 1, 1, 0, 1000);
+  TsRawPayload::SetHashPoint(pay_load, 2);
+  TsRawPayload::SetOSN(pay_load, 10);
+  kwdbts::TsRawPayload raw_payload(nullptr, false);
+  ASSERT_EQ(raw_payload.ParsePayLoadStruct(pay_load), KStatus::SUCCESS);
+  ASSERT_EQ(tag_table.InsertTagRecord(raw_payload, 1, 1, 10, OperateType::Insert), 0);
+
+  std::vector<uint32_t> payload_cols = {2, 3};
+  bool result = tag_table.CheckAndUpdateValidColumns("any_key", 7, payload_cols);
+
+  EXPECT_TRUE(result);
+  free(pay_load.data);
+}
+
+TEST_F(TestSparseTagTableWithData, CheckAndUpdateValidColumns_EmptyPayloadCols) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(tag_table.create(tag_schema_, table_version_, {}, err_info, true), 0);
+
+  // Get tag schema from the created table
+  TagPartitionTable* part_table = tag_table.GetTagPartitionTableManager()->GetPartitionTable(table_version_);
+  ASSERT_NE(part_table, nullptr);
+  const std::vector<TagInfo>& tag_schema = part_table->getIncludeDroppedSchemaInfos();
+
+  // Insert a tag via TsRawPayload
+  auto pay_load = GenRowPayload(metric_schema_, tag_schema, table_id_, 1, 1, 0, 1000);
+  TsRawPayload::SetHashPoint(pay_load, 2);
+  TsRawPayload::SetOSN(pay_load, 10);
+  kwdbts::TsRawPayload raw_payload(nullptr, false);
+  ASSERT_EQ(raw_payload.ParsePayLoadStruct(pay_load), KStatus::SUCCESS);
+  ASSERT_EQ(tag_table.InsertTagRecord(raw_payload, 1, 1, 10, OperateType::Insert), 0);
+
+  std::vector<uint32_t> empty_cols;
+  bool result = tag_table.CheckAndUpdateValidColumns("any_key", 7, empty_cols);
+
+  EXPECT_TRUE(result);
+  free(pay_load.data);
+}
+
+TEST_F(TestSparseTagTableWithData, CheckAndUpdateValidColumns_NonExistentPrimaryKey) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(tag_table.create(tag_schema_, table_version_, {}, err_info, true), 0);
+
+  // Get tag schema from the created table
+  TagPartitionTable* part_table = tag_table.GetTagPartitionTableManager()->GetPartitionTable(table_version_);
+  ASSERT_NE(part_table, nullptr);
+  const std::vector<TagInfo>& tag_schema = part_table->getIncludeDroppedSchemaInfos();
+
+  // Insert a tag via TsRawPayload
+  auto pay_load = GenRowPayload(metric_schema_, tag_schema, table_id_, 1, 1, 0, 1000);
+  TsRawPayload::SetHashPoint(pay_load, 2);
+  TsRawPayload::SetOSN(pay_load, 10);
+  kwdbts::TsRawPayload raw_payload(nullptr, false);
+  ASSERT_EQ(raw_payload.ParsePayLoadStruct(pay_load), KStatus::SUCCESS);
+  ASSERT_EQ(tag_table.InsertTagRecord(raw_payload, 1, 1, 10, OperateType::Insert), 0);
+
+  std::vector<uint32_t> payload_cols = {2, 3};
+  bool result = tag_table.CheckAndUpdateValidColumns("nonexistent", 10, payload_cols);
+
+  EXPECT_FALSE(result);
+  free(pay_load.data);
+}
+
+TEST_F(TestSparseTagTableWithData, Issparse_TrueForSparseTableWithData) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(tag_table.create(tag_schema_, table_version_, {}, err_info, true), 0);
+
+  EXPECT_TRUE(tag_table.issparse());
+}
+
+TEST_F(TestSparseTagTableWithData, Issparse_FalseForNormalTableWithData) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(tag_table.create(tag_schema_, table_version_, {}, err_info, false), 0);
+
+  EXPECT_FALSE(tag_table.issparse());
+}
+
+// ==================== TagPartitionTableManager Sparse Tests ====================
+
+class TestSparsePartitionTableManager : public testing::Test {
+ protected:
+  void SetUp() override {
+    static std::atomic<uint64_t> test_counter{3000};
+    uint64_t unique_id = test_counter.fetch_add(1);
+    db_path_ = "tmp" + std::to_string(unique_id) + "/kwdb_mmap_test/sparse_part_/";
+    tbl_sub_path_ = "part_mgr/";
+    table_id_ = 4001;
+    entity_group_id_ = 1;
+    table_version_ = 1;
+
+    std::string full_path = db_path_ + tbl_sub_path_;
+    if (!Remove(full_path)) {
+      LOG_WARN("Failed to remove directory %s", full_path.c_str());
+    }
+    if (!MakeDirectory(full_path)) {
+      FAIL() << "Failed to create directory: " << full_path;
+    }
+
+    schema_.clear();
+    TagInfo ptag_info;
+    ptag_info.m_id = 1;
+    ptag_info.m_data_type = DATATYPE::STRING;
+    ptag_info.m_length = 64;
+    ptag_info.m_size = 64;
+    ptag_info.m_tag_type = PRIMARY_TAG;
+    ptag_info.m_flag = 0;
+    schema_.push_back(ptag_info);
+  }
+
+  void TearDown() override {
+    if (!Remove(db_path_ + tbl_sub_path_)) {
+      LOG_WARN("Failed to clean up directory");
+    }
+  }
+
+  std::string db_path_;
+  std::string tbl_sub_path_;
+  uint64_t table_id_;
+  int32_t entity_group_id_;
+  uint32_t table_version_;
+  std::vector<TagInfo> schema_;
+};
+
+TEST_F(TestSparsePartitionTableManager, CreateSparseTagPartitionTable) {
+  TagPartitionTableManager part_mgr(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+
+  int result = part_mgr.CreateTagPartitionTable(schema_, table_version_, err_info, 0, true);
+
+  EXPECT_EQ(result, 0);
+}
+
+TEST_F(TestSparsePartitionTableManager, CreateNormalTagPartitionTable) {
+  TagPartitionTableManager part_mgr(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+
+  int result = part_mgr.CreateTagPartitionTable(schema_, table_version_, err_info, 0, false);
+
+  EXPECT_EQ(result, 0);
+}
+
+TEST_F(TestSparsePartitionTableManager, SparsePartitionTable_IsSparse) {
+  TagPartitionTableManager part_mgr(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(part_mgr.CreateTagPartitionTable(schema_, table_version_, err_info, 0, true), 0);
+
+  TagPartitionTable* part_table = part_mgr.GetPartitionTable(table_version_);
+  ASSERT_NE(part_table, nullptr);
+  EXPECT_TRUE(part_table->issparse());
+}
+
+TEST_F(TestSparsePartitionTableManager, NormalPartitionTable_NotSparse) {
+  TagPartitionTableManager part_mgr(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(part_mgr.CreateTagPartitionTable(schema_, table_version_, err_info, 0, false), 0);
+
+  TagPartitionTable* part_table = part_mgr.GetPartitionTable(table_version_);
+  ASSERT_NE(part_table, nullptr);
+  EXPECT_FALSE(part_table->issparse());
+}
+
+// ==================== CheckAndUpdateValidColumns Merge Tests ====================
+
+class TestSparseTagTableWithInsert : public testing::Test {
+ protected:
+  void SetUp() override {
+    static std::atomic<uint64_t> test_counter{6000};
+    uint64_t unique_id = test_counter.fetch_add(1);
+    db_path_ = "tmp" + std::to_string(unique_id) + "/kwdb_mmap_test/sparse_merge_/";
+    tbl_sub_path_ = "merge_path/";
+    table_id_ = 6001;
+    entity_group_id_ = 1;
+    table_version_ = 1;
+
+    std::string full_path = db_path_ + tbl_sub_path_;
+    if (!Remove(full_path)) {
+      LOG_WARN("Failed to remove directory %s", full_path.c_str());
+    }
+    if (!MakeDirectory(full_path)) {
+      FAIL() << "Failed to create directory: " << full_path;
+    }
+
+    tag_schema_.clear();
+    TagInfo ptag_info;
+    ptag_info.m_id = 1;
+    ptag_info.m_data_type = DATATYPE::STRING;
+    ptag_info.m_length = 64;
+    ptag_info.m_size = 64;
+    ptag_info.m_tag_type = PRIMARY_TAG;
+    ptag_info.m_flag = 0;
+    tag_schema_.push_back(ptag_info);
+
+    TagInfo ntag_info;
+    ntag_info.m_id = 2;
+    ntag_info.m_data_type = DATATYPE::INT32;
+    ntag_info.m_length = sizeof(int32_t);
+    ntag_info.m_size = sizeof(int32_t);
+    ntag_info.m_tag_type = GENERAL_TAG;
+    ntag_info.m_flag = 0;
+    tag_schema_.push_back(ntag_info);
+
+    metric_schema_.clear();
+    AttributeInfo metric_attr;
+    metric_attr.id = 1;
+    metric_attr.type = DATATYPE::INT32;
+    metric_attr.size = sizeof(int32_t);
+    metric_attr.length = sizeof(int32_t);
+    metric_attr.version = 1;
+    metric_schema_.push_back(metric_attr);
+  }
+
+  void TearDown() override {
+    if (!Remove(db_path_ + tbl_sub_path_)) {
+      LOG_WARN("Failed to clean up directory");
+    }
+  }
+
+  std::string db_path_;
+  std::string tbl_sub_path_;
+  uint64_t table_id_;
+  int32_t entity_group_id_;
+  uint32_t table_version_;
+  std::vector<TagInfo> tag_schema_;
+  std::vector<AttributeInfo> metric_schema_;
+};
+
+// Insert a tag via TsRawPayload, then verify CheckAndUpdateValidColumns merges columns
+TEST_F(TestSparseTagTableWithInsert, CheckAndUpdateValidColumns_MergeNewColumns) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(tag_table.create(tag_schema_, table_version_, {}, err_info, true), 0);
+
+  // Get tag schema from the created table
+  TagPartitionTable* part_table = tag_table.GetTagPartitionTableManager()->GetPartitionTable(table_version_);
+  ASSERT_NE(part_table, nullptr);
+  const std::vector<TagInfo>& tag_schema = part_table->getIncludeDroppedSchemaInfos();
+
+  // Insert a tag via TsRawPayload
+  auto pay_load = GenRowPayload(metric_schema_, tag_schema, table_id_, 1, 1, 0, 1000);
+  TsRawPayload::SetHashPoint(pay_load, 2);
+  TsRawPayload::SetOSN(pay_load, 10);
+  kwdbts::TsRawPayload raw_payload(nullptr, false);
+  ASSERT_EQ(raw_payload.ParsePayLoadStruct(pay_load), KStatus::SUCCESS);
+  ASSERT_EQ(tag_table.InsertTagRecord(raw_payload, 1, 1, 10, OperateType::Insert), 0);
+
+  // Get the primary tag value from payload
+  TSSlice ptag_slice = raw_payload.GetPrimaryTag();
+  std::string ptag_val(ptag_slice.data, ptag_slice.len);
+
+  // Now call CheckAndUpdateValidColumns with new columns
+  std::vector<uint32_t> new_cols = {2, 3};
+  bool result = tag_table.CheckAndUpdateValidColumns(ptag_val.c_str(), ptag_val.length(), new_cols);
+  EXPECT_TRUE(result);
+
+  // Verify via GetValidColumns
+  TSSlice ptag{const_cast<char*>(ptag_val.c_str()), ptag_val.length()};
+  std::vector<uint32_t> valid_columns;
+  bool get_result = tag_table.GetValidColumns(&ptag, 1, valid_columns);
+  EXPECT_TRUE(get_result);
+
+  std::sort(valid_columns.begin(), valid_columns.end());
+  EXPECT_EQ(valid_columns.size(), 2);
+  EXPECT_EQ(valid_columns[0], 2);
+  EXPECT_EQ(valid_columns[1], 3);
+  free(pay_load.data);
+}
+
+// CheckAndUpdateValidColumns: subset columns should not trigger update
+TEST_F(TestSparseTagTableWithInsert, CheckAndUpdateValidColumns_SubsetNoUpdate) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(tag_table.create(tag_schema_, table_version_, {}, err_info, true), 0);
+
+  // Get tag schema from the created table
+  TagPartitionTable* part_table = tag_table.GetTagPartitionTableManager()->GetPartitionTable(table_version_);
+  ASSERT_NE(part_table, nullptr);
+  const std::vector<TagInfo>& tag_schema = part_table->getIncludeDroppedSchemaInfos();
+
+  // Insert a tag via TsRawPayload
+  auto pay_load = GenRowPayload(metric_schema_, tag_schema, table_id_, 1, 1, 0, 1000);
+  TsRawPayload::SetHashPoint(pay_load, 2);
+  TsRawPayload::SetOSN(pay_load, 10);
+  kwdbts::TsRawPayload raw_payload(nullptr, false);
+  ASSERT_EQ(raw_payload.ParsePayLoadStruct(pay_load), KStatus::SUCCESS);
+  ASSERT_EQ(tag_table.InsertTagRecord(raw_payload, 1, 1, 10, OperateType::Insert), 0);
+
+  TSSlice ptag_slice = raw_payload.GetPrimaryTag();
+  std::string ptag_val(ptag_slice.data, ptag_slice.len);
+
+  // Set initial valid columns
+  std::vector<uint32_t> initial_cols = {2, 3, 4};
+  ASSERT_TRUE(tag_table.CheckAndUpdateValidColumns(ptag_val.c_str(), ptag_val.length(), initial_cols));
+
+  // Call with a subset - should not update (already included)
+  std::vector<uint32_t> subset_cols = {2, 3};
+  bool result = tag_table.CheckAndUpdateValidColumns(ptag_val.c_str(), ptag_val.length(), subset_cols);
+  EXPECT_TRUE(result);
+
+  // Verify: should still have {2, 3, 4}
+  TSSlice ptag{const_cast<char*>(ptag_val.c_str()), ptag_val.length()};
+  std::vector<uint32_t> valid_columns;
+  ASSERT_TRUE(tag_table.GetValidColumns(&ptag, 1, valid_columns));
+  std::sort(valid_columns.begin(), valid_columns.end());
+  EXPECT_EQ(valid_columns.size(), 3);
+  EXPECT_EQ(valid_columns[0], 2);
+  EXPECT_EQ(valid_columns[1], 3);
+  EXPECT_EQ(valid_columns[2], 4);
+  free(pay_load.data);
+}
+
+// CheckAndUpdateValidColumns: incremental merge adds new columns
+TEST_F(TestSparseTagTableWithInsert, CheckAndUpdateValidColumns_IncrementalMerge) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(tag_table.create(tag_schema_, table_version_, {}, err_info, true), 0);
+
+  // Get tag schema from the created table
+  TagPartitionTable* part_table = tag_table.GetTagPartitionTableManager()->GetPartitionTable(table_version_);
+  ASSERT_NE(part_table, nullptr);
+  const std::vector<TagInfo>& tag_schema = part_table->getIncludeDroppedSchemaInfos();
+
+  // Insert a tag via TsRawPayload
+  auto pay_load = GenRowPayload(metric_schema_, tag_schema, table_id_, 1, 1, 0, 1000);
+  TsRawPayload::SetHashPoint(pay_load, 2);
+  TsRawPayload::SetOSN(pay_load, 10);
+  kwdbts::TsRawPayload raw_payload(nullptr, false);
+  ASSERT_EQ(raw_payload.ParsePayLoadStruct(pay_load), KStatus::SUCCESS);
+  ASSERT_EQ(tag_table.InsertTagRecord(raw_payload, 1, 1, 10, OperateType::Insert), 0);
+
+  TSSlice ptag_slice = raw_payload.GetPrimaryTag();
+  std::string ptag_val(ptag_slice.data, ptag_slice.len);
+
+  // First update: set {2}
+  std::vector<uint32_t> cols_1 = {2};
+  ASSERT_TRUE(tag_table.CheckAndUpdateValidColumns(ptag_val.c_str(), ptag_val.length(), cols_1));
+
+  // Second update: add {5} - should merge to {2, 5}
+  std::vector<uint32_t> cols_2 = {5};
+  bool result = tag_table.CheckAndUpdateValidColumns(ptag_val.c_str(), ptag_val.length(), cols_2);
+  EXPECT_TRUE(result);
+
+  // Verify: should have {2, 5}
+  TSSlice ptag{const_cast<char*>(ptag_val.c_str()), ptag_val.length()};
+  std::vector<uint32_t> valid_columns;
+  ASSERT_TRUE(tag_table.GetValidColumns(&ptag, 1, valid_columns));
+  std::sort(valid_columns.begin(), valid_columns.end());
+  EXPECT_EQ(valid_columns.size(), 2);
+  EXPECT_EQ(valid_columns[0], 2);
+  EXPECT_EQ(valid_columns[1], 5);
+  free(pay_load.data);
+}
+
+// ==================== GetValidColumns Multi-Tag Union Tests ====================
+
+TEST_F(TestSparseTagTableWithInsert, GetValidColumns_MultipleTagsUnion) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(tag_table.create(tag_schema_, table_version_, {}, err_info, true), 0);
+
+  // Get tag schema from the created table
+  TagPartitionTable* part_table = tag_table.GetTagPartitionTableManager()->GetPartitionTable(table_version_);
+  ASSERT_NE(part_table, nullptr);
+  const std::vector<TagInfo>& tag_schema = part_table->getIncludeDroppedSchemaInfos();
+
+  // Insert two tags via TsRawPayload
+  auto pay_load1 = GenRowPayload(metric_schema_, tag_schema, table_id_, 1, 1, 0, 1000);
+  TsRawPayload::SetHashPoint(pay_load1, 2);
+  TsRawPayload::SetOSN(pay_load1, 10);
+  kwdbts::TsRawPayload raw_payload1(nullptr, false);
+  ASSERT_EQ(raw_payload1.ParsePayLoadStruct(pay_load1), KStatus::SUCCESS);
+  ASSERT_EQ(tag_table.InsertTagRecord(raw_payload1, 1, 1, 10, OperateType::Insert), 0);
+
+  auto pay_load2 = GenRowPayload(metric_schema_, tag_schema, table_id_, 1, 2, 0, 2000);
+  TsRawPayload::SetHashPoint(pay_load2, 2);
+  TsRawPayload::SetOSN(pay_load2, 11);
+  kwdbts::TsRawPayload raw_payload2(nullptr, false);
+  ASSERT_EQ(raw_payload2.ParsePayLoadStruct(pay_load2), KStatus::SUCCESS);
+  ASSERT_EQ(tag_table.InsertTagRecord(raw_payload2, 1, 2, 11, OperateType::Insert), 0);
+
+  // Set valid columns on each tag
+  TSSlice ptag1_slice = raw_payload1.GetPrimaryTag();
+  std::string ptag1_val(ptag1_slice.data, ptag1_slice.len);
+  std::vector<uint32_t> cols_1 = {2, 3};
+  ASSERT_TRUE(tag_table.CheckAndUpdateValidColumns(ptag1_val.c_str(), ptag1_val.length(), cols_1));
+
+  TSSlice ptag2_slice = raw_payload2.GetPrimaryTag();
+  std::string ptag2_val(ptag2_slice.data, ptag2_slice.len);
+  std::vector<uint32_t> cols_2 = {3, 5};
+  ASSERT_TRUE(tag_table.CheckAndUpdateValidColumns(ptag2_val.c_str(), ptag2_val.length(), cols_2));
+
+  // Query union of both tags
+  TSSlice ptag_slices[2] = {
+    {const_cast<char*>(ptag1_val.c_str()), static_cast<size_t>(ptag1_val.length())},
+    {const_cast<char*>(ptag2_val.c_str()), static_cast<size_t>(ptag2_val.length())}
+  };
+  std::vector<uint32_t> union_cols;
+  bool result = tag_table.GetValidColumns(ptag_slices, 2, union_cols);
+  EXPECT_TRUE(result);
+
+  std::sort(union_cols.begin(), union_cols.end());
+  EXPECT_EQ(union_cols.size(), 3);
+  EXPECT_EQ(union_cols[0], 2);
+  EXPECT_EQ(union_cols[1], 3);
+  EXPECT_EQ(union_cols[2], 5);
+  free(pay_load1.data);
+  free(pay_load2.data);
+}
+
+// ==================== addNewPartitionVersion Sparse Preservation Tests ====================
+
+TEST_F(TestSparseTagTableWithInsert, AddNewPartitionVersion_PreservesSparse) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(tag_table.create(tag_schema_, table_version_, {}, err_info, true), 0);
+
+  // Add a new partition version - should preserve sparse flag
+  std::vector<TagInfo> schema_v2 = tag_schema_;
+  TagInfo new_tag;
+  new_tag.m_id = 3;
+  new_tag.m_data_type = DATATYPE::INT64;
+  new_tag.m_length = sizeof(int64_t);
+  new_tag.m_size = sizeof(int64_t);
+  new_tag.m_tag_type = GENERAL_TAG;
+  new_tag.m_flag = 0;
+  schema_v2.push_back(new_tag);
+
+  int result = tag_table.addNewPartitionVersion(schema_v2, table_version_ + 1, err_info);
+  EXPECT_EQ(result, 0);
+
+  // Verify the new partition table is also sparse
+  TagPartitionTable* part_table = tag_table.GetTagPartitionTableManager()->GetPartitionTable(table_version_ + 1);
+  ASSERT_NE(part_table, nullptr);
+  EXPECT_TRUE(part_table->issparse());
+}
+
+TEST_F(TestSparseTagTableWithInsert, AddNewPartitionVersion_NormalTablePreservesNonSparse) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(tag_table.create(tag_schema_, table_version_, {}, err_info, false), 0);
+
+  std::vector<TagInfo> schema_v2 = tag_schema_;
+  TagInfo new_tag;
+  new_tag.m_id = 3;
+  new_tag.m_data_type = DATATYPE::INT64;
+  new_tag.m_length = sizeof(int64_t);
+  new_tag.m_size = sizeof(int64_t);
+  new_tag.m_tag_type = GENERAL_TAG;
+  new_tag.m_flag = 0;
+  schema_v2.push_back(new_tag);
+
+  int result = tag_table.addNewPartitionVersion(schema_v2, table_version_ + 1, err_info);
+  EXPECT_EQ(result, 0);
+
+  TagPartitionTable* part_table = tag_table.GetTagPartitionTableManager()->GetPartitionTable(table_version_ + 1);
+  ASSERT_NE(part_table, nullptr);
+  EXPECT_FALSE(part_table->issparse());
+}
+
+// ==================== Tests for commit 3197eea: merge old valid columns ====================
+// UpdateTagRecord with old_valid_columns passes them through to InsertTagRecord
+TEST_F(TestSparseTagTableWithInsert, UpdateTagRecord_PassesOldValidColumns) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(tag_table.create(tag_schema_, table_version_, {}, err_info, true), 0);
+
+  TagPartitionTable* part_table = tag_table.GetTagPartitionTableManager()->GetPartitionTable(table_version_);
+  ASSERT_NE(part_table, nullptr);
+  const std::vector<TagInfo>& tag_schema = part_table->getIncludeDroppedSchemaInfos();
+
+  // Insert a tag
+  auto pay_load = GenRowPayload(metric_schema_, tag_schema, table_id_, 1, 1, 0, 1000);
+  TsRawPayload::SetHashPoint(pay_load, 2);
+  TsRawPayload::SetOSN(pay_load, 10);
+  kwdbts::TsRawPayload raw_payload(nullptr, false);
+  ASSERT_EQ(raw_payload.ParsePayLoadStruct(pay_load), KStatus::SUCCESS);
+  ASSERT_EQ(tag_table.InsertTagRecord(raw_payload, 1, 1, 10, OperateType::Insert, {0, 0}, {2, 3}), 0);
+
+  TSSlice ptag_slice = raw_payload.GetPrimaryTag();
+  std::string ptag_val(ptag_slice.data, ptag_slice.len);
+
+  // Set some extra valid columns before update
+  std::vector<uint32_t> extra_cols = {2, 3, 5};
+  ASSERT_TRUE(tag_table.CheckAndUpdateValidColumns(ptag_val.c_str(), ptag_val.length(), extra_cols));
+
+  // Update tag with old_valid_columns={2,3,5} - should merge with payload columns
+  auto pay_load2 = GenRowPayload(metric_schema_, tag_schema, table_id_, 1, 1, 0, 2000);
+  TsRawPayload::SetHashPoint(pay_load2, 2);
+  TsRawPayload::SetOSN(pay_load2, 20);
+  kwdbts::TsRawPayload raw_payload2(nullptr, false);
+  ASSERT_EQ(raw_payload2.ParsePayLoadStruct(pay_load2), KStatus::SUCCESS);
+
+  ErrorInfo update_err;
+  int result = tag_table.UpdateTagRecord(raw_payload2, 1, 1, update_err, 20, {2, 3, 5});
+  ASSERT_GE(result, 0);
+
+  // Verify valid columns after update: old {2,3,5} merged with payload columns
+  TSSlice ptag{const_cast<char*>(ptag_val.c_str()), ptag_val.length()};
+  std::vector<uint32_t> valid_columns;
+  ASSERT_TRUE(tag_table.GetValidColumns(&ptag, 1, valid_columns));
+  std::sort(valid_columns.begin(), valid_columns.end());
+  // Should contain at least {2,3,5} from old_valid_columns
+  EXPECT_GE(valid_columns.size(), 3);
+  EXPECT_NE(std::find(valid_columns.begin(), valid_columns.end(), 2), valid_columns.end());
+  EXPECT_NE(std::find(valid_columns.begin(), valid_columns.end(), 3), valid_columns.end());
+  EXPECT_NE(std::find(valid_columns.begin(), valid_columns.end(), 5), valid_columns.end());
+
+  free(pay_load.data);
+  free(pay_load2.data);
+}
+
+// GetValidColumns with mixed existent/nonexistent ptag should skip nonexistent, not return false
+// This tests the fix: continue instead of early return in GetValidColumns
+TEST_F(TestSparseTagTableWithInsert, GetValidColumns_MixedPtagSkipsNonExistent) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(tag_table.create(tag_schema_, table_version_, {}, err_info, true), 0);
+
+  TagPartitionTable* part_table = tag_table.GetTagPartitionTableManager()->GetPartitionTable(table_version_);
+  ASSERT_NE(part_table, nullptr);
+  const std::vector<TagInfo>& tag_schema = part_table->getIncludeDroppedSchemaInfos();
+
+  // Insert one tag with valid columns
+  auto pay_load = GenRowPayload(metric_schema_, tag_schema, table_id_, 1, 1, 0, 1000);
+  TsRawPayload::SetHashPoint(pay_load, 2);
+  TsRawPayload::SetOSN(pay_load, 10);
+  kwdbts::TsRawPayload raw_payload(nullptr, false);
+  ASSERT_EQ(raw_payload.ParsePayLoadStruct(pay_load), KStatus::SUCCESS);
+  ASSERT_EQ(tag_table.InsertTagRecord(raw_payload, 1, 1, 10, OperateType::Insert, {0, 0}, {3, 5}), 0);
+
+  TSSlice ptag_slice = raw_payload.GetPrimaryTag();
+  std::string ptag_val(ptag_slice.data, ptag_slice.len);
+
+  // Create a nonexistent ptag
+  char nonexistent_ptag[64] = "nonexistent_tag_999";
+  TSSlice ptag_slices[2] = {
+    {nonexistent_ptag, strlen(nonexistent_ptag)},
+    {const_cast<char*>(ptag_val.c_str()), ptag_val.length()}
+  };
+
+  // Before the fix, this would return false because the first ptag doesn't exist.
+  // After the fix, it should skip the nonexistent ptag and continue to the second one.
+  std::vector<uint32_t> valid_columns;
+  bool result = tag_table.GetValidColumns(ptag_slices, 2, valid_columns);
+  EXPECT_TRUE(result);
+
+  std::sort(valid_columns.begin(), valid_columns.end());
+  EXPECT_EQ(valid_columns.size(), 2);
+  EXPECT_EQ(valid_columns[0], 3);
+  EXPECT_EQ(valid_columns[1], 5);
+
+  free(pay_load.data);
+}
+
+// ==================== Tests for commit 59f6244: CheckAndUpdateValidColumns in PutData ====================
+
+// CheckAndUpdateValidColumns on sparse table merges new columns from PutData
+TEST_F(TestSparseTagTableWithInsert, CheckAndUpdateValidColumns_SparseMergesFromPutData) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(tag_table.create(tag_schema_, table_version_, {}, err_info, true), 0);
+
+  TagPartitionTable* part_table = tag_table.GetTagPartitionTableManager()->GetPartitionTable(table_version_);
+  ASSERT_NE(part_table, nullptr);
+  const std::vector<TagInfo>& tag_schema = part_table->getIncludeDroppedSchemaInfos();
+
+  // Insert tag with initial valid columns
+  auto pay_load = GenRowPayload(metric_schema_, tag_schema, table_id_, 1, 1, 0, 1000);
+  TsRawPayload::SetHashPoint(pay_load, 2);
+  TsRawPayload::SetOSN(pay_load, 10);
+  kwdbts::TsRawPayload raw_payload(nullptr, false);
+  ASSERT_EQ(raw_payload.ParsePayLoadStruct(pay_load), KStatus::SUCCESS);
+  ASSERT_EQ(tag_table.InsertTagRecord(raw_payload, 1, 1, 10, OperateType::Insert, {0, 0}, {2}), 0);
+
+  TSSlice ptag_slice = raw_payload.GetPrimaryTag();
+  std::string ptag_val(ptag_slice.data, ptag_slice.len);
+
+  // Simulate PutData flow: CheckAndUpdateValidColumns with new payload columns
+  std::vector<uint32_t> put_data_cols = {3, 5};
+  bool result = tag_table.CheckAndUpdateValidColumns(ptag_val.c_str(), ptag_val.length(), put_data_cols);
+  EXPECT_TRUE(result);
+
+  // Verify merged: {2} U {3,5} = {2,3,5}
+  TSSlice ptag{const_cast<char*>(ptag_val.c_str()), ptag_val.length()};
+  std::vector<uint32_t> valid_columns;
+  ASSERT_TRUE(tag_table.GetValidColumns(&ptag, 1, valid_columns));
+  std::sort(valid_columns.begin(), valid_columns.end());
+  EXPECT_EQ(valid_columns.size(), 3);
+  EXPECT_EQ(valid_columns[0], 2);
+  EXPECT_EQ(valid_columns[1], 3);
+  EXPECT_EQ(valid_columns[2], 5);
+
+  free(pay_load.data);
+}
+
+// CheckAndUpdateValidColumns on non-sparse table is a no-op
+TEST_F(TestSparseTagTableWithInsert, CheckAndUpdateValidColumns_NonSparseIsNoOp) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(tag_table.create(tag_schema_, table_version_, {}, err_info, false), 0);
+
+  TagPartitionTable* part_table = tag_table.GetTagPartitionTableManager()->GetPartitionTable(table_version_);
+  ASSERT_NE(part_table, nullptr);
+  const std::vector<TagInfo>& tag_schema = part_table->getIncludeDroppedSchemaInfos();
+
+  // Insert a tag on non-sparse table
+  auto pay_load = GenRowPayload(metric_schema_, tag_schema, table_id_, 1, 1, 0, 1000);
+  TsRawPayload::SetHashPoint(pay_load, 2);
+  TsRawPayload::SetOSN(pay_load, 10);
+  kwdbts::TsRawPayload raw_payload(nullptr, false);
+  ASSERT_EQ(raw_payload.ParsePayLoadStruct(pay_load), KStatus::SUCCESS);
+  ASSERT_EQ(tag_table.InsertTagRecord(raw_payload, 1, 1, 10, OperateType::Insert), 0);
+
+  TSSlice ptag_slice = raw_payload.GetPrimaryTag();
+  std::string ptag_val(ptag_slice.data, ptag_slice.len);
+
+  // CheckAndUpdateValidColumns on non-sparse table returns true immediately (no-op)
+  std::vector<uint32_t> cols = {3, 5};
+  bool result = tag_table.CheckAndUpdateValidColumns(ptag_val.c_str(), ptag_val.length(), cols);
+  EXPECT_TRUE(result);
+
+  free(pay_load.data);
+}
+
+// CheckAndUpdateValidColumns with empty payload_valid_cols is a no-op
+TEST_F(TestSparseTagTableWithInsert, CheckAndUpdateValidColumns_EmptyPayloadColsIsNoOp) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(tag_table.create(tag_schema_, table_version_, {}, err_info, true), 0);
+
+  TagPartitionTable* part_table = tag_table.GetTagPartitionTableManager()->GetPartitionTable(table_version_);
+  ASSERT_NE(part_table, nullptr);
+  const std::vector<TagInfo>& tag_schema = part_table->getIncludeDroppedSchemaInfos();
+
+  auto pay_load = GenRowPayload(metric_schema_, tag_schema, table_id_, 1, 1, 0, 1000);
+  TsRawPayload::SetHashPoint(pay_load, 2);
+  TsRawPayload::SetOSN(pay_load, 10);
+  kwdbts::TsRawPayload raw_payload(nullptr, false);
+  ASSERT_EQ(raw_payload.ParsePayLoadStruct(pay_load), KStatus::SUCCESS);
+  ASSERT_EQ(tag_table.InsertTagRecord(raw_payload, 1, 1, 10, OperateType::Insert, {0, 0}, {2}), 0);
+
+  TSSlice ptag_slice = raw_payload.GetPrimaryTag();
+  std::string ptag_val(ptag_slice.data, ptag_slice.len);
+
+  // Empty payload_valid_cols should return true without modifying anything
+  std::vector<uint32_t> empty_cols;
+  bool result = tag_table.CheckAndUpdateValidColumns(ptag_val.c_str(), ptag_val.length(), empty_cols);
+  EXPECT_TRUE(result);
+
+  // Verify original columns remain unchanged
+  TSSlice ptag{const_cast<char*>(ptag_val.c_str()), ptag_val.length()};
+  std::vector<uint32_t> valid_columns;
+  ASSERT_TRUE(tag_table.GetValidColumns(&ptag, 1, valid_columns));
+  std::sort(valid_columns.begin(), valid_columns.end());
+  EXPECT_EQ(valid_columns.size(), 1);
+  EXPECT_EQ(valid_columns[0], 2);
+
+  free(pay_load.data);
+}
+
+// ==================== Tests for commit 2d10666: issparse() guard in PutEntity ====================
+
+TEST_F(TestSparseTagTable, GetValidColumns_NonSparseTableNonExistentPtag) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(tag_table.create(schema_, table_version_, {}, err_info, false), 0);
+
+  char ptag_data[64] = "nonexistent";
+  TSSlice ptag{ptag_data, strlen(ptag_data)};
+  std::vector<uint32_t> valid_columns;
+
+  bool result = tag_table.GetValidColumns(&ptag, 1, valid_columns);
+  EXPECT_FALSE(result);
+}
+
+// Verify by calling GetValidColumns on non-sparse table with inserted data - should return false
+TEST_F(TestSparseTagTableWithData, GetValidColumns_NonSparseTableWithInsertedTag) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(tag_table.create(tag_schema_, table_version_, {}, err_info, false), 0);
+
+  TagPartitionTable* part_table = tag_table.GetTagPartitionTableManager()->GetPartitionTable(table_version_);
+  ASSERT_NE(part_table, nullptr);
+  const std::vector<TagInfo>& tag_schema = part_table->getIncludeDroppedSchemaInfos();
+
+  // Insert a tag
+  auto pay_load = GenRowPayload(metric_schema_, tag_schema, table_id_, 1, 1, 0, 1000);
+  TsRawPayload::SetHashPoint(pay_load, 2);
+  TsRawPayload::SetOSN(pay_load, 10);
+  kwdbts::TsRawPayload raw_payload(nullptr, false);
+  ASSERT_EQ(raw_payload.ParsePayLoadStruct(pay_load), KStatus::SUCCESS);
+  ASSERT_EQ(tag_table.InsertTagRecord(raw_payload, 1, 1, 10, OperateType::Insert), 0);
+
+  TSSlice ptag_slice = raw_payload.GetPrimaryTag();
+  std::string ptag_val(ptag_slice.data, ptag_slice.len);
+
+
+  TSSlice ptag{const_cast<char*>(ptag_val.c_str()), ptag_val.length()};
+  std::vector<uint32_t> valid_columns;
+  bool result = tag_table.GetValidColumns(&ptag, 1, valid_columns);
+  EXPECT_FALSE(result);
+
+  free(pay_load.data);
+}
+
+// On sparse table, PutEntity should call GetValidColumns before updating
+TEST_F(TestSparseTagTableWithInsert, GetValidColumns_SparseTableBeforeUpdate) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(tag_table.create(tag_schema_, table_version_, {}, err_info, true), 0);
+
+  TagPartitionTable* part_table = tag_table.GetTagPartitionTableManager()->GetPartitionTable(table_version_);
+  ASSERT_NE(part_table, nullptr);
+  const std::vector<TagInfo>& tag_schema = part_table->getIncludeDroppedSchemaInfos();
+
+  // Insert a tag with valid columns
+  auto pay_load = GenRowPayload(metric_schema_, tag_schema, table_id_, 1, 1, 0, 1000);
+  TsRawPayload::SetHashPoint(pay_load, 2);
+  TsRawPayload::SetOSN(pay_load, 10);
+  kwdbts::TsRawPayload raw_payload(nullptr, false);
+  ASSERT_EQ(raw_payload.ParsePayLoadStruct(pay_load), KStatus::SUCCESS);
+  ASSERT_EQ(tag_table.InsertTagRecord(raw_payload, 1, 1, 10, OperateType::Insert, {0, 0}, {2, 5}), 0);
+
+  TSSlice ptag_slice = raw_payload.GetPrimaryTag();
+  std::string ptag_val(ptag_slice.data, ptag_slice.len);
+
+  // Simulate PutEntity flow: GetValidColumns before update
+  TSSlice ptag{const_cast<char*>(ptag_val.c_str()), ptag_val.length()};
+  std::vector<uint32_t> old_valid_columns;
+  bool result = tag_table.GetValidColumns(&ptag, 1, old_valid_columns);
+  EXPECT_TRUE(result);
+
+  std::sort(old_valid_columns.begin(), old_valid_columns.end());
+  EXPECT_EQ(old_valid_columns.size(), 2);
+  EXPECT_EQ(old_valid_columns[0], 2);
+  EXPECT_EQ(old_valid_columns[1], 5);
+
+  free(pay_load.data);
 }

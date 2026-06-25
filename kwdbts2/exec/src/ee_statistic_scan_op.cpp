@@ -12,17 +12,17 @@
 
 #include "ee_statistic_scan_op.h"
 
-#include "ee_storage_handler.h"
+#include "ee_cancel_checker.h"
 #include "ee_kwthd_context.h"
+#include "ee_scan_op.h"
+#include "ee_storage_handler.h"
 #include "ee_tag_scan_op.h"
 #include "lg_api.h"
-#include "ee_scan_op.h"
-#include "ee_cancel_checker.h"
 
 namespace kwdbts {
 
-TableStatisticScanOperator::TableStatisticScanOperator(TsFetcherCollection* collection,
-    TSStatisticReaderSpec* spec, PostProcessSpec* post, TABLE* table, int32_t processor_id)
+TableStatisticScanOperator::TableStatisticScanOperator(TsFetcherCollection* collection, TSStatisticReaderSpec* spec,
+                                                       PostProcessSpec* post, TABLE* table, int32_t processor_id)
     : BaseOperator(collection, table, post, processor_id),
       schema_id_(0),
       object_id_(spec->tableid()),
@@ -47,8 +47,7 @@ TableStatisticScanOperator::TableStatisticScanOperator(TsFetcherCollection* coll
   }
 }
 
-TableStatisticScanOperator::TableStatisticScanOperator(
-    const TableStatisticScanOperator& other, int32_t processor_id)
+TableStatisticScanOperator::TableStatisticScanOperator(const TableStatisticScanOperator& other, int32_t processor_id)
     : BaseOperator(other),
       schema_id_(other.schema_id_),
       object_id_(other.object_id_),
@@ -73,7 +72,7 @@ EEIteratorErrCode TableStatisticScanOperator::InitHandler(kwdbContext_p ctx) {
     Return(EEIteratorErrCode::EE_ERROR);
   }
   handler_->Init(ctx);
-  handler_->SetTagScan(static_cast<TagScanBaseOperator *>(childrens_[0]));
+  handler_->SetTagScan(static_cast<TagScanBaseOperator*>(childrens_[0]));
   handler_->SetSpans(&ts_kwspans_);
   Return(ret);
 }
@@ -97,10 +96,10 @@ EEIteratorErrCode TableStatisticScanOperator::Start(kwdbContext_p ctx) {
   Return(code);
 }
 
-EEIteratorErrCode TableStatisticScanOperator::InitScanRowBatch(kwdbContext_p ctx, ScanRowBatch **row_batch) {
+EEIteratorErrCode TableStatisticScanOperator::InitScanRowBatch(kwdbContext_p ctx, ScanRowBatch** row_batch) {
   EnterFunc();
-  KWThdContext *thd = current_thd;
-  *row_batch = static_cast<ScanRowBatch *>(thd->GetRowBatch());
+  KWThdContext* thd = current_thd;
+  *row_batch = static_cast<ScanRowBatch*>(thd->GetRowBatch());
   if (nullptr != *row_batch) {
     (*row_batch)->Reset();
   } else {
@@ -139,6 +138,14 @@ EEIteratorErrCode TableStatisticScanOperator::Init(kwdbContext_p ctx) {
     if (EEIteratorErrCode::EE_OK != ret) {
       LOG_ERROR("ReaderPostResolve ResolveRender failed!\n");
       break;
+    }
+    batch_copy_ = true;
+
+    for (int i = 0; i < num_; i++) {
+      auto field = renders_[i];
+      if (field->get_field_type() != Field::Type::FIELD_ITEM) {
+        batch_copy_ = false;
+      }
     }
 
     // resolve scalar
@@ -197,7 +204,7 @@ EEIteratorErrCode TableStatisticScanOperator::Next(kwdbContext_p ctx, DataChunkP
     Return(EEIteratorErrCode::EE_ERROR);
   }
   EEIteratorErrCode code = EEIteratorErrCode::EE_ERROR;
-  KWThdContext *thd = current_thd;
+  KWThdContext* thd = current_thd;
   TsScanStats ts_scan_stats;
   do {
     code = InitScanRowBatch(ctx, &row_batch_);
@@ -230,8 +237,7 @@ EEIteratorErrCode TableStatisticScanOperator::Next(kwdbContext_p ctx, DataChunkP
     // reset line
     row_batch_->ResetLine();
 
-    if (is_scalar_ && !is_has_data_for_scalar_ &&
-        code == EEIteratorErrCode::EE_END_OF_RECORD) {
+    if (is_scalar_ && !is_has_data_for_scalar_ && code == EEIteratorErrCode::EE_END_OF_RECORD) {
       ProcessScalar();
     }
 
@@ -256,7 +262,7 @@ EEIteratorErrCode TableStatisticScanOperator::Next(kwdbContext_p ctx, DataChunkP
           }
         }
 
-        KStatus status = current_data_chunk_->AddRowBatchData(ctx, row_batch_, renders_);
+        KStatus status = current_data_chunk_->AddRowBatchData(ctx, row_batch_, renders_, batch_copy_);
         if (status != KStatus::SUCCESS) {
           Return(EEIteratorErrCode::EE_ERROR);
         }
@@ -270,17 +276,12 @@ EEIteratorErrCode TableStatisticScanOperator::Next(kwdbContext_p ctx, DataChunkP
 
   if (!output_queue_.empty()) {
     chunk = std::move(output_queue_.front());
-    OPERATOR_DIRECT_ENCODING(ctx,
-                             output_encoding_,
-                             use_query_short_circuit_,
-                             use_query_compress_type_,
-                             output_type_oid_,
-                             floatPrec_,
-                             thd,
-                             chunk);
+    OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, use_query_short_circuit_, use_query_compress_type_,
+                             output_type_oid_, floatPrec_, thd, chunk);
     output_queue_.pop();
     auto end = std::chrono::high_resolution_clock::now();
-    fetcher_.Update(chunk->Count(), (end - start).count(), chunk->Count() * chunk->RowSize(), 0, 0, 0, 0, &ts_scan_stats);
+    fetcher_.Update(chunk->Count(), (end - start).count(), chunk->Count() * chunk->RowSize(), 0, 0, 0, 0,
+                    &ts_scan_stats);
     if (code == EEIteratorErrCode::EE_END_OF_RECORD) {
       Return(EEIteratorErrCode::EE_OK)
     } else {
@@ -303,10 +304,7 @@ k_int64 TableStatisticScanOperator::ProcessPTagSpanFilter(RowBatch* row_batch) {
   }
 
   row_batch->ResetLine();
-  return row_batch->IsNull(tag_count_read_index_,
-                           roachpb::KWDBKTSColumn::TYPE_DATA)
-             ? 0
-             : 1;
+  return row_batch->IsNull(tag_count_read_index_, roachpb::KWDBKTSColumn::TYPE_DATA) ? 0 : 1;
 }
 
 void TableStatisticScanOperator::ProcessScalar() {
@@ -315,8 +313,7 @@ void TableStatisticScanOperator::ProcessScalar() {
   for (k_uint32 col = 0; col < col_num_; ++col) {
     if (renders_[col]->get_field_statistic()) {
       k_int64 val = 0;
-      current_data_chunk_->InsertData(
-          count_, col, reinterpret_cast<char*>(&val), sizeof(k_int64));
+      current_data_chunk_->InsertData(count_, col, reinterpret_cast<char*>(&val), sizeof(k_int64));
     } else {
       current_data_chunk_->SetNull(count_, col);
     }

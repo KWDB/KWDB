@@ -627,8 +627,8 @@ TEST_F(TsSchemaTest, EngineSchemaManagerAlterTable) {
   ASSERT_EQ(s, KStatus::FAIL);
 }
 
-// ========================= TsEngineSchemaManager: GetVGroup =========================
-// Verifies that GetVGroup allocates a valid vgroup via consistent hash for a new
+// ========================= TsEngineSchemaManager: GetVGroupAndUpdateValidCol =========================
+// Verifies that GetVGroupAndUpdateValidCol allocates a valid vgroup via consistent hash for a new
 // primary key and returns the same vgroup_id for the same key on repeated calls.
 TEST_F(TsSchemaTest, EngineSchemaManagerGetVGroup) {
   TSTableID table_id = 21006;
@@ -645,7 +645,7 @@ TEST_F(TsSchemaTest, EngineSchemaManagerGetVGroup) {
   bool new_tag = false;
 
   auto& eng_schema_mgr = engine_->GetEngineSchemaManager();
-  auto s = eng_schema_mgr->GetVGroup(ctx_, schema_mgr, primary_key,
+  auto s = eng_schema_mgr->GetVGroupAndUpdateValidCol(ctx_, schema_mgr, {}, primary_key,
                                       &vgroup_id, &entity_id, &new_tag);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_GT(vgroup_id, 0u);
@@ -656,7 +656,7 @@ TEST_F(TsSchemaTest, EngineSchemaManagerGetVGroup) {
   uint32_t vgroup_id2 = 0;
   TSEntityID entity_id2 = 0;
   bool new_tag2 = false;
-  s = eng_schema_mgr->GetVGroup(ctx_, schema_mgr, primary_key,
+  s = eng_schema_mgr->GetVGroupAndUpdateValidCol(ctx_, schema_mgr, {}, primary_key,
                                   &vgroup_id2, &entity_id2, &new_tag2);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(vgroup_id, vgroup_id2);

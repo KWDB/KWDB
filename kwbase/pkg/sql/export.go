@@ -813,7 +813,7 @@ func writeTimeSeriesMeta(
 	//count := 1
 	switch tableDesc.TableType {
 	// only write itself
-	case tree.TimeseriesTable:
+	case tree.TimeseriesTable, tree.SparseTable:
 		selectStmt := fmt.Sprintf("SELECT create_statement FROM  %s.kwdb_internal.create_statements where database_name = '%s' and descriptor_name = '%s'", catalog, catalog, tableName)
 		row, err := p.ExecCfg().InternalExecutor.QueryRow(ctx, "select table create statement", nil, selectStmt)
 		if err != nil {

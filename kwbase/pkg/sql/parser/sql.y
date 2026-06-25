@@ -776,7 +776,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %token <str> S SAMPLE SAVEPOINT SCATTER SCHEDULE SCHEDULES SCHEMA SCHEMAS SCRUB SEARCH SECOND SECONDARY SELECT SEQUENCE SEQUENCES
 %token <str> SERIAL SERIAL2 SERIAL4 SERIAL8
 %token <str> SERIALIZABLE SERVER SERVICE SESSION SESSIONS SESSION_USER SET SETTING SETTINGS
-%token <str> SHARE SHOW SIMILAR SIMPLE SKIP SLIDING SMALLINT SMALLSERIAL SNAPSHOT SOME SPLIT SQL
+%token <str> SHARE SHOW SIMILAR SIMPLE SKIP SLIDING SMALLINT SMALLSERIAL SNAPSHOT SOME SPARSE SPLIT SQL
 %token <str> STR_TO_DATE
 
 %token <str> START STARTTIME STATISTICS STATUS STDIN STREAM STREAMS STRICT STRING STORE STORED STORING SUBSTRING SUCCESS
@@ -1350,6 +1350,8 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <*tree.SetZoneConfig> set_zone_config
 
 %type <tree.Expr> opt_alter_column_using
+
+%type <bool> opt_sparse
 
 %type <bool> opt_temp
 %type <bool> opt_temp_create_table
@@ -2765,7 +2767,7 @@ create_ddl_stmt:
 | create_ts_table_stmt // EXTEND WITH HELP: CREATE TABLE
 | create_table_like_stmt // EXTEND WITH HELP: CREATE TABLE
 // Error case for both CREATE TABLE and CREATE TABLE ... AS in one
-| CREATE opt_temp_create_table TABLE error   // SHOW HELP: CREATE TABLE
+| CREATE opt_temp_create_table opt_sparse TABLE error   // SHOW HELP: CREATE TABLE
 | create_type_stmt     { /* SKIP DOC */ }
 | create_view_stmt     // EXTEND WITH HELP: CREATE VIEW
 | create_sequence_stmt // EXTEND WITH HELP: CREATE SEQUENCE
@@ -5494,38 +5496,48 @@ create_schema_stmt:
 //
 // %SeeAlso: CREATE VIEW, SHOW CREATE, SHOW TABLES
 create_table_stmt:
-  CREATE opt_temp_create_table TABLE table_name '(' opt_table_elem_list ')' opt_interleave opt_partition_by opt_table_with opt_create_table_on_commit opt_comment_clause
+  CREATE opt_temp_create_table opt_sparse TABLE table_name '(' opt_table_elem_list ')' opt_interleave opt_partition_by opt_table_with opt_create_table_on_commit opt_comment_clause
   {
-    name := $4.unresolvedObjectName().ToTableName()
+    name := $5.unresolvedObjectName().ToTableName()
+    sparse := $3.bool()
+    if sparse {
+    	err := errors.New("can not create relational sparse table")
+    	return setErr(sqllex, err)
+    }
     $$.val = &tree.CreateTable{
       Table: name,
       IfNotExists: false,
-      Interleave: $8.interleave(),
-      Defs: $6.tblDefs(),
+      Interleave: $9.interleave(),
+      Defs: $7.tblDefs(),
       AsSource: nil,
-      PartitionBy: $9.partitionBy(),
+      PartitionBy: $10.partitionBy(),
       Temporary: $2.persistenceType(),
-      StorageParams: $10.storageParams(),
-      OnCommit: $11.createTableOnCommitSetting(),
+      StorageParams: $11.storageParams(),
+      OnCommit: $12.createTableOnCommitSetting(),
       TableType: tree.RelationalTable,
-      Comment: $12,
+      Comment: $13,
     }
   }
-| CREATE opt_temp_create_table TABLE IF NOT EXISTS table_name '(' opt_table_elem_list ')' opt_interleave opt_partition_by opt_table_with opt_create_table_on_commit opt_comment_clause
+| CREATE opt_temp_create_table opt_sparse TABLE IF NOT EXISTS table_name '(' opt_table_elem_list ')' opt_interleave opt_partition_by opt_table_with opt_create_table_on_commit opt_comment_clause
   {
-    name := $7.unresolvedObjectName().ToTableName()
+    name := $8.unresolvedObjectName().ToTableName()
+    sparse := $3.bool()
+    if sparse {
+    	err := errors.New("can not create relational sparse table")
+    	return setErr(sqllex, err)
+    }
     $$.val = &tree.CreateTable{
       Table: name,
       IfNotExists: true,
-      Interleave: $11.interleave(),
-      Defs: $9.tblDefs(),
+      Interleave: $12.interleave(),
+      Defs: $10.tblDefs(),
       AsSource: nil,
-      PartitionBy: $12.partitionBy(),
+      PartitionBy: $13.partitionBy(),
       Temporary: $2.persistenceType(),
-      StorageParams: $13.storageParams(),
-      OnCommit: $14.createTableOnCommitSetting(),
+      StorageParams: $14.storageParams(),
+      OnCommit: $15.createTableOnCommitSetting(),
       TableType: tree.RelationalTable,
-      Comment: $15,
+      Comment: $16,
     }
   }
 
@@ -5715,38 +5727,48 @@ table_elem_tag:
 //  }
 
 create_ts_table_stmt:
-  CREATE opt_temp_create_table TABLE IF NOT EXISTS table_name '(' opt_table_elem_list ')' attributes_tags '(' table_elem_tag_list ')' PRIMARY attributes_tags '(' name_list ')' opt_retentions_elems opt_comment_clause opt_hash_num
+  CREATE opt_temp_create_table opt_sparse TABLE IF NOT EXISTS table_name '(' opt_table_elem_list ')' attributes_tags '(' table_elem_tag_list ')' PRIMARY attributes_tags '(' name_list ')' opt_retentions_elems opt_comment_clause opt_hash_num
 	{
-    name := $7.unresolvedObjectName().ToTableName()
+    name := $8.unresolvedObjectName().ToTableName()
+    sparse := $3.bool()
+    tableType := tree.TimeseriesTable
+    if sparse {
+    	tableType = tree.SparseTable
+    }
     $$.val = &tree.CreateTable{
       Table: name,
       IfNotExists: true,
-      Defs: $9.tblDefs(),
+      Defs: $10.tblDefs(),
       Temporary: $2.persistenceType(),
       OnCommit: tree.CreateTableOnCommitUnset,
-      DownSampling: $20.downSampling(),
-      TableType: tree.TimeseriesTable,
-      Tags: $13.tags(),
-      PrimaryTagList: $18.nameList(),
-      Comment: $21,
-      HashNum: $22.int64(),
+      DownSampling: $21.downSampling(),
+      TableType: tableType,
+      Tags: $14.tags(),
+      PrimaryTagList: $19.nameList(),
+      Comment: $22,
+      HashNum: $23.int64(),
     }
 	}
-| CREATE opt_temp_create_table TABLE table_name '(' opt_table_elem_list ')' attributes_tags '(' table_elem_tag_list ')' PRIMARY attributes_tags '(' name_list ')' opt_retentions_elems opt_comment_clause opt_hash_num
+| CREATE opt_temp_create_table opt_sparse TABLE table_name '(' opt_table_elem_list ')' attributes_tags '(' table_elem_tag_list ')' PRIMARY attributes_tags '(' name_list ')' opt_retentions_elems opt_comment_clause opt_hash_num
 	{
-    name := $4.unresolvedObjectName().ToTableName()
+    name := $5.unresolvedObjectName().ToTableName()
+    sparse := $3.bool()
+    tableType := tree.TimeseriesTable
+    if sparse {
+    	tableType = tree.SparseTable
+    }
     $$.val = &tree.CreateTable{
       Table: name,
       IfNotExists: false,
-      Defs: $6.tblDefs(),
+      Defs: $7.tblDefs(),
       Temporary: $2.persistenceType(),
       OnCommit: tree.CreateTableOnCommitUnset,
-      DownSampling: $17.downSampling(),
-      TableType: tree.TimeseriesTable,
-      Tags: $10.tags(),
-      PrimaryTagList: $15.nameList(),
-      Comment: $18,
-      HashNum: $19.int64(),
+      DownSampling: $18.downSampling(),
+      TableType: tableType,
+      Tags: $11.tags(),
+      PrimaryTagList: $16.nameList(),
+      Comment: $19,
+      HashNum: $20.int64(),
     }
 	}
 
@@ -5862,64 +5884,87 @@ method:
 	}
 
 create_table_as_stmt:
-  CREATE opt_temp_create_table TABLE table_name create_as_opt_col_list opt_table_with AS select_stmt opt_create_as_data opt_create_table_on_commit opt_comment_clause
+  CREATE opt_temp_create_table opt_sparse TABLE table_name create_as_opt_col_list opt_table_with AS select_stmt opt_create_as_data opt_create_table_on_commit opt_comment_clause
   {
-    name := $4.unresolvedObjectName().ToTableName()
+    name := $5.unresolvedObjectName().ToTableName()
+    sparse := $3.bool()
+    tableType := tree.RelationalTable
+    if sparse {
+    	tableType = tree.SparseTable
+    }
     $$.val = &tree.CreateTable{
       Table: name,
       IfNotExists: false,
       Interleave: nil,
-      Defs: $5.tblDefs(),
-      AsSource: $8.slct(),
-      StorageParams: $6.storageParams(),
-      OnCommit: $10.createTableOnCommitSetting(),
+      Defs: $6.tblDefs(),
+      AsSource: $9.slct(),
+      StorageParams: $7.storageParams(),
+      OnCommit: $11.createTableOnCommitSetting(),
       Temporary: $2.persistenceType(),
-      TableType: tree.RelationalTable,
-      Comment: $11,
+      TableType: tableType,
+      Comment: $12,
     }
   }
-| CREATE opt_temp_create_table TABLE IF NOT EXISTS table_name create_as_opt_col_list opt_table_with AS select_stmt opt_create_as_data opt_create_table_on_commit opt_comment_clause
+| CREATE opt_temp_create_table opt_sparse TABLE IF NOT EXISTS table_name create_as_opt_col_list opt_table_with AS select_stmt opt_create_as_data opt_create_table_on_commit opt_comment_clause
   {
-    name := $7.unresolvedObjectName().ToTableName()
+    name := $8.unresolvedObjectName().ToTableName()
+    sparse := $3.bool()
+    tableType := tree.RelationalTable
+    if sparse {
+    	tableType = tree.SparseTable
+    }
     $$.val = &tree.CreateTable{
       Table: name,
       IfNotExists: true,
       Interleave: nil,
-      Defs: $8.tblDefs(),
-      AsSource: $11.slct(),
-      StorageParams: $9.storageParams(),
-      OnCommit: $13.createTableOnCommitSetting(),
+      Defs: $9.tblDefs(),
+      AsSource: $12.slct(),
+      StorageParams: $10.storageParams(),
+      OnCommit: $14.createTableOnCommitSetting(),
       Temporary: $2.persistenceType(),
-      TableType: tree.RelationalTable,
-      Comment: $14,
+      TableType: tableType,
+      Comment: $15,
     }
   }
 
 create_table_like_stmt:
-  CREATE opt_temp_create_table TABLE table_name LIKE table_name opt_create_table_on_commit opt_comment_clause
+  CREATE opt_temp_create_table opt_sparse TABLE table_name LIKE table_name opt_create_table_on_commit opt_comment_clause
   {
-    new_name := $4.unresolvedObjectName().ToTableName()
-    origin_name := $6.unresolvedObjectName().ToTableName()
+    new_name := $5.unresolvedObjectName().ToTableName()
+    origin_name := $7.unresolvedObjectName().ToTableName()
+    sparse := $3.bool()
+    tableType := tree.RelationalTable
+    if sparse {
+    	tableType = tree.SparseTable
+    }
     $$.val = &tree.CreateTable{
       Table:       new_name,
       IfNotExists: false,
       Temporary:   $2.persistenceType(),
-      OnCommit:    $7.createTableOnCommitSetting(),
-      Comment:     $8,
+      OnCommit:    $8.createTableOnCommitSetting(),
+      Comment:     $9,
+      TableType:   tableType,
       // The key change: Populate the new LikeTable field instead of Defs
       LikeTable:   origin_name,
       Defs: nil,
     }
   }
-| CREATE opt_temp_create_table TABLE IF NOT EXISTS table_name LIKE table_name opt_create_table_on_commit opt_comment_clause
+| CREATE opt_temp_create_table opt_sparse TABLE IF NOT EXISTS table_name LIKE table_name opt_create_table_on_commit opt_comment_clause
   {
-    new_name := $7.unresolvedObjectName().ToTableName()
-    origin_name := $9.unresolvedObjectName().ToTableName()
+    new_name := $8.unresolvedObjectName().ToTableName()
+    origin_name := $10.unresolvedObjectName().ToTableName()
+    sparse := $3.bool()
+    tableType := tree.RelationalTable
+    if sparse {
+    	tableType = tree.SparseTable
+    }
     $$.val = &tree.CreateTable{
       Table: new_name,
       IfNotExists: true,
       Temporary: $2.persistenceType(),
-      OnCommit: $10.createTableOnCommitSetting(),
+      OnCommit: $11.createTableOnCommitSetting(),
+      Comment: $12,
+      TableType: tableType,
       // The key change: Populate the new LikeTable field instead of Defs
       LikeTable: origin_name,
       Defs: nil,
@@ -5958,6 +6003,10 @@ opt_temp_create_table:
 | GLOBAL TEMPORARY  { $$.val = true }
 | GLOBAL TEMP       { $$.val = true }
 | UNLOGGED          { return unimplemented(sqllex, "create unlogged") }
+
+opt_sparse:
+	SPARSE						{ $$.val = true }
+| /*EMPTY*/         { $$.val = false }
 
 opt_table_elem_list:
   table_elem_list
@@ -13719,6 +13768,7 @@ unreserved_keyword:
 | SLIDING
 | SMALLSERIAL
 | SNAPSHOT
+| SPARSE
 | SPLIT
 | SQL
 | START

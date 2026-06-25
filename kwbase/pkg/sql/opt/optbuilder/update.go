@@ -106,7 +106,7 @@ func (b *Builder) buildUpdate(upd *tree.Update, inScope *scope) (outScope *scope
 		}
 	}
 
-	if tab.GetTableType() == tree.TimeseriesTable {
+	if tab.IsTSTable() {
 		_, ok := upd.Returning.(*tree.NoReturningClause)
 		if upd.OrderBy != nil || len(upd.From) != 0 || upd.Limit != nil || !ok || upd.With != nil || upd.Where == nil {
 			panic(sqlbase.UnsupportedUpdateConditionError("only supported where expression"))

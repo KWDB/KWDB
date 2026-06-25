@@ -855,9 +855,10 @@ KStatus TsEntitySegmentBuilder::WriteBatch(TSTableID tbl_id, uint32_t entity_id,
   TsEntitySegmentBlockItem block_item;
   uint32_t block_data_header_size = TsBatchData::block_span_data_header_size_;
   if (batch_version == 0) {
-    block_data_header_size = 60;
-    block_item.block_version = 0;
-  } else if (batch_version >= 1 && batch_version < BATCH_VERSION_LIMIT) {
+    block_item.block_version = DecodeFixed32(block_data.data + TsBatchData::block_version_offset_in_span_data_);
+  } else if (batch_version == 1) {
+    block_item.block_version = DecodeFixed32(block_data.data + TsBatchData::block_version_offset_in_span_data_);
+  } else if (batch_version == 2) {
     block_item.block_version = DecodeFixed32(block_data.data + TsBatchData::block_version_offset_in_span_data_);
   } else {
     LOG_ERROR("TsEntitySegmentBuilder::WriteBatch failed, invalid batch version: %u", batch_version);

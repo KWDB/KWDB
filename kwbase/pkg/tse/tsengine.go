@@ -947,6 +947,56 @@ func (r *TsEngine) PutData(
 	return res, affect, nil
 }
 
+const (
+	tsPayloadVersionSize   = 4
+	tsPayloadDBIDSize      = 4
+	tsPayloadTableIDSize   = 8
+	tsPayloadTSVersionSize = 4
+	tsPayloadRowNumSize    = 4
+	tsPayloadRowTypeSize   = 1
+
+	tsPayloadVersionOffset   = sqlbase.RangeGroupIDOffset + sqlbase.RangeGroupIDSize
+	tsPayloadDBIDOffset      = tsPayloadVersionOffset + tsPayloadVersionSize
+	tsPayloadTableIDOffset   = tsPayloadDBIDOffset + tsPayloadDBIDSize
+	tsPayloadTSVersionOffset = tsPayloadTableIDOffset + tsPayloadTableIDSize
+	tsPayloadRowNumOffset    = tsPayloadTSVersionOffset + tsPayloadTSVersionSize
+	tsPayloadRowTypeOffset   = tsPayloadRowNumOffset + tsPayloadRowNumSize
+	tsPayloadHeadSize        = tsPayloadRowTypeOffset + tsPayloadRowTypeSize
+
+	tsPayloadPTagLenSize = 2
+	tsPayloadTagLenSize  = 4
+	tsPayloadDataLenSize = 4
+	tsPayloadVersionV2   = 2
+)
+
+func tsPayloadPrefixBaseLen(headerPrefix []byte) int {
+	if len(headerPrefix) < tsPayloadHeadSize+tsPayloadPTagLenSize {
+		return len(headerPrefix)
+	}
+	ptagLen := int(binary.LittleEndian.Uint16(headerPrefix[tsPayloadHeadSize:]))
+	tagLenOffset := tsPayloadHeadSize + tsPayloadPTagLenSize + ptagLen
+	if len(headerPrefix) < tagLenOffset+tsPayloadTagLenSize {
+		return len(headerPrefix)
+	}
+	tagLen := int(binary.LittleEndian.Uint32(headerPrefix[tagLenOffset:]))
+	baseLen := tagLenOffset + tsPayloadTagLenSize + tagLen
+	if baseLen > len(headerPrefix) {
+		return len(headerPrefix)
+	}
+	return baseLen
+}
+
+func putRowDataLayout(headerPrefix []byte) (uint32, int, int) {
+	payloadVersion := binary.LittleEndian.Uint32(
+		headerPrefix[tsPayloadVersionOffset : tsPayloadVersionOffset+tsPayloadVersionSize],
+	)
+	if payloadVersion != tsPayloadVersionV2 {
+		return payloadVersion, len(headerPrefix), 0
+	}
+	basePrefixLen := tsPayloadPrefixBaseLen(headerPrefix)
+	return payloadVersion, basePrefixLen, len(headerPrefix) - basePrefixLen
+}
+
 // PutRowData 行存tags值和时序数据写入
 func (r *TsEngine) PutRowData(
 	tableID uint64,
@@ -964,121 +1014,123 @@ func (r *TsEngine) PutRowData(
 	r.checkOrWaitForOpen()
 	sizeLimit := int32(TsPayloadSizeLimit.Get(&r.cfg.Settings.SV))
 	var cTsSlice C.TSSlice
-	// The structure of HeaderPrefix: | Header | primary_tag_len | primary_tag | tag_ten | tags | data_len |
+	// The structure of HeaderPrefix:
+	// v1: | Header | primary_tag_len | primary_tag | tag_len | tags |
+	// v2: | Header | primary_tag_len | primary_tag | tag_len | tags | data_row_type | valid_col_flag |
 	// Header: | txn(16) | group_id(2) | payload_version(4) | database_id(4) | table_id(8) | ts_version(4) | row_num(4) | flags(1) |
-	const rowNumOffset = 38 // offset of row_num, pay attention to any change of the structure of HeaderPrefix
-	const dataLen = 4       // length of data_len in HeaderPrefix. The location is at the end of HeaderPrefix
 
 	headerLen := len(headerPrefix)
-	cTsSlice.data = (*C.char)(C.malloc(C.size_t(int(size) + headerLen + dataLen)))
+	cTsSlice.data = (*C.char)(C.malloc(C.size_t(int(size) + headerLen + tsPayloadDataLenSize)))
 	if cTsSlice.data == nil {
 		return DedupResult{}, EntitiesAffect{}, errors.New("failed malloc")
 	}
 	defer C.free(unsafe.Pointer(cTsSlice.data))
 
-	C.memcpy(unsafe.Pointer(cTsSlice.data), unsafe.Pointer(&headerPrefix[0]), C.size_t(headerLen))
-	dataPtr := uintptr(unsafe.Pointer(cTsSlice.data)) + uintptr(headerLen) // pointer to the data_len
+	payloadVersion, basePrefixLen, dataHeaderLen := putRowDataLayout(headerPrefix)
+	if payloadVersion == tsPayloadVersionV2 {
+		C.memcpy(unsafe.Pointer(cTsSlice.data), unsafe.Pointer(&headerPrefix[0]), C.size_t(basePrefixLen))
+		if dataHeaderLen > 0 {
+			C.memcpy(
+				unsafe.Pointer(uintptr(unsafe.Pointer(cTsSlice.data))+uintptr(basePrefixLen+tsPayloadDataLenSize)),
+				unsafe.Pointer(&headerPrefix[basePrefixLen]),
+				C.size_t(dataHeaderLen),
+			)
+		}
+	} else {
+		C.memcpy(unsafe.Pointer(cTsSlice.data), unsafe.Pointer(&headerPrefix[0]), C.size_t(headerLen))
+	}
+	dataPtr := uintptr(unsafe.Pointer(cTsSlice.data)) + uintptr(basePrefixLen) // pointer to the data_len
 
 	// mock
 	cRangeGroup := C.RangeGroup{
 		range_group_id: C.uint64_t(1),
 		typ:            C.int8_t(0),
 	}
-	payloadPtr := dataPtr + uintptr(dataLen)
+	payloadPtr := dataPtr + uintptr(tsPayloadDataLenSize+dataHeaderLen)
 	payloadSize := 0
 	partRowCnt := 0
 	totalRowCnt := len(payload)
 	var res DedupResult
 	var affect EntitiesAffect
+	var cTxnID *C.char
+	if transactionID != nil {
+		cTxnID = C.CString(string(transactionID))
+		defer C.free(unsafe.Pointer(cTxnID))
+	}
+	flushPayload := func(payloadSize int, partRowCnt int, captureDiscard bool) error {
+		if partRowCnt == 0 {
+			return nil
+		}
+		// fill data_len
+		*(*int32)(unsafe.Pointer(dataPtr)) = int32(payloadSize + dataHeaderLen)
+		// fill row_num
+		*(*int32)(unsafe.Pointer(uintptr(unsafe.Pointer(cTsSlice.data)) + uintptr(tsPayloadRowNumOffset))) = int32(partRowCnt)
+		// set tsSlice len
+		cTsSlice.len = C.size_t(basePrefixLen + tsPayloadDataLenSize + dataHeaderLen + payloadSize)
+		dedupResult := (*C.DedupResult)(C.malloc(C.size_t(unsafe.Sizeof(C.DedupResult{}))))
+		if dedupResult == nil {
+			return errors.New("failed malloc")
+		}
+		defer C.free(unsafe.Pointer(dedupResult))
+		C.memset(unsafe.Pointer(dedupResult), 0, C.size_t(unsafe.Sizeof(C.DedupResult{})))
+		entitiesAffected := (*C.uint16_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint16_t(0)))))
+		if entitiesAffected == nil {
+			return errors.New("failed malloc")
+		}
+		defer C.free(unsafe.Pointer(entitiesAffected))
+		unorderedAffected := (*C.uint32_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint32_t(0)))))
+		if unorderedAffected == nil {
+			return errors.New("failed malloc")
+		}
+		defer C.free(unsafe.Pointer(unorderedAffected))
+		(*entitiesAffected) = 0
+		(*unorderedAffected) = 0
+		var status C.TSStatus
+		if cTxnID != nil {
+			status = C.TSPutDataByRowTypeExplicit(r.tdb, C.TSTableID(tableID), &cTsSlice, (C.size_t)(1), cRangeGroup, C.uint64_t(tsTxnID),
+				entitiesAffected, unorderedAffected, dedupResult, C.bool(writeWAL), cTxnID)
+		} else {
+			status = C.TSPutDataByRowType(r.tdb, C.TSTableID(tableID), &cTsSlice, (C.size_t)(1), cRangeGroup, C.uint64_t(tsTxnID),
+				entitiesAffected, unorderedAffected, dedupResult, C.bool(writeWAL))
+		}
+		if err := statusToError(status); err != nil {
+			return errors.Wrap(err, "could not PutData")
+		}
+
+		res.DedupRows += int((*dedupResult).dedup_rows)
+		if captureDiscard {
+			res.DedupRule = int((*dedupResult).dedup_rule)
+			// the DiscardBitmap is not complete if the payload is truncated due to the size limit.
+			res.DiscardBitmap = cSliceToGoBytes((*dedupResult).discard_bitmap)
+		}
+		affect.EntityCount += uint16(*entitiesAffected)
+		affect.UnorderedCount += uint32(*unorderedAffected)
+		C.free(unsafe.Pointer((*dedupResult).discard_bitmap.data))
+		return nil
+	}
 	for i := 0; i < totalRowCnt; i++ {
 		p := payload[i]
 		if len(p) == 0 {
 			continue
 		}
 		partLen := len(p)
-		// need to check whether the payload size exceeds limit, so calculate it before add the row to payload.
-		payloadSize += partLen
-		if payloadSize > int(sizeLimit) {
-			payloadSize -= partLen
-			// fill data_len
-			*(*int32)(unsafe.Pointer(dataPtr)) = int32(payloadSize)
-			// fill row_num
-			*(*int32)(unsafe.Pointer(uintptr(unsafe.Pointer(cTsSlice.data)) + rowNumOffset)) = int32(partRowCnt)
-			// set tsSlice len
-			cTsSlice.len = C.size_t(payloadSize + headerLen + dataLen)
-			var dedupResult *C.DedupResult
-			var entitiesAffected *C.uint16_t
-			var unorderedAffected *C.uint32_t
-			dedupResult = (*C.DedupResult)(C.malloc(C.size_t(unsafe.Sizeof(C.DedupResult{}))))
-			C.memset(unsafe.Pointer(dedupResult), 0, C.size_t(unsafe.Sizeof(C.DedupResult{})))
-			entitiesAffected = (*C.uint16_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint16_t(0)))))
-			unorderedAffected = (*C.uint32_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint32_t(0)))))
-			(*entitiesAffected) = 0
-			(*unorderedAffected) = 0
-			status := C.TSPutDataByRowType(r.tdb, C.TSTableID(tableID), &cTsSlice, (C.size_t)(1), cRangeGroup, C.uint64_t(tsTxnID),
-				entitiesAffected, unorderedAffected, dedupResult, C.bool(writeWAL))
-			if err := statusToError(status); err != nil {
-				C.free(unsafe.Pointer(dedupResult))
-				C.free(unsafe.Pointer(entitiesAffected))
-				C.free(unsafe.Pointer(unorderedAffected))
-				return DedupResult{}, EntitiesAffect{}, errors.Wrap(err, "could not PutData")
+		if sizeLimit > 0 && partRowCnt > 0 && payloadSize+partLen > int(sizeLimit) {
+			if err := flushPayload(payloadSize, partRowCnt, false); err != nil {
+				return DedupResult{}, EntitiesAffect{}, err
 			}
-			res.DedupRows += int((*dedupResult).dedup_rows)
-			affect.EntityCount += uint16(*entitiesAffected)
-			affect.UnorderedCount += uint32(*unorderedAffected)
-			C.free(unsafe.Pointer((*dedupResult).discard_bitmap.data))
-
-			payloadSize = partLen
-			payloadPtr = dataPtr + uintptr(dataLen)
+			payloadSize = 0
+			payloadPtr = dataPtr + uintptr(tsPayloadDataLenSize+dataHeaderLen)
 			partRowCnt = 0
-			C.free(unsafe.Pointer(dedupResult))
-			C.free(unsafe.Pointer(entitiesAffected))
-			C.free(unsafe.Pointer(unorderedAffected))
 		}
+		payloadSize += partLen
 		partRowCnt++
 		C.memcpy(unsafe.Pointer(payloadPtr), unsafe.Pointer(&p[0]), C.size_t(partLen))
 		payloadPtr += uintptr(partLen)
 	}
 
-	// fill data_len
-	*(*int32)(unsafe.Pointer(dataPtr)) = int32(payloadSize)
-	// fill row_num
-	*(*int32)(unsafe.Pointer(uintptr(unsafe.Pointer(cTsSlice.data)) + rowNumOffset)) = int32(partRowCnt)
-	// set tsSlice len
-	cTsSlice.len = C.size_t(payloadSize + headerLen + dataLen)
-	var dedupResult *C.DedupResult
-	var entitiesAffected *C.uint16_t
-	var unorderedAffected *C.uint32_t
-	dedupResult = (*C.DedupResult)(C.malloc(C.size_t(unsafe.Sizeof(C.DedupResult{}))))
-	defer C.free(unsafe.Pointer(dedupResult))
-	C.memset(unsafe.Pointer(dedupResult), 0, C.size_t(unsafe.Sizeof(C.DedupResult{})))
-	entitiesAffected = (*C.uint16_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint16_t(0)))))
-	defer C.free(unsafe.Pointer(entitiesAffected))
-	unorderedAffected = (*C.uint32_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint32_t(0)))))
-	defer C.free(unsafe.Pointer(unorderedAffected))
-	(*entitiesAffected) = 0
-	(*unorderedAffected) = 0
-	var status C.TSStatus
-	if transactionID != nil {
-		cstr := C.CString(string(transactionID))
-		defer C.free(unsafe.Pointer(cstr))
-		status = C.TSPutDataByRowTypeExplicit(r.tdb, C.TSTableID(tableID), &cTsSlice, (C.size_t)(1), cRangeGroup, C.uint64_t(tsTxnID),
-			entitiesAffected, unorderedAffected, dedupResult, C.bool(writeWAL), cstr)
-	} else {
-		status = C.TSPutDataByRowType(r.tdb, C.TSTableID(tableID), &cTsSlice, (C.size_t)(1), cRangeGroup, C.uint64_t(tsTxnID),
-			entitiesAffected, unorderedAffected, dedupResult, C.bool(writeWAL))
+	if err := flushPayload(payloadSize, partRowCnt, true); err != nil {
+		return DedupResult{}, EntitiesAffect{}, err
 	}
-	if err := statusToError(status); err != nil {
-		return DedupResult{}, EntitiesAffect{}, errors.Wrap(err, "could not PutData")
-	}
-
-	res.DedupRows += int((*dedupResult).dedup_rows)
-	res.DedupRule = int((*dedupResult).dedup_rule)
-	affect.EntityCount += uint16(*entitiesAffected)
-	affect.UnorderedCount += uint32(*unorderedAffected)
-	// the DiscardBitmap is not complete if the payload is truncated due to the size limit.
-	res.DiscardBitmap = cSliceToGoBytes((*dedupResult).discard_bitmap)
-	C.free(unsafe.Pointer((*dedupResult).discard_bitmap.data))
 
 	return res, affect, nil
 }
@@ -1678,6 +1730,48 @@ func freeTSSlice(cTsSlice []C.TSSlice) {
 			C.free(unsafe.Pointer(slice.data))
 		}
 	}
+}
+
+// GetValidColumns returns the union of valid columns for the given primary tags
+func (r *TsEngine) GetValidColumns(
+	tableID uint64, tableVersion uint32, primaryTags [][]byte,
+) ([]uint32, error) {
+	if len(primaryTags) == 0 {
+		return nil, errors.New("primaryTags is empty")
+	}
+
+	r.checkOrWaitForOpen()
+	cTsSlice := make([]C.TSSlice, len(primaryTags))
+	defer freeTSSlice(cTsSlice)
+	for i, p := range primaryTags {
+		if len(p) == 0 {
+			cTsSlice[i].data = nil
+			cTsSlice[i].len = 0
+		} else {
+			dataPtr := C.CBytes(p)
+			cTsSlice[i].data = (*C.char)(dataPtr)
+			cTsSlice[i].len = C.size_t(len(p))
+		}
+	}
+
+	cValidColumns := C.ValidColumns{}
+	status := C.TsGetValidColumns(r.tdb, C.TSTableID(tableID), C.uint32_t(tableVersion), &cTsSlice[0], (C.size_t)(len(cTsSlice)), &cValidColumns)
+	if err := statusToError(status); err != nil {
+		return nil, errors.Wrap(err, "could not GetValidColumns")
+	}
+	defer C.free(unsafe.Pointer(cValidColumns.valid_column))
+
+	if cValidColumns.len <= 0 || cValidColumns.valid_column == nil {
+		return nil, nil
+	}
+
+	result := make([]uint32, int(cValidColumns.len))
+	const maxArrayLen = 1<<31 - 1
+	cArr := (*[maxArrayLen]C.uint32_t)(unsafe.Pointer(cValidColumns.valid_column))[:cValidColumns.len:cValidColumns.len]
+	for i := 0; i < int(cValidColumns.len); i++ {
+		result[i] = uint32(cArr[i])
+	}
+	return result, nil
 }
 
 // DeleteEntities delete entity, containing tag data and ts data

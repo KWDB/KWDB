@@ -1412,6 +1412,7 @@ var (
 	tableTypeSuper            = tree.NewDString("TEMPLATE TABLE")
 	tableTypeChild            = tree.NewDString("INSTANCE TABLE")
 	tableTypeMaterializedView = tree.NewDString("MATERIALIZED VIEW")
+	tableTypeSparse           = tree.NewDString("SPARSE TIME SERIES TABLE")
 )
 
 var informationSchemaTablesTable = virtualSchemaTable{
@@ -1447,7 +1448,9 @@ https://www.postgresql.org/docs/9.5/infoschema-tables.html`,
 				namespaceOid := h.NamespaceOid(db, scName)
 				switch table.TableType {
 				case tree.RelationalTable:
-					// do nothing
+				// do nothing
+				case tree.SparseTable:
+					tableType = tableTypeSparse
 				case tree.TimeseriesTable:
 					tableType = tableTypeNormalTimeSeries
 				case tree.TemplateTable:

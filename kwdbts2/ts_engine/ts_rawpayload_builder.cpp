@@ -9,21 +9,37 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+#include <vector>
+#include <memory>
+#include <set>
+#include <utility>
+#include "payload.h"
 #include "ts_payload.h"
 
 namespace kwdbts {
 
 #define IS_VAR_DATATYPE(type) ((type) == DATATYPE::VARSTRING || (type) == DATATYPE::VARBINARY)
 
-
-bool TsRawPayloadRowBuilder::Build(TSSlice* row_data, bool need_malloc) {
+bool TsRawPayloadRowBuilder::Build(TSSlice* row_data, bool need_malloc, const std::vector<uint32_t>& valid_col_idx) {
   if (col_value_.empty() || col_value_[0].len == 0) {
     return false;
   }
+  std::vector<AttributeInfo> nonone_col_schema;
+  std::vector<TSSlice> nonone_col_values;
+  if (valid_col_idx.empty()) {
+    nonone_col_schema = schema_;
+    nonone_col_values = col_value_;
+  } else {
+    for (auto col_id : valid_col_idx) {
+      nonone_col_schema.push_back(schema_[col_id]);
+      nonone_col_values.push_back(col_value_[col_id]);
+    }
+  }
+
   size_t bitmap_len;
   size_t fixed_tuple_len;
   size_t var_part_len;
-  GetRowInfo(bitmap_len, fixed_tuple_len, var_part_len);
+  getNoNoneRowInfo(nonone_col_schema, nonone_col_values, bitmap_len, fixed_tuple_len, var_part_len);
 
   char* mem = nullptr;
   if (need_malloc) {
@@ -36,43 +52,75 @@ bool TsRawPayloadRowBuilder::Build(TSSlice* row_data, bool need_malloc) {
   std::memset(mem, 0, row_data->len);
   size_t cur_var_offset = bitmap_len + fixed_tuple_len;
   size_t cur_tuple_offset = bitmap_len;
-  for (size_t i = 0; i < schema_.size(); i++) {
-    if (isVarLenType(schema_[i].type)) {
+  for (size_t i = 0; i < nonone_col_schema.size(); i++) {
+    if (isVarLenType(nonone_col_schema[i].type)) {
       KUint64(mem + cur_tuple_offset) = cur_var_offset;
       cur_var_offset += 2;
-      if (col_value_[i].data != nullptr) {
-        KUint16(mem + cur_var_offset - 2) = col_value_[i].len;
-        std::memcpy(mem + cur_var_offset, col_value_[i].data, col_value_[i].len);
-        cur_var_offset += col_value_[i].len;
+      if (nonone_col_values[i].data != nullptr) {
+        KUint16(mem + cur_var_offset - 2) = nonone_col_values[i].len;
+        std::memcpy(mem + cur_var_offset, nonone_col_values[i].data, nonone_col_values[i].len);
+        cur_var_offset += nonone_col_values[i].len;
       } else {
         setRowDeleted(mem, i + 1);
         KUint16(mem + cur_var_offset - 2) = 0;
       }
       cur_tuple_offset += 8;
     } else {
-      if (col_value_[i].data != nullptr) {
-        std::memcpy(mem + cur_tuple_offset, col_value_[i].data, col_value_[i].len);
+      if (nonone_col_values[i].data != nullptr) {
+        std::memcpy(mem + cur_tuple_offset, nonone_col_values[i].data, nonone_col_values[i].len);
       } else {
         setRowDeleted(mem, i + 1);
       }
-      cur_tuple_offset += schema_[i].size;
+      cur_tuple_offset += nonone_col_schema[i].size;
     }
   }
   assert(cur_tuple_offset == bitmap_len + fixed_tuple_len);
   assert(cur_var_offset == row_data->len);
   return true;
 }
-
-TSRowPayloadBuilder::TSRowPayloadBuilder(const std::vector<TagInfo>& tag_schema,
-                                   const std::vector<AttributeInfo>& data_schema, int row_num)
-    : tag_schema_(tag_schema), data_schema_(data_schema), count_(row_num) {
+TSSlice TsRawPayloadRowBuilder::DataAddValidColInfo(TSSlice row_data, TSSlice valid_info,
+uint32_t pd_version, TSPayloadRowStructType type) {
+  TSSlice ret;
+  ret.len = row_data.len + valid_info.len + 4 + 2 + 2;
+  ret.data = reinterpret_cast<char*>(std::malloc(ret.len));
+  if (ret.data == nullptr) {
+    return ret;
+  }
+  KUint32(ret.data) = pd_version;
+  KUint16(ret.data + 4) = type;
+  KUint16(ret.data + 4 + 2) = valid_info.len;
+  std::memcpy(ret.data + 4 + 2 + 2, valid_info.data, valid_info.len);
+  std::memcpy(ret.data + 4 + 2 + 2 +  valid_info.len, row_data.data, row_data.len);
+  return ret;
+}
+void TsRawPayloadRowBuilder::ParseWithValidColInfo(TSSlice row_data, TSSlice& valid_info,
+uint32_t& pd_version, TSPayloadRowStructType& type, TSSlice& actual_data) {
+  pd_version = KUint32(row_data.data);
+  type = (TSPayloadRowStructType)(KUint16(row_data.data + 4));
+  valid_info.len = KUint16(row_data.data + 4 + 2);
+  valid_info.data = row_data.data + 4 + 2 + 2;
+  actual_data.len = row_data.len - valid_info.len - 4 - 2 - 2;
+  actual_data.data = row_data.data + 4 + 2 + 2 + valid_info.len;
+}
+bool TSRowPayloadSparseBuilder::Init(const std::vector<TagInfo>& tag_schema,
+const std::vector<AttributeInfo>& data_schema, int row_num, TSPayloadRowStructType type) {
+  tag_schema_ = tag_schema;
+  data_schema_ = data_schema;
+  count_ = row_num;
+  type_ = type;
   for (size_t i = 0; i < count_; i++) {
-    rows_.emplace_back(new TsRawPayloadRowBuilder(data_schema_));
+    auto cur_row = std::make_unique<TsRawPayloadRowBuilder>(data_schema_);
+    if (cur_row == nullptr) {
+      LOG_ERROR("new TSRowPayloadSparseBuilder failed");
+      return false;
+    }
+    rows_.push_back(std::move(cur_row));
   }
   SetTagMem();
+  return true;
 }
 
-void TSRowPayloadBuilder::SetTagMem() {
+void TSRowPayloadSparseBuilder::SetTagMem() {
   tag_value_mem_bitmap_len_ = (tag_schema_.size() + 7) / 8;  // bitmap
   tag_value_mem_len_ = tag_value_mem_bitmap_len_;
   for (auto tag : tag_schema_) {
@@ -90,11 +138,11 @@ void TSRowPayloadBuilder::SetTagMem() {
   std::memset(tag_value_mem_ + tag_value_mem_bitmap_len_, 0, tag_value_mem_len_ - tag_value_mem_bitmap_len_);
 }
 
-const char* TSRowPayloadBuilder::GetTagAddr() {
+const char* TSRowPayloadSparseBuilder::GetTagAddr() {
   return tag_value_mem_;
 }
 
-void TSRowPayloadBuilder::Reset() {
+void TSRowPayloadSparseBuilder::Reset() {
   primary_tags_.clear();
   if (tag_value_mem_) {
     free(tag_value_mem_);
@@ -106,7 +154,7 @@ void TSRowPayloadBuilder::Reset() {
   }
 }
 
-bool TSRowPayloadBuilder::SetTagValue(int tag_idx, char* mem, int count) {
+bool TSRowPayloadSparseBuilder::SetTagValue(int tag_idx, char* mem, int count) {
   if (tag_idx >= tag_schema_.size()) {
     return false;
   }
@@ -134,7 +182,7 @@ bool TSRowPayloadBuilder::SetTagValue(int tag_idx, char* mem, int count) {
   return true;
 }
 
-bool TSRowPayloadBuilder::SetColumnValue(int row_num, int col_idx, char* mem, size_t length) {
+bool TSRowPayloadSparseBuilder::SetColumnValue(int row_num, int col_idx, char* mem, size_t length) {
   if (row_num >= count_ || col_idx >= data_schema_.size()) {
     return false;
   }
@@ -142,7 +190,7 @@ bool TSRowPayloadBuilder::SetColumnValue(int row_num, int col_idx, char* mem, si
   return true;
 }
 
-bool TSRowPayloadBuilder::SetColumnNull(int row_num, int col_idx) {
+bool TSRowPayloadSparseBuilder::SetColumnNull(int row_num, int col_idx) {
   if (row_num >= count_ || col_idx >= data_schema_.size()) {
     return false;
   }
@@ -150,7 +198,15 @@ bool TSRowPayloadBuilder::SetColumnNull(int row_num, int col_idx) {
   return true;
 }
 
-bool TSRowPayloadBuilder::Build(TSTableID table_id, uint32_t table_version, TSSlice *payload) {
+bool TSRowPayloadSparseBuilder::SetValidCols(const std::vector<uint32_t>& cols) {
+  if (count_ > 0) {
+    LOG_ERROR("count not empty, can not set valid cols, this should be generated aotmically.");
+    return false;
+  }
+  valid_col_idx_ = cols;
+  return true;
+}
+bool TSRowPayloadSparseBuilder::Build(TSTableID table_id, uint32_t table_version, TSSlice *payload) {
   if (tag_schema_.empty() || data_schema_.empty() || primary_tags_.empty()) {
     return false;
   }
@@ -179,15 +235,22 @@ bool TSRowPayloadBuilder::Build(TSTableID table_id, uint32_t table_version, TSSl
   // data part
   k_int32 data_len_len = 4;
 
+  TSSlice valid_col_info{nullptr, 0};
+  if (!genValidColInfo(valid_col_info, valid_col_idx_)) {
+    LOG_ERROR("genValidColInfo failed");
+    return false;
+  }
+
   k_int32 data_len = 0;
   std::vector<TSSlice> row_datas;
   for (size_t i = 0; i < rows_.size(); i++) {
     TSSlice row_data;
-    auto ret = rows_[i]->Build(&row_data);
+    auto ret = rows_[i]->Build(&row_data, true, valid_col_idx_);
     assert(ret);
     row_datas.push_back(row_data);
     data_len += 4 + row_data.len;
   }
+  data_len += 2 + valid_col_info.len;
 
   k_uint32 payload_length = header_len + primary_len_len + primary_tag_len
                             + tag_len_len + tag_value_len + data_len_len + data_len;
@@ -197,9 +260,11 @@ bool TSRowPayloadBuilder::Build(TSTableID table_id, uint32_t table_version, TSSl
   char* value_idx = value;
   // header part
   KInt32(value_idx + TsRawPayload::row_num_offset_) = count_;
-  KUint32(value_idx + TsRawPayload::ts_version_offset_) = data_schema_[0].version;
+  KUint8(value_idx + TsRawPayload::row_type_offset_) =
+    (count_ == 0 && (valid_col_idx_.size() == 0)) ? TAG_ONLY : DATA_AND_TAG;
   KUint64(value_idx + TsRawPayload::table_id_offset_) = table_id;
   KUint32(value_idx + TsRawPayload::ts_version_offset_) = table_version;
+  KUint32(value_idx + TsRawPayload::payload_version_offset_) = MAX_PAYLOAD_VERSION;
 
   value_idx += header_len;
   // set primary tag
@@ -218,8 +283,14 @@ bool TSRowPayloadBuilder::Build(TSTableID table_id, uint32_t table_version, TSSl
 
   // set data_len_len
   KInt32(value_idx) = data_len;
+  // data part header, add row_type and valid_col_info
   data_offset_ = value_idx - value;
   value_idx += data_len_len;
+  KUint16(value_idx) = type_;
+  value_idx += 2;
+  memcpy(value_idx, valid_col_info.data, valid_col_info.len);
+  value_idx += valid_col_info.len;
+  // data part, add row_datas.
   for (size_t i = 0; i < row_datas.size(); i++) {
     KUint32(value_idx) = row_datas[i].len;
     value_idx += 4;
@@ -230,13 +301,55 @@ bool TSRowPayloadBuilder::Build(TSTableID table_id, uint32_t table_version, TSSl
   payload->data = value;
   payload->len = value_idx - value;
   assert(payload->len == payload_length);
-    // set hashpoint  todo(liangbo01) no need now
+  // set hashpoint  todo(liangbo01) no need now
   uint32_t hashpoint = 2;
   std::memcpy(&payload->data[Payload::hash_point_id_offset_], &hashpoint, sizeof(uint16_t));
 
   free(primary_keys_mem);
   for (size_t i = 0; i < row_datas.size(); i++) {
     free(row_datas[i].data);
+  }
+  free(valid_col_info.data);
+  return true;
+}
+
+bool TSRowPayloadSparseBuilder::genValidColInfo(TSSlice& col_none_mem, std::vector<uint32_t>& valid_col_idx) {
+  if (TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_TUPLE == type_) {
+    return true;
+  }
+  if (count_ > 0) {
+    assert(valid_col_idx.empty());
+    std::set<uint32_t> nonone_col_ids;
+    for (size_t i = 0; i < rows_.size(); i++) {
+      nonone_col_ids.merge(rows_[i]->GetNononeCols());
+    }
+    valid_col_idx.insert(valid_col_idx.begin(), nonone_col_ids.begin(), nonone_col_ids.end());
+  }
+  switch (type_) {
+    case TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_TUPLE:
+      // not run here.
+      break;
+    case TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_VECTOR:
+      col_none_mem.data = reinterpret_cast<char*>(malloc(valid_col_idx.size() * 4 + 4));
+      memset(col_none_mem.data, 0, valid_col_idx.size() * 4 + 4);
+      col_none_mem.len += 4;
+      for (size_t i = 0; i < valid_col_idx.size(); i++) {
+        KUint32(col_none_mem.data + col_none_mem.len) = valid_col_idx[i];
+        col_none_mem.len += 4;
+      }
+      KUint32(col_none_mem.data) = col_none_mem.len / 4 - 1;
+      break;
+    case TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_BITMAP:
+      col_none_mem.len = (data_schema_.size() + 7) / 8 + 4;
+      col_none_mem.data = reinterpret_cast<char*>(malloc(col_none_mem.len));
+      memset(col_none_mem.data, 0xff, col_none_mem.len);
+      KUint32(col_none_mem.data) = data_schema_.size();
+      for (size_t i = 0; i < valid_col_idx.size(); i++) {
+        setRowValid(col_none_mem.data + 4, valid_col_idx[i] + 1);
+      }
+      break;
+    default:
+      break;
   }
   return true;
 }

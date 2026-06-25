@@ -99,6 +99,17 @@ const (
 
 type directTimes [sessionNum]time.Time
 
+func directColumnDescPtrs(cols []sqlbase.ColumnDescriptor) []*sqlbase.ColumnDescriptor {
+	if len(cols) == 0 {
+		return nil
+	}
+	ptrs := make([]*sqlbase.ColumnDescriptor, len(cols))
+	for i := range cols {
+		ptrs[i] = &cols[i]
+	}
+	return ptrs
+}
+
 // getPrepareInputValues convert data format form Bind to []tree.Datums.
 func getPrepareInputValues(
 	ptCtx tree.ParseTimeContext, bindCmd *BindStmt, inferredTypes []oid.Oid, di *DirectInsert,
@@ -202,9 +213,13 @@ func BuildRowBytesForPrepareTsInsert(
 	cfg *ExecutorConfig,
 ) error {
 	rowNum := di.RowNum / di.ColNum
+	v2Info := execbuilder.BuildPayloadV2DataInfoForTable(Dit.TableType, directColumnDescPtrs(Dit.ColsDesc), di.Dcs, di.ColIndexs)
+	di.PArgs.V2DataHeader = v2Info.DataHeader
+	di.PArgs.V2DataCols = v2Info.DataCols
+	payloadDataCols := v2Info.DataCols
 
 	// Pre-allocate all required buffers
-	rowBytes, dataOffset, independentOffset, err := preAllocateDataRowBytes(rowNum, &di.Dcs)
+	rowBytes, dataOffset, independentOffset, err := preAllocateDataRowBytes(rowNum, &payloadDataCols)
 	if err != nil {
 		return err
 	}
@@ -217,17 +232,10 @@ func BuildRowBytesForPrepareTsInsert(
 		varDataOffset := independentOffset
 
 		baseIdx := i * di.ColNum
-		for j, col := range di.PrettyCols {
+		for dataColIdx, col := range payloadDataCols {
 			colIdx := di.ColIndexs[int(col.ID)]
-
-			if col.IsTagCol() {
-				continue
-			}
-
 			argIdx := baseIdx + colIdx
-
-			dataColIdx := j - di.PArgs.PTagNum - di.PArgs.AllTagNum
-			isLastDataCol := dataColIdx == di.PArgs.DataColNum-1
+			isLastDataCol := dataColIdx == len(payloadDataCols)-1
 
 			curColLength := execbuilder.VarColumnSize
 			if int(col.TsCol.VariableLengthType) == sqlbase.StorageTuple {
@@ -301,8 +309,7 @@ func BuildRowBytesForPrepareTsInsert(
 
 	// Build primary tag value map with pre-allocated capacity
 	priTagValMap := make(map[string][]int, 10)
-	var keyBuilder strings.Builder
-	keyBuilder.Grow(64)
+	keyBuf := make([]byte, 0, 64)
 
 	colIndexes := make([]int, 0, len(di.PrimaryTagCols))
 	for _, col := range di.PrimaryTagCols {
@@ -310,19 +317,20 @@ func BuildRowBytesForPrepareTsInsert(
 	}
 
 	for i := 0; i < rowNum; i++ {
-		keyBuilder.Reset()
+		keyBuf = keyBuf[:0]
 		for _, idx := range colIndexes {
-			keyBuilder.Write(Args[i*di.ColNum+idx])
+			keyBuf = execbuilder.AppendTSPrimaryTagGroupingKeyBytes(keyBuf, Args[i*di.ColNum+idx])
 		}
-		key := keyBuilder.String()
+		key := string(keyBuf)
 		priTagValMap[key] = append(priTagValMap[key], i)
 	}
 
 	// Pre-allocate payloads slice
 	allPayloads := make([]*sqlbase.SinglePayloadInfo, 0, len(priTagValMap))
+	di.PArgs.OmitTagSection = execbuilder.ShouldOmitTagSection(di.PArgs, di.ColIndexs)
 
 	for _, priTagRowIdx := range priTagValMap {
-		payload, _, err := execbuilder.BuildPreparePayloadForTsInsert(
+		basePrefix, _, err := execbuilder.BuildPreparePayloadForTsInsert(
 			&evalCtx,
 			evalCtx.Txn,
 			nil,
@@ -340,7 +348,7 @@ func BuildRowBytesForPrepareTsInsert(
 			return err
 		}
 
-		hashPoints := sqlbase.DecodeHashPointFromPayload(payload)
+		hashPoints := sqlbase.DecodeHashPointFromPayload(basePrefix)
 		primaryTagKey := sqlbase.MakeTsPrimaryTagKey(table.ID, hashPoints)
 		if !evalCtx.StartSinglenode {
 			groupLen := len(priTagRowIdx)
@@ -354,7 +362,7 @@ func BuildRowBytesForPrepareTsInsert(
 
 			hashNum := Dit.HashNum
 			allPayloads = append(allPayloads, &sqlbase.SinglePayloadInfo{
-				Payload:       payload,
+				Payload:       execbuilder.BuildHeaderPrefixWithDataHeader(basePrefix, di.PArgs.V2DataHeader),
 				RowNum:        uint32(groupLen),
 				PrimaryTagKey: primaryTagKey,
 				RowBytes:      groupBytes,
@@ -364,29 +372,9 @@ func BuildRowBytesForPrepareTsInsert(
 				HashNum:       hashNum,
 			})
 		} else {
-			valueSize := int32(0)
-			rowNum := uint32(0)
-			for _, idx := range priTagRowIdx {
-				valueSize += int32(len(rowBytes[idx]))
-				rowNum++
-			}
-
-			payloadSize := int32(len(payload)) + valueSize + 4
-			payloadBytes := make([]byte, payloadSize)
-			copy(payloadBytes, payload)
-			offset := len(payload)
-			binary.LittleEndian.PutUint32(payloadBytes[offset:], uint32(valueSize))
-			offset += 4
-			for _, idx := range priTagRowIdx {
-				copy(payloadBytes[offset:], rowBytes[idx])
-				offset += len(rowBytes[idx])
-			}
-
-			binary.LittleEndian.PutUint32(payloadBytes[38:], uint32(rowNum))
-
 			hashNum := Dit.HashNum
 			allPayloads = append(allPayloads, &sqlbase.SinglePayloadInfo{
-				Payload:       payloadBytes,
+				Payload:       execbuilder.BuildSingleNodeTSPayload(basePrefix, di.PArgs.V2DataHeader, rowBytes, priTagRowIdx),
 				RowNum:        uint32(len(priTagRowIdx)),
 				PrimaryTagKey: primaryTagKey,
 				HashNum:       hashNum,
@@ -632,6 +620,7 @@ func GetColsInfo(
 	if err != nil {
 		return err
 	}
+	di.PArgs.PayloadVersion = execbuilder.TSInsertPayloadVersionV2
 
 	di.PrettyCols = di.PArgs.PrettyCols
 	di.Dcs = dataCols
@@ -878,10 +867,6 @@ func GetRowBytesForTsInsert(
 		j += colNum
 	}
 	tp := execbuilder.NewTsPayload()
-	rowBytes, dataOffset, independentOffset, err := preAllocateDataRowBytes(rowNum, &di.Dcs)
-	if err != nil {
-		return nil, nil, nil, err
-	}
 	// partition input data based on primary tag values
 	priTagValMap := make(map[string][]int)
 	// Reuse tag key buffer to avoid per-row allocations.
@@ -895,11 +880,19 @@ func GetRowBytesForTsInsert(
 
 	// Pre-compute column execution metadata to avoid per-row map lookups and
 	// repeated length/position calculations.
-	dataInfos := make([]columnExecInfo, 0, di.PArgs.DataColNum)
+	payloadDataCols := di.PArgs.V2DataCols
+	payloadDataColIdx := make(map[int]int, len(payloadDataCols))
+	for idx, col := range payloadDataCols {
+		payloadDataColIdx[int(col.ID)] = idx
+	}
+
+	dataInfos := make([]columnExecInfo, 0, len(payloadDataCols))
 	tagInfos := make([]columnExecInfo, 0, len(di.PrettyCols)-di.PArgs.DataColNum)
-	dataIdx := 0
 	for i, column := range di.PrettyCols {
-		colIdx := di.ColIndexs[int(column.ID)]
+		colIdx, ok := di.ColIndexs[int(column.ID)]
+		if !ok {
+			colIdx = execbuilder.ColumnValIsNull
+		}
 		isData := column.IsDataCol()
 		info := columnExecInfo{
 			column:       column,
@@ -908,13 +901,16 @@ func GetRowBytesForTsInsert(
 			isPrimaryTag: i < di.PArgs.PTagNum,
 		}
 		if isData {
-			info.dataColIdx = dataIdx
-			info.isLastData = dataIdx == di.PArgs.DataColNum-1
+			dataColIdx, ok := payloadDataColIdx[int(column.ID)]
+			if !ok {
+				continue
+			}
+			info.dataColIdx = dataColIdx
+			info.isLastData = dataColIdx == len(payloadDataCols)-1
 			info.curColLength = execbuilder.VarColumnSize
 			if int(column.TsCol.VariableLengthType) == sqlbase.StorageTuple {
 				info.curColLength = int(column.TsCol.StorageLen)
 			}
-			dataIdx++
 			dataInfos = append(dataInfos, info)
 		} else {
 			tagInfos = append(tagInfos, info)
@@ -927,6 +923,14 @@ func GetRowBytesForTsInsert(
 				tagInfos[len(tagInfos)-1].converter = info.converter
 			}
 		}
+	}
+	for i := range dataInfos {
+		dataInfos[i].dataColIdx = i
+		dataInfos[i].isLastData = i == len(dataInfos)-1
+	}
+	rowBytes, dataOffset, independentOffset, err := preAllocateDataRowBytes(rowNum, &payloadDataCols)
+	if err != nil {
+		return nil, nil, nil, err
 	}
 
 	// Initialize row processing context once, reuse for all rows
@@ -1037,10 +1041,7 @@ func getSingleRowBytes(ctx *RowProcessContext, row int) (string, error) {
 		// Build primary tag key
 		if info.isPrimaryTag {
 			vString := sqlbase.DatumToString(datum)
-			// Distinguish aa + bb = a + abb
-			buf = strconv.AppendInt(buf, int64(len(vString)), 10)
-			buf = append(buf, ':')
-			buf = append(buf, vString...)
+			buf = execbuilder.AppendTSPrimaryTagGroupingKeyString(buf, vString)
 		}
 	}
 
@@ -1661,12 +1662,16 @@ func GetPayloadMapForMuiltNode(
 	cfg *ExecutorConfig,
 ) error {
 	rowTimestamps := make([]int64, di.RowNum)
+	v2Info := execbuilder.BuildPayloadV2DataInfoForTable(dit.TableType, directColumnDescPtrs(table.Columns), di.Dcs, di.ColIndexs)
+	di.PArgs.V2DataHeader = v2Info.DataHeader
+	di.PArgs.V2DataCols = v2Info.DataCols
 
 	inputValues, priTagValMap, rowBytes, err := GetRowBytesForTsInsert(ctx, ptCtx, di, stmts, rowTimestamps)
 	if err != nil {
 		return err
 	}
 	di.PArgs.DataColNum, di.PArgs.DataColSize, di.PArgs.PreAllocColSize = 0, 0, 0
+	di.PArgs.OmitTagSection = execbuilder.ShouldOmitTagSection(di.PArgs, di.ColIndexs)
 
 	allPayloads := make([]*sqlbase.SinglePayloadInfo, 0, len(priTagValMap))
 
@@ -1675,8 +1680,8 @@ func GetPayloadMapForMuiltNode(
 	hashNum := dit.HashNum
 
 	for _, priTagRowIdx := range priTagValMap {
-		// Payload is the encoding of a complete line, which is the first line in a line with the same ptag
-		payload, _, err := execbuilder.BuildPayloadForTsInsert(
+		// basePrefix encodes the header and tag section for this primary-tag group.
+		basePrefix, _, err := execbuilder.BuildPayloadForTsInsert(
 			&evalCtx,
 			evalCtx.Txn,
 			inputValues,
@@ -1693,7 +1698,7 @@ func GetPayloadMapForMuiltNode(
 		}
 
 		// Make primaryTag key.
-		hashPoints := sqlbase.DecodeHashPointFromPayload(payload)
+		hashPoints := sqlbase.DecodeHashPointFromPayload(basePrefix)
 		primaryTagKey := sqlbase.MakeTsPrimaryTagKey(table.ID, hashPoints)
 		if !evalCtx.StartSinglenode {
 			rowCount := len(priTagRowIdx)
@@ -1717,7 +1722,7 @@ func GetPayloadMapForMuiltNode(
 			}
 
 			allPayloads = append(allPayloads, &sqlbase.SinglePayloadInfo{
-				Payload:       payload,
+				Payload:       execbuilder.BuildHeaderPrefixWithDataHeader(basePrefix, di.PArgs.V2DataHeader),
 				RowNum:        uint32(rowCount),
 				PrimaryTagKey: primaryTagKey,
 				RowBytes:      groupRowBytes,
@@ -1727,28 +1732,8 @@ func GetPayloadMapForMuiltNode(
 				HashNum:       hashNum,
 			})
 		} else {
-			valueSize := int32(0)
-			rowNum := uint32(0)
-			for _, idx := range priTagRowIdx {
-				valueSize += int32(len(rowBytes[idx]))
-				rowNum++
-			}
-
-			payloadSize := int32(len(payload)) + valueSize + 4
-			payloadBytes := make([]byte, payloadSize)
-			copy(payloadBytes, payload)
-			offset := len(payload)
-			binary.LittleEndian.PutUint32(payloadBytes[offset:], uint32(valueSize))
-			offset += 4
-			for _, idx := range priTagRowIdx {
-				copy(payloadBytes[offset:], rowBytes[idx])
-				offset += len(rowBytes[idx])
-			}
-
-			binary.LittleEndian.PutUint32(payloadBytes[38:], uint32(rowNum))
-
 			allPayloads = append(allPayloads, &sqlbase.SinglePayloadInfo{
-				Payload:       payloadBytes,
+				Payload:       execbuilder.BuildSingleNodeTSPayload(basePrefix, di.PArgs.V2DataHeader, rowBytes, priTagRowIdx),
 				RowNum:        uint32(len(priTagRowIdx)),
 				PrimaryTagKey: primaryTagKey,
 				HashNum:       hashNum,

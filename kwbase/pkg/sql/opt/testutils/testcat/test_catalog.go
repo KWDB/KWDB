@@ -797,6 +797,37 @@ func (tt *Table) GetTableType() tree.TableType {
 	return tt.TableType
 }
 
+// IsRelationalTable returns true if table type is RelationalTable
+func (tt *Table) IsRelationalTable() bool {
+	return tt.TableType == tree.RelationalTable
+}
+
+// IsTSTable returns true if table is a ts table
+func (tt *Table) IsTSTable() bool {
+	return tt.TableType == tree.TimeseriesTable || tt.TableType == tree.TemplateTable ||
+		tt.TableType == tree.InstanceTable || tt.TableType == tree.SparseTable
+}
+
+// IsTemplateTable returns true if table type is TemplateTable
+func (tt *Table) IsTemplateTable() bool {
+	return tt.TableType == tree.TemplateTable
+}
+
+// IsInstanceTable returns true if table type is InstanceTable
+func (tt *Table) IsInstanceTable() bool {
+	return tt.TableType == tree.InstanceTable
+}
+
+// IsSparseTable returns true if table type is SparseTable
+func (tt *Table) IsSparseTable() bool {
+	return tt.TableType == tree.SparseTable
+}
+
+// IsTimeseriesTable returns true if table type is TimeseriesTable
+func (tt *Table) IsTimeseriesTable() bool {
+	return tt.TableType == tree.TimeseriesTable
+}
+
 // GetTriggers returns the definition of trigger
 func (tt *Table) GetTriggers(event tree.TriggerEvent) []cat.TriggerMeta {
 	return nil
@@ -1040,6 +1071,11 @@ func (tc *Column) IsPrimaryTagCol() bool {
 // TsColStorgeLen is part of the cat.Column interface.
 func (tc *Column) TsColStorgeLen() uint64 {
 	return tc.TsCol.StorageLen
+}
+
+// TsVariableLengthType is part of the cat.Column interface.
+func (tc *Column) TsVariableLengthType() int32 {
+	return int32(tc.TsCol.VariableLengthType)
 }
 
 // ColName is part of the cat.Column interface.

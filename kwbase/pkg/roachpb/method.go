@@ -197,4 +197,6 @@ const (
 	TsCommitTag
 	// TsImportFlush flush data after IMPORT
 	TsImportFlush
+	// TsGetValidColumns get IDs of valid columns
+	TsGetValidColumns
 )

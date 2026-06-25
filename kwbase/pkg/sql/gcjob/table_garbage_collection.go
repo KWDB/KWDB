@@ -35,7 +35,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvclient/kvcoord"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql"
-	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -158,7 +157,7 @@ func clearTableData(
 			}
 			var b kv.Batch
 			var tableID uint64
-			if table.TableType == tree.TimeseriesTable {
+			if table.IsTSTable() {
 				tableID = uint64(table.ID)
 			}
 			b.AddRawRequest(&roachpb.ClearRangeRequest{
@@ -189,7 +188,7 @@ func clearTableData(
 	}
 
 	// See also initiateDropTable in drop_table.go.
-	if table.TableType == tree.TimeseriesTable {
+	if table.IsTSTable() {
 		// Unsplit all manually split ranges in the table so they can be
 		// automatically merged by the merge queue.
 		err := db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {

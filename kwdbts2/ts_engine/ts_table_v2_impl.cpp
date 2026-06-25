@@ -36,28 +36,6 @@ TsTableImpl::~TsTableImpl() {
   // }
 }
 
-KStatus TsTableImpl::PutData(kwdbContext_p ctx, TsVGroup* v_group, TSSlice* payload, int payload_num,
-                          uint64_t mtr_id, TSEntityID entity_id, uint32_t* inc_unordered_cnt,
-                          DedupResult* dedup_result, const DedupRule& dedup_rule, bool write_wal) {
-  assert(payload_num == 1);
-  auto version = TsRawPayload::GetTableVersionFromSlice(*payload);
-  const std::vector<AttributeInfo>* metric_schema{nullptr};
-  table_schema_mgr_->GetColumnsExcludeDroppedPtr(&metric_schema, version);
-  uint8_t payload_data_flag = TsRawPayload::GetRowTypeFromSlice(*payload);
-  if (payload_data_flag == DataTagFlag::TAG_ONLY) {
-    LOG_DEBUG("tag only. so no need putdata.");
-    return KStatus::SUCCESS;
-  }
-  auto primary_key = TsRawPayload::GetPrimaryKeyFromSlice(*payload);
-  auto s = v_group->PutData(ctx, table_schema_mgr_, mtr_id, &primary_key, entity_id, payload, write_wal);
-  if (s != KStatus::SUCCESS) {
-    // todo(liangbo01) if failed. should we need rollback all inserted data?
-    LOG_ERROR("putdata failed. table id[%lu], group id[%u]", table_id_, v_group->GetVGroupID());
-    return s;
-  }
-  return KStatus::SUCCESS;
-}
-
 KStatus TsTableImpl::PutData(kwdbContext_p ctx, TsVGroup* v_group, TsRawPayload& p,
                   TSEntityID entity_id, uint64_t mtr_id, uint32_t* inc_unordered_cnt,
                   DedupResult* dedup_result, const DedupRule& dedup_rule, bool write_wal) {
@@ -66,9 +44,12 @@ KStatus TsTableImpl::PutData(kwdbContext_p ctx, TsVGroup* v_group, TsRawPayload&
     LOG_DEBUG("tag only. so no need putdata.");
     return KStatus::SUCCESS;
   }
+  if (p.GetRowCount() == 0) {
+    LOG_DEBUG("row count is 0. so no need putdata.");
+    return KStatus::SUCCESS;
+  }
   auto primary_key = p.GetPrimaryTag();
-  auto payload = p.GetPayload();
-  auto s = v_group->PutData(ctx, table_schema_mgr_, mtr_id, &primary_key, entity_id, &payload, write_wal);
+  auto s = v_group->PutData(ctx, table_schema_mgr_, mtr_id, &primary_key, entity_id, p, write_wal);
   if (s != KStatus::SUCCESS) {
     // todo(liangbo01) if failed. should we need rollback all inserted data?
     LOG_ERROR("putdata failed. table id[%lu], group id[%u]", table_id_, v_group->GetVGroupID());
@@ -169,11 +150,7 @@ KStatus TsTableImpl::GetTagListByRowNum(kwdbContext_p ctx, const std::vector<Ent
   const std::vector<uint32_t>& scan_tags, TS_OSN osn, ResultSet* res, uint32_t* count,
   uint32_t table_version) {
   *count = 0;
-  std::vector<TagPartitionTable*> all_tag_partition_tables;
   auto tag_bt = table_schema_mgr_->GetTagTable();
-  tag_bt->GetTagPartitionTableManager()->
-    GetAllPartitionTablesLessVersion(all_tag_partition_tables, UINT32_MAX);
-
   TagVersionObject* result_ver_obj = tag_bt->GetTagTableVersionManager()->GetVersionObject(table_version);
   if (nullptr == result_ver_obj) {
       LOG_ERROR("GetTagVersionObject failed, version id: %d", table_version);
@@ -1297,10 +1274,9 @@ KStatus TsTableImpl::GetLastRowBatch(kwdbContext_p ctx, uint32_t table_version, 
     return KStatus::SUCCESS;
   }
   timestamp64 cur_last_ts = INT64_MIN;
-  std::shared_ptr<TsRawPayloadRowParser> parser = nullptr;
   bool last_payload_valid = false;
   KStatus ret = vgroup->GetEntityLastRowBatch(entity_id.entityId, table_version, table_schema_mgr_,
-                                              schema, parser, {{INT64_MIN, INT64_MAX}}, scan_cols,
+                                              schema, {{INT64_MIN, INT64_MAX}}, scan_cols,
                                               cur_last_ts, last_payload_valid, res);
   if (ret != KStatus::SUCCESS) {
     res->clear();

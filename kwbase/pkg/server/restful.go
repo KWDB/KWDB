@@ -25,6 +25,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
@@ -34,8 +36,11 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/retry"
+	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
+	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 )
@@ -168,6 +173,29 @@ type restfulServer struct {
 	connPool      *restfulConnPool
 	authorization string
 	ifByLogin     bool
+
+	// Cross-request batch accumulator for InfluxDB protocol
+	batchMu       syncutil.Mutex
+	buckets       map[influxDBBatchKey]*influxDBBatch
+	workCh        chan *influxDBBatch
+	batchDone     chan struct{}
+	batchCtx      context.Context
+	batchCancel   context.CancelFunc
+	batchInitOnce sync.Once // ensures batch system is initialized exactly once
+	activeWorkers int32     // atomic, tracks running worker count
+
+	// Per-second request stats (atomic)
+	reqCount int64 // atomic
+
+	// Per-second write stats (atomic, actual database writes)
+	writeCount int64 // atomic, number of batches executed
+	writeRows  int64 // atomic, total rows written to database
+
+	// Bucket stats (atomic, for observability)
+	bufferedBuckets int64 // atomic, current number of buckets in map
+	bufferedRows    int64 // atomic, total rows buffered across all buckets
+	workChLen       int64 // atomic, snapshot of workCh length
+	flushBlocked    int64 // atomic, times flush was blocked by full workCh
 }
 
 // restful connection, store connectonHandler and session info
@@ -190,6 +218,32 @@ var SQLRestfulTimeOut = settings.RegisterPublicIntSetting(
 	"server.rest.timeout",
 	"time out for restful api(in minutes)",
 	60,
+)
+
+// SQLRestfulTimeZone information of timezone
+var SQLRestfulTimeZone = settings.RegisterValidatedIntSetting(
+	"server.restful_service.default_request_timezone",
+	"set time zone for restful api",
+	0,
+	func(v int64) error {
+		if v < -12 || v > 14 {
+			return pgerror.Newf(pgcode.InvalidParameterValue,
+				"server.restful_service.default_request_timezone must be set between -12 and 14")
+		}
+		return nil
+	},
+)
+
+// InfluxDBBatchParams No-Schema insert RESTful API batch insert params
+// 1. batch_enabled: batch insert is allowed if it is true.
+// 2. batch_size: batch size for grouping rows into multi-value INSERT.
+// 3. workers: worker count for concurrent batch INSERT execution.
+// 4. flush_interval: flush interval for partial batch flush(Unit: ms).
+// 5. max_buckets: limits the number of concurrent batch buckets.
+var InfluxDBBatchParams = settings.RegisterPublicStringSetting(
+	"server.restful_influxdb.batch_params",
+	"no-schema insert RESTful API batch insert params",
+	"false;100;16;1000;100",
 )
 
 // loginResponseSuccess is use for return login success
@@ -245,6 +299,58 @@ type sessionInfo struct {
 type resultToken struct {
 	Code int    `json:"code"`
 	Desc string `json:"desc"`
+}
+
+// influxDBParsedRow holds intermediate parsed data from one InfluxDB line
+type influxDBParsedRow struct {
+	tblName     string   // quoted table name
+	colKey      []string // all column names in INSERT order (quoted)
+	colValue    []string // all column values in INSERT order
+	colTagNames []string // tag column names
+	colTagTypes []string // tag column types
+	colValNames []string // field column names
+	colValTypes []string // field column types
+	hashtag     []string // raw "tag=val" strings for primary_tag hash
+	timeStamp   string   // raw timestamp
+	tagNum      int      // number of tag columns
+}
+
+// canonColInfo records a column's name, type and tag/field role in canonical (sorted by name) order.
+type canonColInfo struct {
+	name    string
+	colType string
+	isTag   bool
+}
+
+// influxDBBatchKey identifies a column-set bucket.
+// Uses username + dbName + canonical column signature to avoid cross-db/user merging
+// and column ordering mismatches.
+type influxDBBatchKey struct {
+	tblName  string
+	dbName   string
+	username string
+	colHash  string // sha256 of sorted canonical column info
+}
+
+// influxDBBatch collects rows for one column-set bucket
+type influxDBBatch struct {
+	key          influxDBBatchKey
+	tblName      string
+	createSQL    string   // CREATE TABLE statement
+	insertPrefix string   // "INSERT WITHOUT SCHEMA INTO <tbl>(<col_defs>) VALUES"
+	valueRows    []string // individual "(v1,v2,...)" tuples
+	createdAt    time.Time
+	username     string         // for ConnectionHandler creation
+	dbName       string         // for h.SetDBName
+	canonCols    []canonColInfo // canonical column order, sorted by name; used for value reordering
+}
+
+// influxDBWorkerResult is sent from workers back to coordinator
+type influxDBWorkerResult struct {
+	rowsAffected int64
+	desc         string
+	err          error
+	execTime     float64
 }
 
 func (col colMetaInfo) MarshalJSON() ([]byte, error) {
@@ -340,8 +446,201 @@ func newRestfulServer(s *Server) *restfulServer {
 		connCache:   make(map[string]*restfulConn),
 		maxLifeTime: SQLRestfulTimeOut.Get(&s.cfg.Settings.SV) * 60,
 	}
-	server := &restfulServer{server: s, connPool: &connPool}
+	batchCtx, batchCancel := context.WithCancel(context.Background())
+	server := &restfulServer{
+		server:      s,
+		connPool:    &connPool,
+		buckets:     make(map[influxDBBatchKey]*influxDBBatch),
+		batchCtx:    batchCtx,
+		batchCancel: batchCancel,
+		batchDone:   make(chan struct{}),
+	}
 	return server
+}
+
+// getInfluxDBBatchEnabled batch insert is supported if it returns true.
+func (s *restfulServer) getInfluxDBBatchEnabled() bool {
+	strbatchParam := InfluxDBBatchParams.Get(&s.server.cfg.Settings.SV)
+	batchParams := strings.Split(strbatchParam, ";")
+	if len(batchParams) != 5 {
+		return false
+	}
+	enabled, _ := strconv.ParseBool(batchParams[0])
+	return enabled
+}
+
+// getInfluxDBConfig returns the resolved batch configuration.
+// Priority: env var > cluster setting > hardcoded default.
+func (s *restfulServer) getInfluxDBConfig() (int, int, time.Duration, int) {
+	strbatchParam := InfluxDBBatchParams.Get(&s.server.cfg.Settings.SV)
+	batchParams := strings.Split(strbatchParam, ";")
+	if len(batchParams) != 5 {
+		return 300, 4, 200 * time.Millisecond, 100
+	}
+	batchSize, _ := strconv.Atoi(batchParams[1])
+	batchSize = envutil.EnvOrDefaultInt("KWDB_INFLUXDB_BATCH_SIZE", batchSize)
+	if batchSize <= 0 {
+		batchSize = 300
+	}
+
+	workers, _ := strconv.Atoi(batchParams[2])
+	workers = envutil.EnvOrDefaultInt("KWDB_INFLUXDB_WORKERS", workers)
+	if workers <= 0 {
+		workers = 4
+	}
+
+	interval, _ := strconv.ParseInt(batchParams[3], 10, 64)
+	flushInterval := envutil.EnvOrDefaultDuration("KWDB_INFLUXDB_FLUSH_INTERVAL", time.Duration(interval)*time.Millisecond)
+	if flushInterval <= 0 {
+		flushInterval = 200 * time.Millisecond
+	}
+
+	maxBuckets, _ := strconv.Atoi(batchParams[4])
+	maxBuckets = envutil.EnvOrDefaultInt("KWDB_INFLUXDB_MAXBUCKETS", maxBuckets)
+	if maxBuckets <= 0 {
+		maxBuckets = 100
+	}
+
+	return batchSize, workers, flushInterval, maxBuckets
+}
+
+// startBatchSystem starts the InfluxDB batch worker pool and flush timer.
+// Called once at server startup.
+func (s *restfulServer) startBatchSystem() {
+	_, workers, _, _ := s.getInfluxDBConfig()
+	s.workCh = make(chan *influxDBBatch, workers*2)
+
+	for i := 0; i < workers; i++ {
+		atomic.AddInt32(&s.activeWorkers, 1)
+		go s.influxDBWorker(s.batchCtx, s.workCh)
+	}
+
+	go s.batchFlushLoop()
+	go s.statsLoop()
+}
+
+// statsLoop prints per-second request, write, and bucket statistics.
+func (s *restfulServer) statsLoop() {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			count := atomic.SwapInt64(&s.reqCount, 0)
+			rows := atomic.SwapInt64(&s.writeRows, 0)
+			batches := atomic.SwapInt64(&s.writeCount, 0)
+			buckets := atomic.LoadInt64(&s.bufferedBuckets)
+			buffered := atomic.LoadInt64(&s.bufferedRows)
+			wchLen := atomic.LoadInt64(&s.workChLen)
+			blocked := atomic.SwapInt64(&s.flushBlocked, 0)
+			fmt.Printf("influxdb stats/s: requests=%d write_rows=%d write_batches=%d buckets=%d buffered_rows=%d workch=%d flush_blocked=%d\n",
+				count, rows, batches, buckets, buffered, wchLen, blocked)
+		case <-s.batchCtx.Done():
+			return
+		}
+	}
+}
+
+// batchFlushLoop is the background goroutine that flushes partial buckets on timer.
+// It also dynamically scales workers when the cluster setting changes.
+func (s *restfulServer) batchFlushLoop() {
+	_, _, flushInterval, _ := s.getInfluxDBConfig()
+	ticker := time.NewTicker(flushInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			// Re-read config each tick so settings take effect without restart.
+			_, newWorkers, newInterval, _ := s.getInfluxDBConfig()
+			if newInterval != flushInterval {
+				ticker.Reset(newInterval)
+				flushInterval = newInterval
+			}
+			// Scale up workers if configured count increased.
+			current := atomic.LoadInt32(&s.activeWorkers)
+			if int32(newWorkers) > current {
+				for i := current; i < int32(newWorkers); i++ {
+					atomic.AddInt32(&s.activeWorkers, 1)
+					go s.influxDBWorker(s.batchCtx, s.workCh)
+				}
+			}
+			s.flushAllBuckets()
+		case <-s.batchCtx.Done():
+			s.flushAllBuckets()
+			close(s.workCh)
+			close(s.batchDone)
+			return
+		}
+	}
+}
+
+// flushAllBuckets drains all partial buckets into the work channel.
+// Collects batches under lock, then sends to workCh after unlocking
+// to avoid blocking with the lock held when workCh is full.
+func (s *restfulServer) flushAllBuckets() {
+	var batches []*influxDBBatch
+	var totalRows int64
+	s.batchMu.Lock()
+	for key, batch := range s.buckets {
+		if len(batch.valueRows) == 0 {
+			delete(s.buckets, key)
+			continue
+		}
+		batches = append(batches, batch)
+		totalRows += int64(len(batch.valueRows))
+		delete(s.buckets, key)
+	}
+	atomic.AddInt64(&s.bufferedBuckets, -int64(len(batches)))
+	atomic.AddInt64(&s.bufferedRows, -totalRows)
+	s.batchMu.Unlock()
+
+	for _, batch := range batches {
+		select {
+		case s.workCh <- batch:
+		default:
+			atomic.AddInt64(&s.flushBlocked, 1)
+			s.workCh <- batch
+		}
+	}
+	atomic.StoreInt64(&s.workChLen, int64(len(s.workCh)))
+}
+
+// flushBucketLocked removes a single bucket from the map and returns it.
+// Caller must hold batchMu. The batch is removed from buckets and returned;
+// the caller MUST send the returned batch to workCh after releasing batchMu.
+func (s *restfulServer) flushBucketLocked(key influxDBBatchKey) *influxDBBatch {
+	batch := s.buckets[key]
+	if batch == nil || len(batch.valueRows) == 0 {
+		return nil
+	}
+	delete(s.buckets, key)
+	return batch
+}
+
+// flushOldestBucketLocked finds and removes the oldest non-empty bucket from the map.
+// Caller must hold batchMu. Returns the removed batch, or nil if no non-empty bucket exists.
+// The caller MUST send the returned batch to workCh after releasing batchMu.
+func (s *restfulServer) flushOldestBucketLocked() *influxDBBatch {
+	var oldestKey influxDBBatchKey
+	var oldestBatch *influxDBBatch
+	var oldestTime time.Time
+	for k, b := range s.buckets {
+		if len(b.valueRows) == 0 {
+			continue
+		}
+		if oldestBatch == nil || b.createdAt.Before(oldestTime) {
+			oldestBatch = b
+			oldestKey = k
+			oldestTime = b.createdAt
+		}
+	}
+	if oldestBatch == nil {
+		return nil
+	}
+	delete(s.buckets, oldestKey)
+	atomic.AddInt64(&s.bufferedBuckets, -1)
+	atomic.AddInt64(&s.bufferedRows, -int64(len(oldestBatch.valueRows)))
+	return oldestBatch
 }
 
 func ifContainsType(target []string, src string) bool {
@@ -1633,6 +1932,218 @@ func determineType(input string) (string, string) {
 	return "", "UNKNOWN"
 }
 
+// parseInfluxDBLine parses a single InfluxDB line protocol string into intermediate data.
+// Returns the parsed row or an error if the line is invalid.
+func parseInfluxDBLine(ctx context.Context, line string) (*influxDBParsedRow, error) {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Error(ctx, "invalid data for InfluxDB protocol, please check the format %v", err)
+		}
+	}()
+	if line == "" {
+		return nil, fmt.Errorf("empty line")
+	}
+
+	slice := splitStringQuotes(line, ' ')
+	if len(slice) < 2 {
+		return nil, fmt.Errorf("missing fields")
+	}
+
+	attribute := strings.Split(slice[0], ",")
+	tblName := "\"" + attribute[0] + "\""
+
+	row := &influxDBParsedRow{
+		tblName: tblName,
+	}
+
+	// Parse tags (attribute[1:])
+	for index, keyWithValue := range attribute {
+		if index >= 1 {
+			row.hashtag = append(row.hashtag, keyWithValue)
+			parts := strings.Split(keyWithValue, "=")
+			if len(parts) != 2 {
+				return nil, fmt.Errorf("invalid tag format: %s", keyWithValue)
+			}
+			row.colTagNames = append(row.colTagNames, "\""+parts[0]+"\"")
+			row.colTagTypes = append(row.colTagTypes, "varchar") // tags are always varchar
+			row.colKey = append(row.colKey, "\""+parts[0]+"\"")
+			row.colValue = append(row.colValue, "'"+parts[1]+"'")
+		}
+	}
+	row.tagNum = len(row.colTagNames)
+
+	// Parse fields (slice[1])
+	fieldValues := splitStringQuotes(slice[1], ',')
+	for _, keyValue := range fieldValues {
+		obj := strings.SplitN(keyValue, "=", 2)
+		if len(obj) != 2 {
+			return nil, fmt.Errorf("invalid field format: %s", keyValue)
+		}
+		colName := "\"" + obj[0] + "\""
+		value, colType := determineType(obj[1])
+		if colType == "UNKNOWN" {
+			return nil, fmt.Errorf("unknown type for field %s", obj[0])
+		}
+		row.colValNames = append(row.colValNames, colName)
+		row.colValTypes = append(row.colValTypes, colType)
+		row.colKey = append(row.colKey, colName)
+		row.colValue = append(row.colValue, value)
+	}
+
+	// Parse timestamp (slice[2], optional)
+	row.timeStamp = "now()"
+	if len(slice) >= 3 && slice[2] != "" {
+		row.timeStamp = slice[2]
+	}
+
+	return row, nil
+}
+
+// buildCanonicalCols builds a sorted-by-name list of (colName, colType, isTag) from a parsed row.
+// This serves as the canonical column order for insert prefix and value tuple construction.
+func buildCanonicalCols(row *influxDBParsedRow) []canonColInfo {
+	canonCols := make([]canonColInfo, 0, len(row.colKey))
+	for i, colName := range row.colKey {
+		isTag := i < row.tagNum
+		var colType string
+		if isTag {
+			colType = "varchar"
+		} else {
+			colType = row.colValTypes[i-row.tagNum]
+		}
+		canonCols = append(canonCols, canonColInfo{
+			name:    colName,
+			colType: colType,
+			isTag:   isTag,
+		})
+	}
+	sort.Slice(canonCols, func(i, j int) bool {
+		return canonCols[i].name < canonCols[j].name
+	})
+	return canonCols
+}
+
+// influxDBBucketKey creates a bucket key from table name, dbName, username and canonical column signature.
+// Returns the key and the canonical column ordering used for the key.
+func influxDBBucketKey(
+	row *influxDBParsedRow, dbName, username string,
+) (influxDBBatchKey, []canonColInfo) {
+	canonCols := buildCanonicalCols(row)
+
+	// Hash the sorted canonical column info (name + type + tag/field role)
+	h := sha256.New()
+	for _, col := range canonCols {
+		h.Write([]byte(col.name))
+		h.Write([]byte(col.colType))
+		if col.isTag {
+			h.Write([]byte("T"))
+		} else {
+			h.Write([]byte("F"))
+		}
+	}
+
+	key := influxDBBatchKey{
+		tblName:  row.tblName,
+		dbName:   dbName,
+		username: username,
+		colHash:  fmt.Sprintf("%x", h.Sum(nil)),
+	}
+	return key, canonCols
+}
+
+// buildCreateTableSQL builds CREATE TABLE statement from a parsed row.
+func buildCreateTableSQL(row *influxDBParsedRow) string {
+	createColStmt := strings.Builder{}
+	createColStmt.WriteString("(k_timestamp timestamptz(9) not null")
+	for index, createKey := range row.colValNames {
+		createColStmt.WriteString(",")
+		createColStmt.WriteString(createKey)
+		createColStmt.WriteString(" ")
+		createColStmt.WriteString(row.colValTypes[index])
+	}
+	createColStmt.WriteString(")")
+
+	createTagStmt := strings.Builder{}
+	createTagStmt.WriteString("(primary_tag varchar not null")
+	for _, createKey := range row.colTagNames {
+		createTagStmt.WriteString(",")
+		createTagStmt.WriteString(createKey)
+		createTagStmt.WriteString(" varchar")
+	}
+	createTagStmt.WriteString(")")
+
+	return "create table " + row.tblName + createColStmt.String() + "tags" + createTagStmt.String() + "primary tags(primary_tag)"
+}
+
+// buildInsertPrefix builds the INSERT prefix (columns part) using canonical column order.
+func buildInsertPrefix(tblName string, canonCols []canonColInfo) string {
+	insertKeyStmt := strings.Builder{}
+	insertKeyStmt.WriteString("(primary_tag varchar tag,k_timestamp timestamptz(9) column")
+	for _, col := range canonCols {
+		if col.isTag {
+			insertKeyStmt.WriteString(",")
+			insertKeyStmt.WriteString(col.name)
+			insertKeyStmt.WriteString(" varchar tag")
+		} else {
+			insertKeyStmt.WriteString(",")
+			insertKeyStmt.WriteString(col.name)
+			insertKeyStmt.WriteString(" ")
+			insertKeyStmt.WriteString(col.colType)
+			insertKeyStmt.WriteString(" column")
+		}
+	}
+	insertKeyStmt.WriteString(")")
+
+	return "insert without schema into " + tblName + insertKeyStmt.String() + " values"
+}
+
+// buildValueTuple builds a single value tuple from a parsed row,
+// reordering values to match the canonical column order from the batch.
+func buildValueTuple(row *influxDBParsedRow, canonCols []canonColInfo) string {
+	// Build a map from column name to original value index
+	colIdxMap := make(map[string]int, len(row.colKey))
+	for i, colName := range row.colKey {
+		colIdxMap[colName] = i
+	}
+
+	insertValueStmt := strings.Builder{}
+	insertValueStmt.WriteString("(")
+	insertValueStmt.WriteString("'")
+	insertValueStmt.WriteString(generateHashString(row.hashtag))
+	insertValueStmt.WriteString("'")
+	insertValueStmt.WriteString(",")
+	insertValueStmt.WriteString(row.timeStamp)
+	for _, col := range canonCols {
+		insertValueStmt.WriteString(",")
+		if idx, ok := colIdxMap[col.name]; ok && idx < len(row.colValue) {
+			insertValueStmt.WriteString(row.colValue[idx])
+		} else {
+			insertValueStmt.WriteString("null")
+		}
+	}
+	insertValueStmt.WriteString(")")
+	return insertValueStmt.String()
+}
+
+// buildBatchInsertSQL builds a complete multi-value INSERT statement from a batch.
+func buildBatchInsertSQL(batch *influxDBBatch) string {
+	if len(batch.valueRows) == 0 {
+		return ""
+	}
+
+	stmt := strings.Builder{}
+	stmt.WriteString(batch.insertPrefix)
+	for i, row := range batch.valueRows {
+		if i == 0 {
+			stmt.WriteString(row)
+		} else {
+			stmt.WriteString(",")
+			stmt.WriteString(row)
+		}
+	}
+	return stmt.String()
+}
+
 // makeInfluxDBStmt makes insert statement when telegraf.
 func makeInfluxDBStmt(
 	ctx context.Context, stmtOriginal string,
@@ -1747,13 +2258,137 @@ func makeInfluxDBStmt(
 	return stmtRet, createRet
 }
 
-// handleInfluxDB handles for influxdb format
+// createWorkerHandler creates a ConnectionHandler for a worker.
+// This is similar to checkConn but does NOT write HTTP error responses.
+func (s *restfulServer) createWorkerHandler(
+	ctx context.Context, connCache *restfulConn, r *http.Request,
+) (sql.ConnectionHandler, error) {
+	h, _, err := s.server.PGServer().SQLServer.NewConnectionHandler(ctx, connCache.username)
+	if err != nil {
+		return h, err
+	}
+
+	// Set database name
+	paraDbName := r.FormValue("db")
+	if paraDbName == "" {
+		paraDbName = "defaultdb"
+	}
+	h.SetDBName(paraDbName)
+
+	// Set timezone
+	paraTimeZone := r.FormValue("tz")
+	tempStr := ""
+	if paraTimeZone == "" {
+		timezone := SQLRestfulTimeZone.Get(&s.server.cfg.Settings.SV)
+		tempStr = fmt.Sprintf("%d", timezone)
+	} else {
+		tempStr = strings.TrimPrefix(paraTimeZone, "'")
+		tempStr = strings.TrimSuffix(tempStr, "'")
+	}
+
+	originLoc, err := timeutil.TimeZoneStringToLocation(
+		tempStr,
+		timeutil.TimeZoneStringToLocationISO8601Standard,
+	)
+	if err != nil {
+		return h, pgerror.Newf(pgcode.InvalidParameterValue,
+			"invalid value for parameter %q: %q", "timezone", paraTimeZone)
+	}
+	loc, err := timeutil.TimeZoneStringToLocation(
+		originLoc.String(),
+		timeutil.TimeZoneStringToLocationISO8601Standard,
+	)
+	if err != nil {
+		return h, pgerror.Newf(pgcode.InvalidParameterValue,
+			"invalid value for parameter %q: %q", "timezone", originLoc.String())
+	}
+	h.SetTimeZone(loc)
+
+	return h, nil
+}
+
+// influxDBWorker is a goroutine that executes batch INSERTs from workCh.
+// It creates/reuses a ConnectionHandler per username.
+func (s *restfulServer) influxDBWorker(ctx context.Context, workCh <-chan *influxDBBatch) {
+	var h *sql.ConnectionHandler
+	var currentUser string
+
+	for batch := range workCh {
+		// Create or reuse handler for this user
+		if currentUser != batch.username || h == nil {
+			if h != nil {
+				h.CloseExecutor(ctx)
+			}
+			newH, _, err := s.server.PGServer().SQLServer.NewConnectionHandler(ctx, batch.username)
+			if err != nil {
+				log.Warningf(ctx, "influxdb worker: failed to create handler for user %s: %v", batch.username, err)
+				h = nil
+				continue
+			}
+			h = &newH
+			currentUser = batch.username
+		}
+		h.SetDBName(batch.dbName)
+
+		insertSQL := buildBatchInsertSQL(batch)
+		createSQL := batch.createSQL
+
+		result, err := s.executeWithRetry(ctx, nil, *h, insertSQL, createSQL)
+
+		if err != nil {
+			log.Warningf(ctx, "influxdb batch exec error: %v", err)
+			continue
+		}
+		if result.Err != nil {
+			log.Warningf(ctx, "influxdb batch result error: %v", result.Err)
+			continue
+		}
+		// Accumulate actual write stats
+		atomic.AddInt64(&s.writeCount, 1)
+		atomic.AddInt64(&s.writeRows, int64(len(batch.valueRows)))
+	}
+	if h != nil {
+		h.CloseExecutor(ctx)
+	}
+}
+
+func (s *restfulServer) tryFlushOldestBatch(maxBuckets int) {
+	// Collect all batches to flush while holding the lock.
+	var flushedBatches []*influxDBBatch
+	for maxBuckets > 0 && len(s.buckets) >= maxBuckets {
+		flushedBatch := s.flushOldestBucketLocked()
+		if flushedBatch == nil {
+			break
+		}
+		flushedBatches = append(flushedBatches, flushedBatch)
+	}
+
+	if len(flushedBatches) == 0 {
+		return
+	}
+
+	// Send collected batches to workCh outside the lock to avoid
+	// holding the lock during potentially blocking channel sends.
+	s.batchMu.Unlock()
+	for _, flushedBatch := range flushedBatches {
+		select {
+		case s.workCh <- flushedBatch:
+		default:
+			atomic.AddInt64(&s.flushBlocked, 1)
+			s.workCh <- flushedBatch
+		}
+	}
+	atomic.StoreInt64(&s.workChLen, int64(len(s.workCh)))
+	s.batchMu.Lock()
+}
+
+// handleInfluxDB handles for influxdb format with cross-request batch accumulation.
+// Parsed rows are appended to shared server-side buckets and flushed by background
+// goroutines when batch_size or flush_interval is reached. Returns immediately (fire-and-forget).
 func (s *restfulServer) handleInfluxDB(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	ctx, cancelConn := context.WithCancel(ctx)
 	defer cancelConn()
-	code := RestfulResponseCodeSuccess
-	desc := ""
 
 	if err := s.checkFormat(ctx, w, r, "POST"); err != nil {
 		return
@@ -1763,64 +2398,161 @@ func (s *restfulServer) handleInfluxDB(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	connCache, h, err := s.checkConn(ctx, w, r)
-	defer func() {
-		h.CloseExecutor(ctx)
-	}()
-	if err != nil {
-		return
-	}
-	var rowsAffected int64
-	rowsAffected = 0
-	var teleResult sql.RestfulRes
-	// Calculate the execution time if needed
-	var executionTime float64
-	// the program will get a batch of data at once, so it needs to handle it first
+
+	// Parse lines and append to shared buckets
 	statements := strings.Split(strings.ReplaceAll(restInfluxdb, "\r\n", "\n"), "\n")
-	numOfStmts := len(statements)
 
-	for i := 0; i < numOfStmts; i++ {
-		insertTelegraphStmt, createTelegrafStmt := makeInfluxDBStmt(ctx, statements[i])
-		TeleInsertStartTime := timeutil.Now()
-
-		if insertTelegraphStmt == "" {
-			desc += "wrong influxdb insert statement and please check;"
-			code = RestfulResponseCodeFail
-			continue
-		}
-
-		insertflag := strings.HasPrefix(strings.ToLower(insertTelegraphStmt), insertWithoutSchema)
-		if !insertflag {
-			desc += "can not find insert statement and please check;"
-			code = RestfulResponseCodeFail
-			continue
-		}
-
-		teleResult, err = s.executeWithRetry(ctx, connCache, h, insertTelegraphStmt, createTelegrafStmt)
+	// Load config for batch_size check
+	if s.getInfluxDBBatchEnabled() {
+		// Use a struct-level sync.Once to ensure batch system is initialized exactly once,
+		// even under concurrent requests.
+		s.batchInitOnce.Do(func() {
+			s.startBatchSystem()
+			s.server.stopper.AddCloser(stop.CloserFn(func() {
+				s.batchCancel()
+				<-s.batchDone
+			}))
+		})
+		// Auth
+		connCache, err := s.pickConnCache(ctx)
 		if err != nil {
-			desc += "pq: " + err.Error() + ";"
-			code = RestfulResponseCodeFail
-			continue
+			s.sendJSONResponse(ctx, w, RestfulResponseCodeFail, nil, err.Error())
+			return
+		}
+		// Get db name from request
+		dbName := r.FormValue("db")
+		if dbName == "" {
+			dbName = "defaultdb"
+		}
+		batchSize, _, _, maxBuckets := s.getInfluxDBConfig()
+		for _, line := range statements {
+			if line == "" {
+				continue
+			}
+			row, parseErr := parseInfluxDBLine(ctx, line)
+			if parseErr != nil || row == nil {
+				continue
+			}
+
+			key, canonCols := influxDBBucketKey(row, dbName, connCache.username)
+
+			s.batchMu.Lock()
+			batch, exists := s.buckets[key]
+			if !exists {
+				s.tryFlushOldestBatch(maxBuckets)
+				// Re-check: another goroutine might have created this bucket while we were unlocked
+				batch, exists = s.buckets[key]
+				if !exists {
+					batch = &influxDBBatch{
+						key:          key,
+						tblName:      row.tblName,
+						createSQL:    buildCreateTableSQL(row),
+						insertPrefix: buildInsertPrefix(row.tblName, canonCols),
+						createdAt:    timeutil.Now(),
+						username:     connCache.username,
+						dbName:       dbName,
+						canonCols:    canonCols,
+					}
+					s.buckets[key] = batch
+					atomic.AddInt64(&s.bufferedBuckets, 1)
+				}
+			}
+			valueTuple := buildValueTuple(row, batch.canonCols)
+			batch.valueRows = append(batch.valueRows, valueTuple)
+			atomic.AddInt64(&s.bufferedRows, 1)
+
+			// Flush if full
+			var flushedBatch *influxDBBatch
+			if len(batch.valueRows) >= batchSize {
+				flushedBatch = s.flushBucketLocked(key)
+				atomic.AddInt64(&s.bufferedBuckets, -1)
+				atomic.AddInt64(&s.bufferedRows, -int64(len(flushedBatch.valueRows)))
+			}
+			s.batchMu.Unlock()
+
+			if flushedBatch != nil {
+				select {
+				case s.workCh <- flushedBatch:
+				default:
+					atomic.AddInt64(&s.flushBlocked, 1)
+					s.workCh <- flushedBatch
+				}
+				atomic.StoreInt64(&s.workChLen, int64(len(s.workCh)))
+			}
 		}
 
-		curRowsAffected := teleResult.RowsAffected
-		duration := timeutil.Now().Sub(TeleInsertStartTime)
-		executionTime = executionTime + float64(duration)/float64(time.Second)
-		desc += "success;"
-		rowsAffected += int64(curRowsAffected)
+		// Accumulate request count (printed per-second by statsLoop)
+		atomic.AddInt64(&s.reqCount, 1)
+
+		// Return immediately (fire-and-forget)
+		response := teleInsertResponse{
+			baseResponse: &baseResponse{Code: RestfulResponseCodeSuccess, Desc: "accepted"},
+			Rows:         int64(len(statements)),
+		}
+		s.sendJSONResponse(ctx, w, RestfulResponseCodeSuccess, response, "accepted")
+	} else {
+		connCache, h, err := s.checkConn(ctx, w, r)
+		defer func() {
+			h.CloseExecutor(ctx)
+		}()
+		if err != nil {
+			s.sendJSONResponse(ctx, w, RestfulResponseCodeFail, nil, err.Error())
+			return
+		}
+		code := RestfulResponseCodeSuccess
+		desc := ""
+		var rowsAffected int64
+		rowsAffected = 0
+		var teleResult sql.RestfulRes
+		// Calculate the execution time if needed
+		var executionTime float64
+		for _, stmt := range statements {
+			insertTelegraphStmt, createTelegrafStmt := makeInfluxDBStmt(ctx, stmt)
+			TeleInsertStartTime := timeutil.Now()
+
+			if insertTelegraphStmt == "" {
+				desc += "wrong influxdb insert statement and please check;"
+				code = RestfulResponseCodeFail
+				continue
+			}
+
+			insertflag := strings.HasPrefix(strings.ToLower(insertTelegraphStmt), insertWithoutSchema)
+			if !insertflag {
+				desc += "can not find insert statement and please check;"
+				code = RestfulResponseCodeFail
+				continue
+			}
+
+			teleResult, err = s.executeWithRetry(ctx, connCache, h, insertTelegraphStmt, createTelegrafStmt)
+			if teleResult.Err != nil {
+				desc += "pq: " + teleResult.Err.Error() + ";"
+				code = RestfulResponseCodeFail
+				continue
+			}
+			if err != nil {
+				desc += "pq: " + err.Error() + ";"
+				code = RestfulResponseCodeFail
+				continue
+			}
+
+			curRowsAffected := teleResult.RowsAffected
+			duration := timeutil.Now().Sub(TeleInsertStartTime)
+			executionTime = executionTime + float64(duration)/float64(time.Second)
+			desc += "success;"
+			rowsAffected += int64(curRowsAffected)
+		}
+
+		response := teleInsertResponse{
+			baseResponse: &baseResponse{
+				Code: code,
+				Desc: desc,
+				Time: executionTime,
+			},
+			Rows: rowsAffected,
+		}
+
+		s.sendJSONResponse(ctx, w, RestfulResponseCodeSuccess, response, desc)
 	}
-
-	response := teleInsertResponse{
-		baseResponse: &baseResponse{
-			Code: code,
-			Desc: desc,
-			Time: executionTime,
-		},
-		Rows: rowsAffected,
-	}
-
-	s.sendJSONResponse(ctx, w, RestfulResponseCodeSuccess, response, desc)
-
 }
 
 // handleOpenTSDBTelnet handles for opentsdb telnet format
@@ -2033,7 +2765,9 @@ func (s *restfulServer) executeWithRetry(
 			// other errors can be returned directly
 			return execResult, execResult.Err
 		}
-		refreshRequestTime(connCache)
+		if connCache != nil {
+			refreshRequestTime(connCache)
+		}
 	}
 	return execResult, err
 }

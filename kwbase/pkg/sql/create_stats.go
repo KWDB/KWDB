@@ -252,7 +252,7 @@ func (n *createStatsNode) makeJobRecord(ctx context.Context) (*jobs.Record, erro
 			return nil, err
 		}
 		// For the timing table, the current table is undergoing alter operation, so the statistics collection is skipped
-		if tableDesc.TableType == tree.TimeseriesTable && tableDesc.State != sqlbase.TableDescriptor_PUBLIC {
+		if tableDesc.IsTSTable() && tableDesc.State != sqlbase.TableDescriptor_PUBLIC {
 			return nil, sqlbase.NewAlterTSTableError(tableDesc.Name)
 		}
 
@@ -262,7 +262,7 @@ func (n *createStatsNode) makeJobRecord(ctx context.Context) (*jobs.Record, erro
 		}
 	}
 
-	isTsStats := tableDesc.TableType == tree.TimeseriesTable
+	isTsStats := tableDesc.IsTSTable()
 
 	// Check whether it is legal to create statistics
 	if err := n.checkTable(tableDesc); err != nil {
@@ -391,7 +391,7 @@ func createStatsDefaultColumns(
 	// Add columns for all primary tag.
 	var columnIDs []sqlbase.ColumnID
 	var columnTypes []int32
-	if desc.TableType == tree.TimeseriesTable {
+	if desc.IsTSTable() {
 		for _, col := range desc.Columns {
 			if col.IsPrimaryTagCol() && !primaryTagCols.Contains(int(col.ID)) {
 				primaryTagCols.Add(int(col.ID))
@@ -850,7 +850,7 @@ func (n *createStatsNode) identifyColumnsForStats(
 		// Here, we need to check multi-column statistics.
 		// Statistics for ts table can be created only for all primary columns or one of them.
 		// Check the validity of the input column(s) by `FindActiveColumnsByNames` in the above code block
-		if tableDesc.TableType == tree.TimeseriesTable {
+		if tableDesc.IsTSTable() {
 			for _, col := range tableDesc.Columns {
 				if col.IsPrimaryTagCol() {
 					primaryTagCols.Add(int(col.ID))

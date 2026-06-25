@@ -902,6 +902,13 @@ func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
 		internalExecutor,
 	)
 	s.restful = newRestfulServer(s)
+	if s.restful.getInfluxDBBatchEnabled() {
+		s.restful.startBatchSystem()
+		s.stopper.AddCloser(stop.CloserFn(func() {
+			s.restful.batchCancel()
+			<-s.restful.batchDone
+		}))
+	}
 	s.authentication = newAuthenticationServer(s)
 	for _, gw := range []grpcGatewayServer{s.admin, s.status, s.authentication, &s.tsServer} {
 		gw.RegisterService(s.grpc.Server)

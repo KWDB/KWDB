@@ -63,14 +63,16 @@ class TsSplitBlockSpansTest : public ::testing::Test {
     auto cur_block = std::make_shared<TsMemSegBlock>(nullptr);
 
     for (size_t i = 0; i < tss.size(); i++) {
-      TSMemSegRowData* data = new TSMemSegRowData(1, 1, 1, 1);
+      TSMemSegRowDataOnlyData* data = new TSMemSegRowDataOnlyData(1, 1, 1, 1, &schema_);
       datas_.push_back(data);
-      char* row = reinterpret_cast<char*>(malloc(16));
+      char* row = reinterpret_cast<char*>(malloc(16 + 2));
       row_datas_.push_back(row);
-      KTimestamp(row) = tss[i];
-      KUint64(row + 8) = osn;
+      KUint16(row) = TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_TUPLE;
+      KTimestamp(row + 2) = tss[i];
+      KUint64(row + 8 + 2) = osn;
       data->SetData(tss[i], osn);
-      data->SetRowData(TSSlice{row, 16});
+      TSSlice row_with_type{row, 16 + 2};
+      data->SetRowData(row_with_type);
       bool ok = cur_block->InsertRow(data);
       EXPECT_TRUE(ok);
     }

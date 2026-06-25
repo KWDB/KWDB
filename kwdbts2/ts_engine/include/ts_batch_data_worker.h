@@ -155,18 +155,26 @@ class TsBatchData {
   uint32_t tags_data_offset_ = 0;
   uint32_t tags_data_size_ = 0;
 
+  // data part length
+  uint32_t data_part_length_offset_ = 0;
+  uint32_t data_part_length_ = 0;
+
+  // data part = valid column part + block span part
+
+  // valid column part
+  uint16_t valid_column_part_offset_ = 0;
+  uint32_t valid_column_part_length_ = 0;
+  uint16_t valid_column_type_ = 0;
+
   /*  block span part
-  _______________________________________________________________________________________________________________________________________________________________________________________________________________
-  |    4        |       8       |         8        |       8       |         8        |       8       |         8        |       4       |       4      |       4       |               xxx              |
-  |-------------|---------------|------------------|---------------|------------------|---------------|------------------|---------------|--------------|---------------|--------------------------------|
-  | data length |     min ts    |      max ts      |     min osn   |      max osn     |   first osn   |    last osn      |     n_cols    |    n_rows    | block_version |  entity segment compressed data|
+  __________________________________________________________________________________________________________________________________________________________________________________________
+  |       8       |         8        |       8       |         8        |       8       |         8        |       4       |       4      |       4       |               xxx              |
+  |---------------|------------------|---------------|------------------|---------------|------------------|---------------|--------------|---------------|--------------------------------|
+  |     min ts    |      max ts      |     min osn   |      max osn     |   first osn   |    last osn      |     n_cols    |    n_rows    | block_version |  entity segment compressed data|
   */
-  uint32_t block_span_data_offset_ = 0;
-  uint32_t block_span_data_size_ = 0;
 
  private:
   struct __attribute__((packed)) BlockSpanHeader {
-    uint32_t length;
     timestamp64 min_ts, max_ts;
     uint64_t min_osn, max_osn, first_osn, last_osn;
     uint32_t n_cols, n_rows;
@@ -174,9 +182,8 @@ class TsBatchData {
   };
 
  public:
-  // block span length + min ts + max ts + n_cols + n_rows + min osn + max osn + first osn + last osn
+  // min ts + max ts + n_cols + n_rows + min osn + max osn + first osn + last osn
   constexpr static int block_span_data_header_size_ = sizeof(BlockSpanHeader);  // NOLINT
-  constexpr static uint8_t length_offset_in_span_data_ = offsetof(BlockSpanHeader, length);  // NOLINT
   constexpr static uint8_t min_ts_offset_in_span_data_ = offsetof(BlockSpanHeader, min_ts);  // NOLINT
   constexpr static uint8_t max_ts_offset_in_span_data_ = offsetof(BlockSpanHeader, max_ts);  // NOLINT
   constexpr static uint8_t min_osn_offset_in_span_data_ = offsetof(BlockSpanHeader, min_osn);  // NOLINT
@@ -300,19 +307,40 @@ class TsBatchData {
 
   [[nodiscard]]
   TSSlice GetBlockSpanData() const {
-    return TSSlice{const_cast<char*>(data_.data()) + block_span_data_offset_, block_span_data_size_};
+    return TSSlice{const_cast<char*>(data_.data()) + valid_column_part_offset_ + valid_column_part_length_,
+                   data_part_length_ - valid_column_part_length_};
   }
 
   [[nodiscard]] bool HasBlockSpanData() const {
-    return block_span_data_offset_ != 0;
+    return data_part_length_ - valid_column_part_length_ != 0;
   }
 
-  void AddBlockSpanDataHeader(uint32_t block_span_length, timestamp64 min_ts, timestamp64 max_ts,
-                              uint64_t min_osn, uint64_t max_osn, uint64_t first_osn, uint64_t last_osn,
+  void AddDataPartLengthAndValidCols(std::vector<uint32_t>& valid_cols) {
+    data_part_length_offset_ = data_.size();
+    data_part_length_ = 0;
+    AppendFixedValue(data_part_length_);
+
+    valid_column_part_offset_ = data_.size();
+    valid_column_type_ = valid_cols.empty() ?
+      TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_TUPLE : TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_VECTOR;
+    AppendFixedValue(valid_column_type_);
+    valid_column_part_length_ = sizeof(valid_column_type_);
+
+    if (valid_column_type_ == TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_VECTOR) {
+      uint32_t valid_column_num = valid_cols.size();
+      AppendFixedValue(valid_column_num);
+      for (uint32_t& col_id : valid_cols) {
+        AppendFixedValue(col_id);
+      }
+      valid_column_part_length_ += sizeof(uint32_t) + valid_column_num * sizeof(uint32_t);
+    }
+  }
+
+  void AddBlockSpanDataHeader(timestamp64 min_ts, timestamp64 max_ts, uint64_t min_osn,
+                              uint64_t max_osn, uint64_t first_osn, uint64_t last_osn,
                               uint32_t n_cols, uint32_t n_rows, uint32_t block_version) {
     assert(tags_data_size_ != 0 && tags_data_offset_ != 0);
-    block_span_data_offset_ = data_.size();
-    AppendFixedValue(block_span_length);
+    uint32_t block_span_data_offset = data_.size();
     AppendFixedValue(min_ts);
     AppendFixedValue(max_ts);
     AppendFixedValue(min_osn);
@@ -322,19 +350,21 @@ class TsBatchData {
     AppendFixedValue(n_cols);
     AppendFixedValue(n_rows);
     AppendFixedValue(block_version);
-    assert(data_.size() - block_span_data_offset_ == block_span_data_header_size_);
+    assert(data_.size() - block_span_data_offset == block_span_data_header_size_);
   }
 
-  void UpdateBatchDataInfo() {
+  void UpdateBatchDataInfo(std::vector<uint32_t>& valid_cols) {
     // data length
     SetDataLength(data_.size());
+    // data part length
+    data_part_length_ = data_.size() - valid_column_part_offset_;
+    StoreAt(data_part_length_offset_, data_part_length_);
     // block span length
     if (HasBlockSpanData()) {
-      assert(data_.size() > tags_data_offset_ + tags_data_size_);
-      block_span_data_size_ = data_.size() - block_span_data_offset_;
-      StoreAt(block_span_data_offset_, block_span_data_size_);
+      uint32_t valid_column_part_size = valid_cols.empty() ? 0 : sizeof(uint32_t) + sizeof(uint32_t) * valid_cols.size();
+      assert(data_.size() > valid_column_part_offset_ + sizeof(valid_column_type_) + valid_column_part_size);
       SetRowType(DataTagFlag::DATA_AND_TAG);
-      size_t block_span_row_num_offset = block_span_data_offset_ + n_rows_offset_in_span_data_;
+      size_t block_span_row_num_offset = valid_column_part_offset_ + valid_column_part_length_ + n_rows_offset_in_span_data_;
       auto row_num = LoadAt<uint32_t>(block_span_row_num_offset);
       SetRowCount(row_num);
     } else {
@@ -348,8 +378,11 @@ class TsBatchData {
     p_tag_size_ = 0;
     tags_data_offset_ = 0;
     tags_data_size_ = 0;
-    block_span_data_offset_ = 0;
-    block_span_data_size_ = 0;
+    data_part_length_offset_ = 0;
+    data_part_length_ = 0;
+    valid_column_part_offset_ = 0;
+    valid_column_part_length_ = 0;
+    valid_column_type_ = 0;
     data_.clear();
     data_.resize(header_size_);
     SetBatchVersion(CURRENT_BATCH_VERSION);
@@ -442,6 +475,7 @@ class TsReadBatchDataWorker : public TsBatchDataWorker {
   std::string cached_tags_data_;
   bool is_tags_data_cached_ = false;
   TagCacheStatsHelper tag_cache_stats_helper_;
+  std::vector<uint32_t> cached_valid_columns_;
 
   uint64_t total_read_ = 0;
 

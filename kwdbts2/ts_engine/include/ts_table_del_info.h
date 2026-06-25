@@ -82,11 +82,11 @@ class STTableRangeDelAndTagInfo {
 
   KStatus WriteDelAndTagInfo(kwdbContext_p ctx, TSSlice& data, TsHashRWLatch& tag_lock);
 
-  KStatus WriteDeleteTagRecord(kwdbContext_p ctx, TSSlice& payload, OperateType type,
+  KStatus WriteDeleteTagRecord(kwdbContext_p ctx, TsRawPayload& p, OperateType type,
     std::shared_ptr<TagTable>& tag_table, std::pair<uint64_t, uint64_t>& row_info);
-  KStatus WriteUpdateTagRecord(kwdbContext_p ctx, TSSlice& payload, OperateType type,
+  KStatus WriteUpdateTagRecord(kwdbContext_p ctx, TsRawPayload& p, OperateType type,
     std::shared_ptr<TagTable>& tag_table, std::pair<uint64_t, uint64_t>& row_info);
-  KStatus WriteInsertTagRecord(kwdbContext_p ctx, TSSlice& payload, OperateType type, std::shared_ptr<TagTable>& tag_table);
+  KStatus WriteInsertTagRecord(kwdbContext_p ctx, TsRawPayload& p, OperateType type, std::shared_ptr<TagTable>& tag_table);
 
   KStatus CommitDeleteInfo(kwdbContext_p ctx);
 };

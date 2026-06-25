@@ -342,16 +342,6 @@ class TsLastBlock : public TsBlock {
     return col_block->GetValueSlice(row_num, value);
   }
 
-  inline bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>* schema,
-                        TsScanStats* ts_scan_stats = nullptr) override {
-    std::unique_ptr<TsBitmapBase> bitmap;
-    auto s = GetColBitmap(col_id, schema, &bitmap);
-    if (s == FAIL) {
-      return false;
-    }
-    return bitmap->At(row_num) == DataFlags::kNull;
-  }
-
   // if just get timestamp , this function return fast.
   inline timestamp64 GetTS(int row_num, TsScanStats* ts_scan_stats = nullptr) override {
     auto ts = GetTimestamps();

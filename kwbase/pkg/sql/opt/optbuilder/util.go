@@ -106,6 +106,112 @@ func (b *Builder) expandLastStar(
 	return exprs, aliases
 }
 
+// getTSparseTableValidColumns gets timeseries table valid columns for select and scan expression, which is used for expand star in parse timeseries table.
+func (b *Builder) getTSparseTableValidColumns(
+	inScope *scope, tabName *tree.TableName,
+) (aliases []string, exprs []tree.TypedExpr) {
+	getValidColumn := false
+	var tabID opt.TableID
+	validColMap := make(map[uint32]struct{}, 1)
+	if v, ok := inScope.expr.(*memo.SelectExpr); ok {
+		if v1, ok1 := v.Child(0).(*memo.TSScanExpr); ok1 {
+			tabID = v1.Table
+			table := b.factory.Metadata().TableMeta(tabID).Table
+			if table.GetTableType() == tree.SparseTable {
+				colMap := make(memo.TagColMap, 1)
+				primaryColMap := make(memo.TagColMap, b.factory.Metadata().TableMeta(tabID).PrimaryTagCount)
+				ptCols := make([]int, b.factory.Metadata().TableMeta(tabID).PrimaryTagCount)
+				var tCols []opt.ColumnID
+				primaryTagCount := 0
+				pTagSize := 0
+				for i := 0; i < table.ColumnCount(); i++ {
+					phyCol := table.Column(i)
+					if phyCol.IsTagCol() {
+						colMap[tabID.ColumnID(i)] = struct{}{}
+						tCols = append(tCols, tabID.ColumnID(i))
+					}
+
+					if phyCol.IsPrimaryTagCol() {
+						primaryColMap[tabID.ColumnID(i)] = struct{}{}
+						ptCols[primaryTagCount] = int(tabID.ColumnID(i))
+						primaryTagCount++
+						oidType := phyCol.DatumType().Oid()
+						if !sqlbase.ComputeTSColumnSize(oidType, true, int(phyCol.TsColStorgeLen()), &pTagSize, nil) {
+							panic(pgerror.Newf(pgcode.DatatypeMismatch, "unsupported input type oid %d (column %s)", oidType, phyCol.ColName()))
+						}
+					}
+				}
+
+				_, tagFilter := b.factory.Memo().SplitTagExpr(&v.Filters, colMap)
+
+				PriTagValues := make(memo.PTagValues, primaryTagCount)
+				for i := 0; i < len(tagFilter); i++ {
+					memo.GetPrimaryTagValues(tagFilter[i].Condition, primaryColMap, &PriTagValues)
+				}
+
+				// check primary tag
+				if memo.CheckPrimaryTagCanUse(primaryTagCount, &PriTagValues) {
+					// get valid column id
+					payloads := make([][]byte, 0)
+					var err error
+					offset := 0
+					// get payloads and offset
+					for _, col := range ptCols {
+						column := table.Column(tabID.ColumnOrdinal(opt.ColumnID(col)))
+						payloads, err = sqlbase.GetPtagPayloads(payloads, PriTagValues[uint32(col)], offset, column.DatumType(), pTagSize)
+						if err != nil {
+							panic(err)
+						}
+						offset += int(column.TsColStorgeLen())
+					}
+
+					// get valid column map from copy layer interface
+					validColMap, err = sqlbase.GetValidColumnsByPrimaryTagValue(b.ctx, b.evalCtx.Txn, uint64(table.ID()), table.GetTSVersion(), table.GetTSHashNum(), payloads...)
+					if err != nil {
+						panic(err)
+					}
+					// if validColMap is empty, it means there is no valid column for this timeseries table, and we can skip the column pruning and let the later stage handle it.
+					if len(validColMap) > 0 {
+						getValidColumn = true
+						for _, col := range ptCols {
+							validColMap[uint32(tabID.ColumnOrdinal(opt.ColumnID(col)))] = struct{}{}
+						}
+
+						for _, col := range tCols {
+							validColMap[uint32(tabID.ColumnOrdinal(col))] = struct{}{}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	exprs = make([]tree.TypedExpr, 0, len(inScope.cols))
+	aliases = make([]string, 0, len(inScope.cols))
+	if getValidColumn {
+		for i := range inScope.cols {
+			col := &inScope.cols[i]
+			if !col.hidden && ((tabName != nil && col.table == *tabName) || tabName == nil) {
+				if _, find := validColMap[uint32(tabID.ColumnOrdinal(col.id))]; !find {
+					continue
+				}
+				exprs = append(exprs, col)
+				aliases = append(aliases, string(col.name))
+			}
+		}
+	} else {
+		for i := range inScope.cols {
+			col := &inScope.cols[i]
+			if !col.hidden && ((tabName != nil && col.table == *tabName) || tabName == nil) {
+				exprs = append(exprs, col)
+				aliases = append(aliases, string(col.name))
+			}
+		}
+	}
+
+	return aliases, exprs
+}
+
 // expandStar expands expr into a list of columns if expr
 // corresponds to a "*", "<table>.*" or "(Expr).*".
 func (b *Builder) expandStar(
@@ -175,18 +281,10 @@ func (b *Builder) expandStar(
 			panic(err)
 		}
 		refScope := srcMeta.(*scope)
-		exprs = make([]tree.TypedExpr, 0, len(refScope.cols))
-		aliases = make([]string, 0, len(refScope.cols))
 		if isLast {
 			exprs, aliases = b.expandLastStar(refScope.cols, false, "")
 		} else {
-			for i := range refScope.cols {
-				col := &refScope.cols[i]
-				if col.table == *src && !col.hidden {
-					exprs = append(exprs, col)
-					aliases = append(aliases, string(col.name))
-				}
-			}
+			aliases, exprs = b.getTSparseTableValidColumns(refScope, src)
 		}
 
 	case tree.UnqualifiedStar:
@@ -194,18 +292,10 @@ func (b *Builder) expandStar(
 			panic(pgerror.Newf(pgcode.InvalidName,
 				"cannot use %q without a FROM clause", tree.ErrString(expr)))
 		}
-		exprs = make([]tree.TypedExpr, 0, len(inScope.cols))
-		aliases = make([]string, 0, len(inScope.cols))
 		if isLast {
 			exprs, aliases = b.expandLastStar(inScope.cols, false, "")
 		} else {
-			for i := range inScope.cols {
-				col := &inScope.cols[i]
-				if !col.hidden {
-					exprs = append(exprs, col)
-					aliases = append(aliases, string(col.name))
-				}
-			}
+			aliases, exprs = b.getTSparseTableValidColumns(inScope, nil)
 		}
 
 	default:
@@ -1156,7 +1246,7 @@ func (b *Builder) handleTwaAgg(f *tree.FuncExpr) {
 
 			tsTable := b.factory.Metadata().TableMeta(tableID).Table
 			// Check if the table is a time series table.
-			if tsTable.GetTableType() != tree.TimeseriesTable {
+			if !tsTable.IsTSTable() {
 				panic(pgerror.New(pgcode.FeatureNotSupported, fmt.Sprintf("%s function can only be used in time series table", "twa")))
 			}
 			// Ensure the timestamp column is the primary timestamp column (index 0)
@@ -1185,7 +1275,7 @@ func (b *Builder) handleElapsedAgg(f *tree.FuncExpr) {
 
 			tsTable := b.factory.Metadata().TableMeta(tableID).Table
 			// Check if the table is a time series table.
-			if tsTable.GetTableType() != tree.TimeseriesTable {
+			if !tsTable.IsTSTable() {
 				panic(pgerror.New(pgcode.FeatureNotSupported, fmt.Sprintf("%s function can only be used in time series table", "elapsed")))
 			}
 			// Ensure the timestamp column is the primary timestamp column (index 0).

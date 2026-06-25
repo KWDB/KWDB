@@ -101,10 +101,6 @@ class UnitTestBlock : public TsBlock {
     }
     return SUCCESS;
   }
-  bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) override {
-    assert(false);
-    return false;
-  }
 };
 
 std::shared_ptr<TsBlock> CreateBlock(int row_count, const std::vector<AttributeInfo>& schema, size_t seed) {

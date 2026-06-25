@@ -84,7 +84,7 @@ TEST_F(VacuumTest, ZDP49302) {
     TsRawPayload p{metric_schema_};
     p.ParsePayLoadStruct(payload);
     auto ptag = p.GetPrimaryTag();
-    vgroup_->PutData(ctx_, table_schema_mgr_, 0, &ptag, 1, &payload, false);
+    vgroup_->PutData(ctx_, table_schema_mgr_, 0, &ptag, 1, p, false);
     free(payload.data);
   }
 
@@ -138,7 +138,7 @@ TEST_F(VacuumTest, ZDP51351) {
         TsRawPayload p{metric_schema_};
         p.ParsePayLoadStruct(payload);
         auto ptag = p.GetPrimaryTag();
-        vgroup_->PutData(ctx_, table_schema_mgr_, 0, &ptag, device_id, &payload, false);
+        vgroup_->PutData(ctx_, table_schema_mgr_, 0, &ptag, device_id, p, false);
         free(payload.data);
         EXPECT_EQ(vgroup_->Flush(), KStatus::SUCCESS);
         // EXPECT_EQ(vgroup_->Compact(), KStatus::SUCCESS);
@@ -148,7 +148,7 @@ TEST_F(VacuumTest, ZDP51351) {
       TsRawPayload p{metric_schema_};
       p.ParsePayLoadStruct(payload);
       auto ptag = p.GetPrimaryTag();
-      vgroup_->PutData(ctx_, table_schema_mgr_, 0, &ptag, 1, &payload, false);
+      vgroup_->PutData(ctx_, table_schema_mgr_, 0, &ptag, 1, p, false);
       free(payload.data);
       EXPECT_EQ(vgroup_->Flush(), KStatus::SUCCESS);
     }

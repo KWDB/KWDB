@@ -61,16 +61,19 @@ class MemSegmentTester : public testing::Test {
 
 TEST_F(MemSegmentTester, OSN_BUG) {
   ASSERT_NE(memseg, nullptr);
+  std::list<TSSlice> payloads;
+  std::list<TsRawPayload*> payload_objs;
   for (int i = 0; i < 1000; ++i) {
     auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, 1, 1, i * 2);
-    TsRawPayload pd(metric_schema);
+    TsRawPayload* pd = new TsRawPayload(metric_schema);
     TsRawPayload::SetOSN(payload, i);
-    ASSERT_EQ(pd.ParsePayLoadStruct(payload), SUCCESS);
+    ASSERT_EQ(pd->ParsePayLoadStruct(payload), SUCCESS);
     memseg->AllocRowNum(1);
-    TSMemSegRowData* row_data = memseg->AllocOneRow(db_id, table_id, 1, 1, pd.GetRowData(0));
+    TSMemSegRowData* row_data = memseg->AllocOneRow(db_id, table_id, 1, 1, pd, 0);
     row_data->SetData(i * 2, i);
     memseg->AppendOneRow(row_data);
-    free(payload.data);
+    payloads.push_back(payload);
+    payload_objs.push_back(pd);
   }
 
   std::list<std::shared_ptr<TsBlockSpan>> blocks;
@@ -84,6 +87,12 @@ TEST_F(MemSegmentTester, OSN_BUG) {
 
   for (int i = 0; i < 1000; ++i) {
     EXPECT_EQ(*block->GetOSNAddr(i), i);
+  }
+  for (auto p : payload_objs) {
+    delete p;
+  }
+  for (auto p : payloads) {
+    free(p.data);
   }
 }
 

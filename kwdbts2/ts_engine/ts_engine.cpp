@@ -752,10 +752,11 @@ KStatus TSEngineImpl::putTagData(kwdbContext_p ctx, TSTableID table_id, uint32_t
 }
 
 KStatus TSEngineImpl::InsertTagData(kwdbContext_p ctx, const std::shared_ptr<TsTableSchemaManager>& tb_schema,
-                                    uint64_t mtr_id, TSSlice payload_data, bool write_wal, uint32_t& vgroup_id,
+                                    uint64_t mtr_id, TsRawPayload& p, bool write_wal, uint32_t& vgroup_id,
                                     TSEntityID& entity_id, bool& new_tag) {
-  TSSlice primary_key = TsRawPayload::GetPrimaryKeyFromSlice(payload_data);
-  KStatus s = schema_mgr_->GetVGroup(ctx, tb_schema, primary_key, &vgroup_id, &entity_id, &new_tag);
+  TSSlice primary_key = p.GetPrimaryTag();
+  KStatus s = schema_mgr_->GetVGroupAndUpdateValidCol(ctx, tb_schema, {},
+                            primary_key, &vgroup_id, &entity_id, &new_tag);
   if (s != KStatus::SUCCESS) {
     return s;
   }
@@ -767,7 +768,8 @@ KStatus TSEngineImpl::InsertTagData(kwdbContext_p ctx, const std::shared_ptr<TsT
     Defer defer{[&](){
       tag_lock_.Unlock(hash_point);
     }};
-    s = schema_mgr_->GetVGroup(ctx, tb_schema, primary_key, &vgroup_id, &entity_id, &new_tag);
+    s = schema_mgr_->GetVGroupAndUpdateValidCol(ctx, tb_schema, {},
+          primary_key, &vgroup_id, &entity_id, &new_tag);
     if (s != KStatus::SUCCESS) {
       return s;
     }
@@ -775,17 +777,18 @@ KStatus TSEngineImpl::InsertTagData(kwdbContext_p ctx, const std::shared_ptr<TsT
     if (new_tag) {
       if (EnableWAL() && write_wal) {
         wal_level_mutex_.lock_shared();
-        s = vgroup->GetWALManager()->WriteInsertWAL(ctx, mtr_id, 0, 0, payload_data, vgroup_id, tb_schema->GetTableId());
+        s = vgroup->GetWALManager()->WriteInsertWAL(ctx, mtr_id, 0, 0, p.GetPayload(), vgroup_id, tb_schema->GetTableId());
         wal_level_mutex_.unlock_shared();
         if (s == KStatus::FAIL) {
           LOG_ERROR("failed WriteInsertWAL for new tag.");
           return s;
         }
       }
-      TsRawPayload p;
-      s = p.ParsePayLoadStruct(payload_data);
+      std::vector<AttributeInfo> schema;
+      uint32_t ts_version;
+      s = tb_schema->GetColumnsExcludeDropped(schema, p.GetTableVersion());
       if (s != KStatus::SUCCESS) {
-        LOG_ERROR("ParsePayLoadStruct failed.");
+        LOG_ERROR("GetColumnsExcludeDropped failed.");
         return s;
       }
       entity_id = vgroup->AllocateEntityID();
@@ -826,31 +829,64 @@ KStatus TSEngineImpl::PutData(kwdbContext_p ctx, const KTableKey& table_id, uint
       mtr_id = GetVGroupByID(ctx, 1)->GetMtrIDByTsxID(tsx_id);
     }
     std::shared_ptr<TsTableSchemaManager> tb_schema = ts_table->GetSchemaManager();
+    const std::vector<AttributeInfo>* schema;
+    s = tb_schema->GetColumnsExcludeDroppedPtr(&schema, TsRawPayload::GetTableVersionFromSlice(cur_pd));
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetColumnsExcludeDropped failed.");
+      return s;
+    }
+    TsRawPayload p(schema, true);
+    s = p.ParsePayLoadStruct(cur_pd);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("ParsePayLoadStruct failed for valid column check.");
+      return s;
+    }
+    TSSlice primary_key = TsRawPayload::GetPrimaryKeyFromSlice(cur_pd);
     if (not_new_tag) {
       bool new_tag = false;
-      TSSlice primary_key = TsRawPayload::GetPrimaryKeyFromSlice(cur_pd);
-      KStatus s = schema_mgr_->GetVGroup(ctx, tb_schema, primary_key, &vgroup_id, &entity_id, &new_tag);
+      KStatus s = schema_mgr_->GetVGroupAndUpdateValidCol(ctx, tb_schema, p.GetValidColumns(),
+                  primary_key, &vgroup_id, &entity_id, &new_tag);
       if (s != KStatus::SUCCESS) {
-        LOG_ERROR("GetVGroup failed, table id: %lu", table_id);
+        LOG_ERROR("GetVGroupAndUpdateValidCol failed, table id: %lu", table_id);
         return s;
       }
+
       if (new_tag) {
         LOG_INFO("not_create_entity, so ingore this payload. table id: %lu", table_id);
         return KStatus::SUCCESS;
       }
     }
     bool new_tag = false;
-    s = InsertTagData(ctx, tb_schema, mtr_id, cur_pd, write_wal, vgroup_id, entity_id, new_tag);
+    s = InsertTagData(ctx, tb_schema, mtr_id, p, write_wal, vgroup_id, entity_id, new_tag);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("put tag data failed. table[%lu].", table_id);
       return s;
     }
     if (new_tag) {
       created_tag_num += 1;
+    } else {
+      // For existing tag on sparse table, check if valid columns need updating
+      std::shared_ptr<TagTable> tag_table;
+      s = tb_schema->GetTagSchema(ctx, &tag_table);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("Failed get tag schema for valid column update, table[%lu].", tb_schema->GetTableId());
+        return s;
+      }
+      if (tag_table->issparse()) {
+        uint64_t hash_point = t1ha1_le(primary_key.data, primary_key.len);
+        tag_lock_.WrLock(hash_point);
+        Defer defer{[&](){
+          tag_lock_.Unlock(hash_point);
+        }};
+        if (!tag_table->CheckAndUpdateValidColumns(primary_key.data, primary_key.len, p.GetValidColumns())) {
+          LOG_ERROR("Failed to update valid columns for table[%lu].", tb_schema->GetTableId());
+          return FAIL;
+        }
+      }
     }
     auto vgroup = GetVGroupByID(ctx, vgroup_id);
-    s =  dynamic_pointer_cast<TsTableImpl>(ts_table)->PutData(ctx, vgroup, &cur_pd, 1, mtr_id, entity_id,
-            not_create_entity, dedup_result, (DedupRule)(dedup_result->dedup_rule), write_wal);
+    s =  dynamic_pointer_cast<TsTableImpl>(ts_table)->PutData(ctx, vgroup, p, entity_id, mtr_id,
+            nullptr, dedup_result, (DedupRule)(dedup_result->dedup_rule), write_wal);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("put data failed. table[%lu].", table_id);
       return s;
@@ -869,15 +905,9 @@ KStatus TSEngineImpl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, ui
   TSEntityID entity_id;
 
   for (size_t i = 0; i < payload_num; i++) {
-    TsRawPayload p;
-    auto s = p.ParsePayLoadStruct(payload_data[i]);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("ParsePayLoadStruct failed.");
-      return s;
-    }
-    TSSlice primary_key = p.GetPrimaryTag();
-    auto tbl_version = p.GetTableVersion();
-    s = GetTsTable(ctx, table_id, ts_table, is_dropped, true, tbl_version);
+    auto& cur_pd = payload_data[i];
+    auto tbl_version = TsRawPayload::GetTableVersionFromSlice(cur_pd);
+    auto s = GetTsTable(ctx, table_id, ts_table, is_dropped, true, tbl_version);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("cannot found table[%lu] with version[%u]", table_id, tbl_version);
       return s;
@@ -888,8 +918,22 @@ KStatus TSEngineImpl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, ui
     if (s != KStatus::SUCCESS) {
       return s;
     }
+    std::vector<AttributeInfo> m_schema;
+    s = tb_schema_manager->GetColumnsExcludeDropped(m_schema, tbl_version);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetColumnsExcludeDropped failed.");
+      return s;
+    }
+    TsRawPayload p(&m_schema);
+    s = p.ParsePayLoadStruct(cur_pd);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("ParsePayLoadStruct failed.");
+      return s;
+    }
+    TSSlice primary_key = p.GetPrimaryTag();
     bool new_tag;
-    s = schema_mgr_->GetVGroup(ctx, tb_schema_manager, primary_key, &vgroup_id, &entity_id, &new_tag);
+    s = schema_mgr_->GetVGroupAndUpdateValidCol(ctx, tb_schema_manager, {},
+              primary_key, &vgroup_id, &entity_id, &new_tag);
     if (s != KStatus::SUCCESS) {
       return s;
     }
@@ -904,6 +948,16 @@ KStatus TSEngineImpl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, ui
     if (!tag_table->hasPrimaryKey(primary_key.data, primary_key.len)) {
       return KStatus::SUCCESS;
     }
+
+    // add pre valid column
+    std::vector<uint32_t> old_valid_columns;
+    if (tag_table->issparse()) {
+      if (!tag_table->GetValidColumns(&primary_key, 1, old_valid_columns)) {
+        LOG_ERROR("Failed update tag, get valid columns error.")
+        return KStatus::FAIL;
+      }
+    }
+
     if (EnableWAL()) {
       // get old payload
       auto tag_pack = tag_table->GenTagPack(primary_key.data, primary_key.len);
@@ -920,7 +974,7 @@ KStatus TSEngineImpl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, ui
       }
     }
 
-    err_info.errcode = tag_table->UpdateTagRecord(p, vgroup_id, entity_id, err_info, p.GetOSN());
+    err_info.errcode = tag_table->UpdateTagRecord(p, vgroup_id, entity_id, err_info, p.GetOSN(), old_valid_columns);
     if (err_info.errcode < 0) {
       return KStatus::FAIL;
     }
@@ -3030,6 +3084,52 @@ KStatus TSEngineImpl::ResetAllWALMgr(kwdbts::kwdbContext_p ctx) {
       return KStatus::FAIL;
     }
   }
+  return KStatus::SUCCESS;
+}
+
+KStatus TSEngineImpl::GetValidColumns(kwdbContext_p ctx, const KTableKey& table_id, uint32_t table_version, bool& is_dropped,
+                                      TSSlice* primary_tags, size_t primary_tags_num,
+                                      std::vector<uint32_t>& valid_columns) {
+  if (primary_tags == nullptr || primary_tags_num == 0) {
+    LOG_ERROR("GetValidColumns: invalid primary tags, table id: %lu", table_id);
+    return KStatus::FAIL;
+  }
+  std::shared_ptr<TsTableSchemaManager> tb_schema_mgr;
+  KStatus s = GetTableSchemaMgr(ctx, table_id, is_dropped, tb_schema_mgr);
+  if (s != KStatus::SUCCESS) {
+    if (is_dropped) {
+      LOG_WARN("GetValidColumns: table[%lu] has been dropped", table_id);
+    } else {
+      LOG_ERROR("GetValidColumns: get table schema manager failed, table id: %lu", table_id);
+    }
+    return s;
+  }
+  auto tag_table = tb_schema_mgr->GetTagTable();
+  if (!tag_table) {
+    LOG_ERROR("GetValidColumns: tag table is null, table id: %lu", table_id);
+    return KStatus::FAIL;
+  }
+  if (!tag_table->GetValidColumns(primary_tags, primary_tags_num, valid_columns)) {
+    return KStatus::FAIL;
+  }
+  // metrics column index
+  vector<uint32_t> mertic_cols_index;
+  s = tb_schema_mgr->GetIdxForValidCols(mertic_cols_index, table_version);
+  if (s != KStatus::SUCCESS) {
+    if (is_dropped) {
+      LOG_WARN("GetValidColumns: table[%lu] has been dropped", table_id);
+    } else {
+      LOG_ERROR("GetValidColumns: get metric table valid column index failed, table id: %lu", table_id);
+    }
+    return s;
+  }
+  // filter valid_columns_index: only keep indices that exist in mertic_cols_index
+  std::unordered_set<uint32_t> mertic_set(mertic_cols_index.begin(), mertic_cols_index.end());
+  valid_columns.erase(
+    std::remove_if(valid_columns.begin(), valid_columns.end(),
+                   [&mertic_set](uint32_t idx) { return mertic_set.find(idx) == mertic_set.end(); }),
+    valid_columns.end());
+
   return KStatus::SUCCESS;
 }
 }  // namespace kwdbts

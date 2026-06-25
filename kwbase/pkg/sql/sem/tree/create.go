@@ -1281,7 +1281,14 @@ const (
 	TemplateTable
 	// InstanceTable represents instance table
 	InstanceTable
+	// SparseTable represents sparse table
+	SparseTable
 )
+
+// IsSparseTable returns SparseTable
+func (tt TableType) IsSparseTable() bool {
+	return tt == SparseTable
+}
 
 // TableTypeName converts TableType to string of table type
 func TableTypeName(t TableType) string {
@@ -1295,6 +1302,8 @@ func TableTypeName(t TableType) string {
 		tableType = "TEMPLATE_TABLE"
 	case InstanceTable:
 		tableType = "INSTANCE_TABLE"
+	case SparseTable:
+		tableType = "SPARSE_TABLE"
 	}
 	return tableType
 }
@@ -1454,7 +1463,7 @@ func (node *CreateTable) As() bool {
 // IsTS returns true if this table represents a CREATE TS TABLE stmt,
 // false otherwise.
 func (node *CreateTable) IsTS() bool {
-	if node.TableType == 1 || node.TableType == 2 || node.TableType == 3 {
+	if node.TableType == 1 || node.TableType == 2 || node.TableType == 3 || node.TableType == 4 {
 		return true
 	}
 	return false
@@ -1481,6 +1490,9 @@ func (node *CreateTable) Format(ctx *FmtCtx) {
 	if node.Temporary {
 		ctx.WriteString("TEMPORARY ")
 	}
+	if node.TableType == SparseTable {
+		ctx.WriteString("SPARSE ")
+	}
 	ctx.WriteString("TABLE ")
 	if node.IfNotExists {
 		ctx.WriteString("IF NOT EXISTS ")
@@ -1504,7 +1516,7 @@ func (node *CreateTable) FormatBody(ctx *FmtCtx) {
 		}
 		ctx.WriteString(" AS ")
 		ctx.FormatNode(node.AsSource)
-	} else if node.TableType == TemplateTable || node.TableType == TimeseriesTable {
+	} else if node.TableType == TemplateTable || node.TableType == TimeseriesTable || node.TableType == SparseTable {
 		ctx.WriteString(" (")
 		for i, def := range node.Defs {
 			d, ok := def.(*ColumnTableDef)
@@ -1524,7 +1536,7 @@ func (node *CreateTable) FormatBody(ctx *FmtCtx) {
 		ctx.WriteString(" TAGS (")
 		ctx.FormatTags(node.Tags)
 		ctx.WriteByte(')')
-		if node.TableType == TimeseriesTable {
+		if node.TableType == TimeseriesTable || node.TableType == SparseTable {
 			ctx.WriteString(" PRIMARY TAGS(")
 			for i, priTag := range node.PrimaryTagList {
 				ctx.WriteString(string(priTag))

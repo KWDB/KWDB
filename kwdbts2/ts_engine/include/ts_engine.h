@@ -142,7 +142,7 @@ class TSEngineImpl : public TSEngine {
   }
 
   KStatus InsertTagData(kwdbContext_p ctx, const std::shared_ptr<TsTableSchemaManager>& tb_schema,
-                        uint64_t mtr_id, TSSlice payload_data, bool write_wal,
+                        uint64_t mtr_id, TsRawPayload& p, bool write_wal,
                         uint32_t& vgroup, TSEntityID& entity_id, bool& new_tag);
 
   KStatus
@@ -353,6 +353,9 @@ class TSEngineImpl : public TSEngine {
 
   KStatus ResetAllWALMgr(kwdbContext_p ctx);
 
+  KStatus GetValidColumns(kwdbContext_p ctx, const KTableKey& table_id, uint32_t table_version, bool& is_dropped,
+                          TSSlice* primary_tags, size_t primary_tags_num,
+                          std::vector<uint32_t>& valid_columns) override;
 
  private:
   // Engine serial agg scheduler main loop.

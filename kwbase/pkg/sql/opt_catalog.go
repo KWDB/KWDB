@@ -899,6 +899,36 @@ func (ot *optTable) GetTableType() tree.TableType {
 	return ot.desc.TableType
 }
 
+// IsRelationalTable returns true if table type is RelationalTable
+func (ot *optTable) IsRelationalTable() bool {
+	return ot.desc.IsRelationalTable()
+}
+
+// IsTSTable returns true if table is a ts table
+func (ot *optTable) IsTSTable() bool {
+	return ot.desc.IsTSTable()
+}
+
+// IsTemplateTable returns true if table type is TemplateTable
+func (ot *optTable) IsTemplateTable() bool {
+	return ot.desc.IsTemplateTable()
+}
+
+// IsInstanceTable returns true if table type is InstanceTable
+func (ot *optTable) IsInstanceTable() bool {
+	return ot.desc.IsInstanceTable()
+}
+
+// IsSparseTable returns true if table type is SparseTable
+func (ot *optTable) IsSparseTable() bool {
+	return ot.desc.IsSparseTable()
+}
+
+// IsTimeseriesTable returns true if table type is TimeseriesTable
+func (ot *optTable) IsTimeseriesTable() bool {
+	return ot.desc.IsTimeseriesTable()
+}
+
 // GetTriggers returns the definition of trigger
 func (ot *optTable) GetTriggers(event tree.TriggerEvent) []cat.TriggerMeta {
 	res := make([]cat.TriggerMeta, 0)
@@ -1695,6 +1725,36 @@ func (ot *optVirtualTable) GetParentID() tree.ID {
 // GetTableType return which type the table is.
 func (ot *optVirtualTable) GetTableType() tree.TableType {
 	return ot.desc.TableType
+}
+
+// IsRelationalTable returns true if table type is RelationalTable
+func (ot *optVirtualTable) IsRelationalTable() bool {
+	return ot.desc.IsRelationalTable()
+}
+
+// IsTSTable returns true if table is a ts table
+func (ot *optVirtualTable) IsTSTable() bool {
+	return ot.desc.IsTSTable()
+}
+
+// IsTemplateTable returns true if table type is TemplateTable
+func (ot *optVirtualTable) IsTemplateTable() bool {
+	return ot.desc.IsTemplateTable()
+}
+
+// IsInstanceTable returns true if table type is InstanceTable
+func (ot *optVirtualTable) IsInstanceTable() bool {
+	return ot.desc.IsInstanceTable()
+}
+
+// IsSparseTable returns true if table type is SparseTable
+func (ot *optVirtualTable) IsSparseTable() bool {
+	return ot.desc.IsSparseTable()
+}
+
+// IsTimeseriesTable returns true if table type is TimeseriesTable
+func (ot *optVirtualTable) IsTimeseriesTable() bool {
+	return ot.desc.IsTimeseriesTable()
 }
 
 // GetTriggers returns the definition of trigger

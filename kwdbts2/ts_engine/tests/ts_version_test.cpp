@@ -225,7 +225,7 @@ class TsVersionTest : public testing::Test {
     auto agg_file_name = root / AggFileName(filenumber);
     TsPartitionAggBuilder builder(env, agg_file_name, 1);
     ASSERT_EQ(builder.Open(), SUCCESS);
-    TsEntityPartitionAggIndex stats{1, 1,  1, 0, 0, 0, 0, 0, ""};
+    TsEntityPartitionAggIndex stats{1, 1,  1, 0, 0, 0, 0, 0, false, ""};
     TsBufferBuilder agg_buffer;
     agg_buffer.resize(2 * sizeof(uint32_t));
     ASSERT_EQ(builder.AppendEntityAgg({agg_buffer.data(), agg_buffer.size()}, stats), SUCCESS);

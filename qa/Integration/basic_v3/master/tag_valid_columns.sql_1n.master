@@ -1,0 +1,79 @@
+> create ts database benchmark;
+CREATE TS DATABASE
+> CREATE sparse TABLE benchmark.cpu2 (
+  k_timestamp TIMESTAMPTZ(6) NOT NULL,
+u1 INT8,
+u2 INT8,
+u3 INT8,
+u4 INT8,
+u5 INT8,
+u6 INT8,
+u7 INT8,
+u8 INT8,
+u9 INT8,
+u10 INT8,
+u11 INT8,
+u12 INT8,
+u13 INT8,
+u14 INT8,
+u15 INT8,
+u16 INT8,
+u17 INT8,
+u18 INT8,
+u19 INT8,
+u20 INT8) TAGS (
+  hostname CHAR(30) NOT NULL
+)
+PRIMARY TAGS(hostname);
+CREATE TABLE
+> select * from benchmark.cpu2;
+  k_timestamp | u1 | u2 | u3 | u4 | u5 | u6 | u7 | u8 | u9 | u10 | u11 | u12 | u13 | u14 | u15 | u16 | u17 | u18 | u19 | u20 | hostname
+--------------+----+----+----+----+----+----+----+----+----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----------
+(0 rows)
+> select * from benchmark.cpu2 where hostname='host_0';
+  k_timestamp | u1 | u2 | u3 | u4 | u5 | u6 | u7 | u8 | u9 | u10 | u11 | u12 | u13 | u14 | u15 | u16 | u17 | u18 | u19 | u20 | hostname
+--------------+----+----+----+----+----+----+----+----+----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----------
+(0 rows)
+> insert into benchmark.cpu2 (k_timestamp,u1, hostname) values('2022-01-01 00:00:00',59,'host_0');
+INSERT 1
+> select * from benchmark.cpu2 where hostname='host_0';
+         k_timestamp        | u1 | hostname
+----------------------------+----+-----------
+  2022-01-01 00:00:00+00:00 | 59 | host_0
+(1 row)
+> select * from benchmark.cpu2 where hostname='host_1';
+  k_timestamp | u1 | u2 | u3 | u4 | u5 | u6 | u7 | u8 | u9 | u10 | u11 | u12 | u13 | u14 | u15 | u16 | u17 | u18 | u19 | u20 | hostname
+--------------+----+----+----+----+----+----+----+----+----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----------
+(0 rows)
+> select * from benchmark.cpu2;
+         k_timestamp        | u1 |  u2  |  u3  |  u4  |  u5  |  u6  |  u7  |  u8  |  u9  | u10  | u11  | u12  | u13  | u14  | u15  | u16  | u17  | u18  | u19  | u20  | hostname
+----------------------------+----+------+------+------+------+------+------+------+------+------+------+------+------+------+------+------+------+------+------+------+-----------
+  2022-01-01 00:00:00+00:00 | 59 | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | host_0
+(1 row)
+> insert into benchmark.cpu2 (k_timestamp,u1, u2, hostname) values('2022-01-01 00:00:00', 59, 60, 'host_0');
+INSERT 1
+> select * from benchmark.cpu2 where hostname='host_0';
+         k_timestamp        | u1 | u2 | hostname
+----------------------------+----+----+-----------
+  2022-01-01 00:00:00+00:00 | 59 | 60 | host_0
+(1 row)
+> select * from benchmark.cpu2 where hostname='host_1';
+  k_timestamp | u1 | u2 | u3 | u4 | u5 | u6 | u7 | u8 | u9 | u10 | u11 | u12 | u13 | u14 | u15 | u16 | u17 | u18 | u19 | u20 | hostname
+--------------+----+----+----+----+----+----+----+----+----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----------
+(0 rows)
+> select * from benchmark.cpu2;
+         k_timestamp        | u1 | u2 |  u3  |  u4  |  u5  |  u6  |  u7  |  u8  |  u9  | u10  | u11  | u12  | u13  | u14  | u15  | u16  | u17  | u18  | u19  | u20  | hostname
+----------------------------+----+----+------+------+------+------+------+------+------+------+------+------+------+------+------+------+------+------+------+------+-----------
+  2022-01-01 00:00:00+00:00 | 59 | 60 | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | host_0
+(1 row)
+> create table benchmark.t1(ts timestamp not null, a int) tags(b int not null) primary tags(b);
+CREATE TABLE
+> insert into benchmark.t1 values(1672531201000, 111, 1);
+INSERT 1
+> select * from benchmark.t1 order by ts, b;
+             ts             |  a  | b
+----------------------------+-----+----
+  2023-01-01 00:00:01+00:00 | 111 | 1
+(1 row)
+> drop database benchmark cascade;
+DROP DATABASE

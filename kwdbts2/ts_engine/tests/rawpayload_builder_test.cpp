@@ -32,6 +32,7 @@ std::vector<ColDataTypes> tag_col_types({
 std::vector<ColDataTypes> metric_col_types({{DATATYPE::TIMESTAMP64, 16, TagType::UNKNOWN_TAG},
                                             {DATATYPE::VARSTRING, 1024, TagType::UNKNOWN_TAG},
                                             {DATATYPE::INT32, 4, TagType::UNKNOWN_TAG},
+                                            {DATATYPE::FLOAT, 4, TagType::UNKNOWN_TAG},  // none for all rows.
                                             {DATATYPE::VARBINARY, 1123, TagType::UNKNOWN_TAG},
                                             {DATATYPE::VARSTRING, 12334, TagType::UNKNOWN_TAG}});
 
@@ -74,8 +75,9 @@ class TestRowPayloadBuilder : public testing::Test {
   ~TestRowPayloadBuilder() {
   }
 
-  TSSlice GenPayload(KTimestamp primary_tag, int data_count) {
-    TSRowPayloadBuilder pay_build(tag_schema_, data_schema_, data_count);
+  TSSlice GenPayload(KTimestamp primary_tag, int data_count, TSPayloadRowStructType type) {
+    TSRowPayloadSparseBuilder pay_build;
+    pay_build.Init(tag_schema_, data_schema_, data_count, type);
     for (size_t i = 0; i < tag_schema_.size(); i++) {
       KTimestamp cur_value = primary_tag + i;
       pay_build.SetTagValue(i, reinterpret_cast<char*>(&cur_value), sizeof(KTimestamp));
@@ -116,6 +118,7 @@ class TestRowPayloadBuilder : public testing::Test {
   void CheckPayload(const TSSlice &raw, KTimestamp primary_tag, int data_count) {
     TsRawPayload pay(&data_schema_);
     pay.ParsePayLoadStruct(raw);
+    auto lists = pay.GetValidColumns();
     ASSERT_EQ(pay.GetRowCount(), data_count);
     ASSERT_EQ(pay.GetTableID(), table_id_);
     ASSERT_EQ(pay.GetTableVersion(), table_version_);
@@ -139,7 +142,10 @@ class TestRowPayloadBuilder : public testing::Test {
       for (size_t i = 0; i < data_schema_.size(); i++) {
         TSSlice col_data;
         auto ok = pay.GetColValue(j, i, &col_data);
-        ASSERT_TRUE(ok);
+        ASSERT_TRUE(ok || pay.GetColFlags(j, i) == DataFlags::kNone);
+        if (!ok) {
+          continue;
+        }
         KTimestamp cur_value = primary_tag + i + j;
         switch (data_schema_[i].type) {
         case DATATYPE::TIMESTAMP:
@@ -175,7 +181,7 @@ TEST_F(TestRowPayloadBuilder, empty) {
 TEST_F(TestRowPayloadBuilder, create) {
   int count = 1;
   KTimestamp primary_tag = 10010;
-  TSSlice payload_slice = GenPayload(primary_tag, count);
+  TSSlice payload_slice = GenPayload(primary_tag, count, TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_TUPLE);
   CheckPayload(payload_slice, primary_tag, count);
   free(payload_slice.data);
 }
@@ -184,7 +190,7 @@ TEST_F(TestRowPayloadBuilder, create) {
 TEST_F(TestRowPayloadBuilder, createAndConvert) {
   int count = 1;
   KTimestamp primary_tag = 10010;
-  TSSlice payload_slice = GenPayload(primary_tag, count);
+  TSSlice payload_slice = GenPayload(primary_tag, count, TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_TUPLE);
   CheckPayload(payload_slice, primary_tag, count);
   std::string hex_str;
   BinaryToHexStr(payload_slice, hex_str);
@@ -199,7 +205,38 @@ TEST_F(TestRowPayloadBuilder, createAndConvert) {
 TEST_F(TestRowPayloadBuilder, createMultiRows) {
   int count = 100;
   KTimestamp primary_tag = 10086;
-  TSSlice payload_slice = GenPayload(primary_tag, count);
+  TSSlice payload_slice = GenPayload(primary_tag, count, TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_TUPLE);
   CheckPayload(payload_slice, primary_tag, count);
+  TsRawPayload pay(&data_schema_);
+  auto s = pay.ParsePayLoadStruct(payload_slice);
+  ASSERT_EQ(KStatus::SUCCESS, s);
+  auto valid_list = pay.GetValidColumns();
+  ASSERT_EQ(valid_list.size(), data_schema_.size());
+  free(payload_slice.data);
+}
+
+TEST_F(TestRowPayloadBuilder, createMultiRowsVector) {
+  int count = 100;
+  KTimestamp primary_tag = 10087;
+  TSSlice payload_slice = GenPayload(primary_tag, count, TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_VECTOR);
+  CheckPayload(payload_slice, primary_tag, count);
+  TsRawPayload pay(&data_schema_);
+  auto s = pay.ParsePayLoadStruct(payload_slice);
+  ASSERT_EQ(KStatus::SUCCESS, s);
+  auto valid_list = pay.GetValidColumns();
+  ASSERT_EQ(valid_list.size(), data_schema_.size() - 1);
+  free(payload_slice.data);
+}
+
+TEST_F(TestRowPayloadBuilder, createMultiRowsBitmap) {
+  int count = 100;
+  KTimestamp primary_tag = 10088;
+  TSSlice payload_slice = GenPayload(primary_tag, count, TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_BITMAP);
+  CheckPayload(payload_slice, primary_tag, count);
+  TsRawPayload pay(&data_schema_);
+  auto s = pay.ParsePayLoadStruct(payload_slice);
+  ASSERT_EQ(KStatus::SUCCESS, s);
+  auto valid_list = pay.GetValidColumns();
+  ASSERT_EQ(valid_list.size(), data_schema_.size() - 1);
   free(payload_slice.data);
 }

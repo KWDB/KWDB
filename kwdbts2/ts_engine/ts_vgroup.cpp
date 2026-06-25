@@ -53,6 +53,7 @@
 #include "ts_agg.h"
 #include "ts_partition_interval_recorder.h"
 #include "ts_ts_lsn_span_utils.h"
+#include "ts_payload.h"
 
 namespace kwdbts {
 
@@ -176,13 +177,13 @@ KStatus TsVGroup::CreateTable(kwdbContext_p ctx, const KTableKey& table_id, roac
 
 KStatus TsVGroup::PutData(kwdbContext_p ctx, const std::shared_ptr<TsTableSchemaManager>& tb_schema,
                           uint64_t mtr_id, TSSlice* primary_tag, TSEntityID entity_id,
-                          TSSlice* payload, bool write_wal) {
+                          TsRawPayload& p, bool write_wal) {
   if (EnableWAL() && write_wal) {
     LockSharedLevelMutex();
     TS_OSN entry_lsn = 0;
     // lock current lsn: Lock the current LSN until the log is written to the cache
     wal_manager_->Lock();
-    KStatus s = wal_manager_->WriteInsertWAL(ctx, mtr_id, 0, 0, *primary_tag, *payload, entry_lsn, vgroup_id_);
+    KStatus s = wal_manager_->WriteInsertWAL(ctx, mtr_id, 0, 0, *primary_tag, p.GetPayload(), entry_lsn, vgroup_id_);
     UnLockSharedLevelMutex();
     if (s == KStatus::FAIL) {
       wal_manager_->Unlock();
@@ -192,7 +193,7 @@ KStatus TsVGroup::PutData(kwdbContext_p ctx, const std::shared_ptr<TsTableSchema
     wal_manager_->Unlock();
   }
 
-  auto s = mem_segment_mgr_->PutData(*payload, tb_schema, entity_id);
+  auto s = mem_segment_mgr_->PutData(&p, tb_schema, entity_id);
   if (s == KStatus::FAIL) {
     LOG_ERROR("mem_segment_mgr_.PutData Failed.")
     return FAIL;
@@ -326,27 +327,32 @@ TsEngineSchemaManager* TsVGroup::GetSchemaMgr() const {
 // }
 
 KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSlice& payload, uint64_t osn) {
-  TsRawPayload p;
-  auto s = p.ParsePayLoadStruct(payload);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("ParsePayLoadStruct failed.");
-    return s;
-  }
-  auto table_id = p.GetTableID();
-  TSSlice primary_key = p.GetPrimaryTag();
+  auto table_id = TsRawPayload::GetTableIDFromSlice(payload);
+  TSSlice primary_key = TsRawPayload::GetPrimaryKeyFromSlice(payload);
   bool new_tag;
-
   uint32_t vgroup_id;
   TSEntityID entity_id;
 
   std::shared_ptr<TsTableSchemaManager> tb_schema_manager;
-  s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_manager);
+  auto s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_manager);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetTableSchemaManager failed, table id: %lu", table_id);
     return s;
   }
-
-  s = schema_mgr_->GetVGroup(ctx, tb_schema_manager, primary_key, &vgroup_id, &entity_id, &new_tag);
+  const std::vector<AttributeInfo>* schema;
+  s = tb_schema_manager->GetColumnsExcludeDroppedPtr(&schema, TsRawPayload::GetTableVersionFromSlice(payload));
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetColumnsExcludeDroppedPtr failed, table id: %lu", table_id);
+    return s;
+  }
+  TsRawPayload p(schema);
+  s = p.ParsePayLoadStruct(payload);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("ParsePayLoadStruct failed.");
+    return s;
+  }
+  s = schema_mgr_->GetVGroupAndUpdateValidCol(ctx, tb_schema_manager, p.GetValidColumns(),
+        primary_key, &vgroup_id, &entity_id, &new_tag);
   if (s != KStatus::SUCCESS) {
     return s;
   }
@@ -405,7 +411,7 @@ KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSli
   }
 
   if (payload_data_flag == DataTagFlag::DATA_AND_TAG || payload_data_flag == DataTagFlag::DATA_ONLY) {
-    s = mem_segment_mgr_->PutData(payload, tb_schema_manager, entity_id);
+    s = mem_segment_mgr_->PutData(&p, tb_schema_manager, entity_id);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("failed putdata.");
       return s;
@@ -612,7 +618,6 @@ KStatus TsVGroup::ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_sc
 KStatus TsVGroup::GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_version,
                                         const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                                         const std::shared_ptr<MMapMetricsTable>& scan_schema,
-                                        std::shared_ptr<TsRawPayloadRowParser>& parser,
                                         const std::vector<KwTsSpan>& ts_spans, const std::vector<k_uint32>& scan_cols,
                                         timestamp64& entity_last_ts, bool& last_payload_valid, ResultSet* res) {
   std::shared_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
@@ -631,15 +636,22 @@ KStatus TsVGroup::GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_versio
 
   uint32_t db_id = scan_schema->metaData()->db_id;
   KTableKey table_id = table_schema_mgr->GetTableId();
-  TSMemSegRowData last_row_data(db_id, table_id, last_row.version, entity_id);
-  // TODO(liumengzhen) : set correct lsn
+
+  const std::vector<AttributeInfo>* data_schema = scan_schema->getSchemaInfoExcludeDroppedPtr();
+  const vector<AttributeInfo>& attrs = *data_schema;
+  if (last_row.version != scan_version) {
+    auto s = table_schema_mgr->GetColumnsExcludeDroppedPtr(&data_schema, last_row.version);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetColumnsExcludeDroppedPtr failed.");
+      return KStatus::FAIL;
+    }
+  }
+  TSMemSegRowDataOnlyData last_row_data(db_id, table_id, last_row.version, entity_id, data_schema);
   last_row_data.SetData(last_row.last_ts, UINT64_MAX);
   last_row_data.SetRowData(last_row.last_payload);
   std::shared_ptr<TsMemSegBlock> mem_block = std::make_shared<TsMemSegBlock>(std::shared_ptr<TsMemSegment>(nullptr));
   mem_block->SetMemoryAddrSafe();
   mem_block->InsertRow(&last_row_data);
-
-  const vector<AttributeInfo>& attrs = *scan_schema->getSchemaInfoExcludeDroppedPtr();
 
   std::shared_ptr<TSBlkDataTypeConvert> convert = nullptr;
   if (last_row.version != scan_version) {
@@ -649,11 +661,6 @@ KStatus TsVGroup::GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_versio
       LOG_ERROR("TSBlkDataTypeConvert Init failed.");
       return KStatus::FAIL;
     }
-  } else {
-    if (parser == nullptr) {
-      parser = std::make_shared<TsRawPayloadRowParser>(&attrs);
-    }
-    mem_block->SetParser(parser);
   }
 
   TsBlockSpan block_span(vgroup_id_, entity_id, std::move(mem_block), 0, 1,
@@ -1577,7 +1584,7 @@ KStatus TsVGroup::ApplyWal(kwdbContext_p ctx, LogEntry* wal_log,
       if (t_type == WALTableType::TAG) {
         auto log = reinterpret_cast<UpdateLogTagsEntry*>(update_log);
         auto slice = log->getPayload();
-        return redoUpdateTag(ctx, log->getLSN(), slice);
+        return redoUpdateTag(ctx, log->getLSN(), slice, log->getOldPayload());
       }
       break;
     }
@@ -1993,27 +2000,34 @@ KStatus TsVGroup::redoDeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::strin
 }
 
 KStatus TsVGroup::redoPutTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSlice& payload) {
-  TsRawPayload p;
-  auto s = p.ParsePayLoadStruct(payload);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("ParsePayLoadStruct failed.");
-    return s;
-  }
-  auto table_id = p.GetTableID();
-  TSSlice primary_key = p.GetPrimaryTag();
+  auto table_id = TsRawPayload::GetTableIDFromSlice(payload);
+  TSSlice primary_key = TsRawPayload::GetPrimaryKeyFromSlice(payload);
   bool new_tag;
-
   uint32_t vgroup_id;
   TSEntityID entity_id;
 
   std::shared_ptr<TsTableSchemaManager> tb_schema;
-  s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema);
+  auto s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetTableSchemaManager failed, table id: %lu", table_id);
     return s;
   }
 
-  s = schema_mgr_->GetVGroup(ctx, tb_schema, primary_key, &vgroup_id, &entity_id, &new_tag);
+  const std::vector<AttributeInfo>* schema;
+  s = tb_schema->GetColumnsExcludeDroppedPtr(&schema, TsRawPayload::GetTableVersionFromSlice(payload));
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetColumnsExcludeDroppedPtr failed, table id: %lu", table_id);
+    return s;
+  }
+  TsRawPayload p(schema);
+  s = p.ParsePayLoadStruct(payload);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("ParsePayLoadStruct failed.");
+    return s;
+  }
+
+  s = schema_mgr_->GetVGroupAndUpdateValidCol(ctx, tb_schema, p.GetValidColumns(),
+                    primary_key, &vgroup_id, &entity_id, &new_tag);
   if (s != KStatus::SUCCESS) {
     return s;
   }
@@ -2054,7 +2068,7 @@ KStatus TsVGroup::redoPutTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TS
 }
 
 KStatus TsVGroup::undoPutTag(kwdbContext_p ctx, TS_OSN log_lsn, const TSSlice& payload) {
-  TsRawPayload p;
+  TsRawPayload p(nullptr, false);
   auto s = p.ParsePayLoadStruct(payload);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("ParsePayLoadStruct failed.");
@@ -2090,8 +2104,9 @@ KStatus TsVGroup::undoPutTag(kwdbContext_p ctx, TS_OSN log_lsn, const TSSlice& p
   return SUCCESS;
 }
 
-KStatus TsVGroup::redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSlice& payload) {
-  TsRawPayload p;
+KStatus TsVGroup::redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSlice& payload,
+                                const TSSlice& old_payload) {
+  TsRawPayload p(nullptr, false);
   auto s = p.ParsePayLoadStruct(payload);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("ParsePayLoadStruct failed.");
@@ -2119,7 +2134,7 @@ KStatus TsVGroup::redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const
     LOG_WARN("redoUpdateTag: can not find primary tag[%s].", primary_key.data)
     return KStatus::SUCCESS;
   }
-  int res = tag_table->UpdateForRedo(group_id, entity_id, primary_key, p);
+  int res = tag_table->UpdateForRedo(group_id, entity_id, primary_key, p, old_payload);
   if (res < 0) {
     LOG_ERROR("redoUpdateTag: UpdateForRedo failed, primary tag[%s].", primary_key.data)
     return KStatus::FAIL;
@@ -2128,7 +2143,7 @@ KStatus TsVGroup::redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const
 }
 
 KStatus TsVGroup::undoUpdateTag(kwdbContext_p ctx, TS_OSN log_lsn, TSSlice payload, const TSSlice& old_payload) {
-  TsRawPayload p;
+  TsRawPayload p(nullptr, false);
   auto s = p.ParsePayLoadStruct(payload);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("ParsePayLoadStruct failed.");

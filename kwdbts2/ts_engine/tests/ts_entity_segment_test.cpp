@@ -117,7 +117,7 @@ void TsEntitySegmentTest::SimpleInsert() {
       p.ParsePayLoadStruct(payload);
       auto ptag = p.GetPrimaryTag();
 
-      vgroup->PutData(&ctx, schema_mgr, 0, &ptag, dev_id, &payload, false);
+      vgroup->PutData(&ctx, schema_mgr, 0, &ptag, dev_id, p, false);
       total_insert_row_num += p.GetRowCount();
       free(payload.data);
       ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
@@ -382,7 +382,7 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
       p.ParsePayLoadStruct(payload);
       auto ptag = p.GetPrimaryTag();
 
-      vgroup->PutData(&ctx, schema_mgr, 0, &ptag, dev_id, &payload, false);
+      vgroup->PutData(&ctx, schema_mgr, 0, &ptag, dev_id, p, false);
       total_insert_row_num += p.GetRowCount();
       free(payload.data);
       ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
@@ -409,7 +409,7 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
       p.ParsePayLoadStruct(payload);
       auto ptag = p.GetPrimaryTag();
 
-      vgroup->PutData(&ctx, schema_mgr, 0, &ptag, dev_id, &payload, false);
+      vgroup->PutData(&ctx, schema_mgr, 0, &ptag, dev_id, p, false);
       total_insert_row_num += p.GetRowCount();
       free(payload.data);
       ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
@@ -647,7 +647,7 @@ TEST_F(TsEntitySegmentTest, TestEntityMinMaxRowNum) {
       p.ParsePayLoadStruct(payload);
       auto ptag = p.GetPrimaryTag();
 
-      vgroup->PutData(&ctx, schema_mgr, 0, &ptag, dev_ids[i], &payload, false);
+      vgroup->PutData(&ctx, schema_mgr, 0, &ptag, dev_ids[i], p, false);
       free(payload.data);
       ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
     }
@@ -736,7 +736,7 @@ TEST_F(TsEntitySegmentTest, simpleCount) {
       p.ParsePayLoadStruct(payload);
       auto ptag = p.GetPrimaryTag();
 
-      vgroup->PutData(&ctx, schema_mgr, 0, &ptag, dev_id, &payload, false);
+      vgroup->PutData(&ctx, schema_mgr, 0, &ptag, dev_id, p, false);
       total_insert_row_num += p.GetRowCount();
       free(payload.data);
     }
@@ -749,7 +749,7 @@ TEST_F(TsEntitySegmentTest, simpleCount) {
       p.ParsePayLoadStruct(payload);
       auto ptag = p.GetPrimaryTag();
 
-      vgroup->PutData(&ctx, schema_mgr, 0, &ptag, dev_id, &payload, false);
+      vgroup->PutData(&ctx, schema_mgr, 0, &ptag, dev_id, p, false);
       total_insert_row_num += p.GetRowCount();
       free(payload.data);
     }
@@ -822,7 +822,7 @@ TEST_F(TsEntitySegmentTest, concurrentLRUBlockCacheAccess) {
       p.ParsePayLoadStruct(payload);
       auto ptag = p.GetPrimaryTag();
 
-      vgroup->PutData(&ctx, schema_mgr, 0, &ptag, dev_id, &payload, false);
+      vgroup->PutData(&ctx, schema_mgr, 0, &ptag, dev_id, p, false);
       free(payload.data);
       ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
     }
@@ -895,7 +895,7 @@ TEST_F(TsEntitySegmentTest, columnBlockCrashTest) {
     p.ParsePayLoadStruct(payload);
     auto ptag = p.GetPrimaryTag();
 
-    vgroup->PutData(&ctx, schema_mgr, 0, &ptag, dev_id, &payload, false);
+    vgroup->PutData(&ctx, schema_mgr, 0, &ptag, dev_id, p, false);
     free(payload.data);
     ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
   }
@@ -1049,7 +1049,7 @@ TEST_F(TsEntitySegmentTest, varColumnBlockTest) {
     p.ParsePayLoadStruct(payload);
     auto ptag = p.GetPrimaryTag();
 
-    vgroup->PutData(&ctx, schema_mgr, 0, &ptag, dev_id, &payload, false);
+    vgroup->PutData(&ctx, schema_mgr, 0, &ptag, dev_id, p, false);
     free(payload.data);
     ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
   }
@@ -1156,7 +1156,7 @@ TEST_F(TsEntitySegmentTest, varColumnCompression) {
     TsRawPayload p{metric_schema};
     p.ParsePayLoadStruct(payload);
     auto ptag = p.GetPrimaryTag();
-    vgroup->PutData(&ctx, schema_mgr, 0, &ptag, dev_id, &payload, false);
+    vgroup->PutData(&ctx, schema_mgr, 0, &ptag, dev_id, p, false);
     free(payload.data);
     ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
   }
@@ -1218,7 +1218,7 @@ TEST_F(TsEntitySegmentTest, BUG_IEOYSN) {
     TsRawPayload p{metric_schema};
     p.ParsePayLoadStruct(payload);
     // auto ptag = p.GetPrimaryTag();
-    mem_mgr.PutData(payload, table_schema, dev_id);
+    mem_mgr.PutData(&p, table_schema, dev_id);
     free(payload.data);
     mem_segments.push_back(mem_mgr.CurrentMemSegment());
     ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);

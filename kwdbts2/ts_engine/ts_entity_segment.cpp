@@ -631,20 +631,6 @@ KStatus TsEntityBlock::GetValueSlice(int row_num, int col_id, const std::vector<
   return GetMetricColValue(row_num, col_id, schema, value);
 }
 
-bool TsEntityBlock::IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>* schema,
-                              TsScanStats* ts_scan_stats) {
-  if (!HasDataCached(col_id)) {
-    KStatus s = segment_block_container_->GetColumnBlock(col_id, schema, this, ts_scan_stats);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("block segment column[%u] data load failed", col_id);
-      return s;
-    }
-  }
-  // assert(col_id < column_blocks_.size() - 1);
-  assert(row_num < n_rows_);
-  return column_blocks_[col_id + 1]->bitmap->At(row_num) == DataFlags::kNull;
-}
-
 timestamp64 TsEntityBlock::GetTS(int row_num, TsScanStats* ts_scan_stats) {
   if (!HasDataCached(0)) {
     KStatus s = segment_block_container_->GetColumnBlock(0, {}, this, ts_scan_stats);

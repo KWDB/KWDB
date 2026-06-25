@@ -276,7 +276,7 @@ func (b *Builder) buildInsert(ins *tree.Insert, inScope *scope) (outScope *scope
 	// handle INSERT INTO ts_table VALUES...
 	if _, ok := ins.Rows.Select.(*tree.ValuesClause); ok {
 		switch tblTyp {
-		case tree.TimeseriesTable:
+		case tree.TimeseriesTable, tree.SparseTable:
 			sTableID := b.factory.Metadata().AddTable(tab, ins.Table.(*tree.TableName))
 			return b.buildTSInsert(inScope, tab, ins, sTableID, nil)
 		case tree.TemplateTable:
@@ -593,7 +593,7 @@ func (mb *mutationBuilder) buildTSInsertSelect(rNum, tNum int, ins *tree.Insert,
 	}
 	table := mb.tab
 	switch table.GetTableType() {
-	case tree.TimeseriesTable, tree.InstanceTable:
+	case tree.TimeseriesTable, tree.InstanceTable, tree.SparseTable:
 		// select relational data or cross-module data insert into ts table
 		if !TSInsertSelectLimitEnable.Get(&b.evalCtx.Settings.SV) && rNum > 0 && tNum == 0 {
 			panic(pgerror.New(pgcode.Warning, "insert relational data into time series table is not supported"))
@@ -861,9 +861,9 @@ func (mb *mutationBuilder) buildInputForInsert(inScope *scope, inputRows *tree.S
 			}
 		}
 	}
-
+	mb.b.AddInsideFlag(InsideInsertInto)
 	mb.outScope = mb.b.buildStmt(inputRows, desiredTypes, inScope)
-
+	mb.b.ClearInsideFlag(InsideInsertInto)
 	if len(mb.targetColList) != 0 {
 		// Target columns already exist, so ensure that the number of input
 		// columns exactly matches the number of target columns.

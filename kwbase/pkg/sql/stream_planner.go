@@ -252,6 +252,10 @@ func (p *planner) makeStreamTableCommonInfo(
 ) (*cdcpb.CDCTableInfo, uint64, error) {
 	var tableInfo cdcpb.CDCTableInfo
 
+	if tableDesc.IsSparseTable() {
+		return nil, 0, errors.Newf("sparse table is not supported by stream")
+	}
+
 	dbDesc, err := sqlbase.GetDatabaseDescFromID(ctx, p.txn, tableDesc.ParentID)
 	if err != nil {
 		return &tableInfo, 0, err

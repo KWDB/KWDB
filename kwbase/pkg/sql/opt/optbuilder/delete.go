@@ -86,16 +86,16 @@ func (b *Builder) buildDelete(del *tree.Delete, inScope *scope) (outScope *scope
 	// check if there's other type of table referenced
 	b.CheckMixedTableRefWithTs()
 	// template does not support delete operation
-	if tab.GetTableType() == tree.TemplateTable {
+	if tab.IsTemplateTable() {
 		panic(sqlbase.TemplateUnsupportedError("delete"))
-	} else if tab.GetTableType() == tree.InstanceTable || tab.GetTableType() == tree.TimeseriesTable {
+	} else if tab.IsTSTable() {
 		hashNum := tab.GetTSHashNum()
 		_, ok := del.Returning.(*tree.NoReturningClause)
 		// time series and instance does not support operator except filter
 		if del.OrderBy != nil || del.Limit != nil || !ok || del.With != nil {
 			panic(sqlbase.UnsupportedDeleteConditionError("only supported where expression"))
 		} else {
-			if tab.GetTableType() == tree.InstanceTable {
+			if tab.IsInstanceTable() {
 				cn, err := sqlbase.GetInstNamespaceByName(b.ctx, b.evalCtx.Txn, alias.Catalog(), alias.Table())
 				if err != nil {
 					panic(err)
@@ -277,7 +277,7 @@ func (b *Builder) buildTSDelete(
 	// instance table only support delete data
 	if table.GetTableType() == tree.InstanceTable {
 		filterTyp = onlyTS
-	} else if table.GetTableType() == tree.TimeseriesTable {
+	} else if table.IsTimeseriesTable() || table.IsSparseTable() {
 		filterTyp = onlyTag
 	}
 

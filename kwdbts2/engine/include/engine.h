@@ -604,6 +604,12 @@ struct TSEngine {
 
   virtual KStatus GetDBBlocksDistribution(uint32_t db_id, TSSlice* blocks_info) = 0;
 
+  virtual KStatus GetValidColumns(kwdbContext_p ctx, const KTableKey& table_id, uint32_t table_version, bool& is_dropped,
+                                  TSSlice* primary_tags, size_t primary_tags_num,
+                                  std::vector<uint32_t>& valid_columns) {
+    return KStatus::FAIL;
+  }
+
  protected:
   SharedFixedUnorderedMap<KTableKey, TsTable>* tables_cache_{};
 };

@@ -210,6 +210,7 @@ func (b *Builder) buildTSInsert(tsInsert *memo.TSInsertExpr) (execPlan, error) {
 		tsInsert.ColsMap,
 		uint32(dbID),
 		uint32(tab.ID()),
+		tab.GetTableType(),
 		tab.GetTableType() == tree.InstanceTable,
 		tsVersion,
 		hashNum,
@@ -255,6 +256,7 @@ func BuildInputForTSInsert(
 	colIndexsInMemo map[int]int,
 	dbID uint32,
 	tabID uint32,
+	tableType tree.TableType,
 	isInsertInstTable bool,
 	tsVersion uint32,
 	hashNum uint64,
@@ -289,10 +291,10 @@ func BuildInputForTSInsert(
 			}
 		} else if col.TsCol.ColumnType == sqlbase.ColumnType_TYPE_TAG && isInsertInstTable {
 			// Insert instance table may not specify the tag column, so this flag is used to skip non-null checks.
-			colIndexs[int(col.ID)] = sqlbase.ColumnValNotExist
+			colIndexs[int(col.ID)] = ColumnValNotExist
 		} else {
 			// Attempts to insert a NULL value when no value is specified.
-			colIndexs[int(col.ID)] = sqlbase.ColumnValIsNull
+			colIndexs[int(col.ID)] = ColumnValIsNull
 		}
 	}
 	if !haveDataCol {
@@ -309,6 +311,10 @@ func BuildInputForTSInsert(
 	if err != nil {
 		return nil, err
 	}
+	pArgs.PayloadVersion = TSInsertPayloadVersionV2
+	v2DataInfo := BuildPayloadV2DataInfoForTable(tableType, columns, dataCols, colIndexs)
+	pArgs.V2DataHeader = v2DataInfo.DataHeader
+	pArgs.V2DataCols = v2DataInfo.DataCols
 
 	isStream := false
 	if cdcCoordinator != nil {
@@ -383,6 +389,32 @@ const (
 	VarDataLenSize = 2
 	// VarColumnSize is the fixed length memory taken by var-length data type
 	VarColumnSize = 8
+	// DataRowTypeSize is the size of the row type field in the payload data header
+	DataRowTypeSize = 2
+	// ValidColNumLen is the length of the valid column number field in the payload data header
+	ValidColNumLen = 4
+	// ValidColIDLen is the length of each column id field in the payload data header
+	ValidColIDLen = 4
+	// TSInsertPayloadVersion Indicates the version of TSInsertPayload,
+	// which is used to verify compatibility during the version upgrade.
+	TSInsertPayloadVersion = 1
+	// TSInsertPayloadVersionV2 is the v2 payload codec version used by the
+	// optimized TS insert paths.
+	TSInsertPayloadVersionV2 = 2
+	// ColumnValIsNull is a flag that the value of the insert column is NULL.
+	ColumnValIsNull = -1
+	// ColumnValNotExist is a flag that the value of the insert column does not exist.
+	ColumnValNotExist = -2
+	// TSInsertDataRowTypeTuple stores row data in the full tuple layout.
+	TSInsertDataRowTypeTuple = 1
+	// TSInsertDataRowTypeColumnIDs stores valid data columns as a list of full
+	// ColumnDescriptor indexes.
+	TSInsertDataRowTypeColumnIDs = 2
+	// TSInsertDataRowTypeBitmap stores valid data columns as a bitmap ordered by
+	// data column order.
+	TSInsertDataRowTypeBitmap = 3
+	// ValidBitMapLength is the length of valid bitmap in the payload data header
+	ValidBitMapLength = 4
 )
 
 // PayloadArgs stores information for three kind of columns
@@ -412,6 +444,13 @@ type PayloadArgs struct {
 	PreAllocColSize int
 	// PrettyCols stands for columns reordered in [pTagCol + allTagCols + dataCols] order.
 	PrettyCols []*sqlbase.ColumnDescriptor
+	// V2DataHeader stores the payload v2 data header. It is materialized into
+	// the outgoing header prefix or single-node payload for v2 row-mode inserts.
+	V2DataHeader []byte
+	// V2DataCols stores the data columns encoded in each v2 row payload.
+	V2DataCols []*sqlbase.ColumnDescriptor
+	// OmitTagSection emits tagLen=0 and skips the all-tag bitmap/value section.
+	OmitTagSection bool
 
 	// PayloadSize represents the size of payload calculated in advance, not the final size
 	PayloadSize int
@@ -432,6 +471,9 @@ func (p PayloadArgs) DeepCopy() PayloadArgs {
 		PreAllocColSize: p.PreAllocColSize,
 		PayloadSize:     p.PayloadSize,
 		RowType:         p.RowType,
+		V2DataHeader:    append([]byte(nil), p.V2DataHeader...),
+		V2DataCols:      append([]*sqlbase.ColumnDescriptor(nil), p.V2DataCols...),
+		OmitTagSection:  p.OmitTagSection,
 	}
 }
 
@@ -609,6 +651,7 @@ func (ts *TsPayload) BuildRowsPayloadByDatums(
 	ComputePayloadSize(&ts.args, rowNum)
 	ts.payload = make([]byte, ts.args.PayloadSize)
 	ts.fillHeader()
+	omitTagSection := ts.args.OmitTagSection
 
 	// column data len offset
 	dataLenOffset := 0
@@ -617,6 +660,10 @@ func (ts *TsPayload) BuildRowsPayloadByDatums(
 	var importErrorRecord []interface{}
 	// offset for var-length data in tag cols
 	independentOffset := ts.header.otherTagBitmapOffset + ts.args.AllTagSize
+	if omitTagSection {
+		independentOffset = ts.header.otherTagLenOffset + AllTagLenSize
+		binary.LittleEndian.PutUint32(ts.payload[ts.header.otherTagLenOffset:], 0)
+	}
 	columnBitmapOffset := 0
 	var primaryTagVal []byte
 	var inputValues tree.Datum
@@ -632,9 +679,17 @@ func (ts *TsPayload) BuildRowsPayloadByDatums(
 		} else {
 			curColLenth = VarColumnSize
 		}
+		isAllTagSectionCol := IsTagCol && j >= ts.args.PTagNum && j < ts.args.PTagNum+ts.args.AllTagNum
 		// other tag data
-		if IsTagCol && j == ts.args.PTagNum {
-			offset += AllTagLenSize + ts.header.otherTagBitmapLen
+		if isAllTagSectionCol && j == ts.args.PTagNum {
+			if omitTagSection {
+				offset += AllTagLenSize
+			} else {
+				offset += AllTagLenSize + ts.header.otherTagBitmapLen
+			}
+		}
+		if omitTagSection && isAllTagSectionCol {
+			continue
 		}
 
 		// first data column
@@ -691,7 +746,7 @@ func (ts *TsPayload) BuildRowsPayloadByDatums(
 			}
 			offset += curColLenth
 		}
-		if j == ts.args.PTagNum+ts.args.AllTagNum-1 {
+		if !omitTagSection && j == ts.args.PTagNum+ts.args.AllTagNum-1 {
 			// other tag len
 			tagValLen := independentOffset - ts.header.otherTagBitmapOffset
 			binary.LittleEndian.PutUint32(ts.payload[ts.header.otherTagLenOffset:], uint32(tagValLen))
@@ -923,16 +978,18 @@ func (ts *TsPayload) BuildRowBytesForTsImport(
 	hashNum uint64,
 	tolerant bool,
 ) (map[int]*sqlbase.PayloadForDistTSInsert, []interface{}, error) {
-	var dataCols []*sqlbase.ColumnDescriptor
-	// Get data column
-	for _, col := range prettyCols {
-		if !col.IsTagCol() {
-			dataCols = append(dataCols, col)
-		}
-	}
-	rowBytes, dataOffset, independentOffset, err := preAllocateDataRowBytes(rowNum, dataCols)
+	var payloadDataCols []*sqlbase.ColumnDescriptor
+	var rowBytes [][]byte
+	var dataOffset, independentOffset int
+	var err error
+	payloadDataColIdx := make(map[int]int, len(payloadDataCols))
+	payloadDataCols = pArgs.V2DataCols
+	rowBytes, dataOffset, independentOffset, err = preAllocateDataRowBytes(rowNum, payloadDataCols)
 	if err != nil {
 		return nil, nil, err
+	}
+	for idx, col := range payloadDataCols {
+		payloadDataColIdx[int(col.ID)] = idx
 	}
 	// Define the required variables
 	var curColLength, valIdx, dataColIdx int
@@ -944,7 +1001,7 @@ func (ts *TsPayload) BuildRowBytesForTsImport(
 	var importErrorRecord []interface{}
 	rowIDMapError := make(map[int]error, len(inputDatums))
 	// Type check for input values.
-	var buf strings.Builder
+	tagKey := make([]byte, 0, pArgs.PTagNum*8+16)
 	for i, datum := range inputDatums {
 		ts.payload = rowBytes[i]
 		offset := dataOffset
@@ -962,8 +1019,11 @@ func (ts *TsPayload) BuildRowBytesForTsImport(
 				}
 			}
 			if isDataCol {
-				dataColIdx = j - pArgs.PTagNum - pArgs.AllTagNum
-				isLastDataCol = dataColIdx == pArgs.DataColNum-1
+				var ok bool
+				if dataColIdx, ok = payloadDataColIdx[int(col.ID)]; !ok {
+					continue
+				}
+				isLastDataCol = dataColIdx == len(payloadDataCols)-1
 
 				if int(col.TsCol.VariableLengthType) == sqlbase.StorageTuple {
 					curColLength = int(col.TsCol.StorageLen)
@@ -984,8 +1044,7 @@ func (ts *TsPayload) BuildRowBytesForTsImport(
 			}
 			if j < pArgs.PTagNum {
 				vString := sqlbase.DatumToString(datum[valIdx])
-				// Distinguish aa + bb = a + abb
-				buf.WriteString(fmt.Sprintf("%d:%s", len(vString), vString))
+				tagKey = AppendTSPrimaryTagGroupingKeyString(tagKey, vString)
 			}
 			if isDataCol {
 				if datum[valIdx] == tree.DNull {
@@ -1026,8 +1085,9 @@ func (ts *TsPayload) BuildRowBytesForTsImport(
 			}
 		}
 		// Group rows with the same primary tag value.
-		priTagValMap[buf.String()] = append(priTagValMap[buf.String()], i)
-		buf.Reset()
+		key := string(tagKey)
+		priTagValMap[key] = append(priTagValMap[key], i)
+		tagKey = tagKey[:0]
 	}
 	// Reset the parameters of pArgs. We only need to construct TsPayload with tag columns.
 	pArgs.DataColNum, pArgs.DataColSize, pArgs.PreAllocColSize = 0, 0, 0
@@ -1083,7 +1143,7 @@ func (ts *TsPayload) BuildRowBytesForTsImport(
 				endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0])+1, hashNum)
 			}
 			allPayloads[count] = &sqlbase.SinglePayloadInfo{
-				Payload:       payload,
+				Payload:       BuildHeaderPrefixWithDataHeader(payload, pArgs.V2DataHeader),
 				RowNum:        uint32(len(priTagRowIdx)),
 				PrimaryTagKey: primaryTagKey,
 				RowBytes:      groupRowBytes,
@@ -1114,9 +1174,8 @@ func (ts *TsPayload) BuildRowBytesForTsImport(
 			}
 
 			binary.LittleEndian.PutUint32(payloadBytes[38:], uint32(rowNum))
-
 			allPayloads[count] = &sqlbase.SinglePayloadInfo{
-				Payload:       payloadBytes,
+				Payload:       BuildSingleNodeTSPayload(payload, pArgs.V2DataHeader, rowBytes, priTagRowIdx),
 				RowNum:        uint32(len(priTagRowIdx)),
 				PrimaryTagKey: primaryTagKey,
 				HashNum:       hashNum,
@@ -1229,13 +1288,211 @@ func BuildPayloadArgs(
 	copy(prettyCols[pTagNum+allTagNum:], dataCols)
 
 	return PayloadArgs{
-		TSVersion: tsVersion, PayloadVersion: sqlbase.TSInsertPayloadVersion, TsIDGen: tsIDGen, PTagNum: pTagNum, AllTagNum: allTagNum,
+		TSVersion: tsVersion, PayloadVersion: TSInsertPayloadVersion, TsIDGen: tsIDGen, PTagNum: pTagNum, AllTagNum: allTagNum,
 		DataColNum: dataColNum, PrimaryTagSize: pTagSize, AllTagSize: allTagSize, RowType: rowType,
 		DataColSize: dataSize, PreAllocTagSize: preTagSize, PreAllocColSize: preDataSize, PrettyCols: prettyCols,
 	}, nil
 }
 
-// BuildPayloadForTsInsert construct tsPayload for build tsInsert.
+// ShouldOmitTagSection reports whether the all-tag bitmap/value section can be
+// represented by tagLen=0 for this write.
+func ShouldOmitTagSection(pArgs PayloadArgs, colIndexs map[int]int) bool {
+	tagStart := pArgs.PTagNum
+	tagEnd := pArgs.PTagNum + pArgs.AllTagNum
+	if tagStart > len(pArgs.PrettyCols) {
+		return true
+	}
+	if tagEnd > len(pArgs.PrettyCols) {
+		tagEnd = len(pArgs.PrettyCols)
+	}
+	for _, col := range pArgs.PrettyCols[tagStart:tagEnd] {
+		if !col.IsOrdinaryTagCol() {
+			continue
+		}
+		if col.HasDefault() {
+			return false
+		}
+		if idx, ok := colIndexs[int(col.ID)]; ok && idx >= 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// PayloadV2DataInfo describes the data-column selection and encoded header used
+// by TS insert payload v2 row-mode writes.
+type PayloadV2DataInfo struct {
+	DataHeader []byte
+	DataCols   []*sqlbase.ColumnDescriptor
+}
+
+// BuildPayloadV2DataInfoForTable selects the v2 row-data layout for a TS table.
+// Sparse tables encode only the valid data columns selected by
+// BuildPayloadV2DataInfo. Non-sparse TS tables keep the pre-v2 full data-column
+// tuple layout and add only the v2 row-type marker.
+func BuildPayloadV2DataInfoForTable(
+	tableType tree.TableType, columns, dataCols []*sqlbase.ColumnDescriptor, colIndexs map[int]int,
+) PayloadV2DataInfo {
+	if tableType == tree.SparseTable {
+		return BuildPayloadV2DataInfo(columns, dataCols, colIndexs)
+	}
+	return BuildPayloadV2TupleDataInfo(dataCols)
+}
+
+// BuildPayloadV2TupleDataInfo returns tuple-mode v2 data metadata for
+// non-sparse TS-table writes. Row bytes still encode every data column in
+// dataCols order; DataHeader contains only TSInsertDataRowTypeTuple.
+func BuildPayloadV2TupleDataInfo(dataCols []*sqlbase.ColumnDescriptor) PayloadV2DataInfo {
+	if len(dataCols) == 0 {
+		return PayloadV2DataInfo{}
+	}
+	header := make([]byte, DataRowTypeSize)
+	binary.LittleEndian.PutUint16(header, uint16(TSInsertDataRowTypeTuple))
+	return PayloadV2DataInfo{DataHeader: header, DataCols: dataCols}
+}
+
+// BuildPayloadV2DataInfo returns sparse-table v2 data metadata. DataCols
+// contains data columns present in colIndexs that either map to an input value
+// or have a default expression to materialize. DataHeader uses the shorter
+// representation: ColumnIDs with full table-column ordinals, or a none-column
+// bitmap addressed by data-column ordinal.
+func BuildPayloadV2DataInfo(
+	columns, dataCols []*sqlbase.ColumnDescriptor, colIndexs map[int]int,
+) PayloadV2DataInfo {
+	// Payload v2 omits the data header when there are no data columns to encode.
+	if len(dataCols) == 0 {
+		return PayloadV2DataInfo{}
+	}
+
+	// ColumnIDs uses full table-column ordinals; bitmap bits are addressed by
+	// data-column ordinal.
+	fullColIdxByID := make(map[sqlbase.ColumnID]int, len(columns))
+	for idx, col := range columns {
+		fullColIdxByID[col.ID] = idx
+	}
+
+	encodedCols := make([]*sqlbase.ColumnDescriptor, 0, len(dataCols))
+	encodedFullColIdxs := make([]int, 0, len(dataCols))
+	encodedDataColIdxs := make([]int, 0, len(dataCols))
+	for dataColIdx, col := range dataCols {
+		if !shouldEncodePayloadV2DataCol(col, colIndexs) {
+			continue
+		}
+		fullColIdx, ok := fullColIdxByID[col.ID]
+		if !ok {
+			continue
+		}
+		encodedCols = append(encodedCols, col)
+		encodedFullColIdxs = append(encodedFullColIdxs, fullColIdx)
+		encodedDataColIdxs = append(encodedDataColIdxs, dataColIdx)
+	}
+	if len(encodedCols) == 0 {
+		return PayloadV2DataInfo{}
+	}
+
+	// Choose the smaller header representation. ColumnIDs is used only when it
+	// is strictly smaller; ties use bitmap.
+	const (
+		bitsPerByte      = 8
+		bitsPerByteShift = 3
+		bitsPerByteMask  = bitsPerByte - 1
+	)
+	type1Cost := ValidColNumLen + ValidColIDLen*len(encodedCols)
+	type2Cost := (len(dataCols) + bitsPerByteMask) >> bitsPerByteShift
+	if type1Cost < type2Cost {
+		header := make([]byte, DataRowTypeSize+type1Cost)
+		binary.LittleEndian.PutUint16(header[0:], uint16(TSInsertDataRowTypeColumnIDs))
+		binary.LittleEndian.PutUint32(header[DataRowTypeSize:], uint32(len(encodedFullColIdxs)))
+		offset := DataRowTypeSize + ValidColNumLen
+		for _, fullColIdx := range encodedFullColIdxs {
+			binary.LittleEndian.PutUint32(header[offset:], uint32(fullColIdx))
+			offset += ValidColIDLen
+		}
+		return PayloadV2DataInfo{DataHeader: header, DataCols: encodedCols}
+	}
+
+	header := make([]byte, DataRowTypeSize+ValidBitMapLength+type2Cost)
+	binary.LittleEndian.PutUint16(header[0:], uint16(TSInsertDataRowTypeBitmap))
+	binary.LittleEndian.PutUint32(header[DataRowTypeSize:], uint32(len(dataCols)))
+	// Bitmap stores none-column bits: 0 means encoded, 1 means omitted.
+	for i := DataRowTypeSize + ValidBitMapLength; i < len(header); i++ {
+		header[i] = 0xff
+	}
+	for _, dataColIdx := range encodedDataColIdxs {
+		header[DataRowTypeSize+ValidBitMapLength+(dataColIdx>>bitsPerByteShift)] &^=
+			1 << (dataColIdx & bitsPerByteMask)
+	}
+	return PayloadV2DataInfo{DataHeader: header, DataCols: encodedCols}
+}
+
+// shouldEncodePayloadV2DataCol reports whether col belongs in sparse-table v2
+// row bytes. A column is encoded only when colIndexs contains it and it either
+// has a non-negative input index or a default expression.
+func shouldEncodePayloadV2DataCol(col *sqlbase.ColumnDescriptor, colIndexs map[int]int) bool {
+	inputIdx, ok := colIndexs[int(col.ID)]
+	return ok && (inputIdx >= 0 || col.HasDefault())
+}
+
+// BuildHeaderPrefixWithDataHeader appends dataHeader to a fixed header/tag
+// prefix for distributed v2 TS writes. The returned prefix is an intermediate
+// layout; data_len and row bytes are added later by the TSE path.
+func BuildHeaderPrefixWithDataHeader(basePrefix []byte, dataHeader []byte) []byte {
+	if len(dataHeader) == 0 {
+		return basePrefix
+	}
+
+	baseLen := len(basePrefix)
+	headerLen := baseLen + len(dataHeader)
+	if cap(basePrefix) >= headerLen {
+		// Reuse the over-allocated payload prefix produced by the tag-only
+		// prefix builder and avoid copying the fixed header/tag bytes again.
+		headerPrefix := basePrefix[:headerLen]
+		copy(headerPrefix[baseLen:], dataHeader)
+		return headerPrefix
+	}
+
+	headerPrefix := make([]byte, headerLen)
+	copy(headerPrefix, basePrefix)
+	copy(headerPrefix[baseLen:], dataHeader)
+	return headerPrefix
+}
+
+// BuildSingleNodeTSPayload builds the final single-node v2 TS payload for one
+// primary-tag group. It appends data_len, dataHeader, and the selected row bytes
+// to basePrefix, then patches row_num with len(rowIdxs).
+func BuildSingleNodeTSPayload(
+	basePrefix []byte, dataHeader []byte, rowBytes [][]byte, rowIdxs []int,
+) []byte {
+	dataHeaderLen := len(dataHeader)
+	// Calculate the grouped row data size before allocation so the payload is
+	// built with a single backing array.
+	valueSize := 0
+	for _, idx := range rowIdxs {
+		valueSize += len(rowBytes[idx])
+	}
+	payloadSize := len(basePrefix) + DataLenSize + dataHeaderLen + valueSize
+	payloadBytes := make([]byte, payloadSize)
+	copy(payloadBytes, basePrefix)
+
+	// The single-node v2 data section is encoded as:
+	// data_len | data_header | selected row bytes.
+	offset := len(basePrefix)
+	binary.LittleEndian.PutUint32(payloadBytes[offset:], uint32(valueSize+dataHeaderLen))
+	offset += DataLenSize
+	copy(payloadBytes[offset:], dataHeader)
+	offset += dataHeaderLen
+	for _, idx := range rowIdxs {
+		row := rowBytes[idx]
+		copy(payloadBytes[offset:], row)
+		offset += len(row)
+	}
+	binary.LittleEndian.PutUint32(payloadBytes[RowNumOffset:], uint32(len(rowIdxs)))
+	return payloadBytes
+}
+
+// BuildPayloadForTsInsert constructs the base prefix for tsInsert. The returned
+// payload contains only the fixed header and tag section; row-mode v2 data
+// headers are materialized later by the caller based on the write path.
 // The main ones are as follows:
 //   - First create a tsPayload and set the required parameter values.
 //   - Last call function encodes the data part of tsPayload.
@@ -1336,9 +1593,14 @@ func BuildRowBytesForTsInsert(
 	// collect all columns with default value set.
 	colsWithDefaultValMap, err := CheckDefaultVals(evalCtx, pArgs)
 	tp := NewTsPayload()
-	rowBytes, dataOffset, independentOffset, err := preAllocateDataRowBytes(len(InputRows), dataCols)
+	payloadDataCols := pArgs.V2DataCols
+	rowBytes, dataOffset, independentOffset, err := preAllocateDataRowBytes(len(InputRows), payloadDataCols)
 	if err != nil {
 		return nil, err
+	}
+	payloadDataColIdx := make(map[int]int, len(payloadDataCols))
+	for idx, col := range payloadDataCols {
+		payloadDataColIdx[int(col.ID)] = idx
 	}
 	// Define the required variables
 	var curColLength, valIdx, dataColIdx int
@@ -1348,7 +1610,7 @@ func BuildRowBytesForTsInsert(
 	// partition input data based on primary tag values
 	priTagValMap := make(map[string][]int)
 	// Type check for input values.
-	var buf strings.Builder
+	tagKey := make([]byte, 0, pArgs.PTagNum*8+16)
 	for i := range InputRows {
 		// defaultValue's index used to locate values in inputDatums
 		defaultValIdx := len(InputRows[i])
@@ -1387,8 +1649,12 @@ func BuildRowBytesForTsInsert(
 				inputExpr = InputRows[i][inputIdx]
 			}
 			if isDataCol {
-				dataColIdx = j - pArgs.PTagNum - pArgs.AllTagNum
-				isLastDataCol = dataColIdx == pArgs.DataColNum-1
+				var ok bool
+				dataColIdx, ok = payloadDataColIdx[int(col.ID)]
+				if !ok {
+					continue
+				}
+				isLastDataCol = dataColIdx == len(payloadDataCols)-1
 
 				if int(col.TsCol.VariableLengthType) == sqlbase.StorageTuple {
 					curColLength = int(col.TsCol.StorageLen)
@@ -1414,8 +1680,7 @@ func BuildRowBytesForTsInsert(
 			}
 			if j < pArgs.PTagNum {
 				vString := sqlbase.DatumToString(inputDatums[i][inputIdx])
-				// Distinguish aa + bb = a + abb
-				buf.WriteString(fmt.Sprintf("%d:%s", len(vString), vString))
+				tagKey = AppendTSPrimaryTagGroupingKeyString(tagKey, vString)
 			}
 			if isDataCol {
 				if inputDatums[i][inputIdx] == tree.DNull {
@@ -1450,11 +1715,13 @@ func BuildRowBytesForTsInsert(
 			}
 		}
 		// Group rows with the same primary tag value.
-		priTagValMap[buf.String()] = append(priTagValMap[buf.String()], i)
-		buf.Reset()
+		key := string(tagKey)
+		priTagValMap[key] = append(priTagValMap[key], i)
+		tagKey = tagKey[:0]
 	}
 	// Reset the parameters of pArgs. We only need to construct TsPayload with tag columns.
 	pArgs.DataColNum, pArgs.DataColSize, pArgs.PreAllocColSize = 0, 0, 0
+	pArgs.OmitTagSection = ShouldOmitTagSection(pArgs, colIndexs)
 	allPayloads := make([]*sqlbase.SinglePayloadInfo, len(priTagValMap))
 	count := 0
 	for _, priTagRowIdx := range priTagValMap {
@@ -1511,7 +1778,7 @@ func BuildRowBytesForTsInsert(
 				endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0])+1, hashNum)
 			}
 			allPayloads[count] = &sqlbase.SinglePayloadInfo{
-				Payload:       payload,
+				Payload:       BuildHeaderPrefixWithDataHeader(payload, pArgs.V2DataHeader),
 				RowNum:        uint32(len(priTagRowIdx)),
 				PrimaryTagKey: primaryTagKey,
 				RowBytes:      groupRowBytes,
@@ -1523,28 +1790,8 @@ func BuildRowBytesForTsInsert(
 			}
 			count++
 		} else {
-			valueSize := int32(0)
-			rowNum := uint32(0)
-			for _, idx := range priTagRowIdx {
-				valueSize += int32(len(rowBytes[idx]))
-				rowNum++
-			}
-
-			payloadSize := int32(len(payload)) + valueSize + 4
-			payloadBytes := make([]byte, payloadSize)
-			copy(payloadBytes, payload)
-			offset := len(payload)
-			binary.LittleEndian.PutUint32(payloadBytes[offset:], uint32(valueSize))
-			offset += 4
-			for _, idx := range priTagRowIdx {
-				copy(payloadBytes[offset:], rowBytes[idx])
-				offset += len(rowBytes[idx])
-			}
-
-			binary.LittleEndian.PutUint32(payloadBytes[38:], uint32(rowNum))
-
 			allPayloads[count] = &sqlbase.SinglePayloadInfo{
-				Payload:       payloadBytes,
+				Payload:       BuildSingleNodeTSPayload(payload, pArgs.V2DataHeader, rowBytes, priTagRowIdx),
 				RowNum:        uint32(len(priTagRowIdx)),
 				PrimaryTagKey: primaryTagKey,
 				HashNum:       hashNum,
@@ -1585,7 +1832,7 @@ func CheckDefaultVals(
 	return res, nil
 }
 
-// BuildPreparePayloadForTsInsert construct payload for build tsInsert.
+// BuildPreparePayloadForTsInsert constructs the base prefix for prepare tsInsert.
 func BuildPreparePayloadForTsInsert(
 	evalCtx *tree.EvalContext,
 	txn *kv.Txn,
@@ -1605,6 +1852,7 @@ func BuildPreparePayloadForTsInsert(
 	ComputePayloadSize(&pArgs, rowNum)
 
 	payload := make([]byte, pArgs.PayloadSize)
+	omitTagSection := pArgs.OmitTagSection
 
 	var independentOffset int
 	var offset int
@@ -1656,6 +1904,10 @@ func BuildPreparePayloadForTsInsert(
 	otherTagBitmapOffset := otherTagLenOffset + AllTagLenSize
 	// tag variable length data start position
 	independentOffset = otherTagBitmapOffset + pArgs.AllTagSize
+	if omitTagSection {
+		independentOffset = otherTagLenOffset + AllTagLenSize
+		binary.LittleEndian.PutUint32(payload[otherTagLenOffset:], 0)
+	}
 	// column data len offset
 	dataLenOffset := 0
 	// column bitmap offset
@@ -1676,10 +1928,18 @@ func BuildPreparePayloadForTsInsert(
 		} else {
 			curColLenth = VarColumnSize
 		}
+		isAllTagSectionCol := IsTagCol && j >= pArgs.PTagNum && j < pArgs.PTagNum+pArgs.AllTagNum
 
 		// other tag data
-		if IsTagCol && j == pArgs.PTagNum {
-			offset += AllTagLenSize + otherTagBitmapLen
+		if isAllTagSectionCol && j == pArgs.PTagNum {
+			if omitTagSection {
+				offset += AllTagLenSize
+			} else {
+				offset += AllTagLenSize + otherTagBitmapLen
+			}
+		}
+		if omitTagSection && isAllTagSectionCol {
+			continue
 		}
 
 		// first data column
@@ -1845,7 +2105,7 @@ func BuildPreparePayloadForTsInsert(
 
 			offset += curColLenth
 		}
-		if j == pArgs.PTagNum+pArgs.AllTagNum-1 {
+		if !omitTagSection && j == pArgs.PTagNum+pArgs.AllTagNum-1 {
 			// other tag len
 			tagValLen := independentOffset - otherTagBitmapOffset
 			binary.LittleEndian.PutUint32(payload[otherTagLenOffset:], uint32(tagValLen))
@@ -1861,10 +2121,11 @@ func BuildPreparePayloadForTsInsert(
 		if len(payload) > independentOffset {
 			payload = payload[:independentOffset]
 		}
+	} else {
+		// var column value length
+		colDataLen := independentOffset - dataLenOffset - DataLenSize
+		binary.LittleEndian.PutUint32(payload[dataLenOffset:], uint32(colDataLen))
 	}
-	// var column value length
-	colDataLen := independentOffset - dataLenOffset - DataLenSize
-	binary.LittleEndian.PutUint32(payload[dataLenOffset:], uint32(colDataLen))
 
 	// primary tag value
 	primaryTagVal = payload[HeadSize+PTagLenSize : HeadSize+PTagLenSize+pArgs.PrimaryTagSize]
@@ -2803,7 +3064,7 @@ func (b *Builder) buildTSDelete(tsDelete *memo.TSDeleteExpr) (execPlan, error) {
 		})
 	}
 	hashNum := tsDelete.HashNum
-	if tsDelete.InputRows == nil && tab.GetTableType() == tree.TimeseriesTable {
+	if tsDelete.InputRows == nil && tab.IsTSTable() {
 		node, err := b.factory.ConstructTSDelete(
 			[]roachpb.NodeID{b.evalCtx.NodeID},
 			uint64(tab.ID()),

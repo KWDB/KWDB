@@ -27,7 +27,6 @@ package sql
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"fmt"
 	"math"
 	"math/rand"
@@ -73,7 +72,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 	"github.com/cockroachdb/errors"
-	"github.com/lib/pq/oid"
 )
 
 // DistSQLPlanner is used to generate distributed plans from logical
@@ -7323,7 +7321,7 @@ func (dsp *DistSQLPlanner) getSpans(
 		payloads := make([][]byte, 0)
 		offset := 0
 		for _, col := range ptCols {
-			payloads, err = getPtagPayloads(payloads, n.PrimaryTagValues[uint32(col.ID)], offset, col.DatumType(), pTagSize)
+			payloads, err = sqlbase.GetPtagPayloads(payloads, n.PrimaryTagValues[uint32(col.ID)], offset, col.DatumType(), pTagSize)
 			if err != nil {
 				return nil, osnID, err
 			}
@@ -7515,61 +7513,6 @@ func needsTSTwiceAggregation(n *groupNode, planCtx *PlanningCtx) (bool, error) {
 	}
 }
 
-// parsePtagValue parse the value of a string into the corresponding type of value and add it to the payload.
-func parsePtagValue(payload *[]byte, value string, offset int, typ *types.T) error {
-	parseInt := func(val string) (*tree.DInt, error) {
-		v, err := tree.ParseDInt(val)
-		if err != nil {
-			return nil, err
-		}
-		// Width is defined in bits.
-		width := uint(typ.Width() - 1)
-		// We're performing bounds checks inline with Go's implementation of min and max ints in Math.go.
-		shifted := *v >> width
-		if (*v >= 0 && shifted > 0) || (*v < 0 && shifted < -1) {
-			return nil, pgerror.Newf(pgcode.NumericValueOutOfRange,
-				"integer \"%d\" out of range for type %s", *v, typ.SQLString())
-		}
-		return v, nil
-	}
-	switch typ.InternalType.Oid {
-	case oid.T_int2:
-		v, err := parseInt(value)
-		if err != nil {
-			return err
-		}
-		binary.LittleEndian.PutUint16((*payload)[offset:], uint16(*v))
-	case oid.T_int4:
-		v, err := parseInt(value)
-		if err != nil {
-			return err
-		}
-		binary.LittleEndian.PutUint32((*payload)[offset:], uint32(*v))
-	case oid.T_int8:
-		v, err := parseInt(value)
-		if err != nil {
-			return err
-		}
-		binary.LittleEndian.PutUint64((*payload)[offset:], uint64(*v))
-	case oid.T_bool:
-		v, err := tree.ParseDBool(value)
-		if err != nil {
-			return err
-		}
-		if *v {
-			(*payload)[offset] = 1
-		} else {
-			(*payload)[offset] = 0
-		}
-	case types.T_nchar, oid.T_varchar, oid.T_bpchar:
-		copy((*payload)[offset:], value)
-
-	default:
-		return errors.Errorf("unsupported int oid %v", typ.InternalType.Oid)
-	}
-	return nil
-}
-
 // visitTableMeta visit column metadata of table
 // return parameters:
 // param1: ColumnDescriptor of primary tags, use for getting spans
@@ -7603,43 +7546,4 @@ func visitTableMeta(
 		}
 	}
 	return ptCols, typs, descColumnIDs, columnIDSet
-}
-
-// getPtagPayloads construct payloads of primary tag values
-// ex: PrimaryTagValues: [1,2,3], [3,4,5] ->
-// [13,14,15,23,24,25,33,34,35]
-func getPtagPayloads(
-	payloads [][]byte, source []string, offset int, typ *types.T, pTagSize int,
-) ([][]byte, error) {
-	if len(payloads) == 0 {
-		ret := make([][]byte, len(source))
-		for i := range ret {
-			ret[i] = make([]byte, pTagSize)
-		}
-		for k := range source {
-			err := parsePtagValue(&ret[k], source[k], offset, typ)
-			if err != nil {
-				return nil, err
-			}
-		}
-		return ret, nil
-	}
-	ret := make([][]byte, len(payloads)*len(source))
-	for i := range ret {
-		ret[i] = make([]byte, pTagSize)
-	}
-	i := 0
-	for k := range payloads {
-		for idx := range source {
-			newPayload := make([]byte, len(payloads[k]))
-			copy(newPayload, payloads[k])
-			err := parsePtagValue(&newPayload, source[idx], offset, typ)
-			if err != nil {
-				return nil, err
-			}
-			ret[i] = newPayload
-			i++
-		}
-	}
-	return ret, nil
 }

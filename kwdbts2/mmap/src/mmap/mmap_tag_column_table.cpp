@@ -272,6 +272,7 @@ MMapTagColumnTable::~MMapTagColumnTable() {
 
   delete  m_bitmap_file_;
   delete  m_row_info_file_;
+  delete  m_valid_column_file_;
   delete  m_index_;
   delete  m_entity_row_index_;
   delete  m_meta_file_;
@@ -279,6 +280,7 @@ MMapTagColumnTable::~MMapTagColumnTable() {
 
   m_bitmap_file_ = nullptr;
   m_row_info_file_ = nullptr;
+  m_valid_column_file_ = nullptr;
   m_index_ = nullptr;
   m_entity_row_index_ = nullptr;
   m_meta_file_ = nullptr;
@@ -363,17 +365,19 @@ int MMapTagColumnTable::open_(const string &table_path, const std::string &db_pa
   if ((error_code = initMetaData(err_info)) < 0) {
     return error_code;
   }
-  uint32_t check_code = *reinterpret_cast<const uint32_t*>("MMTT");
-  if (m_meta_data_->m_magic != check_code) {
+  uint32_t magic_mmtt = *reinterpret_cast<const uint32_t*>("MMTT");
+  uint32_t magic_mtvc = *reinterpret_cast<const uint32_t*>("MTVC");
+  if (m_meta_data_->m_magic != magic_mmtt && m_meta_data_->m_magic != magic_mtvc) {
     err_info.errcode = -1;
     err_info.errmsg = "tag magic check failed.";
-    LOG_ERROR("failed to check megic for the tag table %s%s, expect %u, "
+    LOG_ERROR("failed to check magic for the tag table %s%s, expect MMTT or MTVC, "
       "but %u in fact",
-              tbl_sub_path.c_str(), m_name_.c_str(), check_code, m_meta_data_->m_magic);
+              tbl_sub_path.c_str(), m_name_.c_str(), m_meta_data_->m_magic);
     return -1;
   }
+  bool issparse = (m_meta_data_->m_magic == magic_mtvc);
   if (m_ptag_file_->fileLen() > metaDataSize()) {
-    if ((error_code = readTagInfo(err_info)) < 0) {
+    if ((error_code = readTagInfo(err_info, issparse)) < 0) {
       err_info.setError(error_code);
       return error_code;
     }
@@ -454,6 +458,25 @@ int MMapTagColumnTable::initRowInfoColumn(ErrorInfo& err_info) {
   return err_info.errcode;
 }
 
+int MMapTagColumnTable::initValidColumn(ErrorInfo& err_info) {
+  std::string validcolumn_file_name = m_name_ + ".vc";
+  TagInfo ainfo = {0x00};
+  ainfo.m_offset = 0;
+  ainfo.m_size = sizeof(uintptr_t);
+  ainfo.m_data_type = DATATYPE::VARBINARY;
+  ainfo.m_length = sizeof(uintptr_t);
+  m_valid_column_file_ = new TagColumn(-2, ainfo);
+  err_info.errcode = m_valid_column_file_->open(validcolumn_file_name, m_db_path_, m_tbl_sub_path_, m_flags_);
+  if (err_info.errcode < 0) {
+    delete m_valid_column_file_;
+    m_valid_column_file_ = nullptr;
+    err_info.errmsg = "initValidColumn failed.";
+    LOG_ERROR("failed to open the valid column file %s%s, error: %s",
+              m_tbl_sub_path_.c_str(), validcolumn_file_name.c_str(), err_info.errmsg.c_str());
+  }
+  return err_info.errcode;
+}
+
 int MMapTagColumnTable::initHashPointColumn(ErrorInfo& err_info) {
   string hash_file_name = m_name_ + ".hps";
   TagInfo ainfo = {0x00};
@@ -470,7 +493,7 @@ int MMapTagColumnTable::initHashPointColumn(ErrorInfo& err_info) {
   return err_info.errcode;
 }
 
-int MMapTagColumnTable::readTagInfo(ErrorInfo& err_info) {
+int MMapTagColumnTable::readTagInfo(ErrorInfo& err_info, bool issparse) {
   TagColumn* tag_col = nullptr;
   uint32_t store_offset = 0;
   m_cols_.resize(m_meta_data_->m_column_count);
@@ -513,6 +536,13 @@ int MMapTagColumnTable::readTagInfo(ErrorInfo& err_info) {
   err_info.errcode = initRowInfoColumn(err_info);
   if (err_info.errcode < 0) {
     return err_info.setError(err_info.errcode);
+  }
+
+  if (issparse) {
+    err_info.errcode = initValidColumn(err_info);
+    if (err_info.errcode < 0) {
+      return err_info.setError(err_info.errcode);
+    }
   }
 
   if (!EngineOptions::isSingleNode()) {
@@ -613,7 +643,7 @@ int MMapTagColumnTable::writeTagInfo(uint64_t start_offset, const std::vector<Ta
   return 0;
 }
 
-int MMapTagColumnTable::init(const vector<TagInfo>& schema, ErrorInfo& err_info) {
+int MMapTagColumnTable::init(const vector<TagInfo>& schema, ErrorInfo& err_info, bool issparse) {
 
   // initColumn
   m_tag_info_include_dropped_ = schema;
@@ -632,6 +662,13 @@ int MMapTagColumnTable::init(const vector<TagInfo>& schema, ErrorInfo& err_info)
   err_info.errcode = initRowInfoColumn(err_info);
   if (err_info.errcode < 0) {
     return err_info.setError(err_info.errcode);
+  }
+
+  if (issparse) {
+    err_info.errcode = initValidColumn(err_info);
+    if (err_info.errcode < 0) {
+      return err_info.setError(err_info.errcode);
+    }
   }
 
   // initHashPointFile
@@ -656,15 +693,16 @@ int MMapTagColumnTable::init(const vector<TagInfo>& schema, ErrorInfo& err_info)
   return err_info.errcode;
 }
 
-int MMapTagColumnTable::create(const vector<TagInfo>& schema, int32_t entity_group_id, uint32_t new_ts_version, ErrorInfo& err_info) {
+int MMapTagColumnTable::create(const vector<TagInfo>& schema, int32_t entity_group_id, uint32_t new_ts_version, ErrorInfo& err_info, bool issparse) {
   // 1. create mmap file
-  if (init(schema, err_info) < 0) {
+  if (init(schema, err_info, issparse) < 0) {
     LOG_ERROR("failed to init the tag table %s%s, error: %s",
       m_db_name_.c_str(), m_name_.c_str(), err_info.errmsg.c_str());
     return err_info.errcode;
   }
 
-  m_meta_data_->m_magic = *reinterpret_cast<const uint32_t*>("MMTT");
+  m_meta_data_->m_magic = issparse ? *reinterpret_cast<const uint32_t*>("MTVC")
+                                    : *reinterpret_cast<const uint32_t*>("MMTT");
   m_meta_data_->m_record_start_offset = m_ptag_file_->fileLen();  // one page size
   m_meta_data_->m_entitygroup_id = entity_group_id;
   m_meta_data_->m_ts_version = new_ts_version;
@@ -714,6 +752,11 @@ int MMapTagColumnTable::remove() {
     m_row_info_file_->remove();
     delete m_row_info_file_;
     m_row_info_file_ = nullptr;
+  }
+  if (m_valid_column_file_) {
+    m_valid_column_file_->remove();
+    delete m_valid_column_file_;
+    m_valid_column_file_ = nullptr;
   }
   if (m_meta_file_) {
     m_meta_file_->remove();
@@ -788,6 +831,18 @@ int MMapTagColumnTable::reserve(size_t n, ErrorInfo& err_info) {
       return err_code;
     }
   }
+
+  // valid column mremap
+  if (m_valid_column_file_) {
+    err_code = m_valid_column_file_->extend(m_meta_data_->m_row_count, n);
+    if (err_code < 0) {
+      LOG_ERROR("failed to extend valid column file for the tag table %s%s",
+                m_db_name_.c_str(), m_name_.c_str());
+      stopWrite();
+      return err_code;
+    }
+  }
+
   // hashpoint file extend
   if (m_hps_file_) {
     err_code = m_hps_file_->extend(m_meta_data_->m_row_count, n);
@@ -894,8 +949,62 @@ int MMapTagColumnTable::initNTagHashIndex(ErrorInfo& err_info) {
   return 0;
 }
 
+int MMapTagColumnTable::getValidColumns(size_t row, std::vector<uint32_t>& valid_columns) {
+  if (!m_valid_column_file_) {
+    return -1;
+  }
+  if (row > m_meta_data_->m_valid_row_count) {
+    return -1;
+  }
+  startRead();
+  m_valid_column_file_->varRdLock();
+  char* rec_ptr = m_valid_column_file_->getVarValueAddr(row);
+  if (rec_ptr == nullptr) {
+    m_valid_column_file_->varUnLock();
+    stopRead();
+    return -1;
+  }
+  uint16_t data_len = *reinterpret_cast<uint16_t*>(rec_ptr);
+  if (data_len == 0 || data_len % sizeof(uint32_t) != 0) {
+    m_valid_column_file_->varUnLock();
+    stopRead();
+    return 0;
+  }
+  uint32_t count = data_len / sizeof(uint32_t);
+  const uint32_t* data_ptr = reinterpret_cast<const uint32_t*>(rec_ptr + kStringLenLen);
+  valid_columns.assign(data_ptr, data_ptr + count);
+  m_valid_column_file_->varUnLock();
+  stopRead();
+  return 0;
+}
+
+int MMapTagColumnTable::updateValidColumns(size_t row, const std::vector<uint32_t>& valid_columns) {
+  if (!m_valid_column_file_ || valid_columns.empty()) {
+    LOG_ERROR("failed to update valid columns to tag table %s%s, valid column file not exist or valid columns is empty.",
+      m_db_name_.c_str(), m_name_.c_str());
+    return -1;
+  }
+  if (row > m_meta_data_->m_valid_row_count) {
+    LOG_ERROR("failed to update valid columns to tag table %s%s, row(%ld) more than valid row count(%ld).",
+      m_db_name_.c_str(), m_name_.c_str(), row, m_meta_data_->m_valid_row_count);
+    return -1;
+  }
+  startWrite();
+  m_valid_column_file_->setNotNull(row);
+  uint32_t valid_col_len = valid_columns.size() * sizeof(uint32_t);
+  int err_code = m_valid_column_file_->writeValue(row, reinterpret_cast<const char*>(valid_columns.data()),
+                                                   valid_col_len);
+  if (err_code < 0) {
+    LOG_ERROR("failed to update valid columns to tag table %s%s",
+      m_db_name_.c_str(), m_name_.c_str());
+  }
+  stopWrite();
+  return err_code;
+}
+
 int MMapTagColumnTable::insert(uint32_t entity_id, uint32_t subgroup_id, uint32_t hashpoint, uint64_t osn,
-                               uint8_t operate_type, const char* rec, size_t* row_id) {
+                               uint8_t operate_type, const TSSlice& ptag, const TSSlice& alltag,
+                               const std::vector<uint32_t>& valid_columns, size_t* row_id) {
   size_t row_no;
   int err_code = 0;
   ErrorInfo err_info;
@@ -936,11 +1045,28 @@ int MMapTagColumnTable::insert(uint32_t entity_id, uint32_t subgroup_id, uint32_
    LOG_DEBUG("%s/%s insert set row %ld hashpoint %d",m_db_name_.c_str(), m_name_.c_str(), row_no, hashpoint);
    setHashPoint(row_no, {hashpoint});
   }
-  // put tag table record
-  if ((push_back(row_no, rec)) < 0) {
+
+  int rc = (alltag.len == 0) ? push_back(row_no, ptag) : push_back(row_no, alltag.data);
+  if (rc < 0) {
     setDeleteMark(row_no);
     stopRead();
     return -1;
+  }
+
+  // put valid column
+  if (m_valid_column_file_) {
+    uint32_t valid_col_count = valid_columns.size();
+    uint32_t valid_col_len = valid_col_count * sizeof(uint32_t);
+    if (valid_col_len > 0) {
+      m_valid_column_file_->setNotNull(row_no);
+      err_code = m_valid_column_file_->writeValue(row_no, reinterpret_cast<const char*>(valid_columns.data()), valid_col_len);
+      if (err_code < 0) {
+        LOG_ERROR("failed to write valid columns to tag table %s%s",
+          m_db_name_.c_str(), m_name_.c_str());
+        stopRead();
+        return -1;
+      }
+    }
   }
 
   stopRead();
@@ -998,6 +1124,32 @@ int MMapTagColumnTable::push_back(size_t r, const char* data) {
              m_cols_[i]->attributeInfo().m_size);
     }
   }  // end for
+  return 0;
+}
+
+int MMapTagColumnTable::push_back(size_t r, const TSSlice& ptag) {
+  uint64_t offset = 0;
+  for (size_t i = 0; i < m_cols_.size(); ++i) {
+    if (!m_cols_[i]) {
+      continue;
+    }
+    if (!m_cols_[i]->isPrimaryTag()) {
+      m_cols_[i]->setNull(r);
+      if (m_cols_[i]->isVarTag()) {
+        m_cols_[i]->writeNullVarOffset(r);
+      }
+    } else {
+      if (offset + m_cols_[i]->attributeInfo().m_size > ptag.len) {
+        LOG_ERROR("primary tag data overflow, offset %lu, size %u, ptag len %lu",
+                  offset, m_cols_[i]->attributeInfo().m_size, ptag.len);
+        return -1;
+      }
+      memcpy(columnValueAddr(r, i),
+             offsetAddr(ptag.data, offset),
+             m_cols_[i]->attributeInfo().m_size);
+      offset += m_cols_[i]->attributeInfo().m_size;
+    }
+  }
   return 0;
 }
 

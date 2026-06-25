@@ -105,36 +105,43 @@ func GetDataTypeName(t *types.T) string {
 	return strconv.Itoa(int(t.Oid()))
 }
 
+func getExprStr(src opt.Expr, isCoalesceExpr bool) string {
+	str := ""
+	param, ok := src.(opt.ScalarExpr)
+	if !ok {
+		return ""
+	}
+	// We need to handle Coalece expressions specifically here,
+	// because the time series engine does not support more than two parameters
+	if isCoalesceExpr {
+		if args, ok2 := param.(*ScalarListExpr); ok2 && len(*args) >= 3 {
+			return ""
+		}
+	}
+	// if any of the children is of time data type, check if it's interval data type
+	// if it IS interval data type and includes month/year, we cannot push it down
+	if param.DataType().SupportTimeCalc() {
+		if timeCanPush(param) {
+			str += GetDataTypeName(param.DataType())
+		} else {
+			str += GetDataTypeName(types.Interval)
+		}
+	} else if value, ok1 := param.(*TupleExpr); ok1 {
+		for c := 0; c < value.Elems.ChildCount(); c++ {
+			str += GetDataTypeName(value.Elems.Child(0).(opt.ScalarExpr).DataType())
+		}
+	} else {
+		str += GetDataTypeName(param.DataType())
+	}
+	return str
+}
+
 func getChildStr(src opt.Expr) string {
 	str := ""
+	_, isCoalesceExpr := src.(*CoalesceExpr)
 	if src.ChildCount() > 0 {
 		for i := 0; i < src.ChildCount(); i++ {
-			param, ok := src.Child(i).(opt.ScalarExpr)
-			if !ok {
-				return ""
-			}
-			// We need to handle Coalece expressions specifically here,
-			// because the time series engine does not support more than two parameters
-			if _, ok1 := src.(*CoalesceExpr); ok1 {
-				if args, ok2 := param.(*ScalarListExpr); ok2 && len(*args) >= 3 {
-					return ""
-				}
-			}
-			// if any of the children is of time data type, check if it's interval data type
-			// if it IS interval data type and includes month/year, we cannot push it down
-			if param.DataType().SupportTimeCalc() {
-				if timeCanPush(param) {
-					str += GetDataTypeName(param.DataType())
-				} else {
-					str += GetDataTypeName(types.Interval)
-				}
-			} else if value, ok1 := param.(*TupleExpr); ok1 {
-				for c := 0; c < value.Elems.ChildCount(); c++ {
-					str += GetDataTypeName(value.Elems.Child(0).(opt.ScalarExpr).DataType())
-				}
-			} else {
-				str += GetDataTypeName(param.DataType())
-			}
+			str += getExprStr(src.Child(i), isCoalesceExpr)
 		}
 	}
 
@@ -244,51 +251,111 @@ func CheckExprCanExecInTSEngine(src opt.Expr, pos int8, f CheckFunc) (bool, uint
 	return CheckExprCanExecInTSEngineImp(src, pos, f, false)
 }
 
+// checkHash checks the hash code of expr, left is string , right is expr
+func checkHash(pos int8, f CheckFunc, lStr string, r opt.Expr) bool {
+	str1 := lStr
+	str1 += getExprStr(r, false)
+	hashCode := StringHash(str1)
+	if nil != f && !f(hashCode, uint32(pos)) {
+		return false
+	}
+	return true
+}
+
+// checkMultRight checks multpule right expr, such as (1,2,3), index is left col index that used to get right expr, such as 2 index is 1
+func checkMultRight(pos int8, f CheckFunc, lStr string, Index int, r ScalarListExpr) bool {
+	for i := range r {
+		var right opt.ScalarExpr
+		switch src := r[i].(type) {
+		case *ScalarListExpr:
+			right = (*src)[Index]
+		case *TupleExpr:
+			right = src.Elems[Index]
+		default:
+			right = r[i]
+		}
+		if !checkHash(pos, f, lStr, right) {
+			return false
+		}
+	}
+	return true
+}
+
+// checkMultLeft checks multpule left expr, such as (col1,col2)
+func checkMultLeft(opStr string, pos int8, f CheckFunc, l ScalarListExpr, r opt.Expr) bool {
+	for i := range l {
+		leftStr := getExprStr(l[i], false)
+		// right is tuple
+		switch src := r.(type) {
+		case *ScalarListExpr:
+			return checkMultRight(pos, f, opStr+leftStr, i, *src)
+		case *TupleExpr:
+			return checkMultRight(pos, f, opStr+leftStr, i, src.Elems)
+		default:
+			return checkHash(pos, f, opStr+leftStr, r)
+		}
+	}
+	return true
+}
+
+// checkOperator checks in or not in operator, left is col or tuple, right is tuple, such as col1 in (1,2,3) or (col1,col2) in ((1,2),(3,4))
+func checkOperator(opStr string, left, right opt.Expr, pos int8, f CheckFunc) bool {
+	// like (col1, col2, col3) in/not in ((1,2,3),(2,3,4),...)
+	switch src := left.(type) {
+	case *ScalarListExpr:
+		return checkMultLeft(opStr, pos, f, *src, right)
+	case *TupleExpr:
+		return checkOperator(opStr, &src.Elems, right, pos, f)
+	default:
+		return checkHash(pos, f, opStr+getExprStr(left, false), right)
+	}
+}
+
 // CheckExprCanExecInTSEngineImp checks whether expr and it's children exprs can be pushed down
 // tupleCanExecInTSEngine is true when the tuple use in InExpr or NotInExpr, tuple expr only can exec in ts engine in this case,
 // such as col in (1,2,3) or col in (col1,col2); other case such as COUNT(DISTINCT (channel, companyid)) can not exec in ts engine.
 func CheckExprCanExecInTSEngineImp(
 	src opt.Expr, pos int8, f CheckFunc, tupleCanExecInTSEngine bool,
 ) (bool, uint32) {
-	switch src.Op() {
-	case opt.VariableOp, opt.ConstOp, opt.FalseOp, opt.NullOp, opt.TrueOp, opt.SubqueryOp, opt.ExistsOp, opt.AnyOp:
-		// const and column can exec in ts engine.
+	switch source := src.(type) {
+	case *SubqueryExpr, *ExistsExpr, *AnyExpr:
 		// SubqueryOp, ExistsOp, AnyOp are the scalar subquery, set to be able to exec in ts engine.
 		return true, 0
-	case opt.TupleOp:
-		// only const tuple can exec in ts engine.
-		if src.ChildCount() > 0 && src.Child(0).ChildCount() > 0 && tupleCanExecInTSEngine {
-			return true, 0
+	case *VariableExpr, *NullExpr, *ConstExpr:
+		// Variable, Null and Const set to be able to exec in ts engine.
+		return true, 0
+	case *TupleExpr:
+		if !tupleCanExecInTSEngine {
+			return false, 0
 		}
-	case opt.InOp, opt.NotInOp:
+		return CheckExprCanExecInTSEngineImp(&source.Elems, pos, f, tupleCanExecInTSEngine)
+	case *InExpr, *NotInExpr:
+		// check child can exec in ts engine
 		for i := 0; i < src.ChildCount(); i++ {
 			can, _ := CheckExprCanExecInTSEngineImp(src.Child(i), pos, f, true)
 			if !can { // can not push down
 				return false, 0
 			}
 		}
-		treeOp := opt.ComparisonOpReverseMap[src.Op()]
-		str := treeOp.String()
-		if src.ChildCount() > 1 {
-			if param, ok := src.Child(1).(*TupleExpr); ok && param.ChildCount() > 0 {
-				val := param.Child(0)
-				if list, ok1 := val.(*ScalarListExpr); ok1 {
-					str += getChildStr(list.Child(0))
-				}
+		// check or operator
+		// left in/ not in convert to left[0] eq right[0] or left[1] eq right[1] ... in ts engine, so we need to check operator and parameter type to get hash code
+		str := ""
+		if src.Op() == opt.InOp {
+			str += "="
+		} else {
+			str += "!="
+		}
+
+		for i := 0; i < src.Child(0).ChildCount(); i++ {
+			if !checkOperator(str, src.Child(0).Child(i), src.Child(1).Child(i), pos, f) {
+				return false, 0
 			}
 		}
 
-		hashCode := StringHash(str)
-		if nil != f && f(hashCode, uint32(pos)) {
-			return true, hashCode
-		}
-		return false, 0
-	}
-
-	switch source := src.(type) {
+		return true, 0
 	case *ScalarListExpr:
 		for i := 0; i < len(*source); i++ {
-			can, _ := CheckExprCanExecInTSEngine((*source)[i], pos, f)
+			can, _ := CheckExprCanExecInTSEngineImp((*source)[i], pos, f, tupleCanExecInTSEngine)
 			if !can { // can not push down
 				return false, 0
 			}
@@ -305,7 +372,8 @@ func CheckExprCanExecInTSEngineImp(
 		}
 	}
 
-	if scalar, ok := src.(opt.ScalarExpr); ok && scalar.CheckConstDeductionEnabled() && checkAESupportType(scalar.DataType().Oid()) {
+	scalar, isScalarExpr := src.(opt.ScalarExpr)
+	if isScalarExpr && scalar.CheckConstDeductionEnabled() && checkAESupportType(scalar.DataType().Oid()) {
 		return true, 0
 	}
 
@@ -317,7 +385,7 @@ func CheckExprCanExecInTSEngineImp(
 
 	// check whether child exprs can exec in ts engine
 	for i := 0; i < src.ChildCount(); i++ {
-		if can, _ := CheckExprCanExecInTSEngine(src.Child(i), pos, f); !can { // can not push down
+		if can, _ := CheckExprCanExecInTSEngineImp(src.Child(i), pos, f, true); !can { // can not push down
 			return false, hashCode
 		}
 	}
@@ -505,7 +573,7 @@ func (m *Memo) SplitTagExpr(
 			for i := 0; i < len(*source); i++ {
 				lea, tags := m.SplitTagExpr((*source)[i].Condition, colMap)
 				if lea != nil {
-					(*source)[i].Condition = lea.(opt.ScalarExpr)
+					(*source)[i].Condition = lea
 					lev = append(lev, (*source)[i])
 				}
 
@@ -539,8 +607,8 @@ func (m *Memo) SplitTagExpr(
 		} else if nil == rLeave {
 			leave = lLeave
 		} else {
-			source.Left = lLeave.(opt.ScalarExpr)
-			source.Right = rLeave.(opt.ScalarExpr)
+			source.Left = lLeave
+			source.Right = rLeave
 			leave = source
 		}
 		return leave, tagFilter
@@ -636,8 +704,12 @@ func GetPrimaryTagValues(src opt.Expr, primaryTagCol TagColMap, val *PTagValues)
 		return addConstValueToPTagValues(source.Left, source.Right, primaryTagCol, val) ||
 			addConstValueToPTagValues(source.Right, source.Left, primaryTagCol, val)
 	case *InExpr:
-		if col, ok := source.Left.(*VariableExpr); ok {
-			if _, find := primaryTagCol[col.Col]; !find {
+		if len(primaryTagCol) > 1 && source.Left.Op() == opt.VariableOp {
+			return false
+		}
+		switch l := source.Left.(type) {
+		case *VariableExpr:
+			if _, find := primaryTagCol[l.Col]; !find {
 				return false
 			}
 			if tuple, ok1 := source.Right.(*TupleExpr); ok1 {
@@ -650,10 +722,44 @@ func GetPrimaryTagValues(src opt.Expr, primaryTagCol TagColMap, val *PTagValues)
 					}
 				}
 				if val != nil {
-					(*val)[uint32(col.Col)] = append((*val)[uint32(col.Col)], values...)
+					(*val)[uint32(l.Col)] = append((*val)[uint32(l.Col)], values...)
 				}
 				return true
 			}
+		case *TupleExpr:
+			// (col1, col2, col3) in ((1,2,3),(2,3,4),...)
+			// every col must be primary tag column and every value must be const
+			for i := range l.Elems {
+				col, ok := l.Elems[i].(*VariableExpr)
+				if !ok {
+					return false
+				}
+				if _, find := primaryTagCol[col.Col]; !find {
+					return false
+				}
+
+				// ((1,2,3),(2,3,4),...)
+				if tuple, ok1 := source.Right.(*TupleExpr); ok1 {
+					var values []string
+					// (1,2,3)
+					for j := range tuple.Elems {
+						if tupEveryValueArray, ok1 := tuple.Elems[j].(*TupleExpr); ok1 {
+							if col1, ok1 := tupEveryValueArray.Elems[i].(*ConstExpr); ok1 {
+								values = append(values, constValueToString(col1))
+							} else {
+								return false
+							}
+						}
+					}
+					if val != nil {
+						(*val)[uint32(col.Col)] = append((*val)[uint32(col.Col)], values...)
+					}
+				} else {
+					return false
+				}
+			}
+
+			return true
 		}
 	}
 

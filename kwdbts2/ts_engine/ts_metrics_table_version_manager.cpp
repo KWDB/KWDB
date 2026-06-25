@@ -106,7 +106,7 @@ void MetricsVersionManager::InsertNull(uint32_t ts_version) {
 
 KStatus MetricsVersionManager::CreateTable(kwdbContext_p ctx, std::vector<AttributeInfo> meta, uint32_t db_id,
                                            uint32_t ts_version, int64_t lifetime, uint64_t partition_interval,
-                                           uint64_t hash_num, ErrorInfo& err_info) {
+                                           uint64_t hash_num, bool sparse, ErrorInfo& err_info) {
   wrLock();
   Defer defer([&]() { unLock(); });
   auto s = TsIOEnv::GetInstance().NewDirectory(metric_schema_path_);
@@ -144,7 +144,9 @@ KStatus MetricsVersionManager::CreateTable(kwdbContext_p ctx, std::vector<Attrib
   }
   LifeTime life_time {lifetime, precision};
   tmp_schema->SetLifeTime(life_time);
-  LOG_INFO("Create table %lu with life time[%ld:%d], version:%d.", table_id_, life_time.ts, life_time.precision, ts_version);
+  tmp_schema->SetSparseTable(sparse);
+  LOG_INFO("Create table %lu with life time[%ld:%d], version:%d, sparse[%d].",
+    table_id_, life_time.ts, life_time.precision, ts_version, sparse);
   tmp_schema->setObjectReady();
   // Save to map cache
   metric_tables_.insert_or_assign(ts_version, tmp_schema);
@@ -316,6 +318,10 @@ KStatus MetricsVersionManager::UndoAlterCol(uint32_t old_version, uint32_t new_v
 
 uint64_t MetricsVersionManager::GetHashNum() {
   return GetCurrentMetricsTable()->hashNum();
+}
+
+bool MetricsVersionManager::IsSparseTable() {
+  return GetCurrentMetricsTable()->IsSparseTable();
 }
 
 std::shared_ptr<MMapMetricsTable> MetricsVersionManager::open(uint32_t ts_version, ErrorInfo& err_info) {

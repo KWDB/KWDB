@@ -639,6 +639,7 @@ func (tis *tsInsertSelecter) runTSInsert(
 			tis.colsMap,
 			uint32(insTable.ParentID),
 			uint32(insTable.ID),
+			insTable.TableType,
 			insTable.TableType == tree.InstanceTable,
 			uint32(insTable.TsTable.TsVersion),
 			insTable.TsTable.HashNum,

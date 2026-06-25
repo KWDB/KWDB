@@ -279,15 +279,14 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOtherEmpty) {
 TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
   roachpb::CreateTsTable meta;
   KTableKey cur_table_id = 1003;
-  ConstructRoachpbTable(&meta, cur_table_id);
+  ConstructRoachpbTable(&meta, cur_table_id, 1, {
+                           roachpb::DataType::TIMESTAMP, roachpb::DataType::INT, roachpb::DataType::DOUBLE},
+                           {roachpb::DataType::TIMESTAMP, roachpb::DataType::VARCHAR, roachpb::DataType::VARCHAR, roachpb::DataType::TIMESTAMP},
+                           true, true);
   std::shared_ptr<TsTable> ts_table;
   KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ctx_->ts_engine = ts_engine_src_;
-
-  // create table 1008
-  s = ts_engine_desc_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
-  ASSERT_EQ(s, KStatus::SUCCESS);
   // input data to  table 1007
   InsertData(ts_engine_src_, cur_table_id, 1, 12345, 5);
   std::vector<EntityResultIndex> entity_ids;
@@ -300,6 +299,21 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
   ASSERT_EQ(1, entity_ids.size());
   auto row_count = GetDataNum(ts_engine_src_, cur_table_id, entity_ids[0], {INT64_MIN, INT64_MAX});
   ASSERT_EQ(row_count, 5);
+
+  vector<uint32_t> cols;
+  std::shared_ptr<TagTable> tag_table;
+  s = ts_table->GetSchemaManager()->GetTagSchema(ctx_, &tag_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  std::string p_key_str = GetPrimaryKey(ts_engine_src_, cur_table_id, 1);
+  TSSlice primary_key{p_key_str.data(), p_key_str.size()};
+  bool find_one = tag_table->GetValidColumns(&primary_key, 1, cols);
+  ASSERT_EQ(find_one, true);
+  ASSERT_TRUE(cols.size() > 0);
+  auto src_valid_col_num = cols.size();
+
+  // create table 1008
+  s = ts_engine_desc_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
 
   uint64_t snapshot_id;
   bool is_dropped = false;
@@ -327,6 +341,15 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
   ASSERT_EQ(s, KStatus::SUCCESS);
   s = ts_engine_desc_->DeleteSnapshot(ctx_, desc_snapshot_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
+
+  s = ts_engine_desc_->GetTsTable(ctx_, cur_table_id, ts_table, is_dropped);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(is_dropped, false);
+  s = ts_table->GetSchemaManager()->GetTagSchema(ctx_, &tag_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  find_one = tag_table->GetValidColumns(&primary_key, 1, cols);
+  ASSERT_EQ(find_one, true);
+  ASSERT_EQ(cols.size(), src_valid_col_num);
 
   entity_ids.clear();
   for(auto vg : *(ts_engine_desc_->GetTsVGroups())) {

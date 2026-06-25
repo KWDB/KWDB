@@ -16,14 +16,16 @@
 
 using namespace kwdbts;  // NOLINT
 
-const  std::string del_item_file_path = "./tests";
+const  std::string del_item_file_path = "./test_del";
 
 class TsDelItemMgrTest : public ::testing::Test {
  public:
   TsDelItemMgrTest() {
-    auto ret = system(("rm -rf tests"));
+    std::string cmd = "rm -rf " + del_item_file_path;
+    auto ret = system(cmd.c_str());
     EXPECT_EQ(ret, 0);
-    ret = system(("mkdir tests"));
+    cmd = "mkdir " + del_item_file_path;
+    ret = system(cmd.c_str());
     EXPECT_EQ(ret, 0);
   }
 };

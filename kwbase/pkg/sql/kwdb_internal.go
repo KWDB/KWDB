@@ -3851,7 +3851,7 @@ CREATE TABLE kwdb_internal.kwdb_attributes (
 
 					switch table.TableType {
 					// timeseries table
-					case tree.TimeseriesTable:
+					case tree.TimeseriesTable, tree.SparseTable:
 						// DNull for NULL
 						if err := addRow(
 							tree.NewDString(table.Name),                     // table_name
@@ -4015,7 +4015,7 @@ CREATE TABLE kwdb_internal.kwdb_retention (
 		}
 		for i := range descriptors {
 			tableDesc, ok := descriptors[i].(*sqlbase.TableDescriptor)
-			if ok && (tableDesc.TableType == tree.TemplateTable || tableDesc.TableType == tree.TimeseriesTable) {
+			if ok && tableDesc.IsTSTable() {
 				if tableDesc.Dropped() || !canUserSeeTable(ctx, p, tableDesc, false) {
 					continue
 				}

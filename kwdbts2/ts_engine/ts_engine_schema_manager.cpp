@@ -205,8 +205,11 @@ KStatus TsEngineSchemaManager::SetTableDropped(TSTableID tbl_id) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsEngineSchemaManager::GetVGroup(kwdbContext_p ctx, const std::shared_ptr<TsTableSchemaManager>& tb_schema,
-                                          TSSlice primary_key, uint32_t* vgroup_id, TSEntityID* entity_id, bool* new_tag) {
+KStatus TsEngineSchemaManager::GetVGroupAndUpdateValidCol(kwdbContext_p ctx,
+  const std::shared_ptr<TsTableSchemaManager>& tb_schema,
+  std::vector<uint32_t> valid_col_idx,
+  TSSlice primary_key, uint32_t* vgroup_id,
+  TSEntityID* entity_id, bool* new_tag) {
   std::shared_ptr<TagTable> tag_schema;
   tb_schema->GetTagSchema(ctx, &tag_schema);
   uint32_t entityid, groupid;
@@ -224,6 +227,20 @@ KStatus TsEngineSchemaManager::GetVGroup(kwdbContext_p ctx, const std::shared_pt
       *vgroup_id = groupid;
       *new_tag = false;
       return KStatus::SUCCESS;
+    }
+    if (valid_col_idx.size() > 0) {
+      // For existing tag on sparse table, check if valid columns need updating
+      std::shared_ptr<TagTable> tag_table;
+      auto s = tb_schema->GetTagSchema(ctx, &tag_table);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("Failed get tag schema for valid column update, table[%lu].", tb_schema->GetTableId());
+        return s;
+      }
+      if (tag_table->issparse()) {
+        if (!tag_table->CheckAndUpdateValidColumns(primary_key.data, primary_key.len, valid_col_idx)) {
+          LOG_ERROR("Failed to update valid columns for table[%lu].", tb_schema->GetTableId());
+        }
+      }
     }
   }
   // use consistent hash to allocate vgroup id

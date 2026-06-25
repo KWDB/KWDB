@@ -66,6 +66,7 @@ struct ParsedBatchDataLayout {
   size_t tags_data_offset = 0;
   uint32_t tags_data_size = 0;
   uint8_t row_type = DataTagFlag::TAG_ONLY;
+  size_t valid_column_part_offset = 0;
   size_t block_span_data_offset = 0;
   uint32_t block_span_data_size = 0;
 };
@@ -116,15 +117,78 @@ KStatus ParseBatchDataLayout(const TSSlice& data, TSTableID table_id, ParsedBatc
   layout.tags_data_offset = layout.p_tag_offset + layout.p_tag_size + sizeof(uint32_t);
   layout.tags_data_size = DecodeBatchField<uint32_t>(data.data + layout.tags_data_offset - sizeof(uint32_t));
   layout.row_type = DecodeBatchField<uint8_t>(data.data + TsBatchData::row_type_offset_);
-  layout.block_span_data_offset = layout.tags_data_offset + layout.tags_data_size;
+
+  // v0 layout: tags | BlockSpanHeader{length(4)+min_ts...block_version}(60)
+  // v1 layout: tags | BlockSpanHeader{length(4)+min_ts...block_version}(60)
+  // v2 layout: tags | data_part_length(4) | valid_column_part | BlockSpanHeader{min_ts...block_version}(60)
+  if (layout.batch_version <= 1) {
+    size_t bs_length_offset = layout.tags_data_offset + layout.tags_data_size;
+    // v0/v1 tag-only: no data part after tags
+    if (bs_length_offset == data.len) {
+      if (layout.row_type != DataTagFlag::TAG_ONLY) {
+        log_layout_fail("row_type expects block span payload but batch ends after tags (v0/v1)");
+        return KStatus::FAIL;
+      }
+      return KStatus::SUCCESS;
+    }
+    // v0/v1: BlockSpanHeader starts with a length(4) field before min_ts
+    if (!HasEnoughBytes(data.len, bs_length_offset, sizeof(uint32_t))) {
+      log_layout_fail("missing block span length field (v0/v1)");
+      return KStatus::FAIL;
+    }
+    uint32_t block_span_length = DecodeBatchField<uint32_t>(data.data + bs_length_offset);
+    if (block_span_length < sizeof(uint32_t)) {
+      log_layout_fail("block span length too small (v0/v1)");
+      return KStatus::FAIL;
+    }
+    // skip BlockSpanHeader.length(4) so that block_span_slice starts at min_ts
+    layout.block_span_data_offset = bs_length_offset + sizeof(uint32_t);
+    layout.block_span_data_size = block_span_length - sizeof(uint32_t);
+  } else {
+    // v2: data_part_length + valid_column_part + block_span_part
+    size_t data_part_length_offset = layout.tags_data_offset + layout.tags_data_size;
+    if (!HasEnoughBytes(data.len, data_part_length_offset, sizeof(uint32_t))) {
+      log_layout_fail("missing data part length field");
+      return KStatus::FAIL;
+    }
+    uint32_t data_part_length = DecodeBatchField<uint32_t>(data.data + data_part_length_offset);
+
+    layout.valid_column_part_offset = data_part_length_offset + sizeof(uint32_t);
+    if (!HasEnoughBytes(data.len, layout.valid_column_part_offset, sizeof(uint16_t))) {
+      log_layout_fail("missing valid column type field");
+      return KStatus::FAIL;
+    }
+    uint16_t valid_column_type = DecodeBatchField<uint16_t>(data.data + layout.valid_column_part_offset);
+    uint32_t valid_column_part_size = sizeof(uint16_t);
+    if (valid_column_type == TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_VECTOR) {
+      if (!HasEnoughBytes(data.len, layout.valid_column_part_offset + sizeof(uint16_t), sizeof(uint32_t))) {
+        log_layout_fail("missing valid column count field");
+        return KStatus::FAIL;
+      }
+      uint32_t valid_col_num = DecodeBatchField<uint32_t>(data.data + layout.valid_column_part_offset + sizeof(uint16_t));
+      if (!HasEnoughBytes(data.len, layout.valid_column_part_offset + sizeof(uint16_t) + sizeof(uint32_t),
+                          sizeof(uint32_t) * valid_col_num)) {
+        log_layout_fail("valid column list exceeds batch boundary");
+        return KStatus::FAIL;
+      }
+      valid_column_part_size += sizeof(uint32_t) + sizeof(uint32_t) * valid_col_num;
+    }
+
+    if (data_part_length < valid_column_part_size) {
+      log_layout_fail("data part length smaller than valid column part");
+      return KStatus::FAIL;
+    }
+    layout.block_span_data_offset = layout.valid_column_part_offset + valid_column_part_size;
+    layout.block_span_data_size = data_part_length - valid_column_part_size;
+  }
   if (layout.block_span_data_offset > data.len) {
     log_layout_fail("tags payload exceeds batch boundary");
     return KStatus::FAIL;
   }
 
-  if (layout.block_span_data_offset == data.len) {
+  if (layout.block_span_data_size == 0) {
     if (layout.row_type != DataTagFlag::TAG_ONLY) {
-      log_layout_fail("row_type expects block span payload but batch ends after tags");
+      log_layout_fail("row_type expects block span payload but batch ends after valid column part");
       return KStatus::FAIL;
     }
     return KStatus::SUCCESS;
@@ -133,12 +197,6 @@ KStatus ParseBatchDataLayout(const TSSlice& data, TSTableID table_id, ParsedBatc
     log_layout_fail("block span payload exists but row_type is not DATA_AND_TAG");
     return KStatus::FAIL;
   }
-  if (!HasEnoughBytes(data.len, layout.block_span_data_offset, sizeof(uint32_t))) {
-    log_layout_fail("missing block span length field");
-    return KStatus::FAIL;
-  }
-
-  layout.block_span_data_size = DecodeBatchField<uint32_t>(data.data + layout.block_span_data_offset);
   if (layout.block_span_data_size < TsBatchData::block_span_data_header_size_) {
     LOG_ERROR("ParseBatchDataLayout failed, table_id[%lu], reason[block span payload too short], "
               "payload_len=%u, min_header_len=%d, "
@@ -247,6 +305,7 @@ KStatus TsReadBatchDataWorker::GetTagValue(kwdbContext_p ctx) {
       tag_value_len_ += tag.m_size;
     }
   }
+  cached_valid_columns_.clear();
   cached_tags_data_.clear();
   cached_tags_data_.resize(tag_value_len_);
   assert(res.col_num_ == tags_info_.size());
@@ -287,6 +346,18 @@ KStatus TsReadBatchDataWorker::GetTagValue(kwdbContext_p ctx) {
     }
   }
 
+  std::shared_ptr<TagTable> tag_table;
+  s = ts_table_v2->GetSchemaManager()->GetTagSchema(ctx, &tag_table);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("cannot get tag table.");
+    return KStatus::FAIL;
+  }
+  if (tag_table->issparse()) {
+    uint32_t ptags_size = cur_entity_index_.p_tags_size;
+    TSSlice primary_tag = {reinterpret_cast<char *>(cur_entity_index_.mem.get()), ptags_size};
+    tag_table->GetValidColumns(&primary_tag, 1, cached_valid_columns_);
+  }
+
   is_tags_data_cached_ = true;
   tag_cache_stats_helper_.OnFill();
   cur_batch_data_.AddTags({cached_tags_data_.data(), cached_tags_data_.size()});
@@ -307,7 +378,7 @@ void TsReadBatchDataWorker::AddTsBlockSpanInfo(const std::shared_ptr<TsBlockSpan
       block_span->GetScanVersion() != block_span->GetTableVersion()) {
     block_version = CURRENT_BLOCK_VERSION;
   }
-  cur_batch_data_.AddBlockSpanDataHeader(0, first_row_ts, end_row_ts, min_osn, max_osn,
+  cur_batch_data_.AddBlockSpanDataHeader(first_row_ts, end_row_ts, min_osn, max_osn,
                                          first_osn, last_osn, n_cols_, n_rows, block_version);
 }
 
@@ -432,6 +503,7 @@ KStatus TsReadBatchDataWorker::GenerateBatchData(kwdbContext_p ctx,
     LOG_ERROR("add tag failed");
     return s;
   }
+  cur_batch_data_.AddDataPartLengthAndValidCols(cached_valid_columns_);
   // add TsBlockSpan info
   if (block_span) {
     AddTsBlockSpanInfo(block_span);
@@ -443,7 +515,7 @@ KStatus TsReadBatchDataWorker::GenerateBatchData(kwdbContext_p ctx,
     }
   }
   // set ts block span data length
-  cur_batch_data_.UpdateBatchDataInfo();
+  cur_batch_data_.UpdateBatchDataInfo(cached_valid_columns_);
   return KStatus::SUCCESS;
 }
 
@@ -650,6 +722,9 @@ void TsWriteBatchDataWorker::GetTagPayload(uint32_t table_version, const TSSlice
   // update tag type
   uint8_t tag_type = DataTagFlag::TAG_ONLY;
   memcpy(tag_payload_str.data() + TsRawPayload::row_type_offset_, &tag_type, sizeof(tag_type));
+  // update payload version
+  uint32_t pd_version = MAX_PAYLOAD_VERSION;
+  memcpy(tag_payload_str.data() + TsRawPayload::payload_version_offset_, &pd_version, sizeof(pd_version));
 }
 
 KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uint32_t table_version,
@@ -696,7 +771,19 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uin
   uint32_t vgroup_id;
   TSEntityID entity_id;
   bool new_tag;
-  s = ts_engine_->InsertTagData(ctx, schema, 0, pay_load_struct, false,
+  const std::vector<AttributeInfo>* metric_schema_info;
+  s = schema->GetColumnsExcludeDroppedPtr(&metric_schema_info, TsRawPayload::GetTableVersionFromSlice(pay_load_struct));
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetColumnsExcludeDroppedPtr failed, table id: %lu", table_id);
+    return s;
+  }
+  TsRawPayload p(metric_schema_info);
+  s = p.ParseBatchDataStruct(pay_load_struct);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("ParsePayLoadStruct failed.");
+    return s;
+  }
+  s = ts_engine_->InsertTagData(ctx, schema, 0, p, false,
                                 vgroup_id, entity_id, new_tag);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("InsertTagData[%lu] failed", table_id);

@@ -41,17 +41,35 @@ TSSlice ExtractBatchTags(const TSSlice& batch) {
   return {batch.data + tags_data_offset, tags_data_size};
 }
 
+TSSlice ExtractBatchBlockTagPrefix(const TSSlice& batch) {
+  uint16_t p_tag_size = DecodeFixed16(batch.data + TsBatchData::header_size_);
+  uint32_t p_tag_offset = TsBatchData::header_size_ + sizeof(p_tag_size);
+  uint32_t tags_data_offset = p_tag_offset + p_tag_size + sizeof(uint32_t);
+  uint32_t tags_data_size = DecodeFixed32(batch.data + tags_data_offset - sizeof(uint32_t));
+  return {batch.data, tags_data_offset + tags_data_size};
+}
+
 TSSlice ExtractBatchBlockSpanData(const TSSlice& batch) {
   uint16_t p_tag_size = DecodeFixed16(batch.data + TsBatchData::header_size_);
   uint32_t p_tag_offset = TsBatchData::header_size_ + sizeof(p_tag_size);
   uint32_t tags_data_offset = p_tag_offset + p_tag_size + sizeof(uint32_t);
   uint32_t tags_data_size = DecodeFixed32(batch.data + tags_data_offset - sizeof(uint32_t));
+  size_t data_part_length_offset = tags_data_offset + tags_data_size;
+  uint32_t data_part_length = DecodeFixed32(batch.data + data_part_length_offset);
+  size_t valid_column_part_offset = data_part_length_offset + sizeof(uint32_t);
+  uint16_t valid_column_type = DecodeFixed16(batch.data + valid_column_part_offset);
+  uint32_t valid_column_part_size = sizeof(uint16_t);
+  if (valid_column_type == TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_VECTOR) {
+    uint32_t valid_col_num = DecodeFixed32(batch.data + valid_column_part_offset + sizeof(uint16_t));
+    valid_column_part_size += sizeof(uint32_t) + sizeof(uint32_t) * valid_col_num;
+  }
+  size_t block_span_data_offset = valid_column_part_offset + valid_column_part_size;
+  uint32_t block_span_data_size = data_part_length - valid_column_part_size;
   uint32_t block_span_offset = tags_data_offset + tags_data_size;
-  if (block_span_offset >= batch.len) {
+  if (block_span_data_offset >= batch.len) {
     return {nullptr, 0};
   }
-  uint32_t block_span_size = DecodeFixed32(batch.data + block_span_offset + TsBatchData::length_offset_in_span_data_);
-  return {batch.data + block_span_offset, block_span_size};
+  return {batch.data + block_span_data_offset, block_span_data_size};
 }
 
 class ScopedForceReCompress {
@@ -158,8 +176,10 @@ std::string BuildLegacyV0BatchFromTagPrefix(std::string tag_prefix, const std::v
   std::string block_data = BuildLegacyV0BlockData(metric_schema);
   std::string agg_data = BuildLegacyOffsetAggData();
 
+  // v0: BlockSpanHeader{length(4)+min_ts...block_version}(60) = 64 bytes
+  constexpr uint32_t v0_header_size = sizeof(uint32_t) + TsBatchData::block_span_data_header_size_;
   TsBufferBuilder block_span;
-  const uint32_t block_span_len = 60 + block_data.size() + agg_data.size();
+  const uint32_t block_span_len = v0_header_size + block_data.size() + agg_data.size();
   PutFixed32(&block_span, block_span_len);
   PutFixed64(&block_span, 1000);
   PutFixed64(&block_span, 3000);
@@ -169,7 +189,8 @@ std::string BuildLegacyV0BatchFromTagPrefix(std::string tag_prefix, const std::v
   PutFixed64(&block_span, 12);
   PutFixed32(&block_span, n_cols);
   PutFixed32(&block_span, n_rows);
-  assert(block_span.size() == 60U);
+  PutFixed32(&block_span, 0);
+  assert(block_span.size() == v0_header_size);
   block_span.append(block_data);
   block_span.append(agg_data);
 
@@ -188,8 +209,10 @@ std::string BuildLegacyV1BatchFromTagPrefix(std::string tag_prefix, const std::v
   std::string block_data = BuildLegacyV0BlockData(metric_schema);
   std::string agg_data = BuildLegacyOffsetAggData();
 
+  // v1: BlockSpanHeader{length(4)+min_ts...block_version}(60) = 64 bytes
+  const uint32_t v1_header_size = sizeof(uint32_t) + TsBatchData::block_span_data_header_size_;
   TsBufferBuilder block_span;
-  const uint32_t block_span_len = TsBatchData::block_span_data_header_size_ + block_data.size() + agg_data.size();
+  const uint32_t block_span_len = v1_header_size + block_data.size() + agg_data.size();
   PutFixed32(&block_span, block_span_len);
   PutFixed64(&block_span, 1000);
   PutFixed64(&block_span, 3000);
@@ -200,7 +223,7 @@ std::string BuildLegacyV1BatchFromTagPrefix(std::string tag_prefix, const std::v
   PutFixed32(&block_span, n_cols);
   PutFixed32(&block_span, n_rows);
   PutFixed32(&block_span, block_version);
-  assert(block_span.size() == static_cast<size_t>(TsBatchData::block_span_data_header_size_));
+  assert(block_span.size() == v1_header_size);
   block_span.append(block_data);
   block_span.append(agg_data);
 
@@ -217,6 +240,7 @@ std::string BuildLegacyV1BatchFromTagPrefix(std::string tag_prefix, const std::v
 // Verifies batch headers and block-span metadata are serialized with the
 // expected little-endian field layout.
 TEST(TsBatchDataTest, HeaderAndBlockSpanHeaderUseLittleEndianEncoding) {
+  std::vector<uint32_t> valid_cols;
   TsBatchData batch;
   const TS_OSN tag_osn = 0x0102030405060708ULL;
   const uint16_t hash_point = 0x1234;
@@ -238,8 +262,9 @@ TEST(TsBatchDataTest, HeaderAndBlockSpanHeaderUseLittleEndianEncoding) {
   batch.SetTableVersion(table_version);
   batch.AddPrimaryTag({const_cast<char*>(primary_tag.data()), primary_tag.size()});
   batch.AddTags({const_cast<char*>(tags.data()), tags.size()});
-  batch.AddBlockSpanDataHeader(0, min_ts, max_ts, min_osn, max_osn, first_osn, last_osn, n_cols, n_rows, block_version);
-  batch.UpdateBatchDataInfo();
+  batch.AddDataPartLengthAndValidCols(valid_cols);
+  batch.AddBlockSpanDataHeader(min_ts, max_ts, min_osn, max_osn, first_osn, last_osn, n_cols, n_rows, block_version);
+  batch.UpdateBatchDataInfo(valid_cols);
 
   TSSlice raw = batch.data_.AsSlice();
   auto expect_fixed16 = [&](size_t offset, uint16_t value) {
@@ -273,8 +298,7 @@ TEST(TsBatchDataTest, HeaderAndBlockSpanHeaderUseLittleEndianEncoding) {
   const size_t tags_size_offset = TsBatchData::header_size_ + sizeof(uint16_t) + primary_tag.size();
   expect_fixed32(tags_size_offset, static_cast<uint32_t>(tags.size()));
 
-  const size_t block_offset = tags_size_offset + sizeof(uint32_t) + tags.size();
-  expect_fixed32(block_offset + TsBatchData::length_offset_in_span_data_, static_cast<uint32_t>(raw.len - block_offset));
+  const size_t block_offset = tags_size_offset + sizeof(uint32_t) + tags.size() + sizeof(uint32_t) + sizeof(uint16_t);
   expect_fixed64(block_offset + TsBatchData::min_ts_offset_in_span_data_, min_ts);
   expect_fixed64(block_offset + TsBatchData::max_ts_offset_in_span_data_, max_ts);
   expect_fixed64(block_offset + TsBatchData::min_osn_offset_in_span_data_, min_osn);
@@ -298,6 +322,7 @@ class TsBatchDataWorkerTest : public TsEngineTestBase {
 // Verifies that batch header fields are written back consistently after tags and
 // block-span metadata are assembled into one batch payload.
 TEST(TsBatchDataTest, UpdateBatchDataInfoRoundTrip) {
+  std::vector<uint32_t> valid_cols;
   TsBatchData batch;
   const TS_OSN tag_osn = 123;
   const uint16_t hash_point = 17;
@@ -309,8 +334,9 @@ TEST(TsBatchDataTest, UpdateBatchDataInfoRoundTrip) {
   batch.SetTableVersion(table_version);
   batch.AddPrimaryTag({const_cast<char*>(ptag.data()), ptag.size()});
   batch.AddTags({const_cast<char*>(tags.data()), tags.size()});
-  batch.AddBlockSpanDataHeader(0, 100, 200, 11, 22, 33, 44, 5, 7, 3);
-  batch.UpdateBatchDataInfo();
+  batch.AddDataPartLengthAndValidCols(valid_cols);
+  batch.AddBlockSpanDataHeader(100, 200, 11, 22, 33, 44, 5, 7, 3);
+  batch.UpdateBatchDataInfo(valid_cols);
 
   EXPECT_EQ(batch.GetBatchVersion(), CURRENT_BATCH_VERSION);
   EXPECT_EQ(batch.GetTagOSN(), tag_osn);
@@ -321,6 +347,216 @@ TEST(TsBatchDataTest, UpdateBatchDataInfoRoundTrip) {
   EXPECT_EQ(batch.GetDataLength(), static_cast<uint32_t>(batch.data_.size()));
   EXPECT_TRUE(batch.HasBlockSpanData());
   EXPECT_EQ(batch.GetBlockSpanData().len, TsBatchData::block_span_data_header_size_);
+}
+
+// Tests that non-empty valid columns are encoded as VECTOR type with col count
+// and column IDs, and that data_part_length correctly covers both valid column
+// part and block span part.
+TEST(TsBatchDataTest, ValidColumnPartEncodingWithNonEmptyCols) {
+  TsBatchData batch;
+  const std::string ptag{"pk"};
+  const std::string tags{"tag"};
+  std::vector<uint32_t> valid_cols = {0, 2, 5};
+
+  batch.SetTagOSN(123);
+  batch.SetHashPoint(17);
+  batch.SetTableVersion(9);
+  batch.AddPrimaryTag({const_cast<char*>(ptag.data()), ptag.size()});
+  batch.AddTags({const_cast<char*>(tags.data()), tags.size()});
+  batch.AddDataPartLengthAndValidCols(valid_cols);
+  batch.AddBlockSpanDataHeader(100, 200, 11, 22, 33, 44, 5, 7, 3);
+  batch.UpdateBatchDataInfo(valid_cols);
+
+  // valid_column_type = VECTOR
+  uint16_t vc_type = DecodeFixed16(batch.data_.data() + batch.valid_column_part_offset_);
+  EXPECT_EQ(vc_type, TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_VECTOR);
+
+  // valid_col_num
+  size_t vc_num_offset = batch.valid_column_part_offset_ + sizeof(uint16_t);
+  uint32_t vc_num = DecodeFixed32(batch.data_.data() + vc_num_offset);
+  EXPECT_EQ(vc_num, 3u);
+
+  // each valid column ID
+  size_t col_base = vc_num_offset + sizeof(uint32_t);
+  for (size_t i = 0; i < valid_cols.size(); i++) {
+    uint32_t col_id = DecodeFixed32(batch.data_.data() + col_base + i * sizeof(uint32_t));
+    EXPECT_EQ(col_id, valid_cols[i]);
+  }
+
+  // valid_column_part_length = type(2) + count(4) + 3 * col_id(4)
+  uint32_t expected_vc_len = sizeof(uint16_t) + sizeof(uint32_t) + valid_cols.size() * sizeof(uint32_t);
+  EXPECT_EQ(batch.valid_column_part_length_, expected_vc_len);
+
+  // data_part_length = valid_column_part_length + block_span_data_header_size
+  uint32_t data_part_length = DecodeFixed32(batch.data_.data() + batch.data_part_length_offset_);
+  EXPECT_EQ(data_part_length, expected_vc_len + TsBatchData::block_span_data_header_size_);
+
+  // block span data still starts after valid column part
+  EXPECT_TRUE(batch.HasBlockSpanData());
+  EXPECT_EQ(batch.GetBlockSpanData().len, TsBatchData::block_span_data_header_size_);
+
+  // overall data_length includes everything
+  EXPECT_EQ(batch.GetDataLength(), static_cast<uint32_t>(batch.data_.size()));
+  EXPECT_EQ(batch.GetRowType(), DataTagFlag::DATA_AND_TAG);
+  EXPECT_EQ(batch.GetRowCount(), 7u);
+}
+
+// Tests that empty valid columns encode as TUPLE type with no extra fields.
+TEST(TsBatchDataTest, ValidColumnPartEncodingWithEmptyCols) {
+  TsBatchData batch;
+  const std::string ptag{"pk"};
+  const std::string tags{"tag"};
+  std::vector<uint32_t> empty_cols;
+
+  batch.SetTagOSN(1);
+  batch.SetHashPoint(1);
+  batch.SetTableVersion(1);
+  batch.AddPrimaryTag({const_cast<char*>(ptag.data()), ptag.size()});
+  batch.AddTags({const_cast<char*>(tags.data()), tags.size()});
+  batch.AddDataPartLengthAndValidCols(empty_cols);
+  batch.AddBlockSpanDataHeader(100, 200, 11, 22, 33, 44, 5, 7, 3);
+  batch.UpdateBatchDataInfo(empty_cols);
+
+  // valid_column_type = TUPLE
+  uint16_t vc_type = DecodeFixed16(batch.data_.data() + batch.valid_column_part_offset_);
+  EXPECT_EQ(vc_type, TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_TUPLE);
+
+  // valid_column_part_length = sizeof(uint16_t) only
+  EXPECT_EQ(batch.valid_column_part_length_, sizeof(uint16_t));
+
+  // data_part_length = sizeof(uint16_t) + block_span_data_header_size
+  uint32_t data_part_length = DecodeFixed32(batch.data_.data() + batch.data_part_length_offset_);
+  EXPECT_EQ(data_part_length, static_cast<uint32_t>(sizeof(uint16_t) + TsBatchData::block_span_data_header_size_));
+
+  EXPECT_TRUE(batch.HasBlockSpanData());
+  EXPECT_EQ(batch.GetBlockSpanData().len, TsBatchData::block_span_data_header_size_);
+}
+
+// Tests tag-only batch (no block span) with valid columns.
+TEST(TsBatchDataTest, TagOnlyWithValidColumns) {
+  TsBatchData batch;
+  const std::string ptag{"pk"};
+  const std::string tags{"tag"};
+  std::vector<uint32_t> valid_cols = {1, 3};
+
+  batch.SetTagOSN(1);
+  batch.SetHashPoint(1);
+  batch.SetTableVersion(1);
+  batch.AddPrimaryTag({const_cast<char*>(ptag.data()), ptag.size()});
+  batch.AddTags({const_cast<char*>(tags.data()), tags.size()});
+  batch.AddDataPartLengthAndValidCols(valid_cols);
+  // no block span header added
+  batch.UpdateBatchDataInfo(valid_cols);
+
+  EXPECT_EQ(batch.GetRowType(), DataTagFlag::TAG_ONLY);
+  EXPECT_FALSE(batch.HasBlockSpanData());
+
+  // data_part_length = valid_column_part_length (no block span)
+  uint32_t expected_vc_len = sizeof(uint16_t) + sizeof(uint32_t) + valid_cols.size() * sizeof(uint32_t);
+  EXPECT_EQ(batch.valid_column_part_length_, expected_vc_len);
+  uint32_t data_part_length = DecodeFixed32(batch.data_.data() + batch.data_part_length_offset_);
+  EXPECT_EQ(data_part_length, expected_vc_len);
+
+  // row count defaults to 1 for tag-only
+  EXPECT_EQ(batch.GetRowCount(), 1u);
+}
+
+// Tests that Clear() resets valid column state so a reused TsBatchData encodes
+// correctly.
+TEST(TsBatchDataTest, ClearResetsValidColumnState) {
+  TsBatchData batch;
+  const std::string ptag{"pk"};
+  const std::string tags{"tag"};
+  std::vector<uint32_t> valid_cols = {0, 1};
+
+  // first use: with valid columns
+  batch.SetTagOSN(1);
+  batch.SetHashPoint(1);
+  batch.SetTableVersion(1);
+  batch.AddPrimaryTag({const_cast<char*>(ptag.data()), ptag.size()});
+  batch.AddTags({const_cast<char*>(tags.data()), tags.size()});
+  batch.AddDataPartLengthAndValidCols(valid_cols);
+  batch.AddBlockSpanDataHeader(100, 200, 1, 2, 3, 4, 5, 6, 7);
+  batch.UpdateBatchDataInfo(valid_cols);
+  ASSERT_TRUE(batch.HasBlockSpanData());
+
+  // second use after Clear: without valid columns
+  batch.Clear();
+  std::vector<uint32_t> empty_cols;
+  batch.SetTagOSN(2);
+  batch.SetHashPoint(2);
+  batch.SetTableVersion(2);
+  batch.AddPrimaryTag({const_cast<char*>(ptag.data()), ptag.size()});
+  batch.AddTags({const_cast<char*>(tags.data()), tags.size()});
+  batch.AddDataPartLengthAndValidCols(empty_cols);
+  batch.AddBlockSpanDataHeader(300, 400, 10, 20, 30, 40, 5, 8, 1);
+  batch.UpdateBatchDataInfo(empty_cols);
+
+  // valid_column_type should be TUPLE now
+  uint16_t vc_type = DecodeFixed16(batch.data_.data() + batch.valid_column_part_offset_);
+  EXPECT_EQ(vc_type, TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_TUPLE);
+  EXPECT_EQ(batch.valid_column_part_length_, sizeof(uint16_t));
+
+  // block span data should still be accessible
+  EXPECT_TRUE(batch.HasBlockSpanData());
+  EXPECT_EQ(batch.GetBlockSpanData().len, TsBatchData::block_span_data_header_size_);
+  EXPECT_EQ(batch.GetRowCount(), 8u);
+}
+
+// Verifies that the serialized batch with valid columns can be correctly parsed
+// by simulating what ParseBatchDataLayout does: read data_part_length, then
+// valid_column_type, then valid column IDs, and finally locate block span data.
+TEST(TsBatchDataTest, ValidColumnLayoutParsingRoundTrip) {
+  TsBatchData batch;
+  const std::string ptag{"pk"};
+  const std::string tags{"tag"};
+  std::vector<uint32_t> valid_cols = {0, 2, 4};
+
+  batch.SetTagOSN(1);
+  batch.SetHashPoint(1);
+  batch.SetTableVersion(1);
+  batch.AddPrimaryTag({const_cast<char*>(ptag.data()), ptag.size()});
+  batch.AddTags({const_cast<char*>(tags.data()), tags.size()});
+  batch.AddDataPartLengthAndValidCols(valid_cols);
+  batch.AddBlockSpanDataHeader(100, 200, 11, 22, 33, 44, 5, 7, 3);
+  batch.UpdateBatchDataInfo(valid_cols);
+
+  TSSlice raw = batch.data_.AsSlice();
+  const char* data = raw.data;
+  size_t len = raw.len;
+
+  // Simulate ParseBatchDataLayout parsing: read data_part_length after tags
+  size_t dp_offset = batch.data_part_length_offset_;
+  uint32_t data_part_length = DecodeFixed32(data + dp_offset);
+
+  // valid_column_part starts after data_part_length
+  size_t vc_offset = dp_offset + sizeof(uint32_t);
+  uint16_t vc_type = DecodeFixed16(data + vc_offset);
+  EXPECT_EQ(vc_type, TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_VECTOR);
+
+  uint32_t vc_part_size = sizeof(uint16_t);
+  uint32_t vc_num = DecodeFixed32(data + vc_offset + sizeof(uint16_t));
+  EXPECT_EQ(vc_num, 3u);
+  vc_part_size += sizeof(uint32_t) + vc_num * sizeof(uint32_t);
+
+  // Verify each column ID
+  for (uint32_t i = 0; i < vc_num; i++) {
+    uint32_t col_id = DecodeFixed32(data + vc_offset + sizeof(uint16_t) + sizeof(uint32_t) + i * sizeof(uint32_t));
+    EXPECT_EQ(col_id, valid_cols[i]);
+  }
+
+  // block_span_data_offset
+  size_t bs_offset = vc_offset + vc_part_size;
+  EXPECT_EQ(data_part_length, vc_part_size + TsBatchData::block_span_data_header_size_);
+
+  // Verify block span header fields are at the correct offset
+  EXPECT_EQ(DecodeFixed64(data + bs_offset + TsBatchData::min_ts_offset_in_span_data_), 100);
+  EXPECT_EQ(DecodeFixed64(data + bs_offset + TsBatchData::max_ts_offset_in_span_data_), 200);
+  EXPECT_EQ(DecodeFixed32(data + bs_offset + TsBatchData::n_rows_offset_in_span_data_), 7u);
+
+  // Verify block span data ends exactly at the batch boundary
+  uint32_t bs_size = data_part_length - vc_part_size;
+  EXPECT_EQ(bs_offset + bs_size, len);
 }
 
 // Recreates one entity as two restored block spans, then verifies the first read
@@ -583,9 +819,9 @@ TEST_F(TsBatchDataWorkerTest, LegacyBatchVersionZeroRestoresOffsetAggAsBlockVers
   s = engine_->ReadBatchData(ctx_, table_id, 1, 0, UINT32_MAX, {INT64_MIN, INT64_MAX}, read_job_id,
                              &current_batch, &current_row_num, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  TSSlice block_span_data = ExtractBatchBlockSpanData(current_batch);
-  ASSERT_NE(block_span_data.data, nullptr);
-  std::string tag_prefix(current_batch.data, block_span_data.data - current_batch.data);
+  TSSlice tag_prefix_batch = ExtractBatchBlockTagPrefix(current_batch);
+  ASSERT_NE(tag_prefix_batch.data, nullptr);
+  std::string tag_prefix(tag_prefix_batch.data, tag_prefix_batch.len);
   s = engine_->BatchJobFinish(ctx_, read_job_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
@@ -698,9 +934,9 @@ TEST_F(TsBatchDataWorkerTest, LegacyBatchVersionOneRestoresOffsetAggAsBlockVersi
   s = engine_->ReadBatchData(ctx_, table_id, 1, 0, UINT32_MAX, {INT64_MIN, INT64_MAX}, read_job_id,
                              &current_batch, &current_row_num, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  TSSlice block_span_data = ExtractBatchBlockSpanData(current_batch);
-  ASSERT_NE(block_span_data.data, nullptr);
-  std::string tag_prefix(current_batch.data, block_span_data.data - current_batch.data);
+  TSSlice tag_prefix_batch = ExtractBatchBlockTagPrefix(current_batch);
+  ASSERT_NE(tag_prefix_batch.data, nullptr);
+  std::string tag_prefix(tag_prefix_batch.data, tag_prefix_batch.len);
   s = engine_->BatchJobFinish(ctx_, read_job_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
@@ -762,9 +998,272 @@ TEST_F(TsBatchDataWorkerTest, LegacyBatchVersionOneRestoresOffsetAggAsBlockVersi
   EXPECT_EQ(*reinterpret_cast<int64_t*>(pre_sum), 27);
 }
 
+// End-to-end test: insert data, read batch with empty valid cols, then modify the
+// serialized batch to inject valid columns, and write back through WriteBatchData
+// to verify ParseBatchDataLayout handles valid columns correctly.
+TEST_F(TsBatchDataWorkerTest, WriteBatchDataWithValidColumns) {
+  TSTableID table_id = 10032;
+  roachpb::CreateTsTable pb_meta;
+  using namespace roachpb;
+  std::vector<DataType> metric_type{roachpb::TIMESTAMP, roachpb::INT, roachpb::DOUBLE,
+                                    roachpb::VARCHAR};
+  ConstructRoachpbTableWithTypes(&pb_meta, table_id, metric_type);
+  std::shared_ptr<TsTable> ts_table;
+  auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::shared_ptr<TsTableSchemaManager> schema_mgr;
+  bool is_dropped = false;
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = schema_mgr->GetMetricMeta(1, &metric_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  std::vector<TagInfo> tag_schema;
+  s = schema_mgr->GetTagMeta(1, tag_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  timestamp64 start_ts = 10086000;
+  auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, 1, 1000, start_ts);
+  uint16_t inc_entity_cnt = 0;
+  uint32_t inc_unordered_cnt = 0;
+  DedupResult dedup_result{0, 0, 0, TSSlice{nullptr, 0}};
+  s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  free(payload.data);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  uint64_t read_job_id = 1;
+  TSSlice original_batch;
+  uint32_t original_row_num = 0;
+  s = engine_->ReadBatchData(ctx_, table_id, 1, 0, UINT32_MAX, {INT64_MIN, INT64_MAX}, read_job_id,
+                             &original_batch, &original_row_num, is_dropped);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_GT(original_row_num, 0U);
+  std::string original_data(original_batch.data, original_batch.len);
+  s = engine_->BatchJobFinish(ctx_, read_job_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  // Parse the original batch to locate the data_part_length and valid_column_part
+  const char* orig = original_data.data();
+  size_t orig_len = original_data.size();
+  uint16_t ptag_size = DecodeFixed16(orig + TsBatchData::header_size_);
+  size_t ptag_offset = TsBatchData::header_size_ + sizeof(uint16_t);
+  size_t tags_size_offset = ptag_offset + ptag_size;
+  uint32_t tags_size = DecodeFixed32(orig + tags_size_offset);
+  size_t tags_end = tags_size_offset + sizeof(uint32_t) + tags_size;
+  // data_part_length is at tags_end
+  // valid_column_type is at tags_end + 4
+  uint16_t orig_vc_type = DecodeFixed16(orig + tags_end + sizeof(uint32_t));
+  ASSERT_EQ(orig_vc_type, TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_TUPLE);
+  // block span data starts at tags_end + 4 + 2 (TUPLE has 2-byte type only)
+  size_t block_span_start = tags_end + sizeof(uint32_t) + sizeof(uint16_t);
+  // block span data = everything from block_span_start to end
+  size_t block_span_len = orig_len - block_span_start;
+
+  // Inject valid columns: replace the TUPLE(2 bytes) with VECTOR(2) + count(4) + col_ids
+  std::vector<uint32_t> inject_cols = {0, 1, 3};
+  uint32_t inject_vc_part_size = sizeof(uint16_t) + sizeof(uint32_t) + inject_cols.size() * sizeof(uint32_t);
+  uint32_t new_data_part_length = inject_vc_part_size + block_span_len;
+  size_t new_len = tags_end + sizeof(uint32_t) + inject_vc_part_size + block_span_len;
+
+  std::string modified_data;
+  modified_data.resize(new_len);
+  char* mod = modified_data.data();
+  // Copy header + ptag + tags (up to and including tags data)
+  memcpy(mod, orig, tags_end);
+  // Write new data_part_length
+  EncodeFixed32(mod + tags_end, new_data_part_length);
+  size_t pos = tags_end + sizeof(uint32_t);
+  // Write valid_column_type = VECTOR
+  EncodeFixed16(mod + pos, TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_VECTOR);
+  pos += sizeof(uint16_t);
+  // Write valid_col_num
+  EncodeFixed32(mod + pos, static_cast<uint32_t>(inject_cols.size()));
+  pos += sizeof(uint32_t);
+  // Write each valid column ID
+  for (auto col_id : inject_cols) {
+    EncodeFixed32(mod + pos, col_id);
+    pos += sizeof(uint32_t);
+  }
+  // Copy block span data from original
+  memcpy(mod + pos, orig + block_span_start, block_span_len);
+  // Update data_length in header
+  EncodeFixed32(mod + TsBatchData::data_length_offset_, static_cast<uint32_t>(new_len));
+
+  // Reopen engine and write the modified batch with valid columns
+  delete engine_;
+  Remove(engine_root_path);
+  MakeDirectory(engine_root_path);
+  engine_ = new TSEngineImpl(opts_);
+  s = engine_->Init(ctx_);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  MakeDirectory(engine_root_path + "/temp_db_");
+  s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  TSSlice data = {modified_data.data(), modified_data.size()};
+  uint32_t row_num = 0;
+  uint64_t write_job_id = 2;
+  s = engine_->WriteBatchData(ctx_, table_id, 1, write_job_id, &data, &row_num, TsDataSource::Restore, is_dropped);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(row_num, original_row_num);
+  s = engine_->BatchJobFinish(ctx_, write_job_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+}
+
+// Compatibility test: construct a v1 batch (old format with block_span_length prefix
+// in BlockSpanHeader), then write it through WriteBatchData to verify ParseBatchDataLayout
+// correctly handles v1 format.
+TEST_F(TsBatchDataWorkerTest, WriteV1BatchDataCompatibility) {
+  TSTableID table_id = 10032;
+  roachpb::CreateTsTable pb_meta;
+  using namespace roachpb;
+  std::vector<DataType> metric_type{roachpb::TIMESTAMP, roachpb::INT, roachpb::DOUBLE,
+                                    roachpb::VARCHAR};
+  ConstructRoachpbTableWithTypes(&pb_meta, table_id, metric_type);
+  std::shared_ptr<TsTable> ts_table;
+  auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::shared_ptr<TsTableSchemaManager> schema_mgr;
+  bool is_dropped = false;
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = schema_mgr->GetMetricMeta(1, &metric_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  std::vector<TagInfo> tag_schema;
+  s = schema_mgr->GetTagMeta(1, tag_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  // Insert data and read it back to get a valid v2 batch
+  timestamp64 start_ts = 10086000;
+  auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, 1, 1000, start_ts);
+  uint16_t inc_entity_cnt = 0;
+  uint32_t inc_unordered_cnt = 0;
+  DedupResult dedup_result{0, 0, 0, TSSlice{nullptr, 0}};
+  s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  free(payload.data);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  uint64_t read_job_id = 1;
+  TSSlice v2_batch;
+  uint32_t row_num = 0;
+  s = engine_->ReadBatchData(ctx_, table_id, 1, 0, UINT32_MAX, {INT64_MIN, INT64_MAX}, read_job_id,
+                             &v2_batch, &row_num, is_dropped);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_GT(row_num, 0U);
+  std::string v2_data(v2_batch.data, v2_batch.len);
+  s = engine_->BatchJobFinish(ctx_, read_job_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  // Parse the v2 batch to extract tag portion and block span portion
+  const char* v2 = v2_data.data();
+  uint16_t ptag_size = DecodeFixed16(v2 + TsBatchData::header_size_);
+  size_t ptag_offset = TsBatchData::header_size_ + sizeof(uint16_t);
+  size_t tags_size_offset = ptag_offset + ptag_size;
+  uint32_t tags_size = DecodeFixed32(v2 + tags_size_offset);
+  size_t tags_end = tags_size_offset + sizeof(uint32_t) + tags_size;
+  // v2: data_part_length(4) + valid_column_type(2=TUPLE) + BlockSpanHeader + compressed
+  uint16_t vc_type = DecodeFixed16(v2 + tags_end + sizeof(uint32_t));
+  ASSERT_EQ(vc_type, TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_TUPLE);
+  size_t block_span_start = tags_end + sizeof(uint32_t) + sizeof(uint16_t);
+  size_t block_span_len = v2_data.size() - block_span_start;
+
+  // Construct v1 batch: tags | BlockSpanHeader{length(4)+min_ts...block_version}(60) | compressed
+  uint32_t v1_block_span_length = sizeof(uint32_t) + block_span_len;
+  size_t v1_len = tags_end + v1_block_span_length;
+
+  std::string v1_data;
+  v1_data.resize(v1_len);
+  char* v1 = v1_data.data();
+  // Copy header + ptag + tags (identical for v1 and v2)
+  memcpy(v1, v2, tags_end);
+  // Write BlockSpanHeader.length (the only length prefix in v1)
+  EncodeFixed32(v1 + tags_end, v1_block_span_length);
+  // Copy block span data (min_ts through compressed data)
+  memcpy(v1 + tags_end + sizeof(uint32_t), v2 + block_span_start, block_span_len);
+  // Set batch_version = 1
+  EncodeFixed32(v1 + TsBatchData::batch_version_offset_, 1);
+  // Update data_length
+  EncodeFixed32(v1 + TsBatchData::data_length_offset_, static_cast<uint32_t>(v1_len));
+  // Set row_type = DATA_AND_TAG (same as v2)
+  uint8_t row_type = DataTagFlag::DATA_AND_TAG;
+  memcpy(v1 + TsBatchData::row_type_offset_, &row_type, sizeof(row_type));
+  // Set row_num
+  EncodeFixed32(v1 + TsBatchData::row_num_offset_, row_num);
+
+  // Reopen engine and write the v1 batch
+  delete engine_;
+  Remove(engine_root_path);
+  MakeDirectory(engine_root_path);
+  engine_ = new TSEngineImpl(opts_);
+  s = engine_->Init(ctx_);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  MakeDirectory(engine_root_path + "/temp_db_");
+  s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  TSSlice v1_slice = {v1_data.data(), v1_data.size()};
+  uint32_t written_row_num = 0;
+  uint64_t write_job_id = 2;
+  s = engine_->WriteBatchData(ctx_, table_id, 1, write_job_id, &v1_slice, &written_row_num,
+                              TsDataSource::Restore, is_dropped);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(written_row_num, row_num);
+  s = engine_->BatchJobFinish(ctx_, write_job_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+}
+
+// Verifies ParseBatchDataLayout correctly handles v1 tag-only batch format
+// (no data part after tags). Uses a unit-level test that calls ParseBatchDataLayout
+// indirectly through WriteBatchData with a manually constructed v1 tag-only batch.
+TEST(TsBatchDataTest, V1TagOnlyLayoutParsing) {
+  // Construct a minimal v1 tag-only batch: header + ptag_len + ptag + tags_len + tags
+  const std::string ptag{"pk"};
+  const std::string tags{"tag"};
+  size_t v1_len = TsBatchData::header_size_ + sizeof(uint16_t) + ptag.size() + sizeof(uint32_t) + tags.size();
+
+  std::string v1_data;
+  v1_data.resize(v1_len);
+  char* v1 = v1_data.data();
+  memset(v1, 0, v1_len);
+
+  // Set header fields
+  EncodeFixed16(v1 + TsBatchData::hash_point_id_offset_, 1);
+  EncodeFixed32(v1 + TsBatchData::data_length_offset_, static_cast<uint32_t>(v1_len));
+  EncodeFixed64(v1 + TsBatchData::tag_osn_offset_, 1);
+  EncodeFixed32(v1 + TsBatchData::batch_version_offset_, 1);  // v1
+  EncodeFixed32(v1 + TsBatchData::ts_version_offset_, 1);
+  EncodeFixed32(v1 + TsBatchData::row_num_offset_, 1);
+  uint8_t row_type = DataTagFlag::TAG_ONLY;
+  memcpy(v1 + TsBatchData::row_type_offset_, &row_type, sizeof(row_type));
+
+  // ptag
+  size_t pos = TsBatchData::header_size_;
+  EncodeFixed16(v1 + pos, static_cast<uint16_t>(ptag.size()));
+  pos += sizeof(uint16_t);
+  memcpy(v1 + pos, ptag.data(), ptag.size());
+  pos += ptag.size();
+
+  // tags
+  EncodeFixed32(v1 + pos, static_cast<uint32_t>(tags.size()));
+  pos += sizeof(uint32_t);
+  memcpy(v1 + pos, tags.data(), tags.size());
+
+  // Verify: tags end at batch boundary (tag-only, no data part)
+  EXPECT_EQ(pos + tags.size(), v1_len);
+
+  // Verify the header fields
+  EXPECT_EQ(DecodeFixed32(v1 + TsBatchData::batch_version_offset_), 1u);
+  EXPECT_EQ(static_cast<uint8_t>(v1[TsBatchData::row_type_offset_]), DataTagFlag::TAG_ONLY);
+  EXPECT_EQ(DecodeFixed32(v1 + TsBatchData::data_length_offset_), static_cast<uint32_t>(v1_len));
+}
+
 // Corrupts the persisted block-span length inside one batch payload and verifies
 // the restore write path rejects the malformed batch layout.
 TEST_F(TsBatchDataWorkerTest, RejectMalformedBatchLayout) {
+  std::vector<uint32_t> valid_cols;
   TSTableID table_id = 10032;
   roachpb::CreateTsTable pb_meta;
   using namespace roachpb;
@@ -783,11 +1282,14 @@ TEST_F(TsBatchDataWorkerTest, RejectMalformedBatchLayout) {
   batch.SetTableVersion(1);
   batch.AddPrimaryTag({const_cast<char*>(ptag.data()), ptag.size()});
   batch.AddTags({const_cast<char*>(tags.data()), tags.size()});
-  batch.AddBlockSpanDataHeader(0, 100, 200, 1, 2, 3, 4, 5, 6, 7);
-  batch.UpdateBatchDataInfo();
+  batch.AddDataPartLengthAndValidCols(valid_cols);
+  batch.AddBlockSpanDataHeader(100, 200, 1, 2, 3, 4, 5, 6, 7);
+  batch.UpdateBatchDataInfo(valid_cols);
 
   uint32_t invalid_block_len = static_cast<uint32_t>(batch.GetBlockSpanData().len + 8);
-  EncodeFixed32(batch.data_.data() + batch.block_span_data_offset_, invalid_block_len);
+  // corrupt data_part_length to make block span appear larger than actual
+  EncodeFixed32(batch.data_.data() + batch.data_part_length_offset_,
+                batch.valid_column_part_length_ + invalid_block_len);
 
   TSSlice data = batch.data_.AsSlice();
   uint32_t row_num = 0;
@@ -800,6 +1302,7 @@ TEST_F(TsBatchDataWorkerTest, RejectMalformedBatchLayout) {
 // buffer size and verifies the restore write path rejects the batch.
 TEST_F(TsBatchDataWorkerTest, RejectMismatchedBatchDataLength) {
   TSTableID table_id = 10032;
+  std::vector<uint32_t> valid_cols;
   roachpb::CreateTsTable pb_meta;
   using namespace roachpb;
   std::vector<DataType> metric_type{roachpb::TIMESTAMP, roachpb::INT, roachpb::DOUBLE,
@@ -817,7 +1320,8 @@ TEST_F(TsBatchDataWorkerTest, RejectMismatchedBatchDataLength) {
   batch.SetTableVersion(1);
   batch.AddPrimaryTag({const_cast<char*>(ptag.data()), ptag.size()});
   batch.AddTags({const_cast<char*>(tags.data()), tags.size()});
-  batch.UpdateBatchDataInfo();
+  batch.AddDataPartLengthAndValidCols(valid_cols);
+  batch.UpdateBatchDataInfo(valid_cols);
 
   auto invalid_data_len = static_cast<uint32_t>(batch.data_.size() + 1);
   EncodeFixed32(batch.data_.data() + TsBatchData::data_length_offset_, invalid_data_len);
@@ -833,6 +1337,7 @@ TEST_F(TsBatchDataWorkerTest, RejectMismatchedBatchDataLength) {
 // block-span payload and verifies the restore write path rejects it.
 TEST_F(TsBatchDataWorkerTest, RejectDataAndTagHeaderWithoutBlockSpanPayload) {
   TSTableID table_id = 10032;
+  std::vector<uint32_t> valid_cols;
   roachpb::CreateTsTable pb_meta;
   using namespace roachpb;
   std::vector<DataType> metric_type{roachpb::TIMESTAMP, roachpb::INT, roachpb::DOUBLE,
@@ -850,7 +1355,8 @@ TEST_F(TsBatchDataWorkerTest, RejectDataAndTagHeaderWithoutBlockSpanPayload) {
   batch.SetTableVersion(1);
   batch.AddPrimaryTag({const_cast<char*>(ptag.data()), ptag.size()});
   batch.AddTags({const_cast<char*>(tags.data()), tags.size()});
-  batch.UpdateBatchDataInfo();
+  batch.AddDataPartLengthAndValidCols(valid_cols);
+  batch.UpdateBatchDataInfo(valid_cols);
 
   uint8_t invalid_row_type = DataTagFlag::DATA_AND_TAG;
   memcpy(batch.data_.data() + TsBatchData::row_type_offset_, &invalid_row_type, sizeof(invalid_row_type));

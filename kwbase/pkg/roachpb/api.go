@@ -750,6 +750,9 @@ func (*TsImportFlushRequest) Method() Method { return TsImportFlush }
 func (*TsPutRequest) Method() Method { return TsPut }
 
 // Method implements the Request interface.
+func (*TsGetValidColumnsRequest) Method() Method { return TsGetValidColumns }
+
+// Method implements the Request interface.
 func (*TsRowPutRequest) Method() Method { return TsRowPut }
 
 // Method implements the Request interface.
@@ -1068,6 +1071,12 @@ func (r *TsPutRequest) ShallowCopy() Request {
 }
 
 // ShallowCopy implements the Request interface.
+func (r *TsGetValidColumnsRequest) ShallowCopy() Request {
+	shallowCopy := *r
+	return &shallowCopy
+}
+
+// ShallowCopy implements the Request interface.
 func (r *TsRowPutRequest) ShallowCopy() Request {
 	shallowCopy := *r
 	return &shallowCopy
@@ -1274,6 +1283,10 @@ func (*PutRequest) flags() int {
 
 func (*TsPutRequest) flags() int {
 	return isWrite | isTxn | isLocking | consultsTSCache | canBackpressure
+}
+
+func (*TsGetValidColumnsRequest) flags() int {
+	return isRead | isAlone
 }
 
 func (*TsRowPutRequest) flags() int {

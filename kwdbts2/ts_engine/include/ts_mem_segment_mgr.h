@@ -77,6 +77,7 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
   std::atomic<uint32_t> written_row_num_{0};
   std::atomic<uint32_t> payload_mem_usage_{0};
   std::atomic<TsMemSegmentStatus> status_{MEM_SEGMENT_IDLE};
+  std::list<TsRawPayload*> pd_lists_;
 
   int64_t id_;
   TsMemSegIndex skiplist_;
@@ -118,6 +119,10 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
       mem_segment_bp_counter_.fetch_add(1, std::memory_order_relaxed);
     }
     global_mem_seg_cv_.notify_all();
+    for (auto& iter : pd_lists_) {
+      delete iter;
+    }
+    pd_lists_.clear();
   }
 
   int64_t GetId() const { return id_; }
@@ -135,11 +140,18 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
   uint32_t GetRowNum() { return intent_row_num_.load(std::memory_order_relaxed); }
 
   inline void AllocRowNum(uint32_t row_num) { intent_row_num_.fetch_add(row_num); }
+  inline void AppendEmptyRow(uint32_t row_num) { written_row_num_.fetch_add(row_num, std::memory_order_acq_rel); }
 
   TSMemSegRowData* AllocOneRow(uint32_t db_id, TSTableID tbl_id, uint32_t tbl_version, TSEntityID en_id,
-                               TSSlice row_data) {
-    return skiplist_.AllocateMemSegRowData(db_id, tbl_id, tbl_version, en_id, row_data);
+                               TsRawPayload* p, uint32_t row_idx) {
+    return skiplist_.AllocateMemSegRowData(db_id, tbl_id, tbl_version, en_id, p, row_idx);
   }
+
+  char* AllocPayload(const TSSlice& payload_data) {
+    return skiplist_.AllocPayload(payload_data);
+  }
+
+  void AddPayloadObj(TsRawPayload* p) { pd_lists_.push_back(p); }
 
   void AppendOneRow(TSMemSegRowData* row);
 
@@ -174,7 +186,6 @@ class TsMemSegBlock : public TsBlock {
   std::vector<TSMemSegRowDataWithGuard> row_data_guard_;
   timestamp64 min_ts_{INVALID_TS};
   timestamp64 max_ts_{INVALID_TS};
-  std::shared_ptr<TsRawPayloadRowParser> parser_ = nullptr;
   std::unordered_map<uint32_t, char*> col_based_mems_;
   std::vector<uint64_t> col_major_osn_;
   std::unordered_map<uint32_t, std::unique_ptr<TsBitmap>> col_bitmaps_;
@@ -191,10 +202,6 @@ class TsMemSegBlock : public TsBlock {
       }
     }
     col_based_mems_.clear();
-  }
-
-  void SetParser(std::shared_ptr<TsRawPayloadRowParser>& parser) {
-    parser_ = parser;
   }
 
   uint32_t GetBlockVersion() const override { return CURRENT_BLOCK_VERSION; }
@@ -223,8 +230,6 @@ class TsMemSegBlock : public TsBlock {
   size_t GetRowNum() override { return row_data_.size(); }
   KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>* schema, TSSlice& value,
                         TsScanStats* ts_scan_stats = nullptr) override;
-  bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>* schema,
-                  TsScanStats* ts_scan_stats = nullptr) override;
 
   // if just get timestamp , this function return fast.
   timestamp64 GetTS(int row_num, TsScanStats* ts_scan_stats = nullptr) override {
@@ -308,8 +313,9 @@ class TsMemSegBlock : public TsBlock {
     memory_addr_safe_ = true;
   }
 
-  TSMemSegRowDataWithGuard& AllocateRow(uint32_t db_id, TSTableID tbl_id, uint32_t tbl_version, TSEntityID en_id) {
-    row_data_guard_.emplace_back(db_id, tbl_id, tbl_version, en_id);
+  TSMemSegRowDataWithGuard& AllocateRow(uint32_t db_id, TSTableID tbl_id, uint32_t tbl_version, TSEntityID en_id,
+    const vector<AttributeInfo>* schema) {
+    row_data_guard_.emplace_back(TSMemSegRowDataWithGuard(db_id, tbl_id, tbl_version, en_id, schema));
     return row_data_guard_.back();
   }
 
@@ -362,7 +368,7 @@ class TsMemSegmentManager {
 
   bool SwitchMemSegment(TsMemSegment* expected_old_mem_seg, bool flush);
 
-  KStatus PutData(const TSSlice& payload, const std::shared_ptr<TsTableSchemaManager>& tb_schema, TSEntityID entity_id);
+  KStatus PutData(TsRawPayload* p, const std::shared_ptr<TsTableSchemaManager>& tb_schema, TSEntityID entity_id);
 
   KStatus DeleteData(TSTableID table_id, TSEntityID entity_id, const std::vector<PartitionIdentifier>& partition_ids);
 

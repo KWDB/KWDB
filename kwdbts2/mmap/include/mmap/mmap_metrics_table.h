@@ -92,6 +92,8 @@ class MMapMetricsTable : public TSObject, public TsTableObject {
 
   uint64_t& hashNum() { return meta_data_->hash_num; }
 
+  bool IsSparseTable() { return meta_data_->sparse; }
+
   virtual int remove();
 
   void sync(int flags) override;
@@ -101,6 +103,9 @@ class MMapMetricsTable : public TSObject, public TsTableObject {
   void SetLifeTime(LifeTime life_time) {
     meta_data_->life_time = life_time.ts;
     meta_data_->precision = life_time.precision;
+  }
+  void SetSparseTable(bool sparse) {
+    meta_data_->sparse = sparse;
   }
 
   virtual int reserve(size_t size) {

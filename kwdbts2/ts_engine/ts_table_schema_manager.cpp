@@ -274,6 +274,7 @@ KStatus TsTableSchemaManager::Init() {
   assert(metric_cur_version == tag_cur_version);
   if (metric_cur_version != 0) {
     hash_num_ = metric_mgr_->GetHashNum();
+    sparse_table_ = metric_mgr_->IsSparseTable();
   }
   if (metric_cur_version > tag_cur_version) {
     for (uint32_t i = tag_cur_version + 1; i <= metric_cur_version; i++) {
@@ -317,10 +318,11 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
     attr.version = ts_version;
   }
   hash_num_ = meta->ts_table().hash_num();
+  sparse_table_ = meta->ts_table().sparse();
   uint64_t interval = meta->ts_table().partition_interval();
   partition_interval_ = interval;
   s = metric_mgr_->CreateTable(ctx, metric_schema, db_id, ts_version, meta->ts_table().life_time(),
-                               interval, hash_num_, err_info);
+                               interval, hash_num_, sparse_table_, err_info);
   if (s != SUCCESS) {
     LOG_ERROR("failed to create the metric table %lu version [%u], error: %s",
               table_id_, ts_version, err_info.errmsg.c_str());
@@ -340,7 +342,7 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
 
   if (tag_table_ == nullptr || tag_table_->GetTagTableVersionManager()->GetCurrentTableVersion() == 0) {
     tag_table_ = std::make_shared<TagTable>(table_path_, tag_path_, table_id_, 1);
-    if (tag_table_->create(tag_schema, ts_version, idx_info, err_info) < 0) {
+    if (tag_table_->create(tag_schema, ts_version, idx_info, err_info, sparse_table_) < 0) {
       LOG_ERROR("failed to create the tag table [%lu] %s, error: %s",
                 table_id_, tag_path_.c_str(), err_info.errmsg.c_str());
       return FAIL;

@@ -337,7 +337,7 @@ func (ie *InternalExecutor) IsTsTable(
 			return errors.Errorf("can not find tables")
 		}
 
-		if table.TableType != tree.TimeseriesTable && table.TableType != tree.TemplateTable {
+		if !table.IsTSTable() {
 			return errors.Errorf("%s is not a ts table", tbName)
 		}
 
