@@ -218,6 +218,7 @@ func assignSequenceOptions(
 ) error {
 	// All other defaults are dependent on the value of increment,
 	// i.e. whether the sequence is ascending or descending.
+	oldIncrement := opts.Increment
 	for _, option := range optsNode {
 		if option.Name == tree.SeqOptIncrement {
 			opts.Increment = *option.IntVal
@@ -321,8 +322,9 @@ func assignSequenceOptions(
 	}
 
 	// If start option not specified, set it to MinValue (for ascending sequences)
-	// or MaxValue (for descending sequences).
-	if _, startSeen := optionsSeen[tree.SeqOptStart]; !startSeen {
+	// or MaxValue (for descending sequences). Only during CREATE SEQUENCE (setDefaults),
+	// not during ALTER SEQUENCE — ALTER must preserve the existing START value.
+	if _, startSeen := optionsSeen[tree.SeqOptStart]; !startSeen && setDefaults {
 		if opts.Increment > 0 {
 			opts.Start = opts.MinValue
 		} else {
@@ -331,8 +333,45 @@ func assignSequenceOptions(
 	}
 
 	// get new value from nextval()
-	if lastRes, ok := params.extendedEvalCtx.SessionData.SequenceState.GetLastValueByID(uint32(sequenceID)); ok {
-		opts.Start = lastRes
+	if setDefaults {
+		if lastRes, ok := params.extendedEvalCtx.SessionData.SequenceState.GetLastValueByID(uint32(sequenceID)); ok {
+			opts.Start = lastRes
+		}
+	}
+
+	// When ALTER SEQUENCE changes the sign of INCREMENT, the sequence direction
+	// flips (ascending ↔ descending). Recalculate MinValue, MaxValue, and Start
+	// defaults for the new direction if they weren't explicitly set in this ALTER.
+	if !setDefaults {
+		oldIsAscending := oldIncrement > 0
+		newIsAscending := opts.Increment > 0
+		if oldIsAscending != newIsAscending {
+			_, minSeen := optionsSeen[tree.SeqOptMinValue]
+			_, maxSeen := optionsSeen[tree.SeqOptMaxValue]
+			_, startSeen := optionsSeen[tree.SeqOptStart]
+
+			if newIsAscending {
+				if !minSeen {
+					opts.MinValue = 1
+				}
+				if !maxSeen {
+					opts.MaxValue = math.MaxInt64
+				}
+				if !startSeen {
+					opts.Start = opts.MinValue
+				}
+			} else {
+				if !minSeen {
+					opts.MinValue = math.MinInt64
+				}
+				if !maxSeen {
+					opts.MaxValue = -1
+				}
+				if !startSeen {
+					opts.Start = opts.MaxValue
+				}
+			}
+s		}
 	}
 
 	if opts.Start > opts.MaxValue {
