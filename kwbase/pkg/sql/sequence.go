@@ -371,7 +371,7 @@ func assignSequenceOptions(
 					opts.Start = opts.MaxValue
 				}
 			}
-s		}
+		}
 	}
 
 	if opts.Start > opts.MaxValue {
