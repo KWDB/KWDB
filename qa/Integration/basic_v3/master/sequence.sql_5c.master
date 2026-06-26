@@ -1,0 +1,159 @@
+> CREATE SEQUENCE s_start5 START 5;
+CREATE SEQUENCE
+> SHOW CREATE SEQUENCE s_start5;
+  table_name |                                   create_statement
+-------------+---------------------------------------------------------------------------------------
+  s_start5   | CREATE SEQUENCE s_start5 MINVALUE 1 MAXVALUE 9223372036854775807 INCREMENT 1 START 5
+(1 row)
+> ALTER SEQUENCE s_start5 MAXVALUE 100;
+ALTER SEQUENCE
+> SHOW CREATE SEQUENCE s_start5;
+  table_name |                           create_statement
+-------------+-----------------------------------------------------------------------
+  s_start5   | CREATE SEQUENCE s_start5 MINVALUE 1 MAXVALUE 100 INCREMENT 1 START 5
+(1 row)
+> SELECT nextval('s_start5') AS next_after_alter_max;
+  next_after_alter_max
+------------------------
+                     5
+(1 row)
+> DROP SEQUENCE s_start5;
+DROP SEQUENCE
+> CREATE SEQUENCE s_asc_to_desc;
+CREATE SEQUENCE
+> SHOW CREATE SEQUENCE s_asc_to_desc;
+   table_name   |                                     create_statement
+----------------+--------------------------------------------------------------------------------------------
+  s_asc_to_desc | CREATE SEQUENCE s_asc_to_desc MINVALUE 1 MAXVALUE 9223372036854775807 INCREMENT 1 START 1
+(1 row)
+> ALTER SEQUENCE s_asc_to_desc INCREMENT -1;
+ALTER SEQUENCE
+> SHOW CREATE SEQUENCE s_asc_to_desc;
+   table_name   |                                       create_statement
+----------------+------------------------------------------------------------------------------------------------
+  s_asc_to_desc | CREATE SEQUENCE s_asc_to_desc MINVALUE -9223372036854775808 MAXVALUE -1 INCREMENT -1 START -1
+(1 row)
+> SELECT nextval('s_asc_to_desc') AS next_after_alter_neg_inc;
+  next_after_alter_neg_inc
+----------------------------
+                        -1
+(1 row)
+> DROP SEQUENCE s_asc_to_desc;
+DROP SEQUENCE
+> CREATE SEQUENCE s_desc_to_asc INCREMENT -1;
+CREATE SEQUENCE
+> SHOW CREATE SEQUENCE s_desc_to_asc;
+   table_name   |                                       create_statement
+----------------+------------------------------------------------------------------------------------------------
+  s_desc_to_asc | CREATE SEQUENCE s_desc_to_asc MINVALUE -9223372036854775808 MAXVALUE -1 INCREMENT -1 START -1
+(1 row)
+> ALTER SEQUENCE s_desc_to_asc INCREMENT 1;
+ALTER SEQUENCE
+> SHOW CREATE SEQUENCE s_desc_to_asc;
+   table_name   |                                     create_statement
+----------------+--------------------------------------------------------------------------------------------
+  s_desc_to_asc | CREATE SEQUENCE s_desc_to_asc MINVALUE 1 MAXVALUE 9223372036854775807 INCREMENT 1 START 1
+(1 row)
+> SELECT nextval('s_desc_to_asc') AS next_after_alter_pos_inc;
+  next_after_alter_pos_inc
+----------------------------
+                         1
+(1 row)
+> DROP SEQUENCE s_desc_to_asc;
+DROP SEQUENCE
+> CREATE SEQUENCE s_dir_custom_min;
+CREATE SEQUENCE
+> ALTER SEQUENCE s_dir_custom_min INCREMENT -1 MINVALUE -100;
+ALTER SEQUENCE
+> SHOW CREATE SEQUENCE s_dir_custom_min;
+     table_name    |                                 create_statement
+-------------------+-----------------------------------------------------------------------------------
+  s_dir_custom_min | CREATE SEQUENCE s_dir_custom_min MINVALUE -100 MAXVALUE -1 INCREMENT -1 START -1
+(1 row)
+> SELECT nextval('s_dir_custom_min') AS next_custom_min;
+  next_custom_min
+-------------------
+               -1
+(1 row)
+> DROP SEQUENCE s_dir_custom_min;
+DROP SEQUENCE
+> CREATE SEQUENCE s_dir_custom_max;
+CREATE SEQUENCE
+> ALTER SEQUENCE s_dir_custom_max INCREMENT -1 MAXVALUE 0;
+ALTER SEQUENCE
+> SHOW CREATE SEQUENCE s_dir_custom_max;
+     table_name    |                                        create_statement
+-------------------+-------------------------------------------------------------------------------------------------
+  s_dir_custom_max | CREATE SEQUENCE s_dir_custom_max MINVALUE -9223372036854775808 MAXVALUE 0 INCREMENT -1 START 0
+(1 row)
+> SELECT nextval('s_dir_custom_max') AS next_custom_max;
+  next_custom_max
+-------------------
+               -1
+(1 row)
+> DROP SEQUENCE s_dir_custom_max;
+DROP SEQUENCE
+> CREATE SEQUENCE s_no_min;
+CREATE SEQUENCE
+> ALTER SEQUENCE s_no_min INCREMENT -1 NO MINVALUE;
+ALTER SEQUENCE
+> SHOW CREATE SEQUENCE s_no_min;
+  table_name |                                     create_statement
+-------------+-------------------------------------------------------------------------------------------
+  s_no_min   | CREATE SEQUENCE s_no_min MINVALUE -9223372036854775808 MAXVALUE -1 INCREMENT -1 START -1
+(1 row)
+> SELECT nextval('s_no_min') AS next_no_min;
+  next_no_min
+---------------
+           -1
+(1 row)
+> DROP SEQUENCE s_no_min;
+DROP SEQUENCE
+> CREATE SEQUENCE s_no_max;
+CREATE SEQUENCE
+> ALTER SEQUENCE s_no_max INCREMENT -1 NO MAXVALUE;
+ALTER SEQUENCE
+> SHOW CREATE SEQUENCE s_no_max;
+  table_name |                                     create_statement
+-------------+-------------------------------------------------------------------------------------------
+  s_no_max   | CREATE SEQUENCE s_no_max MINVALUE -9223372036854775808 MAXVALUE -1 INCREMENT -1 START -1
+(1 row)
+> SELECT nextval('s_no_max') AS next_no_max;
+  next_no_max
+---------------
+           -1
+(1 row)
+> DROP SEQUENCE s_no_max;
+DROP SEQUENCE
+> CREATE SEQUENCE s_no_both;
+CREATE SEQUENCE
+> ALTER SEQUENCE s_no_both INCREMENT -1 NO MINVALUE NO MAXVALUE;
+ALTER SEQUENCE
+> SHOW CREATE SEQUENCE s_no_both;
+  table_name |                                     create_statement
+-------------+--------------------------------------------------------------------------------------------
+  s_no_both  | CREATE SEQUENCE s_no_both MINVALUE -9223372036854775808 MAXVALUE -1 INCREMENT -1 START -1
+(1 row)
+> SELECT nextval('s_no_both') AS next_no_both;
+  next_no_both
+----------------
+            -1
+(1 row)
+> DROP SEQUENCE s_no_both;
+DROP SEQUENCE
+> CREATE SEQUENCE s_cache START 10;
+CREATE SEQUENCE
+> SHOW CREATE SEQUENCE s_cache;
+  table_name |                                   create_statement
+-------------+---------------------------------------------------------------------------------------
+  s_cache    | CREATE SEQUENCE s_cache MINVALUE 1 MAXVALUE 9223372036854775807 INCREMENT 1 START 10
+(1 row)
+> ALTER SEQUENCE s_cache CACHE 1;
+ALTER SEQUENCE
+> SHOW CREATE SEQUENCE s_cache;
+  table_name |                                   create_statement
+-------------+---------------------------------------------------------------------------------------
+  s_cache    | CREATE SEQUENCE s_cache MINVALUE 1 MAXVALUE 9223372036854775807 INCREMENT 1 START 10
+(1 row)
+> DROP SEQUENCE s_cache;
+DROP SEQUENCE

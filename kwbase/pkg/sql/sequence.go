@@ -218,6 +218,7 @@ func assignSequenceOptions(
 ) error {
 	// All other defaults are dependent on the value of increment,
 	// i.e. whether the sequence is ascending or descending.
+	oldIncrement := opts.Increment
 	for _, option := range optsNode {
 		if option.Name == tree.SeqOptIncrement {
 			opts.Increment = *option.IntVal
@@ -244,6 +245,8 @@ func assignSequenceOptions(
 
 	// Fill in all other options.
 	optionsSeen := map[string]bool{}
+	noMinValue := false
+	noMaxValue := false
 	for _, option := range optsNode {
 		// Error on duplicate options.
 		_, seenBefore := optionsSeen[option.Name]
@@ -276,11 +279,15 @@ func assignSequenceOptions(
 			// A value of nil represents the user explicitly saying `NO MINVALUE`.
 			if option.IntVal != nil {
 				opts.MinValue = *option.IntVal
+			} else {
+				noMinValue = true
 			}
 		case tree.SeqOptMaxValue:
 			// A value of nil represents the user explicitly saying `NO MAXVALUE`.
 			if option.IntVal != nil {
 				opts.MaxValue = *option.IntVal
+			} else {
+				noMaxValue = true
 			}
 		case tree.SeqOptStart:
 			opts.Start = *option.IntVal
@@ -321,8 +328,9 @@ func assignSequenceOptions(
 	}
 
 	// If start option not specified, set it to MinValue (for ascending sequences)
-	// or MaxValue (for descending sequences).
-	if _, startSeen := optionsSeen[tree.SeqOptStart]; !startSeen {
+	// or MaxValue (for descending sequences). Only during CREATE SEQUENCE (setDefaults),
+	// not during ALTER SEQUENCE — ALTER must preserve the existing START value.
+	if _, startSeen := optionsSeen[tree.SeqOptStart]; !startSeen && setDefaults {
 		if opts.Increment > 0 {
 			opts.Start = opts.MinValue
 		} else {
@@ -331,8 +339,50 @@ func assignSequenceOptions(
 	}
 
 	// get new value from nextval()
-	if lastRes, ok := params.extendedEvalCtx.SessionData.SequenceState.GetLastValueByID(uint32(sequenceID)); ok {
-		opts.Start = lastRes
+	if setDefaults {
+		if lastRes, ok := params.extendedEvalCtx.SessionData.SequenceState.GetLastValueByID(uint32(sequenceID)); ok {
+			opts.Start = lastRes
+		}
+	}
+
+	// When ALTER SEQUENCE changes the sign of INCREMENT, the sequence direction
+	// flips (ascending ↔ descending). Recalculate MinValue, MaxValue, and Start
+	// defaults for the new direction if they weren't explicitly set in this ALTER.
+	// NO MINVALUE / NO MAXVALUE means the user wants the default for the current
+	// direction, so we also recalculate in that case.
+	if !setDefaults {
+		oldIsAscending := oldIncrement > 0
+		newIsAscending := opts.Increment > 0
+		if oldIsAscending != newIsAscending {
+			_, minSeen := optionsSeen[tree.SeqOptMinValue]
+			_, maxSeen := optionsSeen[tree.SeqOptMaxValue]
+			_, startSeen := optionsSeen[tree.SeqOptStart]
+
+			shouldSetMinDefault := !minSeen || noMinValue
+			shouldSetMaxDefault := !maxSeen || noMaxValue
+
+			if newIsAscending {
+				if shouldSetMinDefault {
+					opts.MinValue = 1
+				}
+				if shouldSetMaxDefault {
+					opts.MaxValue = math.MaxInt64
+				}
+				if !startSeen {
+					opts.Start = opts.MinValue
+				}
+			} else {
+				if shouldSetMinDefault {
+					opts.MinValue = math.MinInt64
+				}
+				if shouldSetMaxDefault {
+					opts.MaxValue = -1
+				}
+				if !startSeen {
+					opts.Start = opts.MaxValue
+				}
+			}
+		}
 	}
 
 	if opts.Start > opts.MaxValue {
