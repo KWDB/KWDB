@@ -816,6 +816,16 @@ func ParseDFloat(s string) (*DFloat, error) {
 	return NewDFloat(DFloat(f)), nil
 }
 
+// ParseDFloat32 parses and returns the *DFloat Datum value represented by the provided
+// string, or an error if parsing is unsuccessful.
+func ParseDFloat32(s string) (*DFloat, error) {
+	f, err := strconv.ParseFloat(s, 32)
+	if err != nil {
+		return nil, makeParseError(s, types.Float, err)
+	}
+	return NewDFloat(DFloat(f)), nil
+}
+
 // ResolvedType implements the TypedExpr interface.
 func (*DFloat) ResolvedType() *types.T {
 	return types.Float

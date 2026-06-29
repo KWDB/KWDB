@@ -4285,8 +4285,14 @@ func PerformCast(ctx *EvalContext, d Datum, t *types.T) (Datum, error) {
 			}
 			return NewDFloat(DFloat(f)), nil
 		case *DString:
+			if t.Oid() == oid.T_float4 || t.Oid() == oid.T__float4 {
+				return ParseDFloat32(string(*v))
+			}
 			return ParseDFloat(string(*v))
 		case *DCollatedString:
+			if t.Oid() == oid.T_float4 || t.Oid() == oid.T__float4 {
+				return ParseDFloat32(v.Contents)
+			}
 			return ParseDFloat(v.Contents)
 		case *DTimestamp:
 			micros := float64(v.Nanosecond() / int(time.Microsecond))

@@ -802,6 +802,17 @@ INSERT 1
   1970-01-12 13:46:40.006+00:00 | 1.2abc   |    2 | b
   1970-01-12 13:46:40.009+00:00 | 3.4e+100 |    3 | c
 (3 rows)
+> set cluster setting sql.all_push_down.enabled = false;
+SET CLUSTER SETTING
+> select * from test_alter.t15 where cast_check(a as float4)=false order by ts,ptag;
+               ts               |    a     | ptag | attr1
+--------------------------------+----------+------+--------
+  1970-01-12 13:46:40.003+00:00 | b2.1     |    1 | a
+  1970-01-12 13:46:40.006+00:00 | 1.2abc   |    2 | b
+  1970-01-12 13:46:40.009+00:00 | 3.4e+100 |    3 | c
+(3 rows)
+> set cluster setting sql.all_push_down.enabled = true;
+SET CLUSTER SETTING
 > alter table test_alter.t15 alter column a type float4;
 ALTER TABLE
 > select * from test_alter.t15 order by ts,ptag;
