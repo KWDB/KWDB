@@ -1130,9 +1130,6 @@ func (ag *aggregatorBase) bindAggregateResult(idx int, result tree.Datum) tree.D
 	if result == nil {
 		result = tree.DNull
 	}
-	if typ := result.ResolvedType(); typ != nil && typ.Family() != types.UnknownFamily {
-		ag.outputTypes[idx] = *typ
-	}
 	return result
 }
 
