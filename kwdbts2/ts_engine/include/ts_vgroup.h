@@ -205,15 +205,15 @@ class TsVGroup {
   }
 
   uint64_t GetMtrIDByTsxID(const char* ts_trans_id) {
-    return tsx_manager_->getMtrID(ts_trans_id);
+    return tsx_manager_->getMtrID(string{ts_trans_id, LogEntry::TS_TRANS_ID_LEN});
   }
 
   void SetMtrIDByTsxID(uint64_t uuid, const char* ts_trans_id) {
     return tsx_manager_->insertMtrID(ts_trans_id, uuid);
   }
 
-  bool IsExplict(uint64_t mini_trans_id) {
-    return tsx_manager_->IsExplict(mini_trans_id);
+  bool IsExplicit(uint64_t mini_trans_id) {
+    return tsx_manager_->IsExplicit(mini_trans_id);
   }
 
   KStatus Compact(bool *compacted = nullptr);

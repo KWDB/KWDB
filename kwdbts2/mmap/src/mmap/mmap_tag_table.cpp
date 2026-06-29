@@ -2327,13 +2327,6 @@ int TagTable::DeleteForRedo(uint32_t group_id, uint32_t entity_id,
   tag_partition_table->getEntityIdGroupId(ret.second, cur_entity_id, cur_group_id);
   auto tag_info = tag_partition_table->getTagDataInfoByRowNum(ret.second);
   auto op_type_idx = tag_info->operate_idx;
-  // make
-  if (group_id != cur_group_id || entity_id != cur_entity_id) {
-    LOG_INFO("redo entity[%u,%u] find entity[%u,%u], redo osn[%lu] find osn[%lu] osn num[%d], no need delete.",
-     group_id, entity_id, cur_group_id, cur_entity_id, osn, tag_info->osn[op_type_idx], op_type_idx);
-    tag_partition_table->stopRead();
-    return KStatus::SUCCESS;
-  }
   bool already_done = false;
   for (size_t i = 0; i <= op_type_idx; i++) {
     if (tag_info->operate_type[i] == OperateType::Delete) {
@@ -2414,19 +2407,7 @@ int TagTable::UpdateForRedo(uint32_t group_id, uint32_t entity_id, const TSSlice
     }
     // delete mark
     tag_partition_table->startRead();
-     OperateType type;
-     TS_OSN op_osn;
-    if (!tag_partition_table->GetOpTypeAtOSN(ret.second, payload.GetOSN(), type, op_osn)) {
-      auto tag_info = tag_partition_table->getTagDataInfoByRowNum(ret.second);
-      LOG_INFO("no need redo. tag_idx[%u,%u] taginfo: num[%u] osn[%lu,%lu] type[%u,%u], update osn[%lu]",
-        ret.first, ret.second, tag_info->operate_idx, tag_info->osn[0],
-        tag_info->osn[1], tag_info->operate_type[0], tag_info->operate_type[1], payload.GetOSN());
-      tag_partition_table->stopRead();
-      return 0;
-    }
-    if (type != OperateType::Update) {
-      tag_partition_table->setTagDataInfo(ret.second, 1, payload.GetOSN(), OperateType::Update);
-    }
+    tag_partition_table->setTagDataInfo(ret.second, 1, payload.GetOSN(), OperateType::Update);
     tag_partition_table->setDeleteMark(ret.second);
     tag_partition_table->stopRead();
     // delete index data

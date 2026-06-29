@@ -155,7 +155,8 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
     wal_manager_ = std::make_unique<WALMgr>(engine_options_->db_path, VGroupDirName(vgroup_id_),
       engine_options_, user_defined_path_);
   }
-  tsx_manager_ = std::make_unique<TSxMgr>(wal_manager_.get());
+  std::string tsx_file_path = engine_options_->db_path + "/wal/" + VGroupDirName(vgroup_id_) + "/ts_trans_ids";
+  tsx_manager_ = std::make_unique<TSxMgr>(wal_manager_.get(), tsx_file_path);
   auto res = wal_manager_->Init(ctx);
   if (res == KStatus::FAIL) {
     LOG_ERROR("Failed to initialize WAL manager")
@@ -357,59 +358,6 @@ KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSli
     return s;
   }
   uint8_t payload_data_flag = p.GetRowType();
-  bool tag_idx_row_ok = false;
-  if (!new_tag) {
-    std::pair<uint64_t, uint64_t> row_info;
-    if (!tb_schema_manager->GetTagTable()->GetPrimaryKeyRowInfo(primary_key.data, primary_key.len, row_info)) {
-      LOG_ERROR("GetPrimaryKeyRowInfo failed.");
-      return KStatus::FAIL;
-    }
-    auto p_tag = tb_schema_manager->GetTagTable()->GetTagPartitionTableManager()->GetPartitionTable(row_info.first);
-    if (p_tag == nullptr) {
-      LOG_ERROR("GetPartitionTable failed.table [%lu], tag[%lu,%lu]", table_id, row_info.first, row_info.second);
-      return KStatus::FAIL;
-    }
-    OperateType type;
-    TS_OSN op_osn = 0;
-    if (!p_tag->GetOpTypeAtOSN(row_info.second, p.GetOSN(), type, op_osn)) {
-      LOG_INFO("GetOpTypeAtOSN empty.table [%lu], tag[%lu,%lu], creat osn [%lu] payload osn[%lu], ignore.",
-       table_id, row_info.first, row_info.second, op_osn, p.GetOSN());
-      tag_idx_row_ok = false;
-    } else {
-      tag_idx_row_ok = true;
-    }
-  }
-  bool find_in_history = false;
-  if (!tag_idx_row_ok) {
-    uint32_t cur_entity_id;
-    auto tag_row = tb_schema_manager->GetTagTable()->ScanTagByPKey(primary_key, p.GetOSN(),
-      p.GetHashPoint(), vgroup_id, cur_entity_id);
-    if (tag_row.first != INVALID_TABLE_VERSION_ID) {
-      find_in_history = true;
-      entity_id = cur_entity_id;
-    }
-  }
-  if (new_tag && !find_in_history) {
-    vgroup_id = GetVGroupID();
-    entity_id = AllocateEntityID();
-    // 1. Write tag data
-    assert(payload_data_flag == DataTagFlag::DATA_AND_TAG || payload_data_flag == DataTagFlag::TAG_ONLY);
-    LOG_INFO("tag bt insert hashPoint=%hu, payload osn[%lu], log osn [%lu]", p.GetHashPoint(), p.GetOSN(), osn);
-    std::shared_ptr<TagTable> tag_table;
-    s = tb_schema_manager->GetTagSchema(ctx, &tag_table);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("GetTagSchema failed, table id[%lu]", table_id);
-      return s;
-    }
-    auto err_no = tag_table->InsertTagRecord(p, vgroup_id, entity_id, osn, OperateType::Insert);
-    if (err_no < 0) {
-      LOG_ERROR("InsertTagRecord failed, table id[%lu]", table_id);
-      return KStatus::FAIL;
-    }
-  } else {
-    assert(vgroup_id == this->GetVGroupID());
-  }
-
   if (payload_data_flag == DataTagFlag::DATA_AND_TAG || payload_data_flag == DataTagFlag::DATA_ONLY) {
     s = mem_segment_mgr_->PutData(&p, tb_schema_manager, entity_id);
     if (s != KStatus::SUCCESS) {
@@ -1575,7 +1523,7 @@ KStatus TsVGroup::ApplyWal(kwdbContext_p ctx, LogEntry* wal_log,
         auto p_tag_slice = log->getPrimaryTag();
         auto tag_slice = log->getTags();
         return redoDeleteTag(ctx, log->getTableID(), p_tag_slice, log->getOSN(),
-                            log->group_id_, log->entity_id_, tag_slice, log->getOSN());
+                            log->group_id_, log->entity_id_, tag_slice, log->getOldLSN());
       }
     }
     case WALLogType::UPDATE: {
@@ -1600,6 +1548,11 @@ KStatus TsVGroup::ApplyWal(kwdbContext_p ctx, LogEntry* wal_log,
       break;
     }
     case WALLogType::MTR_COMMIT: {
+      auto log = reinterpret_cast<MTREntry*>(wal_log);
+      incomplete.erase(log->getXID());
+      break;
+    }
+    case WALLogType::MTR_ROLLBACK: {
       auto log = reinterpret_cast<MTREntry*>(wal_log);
       incomplete.erase(log->getXID());
       break;
@@ -2049,19 +2002,10 @@ KStatus TsVGroup::redoPutTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TS
       LOG_ERROR("GetTagSchema failed, table id[%lu]", table_id);
       return s;
     }
-    uint32_t cur_entity_id;
-    auto ptag_value = tag_table->ScanTagByPKey(primary_key, p.GetOSN(), p.GetHashPoint(), vgroup_id, cur_entity_id);
-    if (ptag_value.first == INVALID_TABLE_VERSION_ID) {
-      LOG_INFO("tag bt insert hashPoint=%hu, OSN=%lu", p.GetHashPoint(), p.GetOSN());
-      auto err_no = tag_table->InsertTagRecord(p, vgroup_id, entity_id, p.GetOSN(), OperateType::Insert);
-      if (err_no < 0) {
-        LOG_ERROR("InsertTagRecord failed, table id[%lu]", table_id);
-        return KStatus::FAIL;
-      }
-    } else {
-      std::string ret;
-      BinaryToHexStr(primary_key, ret);
-      LOG_INFO(" table[%lu] tag[%s] is inserted then drop, so no need reputtag again.", table_id, ret.c_str());
+    auto err_no = tag_table->InsertTagRecord(p, vgroup_id, entity_id, p.GetOSN(), OperateType::Insert);
+    if (err_no < 0) {
+      LOG_ERROR("InsertTagRecord failed, table id[%lu]", table_id);
+      return KStatus::FAIL;
     }
   }
   return s;
@@ -2245,7 +2189,7 @@ KStatus TsVGroup::MtrCommit(kwdbContext_p ctx, uint64_t& mtr_id, const char* tsx
   }};
   // Call the TSxMgr interface to COMMIT the Mini-Transaction and write the COMMIT log entry
   if (tsx_id != nullptr) {
-    mtr_id = tsx_manager_->getMtrID(tsx_id);
+    mtr_id = GetMtrIDByTsxID(tsx_id);
   }
   return tsx_manager_->MtrCommit(ctx, mtr_id, tsx_id);
 }
@@ -2258,7 +2202,7 @@ KStatus TsVGroup::MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip,
   //  1. Write ROLLBACK log;
   if (!is_skip) {
     if (tsx_id != nullptr) {
-      mtr_id = tsx_manager_->getMtrID(tsx_id);
+      mtr_id = GetMtrIDByTsxID(tsx_id);
     }
     KStatus s = tsx_manager_->MtrRollback(ctx, mtr_id, tsx_id);
     if (s == FAIL) {

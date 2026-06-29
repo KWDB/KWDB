@@ -160,7 +160,7 @@ TEST_F(TestWALMgr, TestWALMgr_WriteIncompleteWAL) {
   std::vector<LogEntry*> logs;
   
   // Create an MTR begin entry
-  char tsx_id[] = "test_tsx_001";
+  char tsx_id[] = "test_tsx_000001";
   MTRBeginEntry* mtr_begin = new MTRBeginEntry(0, 1, tsx_id, 100, 1);
   logs.push_back(mtr_begin);
   
@@ -1824,527 +1824,527 @@ TEST_F(TestWALBufferMgr, ResetMetaAndReinit) {
 // ZDP-50381: txn_id filtering in readWALLogs (TS_BEGIN/TS_COMMIT/TS_ROLLBACK)
 // ============================================================================
 
-// TEST_F(TestWALMgr, TestWALMgr_ReadWALLogs_TxnIdFilter_AllLogs) {
-//   WALMgr* wal_mgr = new WALMgr(test_dir_, table_id_, tbl_grp_id_, &opts_);
-//   ASSERT_NE(wal_mgr, nullptr);
-//   KStatus s = wal_mgr->Init(ctx_);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-
-//   char tsx_id1[] = "txn_001";
-//   char tsx_id2[] = "txn_002";
-//   wal_mgr->WriteTSxWAL(ctx_, 100, tsx_id1, WALLogType::TS_BEGIN);
-//   wal_mgr->WriteTSxWAL(ctx_, 200, tsx_id2, WALLogType::TS_BEGIN);
-//   wal_mgr->Flush(ctx_);
-
-//   // txn_id=0 should return all logs
-//   std::vector<LogEntry*> logs;
-//   std::vector<uint64_t> end_chk;
-//   TS_OSN first_lsn = wal_mgr->GetFirstLSN();
-//   TS_OSN current_lsn = wal_mgr->FetchCurrentLSN();
-//   s = wal_mgr->ReadWALLog(logs, first_lsn, current_lsn, end_chk);
-//   EXPECT_EQ(s, KStatus::SUCCESS);
-//   EXPECT_EQ(logs.size(), 2);
-
-//   for (auto& l : logs) {
-//     delete l;
-//   }
-//   delete wal_mgr;
-// }
-
-// TEST_F(TestWALMgr, TestWALMgr_ReadWALLogs_TxnIdFilter_MatchingOnly) {
-//   WALMgr* wal_mgr = new WALMgr(test_dir_, table_id_, tbl_grp_id_, &opts_);
-//   ASSERT_NE(wal_mgr, nullptr);
-//   KStatus s = wal_mgr->Init(ctx_);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-
-//   char tsx_id1[] = "txn_100";
-//   char tsx_id2[] = "txn_200";
-
-//   TS_OSN mini_trans_id = 0;
-//   char* wal_log = MTRBeginEntry::construct(WALLogType::TS_BEGIN, mini_trans_id, tsx_id1, 0, 0);
-//   size_t wal_len = MTRBeginEntry::fixed_length;
-//   s = wal_mgr->WriteWAL(ctx_, wal_log, wal_len, mini_trans_id);
-//   delete[] wal_log;
-//   uint64_t mini_trans_id_100 = mini_trans_id;
-
-//   mini_trans_id = 0;
-//   wal_log = MTRBeginEntry::construct(WALLogType::TS_BEGIN, mini_trans_id, tsx_id2, 0, 0);
-//   wal_len = MTRBeginEntry::fixed_length;
-//   s = wal_mgr->WriteWAL(ctx_, wal_log, wal_len, mini_trans_id);
-//   delete[] wal_log;
-//   uint64_t mini_trans_id_200 = mini_trans_id;
-
-//   wal_mgr->Flush(ctx_);
-
-//   // ReadWALLogForMtr with specific mtr_trans_id should only return matching entries
-//   std::vector<LogEntry*> logs;
-//   std::vector<uint64_t> end_chk;
-//   s = wal_mgr->ReadWALLogForMtr(mini_trans_id_100, logs, end_chk);
-//   EXPECT_EQ(s, KStatus::SUCCESS);
-//   EXPECT_EQ(logs.size(), 1);
-//   if (!logs.empty()) {
-//     EXPECT_EQ(logs[0]->getXID(), mini_trans_id_100);
-//     EXPECT_EQ(logs[0]->getType(), WALLogType::TS_BEGIN);
-//   }
-
-//   for (auto& l : logs) {
-//     delete l;
-//   }
-//   delete wal_mgr;
-// }
-
-// TEST_F(TestWALMgr, TestWALMgr_ReadWALLogs_TxnIdFilter_NoMatch) {
-//   WALMgr* wal_mgr = new WALMgr(test_dir_, table_id_, tbl_grp_id_, &opts_);
-//   ASSERT_NE(wal_mgr, nullptr);
-//   KStatus s = wal_mgr->Init(ctx_);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-
-//   char tsx_id1[] = "txn_300";
-//   wal_mgr->WriteTSxWAL(ctx_, 3001, tsx_id1, WALLogType::TS_BEGIN);
-//   wal_mgr->Flush(ctx_);
-
-//   // Querying a non-existent txn_id should return empty
-//   std::vector<LogEntry*> logs;
-//   std::vector<uint64_t> end_chk;
-//   s = wal_mgr->ReadWALLogForMtr(9999, logs, end_chk);
-//   EXPECT_EQ(s, KStatus::SUCCESS);
-//   EXPECT_EQ(logs.size(), 0);
-
-//   for (auto& l : logs) {
-//     delete l;
-//   }
-//   delete wal_mgr;
-// }
-
-// TEST_F(TestWALMgr, TestWALMgr_ReadWALLogs_TxnIdFilter_MultipleTxnTypes) {
-//   WALMgr* wal_mgr = new WALMgr(test_dir_, table_id_, tbl_grp_id_, &opts_);
-//   ASSERT_NE(wal_mgr, nullptr);
-//   KStatus s = wal_mgr->Init(ctx_);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-
-//   char tsx_id1[] = "txn_400";
-//   char tsx_id2[] = "txn_500";
-
-//   // Write TS_BEGIN for txn1 (x_id=0 so readWALLogs uses LSN as x_id)
-//   TS_OSN mini_trans_id = 0;
-//   char* wal_log = MTRBeginEntry::construct(WALLogType::TS_BEGIN, mini_trans_id, tsx_id1, 0, 0);
-//   s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length, mini_trans_id);
-//   delete[] wal_log;
-//   uint64_t txn_id_4001 = mini_trans_id;
-
-//   // Write TS_BEGIN for txn2
-//   mini_trans_id = 0;
-//   wal_log = MTRBeginEntry::construct(WALLogType::TS_BEGIN, mini_trans_id, tsx_id2, 0, 0);
-//   s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length, mini_trans_id);
-//   delete[] wal_log;
-//   uint64_t txn_id_5001 = mini_trans_id;
-
-//   // Write TS_COMMIT for txn1 (x_id = txn1's LSN so it groups with the BEGIN)
-//   wal_log = MTRBeginEntry::construct(WALLogType::TS_COMMIT, txn_id_4001, tsx_id1, 0, 0);
-//   s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length);
-//   delete[] wal_log;
-
-//   wal_mgr->Flush(ctx_);
-
-//   // ReadWALLogForMtr with txn_id=txn_id_4001 should return both BEGIN and COMMIT
-//   std::vector<LogEntry*> logs;
-//   std::vector<uint64_t> end_chk;
-//   s = wal_mgr->ReadWALLogForMtr(txn_id_4001, logs, end_chk);
-//   EXPECT_EQ(s, KStatus::SUCCESS);
-//   EXPECT_EQ(logs.size(), 2);
-//   if (logs.size() >= 2) {
-//     EXPECT_EQ(logs[0]->getXID(), txn_id_4001);
-//     EXPECT_EQ(logs[1]->getXID(), txn_id_4001);
-//   }
-
-//   for (auto& l : logs) {
-//     delete l;
-//   }
-//   delete wal_mgr;
-// }
-
-// TEST_F(TestWALMgr, TestWALMgr_ReadWALLogs_TxnIdFilter_MixedMTRAndTS) {
-//   WALMgr* wal_mgr = new WALMgr(test_dir_, table_id_, tbl_grp_id_, &opts_);
-//   ASSERT_NE(wal_mgr, nullptr);
-//   KStatus s = wal_mgr->Init(ctx_);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-
-//   char tsx_id1[] = "txn_600";
-//   char mtr_id1[] = "mtr_600";
-
-//   // Write TS_BEGIN (x_id=0 so readWALLogs uses LSN as x_id)
-//   TS_OSN mini_trans_id = 0;
-//   char* wal_log = MTRBeginEntry::construct(WALLogType::TS_BEGIN, mini_trans_id, tsx_id1, 0, 0);
-//   s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length, mini_trans_id);
-//   delete[] wal_log;
-//   uint64_t txn_id_ts = mini_trans_id;
-
-//   // Write MTR_BEGIN (x_id=0 so readWALLogs uses LSN as x_id)
-//   mini_trans_id = 0;
-//   wal_log = MTRBeginEntry::construct(WALLogType::MTR_BEGIN, mini_trans_id, mtr_id1, 0, 0);
-//   s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length, mini_trans_id);
-//   delete[] wal_log;
-//   uint64_t txn_id_mtr = mini_trans_id;
-
-//   wal_mgr->Flush(ctx_);
-
-//   // ReadWALLogForMtr with txn_id of the TS_BEGIN entry should only return that entry
-//   std::vector<LogEntry*> logs;
-//   std::vector<uint64_t> end_chk;
-//   s = wal_mgr->ReadWALLogForMtr(txn_id_ts, logs, end_chk);
-//   EXPECT_EQ(s, KStatus::SUCCESS);
-//   bool found_ts = false;
-//   for (auto& l : logs) {
-//     if (l->getXID() == txn_id_ts) {
-//       found_ts = true;
-//     }
-//   }
-//   EXPECT_TRUE(found_ts);
-
-//   for (auto& l : logs) {
-//     delete l;
-//   }
-//   delete wal_mgr;
-// }
-
-// TEST_F(TestWALMgr, TestWALMgr_ReadUncommittedWALLog_TxnIdFilter) {
-//   WALMgr* wal_mgr = new WALMgr(test_dir_, table_id_, tbl_grp_id_, &opts_);
-//   ASSERT_NE(wal_mgr, nullptr);
-//   KStatus s = wal_mgr->Init(ctx_);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-
-//   char tsx_id1[] = "txn_700";
-//   char tsx_id2[] = "txn_800";
-
-//   // Write TS_BEGIN for txn1 (x_id=0 so readWALLogs uses LSN as x_id)
-//   TS_OSN mini_trans_id = 0;
-//   char* wal_log = MTRBeginEntry::construct(WALLogType::TS_BEGIN, mini_trans_id, tsx_id1, 0, 0);
-//   s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length, mini_trans_id);
-//   delete[] wal_log;
-//   uint64_t txn_id_7001 = mini_trans_id;
-
-//   // Write TS_BEGIN for txn2
-//   mini_trans_id = 0;
-//   wal_log = MTRBeginEntry::construct(WALLogType::TS_BEGIN, mini_trans_id, tsx_id2, 0, 0);
-//   s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length, mini_trans_id);
-//   delete[] wal_log;
-//   uint64_t txn_id_8001 = mini_trans_id;
-
-//   wal_mgr->Flush(ctx_);
-
-//   // ReadUncommittedWALLog with specific uncommitted_xid should only return matching entries
-//   TS_OSN first_lsn = wal_mgr->GetFirstLSN();
-//   TS_OSN current_lsn = wal_mgr->FetchCurrentLSN();
-//   std::vector<LogEntry*> logs;
-//   std::vector<uint64_t> end_chk;
-//   std::vector<uint64_t> uncommitted_xid = {txn_id_7001};
-//   s = wal_mgr->ReadUncommittedWALLog(logs, first_lsn, current_lsn, end_chk, uncommitted_xid);
-//   EXPECT_EQ(s, KStatus::SUCCESS);
-//   EXPECT_EQ(logs.size(), 1);
-//   if (!logs.empty()) {
-//     EXPECT_EQ(logs[0]->getXID(), txn_id_7001);
-//   }
-
-//   for (auto& l : logs) {
-//     delete l;
-//   }
-//   delete wal_mgr;
-// }
-
-// // ============================================================================
-// // ZDP-50381: Committed transaction filtering logic (from CreateCheckpoint)
-// // ============================================================================
-
-// TEST_F(TestWALMgr, TestWALMgr_CommittedTxnFiltering) {
-//   WALMgr* wal_mgr = new WALMgr(test_dir_, table_id_, tbl_grp_id_, &opts_);
-//   ASSERT_NE(wal_mgr, nullptr);
-//   KStatus s = wal_mgr->Init(ctx_);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-
-//   char tsx_id1[] = "txn_c01";
-//   char tsx_id2[] = "txn_c02";
-//   char tsx_id3[] = "txn_c03";
-//   char mtr_id1[] = "mtr_c01";
-
-//   // Write: txn1 (begin+commit => committed), txn2 (begin only => uncommitted),
-//   //        txn3 (begin+rollback => rolled back), MTR (begin => uncommitted)
-
-//   // TS_BEGIN for txn1 (x_id=0 so readWALLogs uses LSN as x_id)
-//   TS_OSN mini_trans_id = 0;
-//   char* wal_log = MTRBeginEntry::construct(WALLogType::TS_BEGIN, mini_trans_id, tsx_id1, 0, 0);
-//   s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length, mini_trans_id);
-//   delete[] wal_log;
-//   uint64_t txn_id_101 = mini_trans_id;
-
-//   // TS_BEGIN for txn2
-//   mini_trans_id = 0;
-//   wal_log = MTRBeginEntry::construct(WALLogType::TS_BEGIN, mini_trans_id, tsx_id2, 0, 0);
-//   s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length, mini_trans_id);
-//   delete[] wal_log;
-//   uint64_t txn_id_102 = mini_trans_id;
-
-//   // TS_COMMIT for txn1 (x_id = txn1's LSN)
-//   wal_log = MTRBeginEntry::construct(WALLogType::TS_COMMIT, txn_id_101, tsx_id1, 0, 0);
-//   s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length);
-//   delete[] wal_log;
-
-//   // TS_BEGIN for txn3
-//   mini_trans_id = 0;
-//   wal_log = MTRBeginEntry::construct(WALLogType::TS_BEGIN, mini_trans_id, tsx_id3, 0, 0);
-//   s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length, mini_trans_id);
-//   delete[] wal_log;
-//   uint64_t txn_id_103 = mini_trans_id;
-
-//   // TS_ROLLBACK for txn3 (x_id = txn3's LSN)
-//   wal_log = MTRBeginEntry::construct(WALLogType::TS_ROLLBACK, txn_id_103, tsx_id3, 0, 0);
-//   s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length);
-//   delete[] wal_log;
-
-//   // MTR_BEGIN (x_id=0 so readWALLogs uses LSN as x_id)
-//   mini_trans_id = 0;
-//   wal_log = MTRBeginEntry::construct(WALLogType::MTR_BEGIN, mini_trans_id, mtr_id1, 0, 0);
-//   s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length, mini_trans_id);
-//   delete[] wal_log;
-//   uint64_t txn_id_104 = mini_trans_id;
-
-//   wal_mgr->Flush(ctx_);
-
-//   // Read all logs
-//   std::vector<LogEntry*> logs;
-//   std::vector<uint64_t> end_chk;
-//   TS_OSN first_lsn = wal_mgr->GetFirstLSN();
-//   TS_OSN current_lsn = wal_mgr->FetchCurrentLSN();
-//   s = wal_mgr->ReadWALLog(logs, first_lsn, current_lsn, end_chk);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-
-//   size_t total_count = logs.size();
-//   ASSERT_GT(total_count, 0);
-
-//   // Apply the same filtering logic as in CreateCheckpoint:
-//   // collect committed/rolled-back xid, then remove their entries
-//   std::unordered_set<uint64_t> committed_xid;
-//   for (auto& log : logs) {
-//     if (log->getType() == WALLogType::MTR_COMMIT || log->getType() == WALLogType::MTR_ROLLBACK ||
-//         log->getType() == WALLogType::TS_COMMIT || log->getType() == WALLogType::TS_ROLLBACK) {
-//       committed_xid.insert(log->getXID());
-//     }
-//   }
-
-//   // txn_id_101 (TS_COMMIT) and txn_id_103 (TS_ROLLBACK) should be in committed_xid
-//   EXPECT_EQ(committed_xid.size(), 2);
-//   EXPECT_NE(committed_xid.find(txn_id_101), committed_xid.end());
-//   EXPECT_NE(committed_xid.find(txn_id_103), committed_xid.end());
-
-//   // Remove committed transaction entries
-//   if (!committed_xid.empty()) {
-//     for (auto it = logs.begin(); it != logs.end();) {
-//       if (committed_xid.find((*it)->getXID()) != committed_xid.end()) {
-//         delete *it;
-//         it = logs.erase(it);
-//       } else {
-//         ++it;
-//       }
-//     }
-//   }
-
-//   // Only uncommitted entries should remain: txn2 TS_BEGIN, MTR MTR_BEGIN
-//   EXPECT_EQ(logs.size(), 2);
-//   std::unordered_set<uint64_t> remaining_xid;
-//   for (auto& log : logs) {
-//     remaining_xid.insert(log->getXID());
-//   }
-//   EXPECT_NE(remaining_xid.find(txn_id_102), remaining_xid.end());
-//   EXPECT_NE(remaining_xid.find(txn_id_104), remaining_xid.end());
-
-//   for (auto& l : logs) {
-//     delete l;
-//   }
-//   delete wal_mgr;
-// }
-
-// TEST_F(TestWALMgr, TestWALMgr_CommittedTxnFiltering_AllCommitted) {
-//   WALMgr* wal_mgr = new WALMgr(test_dir_, table_id_, tbl_grp_id_, &opts_);
-//   ASSERT_NE(wal_mgr, nullptr);
-//   KStatus s = wal_mgr->Init(ctx_);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-
-//   char tsx_id1[] = "txn_ac01";
-//   char mtr_id1[] = "mtr_ac01";
-
-//   // TS_BEGIN (x_id=0 so readWALLogs uses LSN as x_id)
-//   TS_OSN mini_trans_id = 0;
-//   char* wal_log = MTRBeginEntry::construct(WALLogType::TS_BEGIN, mini_trans_id, tsx_id1, 0, 0);
-//   s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length, mini_trans_id);
-//   delete[] wal_log;
-//   uint64_t txn_id_201 = mini_trans_id;
-
-//   // TS_COMMIT (x_id = txn's LSN)
-//   wal_log = MTRBeginEntry::construct(WALLogType::TS_COMMIT, txn_id_201, tsx_id1, 0, 0);
-//   s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length);
-//   delete[] wal_log;
-
-//   // MTR_BEGIN (x_id=0 so readWALLogs uses LSN as x_id)
-//   mini_trans_id = 0;
-//   wal_log = MTRBeginEntry::construct(WALLogType::MTR_BEGIN, mini_trans_id, mtr_id1, 0, 0);
-//   s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length, mini_trans_id);
-//   delete[] wal_log;
-//   uint64_t txn_id_202 = mini_trans_id;
-
-//   // MTR_COMMIT (x_id = mtr's LSN)
-//   wal_log = MTRBeginEntry::construct(WALLogType::MTR_COMMIT, txn_id_202, mtr_id1, 0, 0);
-//   s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length);
-//   delete[] wal_log;
-
-//   wal_mgr->Flush(ctx_);
-
-//   std::vector<LogEntry*> logs;
-//   std::vector<uint64_t> end_chk;
-//   TS_OSN first_lsn = wal_mgr->GetFirstLSN();
-//   TS_OSN current_lsn = wal_mgr->FetchCurrentLSN();
-//   s = wal_mgr->ReadWALLog(logs, first_lsn, current_lsn, end_chk);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-
-//   std::unordered_set<uint64_t> committed_xid;
-//   for (auto& log : logs) {
-//     if (log->getType() == WALLogType::MTR_COMMIT || log->getType() == WALLogType::MTR_ROLLBACK ||
-//         log->getType() == WALLogType::TS_COMMIT || log->getType() == WALLogType::TS_ROLLBACK) {
-//       committed_xid.insert(log->getXID());
-//     }
-//   }
-
-//   EXPECT_EQ(committed_xid.size(), 2);
-
-//   if (!committed_xid.empty()) {
-//     for (auto it = logs.begin(); it != logs.end();) {
-//       if (committed_xid.find((*it)->getXID()) != committed_xid.end()) {
-//         delete *it;
-//         it = logs.erase(it);
-//       } else {
-//         ++it;
-//       }
-//     }
-//   }
-
-//   // No entries should remain
-//   EXPECT_EQ(logs.size(), 0);
-
-//   for (auto& l : logs) {
-//     delete l;
-//   }
-//   delete wal_mgr;
-// }
-
-// TEST_F(TestWALMgr, TestWALMgr_CommittedTxnFiltering_NoneCommitted) {
-//   WALMgr* wal_mgr = new WALMgr(test_dir_, table_id_, tbl_grp_id_, &opts_);
-//   ASSERT_NE(wal_mgr, nullptr);
-//   KStatus s = wal_mgr->Init(ctx_);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-
-//   char tsx_id1[] = "txn_nc01";
-//   char mtr_id1[] = "mtr_nc01";
-
-//   // No transactions are committed/rolled-back
-//   wal_mgr->WriteTSxWAL(ctx_, 301, tsx_id1, WALLogType::TS_BEGIN);
-//   {
-//     char* mtr_log = MTRBeginEntry::construct(WALLogType::MTR_BEGIN, 302, mtr_id1, 0, 0);
-//     wal_mgr->WriteWAL(ctx_, mtr_log, MTRBeginEntry::fixed_length);
-//     delete[] mtr_log;
-//   }
-//   wal_mgr->Flush(ctx_);
-
-//   std::vector<LogEntry*> logs;
-//   std::vector<uint64_t> end_chk;
-//   TS_OSN first_lsn = wal_mgr->GetFirstLSN();
-//   TS_OSN current_lsn = wal_mgr->FetchCurrentLSN();
-//   s = wal_mgr->ReadWALLog(logs, first_lsn, current_lsn, end_chk);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-//   size_t original_size = logs.size();
-
-//   std::unordered_set<uint64_t> committed_xid;
-//   for (auto& log : logs) {
-//     if (log->getType() == WALLogType::MTR_COMMIT || log->getType() == WALLogType::MTR_ROLLBACK ||
-//         log->getType() == WALLogType::TS_COMMIT || log->getType() == WALLogType::TS_ROLLBACK) {
-//       committed_xid.insert(log->getXID());
-//     }
-//   }
-
-//   EXPECT_EQ(committed_xid.size(), 0);
-
-//   if (!committed_xid.empty()) {
-//     for (auto it = logs.begin(); it != logs.end();) {
-//       if (committed_xid.find((*it)->getXID()) != committed_xid.end()) {
-//         delete *it;
-//         it = logs.erase(it);
-//       } else {
-//         ++it;
-//       }
-//     }
-//   }
-
-//   // All entries should remain
-//   EXPECT_EQ(logs.size(), original_size);
-
-//   for (auto& l : logs) {
-//     delete l;
-//   }
-//   delete wal_mgr;
-// }
-
-// TEST_F(TestWALMgr, TestWALMgr_UncommittedXidFromBeginLogs) {
-//   WALMgr* wal_mgr = new WALMgr(test_dir_, table_id_, tbl_grp_id_, &opts_);
-//   ASSERT_NE(wal_mgr, nullptr);
-//   KStatus s = wal_mgr->Init(ctx_);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-
-//   char tsx_id1[] = "txn_u01";
-//   char mtr_id1[] = "mtr_u01";
-//   char mtr_id2[] = "mtr_u02";
-
-//   // Write TS_BEGIN (x_id=0 so readWALLogs uses LSN as x_id)
-//   TS_OSN mini_trans_id = 0;
-//   char* wal_log = MTRBeginEntry::construct(WALLogType::TS_BEGIN, mini_trans_id, tsx_id1, 0, 0);
-//   s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length, mini_trans_id);
-//   delete[] wal_log;
-//   uint64_t txn_id_401 = mini_trans_id;
-
-//   // Write MTR_BEGIN
-//   mini_trans_id = 0;
-//   wal_log = MTRBeginEntry::construct(WALLogType::MTR_BEGIN, mini_trans_id, mtr_id1, 0, 0);
-//   s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length, mini_trans_id);
-//   delete[] wal_log;
-//   uint64_t txn_id_402 = mini_trans_id;
-
-//   // Write another MTR_BEGIN
-//   mini_trans_id = 0;
-//   wal_log = MTRBeginEntry::construct(WALLogType::MTR_BEGIN, mini_trans_id, mtr_id2, 0, 0);
-//   s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length, mini_trans_id);
-//   delete[] wal_log;
-//   uint64_t txn_id_403 = mini_trans_id;
-
-//   wal_mgr->Flush(ctx_);
-
-//   // Read all logs and collect uncommitted xid from BEGIN entries (same logic as CreateCheckpoint)
-//   std::vector<LogEntry*> logs;
-//   std::vector<uint64_t> end_chk;
-//   TS_OSN first_lsn = wal_mgr->GetFirstLSN();
-//   TS_OSN current_lsn = wal_mgr->FetchCurrentLSN();
-//   s = wal_mgr->ReadWALLog(logs, first_lsn, current_lsn, end_chk);
-//   ASSERT_EQ(s, KStatus::SUCCESS);
-
-//   std::vector<uint64_t> uncommitted_xid;
-//   for (auto& log : logs) {
-//     if (log->getType() == WALLogType::TS_BEGIN || log->getType() == WALLogType::MTR_BEGIN) {
-//       uncommitted_xid.push_back(log->getXID());
-//     }
-//   }
-
-//   EXPECT_EQ(uncommitted_xid.size(), 3);
-//   EXPECT_NE(std::find(uncommitted_xid.begin(), uncommitted_xid.end(), txn_id_401), uncommitted_xid.end());
-//   EXPECT_NE(std::find(uncommitted_xid.begin(), uncommitted_xid.end(), txn_id_402), uncommitted_xid.end());
-//   EXPECT_NE(std::find(uncommitted_xid.begin(), uncommitted_xid.end(), txn_id_403), uncommitted_xid.end());
-
-//   for (auto& l : logs) {
-//     delete l;
-//   }
-//   delete wal_mgr;
-// }
+TEST_F(TestWALMgr, TestWALMgr_ReadWALLogs_TxnIdFilter_AllLogs) {
+  WALMgr* wal_mgr = new WALMgr(test_dir_, table_id_, tbl_grp_id_, &opts_);
+  ASSERT_NE(wal_mgr, nullptr);
+  KStatus s = wal_mgr->Init(ctx_);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  char tsx_id1[] = "txn_x_xxxx_00001";
+  char tsx_id2[] = "txn_x_xxxx_00002";
+  wal_mgr->WriteTSxWAL(ctx_, 100, tsx_id1, WALLogType::TS_BEGIN);
+  wal_mgr->WriteTSxWAL(ctx_, 200, tsx_id2, WALLogType::TS_BEGIN);
+  wal_mgr->Flush(ctx_);
+
+  // txn_id=0 should return all logs
+  std::vector<LogEntry*> logs;
+  std::vector<uint64_t> end_chk;
+  TS_OSN first_lsn = wal_mgr->GetFirstLSN();
+  TS_OSN current_lsn = wal_mgr->FetchCurrentLSN();
+  s = wal_mgr->ReadWALLog(logs, first_lsn, current_lsn, end_chk);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+  EXPECT_EQ(logs.size(), 2);
+
+  for (auto& l : logs) {
+    delete l;
+  }
+  delete wal_mgr;
+}
+
+TEST_F(TestWALMgr, TestWALMgr_ReadWALLogs_TxnIdFilter_MatchingOnly) {
+  WALMgr* wal_mgr = new WALMgr(test_dir_, table_id_, tbl_grp_id_, &opts_);
+  ASSERT_NE(wal_mgr, nullptr);
+  KStatus s = wal_mgr->Init(ctx_);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  char tsx_id1[] = "txn_x_xxxx_00001";
+  char tsx_id2[] = "txn_x_xxxx_00002";
+
+  TS_OSN mini_trans_id = 0;
+  char* wal_log = MTRBeginEntry::construct(WALLogType::TS_BEGIN, mini_trans_id, tsx_id1, 0, 0);
+  size_t wal_len = MTRBeginEntry::fixed_length;
+  s = wal_mgr->WriteWAL(ctx_, wal_log, wal_len, mini_trans_id);
+  delete[] wal_log;
+  uint64_t mini_trans_id_100 = mini_trans_id;
+
+  mini_trans_id = 0;
+  wal_log = MTRBeginEntry::construct(WALLogType::TS_BEGIN, mini_trans_id, tsx_id2, 0, 0);
+  wal_len = MTRBeginEntry::fixed_length;
+  s = wal_mgr->WriteWAL(ctx_, wal_log, wal_len, mini_trans_id);
+  delete[] wal_log;
+  uint64_t mini_trans_id_200 = mini_trans_id;
+
+  wal_mgr->Flush(ctx_);
+
+  // ReadWALLogForMtr with specific mtr_trans_id should only return matching entries
+  std::vector<LogEntry*> logs;
+  std::vector<uint64_t> end_chk;
+  s = wal_mgr->ReadWALLogForMtr(mini_trans_id_100, logs, end_chk);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+  EXPECT_EQ(logs.size(), 1);
+  if (!logs.empty()) {
+    EXPECT_EQ(logs[0]->getXID(), mini_trans_id_100);
+    EXPECT_EQ(logs[0]->getType(), WALLogType::TS_BEGIN);
+  }
+
+  for (auto& l : logs) {
+    delete l;
+  }
+  delete wal_mgr;
+}
+
+TEST_F(TestWALMgr, TestWALMgr_ReadWALLogs_TxnIdFilter_NoMatch) {
+  WALMgr* wal_mgr = new WALMgr(test_dir_, table_id_, tbl_grp_id_, &opts_);
+  ASSERT_NE(wal_mgr, nullptr);
+  KStatus s = wal_mgr->Init(ctx_);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  char tsx_id1[] = "txn_x_xxxx_00003";
+  wal_mgr->WriteTSxWAL(ctx_, 3001, tsx_id1, WALLogType::TS_BEGIN);
+  wal_mgr->Flush(ctx_);
+
+  // Querying a non-existent txn_id should return empty
+  std::vector<LogEntry*> logs;
+  std::vector<uint64_t> end_chk;
+  s = wal_mgr->ReadWALLogForMtr(9999, logs, end_chk);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+  EXPECT_EQ(logs.size(), 0);
+
+  for (auto& l : logs) {
+    delete l;
+  }
+  delete wal_mgr;
+}
+
+TEST_F(TestWALMgr, TestWALMgr_ReadWALLogs_TxnIdFilter_MultipleTxnTypes) {
+  WALMgr* wal_mgr = new WALMgr(test_dir_, table_id_, tbl_grp_id_, &opts_);
+  ASSERT_NE(wal_mgr, nullptr);
+  KStatus s = wal_mgr->Init(ctx_);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  char tsx_id1[] = "txn_x_xxxx_00004";
+  char tsx_id2[] = "txn_x_xxxx_00005";
+
+  // Write TS_BEGIN for txn1 (x_id=0 so readWALLogs uses LSN as x_id)
+  TS_OSN mini_trans_id = 0;
+  char* wal_log = MTRBeginEntry::construct(WALLogType::TS_BEGIN, mini_trans_id, tsx_id1, 0, 0);
+  s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length, mini_trans_id);
+  delete[] wal_log;
+  uint64_t txn_id_4001 = mini_trans_id;
+
+  // Write TS_BEGIN for txn2
+  mini_trans_id = 0;
+  wal_log = MTRBeginEntry::construct(WALLogType::TS_BEGIN, mini_trans_id, tsx_id2, 0, 0);
+  s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length, mini_trans_id);
+  delete[] wal_log;
+  uint64_t txn_id_5001 = mini_trans_id;
+
+  // Write TS_COMMIT for txn1 (x_id = txn1's LSN so it groups with the BEGIN)
+  wal_log = MTRBeginEntry::construct(WALLogType::TS_COMMIT, txn_id_4001, tsx_id1, 0, 0);
+  s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length);
+  delete[] wal_log;
+
+  wal_mgr->Flush(ctx_);
+
+  // ReadWALLogForMtr with txn_id=txn_id_4001 should return both BEGIN and COMMIT
+  std::vector<LogEntry*> logs;
+  std::vector<uint64_t> end_chk;
+  s = wal_mgr->ReadWALLogForMtr(txn_id_4001, logs, end_chk);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+  EXPECT_EQ(logs.size(), 2);
+  if (logs.size() >= 2) {
+    EXPECT_EQ(logs[0]->getXID(), txn_id_4001);
+    EXPECT_EQ(logs[1]->getXID(), txn_id_4001);
+  }
+
+  for (auto& l : logs) {
+    delete l;
+  }
+  delete wal_mgr;
+}
+
+TEST_F(TestWALMgr, TestWALMgr_ReadWALLogs_TxnIdFilter_MixedMTRAndTS) {
+  WALMgr* wal_mgr = new WALMgr(test_dir_, table_id_, tbl_grp_id_, &opts_);
+  ASSERT_NE(wal_mgr, nullptr);
+  KStatus s = wal_mgr->Init(ctx_);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  char tsx_id1[] = "txn_x_xxxx_00006";
+  char mtr_id1[] = "mtr_x_xxxx_00001";
+
+  // Write TS_BEGIN (x_id=0 so readWALLogs uses LSN as x_id)
+  TS_OSN mini_trans_id = 0;
+  char* wal_log = MTRBeginEntry::construct(WALLogType::TS_BEGIN, mini_trans_id, tsx_id1, 0, 0);
+  s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length, mini_trans_id);
+  delete[] wal_log;
+  uint64_t txn_id_ts = mini_trans_id;
+
+  // Write MTR_BEGIN (x_id=0 so readWALLogs uses LSN as x_id)
+  mini_trans_id = 0;
+  wal_log = MTRBeginEntry::construct(WALLogType::MTR_BEGIN, mini_trans_id, mtr_id1, 0, 0);
+  s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length, mini_trans_id);
+  delete[] wal_log;
+  uint64_t txn_id_mtr = mini_trans_id;
+
+  wal_mgr->Flush(ctx_);
+
+  // ReadWALLogForMtr with txn_id of the TS_BEGIN entry should only return that entry
+  std::vector<LogEntry*> logs;
+  std::vector<uint64_t> end_chk;
+  s = wal_mgr->ReadWALLogForMtr(txn_id_ts, logs, end_chk);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+  bool found_ts = false;
+  for (auto& l : logs) {
+    if (l->getXID() == txn_id_ts) {
+      found_ts = true;
+    }
+  }
+  EXPECT_TRUE(found_ts);
+
+  for (auto& l : logs) {
+    delete l;
+  }
+  delete wal_mgr;
+}
+
+TEST_F(TestWALMgr, TestWALMgr_ReadUncommittedWALLog_TxnIdFilter) {
+  WALMgr* wal_mgr = new WALMgr(test_dir_, table_id_, tbl_grp_id_, &opts_);
+  ASSERT_NE(wal_mgr, nullptr);
+  KStatus s = wal_mgr->Init(ctx_);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  char tsx_id1[] = "txn_x_xxxx_00007";
+  char tsx_id2[] = "txn_x_xxxx_00008";
+
+  // Write TS_BEGIN for txn1 (x_id=0 so readWALLogs uses LSN as x_id)
+  TS_OSN mini_trans_id = 0;
+  char* wal_log = MTRBeginEntry::construct(WALLogType::TS_BEGIN, mini_trans_id, tsx_id1, 0, 0);
+  s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length, mini_trans_id);
+  delete[] wal_log;
+  uint64_t txn_id_7001 = mini_trans_id;
+
+  // Write TS_BEGIN for txn2
+  mini_trans_id = 0;
+  wal_log = MTRBeginEntry::construct(WALLogType::TS_BEGIN, mini_trans_id, tsx_id2, 0, 0);
+  s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length, mini_trans_id);
+  delete[] wal_log;
+  uint64_t txn_id_8001 = mini_trans_id;
+
+  wal_mgr->Flush(ctx_);
+
+  // ReadUncommittedWALLog with specific uncommitted_xid should only return matching entries
+  TS_OSN first_lsn = wal_mgr->GetFirstLSN();
+  TS_OSN current_lsn = wal_mgr->FetchCurrentLSN();
+  std::vector<LogEntry*> logs;
+  std::vector<uint64_t> end_chk;
+  std::vector<uint64_t> uncommitted_xid = {txn_id_7001};
+  s = wal_mgr->ReadUncommittedWALLog(logs, first_lsn, current_lsn, end_chk, uncommitted_xid);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+  EXPECT_EQ(logs.size(), 1);
+  if (!logs.empty()) {
+    EXPECT_EQ(logs[0]->getXID(), txn_id_7001);
+  }
+
+  for (auto& l : logs) {
+    delete l;
+  }
+  delete wal_mgr;
+}
+
+// ============================================================================
+// ZDP-50381: Committed transaction filtering logic (from CreateCheckpoint)
+// ============================================================================
+
+TEST_F(TestWALMgr, TestWALMgr_CommittedTxnFiltering) {
+  WALMgr* wal_mgr = new WALMgr(test_dir_, table_id_, tbl_grp_id_, &opts_);
+  ASSERT_NE(wal_mgr, nullptr);
+  KStatus s = wal_mgr->Init(ctx_);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  char tsx_id1[] = "txn_x_xxxx_000c1";
+  char tsx_id2[] = "txn_x_xxxx_000c2";
+  char tsx_id3[] = "txn_x_xxxx_000c3";
+  char mtr_id1[] = "mtr_x_xxxx_000c1";
+
+  // Write: txn1 (begin+commit => committed), txn2 (begin only => uncommitted),
+  //        txn3 (begin+rollback => rolled back), MTR (begin => uncommitted)
+
+  // TS_BEGIN for txn1 (x_id=0 so readWALLogs uses LSN as x_id)
+  TS_OSN mini_trans_id = 0;
+  char* wal_log = MTRBeginEntry::construct(WALLogType::TS_BEGIN, mini_trans_id, tsx_id1, 0, 0);
+  s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length, mini_trans_id);
+  delete[] wal_log;
+  uint64_t txn_id_101 = mini_trans_id;
+
+  // TS_BEGIN for txn2
+  mini_trans_id = 0;
+  wal_log = MTRBeginEntry::construct(WALLogType::TS_BEGIN, mini_trans_id, tsx_id2, 0, 0);
+  s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length, mini_trans_id);
+  delete[] wal_log;
+  uint64_t txn_id_102 = mini_trans_id;
+
+  // TS_COMMIT for txn1 (x_id = txn1's LSN)
+  wal_log = MTRBeginEntry::construct(WALLogType::TS_COMMIT, txn_id_101, tsx_id1, 0, 0);
+  s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length);
+  delete[] wal_log;
+
+  // TS_BEGIN for txn3
+  mini_trans_id = 0;
+  wal_log = MTRBeginEntry::construct(WALLogType::TS_BEGIN, mini_trans_id, tsx_id3, 0, 0);
+  s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length, mini_trans_id);
+  delete[] wal_log;
+  uint64_t txn_id_103 = mini_trans_id;
+
+  // TS_ROLLBACK for txn3 (x_id = txn3's LSN)
+  wal_log = MTRBeginEntry::construct(WALLogType::TS_ROLLBACK, txn_id_103, tsx_id3, 0, 0);
+  s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length);
+  delete[] wal_log;
+
+  // MTR_BEGIN (x_id=0 so readWALLogs uses LSN as x_id)
+  mini_trans_id = 0;
+  wal_log = MTRBeginEntry::construct(WALLogType::MTR_BEGIN, mini_trans_id, mtr_id1, 0, 0);
+  s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length, mini_trans_id);
+  delete[] wal_log;
+  uint64_t txn_id_104 = mini_trans_id;
+
+  wal_mgr->Flush(ctx_);
+
+  // Read all logs
+  std::vector<LogEntry*> logs;
+  std::vector<uint64_t> end_chk;
+  TS_OSN first_lsn = wal_mgr->GetFirstLSN();
+  TS_OSN current_lsn = wal_mgr->FetchCurrentLSN();
+  s = wal_mgr->ReadWALLog(logs, first_lsn, current_lsn, end_chk);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  size_t total_count = logs.size();
+  ASSERT_GT(total_count, 0);
+
+  // Apply the same filtering logic as in CreateCheckpoint:
+  // collect committed/rolled-back xid, then remove their entries
+  std::unordered_set<uint64_t> committed_xid;
+  for (auto& log : logs) {
+    if (log->getType() == WALLogType::MTR_COMMIT || log->getType() == WALLogType::MTR_ROLLBACK ||
+        log->getType() == WALLogType::TS_COMMIT || log->getType() == WALLogType::TS_ROLLBACK) {
+      committed_xid.insert(log->getXID());
+    }
+  }
+
+  // txn_id_101 (TS_COMMIT) and txn_id_103 (TS_ROLLBACK) should be in committed_xid
+  EXPECT_EQ(committed_xid.size(), 2);
+  EXPECT_NE(committed_xid.find(txn_id_101), committed_xid.end());
+  EXPECT_NE(committed_xid.find(txn_id_103), committed_xid.end());
+
+  // Remove committed transaction entries
+  if (!committed_xid.empty()) {
+    for (auto it = logs.begin(); it != logs.end();) {
+      if (committed_xid.find((*it)->getXID()) != committed_xid.end()) {
+        delete *it;
+        it = logs.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+
+  // Only uncommitted entries should remain: txn2 TS_BEGIN, MTR MTR_BEGIN
+  EXPECT_EQ(logs.size(), 2);
+  std::unordered_set<uint64_t> remaining_xid;
+  for (auto& log : logs) {
+    remaining_xid.insert(log->getXID());
+  }
+  EXPECT_NE(remaining_xid.find(txn_id_102), remaining_xid.end());
+  EXPECT_NE(remaining_xid.find(txn_id_104), remaining_xid.end());
+
+  for (auto& l : logs) {
+    delete l;
+  }
+  delete wal_mgr;
+}
+
+TEST_F(TestWALMgr, TestWALMgr_CommittedTxnFiltering_AllCommitted) {
+  WALMgr* wal_mgr = new WALMgr(test_dir_, table_id_, tbl_grp_id_, &opts_);
+  ASSERT_NE(wal_mgr, nullptr);
+  KStatus s = wal_mgr->Init(ctx_);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  char tsx_id1[] = "txn_x_xxxx_00ac1";
+  char mtr_id1[] = "mtr_x_xxxx_00ac1";
+
+  // TS_BEGIN (x_id=0 so readWALLogs uses LSN as x_id)
+  TS_OSN mini_trans_id = 0;
+  char* wal_log = MTRBeginEntry::construct(WALLogType::TS_BEGIN, mini_trans_id, tsx_id1, 0, 0);
+  s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length, mini_trans_id);
+  delete[] wal_log;
+  uint64_t txn_id_201 = mini_trans_id;
+
+  // TS_COMMIT (x_id = txn's LSN)
+  wal_log = MTRBeginEntry::construct(WALLogType::TS_COMMIT, txn_id_201, tsx_id1, 0, 0);
+  s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length);
+  delete[] wal_log;
+
+  // MTR_BEGIN (x_id=0 so readWALLogs uses LSN as x_id)
+  mini_trans_id = 0;
+  wal_log = MTRBeginEntry::construct(WALLogType::MTR_BEGIN, mini_trans_id, mtr_id1, 0, 0);
+  s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length, mini_trans_id);
+  delete[] wal_log;
+  uint64_t txn_id_202 = mini_trans_id;
+
+  // MTR_COMMIT (x_id = mtr's LSN)
+  wal_log = MTRBeginEntry::construct(WALLogType::MTR_COMMIT, txn_id_202, mtr_id1, 0, 0);
+  s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length);
+  delete[] wal_log;
+
+  wal_mgr->Flush(ctx_);
+
+  std::vector<LogEntry*> logs;
+  std::vector<uint64_t> end_chk;
+  TS_OSN first_lsn = wal_mgr->GetFirstLSN();
+  TS_OSN current_lsn = wal_mgr->FetchCurrentLSN();
+  s = wal_mgr->ReadWALLog(logs, first_lsn, current_lsn, end_chk);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::unordered_set<uint64_t> committed_xid;
+  for (auto& log : logs) {
+    if (log->getType() == WALLogType::MTR_COMMIT || log->getType() == WALLogType::MTR_ROLLBACK ||
+        log->getType() == WALLogType::TS_COMMIT || log->getType() == WALLogType::TS_ROLLBACK) {
+      committed_xid.insert(log->getXID());
+    }
+  }
+
+  EXPECT_EQ(committed_xid.size(), 2);
+
+  if (!committed_xid.empty()) {
+    for (auto it = logs.begin(); it != logs.end();) {
+      if (committed_xid.find((*it)->getXID()) != committed_xid.end()) {
+        delete *it;
+        it = logs.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+
+  // No entries should remain
+  EXPECT_EQ(logs.size(), 0);
+
+  for (auto& l : logs) {
+    delete l;
+  }
+  delete wal_mgr;
+}
+
+TEST_F(TestWALMgr, TestWALMgr_CommittedTxnFiltering_NoneCommitted) {
+  WALMgr* wal_mgr = new WALMgr(test_dir_, table_id_, tbl_grp_id_, &opts_);
+  ASSERT_NE(wal_mgr, nullptr);
+  KStatus s = wal_mgr->Init(ctx_);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  char tsx_id1[] = "txn_x_xxxx_00nc1";
+  char mtr_id1[] = "mtr_x_xxxx_00nc1";
+
+  // No transactions are committed/rolled-back
+  wal_mgr->WriteTSxWAL(ctx_, 301, tsx_id1, WALLogType::TS_BEGIN);
+  {
+    char* mtr_log = MTRBeginEntry::construct(WALLogType::MTR_BEGIN, 302, mtr_id1, 0, 0);
+    wal_mgr->WriteWAL(ctx_, mtr_log, MTRBeginEntry::fixed_length);
+    delete[] mtr_log;
+  }
+  wal_mgr->Flush(ctx_);
+
+  std::vector<LogEntry*> logs;
+  std::vector<uint64_t> end_chk;
+  TS_OSN first_lsn = wal_mgr->GetFirstLSN();
+  TS_OSN current_lsn = wal_mgr->FetchCurrentLSN();
+  s = wal_mgr->ReadWALLog(logs, first_lsn, current_lsn, end_chk);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  size_t original_size = logs.size();
+
+  std::unordered_set<uint64_t> committed_xid;
+  for (auto& log : logs) {
+    if (log->getType() == WALLogType::MTR_COMMIT || log->getType() == WALLogType::MTR_ROLLBACK ||
+        log->getType() == WALLogType::TS_COMMIT || log->getType() == WALLogType::TS_ROLLBACK) {
+      committed_xid.insert(log->getXID());
+    }
+  }
+
+  EXPECT_EQ(committed_xid.size(), 0);
+
+  if (!committed_xid.empty()) {
+    for (auto it = logs.begin(); it != logs.end();) {
+      if (committed_xid.find((*it)->getXID()) != committed_xid.end()) {
+        delete *it;
+        it = logs.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+
+  // All entries should remain
+  EXPECT_EQ(logs.size(), original_size);
+
+  for (auto& l : logs) {
+    delete l;
+  }
+  delete wal_mgr;
+}
+
+TEST_F(TestWALMgr, TestWALMgr_UncommittedXidFromBeginLogs) {
+  WALMgr* wal_mgr = new WALMgr(test_dir_, table_id_, tbl_grp_id_, &opts_);
+  ASSERT_NE(wal_mgr, nullptr);
+  KStatus s = wal_mgr->Init(ctx_);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  char tsx_id1[] = "txn_x_xxxx_00u01";
+  char mtr_id1[] = "mtr_x_xxxx_00u01";
+  char mtr_id2[] = "mtr_x_xxxx_00u02";
+
+  // Write TS_BEGIN (x_id=0 so readWALLogs uses LSN as x_id)
+  TS_OSN mini_trans_id = 0;
+  char* wal_log = MTRBeginEntry::construct(WALLogType::TS_BEGIN, mini_trans_id, tsx_id1, 0, 0);
+  s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length, mini_trans_id);
+  delete[] wal_log;
+  uint64_t txn_id_401 = mini_trans_id;
+
+  // Write MTR_BEGIN
+  mini_trans_id = 0;
+  wal_log = MTRBeginEntry::construct(WALLogType::MTR_BEGIN, mini_trans_id, mtr_id1, 0, 0);
+  s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length, mini_trans_id);
+  delete[] wal_log;
+  uint64_t txn_id_402 = mini_trans_id;
+
+  // Write another MTR_BEGIN
+  mini_trans_id = 0;
+  wal_log = MTRBeginEntry::construct(WALLogType::MTR_BEGIN, mini_trans_id, mtr_id2, 0, 0);
+  s = wal_mgr->WriteWAL(ctx_, wal_log, MTRBeginEntry::fixed_length, mini_trans_id);
+  delete[] wal_log;
+  uint64_t txn_id_403 = mini_trans_id;
+
+  wal_mgr->Flush(ctx_);
+
+  // Read all logs and collect uncommitted xid from BEGIN entries (same logic as CreateCheckpoint)
+  std::vector<LogEntry*> logs;
+  std::vector<uint64_t> end_chk;
+  TS_OSN first_lsn = wal_mgr->GetFirstLSN();
+  TS_OSN current_lsn = wal_mgr->FetchCurrentLSN();
+  s = wal_mgr->ReadWALLog(logs, first_lsn, current_lsn, end_chk);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::vector<uint64_t> uncommitted_xid;
+  for (auto& log : logs) {
+    if (log->getType() == WALLogType::TS_BEGIN || log->getType() == WALLogType::MTR_BEGIN) {
+      uncommitted_xid.push_back(log->getXID());
+    }
+  }
+
+  EXPECT_EQ(uncommitted_xid.size(), 3);
+  EXPECT_NE(std::find(uncommitted_xid.begin(), uncommitted_xid.end(), txn_id_401), uncommitted_xid.end());
+  EXPECT_NE(std::find(uncommitted_xid.begin(), uncommitted_xid.end(), txn_id_402), uncommitted_xid.end());
+  EXPECT_NE(std::find(uncommitted_xid.begin(), uncommitted_xid.end(), txn_id_403), uncommitted_xid.end());
+
+  for (auto& l : logs) {
+    delete l;
+  }
+  delete wal_mgr;
+}

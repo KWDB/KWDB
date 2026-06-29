@@ -62,6 +62,7 @@ double EngineOptions::block_filter_sampling_ratio = 0.2;
 int EngineOptions::agg_stats_recalc_cycle = 60 * 30;
 uint32_t EngineOptions::metric_schema_cache_capacity = 100;
 bool EngineOptions::force_re_compress = false;
+bool CLUSTER_SETTING_TS_TXN_ATOMICITY_ENABLE = false;
 
 extern std::map<std::string, std::string> g_cluster_settings;
 extern std::shared_mutex g_settings_mutex;
@@ -357,7 +358,8 @@ KStatus TSEngineImpl::Init(kwdbContext_p ctx) {
   }
 
   wal_sys_ = std::make_unique<WALMgr>(options_.db_path, "ddl", &options_);
-  tsx_manager_sys_ = std::make_unique<TSxMgr>(wal_sys_.get());
+  std::string tsx_sys_file_path = options_.db_path + "/wal/ddl/ts_trans_ids";
+  tsx_manager_sys_ = std::make_unique<TSxMgr>(wal_sys_.get(), tsx_sys_file_path);
   s = wal_sys_->Init(ctx);
   if (s == KStatus::FAIL) {
     LOG_ERROR("wal_sys_::Init fail.")
@@ -670,7 +672,7 @@ KStatus TSEngineImpl::CreateNormalTagIndex(kwdbContext_p ctx, const KTableKey& t
     }
 
     // Get transaction id.
-    uint64_t x_id = tsx_manager_sys_->getMtrID(transaction_id);
+    uint64_t x_id = tsx_manager_sys_->getMtrID(string{transaction_id, LogEntry::TS_TRANS_ID_LEN});
 
     // Write create index DDL into WAL, which type is Create_Normal_TagIndex.
     s = wal_sys_->WriteCreateIndexWAL(ctx, x_id, table_id, index_id, cur_version, new_version, index_schema);
@@ -694,7 +696,7 @@ KStatus TSEngineImpl::DropNormalTagIndex(kwdbContext_p ctx, const KTableKey& tab
     }
 
     // Get transaction id.
-    uint64_t x_id = tsx_manager_sys_->getMtrID(transaction_id);
+    uint64_t x_id = tsx_manager_sys_->getMtrID(string{transaction_id, LogEntry::TS_TRANS_ID_LEN});
 
     std::vector<uint32_t> tags = table->GetNTagIndexInfo(cur_version, index_id);
     if (tags.empty()) {
@@ -1015,7 +1017,7 @@ KStatus TSEngineImpl::AddColumn(kwdbContext_p ctx, const KTableKey &table_id, ch
     return s;
   }
   // Get transaction ID.
-  uint64_t x_id = tsx_manager_sys_->getMtrID(transaction_id);
+  uint64_t x_id = tsx_manager_sys_->getMtrID(string{transaction_id, LogEntry::TS_TRANS_ID_LEN});
 
   // Write Alter DDL into WAL, which type is ADD_COLUMN.
   s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, AlterType::ADD_COLUMN, cur_version, new_version, column);
@@ -1049,7 +1051,7 @@ KStatus TSEngineImpl::DropColumn(kwdbContext_p ctx, const KTableKey &table_id, c
     return s;
   }
   // Get transaction ID.
-  uint64_t x_id = tsx_manager_sys_->getMtrID(transaction_id);
+  uint64_t x_id = tsx_manager_sys_->getMtrID(string{transaction_id, LogEntry::TS_TRANS_ID_LEN});
 
   // Write Alter DDL into WAL, which type is DROP_COLUMN.
   s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, AlterType::DROP_COLUMN, cur_version, new_version, column);
@@ -1083,7 +1085,7 @@ KStatus TSEngineImpl::AlterColumn(kwdbContext_p ctx, const KTableKey &table_id, 
     return s;
   }
   // Get transaction ID.
-  uint64_t x_id = tsx_manager_sys_->getMtrID(transaction_id);
+  uint64_t x_id = tsx_manager_sys_->getMtrID(string{transaction_id, LogEntry::TS_TRANS_ID_LEN});
 
   // Write Alter DDL into WAL
   s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, alter_type, cur_version, new_version, origin_column);
@@ -1132,12 +1134,10 @@ KStatus TSEngineImpl::TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id, u
   if (!EnableWAL()) {
     return KStatus::SUCCESS;
   }
-  if (tsx_id != nullptr) {
-    exist_explict_txn.store(true);
-  }
   // Invoke the TSxMgr interface to start the Mini-Transaction and write the BEGIN log entry
   auto vgroup = GetVGroupByID(ctx, 1);
-  return vgroup->MtrBegin(ctx, range_id, index, mtr_id, tsx_id);
+  KStatus s = vgroup->MtrBegin(ctx, range_id, index, mtr_id, tsx_id);
+  return s;
 }
 
 KStatus TSEngineImpl::TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id,
@@ -1147,7 +1147,8 @@ KStatus TSEngineImpl::TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id,
   }
   // Call the TSxMgr interface to COMMIT the Mini-Transaction and write the COMMIT log entry
   auto vgroup = GetVGroupByID(ctx, 1);
-  return vgroup->MtrCommit(ctx, mtr_id, tsx_id);
+  KStatus s = vgroup->MtrCommit(ctx, mtr_id, tsx_id);
+  return s;
 }
 
 KStatus TSEngineImpl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id,
@@ -1184,10 +1185,38 @@ KStatus TSEngineImpl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id
       delete log;
     }
   }};
+
+  // for range
+  for (const auto& vgrp : vgroups_) {
+    std::vector<LogEntry*> wal_logs;
+    Defer defer{[&]() {
+      for (auto& log : wal_logs) {
+        delete log;
+      }
+    }};
+    s = vgrp->ReadWALLogForMtr(mtr_id, wal_logs);
+    if (s == FAIL && !wal_logs.empty()) {
+      Return(s)
+    }
+    std::reverse(wal_logs.begin(), wal_logs.end());
+    for (auto wal_log : wal_logs) {
+      if (wal_log->getXID() == mtr_id) {
+        s = vgrp->rollback(ctx, wal_log);
+        if (s == FAIL) {
+          LOG_ERROR("faild to rollback mtr, mtr_id:%ld", mtr_id)
+          Return(s)
+        }
+      }
+    }
+  }
+
+  wal_mgr_->Lock();
   s = wal_mgr_->ReadWALLog(engine_wal_logs, wal_mgr_->GetFirstLSN(), wal_mgr_->FetchCurrentLSN(), ignore);
   if (s == FAIL && !engine_wal_logs.empty()) {
+    wal_mgr_->Unlock();
     Return(s)
   }
+  wal_mgr_->Unlock();
 
   for (auto log : engine_wal_logs) {
     if (log->getXID() == mtr_id) {
@@ -1210,26 +1239,6 @@ KStatus TSEngineImpl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id
     if (vgrp->rollback(ctx, log, true) == KStatus::FAIL) {
       LOG_ERROR("rollback fail, vgroup id : %lu", vgrp_id)
       return KStatus::FAIL;
-    }
-  }
-
-  // for range
-  for (const auto& vgrp : vgroups_) {
-    std::vector<LogEntry*> wal_logs;
-    Defer defer{[&]() {
-      for (auto& log : wal_logs) {
-        delete log;
-      }
-    }};
-    s = vgrp->ReadWALLogForMtr(mtr_id, wal_logs);
-    if (s == FAIL && !wal_logs.empty()) {
-      Return(s)
-    }
-    std::reverse(wal_logs.begin(), wal_logs.end());
-    for (auto wal_log : wal_logs) {
-      if (wal_log->getXID() == mtr_id && s != FAIL) {
-        s = vgrp->rollback(ctx, wal_log);
-      }
     }
   }
   Return(KStatus::SUCCESS)
@@ -1278,7 +1287,7 @@ KStatus TSEngineImpl::TSxCommit(kwdbContext_p ctx, const KTableKey& table_id, ch
   std::shared_ptr<TsTable> table;
   KStatus s;
 
-  uint64_t mtr_id = tsx_manager_sys_->getMtrID(transaction_id);
+  uint64_t mtr_id = tsx_manager_sys_->getMtrID(string{transaction_id, LogEntry::TS_TRANS_ID_LEN});
   if (mtr_id != 0) {
     if (tsx_manager_sys_->TSxCommit(ctx, transaction_id) == KStatus::FAIL) {
       LOG_ERROR("TSxCommit failed, system wal failed, table id: %lu", table_id)
@@ -1311,7 +1320,7 @@ KStatus TSEngineImpl::TSxRollback(kwdbContext_p ctx, const KTableKey& table_id, 
   std::shared_ptr<TsTable> table;
   KStatus s;
 
-  uint64_t mtr_id = tsx_manager_sys_->getMtrID(transaction_id);
+  uint64_t mtr_id = tsx_manager_sys_->getMtrID(string{transaction_id, LogEntry::TS_TRANS_ID_LEN});
   if (mtr_id == 0) {
     if (checkpoint(ctx) == KStatus::FAIL) {
       LOG_ERROR("TSxCommit failed, system wal checkpoint failed, table id: %lu", table_id)
@@ -1413,14 +1422,11 @@ KStatus TSEngineImpl::ParallelRemoveChkFiles(kwdbContext_p ctx) {
 }
 
 KStatus TSEngineImpl::CreateCheckpoint(kwdbContext_p ctx) {
+  std::lock_guard<std::mutex> lock(checkpoint_mutex_);
   LOG_INFO("WAL Checkpoint Start.")
   Defer defer_log {[&]() {
     LOG_INFO("WAL Checkpoint Complete.")
   }};
-  Defer defer_explict {[&]() {
-    exist_explict_txn.store(false);
-  }};
-  // use raft log
   if (options_.use_raft_log_as_wal) {
     goPrepareFlush();
     // trig all vgroup flush
@@ -1455,7 +1461,7 @@ KStatus TSEngineImpl::CreateCheckpoint(kwdbContext_p ctx) {
       }
     }
     return KStatus::SUCCESS;
-  } else if (EngineOptions::isSingleNode() || !exist_explict_txn.load()) {
+  } else if (EngineOptions::isSingleNode() || CLUSTER_SETTING_TS_TXN_ATOMICITY_ENABLE == false) {
     // 1. switch engine wal file
     KStatus s = wal_mgr_->SwitchNextFile();
     if (s == KStatus::FAIL) {
@@ -1598,7 +1604,6 @@ KStatus TSEngineImpl::CreateCheckpoint(kwdbContext_p ctx) {
       }
     }
   }
-
   // 4. rewrite incomplete wal
   if (wal_mgr_->WriteIncompleteWAL(ctx, logs) == KStatus::FAIL) {
     LOG_ERROR("Failed to WriteIncompleteWAL.")
@@ -2142,12 +2147,10 @@ KStatus TSEngineImpl::recover(kwdbts::kwdbContext_p ctx) {
     switch (wal_log->getType()) {
       case WALLogType::TS_BEGIN: {
         incomplete.insert(std::pair<TS_OSN, LogEntry*>(mtr_id, wal_log));
-        tsx_manager_sys_->insertMtrID(wal_log->getTsxID().c_str(), mtr_id);
         break;
       }
       case WALLogType::TS_COMMIT: {
         incomplete.erase(mtr_id);
-        tsx_manager_sys_->eraseMtrID(mtr_id);
         break;
       }
       case WALLogType::TS_ROLLBACK: {
@@ -2235,7 +2238,6 @@ KStatus TSEngineImpl::recover(kwdbts::kwdbContext_p ctx) {
             break;
         }
         incomplete.erase(mtr_id);
-        tsx_manager_sys_->eraseMtrID(mtr_id);
         break;
       }
       case WALLogType::DDL_ALTER_COLUMN: {
@@ -2364,10 +2366,22 @@ KStatus TSEngineImpl::Recover(kwdbContext_p ctx) {
   }
 
   // 2.read mtr id first, only read uncommitted txn .
-  auto vgroup_mtr = GetVGroupByID(ctx, 1);
   std::unordered_map<uint64_t, txnOp> txn_op;
   std::unordered_map<TS_OSN, std::pair<uint64_t, uint64_t>> incomplete;
+
+  // read engine wal.
+  wal_mgr_->Lock();
+  s = wal_mgr_->ReadAllTxnID(txn_op, nullptr, incomplete);
+  last_lsn = wal_mgr_->FetchCurrentLSN();
+  wal_mgr_->Unlock();
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to ReadWALLog.")
+  }
+
+  auto vgroup_mtr = GetVGroupByID(ctx, 1);
+  vgroup_mtr->GetWALManager()->Lock();
   s = vgroup_mtr->GetWALManager()->ReadAllTxnID(txn_op, vgroup_mtr, incomplete);
+  vgroup_mtr->GetWALManager()->Unlock();
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to ReadAllTxnID.")
     return s;
@@ -2399,16 +2413,22 @@ KStatus TSEngineImpl::Recover(kwdbContext_p ctx) {
     if (txn.second == txnOp::begin) {
       TS_OSN mtr_id = txn.first;
       auto xid_rangeID = incomplete[mtr_id];
-      if (vgroup_mtr->IsExplict(mtr_id)) {
-        break;
+      if (vgroup_mtr->IsExplicit(mtr_id)) {
+        continue;
       }
       uint64_t applied_index = GetAppliedIndex(xid_rangeID.second, range_indexes_map_);
       if (xid_rangeID.first <= applied_index) {
         auto vgroup = GetVGroupByID(ctx, 1);
         s = vgroup->MtrCommit(ctx, mtr_id);
-        if (s == FAIL) return s;
+        if (s == FAIL) {
+          LOG_ERROR("Failed to recover commit mtr_id:%ld", mtr_id)
+          return s;
+        }
       } else {
-        if (TSMtrRollback(ctx, 0, 0, mtr_id) == KStatus::FAIL) return KStatus::FAIL;
+        if (TSMtrRollback(ctx, 0, 0, mtr_id) == KStatus::FAIL) {
+          LOG_ERROR("Failed to recover rollback mtr_id:%ld", mtr_id)
+          return KStatus::FAIL;
+        }
       }
     }
   }
@@ -2450,7 +2470,7 @@ KStatus TSEngineImpl::UpdateSetting(kwdbContext_p ctx) {
 
   if (GetClusterSetting(ctx, "ts.wal.wal_level", &value) == SUCCESS) {
     if (std::stoll(value) != options_.wal_level) {
-      wal_level_mutex_.lock();
+      std::lock_guard<std::shared_mutex> lock(wal_level_mutex_);
       // wlock all vgroup rwlock
       KStatus s = CreateCheckpoint(ctx);
       if (s == KStatus::FAIL) {
@@ -2462,8 +2482,6 @@ KStatus TSEngineImpl::UpdateSetting(kwdbContext_p ctx) {
       if (!EnableWAL()) {
         UpdateAtomicLSN();
       }
-      wal_level_mutex_.unlock();
-      // unlock
     }
   }
 

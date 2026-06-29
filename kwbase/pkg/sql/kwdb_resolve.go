@@ -89,8 +89,27 @@ func IsObjectCannotFoundError(err error) bool {
 
 //export checkTableMetaExist
 func checkTableMetaExist(id C.TSTableID) C.bool {
+	// Run the KV transaction on a regular goroutine instead of the cgo
+	// callback goroutine. The cgo callback goroutine's stack is not tracked
+	// by the GC the same way regular goroutine stacks are, which can lead to
+	// "marked free object in span" panics when the transaction blocks on
+	// network I/O or triggers stack growth. See:
+	// https://go.dev/blog/cgo
+	resp := make(chan bool, 1)
+	go func() {
+		resp <- checkTableMetaExistImpl(uint64(id))
+	}()
+	return C.bool(<-resp)
+}
+
+// checkTableMetaExistImpl contains the actual KV transaction logic. It must
+// run on a regular goroutine (not a cgo callback goroutine) so that the GC
+// can properly track its stack.
+func checkTableMetaExistImpl(tableID uint64) bool {
 	ctx := context.Background()
-	tableID := uint64(id)
+	if handler.db == nil {
+		return false
+	}
 	var tb *sqlbase.TableDescriptor
 	err := handler.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
 		// get tableDesc
@@ -119,19 +138,53 @@ func checkTableMetaExist(id C.TSTableID) C.bool {
 	})
 	if err != nil || tb == nil {
 		log.Error(ctx, err)
-		return C.bool(false)
+		return false
 	}
-	return C.bool(!tb.Dropped())
+	return !tb.Dropped()
 }
 
 //export getTableMetaByVersion
 func getTableMetaByVersion(
 	id C.TSTableID, tsVer C.uint64_t, outputLen *C.size_t, errMsg **C.char,
 ) *C.char {
+	// Run the KV transaction on a regular goroutine instead of the cgo
+	// callback goroutine, for the same reason as checkTableMetaExist.
+	type resp struct {
+		res    []byte
+		err    error
+		errMsg string
+	}
+	ch := make(chan resp, 1)
+	go func() {
+		r := resp{}
+		r.res, r.err = getTableMetaByVersionImpl(uint64(id), uint32(tsVer))
+		if r.err != nil {
+			r.errMsg = r.err.Error()
+		}
+		ch <- r
+	}()
+	r := <-ch
+	if r.err != nil {
+		log.Error(context.Background(), r.err)
+		*errMsg = C.CString(r.errMsg)
+		*outputLen = 0
+		return nil
+	}
+	cResult := C.CBytes(r.res)
+	*outputLen = C.size_t(len(r.res))
+	*errMsg = nil
+	return (*C.char)(cResult)
+}
+
+// getTableMetaByVersionImpl contains the actual KV transaction logic. It must
+// run on a regular goroutine (not a cgo callback goroutine) so that the GC
+// can properly track its stack.
+func getTableMetaByVersionImpl(tableID uint64, tsVersion uint32) ([]byte, error) {
 	ctx := context.Background()
+	if handler.db == nil {
+		return nil, errors.New("handler db is not initialized")
+	}
 	var res []byte
-	tableID := uint64(id)
-	tsVersion := uint32(tsVer)
 	err := handler.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
 		// get tableDesc with specific tsVersion
 		descKey := sqlbase.MakeDescMetadataKey(sqlbase.ID(tableID))
@@ -189,16 +242,7 @@ func getTableMetaByVersion(
 		res = meta
 		return nil
 	})
-	if err != nil {
-		log.Error(ctx, err)
-		*errMsg = C.CString(err.Error())
-		*outputLen = 0
-		return nil
-	}
-	cResult := C.CBytes(res)
-	*outputLen = C.size_t(len(res))
-	*errMsg = nil
-	return (*C.char)(cResult)
+	return res, err
 }
 
 func sortTSColumns(a []sqlbase.KWDBKTSColumn, b []sqlbase.KWDBKTSColumn) []sqlbase.KWDBKTSColumn {

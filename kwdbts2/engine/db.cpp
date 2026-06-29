@@ -790,6 +790,9 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
     } else {
       LOG_ERROR("Invalid compression algorithm: %s", value.c_str());
     }
+  } else if ("ts.txn.atomicity.enabled" == key) {
+    CLUSTER_SETTING_TS_TXN_ATOMICITY_ENABLE = "true" == value;
+    LOG_INFO("Cluster setting %s is %s.", key.c_str(), "true" == value ? "true" : "false");
   }
 #ifndef KWBASE_OSS
   else if ("ts.storage.autonomy.mode" == key) {  // NOLINT

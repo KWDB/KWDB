@@ -15,6 +15,8 @@
 #include <utility>
 #include <shared_mutex>
 #include <map>
+#include <unordered_map>
+#include <fstream>
 #include "st_wal_mgr.h"
 
 namespace kwdbts {
@@ -32,7 +34,7 @@ class WALMgr;
 */
 class TSxMgr {
  public:
-  explicit TSxMgr(WALMgr*);
+  explicit TSxMgr(WALMgr*, const std::string& file_path);
 
   ~TSxMgr();
 
@@ -104,34 +106,24 @@ class TSxMgr {
     std::string uuid = TTREntry::constructUUID(ts_trans_id);
     std::unique_lock<std::shared_mutex> lock(map_mutex_);
     ts_trans_ids_.insert(std::make_pair(uuid, mini_trans_id));
+    mtr_to_tsx_[mini_trans_id] = uuid;
+    persistToFile();
   }
 
-  bool IsExplict(uint64_t  mini_trans_id) {
+  bool IsExplicit(uint64_t mini_trans_id) {
     std::shared_lock<std::shared_mutex> lock(map_mutex_);
-    for (auto it = ts_trans_ids_.begin(); it != ts_trans_ids_.end(); ++it) {
-      if (it->second == mini_trans_id) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  void eraseMtrID(const uint64_t mini_trans_id) {
-    std::unique_lock<std::shared_mutex> lock(map_mutex_);
-    for (auto it = ts_trans_ids_.begin(); it != ts_trans_ids_.end(); ) {
-      if (it->second == mini_trans_id) {
-        ts_trans_ids_.erase(it->first);
-        break;
-      } else {
-        ++it;
-      }
-    }
+    return mtr_to_tsx_.count(mini_trans_id) > 0;
   }
 
  private:
   std::shared_mutex map_mutex_;
   WALMgr* wal_mgr_{nullptr};
   std::map<std::string, uint64_t> ts_trans_ids_{};
+  std::unordered_map<uint64_t, std::string> mtr_to_tsx_{};
+  std::string file_path_;
+
+  KStatus persistToFile();
+  KStatus recoverFromFile();
 };
 
 }  // namespace kwdbts

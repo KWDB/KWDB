@@ -38,6 +38,7 @@
 #include "ts_table_del_info.h"
 
 extern bool g_go_start_service;
+extern bool CLUSTER_SETTING_TS_TXN_ATOMICITY_ENABLE;
 
 namespace kwdbts {
 
@@ -79,12 +80,12 @@ class TSEngineImpl : public TSEngine {
   std::unique_ptr<TSxMgr> tsx_manager_sys_ = nullptr;
   std::fstream max_entity_id_file_;
   std::mutex file_mutex_;
+  std::mutex checkpoint_mutex_;
 
   std::unordered_map<uint64_t, std::unordered_map<std::string, std::shared_ptr<TsBatchDataWorker>>> read_batch_data_workers_;
   KRWLatch read_batch_workers_lock_;
   std::unordered_map<uint64_t, std::shared_ptr<TsBatchDataWorker>> write_batch_data_workers_;
   KRWLatch write_batch_workers_lock_;
-  std::atomic<bool> exist_explict_txn = false;
 
   TsHashRWLatch tag_lock_;
   // std::unique_ptr<TsMemSegmentManager> mem_seg_mgr_ = nullptr;

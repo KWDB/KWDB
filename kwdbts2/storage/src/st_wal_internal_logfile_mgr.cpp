@@ -210,6 +210,7 @@ KStatus WALFileMgr::writeBlocks(std::vector<EntryBlock*>& entry_blocks, HeaderBl
     writeHeaderBlock(header);
   }
   if (opt_->wal_level == WALMode::SYNC) {
+    file_.flush();
     auto helper = [](std::filebuf *fb) -> int {
       class Helper : public std::filebuf {
        public:

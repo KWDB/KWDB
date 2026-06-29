@@ -334,7 +334,7 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, const std::vector<LogEntry
       case MTR_BEGIN: {
         auto wal_log = reinterpret_cast<MTRBeginEntry *>(log);
         auto log_len = MTRBeginEntry::fixed_length;
-        auto beg_log = MTRBeginEntry::construct(WALLogType::MTR_BEGIN, wal_log->getXID(), LogEntry::DEFAULT_TS_TRANS_ID,
+        auto beg_log = MTRBeginEntry::construct(WALLogType::MTR_BEGIN, wal_log->getXID(), log->getTsxID().c_str(),
                                                 wal_log->getRangeID(), wal_log->getIndex());
         s = writeWALInternal(ctx, beg_log, log_len, current_lsn);
         delete []beg_log;
@@ -347,8 +347,7 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, const std::vector<LogEntry
       case MTR_COMMIT: {
         auto wal_log = reinterpret_cast<MTREntry *>(log);
         auto log_len = MTREntry::fixed_length;
-        auto commit_log = MTREntry::construct(WALLogType::MTR_COMMIT, wal_log->getXID(),
-                                              LogEntry::DEFAULT_TS_TRANS_ID);
+        auto commit_log = MTREntry::construct(WALLogType::MTR_COMMIT, wal_log->getXID(), log->getTsxID().c_str());
         s = writeWALInternal(ctx, commit_log, log_len, current_lsn);
         delete []commit_log;
         if (s == KStatus::FAIL) {
@@ -360,8 +359,7 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, const std::vector<LogEntry
       case MTR_ROLLBACK: {
         auto wal_log = reinterpret_cast<MTREntry *>(log);
         auto log_len = MTREntry::fixed_length;
-        auto roll_log = MTREntry::construct(WALLogType::MTR_ROLLBACK, wal_log->getXID(),
-                                              LogEntry::DEFAULT_TS_TRANS_ID);
+        auto roll_log = MTREntry::construct(WALLogType::MTR_ROLLBACK, wal_log->getXID(), log->getTsxID().c_str());
         s = writeWALInternal(ctx, roll_log, log_len, current_lsn);
         delete []roll_log;
         if (s == KStatus::FAIL) {
@@ -848,7 +846,12 @@ KStatus WALMgr::ReadWALLogAndApply(std::vector<LogEntry*>& logs, TS_OSN start_ls
         case WALLogType::MTR_ROLLBACK:
           break;
         default :
-          vgroup->ApplyWal(ctx, log, ignore_);
+          if (vgroup != nullptr) {
+            KStatus s = vgroup->ApplyWal(ctx, log, ignore_);
+            if (s == FAIL) {
+              LOG_ERROR("Failed to apply wal mtr_id:%ld", log->getXID())
+            }
+          }
       }
     }
     for (auto& log : logs) {
@@ -900,9 +903,11 @@ KStatus WALMgr::ReadWALLogAndSwitchFile(std::vector<LogEntry*>& logs, TS_OSN sta
   return status;
 }
 KStatus WALMgr::ReadWALLogForMtr(uint64_t mtr_trans_id, std::vector<LogEntry*>& logs, std::vector<uint64_t>& end_chk) {
+  this->Lock();
   file_mgr_->Lock();
   Defer defer{[&]() {
     file_mgr_->Unlock();
+    this->Unlock();
   }};
   HeaderBlock hb = file_mgr_->readHeaderBlock();
   TS_OSN first_lsn = hb.getFirstLSN();
@@ -1115,6 +1120,7 @@ KStatus WALMgr::flushMeta(kwdbContext_p ctx) {
   meta_file_.seekp(0, std::ios::beg);
   meta_file_.write(meta_flush_buf_, size);
   if (opt_->wal_level == WALMode::SYNC) {
+    meta_file_.flush();
     auto helper = [](std::filebuf *fb) -> int {
       class Helper : public std::filebuf {
        public:
