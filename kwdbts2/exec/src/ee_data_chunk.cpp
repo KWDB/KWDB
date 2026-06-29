@@ -27,6 +27,10 @@ namespace kwdbts {
 // %.g buffer size is 64 characters (including null terminator)
 #define BUF_SIZE 64
 
+constexpr int kTimestampPrecisionMs = 3;
+constexpr int kTimestampPrecisionUs = 6;
+constexpr int kTimestampPrecisionNs = 9;
+
 template <typename T>
 static inline k_int32 fastIntToString(T value, char* buffer) {
   // Handle zero case first
@@ -1707,7 +1711,10 @@ KStatus DataChunk::PgCompressResultData(kwdbContext_p ctx, const EE_StringInfo& 
   if (ee_appendBinaryStringInfo(info, "M0000", 5) != SUCCESS) {
     Return(FAIL);
   }
-
+  // set timezone
+  if (ee_sendint(info, ctx->timezone, 2) != SUCCESS) {
+    Return(FAIL);
+  }
   // set count
   if (ee_sendint(info, Count(), 4) != SUCCESS) {
     Return(FAIL);
@@ -1716,12 +1723,35 @@ KStatus DataChunk::PgCompressResultData(kwdbContext_p ctx, const EE_StringInfo& 
   if (ee_sendint(info, col_num_, 2) != SUCCESS) {
     Return(FAIL);
   }
-
+  // set row size
   if (ee_sendint(info, row_size_, 4) != SUCCESS) {
     Return(FAIL);
   }
 
   for (size_t col = 0; col < col_num_; col++) {
+    int timestamp_precision = 0;
+    switch (col_info_[col].storage_type) {
+    case roachpb::DataType::TIMESTAMP:
+    case roachpb::DataType::TIMESTAMPTZ: {
+      timestamp_precision = kTimestampPrecisionMs;
+      break;
+    }
+    case roachpb::DataType::TIMESTAMP_MICRO:
+    case roachpb::DataType::TIMESTAMPTZ_MICRO: {
+      timestamp_precision = kTimestampPrecisionUs;
+      break;
+    }
+    case roachpb::DataType::TIMESTAMP_NANO:
+    case roachpb::DataType::TIMESTAMPTZ_NANO: {
+      timestamp_precision = kTimestampPrecisionNs;
+      break;
+    }
+    default:
+      break;
+    }
+    if (ee_sendint(info, timestamp_precision, 4) != SUCCESS) {
+      Return(FAIL);
+    }
     if (ee_sendint(info, col_info_[col].fixed_storage_len, 4) != SUCCESS) {
       Return(FAIL);
     }
