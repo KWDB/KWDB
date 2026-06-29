@@ -195,7 +195,7 @@ static k_int64 getDateTrunc(k_bool is_unit_const, k_bool type_scale_multi_or_div
       break;
     }
     if (unit == "decade") {
-      ltm.tm_year -= ltm.tm_year % 12;
+      ltm.tm_year -= ltm.tm_year % 10;
     } else if (unit == "century") {
       ltm.tm_year -= ltm.tm_year % 100;
     } else if (unit == "millennium") {

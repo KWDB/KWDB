@@ -95,6 +95,7 @@ select e1,e2, date_trunc('month', e2) from t1.d1 order by e1;
 select e1,e2, date_trunc('week', e2) from t1.d1 order by e1;
 select e1,e2, date_trunc('year', e2) from t1.d1 order by e1;
 select e1,e2, date_trunc('quarter', e2) from t1.d1 order by e1;
+select e1,e2, date_trunc('decade', e2) from t1.d1 order by e1;
 
 select date_trunc('year', timestamp'2020-12-31 12:30:00.000');
 select date_trunc('year', timestamp'2020-12-31 12:30:00');
