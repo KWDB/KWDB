@@ -134,21 +134,28 @@ void StoreExceptionStackToFile(const int sig, siginfo_t* const info) {
 void ExceptionHandler(const int sig, siginfo_t* const info, void*) {
   static std::atomic_bool handlered{false};
   if (handlered.exchange(true)) {
-    // avoid recursive call
+    // avoid recursive call: restore default action and re-raise so that a
+    // second fatal signal still terminates via the default action (core dump).
     signal(sig, SIG_DFL);
+    raise(sig);
     return;
   }
-  
+
   StoreExceptionStackToFile(sig, info);
   // https://pkg.go.dev/os/signal#hdr-Go_programs_that_use_cgo_or_SWIG
-  // pass to GO or default
+  // Restore the previously-installed handler so the signal is delivered to Go
+  // (which, with GOTRACEBACK=crash, aborts and leaves a core dump).
   for (k_int32 i = 0; i < EXCEPTION_SIGNAL_CNT; i++) {
     if (sig == kExceptionSignals[i]) {
       sigaction(sig, &kOldSigactions[i], NULL);
+      return;
     }
   }
+  // No saved handler for this signal: fall back to the default action so a
+  // core dump is still produced instead of silently swallowing the signal.
+  signal(sig, SIG_DFL);
+  raise(sig);
 }
-
 int32_t RegisterExceptionHandler(char *dir, PostExceptionCb cb) {
   const char* kwdb_data_root;
   if ( (kwdb_data_root = std::getenv("KWDB_DATA_ROOT")) &&
@@ -168,9 +175,12 @@ int32_t RegisterExceptionHandler(char *dir, PostExceptionCb cb) {
   kPostExceptionCb = cb;
   for (k_int32 i = 0; i < EXCEPTION_SIGNAL_CNT; i++) {
     struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
     sa.sa_sigaction = ExceptionHandler;
     sigemptyset(&sa.sa_mask);
-    sa.sa_flags = SA_SIGINFO;
+    // Keep SA_ONSTACK so the handler runs on Go's alternate signal stack;
+    // otherwise a stack-overflow SIGSEGV cannot be handled and no core is made.
+    sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
     // Golang will register the exception handler at the very begin.
     // so save it to kOldSigactions for reraise. Other program(AE/T_ME/KSQL) will
     // save a DFL handler, it's fine.
