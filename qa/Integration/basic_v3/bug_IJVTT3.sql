@@ -1,6 +1,70 @@
 create ts database ts_bench2;
 CREATE TABLE ts_bench2.test1 (ts TIMESTAMPTZ NOT NULL,e1 timestamp(3),e2 timestamp(6),e3 timestamp(9),s1 timestamptz(3),s2 timestamptz(6),s3 timestamptz(9)) TAGS (t1 int not null) PRIMARY TAGS (t1);
 insert into ts_bench2.test1 values("2026-06-26 17:25:30.996","2026-06-26 09:25:30.996","2026-06-26 09:25:30.99569","2026-06-26 09:25:30.9956902","2026-06-26 17:25:30.996","2026-06-26 17:25:30.995691","2026-06-26 17:25:30.995691",1);
+set time zone 0;
+set pg_extend_compress=off;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=lz4_compress;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=snappy_compress;
+select * from ts_bench2.test1 order by ts;
+
+set time zone 1;
+set pg_extend_compress=off;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=lz4_compress;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=snappy_compress;
+select * from ts_bench2.test1 order by ts;
+
+set time zone 2;
+set pg_extend_compress=off;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=lz4_compress;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=snappy_compress;
+select * from ts_bench2.test1 order by ts;
+
+set time zone 3;
+set pg_extend_compress=off;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=lz4_compress;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=snappy_compress;
+select * from ts_bench2.test1 order by ts;
+
+set time zone 4;
+set pg_extend_compress=off;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=lz4_compress;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=snappy_compress;
+select * from ts_bench2.test1 order by ts;
+
+set time zone 5;
+set pg_extend_compress=off;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=lz4_compress;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=snappy_compress;
+select * from ts_bench2.test1 order by ts;
+
+set time zone 6;
+set pg_extend_compress=off;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=lz4_compress;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=snappy_compress;
+select * from ts_bench2.test1 order by ts;
+
+set time zone 7;
+set pg_extend_compress=off;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=lz4_compress;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=snappy_compress;
+select * from ts_bench2.test1 order by ts;
+
 set time zone 8;
 set pg_extend_compress=off;
 select * from ts_bench2.test1 order by ts;
@@ -8,6 +72,136 @@ set pg_extend_compress=lz4_compress;
 select * from ts_bench2.test1 order by ts;
 set pg_extend_compress=snappy_compress;
 select * from ts_bench2.test1 order by ts;
+
+set time zone 9;
+set pg_extend_compress=off;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=lz4_compress;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=snappy_compress;
+select * from ts_bench2.test1 order by ts;
+
+set time zone 10;
+set pg_extend_compress=off;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=lz4_compress;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=snappy_compress;
+select * from ts_bench2.test1 order by ts;
+
+set time zone 11;
+set pg_extend_compress=off;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=lz4_compress;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=snappy_compress;
+select * from ts_bench2.test1 order by ts;
+
+set time zone 12;
+set pg_extend_compress=off;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=lz4_compress;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=snappy_compress;
+select * from ts_bench2.test1 order by ts;
+
+
+set time zone -1;
+set pg_extend_compress=off;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=lz4_compress;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=snappy_compress;
+select * from ts_bench2.test1 order by ts;
+
+set time zone -2;
+set pg_extend_compress=off;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=lz4_compress;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=snappy_compress;
+select * from ts_bench2.test1 order by ts;
+
+set time zone -3;
+set pg_extend_compress=off;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=lz4_compress;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=snappy_compress;
+select * from ts_bench2.test1 order by ts;
+
+set time zone -4;
+set pg_extend_compress=off;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=lz4_compress;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=snappy_compress;
+select * from ts_bench2.test1 order by ts;
+
+set time zone -5;
+set pg_extend_compress=off;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=lz4_compress;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=snappy_compress;
+select * from ts_bench2.test1 order by ts;
+
+set time zone -6;
+set pg_extend_compress=off;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=lz4_compress;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=snappy_compress;
+select * from ts_bench2.test1 order by ts;
+
+set time zone -7;
+set pg_extend_compress=off;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=lz4_compress;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=snappy_compress;
+select * from ts_bench2.test1 order by ts;
+
+set time zone -8;
+set pg_extend_compress=off;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=lz4_compress;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=snappy_compress;
+select * from ts_bench2.test1 order by ts;
+
+set time zone -9;
+set pg_extend_compress=off;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=lz4_compress;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=snappy_compress;
+select * from ts_bench2.test1 order by ts;
+
+set time zone -10;
+set pg_extend_compress=off;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=lz4_compress;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=snappy_compress;
+select * from ts_bench2.test1 order by ts;
+
+set time zone -11;
+set pg_extend_compress=off;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=lz4_compress;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=snappy_compress;
+select * from ts_bench2.test1 order by ts;
+
+set time zone -12;
+set pg_extend_compress=off;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=lz4_compress;
+select * from ts_bench2.test1 order by ts;
+set pg_extend_compress=snappy_compress;
+select * from ts_bench2.test1 order by ts;
+
 set time zone 0;
 set pg_extend_compress=off;
 DROP DATABASE IF exists ts_bench2 cascade;
