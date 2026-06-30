@@ -45,34 +45,34 @@ std::condition_variable TsMemSegment::global_mem_seg_cv_;
 TsMemSegmentManager::TsMemSegmentManager(TsVGroup* vgroup, TsVersionManager* version_manager)
     : vgroup_(vgroup),
       version_manager_(version_manager),
-      cur_mem_seg_(TsMemSegment::Create(EngineOptions::mem_segment_max_height)) {
+      latest_mem_seg_(TsMemSegment::Create(EngineOptions::mem_segment_max_height)) {
 }
 
 bool TsMemSegmentManager::SwitchMemSegment(TsMemSegment* expected_old_mem_seg, bool flush) {
   {
     std::shared_lock lock(segment_lock_);
-    if (cur_mem_seg_.get() != expected_old_mem_seg) {
+    if (latest_mem_seg_.get() != expected_old_mem_seg) {
       return false;
     }
   }
   std::unique_lock lock{segment_lock_};
-  if (cur_mem_seg_.get() != expected_old_mem_seg) {
+  if (latest_mem_seg_.get() != expected_old_mem_seg) {
     return false;
   }
 
-  auto row_num = cur_mem_seg_->GetRowNum();
+  auto row_num = latest_mem_seg_->GetRowNum();
   if (row_num == 0) {
     LOG_INFO("current mem segment is empty, no need SwitchMemSegment.");
     return false;
   }
   if (flush) {
-    TsFlushJobPool::GetInstance().AddFlushJob(vgroup_, std::move(cur_mem_seg_));
+    TsFlushJobPool::GetInstance().AddFlushJob(vgroup_, std::move(latest_mem_seg_));
   }
-  cur_mem_seg_.reset();  // avoid potential dead lock: release current memsegment first
-  cur_mem_seg_ = TsMemSegment::Create(EngineOptions::mem_segment_max_height);
+  latest_mem_seg_.reset();  // avoid potential dead lock: release current memsegment first
+  latest_mem_seg_ = TsMemSegment::Create(EngineOptions::mem_segment_max_height);
 
   TsVersionUpdate update;
-  update.AddMemSegment(cur_mem_seg_);
+  update.AddMemSegment(latest_mem_seg_);
   int32_t new_heigh = log2(row_num);
   if (EngineOptions::mem_segment_max_height < new_heigh) {
     EngineOptions::mem_segment_max_height = new_heigh;
@@ -135,7 +135,7 @@ KStatus TsMemSegmentManager::PutData(TsRawPayload* pd, const std::shared_ptr<TsT
     return KStatus::SUCCESS;
   }
   auto cur_mem_seg = CurrentMemSegmentAndAllocateRow(row_num);
-  char* seg_pd = cur_mem_seg_->AllocPayload(pd->GetPayload());
+  char* seg_pd = cur_mem_seg->AllocPayload(pd->GetPayload());
   if (seg_pd == nullptr) {
     cur_mem_seg->AppendEmptyRow(row_num);
     LOG_ERROR("[ts_mem_segment] AllocPayload failed. size[%lu]", pd->GetPayload().len);

@@ -349,13 +349,13 @@ class TsMemSegmentManager {
  private:
   TsVGroup* vgroup_;
   TsVersionManager* version_manager_;
-  std::shared_ptr<TsMemSegment> cur_mem_seg_{nullptr};
+  std::shared_ptr<TsMemSegment> latest_mem_seg_{nullptr};
   mutable std::shared_mutex segment_lock_;
 
   std::shared_ptr<TsMemSegment> CurrentMemSegmentAndAllocateRow(uint32_t row_num) const {
     std::shared_lock lock(segment_lock_);
-    cur_mem_seg_->AllocRowNum(row_num);
-    return cur_mem_seg_;
+    latest_mem_seg_->AllocRowNum(row_num);
+    return latest_mem_seg_;
   }
 
  public:
@@ -363,7 +363,7 @@ class TsMemSegmentManager {
 
   std::shared_ptr<TsMemSegment> CurrentMemSegment() const {
     std::shared_lock lock(segment_lock_);
-    return cur_mem_seg_;
+    return latest_mem_seg_;
   }
 
   bool SwitchMemSegment(TsMemSegment* expected_old_mem_seg, bool flush);
