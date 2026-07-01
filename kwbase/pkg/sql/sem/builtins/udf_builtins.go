@@ -259,7 +259,7 @@ func createLuaFunction(
 ) func(*tree.EvalContext, tree.Datums) (tree.Datum, error) {
 	// Returns a function pointer
 	return func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
-		L := lua.NewState()
+		L := sqlbase.NewRestrictedLuaState()
 		defer L.Close() // Ensure Lua state is closed at end of function
 
 		// Load and execute Lua script
@@ -293,25 +293,13 @@ func createLuaFunction(
 			return nil, err
 		}
 
-		// Get the return value and convert it back to Go type
 		ret := L.Get(-1)
-		for {
-			if fn, ok := ret.(*lua.LFunction); ok {
-				if err := L.CallByParam(lua.P{
-					Fn:      fn,
-					NRet:    1,
-					Protect: true,
-				}); err != nil {
-					return nil, err
-				}
+		defer L.Pop(1)
 
-				ret = L.Get(-1)
-				L.Pop(1)
-			} else {
-				L.Pop(1)
-				break
-			}
+		if ret.Type() == lua.LTFunction {
+			return nil, pgerror.New(pgcode.FeatureNotSupported, "lua udf is not allowed to return functions")
 		}
+
 		return luaValueToGoValue(ret, returnType)
 	}
 }

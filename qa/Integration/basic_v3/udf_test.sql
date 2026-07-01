@@ -1202,4 +1202,26 @@ BEGIN
 end'
 END;
 
+CREATE FUNCTION lua_os(a INT) RETURNS FLOAT LANGUAGE LUA
+BEGIN
+'function lua_os(a)
+    return os.execute("whoami")
+end'
+END;
+
+CREATE FUNCTION lua_math(a INT) RETURNS FLOAT LANGUAGE LUA
+BEGIN
+'function lua_math(a)
+    return math.abs(a)
+end'
+END;
+
+CREATE FUNCTION lua_call(a INT) RETURNS FLOAT LANGUAGE LUA
+BEGIN
+'function lua_call(a)
+    local f = function(x) return x end
+    return f(a)
+end'
+END;
+
 SHOW FUNCTIONS;

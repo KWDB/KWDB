@@ -14,7 +14,8 @@ BEGIN
     return result
 end'
 END;
-CREATE FUNCTION
+ERROR: lua udf is not allowed to call functions
+SQLSTATE: 0A000
 > CREATE FUNCTION time_add_hour(input_time timestamp, hours_to_add double)
     RETURNS timestamp
     LANGUAGE LUA
@@ -26,17 +27,15 @@ end'
 END;
 CREATE FUNCTION
 > SELECT name FROM system.user_defined_routine where routine_type = 2;
-            name
------------------------------
+      name
+-----------------
   time_add_hour
-  time_difference_to_string
-(2 rows)
+(1 row)
 > SHOW FUNCTIONS;
-        function_name
------------------------------
+  function_name
+-----------------
   time_add_hour
-  time_difference_to_string
-(2 rows)
+(1 row)
 > SHOW FUNCTION time_add_hour;
   function_name |  argument_types   | return_type | function_type | language
 ----------------+-------------------+-------------+---------------+-----------
@@ -53,10 +52,8 @@ CREATE FUNCTION
   2024-01-01 12:00:00
 (1 row)
 > select time_difference_to_string('2024-01-01 10:00:00','2024-01-02 11:00:00');
-  time_difference_to_string
------------------------------
-  1天 1小时 0分钟 0秒
-(1 row)
+ERROR: unknown function: time_difference_to_string()
+SQLSTATE: 42883
 > create ts database test_udf;
 CREATE TS DATABASE
 > create table test_udf.tb1(ts timestamptz not null,e1 timestamp)tags(t1 int not null)primary tags(t1);
@@ -75,12 +72,8 @@ INSERT 1
   2024-01-01 14:00:00
 (3 rows)
 > select time_difference_to_string(e1,'2024-01-01 10:00:00') from test_udf.tb1 order by e1;
-  time_difference_to_string
------------------------------
-  0天 0小时 0分钟 0秒
-  0天 2小时 0分钟 0秒
-  0天 3小时 0分钟 0秒
-(3 rows)
+ERROR: unknown function: time_difference_to_string()
+SQLSTATE: 42883
 > select count(e1),min(e1),max(e1),time_add_hour(e1,1) as udf_add ,last_row(e1) from test_udf.tb1 group by e1 having time_add_hour(e1,1) > '2024-01-01 12:00:00' order by e1;
   count |         min         |         max         |       udf_add       |      last_row
 --------+---------------------+---------------------+---------------------+----------------------
@@ -88,11 +81,8 @@ INSERT 1
       1 | 2024-01-01 13:00:00 | 2024-01-01 13:00:00 | 2024-01-01 14:00:00 | 2024-01-01 13:00:00
 (2 rows)
 > select count(e1),min(e1),max(e1),time_difference_to_string(e1,'2024-01-01 10:00:00') as udf_time_diff ,last_row(e1) from test_udf.tb1 where time_add_hour(e1,1) >= '2024-01-01 12:00:00' group by e1 order by e1;
-  count |         min         |         max         |    udf_time_diff    |      last_row
---------+---------------------+---------------------+---------------------+----------------------
-      1 | 2024-01-01 12:00:00 | 2024-01-01 12:00:00 | 0天 2小时 0分钟 0秒 | 2024-01-01 12:00:00
-      1 | 2024-01-01 13:00:00 | 2024-01-01 13:00:00 | 0天 3小时 0分钟 0秒 | 2024-01-01 13:00:00
-(2 rows)
+ERROR: unknown function: time_difference_to_string()
+SQLSTATE: 42883
 > drop table test_udf.tb1;
 DROP TABLE
 > drop database test_udf cascade;
@@ -115,12 +105,8 @@ INSERT 1
   2024-01-01 14:00:00
 (3 rows)
 > select time_difference_to_string(e1,'2024-01-01 10:00:00') from test_udf_re.r1 order by e1;
-  time_difference_to_string
------------------------------
-  0天 0小时 0分钟 0秒
-  0天 2小时 0分钟 0秒
-  0天 3小时 0分钟 0秒
-(3 rows)
+ERROR: unknown function: time_difference_to_string()
+SQLSTATE: 42883
 > select count(e1),min(e1),max(e1) ,time_add_hour(e1,1) as udf_add from test_udf_re.r1 group by e1 having time_add_hour(e1,1) > '2024-01-01 12:00:00' order by e1;
   count |         min         |         max         |       udf_add
 --------+---------------------+---------------------+----------------------
@@ -128,11 +114,8 @@ INSERT 1
       1 | 2024-01-01 13:00:00 | 2024-01-01 13:00:00 | 2024-01-01 14:00:00
 (2 rows)
 > select count(e1),min(e1),max(e1),time_difference_to_string(e1,'2024-01-01 10:00:00') as udf_time_diff,time_add_hour(e1,1) as udf_add from test_udf_re.r1 where time_add_hour(e1,1) >= '2024-01-01 12:00:00' group by e1 order by e1;
-  count |         min         |         max         |    udf_time_diff    |       udf_add
---------+---------------------+---------------------+---------------------+----------------------
-      1 | 2024-01-01 12:00:00 | 2024-01-01 12:00:00 | 0天 2小时 0分钟 0秒 | 2024-01-01 13:00:00
-      1 | 2024-01-01 13:00:00 | 2024-01-01 13:00:00 | 0天 3小时 0分钟 0秒 | 2024-01-01 14:00:00
-(2 rows)
+ERROR: unknown function: time_difference_to_string()
+SQLSTATE: 42883
 > drop table test_udf_re.r1 ;
 DROP TABLE
 > drop database test_udf_re cascade;
@@ -163,30 +146,20 @@ DROP DATABASE
   NULL
 (1 row)
 > select time_difference_to_string('1970-01-01 00:00:00','1970-01-01 00:00:00');
-  time_difference_to_string
------------------------------
-  0天 0小时 0分钟 0秒
-(1 row)
+ERROR: unknown function: time_difference_to_string()
+SQLSTATE: 42883
 > select time_difference_to_string('1969-01-01 00:00:00','1970-01-01 00:00:00');
-  time_difference_to_string
------------------------------
-  365天 0小时 0分钟 0秒
-(1 row)
+ERROR: unknown function: time_difference_to_string()
+SQLSTATE: 42883
 > select time_difference_to_string('2262-04-11 23:47:16.854','1970-01-01 00:00:00');
-   time_difference_to_string
--------------------------------
-  106751天 23小时 47分钟 16秒
-(1 row)
+ERROR: unknown function: time_difference_to_string()
+SQLSTATE: 42883
 > select time_difference_to_string('2262-04-11 23:47:16.857','1970-01-01 00:00:00');
-   time_difference_to_string
--------------------------------
-  106751天 23小时 47分钟 16秒
-(1 row)
+ERROR: unknown function: time_difference_to_string()
+SQLSTATE: 42883
 > select time_difference_to_string(null,null);
-  time_difference_to_string
------------------------------
-  NULL
-(1 row)
+ERROR: unknown function: time_difference_to_string()
+SQLSTATE: 42883
 > select time_add_hour(-1,1);
 ERROR: unknown signature: time_add_hour(INT8, INT8)
 SQLSTATE: 42883
@@ -203,24 +176,25 @@ SQLSTATE: 42883
 ERROR: unknown signature: time_add_hour(BOOL, INT8)
 SQLSTATE: 42883
 > select time_difference_to_string(-1,1);
-ERROR: unknown signature: time_difference_to_string(INT8, INT8)
+ERROR: unknown function: time_difference_to_string()
 SQLSTATE: 42883
 > select time_difference_to_string('test',1);
-ERROR: unknown signature: time_difference_to_string(STRING, INT8)
+ERROR: unknown function: time_difference_to_string()
 SQLSTATE: 42883
 > select time_difference_to_string(123456,1);
-ERROR: unknown signature: time_difference_to_string(INT8, INT8)
+ERROR: unknown function: time_difference_to_string()
 SQLSTATE: 42883
 > select time_difference_to_string(1.1,1);
-ERROR: unknown signature: time_difference_to_string(DECIMAL, INT8)
+ERROR: unknown function: time_difference_to_string()
 SQLSTATE: 42883
 > select time_difference_to_string(false,1);
-ERROR: unknown signature: time_difference_to_string(BOOL, INT8)
+ERROR: unknown function: time_difference_to_string()
 SQLSTATE: 42883
 > DROP FUNCTION time_add_hour;
 DROP FUNCTION
 > DROP FUNCTION time_difference_to_string;
-DROP FUNCTION
+ERROR: unknown function 'time_difference_to_string' when dropping function
+SQLSTATE: 42883
 > SHOW FUNCTIONS;
   function_name
 -----------------

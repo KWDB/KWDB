@@ -38,7 +38,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
-	lua "github.com/yuin/gopher-lua"
+	luaast "github.com/yuin/gopher-lua/ast"
+	goluaparse "github.com/yuin/gopher-lua/golua-parse"
 )
 
 type createFunctionNode struct {
@@ -165,7 +166,7 @@ func (n *createFunctionNode) makeFuncDesc(
 // CheckUdf is used to check whether the parameters, return type, function body
 // are legal
 func (n *createFunctionNode) CheckUdf(params runParams) error {
-	L := lua.NewState()
+	L := sqlbase.NewRestrictedLuaState()
 	defer L.Close()
 
 	// check the function name is valid
@@ -177,6 +178,12 @@ func (n *createFunctionNode) CheckUdf(params runParams) error {
 	if err := L.ParseString(n.n.FuncBody, string(n.n.FunctionName), len(n.n.Arguments)); err != nil {
 		return err
 	}
+
+	// Reject unsafe syntax in Lua UDF body.
+	if err := checkLuaUDFNoUnsafeSyntax(n.n.FuncBody, string(n.n.FunctionName)); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -203,6 +210,238 @@ func (n *createFunctionNode) CheckUdfName(params runParams) error {
 		return pgerror.Newf(pgcode.DuplicateObject, "function named '%s' already exists. Please choose a different name", funcName)
 	}
 	return nil
+}
+
+// checkLuaUDFNoUnsafeSyntax rejects unsafe syntax in Lua UDF body.
+func checkLuaUDFNoUnsafeSyntax(source string, udfName string) error {
+	stmts, err := parseLuaChunk(source, udfName)
+	if err != nil {
+		return err
+	}
+
+	return checkLuaStmtsNoUnsafeSyntax(stmts, true)
+}
+
+// parseLuaChunk parses lua source into ast statements.
+func parseLuaChunk(source string, udfName string) ([]luaast.Stmt, error) {
+	return goluaparse.Parse(strings.NewReader(source), udfName)
+}
+
+// checkLuaStmtsNoUnsafeSyntax checks unsafe syntax for lua stmts.
+func checkLuaStmtsNoUnsafeSyntax(stmts []luaast.Stmt, topLevel bool) error {
+	for _, stmt := range stmts {
+		if err := checkLuaStmtNoUnsafeSyntax(stmt, topLevel); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkLuaStmtNoUnsafeSyntax checks unsafe syntax for lua stmt.
+func checkLuaStmtNoUnsafeSyntax(stmt luaast.Stmt, topLevel bool) error {
+	switch s := stmt.(type) {
+	case nil:
+		return nil
+
+	case *luaast.AssignStmt:
+		for _, expr := range s.Lhs {
+			if err := checkLuaExprNoUnsafeSyntax(expr); err != nil {
+				return err
+			}
+		}
+		for _, expr := range s.Rhs {
+			if err := checkLuaExprNoUnsafeSyntax(expr); err != nil {
+				return err
+			}
+		}
+		return nil
+
+	case *luaast.LocalAssignStmt:
+		for _, expr := range s.Exprs {
+			if err := checkLuaExprNoUnsafeSyntax(expr); err != nil {
+				return err
+			}
+		}
+		return nil
+
+	case *luaast.FuncCallStmt:
+		return luaUDFFunctionCallNotAllowedError()
+
+	case *luaast.DoBlockStmt:
+		return checkLuaStmtsNoUnsafeSyntax(s.Stmts, false)
+
+	case *luaast.WhileStmt:
+		if err := checkLuaExprNoUnsafeSyntax(s.Condition); err != nil {
+			return err
+		}
+		return checkLuaStmtsNoUnsafeSyntax(s.Stmts, false)
+
+	case *luaast.RepeatStmt:
+		if err := checkLuaStmtsNoUnsafeSyntax(s.Stmts, false); err != nil {
+			return err
+		}
+		return checkLuaExprNoUnsafeSyntax(s.Condition)
+
+	case *luaast.IfStmt:
+		if err := checkLuaExprNoUnsafeSyntax(s.Condition); err != nil {
+			return err
+		}
+		if err := checkLuaStmtsNoUnsafeSyntax(s.Then, false); err != nil {
+			return err
+		}
+		return checkLuaStmtsNoUnsafeSyntax(s.Else, false)
+
+	case *luaast.NumberForStmt:
+		if err := checkLuaExprNoUnsafeSyntax(s.Init); err != nil {
+			return err
+		}
+		if err := checkLuaExprNoUnsafeSyntax(s.Limit); err != nil {
+			return err
+		}
+		if err := checkLuaExprNoUnsafeSyntax(s.Step); err != nil {
+			return err
+		}
+		return checkLuaStmtsNoUnsafeSyntax(s.Stmts, false)
+
+	case *luaast.GenericForStmt:
+		for _, expr := range s.Exprs {
+			if err := checkLuaExprNoUnsafeSyntax(expr); err != nil {
+				return err
+			}
+		}
+		return checkLuaStmtsNoUnsafeSyntax(s.Stmts, false)
+
+	case *luaast.FuncDefStmt:
+		if !topLevel {
+			return luaUDFNestedFunctionNotAllowedError()
+		}
+		if s.Func == nil {
+			return nil
+		}
+
+		// Top-level function definition itself is allowed, but its body must be
+		// checked. Do not pass FunctionExpr into checkLuaExprNoUnsafeSyntax here,
+		// because FunctionExpr is normally rejected as nested/anonymous function.
+		return checkLuaStmtsNoUnsafeSyntax(s.Func.Stmts, false)
+
+	case *luaast.ReturnStmt:
+		for _, expr := range s.Exprs {
+			if err := checkLuaExprNoUnsafeSyntax(expr); err != nil {
+				return err
+			}
+		}
+		return nil
+
+	case *luaast.BreakStmt:
+		return nil
+
+	case *luaast.LabelStmt:
+		// Label itself does not call functions.
+		return nil
+
+	case *luaast.GotoStmt:
+		// Goto itself does not call functions.
+		// If you want a stricter subset, reject it here.
+		return nil
+
+	default:
+		// Security code should not silently allow unknown syntax.
+		return luaUDFUnsupportedSyntaxError(stmt)
+	}
+}
+
+// checkLuaExprNoUnsafeSyntax checks unsafe syntax for lua expr.
+func checkLuaExprNoUnsafeSyntax(expr luaast.Expr) error {
+	switch e := expr.(type) {
+	case nil:
+		return nil
+
+	case *luaast.FuncCallExpr:
+		return luaUDFFunctionCallNotAllowedError()
+
+	case *luaast.FunctionExpr:
+		return luaUDFNestedFunctionNotAllowedError()
+
+	case *luaast.AttrGetExpr:
+		if err := checkLuaExprNoUnsafeSyntax(e.Object); err != nil {
+			return err
+		}
+		return checkLuaExprNoUnsafeSyntax(e.Key)
+
+	case *luaast.TableExpr:
+		for _, field := range e.Fields {
+			if field == nil {
+				continue
+			}
+			if err := checkLuaExprNoUnsafeSyntax(field.Key); err != nil {
+				return err
+			}
+			if err := checkLuaExprNoUnsafeSyntax(field.Value); err != nil {
+				return err
+			}
+		}
+		return nil
+
+	case *luaast.UnaryMinusOpExpr:
+		return checkLuaExprNoUnsafeSyntax(e.Expr)
+
+	case *luaast.UnaryNotOpExpr:
+		return checkLuaExprNoUnsafeSyntax(e.Expr)
+
+	case *luaast.UnaryLenOpExpr:
+		return checkLuaExprNoUnsafeSyntax(e.Expr)
+
+	case *luaast.LogicalOpExpr:
+		if err := checkLuaExprNoUnsafeSyntax(e.Lhs); err != nil {
+			return err
+		}
+		return checkLuaExprNoUnsafeSyntax(e.Rhs)
+
+	case *luaast.RelationalOpExpr:
+		if err := checkLuaExprNoUnsafeSyntax(e.Lhs); err != nil {
+			return err
+		}
+		return checkLuaExprNoUnsafeSyntax(e.Rhs)
+
+	case *luaast.StringConcatOpExpr:
+		if err := checkLuaExprNoUnsafeSyntax(e.Lhs); err != nil {
+			return err
+		}
+		return checkLuaExprNoUnsafeSyntax(e.Rhs)
+
+	case *luaast.ArithmeticOpExpr:
+		if err := checkLuaExprNoUnsafeSyntax(e.Lhs); err != nil {
+			return err
+		}
+		return checkLuaExprNoUnsafeSyntax(e.Rhs)
+
+	case *luaast.IdentExpr,
+		*luaast.NilExpr,
+		*luaast.TrueExpr,
+		*luaast.FalseExpr,
+		*luaast.NumberExpr,
+		*luaast.StringExpr,
+		*luaast.Comma3Expr:
+		return nil
+
+	default:
+		return luaUDFUnsupportedSyntaxError(expr)
+	}
+}
+
+// luaUDFUnsupportedSyntaxError return call function error.
+func luaUDFFunctionCallNotAllowedError() error {
+	return pgerror.New(pgcode.FeatureNotSupported, "lua udf is not allowed to call functions")
+}
+
+// luaUDFUnsupportedSyntaxError return define nested error.
+func luaUDFNestedFunctionNotAllowedError() error {
+	return pgerror.New(pgcode.FeatureNotSupported, "lua udf is not allowed to define nested functions")
+}
+
+// luaUDFUnsupportedSyntaxError return unknown syntax error.
+func luaUDFUnsupportedSyntaxError(n interface{}) error {
+	return pgerror.Newf(pgcode.FeatureNotSupported, "unsupported lua udf syntax %T", n)
 }
 
 func (*createFunctionNode) Next(runParams) (bool, error) { return false, nil }

@@ -8,6 +8,31 @@ BEGIN
 end'
 END;
 ERROR: The number of test21 function parameters does not match
+> CREATE FUNCTION lua_os(a INT) RETURNS FLOAT LANGUAGE LUA
+BEGIN
+'function lua_os(a)
+    return os.execute("whoami")
+end'
+END;
+ERROR: lua udf is not allowed to call functions
+SQLSTATE: 0A000
+> CREATE FUNCTION lua_math(a INT) RETURNS FLOAT LANGUAGE LUA
+BEGIN
+'function lua_math(a)
+    return math.abs(a)
+end'
+END;
+ERROR: lua udf is not allowed to call functions
+SQLSTATE: 0A000
+> CREATE FUNCTION lua_call(a INT) RETURNS FLOAT LANGUAGE LUA
+BEGIN
+'function lua_call(a)
+    local f = function(x) return x end
+    return f(a)
+end'
+END;
+ERROR: lua udf is not allowed to define nested functions
+SQLSTATE: 0A000
 > SHOW FUNCTIONS;
   function_name
 -----------------

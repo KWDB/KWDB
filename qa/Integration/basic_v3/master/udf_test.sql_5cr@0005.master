@@ -42,39 +42,34 @@ BEGIN
     return math.sqrt(variance)
 end'
 END;
-CREATE FUNCTION
+ERROR: lua udf is not allowed to call functions
+SQLSTATE: 0A000
 > SELECT calculate_circle_area(5);
   calculate_circle_area
 -------------------------
               78.539818
 (1 row)
 > SELECT calculate_stddev('1,2,3,4,5');
-  calculate_stddev
---------------------
-          1.414214
-(1 row)
+ERROR: unknown function: calculate_stddev()
+SQLSTATE: 42883
 > SELECT name FROM system.user_defined_routine where routine_type = 2;
           name
 -------------------------
   calculate_circle_area
-  calculate_stddev
-(2 rows)
+(1 row)
 > SHOW FUNCTIONS;
       function_name
 -------------------------
   calculate_circle_area
-  calculate_stddev
-(2 rows)
+(1 row)
 > SHOW FUNCTION calculate_circle_area;
       function_name     | argument_types | return_type | function_type | language
 ------------------------+----------------+-------------+---------------+-----------
   calculate_circle_area | FLOAT          | FLOAT       | function      | LUA
 (1 row)
 > SHOW FUNCTION calculate_stddev;
-   function_name   | argument_types | return_type | function_type | language
--------------------+----------------+-------------+---------------+-----------
-  calculate_stddev | VARCHAR        | FLOAT       | function      | LUA
-(1 row)
+ERROR: function calculate_stddev does not exists or current user does not have privilege on this function
+SQLSTATE: 42704
 > SELECT calculate_circle_area(e1) FROM test_udf.tb1;
   calculate_circle_area
 -------------------------
@@ -91,10 +86,8 @@ CREATE TABLE
 > INSERT INTO test_udf_re.r1 VALUES('1,2,3,4,5');
 INSERT 1
 > SELECT calculate_stddev(e1) FROM test_udf_re.r1;
-  calculate_stddev
---------------------
-          1.414214
-(1 row)
+ERROR: unknown function: calculate_stddev()
+SQLSTATE: 42883
 > drop table test_udf_re.r1 ;
 DROP TABLE
 > drop database test_udf_re cascade;
@@ -123,14 +116,13 @@ DROP DATABASE
 ERROR: unknown signature: calculate_circle_area(STRING)
 SQLSTATE: 42883
 > SELECT calculate_stddev('invalid, data');
-  calculate_stddev
---------------------
-  NULL
-(1 row)
+ERROR: unknown function: calculate_stddev()
+SQLSTATE: 42883
 > DROP FUNCTION calculate_circle_area;
 DROP FUNCTION
 > DROP FUNCTION calculate_stddev;
-DROP FUNCTION
+ERROR: unknown function 'calculate_stddev' when dropping function
+SQLSTATE: 42883
 > SHOW FUNCTIONS;
   function_name
 -----------------

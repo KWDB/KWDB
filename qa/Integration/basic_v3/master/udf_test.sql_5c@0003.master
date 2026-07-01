@@ -37,7 +37,8 @@ BEGIN
     end
 end'
 END;
-CREATE FUNCTION
+ERROR: lua udf is not allowed to define nested functions
+SQLSTATE: 0A000
 > CREATE FUNCTION square(nu_int int)
     RETURNS int
     LANGUAGE LUA
@@ -69,24 +70,20 @@ CREATE FUNCTION
              8
 (1 row)
 > SELECT is_perfect_number(28);
-  is_perfect_number
----------------------
-                 28
-(1 row)
+ERROR: unknown function: is_perfect_number()
+SQLSTATE: 42883
 > SELECT name FROM system.user_defined_routine where routine_type = 2;
-        name
----------------------
-  is_perfect_number
+      name
+----------------
   square
   sum_two_ints
-(3 rows)
+(2 rows)
 > SHOW FUNCTIONS;
-    function_name
----------------------
-  is_perfect_number
+  function_name
+-----------------
   square
   sum_two_ints
-(3 rows)
+(2 rows)
 > SHOW FUNCTION square;
   function_name | argument_types | return_type | function_type | language
 ----------------+----------------+-------------+---------------+-----------
@@ -112,10 +109,8 @@ CREATE FUNCTION
          56
 (3 rows)
 > SELECT is_perfect_number(e1) FROM test_udf.tb1 where is_perfect_number(e1) > 0 order by e1;
-  is_perfect_number
----------------------
-                 28
-(1 row)
+ERROR: unknown function: is_perfect_number()
+SQLSTATE: 42883
 > drop table test_udf.tb1;
 DROP TABLE
 > drop database test_udf cascade;
@@ -141,9 +136,8 @@ INSERT 1
          40
 (2 rows)
 > SELECT is_perfect_number(e1) FROM test_udf_re.r1 where is_perfect_number(e1) > 0 order by e1;
-  is_perfect_number
----------------------
-(0 rows)
+ERROR: unknown function: is_perfect_number()
+SQLSTATE: 42883
 > drop table test_udf_re.r1 ;
 DROP TABLE
 > drop database test_udf_re cascade;
@@ -173,26 +167,20 @@ SQLSTATE: 22003
   NULL
 (1 row)
 > SELECT is_perfect_number(-2147483648);
-  is_perfect_number
----------------------
-  NULL
-(1 row)
+ERROR: unknown function: is_perfect_number()
+SQLSTATE: 42883
 > SELECT is_perfect_number(-2147483649);
-ERROR: is_perfect_number(): integer out of range
-SQLSTATE: 22003
+ERROR: unknown function: is_perfect_number()
+SQLSTATE: 42883
 > SELECT is_perfect_number(2147483647);
-  is_perfect_number
----------------------
-  NULL
-(1 row)
+ERROR: unknown function: is_perfect_number()
+SQLSTATE: 42883
 > SELECT is_perfect_number(2147483648);
-ERROR: is_perfect_number(): integer out of range
-SQLSTATE: 22003
+ERROR: unknown function: is_perfect_number()
+SQLSTATE: 42883
 > SELECT is_perfect_number(null);
-  is_perfect_number
----------------------
-  NULL
-(1 row)
+ERROR: unknown function: is_perfect_number()
+SQLSTATE: 42883
 > SELECT square(NOW());
 ERROR: square(): unknown signature: now() (desired <int4>)
 SQLSTATE: 42883
@@ -213,7 +201,8 @@ DROP FUNCTION
 > DROP FUNCTION sum_two_ints;
 DROP FUNCTION
 > DROP FUNCTION is_perfect_number;
-DROP FUNCTION
+ERROR: unknown function 'is_perfect_number' when dropping function
+SQLSTATE: 42883
 > SHOW FUNCTIONS;
   function_name
 -----------------

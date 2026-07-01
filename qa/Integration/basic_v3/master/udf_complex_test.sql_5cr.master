@@ -187,12 +187,11 @@ function reverse_string(str)
 end
 '
 END;
-CREATE FUNCTION
+ERROR: lua udf is not allowed to call functions
+SQLSTATE: 0A000
 > select reverse_string('abcdefg');
-  reverse_string
-------------------
-  gfedcba
-(1 row)
+ERROR: unknown function: reverse_string()
+SQLSTATE: 42883
 > CREATE FUNCTION count_character(str varchar, substr varchar)
     RETURNs int
     LANGUAGE LUA
@@ -209,12 +208,11 @@ function count_character(str, char)
 end
 '
 END;
-CREATE FUNCTION
+ERROR: lua udf is not allowed to call functions
+SQLSTATE: 0A000
 > select count_character('abcdefg','e');
-  count_character
--------------------
-                1
-(1 row)
+ERROR: unknown function: count_character()
+SQLSTATE: 42883
 > CREATE FUNCTION is_prime(n int)
     RETURNs int
     LANGUAGE LUA
@@ -233,12 +231,11 @@ function is_prime(num)
 end
 '
 END;
-CREATE FUNCTION
+ERROR: lua udf is not allowed to call functions
+SQLSTATE: 0A000
 > select is_prime(24534631);
-  is_prime
-------------
-         0
-(1 row)
+ERROR: unknown function: is_prime()
+SQLSTATE: 42883
 > CREATE FUNCTION is_over_100_years(ts timestamp)
     RETURNs int
     LANGUAGE LUA
@@ -255,12 +252,11 @@ function is_over_100_years(timestamp)
 end
 '
 END;
-CREATE FUNCTION
+ERROR: lua udf is not allowed to call functions
+SQLSTATE: 0A000
 > select is_over_100_years('2120-02-02 00:00:00');
-  is_over_100_years
----------------------
-                  0
-(1 row)
+ERROR: unknown function: is_over_100_years()
+SQLSTATE: 42883
 > CREATE FUNCTION capitalize_words(sentence nvarchar)
     RETURNs nchar
     LANGUAGE LUA
@@ -282,12 +278,11 @@ function capitalize_words(sentence)
 end
 '
 END;
-CREATE FUNCTION
+ERROR: lua udf is not allowed to define nested functions
+SQLSTATE: 0A000
 > select capitalize_words('hello, world');
-  capitalize_words
---------------------
-  Hello, World
-(1 row)
+ERROR: unknown function: capitalize_words()
+SQLSTATE: 42883
 > CREATE FUNCTION create_counter()
     RETURNs int
     LANGUAGE LUA
@@ -305,12 +300,11 @@ function create_counter()
 end
 '
 END;
-CREATE FUNCTION
+ERROR: lua udf is not allowed to define nested functions
+SQLSTATE: 0A000
 > select create_counter();
-  create_counter
-------------------
-               1
-(1 row)
+ERROR: unknown function: create_counter()
+SQLSTATE: 42883
 > CREATE FUNCTION string_manipulator(input nchar)
     RETURNs int
     LANGUAGE LUA
@@ -325,39 +319,38 @@ function string_manipulator(inputString)
 end
 '
 END;
-CREATE FUNCTION
+ERROR: lua udf is not allowed to define nested functions
+SQLSTATE: 0A000
 > select string_manipulator('hello, world');
-  string_manipulator
-----------------------
-                   2
-(1 row)
+ERROR: unknown function: string_manipulator()
+SQLSTATE: 42883
 > show functions;
-    function_name
-----------------------
-  capitalize_words
-  count_character
-  create_counter
+  function_name
+-----------------
   fibonacci1
-  is_over_100_years
-  is_prime
-  reverse_string
-  string_manipulator
-(8 rows)
+(1 row)
 > drop function fibonacci1;
 DROP FUNCTION
 > drop function reverse_string;
-DROP FUNCTION
+ERROR: unknown function 'reverse_string' when dropping function
+SQLSTATE: 42883
 > drop function count_character;
-DROP FUNCTION
+ERROR: unknown function 'count_character' when dropping function
+SQLSTATE: 42883
 > drop function is_prime;
-DROP FUNCTION
+ERROR: unknown function 'is_prime' when dropping function
+SQLSTATE: 42883
 > drop function is_over_100_years;
-DROP FUNCTION
+ERROR: unknown function 'is_over_100_years' when dropping function
+SQLSTATE: 42883
 > drop function capitalize_words;
-DROP FUNCTION
+ERROR: unknown function 'capitalize_words' when dropping function
+SQLSTATE: 42883
 > drop function create_counter;
-DROP FUNCTION
+ERROR: unknown function 'create_counter' when dropping function
+SQLSTATE: 42883
 > drop function string_manipulator;
-DROP FUNCTION
+ERROR: unknown function 'string_manipulator' when dropping function
+SQLSTATE: 42883
 > drop database test_complex_udf;
 DROP DATABASE
