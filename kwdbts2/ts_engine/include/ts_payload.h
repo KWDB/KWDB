@@ -187,6 +187,7 @@ class TsRawPayload {
   const static int header_size_ = row_type_offset_ + row_type_size_;  // NOLINT
 
  private:
+  const std::shared_ptr<MMapMetricsTable> metric_table_;
   const std::vector<AttributeInfo>* data_schema_;
   bool parse_metric_;
   TsRawPayloadRowParser* row_parser_{nullptr};
@@ -200,6 +201,7 @@ class TsRawPayload {
 
  public:
   explicit TsRawPayload(const std::vector<AttributeInfo>* data_schema, bool parse_metric = true);
+  explicit TsRawPayload(const std::shared_ptr<MMapMetricsTable>& metric_table);
 
   ~TsRawPayload() {
     if (row_parser_ != nullptr) {
@@ -210,6 +212,8 @@ class TsRawPayload {
   KStatus ParsePayLoadStruct(const TSSlice &raw);
 
   KStatus ParseBatchDataStruct(const TSSlice &raw);
+
+  const std::shared_ptr<MMapMetricsTable> GetMetricTable() const { return metric_table_; }
 
   // rangeGroupID --> hashPoint
   uint64_t GetOSN() {

@@ -82,11 +82,11 @@ bool TsMemSegmentManager::SwitchMemSegment(TsMemSegment* expected_old_mem_seg, b
 }
 
 bool TsMemSegmentManager::GetMetricSchemaAndMeta(const std::shared_ptr<TsTableSchemaManager>& tb_schema, uint32_t version,
-                                                 const std::vector<AttributeInfo>** schema, DATATYPE* ts_type,
+                                                 std::shared_ptr<MMapMetricsTable>* schema_tbl, DATATYPE* ts_type,
                                                  LifeTime* lifetime) {
-  auto s = tb_schema->GetColumnsExcludeDroppedPtr(schema, version);
+  auto s = tb_schema->GetMetricSchema(version, schema_tbl);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("cannot found table [%lu] with version[%u].", tb_schema->GetTableId(), version);
+    LOG_ERROR("Table [%lu] schema version [%u] does not exists", tb_schema->GetTableId(), version);
     return false;
   }
   *lifetime = tb_schema->GetLifeTime();
@@ -111,10 +111,10 @@ KStatus TsMemSegmentManager::PutData(TsRawPayload* pd, const std::shared_ptr<TsT
 
   auto table_version = pd->GetTableVersion();
   // get column info and life time
-  const std::vector<AttributeInfo>* schema{nullptr};
+  std::shared_ptr<MMapMetricsTable> schema_tbl;
   LifeTime life_time{};
   DATATYPE ts_type;
-  if (!GetMetricSchemaAndMeta(tb_schema, table_version, &schema, &ts_type, &life_time)) {
+  if (!GetMetricSchemaAndMeta(tb_schema, table_version, &schema_tbl, &ts_type, &life_time)) {
     LOG_ERROR("GetMetricSchemaAndMeta failed.");
     return KStatus::FAIL;
   }
@@ -141,7 +141,7 @@ KStatus TsMemSegmentManager::PutData(TsRawPayload* pd, const std::shared_ptr<TsT
     LOG_ERROR("[ts_mem_segment] AllocPayload failed. size[%lu]", pd->GetPayload().len);
     return KStatus::FAIL;
   }
-  TsRawPayload* pdd = new TsRawPayload(schema, true);
+  TsRawPayload* pdd = new TsRawPayload(schema_tbl);
   if (pdd == nullptr) {
     cur_mem_seg->AppendEmptyRow(row_num);
     LOG_ERROR("[ts_mem_segment] TsRawPayload new failed.");

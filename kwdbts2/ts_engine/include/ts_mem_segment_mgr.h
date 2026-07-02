@@ -373,7 +373,7 @@ class TsMemSegmentManager {
   KStatus DeleteData(TSTableID table_id, TSEntityID entity_id, const std::vector<PartitionIdentifier>& partition_ids);
 
   bool GetMetricSchemaAndMeta(const std::shared_ptr<TsTableSchemaManager>& tb_schema, uint32_t version,
-                              const std::vector<AttributeInfo>** schema, DATATYPE* ts_type, LifeTime* lifetime = nullptr);
+        std::shared_ptr<MMapMetricsTable>* schema_tbl, DATATYPE* ts_type, LifeTime* lifetime = nullptr);
 };
 
 }  // namespace kwdbts

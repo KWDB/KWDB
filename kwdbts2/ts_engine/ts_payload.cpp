@@ -224,7 +224,15 @@ KStatus TsRawPayload::ParseBatchDataStruct(const TSSlice &raw) {
 }
 
 TsRawPayload::TsRawPayload(const std::vector<AttributeInfo>* data_schema, bool parse_metric)
-    : data_schema_(data_schema), parse_metric_(parse_metric) {
+    : metric_table_(nullptr), data_schema_(data_schema), parse_metric_(parse_metric) {
+}
+TsRawPayload::TsRawPayload(const std::shared_ptr<MMapMetricsTable>& metric_table)
+  : metric_table_(metric_table),
+  data_schema_(metric_table ? metric_table->getSchemaInfoExcludeDroppedPtr() : nullptr), parse_metric_(true) {
+  if (metric_table == nullptr) {
+    LOG_ERROR("metric table is null.");
+    parse_metric_ = false;
+  }
 }
 
 }  // namespace kwdbts

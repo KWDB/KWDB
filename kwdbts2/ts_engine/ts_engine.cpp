@@ -832,13 +832,13 @@ KStatus TSEngineImpl::PutData(kwdbContext_p ctx, const KTableKey& table_id, uint
       mtr_id = GetVGroupByID(ctx, 1)->GetMtrIDByTsxID(tsx_id);
     }
     std::shared_ptr<TsTableSchemaManager> tb_schema = ts_table->GetSchemaManager();
-    const std::vector<AttributeInfo>* schema;
-    s = tb_schema->GetColumnsExcludeDroppedPtr(&schema, TsRawPayload::GetTableVersionFromSlice(cur_pd));
+    std::shared_ptr<MMapMetricsTable> metric_schema_tbl;
+    s = tb_schema->GetMetricSchema(TsRawPayload::GetTableVersionFromSlice(cur_pd), &metric_schema_tbl);
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("GetColumnsExcludeDropped failed.");
+      LOG_ERROR("GetMetricSchema failed.");
       return s;
     }
-    TsRawPayload p(schema, true);
+    TsRawPayload p(metric_schema_tbl);
     s = p.ParsePayLoadStruct(cur_pd);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("ParsePayLoadStruct failed for valid column check.");
@@ -921,13 +921,13 @@ KStatus TSEngineImpl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, ui
     if (s != KStatus::SUCCESS) {
       return s;
     }
-    std::vector<AttributeInfo> m_schema;
-    s = tb_schema_manager->GetColumnsExcludeDropped(m_schema, tbl_version);
+    std::shared_ptr<MMapMetricsTable> metric_schema_tbl;
+    s = tb_schema_manager->GetMetricSchema(TsRawPayload::GetTableVersionFromSlice(cur_pd), &metric_schema_tbl);
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("GetColumnsExcludeDropped failed.");
+      LOG_ERROR("GetMetricSchema failed.");
       return s;
     }
-    TsRawPayload p(&m_schema);
+    TsRawPayload p(metric_schema_tbl);
     s = p.ParsePayLoadStruct(cur_pd);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("ParsePayLoadStruct failed.");
