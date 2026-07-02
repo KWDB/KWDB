@@ -349,20 +349,21 @@ func (r *Replica) evalAndProposeTS(
 			}
 		}
 		if isAllTsRowPut {
-			br := &roachpb.BatchResponse{}
-			br.Responses = make([]roachpb.ResponseUnion, len(ba.Requests))
-			ba.Requests = r.batchRequestOsnRewrite(ctx, ba.Requests)
-			tableID, rangeGroupID, tsTxnID, needAutoCommit, err := r.stageTsBatchRequest(ctx, ba, br.Responses, true, nil)
-			if err == nil && tsTxnID != 0 && needAutoCommit {
-				err = r.store.TsEngine.MtrCommit(tableID, rangeGroupID, tsTxnID, nil)
-			}
-			if err != nil {
-				pErr = roachpb.NewError(err)
-				br = nil
-				log.Infof(ctx, "stage error: %v", err)
-			}
+			// mode2 write replica not before - skip staging
+			//br := &roachpb.BatchResponse{}
+			//br.Responses = make([]roachpb.ResponseUnion, len(ba.Requests))
+			//ba.Requests = r.batchRequestOsnRewrite(ctx, ba.Requests)
+			//tableID, rangeGroupID, tsTxnID, needAutoCommit, err := r.stageTsBatchRequest(ctx, ba, br.Responses, true, nil)
+			//if err == nil && tsTxnID != 0 && needAutoCommit {
+			//	err = r.store.TsEngine.MtrCommit(tableID, rangeGroupID, tsTxnID, nil)
+			//}
+			//if err != nil {
+			//	pErr = roachpb.NewError(err)
+			//	br = nil
+			//	log.Infof(ctx, "stage error: %v", err)
+			//}
 			ba.AsyncConsensus = true
-			log.VEventf(ctx, 3, "mode2: replica_write is async write and apply now, tableID is %d, rangeID is %d", tableID, r.RangeID)
+			log.VEventf(ctx, 3, "mode2: replica_write is async write and apply now, rangeID is %d", r.RangeID)
 		}
 	}
 
