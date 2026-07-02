@@ -27,11 +27,14 @@ package colexec
 import (
 	"context"
 	"fmt"
+	"math"
+	"strings"
 	"testing"
 
 	"gitee.com/kwbasedb/kwbase/pkg/col/coldata"
 	"gitee.com/kwbasedb/kwbase/pkg/col/coltypes"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/colexec/execerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/colexec/typeconv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
@@ -39,21 +42,147 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"gitee.com/kwbasedb/kwbase/pkg/util/randutil"
+	"github.com/cockroachdb/errors"
 	"github.com/stretchr/testify/require"
 )
+
+func TestFloatToIntCastBoundaries(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	ctx := context.Background()
+	flowCtx, cleanup := createTestCastFlowCtx(ctx)
+	defer cleanup()
+
+	validMaxInt64Float := math.Nextafter(float64(math.MaxInt64), 0)
+	testCases := []struct {
+		name     string
+		fromTyp  *types.T
+		toTyp    *types.T
+		input    tuples
+		expected tuples
+	}{
+		{
+			name:    "Float8ToInt2",
+			fromTyp: types.Float,
+			toTyp:   types.Int2,
+			input: tuples{
+				{float64(math.MinInt16) - 0.999},
+				{float64(math.MinInt16)},
+				{float64(math.MaxInt16)},
+				{float64(math.MaxInt16) + 0.999},
+			},
+			expected: tuples{
+				{float64(math.MinInt16) - 0.999, int16(math.MinInt16)},
+				{float64(math.MinInt16), int16(math.MinInt16)},
+				{float64(math.MaxInt16), int16(math.MaxInt16)},
+				{float64(math.MaxInt16) + 0.999, int16(math.MaxInt16)},
+			},
+		},
+		{
+			name:    "Float4ToInt2",
+			fromTyp: types.Float4,
+			toTyp:   types.Int2,
+			input: tuples{
+				{float64(math.MinInt16)},
+				{float64(math.MaxInt16)},
+			},
+			expected: tuples{
+				{float64(math.MinInt16), int16(math.MinInt16)},
+				{float64(math.MaxInt16), int16(math.MaxInt16)},
+			},
+		},
+		{
+			name:    "Float8ToInt4",
+			fromTyp: types.Float,
+			toTyp:   types.Int4,
+			input: tuples{
+				{float64(math.MinInt32) - 0.999},
+				{float64(math.MinInt32)},
+				{float64(math.MaxInt32)},
+				{float64(math.MaxInt32) + 0.999},
+			},
+			expected: tuples{
+				{float64(math.MinInt32) - 0.999, int32(math.MinInt32)},
+				{float64(math.MinInt32), int32(math.MinInt32)},
+				{float64(math.MaxInt32), int32(math.MaxInt32)},
+				{float64(math.MaxInt32) + 0.999, int32(math.MaxInt32)},
+			},
+		},
+		{
+			name:    "Float4ToInt4",
+			fromTyp: types.Float4,
+			toTyp:   types.Int4,
+			input: tuples{
+				{-1024.999},
+				{1024.999},
+			},
+			expected: tuples{
+				{-1024.999, int32(-1024)},
+				{1024.999, int32(1024)},
+			},
+		},
+		{
+			name:    "Float8ToInt8",
+			fromTyp: types.Float,
+			toTyp:   types.Int,
+			input: tuples{
+				{validMaxInt64Float},
+			},
+			expected: tuples{
+				{validMaxInt64Float, int64(validMaxInt64Float)},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			assertFloatToIntCastExpectedMatchesPerformCast(t, flowCtx.EvalCtx, tc.fromTyp, tc.toTyp, tc.input, tc.expected)
+			runTests(t, []tuples{tc.input}, tc.expected, orderedVerifier,
+				func(inputs []Operator) (Operator, error) {
+					return createTestVectorizedCastOperator(ctx, flowCtx, inputs[0], tc.fromTyp, tc.toTyp)
+				})
+		})
+	}
+}
+
+func TestFloatToIntCastOutOfRange(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	ctx := context.Background()
+	flowCtx, cleanup := createTestCastFlowCtx(ctx)
+	defer cleanup()
+
+	testCases := []struct {
+		name    string
+		fromTyp *types.T
+		toTyp   *types.T
+		value   float64
+	}{
+		{name: "Float8ToInt2Max", fromTyp: types.Float, toTyp: types.Int2, value: float64(math.MaxInt16) + 1},
+		{name: "Float8ToInt2Min", fromTyp: types.Float, toTyp: types.Int2, value: float64(math.MinInt16) - 1},
+		{name: "Float4ToInt2Max", fromTyp: types.Float4, toTyp: types.Int2, value: float64(math.MaxInt16) + 1},
+		{name: "Float8ToInt4Max", fromTyp: types.Float, toTyp: types.Int4, value: float64(math.MaxInt32) + 1},
+		{name: "Float8ToInt4Min", fromTyp: types.Float, toTyp: types.Int4, value: float64(math.MinInt32) - 1},
+		{name: "Float4ToInt4Max", fromTyp: types.Float4, toTyp: types.Int4, value: float64(math.MaxInt32) + 1},
+		{name: "Float8ToInt2NaN", fromTyp: types.Float, toTyp: types.Int2, value: math.NaN()},
+		{name: "Float8ToInt2Inf", fromTyp: types.Float, toTyp: types.Int2, value: math.Inf(1)},
+		{name: "Float8ToInt8Max", fromTyp: types.Float, toTyp: types.Int, value: float64(math.MaxInt64)},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := tree.PerformCast(flowCtx.EvalCtx, tree.NewDFloat(tree.DFloat(tc.value)), tc.toTyp)
+			require.Error(t, err, "PerformCast should reject out-of-range float %v", tc.value)
+			assertFloatToIntCastOutOfRange(ctx, t, flowCtx, tc.fromTyp, tc.toTyp, tc.value)
+		})
+	}
+}
 
 func TestRandomizedCast(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	ctx := context.Background()
-	st := cluster.MakeTestingClusterSettings()
-	evalCtx := tree.MakeTestingEvalContext(st)
-	defer evalCtx.Stop(ctx)
-	flowCtx := &execinfra.FlowCtx{
-		EvalCtx: &evalCtx,
-		Cfg: &execinfra.ServerConfig{
-			Settings: st,
-		},
-	}
+	flowCtx, cleanup := createTestCastFlowCtx(ctx)
+	defer cleanup()
 
 	datumAsBool := func(d tree.Datum) interface{} {
 		return bool(tree.MustBeDBool(d))
@@ -111,12 +240,12 @@ func TestRandomizedCast(t *testing.T) {
 					toDatum tree.Datum
 					err     error
 				)
-				toDatum, err = tree.PerformCast(&evalCtx, fromDatum, c.toTyp)
+				toDatum, err = tree.PerformCast(flowCtx.EvalCtx, fromDatum, c.toTyp)
 				if c.retryGeneration {
 					for err != nil {
 						// If we are allowed to retry, make a new datum and cast it on error.
 						fromDatum = sqlbase.RandDatum(rng, c.fromTyp, false)
-						toDatum, err = tree.PerformCast(&evalCtx, fromDatum, c.toTyp)
+						toDatum, err = tree.PerformCast(flowCtx.EvalCtx, fromDatum, c.toTyp)
 					}
 				} else {
 					if err != nil {
@@ -136,15 +265,8 @@ func TestRandomizedCast(t *testing.T) {
 
 func BenchmarkCastOp(b *testing.B) {
 	ctx := context.Background()
-	st := cluster.MakeTestingClusterSettings()
-	evalCtx := tree.MakeTestingEvalContext(st)
-	defer evalCtx.Stop(ctx)
-	flowCtx := &execinfra.FlowCtx{
-		EvalCtx: &evalCtx,
-		Cfg: &execinfra.ServerConfig{
-			Settings: st,
-		},
-	}
+	flowCtx, cleanup := createTestCastFlowCtx(ctx)
+	defer cleanup()
 	rng, _ := randutil.NewPseudoRand()
 	for _, typePair := range [][]types.T{
 		{*types.Int, *types.Float},
@@ -185,6 +307,86 @@ func BenchmarkCastOp(b *testing.B) {
 	}
 }
 
+func createTestCastFlowCtx(ctx context.Context) (*execinfra.FlowCtx, func()) {
+	st := cluster.MakeTestingClusterSettings()
+	evalCtx := tree.MakeTestingEvalContext(st)
+	flowCtx := &execinfra.FlowCtx{
+		EvalCtx: &evalCtx,
+		Cfg: &execinfra.ServerConfig{
+			Settings: st,
+		},
+	}
+	return flowCtx, func() {
+		evalCtx.Stop(ctx)
+	}
+}
+
+func assertFloatToIntCastExpectedMatchesPerformCast(
+	t *testing.T,
+	evalCtx *tree.EvalContext,
+	fromTyp *types.T,
+	toTyp *types.T,
+	input tuples,
+	expected tuples,
+) {
+	t.Helper()
+	require.Equal(t, len(input), len(expected))
+	toPhysFn := typeconv.GetDatumToPhysicalFn(toTyp)
+	for i := range input {
+		fromVal, ok := input[i][0].(float64)
+		require.True(t, ok, "input row %d must be float64", i)
+		castDatum, castErr := tree.PerformCast(evalCtx, tree.NewDFloat(tree.DFloat(fromVal)), toTyp)
+		require.NoError(t, castErr, "PerformCast failed for input row %d", i)
+		gotPhys, err := toPhysFn(castDatum)
+		require.NoError(t, err)
+		require.Equal(t, expected[i][1], gotPhys, "PerformCast mismatch for input row %d", i)
+	}
+}
+
+func assertFloatToIntCastOutOfRange(
+	ctx context.Context,
+	t *testing.T,
+	flowCtx *execinfra.FlowCtx,
+	fromTyp *types.T,
+	toTyp *types.T,
+	value float64,
+) {
+	t.Helper()
+	runTestsWithFn(t, []tuples{{{value}}}, [][]coltypes.T{{coltypes.Float64}},
+		func(t *testing.T, inputs []Operator) {
+			op, err := createTestVectorizedCastOperator(ctx, flowCtx, inputs[0], fromTyp, toTyp)
+			require.NoError(t, err)
+			op.Init()
+			err = execerror.CatchVectorizedRuntimeError(func() {
+				for {
+					b := op.Next(ctx)
+					if b.Length() == 0 {
+						break
+					}
+				}
+			})
+			require.True(t, errors.Is(err, tree.ErrIntOutOfRange), "expected ErrIntOutOfRange, got %v", err)
+		})
+}
+
+// castTypeNameForTest returns the SQL type name used in cast expressions for
+// tests. types.T.Name() is not sufficient because the parser maps the INT
+// keyword to INT4, not INT8.
+func castTypeNameForTest(t *types.T) string {
+	return strings.ToLower(t.SQLString())
+}
+
+func createTestVectorizedCastOperator(
+	ctx context.Context, flowCtx *execinfra.FlowCtx, input Operator, fromTyp *types.T, toTyp *types.T,
+) (Operator, error) {
+	// Pure vectorized cast for float-to-int regression tests. Do not allow
+	// rowexec fallback, which would mask colexec boundary bugs.
+	return createTestProjectingOperator(
+		ctx, flowCtx, input, []types.T{*fromTyp},
+		fmt.Sprintf("@1::%s", castTypeNameForTest(toTyp)), false, /* canFallbackToRowexec */
+	)
+}
+
 func createTestCastOperator(
 	ctx context.Context, flowCtx *execinfra.FlowCtx, input Operator, fromTyp *types.T, toTyp *types.T,
 ) (Operator, error) {
@@ -193,6 +395,6 @@ func createTestCastOperator(
 	// back to row-by-row engine.
 	return createTestProjectingOperator(
 		ctx, flowCtx, input, []types.T{*fromTyp},
-		fmt.Sprintf("@1::%s", toTyp.Name()), true, /* canFallbackToRowexec */
+		fmt.Sprintf("@1::%s", castTypeNameForTest(toTyp)), true, /* canFallbackToRowexec */
 	)
 }

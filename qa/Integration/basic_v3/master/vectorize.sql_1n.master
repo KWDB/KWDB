@@ -302,3 +302,95 @@ SET
 (2 rows)
 > USE defaultdb;DROP DATABASE IF exists test_vectorize cascade;
 DROP DATABASE
+> USE defaultdb;DROP DATABASE IF exists test_vectorize_float_cast cascade;
+DROP DATABASE
+> CREATE DATABASE test_vectorize_float_cast;
+CREATE DATABASE
+> CREATE TABLE test_vectorize_float_cast.valid_casts(
+    id INT PRIMARY KEY,
+    i2_f8 FLOAT8,
+    i2_f4 FLOAT4,
+    i4_f8 FLOAT8,
+    i4_f4 FLOAT4,
+    i8_f8 FLOAT8,
+    i8_f4 FLOAT4
+);
+CREATE TABLE
+> INSERT INTO test_vectorize_float_cast.valid_casts VALUES
+    (1, -32768.999, -32768.0, -2147483648.999, -1024.999, -9223372036854774784.0, -1024.999),
+    (2, -32768.0, -1.999, -2147483648.0, -1024.0, -1.999, -1.999),
+    (3, 32767.0, 1.999, 2147483647.0, 1024.0, 1.999, 1.999),
+    (4, 32767.999, 32767.0, 2147483647.999, 1024.999, 9223372036854774784.0, 1024.999);
+INSERT 4
+> SET vectorize_row_count_threshold = 0;
+SET
+> SET vectorize = on;
+SET
+> SELECT id, i2_f8::INT2, i2_f4::INT2, i4_f8::INT4, i4_f4::INT4, i8_f8::INT8, i8_f4::INT8 FROM test_vectorize_float_cast.valid_casts ORDER BY id;
+  id | i2_f8  | i2_f4  |    i4_f8    | i4_f4 |        i8_f8         | i8_f4
+-----+--------+--------+-------------+-------+----------------------+--------
+   1 | -32768 | -32768 | -2147483648 | -1024 | -9223372036854774784 | -1024
+   2 | -32768 |     -1 | -2147483648 | -1024 |                   -1 |    -1
+   3 |  32767 |      1 |  2147483647 |  1024 |                    1 |     1
+   4 |  32767 |  32767 |  2147483647 |  1024 |  9223372036854774784 |  1024
+(4 rows)
+> SELECT CAST(32768::FLOAT8 AS INT2);
+ERROR: value is out of range for type int2
+SQLSTATE: 22003
+> SELECT CAST(-32769::FLOAT8 AS INT2);
+ERROR: value is out of range for type int2
+SQLSTATE: 22003
+> SELECT CAST(32768::FLOAT4 AS INT2);
+ERROR: value is out of range for type int2
+SQLSTATE: 22003
+> SELECT CAST(2147483648::FLOAT8 AS INT4);
+ERROR: value is out of range for type int4
+SQLSTATE: 22003
+> SELECT CAST(-2147483649::FLOAT8 AS INT4);
+ERROR: value is out of range for type int4
+SQLSTATE: 22003
+> SELECT CAST(2147483648::FLOAT4 AS INT4);
+ERROR: value is out of range for type int4
+SQLSTATE: 22003
+> SELECT CAST(9223372036854775296::FLOAT8 AS INT8);
+ERROR: integer out of range
+SQLSTATE: 22003
+> SELECT CAST(1e20::FLOAT4 AS INT8);
+ERROR: integer out of range
+SQLSTATE: 22003
+> SELECT CAST('NaN'::FLOAT8 AS INT2);
+ERROR: integer out of range
+SQLSTATE: 22003
+> SELECT CAST('Inf'::FLOAT8 AS INT2);
+ERROR: integer out of range
+SQLSTATE: 22003
+> SET vectorize = off;
+SET
+> SELECT id, i2_f8::INT2, i2_f4::INT2, i4_f8::INT4, i4_f4::INT4, i8_f8::INT8, i8_f4::INT8 FROM test_vectorize_float_cast.valid_casts ORDER BY id;
+  id | i2_f8  | i2_f4  |    i4_f8    | i4_f4 |        i8_f8         | i8_f4
+-----+--------+--------+-------------+-------+----------------------+--------
+   1 | -32768 | -32768 | -2147483648 | -1024 | -9223372036854774784 | -1024
+   2 | -32768 |     -1 | -2147483648 | -1024 |                   -1 |    -1
+   3 |  32767 |      1 |  2147483647 |  1024 |                    1 |     1
+   4 |  32767 |  32767 |  2147483647 |  1024 |  9223372036854774784 |  1024
+(4 rows)
+> SELECT CAST(32768::FLOAT8 AS INT2);
+ERROR: value is out of range for type int2
+SQLSTATE: 22003
+> SELECT CAST(9223372036854775296::FLOAT8 AS INT8);
+ERROR: integer out of range
+SQLSTATE: 22003
+> SET vectorize = auto;
+SET
+> SELECT id, i2_f8::INT2, i2_f4::INT2, i4_f8::INT4, i4_f4::INT4, i8_f8::INT8, i8_f4::INT8 FROM test_vectorize_float_cast.valid_casts ORDER BY id;
+  id | i2_f8  | i2_f4  |    i4_f8    | i4_f4 |        i8_f8         | i8_f4
+-----+--------+--------+-------------+-------+----------------------+--------
+   1 | -32768 | -32768 | -2147483648 | -1024 | -9223372036854774784 | -1024
+   2 | -32768 |     -1 | -2147483648 | -1024 |                   -1 |    -1
+   3 |  32767 |      1 |  2147483647 |  1024 |                    1 |     1
+   4 |  32767 |  32767 |  2147483647 |  1024 |  9223372036854774784 |  1024
+(4 rows)
+> SET vectorize_row_count_threshold = 1000;
+SET
+> USE defaultdb;DROP DATABASE IF exists test_vectorize_float_cast cascade;
+DROP DATABASE
