@@ -3,7 +3,8 @@ set max_push_limit_number = 10000000;
 -- set cluster settings for 2.0 start
 set cluster setting sql.distsql.temp_storage.workmem='4096Mib';
 -- set cluster setting sql.max_device_count=5000;
-set cluster setting sql.all_push_down.enabled=true;
+-- set cluster setting sql.all_push_down.enabled=true;
+set cluster setting sql.all_push_down.enabled=false;
 set cluster setting sql.pg_encode_short_circuit.enabled = true;
 set cluster setting ts.parallel_degree=8;
 set cluster setting sql.stats.ts_automatic_collection.enabled=false;

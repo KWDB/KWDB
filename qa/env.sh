@@ -30,7 +30,12 @@ export DEPLOY_ROOT=${KWDB_ROOT}/deploy
 export BIN_DIR=${KWDB_ROOT}/bin
 export CONF_DIR=${KWDB_ROOT}/conf
 export LIB_DIR=${KWDB_ROOT}/lib
-export KWBIN="$BIN_DIR/kwbase"
+#export KWBIN="$BIN_DIR/kwbase"
+if [ "$(uname -o)" = "Msys" ] || [ "$(uname -o)" = "Cygwin" ]; then
+    export KWBIN="$BIN_DIR/kwbase.exe"
+else
+    export KWBIN="$BIN_DIR/kwbase"
+fi
 export DRAIN_WAIT=${DRAIN_WAIT:-8s}
 export INFO=$color_purple
 export PRIMARY=$color_blue

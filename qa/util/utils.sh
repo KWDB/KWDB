@@ -106,15 +106,20 @@ function start_single_node() {
   local host_ip=${4:-127.0.102.145}
   local brpc_port=${5:-28257}
   rm -fr ${DEPLOY_ROOT}/${store}
-  ulimit -c unlimited
-  echo 'core.%t.%e.%p' | sudo tee /proc/sys/kernel/core_pattern
+  #ulimit -c unlimited
+  #echo 'core.%t.%e.%p' | sudo tee /proc/sys/kernel/core_pattern
+  if [ "$(uname -o)" != "Msys" ] && [ "$(uname -o)" != "Cygwin" ]; then
+    ulimit -c unlimited
+    echo 'core.%t.%e.%p' | sudo tee /proc/sys/kernel/core_pattern
+  else
+    echo "Skipping core_pattern setup on Windows"
+  fi
   export GOTRACEBACK=crash
   ${KWBIN} start-single-node --insecure --listen-addr=${host_ip}:${listenport} \
     --http-addr=${host_ip}:${http_port} \
     --brpc-addr=${host_ip}:${brpc_port} \
     --store=${DEPLOY_ROOT}/${store} \
-    --pid-file=${DEPLOY_ROOT}/${store}/kwbase.pid \
-    --background
+    --pid-file=${DEPLOY_ROOT}/${store}/kwbase.pid
   for c in {1..30};do
     if [ "1" = "$(check_kwbase_available ${store})" ];then
       break
@@ -143,8 +148,10 @@ function check_kwbase_alive() {
     echo 0 && return 1
   fi
   listenaddr=$(get_listen_addr ${store})
-  echo $(${KWBIN} node status --insecure --format csv --host=${listenaddr} | \
-      grep "${listenaddr}" | grep -cP ",(true|false),true$" )
+  #echo $(${KWBIN} node status --insecure --format csv --host=${listenaddr} | \
+  #    grep "${listenaddr}" | grep -cP ",(true|false),true$" )
+  echo $(${KWBIN} node status --insecure --format csv --host=${listenaddr} 2>/dev/null | \
+      grep "${listenaddr}" | grep -c ",\(true\|false\),true$")
 }
 
 function nice_stop_node_v2() {
