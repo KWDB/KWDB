@@ -530,7 +530,8 @@ KStatus TsStorageIteratorImpl::ScanEntityBlockSpans(timestamp64 ts, TsScanStats*
                                           partition_version->GetTsColTypeEndTime(ts_col_type_), ts))  {
       return KStatus::SUCCESS;
     }
-    auto s = partition_version->GetBlockSpans(*filter_, &ts_block_spans_, table_schema_mgr_, scan_schema_, ts_scan_stats);
+    auto s = partition_version->GetBlockSpans(*filter_, &ts_block_spans_, table_schema_mgr_, scan_schema_,
+                                              ts_scan_stats, false, false, false, &last_block_cache_);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("partition_version GetBlockSpan failed.");
       return s;
@@ -2185,7 +2186,8 @@ KStatus TsAggIteratorImpl::AggregateWithoutBucket(TsScanStats* ts_scan_stats) {
                               entity_ids_[cur_entity_index_], ts_col_type_, scan_osn_, ts_spans_};
     auto partition_version = ts_partitions_[cur_partition_index_].get();
     ts_block_spans_.clear();
-    auto ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, scan_schema_, ts_scan_stats);
+    auto ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, scan_schema_, ts_scan_stats,
+                                                false, false, false, &last_block_cache_);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("e_paritition GetBlockSpan failed.");
       return ret;
@@ -2208,7 +2210,8 @@ KStatus TsAggIteratorImpl::AggregateWithoutBucket(TsScanStats* ts_scan_stats) {
                               entity_ids_[cur_entity_index_], ts_col_type_, scan_osn_, ts_spans_};
     auto partition_version = ts_partitions_[cur_partition_index_].get();
     ts_block_spans_.clear();
-    auto ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, scan_schema_, ts_scan_stats);
+    auto ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, scan_schema_, ts_scan_stats,
+                                                false, false, false, &last_block_cache_);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("e_paritition GetBlockSpan failed.");
       return ret;
@@ -2230,7 +2233,8 @@ KStatus TsAggIteratorImpl::AggregateWithoutBucket(TsScanStats* ts_scan_stats) {
                                 entity_ids_[cur_entity_index_], ts_col_type_, scan_osn_, ts_spans_};
       auto partition_version = ts_partitions_[cur_partition_index_].get();
       ts_block_spans_.clear();
-      auto ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, scan_schema_, ts_scan_stats);
+      auto ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, scan_schema_, ts_scan_stats,
+                                                false, false, false, &last_block_cache_);
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("e_paritition GetBlockSpan failed.");
         return ret;
@@ -2253,7 +2257,8 @@ KStatus TsAggIteratorImpl::GetBlockSpans(TsScanStats* ts_scan_stats) {
                             entity_ids_[cur_entity_index_], ts_col_type_, scan_osn_, ts_spans_};
   for (auto partition : ts_partitions_) {
     auto partition_version = partition.get();
-    auto ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, scan_schema_, ts_scan_stats);
+    auto ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, scan_schema_, ts_scan_stats,
+                                                false, false, false, &last_block_cache_);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("e_paritition GetBlockSpan failed.");
       return ret;
@@ -2542,7 +2547,8 @@ KStatus TsAggIteratorImpl::CountAggregate(TsScanStats* ts_scan_stats) {
             ts_scan_stats->partition_agg_count++;
           }
         } else {
-          ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, scan_schema_, ts_scan_stats);
+          ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, scan_schema_, ts_scan_stats,
+                                                false, false, false, &last_block_cache_);
           if (ret != KStatus::SUCCESS) {
             LOG_ERROR("e_paritition GetBlockSpan failed.");
             return ret;
@@ -2569,7 +2575,8 @@ KStatus TsAggIteratorImpl::CountAggregate(TsScanStats* ts_scan_stats) {
           return ret;
         }
       } else {
-        ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, scan_schema_, ts_scan_stats);
+        ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, scan_schema_, ts_scan_stats,
+                                                false, false, false, &last_block_cache_);
         if (ret != KStatus::SUCCESS) {
           LOG_ERROR("e_paritition GetBlockSpan failed.");
           return ret;
@@ -2619,7 +2626,8 @@ KStatus TsAggIteratorImpl::partitionAggImpl(TsScanStats* ts_scan_stats) {
     if (s != KStatus::SUCCESS) {
       LOG_INFO("table %lu entity %u has no partition aggregation result, will goto general query", table_id_,
         entity_ids_[cur_entity_index_]);
-      s = partition->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, scan_schema_, ts_scan_stats);
+      s = partition->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, scan_schema_,
+                                  ts_scan_stats, false, false, false, &last_block_cache_);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("partition [%s] GetBlockSpan failed", partition->GetPartitionPath().c_str());
         return s;
@@ -3690,7 +3698,8 @@ KStatus TsRawDataIteratorImplByOSN::MoveToNextEntity(bool* is_finished, TsScanSt
   auto op_osn = reinterpret_cast<OperatorInfoOfRecord*>(entitys_[cur_entity_index_].op_with_osn.get());
   if (op_osn->type != OperatorTypeOfRecord::OP_TYPE_TAG_DELETE) {
     for (auto& partition_version : ts_partitions_) {
-      auto s = partition_version->GetBlockSpans(*filter_, &ts_block_spans_, table_schema_mgr_, scan_schema_, ts_scan_stats);
+      auto s = partition_version->GetBlockSpans(*filter_, &ts_block_spans_, table_schema_mgr_, scan_schema_,
+                                              ts_scan_stats, false, false, false, &last_block_cache_);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("partition_version GetBlockSpan failed.");
         return s;

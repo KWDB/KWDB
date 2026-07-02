@@ -762,6 +762,8 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
     }
   } else if ("ts.compress.last_segment.enabled" == key) {
     EngineOptions::compress_last_segment = ("true" == value);
+  } else if ("ts.last_block_cache.max_entries" == key) {
+    EngineOptions::last_block_cache_max_entries = atoll(value.c_str());
   } else if ("ts.force_sync_file.enabled" == key) {
     EngineOptions::force_sync_file = ("true" == value);
   } else if ("ts.last_cache_size.max_limit" == key) {

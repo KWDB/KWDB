@@ -18,6 +18,7 @@
 #include <shared_mutex>
 #include <string>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -80,6 +81,7 @@ class LastSegmentBloomFilter : public LastSegmentMetaBlockBase {
 };
 
 class TsLastBlock;
+class LastBlockCache;
 
 class TsLastSegment : public TsSegmentBase {
  public:
@@ -138,6 +140,14 @@ class TsLastSegment : public TsSegmentBase {
                         const std::shared_ptr<MMapMetricsTable>& scan_schema,
                         TsScanStats* ts_scan_stats = nullptr) override;
 
+  // Non-virtual overload with cache support
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter,
+                        std::list<shared_ptr<TsBlockSpan>>& block_spans,
+                        const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
+                        const std::shared_ptr<MMapMetricsTable>& scan_schema,
+                        LastBlockCache* cache,
+                        TsScanStats* ts_scan_stats = nullptr);
+
   size_t GetFileSize() const { return file_->GetFileSize(); }
 
   size_t GetBlockCount() const { return footer_.n_data_block; }
@@ -149,7 +159,8 @@ class TsLastSegment : public TsSegmentBase {
   }
 
  private:
-  KStatus GetBlock(int block_id, std::shared_ptr<TsLastBlock>* block) const;
+  KStatus GetBlock(int block_id, std::shared_ptr<TsLastBlock>* block,
+                   LastBlockCache* cache = nullptr) const;
 };
 
 class TsLastSegment::TsLastSegBlockCache {
@@ -192,6 +203,45 @@ class TsLastSegment::TsLastSegBlockCache::BlockInfoCache {
   explicit BlockInfoCache(TsLastSegBlockCache* lastseg_cache, int nblocks)
       : lastseg_cache_(lastseg_cache), cache_flag_(nblocks, 0), block_infos_(nblocks) {}
   KStatus GetBlockInfo(int block_id, TsLastSegmentBlockInfoWithData** info);
+};
+
+// Per-iterator cache of recently-accessed TsLastBlock objects.
+// NOT thread-safe — designed for single-threaded iterator use only.
+// The cache is a member of TsStorageIteratorImpl, which is created
+// and destroyed within a single query thread.
+//
+// Uses unordered_map for O(1) lookup + linked list for O(1) LRU eviction.
+class LastBlockCache {
+ public:
+  LastBlockCache() = default;
+  ~LastBlockCache();
+
+  std::shared_ptr<TsLastBlock> Get(uint64_t file_number, int block_id);
+  void Put(uint64_t file_number, int block_id, std::shared_ptr<TsLastBlock> block);
+  void LogStats() const;
+
+ private:
+  struct Key {
+    uint64_t file_number;
+    int block_id;
+    bool operator==(const Key& o) const {
+      return file_number == o.file_number && block_id == o.block_id;
+    }
+  };
+  struct KeyHash {
+    size_t operator()(const Key& k) const {
+      return std::hash<uint64_t>()(k.file_number) ^
+             (std::hash<int>()(k.block_id) << 1);
+    }
+  };
+
+  using LruIter = std::list<Key>::iterator;
+
+  std::list<Key> lru_;                                          // MRU at front
+  std::unordered_map<Key, std::pair<LruIter, std::shared_ptr<TsLastBlock>>, KeyHash> map_;
+
+  uint64_t hits_ = 0;
+  uint64_t misses_ = 0;
 };
 
 }  // namespace kwdbts

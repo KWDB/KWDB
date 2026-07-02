@@ -111,7 +111,7 @@ var SendToAeList = []string{"ts.trace.on_off_list", "ts.dedup.rule", "ts.wal.fil
 	"ts.compress.stage", "ts.compress.level", "ts.compress.last_segment.enabled", "ts.last_cache_size.max_limit",
 	"ts.force_sync_file.enabled", "ts.block_filter.sampling_ratio", "ts.agg_recalc.cycle",
 	"ts.metric_schema_cache.max_limit", "ts.compress.algorithm", "ts.force_re_compress.enabled",
-	"ts.partition_agg.enabled", "ts.txn.atomicity.enabled"}
+	"ts.partition_agg.enabled", "ts.txn.atomicity.enabled", "ts.last_block_cache.max_entries"}
 
 func needSendToAE(key string) bool {
 	for _, value := range SendToAeList {

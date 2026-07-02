@@ -197,6 +197,9 @@ class TsPartitionVersion {
   }
 
   std::vector<std::shared_ptr<TsLastSegment>> GetCompactLastSegments(int *level, int *group) const;
+  std::vector<std::shared_ptr<TsLastSegment>> GetLastSegments(int level, int group) const {
+    return leveled_last_segments_.GetLastSegments(level, group);
+  }
 
   std::vector<std::shared_ptr<TsLastSegment>> GetVacuumLastSegments(bool force_vacuum) const;
 
@@ -241,7 +244,8 @@ class TsPartitionVersion {
                        const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
                        const std::shared_ptr<MMapMetricsTable>& scan_schema,
                        TsScanStats* ts_scan_stats = nullptr,
-                       bool skip_mem = false, bool skip_last = false, bool skip_entity = false) const;
+                       bool skip_mem = false, bool skip_last = false, bool skip_entity = false,
+                       LastBlockCache* cache = nullptr) const;
 
   bool TrySetBusy(PartitionStatus desired) const {
     PartitionStatus expected = PartitionStatus::None;

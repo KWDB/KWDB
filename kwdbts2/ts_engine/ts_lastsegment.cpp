@@ -446,7 +446,59 @@ class TsLastBlock : public TsBlock {
   }
 };
 
-KStatus TsLastSegment::GetBlock(int block_id, std::shared_ptr<TsLastBlock>* block) const {
+LastBlockCache::~LastBlockCache() {
+  LogStats();
+}
+
+std::shared_ptr<TsLastBlock> LastBlockCache::Get(uint64_t file_number, int block_id) {
+  Key key{file_number, block_id};
+  auto it = map_.find(key);
+  if (it != map_.end()) {
+    ++hits_;
+    // Move to MRU front: O(1) splice with stored iterator
+    lru_.splice(lru_.begin(), lru_, it->second.first);
+    return it->second.second;
+  }
+  ++misses_;
+  return nullptr;
+}
+
+void LastBlockCache::Put(uint64_t file_number, int block_id, std::shared_ptr<TsLastBlock> block) {
+  Key key{file_number, block_id};
+  auto it = map_.find(key);
+  if (it != map_.end()) {
+    it->second.second = std::move(block);
+    lru_.splice(lru_.begin(), lru_, it->second.first);
+    return;
+  }
+  if (map_.size() >= EngineOptions::last_block_cache_max_entries) {
+    Key lru_key = lru_.back();
+    map_.erase(lru_key);
+    lru_.pop_back();
+  }
+  lru_.push_front(key);
+  map_.emplace(key, std::make_pair(lru_.begin(), std::move(block)));
+}
+
+void LastBlockCache::LogStats() const {
+  uint64_t total = hits_ + misses_;
+  if (total > 0) {
+    LOG_DEBUG("LastBlockCache stats: hits=%lu misses=%lu total=%lu hit_rate=%.1f%%",
+             hits_, misses_, total, 100.0 * hits_ / total);
+  }
+}
+
+KStatus TsLastSegment::GetBlock(int block_id, std::shared_ptr<TsLastBlock>* block,
+                                 LastBlockCache* cache) const {
+  if (EngineOptions::compress_last_segment
+    && EngineOptions::last_block_cache_max_entries > 0
+    && cache) {
+    auto cached = cache->Get(file_number_, block_id);
+    if (cached) {
+      *block = cached;
+      return SUCCESS;
+    }
+  }
   TsLastSegmentBlockIndex* index;
   auto s = block_cache_->GetBlockIndex(block_id, &index);
   if (s == FAIL) {
@@ -462,6 +514,11 @@ KStatus TsLastSegment::GetBlock(int block_id, std::shared_ptr<TsLastBlock>* bloc
   }
 
   *block = std::make_unique<TsLastBlock>(this, block_id, *index, info);
+  if (EngineOptions::compress_last_segment
+    && EngineOptions::last_block_cache_max_entries > 0
+    && cache) {
+    cache->Put(file_number_, block_id, *block);
+  }
   return SUCCESS;
 }
 
@@ -710,6 +767,15 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                       const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
                                       const std::shared_ptr<MMapMetricsTable>& scan_schema,
                                       TsScanStats* ts_scan_stats) {
+  return GetBlockSpans(filter, block_spans, tbl_schema_mgr, scan_schema, nullptr, ts_scan_stats);
+}
+
+KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
+                                      std::list<shared_ptr<TsBlockSpan>>& block_spans,
+                                      const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
+                                      const std::shared_ptr<MMapMetricsTable>& scan_schema,
+                                      LastBlockCache* cache,
+                                      TsScanStats* ts_scan_stats) {
   assert(block_cache_ != nullptr);
 
   // if filter is empty, no need to do anything.
@@ -717,9 +783,9 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
     return SUCCESS;
   }
 
-  // if (!this->MayExistEntity(filter.entity_id)) {
-  //   return SUCCESS;
-  // }
+  if (!this->MayExistEntity(filter.entity_id)) {
+    return SUCCESS;
+  }
 
   std::vector<TsLastSegmentBlockIndex>* p_block_indices;
   auto s = block_cache_->GetAllBlockIndex(&p_block_indices);
@@ -771,7 +837,7 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       int block_idx = it - block_indices.begin();
 
       std::shared_ptr<TsLastBlock> block;
-      s = this->GetBlock(block_idx, &block);
+      s = this->GetBlock(block_idx, &block, cache);
       if (s == FAIL) {
         return s;
       }

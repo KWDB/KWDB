@@ -216,7 +216,7 @@ class TsVGroup {
     return tsx_manager_->IsExplicit(mini_trans_id);
   }
 
-  KStatus Compact(bool *compacted = nullptr);
+  KStatus Compact(bool *compacted = nullptr, bool force_compact_l0 = false);
 
   KStatus FlushImmSegment(std::unique_ptr<TsLastSegmentBuilder>&, const std::shared_ptr<TsMemSegment>& segment);
 
@@ -531,7 +531,7 @@ class TsVGroup {
 
   [[nodiscard]] KStatus PartitionCompact(kwdbContext_p ctx, std::shared_ptr<const TsPartitionVersion> partition,
                                          bool call_by_vacuum = false, bool force_vacuum = false,
-                                         bool* skipped = nullptr);
+                                         bool force_compact_l0 = false, bool* skipped = nullptr);
 
   KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, const TsBlockSpan& ts_blk_span,
                                       const vector<AttributeInfo>& attrs, ResultSet* res);

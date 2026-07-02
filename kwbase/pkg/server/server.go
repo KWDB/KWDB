@@ -244,6 +244,12 @@ var (
 			return nil
 		})
 
+	tsLastBlockCacheMaxEntries = settings.RegisterPublicIntSetting(
+		"ts.last_block_cache.max_entries",
+		"the maximum number of decompressed last-segment blocks cached per query iterator; "+
+			"only takes effect when ts.compress.last_segment.enabled is on",
+		20)
+
 	tsBlockFilterSamplingRatio = settings.RegisterPublicFloatSetting(
 		"ts.block_filter.sampling_ratio",
 		"sampling ratio for block filter, valid range is (0.0, 1.0]",

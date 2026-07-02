@@ -303,6 +303,19 @@ func checkTsReservedLastSegmentMaxLimit(encodedValue string) error {
 	return nil
 }
 
+// checkTsLastBlockCacheMaxEntries checks whether the per-iterator last-block cache
+// capacity value set is valid.
+func checkTsLastBlockCacheMaxEntries(encodedValue string) error {
+	value, err := strconv.ParseInt(encodedValue, 10, 64)
+	if err != nil {
+		return err
+	}
+	if value < 0 || value > 10000 {
+		return errors.New("invalid value, the range of ts.last_block_cache.max_entries is [0, 10000]")
+	}
+	return nil
+}
+
 func checkTsBlockFilterSamplingRatio(encodedValue string) error {
 	value, err := strconv.ParseFloat(encodedValue, 64)
 	if err != nil {
@@ -340,6 +353,7 @@ var CheckClusterSetting = map[string]CheckOperation{
 	"ts.compress.level":                  checkTsCompressLevel,
 	"ts.compress.algorithm":              checkTsCompressAlgorithm,
 	"ts.compress.last_segment.enabled":   checkTsCompressLastSegment,
+	"ts.last_block_cache.max_entries":    checkTsLastBlockCacheMaxEntries,
 	"ts.reserved_last_segment.max_limit": checkTsReservedLastSegmentMaxLimit,
 	"ts.force_sync_file.enabled":         checkBool,
 	"ts.block_filter.sampling_ratio":     checkTsBlockFilterSamplingRatio,

@@ -958,7 +958,8 @@ KStatus TsPartitionVersion::GetBlockSpans(const TsScanFilterParams& filter,
                                           const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
                                           const std::shared_ptr<MMapMetricsTable>& scan_schema,
                                           TsScanStats* ts_scan_stats,
-                                          bool skip_mem, bool skip_last, bool skip_entity) const {
+                                          bool skip_mem, bool skip_last, bool skip_entity,
+                                          LastBlockCache* cache) const {
   TsBlockItemFilterParams block_data_filter;
   auto s = getFilter(filter, block_data_filter);
   if (s != KStatus::SUCCESS) {
@@ -984,7 +985,7 @@ KStatus TsPartitionVersion::GetBlockSpans(const TsScanFilterParams& filter,
       int group = LastSegmentContainer::GetGroupByEntityID(level, block_data_filter.entity_id);
       const auto &last_segments = leveled_last_segments_.GetLastSegments(level, group);
       for (const auto &last_seg : last_segments) {
-        s = last_seg->GetBlockSpans(block_data_filter, *ts_block_spans, tbl_schema_mgr, scan_schema, ts_scan_stats);
+        s = last_seg->GetBlockSpans(block_data_filter, *ts_block_spans, tbl_schema_mgr, scan_schema, cache, ts_scan_stats);
         if (s != KStatus::SUCCESS) {
           LOG_ERROR("GetBlockSpans of last segment failed.");
           return s;

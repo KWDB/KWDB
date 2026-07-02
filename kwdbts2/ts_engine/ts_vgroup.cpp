@@ -12,6 +12,7 @@
 #include "ts_vgroup.h"
 #include <pthread.h>
 
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -623,17 +624,28 @@ KStatus TsVGroup::GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_versio
 }
 
 void TsVGroup::compactRoutine(void* args) {
+  int64_t last_compact_time = -1;  // in seconds
   while (!KWDBDynamicThreadPool::GetThreadPool().IsCancel() && enable_compact_thread_) {
     // If the thread pool stops or the system is no longer running, exit the loop
     if (KWDBDynamicThreadPool::GetThreadPool().IsCancel() || !enable_compact_thread_) {
       break;
     }
+
+    auto now = std::chrono::steady_clock::now().time_since_epoch();
+    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now);
+    bool force_compact_l0 = false;
+    if (last_compact_time != -1 && elapsed.count() - last_compact_time >= 60) {
+      force_compact_l0 = true;
+    }
+
     // Execute compact tasks
     bool compacted = false;
-    auto s = Compact(&compacted);
+    auto s = Compact(&compacted, force_compact_l0);
 
     if (!compacted || s == FAIL) {
       std::this_thread::sleep_for(std::chrono::seconds(2));
+    } else {
+      last_compact_time = elapsed.count();
     }
   }
 }
@@ -776,7 +788,7 @@ KStatus TsVGroup::PartitionCompactNoLockImpl(kwdbContext_p ctx, bool force_write
       LOG_INFO("LastSegment %lu in %s created by Compaction, level: %d, group: %d", builder->GetFileNumber(),
                root_path.string().c_str(), next_level, it->first);
       char log_buf[64];
-      std::snprintf(log_buf, sizeof(log_buf), "%lu: (%d, %d), ", builder->GetFileNumber(), level, group);
+      std::snprintf(log_buf, sizeof(log_buf), "%lu: (%d, %d), ", builder->GetFileNumber(), next_level, it->first);
       ss << log_buf;
       update.AddLastSegment(partition_id, {builder->GetFileNumber(), next_level, it->first});
     }
@@ -796,7 +808,7 @@ KStatus TsVGroup::PartitionCompactNoLockImpl(kwdbContext_p ctx, bool force_write
 }
 
 KStatus TsVGroup::PartitionCompact(kwdbContext_p ctx, std::shared_ptr<const TsPartitionVersion> partition,
-                                   bool call_by_vacuum, bool force_vacuum, bool* skipped) {
+                                   bool call_by_vacuum, bool force_vacuum, bool force_compact_l0, bool* skipped) {
   TsIOEnv* env = &TsIOEnv::GetInstance();
   auto partition_id = partition->GetPartitionIdentifier();
   if (!partition->TrySetBusy(PartitionStatus::Compacting)) {
@@ -812,7 +824,15 @@ KStatus TsVGroup::PartitionCompact(kwdbContext_p ctx, std::shared_ptr<const TsPa
   Defer defer{[&]() { partition->ResetStatus(); }};
   // 1. Get all the last segments that need to be compacted.
   int level = -1, group = -1;
-  std::vector<std::shared_ptr<TsLastSegment>> last_segments = partition->GetCompactLastSegments(&level, &group);
+  std::vector<std::shared_ptr<TsLastSegment>> last_segments;
+  if (force_compact_l0) {
+    last_segments = partition->GetLastSegments(0, 0);
+    level = group = 0;
+  }
+  if (last_segments.empty()) {
+    last_segments = partition->GetCompactLastSegments(&level, &group);
+  }
+
   if (last_segments.empty()) {
     if (skipped) *skipped = true;
     return KStatus::SUCCESS;
@@ -825,7 +845,7 @@ KStatus TsVGroup::PartitionCompact(kwdbContext_p ctx, std::shared_ptr<const TsPa
   return s;
 }
 
-KStatus TsVGroup::Compact(bool* compacted) {
+KStatus TsVGroup::Compact(bool* compacted, bool force_compact_l0) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -838,7 +858,7 @@ KStatus TsVGroup::Compact(bool* compacted) {
   bool executed = false;
   for (const auto& [db_id, partition] : partitions) {
     bool skipped = false;
-    s = PartitionCompact(ctx_p, partition, false, false, &skipped);
+    s = PartitionCompact(ctx_p, partition, false, false, force_compact_l0, &skipped);
     if (skipped) continue;
     executed = true;
     if (s == FAIL) {

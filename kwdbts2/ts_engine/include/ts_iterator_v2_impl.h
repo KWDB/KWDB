@@ -99,6 +99,11 @@ class TsStorageIteratorImpl : public TsStorageIterator {
 
   std::shared_ptr<TsScanFilterParams> filter_;
   std::shared_ptr<MMapMetricsTable> scan_schema_;
+
+  // Per-iterator cache of recently-accessed TsLastBlock objects.
+  // Avoids repeated decompression when the same LastSegment block is
+  // accessed across multiple entity scans within a single query.
+  LastBlockCache last_block_cache_;
 };
 
 class TsSortedRawDataIteratorImpl : public TsStorageIteratorImpl {
