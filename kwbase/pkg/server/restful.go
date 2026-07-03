@@ -36,6 +36,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/retry"
@@ -43,6 +44,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
+	"github.com/lib/pq/oid"
 )
 
 // RestfulResponseCodeSuccess indicates success
@@ -1103,8 +1105,12 @@ func (s *restfulServer) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			// get row data.
-			for _, datums := range re.Rows {
-				restData := makeQueryRes(datums, h.GetTimeZone(), connCache.isStrTimezone, nameIdx)
+			for i, datums := range re.Rows {
+				var typ *types.T
+				if i < len(cols) {
+					typ = cols[i].Typ
+				}
+				restData := makeQueryRes(datums, h.GetTimeZone(), connCache.isStrTimezone, nameIdx, typ)
 				restDatas = append(restDatas, restData)
 			}
 			rows = len(re.Rows)
@@ -1138,7 +1144,11 @@ func (s *restfulServer) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 // makeQueryRes change query result to make it same as original to make test access
 func makeQueryRes(
-	datums tree.Datums, location *time.Location, isStrTimezone bool, nameIdx map[int]string,
+	datums tree.Datums,
+	location *time.Location,
+	isStrTimezone bool,
+	nameIdx map[int]string,
+	typ *types.T,
 ) []string {
 	var restData []string
 	for i, datum := range datums {
@@ -1211,9 +1221,11 @@ func makeQueryRes(
 		case *tree.DCollatedString:
 			str = val.Contents
 		case *tree.DFloat:
-			if len(str) > 2 && str[len(str)-2:] == ".0" {
-				str = str[:len(str)-2]
+			if typ != nil && typ.Oid() == oid.T_float4 {
+				// Reduce output accuracy.
+				str = strconv.FormatFloat(float64(*val), 'f', 6, 32)
 			}
+			str = trimFloatZero(str)
 		case *tree.DBitArray:
 			if len(str) > 1 && str[0] == 'B' && str[1] == '\'' {
 				str = str[2:]
@@ -1238,6 +1250,21 @@ func makeQueryRes(
 		restData = append(restData, str)
 	}
 	return restData
+}
+
+// removes trailing zeros from float string and redundant decimal point
+func trimFloatZero(s string) string {
+	// return the original string directly if there is no decimal point
+	if !strings.Contains(s, ".") {
+		return s
+	}
+	// remove all trailing zero characters
+	s = strings.TrimRight(s, "0")
+	// if the string ends with decimal point, remove it
+	if strings.HasSuffix(s, ".") {
+		s = s[:len(s)-1]
+	}
+	return s
 }
 
 func transColType(colName, colType string) colMetaInfo {
