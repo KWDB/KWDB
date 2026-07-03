@@ -820,7 +820,7 @@ KStatus TsVGroup::PartitionCompact(kwdbContext_p ctx, std::shared_ptr<const TsPa
     }
     return KStatus::FAIL;
   }
-  partition = version_manager_->Current()->GetPartition(std::get<0>(partition_id), std::get<1>(partition_id));
+  partition = version_manager_->Current()->GetPartition(partition_id);
   Defer defer{[&]() { partition->ResetStatus(); }};
   // 1. Get all the last segments that need to be compacted.
   int level = -1, group = -1;
@@ -1738,7 +1738,7 @@ KStatus TsVGroup::GetEntitySegmentBuilder(std::shared_ptr<const TsPartitionVersi
     while (!partition->TrySetBusy(PartitionStatus::BatchDataWriting)) {
       std::this_thread::sleep_for(std::chrono::seconds(1));
     }
-    partition = version_manager_->Current()->GetPartition(std::get<0>(partition_id), std::get<1>(partition_id));
+    partition = version_manager_->Current()->GetPartition(partition_id);
     auto entity_segment = partition->GetEntitySegment();
 
     auto root_path = this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier());
@@ -1817,7 +1817,7 @@ KStatus TsVGroup::FinishWriteBatchData() {
     version_manager_->ApplyUpdate(&update);
   }
   for (auto& k : partition_ids) {
-    auto partition = version_manager_->Current()->GetPartition(std::get<0>(k), std::get<1>(k));
+    auto partition = version_manager_->Current()->GetPartition(k);
     partition->ResetStatus();
   }
   return KStatus::SUCCESS;
@@ -1831,7 +1831,7 @@ KStatus TsVGroup::CancelWriteBatchData() {
   }
   write_batch_segment_builders_.clear();
   for (auto p_id : partition_ids) {
-    auto partition = version_manager_->Current()->GetPartition(std::get<0>(p_id), std::get<1>(p_id));
+    auto partition = version_manager_->Current()->GetPartition(p_id);
     partition->ResetStatus();
   }
   return KStatus::SUCCESS;
