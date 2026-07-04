@@ -115,12 +115,17 @@ func New(
 		evalCtx: evalCtx,
 	}
 	if evalCtx != nil {
-		if evalCtx.SessionData.SaveTablesPrefix != "" {
-			b.nameGen = memo.NewExprNameGenerator(evalCtx.SessionData.SaveTablesPrefix)
-		}
-		b.allowInsertFastPath = evalCtx.SessionData.InsertFastPath
+		b.configureFromSession(evalCtx)
 	}
 	return b
+}
+
+// configureFromSession initializes builder state from the session context.
+func (b *Builder) configureFromSession(evalCtx *tree.EvalContext) {
+	if evalCtx.SessionData.SaveTablesPrefix != "" {
+		b.nameGen = memo.NewExprNameGenerator(evalCtx.SessionData.SaveTablesPrefix)
+	}
+	b.allowInsertFastPath = evalCtx.SessionData.InsertFastPath
 }
 
 // Build constructs the execution node tree and returns its root node if no
@@ -134,19 +139,7 @@ func (b *Builder) Build(autocommit bool) (_ exec.Plan, err error) {
 }
 
 func (b *Builder) build(e opt.Expr, autocommit bool) (_ execPlan, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			// This code allows us to propagate errors without adding lots of checks
-			// for `if err != nil` throughout the construction code. This is only
-			// possible because the code does not update shared state and does not
-			// manipulate locks.
-			if ok, err1 := errorutil.ShouldCatch(r); ok {
-				err = err1
-			} else {
-				panic(r)
-			}
-		}
-	}()
+	defer b.recoverBuildPanic(&err)
 
 	rel, ok := e.(memo.RelExpr)
 	if !ok {
@@ -160,6 +153,20 @@ func (b *Builder) build(e opt.Expr, autocommit bool) (_ execPlan, err error) {
 	}
 
 	return b.buildRelational(rel)
+}
+
+// recoverBuildPanic is a deferred helper that converts panics carrying errors
+// back into normal error returns. This avoids pervasive `if err != nil` checks
+// during expression tree construction, which never updates shared state or
+// acquires locks.
+func (b *Builder) recoverBuildPanic(err *error) {
+	if r := recover(); r != nil {
+		if ok, err1 := errorutil.ShouldCatch(r); ok {
+			*err = err1
+		} else {
+			panic(r)
+		}
+	}
 }
 
 // BuildScalar converts a scalar expression to a TypedExpr. Variables are mapped

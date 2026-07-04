@@ -2791,7 +2791,7 @@ func (b *Builder) tryBuildFastPathInsert(ins *memo.InsertExpr) (_ execPlan, ok b
 		return execPlan{}, false, nil
 	}
 
-	rows, err := b.buildValuesRows(values)
+	rows, err := buildValuesRows(b, values)
 	if err != nil {
 		return execPlan{}, false, err
 	}

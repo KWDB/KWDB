@@ -493,14 +493,24 @@ func (b *Builder) buildRelational(e memo.RelExpr) (execPlan, error) {
 }
 
 func (b *Builder) buildValues(values *memo.ValuesExpr) (execPlan, error) {
-	rows, err := b.buildValuesRows(values)
+	rows, err := b.constructTypedRowsFromValues(values)
 	if err != nil {
 		return execPlan{}, err
 	}
 	return b.constructValues(rows, values.Cols)
 }
 
-func (b *Builder) buildValuesRows(values *memo.ValuesExpr) ([][]tree.TypedExpr, error) {
+// constructTypedRowsFromValues builds all typed row expressions from a ValuesExpr.
+func (b *Builder) constructTypedRowsFromValues(values *memo.ValuesExpr) ([][]tree.TypedExpr, error) {
+	ops, err := buildValuesRows(b, values)
+	if err != nil {
+		return nil, err
+	}
+	return ops, nil
+}
+
+// buildValuesRows converts ValuesExpr tuple rows into typed expression rows.
+func buildValuesRows(b *Builder, values *memo.ValuesExpr) ([][]tree.TypedExpr, error) {
 	numCols := len(values.Cols)
 
 	rows := make([][]tree.TypedExpr, len(values.Rows))

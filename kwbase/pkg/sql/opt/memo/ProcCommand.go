@@ -63,7 +63,7 @@ const (
 	ProcDeallocate
 )
 
-// ProcComms represents an array of ProcCommand
+// ProcComms is an alias for ProcCommand used as an array of commands.
 type ProcComms ProcCommand
 
 // ProcCommand represents a sql block in procedure.

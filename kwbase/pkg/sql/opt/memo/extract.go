@@ -49,24 +49,25 @@ func CanExtractConstDatum(e opt.Expr) bool {
 	}
 
 	if tup, ok := e.(*TupleExpr); ok {
-		for _, elem := range tup.Elems {
-			if !CanExtractConstDatum(elem) {
-				return false
-			}
-		}
-		return true
+		return allChildrenAreConst(tup.Elems)
 	}
 
 	if arr, ok := e.(*ArrayExpr); ok {
-		for _, elem := range arr.Elems {
-			if !CanExtractConstDatum(elem) {
-				return false
-			}
-		}
-		return true
+		return allChildrenAreConst(arr.Elems)
 	}
 
 	return false
+}
+
+// allChildrenAreConst returns true if every expression in the slice evaluates
+// to a constant datum.
+func allChildrenAreConst(elems []opt.ScalarExpr) bool {
+	for _, elem := range elems {
+		if !CanExtractConstDatum(elem) {
+			return false
+		}
+	}
+	return true
 }
 
 // ExtractConstDatum returns the Datum that represents the value of an
@@ -88,44 +89,58 @@ func ExtractConstDatum(e opt.Expr) tree.Datum {
 		return t.Value
 
 	case *TupleExpr:
-		datums := make(tree.Datums, len(t.Elems))
-		for i := range datums {
-			datums[i] = ExtractConstDatum(t.Elems[i])
-		}
-		return tree.NewDTuple(t.Typ, datums...)
+		return extractTupleConstDatum(t)
 
 	case *ArrayExpr:
-		elementType := t.Typ.ArrayContents()
-		a := tree.NewDArray(elementType)
-		a.Array = make(tree.Datums, len(t.Elems))
-		for i := range a.Array {
-			a.Array[i] = ExtractConstDatum(t.Elems[i])
-			if a.Array[i] == tree.DNull {
-				a.HasNulls = true
-			} else {
-				a.HasNonNulls = true
-			}
-		}
-		return a
+		return extractArrayConstDatum(t)
 	}
 	panic(errors.AssertionFailedf("non-const expression: %+v", e))
+}
+
+// extractTupleConstDatum converts a constant TupleExpr into a tree.DTuple.
+func extractTupleConstDatum(t *TupleExpr) tree.Datum {
+	datums := make(tree.Datums, len(t.Elems))
+	for i := range datums {
+		datums[i] = ExtractConstDatum(t.Elems[i])
+	}
+	return tree.NewDTuple(t.Typ, datums...)
+}
+
+// extractArrayConstDatum converts a constant ArrayExpr into a tree.DArray.
+func extractArrayConstDatum(t *ArrayExpr) tree.Datum {
+	elementType := t.Typ.ArrayContents()
+	a := tree.NewDArray(elementType)
+	a.Array = make(tree.Datums, len(t.Elems))
+	for i := range a.Array {
+		a.Array[i] = ExtractConstDatum(t.Elems[i])
+		if a.Array[i] == tree.DNull {
+			a.HasNulls = true
+		} else {
+			a.HasNonNulls = true
+		}
+	}
+	return a
 }
 
 // ExtractAggFunc digs down into the given aggregate expression and returns the
 // aggregate function, skipping past any AggFilter or AggDistinct operators.
 func ExtractAggFunc(e opt.ScalarExpr) opt.ScalarExpr {
-	if filter, ok := e.(*AggFilterExpr); ok {
-		e = filter.Input
-	}
-
-	if distinct, ok := e.(*AggDistinctExpr); ok {
-		e = distinct.Input
-	}
-
+	e = unwrapAggregateModifiers(e)
 	if !opt.IsAggregateOp(e) {
 		panic(errors.AssertionFailedf("not an Aggregate"))
 	}
+	return e
+}
 
+// unwrapAggregateModifiers strips AggFilter and AggDistinct wrappers from an
+// aggregate expression to reveal the underlying aggregate function.
+func unwrapAggregateModifiers(e opt.ScalarExpr) opt.ScalarExpr {
+	if filter, ok := e.(*AggFilterExpr); ok {
+		e = filter.Input
+	}
+	if distinct, ok := e.(*AggDistinctExpr); ok {
+		e = distinct.Input
+	}
 	return e
 }
 
@@ -181,22 +196,29 @@ func ExtractJoinEqualityColumns(
 		if !ok {
 			continue
 		}
-		// Don't allow any column to show up twice.
-		// TODO(radu): need to figure out the right thing to do in cases
-		// like: left.a = right.a AND left.a = right.b
-		duplicate := false
-		for i := range leftEq {
-			if leftEq[i] == left || rightEq[i] == right {
-				duplicate = true
-				break
-			}
-		}
-		if !duplicate {
+		if !isColumnAlreadyListed(left, right, leftEq, rightEq) {
 			leftEq = append(leftEq, left)
 			rightEq = append(rightEq, right)
 		}
 	}
 	return leftEq, rightEq
+}
+
+// isColumnAlreadyListed checks whether either of the given column IDs already
+// appears in the left or right equality lists. This prevents the same column
+// from appearing in join equality constraints more than once.
+//
+// TODO(radu): need to figure out the right thing to do in cases
+// like: left.a = right.a AND left.a = right.b
+func isColumnAlreadyListed(
+	left, right opt.ColumnID, leftEq, rightEq opt.ColList,
+) bool {
+	for i := range leftEq {
+		if leftEq[i] == left || rightEq[i] == right {
+			return true
+		}
+	}
+	return false
 }
 
 // ExtractJoinEqualityFilters returns the filters containing pairs of columns
