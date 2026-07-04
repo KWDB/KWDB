@@ -80,10 +80,7 @@ var UnconstrainedSpan = Span{}
 // before Set is called. Unconstrained spans cannot be used in constraints,
 // since the absence of a constraint is equivalent to an unconstrained span.
 func (sp *Span) IsUnconstrained() bool {
-	startUnconstrained := sp.start.IsEmpty() || (sp.start.IsNull() && sp.startBoundary == IncludeBoundary)
-	endUnconstrained := sp.end.IsEmpty()
-
-	return startUnconstrained && endUnconstrained
+	return sp.isStartUnbounded() && sp.isEndUnbounded()
 }
 
 // HasSingleKey is true if the span contains exactly one key. This is true when
@@ -96,12 +93,7 @@ func (sp *Span) HasSingleKey(evalCtx *tree.EvalContext) bool {
 	if sp.startBoundary != IncludeBoundary || sp.endBoundary != IncludeBoundary {
 		return false
 	}
-	for i, n := 0, l; i < n; i++ {
-		if sp.start.Value(i).Compare(evalCtx, sp.end.Value(i)) != 0 {
-			return false
-		}
-	}
-	return true
+	return sp.keysEqual(evalCtx)
 }
 
 // StartKey returns the start key.
@@ -129,14 +121,8 @@ func (sp *Span) EndBoundary() SpanBoundary {
 //  1. Empty span (should never be used in a constraint); not verified.
 //  2. Exclusive empty key boundary (use inclusive instead); causes panic.
 func (sp *Span) Init(start Key, startBoundary SpanBoundary, end Key, endBoundary SpanBoundary) {
-	if start.IsEmpty() && startBoundary == ExcludeBoundary {
-		// Enforce one representation for empty boundary.
-		panic(errors.AssertionFailedf("an empty start boundary must be inclusive"))
-	}
-	if end.IsEmpty() && endBoundary == ExcludeBoundary {
-		// Enforce one representation for empty boundary.
-		panic(errors.AssertionFailedf("an empty end boundary must be inclusive"))
-	}
+	sp.validateBoundaryArg(start, startBoundary, "start")
+	sp.validateBoundaryArg(end, endBoundary, "end")
 
 	sp.start = start
 	sp.startBoundary = startBoundary
@@ -240,6 +226,7 @@ func (sp *Span) TryIntersectWith(keyCtx *KeyContext, other *Span) bool {
 	}
 
 	// Only update now that it's known that intersection is not empty.
+	// Intersection takes the narrower range: later start and earlier end.
 	if cmpStarts < 0 {
 		sp.start = other.start
 		sp.startBoundary = other.startBoundary
@@ -266,34 +253,16 @@ func (sp *Span) TryUnionWith(keyCtx *KeyContext, other *Span) bool {
 	// Determine the minimum start boundary.
 	cmpStartKeys := sp.CompareStarts(keyCtx, other)
 
-	var cmp int
-	if cmpStartKeys < 0 {
-		// This span is less, so see if there's any "space" after it and before
-		// the start of the other span.
-		cmp = sp.end.Compare(keyCtx, other.start, sp.endExt(), other.startExt())
-	} else if cmpStartKeys > 0 {
-		// This span is greater, so see if there's any "space" before it and
-		// after the end of the other span.
-		cmp = other.end.Compare(keyCtx, sp.start, other.endExt(), sp.startExt())
-	}
-	if cmp < 0 {
-		// There's "space" between spans, so union of these spans can't be
-		// expressed as a single span.
+	if !sp.spansAreAdjacentOrOverlapping(keyCtx, other, cmpStartKeys) {
 		return false
 	}
 
 	// Determine the maximum end boundary.
 	cmpEndKeys := sp.CompareEnds(keyCtx, other)
 
-	// Create the merged span.
-	if cmpStartKeys > 0 {
-		sp.start = other.start
-		sp.startBoundary = other.startBoundary
-	}
-	if cmpEndKeys < 0 {
-		sp.end = other.end
-		sp.endBoundary = other.endBoundary
-	}
+	// Create the merged span using the widest bounds.
+	sp.adoptStartIfEarlier(cmpStartKeys, other)
+	sp.adoptEndIfLater(cmpEndKeys, other)
 	return true
 }
 
@@ -311,18 +280,8 @@ func (sp *Span) TryUnionWith(keyCtx *KeyContext, other *Span) bool {
 //   - for a decimal column, we don't have either Next or Prev so we can't
 //     change anything.
 func (sp *Span) PreferInclusive(keyCtx *KeyContext) {
-	if sp.startBoundary == ExcludeBoundary {
-		if key, ok := sp.start.Next(keyCtx); ok {
-			sp.start = key
-			sp.startBoundary = IncludeBoundary
-		}
-	}
-	if sp.endBoundary == ExcludeBoundary {
-		if key, ok := sp.end.Prev(keyCtx); ok {
-			sp.end = key
-			sp.endBoundary = IncludeBoundary
-		}
-	}
+	sp.tryMakeStartInclusive(keyCtx)
+	sp.tryMakeEndInclusive(keyCtx)
 }
 
 // CutFront removes the first numCols columns in both keys.
@@ -355,21 +314,118 @@ func (sp *Span) endExt() KeyExtension {
 //	[ - ]
 func (sp Span) String() string {
 	var buf bytes.Buffer
-	if sp.startBoundary == IncludeBoundary {
-		buf.WriteRune('[')
-	} else {
-		buf.WriteRune('(')
-	}
-
+	sp.writeBoundaryBracket(&buf, sp.startBoundary, true)
 	buf.WriteString(sp.start.String())
 	buf.WriteString(" - ")
 	buf.WriteString(sp.end.String())
-
-	if sp.endBoundary == IncludeBoundary {
-		buf.WriteRune(']')
-	} else {
-		buf.WriteRune(')')
-	}
-
+	sp.writeBoundaryBracket(&buf, sp.endBoundary, false)
 	return buf.String()
+}
+
+// -------- internal helpers for Span --------
+
+// isStartUnbounded returns true if the start of the span is effectively
+// unbounded (empty key or inclusive NULL start).
+func (sp *Span) isStartUnbounded() bool {
+	return sp.start.IsEmpty() || (sp.start.IsNull() && sp.startBoundary == IncludeBoundary)
+}
+
+// isEndUnbounded returns true if the end of the span is empty (unbounded).
+func (sp *Span) isEndUnbounded() bool {
+	return sp.end.IsEmpty()
+}
+
+// keysEqual checks whether the start and end keys have identical datum values.
+func (sp *Span) keysEqual(evalCtx *tree.EvalContext) bool {
+	for i, n := 0, sp.start.Length(); i < n; i++ {
+		if sp.start.Value(i).Compare(evalCtx, sp.end.Value(i)) != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// validateBoundaryArg panics if the key is empty but an exclusive boundary was
+// requested. Empty keys must always use inclusive boundaries for a canonical
+// representation.
+func (sp *Span) validateBoundaryArg(key Key, boundary SpanBoundary, side string) {
+	if key.IsEmpty() && boundary == ExcludeBoundary {
+		panic(errors.AssertionFailedf("an empty %s boundary must be inclusive", side))
+	}
+}
+
+// adoptStartIfEarlier replaces this span's start with other's start when
+// other starts earlier (cmpStarts > 0 means other < sp).
+func (sp *Span) adoptStartIfEarlier(cmpStarts int, other *Span) {
+	if cmpStarts > 0 {
+		sp.start = other.start
+		sp.startBoundary = other.startBoundary
+	}
+}
+
+// adoptEndIfLater replaces this span's end with other's end when other
+// ends later (cmpEnds < 0 means other > sp).
+func (sp *Span) adoptEndIfLater(cmpEnds int, other *Span) {
+	if cmpEnds < 0 {
+		sp.end = other.end
+		sp.endBoundary = other.endBoundary
+	}
+}
+
+// spansAreAdjacentOrOverlapping returns true if there is no gap between the
+// two spans that would prevent merging them into a single span.
+func (sp *Span) spansAreAdjacentOrOverlapping(keyCtx *KeyContext, other *Span, cmpStartKeys int) bool {
+	if cmpStartKeys < 0 {
+		// This span is less, so see if there's any "space" after it and before
+		// the start of the other span.
+		return sp.end.Compare(keyCtx, other.start, sp.endExt(), other.startExt()) >= 0
+	} else if cmpStartKeys > 0 {
+		// This span is greater, so see if there's any "space" before it and
+		// after the end of the other span.
+		return other.end.Compare(keyCtx, sp.start, other.endExt(), sp.startExt()) >= 0
+	}
+	// Start keys equal: always adjacent/overlapping.
+	return true
+}
+
+// tryMakeStartInclusive converts an exclusive start boundary to inclusive by
+// advancing the start key to the next value, if supported by the type.
+func (sp *Span) tryMakeStartInclusive(keyCtx *KeyContext) {
+	if sp.startBoundary != ExcludeBoundary {
+		return
+	}
+	if key, ok := sp.start.Next(keyCtx); ok {
+		sp.start = key
+		sp.startBoundary = IncludeBoundary
+	}
+}
+
+// tryMakeEndInclusive converts an exclusive end boundary to inclusive by
+// retreating the end key to the previous value, if supported by the type.
+func (sp *Span) tryMakeEndInclusive(keyCtx *KeyContext) {
+	if sp.endBoundary != ExcludeBoundary {
+		return
+	}
+	if key, ok := sp.end.Prev(keyCtx); ok {
+		sp.end = key
+		sp.endBoundary = IncludeBoundary
+	}
+}
+
+// writeBoundaryBracket writes '[' or '(' for a start boundary and ']' or ')'
+// for an end boundary into the provided buffer.
+func (sp *Span) writeBoundaryBracket(buf *bytes.Buffer, boundary SpanBoundary, isStart bool) {
+	if boundary == IncludeBoundary {
+		if isStart {
+			buf.WriteRune('[')
+		} else {
+			buf.WriteRune(']')
+		}
+	} else {
+		if isStart {
+			buf.WriteRune('(')
+		} else {
+			buf.WriteRune(')')
+		}
+	}
 }

@@ -32,14 +32,18 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// Unconstrained is an empty constraint set which does not impose any
-// constraints on any columns.
-var Unconstrained = &Set{}
+// sentinelSets holds pre-allocated special constraint sets that are reused
+// across the system to avoid allocation overhead.
+var (
+	// Unconstrained is an empty constraint set which does not impose any
+	// constraints on any columns.
+	Unconstrained = &Set{}
 
-// Contradiction is a special constraint set which indicates there are no
-// possible values for the expression; it will always yield the empty result
-// set.
-var Contradiction = &Set{contradiction: true}
+	// Contradiction is a special constraint set which indicates there are no
+	// possible values for the expression; it will always yield the empty result
+	// set.
+	Contradiction = &Set{contradiction: true}
+)
 
 // Set is a conjunction of constraints that are inferred from scalar filter
 // conditions. The constrained expression will always evaluate to a result set
@@ -132,7 +136,7 @@ func (s *Set) IsUnconstrained() bool {
 // intersected with one another. Intersect returns the merged set.
 func (s *Set) Intersect(evalCtx *tree.EvalContext, other *Set) *Set {
 	// Intersection with the contradiction set is always the contradiction set.
-	if s == Contradiction || other == Contradiction {
+	if s.isSentinelContradiction() || other.isSentinelContradiction() {
 		return Contradiction
 	}
 
@@ -145,51 +149,7 @@ func (s *Set) Intersect(evalCtx *tree.EvalContext, other *Set) *Set {
 	}
 
 	// Create a new set to hold the merged sets.
-	mergeSet := &Set{}
-
-	index := 0
-	length := s.Length()
-	otherIndex := 0
-	otherLength := other.Length()
-
-	// Constraints are ordered in the set by column indexes, with no duplicates,
-	// so intersection can be done as a variation on merge sort.
-	for index < length || otherIndex < otherLength {
-		// Allocate the next constraint slot in the new set.
-		merge := mergeSet.allocConstraint(length - index + otherLength - otherIndex)
-
-		var cmp int
-		if index >= length {
-			cmp = 1
-		} else if otherIndex >= otherLength {
-			cmp = -1
-		} else {
-			cmp = compareConstraintsByCols(s.Constraint(index), other.Constraint(otherIndex))
-		}
-
-		if cmp == 0 {
-			// Constraints have same columns, so they're compatible and need to
-			// be merged.
-			*merge = *s.Constraint(index)
-			merge.IntersectWith(evalCtx, other.Constraint(otherIndex))
-			if merge.IsContradiction() {
-				return Contradiction
-			}
-
-			// Skip past both inputs.
-			index++
-			otherIndex++
-		} else if cmp < 0 {
-			// This constraint has no corresponding constraint in other set, so
-			// add it to the set (absence of other constraint = unconstrained).
-			*merge = *s.Constraint(index)
-			index++
-		} else {
-			*merge = *other.Constraint(otherIndex)
-			otherIndex++
-		}
-	}
-	return mergeSet
+	return s.mergeSets(evalCtx, other, mergeModeIntersect)
 }
 
 // Union creates a new set with constraints that allow any value that either of
@@ -206,9 +166,9 @@ func (s *Set) Intersect(evalCtx *tree.EvalContext, other *Set) *Set {
 // Union returns the merged set.
 func (s *Set) Union(evalCtx *tree.EvalContext, other *Set) *Set {
 	// Union with the contradiction set is an identity operation.
-	if s == Contradiction {
+	if s.isSentinelContradiction() {
 		return other
-	} else if other == Contradiction {
+	} else if other.isSentinelContradiction() {
 		return s
 	}
 
@@ -218,91 +178,33 @@ func (s *Set) Union(evalCtx *tree.EvalContext, other *Set) *Set {
 	}
 
 	// Create a new set to hold the merged sets.
-	mergeSet := &Set{}
-
-	index := 0
-	length := s.Length()
-	otherIndex := 0
-	otherLength := other.Length()
-
-	// Constraints are ordered in the set by column indexes, with no duplicates,
-	// so union can be done as a variation on merge sort. The constraints are
-	// matched up against one another. All constraints that have a "compatible"
-	// constraint in the other set can be merged into the new set. Currently,
-	// a compatible constraint is one in which columns exactly match.
-	for index < length && otherIndex < otherLength {
-		// Skip past any constraint that does not have a corresponding
-		// constraint in the other set. A missing constraint is equivalent to
-		// a constraint that allows all values. Union of that unconstrained
-		// range with any other range is also unconstrained, and the constraint
-		// set never includes unconstrained ranges. Therefore, skipping
-		// unmatched constraints is equivalent to doing a union operation and
-		// then not adding the result to the set.
-		cmp := compareConstraintsByCols(s.Constraint(index), other.Constraint(otherIndex))
-		if cmp < 0 {
-			index++
-			continue
-		} else if cmp > 0 {
-			otherIndex++
-			continue
-		}
-
-		// Constraints have same columns, so they're compatible and need to
-		// be merged. Allocate the next constraint slot in the new set.
-		merge := mergeSet.allocConstraint(length - index + otherLength - otherIndex)
-
-		*merge = *s.Constraint(index)
-		merge.UnionWith(evalCtx, other.Constraint(otherIndex))
-		if merge.IsUnconstrained() {
-			// Together, constraints allow any possible value, and so there's nothing
-			// to add to the set.
-			mergeSet.undoAllocConstraint()
-		}
-
-		// Skip past both inputs.
-		index++
-		otherIndex++
-	}
-	return mergeSet
+	return s.mergeSets(evalCtx, other, mergeModeUnion)
 }
 
 // ExtractCols returns all columns involved in the constraints in this set.
 func (s *Set) ExtractCols() opt.ColSet {
-	var res opt.ColSet
 	if s.length == 0 {
-		return res
+		return opt.ColSet{}
 	}
-	res = s.firstConstraint.Columns.ColSet()
-	for i := int32(1); i < s.length; i++ {
-		res.UnionWith(s.otherConstraints[i-1].Columns.ColSet())
-	}
-	return res
+	return s.collectAllCols()
 }
 
 // ExtractNotNullCols returns a set of columns that cannot be NULL for the
 // constraints in the set to hold.
 func (s *Set) ExtractNotNullCols(evalCtx *tree.EvalContext) opt.ColSet {
-	if s == Unconstrained || s == Contradiction {
+	if s.isSentinel() {
 		return opt.ColSet{}
 	}
-	res := s.Constraint(0).ExtractNotNullCols(evalCtx)
-	for i := 1; i < s.Length(); i++ {
-		res.UnionWith(s.Constraint(i).ExtractNotNullCols(evalCtx))
-	}
-	return res
+	return s.collectNotNullCols(evalCtx)
 }
 
 // ExtractConstCols returns a set of columns which can only have one value
 // for the constraints in the set to hold.
 func (s *Set) ExtractConstCols(evalCtx *tree.EvalContext) opt.ColSet {
-	if s == Unconstrained || s == Contradiction {
+	if s.isSentinel() {
 		return opt.ColSet{}
 	}
-	res := s.Constraint(0).ExtractConstCols(evalCtx)
-	for i := 1; i < s.Length(); i++ {
-		res.UnionWith(s.Constraint(i).ExtractConstCols(evalCtx))
-	}
-	return res
+	return s.collectConstCols(evalCtx)
 }
 
 // allocConstraint allocates space for a new constraint in the set and returns
@@ -344,7 +246,7 @@ func (s *Set) String() string {
 	if s.IsUnconstrained() {
 		return "unconstrained"
 	}
-	if s == Contradiction {
+	if s.isSentinelContradiction() {
 		return "contradiction"
 	}
 
@@ -356,6 +258,151 @@ func (s *Set) String() string {
 		b.WriteString(s.Constraint(i).String())
 	}
 	return b.String()
+}
+
+// -------- internal helpers for Set --------
+
+// mergeMode specifies whether to intersect or union constraints.
+type mergeMode int
+
+const (
+	mergeModeIntersect mergeMode = iota
+	mergeModeUnion
+)
+
+// isSentinelContradiction checks if this set is the singleton Contradiction
+// sentinel (pointer identity). This is different from IsUnconstrained which
+// compares by value.
+func (s *Set) isSentinelContradiction() bool {
+	return s == Contradiction
+}
+
+// isSentinel returns true if this is either the Unconstrained or Contradiction
+// sentinel set.
+func (s *Set) isSentinel() bool {
+	return s == Unconstrained || s == Contradiction
+}
+
+// mergeSets performs either an intersection or a union of two constraint
+// sets, depending on mode. It uses a merge-sort style approach since
+// constraints within a set are ordered by column indexes.
+func (s *Set) mergeSets(evalCtx *tree.EvalContext, other *Set, mode mergeMode) *Set {
+	mergeSet := &Set{}
+
+	index := 0
+	length := s.Length()
+	otherIndex := 0
+	otherLength := other.Length()
+
+	// For union, we stop when either side is exhausted (unmatched constraints
+	// are dropped because union with unconstrained = unconstrained).
+	// For intersect, we process remaining constraints from either side (a
+	// missing constraint in the other set = unconstrained = identity).
+	moreToProcess := func() bool {
+		if mode == mergeModeUnion {
+			return index < length && otherIndex < otherLength
+		}
+		return index < length || otherIndex < otherLength
+	}
+
+	for moreToProcess() {
+		cmp := resolveConstraintCmp(s, other, index, length, otherIndex, otherLength)
+
+		if cmp == 0 {
+			// Constraints have same columns, so they're compatible and need to
+			// be merged.
+			merge := mergeSet.allocConstraint(length - index + otherLength - otherIndex)
+			*merge = *s.Constraint(index)
+			merge.applyMergeOp(evalCtx, other.Constraint(otherIndex), mode)
+			if merge.isSentinelMergeResult(mode) {
+				mergeSet.undoAllocConstraint()
+				// For intersect, contradiction propagates immediately.
+				if mode == mergeModeIntersect && merge.IsContradiction() {
+					return Contradiction
+				}
+				// For union, unconstrained means the result is unconstrained overall.
+				if mode == mergeModeUnion && merge.IsUnconstrained() {
+					return Unconstrained
+				}
+			}
+
+			index++
+			otherIndex++
+		} else if cmp < 0 {
+			if mode == mergeModeIntersect {
+				// Absence of other constraint = unconstrained, so just add it.
+				merge := mergeSet.allocConstraint(length - index + otherLength - otherIndex)
+				*merge = *s.Constraint(index)
+			}
+			index++
+		} else {
+			if mode == mergeModeIntersect {
+				merge := mergeSet.allocConstraint(length - index + otherLength - otherIndex)
+				*merge = *other.Constraint(otherIndex)
+			}
+			otherIndex++
+		}
+	}
+	return mergeSet
+}
+
+// resolveConstraintCmp returns the comparison result for constraints at the
+// current positions, handling the case where one side is exhausted.
+func resolveConstraintCmp(s, other *Set, index, length, otherIndex, otherLength int) int {
+	if index >= length {
+		return 1
+	}
+	if otherIndex >= otherLength {
+		return -1
+	}
+	return compareConstraintsByCols(s.Constraint(index), other.Constraint(otherIndex))
+}
+
+// applyMergeOp applies the appropriate merge operation (intersect/union)
+// based on the merge mode.
+func (c *Constraint) applyMergeOp(evalCtx *tree.EvalContext, other *Constraint, mode mergeMode) {
+	if mode == mergeModeIntersect {
+		c.IntersectWith(evalCtx, other)
+	} else {
+		c.UnionWith(evalCtx, other)
+	}
+}
+
+// isSentinelMergeResult returns true if the merge produced a sentinel result
+// (contradiction for intersect, unconstrained for union) that requires
+// special handling.
+func (c *Constraint) isSentinelMergeResult(mode mergeMode) bool {
+	if mode == mergeModeIntersect {
+		return c.IsContradiction()
+	}
+	return c.IsUnconstrained()
+}
+
+// collectAllCols collects all column IDs from all constraints.
+func (s *Set) collectAllCols() opt.ColSet {
+	res := s.firstConstraint.Columns.ColSet()
+	for i := int32(1); i < s.length; i++ {
+		res.UnionWith(s.otherConstraints[i-1].Columns.ColSet())
+	}
+	return res
+}
+
+// collectNotNullCols collects columns that cannot be NULL across all constraints.
+func (s *Set) collectNotNullCols(evalCtx *tree.EvalContext) opt.ColSet {
+	res := s.Constraint(0).ExtractNotNullCols(evalCtx)
+	for i := 1; i < s.Length(); i++ {
+		res.UnionWith(s.Constraint(i).ExtractNotNullCols(evalCtx))
+	}
+	return res
+}
+
+// collectConstCols collects columns that are restricted to single values.
+func (s *Set) collectConstCols(evalCtx *tree.EvalContext) opt.ColSet {
+	res := s.Constraint(0).ExtractConstCols(evalCtx)
+	for i := 1; i < s.Length(); i++ {
+		res.UnionWith(s.Constraint(i).ExtractConstCols(evalCtx))
+	}
+	return res
 }
 
 // compareConstraintsByCols orders constraints by the indexes of their columns,

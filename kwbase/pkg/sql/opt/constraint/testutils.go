@@ -62,44 +62,69 @@ func parseSpans(evalCtx *tree.EvalContext, str string) Spans {
 	}
 	s := strings.Split(str, " ")
 	// Each span has three pieces.
-	if len(s)%3 != 0 {
+	if len(s)%piecesPerSpan != 0 {
 		panic(str)
 	}
 	var result Spans
-	for i := 0; i < len(s)/3; i++ {
-		sp := ParseSpan(evalCtx, strings.Join(s[i*3:i*3+3], " "), types.IntFamily)
+	for i := 0; i < len(s)/piecesPerSpan; i++ {
+		sp := ParseSpan(evalCtx, strings.Join(s[i*piecesPerSpan:i*piecesPerSpan+piecesPerSpan], " "), types.IntFamily)
 		result.Append(&sp)
 	}
 	return result
 }
 
+// piecesPerSpan is the number of tokens in a span string: "[", key, "-", key, "]"
+const piecesPerSpan = 3
+
 // ParseSpan parses a span in the format of Span.String, e.g: [/1 - /2].
 func ParseSpan(evalCtx *tree.EvalContext, str string, typ types.Family) Span {
-	if len(str) < len("[ - ]") {
+	if len(str) < minSpanStringLen {
 		panic(str)
-	}
-	boundary := map[byte]SpanBoundary{
-		'[': IncludeBoundary,
-		']': IncludeBoundary,
-		'(': ExcludeBoundary,
-		')': ExcludeBoundary,
 	}
 	s, e := str[0], str[len(str)-1]
-	if (s != '[' && s != '(') || (e != ']' && e != ')') {
+	if !isValidBoundaryRune(s) || !isValidBoundaryRune(e) {
 		panic(str)
 	}
-	keys := strings.Split(str[1:len(str)-1], " - ")
-	if len(keys) != 2 {
+
+	keys := strings.Split(str[1:len(str)-1], keySeparator)
+	if len(keys) != expectedKeyCount {
 		panic(str)
 	}
-	var sp Span
 	startVals := parseDatumPath(evalCtx, keys[0], typ)
 	endVals := parseDatumPath(evalCtx, keys[1], typ)
+
+	var sp Span
 	sp.Init(
-		MakeCompositeKey(startVals...), boundary[s],
-		MakeCompositeKey(endVals...), boundary[e],
+		MakeCompositeKey(startVals...), runeToBoundary(s),
+		MakeCompositeKey(endVals...), runeToBoundary(e),
 	)
 	return sp
+}
+
+// minSpanStringLen is the minimum length of a span string representation.
+const minSpanStringLen = len("[ - ]")
+
+// keySeparator separates start and end keys in a span string.
+const keySeparator = " - "
+
+// expectedKeyCount is the number of keys expected after splitting a span string.
+const expectedKeyCount = 2
+
+// runeToBoundary maps a boundary rune to its SpanBoundary value.
+func runeToBoundary(r byte) SpanBoundary {
+	switch r {
+	case '[', ']':
+		return IncludeBoundary
+	case '(', ')':
+		return ExcludeBoundary
+	default:
+		return IncludeBoundary
+	}
+}
+
+// isValidBoundaryRune returns true if the byte is a valid span boundary marker.
+func isValidBoundaryRune(r byte) bool {
+	return r == '[' || r == ']' || r == '(' || r == ')'
 }
 
 // parseIntPath parses a string like "/1/2/3" into a list of integers.
@@ -120,32 +145,11 @@ func parseIntPath(str string) []int {
 func parseDatumPath(evalCtx *tree.EvalContext, str string, typ types.Family) []tree.Datum {
 	var res []tree.Datum
 	for _, valStr := range parsePath(str) {
-		if valStr == "NULL" {
+		if valStr == nullMarker {
 			res = append(res, tree.DNull)
 			continue
 		}
-		var val tree.Datum
-		var err error
-		switch typ {
-		case types.BoolFamily:
-			val, err = tree.ParseDBool(valStr)
-		case types.IntFamily:
-			val, err = tree.ParseDInt(valStr)
-		case types.FloatFamily:
-			val, err = tree.ParseDFloat(valStr)
-		case types.DecimalFamily:
-			val, err = tree.ParseDDecimal(valStr)
-		case types.DateFamily:
-			val, err = tree.ParseDDate(evalCtx, valStr)
-		case types.TimestampFamily:
-			val, err = tree.ParseDTimestamp(evalCtx, valStr, time.Microsecond)
-		case types.TimestampTZFamily:
-			val, err = tree.ParseDTimestampTZ(evalCtx, valStr, time.Microsecond)
-		case types.StringFamily:
-			val = tree.NewDString(valStr)
-		default:
-			panic(errors.AssertionFailedf("type %s not supported", typ.String()))
-		}
+		val, err := parseDatumByType(evalCtx, valStr, typ)
 		if err != nil {
 			panic(err)
 		}
@@ -154,14 +158,45 @@ func parseDatumPath(evalCtx *tree.EvalContext, str string, typ types.Family) []t
 	return res
 }
 
+// nullMarker is the string used to represent NULL in datum paths.
+const nullMarker = "NULL"
+
+// parseDatumByType dispatches datum parsing to the appropriate type-specific
+// parser based on the type family.
+func parseDatumByType(evalCtx *tree.EvalContext, valStr string, typ types.Family) (tree.Datum, error) {
+	switch typ {
+	case types.BoolFamily:
+		return tree.ParseDBool(valStr)
+	case types.IntFamily:
+		return tree.ParseDInt(valStr)
+	case types.FloatFamily:
+		return tree.ParseDFloat(valStr)
+	case types.DecimalFamily:
+		return tree.ParseDDecimal(valStr)
+	case types.DateFamily:
+		return tree.ParseDDate(evalCtx, valStr)
+	case types.TimestampFamily:
+		return tree.ParseDTimestamp(evalCtx, valStr, time.Microsecond)
+	case types.TimestampTZFamily:
+		return tree.ParseDTimestampTZ(evalCtx, valStr, time.Microsecond)
+	case types.StringFamily:
+		return tree.NewDString(valStr), nil
+	default:
+		return nil, errors.AssertionFailedf("type %s not supported", typ.String())
+	}
+}
+
 // parsePath splits a string of the form "/foo/bar" into strings ["foo", "bar"].
 // An empty string is allowed, otherwise the string must start with /.
 func parsePath(str string) []string {
 	if str == "" {
 		return nil
 	}
-	if str[0] != '/' {
+	if str[0] != pathSeparator {
 		panic(str)
 	}
-	return strings.Split(str, "/")[1:]
+	return strings.Split(str, string(pathSeparator))[1:]
 }
+
+// pathSeparator is the character used to separate path components.
+const pathSeparator = '/'
