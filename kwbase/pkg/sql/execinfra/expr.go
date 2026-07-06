@@ -86,6 +86,7 @@ func processExpression(
 
 	semaCtx.IVarContainer = h.Container()
 	semaCtx.UserDefinedVars = evalCtx.SessionData.UserDefinedVars
+	semaCtx.SQLUDFFunctionHandler = evalCtx.SQLUDFFunctionHandler
 	// Convert to a fully typed expression.
 	typedExpr, err := tree.TypeCheck(expr, semaCtx, types.Any)
 	if err != nil {

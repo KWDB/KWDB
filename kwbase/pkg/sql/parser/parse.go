@@ -235,6 +235,12 @@ func (p *Parser) scanOneStmt() (sql string, tokens []sqlSymType, done bool) {
 	// a separator of sql statements within the body instead of a finishing line
 	// of the `CREATE FUNCTION` statement.
 	curFuncBodyCnt := 0
+
+	// CREATE FUNCTION ... LANGUAGE SQL detection.
+	isCreateFunc := false
+	seenFunctionLanguage := false
+	isCreateSQLFunc := false
+
 	for {
 		if lval.id == ERROR {
 			return p.scanner.in[startPos:], tokens, true
@@ -246,8 +252,29 @@ func (p *Parser) scanOneStmt() (sql string, tokens []sqlSymType, done bool) {
 		if preValID == CREATE && (curValID == PROCEDURE || curValID == TRIGGER) {
 			p.scanner.isCreateProc = true
 		}
+
+		// Detect CREATE FUNCTION.
+		if preValID == CREATE && curValID == FUNCTION {
+			isCreateFunc = true
+		}
+
+		// Detect LANGUAGE inside CREATE FUNCTION.
+		if isCreateFunc && curValID == LANGUAGE {
+			seenFunctionLanguage = true
+		}
+
+		// Detect CREATE FUNCTION ... LANGUAGE SQL.
+		// Only SQL-language functions need BEGIN...END multi-statement splitting.
+		// LANGUAGE LUA stores the body as sconst, so it does not need this path.
+		if isCreateFunc && seenFunctionLanguage && curValID == SQL {
+			isCreateSQLFunc = true
+		}
+
+		// Procedure/trigger and SQL UDF all use routine-like BEGIN...END bodies.
+		isRoutineBodyStmt := p.scanner.isCreateProc || isCreateSQLFunc
+
 		// TODO: Perhaps TRANSACTION BEGIN need to be processed
-		if p.scanner.isCreateProc && (curValID == BEGIN || curValID == CASE) {
+		if isRoutineBodyStmt && (curValID == BEGIN || curValID == CASE) {
 			curFuncBodyCnt++
 		}
 		if curFuncBodyCnt > 0 && (curValID == END || curValID == ENDHANDLER) {

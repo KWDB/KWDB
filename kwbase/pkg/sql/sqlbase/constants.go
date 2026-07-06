@@ -116,7 +116,10 @@ type RoutineType int
 // User Defined Routine type
 const (
 	Procedure RoutineType = iota + 1
-	Function
+	// LUAFunction represents Lua function
+	LUAFunction
+	// SQLFunction represents SQL function
+	SQLFunction
 )
 
 // Oid for virtual database and table.

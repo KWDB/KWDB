@@ -1,0 +1,2427 @@
+> create database test_udf;
+CREATE DATABASE
+> use test_udf;
+SET
+> CREATE FUNCTION add(a INT, b INT)
+    RETURNS INT
+    LANGUAGE sql
+BEGIN
+  IF a > 1 then
+SELECT a + b;
+else
+SELECT 2*(a + b);
+ENDIF;
+END ;
+CREATE FUNCTION
+> select add(1,2) = 6;
+  ?column?
+------------
+    true
+(1 row)
+> select add(2,1) = 3;
+  ?column?
+------------
+    true
+(1 row)
+> CREATE TABLE t_udf(a INT, b INT);
+CREATE TABLE
+> INSERT INTO t_udf VALUES (1, 2), (3, 4);
+INSERT 2
+> SELECT count(*) = 2
+FROM t_udf
+where add(a, b) = 6 or add(a, b) = 7;
+  ?column?
+------------
+    true
+(1 row)
+> CREATE FUNCTION add2(a INT, b INT) RETURNS INT LANGUAGE sql BEGIN SELECT a + b; END;
+CREATE FUNCTION
+> CREATE FUNCTION calc_sum(a INT, b INT)
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+   DECLARE c INT;
+   SET c = a + b;
+SELECT c;
+END ;
+CREATE FUNCTION
+> SELECT calc_sum(10, 20) = 30;
+  ?column?
+------------
+    true
+(1 row)
+> CREATE FUNCTION calc_if(a INT, b INT)
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+IF a > 1 THEN
+SELECT a + b;
+ELSE
+SELECT 2 * (a + b);
+ENDIF;
+END ;
+CREATE FUNCTION
+> SELECT calc_if(1, 2) = 6;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT calc_if(2, 2) = 4;
+  ?column?
+------------
+    true
+(1 row)
+> CREATE FUNCTION calc_loop(n INT)
+RETURNS INT
+LANGUAGE SQL
+BEGIN
+DECLARE i INT;
+DECLARE s INT;
+SET i = 0;
+SET s = 0;
+WHILE i < n DO
+SET i = i + 1;
+SET s = s + i;
+ENDWHILE;
+SELECT s;
+END ;
+CREATE FUNCTION
+> SELECT calc_loop(5) = 15;
+  ?column?
+------------
+    true
+(1 row)
+> CREATE FUNCTION add_twice(a INT, b INT)
+RETURNS INT
+LANGUAGE SQL
+BEGIN
+SELECT add(a, b) * 2;
+END ;
+CREATE FUNCTION
+> SELECT add_twice(1, 2) = 12;
+  ?column?
+------------
+    true
+(1 row)
+> SHOW CREATE FUNCTION add;
+  function_name |            function_body
+----------------+--------------------------------------
+  add           | CREATE FUNCTION add(a INT4, b INT4)
+                | RETURNS INT4
+                | LANGUAGE SQL
+                | BEGIN
+                |     IF a > 1 THEN
+                |         SELECT a + b;
+                |     ELSE
+                |         SELECT 2 * (a + b);
+                |     ENDIF;
+                | END
+(1 row)
+> CREATE FUNCTION udf_decimal(a DECIMAL, b DECIMAL)
+RETURNS DECIMAL
+LANGUAGE SQL
+BEGIN
+SELECT a + b;
+END ;
+CREATE FUNCTION
+> SELECT udf_decimal(1.5, 2.5);
+  udf_decimal
+---------------
+          4.0
+(1 row)
+> CREATE FUNCTION udf_string(a STRING, b STRING)
+RETURNS STRING
+LANGUAGE SQL
+BEGIN SELECT a || b;
+END ;
+CREATE FUNCTION
+> SELECT udf_string('hello', 'world');
+  udf_string
+--------------
+  helloworld
+(1 row)
+> CREATE FUNCTION udf_timestamp(a TIMESTAMP)
+RETURNS TIMESTAMP
+LANGUAGE SQL
+BEGIN SELECT a;
+END ;
+CREATE FUNCTION
+> SELECT udf_timestamp('2026-01-01 10:00:00'::TIMESTAMP);
+     udf_timestamp
+-----------------------
+  2026-01-01 10:00:00
+(1 row)
+> CREATE FUNCTION invalid_missing_body(a INT) RETURNS INT LANGUAGE SQL;
+ERROR: at or near "EOF": syntax error: the function body is missing in sql function
+SQLSTATE: 42601
+DETAIL: source SQL:
+CREATE FUNCTION invalid_missing_body(a INT) RETURNS INT LANGUAGE SQL
+                                                                    ^
+> CREATE FUNCTION invalid_dup_param(a INT, a INT) RETURNS INT LANGUAGE SQL BEGIN SELECT a; END;
+ERROR: parameter name "a" used more than once
+SQLSTATE: 42P13
+> CREATE FUNCTION invalid_param_type(a BOOL) RETURNS INT LANGUAGE SQL BEGIN SELECT 1; END;
+ERROR: unsupported parameter type BOOL in sql function
+SQLSTATE: 42P13
+> CREATE FUNCTION invalid_return_type(a INT) RETURNS BOOL LANGUAGE SQL BEGIN SELECT a > 1; END;
+ERROR: unsupported return type BOOL in sql function
+SQLSTATE: 42P13
+> CREATE FUNCTION invalid_return_mismatch(a INT) RETURNS INT LANGUAGE SQL BEGIN SELECT 'abc'; END;
+CREATE FUNCTION
+> SELECT invalid_return_mismatch(1);
+ERROR: invalid_return_mismatch(): sql function invalid_return_mismatch returned type STRING, expected INT4
+SQLSTATE: 42804
+> CREATE FUNCTION invalid_multi_column()
+RETURNS INT
+LANGUAGE SQL
+BEGIN SELECT 1, 2;
+END ;
+CREATE FUNCTION
+> SELECT invalid_multi_column();
+ERROR: invalid_multi_column(): sql function invalid_multi_column does not return a scalar result
+SQLSTATE: 22005
+> DROP TABLE IF EXISTS t_multi_row;
+DROP TABLE
+> CREATE TABLE t_multi_row(a INT);
+CREATE TABLE
+> INSERT INTO t_multi_row VALUES (1), (2);
+INSERT 2
+> CREATE FUNCTION invalid_multi_row()
+RETURNS INT
+LANGUAGE SQL
+BEGIN
+SELECT a FROM t_multi_row;
+END ;
+CREATE FUNCTION
+> SELECT invalid_multi_row();
+ERROR: invalid_multi_row(): sql function invalid_multi_row does not return a scalar result
+SQLSTATE: 22005
+> DROP TABLE IF EXISTS t_func_insert;
+DROP TABLE
+> CREATE TABLE t_func_insert(a INT);
+CREATE TABLE
+> CREATE FUNCTION invalid_insert()
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+INSERT INTO t_func_insert VALUES (1);
+SELECT 1;
+END ;
+ERROR: at or near "insert": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+CREATE FUNCTION invalid_insert()
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+INSERT INTO t_func_insert VALUES (1);
+^
+HINT: try \h CREATE FUNCTION
+> CREATE FUNCTION invalid_commit()
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+COMMIT;
+SELECT 1;
+END ;
+ERROR: at or near "commit": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+CREATE FUNCTION invalid_commit()
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+COMMIT;
+^
+HINT: try \h CREATE FUNCTION
+> SHOW CREATE FUNCTION not_exists_func;
+ERROR: function not_exists_func does not exist
+SQLSTATE: 42704
+> CREATE FUNCTION overload_test(a INT)
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+SELECT a;
+END ;
+CREATE FUNCTION
+> CREATE FUNCTION overload_test(a INT, b INT)
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+SELECT a + b;
+END ;
+ERROR: function named 'overload_test' already exists. Please choose a different name
+SQLSTATE: 42710
+> CREATE FUNCTION sum(a INT) RETURNS INT LANGUAGE sql BEGIN SELECT a + b; END;
+ERROR: function named 'sum' already exists. Please choose a different name
+SQLSTATE: 42710
+> CREATE FUNCTION abs(a int)
+    RETURNS FLOAT
+    LANGUAGE LUA
+BEGIN
+'function abs(a)
+  if a > 0 then
+        return a
+    end
+  return -a
+end'
+END;
+ERROR: function named 'abs' already exists. Please choose a different name
+SQLSTATE: 42710
+> CREATE FUNCTION abs(a INT) RETURNS INT LANGUAGE sql BEGIN SELECT a + b; END;
+ERROR: function named 'abs' already exists. Please choose a different name
+SQLSTATE: 42710
+> CREATE FUNCTION public.schema_func(a INT)
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+SELECT a;
+END ;
+ERROR: at or near ".": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+CREATE FUNCTION public.schema_func(a INT)
+                      ^
+HINT: try \h CREATE FUNCTION
+> DROP FUNCTION add;
+DROP FUNCTION
+> CREATE FUNCTION add(a INT, b INT) RETURNS INT LANGUAGE SQL BEGIN SELECT a + b; END;
+CREATE FUNCTION
+> CREATE FUNCTION no_arg_func() RETURNS INT LANGUAGE SQL BEGIN SELECT 100; END;
+CREATE FUNCTION
+> SELECT no_arg_func() = 100;
+  ?column?
+------------
+    true
+(1 row)
+> WITH q AS ( SELECT add(1, 2) AS v ) SELECT v = 3 FROM q;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT ( SELECT add(3, 4) ) = 7;
+  ?column?
+------------
+    true
+(1 row)
+> CREATE TABLE t_udf_group(a INT, b INT);
+CREATE TABLE
+> INSERT INTO t_udf_group VALUES (1, 2), (1, 2), (3, 4);
+INSERT 3
+> SELECT count(*) = 1 FROM ( SELECT add(a, b) AS v, count(*) AS c FROM t_udf_group GROUP BY add(a, b) HAVING add(a, b) = 3 AND count(*) = 2 );
+  ?column?
+------------
+    true
+(1 row)
+> SELECT add(a, b) FROM t_udf_group ORDER BY add(a, b);
+  add
+-------
+    3
+    3
+    7
+(3 rows)
+> CREATE FUNCTION udf_int2(a INT2) RETURNS INT2 LANGUAGE SQL BEGIN SELECT a; END;
+CREATE FUNCTION
+> CREATE FUNCTION udf_int4(a INT4) RETURNS INT4 LANGUAGE SQL BEGIN SELECT a; END;
+CREATE FUNCTION
+> CREATE FUNCTION udf_int8(a INT8) RETURNS INT8 LANGUAGE SQL BEGIN SELECT a; END;
+CREATE FUNCTION
+> SELECT udf_int2(1::INT2) = 1::INT2;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT udf_int4(1::INT4) = 1::INT4;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT udf_int8(1::INT8) = 1::INT8;
+  ?column?
+------------
+    true
+(1 row)
+> CREATE FUNCTION udf_float4(a FLOAT4) RETURNS FLOAT4 LANGUAGE SQL BEGIN SELECT a; END;
+CREATE FUNCTION
+> CREATE FUNCTION udf_float8(a FLOAT8) RETURNS FLOAT8 LANGUAGE SQL BEGIN SELECT a; END;
+CREATE FUNCTION
+> CREATE FUNCTION udf_decimal(a DECIMAL, b DECIMAL) RETURNS DECIMAL LANGUAGE SQL BEGIN SELECT a + b; END;
+ERROR: function named 'udf_decimal' already exists. Please choose a different name
+SQLSTATE: 42710
+> SELECT udf_float4(1.5::FLOAT4) = 1.5::FLOAT4;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT udf_float8(1.5::FLOAT8) = 1.5::FLOAT8;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT udf_decimal(1.5, 2.5) = 4.0;
+  ?column?
+------------
+    true
+(1 row)
+> CREATE FUNCTION udf_string2(a STRING, b STRING) RETURNS STRING LANGUAGE SQL BEGIN SELECT a || b; END;
+CREATE FUNCTION
+> CREATE FUNCTION udf_text(a TEXT) RETURNS TEXT LANGUAGE SQL BEGIN SELECT a; END;
+CREATE FUNCTION
+> CREATE FUNCTION udf_varchar(a VARCHAR) RETURNS VARCHAR LANGUAGE SQL BEGIN SELECT a; END;
+CREATE FUNCTION
+> CREATE FUNCTION udf_char(a CHAR) RETURNS CHAR LANGUAGE SQL BEGIN SELECT a; END;
+CREATE FUNCTION
+> SELECT udf_string2('hello', 'world') = 'helloworld';
+  ?column?
+------------
+    true
+(1 row)
+> SELECT udf_text('abc') = 'abc';
+  ?column?
+------------
+    true
+(1 row)
+> SELECT udf_varchar('abc') = 'abc';
+  ?column?
+------------
+    true
+(1 row)
+> SELECT udf_char('a') = 'a';
+  ?column?
+------------
+    true
+(1 row)
+> CREATE FUNCTION udf_citext(a CITEXT) RETURNS CITEXT LANGUAGE SQL BEGIN SELECT a; END;
+CREATE FUNCTION
+> SELECT udf_citext('TeSt'::CITEXT) = 'test'::CITEXT;
+  ?column?
+------------
+    true
+(1 row)
+> CREATE FUNCTION udf_timestamp(a TIMESTAMP) RETURNS TIMESTAMP LANGUAGE SQL BEGIN SELECT a; END;
+ERROR: function named 'udf_timestamp' already exists. Please choose a different name
+SQLSTATE: 42710
+> CREATE FUNCTION udf_timestamptz(a TIMESTAMPTZ) RETURNS TIMESTAMPTZ LANGUAGE SQL BEGIN SELECT a; END;
+CREATE FUNCTION
+> SELECT udf_timestamp('2026-01-01 10:00:00'::TIMESTAMP) = '2026-01-01 10:00:00'::TIMESTAMP;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT udf_timestamptz('2026-01-01 10:00:00+00:00'::TIMESTAMPTZ) = '2026-01-01 10:00:00+00:00'::TIMESTAMPTZ;
+  ?column?
+------------
+    true
+(1 row)
+> CREATE FUNCTION udf_return_null() RETURNS INT LANGUAGE SQL BEGIN SELECT NULL::INT; END;
+CREATE FUNCTION
+> SELECT udf_return_null() IS NULL;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT count(*) = 1 FROM "".kwdb_internal.kwdb_functions WHERE function_name = 'add' AND language = 'SQL' AND function_body LIKE '%CREATE FUNCTION add%';
+  ?column?
+------------
+    true
+(1 row)
+> CREATE FUNCTION lua_abs2(a INT) RETURNS FLOAT LANGUAGE LUA BEGIN 'function lua_abs2(a) if a > 0 then return a end return -a end' END;
+CREATE FUNCTION
+> SHOW CREATE FUNCTION lua_abs2;
+  function_name |                          function_body
+----------------+------------------------------------------------------------------
+  lua_abs2      | CREATE FUNCTION lua_abs2(a INT)
+                | RETURNS FLOAT8
+                | LANGUAGE LUA
+                | BEGIN
+                | 'function lua_abs2(a) if a > 0 then return a end return -a end'
+                | END
+(1 row)
+> SELECT count(*) = 1 FROM "".kwdb_internal.kwdb_functions WHERE function_name = 'lua_abs2' AND language = 'LUA' AND function_body LIKE '%function lua_abs2%';
+  ?column?
+------------
+    true
+(1 row)
+> SELECT add('a', 'b');
+ERROR: unknown signature: add(STRING, STRING)
+SQLSTATE: 42883
+> SELECT add(1, 2, 3);
+ERROR: unknown signature: add(INT8, INT8, INT8)
+SQLSTATE: 42883
+> CREATE FUNCTION udf_set_error(a CHAR) RETURNS CHAR LANGUAGE SQL BEGIN declare c bool; END;
+ERROR: unsupported type BOOL in sql function
+SQLSTATE: 42P13
+> SELECT calc_sum(add(1, 2), add2(3, 4)) = 10;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT add(add(1, 2), add2(3, 4)) = 10;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT add(calc_sum(1, 2), calc_if(2, 2)) = 7;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT length(udf_string2('hello', 'world')) = 10;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT substring(udf_string2('abcdef', 'gh') FROM 2 FOR 3) = 'bcd';
+  ?column?
+------------
+    true
+(1 row)
+> SELECT abs(add(-10, 3)) = 14;
+  ?column?
+------------
+   false
+(1 row)
+> SELECT round(udf_decimal(1.2, 2.3)) = 4;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT CASE WHEN add(1, 2) = 3 THEN 'ok' ELSE 'bad' END = 'ok';
+  ?column?
+------------
+    true
+(1 row)
+> SELECT CASE WHEN calc_if(1, 2) = 6 THEN add(1, 1) ELSE add(2, 2) END = 2;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT add(1, 2) IN (1, 2, 3);
+  ?column?
+------------
+    true
+(1 row)
+> SELECT add(1, 2) BETWEEN 1 AND 5;
+  ?column?
+------------
+    true
+(1 row)
+> CREATE FUNCTION udf_param_chain(a INT, b INT, c INT) RETURNS INT LANGUAGE SQL BEGIN SELECT add(calc_sum(a, b), c); END;
+CREATE FUNCTION
+> SELECT udf_param_chain(1, 2, 3) = 6;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT udf_param_chain(add(1, 1), add2(2, 3), calc_if(2, 1)) = 10;
+  ?column?
+------------
+    true
+(1 row)
+> CREATE FUNCTION nested_level1(a INT) RETURNS INT LANGUAGE SQL BEGIN SELECT a + 1; END;
+CREATE FUNCTION
+> CREATE FUNCTION nested_level2(a INT) RETURNS INT LANGUAGE SQL BEGIN SELECT nested_level1(a) * 2; END;
+CREATE FUNCTION
+> CREATE FUNCTION nested_level3(a INT) RETURNS INT LANGUAGE SQL BEGIN SELECT nested_level2(nested_level1(a)) + nested_level1(a); END;
+CREATE FUNCTION
+> SELECT nested_level3(2) = 11;
+  ?column?
+------------
+    true
+(1 row)
+> CREATE FUNCTION nested_if_func(a INT, b INT) RETURNS INT LANGUAGE SQL BEGIN IF add(a, b) > 10 THEN SELECT add(a, b); ELSE SELECT add(add(a, b), add(a, b)); ENDIF; END;
+CREATE FUNCTION
+> SELECT nested_if_func(3, 4) = 14;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT nested_if_func(6, 7) = 13;
+  ?column?
+------------
+    true
+(1 row)
+> CREATE FUNCTION nested_loop_sum(n INT) RETURNS INT LANGUAGE SQL BEGIN DECLARE i INT; DECLARE s INT; SET i = 0; SET s = 0; WHILE i < n DO SET i = add(i, 1); SET s = add(s, i); ENDWHILE; SELECT s; END;
+CREATE FUNCTION
+> SELECT nested_loop_sum(5) = 15;
+  ?column?
+------------
+    true
+(1 row)
+> CREATE PROCEDURE proc_accept_int(x INT) BEGIN SELECT x; END;
+CREATE PROCEDURE
+> CALL proc_accept_int(add(1, 2));
+  x
+-----
+  3
+(1 row)
+> CALL proc_accept_int(calc_sum(add(1, 2), add2(3, 4)));
+  x
+------
+  10
+(1 row)
+> CREATE PROCEDURE proc_accept_two_ints(x INT, y INT) BEGIN SELECT x + y; END;
+CREATE PROCEDURE
+> CALL proc_accept_two_ints(add(1, 2), add2(3, 4));
+  ?column?
+------------
+        10
+(1 row)
+> CALL proc_accept_two_ints(calc_if(1, 2), calc_loop(5));
+  ?column?
+------------
+        21
+(1 row)
+> CREATE PROCEDURE proc_call_udf(a INT, b INT) BEGIN SELECT add(a, b); END;
+CREATE PROCEDURE
+> CALL proc_call_udf(10, 20);
+  add
+-------
+   30
+(1 row)
+> CREATE PROCEDURE proc_call_udf_flow(a INT, b INT) BEGIN DECLARE c INT; SET c = add(a, b); IF c > 10 THEN SELECT c; ELSE SELECT add(c, c); ENDIF; END;
+CREATE PROCEDURE
+> CALL proc_call_udf_flow(1, 2);
+  add
+-------
+    6
+(1 row)
+> CALL proc_call_udf_flow(6, 7);
+  c
+------
+  13
+(1 row)
+> CALL proc_call_udf(add(1, 2), calc_sum(3, 4));
+  add
+-------
+   10
+(1 row)
+> CALL proc_call_udf_flow(add(1, 2), calc_loop(3));
+  add
+-------
+   18
+(1 row)
+> CREATE TABLE t_nested_udf(a INT, b INT);
+CREATE TABLE
+> INSERT INTO t_nested_udf VALUES (1, 2), (3, 4), (5, 6);
+INSERT 3
+> CREATE FUNCTION nested_subquery_func(x INT) RETURNS INT LANGUAGE SQL BEGIN SELECT count(*)::INT FROM t_nested_udf WHERE add(a, b) > x; END;
+CREATE FUNCTION
+> SELECT nested_subquery_func(3) = 2;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT nested_subquery_func(10) = 1;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT EXISTS ( SELECT 1 FROM t_nested_udf WHERE add(a, b) = 7 );
+  exists
+----------
+   true
+(1 row)
+> CREATE TABLE t_nested_udf_2(c INT);
+CREATE TABLE
+> INSERT INTO t_nested_udf_2 VALUES (3), (7), (11);
+INSERT 3
+> SELECT count(*) = 3 FROM t_nested_udf t1 JOIN t_nested_udf_2 t2 ON add(t1.a, t1.b) = t2.c;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT sum(add(a, b)) = 21 FROM t_nested_udf;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT count(*) = 1 FROM ( SELECT add(a, b) AS v FROM t_nested_udf GROUP BY add(a, b) HAVING add(a, b) = 7 );
+  ?column?
+------------
+    true
+(1 row)
+> CREATE FUNCTION udf_string_for_proc() RETURNS STRING LANGUAGE SQL BEGIN SELECT 'abc'; END;
+CREATE FUNCTION
+> CALL proc_accept_int(udf_string_for_proc());
+ERROR: expected Parameter expression to have type int4, but 'udf_string_for_proc()' has type string
+> CREATE FUNCTION nested_bad_scalar() RETURNS INT LANGUAGE SQL BEGIN SELECT invalid_multi_column(); END;
+CREATE FUNCTION
+> SELECT nested_bad_scalar();
+ERROR: nested_bad_scalar(): invalid_multi_column(): sql function invalid_multi_column does not return a scalar result
+SQLSTATE: 22005
+> DROP FUNCTION nested_level1;
+DROP FUNCTION
+> SELECT nested_level2(1);
+ERROR: nested_level2(): unknown function: nested_level1()
+SQLSTATE: 42883
+> CREATE FUNCTION nested_level1(a INT) RETURNS INT LANGUAGE SQL BEGIN SELECT a + 1; END;
+CREATE FUNCTION
+> SELECT nested_level2(1) = 4;
+  ?column?
+------------
+    true
+(1 row)
+> SHOW CREATE FUNCTION nested_level2;
+  function_name |             function_body
+----------------+----------------------------------------
+  nested_level2 | CREATE FUNCTION nested_level2(a INT4)
+                | RETURNS INT4
+                | LANGUAGE SQL
+                | BEGIN
+                |     SELECT nested_level1(a) * 2;
+                | END
+(1 row)
+> SHOW CREATE FUNCTION nested_level3;
+  function_name |                         function_body
+----------------+-----------------------------------------------------------------
+  nested_level3 | CREATE FUNCTION nested_level3(a INT4)
+                | RETURNS INT4
+                | LANGUAGE SQL
+                | BEGIN
+                |     SELECT nested_level2(nested_level1(a)) + nested_level1(a);
+                | END
+(1 row)
+> SHOW CREATE FUNCTION nested_if_func;
+  function_name  |                 function_body
+-----------------+-------------------------------------------------
+  nested_if_func | CREATE FUNCTION nested_if_func(a INT4, b INT4)
+                 | RETURNS INT4
+                 | LANGUAGE SQL
+                 | BEGIN
+                 |     IF add(a, b) > 10 THEN
+                 |         SELECT add(a, b);
+                 |     ELSE
+                 |         SELECT add(add(a, b), add(a, b));
+                 |     ENDIF;
+                 | END
+(1 row)
+> SHOW CREATE FUNCTION nested_loop_sum;
+   function_name  |              function_body
+------------------+------------------------------------------
+  nested_loop_sum | CREATE FUNCTION nested_loop_sum(n INT4)
+                  | RETURNS INT4
+                  | LANGUAGE SQL
+                  | BEGIN
+                  |     DECLARE i INT4;
+                  |     DECLARE s INT4;
+                  |     SET i = 0;
+                  |     SET s = 0;
+                  |     WHILE i < n DO
+                  |         SET i = add(i, 1);
+                  |         SET s = add(s, i);
+                  |     ENDWHILE;
+                  |     SELECT s;
+                  | END
+(1 row)
+> CREATE FUNCTION loop_leave_sum(n INT)
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+DECLARE i INT;
+DECLARE s INT;
+
+SET i = 0;
+SET s = 0;
+
+label my_loop: WHILE i < n DO
+  SET i = i + 1;
+
+  IF i > 3 THEN
+    LEAVE my_loop;
+  ENDIF;
+
+  SET s = s + i;
+ENDWHILE my_loop;
+
+SELECT s;
+END ;
+CREATE FUNCTION
+> SELECT loop_leave_sum(10) = 6;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT loop_leave_sum(2) = 3;
+  ?column?
+------------
+    true
+(1 row)
+> CREATE FUNCTION nested_loop_leave(n INT)
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+DECLARE i INT;
+DECLARE j INT;
+DECLARE s INT;
+
+SET j = 0;
+SET s = 0;
+  label inner_loop: WHILE j < 10 DO
+    SET j = j + 1;
+
+    IF j > 2 THEN
+      LEAVE inner_loop;
+    ENDIF;
+
+    SET s = s + 1;
+  ENDWHILE inner_loop;
+
+SELECT s;
+END ;
+CREATE FUNCTION
+> SELECT nested_loop_leave(3) = 2;
+  ?column?
+------------
+    true
+(1 row)
+> CREATE FUNCTION leave_outer_loop(n INT)
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+DECLARE i INT;
+DECLARE s INT;
+
+SET i = 0;
+SET s = 0;
+
+label outer_loop: WHILE i < n DO
+  SET i = i + 1;
+
+  IF i = 4 THEN
+    LEAVE outer_loop;
+  ENDIF;
+
+  SET s = s + i;
+ENDWHILE outer_loop;
+
+SELECT s;
+END ;
+CREATE FUNCTION
+> SELECT leave_outer_loop(10) = 6;
+  ?column?
+------------
+    true
+(1 row)
+> CREATE FUNCTION loop_zero_case(n INT)
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+DECLARE i INT;
+DECLARE s INT;
+SET i = 0;
+SET s = 100;
+
+WHILE i < n DO
+  SET i = i + 1;
+  SET s = s + i;
+ENDWHILE;
+
+SELECT s;
+END ;
+CREATE FUNCTION
+> SELECT loop_zero_case(0) = 100;
+  ?column?
+------------
+    true
+(1 row)
+> CREATE FUNCTION calc_elsif(a INT)
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+IF a < 0 THEN
+SELECT -1;
+ELSIF a = 0 THEN
+SELECT 0;
+ELSE
+SELECT 1;
+ENDIF;
+END ;
+CREATE FUNCTION
+> SELECT calc_elsif(-1) = -1;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT calc_elsif(0) = 0;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT calc_elsif(1) = 1;
+  ?column?
+------------
+    true
+(1 row)
+> CREATE FUNCTION calc_multi_elsif(a INT)
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+IF a < 0 THEN
+SELECT -1;
+ELSIF a = 0 THEN
+SELECT 0;
+ELSIF a = 1 THEN
+SELECT 10;
+ELSE
+SELECT 100;
+ENDIF;
+END ;
+CREATE FUNCTION
+> SELECT calc_multi_elsif(-5) = -1;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT calc_multi_elsif(0) = 0;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT calc_multi_elsif(1) = 10;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT calc_multi_elsif(2) = 100;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT ADD(1, 2) = 3;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT Add(2, 3) = 5;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT add(1, 2) AS udf_result;
+  udf_result
+--------------
+           3
+(1 row)
+> SELECT add(1, 2) * add2(3, 4) = 21;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT add(add(1, 1), add(add2(1, 2), 3)) = 8;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT add(NULL::INT, 1) IS NULL;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT calc_sum(NULL::INT, 1) IS NULL;
+  ?column?
+------------
+    true
+(1 row)
+> CREATE TABLE t_udf_lookup(k INT, v INT);
+CREATE TABLE
+> INSERT INTO t_udf_lookup VALUES (1, 10), (2, 20), (3, 30);
+INSERT 3
+> CREATE FUNCTION lookup_value(x INT)
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+SELECT v FROM t_udf_lookup WHERE t_udf_lookup.k = x;
+END ;
+CREATE FUNCTION
+> SELECT lookup_value(1) = 10;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT lookup_value(2) = 20;
+  ?column?
+------------
+    true
+(1 row)
+> CREATE FUNCTION sum_add_result() RETURNS INT LANGUAGE SQL BEGIN SELECT sum(add(k, v))::INT FROM t_udf_lookup;END;
+CREATE FUNCTION
+> SELECT sum_add_result() = 66;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT add(k, v)
+FROM t_udf_lookup
+ORDER BY add(k, v) DESC
+    LIMIT 1;
+  add
+-------
+   33
+(1 row)
+> SELECT count(*) = 3
+FROM (
+         SELECT DISTINCT add(k, v) AS x
+         FROM t_udf_lookup
+     );
+  ?column?
+------------
+    true
+(1 row)
+> SELECT EXISTS (
+    SELECT 1
+    FROM t_udf_lookup
+    WHERE add(k, v) = 22
+);
+  exists
+----------
+   true
+(1 row)
+> SELECT (
+           SELECT add(k, v)
+FROM t_udf_lookup
+WHERE k = 3
+    ) = 33;
+  ?column?
+------------
+    true
+(1 row)
+> CREATE FUNCTION drop_call_check(a INT) RETURNS INT LANGUAGE SQL BEGIN SELECT a + 1;END;
+CREATE FUNCTION
+> SELECT drop_call_check(1) = 2;
+  ?column?
+------------
+    true
+(1 row)
+> DROP FUNCTION drop_call_check;
+DROP FUNCTION
+> SELECT drop_call_check(1);
+ERROR: unknown function: drop_call_check()
+SQLSTATE: 42883
+> CREATE FUNCTION drop_show_check(a INT) RETURNS INT LANGUAGE SQL BEGIN SELECT a; END;
+CREATE FUNCTION
+> SHOW CREATE FUNCTION drop_show_check;
+   function_name  |              function_body
+------------------+------------------------------------------
+  drop_show_check | CREATE FUNCTION drop_show_check(a INT4)
+                  | RETURNS INT4
+                  | LANGUAGE SQL
+                  | BEGIN
+                  |     SELECT a;
+                  | END
+(1 row)
+> DROP FUNCTION drop_show_check;
+DROP FUNCTION
+> SHOW CREATE FUNCTION drop_show_check;
+ERROR: function drop_show_check does not exist
+SQLSTATE: 42704
+> CREATE FUNCTION recreate_check(a INT) RETURNS INT LANGUAGE SQL BEGIN SELECT a + 1; END;
+CREATE FUNCTION
+> SELECT recreate_check(1) = 2;
+  ?column?
+------------
+    true
+(1 row)
+> DROP FUNCTION recreate_check;
+DROP FUNCTION
+> CREATE FUNCTION recreate_check(a INT) RETURNS INT LANGUAGE SQL BEGIN SELECT a + 2; END;
+CREATE FUNCTION
+> SELECT recreate_check(1) = 3;
+  ?column?
+------------
+    true
+(1 row)
+> CREATE FUNCTION complex_control_flow(n INT)
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+DECLARE i INT;
+DECLARE s INT;
+
+SET i = 0;
+SET s = 0;
+
+label main_loop: WHILE i < n DO
+  SET i = i + 1;
+
+  IF i = 2 THEN
+    SET s = s + 20;
+  ELSIF i = 4 THEN
+    LEAVE main_loop;
+ELSE
+    SET s = s + i;
+  ENDIF;
+ENDWHILE main_loop;
+
+SELECT s;
+END ;
+CREATE FUNCTION
+> SELECT complex_control_flow(10) = 24;
+  ?column?
+------------
+    true
+(1 row)
+> CREATE FUNCTION invalid_leave_label()
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+WHILE 1 < 2 DO
+  LEAVE not_exists_label;
+ENDWHILE;
+SELECT 1;
+END ;
+ERROR: Label not_exists_label does not exist
+SQLSTATE: 42704
+> DROP FUNCTION loop_leave_sum;
+DROP FUNCTION
+> DROP FUNCTION nested_loop_leave;
+DROP FUNCTION
+> DROP FUNCTION leave_outer_loop;
+DROP FUNCTION
+> DROP FUNCTION loop_zero_case;
+DROP FUNCTION
+> DROP FUNCTION calc_elsif;
+DROP FUNCTION
+> DROP FUNCTION calc_multi_elsif;
+DROP FUNCTION
+> DROP FUNCTION lookup_value;
+DROP FUNCTION
+> DROP FUNCTION sum_add_result;
+DROP FUNCTION
+> DROP FUNCTION recreate_check;
+DROP FUNCTION
+> DROP FUNCTION complex_control_flow;
+DROP FUNCTION
+> DROP FUNCTION udf_param_chain;
+DROP FUNCTION
+> DROP FUNCTION nested_level3;
+DROP FUNCTION
+> DROP FUNCTION nested_level2;
+DROP FUNCTION
+> DROP FUNCTION nested_level1;
+DROP FUNCTION
+> DROP FUNCTION nested_if_func;
+DROP FUNCTION
+> DROP FUNCTION nested_loop_sum;
+DROP FUNCTION
+> DROP FUNCTION nested_subquery_func;
+DROP FUNCTION
+> DROP FUNCTION udf_string_for_proc;
+DROP FUNCTION
+> DROP FUNCTION nested_bad_scalar;
+DROP FUNCTION
+> DROP PROCEDURE proc_accept_int;
+DROP PROCEDURE
+> DROP PROCEDURE proc_accept_two_ints;
+DROP PROCEDURE
+> DROP PROCEDURE proc_call_udf;
+DROP PROCEDURE
+> DROP PROCEDURE proc_call_udf_flow;
+DROP PROCEDURE
+> DROP TABLE IF EXISTS t_nested_udf;
+DROP TABLE
+> DROP TABLE IF EXISTS t_nested_udf_2;
+DROP TABLE
+> DROP FUNCTION no_arg_func;
+DROP FUNCTION
+> DROP FUNCTION udf_int2;
+DROP FUNCTION
+> DROP FUNCTION udf_int4;
+DROP FUNCTION
+> DROP FUNCTION udf_int8;
+DROP FUNCTION
+> DROP FUNCTION udf_float4;
+DROP FUNCTION
+> DROP FUNCTION udf_float8;
+DROP FUNCTION
+> DROP FUNCTION udf_decimal;
+DROP FUNCTION
+> DROP FUNCTION udf_text;
+DROP FUNCTION
+> DROP FUNCTION udf_varchar;
+DROP FUNCTION
+> DROP FUNCTION udf_char;
+DROP FUNCTION
+> DROP FUNCTION udf_citext;
+DROP FUNCTION
+> DROP FUNCTION udf_timestamptz;
+DROP FUNCTION
+> DROP FUNCTION udf_return_null;
+DROP FUNCTION
+> DROP FUNCTION lua_abs2;
+DROP FUNCTION
+> DROP FUNCTION overload_test;
+DROP FUNCTION
+> DROP FUNCTION add;
+DROP FUNCTION
+> DROP FUNCTION add2;
+DROP FUNCTION
+> DROP FUNCTION calc_sum;
+DROP FUNCTION
+> DROP FUNCTION calc_if;
+DROP FUNCTION
+> DROP FUNCTION calc_loop;
+DROP FUNCTION
+> DROP FUNCTION add_twice;
+DROP FUNCTION
+> DROP FUNCTION udf_string;
+DROP FUNCTION
+> DROP FUNCTION udf_string2;
+DROP FUNCTION
+> DROP FUNCTION udf_timestamp;
+DROP FUNCTION
+> DROP FUNCTION invalid_multi_column;
+DROP FUNCTION
+> DROP FUNCTION invalid_multi_row;
+DROP FUNCTION
+> DROP FUNCTION invalid_return_mismatch;
+DROP FUNCTION
+> SHOW FUNCTIONS;
+  function_name
+-----------------
+(0 rows)
+> SHOW PROCEDURES;
+  procedure_name
+------------------
+(0 rows)
+> DROP DATABASE test_udf cascade;
+DROP DATABASE
+> DROP DATABASE IF EXISTS udf_global_db1 CASCADE;
+DROP DATABASE
+> DROP DATABASE IF EXISTS udf_global_db2 CASCADE;
+DROP DATABASE
+> CREATE DATABASE udf_global_db1;
+CREATE DATABASE
+> CREATE DATABASE udf_global_db2;
+CREATE DATABASE
+> USE udf_global_db1;
+SET
+> CREATE FUNCTION global_unique_func(a INT) RETURNS INT LANGUAGE SQL BEGIN SELECT a + 1;END;
+CREATE FUNCTION
+> SELECT global_unique_func(1) = 2;
+  ?column?
+------------
+    true
+(1 row)
+> USE udf_global_db2;
+SET
+> CREATE FUNCTION global_unique_func(a INT) RETURNS INT LANGUAGE SQL BEGIN SELECT a + 100; END;
+ERROR: function named 'global_unique_func' already exists. Please choose a different name
+SQLSTATE: 42710
+> SELECT global_unique_func(1) = 2;
+  ?column?
+------------
+    true
+(1 row)
+> DROP FUNCTION global_unique_func;
+DROP FUNCTION
+> DROP DATABASE udf_global_db1 CASCADE;
+DROP DATABASE
+> DROP DATABASE udf_global_db2 CASCADE;
+DROP DATABASE
+> DROP TABLE IF EXISTS t_udf_dml;
+DROP TABLE
+> CREATE TABLE t_udf_dml(a INT);
+CREATE TABLE
+> INSERT INTO t_udf_dml VALUES (1);
+INSERT 1
+> CREATE FUNCTION invalid_update() RETURNS INT LANGUAGE SQL BEGIN UPDATE t_udf_dml SET a = 2; SELECT 1;END;
+ERROR: at or near "update": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+CREATE FUNCTION invalid_update() RETURNS INT LANGUAGE SQL BEGIN UPDATE t_udf_dml SET a = 2; SELECT 1;END
+                                                                ^
+HINT: try \h CREATE FUNCTION
+> CREATE FUNCTION invalid_delete() RETURNS INT LANGUAGE SQL BEGIN DELETE FROM t_udf_dml WHERE a = 1; SELECT 1;END;
+ERROR: at or near "delete": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+CREATE FUNCTION invalid_delete() RETURNS INT LANGUAGE SQL BEGIN DELETE FROM t_udf_dml WHERE a = 1; SELECT 1;END
+                                                                ^
+HINT: try \h CREATE FUNCTION
+> CREATE FUNCTION invalid_upsert() RETURNS INT LANGUAGE SQL BEGIN UPSERT INTO t_udf_dml VALUES (2); SELECT 1; END;
+ERROR: at or near "upsert": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+CREATE FUNCTION invalid_upsert() RETURNS INT LANGUAGE SQL BEGIN UPSERT INTO t_udf_dml VALUES (2); SELECT 1; END
+                                                                ^
+HINT: try \h CREATE FUNCTION
+> CREATE FUNCTION invalid_rollback() RETURNS INT LANGUAGE SQL BEGIN ROLLBACK; SELECT 1;END;
+ERROR: at or near "rollback": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+CREATE FUNCTION invalid_rollback() RETURNS INT LANGUAGE SQL BEGIN ROLLBACK; SELECT 1;END
+                                                                  ^
+HINT: try \h CREATE FUNCTION
+> CREATE FUNCTION invalid_prepare() RETURNS INT LANGUAGE SQL BEGIN PREPARE stmt AS SELECT 1; SELECT 1; END;
+ERROR: at or near "prepare": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+CREATE FUNCTION invalid_prepare() RETURNS INT LANGUAGE SQL BEGIN PREPARE stmt AS SELECT 1; SELECT 1; END
+                                                                 ^
+HINT: try \h CREATE FUNCTION
+> CREATE FUNCTION invalid_execute() RETURNS INT LANGUAGE SQL BEGIN EXECUTE stmt;SELECT 1;END;
+ERROR: at or near "execute": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+CREATE FUNCTION invalid_execute() RETURNS INT LANGUAGE SQL BEGIN EXECUTE stmt;SELECT 1;END
+                                                                 ^
+HINT: try \h CREATE FUNCTION
+> DROP TABLE IF EXISTS t_udf_dml;
+DROP TABLE
+> CREATE FUNCTION empty_body_func() RETURNS INT LANGUAGE SQL BEGIN END;
+CREATE FUNCTION
+> SELECT empty_body_func();
+ERROR: empty_body_func(): sql function empty_body_func does not return a scalar result
+SQLSTATE: 22005
+> CREATE TABLE t_udf_zero_row(a INT);
+CREATE TABLE
+> CREATE FUNCTION zero_row_func() RETURNS INT LANGUAGE SQL BEGIN SELECT a FROM t_udf_zero_row WHERE a = 1;END;
+CREATE FUNCTION
+> SELECT zero_row_func();
+ERROR: zero_row_func(): sql function zero_row_func does not return a scalar result
+SQLSTATE: 22005
+> DROP FUNCTION empty_body_func;
+DROP FUNCTION
+> DROP FUNCTION zero_row_func;
+DROP FUNCTION
+> DROP TABLE t_udf_zero_row;
+DROP TABLE
+> CREATE FUNCTION invalid_dup_local_var()
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+DECLARE c INT;
+DECLARE c INT;
+SELECT c;
+END ;
+ERROR: duplicate variable name: "c"
+SQLSTATE: 42701
+> CREATE FUNCTION invalid_set_unknown_var()
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+SET not_exists_var = 1;
+SELECT 1;
+END ;
+ERROR: variable "not_exists_var" does not exist
+SQLSTATE: 42703
+> CREATE FUNCTION invalid_set_type_mismatch()
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+DECLARE c INT;
+SET c = 'abc';
+SELECT c;
+END ;
+ERROR: could not parse "abc" as type int: strconv.ParseInt: parsing "abc": invalid syntax
+SQLSTATE: 22P02
+> CREATE FUNCTION declare_default_null()
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+DECLARE c INT;
+SELECT c;
+END ;
+CREATE FUNCTION
+> SELECT declare_default_null() IS NULL;
+  ?column?
+------------
+    true
+(1 row)
+> DROP FUNCTION declare_default_null;
+DROP FUNCTION
+> CREATE FUNCTION invalid_dup_param_case(a INT, A INT)
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+SELECT a;
+END ;
+ERROR: parameter name "a" used more than once
+SQLSTATE: 42P13
+> CREATE FUNCTION invalid_declare_same_as_param(a INT)
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+DECLARE a INT;
+SELECT a;
+END ;
+CREATE FUNCTION
+> drop function invalid_declare_same_as_param;
+DROP FUNCTION
+> CREATE FUNCTION invalid_set_undeclared(a INT)
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+SET c = a + 1;
+SELECT c;
+END ;
+ERROR: variable "c" does not exist
+SQLSTATE: 42703
+> CREATE FUNCTION invalid_unknown_var(a INT)
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+SELECT not_exists_var;
+END ;
+ERROR: column "not_exists_var" does not exist
+SQLSTATE: 42703
+> CREATE FUNCTION invalid_decimal_to_int()
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+SELECT 1.5::DECIMAL;
+END ;
+CREATE FUNCTION
+> SELECT invalid_decimal_to_int();
+ERROR: invalid_decimal_to_int(): sql function invalid_decimal_to_int returned type DECIMAL, expected INT4
+SQLSTATE: 42804
+> drop function invalid_decimal_to_int;
+DROP FUNCTION
+> CREATE FUNCTION invalid_string_to_timestamp() RETURNS TIMESTAMP LANGUAGE SQL BEGIN SELECT 'abc';END;
+CREATE FUNCTION
+> SELECT invalid_string_to_timestamp();
+ERROR: invalid_string_to_timestamp(): sql function invalid_string_to_timestamp returned type STRING, expected TIMESTAMP
+SQLSTATE: 42804
+> drop function invalid_string_to_timestamp;
+DROP FUNCTION
+> CREATE FUNCTION show_after_drop(a INT) RETURNS INT LANGUAGE SQL BEGIN SELECT a;END;
+CREATE FUNCTION
+> SHOW CREATE FUNCTION show_after_drop;
+   function_name  |              function_body
+------------------+------------------------------------------
+  show_after_drop | CREATE FUNCTION show_after_drop(a INT4)
+                  | RETURNS INT4
+                  | LANGUAGE SQL
+                  | BEGIN
+                  |     SELECT a;
+                  | END
+(1 row)
+> DROP FUNCTION show_after_drop;
+DROP FUNCTION
+> SHOW CREATE FUNCTION show_after_drop;
+ERROR: function show_after_drop does not exist
+SQLSTATE: 42704
+> SHOW FUNCTIONS;
+  function_name
+-----------------
+(0 rows)
+> SHOW PROCEDURES;
+  procedure_name
+------------------
+(0 rows)
+> CREATE FUNCTION no_arg_expr()
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+SELECT 1 + 2;
+END ;
+CREATE FUNCTION
+> SELECT no_arg_expr() = 3;
+  ?column?
+------------
+    true
+(1 row)
+> SHOW CREATE FUNCTION no_arg_expr;
+  function_name |         function_body
+----------------+--------------------------------
+  no_arg_expr   | CREATE FUNCTION no_arg_expr()
+                | RETURNS INT4
+                | LANGUAGE SQL
+                | BEGIN
+                |     SELECT 1 + 2;
+                | END
+(1 row)
+> CREATE FUNCTION null_branch(a INT)
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+IF a IS NULL THEN
+SELECT NULL::INT;
+ELSE
+SELECT a + 1;
+ENDIF;
+END ;
+CREATE FUNCTION
+> SELECT null_branch(NULL::INT) IS NULL;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT null_branch(1) = 2;
+  ?column?
+------------
+    true
+(1 row)
+> CREATE FUNCTION string_mix(a TEXT, b VARCHAR, c CHAR)
+    RETURNS STRING
+    LANGUAGE SQL
+BEGIN
+SELECT a || b || c;
+END ;
+CREATE FUNCTION
+> SELECT string_mix('a', 'b', 'c') = 'abc';
+  ?column?
+------------
+    true
+(1 row)
+> CREATE FUNCTION citext_eq(a CITEXT, b CITEXT)
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+IF a = b THEN
+SELECT 1;
+ELSE
+SELECT 0;
+ENDIF;
+END ;
+CREATE FUNCTION
+> SELECT citext_eq('Hello'::CITEXT, 'hello'::CITEXT) = 1;
+  ?column?
+------------
+    true
+(1 row)
+> CREATE FUNCTION timestamptz_identity(a TIMESTAMPTZ)
+    RETURNS TIMESTAMPTZ
+    LANGUAGE SQL
+BEGIN
+SELECT a;
+END ;
+CREATE FUNCTION
+> SELECT timestamptz_identity('2026-01-01 10:00:00+00:00'::TIMESTAMPTZ)
+           = '2026-01-01 10:00:00+00:00'::TIMESTAMPTZ;
+  ?column?
+------------
+    true
+(1 row)
+> DROP TABLE IF EXISTS t_udf_agg_extra;
+DROP TABLE
+> CREATE TABLE t_udf_agg_extra(a INT);
+CREATE TABLE
+> INSERT INTO t_udf_agg_extra VALUES (1), (2), (3);
+INSERT 3
+> CREATE FUNCTION agg_scalar_extra()
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+SELECT sum(a)::INT FROM t_udf_agg_extra;
+END ;
+CREATE FUNCTION
+> SELECT agg_scalar_extra() = 6;
+  ?column?
+------------
+    true
+(1 row)
+> CREATE FUNCTION lua_show_extra(a INT)
+    RETURNS FLOAT
+    LANGUAGE LUA
+BEGIN
+'function lua_show_extra(a)
+  return a + 100
+end'
+END;
+CREATE FUNCTION
+> SELECT lua_show_extra(1) = 101;
+  ?column?
+------------
+    true
+(1 row)
+> SHOW CREATE FUNCTION lua_show_extra;
+  function_name  |             function_body
+-----------------+----------------------------------------
+  lua_show_extra | CREATE FUNCTION lua_show_extra(a INT)
+                 | RETURNS FLOAT8
+                 | LANGUAGE LUA
+                 | BEGIN
+                 | 'function lua_show_extra(a)
+                 |   return a + 100
+                 | end'
+                 | END
+(1 row)
+> SELECT count(*) = 1
+FROM "".kwdb_internal.kwdb_functions
+WHERE function_name = 'lua_show_extra'
+  AND language = 'LUA'
+  AND function_body LIKE '%return a + 100%';
+  ?column?
+------------
+    true
+(1 row)
+> CREATE FUNCTION lua_base_extra(a INT)
+    RETURNS FLOAT
+    LANGUAGE LUA
+BEGIN
+'function lua_base_extra(a)
+  return a + 5
+end'
+END;
+CREATE FUNCTION
+> CREATE FUNCTION sql_call_lua_extra(a INT)
+    RETURNS FLOAT
+    LANGUAGE SQL
+BEGIN
+SELECT lua_base_extra(a) * 2;
+END ;
+CREATE FUNCTION
+> SELECT sql_call_lua_extra(10) = 30;
+  ?column?
+------------
+    true
+(1 row)
+> DROP FUNCTION no_arg_expr;
+DROP FUNCTION
+> DROP FUNCTION null_branch;
+DROP FUNCTION
+> DROP FUNCTION string_mix;
+DROP FUNCTION
+> DROP FUNCTION citext_eq;
+DROP FUNCTION
+> DROP FUNCTION timestamptz_identity;
+DROP FUNCTION
+> DROP FUNCTION agg_scalar_extra;
+DROP FUNCTION
+> DROP FUNCTION lua_show_extra;
+DROP FUNCTION
+> DROP FUNCTION lua_base_extra;
+DROP FUNCTION
+> DROP FUNCTION sql_call_lua_extra;
+DROP FUNCTION
+> CREATE FUNCTION "Bug2_Zombie"()
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+SELECT 1;
+END ;
+CREATE FUNCTION
+> SHOW FUNCTIONS;
+  function_name
+-----------------
+  "Bug2_Zombie"
+(1 row)
+> SHOW CREATE FUNCTION bug2_zombie;
+ERROR: function bug2_zombie does not exist
+SQLSTATE: 42704
+> SHOW CREATE FUNCTION Bug2_Zombie;
+ERROR: function bug2_zombie does not exist
+SQLSTATE: 42704
+> SHOW CREATE FUNCTION "Bug2_Zombie";
+  function_name |          function_body
+----------------+----------------------------------
+  "Bug2_Zombie" | CREATE FUNCTION "Bug2_Zombie"()
+                | RETURNS INT4
+                | LANGUAGE SQL
+                | BEGIN
+                |     SELECT 1;
+                | END
+(1 row)
+> SELECT bug2_zombie();
+ERROR: unknown function: bug2_zombie()
+SQLSTATE: 42883
+> SELECT Bug2_Zombie();
+ERROR: unknown function: bug2_zombie()
+SQLSTATE: 42883
+> SELECT "Bug2_Zombie"();
+  Bug2_Zombie
+---------------
+            1
+(1 row)
+> CREATE FUNCTION "Bug2_Zombie"()
+    RETURNS INT
+    LANGUAGE SQL
+BEGIN
+SELECT 2;
+END ;
+ERROR: function named 'Bug2_Zombie' already exists. Please choose a different name
+SQLSTATE: 42710
+> DROP FUNCTION bug2_zombie;
+ERROR: unknown function 'bug2_zombie' when dropping function
+SQLSTATE: 42883
+> DROP FUNCTION "Bug2_Zombie";
+DROP FUNCTION
+> CREATE FUNCTION Case_Normal() RETURNS INT LANGUAGE SQL BEGIN SELECT 10; END;
+CREATE FUNCTION
+> SELECT case_normal();
+  case_normal
+---------------
+           10
+(1 row)
+> SELECT CASE_NORMAL();
+  case_normal
+---------------
+           10
+(1 row)
+> DROP FUNCTION case_normal;
+DROP FUNCTION
+> CREATE FUNCTION "Lua_Bug2_Zombie"(a INT)
+    RETURNS FLOAT
+    LANGUAGE LUA
+BEGIN
+'function Lua_Bug2_Zombie(a)
+  return a + 10
+end'
+END;
+CREATE FUNCTION
+> SHOW FUNCTION "Lua_Bug2_Zombie";
+    function_name   | argument_types | return_type | function_type | language
+--------------------+----------------+-------------+---------------+-----------
+  "Lua_Bug2_Zombie" | INT            | FLOAT8      | function      | LUA
+(1 row)
+> SHOW CREATE FUNCTION "Lua_Bug2_Zombie";
+    function_name   |              function_body
+--------------------+-------------------------------------------
+  "Lua_Bug2_Zombie" | CREATE FUNCTION "Lua_Bug2_Zombie"(a INT)
+                    | RETURNS FLOAT8
+                    | LANGUAGE LUA
+                    | BEGIN
+                    | 'function Lua_Bug2_Zombie(a)
+                    |   return a + 10
+                    | end'
+                    | END
+(1 row)
+> SELECT lua_bug2_zombie(1);
+ERROR: unknown function: lua_bug2_zombie()
+SQLSTATE: 42883
+> SELECT Lua_Bug2_Zombie(1);
+ERROR: unknown function: lua_bug2_zombie()
+SQLSTATE: 42883
+> SELECT "Lua_Bug2_Zombie"(1);
+  Lua_Bug2_Zombie
+-------------------
+               11
+(1 row)
+> DROP FUNCTION Lua_Bug2_Zombie;
+ERROR: unknown function 'lua_bug2_zombie' when dropping function
+SQLSTATE: 42883
+> DROP FUNCTION "Lua_Bug2_Zombie";
+DROP FUNCTION
+> CREATE FUNCTION bug_a(x INT) RETURNS INT LANGUAGE SQL
+BEGIN
+SELECT x;
+END ;
+CREATE FUNCTION
+> CREATE FUNCTION bug_b(x INT) RETURNS INT LANGUAGE SQL
+BEGIN
+SELECT bug_a(x) + 1;
+END ;
+CREATE FUNCTION
+> DROP FUNCTION bug_a;
+DROP FUNCTION
+> CREATE FUNCTION bug_a(x INT) RETURNS INT LANGUAGE SQL
+BEGIN
+SELECT bug_b(x) + 1;
+END ;
+CREATE FUNCTION
+> SELECT bug_a(1);
+ERROR: bug_a(): bug_b(): bug_a(): recursive stored functions are not allowed
+SQLSTATE: 42P13
+> drop function bug_a;
+DROP FUNCTION
+> drop function bug_b;
+DROP FUNCTION
+> CREATE FUNCTION bug1_null_skip(x INT) RETURNS INT LANGUAGE SQL
+BEGIN
+DECLARE v INT;
+SET v = 999;
+SELECT v;
+END ;
+CREATE FUNCTION
+> SELECT bug1_null_skip(100);
+  bug1_null_skip
+------------------
+             999
+(1 row)
+> SELECT bug1_null_skip(NULL);
+  bug1_null_skip
+------------------
+             999
+(1 row)
+> drop function bug1_null_skip;
+DROP FUNCTION
+> CREATE FUNCTION bug14_info_schema() RETURNS INT LANGUAGE SQL
+BEGIN
+SELECT count(*) FROM information_schema.tables;
+END ;
+CREATE FUNCTION
+> SELECT bug14_info_schema() >= 0;
+  ?column?
+------------
+    true
+(1 row)
+> DROP FUNCTION bug14_info_schema;
+DROP FUNCTION
+> CREATE FUNCTION bug14_pg_catalog() RETURNS INT LANGUAGE SQL
+BEGIN
+SELECT count(*) FROM pg_catalog.pg_tables;
+END ;
+CREATE FUNCTION
+> SELECT bug14_pg_catalog() >= 0;
+  ?column?
+------------
+    true
+(1 row)
+> DROP FUNCTION bug14_pg_catalog;
+DROP FUNCTION
+> CREATE FUNCTION f_lua_add(x INT, y INT) RETURNS INT LANGUAGE LUA
+BEGIN
+'function f_lua_add(x, y)
+return x + y
+end'
+END;
+CREATE FUNCTION
+> SHOW CREATE FUNCTION f_lua_add;
+  function_name |              function_body
+----------------+------------------------------------------
+  f_lua_add     | CREATE FUNCTION f_lua_add(x INT, y INT)
+                | RETURNS INT
+                | LANGUAGE LUA
+                | BEGIN
+                | 'function f_lua_add(x, y)
+                | return x + y
+                | end'
+                | END
+(1 row)
+> DROP FUNCTION f_lua_add;
+DROP FUNCTION
+> CREATE TS DATABASE test_win;
+CREATE TS DATABASE
+> SET timezone = 8;
+SET
+> CREATE TABLE test_win.t1(k_timestamp TIMESTAMP NOT NULL, v INT, status INT)
+    TAGS(tag1 INT NOT NULL) PRIMARY TAGS(tag1);
+CREATE TABLE
+> INSERT INTO test_win.t1 VALUES('2024-06-01 01:00:00', 10, 1, 1);
+INSERT 1
+> INSERT INTO test_win.t1 VALUES('2024-06-01 02:00:00', 50, 0, 1);
+INSERT 1
+> INSERT INTO test_win.t1 VALUES('2024-06-01 03:00:00', 80, 1, 1);
+INSERT 1
+> INSERT INTO test_win.t1 VALUES('2024-06-01 04:00:00', 20, 1, 1);
+INSERT 1
+> INSERT INTO test_win.t1 VALUES('2024-06-01 05:00:00', 60, 0, 1);
+INSERT 1
+> CREATE FUNCTION f_crash_tw() RETURNS INT LANGUAGE SQL
+BEGIN
+SELECT COUNT(*) FROM test_win.t1
+GROUP BY time_window(k_timestamp, '2h', '1h') LIMIT 1;
+END ;
+CREATE FUNCTION
+> SELECT f_crash_tw() >= 0;
+  ?column?
+------------
+    true
+(1 row)
+> CREATE FUNCTION f_crash_ew() RETURNS INT LANGUAGE SQL
+BEGIN
+SELECT COUNT(*) FROM test_win.t1
+GROUP BY event_window(v > 50, v <= 50) LIMIT 1;
+END ;
+CREATE FUNCTION
+> SELECT f_crash_ew() >= 0;
+  ?column?
+------------
+    true
+(1 row)
+> CREATE FUNCTION f_crash_sw() RETURNS INT LANGUAGE SQL
+BEGIN
+SELECT COUNT(*) FROM test_win.t1
+GROUP BY state_window(status) LIMIT 1;
+END ;
+CREATE FUNCTION
+> SELECT f_crash_sw() >= 0;
+  ?column?
+------------
+    true
+(1 row)
+> SELECT COUNT(*) >=0  FROM test_win.t1 GROUP BY time_window(k_timestamp, '2h', '1h');
+  ?column?
+------------
+    true
+    true
+    true
+    true
+    true
+    true
+(6 rows)
+> CREATE FUNCTION f_ok_sw() RETURNS INT LANGUAGE SQL
+BEGIN
+SELECT COUNT(*) FROM test_win.t1
+GROUP BY session_window(k_timestamp, '2h') LIMIT 1;
+END ;
+CREATE FUNCTION
+> SELECT f_ok_sw() >= 0;
+  ?column?
+------------
+    true
+(1 row)
+> DROP FUNCTION f_crash_tw;
+DROP FUNCTION
+> DROP FUNCTION f_crash_ew;
+DROP FUNCTION
+> DROP FUNCTION f_crash_sw;
+DROP FUNCTION
+> DROP FUNCTION f_ok_sw;
+DROP FUNCTION
+> DROP TABLE test_win.t1;
+DROP TABLE
+> DROP DATABASE test_win CASCADE;
+DROP DATABASE
+> CREATE FUNCTION bug15_char() RETURNS CHAR(1) LANGUAGE SQL
+BEGIN
+SELECT 'AB';
+END ;
+CREATE FUNCTION
+> SELECT bug15_char();
+ERROR: bug15_char(): value too long for type CHAR (column "bug15_char()")
+SQLSTATE: 22001
+> DROP FUNCTION bug15_char;
+DROP FUNCTION
+> CREATE FUNCTION bug15_varchar() RETURNS VARCHAR(3) LANGUAGE SQL
+BEGIN
+SELECT 'abcdef';
+END ;
+CREATE FUNCTION
+> SELECT bug15_varchar();
+ERROR: bug15_varchar(): value too long for type VARCHAR(3) (column "bug15_varchar()")
+SQLSTATE: 22001
+> DROP FUNCTION bug15_varchar;
+DROP FUNCTION
+> CREATE FUNCTION bug15_nchar() RETURNS NCHAR(1) LANGUAGE SQL
+BEGIN
+SELECT 'ABCD';
+END ;
+CREATE FUNCTION
+> SELECT bug15_nchar();
+ERROR: bug15_nchar(): value too long for type NCHAR (column "bug15_nchar()")
+SQLSTATE: 22001
+> DROP FUNCTION bug15_nchar;
+DROP FUNCTION
+> CREATE FUNCTION bug15_nvarchar() RETURNS NVARCHAR(3) LANGUAGE SQL
+BEGIN
+SELECT 'abcdef';
+END ;
+CREATE FUNCTION
+> SELECT bug15_nvarchar();
+ERROR: bug15_nvarchar(): value too long for type NVARCHAR(3) (column "bug15_nvarchar()")
+SQLSTATE: 22001
+> DROP FUNCTION bug15_nvarchar;
+DROP FUNCTION
+> CREATE FUNCTION bug15_decimal() RETURNS DECIMAL(5,2) LANGUAGE SQL
+BEGIN
+SELECT 9999.999;
+END ;
+CREATE FUNCTION
+> SELECT bug15_decimal();
+ERROR: bug15_decimal(): type DECIMAL(5,2) (column "bug15_decimal()"): value with precision 5, scale 2 must round to an absolute value less than 10^3
+SQLSTATE: 22003
+> DROP FUNCTION bug15_decimal;
+DROP FUNCTION
+> CREATE FUNCTION bug15_int2() RETURNS INT2 LANGUAGE SQL
+BEGIN
+SELECT 99999;
+END ;
+CREATE FUNCTION
+> SELECT bug15_int2();
+ERROR: bug15_int2(): integer out of range for type int2 (column "bug15_int2()")
+SQLSTATE: 22003
+> DROP FUNCTION bug15_int2;
+DROP FUNCTION
+> CREATE FUNCTION bug15_int4() RETURNS INT4 LANGUAGE SQL
+BEGIN
+SELECT 9999999999;
+END ;
+CREATE FUNCTION
+> SELECT bug15_int4();
+ERROR: bug15_int4(): integer out of range for type int4 (column "bug15_int4()")
+SQLSTATE: 22003
+> DROP FUNCTION bug15_int4;
+DROP FUNCTION
+> CREATE FUNCTION bug15_float4() RETURNS FLOAT4 LANGUAGE SQL
+BEGIN
+SELECT 1.0e50::FLOAT8;
+END ;
+CREATE FUNCTION
+> SELECT bug15_float4();
+  bug15_float4
+----------------
+  +Inf
+(1 row)
+> DROP FUNCTION bug15_float4;
+DROP FUNCTION
+> CREATE FUNCTION bug15_float8() RETURNS FLOAT8 LANGUAGE SQL
+BEGIN
+SELECT 1.0e400::FLOAT8;
+END ;
+CREATE FUNCTION
+> SELECT bug15_float8();
+  bug15_float8
+----------------
+  +Inf
+(1 row)
+> DROP FUNCTION bug15_float8;
+DROP FUNCTION
+> CREATE FUNCTION bug15_timestamp() RETURNS TIMESTAMP LANGUAGE SQL
+BEGIN
+SELECT '99999-01-01'::TIMESTAMP;
+END ;
+CREATE FUNCTION
+> SELECT bug15_timestamp();
+    bug15_timestamp
+------------------------
+  99999-01-01 00:00:00
+(1 row)
+> DROP FUNCTION bug15_timestamp;
+DROP FUNCTION
+> CREATE FUNCTION bug15_timestamptz() RETURNS TIMESTAMPTZ LANGUAGE SQL
+BEGIN
+SELECT '99999-01-01'::TIMESTAMPTZ;
+END ;
+CREATE FUNCTION
+> SELECT bug15_timestamptz();
+      bug15_timestamptz
+------------------------------
+  99999-01-01 00:00:00+08:00
+(1 row)
+> DROP FUNCTION bug15_timestamptz;
+DROP FUNCTION
+> CREATE FUNCTION bug15_timestamp_p0() RETURNS TIMESTAMP(0) LANGUAGE SQL
+BEGIN
+SELECT '2024-01-01 10:00:00.123456789'::TIMESTAMP;
+END ;
+CREATE FUNCTION
+> SELECT bug15_timestamp_p0();
+  bug15_timestamp_p0
+-----------------------
+  2024-01-01 10:00:00
+(1 row)
+> DROP FUNCTION bug15_timestamp_p0;
+DROP FUNCTION
+> CREATE FUNCTION bug15_timestamp_p1() RETURNS TIMESTAMP(1) LANGUAGE SQL
+BEGIN
+SELECT '2024-01-01 10:00:00.123456789'::TIMESTAMP;
+END ;
+CREATE FUNCTION
+> SELECT bug15_timestamp_p1();
+   bug15_timestamp_p1
+-------------------------
+  2024-01-01 10:00:00.1
+(1 row)
+> DROP FUNCTION bug15_timestamp_p1;
+DROP FUNCTION
+> CREATE FUNCTION bug15_timestamp_p2() RETURNS TIMESTAMP(2) LANGUAGE SQL
+BEGIN
+SELECT '2024-01-01 10:00:00.123456789'::TIMESTAMP;
+END ;
+CREATE FUNCTION
+> SELECT bug15_timestamp_p2();
+    bug15_timestamp_p2
+--------------------------
+  2024-01-01 10:00:00.12
+(1 row)
+> DROP FUNCTION bug15_timestamp_p2;
+DROP FUNCTION
+> CREATE FUNCTION bug15_timestamp_p3() RETURNS TIMESTAMP(3) LANGUAGE SQL
+BEGIN
+SELECT '2024-01-01 10:00:00.123456789'::TIMESTAMP;
+END ;
+CREATE FUNCTION
+> SELECT bug15_timestamp_p3();
+    bug15_timestamp_p3
+---------------------------
+  2024-01-01 10:00:00.123
+(1 row)
+> DROP FUNCTION bug15_timestamp_p3;
+DROP FUNCTION
+> CREATE FUNCTION bug15_timestamp_p4() RETURNS TIMESTAMP(4) LANGUAGE SQL
+BEGIN
+SELECT '2024-01-01 10:00:00.123456789'::TIMESTAMP;
+END ;
+CREATE FUNCTION
+> SELECT bug15_timestamp_p4();
+     bug15_timestamp_p4
+----------------------------
+  2024-01-01 10:00:00.1235
+(1 row)
+> DROP FUNCTION bug15_timestamp_p4;
+DROP FUNCTION
+> CREATE FUNCTION bug15_timestamp_p5() RETURNS TIMESTAMP(5) LANGUAGE SQL
+BEGIN
+SELECT '2024-01-01 10:00:00.123456789'::TIMESTAMP;
+END ;
+CREATE FUNCTION
+> SELECT bug15_timestamp_p5();
+     bug15_timestamp_p5
+-----------------------------
+  2024-01-01 10:00:00.12346
+(1 row)
+> DROP FUNCTION bug15_timestamp_p5;
+DROP FUNCTION
+> CREATE FUNCTION bug15_timestamp_p6() RETURNS TIMESTAMP(6) LANGUAGE SQL
+BEGIN
+SELECT '2024-01-01 10:00:00.123456789'::TIMESTAMP;
+END ;
+CREATE FUNCTION
+> SELECT bug15_timestamp_p6();
+      bug15_timestamp_p6
+------------------------------
+  2024-01-01 10:00:00.123457
+(1 row)
+> DROP FUNCTION bug15_timestamp_p6;
+DROP FUNCTION
+> CREATE FUNCTION bug15_timestamp_p7() RETURNS TIMESTAMP(7) LANGUAGE SQL
+BEGIN
+SELECT '2024-01-01 10:00:00.123456789'::TIMESTAMP;
+END ;
+CREATE FUNCTION
+> SELECT bug15_timestamp_p7();
+      bug15_timestamp_p7
+-------------------------------
+  2024-01-01 10:00:00.1234568
+(1 row)
+> DROP FUNCTION bug15_timestamp_p7;
+DROP FUNCTION
+> CREATE FUNCTION bug15_timestamp_p8() RETURNS TIMESTAMP(8) LANGUAGE SQL
+BEGIN
+SELECT '2024-01-01 10:00:00.123456789'::TIMESTAMP;
+END ;
+CREATE FUNCTION
+> SELECT bug15_timestamp_p8();
+       bug15_timestamp_p8
+--------------------------------
+  2024-01-01 10:00:00.12345679
+(1 row)
+> DROP FUNCTION bug15_timestamp_p8;
+DROP FUNCTION
+> CREATE FUNCTION bug15_timestamp_p9() RETURNS TIMESTAMP(9) LANGUAGE SQL
+BEGIN
+SELECT '2024-01-01 10:00:00.123456789'::TIMESTAMP;
+END ;
+CREATE FUNCTION
+> SELECT bug15_timestamp_p9();
+       bug15_timestamp_p9
+---------------------------------
+  2024-01-01 10:00:00.123456789
+(1 row)
+> DROP FUNCTION bug15_timestamp_p9;
+DROP FUNCTION
+> CREATE FUNCTION bug15_timestamptz_p0() RETURNS TIMESTAMPTZ(0) LANGUAGE SQL
+BEGIN
+SELECT '2024-01-01 10:00:00.123456789+00:00'::TIMESTAMPTZ;
+END ;
+CREATE FUNCTION
+> SELECT bug15_timestamptz_p0();
+    bug15_timestamptz_p0
+-----------------------------
+  2024-01-01 18:00:00+08:00
+(1 row)
+> DROP FUNCTION bug15_timestamptz_p0;
+DROP FUNCTION
+> CREATE FUNCTION bug15_timestamptz_p1() RETURNS TIMESTAMPTZ(1) LANGUAGE SQL
+BEGIN
+SELECT '2024-01-01 10:00:00.123456789+00:00'::TIMESTAMPTZ;
+END ;
+CREATE FUNCTION
+> SELECT bug15_timestamptz_p1();
+     bug15_timestamptz_p1
+-------------------------------
+  2024-01-01 18:00:00.1+08:00
+(1 row)
+> DROP FUNCTION bug15_timestamptz_p1;
+DROP FUNCTION
+> CREATE FUNCTION bug15_timestamptz_p2() RETURNS TIMESTAMPTZ(2) LANGUAGE SQL
+BEGIN
+SELECT '2024-01-01 10:00:00.123456789+00:00'::TIMESTAMPTZ;
+END ;
+CREATE FUNCTION
+> SELECT bug15_timestamptz_p2();
+      bug15_timestamptz_p2
+--------------------------------
+  2024-01-01 18:00:00.12+08:00
+(1 row)
+> DROP FUNCTION bug15_timestamptz_p2;
+DROP FUNCTION
+> CREATE FUNCTION bug15_timestamptz_p3() RETURNS TIMESTAMPTZ(3) LANGUAGE SQL
+BEGIN
+SELECT '2024-01-01 10:00:00.123456789+00:00'::TIMESTAMPTZ;
+END ;
+CREATE FUNCTION
+> SELECT bug15_timestamptz_p3();
+      bug15_timestamptz_p3
+---------------------------------
+  2024-01-01 18:00:00.123+08:00
+(1 row)
+> DROP FUNCTION bug15_timestamptz_p3;
+DROP FUNCTION
+> CREATE FUNCTION bug15_timestamptz_p4() RETURNS TIMESTAMPTZ(4) LANGUAGE SQL
+BEGIN
+SELECT '2024-01-01 10:00:00.123456789+00:00'::TIMESTAMPTZ;
+END ;
+CREATE FUNCTION
+> SELECT bug15_timestamptz_p4();
+       bug15_timestamptz_p4
+----------------------------------
+  2024-01-01 18:00:00.1235+08:00
+(1 row)
+> DROP FUNCTION bug15_timestamptz_p4;
+DROP FUNCTION
+> CREATE FUNCTION bug15_timestamptz_p5() RETURNS TIMESTAMPTZ(5) LANGUAGE SQL
+BEGIN
+SELECT '2024-01-01 10:00:00.123456789+00:00'::TIMESTAMPTZ;
+END ;
+CREATE FUNCTION
+> SELECT bug15_timestamptz_p5();
+       bug15_timestamptz_p5
+-----------------------------------
+  2024-01-01 18:00:00.12346+08:00
+(1 row)
+> DROP FUNCTION bug15_timestamptz_p5;
+DROP FUNCTION
+> CREATE FUNCTION bug15_timestamptz_p6() RETURNS TIMESTAMPTZ(6) LANGUAGE SQL
+BEGIN
+SELECT '2024-01-01 10:00:00.123456789+00:00'::TIMESTAMPTZ;
+END ;
+CREATE FUNCTION
+> SELECT bug15_timestamptz_p6();
+        bug15_timestamptz_p6
+------------------------------------
+  2024-01-01 18:00:00.123457+08:00
+(1 row)
+> DROP FUNCTION bug15_timestamptz_p6;
+DROP FUNCTION
+> CREATE FUNCTION bug15_timestamptz_p7() RETURNS TIMESTAMPTZ(7) LANGUAGE SQL
+BEGIN
+SELECT '2024-01-01 10:00:00.123456789+00:00'::TIMESTAMPTZ;
+END ;
+CREATE FUNCTION
+> SELECT bug15_timestamptz_p7();
+        bug15_timestamptz_p7
+-------------------------------------
+  2024-01-01 18:00:00.1234568+08:00
+(1 row)
+> DROP FUNCTION bug15_timestamptz_p7;
+DROP FUNCTION
+> CREATE FUNCTION bug15_timestamptz_p8() RETURNS TIMESTAMPTZ(8) LANGUAGE SQL
+BEGIN
+SELECT '2024-01-01 10:00:00.123456789+00:00'::TIMESTAMPTZ;
+END ;
+CREATE FUNCTION
+> SELECT bug15_timestamptz_p8();
+         bug15_timestamptz_p8
+--------------------------------------
+  2024-01-01 18:00:00.12345679+08:00
+(1 row)
+> DROP FUNCTION bug15_timestamptz_p8;
+DROP FUNCTION
+> CREATE FUNCTION bug15_timestamptz_p9() RETURNS TIMESTAMPTZ(9) LANGUAGE SQL
+BEGIN
+SELECT '2024-01-01 10:00:00.123456789+00:00'::TIMESTAMPTZ;
+END ;
+CREATE FUNCTION
+> SELECT bug15_timestamptz_p9();
+         bug15_timestamptz_p9
+---------------------------------------
+  2024-01-01 18:00:00.123456789+08:00
+(1 row)
+> DROP FUNCTION bug15_timestamptz_p9;
+DROP FUNCTION
+> CREATE DATABASE bug29_test;
+CREATE DATABASE
+> USE bug29_test;
+SET
+> CREATE TABLE t_sales (id INT PRIMARY KEY, product VARCHAR(50), amount DECIMAL(10,2), qty INT);
+CREATE TABLE
+> INSERT INTO t_sales VALUES
+                        (1, 'Widget', 100.00, 5),
+                        (2, 'Gadget', 200.00, 3),
+                        (3, 'Doohickey', 300.00, 2);
+INSERT 3
+> CREATE FUNCTION f_total(amount DECIMAL, qty INT) RETURNS DECIMAL LANGUAGE SQL
+BEGIN
+SELECT amount * qty;
+END ;
+CREATE FUNCTION
+> CREATE FUNCTION f_scale(x DECIMAL) RETURNS DECIMAL LANGUAGE SQL
+BEGIN
+SELECT CASE WHEN x > 100 THEN x * 0.9 ELSE x END;
+END ;
+CREATE FUNCTION
+> SELECT f_total(100.00, 5) ;
+  f_total
+-----------
+   500.00
+(1 row)
+> SELECT f_scale(150.00);
+  f_scale
+-----------
+  135.000
+(1 row)
+> SELECT id, product, f_total(amount, qty) as total FROM t_sales order by id;
+  id |  product  | total
+-----+-----------+---------
+   1 | Widget    | 500.00
+   2 | Gadget    | 600.00
+   3 | Doohickey | 600.00
+(3 rows)
+> CREATE TABLE t_copy AS
+SELECT id, product, f_total(amount, qty) as total, f_scale(amount) as scaled FROM t_sales;
+CREATE TABLE AS
+> SELECT count(*) FROM t_copy;
+  count
+---------
+      3
+(1 row)
+> DROP TABLE t_copy;
+DROP TABLE
+> DROP FUNCTION f_total;
+DROP FUNCTION
+> DROP FUNCTION f_scale;
+DROP FUNCTION
+> DROP TABLE t_sales;
+DROP TABLE
+> USE defaultdb;
+SET
+> DROP DATABASE bug29_test CASCADE;
+DROP DATABASE
+> CREATE TS DATABASE test_win;
+CREATE TS DATABASE
+> CREATE TABLE test_win.t1(k_timestamp TIMESTAMP NOT NULL, v INT, status INT)TAGS(tag1 INT NOT NULL) PRIMARY TAGS(tag1);
+CREATE TABLE
+> INSERT INTO test_win.t1 VALUES('2024-06-01 01:00:00', 10, 1, 1);
+INSERT 1
+> INSERT INTO test_win.t1 VALUES('2024-06-01 02:00:00', 50, 0, 1);
+INSERT 1
+> INSERT INTO test_win.t1 VALUES('2024-06-01 03:00:00', 80, 1, 1);
+INSERT 1
+> INSERT INTO test_win.t1 VALUES('2024-06-01 04:00:00', 20, 1, 1);
+INSERT 1
+> INSERT INTO test_win.t1 VALUES('2024-06-01 05:00:00', 60, 0, 1);
+INSERT 1
+> CREATE FUNCTION f_crash_tw() RETURNS INT LANGUAGE SQL BEGIN SELECT COUNT(*) FROM test_win.t1 GROUP BY time_window(k_timestamp, '2h', '1h') LIMIT 1;END;
+CREATE FUNCTION
+> SELECT f_crash_tw();
+  f_crash_tw
+--------------
+           1
+(1 row)
+> CREATE FUNCTION f_crash_ew() RETURNS INT LANGUAGE SQL BEGIN SELECT COUNT(*) FROM test_win.t1 GROUP BY event_window(v > 50, v <= 50) LIMIT 1;END;
+CREATE FUNCTION
+> SELECT f_crash_ew();
+  f_crash_ew
+--------------
+           2
+(1 row)
+> CREATE FUNCTION f_crash_sw() RETURNS INT LANGUAGE SQL BEGIN SELECT COUNT(*) FROM test_win.t1 GROUP BY state_window(status) LIMIT 1;END;
+CREATE FUNCTION
+> SELECT f_crash_sw();
+  f_crash_sw
+--------------
+           1
+(1 row)
+> CREATE FUNCTION f_ok_sw() RETURNS INT LANGUAGE SQL BEGIN SELECT COUNT(*) FROM test_win.t1 GROUP BY session_window(k_timestamp, '2h') LIMIT 1;END;
+CREATE FUNCTION
+> SELECT f_ok_sw();
+  f_ok_sw
+-----------
+        5
+(1 row)
+> show create function f_crash_tw;
+  function_name |                                           function_body
+----------------+-----------------------------------------------------------------------------------------------------
+  f_crash_tw    | CREATE FUNCTION f_crash_tw()
+                | RETURNS INT4
+                | LANGUAGE SQL
+                | BEGIN
+                |     SELECT count(*) FROM test_win.public.t1 GROUP BY time_window(k_timestamp, '2h', '1h') LIMIT 1;
+                | END
+(1 row)
+> show function f_crash_tw;
+  function_name | argument_types | return_type | function_type | language
+----------------+----------------+-------------+---------------+-----------
+  f_crash_tw    | NULL           | INT4        | function      | SQL
+(1 row)
+> show create function f_crash_ew;
+  function_name |                                        function_body
+----------------+----------------------------------------------------------------------------------------------
+  f_crash_ew    | CREATE FUNCTION f_crash_ew()
+                | RETURNS INT4
+                | LANGUAGE SQL
+                | BEGIN
+                |     SELECT count(*) FROM test_win.public.t1 GROUP BY event_window(v > 50, v <= 50) LIMIT 1;
+                | END
+(1 row)
+> show function f_crash_ew;
+  function_name | argument_types | return_type | function_type | language
+----------------+----------------+-------------+---------------+-----------
+  f_crash_ew    | NULL           | INT4        | function      | SQL
+(1 row)
+> show create function f_crash_sw;
+  function_name |                                   function_body
+----------------+-------------------------------------------------------------------------------------
+  f_crash_sw    | CREATE FUNCTION f_crash_sw()
+                | RETURNS INT4
+                | LANGUAGE SQL
+                | BEGIN
+                |     SELECT count(*) FROM test_win.public.t1 GROUP BY state_window(status) LIMIT 1;
+                | END
+(1 row)
+> show function f_crash_sw;
+  function_name | argument_types | return_type | function_type | language
+----------------+----------------+-------------+---------------+-----------
+  f_crash_sw    | NULL           | INT4        | function      | SQL
+(1 row)
+> show create function f_ok_sw;
+  function_name |                                          function_body
+----------------+--------------------------------------------------------------------------------------------------
+  f_ok_sw       | CREATE FUNCTION f_ok_sw()
+                | RETURNS INT4
+                | LANGUAGE SQL
+                | BEGIN
+                |     SELECT count(*) FROM test_win.public.t1 GROUP BY session_window(k_timestamp, '2h') LIMIT 1;
+                | END
+(1 row)
+> show function f_ok_sw;
+  function_name | argument_types | return_type | function_type | language
+----------------+----------------+-------------+---------------+-----------
+  f_ok_sw       | NULL           | INT4        | function      | SQL
+(1 row)
+> DROP FUNCTION  f_crash_tw;
+DROP FUNCTION
+> DROP FUNCTION  f_crash_ew;
+DROP FUNCTION
+> DROP FUNCTION  f_crash_sw;
+DROP FUNCTION
+> DROP FUNCTION  f_ok_sw;
+DROP FUNCTION
+> drop database test_win cascade;
+DROP DATABASE
+> CREATE TS DATABASE IF NOT EXISTS test_udf_null;
+CREATE TS DATABASE
+> CREATE TABLE test_udf_null.sensor_null (ts TIMESTAMP NOT NULL, val_int INT4, val_float FLOAT8, val_varchar VARCHAR(50), status INT4) TAGS (device VARCHAR(32) NOT NULL, location VARCHAR(32)) PRIMARY TAGS (device);
+CREATE TABLE
+> INSERT INTO test_udf_null.sensor_null VALUES ('2024-01-01 00:00:00', 100, 3.14, 'normal', 1, 'dev_1', 'room_a'), ('2024-01-01 00:01:00', NULL, 2.71, 'null_int', 0, 'dev_1', 'room_a'), ('2024-01-01 00:02:00', 200, NULL, 'null_float', 2, 'dev_1', 'room_a'), ('2024-01-01 00:03:00', 150, 1.41, NULL, 3, 'dev_1', 'room_a'), ('2024-01-01 00:04:00', NULL, NULL, NULL, NULL, 'dev_1', 'room_a'), ('2024-01-01 00:05:00', 300, 9.99, 'mixed', 1, 'dev_1', 'room_a'), ('2024-01-01 00:06:00', 100, 5.0, 'div_by_zero', 0, 'dev_1', 'room_a');
+INSERT 7
+> CREATE FUNCTION f_lua_add(x INT, y INT) RETURNS INT LANGUAGE LUA BEGIN 'function f_lua_add(x, y) return x + y end' END;
+CREATE FUNCTION
+> CREATE FUNCTION f_sql_divide(a INT4, b INT4) RETURNS FLOAT8 LANGUAGE SQL BEGIN SELECT a::FLOAT8 / b; END;
+CREATE FUNCTION
+> SELECT device, ts, val_int, f_lua_add(val_int, 100) AS result FROM test_udf_null.sensor_null ORDER BY device, ts;
+ERROR: f_lua_add(): <string>:1: cannot perform add operation between nil and number
+SQLSTATE: 01000
+> SELECT ts, val_int, status, f_sql_divide(val_int, status) AS div_result FROM test_udf_null.sensor_null ORDER BY ts;
+ERROR: f_sql_divide(): division by zero
+SQLSTATE: 22012
+> DROP TABLE test_udf_null.sensor_null;
+DROP TABLE
+> DROP FUNCTION f_lua_add;
+DROP FUNCTION
+> DROP FUNCTION f_sql_divide;
+DROP FUNCTION
+> drop database test_udf_null cascade;
+DROP DATABASE
+> SHOW FUNCTIONS;
+  function_name
+-----------------
+(0 rows)
+> SHOW PROCEDURES;
+  procedure_name
+------------------
+(0 rows)

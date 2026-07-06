@@ -45,13 +45,13 @@ CREATE FUNCTION
 > show function calculate_growth_rate;
       function_name     | argument_types | return_type | function_type | language
 ------------------------+----------------+-------------+---------------+-----------
-  calculate_growth_rate | INT, INT       | DOUBLE      | function      | LUA
+  calculate_growth_rate | INT, INT       | FLOAT8      | function      | LUA
 (1 row)
 > show function "";
 ERROR: empty function name is not supported
 SQLSTATE: 42601
 > show function xxxyyyzzz;
-ERROR: function xxxyyyzzz does not exists or current user does not have privilege on this function
+ERROR: function xxxyyyzzz does not exist
 SQLSTATE: 42704
 > CREATE FUNCTION calculate_growth_rate(previous_consumption int, current_consumption int)
     RETURNS FLOAT

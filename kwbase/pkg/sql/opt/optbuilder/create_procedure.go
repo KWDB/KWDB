@@ -44,15 +44,21 @@ func (b *Builder) buildCreateProcedure(cv *tree.CreateProcedure, inScope *scope)
 		}
 	}()
 	oriName := cv.Name
+
+	b.buildingSQLFunction = cv.SQLFunction != nil
+
 	sch, resName := b.resolveSchemaForCreate(&cv.Name, tree.RelationalTable)
 	cv.Name.TableNamePrefix = resName
-	// resolve procDesc
-	found, _, err := b.catalog.ResolveProcCatalog(b.ctx, &cv.Name, false)
-	if err != nil {
-		panic(err)
-	}
-	if found {
-		panic(pgerror.Newf(pgcode.DuplicateRelation, "procedure %q already exists", tree.ErrString(&oriName)))
+
+	if !b.buildingSQLFunction {
+		// resolve procDesc
+		found, _, err := b.catalog.ResolveProcCatalog(b.ctx, &cv.Name, false)
+		if err != nil {
+			panic(err)
+		}
+		if found {
+			panic(pgerror.Newf(pgcode.DuplicateRelation, "procedure %q already exists", tree.ErrString(&oriName)))
+		}
 	}
 
 	// check duplicated params
@@ -87,18 +93,25 @@ func (b *Builder) buildCreateProcedure(cv *tree.CreateProcedure, inScope *scope)
 	fmtCtx.FormatNode(cv)
 	bodyStr := fmtCtx.CloseAndGetString()
 	cv.BodyStr = bodyStr
-	if strings.Contains(bodyStr, "::") {
+	if strings.Contains(bodyStr, "::") && !b.buildingSQLFunction {
 		cv.BodyStr = b.OriginalSQL
 	}
 
 	var input memo.RelExpr
 	schID := b.factory.Metadata().AddSchema(sch)
 	input = b.factory.ConstructZeroValues()
+	deps := b.viewDeps
+	if cv.SQLFunction != nil {
+		// SQL UDFs are stored in the fixed UDF namespace, not as normal
+		// schema descriptors. Do not attach table/view dependencies to
+		// avoid stale descriptor back references during DROP DATABASE CASCADE.
+		deps = nil
+	}
 
 	outScope = b.allocScope()
 	outScope.expr = b.factory.ConstructCreateProcedure(
 		input,
-		&memo.CreateProcedurePrivate{Schema: schID, Syntax: cv, Deps: b.viewDeps},
+		&memo.CreateProcedurePrivate{Schema: schID, Syntax: cv, Deps: deps},
 	)
 	return outScope
 }

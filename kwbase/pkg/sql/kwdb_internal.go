@@ -52,6 +52,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/server/status/statuspb"
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/delegate"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/builtins"
@@ -2667,52 +2668,39 @@ CREATE TABLE kwdb_internal.kwdb_functions (
 	argument_types		 STRING,
   return_type        STRING,
   function_type      STRING,
-	language				   STRING
+	language				   STRING,
+  function_body      STRING
 )
 `,
 	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
-		query := fmt.Sprintf("SELECT descriptor from system.user_defined_routine WHERE routine_type = %d", sqlbase.Function)
+		query := fmt.Sprintf(
+			`SELECT descriptor, routine_type
+			   FROM system.user_defined_routine
+			  WHERE routine_type IN (%d, %d)`,
+			sqlbase.LUAFunction,
+			sqlbase.SQLFunction,
+		)
 		rows, err := p.extendedEvalCtx.ExecCfg.InternalExecutor.Query(ctx, "show-functions", p.txn, query)
 		if err != nil {
 			return err
 		}
 		for _, row := range rows {
-			if row == nil || len(row) == 0 {
+			if row == nil || len(row) < 2 {
 				continue
 			}
 
-			var desc sqlbase.FunctionDescriptor
-			val := tree.MustBeDBytes(row[0])
-			if err := protoutil.Unmarshal([]byte(val), &desc); err != nil {
-				return pgerror.New(pgcode.Warning, "failed to parse descriptor for udf")
-			}
+			routineType := int(tree.MustBeDInt(row[1]))
 
-			funcName := desc.Name
-			argTypArray := desc.ArgumentTypes
-			returnTypArray := desc.ReturnType
-			funcTyp := desc.FunctionType
-			language := desc.Language
+			switch routineType {
+			case int(sqlbase.LUAFunction):
+				if err := populateLuaFunctionRow(row[0], addRow); err != nil {
+					return err
+				}
 
-			argTypes := getArrayStr(argTypArray)
-			returnTypes := getArrayStr(returnTypArray)
-
-			funcTypStr := ""
-			if funcTyp == uint32(sqlbase.DefinedFunction) {
-				funcTypStr = "function"
-			} else if funcTyp == uint32(sqlbase.DefinedAggregation) {
-				funcTypStr = "aggregation"
-			} else {
-				funcTypStr = "unknown"
-			}
-
-			if err := addRow(
-				tree.NewDString(funcName),    // function_name
-				tree.NewDString(argTypes),    // argument_types
-				tree.NewDString(returnTypes), // return_types
-				tree.NewDString(funcTypStr),  // function_type
-				tree.NewDString(language),    // language
-			); err != nil {
-				return err
+			case int(sqlbase.SQLFunction):
+				if err := populateSQLFunctionRow(row[0], addRow); err != nil {
+					return err
+				}
 			}
 		}
 		return nil
@@ -4439,4 +4427,215 @@ CREATE TABLE kwdb_internal.ts_inflight_transactions (
 
 		return nil
 	},
+}
+
+// populateLuaFunctionRow appends one Lua UDF row to kwdb_internal.kwdb_functions.
+func populateLuaFunctionRow(descDatum tree.Datum, addRow func(...tree.Datum) error) error {
+	var desc sqlbase.FunctionDescriptor
+
+	val := tree.MustBeDBytes(descDatum)
+	if err := protoutil.Unmarshal([]byte(val), &desc); err != nil {
+		return pgerror.New(pgcode.Warning, "failed to parse descriptor for udf")
+	}
+
+	funcName := delegate.FormatRoutineNameForShow(desc.Name)
+	argTypes := getLuaUDFTypeArrayStrForShowCreate(desc.ArgumentTypes)
+	returnTypes := getLuaUDFTypeArrayStrForShowCreate(desc.ReturnType)
+	language := desc.Language
+
+	funcTypStr := "unknown"
+	switch desc.FunctionType {
+	case uint32(sqlbase.DefinedFunction):
+		funcTypStr = "function"
+	case uint32(sqlbase.DefinedAggregation):
+		funcTypStr = "aggregation"
+	}
+
+	functionBody := buildCreateLuaFunctionStmt(&desc)
+
+	return addRow(
+		tree.NewDString(funcName),     // function_name
+		tree.NewDString(argTypes),     // argument_types
+		tree.NewDString(returnTypes),  // return_type
+		tree.NewDString(funcTypStr),   // function_type
+		tree.NewDString(language),     // language
+		tree.NewDString(functionBody), // function_body
+	)
+}
+
+// populateSQLFunctionRow appends one SQL UDF row to kwdb_internal.kwdb_functions.
+func populateSQLFunctionRow(descDatum tree.Datum, addRow func(...tree.Datum) error) error {
+	var desc sqlbase.ProcedureDescriptor
+
+	val := tree.MustBeDBytes(descDatum)
+	if err := protoutil.Unmarshal([]byte(val), &desc); err != nil {
+		return pgerror.New(pgcode.Warning, "failed to parse descriptor for sql udf")
+	}
+
+	funcName := delegate.FormatRoutineNameForShow(desc.Name)
+	argTypes := formatProcParamTypes(desc.Parameters)
+	returnType := formatProcedureReturnType(&desc)
+	functionBody := buildCreatePLpgSQLFunctionStmt(&desc)
+
+	return addRow(
+		tree.NewDString(funcName),     // function_name
+		tree.NewDString(argTypes),     // argument_types
+		tree.NewDString(returnType),   // return_type
+		tree.NewDString("function"),   // function_type
+		tree.NewDString("SQL"),        // language
+		tree.NewDString(functionBody), // function_body
+	)
+}
+
+// formatProcParamTypes formats procedure parameter types as a comma-separated list.
+func formatProcParamTypes(params []sqlbase.ProcParam) string {
+	if len(params) == 0 {
+		return "NULL"
+	}
+
+	types := make([]string, 0, len(params))
+	for _, param := range params {
+		types = append(types, param.Type.SQLString())
+	}
+	return strings.Join(types, ", ")
+}
+
+// formatProcParamDefs formats procedure parameters as "name type" definitions.
+func formatProcParamDefs(params []sqlbase.ProcParam) string {
+	if len(params) == 0 {
+		return ""
+	}
+
+	defs := make([]string, 0, len(params))
+	for _, param := range params {
+		defs = append(defs, fmt.Sprintf("%s %s", param.Name, param.Type.SQLString()))
+	}
+	return strings.Join(defs, ", ")
+}
+
+// formatProcedureReturnType returns the SQL string of the procedure return type.
+func formatProcedureReturnType(desc *sqlbase.ProcedureDescriptor) string {
+	if desc == nil {
+		return ""
+	}
+	return desc.ReturnType.SQLString()
+}
+
+// buildCreatePLpgSQLFunctionStmt builds the CREATE FUNCTION statement
+// for a SQL UDF backed by a ProcedureDescriptor.
+func buildCreatePLpgSQLFunctionStmt(desc *sqlbase.ProcedureDescriptor) string {
+	if desc == nil {
+		return ""
+	}
+
+	funcName := delegate.FormatRoutineNameForShow(desc.Name)
+	argDefs := formatProcParamDefs(desc.Parameters)
+	returnType := formatProcedureReturnType(desc)
+
+	body := strings.TrimSpace(desc.ProcBody)
+
+	// desc.ProcBody may be generated from CREATE PROCEDURE during the internal
+	// procedure wrapper path. SHOW CREATE FUNCTION should expose the user-facing
+	// CREATE FUNCTION syntax, so keep only the BEGIN...END body if possible.
+	upperBody := strings.ToUpper(body)
+	if idx := strings.Index(upperBody, "BEGIN"); idx >= 0 {
+		body = strings.TrimSpace(body[idx:])
+	}
+
+	return fmt.Sprintf(
+		"CREATE FUNCTION %s(%s)\nRETURNS %s\nLANGUAGE SQL\n%s",
+		funcName,
+		argDefs,
+		returnType,
+		body,
+	)
+}
+
+// buildCreateLuaFunctionStmt builds the CREATE FUNCTION statement
+// for a Lua UDF descriptor.
+func buildCreateLuaFunctionStmt(desc *sqlbase.FunctionDescriptor) string {
+	if desc == nil {
+		return ""
+	}
+
+	funcName := delegate.FormatRoutineNameForShow(desc.Name)
+	argTypes := formatLuaParamDefsForShowCreate(desc)
+	returnTypes := getLuaUDFTypeArrayStrForShowCreate(desc.ReturnType)
+	language := desc.Language
+	if language == "" {
+		language = "LUA"
+	}
+
+	// Replace desc.FuncBody with the actual field that stores the Lua script.
+	body := strings.TrimSpace(desc.FunctionBody)
+
+	return fmt.Sprintf(
+		"CREATE FUNCTION %s(%s)\nRETURNS %s\nLANGUAGE %s\nBEGIN\n%s\nEND",
+		funcName,
+		argTypes,
+		returnTypes,
+		language,
+		formatLuaBodyAsSCONST(body),
+	)
+}
+
+// formatLuaParamDefsForShowCreate formats lua function parameters as "name type" definitions.
+func formatLuaParamDefsForShowCreate(desc *sqlbase.FunctionDescriptor) string {
+	if desc == nil || len(desc.ArgumentTypes) == 0 {
+		return ""
+	}
+
+	defs := make([]string, 0, len(desc.ArgumentTypes))
+	for i, typeID := range desc.ArgumentTypes {
+		typ := getLuaUDFTypeStrForShowCreate(typeID)
+
+		name := fmt.Sprintf("arg%d", i+1)
+		if i < len(desc.ArgumentNames) && desc.ArgumentNames[i] != "" {
+			name = delegate.FormatRoutineNameForShow(desc.ArgumentNames[i])
+		}
+
+		defs = append(defs, fmt.Sprintf("%s %s", name, typ))
+	}
+	return strings.Join(defs, ", ")
+}
+
+// formatLuaBodyAsSCONST formats a Lua script as a SQL string const.
+func formatLuaBodyAsSCONST(body string) string {
+	body = strings.TrimSpace(body)
+
+	// If the descriptor already stores the script as a SQL string,
+	// keep it as-is.
+	if strings.HasPrefix(body, "'") && strings.HasSuffix(body, "'") {
+		return body
+	}
+
+	return "'" + strings.ReplaceAll(body, "'", "''") + "'"
+}
+
+// getLuaUDFTypeArrayStrForShowCreate formats Lua UDF argument and return types
+// for SHOW CREATE FUNCTION.
+func getLuaUDFTypeArrayStrForShowCreate(typeIDs []uint32) string {
+	if len(typeIDs) == 0 {
+		return "NULL"
+	}
+
+	typeNames := make([]string, 0, len(typeIDs))
+	for _, typeID := range typeIDs {
+		typeNames = append(typeNames, getLuaUDFTypeStrForShowCreate(typeID))
+	}
+	return strings.Join(typeNames, ", ")
+}
+
+// getLuaUDFTypeStrForShowCreate formats one Lua UDF type for SHOW CREATE FUNCTION.
+func getLuaUDFTypeStrForShowCreate(typeID uint32) string {
+	switch typeID {
+	case uint32(sqlbase.DataType_DOUBLE):
+		// Lua UDF CREATE FUNCTION commonly uses FLOAT8, while the descriptor
+		// stores the return type as DataType_DOUBLE.
+		return "FLOAT8"
+	default:
+		// Reuse the existing formatter for all other types to avoid changing
+		// current display behavior.
+		return getArrayStr([]uint32{typeID})
+	}
 }

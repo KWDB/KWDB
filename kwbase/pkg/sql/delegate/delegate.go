@@ -90,6 +90,9 @@ func TryDelegate(
 	case *tree.ShowCreateTrigger:
 		return d.delegateShowCreateTrigger(t)
 
+	case *tree.ShowCreateFunction:
+		return d.delegateShowCreateFunction(t)
+
 	case *tree.ShowDatabaseIndexes:
 		return d.delegateShowDatabaseIndexes(t)
 

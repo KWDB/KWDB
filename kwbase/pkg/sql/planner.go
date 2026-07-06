@@ -249,6 +249,9 @@ type planner struct {
 	// DeallocateHelper records the callback functions
 	// required for deallocate stmt in procedure
 	DeallocateHelper prepare.DeallocateHelper
+
+	// resolveSQLFunctionAsProcedure flags running SQL UDF.
+	resolveSQLFunctionAsProcedure bool
 }
 
 // IsInternalSQL return IsInternalSQL
@@ -345,6 +348,7 @@ func newInternalPlanner(
 	p.semaCtx.Location = &sd.DataConversion.Location
 	p.semaCtx.SearchPath = sd.SearchPath
 	p.semaCtx.UserDefinedVars = sd.UserDefinedVars
+	p.semaCtx.SQLUDFFunctionHandler = p
 
 	plannerMon := mon.MakeUnlimitedMonitor(ctx,
 		fmt.Sprintf("internal-planner.%s.%s", user, opName),
@@ -365,6 +369,7 @@ func newInternalPlanner(
 	p.extendedEvalCtx.ClusterName = execCfg.RPCContext.ClusterName()
 	p.extendedEvalCtx.NodeID = execCfg.NodeID.Get()
 	p.extendedEvalCtx.Locality = execCfg.Locality
+	p.extendedEvalCtx.SQLUDFFunctionHandler = p
 
 	p.sessionDataMutator = dataMutator
 	p.autoCommit = false

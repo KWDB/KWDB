@@ -149,10 +149,8 @@ SQLSTATE: 22003
 ERROR: square(): integer out of range
 SQLSTATE: 22003
 > SELECT square(null);
-  square
-----------
-  NULL
-(1 row)
+ERROR: square(): <string>:2: cannot perform mul operation between nil and nil
+SQLSTATE: 01000
 > SELECT sum_two_ints(-2147483648, 2147483647);
   sum_two_ints
 ----------------
@@ -162,10 +160,8 @@ SQLSTATE: 22003
 ERROR: sum_two_ints(): integer out of range
 SQLSTATE: 22003
 > SELECT sum_two_ints(null,null);
-  sum_two_ints
-----------------
-  NULL
-(1 row)
+ERROR: sum_two_ints(): <string>:2: cannot perform add operation between nil and nil
+SQLSTATE: 01000
 > SELECT is_perfect_number(-2147483648);
 ERROR: unknown function: is_perfect_number()
 SQLSTATE: 42883

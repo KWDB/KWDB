@@ -132,10 +132,8 @@ SQLSTATE: 22003
 ERROR: multiply(): integer out of range
 SQLSTATE: 22003
 > select multiply(null);
-  multiply
-------------
-  NULL
-(1 row)
+ERROR: multiply(): <string>:2: cannot perform add operation between nil and nil
+SQLSTATE: 01000
 > select complex_calculation(-32768);
 ERROR: unknown function: complex_calculation()
 SQLSTATE: 42883
@@ -191,5 +189,5 @@ SQLSTATE: 42883
 -----------------
 (0 rows)
 > SHOW FUNCTION multiply;
-ERROR: function multiply does not exists or current user does not have privilege on this function
+ERROR: function multiply does not exist
 SQLSTATE: 42704

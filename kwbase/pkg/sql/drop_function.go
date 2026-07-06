@@ -13,7 +13,6 @@ package sql
 
 import (
 	"context"
-	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
@@ -41,44 +40,41 @@ func (p *planner) DropFunction(ctx context.Context, n *tree.DropFunction) (planN
 // startExec is interface implementation, which execute the event of dropping function(s).
 func (n *dropFunctionNode) startExec(params runParams) error {
 	for _, v := range n.n.Names {
+		funcName := v
+
 		const getUdfQuery = `
 	   SELECT 
      name
 	   FROM system.user_defined_routine
-	   WHERE name = $1 and routine_type = $2
+	   WHERE name = $1 and routine_type in ($2, $3)
 	 `
-		rows, err := n.p.ExecCfg().InternalExecutor.Query(params.ctx, "Get-udf", nil /* txn */, getUdfQuery, v, sqlbase.Function)
+		rows, err := n.p.ExecCfg().InternalExecutor.Query(params.ctx, "Get-udf", params.p.txn, getUdfQuery, funcName,
+			sqlbase.LUAFunction, sqlbase.SQLFunction)
 		if err != nil {
 			return err
 		}
 		if len(rows) == 0 {
-			return pgerror.Newf(pgcode.UndefinedFunction, "unknown function '%s' when dropping function", v)
+			return pgerror.Newf(pgcode.UndefinedFunction, "unknown function '%s' when dropping function", funcName)
 		}
+
+		const deleteUdfQuery = `
+    DELETE
+    FROM system.user_defined_routine
+    WHERE name = $1
+     AND routine_type IN ($2, $3)
+    `
+		if _, err := n.p.ExecCfg().InternalExecutor.Query(params.ctx, "drop-udf", params.p.txn, deleteUdfQuery, funcName,
+			sqlbase.LUAFunction, sqlbase.SQLFunction); err != nil {
+			return err
+		}
+
+		tree.ConcurrentFunDefs.DeleteFunc(funcName)
+
 		if err := GossipUdfDeleted(n.p.execCfg.Gossip, v); err != nil {
 			return err
 		}
 	}
-	// Set timeouts and timers to wait for function deletion information to propagate
-	timeoutDuration := time.Duration(len(n.n.Names)) * time.Second
-	timeout := time.After(timeoutDuration)
-	ticker := time.NewTicker(300 * time.Millisecond)
-	defer ticker.Stop()
 
-	// Wait for all functions to be removed from tree.FunDefs or until timeout
-	for _, v := range n.n.Names {
-		deleted := false
-		for !deleted {
-			select {
-			case <-timeout:
-				return pgerror.Newf(pgcode.Warning, "remove %s function timeout, Please wait", v)
-			case <-ticker.C:
-				if _, ok := tree.ConcurrentFunDefs.LookupFunc(v); !ok {
-					deleted = true
-					break
-				}
-			}
-		}
-	}
 	return nil
 }
 

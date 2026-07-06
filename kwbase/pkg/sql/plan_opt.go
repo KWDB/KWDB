@@ -220,7 +220,8 @@ func (p *planner) makeOptimizerPlan(ctx context.Context) error {
 	var execMemo *memo.Memo
 	var layerType tree.PhysicalLayerType
 	var err error
-	useProcedureCache := stmt.AST.StatOp() == "CALL" && opt.CheckOptMode(opt.TSQueryOptMode.Get(&p.ExecCfg().Settings.SV), opt.EnableProcedureCache)
+	useProcedureCache := stmt.AST.StatOp() == "CALL" && opt.CheckOptMode(opt.TSQueryOptMode.Get(&p.ExecCfg().Settings.SV), opt.EnableProcedureCache) &&
+		p.resolveSQLFunctionAsProcedure == false
 
 	if useProcedureCache {
 		// Try to find the cached memo in the procedure cache

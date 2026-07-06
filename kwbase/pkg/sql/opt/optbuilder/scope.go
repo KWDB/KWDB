@@ -265,6 +265,7 @@ const (
 	exprTypeWindowFrameStart
 	exprTypeWindowFrameEnd
 	exprTypeProcedure
+	exprTypeSQLFunction
 )
 
 // buildType is used to represent the type of the current expression in the
@@ -297,6 +298,7 @@ var exprTypeName = [...]string{
 	exprTypeWindowFrameStart:  "WINDOW FRAME START",
 	exprTypeWindowFrameEnd:    "WINDOW FRAME END",
 	exprTypeProcedure:         "PROCEDURE",
+	exprTypeSQLFunction:       "SQL FUNCTION",
 }
 
 func (k exprType) String() string {
@@ -1215,7 +1217,7 @@ func (s *scope) VisitPre(expr tree.Expr) (recurse bool, newExpr tree.Expr) {
 				}
 			}
 		}
-		def, err := t.Func.Resolve(s.builder.semaCtx.SearchPath)
+		def, err := t.Func.ResolveWithSemaContext(s.builder.semaCtx.SearchPath, s.builder.semaCtx)
 		if err != nil {
 			panic(err)
 		}

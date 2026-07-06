@@ -2545,6 +2545,8 @@ func (ex *connExecutor) initEvalCtx(ctx context.Context, evalCtx *extendedEvalCo
 			ReCache:            ex.server.reCache,
 			InternalExecutor:   &ie,
 			DB:                 ex.server.cfg.DB,
+			// Used by SQL UDF execution.
+			SQLUDFFunctionHandler: p,
 		},
 		SessionMutator:       ex.dataMutator,
 		VirtualSchemas:       ex.server.cfg.VirtualSchemas,
@@ -2635,6 +2637,7 @@ func (ex *connExecutor) resetPlanner(
 	p.semaCtx.UserDefinedVars = ex.sessionData.UserDefinedVars
 	p.semaCtx.AsOfTimestamp = nil
 	p.semaCtx.Annotations = nil
+	p.semaCtx.SQLUDFFunctionHandler = p
 
 	ex.resetEvalCtx(&p.extendedEvalCtx, txn, stmtTS)
 

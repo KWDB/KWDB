@@ -231,6 +231,10 @@ func (oc *optCatalog) ResetTxn(ctx context.Context) {
 func (oc *optCatalog) ResolveProcCatalog(
 	ctx context.Context, t *tree.TableName, checkPri bool,
 ) (bool, *tree.CreateProcedure, error) {
+	if oc.planner.resolveSQLFunctionAsProcedure {
+		return ResolvePLpgSQLFunctionAsCreateProcedure(ctx, oc.planner, t)
+	}
+
 	found, desc, err := ResolveProcedureObject(ctx, oc.planner, t)
 	if err != nil {
 		return false, nil, err
@@ -326,6 +330,48 @@ func ResolveProcedureObject(
 	return false, nil, nil
 }
 
+// ResolvePLpgSQLFunctionAsCreateProcedure resolves a SQL UDF as a
+// CreateProcedure object so that it can reuse the existing procedure
+// execution path.
+func ResolvePLpgSQLFunctionAsCreateProcedure(
+	ctx context.Context, p *planner, t *tree.TableName,
+) (bool, *tree.CreateProcedure, error) {
+	funcName := string(t.TableName)
+
+	desc, err := GetPLpgSQLFunctionMeta(ctx, p.Txn(), funcName)
+	if err != nil {
+		return false, nil, err
+	}
+	if desc == nil {
+		return false, nil, nil
+	}
+
+	var params []*tree.ProcedureParameter
+	for i := range desc.Parameters {
+		typ := desc.Parameters[i].Type
+		param := &tree.ProcedureParameter{
+			Name:      tree.Name(desc.Parameters[i].Name),
+			Type:      &typ,
+			Direction: tree.InDirection,
+		}
+		params = append(params, param)
+	}
+
+	res := tree.CreateProcedure{
+		Name: tree.MakeUnqualifiedTableName(
+			tree.Name(funcName),
+		),
+		Parameters:   params,
+		BodyStr:      desc.ProcBody,
+		ProcID:       int32(desc.ID),
+		DBID:         int32(desc.DbID),
+		SchemaID:     int32(desc.SchemaID),
+		ReturnedType: &desc.ReturnType,
+	}
+
+	return true, &res, nil
+}
+
 // ResolveAndCheckProcPrivilege resolves procedure and check privilege of procedure
 func ResolveAndCheckProcPrivilege(
 	ctx context.Context, p *planner, t *ObjectName, pri privilege.Kind,
@@ -385,6 +431,63 @@ func GetProcedureMeta(
 		return nil, nil
 	}
 	return &desc, nil
+}
+
+// GetRoutineMetaByID reads routine metadata from system.user_defined_routine
+// by database ID, schema ID, and routine name.
+func GetRoutineMetaByID(
+	ctx context.Context, txn *kv.Txn, dbID int, scID int, routineName string,
+) (*sqlbase.ProcedureDescriptor, int, error) {
+	k := keys.MakeTablePrefix(uint32(sqlbase.UDRTable.ID))
+	k = encoding.EncodeUvarintAscending(k, uint64(sqlbase.UDRTable.PrimaryIndex.ID))
+	k = encoding.EncodeUvarintAscending(k, uint64(dbID))
+	k = encoding.EncodeUvarintAscending(k, uint64(scID))
+	k = encoding.EncodeStringAscending(k, routineName)
+
+	rows, err := sqlbase.GetKWDBMetadataRows(ctx, txn, k, sqlbase.UDRTable)
+	if err != nil {
+		return nil, 0, err
+	}
+	if rows == nil {
+		return nil, 0, nil
+	}
+
+	routineType := int(tree.MustBeDInt(rows[0][5]))
+
+	var desc sqlbase.ProcedureDescriptor
+	val := tree.MustBeDBytes(rows[0][3])
+	if err := protoutil.Unmarshal([]byte(val), &desc); err != nil {
+		return nil, 0, errors.NewAssertionErrorWithWrappedErrf(
+			err,
+			"failed to parse value for key %q",
+			k,
+		)
+	}
+
+	return &desc, routineType, nil
+}
+
+// GetPLpgSQLFunctionMeta loads SQL UDF metadata from the fixed UDF namespace.
+func GetPLpgSQLFunctionMeta(
+	ctx context.Context, txn *kv.Txn, funcName string,
+) (*sqlbase.ProcedureDescriptor, error) {
+	desc, routineType, err := GetRoutineMetaByID(
+		ctx,
+		txn,
+		UDFFunctionDBID,
+		UDFFunctionSchemaID,
+		funcName,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if desc == nil {
+		return nil, nil
+	}
+	if routineType != int(sqlbase.SQLFunction) {
+		return nil, pgerror.Newf(pgcode.WrongObjectType, "%s is not a sql function", funcName)
+	}
+	return desc, nil
 }
 
 // GetAllProcDescByParentID gets Procedure descriptor by dbID and schemaID

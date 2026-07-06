@@ -86,6 +86,10 @@ type SemaContext struct {
 
 	// ProcUserDefinedVars stores variables defined by user in procedure
 	ProcUserDefinedVars map[string]ProcUdvInfo
+
+	// SQLUDFFunctionHandler is used to resolve SQL user defined functions
+	// from catalog metadata during semantic analysis.
+	SQLUDFFunctionHandler SQLUDFFunctionHandler
 }
 
 // ProcUdvInfo stores type and column id of user-defined variables in procedure
@@ -874,7 +878,7 @@ func (expr *FuncExpr) TypeCheck(ctx *SemaContext, desired *types.T) (TypedExpr, 
 	if ctx != nil {
 		searchPath = ctx.SearchPath
 	}
-	def, err := expr.Func.Resolve(searchPath)
+	def, err := expr.Func.ResolveWithSemaContext(searchPath, ctx)
 	if err != nil {
 		return nil, err
 	}

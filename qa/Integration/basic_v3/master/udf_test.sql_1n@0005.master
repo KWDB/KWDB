@@ -68,7 +68,7 @@ SQLSTATE: 42883
   calculate_circle_area | FLOAT          | FLOAT       | function      | LUA
 (1 row)
 > SHOW FUNCTION calculate_stddev;
-ERROR: function calculate_stddev does not exists or current user does not have privilege on this function
+ERROR: function calculate_stddev does not exist
 SQLSTATE: 42704
 > SELECT calculate_circle_area(e1) FROM test_udf.tb1;
   calculate_circle_area
@@ -103,15 +103,11 @@ DROP DATABASE
   +Inf
 (1 row)
 > SELECT calculate_circle_area(null);
-  calculate_circle_area
--------------------------
-  NULL
-(1 row)
+ERROR: calculate_circle_area(): <string>:3: cannot perform mul operation between number and nil
+SQLSTATE: 01000
 > SELECT calculate_circle_area(null);
-  calculate_circle_area
--------------------------
-  NULL
-(1 row)
+ERROR: calculate_circle_area(): <string>:3: cannot perform mul operation between number and nil
+SQLSTATE: 01000
 > SELECT calculate_circle_area('test');
 ERROR: unknown signature: calculate_circle_area(STRING)
 SQLSTATE: 42883

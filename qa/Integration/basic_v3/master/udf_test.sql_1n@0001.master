@@ -39,7 +39,7 @@ CREATE FUNCTION
 > SHOW FUNCTION time_add_hour;
   function_name |  argument_types   | return_type | function_type | language
 ----------------+-------------------+-------------+---------------+-----------
-  time_add_hour | TIMESTAMP, DOUBLE | TIMESTAMP   | function      | LUA
+  time_add_hour | TIMESTAMP, FLOAT8 | TIMESTAMP   | function      | LUA
 (1 row)
 > select time_add_hour('2024-01-01 10:00:00',1);
      time_add_hour
@@ -141,10 +141,8 @@ DROP DATABASE
   2262-04-12 03:47:16
 (1 row)
 > select time_add_hour(null,null);
-  time_add_hour
------------------
-  NULL
-(1 row)
+ERROR: time_add_hour(): <string>:2: cannot perform mul operation between nil and number
+SQLSTATE: 01000
 > select time_difference_to_string('1970-01-01 00:00:00','1970-01-01 00:00:00');
 ERROR: unknown function: time_difference_to_string()
 SQLSTATE: 42883
@@ -200,5 +198,5 @@ SQLSTATE: 42883
 -----------------
 (0 rows)
 > SHOW FUNCTION time_add_hour;
-ERROR: function time_add_hour does not exists or current user does not have privilege on this function
+ERROR: function time_add_hour does not exist
 SQLSTATE: 42704

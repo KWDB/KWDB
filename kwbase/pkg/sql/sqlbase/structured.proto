@@ -628,6 +628,7 @@ message FunctionDescriptor {
   optional uint32 function_type = 6 [(gogoproto.nullable) = false];
   optional string language = 7 [(gogoproto.nullable) = false];
   optional string db_name = 8 [(gogoproto.nullable) = false];
+  repeated string argument_names = 9;
 }
 
 message ProcedureDescriptor {
@@ -648,6 +649,7 @@ message ProcedureDescriptor {
     (gogoproto.casttype) = "ID"];
   optional string language = 8 [(gogoproto.nullable) = false];
   optional PrivilegeDescriptor privileges = 9;
+  optional bytes returnType = 10 [(gogoproto.nullable) = false, (gogoproto.customtype) = "gitee.com/kwbasedb/kwbase/pkg/sql/types.T"];
 }
 
 message ProcParam {

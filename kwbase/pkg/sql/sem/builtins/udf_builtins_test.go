@@ -124,7 +124,7 @@ func TestParseType(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseType(tt.typeInt)
+			got, err := ParseUDFType(tt.typeInt)
 			if tt.wantErr {
 				assert.Error(t, err)
 				assert.Equal(t, pgcode.FdwInvalidDataType, pgerror.GetPGCode(err))
@@ -165,7 +165,7 @@ func TestParseTypes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseTypes(tt.params)
+			got, err := ParseUDFTypes(tt.params)
 			if tt.wantErr {
 				assert.Error(t, err)
 				assert.Nil(t, got)

@@ -890,7 +890,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.Statement> cancel_queries_stmt
 %type <tree.Statement> cancel_sessions_stmt
 %type <tree.Statement> close_cursor_stmt fetch_cursor_stmt open_cursor_stmt
-%type <tree.Statement> declare_stmt proc_if_stmt proc_while_stmt
+%type <tree.Statement> declare_stmt proc_if_stmt proc_while_stmt func_if_stmt func_while_stmt
 %type <tree.Statement> proc_set_stmt proc_leave_stmt
 %type <tree.Statement> trigger_if_stmt trigger_while_stmt
 
@@ -990,6 +990,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.Statement> abort_stmt
 %type <tree.Statement> rollback_stmt
 %type <tree.Statement> savepoint_stmt
+%type <tree.Statement> function_body_stmt
 
 %type <tree.Statement> preparable_set_stmt nonpreparable_set_stmt
 %type <tree.Statement> set_session_stmt
@@ -1326,9 +1327,9 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <[]*tree.ProcedureParameter> parameter_list
 %type <*tree.ProcedureParameter> parameter
 //%type <tree.ProcDirection> opt_direction
-%type <[]tree.Statement> proc_stmt_list opt_stmt_else while_body trigger_stmt_list
-%type <tree.Statement> opt_procedure_block proc_handler_body trigger_body
-%type <[]tree.ElseIf> opt_stmt_elsifs
+%type <[]tree.Statement> proc_stmt_list opt_stmt_else while_body trigger_stmt_list func_stmt_list func_else_stmt func_while_body
+%type <tree.Statement> opt_procedure_block proc_handler_body trigger_body opt_function_block
+%type <[]tree.ElseIf> opt_stmt_elsifs func_elsifs_stmt
 
 %type <[]tree.Statement> trigger_while_body opt_trigger_stmt_else
 %type <[]tree.ElseIf> opt_trigger_stmt_elsifs
@@ -2863,6 +2864,14 @@ procedure_body_stmt:
 | execute_stmt
 | deallocate_stmt
 
+function_body_stmt:
+ select_stmt
+| declare_stmt
+| proc_set_stmt
+| func_if_stmt
+| func_while_stmt
+| proc_leave_stmt
+
 proc_prepare_stmt:
   PREPARE table_alias_name prep_type_clause AS proc_preparable_stmt
   {
@@ -3486,7 +3495,7 @@ drop_procedure_stmt:
 // %Help: DROP FUNCTION - remove a function
 // %Category: DDL
 // %Text: DROP FUNCTION <function_name>
-// %SeeAlso: CREATE FUNCTION, SHOW FUNCTION, SHOW FUNCTIONS
+// %SeeAlso: CREATE FUNCTION, SHOW FUNCTION, SHOW FUNCTIONS, SHOW CREATE FUNCTION
 drop_function_stmt:
   DROP FUNCTION function_name_list
   {
@@ -5133,6 +5142,11 @@ show_create_stmt:
 		tab := $6.unresolvedObjectName().ToTableName()
 		$$.val = &tree.ShowCreateTrigger{Name: tree.Name($4), TabName: tab}
 	}
+| SHOW CREATE FUNCTION function_name
+  {
+    name := tree.Name($4)
+    $$.val = &tree.ShowCreateFunction{Name: name}
+  }
 | SHOW CREATE error // SHOW HELP: SHOW CREATE
 
 create_kw:
@@ -7539,6 +7553,7 @@ trigger_while_body:
 // %Category: DDL
 // %Text:
 // CREATE FUNCTION <function_name> ( <arguments...> ) RETURNS <typename> LANGUAGE LUA BEGIN <func_body> END
+// CREATE FUNCTION <function_name> ( <arguments...> ) RETURNS <typename> LANGUAGE SQL BEGIN <sql_stmt_list> END
 //
 // Function arguments:
 //  <var_name> <type>
@@ -7555,7 +7570,31 @@ create_function_stmt:
     	FunctionName:   tree.Name($3),
     	Arguments:  		args,
     	ReturnType:		  $8.colType(),
+    	Language:       tree.FunctionLangLua,
     	FuncBody:   		$12,
+    }
+  }
+| CREATE FUNCTION function_name '(' arg_def_list ')' RETURNS typename LANGUAGE SQL opt_function_block
+  {
+    args := make(tree.FuncArgDefs, 0)
+    if $5.val != nil {
+      args = $5.argDefs()
+    }
+
+    bodyBlock := $11.block()
+
+    if bodyBlock == nil {
+      sqllex.Error("the function body is missing in sql function")
+      return 1
+    }
+
+    $$.val = &tree.CreateFunction{
+      FunctionName: tree.Name($3),
+      Arguments:    args,
+      ReturnType:   $8.colType(),
+      Language:     tree.FunctionLangSQL,
+      FuncBody:     "",
+      Block:        bodyBlock,
     }
   }
 | CREATE FUNCTION error // SHOW HELP: CREATE FUNCTION
@@ -7583,6 +7622,86 @@ arg_def:
   	}
     $$.val = argDef
   }
+
+// opt_function_block represents the stored function body enclosed in BEGIN...END.
+// This syntax is typically used in the kwbase client along with delimiter.
+opt_function_block:
+   BEGIN func_stmt_list END
+  {
+    $$.val = &tree.Block{
+      Body:  $2.stmts(),
+    }
+  }
+| /* empty */ %prec VALUES
+	{
+		$$.val = (*tree.Block)(nil)
+	}
+
+func_stmt_list:
+  /* empty */ %prec VALUES
+  {
+    $$.val = []tree.Statement(nil)
+  }
+  | func_stmt_list function_body_stmt ';'
+  {
+    $$.val = append($1.stmts(), $2.stmt())
+  }
+
+func_if_stmt:
+	IF a_expr THEN func_stmt_list func_elsifs_stmt func_else_stmt ENDIF
+	{
+		$$.val = &tree.ProcIf{
+			Condition: $2.expr(),
+			ThenBody: $4.stmts(),
+			ElseIfList: $5.elseIf(),
+			ElseBody: $6.stmts(),
+		}
+	}
+
+func_elsifs_stmt:
+	func_elsifs_stmt ELSIF a_expr THEN func_stmt_list
+	{
+		newStmt := tree.ElseIf{
+			Condition: $3.expr(),
+			Stmts: $5.stmts(),
+		}
+		$$.val = append($1.elseIf(), newStmt)
+	}
+| /* EMPTY */
+	{
+		$$.val = []tree.ElseIf(nil)
+	}
+
+func_else_stmt:
+	/* empty */
+	{
+		$$.val = []tree.Statement(nil)
+	}
+| ELSE func_stmt_list
+	{
+		$$.val = $2.stmts()
+	}
+
+func_while_stmt:
+	opt_loop_label WHILE a_expr DO func_while_body opt_label
+	{
+		loopLabel, loopEndLabel := $1, $6
+		if err := checkLoopLabels(loopLabel, loopEndLabel); err != nil {
+			return setErr(sqllex, err)
+		}
+		$$.val = &tree.ProcWhile{
+		  Label: $1,
+			Condition: $3.expr(),
+			Body: $5.stmts(),
+		}
+	}
+
+func_while_body:
+ func_stmt_list ENDWHILE
+ {
+   $$.val = $1.stmts()
+ }
+
 
 opt_nullable:
   NOT NULL

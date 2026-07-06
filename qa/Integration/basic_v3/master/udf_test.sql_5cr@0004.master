@@ -111,20 +111,14 @@ SQLSTATE: 22003
              217
 (1 row)
 > select fibonacci(null);
-  fibonacci
--------------
-  NULL
-(1 row)
+ERROR: fibonacci(): <string>:2: attempt to compare nil with number
+SQLSTATE: 01000
 > SELECT fibonacci(null);
-  fibonacci
--------------
-  NULL
-(1 row)
+ERROR: fibonacci(): <string>:2: attempt to compare nil with number
+SQLSTATE: 01000
 > SELECT sum_of_factors(null);
-  sum_of_factors
-------------------
-  NULL
-(1 row)
+ERROR: sum_of_factors(): <string>:3: for statement limit must be a number
+SQLSTATE: 01000
 > SELECT fibonacci('test');
 ERROR: unknown signature: fibonacci(STRING)
 SQLSTATE: 42883

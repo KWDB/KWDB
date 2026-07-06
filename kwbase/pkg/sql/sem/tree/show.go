@@ -697,6 +697,17 @@ func (node *ShowCreateProcedure) Format(ctx *FmtCtx) {
 	ctx.FormatNode(&node.Name)
 }
 
+// ShowCreateFunction represents a SHOW CREATE Function statement.
+type ShowCreateFunction struct {
+	Name Name
+}
+
+// Format implements the NodeFormatter interface.
+func (node *ShowCreateFunction) Format(ctx *FmtCtx) {
+	ctx.WriteString("SHOW CREATE FUNCTION ")
+	ctx.FormatNode(&node.Name)
+}
+
 // ShowCreateTrigger represents a SHOW CREATE TRIGGER statement.
 type ShowCreateTrigger struct {
 	Name    Name

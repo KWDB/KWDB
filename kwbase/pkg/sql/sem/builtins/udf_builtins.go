@@ -56,6 +56,7 @@ package builtins
 
 import (
 	"math"
+	"strings"
 
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
@@ -120,13 +121,13 @@ func RegisterLuaUDFs(datums tree.Datums) (*tree.FunctionDefinition, error) {
 	}
 
 	// Parsing parameter types
-	paramTypes, err := parseTypes(argumentTypes)
+	paramTypes, err := ParseUDFTypes(argumentTypes)
 	if err != nil {
 		return nil, err
 	}
 
 	// Parse return value type
-	returnType, err := parseType(funcReturnType)
+	returnType, err := ParseUDFType(funcReturnType)
 	if err != nil {
 		return nil, err
 	}
@@ -140,13 +141,19 @@ func RegisterLuaUDFs(datums tree.Datums) (*tree.FunctionDefinition, error) {
 		Fn:         luaFunction,
 	}}
 
-	udfFunctionDefinition := tree.GetUdfFunctionDefinition(funcName, &tree.FunctionProperties{NullableArgs: false, ForbiddenExecInTSEngine: true}, def)
-
-	return udfFunctionDefinition, nil
+	return tree.GetUdfFunctionDefinition(
+		funcName,
+		&tree.FunctionProperties{
+			NullableArgs:            true,
+			ForbiddenExecInTSEngine: true,
+			DistsqlBlacklist:        true,
+		},
+		def,
+	), nil
 }
 
-// parseType is used to convert typeInt to *types.T
-func parseType(typeInt int32) (*types.T, error) {
+// ParseUDFType is used to convert typeInt to *types.T
+func ParseUDFType(typeInt int32) (*types.T, error) {
 	// Define a map for type lookups
 	typeMap := map[int32]*types.T{
 		int32(sqlbase.DataType_TIMESTAMP):   types.Timestamp,
@@ -170,11 +177,11 @@ func parseType(typeInt int32) (*types.T, error) {
 	return nil, pgerror.Newf(pgcode.FdwInvalidDataType, "unknown udf type identifier: %d", typeInt)
 }
 
-// parseTypes is used to convert parameters to tree.TypeList
-func parseTypes(parameters []int32) (tree.TypeList, error) {
+// ParseUDFTypes is used to convert parameters to tree.TypeList
+func ParseUDFTypes(parameters []int32) (tree.TypeList, error) {
 	typeList := make(tree.ArgTypes, len(parameters))
 	for i, p := range parameters {
-		paramType, err := parseType(p)
+		paramType, err := ParseUDFType(p)
 		if err != nil {
 			return nil, err
 		}
@@ -264,7 +271,7 @@ func createLuaFunction(
 
 		// Load and execute Lua script
 		if err := L.DoString(funcBody); err != nil {
-			return nil, err
+			return nil, trimLuaStackTrace(err)
 		}
 
 		// Prepare function call
@@ -290,7 +297,7 @@ func createLuaFunction(
 			NRet:    1,
 			Protect: true,
 		}, luaArgs...); err != nil {
-			return nil, err
+			return nil, trimLuaStackTrace(err)
 		}
 
 		ret := L.Get(-1)
@@ -304,8 +311,25 @@ func createLuaFunction(
 	}
 }
 
+// trimLuaStackTrace trims stack message from error message.
+func trimLuaStackTrace(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	msg := err.Error()
+	if idx := strings.Index(msg, "\nstack traceback:"); idx >= 0 {
+		msg = msg[:idx]
+	}
+	return pgerror.New(pgcode.Warning, msg)
+}
+
 // goValueToLuaValue is used to convert go value to lua type
 func goValueToLuaValue(val tree.Datum, paramType int32) (lua.LValue, error) {
+	if val == tree.DNull {
+		return lua.LNil, nil
+	}
+
 	switch paramType {
 	case int32(sqlbase.DataType_INT), int32(sqlbase.DataType_SMALLINT), int32(sqlbase.DataType_BIGINT):
 		if dInt, ok := val.(*tree.DInt); ok {
@@ -344,7 +368,7 @@ func luaValueToGoValue(val lua.LValue, returnType int32) (tree.Datum, error) {
 		return tree.DNull, nil
 	}
 
-	expectedType, err := parseType(returnType)
+	expectedType, err := ParseUDFType(returnType)
 	if err != nil {
 		return nil, err // Early return if the return type is not recognized
 	}

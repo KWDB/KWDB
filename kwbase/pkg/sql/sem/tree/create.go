@@ -2046,12 +2046,36 @@ func (o *KVOptions) formatAsRoleOptions(ctx *FmtCtx) {
 	}
 }
 
+// FunctionLanguage represents use defined function language.
+type FunctionLanguage string
+
+const (
+	// FunctionLangLua represents lua language
+	FunctionLangLua FunctionLanguage = "lua"
+	// FunctionLangSQL represents sql language
+	FunctionLangSQL FunctionLanguage = "sql"
+)
+
 // CreateFunction represents a CREATE FUNCTION statement.
 type CreateFunction struct {
 	FunctionName Name
 	Arguments    FuncArgDefs
 	ReturnType   *types.T
-	FuncBody     string
+	Language     FunctionLanguage
+	// Lua function body:
+	//   LANGUAGE LUA BEGIN 'function ... end' END
+	FuncBody string
+
+	// SQL function body:
+	//   LANGUAGE SQL BEGIN SELECT ...; END
+	Block *Block
+}
+
+// SQLFunctionWrapper represents user defined function definition.
+type SQLFunctionWrapper struct {
+	FunctionName Name
+	Arguments    FuncArgDefs
+	ReturnType   *types.T
 }
 
 // Format implements the NodeFormatter interface.
@@ -2071,12 +2095,20 @@ func (node *CreateFunction) Format(ctx *FmtCtx) {
 	ctx.WriteString(") ")
 	ctx.WriteString("RETURNS ")
 	ctx.WriteString(node.ReturnType.SQLString())
-	ctx.WriteString(" LUA")
-	ctx.WriteString(" BEGIN ")
-	ctx.WriteString("'")
-	ctx.WriteString(node.FuncBody)
-	ctx.WriteString("'")
-	ctx.WriteString(" END")
+	switch node.Language {
+	case FunctionLangLua:
+		ctx.WriteString(" LANGUAGE LUA BEGIN ")
+		ctx.WriteString("'")
+		ctx.WriteString(node.FuncBody)
+		ctx.WriteString("'")
+		ctx.WriteString(" END")
+
+	case FunctionLangSQL:
+		ctx.WriteString(" LANGUAGE SQL ")
+		if node.Block != nil {
+			ctx.FormatNode(node.Block)
+		}
+	}
 }
 
 // FuncArgDefs is used for represent udf arguments

@@ -47,7 +47,18 @@ func (n *createProcedureNode) startExec(params runParams) error {
 	if n.dbDesc.ID == keys.SystemDatabaseID {
 		privs = sqlbase.NewDefaultPrivilegeDescriptor()
 	}
-	desc, err := makeProcDesc(n.dbDesc.ID, n.scID, n.n, privs)
+
+	routineType := sqlbase.Procedure
+	storeDBID := n.dbDesc.ID
+	storeSchemaID := n.scID
+
+	if n.n.SQLFunction != nil {
+		routineType = sqlbase.SQLFunction
+		storeDBID = sqlbase.ID(UDFFunctionDBID)
+		storeSchemaID = sqlbase.ID(UDFFunctionSchemaID)
+	}
+
+	desc, err := makeProcDesc(storeDBID, storeSchemaID, n.n, privs)
 	if err != nil {
 		return err
 	}
@@ -57,35 +68,37 @@ func (n *createProcedureNode) startExec(params runParams) error {
 		return err
 	}
 	desc.ID = id
-	// fill in dependencies for procDesc
-	for backrefID := range n.planDeps {
-		desc.DependsOn = append(desc.DependsOn, backrefID)
-	}
-	// update DependsOnBy for all dependencies
-	backRefMutables := make(map[sqlbase.ID]*sqlbase.MutableTableDescriptor, len(n.planDeps))
-	for id, updated := range n.planDeps {
-		backRefMutable := params.p.Tables().getUncommittedTableByID(id).MutableTableDescriptor
-		if backRefMutable == nil {
-			backRefMutable = sqlbase.NewMutableExistingTableDescriptor(*updated.desc.TableDesc())
+	if n.n.SQLFunction == nil {
+		// fill in dependencies for procDesc
+		for backrefID := range n.planDeps {
+			desc.DependsOn = append(desc.DependsOn, backrefID)
 		}
-		backRefMutables[id] = backRefMutable
-	}
-	// Persist the back-references in all referenced table descriptors.
-	for id, updated := range n.planDeps {
-		backRefMutable := backRefMutables[id]
-		for _, dep := range updated.deps {
-			// The logical plan constructor merely registered the dependencies.
-			// It did not populate the "ID" field of TableDescriptor_Reference,
-			// because the ID of the newly created view descriptor was not
-			// yet known.
-			// We need to do it here.
-			dep.ID = desc.ID
-			backRefMutable.DependedOnBy = append(backRefMutable.DependedOnBy, dep)
+		// update DependsOnBy for all dependencies
+		backRefMutables := make(map[sqlbase.ID]*sqlbase.MutableTableDescriptor, len(n.planDeps))
+		for id, updated := range n.planDeps {
+			backRefMutable := params.p.Tables().getUncommittedTableByID(id).MutableTableDescriptor
+			if backRefMutable == nil {
+				backRefMutable = sqlbase.NewMutableExistingTableDescriptor(*updated.desc.TableDesc())
+			}
+			backRefMutables[id] = backRefMutable
 		}
-		if err := params.p.writeSchemaChange(
-			params.ctx, backRefMutable, sqlbase.InvalidMutationID, "updating procedure reference",
-		); err != nil {
-			return err
+		// Persist the back-references in all referenced table descriptors.
+		for id, updated := range n.planDeps {
+			backRefMutable := backRefMutables[id]
+			for _, dep := range updated.deps {
+				// The logical plan constructor merely registered the dependencies.
+				// It did not populate the "ID" field of TableDescriptor_Reference,
+				// because the ID of the newly created view descriptor was not
+				// yet known.
+				// We need to do it here.
+				dep.ID = desc.ID
+				backRefMutable.DependedOnBy = append(backRefMutable.DependedOnBy, dep)
+			}
+			if err := params.p.writeSchemaChange(
+				params.ctx, backRefMutable, sqlbase.InvalidMutationID, "updating procedure reference",
+			); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -98,11 +111,11 @@ func (n *createProcedureNode) startExec(params runParams) error {
 	var rows []tree.Datums
 	row := tree.Datums{
 		tree.NewDString(string(n.n.Name.TableName)),
-		tree.NewDInt(tree.DInt(n.dbDesc.ID)),
-		tree.NewDInt(tree.DInt(n.scID)),
+		tree.NewDInt(tree.DInt(storeDBID)),
+		tree.NewDInt(tree.DInt(storeSchemaID)),
 		tree.NewDBytes(tree.DBytes(descValue)),
 		tree.NewDInt(tree.DInt(id)),
-		tree.NewDInt(tree.DInt(sqlbase.Procedure)),
+		tree.NewDInt(tree.DInt(routineType)),
 		tree.NewDString(params.p.User()),
 		tree.MakeDTimestamp(timeutil.Now(), time.Second),
 		tree.MakeDTimestamp(timeutil.Now(), time.Second),
@@ -113,6 +126,12 @@ func (n *createProcedureNode) startExec(params runParams) error {
 	rows = append(rows, row)
 	if err := WriteKWDBDesc(params.ctx, params.p.txn, sqlbase.UDRTable, rows, false); err != nil {
 		return err
+	}
+
+	if n.n.SQLFunction != nil {
+		if err := RegisterSQLFunction(params, n.n.SQLFunction); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -145,7 +164,7 @@ func makeProcDesc(
 		params = append(params, tmp)
 	}
 
-	return sqlbase.ProcedureDescriptor{
+	desc := sqlbase.ProcedureDescriptor{
 		Name:       string(procedure.Name.TableName),
 		DbID:       dbID,
 		SchemaID:   schemaID,
@@ -154,5 +173,11 @@ func makeProcDesc(
 		Language:   "SQL",
 		// todo: tyh
 		Privileges: privs,
-	}, nil
+	}
+
+	if procedure.SQLFunction != nil {
+		desc.ReturnType = *procedure.SQLFunction.ReturnType
+	}
+
+	return desc, nil
 }

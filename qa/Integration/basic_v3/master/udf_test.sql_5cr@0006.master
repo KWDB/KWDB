@@ -40,10 +40,10 @@ SQLSTATE: 0A000
 -----------------
 (0 rows)
 > SHOW FUNCTION calculate_distance;
-ERROR: function calculate_distance does not exists or current user does not have privilege on this function
+ERROR: function calculate_distance does not exist
 SQLSTATE: 42704
 > SHOW FUNCTION calculate_factorial;
-ERROR: function calculate_factorial does not exists or current user does not have privilege on this function
+ERROR: function calculate_factorial does not exist
 SQLSTATE: 42704
 > SELECT calculate_distance(0, 0, 1, 1);
 ERROR: unknown function: calculate_distance()
