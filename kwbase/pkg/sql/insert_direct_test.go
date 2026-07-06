@@ -25,6 +25,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
+	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"github.com/lib/pq/oid"
@@ -181,7 +182,6 @@ func TestBuildRowBytesForPrepareTsInsertPrimaryTagGroupingKey(t *testing.T) {
 		evalCtx,
 		tableDesc,
 		1,
-		[]int64{1000, 2000},
 		&ExecutorConfig{},
 	)
 	if err != nil {
@@ -952,35 +952,6 @@ func TestAllConvertFunctions(t *testing.T) {
 			t.Fatal("expected error for invalid geometry, got nil")
 		}
 	})
-
-	// Test convertInt2Value
-	t.Run("convertInt2Value", func(t *testing.T) {
-		// Test valid int2 value (using binary format, not string)
-		// Create a byte slice representing a valid int2 value (e.g., 123 in binary)
-		validInt2 := make([]byte, 2)
-		binary.BigEndian.PutUint16(validInt2, 123)
-		args := [][]byte{validInt2}
-		ok, err := convertInt2Value(args, 0, int2Col)
-		if err != nil {
-			t.Fatalf("expected no error for valid int2 value, got %v", err)
-		}
-		if ok {
-			t.Fatal("expected ok to be false for valid int2 value, got true")
-		}
-
-		// Test invalid int2 value (out of range)
-		// Create a byte slice representing a value outside int16 range
-		invalidInt2 := make([]byte, 2)
-		binary.BigEndian.PutUint16(invalidInt2, 32768) // This is outside int16 range
-		args = [][]byte{invalidInt2}
-		ok, err = convertInt2Value(args, 0, int2Col)
-		if err == nil {
-			t.Fatal("expected error for invalid int2 value, got nil")
-		}
-		if !ok {
-			t.Fatal("expected ok to be true for invalid int2 value, got false")
-		}
-	})
 }
 
 // TestAllFormatFunctions tests all format functions in insert_direct.go
@@ -1016,7 +987,7 @@ func TestAllFormatFunctions(t *testing.T) {
 	float8Col := &sqlbase.ColumnDescriptor{
 		ID:   5,
 		Name: "float8_col",
-		Type: *types.Float4,
+		Type: *types.Float,
 	}
 
 	float4Col := &sqlbase.ColumnDescriptor{
@@ -1253,45 +1224,175 @@ func TestAllFormatFunctions(t *testing.T) {
 		}
 	})
 
-	// Test float4FormatBinary
-	t.Run("float4FormatBinary", func(t *testing.T) {
-		// Test valid float4 binary
-		validFloat4 := make([]byte, 4)
-		binary.BigEndian.PutUint32(validFloat4, math.Float32bits(123.45))
-		args := [][]byte{validFloat4}
-		err := float4FormatBinary(args, 0, float4Col)
-		if err != nil {
-			t.Fatalf("expected no error for valid float4 binary, got %v", err)
-		}
-
-		// Test valid float4 binary (converting to float8)
-		validFloat4 = make([]byte, 4)
-		binary.BigEndian.PutUint32(validFloat4, math.Float32bits(123.45))
-		args = [][]byte{validFloat4}
-		err = float4FormatBinary(args, 0, float8Col)
-		if err != nil {
-			t.Fatalf("expected no error for valid float4 binary, got %v", err)
-		}
-		if len(args[0]) != 4 {
-			t.Fatalf("expected 4 bytes for float4, got %d", len(args[0]))
-		}
-	})
-
 	// Test charFormatBinary
 	t.Run("charFormatBinary", func(t *testing.T) {
 		// Test valid string binary
 		args := [][]byte{[]byte("test")}
 		var rowTimestamps []int64
-		err := charFormatBinary(args, 0, stringCol, false, &rowTimestamps)
+		err := charFormatBinary(ptCtx, args, 0, stringCol, false, &rowTimestamps)
 		if err != nil {
 			t.Fatalf("expected no error for valid string binary, got %v", err)
 		}
 
 		// Test valid boolean binary
 		args = [][]byte{[]byte("true")}
-		err = charFormatBinary(args, 0, boolCol, false, &rowTimestamps)
+		err = charFormatBinary(ptCtx, args, 0, boolCol, false, &rowTimestamps)
 		if err != nil {
 			t.Fatalf("expected no error for valid boolean binary, got %v", err)
+		}
+	})
+}
+
+func TestPrepareBinaryFormatRejectsShortInputs(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	timestampCol := &sqlbase.ColumnDescriptor{
+		ID:   1,
+		Name: "timestamp_col",
+		Type: *types.Timestamp,
+	}
+	stringCol := &sqlbase.ColumnDescriptor{
+		ID:   2,
+		Name: "string_col",
+		Type: *types.String,
+	}
+	float8Col := &sqlbase.ColumnDescriptor{
+		ID:   3,
+		Name: "float8_col",
+		Type: *types.Float,
+	}
+	float4Col := &sqlbase.ColumnDescriptor{
+		ID:   4,
+		Name: "float4_col",
+		Type: *types.Float4,
+	}
+
+	testCases := []struct {
+		name string
+		run  func() error
+	}{
+		{
+			name: "int_binary_to_timestamp_requires_8_bytes",
+			run: func() error {
+				args := [][]byte{{0, 0, 0, 1}}
+				var rowTimestamps []int64
+				return intFormatBinary(args, 0, timestampCol, oid.T_int4, true, &rowTimestamps)
+			},
+		},
+		{
+			name: "int_binary_to_string_requires_4_bytes",
+			run: func() error {
+				args := [][]byte{{0, 1}}
+				var rowTimestamps []int64
+				return intFormatBinary(args, 0, stringCol, oid.T_int2, false, &rowTimestamps)
+			},
+		},
+		{
+			name: "float8_binary_requires_8_bytes",
+			run: func() error {
+				args := [][]byte{{0, 0, 0, 1}}
+				return float8FormatBinary(args, 0, float8Col)
+			},
+		},
+		{
+			name: "float4_binary_requires_4_bytes",
+			run: func() error {
+				args := [][]byte{{0, 1}}
+				return float4FormatBinary(args, 0, float4Col)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Fatalf("expected error for short binary input, got panic: %v", r)
+				}
+			}()
+
+			if err := tc.run(); err == nil {
+				t.Fatal("expected error for short binary input, got nil")
+			}
+		})
+	}
+}
+
+func TestPrepareTypeCheckRegressionCases(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	ptCtx := tree.NewParseTimeContext(timeutil.Now())
+
+	t.Run("binary_int4_to_int2_rejects_out_of_range_value", func(t *testing.T) {
+		// Regression for prepared int parameters: validation must use the target column
+		// width, so an int4 value that exceeds int2 cannot be encoded into an int2
+		// time-series payload.
+		cols := []sqlbase.ColumnDescriptor{{
+			ID:   1,
+			Name: "int2_col",
+			Type: *types.Int2,
+		}}
+		arg := make([]byte, 4)
+		binary.BigEndian.PutUint32(arg, 32768)
+		args := [][]byte{arg}
+		_, err := TsprepareTypeCheck(
+			ptCtx,
+			args,
+			[]oid.Oid{oid.T_int4},
+			[]pgwirebase.FormatCode{pgwirebase.FormatBinary},
+			&cols,
+			DirectInsert{RowNum: 1, ColNum: 1, IDMap: []int{0}, PosMap: []int{0}},
+		)
+		if !testutils.IsError(err, "integer out of range") {
+			t.Fatalf("expected int2 out of range error, got %v", err)
+		}
+	})
+
+	t.Run("binary_string_to_timestamp_uses_string_parser", func(t *testing.T) {
+		// Binary format only describes the pgwire argument encoding. A varchar
+		// argument targeting a timestamp column is still string content and must be
+		// parsed as a timestamp string, not decoded as an 8-byte binary timestamp.
+		cols := []sqlbase.ColumnDescriptor{{
+			ID:   1,
+			Name: "ts_col",
+			Type: *types.Timestamp,
+		}}
+		args := [][]byte{[]byte("2023-01-01 12:00:00")}
+		_, err := TsprepareTypeCheck(
+			ptCtx,
+			args,
+			[]oid.Oid{oid.T_varchar},
+			[]pgwirebase.FormatCode{pgwirebase.FormatBinary},
+			&cols,
+			DirectInsert{RowNum: 1, ColNum: 1, IDMap: []int{0}, PosMap: []int{0}},
+		)
+		if err != nil {
+			t.Fatalf("expected binary string timestamp to be parsed, got %v", err)
+		}
+		if len(args[0]) != 8 {
+			t.Fatalf("expected timestamp payload to be 8 bytes, got %d", len(args[0]))
+		}
+	})
+
+	t.Run("unknown_infer_type_returns_error", func(t *testing.T) {
+		// Unknown or unsupported inferred argument types must fail type checking.
+		// Without this default error path, unsupported placeholders could pass
+		// through prepare conversion unchanged.
+		cols := []sqlbase.ColumnDescriptor{{
+			ID:   1,
+			Name: "int4_col",
+			Type: *types.Int4,
+		}}
+		args := [][]byte{[]byte("1")}
+		_, err := TsprepareTypeCheck(
+			ptCtx,
+			args,
+			[]oid.Oid{oid.T_unknown},
+			[]pgwirebase.FormatCode{pgwirebase.FormatText},
+			&cols,
+			DirectInsert{RowNum: 1, ColNum: 1, IDMap: []int{0}, PosMap: []int{0}},
+		)
+		if !testutils.IsError(err, `could not resolve "1" as INT4 type`) {
+			t.Fatalf("expected datatype mismatch for unknown infer type, got %v", err)
 		}
 	})
 }
@@ -1443,7 +1544,7 @@ func TestAllDirectInsertFunctions(t *testing.T) {
 			PosMap: []int{0, 1, 2},
 		}
 
-		_, _, err := TsprepareTypeCheck(ptCtx, args, inferTypes, formatCodes, &cols, di)
+		_, err := TsprepareTypeCheck(ptCtx, args, inferTypes, formatCodes, &cols, di)
 		if err != nil {
 			t.Fatalf("expected no error for TsprepareTypeCheck, got %v", err)
 		}
@@ -1526,14 +1627,11 @@ func TestAllDirectInsertFunctions(t *testing.T) {
 		// Create eval context
 		evalCtx := tree.EvalContext{}
 
-		// Create row timestamps
-		rowTimestamps := []int64{1672560000000}
-
 		// Create executor config
 		cfg := &ExecutorConfig{}
 
 		// Build row bytes
-		err = BuildRowBytesForPrepareTsInsert(ptCtx, args, dit, di, evalCtx, tableDesc, 1, rowTimestamps, cfg)
+		err = BuildRowBytesForPrepareTsInsert(ptCtx, args, dit, di, evalCtx, tableDesc, 1, cfg)
 		if err != nil {
 			t.Fatalf("expected no error for BuildRowBytesForPrepareTsInsert, got %v", err)
 		}
