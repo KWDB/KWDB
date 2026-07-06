@@ -167,7 +167,7 @@ CREATE TABLE
                        └── ts scan |                                                        |
                                    | ts-table                                               | lineitem
                                    | access mode                                            | metaTable
-                                   | filter                                                 | l_shipdate <= '1998-09-13 00:00:00+00:00'
+                                   | filter                                                 | l_shipdate <= '1998-09-13 00:00:00'
                                    | block filter[l_shipdate]                               | [ - 905644800000]
 (37 rows)
 > explain select
@@ -381,7 +381,7 @@ CREATE TABLE
                             │    └── ts scan      |                                      |
                             │                     | ts-table                             | lineitem
                             │                     | access mode                          | metaTable
-                            │                     | filter                               | l_shipdate > '1995-03-27 00:00:00+00:00'
+                            │                     | filter                               | l_shipdate > '1995-03-27 00:00:00'
                             │                     | block filter[l_shipdate]             | [796262400000 - ]
                             └── hash-join         |                                      |
                                  │                | type                                 | inner
@@ -390,7 +390,7 @@ CREATE TABLE
                                  │    └── ts scan |                                      |
                                  │                | ts-table                             | orders
                                  │                | access mode                          | metaTable
-                                 │                | filter                               | o_orderdate < '1995-03-27 00:00:00+00:00'
+                                 │                | filter                               | o_orderdate < '1995-03-27 00:00:00'
                                  │                | block filter[o_orderdate]            | [ - 796262400000]
                                  └── synchronizer |                                      |
                                       └── ts scan |                                      |
@@ -420,8 +420,8 @@ CREATE TABLE
             o_orderpriority
         order by
             o_orderpriority limit 1;
-                  tree                  |           field           |                                         description
-----------------------------------------+---------------------------+-----------------------------------------------------------------------------------------------
+                  tree                  |           field           |                                   description
+----------------------------------------+---------------------------+-----------------------------------------------------------------------------------
                                         | distributed               | true
                                         | vectorized                | false
   limit                                 |                           |
@@ -441,7 +441,7 @@ CREATE TABLE
                        │    └── ts scan |                           |
                        │                | ts-table                  | orders
                        │                | access mode               | metaTable
-                       │                | filter                    | (o_orderdate >= '1997-01-01 00:00:00+00:00') AND (o_orderdate < '1997-04-01 00:00:00+00:00')
+                       │                | filter                    | (o_orderdate >= '1997-01-01 00:00:00') AND (o_orderdate < '1997-04-01 00:00:00')
                        │                | block filter[o_orderdate] | [852076800000 - 859852800000]
                        └── synchronizer |                           |
                             └── ts scan |                           |
@@ -473,8 +473,8 @@ CREATE TABLE
             n_name
         order by
             revenue desc limit 1;
-                            tree                            |                field                 |                                         description
-------------------------------------------------------------+--------------------------------------+-----------------------------------------------------------------------------------------------
+                            tree                            |                field                 |                                   description
+------------------------------------------------------------+--------------------------------------+-----------------------------------------------------------------------------------
                                                             | distributed                          | true
                                                             | vectorized                           | false
   limit                                                     |                                      |
@@ -502,7 +502,7 @@ CREATE TABLE
                             │    └── ts scan                |                                      |
                             │                               | ts-table                             | orders
                             │                               | access mode                          | metaTable
-                            │                               | filter                               | (o_orderdate >= '1994-01-01 00:00:00+00:00') AND (o_orderdate < '1995-01-01 00:00:00+00:00')
+                            │                               | filter                               | (o_orderdate >= '1994-01-01 00:00:00') AND (o_orderdate < '1995-01-01 00:00:00')
                             │                               | block filter[o_orderdate]            | [757382400000 - 788918400000]
                             └── hash-join                   |                                      |
                                  │                          | type                                 | inner
@@ -541,8 +541,8 @@ CREATE TABLE
           and l_shipdate < date '1994-01-01' + interval '1' year
           and l_discount between 0.04 - 0.01 and 0.04 + 0.01
           and l_quantity < 24 limit 1;
-        tree        |            field             |                                                                                description
---------------------+------------------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+        tree        |            field             |                                                                          description
+--------------------+------------------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
                     | distributed                  | true
                     | vectorized                   | false
   group             |                              |
@@ -556,7 +556,7 @@ CREATE TABLE
         └── ts scan |                              |
                     | ts-table                     | lineitem
                     | access mode                  | metaTable
-                    | filter                       | (((l_discount >= 0.03) AND (l_discount <= 0.05)) AND ((l_shipdate >= '1994-01-01 00:00:00+00:00') AND (l_shipdate < '1995-01-01 00:00:00+00:00'))) AND (l_quantity < 24.0)
+                    | filter                       | (((l_discount >= 0.03) AND (l_discount <= 0.05)) AND ((l_shipdate >= '1994-01-01 00:00:00') AND (l_shipdate < '1995-01-01 00:00:00'))) AND (l_quantity < 24.0)
                     | block filter[l_discount]     | [0.03 - 0.05]
                     | block filter[l_shipdate]     | [757382400000 - 788918400000]
                     | block filter[l_quantity]     | [ - 23.999999999999996]
@@ -659,7 +659,7 @@ CREATE TABLE
                                  └── ts scan                |                          |
                                                             | ts-table                 | lineitem
                                                             | access mode              | metaTable
-                                                            | filter                   | (l_shipdate >= '1995-01-01 00:00:00+00:00') AND (l_shipdate <= '1996-12-31 00:00:00+00:00')
+                                                            | filter                   | (l_shipdate >= '1995-01-01 00:00:00') AND (l_shipdate <= '1996-12-31 00:00:00')
                                                             | block filter[l_shipdate] | [788918400000 - 851990400000]
 (59 rows)
 > explain select
@@ -699,8 +699,8 @@ CREATE TABLE
             o_year
         order by
             o_year limit 1;
-                                      tree                                      |                        field                         |                                          description
---------------------------------------------------------------------------------+------------------------------------------------------+------------------------------------------------------------------------------------------------
+                                      tree                                      |                        field                         |                                    description
+--------------------------------------------------------------------------------+------------------------------------------------------+------------------------------------------------------------------------------------
                                                                                 | distributed                                          | true
                                                                                 | vectorized                                           | false
   render                                                                        |                                                      |
@@ -754,7 +754,7 @@ CREATE TABLE
                                            │         │    └── ts scan           |                                                      |
                                            │         │                          | ts-table                                             | orders
                                            │         │                          | access mode                                          | metaTable
-                                           │         │                          | filter                                               | (o_orderdate >= '1995-01-01 00:00:00+00:00') AND (o_orderdate <= '1996-12-31 00:00:00+00:00')
+                                           │         │                          | filter                                               | (o_orderdate >= '1995-01-01 00:00:00') AND (o_orderdate <= '1996-12-31 00:00:00')
                                            │         │                          | block filter[o_orderdate]                            | [788918400000 - 851990400000]
                                            │         └── hash-join              |                                                      |
                                            │              │                     | type                                                 | inner
@@ -904,8 +904,8 @@ CREATE TABLE
             c_comment
         order by
             revenue desc limit 20;
-                          tree                         |                field                 |                                         description
--------------------------------------------------------+--------------------------------------+-----------------------------------------------------------------------------------------------
+                          tree                         |                field                 |                                   description
+-------------------------------------------------------+--------------------------------------+-----------------------------------------------------------------------------------
                                                        | distributed                          | true
                                                        | vectorized                           | false
   render                                               |                                      |
@@ -961,7 +961,7 @@ CREATE TABLE
                                       │    └── ts scan |                                      |
                                       │                | ts-table                             | orders
                                       │                | access mode                          | metaTable
-                                      │                | filter                               | (o_orderdate >= '1993-04-01 00:00:00+00:00') AND (o_orderdate < '1993-07-01 00:00:00+00:00')
+                                      │                | filter                               | (o_orderdate >= '1993-04-01 00:00:00') AND (o_orderdate < '1993-07-01 00:00:00')
                                       │                | block filter[o_orderdate]            | [733622400000 - 741484800000]
                                       └── synchronizer |                                      |
                                            └── ts scan |                                      |
@@ -1095,8 +1095,8 @@ CREATE TABLE
             l_shipmode
         order by
             l_shipmode limit 1;
-                  tree                  |                                             field                                             |                                                                                                  description
-----------------------------------------+-----------------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                  tree                  |                                             field                                             |                                                                                            description
+----------------------------------------+-----------------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
                                         | distributed                                                                                   | true
                                         | vectorized                                                                                    | false
   limit                                 |                                                                                               |
@@ -1123,7 +1123,7 @@ CREATE TABLE
                             └── ts scan |                                                                                               |
                                         | ts-table                                                                                      | lineitem
                                         | access mode                                                                                   | metaTable
-                                        | filter                                                                                        | (((l_shipmode IN ('FOB', 'TRUCK')) AND ((l_receiptdate >= '1997-01-01 00:00:00+00:00') AND (l_receiptdate < '1998-01-01 00:00:00+00:00'))) AND (l_commitdate < l_receiptdate)) AND (l_shipdate < l_commitdate)
+                                        | filter                                                                                        | (((l_shipmode IN ('FOB', 'TRUCK')) AND ((l_receiptdate >= '1997-01-01 00:00:00') AND (l_receiptdate < '1998-01-01 00:00:00'))) AND (l_commitdate < l_receiptdate)) AND (l_shipdate < l_commitdate)
                                         | block filter[l_shipmode]                                                                      | ['FOB' - 'FOB']; ['TRUCK' - 'TRUCK']
                                         | block filter[l_receiptdate]                                                                   | [852076800000 - 883612800000]
 (29 rows)
@@ -1218,7 +1218,7 @@ CREATE TABLE
                        └── ts scan |                                                                                       |
                                    | ts-table                                                                              | lineitem
                                    | access mode                                                                           | metaTable
-                                   | filter                                                                                | (l_shipdate >= '1997-01-01 00:00:00+00:00') AND (l_shipdate < '1997-02-01 00:00:00+00:00')
+                                   | filter                                                                                | (l_shipdate >= '1997-01-01 00:00:00') AND (l_shipdate < '1997-02-01 00:00:00')
                                    | block filter[l_shipdate]                                                              | [852076800000 - 854755200000]
 (24 rows)
 > explain select
@@ -1554,8 +1554,8 @@ CREATE TABLE
           and n_name = 'MOZAMBIQUE'
         order by
             s_name limit 1;
-                                 tree                                 |          field           |                                        description
-----------------------------------------------------------------------+--------------------------+---------------------------------------------------------------------------------------------
+                                 tree                                 |          field           |                                  description
+----------------------------------------------------------------------+--------------------------+---------------------------------------------------------------------------------
                                                                       | distributed              | false
                                                                       | vectorized               | false
   render                                                              |                          |
@@ -1615,7 +1615,7 @@ CREATE TABLE
                             │                        └── ts scan      |                          |
                             │                                         | ts-table                 | lineitem
                             │                                         | access mode              | metaTable
-                            │                                         | filter                   | (l_shipdate >= '1993-01-01 00:00:00+00:00') AND (l_shipdate < '1994-01-01 00:00:00+00:00')
+                            │                                         | filter                   | (l_shipdate >= '1993-01-01 00:00:00') AND (l_shipdate < '1994-01-01 00:00:00')
                             │                                         | block filter[l_shipdate] | [725846400000 - 757382400000]
                             └── distinct                              |                          |
                                  │                                    | engine type              | time series
@@ -2126,7 +2126,7 @@ CREATE STATISTICS
                        └── ts scan |                                                        |
                                    | ts-table                                               | lineitem
                                    | access mode                                            | metaTable
-                                   | filter                                                 | l_shipdate <= '1998-09-13 00:00:00+00:00'
+                                   | filter                                                 | l_shipdate <= '1998-09-13 00:00:00'
                                    | block filter[l_shipdate]                               | [ - 905644800000]
 (37 rows)
 > explain select
@@ -2340,7 +2340,7 @@ CREATE STATISTICS
                             │    └── ts scan      |                                      |
                             │                     | ts-table                             | lineitem
                             │                     | access mode                          | metaTable
-                            │                     | filter                               | l_shipdate > '1995-03-27 00:00:00+00:00'
+                            │                     | filter                               | l_shipdate > '1995-03-27 00:00:00'
                             │                     | block filter[l_shipdate]             | [796262400000 - ]
                             └── hash-join         |                                      |
                                  │                | type                                 | inner
@@ -2349,7 +2349,7 @@ CREATE STATISTICS
                                  │    └── ts scan |                                      |
                                  │                | ts-table                             | orders
                                  │                | access mode                          | metaTable
-                                 │                | filter                               | o_orderdate < '1995-03-27 00:00:00+00:00'
+                                 │                | filter                               | o_orderdate < '1995-03-27 00:00:00'
                                  │                | block filter[o_orderdate]            | [ - 796262400000]
                                  └── synchronizer |                                      |
                                       └── ts scan |                                      |
@@ -2379,8 +2379,8 @@ CREATE STATISTICS
             o_orderpriority
         order by
             o_orderpriority limit 1;
-                  tree                  |           field           |                                         description
-----------------------------------------+---------------------------+-----------------------------------------------------------------------------------------------
+                  tree                  |           field           |                                   description
+----------------------------------------+---------------------------+-----------------------------------------------------------------------------------
                                         | distributed               | true
                                         | vectorized                | false
   limit                                 |                           |
@@ -2401,7 +2401,7 @@ CREATE STATISTICS
                        │    └── ts scan |                           |
                        │                | ts-table                  | orders
                        │                | access mode               | metaTable
-                       │                | filter                    | (o_orderdate >= '1997-01-01 00:00:00+00:00') AND (o_orderdate < '1997-04-01 00:00:00+00:00')
+                       │                | filter                    | (o_orderdate >= '1997-01-01 00:00:00') AND (o_orderdate < '1997-04-01 00:00:00')
                        │                | block filter[o_orderdate] | [852076800000 - 859852800000]
                        └── synchronizer |                           |
                             └── ts scan |                           |
@@ -2433,8 +2433,8 @@ CREATE STATISTICS
             n_name
         order by
             revenue desc limit 1;
-                          tree                         |                field                 |                                         description
--------------------------------------------------------+--------------------------------------+-----------------------------------------------------------------------------------------------
+                          tree                         |                field                 |                                   description
+-------------------------------------------------------+--------------------------------------+-----------------------------------------------------------------------------------
                                                        | distributed                          | true
                                                        | vectorized                           | false
   limit                                                |                                      |
@@ -2489,7 +2489,7 @@ CREATE STATISTICS
                                       └── ts scan      |                                      |
                                                        | ts-table                             | orders
                                                        | access mode                          | metaTable
-                                                       | filter                               | (o_orderdate >= '1994-01-01 00:00:00+00:00') AND (o_orderdate < '1995-01-01 00:00:00+00:00')
+                                                       | filter                               | (o_orderdate >= '1994-01-01 00:00:00') AND (o_orderdate < '1995-01-01 00:00:00')
                                                        | block filter[o_orderdate]            | [757382400000 - 788918400000]
 (56 rows)
 > explain select
@@ -2501,8 +2501,8 @@ CREATE STATISTICS
           and l_shipdate < date '1994-01-01' + interval '1' year
           and l_discount between 0.04 - 0.01 and 0.04 + 0.01
           and l_quantity < 24 limit 1;
-        tree        |            field             |                                                                                description
---------------------+------------------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+        tree        |            field             |                                                                          description
+--------------------+------------------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
                     | distributed                  | true
                     | vectorized                   | false
   group             |                              |
@@ -2516,7 +2516,7 @@ CREATE STATISTICS
         └── ts scan |                              |
                     | ts-table                     | lineitem
                     | access mode                  | metaTable
-                    | filter                       | (((l_shipdate >= '1994-01-01 00:00:00+00:00') AND (l_shipdate < '1995-01-01 00:00:00+00:00')) AND ((l_discount >= 0.03) AND (l_discount <= 0.05))) AND (l_quantity < 24.0)
+                    | filter                       | (((l_shipdate >= '1994-01-01 00:00:00') AND (l_shipdate < '1995-01-01 00:00:00')) AND ((l_discount >= 0.03) AND (l_discount <= 0.05))) AND (l_quantity < 24.0)
                     | block filter[l_shipdate]     | [757382400000 - 788918400000]
                     | block filter[l_discount]     | [0.03 - 0.05]
                     | block filter[l_quantity]     | [ - 23.999999999999996]
@@ -2587,7 +2587,7 @@ CREATE STATISTICS
                        │    └── ts scan                     |                          |
                        │                                    | ts-table                 | lineitem
                        │                                    | access mode              | metaTable
-                       │                                    | filter                   | (l_shipdate >= '1995-01-01 00:00:00+00:00') AND (l_shipdate <= '1996-12-31 00:00:00+00:00')
+                       │                                    | filter                   | (l_shipdate >= '1995-01-01 00:00:00') AND (l_shipdate <= '1996-12-31 00:00:00')
                        │                                    | block filter[l_shipdate] | [788918400000 - 851990400000]
                        └── hash-join                        |                          |
                             │                               | type                     | inner
@@ -2659,8 +2659,8 @@ CREATE STATISTICS
             o_year
         order by
             o_year limit 1;
-                                    tree                                   |                        field                         |                                          description
----------------------------------------------------------------------------+------------------------------------------------------+------------------------------------------------------------------------------------------------
+                                    tree                                   |                        field                         |                                    description
+---------------------------------------------------------------------------+------------------------------------------------------+------------------------------------------------------------------------------------
                                                                            | distributed                                          | true
                                                                            | vectorized                                           | false
   render                                                                   |                                                      |
@@ -2734,7 +2734,7 @@ CREATE STATISTICS
                                            │                   └── ts scan |                                                      |
                                            │                               | ts-table                                             | orders
                                            │                               | access mode                                          | metaTable
-                                           │                               | filter                                               | (o_orderdate >= '1995-01-01 00:00:00+00:00') AND (o_orderdate <= '1996-12-31 00:00:00+00:00')
+                                           │                               | filter                                               | (o_orderdate >= '1995-01-01 00:00:00') AND (o_orderdate <= '1996-12-31 00:00:00')
                                            │                               | block filter[o_orderdate]                            | [788918400000 - 851990400000]
                                            └── synchronizer                |                                                      |
                                                 └── ts scan                |                                                      |
@@ -2864,8 +2864,8 @@ CREATE STATISTICS
             c_comment
         order by
             revenue desc limit 20;
-                          tree                         |                field                 |                                         description
--------------------------------------------------------+--------------------------------------+-----------------------------------------------------------------------------------------------
+                          tree                         |                field                 |                                   description
+-------------------------------------------------------+--------------------------------------+-----------------------------------------------------------------------------------
                                                        | distributed                          | true
                                                        | vectorized                           | false
   render                                               |                                      |
@@ -2927,7 +2927,7 @@ CREATE STATISTICS
                                            └── ts scan |                                      |
                                                        | ts-table                             | orders
                                                        | access mode                          | metaTable
-                                                       | filter                               | (o_orderdate >= '1993-04-01 00:00:00+00:00') AND (o_orderdate < '1993-07-01 00:00:00+00:00')
+                                                       | filter                               | (o_orderdate >= '1993-04-01 00:00:00') AND (o_orderdate < '1993-07-01 00:00:00')
                                                        | block filter[o_orderdate]            | [733622400000 - 741484800000]
 (63 rows)
 > explain select
@@ -3055,8 +3055,8 @@ CREATE STATISTICS
             l_shipmode
         order by
             l_shipmode limit 1;
-                  tree                  |                                             field                                             |                                                                                                  description
-----------------------------------------+-----------------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                  tree                  |                                             field                                             |                                                                                            description
+----------------------------------------+-----------------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
                                         | distributed                                                                                   | true
                                         | vectorized                                                                                    | false
   limit                                 |                                                                                               |
@@ -3083,7 +3083,7 @@ CREATE STATISTICS
                             └── ts scan |                                                                                               |
                                         | ts-table                                                                                      | lineitem
                                         | access mode                                                                                   | metaTable
-                                        | filter                                                                                        | ((((l_receiptdate >= '1997-01-01 00:00:00+00:00') AND (l_receiptdate < '1998-01-01 00:00:00+00:00')) AND (l_shipmode IN ('FOB', 'TRUCK'))) AND (l_commitdate < l_receiptdate)) AND (l_shipdate < l_commitdate)
+                                        | filter                                                                                        | ((((l_receiptdate >= '1997-01-01 00:00:00') AND (l_receiptdate < '1998-01-01 00:00:00')) AND (l_shipmode IN ('FOB', 'TRUCK'))) AND (l_commitdate < l_receiptdate)) AND (l_shipdate < l_commitdate)
                                         | block filter[l_receiptdate]                                                                   | [852076800000 - 883612800000]
                                         | block filter[l_shipmode]                                                                      | ['FOB' - 'FOB']; ['TRUCK' - 'TRUCK']
 (29 rows)
@@ -3178,7 +3178,7 @@ CREATE STATISTICS
                        └── ts scan |                                                                                       |
                                    | ts-table                                                                              | lineitem
                                    | access mode                                                                           | metaTable
-                                   | filter                                                                                | (l_shipdate >= '1997-01-01 00:00:00+00:00') AND (l_shipdate < '1997-02-01 00:00:00+00:00')
+                                   | filter                                                                                | (l_shipdate >= '1997-01-01 00:00:00') AND (l_shipdate < '1997-02-01 00:00:00')
                                    | block filter[l_shipdate]                                                              | [852076800000 - 854755200000]
 (24 rows)
 > explain select
@@ -3524,8 +3524,8 @@ CREATE STATISTICS
           and n_name = 'MOZAMBIQUE'
         order by
             s_name limit 1;
-                                    tree                                   |          field           |                                        description
----------------------------------------------------------------------------+--------------------------+---------------------------------------------------------------------------------------------
+                                    tree                                   |          field           |                                  description
+---------------------------------------------------------------------------+--------------------------+---------------------------------------------------------------------------------
                                                                            | distributed              | false
                                                                            | vectorized               | false
   render                                                                   |                          |
@@ -3578,7 +3578,7 @@ CREATE STATISTICS
                   │         │                             └── ts scan      |                          |
                   │         │                                              | ts-table                 | lineitem
                   │         │                                              | access mode              | metaTable
-                  │         │                                              | filter                   | (l_shipdate >= '1993-01-01 00:00:00+00:00') AND (l_shipdate < '1994-01-01 00:00:00+00:00')
+                  │         │                                              | filter                   | (l_shipdate >= '1993-01-01 00:00:00') AND (l_shipdate < '1994-01-01 00:00:00')
                   │         │                                              | block filter[l_shipdate] | [725846400000 - 757382400000]
                   │         └── synchronizer                               |                          |
                   │              └── ts scan                               |                          |

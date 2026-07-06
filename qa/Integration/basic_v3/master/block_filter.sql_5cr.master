@@ -2564,28 +2564,28 @@ CREATE TABLE
 > INSERT INTO test_block_filter.t12 VALUES ('2023-01-01 07:58:12.459372', '1970-1-1 08:0:0','1970-1-1 08:0:0', '1970-1-1 08:0:02', '1970-1-1 08:0:01',1);
 INSERT 1
 > explain select * from test_block_filter.t12 where e1 = '1970-01-01 08:00:00' and e2 = '1970-01-01 08:00:00';
-      tree     |      field       |                                description
----------------+------------------+----------------------------------------------------------------------------
+      tree     |      field       |                             description
+---------------+------------------+----------------------------------------------------------------------
                | distributed      | true
                | vectorized       | false
   synchronizer |                  |
    └── ts scan |                  |
                | ts-table         | t12
                | access mode      | tableTableMeta
-               | filter           | (e1 = '1970-01-01 08:00:00+00:00') AND (e2 = '1970-01-01 08:00:00+00:00')
+               | filter           | (e1 = '1970-01-01 08:00:00+00:00') AND (e2 = '1970-01-01 08:00:00')
                | block filter[e1] | [28800000000000 - 28800000000000]
                | block filter[e2] | [28800000000000 - 28800000000000]
 (9 rows)
 > explain select * from test_block_filter.t12 where e3 = '1970-01-01 08:00:00' and e4 = '1970-01-01 08:00:00';
-      tree     |      field       |                                description
----------------+------------------+----------------------------------------------------------------------------
+      tree     |      field       |                             description
+---------------+------------------+----------------------------------------------------------------------
                | distributed      | true
                | vectorized       | false
   synchronizer |                  |
    └── ts scan |                  |
                | ts-table         | t12
                | access mode      | tableTableMeta
-               | filter           | (e3 = '1970-01-01 08:00:00+00:00') AND (e4 = '1970-01-01 08:00:00+00:00')
+               | filter           | (e3 = '1970-01-01 08:00:00+00:00') AND (e4 = '1970-01-01 08:00:00')
                | block filter[e3] | [28800000000 - 28800000000]
                | block filter[e4] | [28800000000 - 28800000000]
 (9 rows)

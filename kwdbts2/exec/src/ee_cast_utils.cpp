@@ -574,10 +574,14 @@ KStatus parseTimeWithTz(KString timestr, k_int64 scale, k_int64 *time, char deli
     }
     if (pos!= std::string::npos) {
         std::string num_str = timestr.substr(0, pos);
-        int year = std::stoi(num_str);
-        if (year > 2970 || year < 0) {
-          EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE,
-                                        "Timestamp/TimestampTZ out of range");
+        try {
+          int year = std::stoi(num_str);
+          if (year > 2970 || year < 0) {
+            EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE, "Timestamp/TimestampTZ out of range");
+          }
+        } catch (const std::invalid_argument& e) {
+          EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_DATETIME_FORMAT,
+                                        "parsing as type timestamp: missing required date fields");
         }
     }
     return FAIL;
@@ -694,8 +698,27 @@ KStatus parseLocaltimeDst(KString timestr, k_int64 scale, k_int64 *utime, char d
       !validateTm(&tm)) {
     // if parse failed, try "%Y-%m-%d" format
     str = kwdbStrpTime(timestr.c_str(), "%Y-%m-%d", &tm);
-    if (str == NULL || (((str - timestr.data()) < len) && (*str != '.')) ||
-        !validateTm(&tm)) {
+    if (str == NULL) {
+      size_t pos = timestr.find('-');
+      if (pos == 0) {
+        pos = timestr.find('-', 1);
+      }
+      if (pos != std::string::npos) {
+        std::string num_str = timestr.substr(0, pos);
+        try {
+          int year = std::stoi(num_str);
+          if (year > 2970 || year < 0) {
+            EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE, "Timestamp/TimestampTZ out of range");
+          }
+        } catch (const std::invalid_argument& e) {
+          EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_DATETIME_FORMAT,
+                                        "parsing as type timestamp: missing required date fields");
+        }
+      }
+      return FAIL;
+    }
+
+    if ((((str - timestr.data()) < len) && (*str != '.')) || !validateTm(&tm)) {
       return FAIL;
     }
   }

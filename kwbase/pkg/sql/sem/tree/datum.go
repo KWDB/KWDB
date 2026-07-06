@@ -2471,7 +2471,7 @@ func (d *DTimestamp) Format(ctx *FmtCtx) {
 	if !bareStrings {
 		ctx.WriteByte('\'')
 	}
-	ctx.WriteString(d.UTC().Format(TimestampOutputFormat))
+	ctx.WriteString(d.UTC().Format(DateTimeOutputFormat))
 	if !bareStrings {
 		ctx.WriteByte('\'')
 	}
