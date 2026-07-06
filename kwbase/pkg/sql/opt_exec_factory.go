@@ -41,6 +41,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/exec"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/exec/execbuilder"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/procedure"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/row"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/rowexec"
@@ -148,6 +150,7 @@ func (ef *execFactory) ConstructScan(
 
 // ConstructTSScan is part of the exec.Factory interface.
 func (ef *execFactory) ConstructTSScan(
+	md *opt.Metadata,
 	table cat.Table,
 	private *memo.TSScanPrivate,
 	tagFilter, primaryFilter, tagIndexFilter []tree.TypedExpr,
@@ -204,6 +207,14 @@ func (ef *execFactory) ConstructTSScan(
 		}
 		count++
 	}
+
+	// Add time series hidden columns to result columns if needed
+	var err error
+	resultCols, err = ef.addTsHiddenResultColumns(md, table, tsScan, private, resultCols)
+	if err != nil {
+		return tsScan, err
+	}
+
 	tsScan.filterVars = tree.MakeIndexedVarHelper(tsScan, len(resultCols))
 	tsScan.resultColumns = resultCols
 	tsScan.AccessMode = execinfrapb.TSTableReadMode(flags.AccessMode)
@@ -1650,6 +1661,7 @@ func (ef *execFactory) ConstructTSDelete(
 	primaryTagID []uint32,
 	primaryTagValues, partOfPTagValue [][]byte,
 	isOutOfRange bool,
+	cdcData []byte,
 ) (exec.Node, error) {
 	tsDel := tsDeleteNodePool.Get().(*tsDeleteNode)
 	tsDel.nodeIDs = nodeIDs
@@ -1661,6 +1673,7 @@ func (ef *execFactory) ConstructTSDelete(
 	tsDel.partOfPTagValue = partOfPTagValue
 	tsDel.spans = spans
 	tsDel.wrongPTag = isOutOfRange
+	tsDel.cdcData = cdcData
 
 	return tsDel, nil
 }
@@ -1672,6 +1685,7 @@ func (ef *execFactory) ConstructTSTagUpdate(
 	pTagValueNotExist bool,
 	startKey, endKey roachpb.Key,
 	osnID uint64,
+	cdcData []byte,
 ) (exec.Node, error) {
 	tsTagUpdate := tsTagUpdateNodePool.Get().(*tsTagUpdateNode)
 	tsTagUpdate.nodeIDs = nodeIDs
@@ -1683,6 +1697,7 @@ func (ef *execFactory) ConstructTSTagUpdate(
 	tsTagUpdate.startKey = startKey
 	tsTagUpdate.endKey = endKey
 	tsTagUpdate.osnID = osnID
+	tsTagUpdate.cdcData = cdcData
 
 	return tsTagUpdate, nil
 }
@@ -2642,7 +2657,8 @@ func makeScanColumnsConfig(table cat.Table, cols exec.ColumnOrdinalSet) scanColu
 
 // MakeTSSpans make TSSpans and assign it to tsScanNode.
 func (ef *execFactory) MakeTSSpans(e opt.Expr, n exec.Node, m *memo.Memo) (tight bool) {
-	out := new(constraint.Constraint)
+	tsSpanOut := new(constraint.Constraint)
+	osnSpanOut := new(constraint.Constraint)
 	switch tn := n.(type) {
 	case *synchronizerNode:
 		if tsScan, ok := tn.plan.(*tsScanNode); ok {
@@ -2651,7 +2667,14 @@ func (ef *execFactory) MakeTSSpans(e opt.Expr, n exec.Node, m *memo.Memo) (tight
 		return false
 	case *tsScanNode:
 		tabID := m.Metadata().GetTableIDByObjectID(tn.Table.ID())
-		tight := ef.MakeTSSpansForExpr(e, out, tabID)
+		tight := ef.MakeTSSpansForExpr(e, tsSpanOut, tabID)
+		var osnTight bool
+		if !tight {
+			osnTight = ef.MakeOsnSpansForExpr(e, osnSpanOut, tabID, m.Metadata())
+			if osnTight {
+				tight = true
+			}
+		}
 		typ := tn.Table.Column(0).DatumType()
 		var precision int32
 		if !typ.InternalType.TimePrecisionIsSet && typ.InternalType.Precision == 0 {
@@ -2659,7 +2682,8 @@ func (ef *execFactory) MakeTSSpans(e opt.Expr, n exec.Node, m *memo.Memo) (tight
 		} else {
 			precision = typ.Precision()
 		}
-		tn.tsSpans = out.TransformSpansToTsSpans(precision)
+		tn.tsSpans = tsSpanOut.TransformSpansToTsSpans(precision)
+		tn.osnSpans = osnSpanOut.TransformSpansToOsnSpans()
 		tn.tsSpansPre = precision
 		return tight
 	default:
@@ -2712,7 +2736,66 @@ func (ef *execFactory) MakeTSSpansForExpr(
 	// Check for an operation where the left-hand side is a
 	// timestamp column.
 	if isTimestampColumn(child0, int(tblID.ColumnID(0))) {
-		tight := ef.makeSpansForSingleColumn(e.Op(), child1, out)
+		tight := ef.makeSpansForSingleColumn(e.Op(), child1, out, false)
+		if !out.IsUnconstrained() || tight {
+			return tight
+		}
+	}
+
+	unconstrained(out)
+	return false
+}
+
+// MakeOsnSpansForExpr make osn Spans from expr.
+func (ef *execFactory) MakeOsnSpansForExpr(
+	e opt.Expr, out *constraint.Constraint, tblID opt.TableID, md *opt.Metadata,
+) (tight bool) {
+	switch t := e.(type) {
+	case *memo.FiltersExpr:
+		switch len(*t) {
+		case 0:
+			unconstrained(out)
+			return true
+		case 1:
+			allFilterChangeToSpan := ef.MakeOsnSpansForExpr((*t)[0].Condition, out, tblID, md)
+			if allFilterChangeToSpan && t != nil {
+				*t = nil
+			}
+			return allFilterChangeToSpan
+		default:
+			return ef.makeOsnSpansForAnd(t, out, tblID, md)
+		}
+
+	case *memo.FiltersItem:
+		// Pass through the call.
+		return ef.MakeOsnSpansForExpr(t.Condition, out, tblID, md)
+
+	case *memo.AndExpr:
+		return ef.makeOsnSpansForAnd(t, out, tblID, md)
+
+	case *memo.OrExpr:
+		return ef.makeTSSpansForOr(t, out, tblID)
+
+	case *memo.RangeExpr:
+		return ef.MakeOsnSpansForExpr(t.And, out, tblID, md)
+	}
+
+	if e.ChildCount() < 2 {
+		unconstrained(out)
+		return false
+	}
+	child0, child1 := e.Child(0), e.Child(1)
+
+	// Check for an operation where the left-hand side is a
+	// osn column.
+	var isOsnColumn bool
+	if v, ok := child0.(*memo.VariableExpr); ok &&
+		(md.ColumnMeta(v.Col).TSType == opt.TSHiddenCol &&
+			md.ColumnMeta(v.Col).Alias == opt.HiddenOSNColumnName) {
+		isOsnColumn = true
+	}
+	if isOsnColumn {
+		tight := ef.makeSpansForSingleColumn(e.Op(), child1, out, true)
 		if !out.IsUnconstrained() || tight {
 			return tight
 		}
@@ -2761,6 +2844,40 @@ func (ef *execFactory) makeTSSpansForAnd(
 	return false
 }
 
+// makeOsnSpansForAnd calculates spans for an AndOp or FiltersOp.
+func (ef *execFactory) makeOsnSpansForAnd(
+	e opt.Expr, out *constraint.Constraint, tblID opt.TableID, md *opt.Metadata,
+) (tight bool) {
+	tight = ef.MakeOsnSpansForExpr(e.Child(0), out, tblID, md)
+	var expr *memo.FiltersExpr
+	if fe, ok := e.(*memo.FiltersExpr); ok {
+		expr = fe
+	}
+	if tight && expr != nil {
+		*expr = (*expr)[1:]
+	}
+
+	var exprConstraint constraint.Constraint
+	for i, n := 0, e.ChildCount(); i < n; i++ {
+		childTight := ef.MakeOsnSpansForExpr(e.Child(i), &exprConstraint, tblID, md)
+		tight = tight && childTight
+		out.IntersectWith(ef.planner.EvalContext(), &exprConstraint)
+		if childTight && expr != nil {
+			*expr = append((*expr)[:i], (*expr)[i+1:]...)
+			i--
+			n = e.ChildCount()
+		}
+	}
+	if out.IsUnconstrained() {
+		return tight
+	}
+	if tight {
+		return true
+	}
+
+	return false
+}
+
 // makeSpansForOr calculates spans for an OrOp.
 func (ef *execFactory) makeTSSpansForOr(
 	e opt.Expr, out *constraint.Constraint, tblID opt.TableID,
@@ -2770,6 +2887,26 @@ func (ef *execFactory) makeTSSpansForOr(
 	var exprConstraint constraint.Constraint
 	for i, n := 0, e.ChildCount(); i < n; i++ {
 		exprTight := ef.MakeTSSpansForExpr(e.Child(i), &exprConstraint, tblID)
+		if exprConstraint.IsUnconstrained() {
+			// If we can't generate spans for a disjunct, exit early.
+			unconstrained(out)
+		}
+		// The OR is "tight" if all the spans are tight.
+		tight = tight && exprTight
+		out.UnionWith(ef.planner.EvalContext(), &exprConstraint)
+	}
+	return tight
+}
+
+// makeOsnSpansForOr calculates spans for an OrOp.
+func (ef *execFactory) makeOsnSpansForOr(
+	e opt.Expr, out *constraint.Constraint, tblID opt.TableID, md *opt.Metadata,
+) (tight bool) {
+	out.Spans = constraint.Spans{}
+	tight = true
+	var exprConstraint constraint.Constraint
+	for i, n := 0, e.ChildCount(); i < n; i++ {
+		exprTight := ef.MakeOsnSpansForExpr(e.Child(i), &exprConstraint, tblID, md)
 		if exprConstraint.IsUnconstrained() {
 			// If we can't generate spans for a disjunct, exit early.
 			unconstrained(out)
@@ -2796,7 +2933,7 @@ func isTimestampColumn(nd opt.Expr, id int) bool {
 // operand. The <tight> return value indicates if the spans are exactly
 // equivalent to the expression (and not weaker).
 func (ef *execFactory) makeSpansForSingleColumn(
-	op opt.Operator, val opt.Expr, out *constraint.Constraint,
+	op opt.Operator, val opt.Expr, out *constraint.Constraint, isOsnColumn bool,
 ) (tight bool) {
 	if op == opt.InOp && memo.CanExtractConstTuple(val) {
 		tupVal := val.(*memo.TupleExpr)
@@ -2828,7 +2965,7 @@ func (ef *execFactory) makeSpansForSingleColumn(
 		ivh := tree.MakeIndexedVarHelper(nil /* container */, 0)
 		tExpr, err := execbuilder.BuildScalarByExpr(val.(opt.ScalarExpr), &ivh, ef.planner.EvalContext())
 		if datum, ok := tExpr.(tree.Datum); ok && err == nil {
-			return ef.makeSpansForSingleColumnDatum(op, datum, out)
+			return ef.makeSpansForSingleColumnDatum(op, datum, out, isOsnColumn)
 		}
 	}
 
@@ -2839,10 +2976,10 @@ func (ef *execFactory) makeSpansForSingleColumn(
 // makeSpansForSingleColumnDatum creates spans for a single index column from a
 // simple comparison expression with a constant value on the right-hand side.
 func (ef *execFactory) makeSpansForSingleColumnDatum(
-	op opt.Operator, datum tree.Datum, out *constraint.Constraint,
+	op opt.Operator, datum tree.Datum, out *constraint.Constraint, isOsnColumn bool,
 ) (tight bool) {
 	if !(datum.ResolvedType().Oid() == oid.T_timestamptz &&
-		datum.ResolvedType().Precision() == 9) {
+		datum.ResolvedType().Precision() == 9) && !isOsnColumn {
 		unconstrained(out)
 		return false
 	}
@@ -3044,6 +3181,17 @@ func walkSort(meta *opt.Metadata, expr memo.RelExpr) bool {
 	case *memo.SelectExpr:
 		return walkSort(meta, t.Input)
 	case *memo.TSScanExpr:
+		// If scan has osn column, can not use order limit optimization
+		var hasOsnCol bool
+		t.Cols.ForEach(func(colID opt.ColumnID) {
+			colMeta := meta.ColumnMeta(colID)
+			if colMeta.TSType == opt.TSHiddenCol {
+				hasOsnCol = true
+			}
+		})
+		if hasOsnCol {
+			return false
+		}
 		return true
 	default:
 		return false
@@ -3925,4 +4073,80 @@ func (ef *execFactory) makeTriggerBlockIns(
 		}
 	}
 	return beforeTriggerIns, afterTriggerIns, nil
+}
+
+// addTsHiddenResultColumns adds time series hidden columns (_osn, _op, _event)
+// to the result columns if they are included in the scan.
+func (ef *execFactory) addTsHiddenResultColumns(
+	md *opt.Metadata,
+	table cat.Table,
+	tsScan *tsScanNode,
+	private *memo.TSScanPrivate,
+	resultCols sqlbase.ResultColumns,
+) (sqlbase.ResultColumns, error) {
+	lastColID := private.Table.ColumnID(table.DeletableColumnCount() - 1)
+
+	if private.Cols.Contains(lastColID + 1) {
+		resultCols = append(
+			resultCols,
+			sqlbase.ResultColumn{
+				Name:           opt.HiddenOSNColumnName,
+				Typ:            types.Int,
+				TableID:        sqlbase.ID(table.ID()),
+				PGAttributeNum: sqlbase.OsnColIdx,
+				TypeModifier:   types.Int.TypeModifier(),
+			},
+		)
+		tsScan.HasOsnCols = true
+	}
+	if private.Cols.Contains(lastColID + 2) {
+		resultCols = append(
+			resultCols,
+			sqlbase.ResultColumn{
+				Name:           opt.HiddenOperationColumnName,
+				Typ:            types.Bytes,
+				TableID:        sqlbase.ID(table.ID()),
+				PGAttributeNum: sqlbase.OpColIdx,
+				TypeModifier:   types.Bytes.TypeModifier(),
+			},
+		)
+		tsScan.HasOsnCols = true
+	}
+	if private.Cols.Contains(lastColID + 3) {
+		resultCols = append(
+			resultCols,
+			sqlbase.ResultColumn{
+				Name:           opt.HiddenEventColumnName,
+				Typ:            types.Bytes,
+				TableID:        sqlbase.ID(table.ID()),
+				PGAttributeNum: sqlbase.EventColIdx,
+				TypeModifier:   types.Bytes.TypeModifier(),
+			},
+		)
+		tsScan.HasOsnCols = true
+	}
+	if private.Cols.Contains(lastColID + 4) {
+		resultCols = append(
+			resultCols,
+			sqlbase.ResultColumn{
+				Name:           "_hashpoint_",
+				Typ:            types.Int,
+				TableID:        sqlbase.ID(table.ID()),
+				PGAttributeNum: sqlbase.HashPointColIdx,
+				TypeModifier:   types.Int.TypeModifier(),
+			},
+		)
+	}
+
+	if tsScan.HasOsnCols && len(md.AllTables()) > 1 {
+		return resultCols, pgerror.Newf(
+			pgcode.FeatureNotSupported,
+			"virtual columns of %s/%s/%s do not support multi-table queries",
+			opt.HiddenOSNColumnName,
+			opt.HiddenOperationColumnName,
+			opt.HiddenEventColumnName,
+		)
+	}
+
+	return resultCols, nil
 }

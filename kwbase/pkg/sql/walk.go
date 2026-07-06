@@ -279,7 +279,10 @@ func (v *planVisitor) visitInternal(plan planNode, name string) {
 					v.printTsSpans(n, name, 1e9)
 				}
 			}
-
+			for _, span := range n.osnSpans {
+				v.observer.attr(name, "osnSpans:begin", fmt.Sprintf("%d", span.FromTimeStamp))
+				v.observer.attr(name, "osnSpans:end", fmt.Sprintf("%d", span.ToTimeStamp))
+			}
 		}
 		if v.observer.expr != nil {
 			v.expr(name, "filter", -1, n.filter)
@@ -1071,6 +1074,8 @@ func joinTypeStr(t sqlbase.JoinType) string {
 var planNodeNames = map[reflect.Type]string{
 	reflect.TypeOf(&alterTSDatabaseNode{}):      "alter ts database",
 	reflect.TypeOf(&alterIndexNode{}):           "alter index",
+	reflect.TypeOf(&alterPipeNode{}):            "alter pipe",
+	reflect.TypeOf(&alterPubNode{}):             "alter publication",
 	reflect.TypeOf(&alterSequenceNode{}):        "alter sequence",
 	reflect.TypeOf(&alterStreamNode{}):          "alter stream",
 	reflect.TypeOf(&alterTableNode{}):           "alter table",
@@ -1091,6 +1096,8 @@ var planNodeNames = map[reflect.Type]string{
 	reflect.TypeOf(&createDatabaseNode{}):       "create database",
 	reflect.TypeOf(&createFunctionNode{}):       "create function",
 	reflect.TypeOf(&createIndexNode{}):          "create index",
+	reflect.TypeOf(&createPipeNode{}):           "create pipe",
+	reflect.TypeOf(&createPubNode{}):            "create publication/pub",
 	reflect.TypeOf(&createSequenceNode{}):       "create sequence",
 	reflect.TypeOf(&createSchemaNode{}):         "create schema",
 	reflect.TypeOf(&createScheduleNode{}):       "create schedule",
@@ -1113,6 +1120,8 @@ var planNodeNames = map[reflect.Type]string{
 	reflect.TypeOf(&dropDatabaseNode{}):         "drop database",
 	reflect.TypeOf(&dropSchemaNode{}):           "drop schema",
 	reflect.TypeOf(&dropIndexNode{}):            "drop index",
+	reflect.TypeOf(&dropPipeNode{}):             "drop pipe",
+	reflect.TypeOf(&dropPublicationNode{}):      "drop publication/pub",
 	reflect.TypeOf(&dropSequenceNode{}):         "drop sequence",
 	reflect.TypeOf(&dropStreamNode{}):           "drop stream",
 	reflect.TypeOf(&dropTableNode{}):            "drop table",

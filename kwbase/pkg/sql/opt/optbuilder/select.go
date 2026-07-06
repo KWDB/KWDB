@@ -1558,6 +1558,27 @@ func (b *Builder) buildWhere(where *tree.Where, inScope *scope) {
 	}
 }
 
+// BuildFuncForPipe builds function expr in pipe.
+func (b *Builder) BuildFuncForPipe(
+	exp tree.Expr, table sqlbase.TableDescriptor, tn tree.TableName,
+) tree.TypedExpr {
+	inScope := b.allocScope()
+	colCount := len(table.Columns)
+	inScope.cols = make([]scopeColumn, colCount)
+	for i := 0; i < colCount; i++ {
+		inScope.cols = append(inScope.cols, scopeColumn{
+			id:     opt.ColumnID(int32(table.Columns[i].ID)),
+			name:   tree.Name(table.Columns[i].Name),
+			table:  tn,
+			typ:    &table.Columns[i].Type,
+			hidden: table.Columns[i].IsHidden(),
+		})
+		b.factory.Metadata().AddColumn(table.Columns[i].Name, &table.Columns[i].Type)
+	}
+
+	return inScope.resolveAndRequireType(exp, types.Any)
+}
+
 // buildFromTables builds a series of InnerJoin expressions that together
 // represent the given FROM tables.
 //

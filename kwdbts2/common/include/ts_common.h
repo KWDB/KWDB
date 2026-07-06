@@ -285,7 +285,7 @@ struct Batch {
   // row_idx  start from 0
   virtual KStatus isNull(k_uint32 row_idx, bool* is_null) const {
     if (bitmap == nullptr) {
-      *is_null = true;
+      *is_null = (mem == nullptr);
       return KStatus::SUCCESS;
     }
     if (row_idx >= count) {

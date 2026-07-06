@@ -243,6 +243,7 @@ message TsPutRequest {
 
   RequestHeader header = 1 [(gogoproto.nullable) = false, (gogoproto.embed) = true];
   Value value = 2 [(gogoproto.nullable) = false];
+  uint64 OsnID = 3;
 }
 
 // A TsPutResponse is the return value for inserting value to TS DB
@@ -253,6 +254,7 @@ message TsPutResponse {
   bytes discardBitmap = 3;
   uint32 entitiesAffected = 4;
   uint32 unorderedAffected = 5;
+  uint64 OsnID = 6;
 }
 
 // TsGetValidColumnsRequest is used to get IDs of all valid columns for sparse table.
@@ -309,6 +311,7 @@ message TsRowPutResponse {
   bytes discardBitmap = 3;
   uint32 entitiesAffected = 4;
   uint32 unorderedAffected = 5;
+  uint64 OsnID = 6;
 }
 
 // A TsPutTagRequest is the argument to insert only tag value for an entity
@@ -318,6 +321,7 @@ message TsPutTagRequest {
   RequestHeader header = 1 [(gogoproto.nullable) = false, (gogoproto.embed) = true];
   Value value = 2 [(gogoproto.nullable) = false];
   TsTransaction ts_transaction = 3 ;
+  uint64 OsnID = 4;
 }
 
 // A TsPutTagResponse is the return value for TsPutTagRequest
@@ -326,6 +330,7 @@ message TsPutTagResponse {
 
   int64 dedupRule = 2;
   bytes discardBitmap = 3;
+  uint64 OsnID = 4;
 }
 
 // A TsCommitRequest is the argument to insert value to TS DB in single node mode(MPP)
@@ -369,12 +374,13 @@ message TsDeleteRequest {
   bytes primaryTags = 3;
   uint64 rangeGroupId = 4;
   repeated TsSpan TsSpans = 5;
-  uint64 OsnId = 6;
+  uint64 OsnID = 6;
 }
 
 // A TsDeleteResponse is the return value for inserting value to TS DB
 message TsDeleteResponse {
   ResponseHeader header = 1 [(gogoproto.nullable) = false, (gogoproto.embed) = true];
+  uint64 OsnID = 2;
 }
 
 // TsDeleteMultiDataType specifies what type of ts delete
@@ -399,7 +405,7 @@ message TsDeleteMultiEntitiesDataRequest {
   // just for MPP mode
   repeated DelEntityGroup del_entity_groups = 4 [(gogoproto.nullable) = true];
   uint64 hashNum = 5;
-  uint64 OsnId = 6;
+  uint64 OsnID = 6;
   // The IDs of partial tags used as filter conditions in delete operation
   repeated uint32 tagIDs = 7;
   // The values corresponding to the partial tags used as filter conditions in delete operation
@@ -423,6 +429,7 @@ message DelEntityGroup {
 // A TsDeleteMultiEntitiesDataResponse is the return nums for deleted rows from TS DB
 message TsDeleteMultiEntitiesDataResponse {
   ResponseHeader header = 1 [(gogoproto.nullable) = false, (gogoproto.embed) = true];
+  uint64 OsnID = 2;
 }
 
 // TsDeleteEntityRequest is the argument to delete entity from TS DB
@@ -433,12 +440,13 @@ message TsDeleteEntityRequest {
   uint64 tableId = 2;
   repeated bytes primaryTags = 3;
   uint64 rangeGroupId = 4;
-  uint64 OsnId = 5;
+  uint64 OsnID = 5;
 }
 
 // A TsDeleteEntityResponse is the return value for inserting value to TS DB
 message TsDeleteEntityResponse {
   ResponseHeader header = 1 [(gogoproto.nullable) = false, (gogoproto.embed) = true];
+  uint64 OsnID = 2;
 }
 
 // A TsTagUpdateRequest is the argument to the ts tag update method.
@@ -455,6 +463,7 @@ message TsTagUpdateRequest {
 // A TsTagUpdateResponse is the return value for updating tag to TS DB
 message TsTagUpdateResponse {
   ResponseHeader header = 1 [(gogoproto.nullable) = false, (gogoproto.embed) = true];
+  uint64 osnID = 2;
 }
 
 // An IncrementRequest is the argument to the Increment() method. It

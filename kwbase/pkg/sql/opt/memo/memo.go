@@ -1488,6 +1488,18 @@ func (m *Memo) tsScanFillStatistic(
 		allColsPrimary = allColsPrimary && colMeta.IsPrimaryTag()
 	})
 
+	// if scan has osn column, can not use statistics reader operator
+	var hasOsnCol bool
+	tsScan.Cols.ForEach(func(colID opt.ColumnID) {
+		colMeta := m.Metadata().ColumnMeta(colID)
+		if colMeta.TSType == opt.TSHiddenCol {
+			hasOsnCol = true
+		}
+	})
+	if hasOsnCol {
+		return
+	}
+
 	tableMeta := m.Metadata().TableMeta(tsScan.Table)
 	if !allColsPrimary || (tempSet.Len() != 0 && tempSet.Len() != tableMeta.PrimaryTagCount) ||
 		flags.HintType.OnlyTag() {

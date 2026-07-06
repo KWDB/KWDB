@@ -27,6 +27,7 @@ package sql
 import (
 	"bytes"
 	"context"
+	ejson "encoding/json"
 	"fmt"
 	"net"
 	"net/url"
@@ -37,6 +38,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/build"
+	"gitee.com/kwbasedb/kwbase/pkg/cdc/cdcpb"
 	"gitee.com/kwbasedb/kwbase/pkg/clusterversion"
 	"gitee.com/kwbasedb/kwbase/pkg/config/zonepb"
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
@@ -134,6 +136,8 @@ var kwdbInternal = virtualSchema{
 		sqlbase.CrdbInternalKWDBStreamsTableID:          kwdbInternalKWDBStreamTable,
 		sqlbase.CrdbInternalTSEInfoID:                   kwdbInternalTSEngineInfo,
 		sqlbase.CrdbInternalTSTransactionRecordID:       kwdbInternalTSTransactionRecord,
+		sqlbase.KwdbInternalKWDBPublicationsTableID:     kwdbInternalKWDBPublicationsTable,
+		sqlbase.CrdbInternalKWDBPipeTableID:             kwdbInternalKWDBPipeTable,
 	},
 	validWithNoDatabaseContext: true,
 }
@@ -4062,6 +4066,238 @@ CREATE TABLE kwdb_internal.kwdb_tse_info (
 			tree.NewDInt(tree.DInt(walLevel)), // table_id
 		); err != nil {
 			return err
+		}
+
+		return nil
+	},
+}
+
+var kwdbInternalKWDBPipeTable = virtualSchemaTable{
+	comment: "kwdb pipes info",
+	schema: `
+CREATE TABLE kwdb_internal.kwdb_pipes (
+  name           		STRING,
+  table_name        STRING,
+  column_names      STRING,
+  filter						STRING,
+  options           JSONB,
+  low_watermark			STRING,
+  status						STRING,
+  create_at					TIMESTAMP,
+  create_by					STRING,
+  start_time   			TIMESTAMP,
+  end_time					TIMESTAMP,
+  error_message     String
+)
+`,
+	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+
+		query := `SELECT p.id,p.name,p.parameters,p.create_at,p.create_by,p.status,p.run_info,p.job_id,p.source_id, w.lw, w.tids 
+FROM system.kwdb_pipes p
+LEFT JOIN (select task_id, array_agg(low_watermark) AS lw ,array_agg(table_id) AS tids FROM system.kwdb_cdc_watermark c group by task_id) AS w
+ON w.task_id=p.id`
+		rows, err := p.extendedEvalCtx.ExecCfg.InternalExecutor.Query(ctx, "show-pipes", p.txn, query)
+		if err != nil {
+			return err
+		}
+		for _, row := range rows {
+			name := tree.MustBeDString(row[1])
+			params := tree.MustBeDJSON(row[2])
+			createAt := tree.MustBeDTimestamp(row[3])
+			createBy := tree.MustBeDString(row[4])
+			status := tree.MustBeDString(row[5])
+			pipeRun := tree.MustBeDJSON(row[6]).JSON
+
+			pipeParas, err := cdcpb.UnmarshalPipeParameters(params.JSON)
+			if err != nil {
+				return err
+			}
+			table := ""
+			tableOrder := make([]uint64, len(pipeParas.Tables))
+			for i := range pipeParas.Tables {
+				tableName := pipeParas.Tables[i].Table
+				databaseName := pipeParas.Tables[i].Database
+				schemaName := pipeParas.Tables[i].Schema
+				if i > 0 {
+					table += ","
+				}
+				table += databaseName + "." + schemaName + "." + tableName
+				tableOrder[i] = pipeParas.TableIDs[i]
+			}
+
+			colNames := ""
+			filter := ""
+			if len(pipeParas.Tables) == 1 {
+				colNames = strings.Join(pipeParas.Tables[0].ColNames, ",")
+				filter = pipeParas.Tables[0].Filter
+			}
+
+			options, err := params.JSON.FetchValKey("options")
+			if err != nil {
+				return err
+			}
+
+			lowWatermark := ""
+			if row[9] != tree.DNull {
+				lowWatermarks := tree.MustBeDArray(row[9]).Array
+				tableIDs := tree.MustBeDArray(row[10]).Array
+				// tableID -> lowWatermark
+				tableToLowWatermark := make(map[uint64]tree.Datum, len(lowWatermarks))
+				for i := range lowWatermarks {
+					tableID := uint64(tree.MustBeDInt(tableIDs[i]))
+					tableToLowWatermark[tableID] = lowWatermarks[i]
+				}
+				for idx, tableID := range tableOrder {
+					if idx > 0 {
+						lowWatermark += ","
+					}
+					lwInt := int64(tree.MustBeDInt(tableToLowWatermark[tableID]))
+					lwTime := timeutil.FromTimestamp(lwInt, 9)
+					lwDatum := tree.MakeDTimestamp(lwTime, time.Nanosecond)
+					lowWatermark += strings.Trim(lwDatum.String(), "'")
+				}
+			}
+
+			runInfo, err := cdcpb.UnmarshalRunInfo(pipeRun)
+			if err != nil {
+				return err
+			}
+
+			var start, end, errMsg tree.Datum
+			lastRunIndex := len(runInfo) - 1
+			if lastRunIndex > -1 {
+				startTime, err := time.Parse(time.RFC3339, runInfo[lastRunIndex].StartTime)
+				if err != nil {
+					start = tree.DNull
+				} else {
+					start = tree.MakeDTimestamp(startTime, time.Microsecond)
+				}
+
+				endTime, err := time.Parse(time.RFC3339, runInfo[lastRunIndex].EndTime)
+				if err != nil {
+					end = tree.DNull
+				} else {
+					end = tree.MakeDTimestamp(endTime, time.Microsecond)
+				}
+
+				errMsg = tree.NewDString(runInfo[lastRunIndex].ErrorMessage)
+			} else {
+				start = tree.DNull
+				end = tree.DNull
+				errMsg = tree.DNull
+			}
+
+			if err := addRow(
+				&name,
+				tree.NewDString(table),
+				tree.NewDString(colNames),
+				tree.NewDString(filter),
+				tree.NewDJSON(options),
+				tree.NewDString(lowWatermark),
+				&status,
+				&createAt,
+				&createBy,
+				start,
+				end,
+				errMsg,
+			); err != nil {
+				return err
+			}
+		}
+		return nil
+	},
+}
+
+// subSession is used for show publications, to construct the array about subscription field.
+type subSession struct {
+	SessionID string `json:"session_id"`
+	UserName  string `json:"user"`
+}
+
+// kwdbInternalKWDBPublicationsTable is used for show publications.
+var kwdbInternalKWDBPublicationsTable = virtualSchemaTable{
+	comment: "kwdb publication info",
+	schema: `
+CREATE TABLE kwdb_internal.publications (
+  name           STRING,
+  pub_objects    STRING,
+  parameter      JSON,
+  create_at      TIMESTAMP,
+  create_by      STRING,
+  subscription   JSON
+)
+`,
+	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		rows, err := p.execCfg.InternalExecutor.QueryEx(ctx,
+			"query-publications",
+			p.Txn(),
+			sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
+			"SELECT name, parameters, create_at, create_by FROM system.kwdb_publications")
+		if err != nil {
+			return err
+		}
+		sessionRows, sessionErr := p.execCfg.InternalExecutor.QueryEx(ctx,
+			"query-sub-sessions",
+			p.Txn(),
+			sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
+			"SELECT session_id, user_name, application_name FROM [SHOW CLUSTER SESSIONS] WHERE application_name LIKE 'sub$$$%'")
+		if sessionErr != nil {
+			return sessionErr
+		}
+		subSessionMap := make(map[string][]subSession)
+		for _, sessionRow := range sessionRows {
+			sessionID := string(*sessionRow[0].(*tree.DString))
+			userName := string(*sessionRow[1].(*tree.DString))
+			appName := string(*sessionRow[2].(*tree.DString))
+			pubName := appName[6:]
+			subSessionMap[pubName] = append(subSessionMap[pubName], subSession{SessionID: sessionID, UserName: userName})
+		}
+
+		for _, row := range rows {
+			name := tree.MustBeDString(row[0])
+			parameter := tree.MustBeDJSON(row[1])
+			createAt := tree.MustBeDTimestamp(row[2])
+			createBy := tree.MustBeDString(row[3])
+			pubObjects := ""
+			pubPara, err1 := cdcpb.UnmarshalPubParameters(parameter.JSON)
+			if err1 != nil {
+				return err1
+			}
+			for idx, tableInfo := range pubPara.TableList {
+				if idx > 0 {
+					pubObjects += ","
+				}
+				pubObjects += tableInfo.Database + "." + tableInfo.Schema + "." + tableInfo.Table
+			}
+
+			var subSessions tree.DJSON
+			pubNameStr := string(*row[0].(*tree.DString))
+			subSessionArray, ok := subSessionMap[pubNameStr]
+			if ok {
+				subSessionBytes, err := ejson.Marshal(subSessionArray)
+				if err != nil {
+					return err
+				}
+				subSessionJSON, err := json.ParseJSON(string(subSessionBytes))
+				subSessions = *tree.NewDJSON(subSessionJSON)
+			} else {
+				jsonNull, err := tree.MakeDJSON(nil)
+				if err != nil {
+					return err
+				}
+				subSessions = tree.MustBeDJSON(jsonNull)
+			}
+
+			if err := addRow(
+				&name,                       // name
+				tree.NewDString(pubObjects), // pub_objects
+				&parameter,                  // parameter
+				&createAt,                   // create_at
+				&createBy,                   // create_by
+				&subSessions,                // subscription
+			); err != nil {
+				return err
+			}
 		}
 
 		return nil

@@ -21,7 +21,7 @@ requesting table details for defaultdb.../system... writing: debug/schema/defaul
 requesting database details for postgres... writing: debug/schema/postgres@details.json
 0 tables found
 requesting database details for system... writing: debug/schema/system-1@details.json
-34 tables found
+37 tables found
 requesting table details for system.namespace... writing: debug/schema/system-1/namespace.json
 requesting table details for system.descriptor... writing: debug/schema/system-1/descriptor.json
 requesting table details for system.users... writing: debug/schema/system-1/users.json
@@ -56,3 +56,6 @@ requesting table details for system.scheduled_jobs... writing: debug/schema/syst
 requesting table details for system.user_defined_routine... writing: debug/schema/system-1/user_defined_routine.json
 requesting table details for system.kwdb_cdc_watermark... writing: debug/schema/system-1/kwdb_cdc_watermark.json
 requesting table details for system.kwdb_streams... writing: debug/schema/system-1/kwdb_streams.json
+requesting table details for system.kwdb_pipes... writing: debug/schema/system-1/kwdb_pipes.json
+requesting table details for system.kwdb_unpush... writing: debug/schema/system-1/kwdb_unpush.json
+requesting table details for system.kwdb_publications... writing: debug/schema/system-1/kwdb_publications.json

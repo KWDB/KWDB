@@ -2538,7 +2538,11 @@ uint64_t* snapshot_id, bool& is_dropped) {
       reinterpret_pointer_cast<TsTableImpl>(ts_snapshot_info.table),
       ts_snapshot_info.begin_hash, ts_snapshot_info.end_hash, ts_snapshot_info.table_version, scan_osn);
   ts_snapshot_info.op_osn = scan_osn;
-  s = ts_snapshot_info.del_iter->Init();
+  TS_OSN published_max_osn;
+  if (!schema_mgr_->GetTablePublishedMaxOSN(table_id, published_max_osn)) {
+    published_max_osn = UINT64_MAX;
+  }
+  s = ts_snapshot_info.del_iter->Init(published_max_osn);
   if (s == KStatus::FAIL) {
     LOG_ERROR("CreateSnapshotForRead STTableRangeDelAndTagInfo [%lu] failed.", table_id);
     return s;
@@ -2579,7 +2583,11 @@ KStatus TSEngineImpl::CreateSnapshotForWrite(kwdbContext_p ctx, const KTableKey&
       reinterpret_pointer_cast<TsTableImpl>(ts_snapshot_info.table),
       ts_snapshot_info.begin_hash, ts_snapshot_info.end_hash, ts_snapshot_info.table_version, osn);
   ts_snapshot_info.op_osn = osn;
-  s = ts_snapshot_info.del_iter->Init();
+  TS_OSN published_max_osn;
+  if (!schema_mgr_->GetTablePublishedMaxOSN(table_id, published_max_osn)) {
+    published_max_osn = UINT64_MAX;
+  }
+  s = ts_snapshot_info.del_iter->Init(published_max_osn);
   if (s == KStatus::FAIL) {
     LOG_ERROR("CreateSnapshotForRead STTableRangeDelAndTagInfo [%lu] failed.", table_id);
     return s;
@@ -2930,6 +2938,15 @@ KStatus TSEngineImpl::Vacuum(kwdbContext_p ctx, bool force, bool only_agg) {
     vgroup->Vacuum(ctx, force, only_agg);
   }
   return SUCCESS;
+}
+
+KStatus TSEngineImpl::SetPublishedMaxOSN(std::unordered_map<TSTableID, TS_OSN>& tbl_osn) {
+  LOG_INFO("SetPublishedMaxOSN table number[%lu].", tbl_osn.size());
+  for (auto& tbl_osn_pair : tbl_osn) {
+    LOG_DEBUG("SetPublishedMaxOSN table[%lu] osn[%lu].", tbl_osn_pair.first, tbl_osn_pair.second);
+  }
+  schema_mgr_->SetTablePublishedMaxOSN(tbl_osn);
+  return KStatus::SUCCESS;
 }
 
 KStatus ConstructTableBlocksDistribution(const std::shared_ptr<TsTableSchemaManager>& tb_schema_mgr,

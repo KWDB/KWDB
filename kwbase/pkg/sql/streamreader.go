@@ -380,7 +380,7 @@ func (s *streamReaderProcessor) createGrpcConn(
 	}
 
 	req := &cdcpb.TsChangeDataCaptureRequest{
-		InstanceType:   cdcpb.TSCDCInstanceType_Stream,
+		InstanceType:   sqlbase.CDCInstanceType_Stream,
 		StreamMetadata: metadata,
 		CDCColumns:     s.spec.CDCColumns,
 	}
@@ -458,7 +458,7 @@ func (s *streamReaderProcessor) Next() (sqlbase.EncDatumRow, *execinfrapb.Produc
 			req := &cdcpb.TsChangeDataCaptureStop{
 				TableID:      s.sourceTableID,
 				InstanceID:   s.instanceID,
-				InstanceType: cdcpb.TSCDCInstanceType_Stream,
+				InstanceType: sqlbase.CDCInstanceType_Stream,
 			}
 			_ = s.stopStream(req)
 
@@ -581,7 +581,7 @@ func (s *streamReaderProcessor) handleMessage(event *cdcpb.TsChangeDataCaptureEv
 		req := &cdcpb.TsChangeDataCaptureStop{
 			TableID:      t.TableID,
 			InstanceID:   t.InstanceID,
-			InstanceType: cdcpb.TSCDCInstanceType_Stream,
+			InstanceType: sqlbase.CDCInstanceType_Stream,
 		}
 		err = s.stopStream(req)
 

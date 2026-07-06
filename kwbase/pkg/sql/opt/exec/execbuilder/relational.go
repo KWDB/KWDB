@@ -588,7 +588,7 @@ func (b *Builder) getOutputColumns(needCols opt.ColSet, tableID opt.TableID) opt
 	// get table descriptor.
 	table := b.mem.Metadata().Table(tableID)
 	n := 0
-	for i := 0; i < table.DeletableColumnCount(); i++ {
+	for i := 0; i < table.AllColumnCount(); i++ {
 		logicalID := tableID.ColumnID(i)
 		if needCols.Contains(logicalID) {
 			output.Set(int(logicalID), n)
@@ -760,7 +760,7 @@ func (b *Builder) buildTimesScan(scan *memo.TSScanExpr) (execPlan, error) {
 	}
 
 	// build scanNode.
-	root, err := b.factory.ConstructTSScan(table, &scan.TSScanPrivate, tagFilter, primaryFilter, tagIndexFilter, blockFilter, rowCount, scan.Flags.Fill)
+	root, err := b.factory.ConstructTSScan(md, table, &scan.TSScanPrivate, tagFilter, primaryFilter, tagIndexFilter, blockFilter, rowCount, scan.Flags.Fill)
 	if err != nil {
 		return execPlan{}, err
 	}

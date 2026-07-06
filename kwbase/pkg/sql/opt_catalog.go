@@ -26,7 +26,9 @@ package sql
 
 import (
 	"context"
+	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/config"
@@ -613,6 +615,61 @@ func (oc *optCatalog) GetCurrentDatabase(ctx context.Context) string {
 	return oc.planner.SessionData().Database
 }
 
+// GetStatement is part of the cat.Catalog interface.
+// It returns statement with full path table name from planner.
+// It is only used to delete statement.
+func (oc *optCatalog) GetStatement(ctx context.Context) string {
+	var tableExpr *tree.AliasedTableExpr
+	var ok bool
+
+	switch expr := oc.planner.stmt.AST.(type) {
+	case *tree.Delete:
+		tableExpr, ok = expr.Table.(*tree.AliasedTableExpr)
+	case *tree.Update:
+		tableExpr, ok = expr.Table.(*tree.AliasedTableExpr)
+	default:
+		ok = false
+	}
+
+	if !ok {
+		oc.planner.stmt.AST.String()
+	}
+
+	//if delExpr, ok := oc.planner.stmt.AST.(*tree.Delete); ok {
+	//if tableExpr, ok := delExpr.Table.(*tree.AliasedTableExpr); ok {
+	if tableName, ok := tableExpr.Expr.(*tree.TableName); ok {
+		if tableName.CatalogName == "" && tableName.SchemaName == "" {
+			tableName.CatalogName = tree.Name(oc.planner.SessionData().Database)
+			tableName.SchemaName = tree.PublicSchemaName
+		}
+		if tableName.CatalogName == "" {
+			if tableName.SchemaName == tree.PublicSchemaName {
+				tableName.CatalogName = tree.Name(oc.planner.SessionData().Database)
+			} else {
+				tableName.CatalogName = tableName.SchemaName
+				tableName.SchemaName = tree.PublicSchemaName
+			}
+		}
+		tableName.ExplicitCatalog = true
+		tableName.ExplicitSchema = true
+
+		if oc.planner.stmt.Prepared != nil {
+			stmt := oc.planner.stmt.AST.String()
+			for i, v := range oc.planner.extendedEvalCtx.Placeholders.Values {
+				arg := fmt.Sprintf("$%d", i+1)
+				val := v.String()
+				stmt = strings.ReplaceAll(stmt, arg, val)
+			}
+
+			return stmt
+		}
+	}
+	//}
+	//}
+
+	return oc.planner.stmt.AST.String()
+}
+
 // HasAdminRole is part of the cat.Catalog interface.
 func (oc *optCatalog) HasAdminRole(ctx context.Context) (bool, error) {
 	return oc.planner.HasAdminRole(ctx)
@@ -1183,6 +1240,11 @@ func (ot *optTable) DeletableColumnCount() int {
 	return len(ot.desc.DeletableColumns())
 }
 
+// AllColumnCount is part of the cat.Table interface.
+func (ot *optTable) AllColumnCount() int {
+	return len(ot.desc.DeletableColumns()) + 3
+}
+
 // Column is part of the cat.Table interface.
 func (ot *optTable) Column(i int) cat.Column {
 	return &ot.desc.DeletableColumns()[i]
@@ -1281,6 +1343,11 @@ func (ot *optTable) lookupColumnOrdinal(colID sqlbase.ColumnID) (int, error) {
 
 func (ot *optTable) GetParentID() tree.ID {
 	return tree.ID(ot.desc.GetParentID())
+}
+
+// GetCDC is part of the cat.Table interface.
+func (ot *optTable) GetCDC() interface{} {
+	return ot.desc.CDC
 }
 
 // optIndex is a wrapper around sqlbase.IndexDescriptor that caches some
@@ -1921,6 +1988,11 @@ func (ot *optVirtualTable) DeletableColumnCount() int {
 	return len(ot.desc.DeletableColumns())
 }
 
+// AllColumnCount is part of the cat.Table interface.
+func (ot *optVirtualTable) AllColumnCount() int {
+	return len(ot.desc.DeletableColumns()) + 3
+}
+
 // Column is part of the cat.Table interface.
 func (ot *optVirtualTable) Column(i int) cat.Column {
 	return &ot.desc.DeletableColumns()[i]
@@ -2035,4 +2107,9 @@ func (oi *optVirtualFamily) Column(i int) cat.FamilyColumn {
 // Table is part of the cat.Family interface.
 func (oi *optVirtualFamily) Table() cat.Table {
 	return oi.tab
+}
+
+// GetCDC is part of the cat.Family interface.
+func (ot *optVirtualTable) GetCDC() interface{} {
+	return nil
 }

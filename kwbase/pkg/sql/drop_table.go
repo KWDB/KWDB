@@ -104,6 +104,10 @@ func (p *planner) DropTable(ctx context.Context, n *tree.DropTable) (planNode, e
 			if err := p.canDropInsTable(ctx, toDel.desc.ID); err != nil {
 				return nil, err
 			}
+			// checkTableRelatedPubsAndSubs checks whether the specified table has been published or subscribed.
+			if err := checkTableRelatedPubsAndSubs(ctx, p, uint64(droppedDesc.ID), droppedDesc.Name, n.StatOp(), nil); err != nil {
+				return nil, err
+			}
 			continue
 		}
 
@@ -134,7 +138,6 @@ func (p *planner) DropTable(ctx context.Context, n *tree.DropTable) (planNode, e
 		if err := p.canRemoveAllTableOwnedSequences(ctx, droppedDesc, n.DropBehavior); err != nil {
 			return nil, err
 		}
-
 	}
 
 	if len(td) == 0 {
@@ -174,6 +177,10 @@ func (n *dropTableNode) startExec(params runParams) error {
 			return err
 		}
 		params.p.SetAuditTarget(uint32(droppedDesc.ID), droppedDesc.GetName(), droppedViews)
+	}
+	stmt := tree.AsStringWithFQNames(n.n, params.Ann())
+	if err := sendDropTableStmtToPipe(params, n.td, kafkaMsgKindDropTable, stmt); err != nil {
+		return err
 	}
 
 	return nil
@@ -814,6 +821,41 @@ func (p *planner) GetProcedureNameByID(
 		return true, procName, nil
 	}
 	return false, tree.TableName{}, nil
+}
+
+// sendDropTableStmtToPipe sends the drop table stmt to pipe.
+func sendDropTableStmtToPipe(
+	params runParams, toDeletes map[sqlbase.ID]toDelete, ddlType string, stmt string,
+) error {
+	for _, toDel := range toDeletes {
+		droppedDesc := toDel.desc
+		if droppedDesc == nil {
+			continue
+		}
+		if !droppedDesc.IsTSTable() {
+			continue
+		}
+
+		pipeMetadatas, err := params.p.checkTableRelatedPipe(
+			params.ctx, uint64(droppedDesc.ID), uint64(droppedDesc.ParentID))
+		if err != nil {
+			return err
+		}
+		if len(pipeMetadatas) == 0 {
+			continue
+		}
+
+		dbName := string(toDel.tn.CatalogName)
+		schemaName := string(toDel.tn.SchemaName)
+		tableName := string(toDel.tn.TableName)
+		if err = sendDDLToPipe(
+			params, dbName, schemaName, tableName, ddlType, stmt, pipeMetadatas, true,
+		); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 //func (p *planner) dropTsTable(

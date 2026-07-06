@@ -103,7 +103,9 @@ func TestExecFactoryConstructTSScan(t *testing.T) {
 
 	// Test case: ConstructTSScan
 	t.Run("ConstructTSScan", func(t *testing.T) {
-		node, err := ef.ConstructTSScan(optTable, private, tagFilter, primaryFilter, tagIndexFilter, nil, 100.0, nil)
+		var md opt.Metadata
+
+		node, err := ef.ConstructTSScan(&md, optTable, private, tagFilter, primaryFilter, tagIndexFilter, nil, 100.0, nil)
 		if err != nil {
 			t.Fatalf("ConstructTSScan should not return error, got %v", err)
 		}

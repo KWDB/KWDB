@@ -138,6 +138,12 @@ func (p *planner) DropDatabase(ctx context.Context, n *tree.DropDatabase) (planN
 		}
 	}
 
+	// checkRelatedPubsAndSubs checks whether the specified database to be dropped has been published or subscribed,
+	// or tables in the specified database have been published or subscribed.
+	if err = checkRelatedPubsAndSubs(ctx, p, dbDesc); err != nil {
+		return nil, err
+	}
+
 	toDeletes := make([]toDelete, 0, len(tableNames))
 	for i, tableName := range tableNames {
 		found, desc, err := p.LookupObject(
@@ -176,6 +182,12 @@ func (p *planner) DropDatabase(ctx context.Context, n *tree.DropDatabase) (planN
 
 		if err := p.canRemoveAllTableOwnedStreams(ctx, tableDesc, n.DropBehavior); err != nil {
 			return nil, err
+		}
+
+		if tableDesc.IsTSTable() {
+			if err := p.checkTableUsedByCDC(ctx, uint64(tableDesc.ID), nil); err != nil {
+				return nil, err
+			}
 		}
 
 		// Recursively check permissions on all dependent views, since some may
@@ -497,3 +509,26 @@ func (p *planner) removeDbComment(ctx context.Context, dbID sqlbase.ID) error {
 //	log.Infof(ctx, "drop database %s finished, type: %s, id: %d", n.dbDesc.Name, tree.EngineName(n.dbDesc.EngineType), n.dbDesc.ID)
 //	return nil
 //}
+
+// checkRelatedPubsAndSubs checks whether the specified database to be deleted has been published or subscribed,
+// or tables in the specified database have been published or subscribed.
+// Return error if the specified database has been published or subscribed,
+// or tables in the specified database have been published or subscribed.
+func checkRelatedPubsAndSubs(ctx context.Context, p *planner, dbDesc *DatabaseDescriptor) error {
+	// check whether the database to be deleted has been published,
+	// or tables in the specified database have been published.
+	pubDBMap, _, err := p.fetchAllPublishedObjects(ctx, dbDesc)
+	dbName := dbDesc.GetName()
+	if err != nil {
+		return err
+	}
+	if published, ok := pubDBMap[dbName]; ok {
+		if published {
+			return pgerror.Newf(pgcode.DependentObjectsStillExist,
+				"database %q is published and cannot be deleted", tree.ErrNameStringP(&dbName))
+		}
+		return pgerror.Newf(pgcode.DependentObjectsStillExist,
+			"tables in database %q are published and cannot be deleted", tree.ErrNameStringP(&dbName))
+	}
+	return nil
+}

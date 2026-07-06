@@ -225,8 +225,9 @@ func (node *CreateStream) Format(ctx *FmtCtx) {
 	ctx.WriteString(" INTO ")
 	ctx.FormatNode(&node.Table)
 	if node.Options != nil {
-		ctx.WriteString(" WITH OPTIONS")
+		ctx.WriteString(" WITH OPTIONS (")
 		ctx.FormatNode(&node.Options)
+		ctx.WriteString(")")
 	}
 	ctx.WriteString(" AS ")
 	ctx.FormatNode(node.Query)
@@ -245,7 +246,7 @@ func (node *AlterStream) Format(ctx *FmtCtx) {
 	ctx.WriteString("ALTER STREAM ")
 	node.StreamName.Format(ctx)
 	if node.Options != nil {
-		ctx.WriteString(" SET OPTIONS ")
+		ctx.WriteString(" SET ")
 		ctx.FormatNode(&node.Options)
 	}
 }
@@ -347,6 +348,170 @@ func (node *CreateIndex) Format(ctx *FmtCtx) {
 	}
 	if node.PartitionBy != nil {
 		ctx.FormatNode(node.PartitionBy)
+	}
+}
+
+// CreatePipe represents a CREATE PIPE statement.
+type CreatePipe struct {
+	PipeName   Name
+	Database   Name
+	Table      TableName
+	TableNames TableNames
+	ColNames   NameList
+	Where      *Where
+	Options    KVOptions
+	Star       bool
+}
+
+var _ Statement = &CreatePipe{}
+
+// Format implements the NodeFormatter interface.
+func (node *CreatePipe) Format(ctx *FmtCtx) {
+	ctx.WriteString("CREATE PIPE ")
+	node.PipeName.Format(ctx)
+	if node.Database != "" {
+		ctx.WriteString(" FOR DATABASE ")
+		ctx.FormatNode(&node.Database)
+	} else {
+		// star or specified columns in single table
+		ctx.WriteString(" FOR TABLE ")
+		ctx.FormatNode(&node.TableNames)
+		if node.Table.TableName != "" {
+			ctx.WriteString(" (")
+			if node.Star {
+				ctx.WriteString(" * ")
+			} else {
+				ctx.FormatNode(&node.ColNames)
+			}
+			ctx.WriteString(")")
+			if node.Where != nil {
+				ctx.WriteString(" ")
+				ctx.FormatNode(node.Where)
+			}
+		}
+	}
+
+	if node.Options != nil {
+		ctx.WriteString(" WITH ")
+		ctx.FormatNode(&node.Options)
+	}
+}
+
+// AlterPipe represents an ALTER PIPE statement.
+type AlterPipe struct {
+	PipeName Name
+	Table    TableName
+	ColNames NameList
+	Where    *Where
+	Options  KVOptions
+	Star     bool
+}
+
+var _ Statement = &AlterPipe{}
+
+// Format implements the NodeFormatter interface.
+func (node *AlterPipe) Format(ctx *FmtCtx) {
+	ctx.WriteString("ALTER PIPE ")
+	node.PipeName.Format(ctx)
+	if node.Options != nil {
+		ctx.WriteString(" SET OPTIONS ( ")
+		ctx.FormatNode(&node.Options)
+		ctx.WriteString(" )")
+	} else {
+		ctx.WriteString(" SET TABLE ")
+		ctx.FormatNode(&node.Table)
+		ctx.WriteString(" (")
+		if node.Star {
+			ctx.WriteString(" * ")
+		} else {
+			ctx.FormatNode(&node.ColNames)
+		}
+		ctx.WriteString(") ")
+		if node.Where != nil {
+			ctx.FormatNode(node.Where)
+		}
+	}
+}
+
+// CreatePublication represents a CREATE PUBLICATION statement.
+type CreatePublication struct {
+	PubName    Name
+	Database   Name
+	Table      TableName
+	TableNames TableNames
+	ColNames   NameList
+	Where      *Where
+	Options    KVOptions
+	Star       bool
+}
+
+var _ Statement = &CreatePublication{}
+
+// Format implements the NodeFormatter interface.
+func (node *CreatePublication) Format(ctx *FmtCtx) {
+	ctx.WriteString("CREATE PUBLICATION ")
+	node.PubName.Format(ctx)
+	if node.Database != "" {
+		ctx.WriteString(" FOR DATABASE ")
+		ctx.FormatNode(&node.Database)
+	} else {
+		// star or specified columns in single table
+		ctx.WriteString(" FOR TABLE ")
+		ctx.FormatNode(&node.TableNames)
+		if node.Table.TableName != "" {
+			ctx.WriteString(" (")
+			if node.Star {
+				ctx.WriteString(" * ")
+			} else {
+				ctx.FormatNode(&node.ColNames)
+			}
+			ctx.WriteString(")")
+			if node.Where != nil {
+				ctx.WriteString(" ")
+				ctx.FormatNode(node.Where)
+			}
+		}
+
+	}
+	if node.Options != nil {
+		ctx.WriteString(" WITH ")
+		ctx.FormatNode(&node.Options)
+	}
+}
+
+// AlterPub represents an ALTER PUBLICATION statement.
+type AlterPub struct {
+	PubName  Name
+	Table    TableName
+	ColNames NameList
+	Where    *Where
+	Options  KVOptions
+	Star     bool
+}
+
+var _ Statement = &AlterPub{}
+
+// Format implements the NodeFormatter interface.
+func (node *AlterPub) Format(ctx *FmtCtx) {
+	ctx.WriteString("ALTER PUBLICATION ")
+	node.PubName.Format(ctx)
+	if node.Options != nil {
+		ctx.WriteString(" SET OPTIONS ( ")
+		ctx.FormatNode(&node.Options)
+		ctx.WriteString(" )")
+	} else {
+		ctx.WriteString(" SET TABLE ")
+		ctx.FormatNode(&node.Table)
+		ctx.WriteString(" (")
+		if node.Star {
+			ctx.WriteString(" * ")
+		} else {
+			ctx.FormatNode(&node.ColNames)
+		}
+		ctx.WriteString(") ")
+		if node.Where != nil {
+			ctx.FormatNode(node.Where)
+		}
 	}
 }
 
@@ -1288,6 +1453,13 @@ const (
 // IsSparseTable returns SparseTable
 func (tt TableType) IsSparseTable() bool {
 	return tt == SparseTable
+}
+
+// IsTSTableType returns true if table is time-series.
+func IsTSTableType(t TableType) bool {
+	return t == TimeseriesTable ||
+		t == TemplateTable ||
+		t == InstanceTable
 }
 
 // TableTypeName converts TableType to string of table type

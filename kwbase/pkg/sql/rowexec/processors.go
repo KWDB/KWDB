@@ -27,6 +27,7 @@ package rowexec
 import (
 	"context"
 
+	"gitee.com/kwbasedb/kwbase/pkg/cdc/cdcpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
@@ -394,7 +395,12 @@ func NewProcessor(
 		}
 		return NewStreamReaderProcessor(flowCtx, processorID, core.StreamReader, post, outputs[0])
 	}
-
+	if core.PipeWatermark != nil {
+		if err := checkNumInOut(inputs, outputs, 0, 1); err != nil {
+			return nil, err
+		}
+		return NewPipeProcessor(flowCtx, processorID, core.PipeWatermark, post, outputs[0])
+	}
 	if core.ReplicationIngestionData != nil {
 		if err := checkNumInOut(inputs, outputs, 0, 1); err != nil {
 			return nil, err
@@ -443,6 +449,9 @@ var NewChangeAggregatorProcessor func(*execinfra.FlowCtx, int32, execinfrapb.Cha
 
 // NewChangeFrontierProcessor is externally implemented.
 var NewChangeFrontierProcessor func(*execinfra.FlowCtx, int32, execinfrapb.ChangeFrontierSpec, execinfra.RowSource, execinfra.RowReceiver) (execinfra.Processor, error)
+
+// NewPipeProcessor is implemented in the enterprise codebase and then injected here via runtime initialization.
+var NewPipeProcessor func(flowCtx *execinfra.FlowCtx, processorID int32, spec *cdcpb.PipeWatermarkSpec, post *execinfrapb.PostProcessSpec, output execinfra.RowReceiver) (execinfra.Processor, error)
 
 // NewReplicationIngestionDataProcessor is implemented in the non-free (CCL) codebase and then injected here via runtime initialization.
 var NewReplicationIngestionDataProcessor func(*execinfra.FlowCtx, int32, execinfrapb.ReplicationIngestionDataSpec, *execinfrapb.PostProcessSpec, execinfra.RowReceiver) (execinfra.Processor, error)

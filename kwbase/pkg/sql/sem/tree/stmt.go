@@ -223,6 +223,30 @@ func (*AlterStream) StatementTag() string { return "ALTER STREAM" }
 func (*AlterStream) StatTargetType() string { return "STREAM" }
 
 // StatementType implements the Statement interface.
+func (*AlterPipe) StatementType() StatementType { return DDL }
+
+// StatOp implements the StatOp interface.
+func (*AlterPipe) StatOp() string { return "ALTER" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*AlterPipe) StatementTag() string { return "ALTER PIPE" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*AlterPipe) StatTargetType() string { return "PIPE" }
+
+// StatementType implements the Statement interface.
+func (*AlterPub) StatementType() StatementType { return DDL }
+
+// StatOp implements the StatOp interface.
+func (*AlterPub) StatOp() string { return "ALTER" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*AlterPub) StatementTag() string { return "ALTER PUBLICATION" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*AlterPub) StatTargetType() string { return "PUBLICATION" }
+
+// StatementType implements the Statement interface.
 func (*AlterTable) StatementType() StatementType { return DDL }
 
 // StatOp implements the StatOp interface.
@@ -514,6 +538,30 @@ func (*CreateIndex) StatementTag() string { return "CREATE INDEX" }
 
 // StatTargetType implements the StatTargetType interface.
 func (*CreateIndex) StatTargetType() string { return "INDEX" }
+
+// StatementType implements the Statement interface.
+func (*CreatePipe) StatementType() StatementType { return DDL }
+
+// StatOp implements the StatOp interface.
+func (*CreatePipe) StatOp() string { return "CREATE" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*CreatePipe) StatementTag() string { return "CREATE PIPE" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*CreatePipe) StatTargetType() string { return "PIPE" }
+
+// StatementType implements the Statement interface.
+func (*CreatePublication) StatementType() StatementType { return DDL }
+
+// StatOp implements the StatOp interface.
+func (*CreatePublication) StatOp() string { return "CREATE" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*CreatePublication) StatementTag() string { return "CREATE PUBLICATION" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*CreatePublication) StatTargetType() string { return "PUBLICATION" }
 
 // StatementType implements the Statement interface.
 func (n *CreateSchema) StatementType() StatementType { return DDL }
@@ -974,6 +1022,30 @@ func (*DropStream) StatementTag() string { return "DROP STREAM" }
 
 // StatTargetType implements the StatTargetType interface.
 func (*DropStream) StatTargetType() string { return "STREAM" }
+
+// StatementType implements the Statement interface.
+func (*DropPipe) StatementType() StatementType { return DDL }
+
+// StatOp implements the StatOp interface.
+func (*DropPipe) StatOp() string { return "DROP" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*DropPipe) StatementTag() string { return "DROP PIPE" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*DropPipe) StatTargetType() string { return "PIPE" }
+
+// StatementType implements the Statement interface.
+func (*DropPublication) StatementType() StatementType { return DDL }
+
+// StatOp implements the StatOp interface.
+func (*DropPublication) StatOp() string { return "DROP" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*DropPublication) StatementTag() string { return "DROP PUBLICATION" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*DropPublication) StatTargetType() string { return "PUBLICATION" }
 
 // StatementType implements the Statement interface.
 func (*DropTable) StatementType() StatementType { return DDL }
@@ -1955,6 +2027,30 @@ func (*ShowPartitions) StatementTag() string { return "SHOW PARTITIONS" }
 func (*ShowPartitions) StatTargetType() string { return "" }
 
 // StatementType implements the Statement interface.
+func (*ShowPipes) StatementType() StatementType { return Rows }
+
+// StatOp implements the StatOp interface.
+func (*ShowPipes) StatOp() string { return "" }
+
+// StatementTag returns a short string identifying the type of the statement.
+func (*ShowPipes) StatementTag() string { return "SHOW PIPES" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*ShowPipes) StatTargetType() string { return "" }
+
+// StatementType implements the Statement interface.
+func (*ShowPublications) StatementType() StatementType { return Rows }
+
+// StatOp implements the StatOp interface.
+func (*ShowPublications) StatOp() string { return "" }
+
+// StatementTag returns a short string identifying the type of the statement.
+func (*ShowPublications) StatementTag() string { return "SHOW PUBLICATIONS" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*ShowPublications) StatTargetType() string { return "" }
+
+// StatementType implements the Statement interface.
 func (*ShowQueries) StatementType() StatementType { return Rows }
 
 // StatOp implements the StatOp interface.
@@ -2362,6 +2458,8 @@ func (*ValuesClause) StatementTag() string { return "VALUES" }
 func (n *AlterTSDatabase) String() string                { return AsString(n) }
 func (n *AlterIndex) String() string                     { return AsString(n) }
 func (n *AlterStream) String() string                    { return AsString(n) }
+func (n *AlterPipe) String() string                      { return AsString(n) }
+func (n *AlterPub) String() string                       { return AsString(n) }
 func (n *AlterTable) String() string                     { return AsString(n) }
 func (n *AlterTableCmds) String() string                 { return AsString(n) }
 func (n *AlterTableAddColumn) String() string            { return AsString(n) }
@@ -2395,6 +2493,8 @@ func (n *CreateAudit) String() string                    { return AsString(n) }
 func (n *CreateChangefeed) String() string               { return AsString(n) }
 func (n *CreateDatabase) String() string                 { return AsString(n) }
 func (n *CreateIndex) String() string                    { return AsString(n) }
+func (n *CreatePipe) String() string                     { return AsString(n) }
+func (n *CreatePublication) String() string              { return AsString(n) }
 func (n *CreateRole) String() string                     { return AsString(n) }
 func (n *CreateTable) String() string                    { return AsString(n) }
 func (n *CreateSchema) String() string                   { return AsString(n) }
@@ -2407,6 +2507,8 @@ func (n *Deallocate) String() string                     { return AsString(n) }
 func (n *Delete) String() string                         { return AsString(n) }
 func (n *DropDatabase) String() string                   { return AsString(n) }
 func (n *DropIndex) String() string                      { return AsString(n) }
+func (n *DropPipe) String() string                       { return AsString(n) }
+func (n *DropPublication) String() string                { return AsString(n) }
 func (n *DropSchedule) String() string                   { return AsString(n) }
 func (n *DropSchema) String() string                     { return AsString(n) }
 func (n *DropStream) String() string                     { return AsString(n) }
@@ -2494,6 +2596,8 @@ func (n *ShowSortHistogram) String() string              { return AsString(n) }
 func (n *ShowIndexes) String() string                    { return AsString(n) }
 func (n *ShowDistribution) String() string               { return AsString(n) }
 func (n *ShowPartitions) String() string                 { return AsString(n) }
+func (n *ShowPipes) String() string                      { return AsString(n) }
+func (n *ShowPublications) String() string               { return AsString(n) }
 func (n *ShowJobs) String() string                       { return AsString(n) }
 func (n *ShowQueries) String() string                    { return AsString(n) }
 func (n *ShowRanges) String() string                     { return AsString(n) }

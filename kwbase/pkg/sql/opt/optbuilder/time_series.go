@@ -19,6 +19,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 )
 
 const (
@@ -66,6 +67,9 @@ func (b *Builder) buildTimeSeriesScan(
 			hidden: col.IsHidden(),
 		})
 	}
+
+	// Add time series hidden columns to scope columns
+	outScope, tabColIDs = b.addTsHiddenScopeColumns(tabMeta, outScope, tabColIDs)
 
 	private := memo.TSScanPrivate{Table: tabID, Cols: tabColIDs,
 		Flags: memo.TSScanFlags{AccessMode: -1, InStream: b.InStream},
@@ -243,4 +247,41 @@ func (b *Builder) checkOrderedTSScan(expr memo.RelExpr) {
 			v.Flags.ExploreOrderedScan = true
 		}
 	}
+}
+
+// addTsHiddenScopeColumns adds the time series hidden columns (_osn, _op, _event)
+// to the scope columns and column set.
+func (b *Builder) addTsHiddenScopeColumns(
+	tabMeta *opt.TableMeta, outScope *scope, tabColIDs opt.ColSet,
+) (*scope, opt.ColSet) {
+	lastColID := outScope.cols[len(outScope.cols)-1].id
+
+	tabColIDs.Add(lastColID + 1)
+	outScope.cols = append(outScope.cols, scopeColumn{
+		id:     lastColID + 1,
+		name:   opt.HiddenOSNColumnName,
+		table:  tabMeta.Alias,
+		typ:    types.Int,
+		hidden: true,
+	})
+
+	tabColIDs.Add(lastColID + 2)
+	outScope.cols = append(outScope.cols, scopeColumn{
+		id:     lastColID + 2,
+		name:   opt.HiddenOperationColumnName,
+		table:  tabMeta.Alias,
+		typ:    types.Bytes,
+		hidden: true,
+	})
+
+	tabColIDs.Add(lastColID + 3)
+	outScope.cols = append(outScope.cols, scopeColumn{
+		id:     lastColID + 3,
+		name:   opt.HiddenEventColumnName,
+		table:  tabMeta.Alias,
+		typ:    types.Bytes,
+		hidden: true,
+	})
+
+	return outScope, tabColIDs
 }

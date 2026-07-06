@@ -175,6 +175,8 @@ type planNodeReadingOwnWrites interface {
 
 var _ planNode = &alterTSDatabaseNode{}
 var _ planNode = &alterIndexNode{}
+var _ planNode = &alterPipeNode{}
+var _ planNode = &alterPubNode{}
 var _ planNode = &alterSequenceNode{}
 var _ planNode = &alterStreamNode{}
 var _ planNode = &alterTableNode{}
@@ -187,6 +189,8 @@ var _ planNode = &changePrivilegesNode{}
 var _ planNode = &createDatabaseNode{}
 var _ planNode = &createFunctionNode{}
 var _ planNode = &createIndexNode{}
+var _ planNode = &createPipeNode{}
+var _ planNode = &createPubNode{}
 var _ planNode = &createSequenceNode{}
 var _ planNode = &createStatsNode{}
 var _ planNode = &createProcedureNode{}
@@ -203,6 +207,8 @@ var _ planNode = &deleteRangeNode{}
 var _ planNode = &distinctNode{}
 var _ planNode = &dropDatabaseNode{}
 var _ planNode = &dropIndexNode{}
+var _ planNode = &dropPipeNode{}
+var _ planNode = &dropPublicationNode{}
 var _ planNode = &dropScheduleNode{}
 var _ planNode = &dropSchemaNode{}
 var _ planNode = &dropSequenceNode{}

@@ -732,6 +732,59 @@ func (c *Constraint) TransformSpansToTsSpans(precision int32) []execinfrapb.TsSp
 	return tsSpans
 }
 
+// TransformSpansToOsnSpans convert spans in constraint to osnSpans.
+func (c *Constraint) TransformSpansToOsnSpans() []execinfrapb.OsnSpan {
+	var osnSpans []execinfrapb.OsnSpan
+	var s execinfrapb.OsnSpan
+
+	assign := func(start Key, startBoundary bool, end Key, endBoundary bool) (uint64, uint64) {
+		var startNew uint64
+		var endNew uint64
+		if start.firstVal != nil {
+			if t, ok := start.firstVal.(*tree.DInt); ok {
+				startNew = uint64(*t)
+			}
+			if startBoundary {
+				startNew++
+			}
+		}
+
+		if end.firstVal != nil {
+			if t, ok := end.firstVal.(*tree.DInt); ok {
+				endNew = uint64(*t)
+			}
+			if endBoundary {
+				endNew--
+			}
+		}
+		if start.firstVal == nil {
+			startNew = 0
+		}
+		if end.firstVal == nil {
+			endNew = math.MaxUint64
+		}
+		return startNew, endNew
+	}
+
+	first := c.Spans.firstSpan
+	others := c.Spans.otherSpans
+
+	s.FromTimeStamp, s.ToTimeStamp = assign(first.start, bool(first.startBoundary), first.end, bool(first.endBoundary))
+	if s.FromTimeStamp != 0 || s.ToTimeStamp != math.MaxUint64 {
+		osnSpans = append(osnSpans, s)
+	}
+
+	for i := range others {
+		s.FromTimeStamp, s.ToTimeStamp = assign(others[i].start, bool(others[i].startBoundary), others[i].end, bool(others[i].endBoundary))
+
+		if s.FromTimeStamp != 0 || s.ToTimeStamp != math.MaxUint64 {
+			osnSpans = append(osnSpans, s)
+		}
+	}
+
+	return osnSpans
+}
+
 // assignPrecision converts the datum type time to an integer according to precision
 //
 // in parameter:

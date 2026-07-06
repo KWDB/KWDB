@@ -314,7 +314,10 @@ start_key                 start_pretty                   end_key                
 \xc1                      /Table/57                      \xc2                      /Table/58                      system         scheduled_jobs                   ·           {1}       1
 \xc2                      /Table/58                      \xc4                      /Table/60                      system         user_defined_routine             ·           {1}       1
 \xc4                      /Table/60                      \xc5                      /Table/61                      system         kwdb_cdc_watermark               ·           {1}       1
-\xc5                      /Table/61                      \xd689                    /Table/78/1                    system         kwdb_streams                     ·           {1}       1
+\xc5                      /Table/61                      \xc6                      /Table/62                      system         kwdb_streams                     ·           {1}       1
+\xc6                      /Table/62                      \xc7                      /Table/63                      system         kwdb_pipes                       ·           {1}       1
+\xc7                      /Table/63                      \xc8                      /Table/64                      system         kwdb_unpush                      ·           {1}       1
+\xc8                      /Table/64                      \xd689                    /Table/78/1                    system         kwdb_publications                ·           {1}       1
 \xd689                    /Table/78/1                    \xd68989                  /Table/78/1/1                  test           t                                ·           {1}       1
 \xd68989                  /Table/78/1/1                  \xd6898d89                /Table/78/1/5/1                test           t                                ·           {3,4}     3
 \xd6898d89                /Table/78/1/5/1                \xd6898d8a                /Table/78/1/5/2                test           t                                ·           {1,2,3}   1
@@ -377,7 +380,10 @@ start_key                 start_pretty                   end_key                
 \xc1                      /Table/57                      \xc2                      /Table/58                      system         scheduled_jobs                   ·           {1}       1
 \xc2                      /Table/58                      \xc4                      /Table/60                      system         user_defined_routine             ·           {1}       1
 \xc4                      /Table/60                      \xc5                      /Table/61                      system         kwdb_cdc_watermark               ·           {1}       1
-\xc5                      /Table/61                      \xd689                    /Table/78/1                    system         kwdb_streams                     ·           {1}       1
+\xc5                      /Table/61                      \xc6                      /Table/62                      system         kwdb_streams                     ·           {1}       1
+\xc6                      /Table/62                      \xc7                      /Table/63                      system         kwdb_pipes                       ·           {1}       1
+\xc7                      /Table/63                      \xc8                      /Table/64                      system         kwdb_unpush                      ·           {1}       1
+\xc8                      /Table/64                      \xd689                    /Table/78/1                    system         kwdb_publications                ·           {1}       1
 \xd689                    /Table/78/1                    \xd68989                  /Table/78/1/1                  test           t                                ·           {1}       1
 \xd68989                  /Table/78/1/1                  \xd6898d89                /Table/78/1/5/1                test           t                                ·           {3,4}     3
 \xd6898d89                /Table/78/1/5/1                \xd6898d8a                /Table/78/1/5/2                test           t                                ·           {1,2,3}   1
@@ -396,8 +402,6 @@ start_key                 start_pretty                   end_key                
 \xdd89f67b                /Table/85/1/123                \xdd8a                    /Table/85/2                    d              c                                ·           {1}       1
 \xdd8a                    /Table/85/2                    \xdd8a88                  /Table/85/2/0                  d              c                                c_i_idx     {1}       1
 \xdd8a88                  /Table/85/2/0                  \xffff                    /Max                           d              c                                c_i_idx     {1}       1
-
-
 
 # Due to asynchronous splitting of ranges, we cannot guarantee the output
 # of the show ranges from database command. The test below just ensures that

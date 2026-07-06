@@ -86,6 +86,10 @@ func (p *planner) RenameTable(ctx context.Context, n *tree.RenameTable) (planNod
 		if len(newTn.String()) > MaxTSTableNameLength {
 			return nil, sqlbase.NewTSNameOutOfLengthError("table", newTn.String(), MaxTSTableNameLength)
 		}
+		// check whether this table has been published or subscribed
+		if err = checkTableRelatedPubsAndSubs(ctx, p, uint64(tableDesc.ID), tableDesc.Name, n.StatOp(), nil); err != nil {
+			return nil, err
+		}
 	}
 	if tableDesc.State != sqlbase.TableDescriptor_PUBLIC {
 		return nil, sqlbase.NewUndefinedRelationError(&oldTn)
@@ -279,7 +283,28 @@ func (n *renameTableNode) startExec(params runParams) error {
 			return err
 		}
 	}
+	n.n.Name.SetAnnotation(&p.semaCtx.Annotations, oldTn)
+	n.n.NewName.SetAnnotation(&p.semaCtx.Annotations, newTn)
 	params.p.SetAuditTarget(uint32(tableDesc.GetID()), tableDesc.GetName(), nil)
+	stmt := tree.AsStringWithFQNames(n.n, params.Ann())
+	if tableDesc.IsTSTable() {
+		var pipeMetadatas []*PipeMetadata
+		pipeMetadatas, err = params.p.checkTableRelatedPipe(params.ctx, uint64(tableDesc.ID), uint64(tableDesc.ParentID))
+		if err != nil {
+			return err
+		}
+
+		if len(pipeMetadatas) > 0 {
+			dbName := newTn.Catalog()
+			schemaName := newTn.Schema()
+			tableName := newTn.Table()
+			if err = sendDDLToPipe(
+				params, dbName, schemaName, tableName, kafkaMsgKindAlterTable, stmt, pipeMetadatas, true,
+			); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 

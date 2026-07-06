@@ -3177,30 +3177,13 @@ func (ex *connExecutor) SendDirectTsInsert(
 		res.SetError(errors.New("cannot execute ts insert in a read-only transaction"))
 		return
 	}
-	var tsInsNode planNode
+
 	var directTimes *directTimes
 	if di != nil {
 		directTimes = &di.DirectTimes
 		directTimes[CreateInsertNodeStart] = timeutil.Now()
 	}
-	// When CDCData is not empty, it signifies that the insert operation includes data that needs to be pushed.
-	// As a result, a tsInsertWithCDCNode is generated to replace the normal insert process's tsInsertNode.
-	if payloadNodeMap[int(evalCtx.NodeID)].CDCData == nil {
-		tsIns := tsInsertNodePool.Get().(*tsInsertNode)
-		for _, payloadVals := range payloadNodeMap {
-			tsIns.nodeIDs = append(tsIns.nodeIDs, payloadVals.NodeID)
-			tsIns.allNodePayloadInfos = append(tsIns.allNodePayloadInfos, payloadVals.PerNodePayloads)
-		}
-		tsInsNode = tsIns
-	} else {
-		tsIns := tsInsertWithCDCNodePool.Get().(*tsInsertWithCDCNode)
-		for _, payloadVals := range payloadNodeMap {
-			tsIns.nodeIDs = append(tsIns.nodeIDs, payloadVals.NodeID)
-			tsIns.allNodePayloadInfos = append(tsIns.allNodePayloadInfos, payloadVals.PerNodePayloads)
-		}
-		tsIns.CDCData = payloadNodeMap[int(evalCtx.NodeID)].CDCData
-		tsInsNode = tsIns
-	}
+	tsInsNode := buildInsertNode(evalCtx, payloadNodeMap)
 	if di != nil {
 		directTimes[CreateInsertNodeEnd] = timeutil.Now()
 	}
@@ -3255,4 +3238,31 @@ func (ex *connExecutor) SendDirectTsInsert(
 	dedupRows = recv.dedupRows
 	defer cleanup()
 	return
+}
+
+// buildInsertNode builds tsInsertNode or tsInsertWithCDCNode from payloadNodeMap.
+func buildInsertNode(
+	evalCtx *tree.EvalContext, payloadNodeMap map[int]*sqlbase.PayloadForDistTSInsert,
+) planNode {
+	var tsInsNode planNode
+	// When CDCData is not empty, it signifies that the insert operation includes data that needs to be pushed.
+	// As a result, a tsInsertWithCDCNode is generated to replace the normal insert process's tsInsertNode.
+	if payloadNodeMap[int(evalCtx.NodeID)].CDCData == nil {
+		tsIns := tsInsertNodePool.Get().(*tsInsertNode)
+		for _, payloadVals := range payloadNodeMap {
+			tsIns.nodeIDs = append(tsIns.nodeIDs, payloadVals.NodeID)
+			tsIns.allNodePayloadInfos = append(tsIns.allNodePayloadInfos, payloadVals.PerNodePayloads)
+		}
+		tsInsNode = tsIns
+	} else {
+		tsIns := tsInsertWithCDCNodePool.Get().(*tsInsertWithCDCNode)
+		for _, payloadVals := range payloadNodeMap {
+			tsIns.nodeIDs = append(tsIns.nodeIDs, payloadVals.NodeID)
+			tsIns.allNodePayloadInfos = append(tsIns.allNodePayloadInfos, payloadVals.PerNodePayloads)
+		}
+		tsIns.CDCData = payloadNodeMap[int(evalCtx.NodeID)].CDCData
+		tsInsNode = tsIns
+	}
+
+	return tsInsNode
 }

@@ -233,7 +233,7 @@ alter table stream_db_fvt.cpu drop column k_timestamp;
 alter table stream_db_fvt.cpu drop column usage_user;
 alter table stream_db_fvt.cpu drop column usage_guest;
 alter table stream_db_fvt.cpu add column usage_user_a int;
-
+select pg_sleep(3);
 alter stream test_stream1 set enable='OFF';
 alter table stream_db_fvt_out.cpu_stream_out add column count_a int;
 alter table stream_db_fvt.cpu add column usage_user_b int;

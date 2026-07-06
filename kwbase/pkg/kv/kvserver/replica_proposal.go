@@ -1002,24 +1002,24 @@ func (r *Replica) batchRequestOsnRewrite(
 				log.VEventf(ctx, 3, "The TsRowPutRequest RangeID is : %v, osn is :%v", r.RangeID, osn)
 			}
 		case *roachpb.TsDeleteRequest:
-			originOsn := req.(*roachpb.TsDeleteRequest).OsnId
+			originOsn := req.(*roachpb.TsDeleteRequest).OsnID
 			if originOsn == 0 {
 				osn := r.TsEngine().TsIDGen.GetNextID()
-				req.(*roachpb.TsDeleteRequest).OsnId = osn
+				req.(*roachpb.TsDeleteRequest).OsnID = osn
 				log.VEventf(ctx, 3, "The TsDeleteRequest RangeID is : %v, osn is :%v", r.RangeID, osn)
 			}
 		case *roachpb.TsDeleteMultiEntitiesDataRequest:
-			originOsn := req.(*roachpb.TsDeleteMultiEntitiesDataRequest).OsnId
+			originOsn := req.(*roachpb.TsDeleteMultiEntitiesDataRequest).OsnID
 			if originOsn == 0 {
 				osn := r.TsEngine().TsIDGen.GetNextID()
-				req.(*roachpb.TsDeleteMultiEntitiesDataRequest).OsnId = osn
+				req.(*roachpb.TsDeleteMultiEntitiesDataRequest).OsnID = osn
 				log.VEventf(ctx, 3, "The TsDeleteMultiEntitiesDataRequest RangeID is : %v, osn is :%v", r.RangeID, osn)
 			}
 		case *roachpb.TsDeleteEntityRequest:
-			originOsn := req.(*roachpb.TsDeleteEntityRequest).OsnId
+			originOsn := req.(*roachpb.TsDeleteEntityRequest).OsnID
 			if originOsn == 0 {
 				osn := r.TsEngine().TsIDGen.GetNextID()
-				req.(*roachpb.TsDeleteEntityRequest).OsnId = osn
+				req.(*roachpb.TsDeleteEntityRequest).OsnID = osn
 				log.VEventf(ctx, 3, "The TsDeleteEntityRequest RangeID is : %v, osn is :%v", r.RangeID, osn)
 			}
 		case *roachpb.TsTagUpdateRequest:
@@ -1052,6 +1052,7 @@ func (r *Replica) requestToProposalTS(
 	latchSpans *spanset.SpanSet,
 ) (*ProposalData, *roachpb.Error) {
 	res, needConsensus, pErr := r.evaluateProposalTS(ctx, idKey, ba, latchSpans)
+	ba.Requests = r.batchRequestOsnRewrite(ctx, ba.Requests)
 
 	// Fill out the results even if pErr != nil; we'll return the error below.
 	proposal := &ProposalData{

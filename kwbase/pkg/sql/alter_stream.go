@@ -14,7 +14,6 @@ package sql
 import (
 	"context"
 
-	"gitee.com/kwbasedb/kwbase/pkg/cdc/cdcpb"
 	"gitee.com/kwbasedb/kwbase/pkg/jobs"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
@@ -151,13 +150,13 @@ func (n *alterStreamNode) startExec(params runParams) (err error) {
 
 		// Close the job by closing the CDC
 		params.ExecCfg().CDCCoordinator.StopCDCByLocal(
-			n.StreamMetadata.sourceTableID, n.StreamMetadata.id, cdcpb.TSCDCInstanceType_Stream,
+			n.StreamMetadata.sourceTableID, n.StreamMetadata.id, sqlbase.CDCInstanceType_Stream,
 		)
 		waitCDCStatusChanged(params.ctx,
 			params.p.ExecCfg().CDCCoordinator,
 			parameters.SourceTableID,
 			n.StreamMetadata.id,
-			cdcpb.TSCDCInstanceType_Stream,
+			sqlbase.CDCInstanceType_Stream,
 			false)
 
 		// stop the running stream job

@@ -74,6 +74,32 @@ class TsEngineSchemaManager {
 
   fs::path GetSchemaPath() const {return schema_root_path_;}
 
+  bool GetTablePublishedMaxOSN(TSTableID tbl_id, TS_OSN& osn) {
+    if (!is_pubsub_init_) {   // pubsub table osn waterline not set. cannot delete any data.
+      osn = 0;
+      LOG_INFO("pubsub table osn waterline not set. storage cannot clear any data.");
+      return true;
+    }
+    bool ret = false;
+    rdLock();
+    auto it = tbl_pub_max_osn_.find(tbl_id);
+    if (it == tbl_pub_max_osn_.end()) {
+      ret = false;
+    } else {
+      ret = true;
+      osn = it->second;
+    }
+    unLock();
+    return ret;
+  }
+
+  void SetTablePublishedMaxOSN(std::unordered_map<TSTableID, TS_OSN>& tbl_osn) {
+    wrLock();
+    tbl_pub_max_osn_.swap(tbl_osn);
+    is_pubsub_init_  = true;
+    unLock();
+  }
+
   int rdLock();
 
   int wrLock();
@@ -86,6 +112,8 @@ class TsEngineSchemaManager {
   string tbl_sub_path_;
   std::unordered_map<TSTableID, std::shared_ptr<TsTableSchemaManager>> table_schema_mgrs_;
   KRWLatch mgrs_rw_latch_;
+  bool is_pubsub_init_{false};
+  std::unordered_map<TSTableID, TS_OSN> tbl_pub_max_osn_;  // table max data osn that has done in pub/sub module.
 };
 
 }  // namespace kwdbts

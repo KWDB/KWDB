@@ -755,12 +755,9 @@ func (p *planner) MakeNewPlanAndRunForTsInsert(
 	ctx context.Context, evalCtx *tree.EvalContext, param tree.TSInsertSelectParam,
 ) (int, error) {
 	if payloadNodeMap, ok := param.(*map[int]*sqlbase.PayloadForDistTSInsert); ok {
-		tsIns := tsInsertNodePool.Get().(*tsInsertNode)
-		for _, payloadVals := range *payloadNodeMap {
-			tsIns.nodeIDs = append(tsIns.nodeIDs, payloadVals.NodeID)
-			tsIns.allNodePayloadInfos = append(tsIns.allNodePayloadInfos, payloadVals.PerNodePayloads)
-		}
-		return p.makeNewPlanAndRun(ctx, evalCtx.Txn, tsIns)
+		tsInsNode := buildInsertNode(evalCtx, *payloadNodeMap)
+
+		return p.makeNewPlanAndRun(ctx, evalCtx.Txn, tsInsNode)
 	}
 	return 0, nil
 }

@@ -648,25 +648,30 @@ EEIteratorErrCode StorageHandler::NewTsIterator(kwdbContext_p ctx) {
     if (entities_.size() > 1) {
       std::sort(entities_.begin(), entities_.end(), comparator);
     }
+    if (table_->has_osn_col_) {
+      ret = ts_table_->GetMetricIteratorByOSN(ctx, table_->table_version_, table_->scan_cols_, entities_,
+                                              table_->osn_spans_, *ts_spans_, &ts_iterator);
+    } else {
+        IteratorParams params = {
+          .entity_ids = entities_,
+          .ts_spans = *ts_spans_,
+          .block_filter = table_->block_filters_,
+          .scan_cols = table_->scan_cols_,
+          .agg_extend_cols = table_->agg_extends_,
+          .scan_agg_types = table_->scan_real_agg_types_,
+          .table_version = table_->table_version_,
+          .ts_points = table_->scan_real_last_ts_points_,
+          .reverse = table_->is_reverse_,
+          .sorted = table_->ordered_scan_,
+          .offset = table_->offset_,
+          .limit = table_->limit_,
+          .scan_osn = table_->osn_id_,
+          .fill_params = ts_fill_params_,
+          .time_bucket_info = table_->time_bucket_info_
+        };
+        ret = ts_table_->GetIterator(ctx, params, &ts_iterator);
+    }
 
-    IteratorParams params = {
-      .entity_ids = entities_,
-      .ts_spans = *ts_spans_,
-      .block_filter = table_->block_filters_,
-      .scan_cols = table_->scan_cols_,
-      .agg_extend_cols = table_->agg_extends_,
-      .scan_agg_types = table_->scan_real_agg_types_,
-      .table_version = table_->table_version_,
-      .ts_points = table_->scan_real_last_ts_points_,
-      .reverse = table_->is_reverse_,
-      .sorted = table_->ordered_scan_,
-      .offset = table_->offset_,
-      .limit = table_->limit_,
-      .scan_osn = table_->osn_id_,
-      .fill_params = ts_fill_params_,
-      .time_bucket_info = table_->time_bucket_info_
-    };
-    ret = ts_table_->GetIterator(ctx, params, &ts_iterator);
 
     if (KStatus::FAIL == ret) {
       code = EEIteratorErrCode::EE_ERROR;
@@ -683,18 +688,23 @@ EEIteratorErrCode StorageHandler::NewTagIterator(kwdbContext_p ctx) {
   EnterFunc();
   KStatus ret = FAIL;
   TS_OSN osn = table_->osn_id_;
-  if (EngineOptions::isSingleNode()) {
-    BaseEntityIterator* iter = nullptr;
-    if (read_mode_ == TSTableReadMode::metaTable) {
-        ret = ts_table_->GetTagIterator(ctx, {}, {}, &iter, table_->table_version_, osn);
-    } else {
-        ret = ts_table_->GetTagIterator(ctx, table_->scan_tags_, {}, &iter, table_->table_version_, osn);
-    }
-    tag_iterator = iter;
+  if (table_->has_osn_col_) {
+    ret = ts_table_->GetTagIteratorByOSN(ctx, table_->table_version_, table_->scan_tags_, table_->osn_spans_,
+                                         osn, &table_->hash_spans_, &tag_iterator);
   } else {
-    BaseEntityIterator *tag = nullptr;
-    ret = ts_table_->GetTagIterator(ctx, table_->scan_tags_, &(table_->hash_spans_), &tag, table_->table_version_, osn);
-    tag_iterator = tag;
+    if (EngineOptions::isSingleNode()) {
+      BaseEntityIterator* iter = nullptr;
+      if (read_mode_ == TSTableReadMode::metaTable) {
+        ret = ts_table_->GetTagIterator(ctx, {}, {}, &iter, table_->table_version_, osn);
+      } else {
+        ret = ts_table_->GetTagIterator(ctx, table_->scan_tags_, {}, &iter, table_->table_version_, osn);
+      }
+      tag_iterator = iter;
+    } else {
+      BaseEntityIterator* tag = nullptr;
+      ret = ts_table_->GetTagIterator(ctx, table_->scan_tags_, &(table_->hash_spans_), &tag, table_->table_version_, osn);
+      tag_iterator = tag;
+    }
   }
   if (ret == KStatus::FAIL) {
     EEPgErrorInfo::SetPgErrorInfo(ERRCODE_FETCH_DATA_FAILED,

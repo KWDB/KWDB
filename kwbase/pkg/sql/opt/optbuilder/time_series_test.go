@@ -250,6 +250,14 @@ func TestCheckOrderedTSScan(t *testing.T) {
 // testTSTable is a mock cat.Table implementation for testing
 type testTSTable struct{}
 
+func (t *testTSTable) AllColumnCount() int {
+	return 5
+}
+
+func (t *testTSTable) GetCDC() interface{} {
+	return nil
+}
+
 func (t *testTSTable) ID() cat.StableID {
 	return cat.StableID(1)
 }

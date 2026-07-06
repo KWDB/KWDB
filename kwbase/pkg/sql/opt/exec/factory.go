@@ -90,6 +90,7 @@ type Factory interface {
 
 	// ConstructTSScan returns a tsScan node of time series query.
 	ConstructTSScan(
+		md *opt.Metadata,
 		table cat.Table,
 		private *memo.TSScanPrivate,
 		tagFilter, primaryFilter, tagIndexFilter []tree.TypedExpr,
@@ -407,6 +408,7 @@ type Factory interface {
 		primaryTagID []uint32,
 		primaryTagValues, partOfPTgValues [][]byte,
 		isOutOfRange bool,
+		cdcData []byte,
 	) (Node, error)
 
 	// ConstructTSTagUpdate creates a node that implements an TIME SERIES DELETE statement.
@@ -417,6 +419,7 @@ type Factory interface {
 		pTagValueNotExist bool,
 		startKey, endKey roachpb.Key,
 		osnID uint64,
+		cdcData []byte,
 	) (Node, error)
 
 	// ConstructInsertFastPath creates a node that implements a special (but very

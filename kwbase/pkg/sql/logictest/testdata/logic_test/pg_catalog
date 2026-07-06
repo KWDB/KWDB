@@ -637,6 +637,8 @@ query OOIBBBBBBBBBBTTTTTT colnames
 SELECT * FROM pg_catalog.pg_index ORDER BY indexrelid
 ----
 indexrelid  indrelid  indnatts  indisunique  indisprimary  indisexclusion  indimmediate  indisclustered  indisvalid  indcheckxmin  indisready  indislive  indisreplident  indkey   indcollation               indclass  indoption  indexprs  indpred
+51576700    64        1         true         true          false           true          false           true        false         false       true       false           1        0                          0         2          NULL      NULL
+51576703    64        1         true         false         false           true          false           true        false         false       true       false           2        3903121477                 0         2          NULL      NULL
 144368028   32        1         true         true          false           true          false           true        false         false       true       false           1        0                          0         2          NULL      NULL
 543291288   23        1         false        false         false           false         false           true        false         false       true       false           1        3903121477                 0         2          NULL      NULL
 543291289   23        1         false        false         false           false         false           true        false         false       true       false           2        3903121477                 0         2          NULL      NULL
@@ -664,6 +666,7 @@ indexrelid  indrelid  indnatts  indisunique  indisprimary  indisexclusion  indim
 2407840836  24        3         true         true          false           true          false           true        false         false       true       false           1 2 3    0 0 0                      0 0 0     2 2 2      NULL      NULL
 2528390112  47        2         true         false         false           true          false           true        false         false       true       false           2 3      3903121477 3903121477      0 0       2 2        NULL      NULL
 2528390115  47        1         true         true          false           true          false           true        false         false       true       false           1        0                          0         2          NULL      NULL
+2574785779  63        3         true         true          false           true          false           true        false         false       true       false           1 2 7    0 0 0                      0 0 0     2 2 2      NULL      NULL
 2621181440  15        2         false        false         false           false         false           true        false         false       true       false           2 3      3903121477 0               0 0       2 2        NULL      NULL
 2621181443  15        1         true         true          false           true          false           true        false         false       true       false           1        0                          0         2          NULL      NULL
 2667577107  31        1         true         true          false           true          false           true        false         false       true       false           1        0                          0         2          NULL      NULL
@@ -676,6 +679,8 @@ indexrelid  indrelid  indnatts  indisunique  indisprimary  indisexclusion  indim
 3706522183  11        4         true         true          false           true          false           true        false         false       true       false           1 2 4 3  0 0 0 0                    0 0 0 0   2 2 2 2    NULL      NULL
 3752917847  27        2         true         true          false           true          false           true        false         false       true       false           1 2      0 0                        0 0       2 2        NULL      NULL
 3873467122  46        1         true         true          false           true          false           true        false         false       true       false           1        0                          0         2          NULL      NULL
+3919862785  62        1         true         false         false           true          false           true        false         false       true       false           2        3903121477                 0         2          NULL      NULL
+3919862786  62        1         true         true          false           true          false           true        false         false       true       false           1        0                          0         2          NULL      NULL
 3966258450  14        1         true         true          false           true          false           true        false         false       true       false           1        3903121477                 0         2          NULL      NULL
 4012654114  30        3         true         true          false           true          false           true        false         false       true       false           1 2 3    0 0 3903121477             0 0 0     2 2 2      NULL      NULL
 4179599057  61        1         true         true          false           true          false           true        false         false       true       false           1        0                          0         2          NULL      NULL
@@ -691,6 +696,8 @@ FROM pg_index
 ORDER BY indexrelid, operator_argument_position
 ----
 indexrelid  operator_argument_type_oid  operator_argument_position
+51576700    0                           1
+51576703    0                           1
 144368028   0                           1
 543291288   0                           1
 543291289   0                           1
@@ -736,6 +743,9 @@ indexrelid  operator_argument_type_oid  operator_argument_position
 2528390112  0                           1
 2528390112  0                           2
 2528390115  0                           1
+2574785779  0                           1
+2574785779  0                           2
+2574785779  0                           3
 2621181440  0                           1
 2621181440  0                           2
 2621181443  0                           1
@@ -756,6 +766,8 @@ indexrelid  operator_argument_type_oid  operator_argument_position
 3752917847  0                           1
 3752917847  0                           2
 3873467122  0                           1
+3919862785  0                           1
+3919862786  0                           1
 3966258450  0                           1
 4012654114  0                           1
 4012654114  0                           2
@@ -1582,6 +1594,7 @@ objoid      classoid    objsubid  description
 4294967255  4294967219  0         kwdb attribute and value info
 4294967175  4294967219  0         kwdb functions info
 4294967254  4294967219  0         kwdb object create statement
+4294967172  4294967219  0         kwdb pipes info
 4294967174  4294967219  0         kwdb procedures info
 4294967253  4294967219  0         kwdb show retentions
 4294967176  4294967219  0         kwdb schedules info
@@ -1599,6 +1612,7 @@ objoid      classoid    objsubid  description
 4294967259  4294967219  0         per-application transaction statistics (in-memory, not durable; local node only). This table is wiped periodically (by default, at least every two hours)
 4294967271  4294967219  0         defined partitions for all tables/indexes accessible by the current user in the current database (KV scan)
 4294967270  4294967219  0         comments for predefined virtual tables (RAM/static)
+4294967171  4294967219  0         kwdb publication info
 4294967269  4294967219  0         range metadata without leaseholder details (KV join; expensive!)
 4294967266  4294967219  0         ongoing schema changes, across all descriptors accessible by current user (KV scan; expensive!)
 4294967265  4294967219  0         session trace accumulated so far (RAM)
@@ -1606,7 +1620,7 @@ objoid      classoid    objsubid  description
 4294967262  4294967219  0         details for all columns accessible by current user in current database (KV scan)
 4294967261  4294967219  0         indexes accessible by current user in current database (KV scan)
 4294967260  4294967219  0         table descriptors accessible by current user, including non-public and virtual (KV scan; expensive!)
-4294967172  4294967219  0         kwdb show info of ts engine
+4294967170  4294967219  0         kwdb show info of ts engine
 4294967258  4294967219  0         decoded zone configurations from system.zones (KV scan)
 4294967226  4294967219  0         index access methods (incomplete)
 4294967225  4294967219  0         column default values

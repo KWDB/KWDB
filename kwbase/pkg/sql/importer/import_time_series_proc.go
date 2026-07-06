@@ -196,6 +196,7 @@ type timeSeriesImportInfo struct {
 	flowCtx *execinfra.FlowCtx
 
 	// infos from sql import and table desc
+	table          *sqlbase.TableDescriptor
 	colIndexs      map[int]int
 	dataIndexs     map[int]int
 	columns        []*sqlbase.ColumnDescriptor
@@ -386,7 +387,7 @@ func initPrettyColsAndComputeColumnSize(
 		autoShrink: autoShrink, logColumnID: logColumnID, batchSize: batchSize, fileSplitInfos: fileSplitInfos,
 		parallelNums: parallelNums, dbID: dbID, tbID: tbID, hashNum: hashNum, flowCtx: flowCtx, dataIndexs: dataIndexs,
 		datumsCh: datumsCh, txn: txn, primaryTagCols: primaryTagCols, isSparseTable: isSparseTable, dataCols: dataCols,
-		OptimizedDispatch: spec.OptimizedDispatch, writeWAL: spec.WriteWAL}
+		table: spec.Table.Desc, OptimizedDispatch: spec.OptimizedDispatch, writeWAL: spec.WriteWAL}
 	t.mu.pTagToWorkerID = pTagToWorkerID
 	t.tsColTypeMap = make(map[int]oid.Oid, pArgs.PTagNum+pArgs.AllTagNum+pArgs.DataColNum)
 	return t, err
@@ -868,6 +869,36 @@ func (t *timeSeriesImportInfo) ingest(
 		}
 	}
 
+	var osn uint64
+	isCDCEnable := false
+	cdcCoordinator := t.flowCtx.Cfg.CDCCoordinator
+	if cdcCoordinator != nil {
+		isCDCEnable = cdcCoordinator.WaitCDCEnabled(uint64(t.tbID), t.table.CDC)
+	}
+
+	var cdcSendData *execinfrapb.CDCData
+	if isCDCEnable {
+		cdcPushData, payloadMaxTime := cdcCoordinator.CaptureData(t.flowCtx.EvalCtx, uint64(t.tbID), t.columns, datums, t.colIndexs)
+		cdcData := &sqlbase.CDCData{
+			TableID:      uint64(t.tbID),
+			MinTimestamp: payloadMaxTime,
+			PushData:     cdcPushData,
+		}
+
+		cdcSendData = &execinfrapb.CDCData{
+			TableID:      cdcData.TableID,
+			MinTimestamp: cdcData.MinTimestamp,
+			OSN:          osn,
+		}
+		for _, data := range cdcData.PushData {
+			cdcSendData.PushData = append(cdcSendData.PushData, &execinfrapb.CDCPushData{
+				TaskID:   data.TaskID,
+				TaskType: data.TaskType,
+				Data:     data.Rows,
+			})
+		}
+	}
+
 	// start && single-node
 	if t.flowCtx.EvalCtx.StartSinglenode {
 		for _, val := range payloadNodeMap[int(t.flowCtx.EvalCtx.NodeID)].PerNodePayloads {
@@ -881,6 +912,12 @@ func (t *timeSeriesImportInfo) ingest(
 				return err
 			}
 			t.handleDedupResp(ctx, resp, false, int64(len(datums)), datums, string(val.PrimaryTagKey))
+
+			if cdcSendData != nil {
+				cdcSendData.OSN = sqlbase.DecodeOsnIDFromPayload(val.Payload)
+				t.flowCtx.Cfg.CDCCoordinator.SendRows(cdcSendData)
+			}
+
 			return err
 		}
 	}
@@ -911,7 +948,14 @@ func (t *timeSeriesImportInfo) ingest(
 		for respsID := range ba.RawResponse().Responses {
 			resp := ba.RawResponse().Responses[respsID].GetInner().(*roachpb.TsRowPutResponse)
 			t.handleDedupResp(ctx, resp, true, int64(len(datums)), datums, string(val.PrimaryTagKey))
+			if osn == 0 || osn > resp.OsnID {
+				osn = resp.OsnID
+			}
 		}
+	}
+	if cdcSendData != nil {
+		cdcSendData.OSN = osn
+		t.flowCtx.Cfg.CDCCoordinator.SendRows(cdcSendData)
 	}
 
 	return nil

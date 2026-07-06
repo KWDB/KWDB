@@ -1981,10 +1981,10 @@ func (s *scope) checkCol(e opt.ScalarExpr, minOrMax bool) bool {
 			return false
 		}
 
-		// tag col can not apply agg extend.
+		// tag/osn col can not apply agg extend.
 		if minOrMax {
 			s.AggExHelper.minOrMaxColID = t.Col
-			return !colMeta.IsTag()
+			return !colMeta.IsTag() && colMeta.TSType != opt.TSHiddenCol
 		}
 
 		// first agg or last agg only use timestamp col.

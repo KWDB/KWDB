@@ -605,6 +605,23 @@ Field *FieldBlob::field_to_copy() {
   return field;
 }
 
+String FieldOSNBlob::ValStr() { return ValStr(get_ptr()); }
+
+String FieldOSNBlob::ValStr(char *ptr) {
+  if (false == is_chunk_) {
+    k_uint16 typ_len = storage_len_;
+    return String{static_cast<char *>(ptr), typ_len};
+  } else {
+    return ValTempStr(ptr);
+  }
+}
+
+Field *FieldOSNBlob::field_to_copy() {
+  FieldOSNBlob *field = new FieldOSNBlob(*this);
+  field->is_chunk_ = false;
+  return field;
+}
+
 k_int64 FieldVarchar::ValInt() { return 0; }
 
 k_int64 FieldVarchar::ValInt(char *ptr) { return 0; }

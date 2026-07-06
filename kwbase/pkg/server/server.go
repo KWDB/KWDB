@@ -922,7 +922,7 @@ func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
 
 	// initialize the CDC Coordinator to handle the connection from Pipe Job.
 	s.distSQLServer.CDCCoordinator = cdc.NewCoordinator(
-		s.st, s.grpc.Server, s.stopper, s.gossip, s.internalExecutor, s.status,
+		s.st, s.grpc.Server, s.stopper, s.gossip, internalExecutor, s.status, s.jobRegistry,
 	)
 
 	// TODO(andrei): We're creating an initServer even through the inspection of
@@ -2432,6 +2432,11 @@ func (s *Server) Start(ctx context.Context) error {
 		},
 		scheduledjobs.ProdJobSchedulerEnv,
 	)
+
+	s.execCfg.CDCCoordinator.SetTsEngine(s.tsEngine)
+	if err = s.execCfg.CDCCoordinator.SetCDCTableOSN(ctx); err != nil {
+		return err
+	}
 
 	return nil
 }

@@ -37,6 +37,15 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
+const (
+	// HiddenOSNColumnName is the name of hidden column OSN(Operation Sequence Number).
+	HiddenOSNColumnName = "_osn"
+	// HiddenOperationColumnName is the name of hidden column operation.
+	HiddenOperationColumnName = "_op"
+	// HiddenEventColumnName is the name of hidden column event.
+	HiddenEventColumnName = "_event"
+)
+
 // SchemaID uniquely identifies the usage of a schema within the scope of a
 // query. SchemaID 0 is reserved to mean "unknown schema". Internally, the
 // SchemaID consists of an index into the Metadata.schemas slice.
@@ -421,6 +430,12 @@ func (md *Metadata) AddTable(tab cat.Table, alias *tree.TableName) TableID {
 			primaryTagCount++
 		}
 	}
+
+	// Add hidden columns for time series tables
+	if md.tableType == int32(tree.TimeseriesTable) {
+		md.addTsHiddenColumns(tabID)
+	}
+
 	md.TableMeta(tabID).PrimaryTagCount = primaryTagCount
 	return tabID
 }
@@ -787,4 +802,20 @@ func (md *Metadata) GetDeps(deps map[uint64]*PlanDeps) {
 			(deps)[tabID] = planDeps
 		}
 	}
+}
+
+// addTsHiddenColumns adds the special hidden columns required for time series tables.
+// These columns are used internally for time series operations and are not visible to users.
+func (md *Metadata) addTsHiddenColumns(tabID TableID) {
+	colID1 := md.AddColumn(HiddenOSNColumnName, types.Int)
+	md.ColumnMeta(colID1).Table = tabID
+	md.ColumnMeta(colID1).TSType = TSHiddenCol
+
+	colID2 := md.AddColumn(HiddenOperationColumnName, types.Bytes)
+	md.ColumnMeta(colID2).Table = tabID
+	md.ColumnMeta(colID2).TSType = TSHiddenCol
+
+	colID3 := md.AddColumn(HiddenEventColumnName, types.Bytes)
+	md.ColumnMeta(colID3).Table = tabID
+	md.ColumnMeta(colID3).TSType = TSHiddenCol
 }

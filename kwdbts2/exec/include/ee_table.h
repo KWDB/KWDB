@@ -138,6 +138,16 @@ class TABLE {
   k_uint64 osn_id_{UINT64_MAX};
   TimeBucketInfo time_bucket_info_{};
 
+
+  // OsnColIdx represents _osn col idx
+  const k_uint32 OsnColIdx = UINT32_MAX - 1;
+  // OpColIdx represents _op col idx
+  const k_uint32 OpColIdx = UINT32_MAX - 2;
+  // EventColIdx represents _event col idx
+  const k_uint32 EventColIdx = UINT32_MAX - 3;
+  std::vector<KwOSNSpan> osn_spans_;
+  bool has_osn_col_{false};
+
  protected:
   // relational fields for multiple model processing
   vector<Field*> rel_fields_;

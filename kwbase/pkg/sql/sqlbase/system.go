@@ -399,6 +399,53 @@ CREATE TABLE kwdb_streams (
 		FAMILY fam_2_id (name, create_by, create_at, status, target_table_id, source_table_id, job_id, parameters, run_info)
 );`
 
+	PipesTableSchema = `
+  CREATE TABLE kwdb_pipes (
+      id INT8 NOT NULL DEFAULT unique_rowid(),
+      name STRING NOT NULL,
+      parameters JSONB NOT NULL,
+      create_at TIMESTAMP NOT NULL,
+      create_by STRING NOT NULL,
+      status STRING NOT NULL,
+      run_info JSONB NOT NULL,
+      job_id INT8 NOT NULL,
+      source_id INT8 NOT NULL,
+      low_water_mark INT8 NOT NULL,
+      CONSTRAINT "primary" PRIMARY KEY (id ASC),
+      UNIQUE INDEX unique_name_idx (name ASC),
+      FAMILY "primary" (id),
+      FAMILY fam_2_id (name, parameters, create_at, create_by, status, run_info, job_id, source_id, low_water_mark)
+  );`
+
+	UnpushTableSchema = `
+  CREATE TABLE kwdb_unpush (
+      pusher_id INT8 NOT NULL,
+      type INT8 NOT NULL,
+      database_name STRING NOT NULL,
+      schema_name STRING NOT NULL,
+      table_name STRING NOT NULL,
+      operation STRING NOT NULL,
+      op_time TIMESTAMP NOT NULL,
+      statement STRING NOT NULL,
+      CONSTRAINT "primary" PRIMARY KEY (pusher_id ASC, type ASC, op_time ASC),
+      FAMILY "primary" (pusher_id, type, op_time),
+      FAMILY fam_2_id (database_name, schema_name, table_name, operation, statement)
+  );`
+
+	PubTableSchema = `
+  CREATE TABLE kwdb_publications (
+      id INT8 NOT NULL DEFAULT unique_rowid(),
+      name STRING NOT NULL,
+      parameters JSONB NOT NULL,
+      database_id INT8 NOT NULL,
+      create_at TIMESTAMP NOT NULL,
+      create_by STRING NOT NULL,
+      CONSTRAINT "primary" PRIMARY KEY (id ASC),
+      UNIQUE INDEX unique_name_idx (name ASC),
+      FAMILY "primary" (id),
+      FAMILY fam_2_id (name, parameters, database_id, create_at, create_by)
+);`
+
 	CDCWatermarkTableSchema = `
 CREATE TABLE kwdb_cdc_watermark (
 		table_id INT8 NOT NULL,
@@ -487,6 +534,9 @@ var SystemAllowedPrivileges = map[ID]privilege.List{
 	keys.KWDBShowJobsTableID:        {privilege.DROP},
 	keys.KWDBCDCWatermarkTableID:    privilege.ReadWriteData,
 	keys.KWDBStreamsTableID:         privilege.ReadWriteData,
+	keys.KWDBPipeTableID:            privilege.ReadWriteData,
+	keys.KWDBUnpushID:               privilege.ReadWriteData,
+	keys.KWDBPublicationTableID:     privilege.ReadWriteData,
 }
 
 // Helpers used to make some of the TableDescriptor literals below more concise.
@@ -1954,6 +2004,135 @@ var (
 		FormatVersion:  InterleavedFormatVersion,
 		NextMutationID: 1,
 	}
+
+	// UnpushTable is the descriptor for the unpush table to record the ddl unpushed in pipe or publication.
+	UnpushTable = TableDescriptor{
+		Name:                    "kwdb_unpush",
+		ID:                      keys.KWDBUnpushID,
+		Privileges:              NewCustomSuperuserPrivilegeDescriptor(SystemAllowedPrivileges[keys.KWDBUnpushID]),
+		ParentID:                keys.SystemDatabaseID,
+		UnexposedParentSchemaID: keys.PublicSchemaID,
+		Version:                 1,
+		Columns: []ColumnDescriptor{
+			{Name: "pusher_id", ID: 1, Type: *types.Int},
+			{Name: "type", ID: 2, Type: *types.Int},
+			{Name: "database_name", ID: 3, Type: *types.String},
+			{Name: "schema_name", ID: 4, Type: *types.String},
+			{Name: "table_name", ID: 5, Type: *types.String},
+			{Name: "operation", ID: 6, Type: *types.String},
+			{Name: "op_time", ID: 7, Type: *types.Timestamp},
+			{Name: "statement", ID: 8, Type: *types.String},
+		},
+		NextColumnID: 9,
+		Families: []ColumnFamilyDescriptor{
+			{Name: "primary", ID: 0, ColumnNames: []string{"pusher_id", "type", "op_time"}, ColumnIDs: []ColumnID{1, 2, 7}},
+			{Name: "fam_2_id", ID: 1, ColumnNames: []string{
+				"database_name", "schema_name", "table_name", "operation", "statement",
+			}, ColumnIDs: []ColumnID{3, 4, 5, 6, 8}},
+		},
+		PrimaryIndex: IndexDescriptor{
+			Name:             "primary",
+			ID:               1,
+			Unique:           true,
+			ColumnNames:      []string{"pusher_id", "type", "op_time"},
+			ColumnDirections: []IndexDescriptor_Direction{IndexDescriptor_ASC, IndexDescriptor_ASC, IndexDescriptor_ASC},
+			ColumnIDs:        []ColumnID{1, 2, 7},
+			Version:          SecondaryIndexFamilyFormatVersion,
+		},
+		NextFamilyID:   2,
+		NextIndexID:    2,
+		FormatVersion:  InterleavedFormatVersion,
+		NextMutationID: 1,
+	}
+
+	// PipeTable is the descriptor for the pipe table.
+	PipeTable = TableDescriptor{
+		Name:                    "kwdb_pipes",
+		ID:                      keys.KWDBPipeTableID,
+		Privileges:              NewCustomSuperuserPrivilegeDescriptor(SystemAllowedPrivileges[keys.KWDBPipeTableID]),
+		ParentID:                keys.SystemDatabaseID,
+		UnexposedParentSchemaID: keys.PublicSchemaID,
+		Version:                 1,
+		Columns: []ColumnDescriptor{
+			{Name: "id", ID: 1, Type: *types.Int, DefaultExpr: &uniqueRowIDString, Nullable: false},
+			{Name: "name", ID: 2, Type: *types.String},
+			{Name: "parameters", ID: 3, Type: *types.Jsonb},
+			{Name: "create_at", ID: 4, Type: *types.Timestamp},
+			{Name: "create_by", ID: 5, Type: *types.String},
+			{Name: "status", ID: 6, Type: *types.String},
+			{Name: "run_info", ID: 7, Type: *types.Jsonb},
+			{Name: "job_id", ID: 8, Type: *types.Int},
+			{Name: "source_id", ID: 9, Type: *types.Int},
+			{Name: "low_water_mark", ID: 10, Type: *types.Int},
+		},
+		NextColumnID: 11,
+		Families: []ColumnFamilyDescriptor{
+			{Name: "primary", ID: 0, ColumnNames: []string{"id"}, ColumnIDs: []ColumnID{1}},
+			{Name: "fam_2_id", ID: 1, ColumnNames: []string{
+				"name", "parameters", "create_at", "create_by", "status",
+				"run_info", "job_id", "source_id", "low_water_mark",
+			}, ColumnIDs: []ColumnID{2, 3, 4, 5, 6, 7, 8, 9, 10}},
+		},
+		PrimaryIndex: pk("id"),
+		Indexes: []IndexDescriptor{
+			{
+				Name:             "unique_name_idx",
+				ID:               2,
+				Unique:           true,
+				ColumnNames:      []string{"name"},
+				ColumnDirections: []IndexDescriptor_Direction{IndexDescriptor_ASC},
+				ColumnIDs:        []ColumnID{2},
+				Version:          SecondaryIndexFamilyFormatVersion,
+				ExtraColumnIDs:   []ColumnID{1},
+			},
+		},
+		NextFamilyID:   2,
+		NextIndexID:    3,
+		FormatVersion:  InterleavedFormatVersion,
+		NextMutationID: 1,
+	}
+
+	// PubTable is the descriptor for the publication table.
+	PubTable = TableDescriptor{
+		Name:                    "kwdb_publications",
+		ID:                      keys.KWDBPublicationTableID,
+		Privileges:              NewCustomSuperuserPrivilegeDescriptor(SystemAllowedPrivileges[keys.KWDBPublicationTableID]),
+		ParentID:                keys.SystemDatabaseID,
+		UnexposedParentSchemaID: keys.PublicSchemaID,
+		Version:                 1,
+		Columns: []ColumnDescriptor{
+			{Name: "id", ID: 1, Type: *types.Int, DefaultExpr: &uniqueRowIDString, Nullable: false},
+			{Name: "name", ID: 2, Type: *types.String},
+			{Name: "parameters", ID: 3, Type: *types.Jsonb},
+			{Name: "database_id", ID: 4, Type: *types.Int},
+			{Name: "create_at", ID: 5, Type: *types.Timestamp},
+			{Name: "create_by", ID: 6, Type: *types.String},
+		},
+		NextColumnID: 7,
+		Families: []ColumnFamilyDescriptor{
+			{Name: "primary", ID: 0, ColumnNames: []string{"id"}, ColumnIDs: []ColumnID{1}},
+			{Name: "fam_2_id", ID: 1, ColumnNames: []string{
+				"name", "parameters", "database_id", "create_at", "create_by",
+			}, ColumnIDs: []ColumnID{2, 3, 4, 5, 6}},
+		},
+		PrimaryIndex: pk("id"),
+		Indexes: []IndexDescriptor{
+			{
+				Name:             "unique_name_idx",
+				ID:               2,
+				Unique:           true,
+				ColumnNames:      []string{"name"},
+				ColumnDirections: []IndexDescriptor_Direction{IndexDescriptor_ASC},
+				ColumnIDs:        []ColumnID{2},
+				Version:          SecondaryIndexFamilyFormatVersion,
+				ExtraColumnIDs:   []ColumnID{1},
+			},
+		},
+		NextFamilyID:   2,
+		NextIndexID:    3,
+		FormatVersion:  InterleavedFormatVersion,
+		NextMutationID: 1,
+	}
 )
 
 // Create a kv pair for the zone config for the given key and config value.
@@ -2022,6 +2201,9 @@ func addSystemDescriptorsToSchema(target *MetadataSchema) {
 	target.AddDescriptor(keys.SystemDatabaseID, &ScheduledJobsTable)
 	target.AddDescriptor(keys.SystemDatabaseID, &CDCWatermarkTable)
 	target.AddDescriptor(keys.SystemDatabaseID, &StreamsTable)
+	target.AddDescriptor(keys.SystemDatabaseID, &PipeTable)
+	target.AddDescriptor(keys.SystemDatabaseID, &UnpushTable)
+	target.AddDescriptor(keys.SystemDatabaseID, &PubTable)
 }
 
 // addSystemDatabaseToSchema populates the supplied MetadataSchema with the

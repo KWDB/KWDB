@@ -291,7 +291,7 @@ values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
 VALUES ($1,$2,$3,$4,$5)`,
 		metadata.sourceTableID,
 		streamSchema.id,
-		cdcpb.TSCDCInstanceType_Stream,
+		sqlbase.CDCInstanceType_Stream,
 		waterMarkTypeRealtime,
 		sqlutil.InvalidWaterMark,
 	); err != nil {

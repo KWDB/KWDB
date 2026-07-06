@@ -97,11 +97,23 @@ void STTableRangeDelAndTagInfo::ParseData(TSSlice data, STOSNDeleteInfoType* typ
   }
 }
 
-KStatus STTableRangeDelAndTagInfo::Init() {
+KStatus STTableRangeDelAndTagInfo::Init(TS_OSN published_max_osn) {
+  published_max_osn_ = published_max_osn;
   auto s = table_->GetImagrateTagBySnapshot(nullptr, {begin_hash_, end_hash_}, scan_osn_, &pkeys_status_);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("STTableDeleteInfo init failed at GetImagrateTagBySnapshot.");
     return s;
+  }
+  pkey_iter_ = pkeys_status_.begin();
+  // only imagrating deleted tags which osn up to pubsub waterline.
+  while (pkey_iter_ != pkeys_status_.end()) {
+    auto op_osn = reinterpret_cast<OperatorInfoOfRecord*>(pkey_iter_->op_with_osn.get());
+    assert(op_osn != nullptr);
+    if (op_osn->osn < published_max_osn_ && op_osn->type != OperatorTypeOfRecord::OP_TYPE_INSERT) {
+      pkey_iter_ = pkeys_status_.erase(pkey_iter_);
+    } else {
+      pkey_iter_++;
+    }
   }
   pkey_iter_ = pkeys_status_.begin();
   return KStatus::SUCCESS;
@@ -125,11 +137,20 @@ KStatus STTableRangeDelAndTagInfo::GetNextDeleteInfo(kwdbContext_p ctx, TSSlice*
     TSSlice payload{nullptr, 0};
     std::list<STDelRange> del_osns;
     if (op_osn->type == OperatorTypeOfRecord::OP_TYPE_INSERT) {
+      std::list<STDelRange> del_osns_all;
       // tage type is insert. we should return metric delete info.
-      auto s = table_->GetMetricDelInfoWithOSN(ctx, entity_idx, &del_osns);
+      auto s = table_->GetMetricDelInfoWithOSN(ctx, entity_idx, &del_osns_all);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("GetNextDeleteInfo failed at GetMetricDelInfoWithOSN.");
         return s;
+      }
+      // only imagrating the delete info that osn up to pubsub waterline.
+      auto iter = del_osns_all.begin();
+      while (iter != del_osns_all.end()) {
+        if (iter->osn_span.end >= published_max_osn_) {
+          del_osns.push_back(*iter);
+        }
+        iter++;
       }
     }
     // if tag is deleted, we need return tag delete info.

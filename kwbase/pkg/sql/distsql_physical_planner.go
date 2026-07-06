@@ -1889,9 +1889,13 @@ func buildTSColsAndTSColMap(
 		}
 	}
 
+	// Add time series hidden columns (_osn, _op, _event)
+	tsCols, tsColMap = addTsHiddenTSColumns(n, tsCols, tsColMap)
+
 	resCols := make([]int, 0)
 	for _, resCol := range n.resultColumns {
-		if columnIDSet.Contains(opt.ColumnID(resCol.PGAttributeNum)) {
+		if columnIDSet.Contains(opt.ColumnID(resCol.PGAttributeNum)) || resCol.PGAttributeNum == sqlbase.OsnColIdx ||
+			resCol.PGAttributeNum == sqlbase.OpColIdx || resCol.PGAttributeNum == sqlbase.EventColIdx {
 			if index, ok := tsColMap[resCol.PGAttributeNum]; ok {
 				resCols = append(resCols, index.idx)
 			} else {
@@ -1902,6 +1906,50 @@ func buildTSColsAndTSColMap(
 		}
 	}
 	return tsCols, tsColMap, resCols
+}
+
+// addTsHiddenTSColumns adds the time series hidden columns (_osn, _op, _event)
+// to the TS column metadata and column index map.
+func addTsHiddenTSColumns(
+	n *tsScanNode, tsCols []sqlbase.TSCol, tsColMap map[sqlbase.ColumnID]tsColIndex,
+) ([]sqlbase.TSCol, map[sqlbase.ColumnID]tsColIndex) {
+	// Add _osn column
+	tsCol1 := sqlbase.TSCol{
+		SqlType:            sqlbase.DataType_TIMESTAMP,
+		StorageType:        sqlbase.DataType_BIGINT,
+		StorageLen:         8,
+		VariableLengthType: sqlbase.VariableLengthType_ColStorageTypeTuple,
+		ColumnType:         sqlbase.ColumnType_TYPE_DATA,
+		Nullable:           false,
+	}
+	tsCols = append(tsCols, tsCol1)
+	tsColMap[sqlbase.OsnColIdx] = tsColIndex{sqlbase.OsnColIdx, *types.Int, tsCol1.ColumnType}
+
+	// Add _op column
+	tsCol2 := sqlbase.TSCol{
+		SqlType:            sqlbase.DataType_TIMESTAMP,
+		StorageType:        sqlbase.DataType_BYTES,
+		StorageLen:         1,
+		VariableLengthType: sqlbase.VariableLengthType_ColStorageTypeTuple,
+		ColumnType:         sqlbase.ColumnType_TYPE_DATA,
+		Nullable:           false,
+	}
+	tsCols = append(tsCols, tsCol2)
+	tsColMap[sqlbase.OpColIdx] = tsColIndex{sqlbase.OpColIdx, *types.Bytes, tsCol2.ColumnType}
+
+	// Add _event column
+	tsCol3 := sqlbase.TSCol{
+		SqlType:            sqlbase.DataType_TIMESTAMP,
+		StorageType:        sqlbase.DataType_BYTES,
+		StorageLen:         16,
+		VariableLengthType: sqlbase.VariableLengthType_ColStorageTypeTuple,
+		ColumnType:         sqlbase.ColumnType_TYPE_DATA,
+		Nullable:           true,
+	}
+	tsCols = append(tsCols, tsCol3)
+	tsColMap[sqlbase.EventColIdx] = tsColIndex{sqlbase.EventColIdx, *types.Bytes, tsCol3.ColumnType}
+
+	return tsCols, tsColMap
 }
 
 // build HashtsCols and tsColMap by cols
@@ -1984,8 +2032,8 @@ func (p *PhysicalPlan) initPhyPlanForTsReaders(
 			*n.blockFilter[i].ColID = uint32(tsColIdx.idx + 1)
 		}
 	}
-	tr := execinfrapb.TSReaderSpec{TableID: uint64(n.Table.ID()), TsSpans: n.tsSpans, TableVersion: n.Table.GetTSVersion(),
-		OrderedScan: n.orderedType.UserOrderedScan(), TsTablereaderId: planCtx.tsTableReaderID, BlockFilter: n.blockFilter, TsFill: n.tsFill}
+	tr := execinfrapb.TSReaderSpec{TableID: uint64(n.Table.ID()), TsSpans: n.tsSpans, OsnSpans: n.osnSpans, TableVersion: n.Table.GetTSVersion(),
+		OrderedScan: n.orderedType.UserOrderedScan(), TsTablereaderId: planCtx.tsTableReaderID, BlockFilter: n.blockFilter, HasOsnCol: n.HasOsnCols, TsFill: n.tsFill}
 
 	if n.orderedType.NeedReverse() || n.reverse {
 		reverse := true
@@ -2229,9 +2277,11 @@ func (p *PhysicalPlan) buildPhyPlanForTagReaders(
 	var outCols []uint32
 	n.ScanSource.ForEach(func(i int) {
 		outCols = append(outCols, uint32(i-1))
-		if col, ok := tsColMap[sqlbase.ColumnID(n.Table.Column(i-1).ColID())]; ok {
-			if col.colType == sqlbase.ColumnType_TYPE_PTAG || col.colType == sqlbase.ColumnType_TYPE_TAG {
-				post.OutputColumns = append(post.OutputColumns, uint32(col.idx))
+		if i-1 < n.Table.DeletableColumnCount() {
+			if col, ok := tsColMap[sqlbase.ColumnID(n.Table.Column(i-1).ColID())]; ok {
+				if col.colType == sqlbase.ColumnType_TYPE_PTAG || col.colType == sqlbase.ColumnType_TYPE_TAG {
+					post.OutputColumns = append(post.OutputColumns, uint32(col.idx))
+				}
 			}
 		}
 	})
@@ -2855,6 +2905,10 @@ func (dsp *DistSQLPlanner) createTSDelete(
 			Spans:           n.spans,
 		}
 
+		if planCtx != nil && n.nodeIDs[i] == planCtx.EvalContext().NodeID {
+			tsDelete.CDCData = n.cdcData
+		}
+
 		proc := physicalplan.Processor{
 			Node: n.nodeIDs[i],
 			Spec: execinfrapb.ProcessorSpec{
@@ -2895,6 +2949,10 @@ func (dsp *DistSQLPlanner) createTSTagUpdate(
 		tsTagUpdate.StartKey = n.startKey
 		tsTagUpdate.EndKey = n.endKey
 		tsTagUpdate.OsnId = n.osnID
+
+		if planCtx != nil && n.nodeIDs[i] == planCtx.EvalContext().NodeID {
+			tsTagUpdate.CDCData = n.cdcData
+		}
 
 		proc := physicalplan.Processor{
 			Node: n.nodeIDs[i],
@@ -5606,6 +5664,13 @@ func (dsp *DistSQLPlanner) createPlanForNode(
 		if err := plan.AddFilter(n.filter, planCtx, plan.PlanToStreamColMap, n.engine == tree.EngineTypeTimeseries); err != nil {
 			return PhysicalPlan{}, err
 		}
+		if planCtx.cdcCtx != nil && n.filter != nil {
+			planCtx.cdcCtx.metricsFilter, err = physicalplan.MakeExpression(
+				n.filter, planCtx, plan.PlanToStreamColMap, false, false)
+			if err != nil {
+				return PhysicalPlan{}, err
+			}
+		}
 	case *synchronizerNode:
 		plan, err = dsp.createPlanForSynchronizer(planCtx, n)
 
@@ -7541,5 +7606,16 @@ func visitTableMeta(
 			}
 		}
 	}
+
+	// Add osn hidden columns
+	descColumnIDs = append(descColumnIDs, sqlbase.OsnColIdx)
+	typs = append(typs, *types.Int)
+
+	descColumnIDs = append(descColumnIDs, sqlbase.OpColIdx)
+	typs = append(typs, *types.Bytes)
+
+	descColumnIDs = append(descColumnIDs, sqlbase.EventColIdx)
+	typs = append(typs, *types.Bytes)
+
 	return ptCols, typs, descColumnIDs, columnIDSet
 }

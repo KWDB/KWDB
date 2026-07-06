@@ -607,7 +607,8 @@ func (ex *connExecutor) execPreparedirectBind(
 
 			// When the table has the pipe enabled, bind data needs to be converted into datums for filter.
 			if ex.server.GetCFG().CDCCoordinator != nil {
-				if ex.server.GetCFG().CDCCoordinator.IsCDCEnabled(uint64(ps.PrepareInsertDirect.Dit.TabID)) {
+				if ex.server.GetCFG().CDCCoordinator.IsCDCEnabled(uint64(ps.PrepareInsertDirect.Dit.TabID)) ||
+					len(table.CDC) > 0 {
 					di.InputValues, err = getPrepareInputValues(ptCtx, &bindCmd, ps.InferredTypes, &di)
 					if err != nil {
 						return err

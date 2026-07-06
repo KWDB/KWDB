@@ -66,6 +66,32 @@ TableScanOperator::TableScanOperator(TsFetcherCollection* collection, TSReaderSp
   if (spec->reverse()) {
     table->is_reverse_ = true;
   }
+  count = spec->osn_spans_size();
+  for (int i = 0; i < count; ++i) {
+    OsnSpan* span = spec->mutable_osn_spans(i);
+    KwOSNSpan osn_span;
+    if (span->has_fromtimestamp()) {
+      osn_span.begin = span->fromtimestamp();
+    }
+    if (span->has_totimestamp()) {
+      osn_span.end = span->totimestamp();
+    }
+    table->osn_spans_.push_back(osn_span);
+  }
+  if (spec->has_hasosncol()) {
+    table->has_osn_col_ = spec->hasosncol();
+    if (table->has_osn_col_) {
+      if (0 == count) {
+        KwOSNSpan osn_span;
+        osn_span.begin = kUint64Min;
+        osn_span.end = kUint64Max;
+        table->osn_spans_.push_back(osn_span);
+      }
+      for (int i = 0; i < table->FieldCount(); ++i) {
+        table->fields_[i]->set_allow_null(true);
+      }
+    }
+  }
 }
 
 TableScanOperator::TableScanOperator(const TableScanOperator& other, int32_t processor_id)

@@ -455,9 +455,6 @@ select * from stream_db_fvt_out.cpu_avg_agg4 order by w_begin, hostname;
 select * from stream_db_fvt_out.cpu_avg_agg5 order by w_begin, hostname;
 select * from stream_db_fvt_out.cpu_avg_agg6 order by w_begin, hostname;
 select * from stream_db_fvt_out.cpu_avg_agg7 order by w_begin, hostname;
-select pg_sleep(1);
-select * from stream_db_fvt_out.cpu_avg_agg8 order by hostname, w_begin;
-select * from stream_db_fvt_out.cpu_avg_agg9 order by hostname, w_begin;
 
 select * from stream_db_fvt_out1.cpu_avg_agg1 order by w_begin, hostname;
 select * from stream_db_fvt_out1.cpu_avg_agg2 order by w_begin, hostname;
@@ -467,8 +464,11 @@ select * from stream_db_fvt_out1.cpu_avg_agg5 order by w_begin, hostname;
 select * from stream_db_fvt_out1.cpu_avg_agg6 order by w_begin, hostname;
 select * from stream_db_fvt_out1.cpu_avg_agg7 order by w_begin, hostname;
 
+select pg_sleep(5);
+select * from stream_db_fvt_out.cpu_avg_agg8 order by hostname, w_begin;
+select * from stream_db_fvt_out.cpu_avg_agg9 order by hostname, w_begin;
 -- Final result
-select pg_sleep(25);
+select pg_sleep(20);
 
 select * from stream_db_fvt_out.cpu_avg_agg1 order by w_begin, hostname;
 select * from stream_db_fvt_out.cpu_avg_agg2 order by w_begin, hostname;

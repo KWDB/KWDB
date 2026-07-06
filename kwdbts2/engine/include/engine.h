@@ -401,6 +401,18 @@ struct TSEngine {
   }
 
   /**
+  * @brief set data clear max osn, data below this osn can be deleted while vacuum.
+  *        from osn waterline of Subscribe&Publish modulue.
+  * @param[in] tbl_id
+  * @param[in] osn
+  *
+  * @return KStatus
+  */
+  virtual KStatus SetPublishedMaxOSN(std::unordered_map<TSTableID, TS_OSN>& tbl_osn) {
+    return FAIL;
+  }
+
+  /**
  * @brief  calculate pushdown
  * @param[in] req
  * @param[out]  resp

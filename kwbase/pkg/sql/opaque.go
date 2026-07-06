@@ -67,6 +67,10 @@ func buildOpaque(
 		plan, err = p.AlterIndex(ctx, n)
 	case *tree.AlterStream:
 		plan, err = p.AlterStream(ctx, n)
+	case *tree.AlterPipe:
+		plan, err = p.AlterPipe(ctx, n)
+	case *tree.AlterPub:
+		plan, err = p.AlterPublication(ctx, n)
 	case *tree.AlterTable:
 		plan, err = p.AlterTable(ctx, n)
 	case *tree.AlterRole:
@@ -101,6 +105,10 @@ func buildOpaque(
 		plan, err = p.DropSchedule(ctx, n)
 	case *tree.CreateIndex:
 		plan, err = p.CreateIndex(ctx, n)
+	case *tree.CreatePipe:
+		plan, err = p.CreatePipe(ctx, n)
+	case *tree.CreatePublication:
+		plan, err = p.CreatePublication(ctx, n)
 	case *tree.CreateSchema:
 		plan, err = p.CreateSchema(ctx, n)
 	case *tree.CreateRole:
@@ -121,6 +129,10 @@ func buildOpaque(
 		plan, err = p.DropDatabase(ctx, n)
 	case *tree.DropIndex:
 		plan, err = p.DropIndex(ctx, n)
+	case *tree.DropPipe:
+		plan, err = p.DropPipe(ctx, n)
+	case *tree.DropPublication:
+		plan, err = p.DropPublication(ctx, n)
 	case *tree.DropRole:
 		plan, err = p.DropRole(ctx, n)
 	case *tree.DropSchema:
@@ -237,6 +249,8 @@ func init() {
 		&tree.AlterTSDatabase{},
 		&tree.AlterIndex{},
 		&tree.AlterStream{},
+		&tree.AlterPipe{},
+		&tree.AlterPub{},
 		&tree.AlterTable{},
 		&tree.AlterSequence{},
 		&tree.AlterRole{},
@@ -251,6 +265,8 @@ func init() {
 		&tree.CreateFunction{},
 		&tree.CreateSchedule{},
 		&tree.CreateIndex{},
+		&tree.CreatePipe{},
+		&tree.CreatePublication{},
 		&tree.CreateSchema{},
 		&tree.CreateSequence{},
 		&tree.CreateStats{},
@@ -261,6 +277,8 @@ func init() {
 		&tree.Discard{},
 		&tree.DropDatabase{},
 		&tree.DropIndex{},
+		&tree.DropPipe{},
+		&tree.DropPublication{},
 		&tree.DropSchema{},
 		&tree.DropSchedule{},
 		&tree.DropStream{},
