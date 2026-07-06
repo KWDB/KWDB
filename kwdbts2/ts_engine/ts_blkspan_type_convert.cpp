@@ -640,7 +640,7 @@ KStatus TSBlkDataTypeConvert::GetFixLenColAddr(const TsBlockSpan* blk_span, uint
   uint32_t dest_type_size = dest_attr.size;
   auto blk_col_idx = version_conv_->blk_cols_extended_[scan_idx];
   std::unique_ptr<TsBitmapBase> blk_bitmap;
-  if (!(*version_conv_->blk_attrs_)[scan_idx].isFlag(AINFO_NOT_NULL)) {
+  if (!(*version_conv_->blk_attrs_)[blk_col_idx].isFlag(AINFO_NOT_NULL)) {
     auto s = blk_span->block_->GetColBitmap(blk_col_idx, version_conv_->blk_attrs_, &blk_bitmap);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("GetColBitmap failed. col id [%u]", blk_col_idx);
@@ -655,7 +655,7 @@ KStatus TSBlkDataTypeConvert::GetFixLenColAddr(const TsBlockSpan* blk_span, uint
       LOG_ERROR("GetColAddr failed. col id [%u]", blk_col_idx);
       return s;
     }
-    if (!(*version_conv_->blk_attrs_)[scan_idx].isFlag(AINFO_NOT_NULL)) {
+    if (!(*version_conv_->blk_attrs_)[blk_col_idx].isFlag(AINFO_NOT_NULL)) {
       if (blk_span->start_row_ == 0 && blk_span->nrow_ == blk_span->block_->GetRowNum()) {
         bitmap->swap(blk_bitmap);
       } else {
@@ -677,7 +677,7 @@ KStatus TSBlkDataTypeConvert::GetFixLenColAddr(const TsBlockSpan* blk_span, uint
 
     auto tmp_bitmap = std::make_unique<TsBitmap>(blk_span->nrow_);
     for (size_t i = 0; i < blk_span->nrow_; i++) {
-      if (!(*version_conv_->blk_attrs_)[scan_idx].isFlag(AINFO_NOT_NULL)) {
+      if (!(*version_conv_->blk_attrs_)[blk_col_idx].isFlag(AINFO_NOT_NULL)) {
         (*tmp_bitmap)[i] = blk_bitmap->At(blk_span->start_row_ + i);
         if (tmp_bitmap->At(i) != DataFlags::kValid) {
           continue;
@@ -693,7 +693,7 @@ KStatus TSBlkDataTypeConvert::GetFixLenColAddr(const TsBlockSpan* blk_span, uint
       std::shared_ptr<void> new_mem;
       int err_code = ConvertDataTypeToMem(scan_idx, dest_type_size, orig_value.data, orig_value.len, &new_mem);
       if (err_code < 0) {
-        if (!(*version_conv_->blk_attrs_)[scan_idx].isFlag(AINFO_NOT_NULL)) {
+        if (!(*version_conv_->blk_attrs_)[blk_col_idx].isFlag(AINFO_NOT_NULL)) {
           (*tmp_bitmap)[i] = DataFlags::kNull;
         }
       } else {

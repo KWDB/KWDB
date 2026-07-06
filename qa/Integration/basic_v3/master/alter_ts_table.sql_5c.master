@@ -1315,3 +1315,36 @@ ALTER TABLE
 (1 row)
 > drop database test cascade;
 DROP DATABASE
+> create ts database bugddl;
+CREATE TS DATABASE
+> create table bugddl.t1 (k_timestamp timestamptz not null,e1 int not null, e2 float8) tags (code1 int2 not null) primary tags (code1);
+CREATE TABLE
+> INSERT INTO bugddl.t1 (
+    k_timestamp,
+    e1,
+    e2,
+    code1
+)
+SELECT
+    '2026-03-01 12:00:00+08'::TIMESTAMPTZ + (generate_series * INTERVAL '1 second'), 
+    generate_series AS e1,
+    CASE WHEN generate_series % 2 = 0 THEN NULL ELSE generate_series::FLOAT END AS e2,
+    1::INT2 AS code1
+FROM generate_series(1, 4096);
+INSERT 4096
+> vacuum ts databases;
+VACUUM
+> select count(tmpe2) from (select e2 as tmpe2 from bugddl.t1 LIMIT 4095);
+  count
+---------
+   2048
+(1 row)
+> alter table bugddl.t1 drop column e1;
+ALTER TABLE
+> select count(tmpe2) from (select e2 as tmpe2 from bugddl.t1 LIMIT 4095);
+  count
+---------
+   2048
+(1 row)
+> drop database bugddl cascade;
+DROP DATABASE
