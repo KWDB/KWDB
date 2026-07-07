@@ -208,7 +208,7 @@ func ValidateColumnDefType(t *types.T, tableType tree.TableType) error {
 // The DEFAULT expression is returned in TypedExpr form for analysis (e.g. recording
 // sequence dependencies).
 func MakeColumnDefDescs(
-	d *tree.ColumnTableDef, semaCtx *tree.SemaContext, tableType tree.TableType,
+	d *tree.ColumnTableDef, semaCtx *tree.SemaContext, isView bool,
 ) (*ColumnDescriptor, *IndexDescriptor, tree.TypedExpr, error) {
 	if d.IsSerial {
 		// To the reader of this code: if control arrives here, this means
@@ -233,17 +233,18 @@ func MakeColumnDefDescs(
 		Name:     string(d.Name),
 		Nullable: d.Nullable.Nullability != tree.NotNull && !d.PrimaryKey.IsPrimaryKey,
 	}
-
-	// Validate and assign column type.
-	err := ValidateColumnDefType(d.Type, tree.RelationalTable)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	// bytes(n)/varbytes(n) are not allowed in relational mode.
-	if d.Type.TypeEngine() == types.TIMESERIES.Mask() {
-		return nil, nil, nil, pgerror.Newf(
-			pgcode.WrongObjectType, "column %s: unsupported column type %s with length in relational table",
-			d.Name, d.Type.Name())
+	if !isView {
+		// Validate and assign column type.
+		err := ValidateColumnDefType(d.Type, tree.RelationalTable)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		// bytes(n)/varbytes(n) are not allowed in relational mode.
+		if d.Type.TypeEngine() == types.TIMESERIES.Mask() {
+			return nil, nil, nil, pgerror.Newf(
+				pgcode.WrongObjectType, "column %s: unsupported column type %s with length in relational table",
+				d.Name, d.Type.Name())
+		}
 	}
 	col.Type = *d.Type
 

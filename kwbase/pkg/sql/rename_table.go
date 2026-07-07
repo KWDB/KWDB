@@ -165,11 +165,14 @@ func (n *renameTableNode) startExec(params runParams) error {
 	targetDbDesc := &targetObjPrefix.Database
 	targetSchema := &targetObjPrefix.Schema
 	if targetDbDesc.GetEngineType() == tree.EngineTypeTimeseries {
-		if !tableDesc.IsTSTable() {
+		if !tableDesc.IsTSTable() && !tableDesc.IsView() {
 			return pgerror.Newf(pgcode.WrongObjectType, "can not change relational table %s to ts database %s", tableDesc.Name, targetDbDesc.Name)
 		}
+		if tableDesc.MaterializedView() {
+			return pgerror.Newf(pgcode.FeatureNotSupported, "can not change materialized view %s to ts database %s", tableDesc.Name, targetDbDesc.Name)
+		}
 	} else {
-		if tableDesc.IsTSTable() {
+		if tableDesc.IsTSTable() && !tableDesc.IsView() {
 			return pgerror.Newf(pgcode.WrongObjectType, "can not change ts table %s to relational database %s", tableDesc.Name, targetDbDesc.Name)
 		}
 	}

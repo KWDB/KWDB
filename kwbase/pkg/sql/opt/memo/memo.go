@@ -1384,6 +1384,7 @@ func (m *Memo) dealWithOrderBy(sort *SortExpr, ret *CrossEngCheckResults, props 
 	// OrderGroupBy case, reset bestProps of (memo.GroupByExpr or memo.DistinctOnExpr)
 	if props != nil {
 		sort.best.required = props.required
+		sort.best.provided = props.provided
 		props.required = &physical.Required{}
 		props.provided = physical.Provided{}
 	}

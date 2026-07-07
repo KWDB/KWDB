@@ -334,7 +334,7 @@ func (n *alterTableNode) startExec(params runParams) error {
 			d = newDef
 			incTelemetryForNewColumn(d)
 
-			col, idx, expr, err := sqlbase.MakeColumnDefDescs(d, &params.p.semaCtx, tree.RelationalTable)
+			col, idx, expr, err := sqlbase.MakeColumnDefDescs(d, &params.p.semaCtx, false)
 			if err != nil {
 				return err
 			}

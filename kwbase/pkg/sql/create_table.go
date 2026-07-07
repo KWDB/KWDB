@@ -2013,7 +2013,7 @@ func addColToTblDesc(
 			return err
 		}
 	} else {
-		col, idx, expr, err = sqlbase.MakeColumnDefDescs(d, semaCtx, tree.RelationalTable)
+		col, idx, expr, err = sqlbase.MakeColumnDefDescs(d, semaCtx, false)
 		if err != nil {
 			return err
 		}
