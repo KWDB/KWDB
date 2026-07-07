@@ -2234,14 +2234,14 @@ KStatus TsVGroup::MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip,
 
 KStatus TsVGroup::Vacuum(kwdbContext_p ctx, bool force, bool only_agg) {
   KStatus s = KStatus::SUCCESS;
-  if (force && CLUSTER_SETTING_PARTITION_AGG) {
-    s = CalcPartitionAgg(true);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("CalcPartitionAgg failed after manual vacuum.");
-      return s;
-    }
-  }
   if (only_agg) {
+    if (force && CLUSTER_SETTING_PARTITION_AGG) {
+      s = CalcPartitionAgg(true);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("CalcPartitionAgg failed after manual vacuum.");
+        return s;
+      }
+    }
     return KStatus::SUCCESS;
   }
 
@@ -2304,6 +2304,14 @@ KStatus TsVGroup::Vacuum(kwdbContext_p ctx, bool force, bool only_agg) {
                     partition->GetStartTime(), partition->GetEndTime() - 1);
         }
       }
+    }
+  }
+
+  if (force && CLUSTER_SETTING_PARTITION_AGG) {
+    s = CalcPartitionAgg(true);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("CalcPartitionAgg failed after manual vacuum.");
+      return s;
     }
   }
 
@@ -2421,58 +2429,26 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
     }
     TsEntityItem cur_entity_item = {entity_id};
     cur_entity_item.table_id = entity_item.table_id;
-    for (auto& block_span : block_spans) {
-      TsBufferBuilder data;
-      s = block_span->GetCompressData(&data);
-      if (s != SUCCESS) {
-        LOG_ERROR("Vacuum failed, GetCompressData failed");
-        cancel_vacuumer = true;
-        return s;
-      }
-      uint32_t col_count = block_span->GetColCount();
-      uint32_t col_offsets_len = (col_count + 1) * sizeof(uint32_t);
-      auto last_col_tail_offset = *reinterpret_cast<uint32_t *>(data.data() + col_count * sizeof(uint32_t));
-      auto block_data_len = col_offsets_len + last_col_tail_offset;
-      auto block_agg_len = data.size() - block_data_len;
-      auto block_data = data.SubSlice(0, block_data_len);
-      auto block_agg = data.SubSlice(block_data_len, block_agg_len);
 
-      TsEntitySegmentBlockItem blk_item;
-      blk_item.entity_id = entity_item.entity_id;
-      blk_item.table_version = scan_version;
-      blk_item.n_cols = block_span->GetColCount() + 1;
-      blk_item.n_rows = block_span->GetRowNum();
-      blk_item.min_ts = block_span->GetFirstTS();
-      blk_item.max_ts = block_span->GetLastTS();
-      block_span->GetMinAndMaxOSN(blk_item.min_osn, blk_item.max_osn);
-      blk_item.first_osn = block_span->GetFirstOSN();
-      blk_item.last_osn = block_span->GetLastOSN();
-      blk_item.block_len = block_data.len;
-      blk_item.agg_len = block_agg.len;
-      blk_item.block_version = block_span->GetBlockVersion();
-      if (EngineOptions::force_re_compress || block_span->GetRowNum() != block_span->GetTsBlock()->GetRowNum() ||
-          block_span->GetScanVersion() != block_span->GetTableVersion()) {
-        blk_item.block_version = CURRENT_BLOCK_VERSION;
-      }
-      s = vacuumer->AppendBlock(block_data, &blk_item.block_offset);
-      if (s != KStatus::SUCCESS) {
+    // write one block (data + agg + block item) to the vacuumer and update the entity item
+    auto write_block = [&](TsEntitySegmentBlockItem& blk_item, const TSSlice& block_data,
+                           const TSSlice& block_agg) -> KStatus {
+      KStatus ws = vacuumer->AppendBlock(block_data, &blk_item.block_offset);
+      if (ws != KStatus::SUCCESS) {
         LOG_ERROR("Vacuum failed, AppendBlock failed");
-        cancel_vacuumer = true;
-        return s;
+        return ws;
       }
-      s = vacuumer->AppendAgg(block_agg, &blk_item.agg_offset);
-      if (s != KStatus::SUCCESS) {
+      ws = vacuumer->AppendAgg(block_agg, &blk_item.agg_offset);
+      if (ws != KStatus::SUCCESS) {
         LOG_ERROR("Vacuum failed, AppendAgg failed");
-        cancel_vacuumer = true;
-        return s;
+        return ws;
       }
       blk_item.prev_block_id = cur_entity_item.cur_block_id;
       blk_item.table_id = cur_entity_item.table_id;
-      s = vacuumer->AppendBlockItem(blk_item);  // block_id is set when append
-      if (s != KStatus::SUCCESS) {
+      ws = vacuumer->AppendBlockItem(blk_item);  // block_id is set when append
+      if (ws != KStatus::SUCCESS) {
         LOG_ERROR("Vacuum failed, AppendBlockItem failed");
-        cancel_vacuumer = true;
-        return s;
+        return ws;
       }
       cur_entity_item.cur_block_id = blk_item.block_id;
       cur_entity_item.row_written += blk_item.n_rows;
@@ -2482,12 +2458,143 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
       if (blk_item.min_ts < cur_entity_item.min_ts) {
         cur_entity_item.min_ts = blk_item.min_ts;
       }
+      cur_entity_item.max_osn = std::max(blk_item.max_osn, cur_entity_item.max_osn);
+      return KStatus::SUCCESS;
+    };
+
+    // Small blocks are merged through the block builder and re-encoded with CURRENT_BLOCK_VERSION.
+    // The builder's Append() reads data through the convert path for version-mismatched blocks,
+    // so blocks from any table version can be safely merged together. The output block's agg is
+    // recomputed by the builder at flush time, ensuring correctness for all column types.
+    uint32_t max_rows_per_block = static_cast<uint32_t>(EngineOptions::max_rows_per_block);
+    std::vector<AttributeInfo> metric_attrs = *metric_schema->getSchemaInfoExcludeDroppedPtr();
+    TsEntityBlockBuilder block_builder(entity_item.table_id, scan_version, entity_id, metric_attrs);
+    auto flush_builder = [&]() -> KStatus {
+      if (!block_builder.HasData()) {
+        return KStatus::SUCCESS;
+      }
+      TsBufferBuilder data_buffer;
+      TsBufferBuilder agg_buffer;
+      TsEntitySegmentBlockItem blk_item;
+      blk_item.struct_version = CURRENT_BLOCK_VERSION;
+      KStatus fs = block_builder.GetCompressData(blk_item, &data_buffer, &agg_buffer);
+      if (fs != KStatus::SUCCESS) {
+        LOG_ERROR("Vacuum failed, GetCompressData from block builder failed");
+        return fs;
+      }
+      fs = write_block(blk_item, data_buffer.AsSlice(), agg_buffer.AsSlice());
+      if (fs != KStatus::SUCCESS) {
+        return fs;
+      }
+      block_builder.Clear();
+      return KStatus::SUCCESS;
+    };
+
+    // sort block spans by timestamp/osn, blocks in entity segment may be unordered or overlapping
+    TsBlockSpanSortedIterator sorted_iter(block_spans, schema_mgr_, EngineOptions::g_dedup_rule);
+    sorted_iter.Init();
+    shared_ptr<TsBlockSpan> block_span{nullptr};
+    bool iter_finished = false;
+    while (true) {
+      s = sorted_iter.Next(block_span, &iter_finished);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("Vacuum failed, iterate sorted block spans failed");
+        cancel_vacuumer = true;
+        return s;
+      }
+      if (iter_finished) {
+        break;
+      }
+      if (block_span->GetRowNum() == 0) {
+        continue;
+      }
+      // Determine if the block needs re-encoding. Version-mismatched blocks always need re-encoding
+      // because their compressed data format differs from the current schema.
+      bool need_re_encode = EngineOptions::force_re_compress ||
+                            block_span->GetRowNum() != block_span->GetTsBlock()->GetRowNum() ||
+                            block_span->GetScanVersion() != block_span->GetTableVersion();
+      if (!need_re_encode && !block_builder.HasData() &&
+          static_cast<uint32_t>(block_span->GetRowNum()) >= max_rows_per_block) {
+        // the block is complete and full enough, copy its compressed data directly
+        // and keep the original block version
+        TsBufferBuilder data;
+        s = block_span->GetCompressData(&data);
+        if (s != SUCCESS) {
+          LOG_ERROR("Vacuum failed, GetCompressData failed");
+          cancel_vacuumer = true;
+          return s;
+        }
+        uint32_t col_count = block_span->GetColCount();
+        uint32_t col_offsets_len = (col_count + 1) * sizeof(uint32_t);
+        auto last_col_tail_offset = *reinterpret_cast<uint32_t *>(data.data() + col_count * sizeof(uint32_t));
+        auto block_data_len = col_offsets_len + last_col_tail_offset;
+        auto block_agg_len = data.size() - block_data_len;
+        auto block_data = data.SubSlice(0, block_data_len);
+        auto block_agg = data.SubSlice(block_data_len, block_agg_len);
+
+        TsEntitySegmentBlockItem blk_item;
+        blk_item.entity_id = entity_item.entity_id;
+        blk_item.table_version = scan_version;
+        blk_item.n_cols = block_span->GetColCount() + 1;
+        blk_item.n_rows = block_span->GetRowNum();
+        blk_item.min_ts = block_span->GetFirstTS();
+        blk_item.max_ts = block_span->GetLastTS();
+        block_span->GetMinAndMaxOSN(blk_item.min_osn, blk_item.max_osn);
+        blk_item.first_osn = block_span->GetFirstOSN();
+        blk_item.last_osn = block_span->GetLastOSN();
+        blk_item.block_len = block_data.len;
+        blk_item.agg_len = block_agg.len;
+        blk_item.struct_version = block_span->GetBlockVersion();
+        s = write_block(blk_item, block_data, block_agg);
+        if (s != KStatus::SUCCESS) {
+          cancel_vacuumer = true;
+          return s;
+        }
+        continue;
+      }
+      // merge small/partial/version-mismatched blocks through the block builder
+      while (block_span != nullptr && block_span->GetRowNum() > 0) {
+        bool is_full = false;
+        uint32_t room = max_rows_per_block - static_cast<uint32_t>(block_builder.GetRowNum());
+        if (static_cast<uint32_t>(block_span->GetRowNum()) > room) {
+          shared_ptr<TsBlockSpan> front_span{nullptr};
+          block_span->SplitFront(room, front_span);
+          s = block_builder.Append(front_span, is_full);
+        } else {
+          s = block_builder.Append(block_span, is_full);
+        }
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("Vacuum failed, append block span to block builder failed");
+          cancel_vacuumer = true;
+          return s;
+        }
+        if (block_builder.GetRowNum() >= max_rows_per_block) {
+          s = flush_builder();
+          if (s != KStatus::SUCCESS) {
+            cancel_vacuumer = true;
+            return s;
+          }
+        }
+      }
+    }
+    // flush the remaining rows whose count is less than max_rows_per_block
+    s = flush_builder();
+    if (s != KStatus::SUCCESS) {
+      cancel_vacuumer = true;
+      return s;
     }
     s = vacuumer->AppendEntityItem(cur_entity_item);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("Vacuum failed, AppendEntityItem failed");
       cancel_vacuumer = true;
       return s;
+    }
+    // After sorting/merging/dedup, the row count may have changed (e.g., duplicate rows removed
+    // by OVERRIDE dedup rule). If the count differs from the original, invalidate the count.stat
+    // entry so that aggregate queries do not use the stale cached count.
+    if (cur_entity_item.row_written != entity_item.row_written) {
+      TsEntityCountStats invalid_count{entity_item.table_id, entity_id, INT64_MAX, INT64_MIN, 0, false, ""};
+      invalid_counts.emplace_back(invalid_count);
     }
     {
       // check whether mem segment has data for one entity

@@ -44,7 +44,6 @@ std::atomic<bool> g_is_migrating{false};
 uint64_t g_duration_level0{30 * 24 * 60 * 60};
 uint64_t g_duration_level1{90 * 24 * 60 * 60};
 
-uint16_t CLUSTER_SETTING_MAX_ROWS_PER_BLOCK = 1000;
 bool CLUSTER_SETTING_COUNT_USE_STATISTICS = true;
 bool CLUSTER_SETTING_PARTITION_AGG = true;
 
@@ -724,7 +723,6 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
       LOG_ERROR("Invalid dedup rule: %s", value.c_str());
     }
   } else if ("ts.rows_per_block.max_limit" == key) {
-    CLUSTER_SETTING_MAX_ROWS_PER_BLOCK = atoi(value.c_str());
     EngineOptions::max_rows_per_block = atoi(value.c_str());
   } else if ("ts.rows_per_block.min_limit" == key) {
     EngineOptions::min_rows_per_block = atoi(value.c_str());
@@ -778,6 +776,8 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
     EngineOptions::metric_schema_cache_capacity = atoi(value.c_str());
   } else if ("ts.force_re_compress.enabled" == key) {
     EngineOptions::force_re_compress = ("true" == value);
+  } else if ("ts.vacuum.concurrent.enabled" == key) {
+    EngineOptions::vacuum_concurrent = ("true" == value);
   } else if ("ts.partition_agg.enabled" == key) {
     CLUSTER_SETTING_PARTITION_AGG = "true" == value;
   } else if ("ts.compress.algorithm" == key) {

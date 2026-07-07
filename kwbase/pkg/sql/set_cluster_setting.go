@@ -359,6 +359,7 @@ var CheckClusterSetting = map[string]CheckOperation{
 	"ts.block_filter.sampling_ratio":     checkTsBlockFilterSamplingRatio,
 	"ts.agg_recalc.cycle":                checkTsCountRecalcCycle,
 	"ts.force_re_compress.enabled":       checkBool,
+	"ts.vacuum.concurrent.enabled":       checkBool,
 	"ts.partition_agg.enabled":           checkBool,
 }
 

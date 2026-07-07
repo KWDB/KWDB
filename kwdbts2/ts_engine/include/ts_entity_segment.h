@@ -46,7 +46,7 @@ struct TsEntitySegmentBlockItem {
   uint64_t last_osn = 0;
   uint64_t agg_offset = 0;
   uint32_t agg_len = 0;
-  uint32_t block_version = INVALID_BLOCK_VERSION;
+  uint32_t struct_version = INVALID_BLOCK_VERSION;
   uint8_t source = TsDataSource::None;
   char reserved_1[3] = {0};
   uint32_t table_id = 0;

@@ -276,6 +276,11 @@ var (
 		"whether to force recompression when block span gets compressed data",
 		false)
 
+	tsVacuumConcurrent = settings.RegisterPublicBoolSetting(
+		"ts.vacuum.concurrent.enabled",
+		"whether to vacuum vgroups concurrently, one thread per vgroup",
+		true)
+
 	tsPartitionAgg = settings.RegisterPublicBoolSetting(
 		"ts.partition_agg.enabled",
 		"use partition aggregation when querying count/sum/max/min",

@@ -16,6 +16,10 @@
 #include "libkwdbts2.h"
 #include "me_metadata.pb.h"
 #include "ts_engine.h"
+#include "ts_vgroup.h"
+#include "ts_version.h"
+#include "ts_entity_segment.h"
+#include "ts_block.h"
 #include "sys_utils.h"
 #include "test_util.h"
 
@@ -2557,4 +2561,1390 @@ TEST_F(TsEngineV2Test, IsTableDroppedTest) {
     bool is_dropped = engine_->IsTableDropped(non_existent_table_id);
     EXPECT_TRUE(is_dropped);
   }
+}
+
+// Regression test for vacuum block sort/merge: after vacuum merges small
+// entity-segment blocks into larger ones, the per-block pre-aggregation
+// (COUNT/SUM) used by aggregate queries must stay consistent with the actual
+// rows in each merged block, no row may be lost, and blocks must stay sorted.
+TEST_F(TsEngineV2Test, VacuumMergePreAggConsistency) {
+  using namespace roachpb;
+  KStatus s;
+  TSTableID table_id = 70001;
+  CreateTsTable pb_meta;
+  std::vector<roachpb::DataType> metric_type{roachpb::TIMESTAMP, roachpb::INT, roachpb::DOUBLE};
+  ConstructRoachpbTableWithTypes(&pb_meta, table_id, metric_type);
+  std::shared_ptr<TsTable> ts_table;
+  s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::shared_ptr<TsTableSchemaManager> schema_mgr;
+  bool is_dropped = false;
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  uint32_t db_id = schema_mgr->GetDbID();
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = schema_mgr->GetMetricMeta(1, &metric_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  std::vector<TagInfo> tag_schema;
+  s = schema_mgr->GetTagMeta(1, tag_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  const int kFlushes = 20;
+  const int kRowsPerFlush = 17;
+  const TSEntityID dev_id = 1;
+  int total_rows = 0;
+  timestamp64 ts = 1000;
+  uint16_t inc_entity_cnt;
+  uint32_t inc_unordered_cnt = 0;
+  DedupResult dedup_result{0, 0, 0, TSSlice{nullptr, 0}};
+  // Insert many small, non-overlapping batches and flush each one so that the
+  // partition accumulates many small last segments / blocks.
+  for (int i = 0; i < kFlushes; ++i) {
+    auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, dev_id, kRowsPerFlush, ts, 1);
+    s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+    free(payload.data);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    total_rows += kRowsPerFlush;
+    ts += kRowsPerFlush + 1;
+    s = engine_->FlushVGroups(ctx_);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+  }
+
+  // read all entity-segment rows for this table across all vgroups; optionally
+  // validate per-block pre-aggregation consistency and global sort order.
+  auto read_all = [&](double* sum_out, int* count_out, bool check_preagg) {
+    double total = 0;
+    int rows = 0;
+    std::shared_ptr<MMapMetricsTable> schema;
+    ASSERT_EQ(schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+    auto* vgroups = engine_->GetTsVGroups();
+    ASSERT_NE(vgroups, nullptr);
+    for (auto& vgroup : *vgroups) {
+      if (vgroup == nullptr) {
+        continue;
+      }
+      auto current = vgroup->CurrentVersion();
+      auto partitions = current->GetPartitions(db_id, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
+      for (auto& partition : partitions) {
+        auto entity_segment = partition->GetEntitySegment();
+        if (entity_segment == nullptr) {
+          continue;
+        }
+        uint64_t entity_num = entity_segment->GetEntityNum();
+        for (uint64_t entity_id = 1; entity_id <= entity_num; ++entity_id) {
+          std::vector<STScanRange> spans{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
+          TsBlockItemFilterParams filter{db_id, table_id, vgroup->GetVGroupID(),
+                                         static_cast<TSEntityID>(entity_id), spans};
+          std::list<shared_ptr<TsBlockSpan>> block_spans;
+          ASSERT_EQ(entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, schema), KStatus::SUCCESS);
+          timestamp64 prev_last_ts = INT64_MIN;
+          for (auto& block_span : block_spans) {
+            int nrow = block_span->GetRowNum();
+            if (nrow == 0) {
+              continue;
+            }
+            rows += nrow;
+            // metric col 2 is the DOUBLE value column
+            std::unique_ptr<TsBitmapBase> bitmap;
+            char* dbl_col = nullptr;
+            ASSERT_EQ(block_span->GetFixLenColAddr(2, &dbl_col, &bitmap), KStatus::SUCCESS);
+            double raw_sum = 0;
+            for (int r = 0; r < nrow; ++r) {
+              raw_sum += *reinterpret_cast<double*>(dbl_col + r * sizeof(double));
+            }
+            total += raw_sum;
+            char* ts_col = nullptr;
+            std::unique_ptr<TsBitmapBase> ts_bitmap;
+            ASSERT_EQ(block_span->GetFixLenColAddr(0, &ts_col, &ts_bitmap), KStatus::SUCCESS);
+            timestamp64 first_ts = *reinterpret_cast<timestamp64*>(ts_col);
+            timestamp64 last_ts = *reinterpret_cast<timestamp64*>(ts_col + (nrow - 1) * sizeof(timestamp64));
+            if (check_preagg) {
+              EXPECT_GE(first_ts, prev_last_ts) << "blocks not globally sorted after vacuum";
+              prev_last_ts = last_ts;
+              if (block_span->HasPreAgg()) {
+                uint16_t pre_count = 0;
+                ASSERT_EQ(block_span->GetPreCount(2, nullptr, pre_count), KStatus::SUCCESS);
+                EXPECT_EQ(pre_count, nrow) << "pre-agg COUNT mismatch in merged block";
+                void* pre_sum = nullptr;
+                bool is_overflow = false;
+                ASSERT_EQ(block_span->GetPreSum(2, nullptr, pre_sum, is_overflow), KStatus::SUCCESS);
+                ASSERT_NE(pre_sum, nullptr);
+                EXPECT_NEAR(*reinterpret_cast<double*>(pre_sum), raw_sum, 1e-6)
+                    << "pre-agg SUM does not match merged block rows";
+              }
+            }
+          }
+        }
+      }
+    }
+    *sum_out = total;
+    *count_out = rows;
+  };
+
+  // First vacuum with a small block size to land all rows in the entity
+  // segment as many small (<= 20-row) blocks.
+  EngineOptions::max_rows_per_block = 20;
+  EngineOptions::min_rows_per_block = 1;
+  s = engine_->Vacuum(ctx_, true);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  double sum_before = 0;
+  int count_before = 0;
+  read_all(&sum_before, &count_before, false);
+  ASSERT_EQ(count_before, total_rows) << "rows lost before merge vacuum";
+
+  // Second vacuum with a larger block size forces the small blocks to be
+  // merged together, exercising the merge/slow path.
+  EngineOptions::max_rows_per_block = 100;
+  s = engine_->Vacuum(ctx_, true);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  double sum_after = 0;
+  int count_after = 0;
+  read_all(&sum_after, &count_after, true);
+
+  EXPECT_EQ(count_after, total_rows) << "vacuum merge changed total row count";
+  EXPECT_NEAR(sum_after, sum_before, 1e-3) << "vacuum merge changed aggregate SUM";
+}
+
+// Regression test for the vacuum fast path: when an entity-segment block is
+// already full and unchanged, vacuum copies its compressed data (and original
+// block version + pre-agg) directly. Verify the copied pre-agg stays correct.
+TEST_F(TsEngineV2Test, VacuumFastPathPreAggConsistency) {
+  using namespace roachpb;
+  KStatus s;
+  TSTableID table_id = 70002;
+  CreateTsTable pb_meta;
+  std::vector<roachpb::DataType> metric_type{roachpb::TIMESTAMP, roachpb::INT, roachpb::DOUBLE};
+  ConstructRoachpbTableWithTypes(&pb_meta, table_id, metric_type);
+  std::shared_ptr<TsTable> ts_table;
+  s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::shared_ptr<TsTableSchemaManager> schema_mgr;
+  bool is_dropped = false;
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  uint32_t db_id = schema_mgr->GetDbID();
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = schema_mgr->GetMetricMeta(1, &metric_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  std::vector<TagInfo> tag_schema;
+  s = schema_mgr->GetTagMeta(1, tag_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  const int kFlushes = 30;
+  const int kRowsPerFlush = 40;
+  const TSEntityID dev_id = 1;
+  int total_rows = 0;
+  timestamp64 ts = 1000;
+  uint16_t inc_entity_cnt;
+  uint32_t inc_unordered_cnt = 0;
+  DedupResult dedup_result{0, 0, 0, TSSlice{nullptr, 0}};
+  for (int i = 0; i < kFlushes; ++i) {
+    auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, dev_id, kRowsPerFlush, ts, 1);
+    s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+    free(payload.data);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    total_rows += kRowsPerFlush;
+    ts += kRowsPerFlush + 1;
+    s = engine_->FlushVGroups(ctx_);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+  }
+
+  auto read_all = [&](double* sum_out, int* count_out, bool check_preagg) {
+    double total = 0;
+    int rows = 0;
+    std::shared_ptr<MMapMetricsTable> schema;
+    ASSERT_EQ(schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+    auto* vgroups = engine_->GetTsVGroups();
+    ASSERT_NE(vgroups, nullptr);
+    for (auto& vgroup : *vgroups) {
+      if (vgroup == nullptr) {
+        continue;
+      }
+      auto current = vgroup->CurrentVersion();
+      auto partitions = current->GetPartitions(db_id, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
+      for (auto& partition : partitions) {
+        auto entity_segment = partition->GetEntitySegment();
+        if (entity_segment == nullptr) {
+          continue;
+        }
+        uint64_t entity_num = entity_segment->GetEntityNum();
+        for (uint64_t entity_id = 1; entity_id <= entity_num; ++entity_id) {
+          std::vector<STScanRange> spans{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
+          TsBlockItemFilterParams filter{db_id, table_id, vgroup->GetVGroupID(),
+                                         static_cast<TSEntityID>(entity_id), spans};
+          std::list<shared_ptr<TsBlockSpan>> block_spans;
+          ASSERT_EQ(entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, schema), KStatus::SUCCESS);
+          timestamp64 prev_last_ts = INT64_MIN;
+          for (auto& block_span : block_spans) {
+            int nrow = block_span->GetRowNum();
+            if (nrow == 0) {
+              continue;
+            }
+            rows += nrow;
+            std::unique_ptr<TsBitmapBase> bitmap;
+            char* dbl_col = nullptr;
+            ASSERT_EQ(block_span->GetFixLenColAddr(2, &dbl_col, &bitmap), KStatus::SUCCESS);
+            double raw_sum = 0;
+            for (int r = 0; r < nrow; ++r) {
+              raw_sum += *reinterpret_cast<double*>(dbl_col + r * sizeof(double));
+            }
+            total += raw_sum;
+            char* ts_col = nullptr;
+            std::unique_ptr<TsBitmapBase> ts_bitmap;
+            ASSERT_EQ(block_span->GetFixLenColAddr(0, &ts_col, &ts_bitmap), KStatus::SUCCESS);
+            timestamp64 first_ts = *reinterpret_cast<timestamp64*>(ts_col);
+            timestamp64 last_ts = *reinterpret_cast<timestamp64*>(ts_col + (nrow - 1) * sizeof(timestamp64));
+            if (check_preagg) {
+              EXPECT_GE(first_ts, prev_last_ts) << "blocks not globally sorted after vacuum";
+              prev_last_ts = last_ts;
+              if (block_span->HasPreAgg()) {
+                uint16_t pre_count = 0;
+                ASSERT_EQ(block_span->GetPreCount(2, nullptr, pre_count), KStatus::SUCCESS);
+                EXPECT_EQ(pre_count, nrow) << "pre-agg COUNT mismatch";
+                void* pre_sum = nullptr;
+                bool is_overflow = false;
+                ASSERT_EQ(block_span->GetPreSum(2, nullptr, pre_sum, is_overflow), KStatus::SUCCESS);
+                ASSERT_NE(pre_sum, nullptr);
+                EXPECT_NEAR(*reinterpret_cast<double*>(pre_sum), raw_sum, 1e-6)
+                    << "pre-agg SUM does not match block rows";
+              }
+            }
+          }
+        }
+      }
+    }
+    *sum_out = total;
+    *count_out = rows;
+  };
+
+  // Round 1: vacuum at block size 100 -> creates full 100-row blocks.
+  EngineOptions::max_rows_per_block = 100;
+  EngineOptions::min_rows_per_block = 1;
+  s = engine_->Vacuum(ctx_, true);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  double sum_before = 0;
+  int count_before = 0;
+  read_all(&sum_before, &count_before, true);
+  ASSERT_EQ(count_before, total_rows);
+
+  // Round 2: vacuum again at the same block size -> full blocks take the fast
+  // copy path; pre-agg and row set must be unchanged.
+  s = engine_->Vacuum(ctx_, true);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  double sum_after = 0;
+  int count_after = 0;
+  read_all(&sum_after, &count_after, true);
+
+  EXPECT_EQ(count_after, total_rows) << "fast-path vacuum changed total row count";
+  EXPECT_NEAR(sum_after, sum_before, 1e-3) << "fast-path vacuum changed aggregate SUM";
+}
+
+// Regression test: after vacuum merges blocks, the per-block pre-aggregation of
+// a NON-last column (the INT column at scan index 1) must also match the rows
+// in the merged block, catching sparse-agg layout offset errors that a check of
+// only the last column would miss.
+TEST_F(TsEngineV2Test, VacuumMergeIntColPreAggConsistency) {
+  using namespace roachpb;
+  KStatus s;
+  TSTableID table_id = 70004;
+  CreateTsTable pb_meta;
+  std::vector<roachpb::DataType> metric_type{roachpb::TIMESTAMP, roachpb::INT, roachpb::DOUBLE};
+  ConstructRoachpbTableWithTypes(&pb_meta, table_id, metric_type);
+  std::shared_ptr<TsTable> ts_table;
+  s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::shared_ptr<TsTableSchemaManager> schema_mgr;
+  bool is_dropped = false;
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  uint32_t db_id = schema_mgr->GetDbID();
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = schema_mgr->GetMetricMeta(1, &metric_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  std::vector<TagInfo> tag_schema;
+  s = schema_mgr->GetTagMeta(1, tag_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  const int kFlushes = 20;
+  const int kRowsPerFlush = 17;
+  const TSEntityID dev_id = 1;
+  int total_rows = 0;
+  timestamp64 ts = 1000;
+  uint16_t inc_entity_cnt;
+  uint32_t inc_unordered_cnt = 0;
+  DedupResult dedup_result{0, 0, 0, TSSlice{nullptr, 0}};
+  for (int i = 0; i < kFlushes; ++i) {
+    auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, dev_id, kRowsPerFlush, ts, 1);
+    s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+    free(payload.data);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    total_rows += kRowsPerFlush;
+    ts += kRowsPerFlush + 1;
+    s = engine_->FlushVGroups(ctx_);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+  }
+
+  auto validate = [&](int* count_out) {
+    int rows = 0;
+    std::shared_ptr<MMapMetricsTable> schema;
+    ASSERT_EQ(schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+    auto* vgroups = engine_->GetTsVGroups();
+    ASSERT_NE(vgroups, nullptr);
+    for (auto& vgroup : *vgroups) {
+      if (vgroup == nullptr) {
+        continue;
+      }
+      auto current = vgroup->CurrentVersion();
+      auto partitions = current->GetPartitions(db_id, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
+      for (auto& partition : partitions) {
+        auto entity_segment = partition->GetEntitySegment();
+        if (entity_segment == nullptr) {
+          continue;
+        }
+        uint64_t entity_num = entity_segment->GetEntityNum();
+        for (uint64_t entity_id = 1; entity_id <= entity_num; ++entity_id) {
+          std::vector<STScanRange> spans{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
+          TsBlockItemFilterParams filter{db_id, table_id, vgroup->GetVGroupID(),
+                                         static_cast<TSEntityID>(entity_id), spans};
+          std::list<shared_ptr<TsBlockSpan>> block_spans;
+          ASSERT_EQ(entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, schema), KStatus::SUCCESS);
+          for (auto& block_span : block_spans) {
+            int nrow = block_span->GetRowNum();
+            if (nrow == 0) {
+              continue;
+            }
+            rows += nrow;
+            // raw INT (scan col 1)
+            std::unique_ptr<TsBitmapBase> bitmap;
+            char* int_col = nullptr;
+            ASSERT_EQ(block_span->GetFixLenColAddr(1, &int_col, &bitmap), KStatus::SUCCESS);
+            int64_t raw_sum = 0;
+            int32_t raw_max = INT32_MIN;
+            int32_t raw_min = INT32_MAX;
+            for (int r = 0; r < nrow; ++r) {
+              int32_t v = *reinterpret_cast<int32_t*>(int_col + r * sizeof(int32_t));
+              raw_sum += v;
+              raw_max = std::max(raw_max, v);
+              raw_min = std::min(raw_min, v);
+            }
+            if (block_span->HasPreAgg()) {
+              uint16_t pre_count = 0;
+              ASSERT_EQ(block_span->GetPreCount(1, nullptr, pre_count), KStatus::SUCCESS);
+              EXPECT_EQ(pre_count, nrow) << "INT pre-agg COUNT mismatch";
+              void* pre_sum = nullptr;
+              bool is_overflow = false;
+              ASSERT_EQ(block_span->GetPreSum(1, nullptr, pre_sum, is_overflow), KStatus::SUCCESS);
+              ASSERT_NE(pre_sum, nullptr);
+              EXPECT_FALSE(is_overflow);
+              EXPECT_EQ(*reinterpret_cast<int64_t*>(pre_sum), raw_sum) << "INT pre-agg SUM mismatch";
+              void* pre_max = nullptr;
+              ASSERT_EQ(block_span->GetPreMax(1, nullptr, pre_max), KStatus::SUCCESS);
+              ASSERT_NE(pre_max, nullptr);
+              EXPECT_EQ(*reinterpret_cast<int32_t*>(pre_max), raw_max) << "INT pre-agg MAX mismatch";
+              void* pre_min = nullptr;
+              ASSERT_EQ(block_span->GetPreMin(1, nullptr, pre_min), KStatus::SUCCESS);
+              ASSERT_NE(pre_min, nullptr);
+              EXPECT_EQ(*reinterpret_cast<int32_t*>(pre_min), raw_min) << "INT pre-agg MIN mismatch";
+            }
+          }
+        }
+      }
+    }
+    *count_out = rows;
+  };
+
+  EngineOptions::max_rows_per_block = 20;
+  EngineOptions::min_rows_per_block = 1;
+  s = engine_->Vacuum(ctx_, true);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  int count_before = 0;
+  validate(&count_before);
+  ASSERT_EQ(count_before, total_rows);
+
+  EngineOptions::max_rows_per_block = 100;
+  s = engine_->Vacuum(ctx_, true);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  int count_after = 0;
+  validate(&count_after);
+  EXPECT_EQ(count_after, total_rows) << "vacuum merge changed row count";
+}
+
+// Concurrency test: when vacuum runs one thread per vgroup, each thread must
+// use its own execution context. With many devices spread across all vgroups,
+// a shared context would race and corrupt data; verify every inserted row
+// survives and per-block pre-aggregation stays consistent after a concurrent
+// vacuum.
+TEST_F(TsEngineV2Test, VacuumConcurrentMultiVGroupConsistency) {
+  using namespace roachpb;
+  KStatus s;
+  TSTableID table_id = 70005;
+  CreateTsTable pb_meta;
+  std::vector<roachpb::DataType> metric_type{roachpb::TIMESTAMP, roachpb::INT, roachpb::DOUBLE};
+  ConstructRoachpbTableWithTypes(&pb_meta, table_id, metric_type);
+  std::shared_ptr<TsTable> ts_table;
+  s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::shared_ptr<TsTableSchemaManager> schema_mgr;
+  bool is_dropped = false;
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  uint32_t db_id = schema_mgr->GetDbID();
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = schema_mgr->GetMetricMeta(1, &metric_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  std::vector<TagInfo> tag_schema;
+  s = schema_mgr->GetTagMeta(1, tag_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  const int kDevices = 40;
+  const int kFlushes = 6;
+  const int kRowsPerFlush = 17;
+  uint16_t inc_entity_cnt;
+  uint32_t inc_unordered_cnt = 0;
+  DedupResult dedup_result{0, 0, 0, TSSlice{nullptr, 0}};
+  int64_t total_rows = 0;
+  for (int f = 0; f < kFlushes; ++f) {
+    for (int d = 1; d <= kDevices; ++d) {
+      timestamp64 ts = 1000 + static_cast<timestamp64>(f) * (kRowsPerFlush + 1);
+      auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, d, kRowsPerFlush, ts, 1);
+      s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+      free(payload.data);
+      ASSERT_EQ(s, KStatus::SUCCESS);
+      total_rows += kRowsPerFlush;
+    }
+    s = engine_->FlushVGroups(ctx_);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+  }
+
+  auto count_and_check = [&](int64_t* count_out) {
+    int64_t rows = 0;
+    std::shared_ptr<MMapMetricsTable> schema;
+    ASSERT_EQ(schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+    auto* vgroups = engine_->GetTsVGroups();
+    ASSERT_NE(vgroups, nullptr);
+    for (auto& vgroup : *vgroups) {
+      if (vgroup == nullptr) {
+        continue;
+      }
+      auto current = vgroup->CurrentVersion();
+      auto partitions = current->GetPartitions(db_id, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
+      for (auto& partition : partitions) {
+        auto entity_segment = partition->GetEntitySegment();
+        if (entity_segment == nullptr) {
+          continue;
+        }
+        uint64_t entity_num = entity_segment->GetEntityNum();
+        for (uint64_t entity_id = 1; entity_id <= entity_num; ++entity_id) {
+          std::vector<STScanRange> spans{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
+          TsBlockItemFilterParams filter{db_id, table_id, vgroup->GetVGroupID(),
+                                         static_cast<TSEntityID>(entity_id), spans};
+          std::list<shared_ptr<TsBlockSpan>> block_spans;
+          ASSERT_EQ(entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, schema), KStatus::SUCCESS);
+          for (auto& block_span : block_spans) {
+            int nrow = block_span->GetRowNum();
+            if (nrow == 0) {
+              continue;
+            }
+            rows += nrow;
+            std::unique_ptr<TsBitmapBase> bitmap;
+            char* dbl_col = nullptr;
+            ASSERT_EQ(block_span->GetFixLenColAddr(2, &dbl_col, &bitmap), KStatus::SUCCESS);
+            double raw_sum = 0;
+            for (int r = 0; r < nrow; ++r) {
+              raw_sum += *reinterpret_cast<double*>(dbl_col + r * sizeof(double));
+            }
+            if (block_span->HasPreAgg()) {
+              uint16_t pre_count = 0;
+              ASSERT_EQ(block_span->GetPreCount(2, nullptr, pre_count), KStatus::SUCCESS);
+              EXPECT_EQ(pre_count, nrow);
+              void* pre_sum = nullptr;
+              bool is_overflow = false;
+              ASSERT_EQ(block_span->GetPreSum(2, nullptr, pre_sum, is_overflow), KStatus::SUCCESS);
+              ASSERT_NE(pre_sum, nullptr);
+              EXPECT_NEAR(*reinterpret_cast<double*>(pre_sum), raw_sum, 1e-6);
+            }
+          }
+        }
+      }
+    }
+    *count_out = rows;
+  };
+
+  // Run vacuum concurrently (one thread per vgroup) at a small block size, then
+  // again at a larger block size to also force merging under concurrency.
+  EngineOptions::vacuum_concurrent = true;
+  EngineOptions::max_rows_per_block = 20;
+  EngineOptions::min_rows_per_block = 1;
+  s = engine_->Vacuum(ctx_, true);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  int64_t count1 = 0;
+  count_and_check(&count1);
+  EXPECT_EQ(count1, total_rows) << "concurrent vacuum lost rows";
+
+  EngineOptions::max_rows_per_block = 100;
+  s = engine_->Vacuum(ctx_, true);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  int64_t count2 = 0;
+  count_and_check(&count2);
+  EXPECT_EQ(count2, total_rows) << "concurrent merge vacuum lost rows";
+}
+
+// Regression test for the user's explicit concern: vacuum may merge two blocks
+// that were written under different table versions. After adding a column the
+// entity segment holds v1 (2 metric cols) and v2 (3 metric cols) blocks; the
+// merge must convert/encode them consistently so the shared DOUBLE column's
+// aggregate and the total row set stay correct.
+TEST_F(TsEngineV2Test, VacuumMergeMultiVersionConsistency) {
+  using namespace roachpb;
+  KStatus s;
+  TSTableID table_id = 70006;
+  CreateTsTable pb_meta;
+  std::vector<roachpb::DataType> metric_type{roachpb::TIMESTAMP, roachpb::INT, roachpb::DOUBLE};
+  ConstructRoachpbTableWithTypes(&pb_meta, table_id, metric_type);
+  std::shared_ptr<TsTable> ts_table;
+  s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::shared_ptr<TsTableSchemaManager> schema_mgr;
+  bool is_dropped = false;
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  uint32_t db_id = schema_mgr->GetDbID();
+  const std::vector<AttributeInfo>* metric_schema_v1{nullptr};
+  s = schema_mgr->GetMetricMeta(1, &metric_schema_v1);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  std::vector<TagInfo> tag_schema;
+  s = schema_mgr->GetTagMeta(1, tag_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  const int kFlushes = 10;
+  const int kRowsPerFlush = 17;
+  const TSEntityID dev_id = 1;
+  int64_t total_rows = 0;
+  timestamp64 ts = 1000;
+  uint16_t inc_entity_cnt;
+  uint32_t inc_unordered_cnt = 0;
+  DedupResult dedup_result{0, 0, 0, TSSlice{nullptr, 0}};
+
+  // version 1 data
+  for (int i = 0; i < kFlushes; ++i) {
+    auto payload = GenRowPayload(*metric_schema_v1, tag_schema, table_id, 1, dev_id, kRowsPerFlush, ts, 1);
+    s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+    free(payload.data);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    total_rows += kRowsPerFlush;
+    ts += kRowsPerFlush + 1;
+    s = engine_->FlushVGroups(ctx_);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+  }
+
+  // add a FLOAT column -> table version 2
+  KWDBKTSColumn new_col;
+  new_col.set_column_id(4);
+  new_col.set_name("column_4");
+  new_col.set_storage_type(roachpb::FLOAT);
+  new_col.set_nullable(true);
+  new_col.set_dropped(false);
+  std::string col_data;
+  new_col.SerializeToString(&col_data);
+  TSSlice col_slice{const_cast<char*>(col_data.c_str()), col_data.size()};
+  std::string err_msg;
+  std::string txn_id = "5041921481932099";
+  s = engine_->AddColumn(ctx_, table_id, const_cast<char*>(txn_id.c_str()), is_dropped, col_slice, 1, 2, err_msg);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  const std::vector<AttributeInfo>* metric_schema_v2{nullptr};
+  s = schema_mgr->GetMetricMeta(2, &metric_schema_v2);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  // version 2 data (with the extra column), continuing the timestamp range
+  for (int i = 0; i < kFlushes; ++i) {
+    auto payload = GenRowPayload(*metric_schema_v2, tag_schema, table_id, 2, dev_id, kRowsPerFlush, ts, 1);
+    s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+    free(payload.data);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    total_rows += kRowsPerFlush;
+    ts += kRowsPerFlush + 1;
+    s = engine_->FlushVGroups(ctx_);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+  }
+
+  auto count_and_check = [&](int64_t* count_out) {
+    int64_t rows = 0;
+    std::shared_ptr<MMapMetricsTable> schema;
+    ASSERT_EQ(schema_mgr->GetMetricSchema(schema_mgr->GetCurrentVersion(), &schema), KStatus::SUCCESS);
+    auto* vgroups = engine_->GetTsVGroups();
+    ASSERT_NE(vgroups, nullptr);
+    for (auto& vgroup : *vgroups) {
+      if (vgroup == nullptr) {
+        continue;
+      }
+      auto current = vgroup->CurrentVersion();
+      auto partitions = current->GetPartitions(db_id, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
+      for (auto& partition : partitions) {
+        auto entity_segment = partition->GetEntitySegment();
+        if (entity_segment == nullptr) {
+          continue;
+        }
+        uint64_t entity_num = entity_segment->GetEntityNum();
+        for (uint64_t entity_id = 1; entity_id <= entity_num; ++entity_id) {
+          std::vector<STScanRange> spans{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
+          TsBlockItemFilterParams filter{db_id, table_id, vgroup->GetVGroupID(),
+                                         static_cast<TSEntityID>(entity_id), spans};
+          std::list<shared_ptr<TsBlockSpan>> block_spans;
+          ASSERT_EQ(entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, schema), KStatus::SUCCESS);
+          for (auto& block_span : block_spans) {
+            int nrow = block_span->GetRowNum();
+            if (nrow == 0) {
+              continue;
+            }
+            rows += nrow;
+            // DOUBLE column at scan index 2 exists in both versions
+            std::unique_ptr<TsBitmapBase> bitmap;
+            char* dbl_col = nullptr;
+            ASSERT_EQ(block_span->GetFixLenColAddr(2, &dbl_col, &bitmap), KStatus::SUCCESS);
+            double raw_sum = 0;
+            for (int r = 0; r < nrow; ++r) {
+              raw_sum += *reinterpret_cast<double*>(dbl_col + r * sizeof(double));
+            }
+            if (block_span->HasPreAgg()) {
+              uint16_t pre_count = 0;
+              ASSERT_EQ(block_span->GetPreCount(2, nullptr, pre_count), KStatus::SUCCESS);
+              EXPECT_EQ(pre_count, nrow);
+              void* pre_sum = nullptr;
+              bool is_overflow = false;
+              ASSERT_EQ(block_span->GetPreSum(2, nullptr, pre_sum, is_overflow), KStatus::SUCCESS);
+              ASSERT_NE(pre_sum, nullptr);
+              EXPECT_NEAR(*reinterpret_cast<double*>(pre_sum), raw_sum, 1e-6)
+                  << "multi-version merge corrupted DOUBLE pre-agg SUM";
+            }
+          }
+        }
+      }
+    }
+    *count_out = rows;
+  };
+
+  EngineOptions::max_rows_per_block = 20;
+  EngineOptions::min_rows_per_block = 1;
+  s = engine_->Vacuum(ctx_, true);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  int64_t count1 = 0;
+  count_and_check(&count1);
+  ASSERT_EQ(count1, total_rows);
+
+  EngineOptions::max_rows_per_block = 100;
+  s = engine_->Vacuum(ctx_, true);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  int64_t count2 = 0;
+  count_and_check(&count2);
+  EXPECT_EQ(count2, total_rows) << "multi-version merge vacuum changed total row count";
+}
+
+// Regression test: vacuum merge of blocks with variable-length (VARCHAR) columns
+// exercises the block builder's var-length offset/data concatenation path that
+// fixed-type-only tests never cover. Verify that merging small blocks preserves
+// every (ts -> varchar) pair and keeps COUNT pre-agg correct.
+TEST_F(TsEngineV2Test, VacuumMergeVarcharConsistency) {
+  using namespace roachpb;
+  KStatus s;
+  TSTableID table_id = 70008;
+  CreateTsTable pb_meta;
+  std::vector<roachpb::DataType> metric_type{roachpb::TIMESTAMP, roachpb::INT, roachpb::VARCHAR};
+  ConstructRoachpbTableWithTypes(&pb_meta, table_id, metric_type);
+  std::shared_ptr<TsTable> ts_table;
+  s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::shared_ptr<TsTableSchemaManager> schema_mgr;
+  bool is_dropped = false;
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  uint32_t db_id = schema_mgr->GetDbID();
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = schema_mgr->GetMetricMeta(1, &metric_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  std::vector<TagInfo> tag_schema;
+  s = schema_mgr->GetTagMeta(1, tag_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  const int kFlushes = 40;
+  const int kRowsPerFlush = 17;
+  const TSEntityID dev_id = 1;
+  int64_t total_rows = 0;
+  timestamp64 ts = 1000;
+  uint16_t inc_entity_cnt;
+  uint32_t inc_unordered_cnt = 0;
+  DedupResult dedup_result{0, 0, 0, TSSlice{nullptr, 0}};
+  for (int i = 0; i < kFlushes; ++i) {
+    auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, dev_id, kRowsPerFlush, ts, 1);
+    s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+    free(payload.data);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    total_rows += kRowsPerFlush;
+    ts += kRowsPerFlush + 1;
+    s = engine_->FlushVGroups(ctx_);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+  }
+
+  auto read_all = [&](std::multimap<timestamp64, std::string>* pairs, int64_t* count_out, bool check_preagg) {
+    int64_t rows = 0;
+    std::shared_ptr<MMapMetricsTable> schema;
+    ASSERT_EQ(schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+    auto* vgroups = engine_->GetTsVGroups();
+    ASSERT_NE(vgroups, nullptr);
+    for (auto& vgroup : *vgroups) {
+      if (vgroup == nullptr) continue;
+      auto current = vgroup->CurrentVersion();
+      auto partitions = current->GetPartitions(db_id, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
+      for (auto& partition : partitions) {
+        auto entity_segment = partition->GetEntitySegment();
+        if (entity_segment == nullptr) continue;
+        uint64_t entity_num = entity_segment->GetEntityNum();
+        for (uint64_t entity_id = 1; entity_id <= entity_num; ++entity_id) {
+          std::vector<STScanRange> spans{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
+          TsBlockItemFilterParams filter{db_id, table_id, vgroup->GetVGroupID(),
+                                         static_cast<TSEntityID>(entity_id), spans};
+          std::list<shared_ptr<TsBlockSpan>> block_spans;
+          ASSERT_EQ(entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, schema), KStatus::SUCCESS);
+          for (auto& block_span : block_spans) {
+            int nrow = block_span->GetRowNum();
+            if (nrow == 0) continue;
+            rows += nrow;
+            char* ts_col = nullptr;
+            std::unique_ptr<TsBitmapBase> ts_bitmap;
+            ASSERT_EQ(block_span->GetFixLenColAddr(0, &ts_col, &ts_bitmap), KStatus::SUCCESS);
+            for (int r = 0; r < nrow; ++r) {
+              timestamp64 row_ts = *reinterpret_cast<timestamp64*>(ts_col + r * sizeof(timestamp64));
+              DataFlags flag;
+              TSSlice val{nullptr, 0};
+              ASSERT_EQ(block_span->GetVarLenTypeColAddr(r, 2, flag, val), KStatus::SUCCESS);
+              std::string sval = (flag == kValid && val.data) ? std::string(val.data, val.len) : std::string();
+              pairs->emplace(row_ts, sval);
+            }
+            if (check_preagg && block_span->HasPreAgg()) {
+              uint16_t pre_count = 0;
+              ASSERT_EQ(block_span->GetPreCount(2, nullptr, pre_count), KStatus::SUCCESS);
+              EXPECT_EQ(pre_count, nrow) << "varchar pre-agg COUNT mismatch (nrow=" << nrow << ")";
+            }
+          }
+        }
+      }
+    }
+    *count_out = rows;
+  };
+
+  EngineOptions::max_rows_per_block = 20;
+  EngineOptions::min_rows_per_block = 1;
+  s = engine_->Vacuum(ctx_, true);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  std::multimap<timestamp64, std::string> before;
+  int64_t count_before = 0;
+  read_all(&before, &count_before, false);
+  ASSERT_EQ(count_before, total_rows) << "rows lost before merge vacuum";
+
+  EngineOptions::max_rows_per_block = 100;
+  s = engine_->Vacuum(ctx_, true);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  std::multimap<timestamp64, std::string> after;
+  int64_t count_after = 0;
+  read_all(&after, &count_after, true);
+
+  EXPECT_EQ(count_after, total_rows) << "vacuum merge changed total row count (varchar)";
+  EXPECT_TRUE(before == after) << "vacuum merge corrupted varchar (ts->value) pairs";
+}
+
+// Regression test: NULL-heavy data must have bitmaps propagated correctly during
+// merge. Pre-agg COUNT/SUM must only account for non-null rows.
+TEST_F(TsEngineV2Test, VacuumMergeNullBitmapConsistency) {
+  using namespace roachpb;
+  KStatus s;
+  TSTableID table_id = 70009;
+  CreateTsTable pb_meta;
+  std::vector<roachpb::DataType> metric_type{roachpb::TIMESTAMP, roachpb::INT, roachpb::DOUBLE};
+  ConstructRoachpbTableWithTypes(&pb_meta, table_id, metric_type);
+  std::shared_ptr<TsTable> ts_table;
+  s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::shared_ptr<TsTableSchemaManager> schema_mgr;
+  bool is_dropped = false;
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  uint32_t db_id = schema_mgr->GetDbID();
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = schema_mgr->GetMetricMeta(1, &metric_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  std::vector<TagInfo> tag_schema;
+  s = schema_mgr->GetTagMeta(1, tag_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  const int kFlushes = 20;
+  const int kRowsPerFlush = 17;
+  const TSEntityID dev_id = 1;
+  int64_t total_rows = 0;
+  timestamp64 ts = 1000;
+  uint16_t inc_entity_cnt;
+  uint32_t inc_unordered_cnt = 0;
+  DedupResult dedup_result{0, 0, 0, TSSlice{nullptr, 0}};
+  for (int i = 0; i < kFlushes; ++i) {
+    vector<timestamp64> timestamps(kRowsPerFlush);
+    vector<int32_t> col1_vals(kRowsPerFlush);
+    vector<bool> col1_nulls(kRowsPerFlush, false);
+    vector<double> col2_vals(kRowsPerFlush);
+    vector<bool> col2_nulls(kRowsPerFlush);
+    for (int r = 0; r < kRowsPerFlush; ++r) {
+      timestamps[r] = ts + r;
+      col1_vals[r] = static_cast<int32_t>(i * kRowsPerFlush + r);
+      col2_vals[r] = static_cast<double>(i * kRowsPerFlush + r) * 1.5;
+      col2_nulls[r] = (r % 2 == 1);  // odd rows: DOUBLE is NULL
+    }
+    auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, dev_id, 1,
+                                 kRowsPerFlush, timestamps, col1_vals, col1_nulls, col2_vals, col2_nulls);
+    s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+    free(payload.data);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    total_rows += kRowsPerFlush;
+    ts += kRowsPerFlush + 1;
+    s = engine_->FlushVGroups(ctx_);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+  }
+
+  auto validate = [&](int64_t* count_out) {
+    int64_t rows = 0;
+    std::shared_ptr<MMapMetricsTable> schema;
+    ASSERT_EQ(schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+    auto* vgroups = engine_->GetTsVGroups();
+    ASSERT_NE(vgroups, nullptr);
+    for (auto& vgroup : *vgroups) {
+      if (vgroup == nullptr) continue;
+      auto current = vgroup->CurrentVersion();
+      auto partitions = current->GetPartitions(db_id, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
+      for (auto& partition : partitions) {
+        auto entity_segment = partition->GetEntitySegment();
+        if (entity_segment == nullptr) continue;
+        uint64_t entity_num = entity_segment->GetEntityNum();
+        for (uint64_t entity_id = 1; entity_id <= entity_num; ++entity_id) {
+          std::vector<STScanRange> spans{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
+          TsBlockItemFilterParams filter{db_id, table_id, vgroup->GetVGroupID(),
+                                         static_cast<TSEntityID>(entity_id), spans};
+          std::list<shared_ptr<TsBlockSpan>> block_spans;
+          ASSERT_EQ(entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, schema), KStatus::SUCCESS);
+          for (auto& block_span : block_spans) {
+            int nrow = block_span->GetRowNum();
+            if (nrow == 0) continue;
+            rows += nrow;
+            std::unique_ptr<TsBitmapBase> bitmap;
+            char* dbl_col = nullptr;
+            ASSERT_EQ(block_span->GetFixLenColAddr(2, &dbl_col, &bitmap), KStatus::SUCCESS);
+            double raw_sum = 0;
+            int non_null_count = 0;
+            for (int r = 0; r < nrow; ++r) {
+              if (bitmap->At(r) == DataFlags::kValid) {
+                raw_sum += *reinterpret_cast<double*>(dbl_col + r * sizeof(double));
+                non_null_count++;
+              }
+            }
+            if (block_span->HasPreAgg()) {
+              uint16_t pre_count = 0;
+              ASSERT_EQ(block_span->GetPreCount(2, nullptr, pre_count), KStatus::SUCCESS);
+              EXPECT_EQ(pre_count, non_null_count) << "pre-agg COUNT includes null rows";
+              if (non_null_count > 0) {
+                void* pre_sum = nullptr;
+                bool is_overflow = false;
+                ASSERT_EQ(block_span->GetPreSum(2, nullptr, pre_sum, is_overflow), KStatus::SUCCESS);
+                ASSERT_NE(pre_sum, nullptr);
+                EXPECT_NEAR(*reinterpret_cast<double*>(pre_sum), raw_sum, 1e-6)
+                    << "pre-agg SUM wrong with null values present";
+              }
+            }
+          }
+        }
+      }
+    }
+    *count_out = rows;
+  };
+
+  EngineOptions::max_rows_per_block = 20;
+  EngineOptions::min_rows_per_block = 1;
+  s = engine_->Vacuum(ctx_, true);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  int64_t count1 = 0;
+  validate(&count1);
+  ASSERT_EQ(count1, total_rows);
+
+  EngineOptions::max_rows_per_block = 100;
+  s = engine_->Vacuum(ctx_, true);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  int64_t count2 = 0;
+  validate(&count2);
+  EXPECT_EQ(count2, total_rows) << "vacuum merge with nulls changed total row count";
+}
+
+// Regression test: multiple entities in the same partition must be merged
+// independently. Verify per-entity row counts and aggregates are preserved.
+TEST_F(TsEngineV2Test, VacuumMergeMultiEntityConsistency) {
+  using namespace roachpb;
+  KStatus s;
+  TSTableID table_id = 70010;
+  CreateTsTable pb_meta;
+  std::vector<roachpb::DataType> metric_type{roachpb::TIMESTAMP, roachpb::INT, roachpb::DOUBLE};
+  ConstructRoachpbTableWithTypes(&pb_meta, table_id, metric_type);
+  std::shared_ptr<TsTable> ts_table;
+  s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::shared_ptr<TsTableSchemaManager> schema_mgr;
+  bool is_dropped = false;
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  uint32_t db_id = schema_mgr->GetDbID();
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = schema_mgr->GetMetricMeta(1, &metric_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  std::vector<TagInfo> tag_schema;
+  s = schema_mgr->GetTagMeta(1, tag_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  const int kDevices = 5;
+  const int kFlushes = 15;
+  const int kRowsPerFlush = 17;
+  uint16_t inc_entity_cnt;
+  uint32_t inc_unordered_cnt = 0;
+  DedupResult dedup_result{0, 0, 0, TSSlice{nullptr, 0}};
+  int64_t total_rows = 0;
+  for (int d = 1; d <= kDevices; ++d) {
+    timestamp64 ts = 1000 + static_cast<timestamp64>(d) * 10000;
+    for (int f = 0; f < kFlushes; ++f) {
+      auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, d, kRowsPerFlush, ts, 1);
+      s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+      free(payload.data);
+      ASSERT_EQ(s, KStatus::SUCCESS);
+      total_rows += kRowsPerFlush;
+      ts += kRowsPerFlush + 1;
+    }
+    s = engine_->FlushVGroups(ctx_);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+  }
+
+  std::map<uint64_t, double> entity_sums;
+  auto validate_per_entity = [&]() {
+    entity_sums.clear();
+    std::shared_ptr<MMapMetricsTable> schema;
+    ASSERT_EQ(schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+    auto* vgroups = engine_->GetTsVGroups();
+    ASSERT_NE(vgroups, nullptr);
+    for (auto& vgroup : *vgroups) {
+      if (vgroup == nullptr) continue;
+      auto current = vgroup->CurrentVersion();
+      auto partitions = current->GetPartitions(db_id, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
+      for (auto& partition : partitions) {
+        auto entity_segment = partition->GetEntitySegment();
+        if (entity_segment == nullptr) continue;
+        uint64_t entity_num = entity_segment->GetEntityNum();
+        for (uint64_t entity_id = 1; entity_id <= entity_num; ++entity_id) {
+          std::vector<STScanRange> spans{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
+          TsBlockItemFilterParams filter{db_id, table_id, vgroup->GetVGroupID(),
+                                         static_cast<TSEntityID>(entity_id), spans};
+          std::list<shared_ptr<TsBlockSpan>> block_spans;
+          ASSERT_EQ(entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, schema), KStatus::SUCCESS);
+          double entity_sum = 0;
+          timestamp64 prev_last_ts = INT64_MIN;
+          for (auto& block_span : block_spans) {
+            int nrow = block_span->GetRowNum();
+            if (nrow == 0) continue;
+            std::unique_ptr<TsBitmapBase> bitmap;
+            char* dbl_col = nullptr;
+            ASSERT_EQ(block_span->GetFixLenColAddr(2, &dbl_col, &bitmap), KStatus::SUCCESS);
+            double raw_sum = 0;
+            for (int r = 0; r < nrow; ++r) {
+              raw_sum += *reinterpret_cast<double*>(dbl_col + r * sizeof(double));
+            }
+            entity_sum += raw_sum;
+            char* ts_col = nullptr;
+            std::unique_ptr<TsBitmapBase> ts_bitmap;
+            ASSERT_EQ(block_span->GetFixLenColAddr(0, &ts_col, &ts_bitmap), KStatus::SUCCESS);
+            timestamp64 first_ts = *reinterpret_cast<timestamp64*>(ts_col);
+            EXPECT_GE(first_ts, prev_last_ts) << "entity " << entity_id << " blocks not sorted";
+            prev_last_ts = *reinterpret_cast<timestamp64*>(ts_col + (nrow - 1) * sizeof(timestamp64));
+            if (block_span->HasPreAgg()) {
+              uint16_t pre_count = 0;
+              ASSERT_EQ(block_span->GetPreCount(2, nullptr, pre_count), KStatus::SUCCESS);
+              EXPECT_EQ(pre_count, nrow);
+              void* pre_sum = nullptr;
+              bool is_overflow = false;
+              ASSERT_EQ(block_span->GetPreSum(2, nullptr, pre_sum, is_overflow), KStatus::SUCCESS);
+              ASSERT_NE(pre_sum, nullptr);
+              EXPECT_NEAR(*reinterpret_cast<double*>(pre_sum), raw_sum, 1e-6);
+            }
+          }
+          if (entity_sum != 0) {
+            entity_sums[entity_id] = entity_sum;
+          }
+        }
+      }
+    }
+  };
+
+  EngineOptions::max_rows_per_block = 20;
+  EngineOptions::min_rows_per_block = 1;
+  s = engine_->Vacuum(ctx_, true);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  validate_per_entity();
+  auto sums_before = entity_sums;
+
+  EngineOptions::max_rows_per_block = 100;
+  s = engine_->Vacuum(ctx_, true);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  validate_per_entity();
+  for (auto& [eid, sum] : entity_sums) {
+    EXPECT_NEAR(sum, sums_before[eid], 1e-3) << "entity " << eid << " SUM changed after merge";
+  }
+}
+
+// Regression test: SplitFront path — when the block builder already has partial
+// data and the next block has more rows than the remaining room, SplitFront
+// splits that block. Verify the split produces correct per-block pre-agg.
+// Setup: mix 13-row and 17-row blocks, merge at max_rows=20. The builder fills
+// to 13, then the next 17-row block exceeds room(7), triggering SplitFront.
+TEST_F(TsEngineV2Test, VacuumMergeSplitFrontConsistency) {
+  using namespace roachpb;
+  KStatus s;
+  TSTableID table_id = 70011;
+  CreateTsTable pb_meta;
+  std::vector<roachpb::DataType> metric_type{roachpb::TIMESTAMP, roachpb::INT, roachpb::DOUBLE};
+  ConstructRoachpbTableWithTypes(&pb_meta, table_id, metric_type);
+  std::shared_ptr<TsTable> ts_table;
+  s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::shared_ptr<TsTableSchemaManager> schema_mgr;
+  bool is_dropped = false;
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  uint32_t db_id = schema_mgr->GetDbID();
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = schema_mgr->GetMetricMeta(1, &metric_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  std::vector<TagInfo> tag_schema;
+  s = schema_mgr->GetTagMeta(1, tag_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  const TSEntityID dev_id = 1;
+  int64_t total_rows = 0;
+  timestamp64 ts = 1000;
+  uint16_t inc_entity_cnt;
+  uint32_t inc_unordered_cnt = 0;
+  DedupResult dedup_result{0, 0, 0, TSSlice{nullptr, 0}};
+  // Alternate between 13-row and 17-row flushes to create uneven blocks
+  int flush_sizes[] = {13, 17, 13, 17, 13, 17, 13, 17, 13, 17,
+                       13, 17, 13, 17, 13, 17, 13, 17, 13, 17};
+  for (int i = 0; i < 20; ++i) {
+    int rows = flush_sizes[i];
+    auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, dev_id, rows, ts, 1);
+    s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+    free(payload.data);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    total_rows += rows;
+    ts += rows + 1;
+    s = engine_->FlushVGroups(ctx_);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+  }
+
+  // First vacuum: keep blocks as-is (max_rows large enough)
+  EngineOptions::max_rows_per_block = 17;
+  EngineOptions::min_rows_per_block = 1;
+  s = engine_->Vacuum(ctx_, true);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  // Second vacuum: merge at max_rows=20. A 13-row block fills builder to 13,
+  // then the next 17-row block has room=7, triggering SplitFront(7).
+  EngineOptions::max_rows_per_block = 20;
+  s = engine_->Vacuum(ctx_, true);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  int64_t rows = 0;
+  double global_sum = 0;
+  std::shared_ptr<MMapMetricsTable> schema;
+  ASSERT_EQ(schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+  auto* vgroups = engine_->GetTsVGroups();
+  ASSERT_NE(vgroups, nullptr);
+  for (auto& vgroup : *vgroups) {
+    if (vgroup == nullptr) continue;
+    auto current = vgroup->CurrentVersion();
+    auto partitions = current->GetPartitions(db_id, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
+    for (auto& partition : partitions) {
+      auto entity_segment = partition->GetEntitySegment();
+      if (entity_segment == nullptr) continue;
+      uint64_t entity_num = entity_segment->GetEntityNum();
+      for (uint64_t entity_id = 1; entity_id <= entity_num; ++entity_id) {
+        std::vector<STScanRange> spans{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
+        TsBlockItemFilterParams filter{db_id, table_id, vgroup->GetVGroupID(),
+                                       static_cast<TSEntityID>(entity_id), spans};
+        std::list<shared_ptr<TsBlockSpan>> block_spans;
+        ASSERT_EQ(entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, schema), KStatus::SUCCESS);
+        timestamp64 prev_last_ts = INT64_MIN;
+        for (auto& block_span : block_spans) {
+          int nrow = block_span->GetRowNum();
+          if (nrow == 0) continue;
+          rows += nrow;
+          EXPECT_LE(nrow, 20) << "block exceeds max_rows_per_block after SplitFront merge";
+          std::unique_ptr<TsBitmapBase> bitmap;
+          char* dbl_col = nullptr;
+          ASSERT_EQ(block_span->GetFixLenColAddr(2, &dbl_col, &bitmap), KStatus::SUCCESS);
+          double raw_sum = 0;
+          for (int r = 0; r < nrow; ++r) {
+            raw_sum += *reinterpret_cast<double*>(dbl_col + r * sizeof(double));
+          }
+          global_sum += raw_sum;
+          char* ts_col = nullptr;
+          std::unique_ptr<TsBitmapBase> ts_bitmap;
+          ASSERT_EQ(block_span->GetFixLenColAddr(0, &ts_col, &ts_bitmap), KStatus::SUCCESS);
+          timestamp64 first_ts = *reinterpret_cast<timestamp64*>(ts_col);
+          timestamp64 last_ts = *reinterpret_cast<timestamp64*>(ts_col + (nrow - 1) * sizeof(timestamp64));
+          EXPECT_GE(first_ts, prev_last_ts) << "blocks not sorted after SplitFront merge";
+          prev_last_ts = last_ts;
+          if (block_span->HasPreAgg()) {
+            uint16_t pre_count = 0;
+            ASSERT_EQ(block_span->GetPreCount(2, nullptr, pre_count), KStatus::SUCCESS);
+            EXPECT_EQ(pre_count, nrow) << "pre-agg COUNT wrong after SplitFront";
+            void* pre_sum = nullptr;
+            bool is_overflow = false;
+            ASSERT_EQ(block_span->GetPreSum(2, nullptr, pre_sum, is_overflow), KStatus::SUCCESS);
+            ASSERT_NE(pre_sum, nullptr);
+            EXPECT_NEAR(*reinterpret_cast<double*>(pre_sum), raw_sum, 1e-6)
+                << "pre-agg SUM wrong after SplitFront";
+          }
+        }
+      }
+    }
+  }
+  EXPECT_EQ(rows, total_rows) << "SplitFront vacuum lost rows";
+}
+
+// Regression test: overlapping timestamp data is deduplicated (OVERRIDE rule)
+// during vacuum. The merged output must have correct pre-agg reflecting only
+// the surviving (latest-written) rows, not the original duplicated data.
+TEST_F(TsEngineV2Test, VacuumMergeDedupPreAggConsistency) {
+  using namespace roachpb;
+  KStatus s;
+  TSTableID table_id = 70012;
+  CreateTsTable pb_meta;
+  std::vector<roachpb::DataType> metric_type{roachpb::TIMESTAMP, roachpb::INT, roachpb::DOUBLE};
+  ConstructRoachpbTableWithTypes(&pb_meta, table_id, metric_type);
+  std::shared_ptr<TsTable> ts_table;
+  s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::shared_ptr<TsTableSchemaManager> schema_mgr;
+  bool is_dropped = false;
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  uint32_t db_id = schema_mgr->GetDbID();
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = schema_mgr->GetMetricMeta(1, &metric_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  std::vector<TagInfo> tag_schema;
+  s = schema_mgr->GetTagMeta(1, tag_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  const TSEntityID dev_id = 1;
+  uint16_t inc_entity_cnt;
+  uint32_t inc_unordered_cnt = 0;
+  DedupResult dedup_result{0, 0, 0, TSSlice{nullptr, 0}};
+  // Write 5 flushes with the SAME timestamp range [1000, 1017).
+  // Under OVERRIDE dedup, only the last-written values survive (17 rows).
+  const int kFlushes = 5;
+  const int kRowsPerFlush = 17;
+  for (int i = 0; i < kFlushes; ++i) {
+    auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, dev_id, kRowsPerFlush, 1000, 1);
+    s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+    free(payload.data);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    s = engine_->FlushVGroups(ctx_);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+  }
+
+  EngineOptions::max_rows_per_block = 100;
+  EngineOptions::min_rows_per_block = 1;
+  s = engine_->Vacuum(ctx_, true);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  // After dedup, only 17 unique rows should remain (not 5*17=85).
+  int64_t rows = 0;
+  std::shared_ptr<MMapMetricsTable> schema;
+  ASSERT_EQ(schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+  auto* vgroups = engine_->GetTsVGroups();
+  for (auto& vgroup : *vgroups) {
+    if (vgroup == nullptr) continue;
+    auto current = vgroup->CurrentVersion();
+    auto partitions = current->GetPartitions(db_id, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
+    for (auto& partition : partitions) {
+      auto entity_segment = partition->GetEntitySegment();
+      if (entity_segment == nullptr) continue;
+      uint64_t entity_num = entity_segment->GetEntityNum();
+      for (uint64_t entity_id = 1; entity_id <= entity_num; ++entity_id) {
+        std::vector<STScanRange> spans{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
+        TsBlockItemFilterParams filter{db_id, table_id, vgroup->GetVGroupID(),
+                                       static_cast<TSEntityID>(entity_id), spans};
+        std::list<shared_ptr<TsBlockSpan>> block_spans;
+        ASSERT_EQ(entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, schema), KStatus::SUCCESS);
+        for (auto& block_span : block_spans) {
+          int nrow = block_span->GetRowNum();
+          if (nrow == 0) continue;
+          rows += nrow;
+          std::unique_ptr<TsBitmapBase> bitmap;
+          char* dbl_col = nullptr;
+          ASSERT_EQ(block_span->GetFixLenColAddr(2, &dbl_col, &bitmap), KStatus::SUCCESS);
+          double raw_sum = 0;
+          for (int r = 0; r < nrow; ++r) {
+            raw_sum += *reinterpret_cast<double*>(dbl_col + r * sizeof(double));
+          }
+          if (block_span->HasPreAgg()) {
+            uint16_t pre_count = 0;
+            ASSERT_EQ(block_span->GetPreCount(2, nullptr, pre_count), KStatus::SUCCESS);
+            EXPECT_EQ(pre_count, nrow) << "pre-agg COUNT wrong after dedup";
+            void* pre_sum = nullptr;
+            bool is_overflow = false;
+            ASSERT_EQ(block_span->GetPreSum(2, nullptr, pre_sum, is_overflow), KStatus::SUCCESS);
+            ASSERT_NE(pre_sum, nullptr);
+            EXPECT_NEAR(*reinterpret_cast<double*>(pre_sum), raw_sum, 1e-6)
+                << "pre-agg SUM wrong after dedup";
+          }
+        }
+      }
+    }
+  }
+  EXPECT_EQ(rows, kRowsPerFlush) << "dedup did not reduce to unique rows";
+}
+
+// Regression test: out-of-order / interleaved timestamp blocks. Late-arriving
+// data creates blocks whose timestamp ranges overlap with earlier blocks. The
+// sorted iterator must interleave rows correctly by timestamp, dedup overlapping
+// timestamps (OVERRIDE), and produce correctly ordered output with valid pre-agg.
+TEST_F(TsEngineV2Test, VacuumMergeOutOfOrderConsistency) {
+  using namespace roachpb;
+  KStatus s;
+  TSTableID table_id = 70013;
+  CreateTsTable pb_meta;
+  std::vector<roachpb::DataType> metric_type{roachpb::TIMESTAMP, roachpb::INT, roachpb::DOUBLE};
+  ConstructRoachpbTableWithTypes(&pb_meta, table_id, metric_type);
+  std::shared_ptr<TsTable> ts_table;
+  s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::shared_ptr<TsTableSchemaManager> schema_mgr;
+  bool is_dropped = false;
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  uint32_t db_id = schema_mgr->GetDbID();
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = schema_mgr->GetMetricMeta(1, &metric_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  std::vector<TagInfo> tag_schema;
+  s = schema_mgr->GetTagMeta(1, tag_schema);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  const TSEntityID dev_id = 1;
+  uint16_t inc_entity_cnt;
+  uint32_t inc_unordered_cnt = 0;
+  DedupResult dedup_result{0, 0, 0, TSSlice{nullptr, 0}};
+
+  // Write blocks in deliberately non-monotonic order with partial overlaps:
+  // Batch 0: ts [1000, 1010)  (10 rows)
+  // Batch 1: ts [1005, 1015)  (10 rows) — overlaps [1005,1010) with batch 0
+  // Batch 2: ts [900, 910)    (10 rows) — earlier than batch 0
+  // Batch 3: ts [1010, 1020)  (10 rows) — continues from batch 0
+  // Batch 4: ts [905, 915)    (10 rows) — overlaps [905,910) with batch 2
+  // After OVERRIDE dedup: unique timestamps are [900..920) minus gaps = 20 unique ts
+  struct Batch { timestamp64 start; int rows; };
+  Batch batches[] = {
+    {1000, 10}, {1005, 10}, {900, 10}, {1010, 10}, {905, 10}
+  };
+  for (auto& batch : batches) {
+    auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, dev_id,
+                                 batch.rows, batch.start, 1);
+    s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt,
+                         &inc_unordered_cnt, &dedup_result);
+    free(payload.data);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    s = engine_->FlushVGroups(ctx_);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+  }
+
+  EngineOptions::max_rows_per_block = 100;
+  EngineOptions::min_rows_per_block = 1;
+  s = engine_->Vacuum(ctx_, true);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  // Validate: rows must be globally sorted, deduped, and pre-agg correct.
+  int64_t rows = 0;
+  std::shared_ptr<MMapMetricsTable> schema;
+  ASSERT_EQ(schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+  auto* vgroups = engine_->GetTsVGroups();
+  std::set<timestamp64> seen_timestamps;
+  for (auto& vgroup : *vgroups) {
+    if (vgroup == nullptr) continue;
+    auto current = vgroup->CurrentVersion();
+    auto partitions = current->GetPartitions(db_id, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
+    for (auto& partition : partitions) {
+      auto entity_segment = partition->GetEntitySegment();
+      if (entity_segment == nullptr) continue;
+      uint64_t entity_num = entity_segment->GetEntityNum();
+      for (uint64_t entity_id = 1; entity_id <= entity_num; ++entity_id) {
+        std::vector<STScanRange> spans{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
+        TsBlockItemFilterParams filter{db_id, table_id, vgroup->GetVGroupID(),
+                                       static_cast<TSEntityID>(entity_id), spans};
+        std::list<shared_ptr<TsBlockSpan>> block_spans;
+        ASSERT_EQ(entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, schema), KStatus::SUCCESS);
+        timestamp64 prev_ts = INT64_MIN;
+        for (auto& block_span : block_spans) {
+          int nrow = block_span->GetRowNum();
+          if (nrow == 0) continue;
+          rows += nrow;
+          char* ts_col = nullptr;
+          std::unique_ptr<TsBitmapBase> ts_bitmap;
+          ASSERT_EQ(block_span->GetFixLenColAddr(0, &ts_col, &ts_bitmap), KStatus::SUCCESS);
+          for (int r = 0; r < nrow; ++r) {
+            timestamp64 cur_ts = *reinterpret_cast<timestamp64*>(ts_col + r * sizeof(timestamp64));
+            EXPECT_GT(cur_ts, prev_ts) << "rows not strictly sorted after out-of-order merge";
+            prev_ts = cur_ts;
+            EXPECT_EQ(seen_timestamps.count(cur_ts), 0u) << "duplicate timestamp survived dedup";
+            seen_timestamps.insert(cur_ts);
+          }
+          std::unique_ptr<TsBitmapBase> bitmap;
+          char* dbl_col = nullptr;
+          ASSERT_EQ(block_span->GetFixLenColAddr(2, &dbl_col, &bitmap), KStatus::SUCCESS);
+          double raw_sum = 0;
+          for (int r = 0; r < nrow; ++r) {
+            raw_sum += *reinterpret_cast<double*>(dbl_col + r * sizeof(double));
+          }
+          if (block_span->HasPreAgg()) {
+            uint16_t pre_count = 0;
+            ASSERT_EQ(block_span->GetPreCount(2, nullptr, pre_count), KStatus::SUCCESS);
+            EXPECT_EQ(pre_count, nrow) << "pre-agg COUNT wrong after out-of-order merge";
+            void* pre_sum = nullptr;
+            bool is_overflow = false;
+            ASSERT_EQ(block_span->GetPreSum(2, nullptr, pre_sum, is_overflow), KStatus::SUCCESS);
+            ASSERT_NE(pre_sum, nullptr);
+            EXPECT_NEAR(*reinterpret_cast<double*>(pre_sum), raw_sum, 1e-6)
+                << "pre-agg SUM wrong after out-of-order merge";
+          }
+        }
+      }
+    }
+  }
+  // Unique timestamps: [900..914] from batches 2,4 + [1000..1019] from batches 0,1,3 = 15+20=35? No.
+  // Batch 2: [900,909], Batch 4: [905,914] → dedup → [900,914] = 15 unique
+  // Batch 0: [1000,1009], Batch 1: [1005,1014], Batch 3: [1010,1019] → dedup → [1000,1019] = 20 unique
+  // Total: 35 unique timestamps
+  EXPECT_EQ(rows, 35) << "out-of-order dedup produced wrong number of unique rows";
 }

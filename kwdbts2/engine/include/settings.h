@@ -115,6 +115,7 @@ struct EngineOptions {
   static double block_filter_sampling_ratio;
   static int agg_stats_recalc_cycle;
   static bool force_re_compress;
+  static bool vacuum_concurrent;
   static uint32_t metric_schema_cache_capacity;
   static CompressAlgo compression_algorithm;
 };

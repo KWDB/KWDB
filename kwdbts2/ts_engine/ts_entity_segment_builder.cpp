@@ -231,7 +231,13 @@ KStatus TsEntityBlockBuilder::Append(const shared_ptr<TsBlockSpan>& span, bool& 
         block.buffer.append(osn_col_value, written_rows * d_size);
       } else {
         if (!direct_copy.copied_to_dest) {
-          block.buffer.append(col_val, written_rows * d_size);
+          if (col_val != nullptr) {
+            block.buffer.append(col_val, written_rows * d_size);
+          } else {
+            // Column does not exist in this block's original schema version.
+            // Bitmap already marks all rows kNull; fill zeros as placeholder.
+            block.buffer.resize(block.buffer.size() + written_rows * d_size);
+          }
         }
       }
     }
@@ -510,7 +516,7 @@ KStatus TsEntitySegmentBuilder::WriteBlock(TsEntityKey& entity_key, TsSegmentWri
   TsBufferBuilder data_buffer;
   TsBufferBuilder agg_buffer;
   TsEntitySegmentBlockItem block_item;
-  block_item.block_version = CURRENT_BLOCK_VERSION;
+  block_item.struct_version = CURRENT_BLOCK_VERSION;
   KStatus s = block_->GetCompressData(block_item, &data_buffer, &agg_buffer);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBuilder::Compact failed, get block compress data failed.")
@@ -855,11 +861,11 @@ KStatus TsEntitySegmentBuilder::WriteBatch(TSTableID tbl_id, uint32_t entity_id,
   TsEntitySegmentBlockItem block_item;
   uint32_t block_data_header_size = TsBatchData::block_span_data_header_size_;
   if (batch_version == 0) {
-    block_item.block_version = DecodeFixed32(block_data.data + TsBatchData::block_version_offset_in_span_data_);
+    block_item.struct_version = DecodeFixed32(block_data.data + TsBatchData::block_version_offset_in_span_data_);
   } else if (batch_version == 1) {
-    block_item.block_version = DecodeFixed32(block_data.data + TsBatchData::block_version_offset_in_span_data_);
+    block_item.struct_version = DecodeFixed32(block_data.data + TsBatchData::block_version_offset_in_span_data_);
   } else if (batch_version == 2) {
-    block_item.block_version = DecodeFixed32(block_data.data + TsBatchData::block_version_offset_in_span_data_);
+    block_item.struct_version = DecodeFixed32(block_data.data + TsBatchData::block_version_offset_in_span_data_);
   } else {
     LOG_ERROR("TsEntitySegmentBuilder::WriteBatch failed, invalid batch version: %u", batch_version);
     return FAIL;
