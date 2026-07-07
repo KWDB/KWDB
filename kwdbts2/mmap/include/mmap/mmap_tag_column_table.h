@@ -448,7 +448,7 @@ class MMapTagColumnTable: public TSObject {
     auto tag_info = getTagDataInfoByRowNum(row);
     auto next_idx = tag_info->operate_idx + 1;
     assert(next_idx < TAG_INFO_MAX_CHAIN_LEN && next_idx > 0);
-    assert(tag_info->osn[next_idx - 1] <= osn);
+    assert(tag_info->osn[next_idx - 1] <= osn || type == OperateType::DeleteBySnapshot);
     tag_info->operate_type[next_idx] = type;
     tag_info->osn[next_idx] = osn;
     tag_info->operate_idx  = next_idx;

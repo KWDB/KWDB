@@ -312,7 +312,6 @@ class TsRawPayload {
   }
   std::vector<uint32_t> GetValidColumns() {
     if (GetPayloadVersion() < 2) {
-      LOG_WARN("payload version is less than 2. no valid column info.");
       return {};
     }
     if (GetRowType() == DataTagFlag::TAG_ONLY) {

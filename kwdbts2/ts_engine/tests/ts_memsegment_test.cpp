@@ -62,7 +62,6 @@ class MemSegmentTester : public testing::Test {
 TEST_F(MemSegmentTester, OSN_BUG) {
   ASSERT_NE(memseg, nullptr);
   std::list<TSSlice> payloads;
-  std::list<TsRawPayload*> payload_objs;
   for (int i = 0; i < 1000; ++i) {
     auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, 1, 1, i * 2);
     TsRawPayload* pd = new TsRawPayload(metric_schema);
@@ -73,7 +72,7 @@ TEST_F(MemSegmentTester, OSN_BUG) {
     row_data->SetData(i * 2, i);
     memseg->AppendOneRow(row_data);
     payloads.push_back(payload);
-    payload_objs.push_back(pd);
+    memseg->AddPayloadObj(pd);
   }
 
   std::list<std::shared_ptr<TsBlockSpan>> blocks;
@@ -88,11 +87,24 @@ TEST_F(MemSegmentTester, OSN_BUG) {
   for (int i = 0; i < 1000; ++i) {
     EXPECT_EQ(*block->GetOSNAddr(i), i);
   }
-  for (auto p : payload_objs) {
-    delete p;
-  }
   for (auto p : payloads) {
     free(p.data);
+  }
+}
+
+TEST_F(MemSegmentTester, mem_leak) {
+  ASSERT_NE(memseg, nullptr);
+  std::list<std::thread> threads;
+  for (int i = 0; i < 4; ++i) {
+    threads.emplace_back([&]() {
+      for (size_t j = 0; j < 1000; j++) {
+        TsRawPayload* pd = new TsRawPayload(metric_schema);
+        memseg->AddPayloadObj(pd);
+      }
+    });
+  }
+  for (auto& p : threads) {
+    p.join();
   }
 }
 

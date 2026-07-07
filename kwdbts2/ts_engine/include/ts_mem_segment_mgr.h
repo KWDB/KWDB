@@ -151,7 +151,11 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
     return skiplist_.AllocPayload(payload_data);
   }
 
-  void AddPayloadObj(TsRawPayload* p) { pd_lists_.push_back(p); }
+  void AddPayloadObj(TsRawPayload* p) {
+    RW_LATCH_X_LOCK(&rw_latch_);
+    pd_lists_.push_back(p);
+    RW_LATCH_UNLOCK(&rw_latch_);
+  }
 
   void AppendOneRow(TSMemSegRowData* row);
 
