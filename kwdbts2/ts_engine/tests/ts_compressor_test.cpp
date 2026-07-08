@@ -1,8 +1,6 @@
-#include "ts_compressor.h"
-
-#include <array>
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -11,11 +9,12 @@
 #include <random>
 #include <vector>
 
+#include "compression/ts_compressor_defs.h"
+#include "compression/ts_compressor_base.h"
+#include "compression/ts_encoder_defs.h"
 #include "libkwdbts2.h"
-#include "ts_coding.h"
-#include "ts_bitmap.h"
-#include "ts_compressor_impl.h"
 #include "ts_bufferbuilder.h"
+#include "ts_coding.h"
 #include "ts_sliceguard.h"
 
 template <class Compressor>
@@ -47,7 +46,7 @@ TYPED_TEST(TimestampCompressorTester, CompressDecompress) {
     TSSlice data{reinterpret_cast<char *>(ts.data()), ts.size() * sizeof(dtype)};
 
     kwdbts::TsBufferBuilder out;
-    ASSERT_TRUE(comp.Compress(data, count, &out));
+    ASSERT_TRUE(comp.Compress(data, count, &out, kwdbts::TsCompressionConfig{}));
     EXPECT_LT(out.size(), data.len);
 
     TSSlice compressed{out.data(), out.size()};
@@ -73,7 +72,7 @@ TYPED_TEST(TimestampCompressorTester, CompressDecompress) {
     TSSlice data{reinterpret_cast<char *>(ts.data()), ts.size() * sizeof(dtype)};
 
     kwdbts::TsBufferBuilder out;
-    ASSERT_TRUE(comp.Compress(data, count, &out));
+    ASSERT_TRUE(comp.Compress(data, count, &out, kwdbts::TsCompressionConfig{}));
     EXPECT_LT(out.size(), data.len);
 
     TSSlice compressed{out.data(), out.size()};
@@ -97,7 +96,7 @@ TYPED_TEST(TimestampCompressorTester, CompressDecompress_FewRows) {
     TSSlice data{reinterpret_cast<char *>(ts.data()), ts.size() * sizeof(dtype)};
 
     kwdbts::TsBufferBuilder out;
-    ASSERT_TRUE(comp.Compress(data, count, &out));
+    ASSERT_TRUE(comp.Compress(data, count, &out, kwdbts::TsCompressionConfig{}));
 
     TSSlice compressed{out.data(), out.size()};
     kwdbts::TsSliceGuard buf;
@@ -124,7 +123,7 @@ TYPED_TEST(TimestampCompressorTester, CompressDecompressOneRow) {
   TSSlice data{reinterpret_cast<char *>(ts.data()), ts.size() * sizeof(dtype)};
 
   kwdbts::TsBufferBuilder out;
-  ASSERT_TRUE(comp.Compress(data, 1, &out));
+  ASSERT_TRUE(comp.Compress(data, 1, &out, kwdbts::TsCompressionConfig{}));
 }
 
 template <class Compressor>
@@ -142,7 +141,7 @@ template <class T>
 static bool Simple8BEncode(const std::vector<T> &input, kwdbts::TsBufferBuilder *out) {
   kwdbts::ConcreateTsCompressor<kwdbts::Simple8BInt<T>>::GetInstance();
   const TSSlice plain{(char *)(input.data()), sizeof(T) * input.size()};
-  return kwdbts::Simple8BInt<T>::GetInstance().Compress(plain, input.size(), out, 0);
+  return kwdbts::Simple8BInt<T>::GetInstance().Compress(plain, input.size(), out, kwdbts::TsCompressionConfig{});
 }
 
 template <class T>
@@ -155,7 +154,7 @@ template <class T>
 static bool Simple8BV2Encode(const std::vector<T> &input, kwdbts::TsBufferBuilder *out) {
   kwdbts::ConcreateTsCompressor<kwdbts::Simple8BInt<T>>::GetInstance();
   const TSSlice plain{(char *)(input.data()), sizeof(T) * input.size()};
-  return kwdbts::Simple8BIntV2<T>::GetInstance().Compress(plain, input.size(), out, 0);
+  return kwdbts::Simple8BIntV2<T>::GetInstance().Compress(plain, input.size(), out, kwdbts::TsCompressionConfig{});
 }
 
 template <class T>
@@ -651,7 +650,7 @@ TEST(Snappy, CompressDecompress) {
     s[i] = str[i % sizeof(str)];
   }
   kwdbts::TsBufferBuilder out;
-  ASSERT_TRUE(comp.Compress({s.data(), s.size()}, 0, &out));
+  ASSERT_TRUE(comp.Compress({s.data(), s.size()}, 0, &out, kwdbts::TsCompressionConfig{}));
 
   EXPECT_LT(out.size(), s.size());
 
@@ -672,7 +671,7 @@ TEST(LZ4, CompressDecompress) {
     s[i] = str[i % sizeof(str)];
   }
   kwdbts::TsBufferBuilder out;
-  ASSERT_TRUE(comp.Compress({s.data(), s.size()}, 0, &out));
+  ASSERT_TRUE(comp.Compress({s.data(), s.size()}, 0, &out, kwdbts::TsCompressionConfig{}));
   // 53 + 8
   EXPECT_LT(out.size(), s.size());
 
@@ -693,7 +692,7 @@ TEST(zstd, CompressDecompress) {
     s[i] = str[i % sizeof(str)];
   }
   kwdbts::TsBufferBuilder out;
-  ASSERT_TRUE(comp.Compress({s.data(), s.size()}, 0, &out));
+  ASSERT_TRUE(comp.Compress({s.data(), s.size()}, 0, &out, kwdbts::TsCompressionConfig{}));
   // 30 + 8
   EXPECT_LT(out.size(), s.size());
 
@@ -714,7 +713,7 @@ TEST(zlib, CompressDecompress) {
     s[i] = str[i % sizeof(str)];
   }
   kwdbts::TsBufferBuilder out;
-  ASSERT_TRUE(comp.Compress({s.data(), s.size()}, 0, &out));
+  ASSERT_TRUE(comp.Compress({s.data(), s.size()}, 0, &out, kwdbts::TsCompressionConfig{}));
   // 55 + 8
   EXPECT_LT(out.size(), s.size());
 
@@ -736,7 +735,7 @@ TEST(GeneralCompression, EmptyInputIsAValidNoOp) {
 
   for (const auto* comp : compressors) {
     kwdbts::TsBufferBuilder compressed;
-    ASSERT_TRUE(comp->Compress(empty, 0, &compressed));
+    ASSERT_TRUE(comp->Compress(empty, 0, &compressed, kwdbts::TsCompressionConfig{}));
     EXPECT_EQ(compressed.size(), 0);
     const TSSlice compressed_slice{compressed.data(), compressed.size()};
 
@@ -819,9 +818,8 @@ TYPED_TEST(FloatingPointCompressorTester, CompressDecompress) {
   for (int i = 0; i < c.size(); ++i) {
     kwdbts::TsBufferBuilder out;
     kwdbts::TsSliceGuard plain;
-    ASSERT_TRUE(comp.Compress(
-        TSSlice{reinterpret_cast<char *>(c[i].data()), c[i].size() * sizeof(TypeParam)},
-        c[i].size(), &out))
+    ASSERT_TRUE(comp.Compress(TSSlice{reinterpret_cast<char *>(c[i].data()), c[i].size() * sizeof(TypeParam)},
+                              c[i].size(), &out, kwdbts::TsCompressionConfig{}))
         << i;
     ASSERT_TRUE(comp.Decompress({out.data(), out.size()}, c[i].size(), &plain));
     EXPECT_EQ(plain.size(), c[i].size() * sizeof(TypeParam));
@@ -836,7 +834,8 @@ TYPED_TEST(FloatingPointCompressorTester, CompressDecompress) {
 // bool
 
 static bool BitPackingEnc(const std::vector<uint8_t> &data, kwdbts::TsBufferBuilder *out) {
-  return kwdbts::BitPacking::GetInstance().Compress(TSSlice{(char *)data.data(), data.size()}, data.size(), out, 0);
+  return kwdbts::BitPacking::GetInstance().Compress(TSSlice{(char *)data.data(), data.size()}, data.size(), out,
+                                                    kwdbts::TsCompressionConfig{});
 }
 
 static bool BitPackingDec(TSSlice data, size_t size, std::vector<uint8_t> *out) {

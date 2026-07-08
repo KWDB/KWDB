@@ -696,7 +696,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 // below; search this file for "Keyword category lists".
 
 // Ordinary key words in alphabetical order.
-%token <str> ABORT ACTION ADD ADMIN AFTER AGGREGATE AUDIT AUDITS
+%token <str> ABORT ABS ACTION ADD ADMIN AFTER AGGREGATE AUDIT AUDITS
 %token <str> ALL ALTER ANALYSE ANALYZE AND AND_AND ANY ANNOTATE_TYPE APPLICATIONS ARRAY AS ASC
 %token <str> ASYMMETRIC ASSIGN AT ATTRIBUTE ATTRIBUTES AUTHORIZATION AUTOMATIC
 
@@ -768,7 +768,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %token <str> QUERIES QUERY
 
 %token <str> RANGE RANGES RD READ REAL REBALANCE RECURSIVE REF REFERENCES REFRESH
-%token <str> REGCLASS REGPROC REGPROCEDURE REGNAMESPACE REGTYPE REINDEX
+%token <str> REGCLASS REGPROC REGPROCEDURE REGNAMESPACE REGTYPE REINDEX REL
 %token <str> REMOVE_PATH RENAME REPEATABLE REPLACE
 %token <str> RELEASE RESET RESTORE RESTRICT RESUME RETENTIONS RETURNING RECURRING RETURNS REVOKE RIGHT
 %token <str> ROLE ROLES ROLLBACK ROLLUP ROW ROWS RSHIFT RULE
@@ -1316,6 +1316,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.ReferenceActions> reference_actions
 %type <tree.ReferenceAction> reference_action reference_on_delete reference_on_update
 %type <*string> opt_compress_level opt_compress_algo opt_encode_algo
+%type <*tree.NumVal> opt_encode_rel opt_encode_abs
 
 %type <tree.Expr> func_application func_expr_common_subexpr special_function
 %type <tree.Expr> func_expr func_expr_windowless
@@ -2026,16 +2027,27 @@ alter_table_cmd:
   //		 [ ENCODE <encode_algo> ]
   //	   [ COMPRESS <compress_algo> ]
   //     [ LEVEL <compress_level> ]
-| ALTER opt_column column_name opt_set_data opt_alter_type opt_collate opt_alter_column_using opt_encode_algo opt_compress_algo opt_compress_level
+| ALTER opt_column column_name opt_set_data opt_alter_type opt_collate opt_alter_column_using opt_encode_algo opt_encode_rel opt_encode_abs opt_compress_algo opt_compress_level
   {
+    var relErr, absErr *float64
+    if nv := $9.numVal(); nv != nil {
+        v, _ := nv.AsFloat()
+        relErr = &v
+    }
+    if nv := $10.numVal(); nv != nil {
+        v, _ := nv.AsFloat()
+        absErr = &v
+    }
     $$.val = &tree.AlterTableAlterColumnType{
       Column: tree.Name($3),
       ToType: $5.colType(),
       Collation: $6,
       Using: $7.expr(),
 			EncodeAlgo:		 $8.strPtr(),
-			CompressAlgo:  $9.strPtr(),
-			CompressLevel: $10.strPtr(),
+			RelErr:        relErr,
+			AbsErr:        absErr,
+			CompressAlgo:  $11.strPtr(),
+			CompressLevel: $12.strPtr(),
     }
   }
 | ALTER attribute_tag attribute_name opt_set_data TYPE typename
@@ -6442,14 +6454,31 @@ col_qualification:
 	{
 		$$.val = tree.NamedColumnQualification{Qualification: tree.ColumnComment($3)}
 	}
-| ENCODE non_reserved_word_or_sconst
+| ENCODE non_reserved_word_or_sconst opt_encode_rel opt_encode_abs
 	{
-    $$.val = tree.NamedColumnQualification{Qualification: &tree.ColumnEncode{EncodeAlgo: $2}}
+    $$.val = tree.NamedColumnQualification{Qualification: &tree.ColumnEncode{EncodeAlgo: $2, RelErr: $3.numVal(), AbsErr: $4.numVal()}}
 	}
 | COMPRESS non_reserved_word_or_sconst opt_compress_level
 	{
 		$$.val = tree.NamedColumnQualification{Qualification: &tree.ColumnCompress{CompressAlgo: $2, CompressLevel: $3.strPtr()}}
 	}
+
+opt_encode_rel:
+  REL signed_fconst
+  {
+    relErr := $2
+    $$.val = relErr.numVal()
+  }
+| /* EMPTY */ { $$.val = (*tree.NumVal)(nil) }
+
+opt_encode_abs:
+  ABS signed_fconst
+  {
+    absErr := $2
+    $$.val = absErr.numVal()
+  }
+| /* EMPTY */ { $$.val = (*tree.NumVal)(nil) }
+
 
 opt_compress_level:
 	LEVEL non_reserved_word_or_sconst
@@ -13886,6 +13915,7 @@ unrestricted_name:
 // "Unreserved" keywords --- available for use as any kind of name.
 unreserved_keyword:
   ABORT
+| ABS
 | CAR_HINT
 | LEADING_TABLE
 | IGNORE_INDEX_ONLY
@@ -14149,6 +14179,7 @@ unreserved_keyword:
 | READ
 | RECURSIVE
 | REF
+| REL
 | REFRESH
 | REGCLASS
 | REGPROC

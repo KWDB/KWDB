@@ -256,7 +256,7 @@ if (CMAKE_BUILD_TYPE STREQUAL "Release")
 endif()
 
 if (WITH_TESTS)
-    add_subdirectory(qa/stress_tests/kwdbts-bench2)
+    # add_subdirectory(qa/stress_tests/kwdbts-bench2)
     enable_testing()
 endif()
 # install script

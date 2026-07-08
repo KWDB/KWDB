@@ -51,12 +51,18 @@ const (
 	TSBOStringMaxLen      = 1023
 )
 
+// minRelErr is the minimum allowed REL error bound.
+// Values smaller than this risk being truncated to zero by the storage engine.
+const minRelErr = 1e-9
+
 // TableTypeMap identify what type the table is.
 type TableTypeMap map[tree.TableType]int
 
 // CompressInfo is ts column compress information.
 type CompressInfo struct {
 	EncodeAlgo    *string
+	RelErr        *float64
+	AbsErr        *float64
 	CompressAlgo  *string
 	CompressLevel *string
 }
@@ -563,23 +569,49 @@ func (col *ColumnDescriptor) checkColumnCompress(compressInfo CompressInfo) erro
 		enType := strings.ToLower(*encodeAlgo)
 		if enType != "disabled" {
 			switch col.Type.Oid() {
-			case oid.T_int2, oid.T_int4, oid.T_int8, oid.T_timestamp, oid.T_timestamptz:
+			case oid.T_int2, oid.T_int4, oid.T_int8:
 				if enType != "simple8b" {
 					return pgerror.Newf(pgcode.FeatureNotSupported, "type %s does not support encode type %s", col.Type.Name(), enType)
 				}
+			case oid.T_timestamp, oid.T_timestamptz:
+				switch enType {
+				case "simple8b", "delta-d":
+				default:
+					return pgerror.Newf(pgcode.FeatureNotSupported, "type %s does not support encode type %s", col.Type.Name(), enType)
+				}
 			case oid.T_float4, oid.T_float8:
-				if enType != "chimp" {
+				switch enType {
+				case "chimp", "alp", "elf", "bss", "fptrunc":
+				default:
 					return pgerror.Newf(pgcode.FeatureNotSupported, "type %s does not support encode type %s", col.Type.Name(), enType)
 				}
 			case oid.T_bool:
-				if enType != "bit-packing" {
+				switch enType {
+				case "bit-packing", "rc":
+				default:
 					return pgerror.Newf(pgcode.FeatureNotSupported, "type %s does not support encode type %s", col.Type.Name(), enType)
 				}
 			default:
 				return pgerror.Newf(pgcode.FeatureNotSupported, "type %s does not support encode type %s", col.Type.Name(), enType)
 			}
 		}
+		if enType != "fptrunc" {
+			if compressInfo.RelErr != nil {
+				return pgerror.Newf(pgcode.FeatureNotSupported, "encode type %s does not support REL", enType)
+			}
+			if compressInfo.AbsErr != nil {
+				return pgerror.Newf(pgcode.FeatureNotSupported, "encode type %s does not support ABS", enType)
+			}
+		}
+		if compressInfo.RelErr != nil && (*compressInfo.RelErr <= minRelErr || *compressInfo.RelErr >= 1) {
+			return pgerror.Newf(pgcode.InvalidParameterValue, "REL value must be in (%g, 1), got %v", minRelErr, *compressInfo.RelErr)
+		}
+		if compressInfo.AbsErr != nil && *compressInfo.AbsErr <= 0 {
+			return pgerror.Newf(pgcode.InvalidParameterValue, "ABS value must be > 0, got %v", *compressInfo.AbsErr)
+		}
 		col.TsCol.EncodeAlgo = &enType
+		col.TsCol.RelErr = compressInfo.RelErr
+		col.TsCol.AbsErr = compressInfo.AbsErr
 	}
 	if compressAlgo != nil {
 		cpType := strings.ToLower(*compressAlgo)

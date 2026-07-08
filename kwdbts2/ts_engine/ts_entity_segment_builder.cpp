@@ -15,10 +15,11 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <cstring>
 #include <cstdio>
+#include <cstring>
 #include <utility>
 
+#include "compression/ts_compressor_manager.h"
 #include "data_type.h"
 #include "kwdb_type.h"
 #include "settings.h"
@@ -283,21 +284,21 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
     TsBitmapBase* b = has_bitmap ? block.bitmap.get() : nullptr;
     // compress col data & write to buffer
     if (0 == col_idx) {
+      attr_info.type = d_type;
       attr_info.encode_algo = roachpb::ENCODE_ALGO_SIMPLE8B;
       attr_info.compress_algo = roachpb::COMPRESS_ALGO_DISABLED;
       attr_info.compress_level = roachpb::COMPRESS_LEVEL_UNSPECIFIED;
     } else {
       attr_info = metric_schema_[col_idx - 1];
     }
-    auto [encode_algo, compress_algo] = mgr.GetAlgorithm(d_type, attr_info);
+    auto cfg = mgr.GetCompConfig(table_id_, attr_info);
     if (is_var_col) {
       // varchar offset use simple8b algorithm
-      encode_algo = EncodeAlgo::kSimple8B_V2_u32;
+      cfg.encoder = EncodeAlgo::kSimple8B_V2_u32;
       // var offset data
       TsBufferBuilder compressed;
       TSSlice var_offsets = {block.buffer.data(), n_rows_ * sizeof(uint32_t)};
-      bool ok = mgr.CompressData(var_offsets, nullptr, n_rows_, &compressed,
-        encode_algo, compress_algo, attr_info.compress_level);
+      bool ok = mgr.CompressData(var_offsets, nullptr, n_rows_, &compressed, cfg);
       if (!ok) {
         LOG_ERROR("Compress var offset data failed, tb_id [%u], tb_version [%u], entity_id [%lu], col_idx [%d]",
           table_id_, table_version_, entity_id_, col_idx);
@@ -310,7 +311,7 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
       compressed.clear();
       uint32_t var_data_offset = EngineOptions::max_rows_per_block * sizeof(uint32_t);
       ok = mgr.CompressVarchar({block.buffer.data() + var_data_offset, block.buffer.size() - var_data_offset},
-                        &compressed, compress_algo, metric_schema_[col_idx - 1].compress_level);
+                               &compressed, cfg);
       if (!ok) {
         LOG_ERROR("Compress var data failed, tb_id [%u], tb_version [%u], entity_id [%lu], col_idx [%d]",
           table_id_, table_version_, entity_id_, col_idx);
@@ -320,7 +321,7 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
     } else {
       TsBufferBuilder compressed;
       TSSlice plain{block.buffer.data(), block.buffer.size()};
-      mgr.CompressData(plain, b, n_rows_, &compressed, encode_algo, compress_algo, attr_info.compress_level);
+      mgr.CompressData(plain, b, n_rows_, &compressed, cfg);
       data_buffer->append(compressed);
     }
     // col offset

@@ -9,10 +9,12 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-#include <cmath>
 #include "data_type.h"
-#include "utils/big_table_utils.h"
 
+#include <cmath>
+
+#include "compression/ts_floatrep_helper.h"
+#include "utils/big_table_utils.h"
 
 AttributeInfo::AttributeInfo()
     : id(0),
@@ -20,7 +22,8 @@ AttributeInfo::AttributeInfo()
       offset(0),
       size(0),
       length(1),
-      encoding(0),
+      rel_err(FP16_REL::Inf().GetUValue()),
+      abs_err(FP16_ABS::Inf().GetUValue()),
       flag(0),
       max_len(0),
       version(0),

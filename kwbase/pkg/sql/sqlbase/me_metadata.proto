@@ -218,9 +218,24 @@ enum KWDBAlterType {
 // ColumnEncodeAlgo
 enum ColumnEncodeAlgo {
   ENCODE_ALGO_UNSPECIFIED = 0;
+  // Integer and timestamp encoding
   ENCODE_ALGO_SIMPLE8B = 1;
+  // Float encoding — lossless
   ENCODE_ALGO_CHIMP = 2;
+  // Bool encoding — lossless
   ENCODE_ALGO_BIT_PACKING = 3;
+  // Float encoding — lossless (ALP: Adaptive Lossless Precision)
+  ENCODE_ALGO_ALP = 4;
+  // Float encoding — lossless (ELF: Efficient Lossless Float)
+  ENCODE_ALGO_ELF = 5;
+  // Float encoding — lossless (BSS: Bit-Sliced Storage)
+  ENCODE_ALGO_BSS = 6;
+  // Float encoding — lossy, supports REL/ABS error bound (Floating Point Truncation)
+  ENCODE_ALGO_FPTRUNC = 7;
+  // Timestamp encoding — lossless (Delta-of-Delta)
+  ENCODE_ALGO_DELTA_D = 8;
+  // Bool encoding — lossless (Run-length Coding)
+  ENCODE_ALGO_RC = 9;
   ENCODE_ALGO_DISABLED= 255;
 }
 
@@ -269,6 +284,8 @@ message KWDBKTSColumn {
   optional ColumnEncodeAlgo encode_algo = 11 [(gogoproto.nullable) = false];
   optional ColumnCompressAlgo compress_algo = 12 [(gogoproto.nullable) = false];
   optional ColumnCompressLevel compress_level = 13 [(gogoproto.nullable) = false];
+  optional double rel_err = 14;
+  optional double abs_err = 15;
 }
 
 // NTagHashIndexInfo

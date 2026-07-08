@@ -40,12 +40,6 @@
 
 using namespace kwdbts;
 
-#define Def_Column(col_var, pname, ptype, poffset, psize, plength, pencoding, pflag, pmax_len, pversion) \
-                  struct AttributeInfo col_var;                                      \
-                  {col_var.name = pname; col_var.type = ptype; col_var.offset = poffset; col_var.size = psize;} \
-                  {col_var.length = plength; col_var.encoding = pencoding; col_var.flag = pflag;       \
-                  col_var.max_len = pmax_len; col_var.version = pversion;}
-
 #define DIR_SEP "/"
 
 static const k_uint32 g_testcase_hash_num = 2000;

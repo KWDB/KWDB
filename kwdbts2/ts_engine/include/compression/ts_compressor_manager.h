@@ -11,20 +11,22 @@
 
 #pragma once
 
-#include <array>
 #include <cstdint>
+#include <limits>
 #include <memory>
+#include <optional>
 #include <tuple>
 #include <unordered_map>
 #include <utility>
 
+#include "compression/ts_codec_utils.h"
 #include "data_type.h"
 #include "lg_api.h"
 #include "libkwdbts2.h"
-#include "ts_common.h"
 #include "ts_bitmap.h"
 #include "ts_bufferbuilder.h"
 #include "ts_coding.h"
+#include "ts_common.h"
 #include "ts_sliceguard.h"
 
 namespace kwdbts {
@@ -36,6 +38,27 @@ enum class BitmapType : uint8_t {
   kAllNull = 3,
 
   BITMAP_COMP_ALG_LAST
+};
+
+struct TsExtraCompConfig {
+  double rel_err, abs_err;
+  std::shared_ptr<ALPCodec::ALPState> alp_state;
+  TsExtraCompConfig()
+      : rel_err(std::numeric_limits<double>::infinity()), abs_err(std::numeric_limits<double>::infinity()) {}
+};
+
+struct TsCompressionConfig {
+  EncodeAlgo encoder;
+  CompressAlgo compressor;
+  roachpb::ColumnCompressLevel level;
+  std::optional<TsExtraCompConfig> extra_cfg = std::nullopt;
+
+  TsCompressionConfig()
+      : encoder(EncodeAlgo::kPlain), compressor(CompressAlgo::kPlain), level(roachpb::COMPRESS_LEVEL_UNSPECIFIED) {}
+  TsCompressionConfig(EncodeAlgo encoder, CompressAlgo compressor, roachpb::ColumnCompressLevel level)
+      : encoder(encoder), compressor(compressor), level(level) {}
+  TsCompressionConfig(EncodeAlgo encoder, CompressAlgo compressor, int level = roachpb::COMPRESS_LEVEL_UNSPECIFIED)
+      : TsCompressionConfig{encoder, compressor, static_cast<roachpb::ColumnCompressLevel>(level)} {}
 };
 
 class TsCompressorBase;
@@ -56,13 +79,14 @@ class CompressorManager {
     }
 
    public:
-    TwoLevelCompressor(const TsCompressorBase* first, const GenCompressorBase* second,
-                       EncodeAlgo first_algo, CompressAlgo second_algo)
+    TwoLevelCompressor(const TsCompressorBase* first, const GenCompressorBase* second, EncodeAlgo first_algo,
+                       CompressAlgo second_algo)
         : first_(first), second_(second) {
       first_algo_ = first == nullptr ? EncodeAlgo::kPlain : first_algo;
       second_algo_ = second == nullptr ? CompressAlgo::kPlain : second_algo;
     }
-    bool Compress(TSSlice raw, const TsBitmapBase* bitmap, uint32_t count, TsBufferBuilder* out, int level) const;
+    bool Compress(TSSlice raw, const TsBitmapBase* bitmap, uint32_t count, TsBufferBuilder* out,
+                  const TsCompressionConfig& cfg) const;
 
     bool Decompress(TSSlice raw, const TsBitmapBase* bitmap, uint32_t count, TsSliceGuard* out) const;
     bool IsPlain() const { return (first_ == nullptr && second_ == nullptr); }
@@ -75,7 +99,6 @@ class CompressorManager {
   // default_encode_algs_ stores the type-based default encoding algorithm. The default general compression algorithm for
   // COMPRESS_ALGO_UNSPECIFIED is resolved dynamically from the current EngineOptions when needed.
   std::unordered_map<DATATYPE, EncodeAlgo> default_encode_algs_;
-  std::unordered_map<CompressAlgo, std::array<int, 4>> compress_levels_;
 
   CompressorManager();
 
@@ -91,14 +114,14 @@ class CompressorManager {
   CompressorManager(const CompressorManager&) = delete;
   void operator=(const CompressorManager&) = delete;
 
-  TwoLevelCompressor GetCompressor(EncodeAlgo first, CompressAlgo second) const;
-  std::tuple<EncodeAlgo, CompressAlgo> GetAlgorithm(DATATYPE dtype, const AttributeInfo& attr_info) const;
-  std::tuple<EncodeAlgo, CompressAlgo> GetDefaultAlgorithm(DATATYPE dtype) const;
-  TwoLevelCompressor GetDefaultCompressor(DATATYPE dtype) const;
+  TwoLevelCompressor GetCompressor(const TsCompressionConfig &cfg) const;
+  TsCompressionConfig GetDefaultCompConfig(TSTableID table_id, const AttributeInfo &attr_info) const;
+  TsCompressionConfig GetDefaultCompConfigByType(DATATYPE dtype) const;
+  TsCompressionConfig GetCompConfig(TSTableID table_id, const AttributeInfo &attr_info) const;
 
   bool CompressData(TSSlice input, const TsBitmapBase* bitmap, uint64_t count, TsBufferBuilder* output,
-                    EncodeAlgo encode_algo, CompressAlgo compress_algo, int level) const;
-  bool CompressVarchar(TSSlice input, TsBufferBuilder* output, CompressAlgo alg, int level) const;
+                    const TsCompressionConfig& cfg) const;
+  bool CompressVarchar(TSSlice input, TsBufferBuilder* output, const TsCompressionConfig& cfg) const;
   bool DecompressData(TsSliceGuard&& input, const TsBitmapBase* bitmap, uint64_t count, TsSliceGuard* out) const {
     if (input.size() < 4) {
       LOG_ERROR("Invalid input length %lu, too short", input.size());

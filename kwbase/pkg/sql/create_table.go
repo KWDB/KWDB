@@ -1854,6 +1854,8 @@ func checkAndMakeTSColDesc(
 	nullable := d.Nullable.Nullability != tree.NotNull
 	compressInfo := sqlbase.CompressInfo{
 		EncodeAlgo:    d.ColumnEncode.EncodeAlgo,
+		RelErr:        d.ColumnEncode.RelErr,
+		AbsErr:        d.ColumnEncode.AbsErr,
 		CompressAlgo:  d.ColumnCompress.CompressAlgo,
 		CompressLevel: d.ColumnCompress.CompressLevel,
 	}

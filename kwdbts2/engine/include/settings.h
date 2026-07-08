@@ -119,6 +119,13 @@ struct EngineOptions {
   static uint32_t metric_schema_cache_capacity;
   static CompressAlgo compression_algorithm;
 };
+
+// compress_stage is a 2-bit flag:
+//   bit 0 (0b01) — encode enabled
+//   bit 1 (0b10) — compress enabled
+constexpr uint8_t kEncodeEnableMask   = 0b01;
+constexpr uint8_t kCompressEnableMask = 0b10;
+
 extern std::atomic<int64_t> kw_used_anon_memory_size;
 
 }  // namespace kwdbts

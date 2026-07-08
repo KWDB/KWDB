@@ -589,6 +589,8 @@ if (WITH_TESTS)
         add_subdirectory(${dircmake})
     else ()
         add_executable(${tname} ${tsrc})
+        target_compile_definitions(${tname} PRIVATE
+            TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/ts_engine/tests/data")
         target_include_directories(${tname}
                 PRIVATE ${TS_INCLUDE}
                 ${PROTOBUF_INCLUDE_DIR}

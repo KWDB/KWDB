@@ -12,30 +12,32 @@
 #include "ts_engine.h"
 
 #include <dirent.h>
-#include <future>
+
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <future>
+#include <map>
+#include <memory>
+#include <string>
 #include <thread>
-#include <vector>
 #include <unordered_map>
 #include <unordered_set>
-#include <algorithm>
-#include <map>
-#include <string>
-#include <memory>
 #include <utility>
-#include "kwdb_type.h"
+#include <vector>
+
 #include "cm_kwdb_context.h"
+#include "compression/ts_compressor_base.h"
+#include "ee_executor.h"
+#include "ee_global.h"
+#include "kwdb_type.h"
 #include "lg_api.h"
 #include "settings.h"
+#include "sys_utils.h"
 #include "ts_flush_manager.h"
 #include "ts_payload.h"
-#include "ee_global.h"
-#include "ee_executor.h"
-#include "ts_compressor_impl.h"
-#include "ts_table_v2_impl.h"
-#include "sys_utils.h"
 #include "ts_std_utils.h"
+#include "ts_table_v2_impl.h"
 
 // V2
 int EngineOptions::vgroup_max_num = 4;

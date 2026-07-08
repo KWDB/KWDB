@@ -9,23 +9,24 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+#include "ts_batch_data_worker.h"
+
 #include <unistd.h>
 
 #include <cassert>
 
-#include "ts_batch_data_worker.h"
-#include "ts_coding.h"
-#include "ts_test_base.h"
+#include "compression/ts_compressor_manager.h"
 #include "libkwdbts2.h"
 #include "me_metadata.pb.h"
 #include "sys_utils.h"
 #include "test_util.h"
 #include "ts_agg.h"
 #include "ts_bitmap.h"
-#include "ts_compressor.h"
+#include "ts_coding.h"
 #include "ts_compatibility.h"
 #include "ts_engine.h"
 #include "ts_entity_segment.h"
+#include "ts_test_base.h"
 
 using namespace kwdbts;  // NOLINT
 
@@ -138,20 +139,21 @@ std::string BuildLegacyV0BlockData(const std::vector<AttributeInfo>& metric_sche
   std::vector<uint64_t> osns{10, 11, 12};
   TsBufferBuilder osn_compressed;
   AttributeInfo osn_attr{};
+  osn_attr.type = DATATYPE::INT64;  // INT64_ARRAY
   osn_attr.encode_algo = roachpb::ENCODE_ALGO_SIMPLE8B;
   osn_attr.compress_algo = roachpb::COMPRESS_ALGO_DISABLED;
   osn_attr.compress_level = roachpb::COMPRESS_LEVEL_UNSPECIFIED;
-  auto [osn_encode, osn_compress] = mgr.GetAlgorithm(DATATYPE::INT64, osn_attr);
-  bool ok = mgr.CompressData({reinterpret_cast<char*>(osns.data()), osns.size() * sizeof(uint64_t)}, nullptr,
-                             n_rows, &osn_compressed, osn_encode, osn_compress, osn_attr.compress_level);
+  auto cfg = mgr.GetCompConfig(0, osn_attr);
+  bool ok = mgr.CompressData({reinterpret_cast<char*>(osns.data()), osns.size() * sizeof(uint64_t)}, nullptr, n_rows,
+                             &osn_compressed, cfg);
   assert(ok);
   append_column(0, osn_compressed.AsSlice());
 
   std::vector<timestamp64> timestamps{1000, 2000, 3000};
   TsBufferBuilder ts_compressed;
-  auto [ts_encode, ts_compress] = mgr.GetAlgorithm(DATATYPE::TIMESTAMP64, metric_schema[0]);
+  cfg = mgr.GetCompConfig(0, metric_schema[0]);
   ok = mgr.CompressData({reinterpret_cast<char*>(timestamps.data()), timestamps.size() * sizeof(timestamp64)}, nullptr,
-                        n_rows, &ts_compressed, ts_encode, ts_compress, metric_schema[0].compress_level);
+                        n_rows, &ts_compressed, cfg);
   assert(ok);
   append_column(1, ts_compressed.AsSlice());
 
@@ -160,9 +162,9 @@ std::string BuildLegacyV0BlockData(const std::vector<AttributeInfo>& metric_sche
   TsBufferBuilder int_col;
   int_col.append(int_bitmap.GetData());
   TsBufferBuilder int_compressed;
-  auto [int_encode, int_compress] = mgr.GetAlgorithm(DATATYPE::INT32, metric_schema[1]);
+  cfg = mgr.GetCompConfig(0, metric_schema[1]);
   ok = mgr.CompressData({reinterpret_cast<char*>(int_values.data()), int_values.size() * sizeof(int32_t)}, &int_bitmap,
-                        n_rows, &int_compressed, int_encode, int_compress, metric_schema[1].compress_level);
+                        n_rows, &int_compressed, cfg);
   assert(ok);
   int_col.append(int_compressed.AsSlice());
   append_column(2, int_col.AsSlice());

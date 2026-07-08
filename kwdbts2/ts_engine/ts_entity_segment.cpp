@@ -14,12 +14,12 @@
 #include <cstdint>
 #include <utility>
 
+#include "compression/ts_compressor_manager.h"
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
 #include "ts_agg.h"
 #include "ts_bitmap.h"
 #include "ts_bufferbuilder.h"
-#include "ts_compressor.h"
 #include "ts_entity_segment_handle.h"
 #include "ts_filename.h"
 #include "ts_io.h"

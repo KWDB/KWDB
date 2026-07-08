@@ -24,6 +24,7 @@
 #include <utility>
 #include <vector>
 
+#include "compression/ts_compressor_manager.h"
 #include "data_type.h"
 #include "kwdb_type.h"
 #include "lg_api.h"
@@ -34,7 +35,6 @@
 #include "ts_column_block.h"
 #include "ts_common.h"
 #include "ts_compatibility.h"
-#include "ts_compressor.h"
 #include "ts_io.h"
 #include "ts_lastsegment_endec.h"
 #include "ts_segment.h"
@@ -187,6 +187,7 @@ class TsLastBlock : public TsBlock {
    private:
     TsRandomReadFile* file_;
     TsLastSegmentBlockInfoWithData* block_info_;
+    TsLastSegmentBlockIndex* block_index_;
 
     std::vector<std::unique_ptr<TsColumnBlock>> column_blocks_;
 
@@ -195,8 +196,11 @@ class TsLastBlock : public TsBlock {
     TsSliceGuard osn_;
 
    public:
-    ColumnCache(TsRandomReadFile* file, TsLastSegmentBlockInfoWithData* block_info)
-        : file_(file), block_info_(block_info), column_blocks_(block_info->ncol) {}
+    ColumnCache(TsRandomReadFile* file, TsLastBlock* last_block)
+        : file_(file),
+          block_info_(last_block->block_info_),
+          block_index_{&last_block->block_index_},
+          column_blocks_(block_info_->ncol) {}
     KStatus GetColumnBlock(int col_id, TsColumnBlock** block, const std::vector<AttributeInfo>* schema) {
       if (column_blocks_[col_id] != nullptr) {
         *block = column_blocks_[col_id].get();
@@ -221,7 +225,7 @@ class TsLastBlock : public TsBlock {
       info.row_count = block_info_->nrow;
 
       std::unique_ptr<TsColumnBlock> colblock;
-      s = TsColumnBlock::ParseColumnData((*schema)[col_id], std::move(result), info, &colblock);
+      s = TsColumnBlock::ParseColumnData(block_index_->table_id, (*schema)[col_id], std::move(result), info, &colblock);
       if (s == FAIL) {
         LOG_ERROR("can not parse column data, col_id %d", col_id);
         return FAIL;
@@ -300,7 +304,7 @@ class TsLastBlock : public TsBlock {
         block_id_(block_id),
         block_index_(block_index),
         block_info_(block_info),
-        column_block_cache_(std::make_unique<ColumnCache>(lastsegment_->file_.get(), block_info_)) {}
+        column_block_cache_(std::make_unique<ColumnCache>(lastsegment_->file_.get(), this)) {}
   ~TsLastBlock() = default;
   uint32_t GetBlockVersion() const override { return CURRENT_BLOCK_VERSION; }
   TSTableID GetTableId() override { return block_index_.table_id; }
@@ -364,7 +368,7 @@ class TsLastBlock : public TsBlock {
     max_osn = block_index_.max_osn;
   }
 
-  inline void GetMinAndMaxOSN(int start_row, int row_num, uint64_t& min_osn, uint64_t& max_osn) {
+  inline void GetMinAndMaxOSN(int start_row, int row_num, uint64_t& min_osn, uint64_t& max_osn) override {
     const uint64_t* osn = GetOSNAddr(start_row);
     for (int i = 0; i < row_num; i++) {
       if (*(osn + i) < min_osn) {

@@ -598,6 +598,8 @@ type ColumnTableDef struct {
 	Comment      string
 	ColumnEncode struct {
 		EncodeAlgo *string
+		RelErr     *float64
+		AbsErr     *float64
 	}
 	ColumnCompress struct {
 		CompressAlgo  *string
@@ -724,6 +726,26 @@ func NewColumnTableDef(
 					"multiple encode type specified for column %q", name)
 			}
 			d.ColumnEncode.EncodeAlgo = &t.EncodeAlgo
+			if t.RelErr == nil {
+				d.ColumnEncode.RelErr = nil
+			} else {
+				v, err := t.RelErr.AsFloat()
+				if err != nil {
+					return nil, pgerror.Newf(pgcode.Syntax,
+						"can not convert %v to float64 for column %q", t.RelErr, name)
+				}
+				d.ColumnEncode.RelErr = &v
+			}
+			if t.AbsErr == nil {
+				d.ColumnEncode.AbsErr = nil
+			} else {
+				v, err := t.AbsErr.AsFloat()
+				if err != nil {
+					return nil, pgerror.Newf(pgcode.Syntax,
+						"can not convert %v to float64 for column %q", t.AbsErr, name)
+				}
+				d.ColumnEncode.AbsErr = &v
+			}
 		case *ColumnCompress:
 			if d.ColumnCompress.CompressAlgo != nil {
 				return nil, pgerror.Newf(pgcode.Syntax,
@@ -859,6 +881,14 @@ func (node *ColumnTableDef) Format(ctx *FmtCtx) {
 	if node.ColumnEncode.EncodeAlgo != nil {
 		ctx.WriteString(" ENCODE ")
 		ctx.WriteString(*node.ColumnEncode.EncodeAlgo)
+		if node.ColumnEncode.RelErr != nil {
+			ctx.WriteString(" REL ")
+			ctx.WriteString(strconv.FormatFloat(*node.ColumnEncode.RelErr, 'f', -1, 64))
+		}
+		if node.ColumnEncode.AbsErr != nil {
+			ctx.WriteString(" ABS ")
+			ctx.WriteString(strconv.FormatFloat(*node.ColumnEncode.AbsErr, 'f', -1, 64))
+		}
 	}
 	if node.ColumnCompress.CompressAlgo != nil {
 		ctx.WriteString(" COMPRESS ")
@@ -927,6 +957,8 @@ type ColumnComment string
 // ColumnEncode represents encode type on a column
 type ColumnEncode struct {
 	EncodeAlgo string
+	RelErr     *NumVal
+	AbsErr     *NumVal
 }
 
 // ColumnCompress represents compress type on a column

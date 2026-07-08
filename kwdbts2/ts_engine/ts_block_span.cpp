@@ -10,15 +10,16 @@
 // See the Mulan PSL v2 for more details.
 
 #include <memory>
-#include <vector>
-#include <utility>
 #include <string>
+#include <utility>
+#include <vector>
+
+#include "compression/ts_compressor_manager.h"
 #include "ts_agg.h"
 #include "ts_bitmap.h"
-#include "ts_block.h"
 #include "ts_blkspan_type_convert.h"
+#include "ts_block.h"
 #include "ts_bufferbuilder.h"
-#include "ts_compressor.h"
 #include "ts_mem_segment_mgr.h"
 
 namespace kwdbts {
@@ -303,9 +304,9 @@ KStatus TsBlockSpan::BuildCompressedData(TsBufferBuilder* data) {
     }
     TsBufferBuilder compressed;
     // LSN use default algorithm
-    auto [first, second] = mgr.GetDefaultAlgorithm(d_type);
+    auto cfg = mgr.GetDefaultCompConfigByType(d_type);
     TSSlice plain = lsn_data.AsSlice();
-    mgr.CompressData(plain, nullptr, nrow_, &compressed, first, second, 0);
+    mgr.CompressData(plain, nullptr, nrow_, &compressed, cfg);
     data->append(compressed.AsSlice());
     // block data offset
     uint32_t column_block_offset = data->size() - block_data_begin_offset - col_offsets_len;
@@ -379,18 +380,17 @@ KStatus TsBlockSpan::BuildCompressedData(TsBufferBuilder* data) {
       mgr.CompressBitmap(bitmap.get(), data);
       b = bitmap.get();
     }
-    auto [first, second] = mgr.GetAlgorithm(static_cast<DATATYPE>(col_type), (*scan_attrs_)[scan_idx]);
+    auto cfg = mgr.GetCompConfig(this->GetTableID(), (*scan_attrs_)[scan_idx]);
     // auto [first, second] = mgr.GetDefaultAlgorithm(static_cast<DATATYPE>(d_type));
     if (is_var_col) {
       // varchar use Gorilla algorithm
-      first = EncodeAlgo::kSimple8B_V2_u32;
+      cfg.encoder = EncodeAlgo::kSimple8B_V2_u32;
       // var offset data
       TsBufferBuilder compressed;
-      bool ok = mgr.CompressData({var_offset_data.data(), var_offset_data.size()},
-                                 nullptr, nrow_, &compressed, first, second, (*scan_attrs_)[scan_idx].compress_level);
+      bool ok = mgr.CompressData({var_offset_data.data(), var_offset_data.size()}, nullptr, nrow_, &compressed, cfg);
       if (!ok) {
-        LOG_ERROR("Compress var offset data failed. vg_id [%u] entity_id [%lu] col_id[%u]",
-          vgroup_id_, entity_id_, scan_idx)
+        LOG_ERROR("Compress var offset data failed. vg_id [%u] entity_id [%lu] col_id[%u]", vgroup_id_, entity_id_,
+                  scan_idx)
         return KStatus::FAIL;
       }
       uint32_t compressed_len = compressed.size();
@@ -398,8 +398,8 @@ KStatus TsBlockSpan::BuildCompressedData(TsBufferBuilder* data) {
       data->append(compressed.AsSlice());
       // var data
       compressed.clear();
-      ok = mgr.CompressVarchar({var_data.data(), var_data.size()}, &compressed, EngineOptions::compression_algorithm,
-        (*scan_attrs_)[scan_idx].compress_level);
+      cfg.compressor = EngineOptions::compression_algorithm;
+      ok = mgr.CompressVarchar({var_data.data(), var_data.size()}, &compressed, cfg);
       if (!ok) {
         LOG_ERROR("Compress var data failed. vg_id [%u] entity_id [%lu] col_id[%u]", vgroup_id_, entity_id_, scan_idx)
         return KStatus::FAIL;
@@ -410,7 +410,7 @@ KStatus TsBlockSpan::BuildCompressedData(TsBufferBuilder* data) {
       TsBufferBuilder compressed;
       size_t col_size = scan_idx == 0 ? 8 : d_size;
       TSSlice plain{const_cast<char*>(fixed_col_value_addr), nrow_ * col_size};
-      mgr.CompressData(plain, b, nrow_, &compressed, first, second, (*scan_attrs_)[scan_idx].compress_level);
+      mgr.CompressData(plain, b, nrow_, &compressed, cfg);
       data->append(compressed.AsSlice());
     }
     // block data offset

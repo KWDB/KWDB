@@ -11,7 +11,6 @@
 
 #pragma once
 #include <memory>
-#include <string>
 #include <utility>
 
 #include "data_type.h"
@@ -19,7 +18,6 @@
 #include "libkwdbts2.h"
 #include "ts_bitmap.h"
 #include "ts_bufferbuilder.h"
-#include "ts_compressor.h"
 
 namespace kwdbts {
 
@@ -37,19 +35,21 @@ class TsColumnBlock {
  private:
   const AttributeInfo col_schema_;
   int count_ = 0;
+  TSTableID table_id_ = 0;
   std::unique_ptr<TsBitmapBase> bitmap_;
   TsSliceGuard fixlen_guard_, varchar_guard_;
 
   TsColumnBlock(const AttributeInfo& col_schema, int count, std::unique_ptr<TsBitmapBase>&& bitmap,
-                TsSliceGuard&& fixlen_data, TsSliceGuard&& varchar_data)
+                TsSliceGuard&& fixlen_data, TsSliceGuard&& varchar_data, TSTableID table_id)
       : col_schema_(col_schema),
         count_(count),
+        table_id_(table_id),
         bitmap_(std::move(bitmap)),
         fixlen_guard_(std::move(fixlen_data)),
         varchar_guard_(std::move(varchar_data)) {}
 
  public:
-  static KStatus ParseColumnData(const AttributeInfo& col_schema, TsSliceGuard&& compressed_guard,
+  static KStatus ParseColumnData(TSTableID table_id, const AttributeInfo& col_schema, TsSliceGuard&& compressed_guard,
                                  const TsColumnCompressInfo& info, std::unique_ptr<TsColumnBlock>* colblock);
 
   bool GetCompressedData(TsBufferBuilder*, TsColumnCompressInfo*, bool compress);
@@ -63,6 +63,7 @@ class TsColumnBlock {
 
 class TsColumnBlockBuilder {
  private:
+  TSTableID table_id_ = 0;
   const AttributeInfo& col_schema_;
   int count_ = 0;
   std::unique_ptr<TsBitmap> bitmap_;
@@ -70,8 +71,8 @@ class TsColumnBlockBuilder {
   TsBufferBuilder varchar_data_;
 
  public:
-  explicit TsColumnBlockBuilder(const AttributeInfo& col_schema)
-      : col_schema_(col_schema), bitmap_(std::make_unique<TsBitmap>()) {}
+  explicit TsColumnBlockBuilder(TSTableID table_id, const AttributeInfo& col_schema)
+      : table_id_{table_id}, col_schema_(col_schema), bitmap_(std::make_unique<TsBitmap>()) {}
   void AppendFixLenBitmap(int count, const TsBitmapBase* bitmap);
   void AppendFixLenData(TSSlice data, int count, const TsBitmapBase* bitmap);
   void AppendVarLenData(TSSlice data, DataFlags flag);
@@ -86,8 +87,9 @@ class TsColumnBlockBuilder {
   std::unique_ptr<TsColumnBlock> GetColumnBlock() {
     TsSliceGuard fixlen_guard = fixlen_data_.GetSharedBuffer();
     TsSliceGuard varchar_guard = varchar_data_.GetSharedBuffer();
-    return std::unique_ptr<TsColumnBlock>{
-        new TsColumnBlock(col_schema_, count_, std::move(bitmap_), std::move(fixlen_guard), std::move(varchar_guard))};
+    return std::unique_ptr<TsColumnBlock>{new TsColumnBlock(col_schema_, count_, std::move(bitmap_),
+                                                            std::move(fixlen_guard), std::move(varchar_guard),
+                                                            table_id_)};
   }
 
   void Reset() {

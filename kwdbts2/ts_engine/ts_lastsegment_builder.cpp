@@ -17,6 +17,7 @@
 #include <numeric>
 #include <tuple>
 
+#include "compression/ts_compressor_manager.h"
 #include "data_type.h"
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
@@ -24,7 +25,6 @@
 #include "ts_bufferbuilder.h"
 #include "ts_coding.h"
 #include "ts_common.h"
-#include "ts_compressor.h"
 #include "ts_io.h"
 #include "ts_lastsegment.h"
 #include "ts_lastsegment_endec.h"
@@ -190,8 +190,8 @@ KStatus TsLastSegmentBuilder::RecordAndWriteBlockToFile() {
                           entity_id_buffer_.size() * sizeof(TSEntityID)};
   const auto& mgr = CompressorManager::GetInstance();
   compressed_data_.clear();
-  bool ok = mgr.CompressData(entity_id_slice, nullptr, entity_id_buffer_.size(), &compressed_data_, EncodeAlgo::kPlain,
-                             CompressAlgo::kPlain, 0);
+  TsCompressionConfig cfg;
+  bool ok = mgr.CompressData(entity_id_slice, nullptr, entity_id_buffer_.size(), &compressed_data_, cfg);
   if (!ok) {
     return FAIL;
   }

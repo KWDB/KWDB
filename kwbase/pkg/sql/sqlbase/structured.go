@@ -4141,6 +4141,14 @@ func (desc *ColumnDescriptor) SQLString() string {
 	if desc.TsCol.EncodeAlgo != nil {
 		f.WriteString(" ENCODE ")
 		f.WriteString(strings.ToUpper(*desc.TsCol.EncodeAlgo))
+		if desc.TsCol.RelErr != nil {
+			f.WriteString(" REL ")
+			f.WriteString(strconv.FormatFloat(*desc.TsCol.RelErr, 'f', -1, 64))
+		}
+		if desc.TsCol.AbsErr != nil {
+			f.WriteString(" ABS ")
+			f.WriteString(strconv.FormatFloat(*desc.TsCol.AbsErr, 'f', -1, 64))
+		}
 	}
 	if desc.TsCol.CompressAlgo != nil {
 		f.WriteString(" COMPRESS ")

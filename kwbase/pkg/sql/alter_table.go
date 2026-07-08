@@ -242,6 +242,8 @@ func (n *alterTableNode) startExec(params runParams) error {
 				}
 				compressInfo := sqlbase.CompressInfo{
 					EncodeAlgo:    d.ColumnEncode.EncodeAlgo,
+					RelErr:        d.ColumnEncode.RelErr,
+					AbsErr:        d.ColumnEncode.AbsErr,
 					CompressAlgo:  d.ColumnCompress.CompressAlgo,
 					CompressLevel: d.ColumnCompress.CompressLevel,
 				}
@@ -1743,7 +1745,8 @@ func applyColumnMutation(
 			if t.Using != nil || t.Collation != "" {
 				return false, pgerror.New(pgcode.Syntax, "column and tag in timeseries table does not support USING or COLLATION")
 			}
-			if t.ToType == nil && t.EncodeAlgo == nil && t.CompressAlgo == nil && t.CompressLevel == nil {
+			if t.ToType == nil && t.EncodeAlgo == nil && t.CompressAlgo == nil && t.CompressLevel == nil &&
+				t.RelErr == nil && t.AbsErr == nil {
 				return false, pgerror.New(pgcode.Syntax, "can not alter nothing")
 			}
 			if tableDesc.TableType == tree.InstanceTable {
@@ -1758,7 +1761,8 @@ func applyColumnMutation(
 			}
 			var newType *types.T
 			var modifyCompress bool
-			modifyCompress = t.EncodeAlgo != nil || t.CompressAlgo != nil || t.CompressLevel != nil
+			modifyCompress = t.EncodeAlgo != nil || t.CompressAlgo != nil || t.CompressLevel != nil ||
+				t.RelErr != nil || t.AbsErr != nil
 			newType = &col.Type
 			if t.ToType != nil {
 				newType = prepareAlterType(t.ToType)
@@ -1781,6 +1785,8 @@ func applyColumnMutation(
 					EncodeAlgo:    t.EncodeAlgo,
 					CompressAlgo:  t.CompressAlgo,
 					CompressLevel: t.CompressLevel,
+					RelErr:        t.RelErr,
+					AbsErr:        t.AbsErr,
 				}
 				// if do not alter compress, get compress info from origin column
 				if compressInfo.EncodeAlgo == nil {
@@ -1792,6 +1798,12 @@ func applyColumnMutation(
 				// if set compress type to disabled, we should not set origin column compress level to compress info, we will set level to default.
 				if compressInfo.CompressLevel == nil && (compressInfo.CompressAlgo == nil || strings.ToLower(*compressInfo.CompressAlgo) != "disabled") {
 					compressInfo.CompressLevel = col.TsCol.CompressLevel
+				}
+				if compressInfo.RelErr == nil {
+					compressInfo.RelErr = col.TsCol.RelErr
+				}
+				if compressInfo.AbsErr == nil {
+					compressInfo.AbsErr = col.TsCol.AbsErr
 				}
 				//var alteringTag sqlbase.ColumnDescriptor
 				alteringCol, _, err := sqlbase.MakeTSColumnDefDescs(col.Name, newType, col.Nullable, sqlbase.ColumnType_TYPE_DATA, nil, &params.p.semaCtx, compressInfo)

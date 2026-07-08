@@ -14,18 +14,16 @@
 #include <endian.h>
 #include <stdlib.h>
 #include <sys/types.h>
-#include <algorithm>
+
 #include <atomic>
 #include <cstdint>
 #include <cstring>
-#include <limits>
 #include <memory>
-#include <type_traits>
 #include <vector>
+
 #include "data_type.h"
 #include "libkwdbts2.h"
 #include "ts_arena.h"
-#include "ts_compressor.h"
 #include "ts_payload.h"
 
 namespace kwdbts {

@@ -9,6 +9,9 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+#include "ts_blkspan_type_convert.h"
+
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -17,13 +20,10 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include <algorithm>
-#include "ts_blkspan_type_convert.h"
+
 #include "ts_bitmap.h"
 #include "ts_block.h"
 #include "ts_table_schema_manager.h"
-#include "ts_agg.h"
-#include "ts_compressor.h"
 
 namespace kwdbts {
 

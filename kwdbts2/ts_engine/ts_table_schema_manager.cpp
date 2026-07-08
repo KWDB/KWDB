@@ -16,6 +16,7 @@
 #include "sys_utils.h"
 #include "column_utils.h"
 #include "ts_partition_interval_recorder.h"
+#include "compression/ts_floatrep_helper.h"
 
 namespace kwdbts {
 inline string IdToSchemaFileName(const KTableKey& table_id, uint32_t ts_version) {
@@ -124,6 +125,8 @@ KStatus TsTableSchemaManager::alterTableCol(kwdbContext_p ctx, AlterType alter_t
     col_info.length = attr_info.length;
     col_info.max_len = attr_info.max_len;
     col_info.encode_algo = attr_info.encode_algo;
+    col_info.rel_err = attr_info.rel_err;
+    col_info.abs_err = attr_info.abs_err;
     col_info.compress_algo = attr_info.compress_algo;
     col_info.compress_level = attr_info.compress_level;
     break;
@@ -682,6 +685,13 @@ KStatus TsTableSchemaManager::parseAttrInfo(const roachpb::KWDBKTSColumn& col, A
   }
   if (col.has_compress_level()) {
     attr_info.compress_level = col.compress_level();
+  }
+  {
+    FP16_REL relerr = col.has_rel_err() ? FP16_REL::FromNative(col.rel_err()) : FP16_REL::Inf();
+    attr_info.rel_err = relerr.GetUValue();
+
+    FP16_ABS abserr = col.has_abs_err() ? FP16_ABS::FromNative(col.abs_err()) : FP16_ABS::Inf();
+    attr_info.abs_err = abserr.GetUValue();
   }
   return SUCCESS;
 }

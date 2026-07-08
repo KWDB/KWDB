@@ -302,9 +302,24 @@ func makeCompressInfo(kColDesc *sqlbase.KWDBKTSColumn, col sqlbase.ColumnDescrip
 			kColDesc.EncodeAlgo = sqlbase.ColumnEncodeAlgo_ENCODE_ALGO_CHIMP
 		case "bit-packing":
 			kColDesc.EncodeAlgo = sqlbase.ColumnEncodeAlgo_ENCODE_ALGO_BIT_PACKING
+		case "alp":
+			kColDesc.EncodeAlgo = sqlbase.ColumnEncodeAlgo_ENCODE_ALGO_ALP
+		case "elf":
+			kColDesc.EncodeAlgo = sqlbase.ColumnEncodeAlgo_ENCODE_ALGO_ELF
+		case "bss":
+			kColDesc.EncodeAlgo = sqlbase.ColumnEncodeAlgo_ENCODE_ALGO_BSS
+		case "fptrunc":
+			kColDesc.EncodeAlgo = sqlbase.ColumnEncodeAlgo_ENCODE_ALGO_FPTRUNC
+		case "delta-d":
+			kColDesc.EncodeAlgo = sqlbase.ColumnEncodeAlgo_ENCODE_ALGO_DELTA_D
+		case "rc":
+			kColDesc.EncodeAlgo = sqlbase.ColumnEncodeAlgo_ENCODE_ALGO_RC
 		case "disabled":
 			kColDesc.EncodeAlgo = sqlbase.ColumnEncodeAlgo_ENCODE_ALGO_DISABLED
 		}
+
+		kColDesc.RelErr = col.TsCol.RelErr
+		kColDesc.AbsErr = col.TsCol.AbsErr
 	}
 	if col.TsCol.CompressAlgo != nil {
 		switch *col.TsCol.CompressAlgo {
