@@ -36,7 +36,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/retry"
@@ -1082,6 +1081,7 @@ func (s *restfulServer) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// Get column meta.
 			cols := re.Cols
 			nameIdx := make(map[int]string, len(cols))
+			colFloatFuncs := make([]func(val *tree.DFloat, originStr *string), len(cols))
 			for i, colMeta := range cols {
 				var info colMetaInfo
 				colType := strings.ToUpper(colMeta.Typ.Name())
@@ -1103,14 +1103,21 @@ func (s *restfulServer) handleQuery(w http.ResponseWriter, r *http.Request) {
 				} else {
 					columnMeta = append(columnMeta, colMetaInfo{colName, colType, colLength})
 				}
+				if cols[i].Typ != nil && cols[i].Typ.Oid() == oid.T_float4 {
+					colFloatFuncs[i] = func(val *tree.DFloat, originStr *string) {
+						*originStr = strconv.FormatFloat(float64(*val), 'f', 6, 32)
+					}
+				} else {
+					colFloatFuncs[i] = func(val *tree.DFloat, originStr *string) {}
+				}
 			}
 			// get row data.
-			for i, datums := range re.Rows {
-				var typ *types.T
-				if i < len(cols) {
-					typ = cols[i].Typ
+			for _, datums := range re.Rows {
+				restData, resErr := makeQueryRes(datums, h.GetTimeZone(), connCache.isStrTimezone, nameIdx, colFloatFuncs)
+				if resErr != nil {
+					s.sendJSONResponse(ctx, w, RestfulResponseCodeFail, nil, resErr.Error())
+					return
 				}
-				restData := makeQueryRes(datums, h.GetTimeZone(), connCache.isStrTimezone, nameIdx, typ)
 				restDatas = append(restDatas, restData)
 			}
 			rows = len(re.Rows)
@@ -1148,8 +1155,8 @@ func makeQueryRes(
 	location *time.Location,
 	isStrTimezone bool,
 	nameIdx map[int]string,
-	typ *types.T,
-) []string {
+	colFloatFuncs []func(val *tree.DFloat, originStr *string),
+) ([]string, error) {
 	var restData []string
 	for i, datum := range datums {
 		if ts, ok := datum.(*tree.DTimestampTZ); ok {
@@ -1221,11 +1228,13 @@ func makeQueryRes(
 		case *tree.DCollatedString:
 			str = val.Contents
 		case *tree.DFloat:
-			if typ != nil && typ.Oid() == oid.T_float4 {
-				// Reduce output accuracy.
-				str = strconv.FormatFloat(float64(*val), 'f', 6, 32)
+			colFloatFuncs[i](val, &str)
+			// use the client's float formatting logic as reference
+			f, err := strconv.ParseFloat(str, 64)
+			if err != nil {
+				return []string{}, err
 			}
-			str = trimFloatZero(str)
+			str = fmt.Sprint(f)
 		case *tree.DBitArray:
 			if len(str) > 1 && str[0] == 'B' && str[1] == '\'' {
 				str = str[2:]
@@ -1249,22 +1258,7 @@ func makeQueryRes(
 		}
 		restData = append(restData, str)
 	}
-	return restData
-}
-
-// removes trailing zeros from float string and redundant decimal point
-func trimFloatZero(s string) string {
-	// return the original string directly if there is no decimal point
-	if !strings.Contains(s, ".") {
-		return s
-	}
-	// remove all trailing zero characters
-	s = strings.TrimRight(s, "0")
-	// if the string ends with decimal point, remove it
-	if strings.HasSuffix(s, ".") {
-		s = s[:len(s)-1]
-	}
-	return s
+	return restData, nil
 }
 
 func transColType(colName, colType string) colMetaInfo {

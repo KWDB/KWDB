@@ -617,7 +617,7 @@ func (ex *connExecutor) execPreparedirectBind(
 			}
 
 			// Calculate rowTimestamps and save the value of the timestamp column
-			_, rowTimestamps, err := TsprepareTypeCheck(ptCtx, bindCmd.Args, ps.InferredTypes, bindCmd.ArgFormatCodes, &ps.PrepareInsertDirect.Dit.ColsDesc, di)
+			_, err = TsprepareTypeCheck(ptCtx, bindCmd.Args, ps.InferredTypes, bindCmd.ArgFormatCodes, &ps.PrepareInsertDirect.Dit.ColsDesc, di)
 			if err != nil {
 				return err
 			}
@@ -625,7 +625,7 @@ func (ex *connExecutor) execPreparedirectBind(
 			di.PayloadNodeMap = make(map[int]*sqlbase.PayloadForDistTSInsert, 1)
 			if err = BuildRowBytesForPrepareTsInsert(
 				ptCtx, bindCmd.Args, ps.PrepareInsertDirect.Dit, &di, evalCtx, table,
-				cfg.NodeInfo.NodeID.Get(), rowTimestamps, ex.server.GetCFG()); err != nil {
+				cfg.NodeInfo.NodeID.Get(), ex.server.GetCFG()); err != nil {
 				return err
 			}
 

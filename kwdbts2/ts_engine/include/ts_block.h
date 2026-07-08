@@ -314,7 +314,8 @@ class TsBlockSpan {
       int32_t size = (*scan_attrs_)[scan_idx].size;
       return block_->GetPreSum(scan_idx, GetFixedBlockAggLayout(), size, ts_scan_stats, pre_sum, is_overflow);
     }
-    int32_t size = (*convert_->version_conv_->blk_attrs_)[scan_idx].size;
+    auto blk_idx = convert_->version_conv_->blk_cols_extended_[scan_idx];
+    int32_t size = (*convert_->version_conv_->blk_attrs_)[blk_idx].size;
     return convert_->GetPreSum(this, scan_idx, size, ts_scan_stats, pre_sum, is_overflow);
   }
   KStatus GetSum(uint32_t scan_idx, TsScanStats* ts_scan_stats, bool can_use_pre_agg,
@@ -334,7 +335,8 @@ class TsBlockSpan {
       int32_t size = (*scan_attrs_)[scan_idx].size;
       return block_->GetPreMin(scan_idx, GetFixedBlockAggLayout(), size, ts_scan_stats, pre_min);
     }
-    int32_t size = (*convert_->version_conv_->blk_attrs_)[scan_idx].size;
+    auto blk_idx = convert_->version_conv_->blk_cols_extended_[scan_idx];
+    int32_t size = (*convert_->version_conv_->blk_attrs_)[blk_idx].size;
     return convert_->GetPreMin(this, scan_idx, size, ts_scan_stats, pre_min);
   }
   KStatus GetMin(uint32_t scan_idx, TsScanStats* ts_scan_stats, bool can_use_pre_agg,

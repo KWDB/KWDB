@@ -197,7 +197,7 @@ inline KStatus stringToDouble(Field *field, k_double64 &output) {
 }
 
 inline KStatus timestamptzToString(Field *field, char *output, k_uint32 length, k_int64 type_scale,
-                                   k_int8 time_zone) {
+                                   k_int8 time_zone, bool with_timezone = true) {
   k_int64 timestamp = field->ValInt();
   time_t time = static_cast<time_t>(timestamp / type_scale) + time_zone * 3600;
   struct tm local_time;
@@ -223,19 +223,21 @@ inline KStatus timestamptzToString(Field *field, char *output, k_uint32 length, 
     milli_second_str += to_string(seconds_after_decimal);
   }
   KString time_zone_str = "";
-  KString sign = "+";
-  k_int8 abs_tz = time_zone;
-  if (time_zone < 0) {
-    sign = "-";
-    abs_tz = -time_zone;
+  if (with_timezone) {
+    KString sign = "+";
+    k_int8 abs_tz = time_zone;
+    if (time_zone < 0) {
+      sign = "-";
+      abs_tz = -time_zone;
+    }
+    time_zone_str += sign;
+    if (abs_tz < 10) {
+      time_zone_str += "0";
+    }
+    time_zone_str += to_string(abs_tz) + ":00";
   }
-  if (abs_tz < 10) {
-    time_zone_str = "0";
-  }
-  time_zone_str += to_string(abs_tz);
   strncpy(output,
-          (std::string(buffer) + milli_second_str + sign + time_zone_str + ":00")
-              .c_str(),
+          (std::string(buffer) + milli_second_str + time_zone_str).c_str(),
           length - 1);
   output[length - 1] = '\0';
   return SUCCESS;
@@ -852,7 +854,7 @@ String FieldTypeCastString::ValStr() {
 }
 
 FieldTypeCastTimestamptz2String::FieldTypeCastTimestamptz2String(
-    Field *field, k_uint32 field_length, const KString &output_type, k_int8 time_zone)
+    Field *field, k_uint32 field_length, const KString &output_type, k_int8 time_zone, bool with_timezone)
     : FieldTypeCast(field) {
   return_type_ = KWDBTypeFamily::StringFamily;
   // storage_type_ = roachpb::DataType::CHAR;
@@ -895,6 +897,7 @@ FieldTypeCastTimestamptz2String::FieldTypeCastTimestamptz2String(
       storage_type_ = roachpb::DataType::VARCHAR;
       storage_len_ = field_length > 0 ? field_length : 256;
   }
+  with_timezone_ = with_timezone;
 }
 
 char *FieldTypeCastTimestamptz2String::get_ptr(RowBatch *batch) {
@@ -927,7 +930,7 @@ char *FieldTypeCastTimestamptz2String::get_ptr(RowBatch *batch) {
                                       "could not parse \"\" as type cast_timestamptz2_string, get null value .");
         return const_cast<char *>("");
       }
-      KStatus err = timestamptzToString(field_, in_v, storage_len_, type_scale_, time_zone_);
+      KStatus err = timestamptzToString(field_, in_v, storage_len_, type_scale_, time_zone_, with_timezone_);
       if (err == SUCCESS) {
         String s(storage_len_);
         snprintf(s.getptr(), storage_len_ + 1, "%s", in_v);
@@ -964,7 +967,7 @@ String FieldTypeCastTimestamptz2String::ValStr() {
   } else {
     char in_v[storage_len_] = {0};
 
-    auto err = timestamptzToString(field_, in_v, storage_len_, type_scale_, time_zone_);
+    auto err = timestamptzToString(field_, in_v, storage_len_, type_scale_, time_zone_, with_timezone_);
     if (err != SUCCESS) {
       return String("");
     }

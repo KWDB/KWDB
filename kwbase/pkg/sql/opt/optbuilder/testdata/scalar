@@ -352,7 +352,7 @@ cast: INT4 [type=int4]
 build-scalar
 '2010-05-12'::timestamp
 ----
-const: '2010-05-12 00:00:00+00:00' [type=timestamp(9)]
+const: '2010-05-12 00:00:00' [type=timestamp(9)]
 
 build-scalar
 '123'::int

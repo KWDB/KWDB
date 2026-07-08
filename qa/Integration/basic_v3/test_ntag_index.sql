@@ -1,3 +1,5 @@
+set cluster setting sql.stats.tag_automatic_collection.enabled = false;
+
 create ts database test_ntag_hash;
 use test_ntag_hash;
 create table test_ntag_hash.t1(
@@ -453,3 +455,5 @@ select * from test_ntag_hash.t4 where code0 = 900;
 
 use defaultdb;
 drop database test_ntag_hash cascade;
+
+set cluster setting sql.stats.tag_automatic_collection.enabled = true;

@@ -450,7 +450,7 @@ Field *TsBaseParser::ParserCast(kwdbContext_p ctx, Field *left, const KString &o
         left_type == roachpb::DataType::TIMESTAMP_MICRO ||
         left_type == roachpb::DataType::TIMESTAMP_NANO) {
       field = KNEW FieldTypeCastTimestamptz2String(left, len, output_type,
-                                                   0);
+                                                   0, false);
     } else {
       field = KNEW FieldTypeCastString(left, len, output_type);
     }

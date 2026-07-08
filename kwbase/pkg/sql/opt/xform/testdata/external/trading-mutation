@@ -1246,7 +1246,7 @@ insert transactions
       ├── side-effects
       ├── key: ()
       ├── fd: ()-->(10-17)
-      └── (1, false, '2020-03-01 00:00:00+00:00', 'the-account', 'the-customer', '70f03eb1-4f58-4c26-b72d-c524a9d537dd', cluster_logical_timestamp(), '0001-01-01 00:00:00+00:00')
+      └── (1, false, '2020-03-01 00:00:00+00:00', 'the-account', 'the-customer', '70f03eb1-4f58-4c26-b72d-c524a9d537dd', cluster_logical_timestamp(), '0001-01-01 00:00:00')
 
 # Upsert buy or sell transaction.
 opt
@@ -1285,7 +1285,7 @@ upsert transactions
       │    ├── side-effects
       │    ├── key: ()
       │    ├── fd: ()-->(10-17)
-      │    └── (1, false, '2020-03-01 00:00:00+00:00', 'the-account', 'the-customer', '70f03eb1-4f58-4c26-b72d-c524a9d537dd', cluster_logical_timestamp(), '0001-01-01 00:00:00+00:00')
+      │    └── (1, false, '2020-03-01 00:00:00+00:00', 'the-account', 'the-customer', '70f03eb1-4f58-4c26-b72d-c524a9d537dd', cluster_logical_timestamp(), '0001-01-01 00:00:00')
       ├── scan transactions
       │    ├── columns: dealerid:18!null isbuy:19!null date:20!null accountname:21!null customername:22!null operationid:23 version:24!null olddate:25 extra:26
       │    ├── constraint: /18/19/20: [/1/false/'2020-03-01 00:00:00+00:00' - /1/false/'2020-03-01 00:00:00+00:00']
