@@ -131,12 +131,15 @@ func (c *Coordinator) TsCDC(server cdcpb.CDCCoordinator_TsCDCServer) error {
 		case *cdcpb.TsChangeDataCaptureHeartbeat:
 			c.lock.Lock()
 			now := timeutil.Now()
-			if now.Sub(c.lastSetOSN) > onsCleanInterval {
-				err = c.SetCDCTableOSN(context.Background())
-				c.lastSetOSN = now
-			}
-
+			needOSN := now.Sub(c.lastSetOSN) > onsCleanInterval
 			c.lock.Unlock()
+			if needOSN {
+				if err = c.SetCDCTableOSN(context.Background()); err == nil {
+					c.lock.Lock()
+					c.lastSetOSN = now
+					c.lock.Unlock()
+				}
+			}
 
 			if err != nil {
 				return err
@@ -901,8 +904,8 @@ func (c *Coordinator) constructNormalTagStmt(
 func (c *Coordinator) HasTask(
 	instanceType sqlbase.CDCInstanceType, tableID uint64, instanceID uint64,
 ) bool {
-	c.lock.Lock()
-	defer c.lock.Unlock()
+	c.lock.RLock()
+	defer c.lock.RUnlock()
 
 	tableGroup, ok := c.cdcTaskGroups[instanceType]
 	if !ok {
