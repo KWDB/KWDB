@@ -1248,5 +1248,5 @@ TEST_F(TsEntitySegmentTest, BUG_IEOYSN) {
   TsVersionUpdate update;
   std::vector<std::shared_ptr<TsBlockSpan>> residual;
   TsSegmentWriteStats stats;
-  ASSERT_EQ(builder.Compact(true, &update, &residual, &stats), SUCCESS);
+  ASSERT_EQ(builder.Compact(&update, &residual, &stats), SUCCESS);
 }

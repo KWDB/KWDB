@@ -707,8 +707,10 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
 
 KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& blocks,
                                     const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
-                                    const std::shared_ptr<MMapMetricsTable>& scan_schema,
-                                    TsScanStats* ts_scan_stats) {
+                                    const std::shared_ptr<MMapMetricsTable>& scan_schema, TsScanStats* ts_scan_stats) {
+  if (0 == intent_row_num_.load()) {
+    return KStatus::SUCCESS;
+  }
   std::list<const kwdbts::TSMemSegRowData*> row_datas;
   bool ok = GetEntityRows(filter, &row_datas);
   if (!ok) {

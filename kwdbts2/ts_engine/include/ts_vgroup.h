@@ -524,7 +524,7 @@ class TsVGroup {
     const std::map<std::shared_ptr<TsTableSchemaManager>, std::vector<uint32_t>>& table_entity_map,
     std::map<std::shared_ptr<TsTableSchemaManager>, ClassifiedEntities>& cla_entities, bool* should_calc);
 
-  [[nodiscard]] KStatus PartitionCompactNoLockImpl(kwdbContext_p ctx, bool force_write_entity,
+  [[nodiscard]] KStatus PartitionCompactNoLockImpl(kwdbContext_p ctx, bool call_by_vacuum,
                                                    const std::shared_ptr<const TsPartitionVersion>& partition,
                                                    int level, int group,
                                                    const std::vector<std::shared_ptr<TsLastSegment>>& lastsegments);

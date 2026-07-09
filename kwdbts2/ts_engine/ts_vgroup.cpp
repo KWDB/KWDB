@@ -676,7 +676,7 @@ void TsVGroup::closeCompactThread() {
   }
 }
 
-KStatus TsVGroup::PartitionCompactNoLockImpl(kwdbContext_p ctx, bool force_write_entity,
+KStatus TsVGroup::PartitionCompactNoLockImpl(kwdbContext_p ctx, bool call_by_vacuum,
                                              const std::shared_ptr<const TsPartitionVersion>& partition, int level,
                                              int group,
                                              const std::vector<std::shared_ptr<TsLastSegment>>& last_segments) {
@@ -695,7 +695,7 @@ KStatus TsVGroup::PartitionCompactNoLockImpl(kwdbContext_p ctx, bool force_write
     for (const auto& l : last_segments) {
       ss << l->GetFileNumber() << ", ";
     }
-    if (!force_write_entity) {
+    if (!call_by_vacuum) {
       LOG_INFO("Compact %s at vgroup: %d, level: %d, group: %d, last segments:(%s)", partition_name.c_str(),
                this->vgroup_id_, level, group, ss.str().c_str());
     } else {
@@ -730,7 +730,7 @@ KStatus TsVGroup::PartitionCompactNoLockImpl(kwdbContext_p ctx, bool force_write
       return s;
     }
 
-    s = builder.Compact(force_write_entity, &update, &residual_spans, &entity_stats);
+    s = builder.Compact(&update, &residual_spans, &entity_stats);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("partition[%s] compact failed, TsEntitySegmentBuilder build failed", path_.c_str());
       return s;
@@ -744,7 +744,6 @@ KStatus TsVGroup::PartitionCompactNoLockImpl(kwdbContext_p ctx, bool force_write
 
   // 3. write last segment
   if (!residual_spans.empty()) {
-    assert(!force_write_entity);
     ss << "last segment: ";
     int next_level = std::min<int>(level + 1, TsPartitionVersion::LastSegmentContainer::kMaxLevel - 1);
 
@@ -1073,7 +1072,7 @@ KStatus TsVGroup::FlushImmSegment(std::unique_ptr<TsLastSegmentBuilder>& lastseg
         entityseg_builder.PutBlockSpans(spans);
         TsVersionUpdate temp_update;
         TsSegmentWriteStats stats;
-        s = entityseg_builder.Compact(false, &temp_update, &lastseg_spans, &stats);
+        s = entityseg_builder.Compact(&temp_update, &lastseg_spans, &stats);
         if (s == FAIL) {
           LOG_ERROR("flush to entity segment failed.");
           return FAIL;
