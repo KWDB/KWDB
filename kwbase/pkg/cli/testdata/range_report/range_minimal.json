@@ -1,0 +1,28 @@
+{
+  "node_id": 1,
+  "range_id": 1,
+  "responses_by_node_id": {
+    "1": {
+      "response": true,
+      "infos": [
+        {
+          "source_node_id": 1,
+          "source_store_id": 1,
+          "raft_state": {},
+          "state": {
+            "state": {
+              "desc": {
+                "range_id": 1,
+                "internal_replicas": [
+                  {"node_id": 1, "store_id": 1, "replica_id": 1}
+                ]
+              },
+              "stats": {},
+              "truncated_state": {"index": 0, "term": 0}
+            }
+          }
+        }
+      ]
+    }
+  }
+}
