@@ -302,6 +302,9 @@ func (s *realTimeSender) senderLoop(ctx context.Context) error {
 						}
 						watermark.ReceivedTimestamp = currentTime
 					} else {
+						if s.watermarkCache[t.TableID] == nil {
+							s.watermarkCache[t.TableID] = make(map[int32]*LocalWatermark)
+						}
 						s.watermarkCache[t.TableID][nodeID] = &LocalWatermark{LocalWatermark: receivedWatermark, ReceivedTimestamp: currentTime}
 					}
 					s.mutex.Unlock()
