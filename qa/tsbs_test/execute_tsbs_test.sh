@@ -277,7 +277,7 @@ wait_cluster_ready() {
         all_nodes_ready=true
         for ((i = 1; i <= NODE_NUM; i++)); do
             local line=$((1 + i))
-            node_status="$("$KWBIN" node status --insecure --host="${ME_HOST_IP}:${ME_HOST_PORT}" | awk "NR==${line}{print \$11}")"
+            node_status="$("$KWBIN" node status --insecure --host="${ME_HOST_IP}:${ME_HOST_PORT}" | awk "NR==${line}{print \$(NF-1)}")"
             log "node ${i} available status is ${node_status:-<empty>}"
             if [[ -z "$node_status" || "$node_status" != "true" ]]; then
                 all_nodes_ready=false
