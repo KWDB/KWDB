@@ -5874,3 +5874,31 @@ DROP DATABASE
 DROP DATABASE
 > drop database test_select_opt2 cascade;
 DROP DATABASE
+> CREATE TS DATABASE test_generate_series_bug;
+CREATE TS DATABASE
+> CREATE TABLE test_generate_series_bug.t1 (
+                                             ts TIMESTAMP NOT NULL,
+                                             val DOUBLE NULL
+) TAGS (
+    tag_id INT4 NOT NULL
+) PRIMARY TAGS (tag_id);
+CREATE TABLE
+> INSERT INTO test_generate_series_bug.t1 VALUES
+                                            ('2024-01-01 00:00:00', 10.5, 1),
+                                            ('2024-01-02 00:00:00', 20.3, 2),
+                                            ('2024-01-03 00:00:00', 30.1, 3);
+INSERT 3
+> SELECT tag_id, generate_series(1, tag_id) AS series_value
+FROM test_generate_series_bug.t1
+ORDER BY tag_id, series_value;
+  tag_id | series_value
+---------+---------------
+       1 |            1
+       2 |            1
+       2 |            2
+       3 |            1
+       3 |            2
+       3 |            3
+(6 rows)
+> DROP DATABASE test_generate_series_bug CASCADE;
+DROP DATABASE

@@ -6338,6 +6338,16 @@ func (dsp *DistSQLPlanner) createPlanForProjectSet(
 	if err != nil {
 		return PhysicalPlan{}, err
 	}
+	// ProjectSet runs in the relational engine. Add a relational processor to
+	// receive rows when its input is produced by the time-series engine.
+	if plan.ChildIsExecInTSEngine() {
+		plan.AddNoGroupingStage(
+			execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
+			execinfrapb.PostProcessSpec{OutputTypes: plan.ResultTypes},
+			plan.ResultTypes,
+			plan.MergeOrdering,
+		)
+	}
 	numResults := len(plan.ResultTypes)
 
 	indexVarMap := makePlanToStreamColMap(len(n.columns))

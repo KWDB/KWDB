@@ -5840,7 +5840,6 @@ where cast(nullif(case when EXISTS (
 
 ---------- fix ICIPEO end ----------
 
-
 -- delete data
 set cluster setting ts.parallel_degree=default;
 use defaultdb;
@@ -5848,3 +5847,25 @@ drop database test_vacuum cascade;
 drop database test_tpcc cascade;
 drop database db_shig cascade;
 drop database test_select_opt2 cascade;
+
+---------- fix IK0PY1(generate_series with TS table input) start ----------
+CREATE TS DATABASE test_generate_series_bug;
+
+CREATE TABLE test_generate_series_bug.t1 (
+                                             ts TIMESTAMP NOT NULL,
+                                             val DOUBLE NULL
+) TAGS (
+    tag_id INT4 NOT NULL
+) PRIMARY TAGS (tag_id);
+
+INSERT INTO test_generate_series_bug.t1 VALUES
+                                            ('2024-01-01 00:00:00', 10.5, 1),
+                                            ('2024-01-02 00:00:00', 20.3, 2),
+                                            ('2024-01-03 00:00:00', 30.1, 3);
+
+SELECT tag_id, generate_series(1, tag_id) AS series_value
+FROM test_generate_series_bug.t1
+ORDER BY tag_id, series_value;
+DROP DATABASE test_generate_series_bug CASCADE;
+---------- fix IK0PY1(generate_series with TS table input) end ----------
+
