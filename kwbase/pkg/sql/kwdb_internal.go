@@ -2680,7 +2680,12 @@ CREATE TABLE kwdb_internal.kwdb_functions (
 			sqlbase.LUAFunction,
 			sqlbase.SQLFunction,
 		)
-		rows, err := p.extendedEvalCtx.ExecCfg.InternalExecutor.Query(ctx, "show-functions", p.txn, query)
+		rows, err := p.extendedEvalCtx.ExecCfg.InternalExecutor.QueryEx(
+			ctx,
+			"show-functions",
+			p.txn,
+			sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
+			query)
 		if err != nil {
 			return err
 		}

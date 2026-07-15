@@ -30,6 +30,7 @@ import (
 	"strings"
 	"time"
 
+	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
@@ -62,6 +63,12 @@ func (p *planner) CreateFunction(ctx context.Context, n *tree.CreateFunction) (p
 	if !p.extendedEvalCtx.TxnImplicit {
 		return nil, pgerror.New(pgcode.FeatureNotSupported, "Create Function statement is not supported in explicit transaction")
 	}
+
+	// Check duplicate user defined function name.
+	if err := p.checkUDFNameExists(string(n.FunctionName)); err != nil {
+		return nil, err
+	}
+
 	return &createFunctionNode{
 		n: n,
 		p: p,
@@ -866,10 +873,11 @@ func (p *planner) loadUDF(funcName string) (*tree.FunctionDefinition, bool, erro
 		sqlbase.SQLFunction,
 	)
 
-	rows, err := p.extendedEvalCtx.ExecCfg.InternalExecutor.Query(
+	rows, err := p.extendedEvalCtx.ExecCfg.InternalExecutor.QueryEx(
 		p.extendedEvalCtx.Context,
 		"load-udf-from-catalog",
 		p.txn,
+		sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
 		query,
 		funcName,
 	)
@@ -973,4 +981,32 @@ func makeSQLFunctionWrapperFromProcDesc(
 		Arguments:    args,
 		ReturnType:   &desc.ReturnType,
 	}, nil
+}
+
+// checkUDFNameExists checks udf exist in user_defined_routine.
+func (p *planner) checkUDFNameExists(funcName string) error {
+	const query = `
+  SELECT name
+  FROM system.user_defined_routine
+  WHERE name = $1 AND routine_type IN ($2, $3) LIMIT 1`
+
+	rows, err := p.ExecCfg().InternalExecutor.QueryEx(
+		p.EvalContext().Context,
+		"get-functions",
+		p.txn,
+		sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
+		query,
+		funcName,
+		sqlbase.LUAFunction,
+		sqlbase.SQLFunction,
+	)
+	if err != nil {
+		return err
+	}
+
+	if len(rows) > 0 {
+		return pgerror.Newf(pgcode.DuplicateObject, "function named '%s' already exists. Please choose a different name", funcName)
+	}
+
+	return nil
 }

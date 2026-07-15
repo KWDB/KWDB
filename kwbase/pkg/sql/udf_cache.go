@@ -51,6 +51,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
+	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/builtins"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
@@ -349,8 +350,15 @@ func (uc *UDFCache) getUdfFromDB(
 	 LIMIT 1
 	 `
 
-	rows, err := uc.SQLExecutor.Query(ctx, "Get-udf", nil /* txn */, getUdfQuery, udfName,
-		sqlbase.LUAFunction, sqlbase.SQLFunction)
+	rows, err := uc.SQLExecutor.QueryEx(
+		ctx,
+		"Get-udf",
+		nil, /* txn */
+		sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
+		getUdfQuery,
+		udfName,
+		sqlbase.LUAFunction,
+		sqlbase.SQLFunction)
 	if err != nil {
 		return nil, err
 	}

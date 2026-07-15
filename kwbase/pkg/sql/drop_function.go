@@ -14,6 +14,7 @@ package sql
 import (
 	"context"
 
+	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
@@ -48,8 +49,15 @@ func (n *dropFunctionNode) startExec(params runParams) error {
 	   FROM system.user_defined_routine
 	   WHERE name = $1 and routine_type in ($2, $3)
 	 `
-		rows, err := n.p.ExecCfg().InternalExecutor.Query(params.ctx, "Get-udf", params.p.txn, getUdfQuery, funcName,
-			sqlbase.LUAFunction, sqlbase.SQLFunction)
+		rows, err := n.p.ExecCfg().InternalExecutor.QueryRowEx(
+			params.ctx,
+			"Get-udf",
+			params.p.txn,
+			sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
+			getUdfQuery,
+			funcName,
+			sqlbase.LUAFunction,
+			sqlbase.SQLFunction)
 		if err != nil {
 			return err
 		}
@@ -63,8 +71,15 @@ func (n *dropFunctionNode) startExec(params runParams) error {
     WHERE name = $1
      AND routine_type IN ($2, $3)
     `
-		if _, err := n.p.ExecCfg().InternalExecutor.Query(params.ctx, "drop-udf", params.p.txn, deleteUdfQuery, funcName,
-			sqlbase.LUAFunction, sqlbase.SQLFunction); err != nil {
+		if _, err := n.p.ExecCfg().InternalExecutor.ExecEx(
+			params.ctx,
+			"drop-udf",
+			params.p.txn,
+			sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
+			deleteUdfQuery,
+			funcName,
+			sqlbase.LUAFunction,
+			sqlbase.SQLFunction); err != nil {
 			return err
 		}
 

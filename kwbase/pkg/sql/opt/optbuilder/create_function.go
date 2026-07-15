@@ -15,7 +15,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
-	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"github.com/cockroachdb/errors"
 )
@@ -112,19 +111,6 @@ func CheckUdfName(cf *tree.CreateFunction, evalCtx *tree.EvalContext) error {
 		return pgerror.Newf(pgcode.DuplicateObject, "function named '%s' already exists. Please choose a different name", funcName)
 	}
 
-	// check if there is already a function with the same name
-	// by looking up the system table.
-	query := "SELECT name from system.user_defined_routine WHERE name = $1 and routine_type in ($2, $3)"
-	rows, err := evalCtx.InternalExecutor.Query(evalCtx.Context, "get-functions", evalCtx.Txn, query, funcName,
-		sqlbase.LUAFunction, sqlbase.SQLFunction)
-
-	if err != nil {
-		return err
-	}
-
-	if len(rows) != 0 {
-		return pgerror.Newf(pgcode.DuplicateObject, "function named '%s' already exists. Please choose a different name", funcName)
-	}
 	return nil
 }
 

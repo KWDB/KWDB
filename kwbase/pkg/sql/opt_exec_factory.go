@@ -2268,6 +2268,12 @@ func (ef *execFactory) ConstructCreateProcedure(
 	}
 	scID := schema.(*optSchema).schema.ID
 
+	if cp.SQLFunction != nil {
+		// Check duplicate user defined function name.
+		if err := ef.planner.checkUDFNameExists(string(cp.SQLFunction.FunctionName)); err != nil {
+			return nil, err
+		}
+	}
 	nd := &createProcedureNode{n: cp, dbDesc: schema.(*optSchema).database, scID: scID, planDeps: planDeps}
 	return nd, nil
 }
