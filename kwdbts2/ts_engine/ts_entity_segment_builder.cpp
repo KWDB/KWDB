@@ -822,7 +822,7 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
     LOG_ERROR("TsEntitySegmentBuilder::Compact failed, finalize failed.");
     return FAIL;
   }
-  update->SetEntitySegment(partition_id_, info, false);
+  update->SetEntitySegment(partition_id_, info);
   return KStatus::SUCCESS;
 }
 
@@ -1002,7 +1002,7 @@ KStatus TsEntitySegmentBuilder::WriteBatchFinish(TsVersionUpdate *update) {
     LOG_ERROR("WriteBatchFinish failed, Finalize failed.");
     return FAIL;
   }
-  update->SetEntitySegment(partition_id_, info, false);
+  update->SetEntitySegment(partition_id_, info);
   return KStatus::SUCCESS;
 }
 

@@ -1109,7 +1109,7 @@ KStatus TsVGroup::FlushImmSegment(std::unique_ptr<TsLastSegmentBuilder>& lastseg
         if (s == FAIL) {
           return FAIL;
         }
-        update.SetEntitySegment(partition_id, info, false);
+        update.SetEntitySegment(partition_id, info);
       }
 
     } else {
@@ -2351,6 +2351,7 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
   auto mem_segments = partition->GetAllMemSegments();
   std::list<std::pair<TSEntityID, TS_OSN>> entity_max_lsn;
   std::vector<TsEntityCountStats> invalid_counts;
+  bool has_data = false;
   for (uint32_t entity_id = 1; entity_id <= max_entity_id; entity_id++) {
     TsEntityItem entity_item;
     bool has_entity_item = false;
@@ -2508,6 +2509,7 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
       if (block_span->GetRowNum() == 0) {
         continue;
       }
+      has_data = true;
       // Determine if the block needs re-encoding. Version-mismatched blocks always need re-encoding
       // because their compressed data format differs from the current schema.
       bool need_re_encode = EngineOptions::force_re_compress ||
@@ -2636,9 +2638,32 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
       }
     }
   }
+  if (!has_data) {
+    LOG_INFO("Vacuum partition [vgroup_%d]-[db_%u]-[%ld, %ld) no data, delete entity segment",
+             vgroup_id_, partition->GetDatabaseID(), partition->GetStartTime(), partition->GetEndTime() - 1);
+    cancel_vacuumer = true;
+    TsVersionUpdate update;
+    update.DeleteEntitySegment(partition->GetPartitionIdentifier());
+    if (!invalid_counts.empty()) {
+      uint64_t file_number = version_manager_->NewFileNumber();
+      update.AddCountFile(partition->GetPartitionIdentifier(), {file_number, invalid_counts});
+    }
+    s = version_manager_->ApplyUpdate(&update);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("Vacuum failed, ApplyUpdate failed");
+      return s;
+    }
+
+    s = partition->RmDeleteItems(entity_max_lsn);
+    if (s != KStatus::SUCCESS) {
+      LOG_INFO("delete delitem failed. can ignore this.");
+    }
+    return KStatus::SUCCESS;
+  }
   TsVersionUpdate update;
   auto info = vacuumer->GetHandleInfo();
-  update.SetEntitySegment(partition->GetPartitionIdentifier(), info, true);
+
+  update.ReplaceEntitySegmentForVacuum(partition->GetPartitionIdentifier(), info);
   if (vacuumer->Finalize() == FAIL) {
     LOG_ERROR("Vacuum failed, Finalize failed");
     cancel_vacuumer = true;

@@ -571,7 +571,7 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update, bool force_apply)
       uint64_t prev_block_num = 0;
       if (new_partition_version->entity_segment_) {
         new_partition_version->entity_segment_->MarkDeleteEntityHeader();
-        if (update->delete_all_prev_entity_segment_) {
+        if (update->delete_entity_segments_.count(par_id) != 0) {
           new_partition_version->entity_segment_->MarkDeleteAll();
         }
 
@@ -583,6 +583,15 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update, bool force_apply)
         disk_handle.AddEntitySegment(par_id, entity_seg, prev_block_num);
       }
       new_partition_version->entity_segment_ = std::move(entity_seg);
+    }
+
+    // A deletion without a replacement removes the entity segment entirely.
+    if (it == update->entity_segment_.end() &&
+        update->delete_entity_segments_.find(par_id) != update->delete_entity_segments_.end()) {
+      if (new_partition_version->entity_segment_) {
+        new_partition_version->entity_segment_->MarkDeleteAll();
+      }
+      new_partition_version->entity_segment_ = nullptr;
     }
 
     // Process count stats, used by Flush() and FinishWriteBatchData()
@@ -726,7 +735,7 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update, bool force_apply)
 
   // release LRU cache if the update is call by Vacuum
   // TODO(zzr): optimize later in 3.1
-  if (update->delete_all_prev_entity_segment_) {
+  if (update->flags_ & TsVersionUpdate::kHasDelEntitySeg) {
     TsLRUBlockCache::GetInstance().EvictAll();
   }
   // LOG_DEBUG("%s: %s", this->root_path_.filename().c_str(), update->DebugStr().c_str());
@@ -1567,6 +1576,14 @@ TsBufferBuilder TsVersionUpdate::EncodeToString() const {
     EncodeEntitySegment(&result, entity_segment_);
   }
 
+  if (flags_ & kHasDelEntitySeg) {
+    result.push_back(static_cast<char>(VersionUpdateType::kDeleteEntitySegment));
+    PutVarint32(&result, delete_entity_segments_.size());
+    for (const auto &par_id : delete_entity_segments_) {
+      EncodePartitionID(&result, par_id);
+    }
+  }
+
   if (flags_ & kHasNextFile) {
     result.push_back(static_cast<char>(VersionUpdateType::kNextFileNumber));
     PutVarint64(&result, next_file_number_);
@@ -1664,6 +1681,26 @@ KStatus TsVersionUpdate::DecodeFromSlice(TSSlice input) {
           return FAIL;
         }
         this->flags_ |= kHasEntitySeg;
+        break;
+      }
+
+      case VersionUpdateType::kDeleteEntitySegment: {
+        uint32_t npartition = 0;
+        ptr = DecodeVarint32(ptr, end, &npartition);
+        if (ptr == nullptr) {
+          LOG_ERROR("Corrupted version update slice");
+          return FAIL;
+        }
+        for (uint32_t i = 0; i < npartition; ++i) {
+          PartitionIdentifier par_id;
+          ptr = DecodePartitionID(ptr, end, &par_id);
+          if (ptr == nullptr) {
+            LOG_ERROR("Corrupted version update slice");
+            return FAIL;
+          }
+          this->delete_entity_segments_.insert(par_id);
+        }
+        this->flags_ |= kHasDelEntitySeg;
         break;
       }
 
@@ -1844,6 +1881,17 @@ KStatus TsVersionManager::VersionBuilder::AddUpdate(const TsVersionUpdate &updat
     all_updates_.flags_ |= TsVersionUpdate::kHasEntitySeg;
     for (auto [par_id, info] : update.entity_segment_) {
       all_updates_.entity_segment_[par_id] = info;
+      all_updates_.delete_entity_segments_.erase(par_id);
+    }
+  }
+
+  if (update.flags_ & TsVersionUpdate::kHasDelEntitySeg) {
+    all_updates_.flags_ |= TsVersionUpdate::kHasDelEntitySeg;
+    for (const auto &par_id : update.delete_entity_segments_) {
+      all_updates_.delete_entity_segments_.insert(par_id);
+      if (update.entity_segment_.count(par_id) == 0) {
+        all_updates_.entity_segment_.erase(par_id);
+      }
     }
   }
 
@@ -1885,6 +1933,7 @@ void TsVersionManager::VersionBuilder::Finalize(TsVersionUpdate *update) {
   update->new_lastsegs_ = std::move(all_updates_.new_lastsegs_);
   update->delete_lastsegs_ = std::move(all_updates_.delete_lastsegs_);
   update->entity_segment_ = std::move(all_updates_.entity_segment_);
+  update->delete_entity_segments_ = std::move(all_updates_.delete_entity_segments_);
   update->next_file_number_ = all_updates_.next_file_number_;
   update->max_lsn_ = all_updates_.max_lsn_;
   update->count_stats_status_ = all_updates_.count_stats_status_;
@@ -1963,6 +2012,10 @@ std::string TsVersionUpdate::DebugStr() const {
       if (it != entity_segment_.end()) {
         ss << it->second << ";";
       }
+    }
+
+    if (delete_entity_segments_.find(par_id) != delete_entity_segments_.end()) {
+      ss << "-entity_segment;";
     }
     ss << "}";
   }
