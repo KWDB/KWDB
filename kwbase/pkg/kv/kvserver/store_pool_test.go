@@ -513,7 +513,7 @@ func TestStorePoolUpdateLocalStore(t *testing.T) {
 	replica.leaseholderStats = rs
 	replica.writeStats = rs
 
-	rangeUsageInfo := rangeUsageInfoForRepl(replica)
+	rangeUsageInfo := rangeUsageInfoForRepl(context.Background(), replica)
 
 	sp.updateLocalStoreAfterRebalance(roachpb.StoreID(1), rangeUsageInfo, roachpb.ADD_REPLICA)
 	desc, ok := sp.getStoreDescriptor(roachpb.StoreID(1))
@@ -618,7 +618,7 @@ func TestStorePoolUpdateLocalStoreBeforeGossip(t *testing.T) {
 	}
 	replica.leaseholderStats = newReplicaStats(store.Clock(), nil)
 
-	rangeUsageInfo := rangeUsageInfoForRepl(replica)
+	rangeUsageInfo := rangeUsageInfoForRepl(context.Background(), replica)
 
 	// Update StorePool, which should be a no-op.
 	storeID := roachpb.StoreID(1)

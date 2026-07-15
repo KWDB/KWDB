@@ -46,8 +46,8 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-func constantTimeoutFunc(d time.Duration) func(*cluster.Settings, replicaInQueue) time.Duration {
-	return func(*cluster.Settings, replicaInQueue) time.Duration { return d }
+func constantTimeoutFunc(d time.Duration) queueProcessTimeoutFunc {
+	return func(context.Context, *cluster.Settings, replicaInQueue) time.Duration { return d }
 }
 
 // TestBaseQueueConcurrent verifies that under concurrent adds/removes of ranges

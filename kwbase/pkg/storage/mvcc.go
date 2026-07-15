@@ -2410,46 +2410,9 @@ func mvccScanToBytes(
 	if mvccIter, ok := iter.(MVCCIterator); ok && mvccIter.MVCCOpsSpecialized() {
 		return mvccIter.MVCCScan(key, endKey, timestamp, opts)
 	}
-
-	mvccScanner := pebbleMVCCScannerPool.Get().(*pebbleMVCCScanner)
-	defer pebbleMVCCScannerPool.Put(mvccScanner)
-
-	*mvccScanner = pebbleMVCCScanner{
-		parent:           iter,
-		reverse:          opts.Reverse,
-		start:            key,
-		end:              endKey,
-		ts:               timestamp,
-		maxKeys:          opts.MaxKeys,
-		targetBytes:      opts.TargetBytes,
-		inconsistent:     opts.Inconsistent,
-		tombstones:       opts.Tombstones,
-		failOnMoreRecent: opts.FailOnMoreRecent,
-	}
-
-	mvccScanner.init(opts.Txn)
-
-	var res MVCCScanResult
-	var err error
-	res.ResumeSpan, err = mvccScanner.scan()
-
-	if err != nil {
-		return MVCCScanResult{}, err
-	}
-
-	res.KVData = mvccScanner.results.finish()
-	res.NumKeys = mvccScanner.results.count
-	res.NumBytes = mvccScanner.results.bytes
-
-	res.Intents, err = buildScanIntents(mvccScanner.intents.Repr())
-	if err != nil {
-		return MVCCScanResult{}, err
-	}
-
-	if !opts.Inconsistent && len(res.Intents) > 0 {
-		return MVCCScanResult{}, &roachpb.WriteIntentError{Intents: res.Intents}
-	}
-	return res, nil
+	// TODO by fyx, pebble remove
+	log.Fatalf(ctx, "not support other mvcc iterator")
+	return MVCCScanResult{}, nil
 }
 
 // mvccScanToKvs converts the raw key/value pairs returned by Iterator.MVCCScan

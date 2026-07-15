@@ -265,10 +265,15 @@ func (r *Replica) computeChecksumPostApply(ctx context.Context, cc storagepb.Com
 		}()
 
 		var shouldFatal bool
-		for _, rDesc := range cc.Terminate {
-			if rDesc.StoreID == r.store.StoreID() && rDesc.ReplicaID == r.mu.replicaID {
-				shouldFatal = true
+		if !isTSRangeDescriptor(&desc) {
+			for _, rDesc := range cc.Terminate {
+				if rDesc.StoreID == r.store.StoreID() && rDesc.ReplicaID == r.mu.replicaID {
+					shouldFatal = true
+				}
 			}
+		} else if len(cc.Terminate) > 0 && isTSRangeDescriptor(&desc) {
+			log.Errorf(ctx, "%s: replica inconsistency reported for TS range; "+
+				"skipping node termination (TS stats excluded from checksum)", r)
 		}
 
 		if shouldFatal {
@@ -812,10 +817,12 @@ func (r *Replica) evaluateProposalTS(
 				ms.ValCount += int64(rowCount)
 				ms.LiveBytes += int64(rowCount) * ms.TsPerRowSize
 				ms.ValBytes += int64(rowCount) * ms.TsPerRowSize
-			} else if tsput, ok := req.Value.(*roachpb.RequestUnion_TsRowPut); ok {
-				rowCount := len(tsput.TsRowPut.Values)
-				ms.LiveBytes += int64(rowCount) * ms.TsPerRowSize
-				ms.ValBytes += int64(rowCount) * ms.TsPerRowSize
+			} else if tsRowPut, ok := req.Value.(*roachpb.RequestUnion_TsRowPut); ok {
+				rowCount := int64(len(tsRowPut.TsRowPut.Values))
+				ms.KeyCount += rowCount
+				ms.ValCount += rowCount
+				ms.LiveBytes += rowCount * ms.TsPerRowSize
+				ms.ValBytes += rowCount * ms.TsPerRowSize
 			}
 		}
 	}

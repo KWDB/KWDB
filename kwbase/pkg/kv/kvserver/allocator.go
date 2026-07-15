@@ -252,9 +252,9 @@ type RangeUsageInfo struct {
 	WritesPerSecond  float64
 }
 
-func rangeUsageInfoForRepl(repl *Replica) RangeUsageInfo {
+func rangeUsageInfoForRepl(ctx context.Context, repl *Replica) RangeUsageInfo {
 	info := RangeUsageInfo{
-		LogicalBytes: repl.GetMVCCStats().Total(),
+		LogicalBytes: repl.GetMVCCStatsForDecisions(ctx).Total(),
 	}
 	if queriesPerSecond, dur := repl.leaseholderStats.avgQPS(); dur >= MinStatsDuration {
 		info.QueriesPerSecond = queriesPerSecond

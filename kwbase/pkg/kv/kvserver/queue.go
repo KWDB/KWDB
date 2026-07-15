@@ -76,7 +76,9 @@ func init() {
 	queueGuaranteedProcessingTimeBudget.SetVisibility(settings.Reserved)
 }
 
-func defaultProcessTimeoutFunc(cs *cluster.Settings, _ replicaInQueue) time.Duration {
+func defaultProcessTimeoutFunc(
+	_ context.Context, cs *cluster.Settings, _ replicaInQueue,
+) time.Duration {
 	return queueGuaranteedProcessingTimeBudget.Get(&cs.SV)
 }
 
@@ -87,18 +89,18 @@ func defaultProcessTimeoutFunc(cs *cluster.Settings, _ replicaInQueue) time.Dura
 //
 // The parameter controls which rate to use.
 func makeRateLimitedTimeoutFunc(rateSetting *settings.ByteSizeSetting) queueProcessTimeoutFunc {
-	return func(cs *cluster.Settings, r replicaInQueue) time.Duration {
+	return func(ctx context.Context, cs *cluster.Settings, r replicaInQueue) time.Duration {
 		minimumTimeout := queueGuaranteedProcessingTimeBudget.Get(&cs.SV)
-		// NB: In production code this will type assertion will always succeed.
-		// Some tests set up a fake implementation of replicaInQueue in which
-		// case we fall back to the configured minimum timeout.
-		repl, ok := r.(interface{ GetMVCCStats() enginepb.MVCCStats })
-		if !ok {
-			return minimumTimeout
-		}
 		snapshotRate := rateSetting.Get(&cs.SV)
-		stats := repl.GetMVCCStats()
-		totalBytes := stats.KeyBytes + stats.ValBytes + stats.IntentBytes + stats.SysBytes
+		totalBytes := totalBytesForQueueTimeout(ctx, r)
+		if totalBytes == 0 {
+			// NB: In production code GetMVCCStats will always succeed for *Replica.
+			// Some tests use a fake replicaInQueue without MVCCStats; fall back to
+			// the configured minimum timeout.
+			if _, ok := r.(interface{ GetMVCCStats() enginepb.MVCCStats }); !ok {
+				return minimumTimeout
+			}
+		}
 		estimatedDuration := time.Duration(totalBytes/snapshotRate) * time.Second
 		timeout := estimatedDuration * permittedRangeScanSlowdown
 		if timeout < minimumTimeout {
@@ -289,7 +291,7 @@ type queueImpl interface {
 
 // queueProcessTimeoutFunc controls the timeout for queue processing for a
 // replicaInQueue.
-type queueProcessTimeoutFunc func(*cluster.Settings, replicaInQueue) time.Duration
+type queueProcessTimeoutFunc func(context.Context, *cluster.Settings, replicaInQueue) time.Duration
 
 type queueConfig struct {
 	// maxSize is the maximum number of replicas to queue.
@@ -923,8 +925,13 @@ func (bq *baseQueue) processReplica(ctx context.Context, repl replicaInQueue) er
 
 	ctx, span := bq.AnnotateCtxWithSpan(ctx, bq.name)
 	defer span.Finish()
+	baseTimeout := bq.processTimeoutFunc(ctx, bq.store.ClusterSettings(), repl)
+	processTimeout := baseTimeout
+	if realRepl, ok := repl.(*Replica); ok {
+		processTimeout = realRepl.processTimeoutWithQueueBackoff(ctx, bq.name, baseTimeout)
+	}
 	return contextutil.RunWithTimeout(ctx, fmt.Sprintf("%s queue process replica %d", bq.name, repl.GetRangeID()),
-		bq.processTimeoutFunc(bq.store.ClusterSettings(), repl), func(ctx context.Context) error {
+		processTimeout, func(ctx context.Context) error {
 			log.VEventf(ctx, 1, "processing replica")
 
 			if !repl.IsInitialized() {
@@ -1076,6 +1083,10 @@ func (bq *baseQueue) finishProcessingReplica(
 	// Call any registered callbacks.
 	for _, cb := range callbacks {
 		cb(err)
+	}
+
+	if realRepl, ok := repl.(*Replica); ok {
+		realRepl.recordQueueProcessResult(bq.name, err)
 	}
 
 	// Handle failures.
