@@ -10,23 +10,23 @@
 # MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 # See the Mulan PSL v2 for more details.
 
-load_workers=12
-load_batchsizes="1000"
-tsbs_case="cpu-only"
-load_interval="10s"
-db_name="benchmark"
-load_ts_start="2020-01-01T00:00:00Z"
-load_ts_end="2020-02-01T00:00:00Z"
-insert_type="prepare"
-query_times=30
-wal=3
-query_workers=8
-format="kwdb"
-parallel_degree=8
-insert_direct=1
-replica_mode=1
+load_workers="${load_workers:-12}"
+load_batchsizes="${load_batchsizes:-1000}"
+tsbs_case="${tsbs_case:-cpu-only}"
+load_interval="${load_interval:-10s}"
+db_name="${db_name:-benchmark}"
+load_ts_start="${load_ts_start:-2020-01-01T00:00:00Z}"
+load_ts_end="${load_ts_end:-2020-02-01T00:00:00Z}"
+insert_type="${insert_type:-prepare}"
+query_times="${query_times:-30}"
+wal="${wal:-3}"
+query_workers="${query_workers:-8}"
+format="${format:-kwdb}"
+parallel_degree="${parallel_degree:-8}"
+insert_direct="${insert_direct:-1}"
+replica_mode="${replica_mode:-1}"
 
-QUERY_TYPES_ALL="\
+QUERY_TYPES_ALL="${QUERY_TYPES_ALL:-\
 single-groupby-1-1-1 \
 single-groupby-1-1-12 \
 single-groupby-1-8-1 \
@@ -41,9 +41,9 @@ double-groupby-all \
 high-cpu-all \
 high-cpu-1 \
 lastpoint \
-groupby-orderby-limit"
+groupby-orderby-limit}"
 
-QUERY_TYPES_1="\
+QUERY_TYPES_1="${QUERY_TYPES_1:-\
 single-groupby-1-1-1 \
 single-groupby-5-1-12 \
 single-groupby-5-8-1 \
@@ -51,10 +51,10 @@ cpu-max-all-8 \
 double-groupby-all \
 high-cpu-all \
 lastpoint \
-groupby-orderby-limit"
+groupby-orderby-limit}"
 
-QUERY_TYPES_3="\
+QUERY_TYPES_3="${QUERY_TYPES_3:-\
 double-groupby-all \
 high-cpu-all \
 lastpoint \
-groupby-orderby-limit"
+groupby-orderby-limit}"
