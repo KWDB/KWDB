@@ -514,6 +514,7 @@ KStatus TsVGroup::GetEntityLastRow(const std::shared_ptr<TsTableSchemaManager>& 
 }
 
 KStatus TsVGroup::ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols,
+                                              const std::vector<Sumfunctype>& scan_agg_types,
                                               const TsBlockSpan& ts_blk_span,
                                               const std::vector<AttributeInfo>& attrs,
                                               ResultSet* res) {
@@ -521,29 +522,40 @@ KStatus TsVGroup::ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_sc
   for (int i = 0; i < kw_scan_cols.size(); ++i) {
     Batch* batch;
     auto kw_col_idx = kw_scan_cols[i];
+    auto kw_last_col_idx = (!scan_agg_types.empty() && (scan_agg_types[i] == LASTTS || scan_agg_types[i] == LASTROWTS))
+                             ? 0 : kw_col_idx;
     if (!ts_blk_span.IsColExist(kw_col_idx)) {
       batch = new AggBatch(nullptr, 0);
     } else {
-      if (!ts_blk_span.IsVarLenType(kw_col_idx)) {
+      if (!ts_blk_span.IsVarLenType(kw_last_col_idx)) {
         char* value;
-        std::unique_ptr<TsBitmapBase> bitmap;
-        ret = ts_blk_span.GetFixLenColAddr(kw_col_idx, &value, &bitmap);
+        std::unique_ptr<TsBitmapBase> last_col_bitmap;
+        ret = ts_blk_span.GetFixLenColAddr(kw_last_col_idx, &value, &last_col_bitmap);
         if (ret != KStatus::SUCCESS) {
           LOG_ERROR("GetFixLenColAddr failed.");
           return ret;
         }
-        if (!attrs[kw_scan_cols[i]].isFlag(AINFO_NOT_NULL) && bitmap->At(0) != DataFlags::kValid) {
+        std::unique_ptr<TsBitmapBase> real_col_bitmap;
+        if (!scan_agg_types.empty() && scan_agg_types[i] == Sumfunctype::LASTTS) {
+          ret = ts_blk_span.GetColBitmap(kw_col_idx, &real_col_bitmap);
+          if (ret != KStatus::SUCCESS) {
+            return ret;
+          }
+        } else {
+          real_col_bitmap.swap(last_col_bitmap);
+        }
+        if (!attrs[kw_col_idx].isFlag(AINFO_NOT_NULL) && real_col_bitmap->At(0) != DataFlags::kValid) {
           batch = new AggBatch(nullptr, 0);
         } else {
-          char* buffer = static_cast<char*>(malloc(attrs[kw_col_idx].size));
-          memcpy(buffer, value, attrs[kw_col_idx].size);
+          char* buffer = static_cast<char*>(malloc(attrs[kw_last_col_idx].size));
+          memcpy(buffer, value, attrs[kw_last_col_idx].size);
           batch = new AggBatch(buffer, 1);
           batch->is_new = true;
         }
       } else {
         TSSlice var_data;
         DataFlags var_bitmap;
-        ret = ts_blk_span.GetVarLenTypeColAddr(0, kw_col_idx, var_bitmap, var_data);
+        ret = ts_blk_span.GetVarLenTypeColAddr(0, kw_last_col_idx, var_bitmap, var_data);
         if (ret != KStatus::SUCCESS) {
           LOG_ERROR("GetVarLenTypeColAddr failed.");
           return ret;
@@ -568,6 +580,7 @@ KStatus TsVGroup::GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_versio
                                         const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                                         const std::shared_ptr<MMapMetricsTable>& scan_schema,
                                         const std::vector<KwTsSpan>& ts_spans, const std::vector<k_uint32>& scan_cols,
+                                        const std::vector<Sumfunctype>& scan_agg_types,
                                         timestamp64& entity_last_ts, bool& last_payload_valid, ResultSet* res) {
   std::shared_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
   auto it = entity_latest_row_.find(entity_id);
@@ -614,7 +627,7 @@ KStatus TsVGroup::GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_versio
 
   TsBlockSpan block_span(vgroup_id_, entity_id, std::move(mem_block), 0, 1,
                           convert, scan_schema);
-  auto ret = ConvertBlockSpanToResultSet(scan_cols, block_span, attrs, res);
+  auto ret = ConvertBlockSpanToResultSet(scan_cols, scan_agg_types, block_span, attrs, res);
   if (ret != KStatus::SUCCESS) {
     LOG_ERROR("ConvertBlockSpanToResultSet failed");
     return KStatus::FAIL;

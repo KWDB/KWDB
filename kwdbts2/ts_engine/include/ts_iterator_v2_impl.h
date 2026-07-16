@@ -262,7 +262,6 @@ class TsAggIteratorImpl : public TsStorageIteratorImpl {
   std::vector<uint32_t> sum_col_idxs_;
   std::vector<uint32_t> max_col_idxs_;
   std::vector<uint32_t> min_col_idxs_;
-  std::vector<k_uint32> kw_last_scan_cols_;
 
   bool first_last_only_agg_;
 

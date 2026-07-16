@@ -82,3 +82,23 @@ select last_row(*),last(*) from t1;
 drop table t cascade;
 drop table t1 cascade;
 drop database last_db cascade;
+
+--- bug IJZSH4
+DROP DATABASE IF EXISTS bh_lastts_bug CASCADE;
+CREATE TS DATABASE bh_lastts_bug;
+USE bh_lastts_bug;
+
+CREATE TABLE t1 (ts TIMESTAMP NOT NULL, val INT) TAGS (id INT NOT NULL) PRIMARY TAGS(id);
+
+INSERT INTO t1 VALUES ('2024-01-01 00:00:01', 1, 1),
+                      ('2024-01-01 00:00:02', 2, 1),
+                      ('2024-01-01 00:00:03', NULL, 1);
+
+SELECT val, ts FROM t1 WHERE id = 1 ORDER BY ts;
+SELECT last(val) AS last_v FROM t1 WHERE id = 1;
+SELECT lastts(val) AS lastts_alone FROM t1 WHERE id = 1;
+SELECT last(val) AS last_v, lastts(val) AS lastts_with_last FROM t1 WHERE id = 1;
+SELECT last_row_ts(val) AS last_row_ts_v FROM t1 WHERE id = 1;
+
+DROP TABLE t1 CASCADE;
+DROP DATABASE bh_lastts_bug CASCADE;

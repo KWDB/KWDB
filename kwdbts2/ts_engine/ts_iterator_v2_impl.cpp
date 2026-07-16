@@ -1788,12 +1788,6 @@ KStatus TsAggIteratorImpl::Init(bool is_reversed) {
       only_last_row_ = false;
       break;
     }
-    if (scan_agg_types_[i] == LAST_ROW || scan_agg_types_[i] == LAST) {
-      kw_last_scan_cols_.emplace_back(kw_scan_cols_[i]);
-    }
-    if (scan_agg_types_[i] == LASTROWTS || scan_agg_types_[i] == LASTTS) {
-      kw_last_scan_cols_.emplace_back(0);
-    }
     if ((scan_agg_types_[i] == LAST_ROW) ||
         (scan_agg_types_[i] == LAST && attrs_[kw_scan_cols_[i]].isFlag(AINFO_NOT_NULL)) ||
         (scan_agg_types_[i] == LASTROWTS) ||
@@ -1956,7 +1950,8 @@ KStatus TsAggIteratorImpl::Next(ResultSet* res, k_uint32* count, bool* is_finish
     if (only_last_ || only_last_row_) {
       if (EngineOptions::last_cache_max_size) {
         ret = vgroup_->GetEntityLastRowBatch(entity_id, table_version_, table_schema_mgr_, scan_schema_,
-                                            ts_spans_, kw_last_scan_cols_, entity_last_ts, last_payload_valid, res);
+                                             ts_spans_, kw_scan_cols_, scan_agg_types_, entity_last_ts,
+                                             last_payload_valid, res);
         if (ret != KStatus::SUCCESS) {
           LOG_ERROR("GetEntityLastRowBatch failed.");
           return KStatus::FAIL;

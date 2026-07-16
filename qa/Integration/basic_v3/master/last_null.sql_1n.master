@@ -334,3 +334,46 @@ DROP TABLE
 DROP TABLE
 > drop database last_db cascade;
 DROP DATABASE
+> DROP DATABASE IF EXISTS bh_lastts_bug CASCADE;
+DROP DATABASE
+> CREATE TS DATABASE bh_lastts_bug;
+CREATE TS DATABASE
+> USE bh_lastts_bug;
+SET
+> CREATE TABLE t1 (ts TIMESTAMP NOT NULL, val INT) TAGS (id INT NOT NULL) PRIMARY TAGS(id);
+CREATE TABLE
+> INSERT INTO t1 VALUES ('2024-01-01 00:00:01', 1, 1),
+                      ('2024-01-01 00:00:02', 2, 1),
+                      ('2024-01-01 00:00:03', NULL, 1);
+INSERT 3
+> SELECT val, ts FROM t1 WHERE id = 1 ORDER BY ts;
+  val  |            ts
+-------+----------------------------
+     1 | 2024-01-01 00:00:01+00:00
+     2 | 2024-01-01 00:00:02+00:00
+  NULL | 2024-01-01 00:00:03+00:00
+(3 rows)
+> SELECT last(val) AS last_v FROM t1 WHERE id = 1;
+  last_v
+----------
+       2
+(1 row)
+> SELECT lastts(val) AS lastts_alone FROM t1 WHERE id = 1;
+        lastts_alone
+-----------------------------
+  2024-01-01 00:00:02+00:00
+(1 row)
+> SELECT last(val) AS last_v, lastts(val) AS lastts_with_last FROM t1 WHERE id = 1;
+  last_v |     lastts_with_last
+---------+----------------------------
+       2 | 2024-01-01 00:00:02+00:00
+(1 row)
+> SELECT last_row_ts(val) AS last_row_ts_v FROM t1 WHERE id = 1;
+        last_row_ts_v
+-----------------------------
+  2024-01-01 00:00:03+00:00
+(1 row)
+> DROP TABLE t1 CASCADE;
+DROP TABLE
+> DROP DATABASE bh_lastts_bug CASCADE;
+DROP DATABASE

@@ -1276,7 +1276,7 @@ KStatus TsTableImpl::GetLastRowBatch(kwdbContext_p ctx, uint32_t table_version, 
   timestamp64 cur_last_ts = INT64_MIN;
   bool last_payload_valid = false;
   KStatus ret = vgroup->GetEntityLastRowBatch(entity_id.entityId, table_version, table_schema_mgr_,
-                                              schema, {{INT64_MIN, INT64_MAX}}, scan_cols,
+                                              schema, {{INT64_MIN, INT64_MAX}}, scan_cols, {},
                                               cur_last_ts, last_payload_valid, res);
   if (ret != KStatus::SUCCESS) {
     res->clear();
