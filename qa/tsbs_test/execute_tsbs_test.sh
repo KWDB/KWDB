@@ -403,6 +403,20 @@ dump_cluster_settings_before_load() {
         --execute="show cluster settings;" > "${cluster_settings_file}"
 }
 
+dump_runtime_variables_before_load() {
+    local output_dir="$1"
+    local environment_file="${output_dir}/environment_before_load.log"
+    local script_variables_file="${output_dir}/script_variables_before_load.log"
+
+    log "dumping environment variables before load to ${environment_file}"
+    (LC_ALL=C; export -p | sort) > "${environment_file}"
+
+    log "dumping script variables before load to ${script_variables_file}"
+    declare -p > "${script_variables_file}"
+
+    chmod 600 "${environment_file}" "${script_variables_file}"
+}
+
 get_result_base_dir() {
     local scale="$1"
     local safe_branch_name
@@ -484,6 +498,7 @@ load_data_for_scale() {
     partition="$(resolve_load_partition)"
 
     log "loading data for scale ${scale} with partition=${partition}"
+    dump_runtime_variables_before_load "${load_result_dir}"
     LD_LIBRARY_PATH="${TSBS_PATH}/lib" "${TSBS_PATH}/tsbs_load_kwdb_${ARCH}" \
         --file="${load_data}" \
         --user=root \
