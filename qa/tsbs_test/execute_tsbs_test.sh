@@ -31,6 +31,8 @@ PRIMARY_QUERY_WORKER=""
 QUERY_TYPES_PARAM="${QUERY_TYPES_PARAM:-""}"
 UPDATE_THRESHOLD="${UPDATE_THRESHOLD:-false}"
 COMPARE_THRESHOLD="${COMPARE_THRESHOLD:-false}"
+FLAME_GRAPH="${flame_graph:-false}"
+FLAME_GRAPH_PATH="${flame_graph_path:-/home/inspur/src/gitee.com/FlameGraph}"
 BIN_DIR="${BIN_DIR:-"/home/inspur/src/gitee.com/kwbasedb/install/bin"}"
 KWBIN="${KWBIN:-"${BIN_DIR}/kwbase"}"
 BRANCH_NAME=""
@@ -54,6 +56,7 @@ REPLICA_MODE="${replica_mode:-1}"
 LOAD_DATA_DIR=""
 QUERY_DATA_DIR=""
 THRESHOLD_DIR=""
+PERF_RECORD_PID=""
 
 resolve_primary_query_worker() {
     local workers_raw="$1"
@@ -106,6 +109,8 @@ Options:
   --load-ts-start TIMESTAMP
   --update-threshold true|false
   --compare-threshold true|false
+  --flame-graph true|false
+  --flame-graph-path DIR
   --bin-dir DIR
   --kwbin PATH
   --branch-name NAME
@@ -205,6 +210,8 @@ parse_named_args() {
             --load-ts-start) LOAD_TS_START="$2"; shift 2 ;;
             --update-threshold) UPDATE_THRESHOLD="$2"; shift 2 ;;
             --compare-threshold) COMPARE_THRESHOLD="$2"; shift 2 ;;
+            --flame-graph) FLAME_GRAPH="$2"; shift 2 ;;
+            --flame-graph-path) FLAME_GRAPH_PATH="$2"; shift 2 ;;
             --bin-dir) BIN_DIR="$2"; shift 2 ;;
             --kwbin) KWBIN="$2"; shift 2 ;;
             --branch-name) BRANCH_NAME="$2"; shift 2 ;;
@@ -235,6 +242,17 @@ validate_config() {
     [[ -f "${CLUSTER_SETTINGS_DIR}/general.sql" ]] || die "general.sql not found: ${CLUSTER_SETTINGS_DIR}/general.sql"
     [[ -f "${CLUSTER_SETTINGS_DIR}/general_single.sql" ]] || die "general_single.sql not found: ${CLUSTER_SETTINGS_DIR}/general_single.sql"
     [[ -f "${CLUSTER_SETTINGS_DIR}/general_distributed.sql" ]] || die "general_distributed.sql not found: ${CLUSTER_SETTINGS_DIR}/general_distributed.sql"
+
+    [[ "${FLAME_GRAPH}" == "true" || "${FLAME_GRAPH}" == "false" ]] || \
+        die "invalid flame_graph value: ${FLAME_GRAPH}, expected true or false"
+    if [[ "${FLAME_GRAPH}" == "true" ]]; then
+        command -v perf >/dev/null 2>&1 || die "perf command not found"
+        command -v perl >/dev/null 2>&1 || die "perl command not found"
+        [[ -f "${FLAME_GRAPH_PATH}/stackcollapse-perf.pl" ]] || \
+            die "stackcollapse-perf.pl not found: ${FLAME_GRAPH_PATH}/stackcollapse-perf.pl"
+        [[ -f "${FLAME_GRAPH_PATH}/flamegraph.pl" ]] || \
+            die "flamegraph.pl not found: ${FLAME_GRAPH_PATH}/flamegraph.pl"
+    fi
 
     mkdir -p "${LOAD_DATA_DIR}" "${QUERY_DATA_DIR}" "${THRESHOLD_DIR}"
 
@@ -417,6 +435,65 @@ dump_runtime_variables_before_load() {
     chmod 600 "${environment_file}" "${script_variables_file}"
 }
 
+start_flame_graph_recording() {
+    local output_dir="$1"
+    local flame_graph_dir="${output_dir}/flame_graph"
+    local kwbase_pids
+    kwbase_pids="$({ pgrep -a kwbase || true; } | awk '
+        /start-single-node/ {
+            pids = pids separator $1
+            separator = ","
+        }
+        END { print pids }
+    ')"
+    [[ -n "${kwbase_pids}" ]] || die "cannot find a kwbase start-single-node process for flame graph recording"
+
+    mkdir -p "${flame_graph_dir}"
+    log "starting perf recording for kwbase process(es) ${kwbase_pids}"
+    perf record -F 99 -p "${kwbase_pids}" \
+        --proc-map-timeout 10000 \
+        --call-graph dwarf \
+        --output="${flame_graph_dir}/perf.data" \
+        > "${flame_graph_dir}/perf_record.log" 2>&1 &
+    PERF_RECORD_PID=$!
+
+    sleep 1
+    if ! kill -0 "${PERF_RECORD_PID}" 2>/dev/null; then
+        wait "${PERF_RECORD_PID}" || true
+        die "perf recording failed to start; see ${flame_graph_dir}/perf_record.log"
+    fi
+}
+
+finish_flame_graph_recording() {
+    local output_dir="$1"
+    local flame_graph_dir="${output_dir}/flame_graph"
+    local svg_file="${flame_graph_dir}/perf-$(date +%Y%m%d-%H%M%S).svg"
+
+    [[ -n "${PERF_RECORD_PID}" ]] || return
+    log "stopping perf recording"
+    kill -INT "${PERF_RECORD_PID}" 2>/dev/null || true
+    if ! wait "${PERF_RECORD_PID}"; then
+        PERF_RECORD_PID=""
+        die "perf recording failed; see ${flame_graph_dir}/perf_record.log"
+    fi
+    PERF_RECORD_PID=""
+
+    log "generating flame graph ${svg_file}"
+    perf script -i "${flame_graph_dir}/perf.data" > "${flame_graph_dir}/perf.unfold"
+    perl "${FLAME_GRAPH_PATH}/stackcollapse-perf.pl" \
+        "${flame_graph_dir}/perf.unfold" > "${flame_graph_dir}/perf.folded"
+    perl "${FLAME_GRAPH_PATH}/flamegraph.pl" --width 1920 \
+        "${flame_graph_dir}/perf.folded" > "${svg_file}"
+}
+
+cleanup_flame_graph_recording() {
+    if [[ -n "${PERF_RECORD_PID}" ]]; then
+        kill -INT "${PERF_RECORD_PID}" 2>/dev/null || true
+        wait "${PERF_RECORD_PID}" 2>/dev/null || true
+        PERF_RECORD_PID=""
+    fi
+}
+
 get_result_base_dir() {
     local scale="$1"
     local safe_branch_name
@@ -499,6 +576,11 @@ load_data_for_scale() {
 
     log "loading data for scale ${scale} with partition=${partition}"
     dump_runtime_variables_before_load "${load_result_dir}"
+    if [[ "${FLAME_GRAPH}" == "true" ]]; then
+        start_flame_graph_recording "${load_result_dir}"
+    fi
+
+    local load_status=0
     LD_LIBRARY_PATH="${TSBS_PATH}/lib" "${TSBS_PATH}/tsbs_load_kwdb_${ARCH}" \
         --file="${load_data}" \
         --user=root \
@@ -510,7 +592,12 @@ load_data_for_scale() {
         --partition="${partition}" \
         --batch-size="${LOAD_BATCH_SIZES}" \
         --case="${TSBS_CASE}" \
-        --workers="${LOAD_WORKERS}" > "${load_result_file}"
+        --workers="${LOAD_WORKERS}" > "${load_result_file}" || load_status=$?
+
+    if [[ "${FLAME_GRAPH}" == "true" ]]; then
+        finish_flame_graph_recording "${load_result_dir}"
+    fi
+    [[ ${load_status} -eq 0 ]] || die "tsbs load failed with status ${load_status}"
 
     record_metric "load" "${scale}" "${load_result_file}" "${load_result_dir}" "${LOAD_WORKERS}"
 }
@@ -696,6 +783,7 @@ main() {
     log "  wal=${WAL}"
     log "  replica_mode=${REPLICA_MODE}"
     log "  parallel_degree=${PARALLEL_DEGREE}"
+    log "  flame_graph=${FLAME_GRAPH}"
 
     wait_cluster_ready
 
@@ -707,4 +795,5 @@ main() {
     done
 }
 
+trap cleanup_flame_graph_recording EXIT
 main "$@"
