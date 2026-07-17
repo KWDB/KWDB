@@ -130,6 +130,27 @@ func TestNotifier(t *testing.T) {
 	})
 }
 
+func TestNotifierInitialSystemConfigUnavailable(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	ctx := context.Background()
+	stopper := stop.NewStopper()
+	defer stopper.Stop(ctx)
+	p := &testingProvider{ch: make(chan struct{}, 1)}
+	n := New(cluster.MakeTestingClusterSettings(), p, stopper)
+	n.Start(ctx)
+
+	notifyCh, cleanup := n.AddNotifyee(ctx)
+	defer cleanup()
+	require.NotNil(t, notifyCh)
+	n.maybeNotify()
+	expectNoSend(t, notifyCh)
+
+	p.setSystemConfig(mkSystemConfig(mkZoneConfigKV(1, 1, "1")))
+	p.ch <- struct{}{}
+	expectSend(t, notifyCh)
+}
+
 const (
 	// used for timeouts of things which should be fast
 	longTime = time.Second

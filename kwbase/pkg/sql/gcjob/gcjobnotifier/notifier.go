@@ -102,8 +102,11 @@ func (n *Notifier) AddNotifyee(ctx context.Context) (onChange <-chan struct{}, c
 	if n.mu.deltaFilter == nil {
 		zoneCfgFilter := gossip.MakeSystemConfigDeltaFilter(n.prefix)
 		n.mu.deltaFilter = &zoneCfgFilter
-		// Initialize the filter with the current values.
-		n.mu.deltaFilter.ForModified(n.provider.GetSystemConfig(), func(kv roachpb.KeyValue) {})
+		// The system config can be nil until the first gossip update. In that
+		// case, leave the filter empty so the first config is treated as an update.
+		if cfg := n.provider.GetSystemConfig(); cfg != nil {
+			n.mu.deltaFilter.ForModified(cfg, func(kv roachpb.KeyValue) {})
+		}
 	}
 	c := make(chan struct{}, 1)
 	n.mu.notifyees[c] = struct{}{}
@@ -168,6 +171,9 @@ func (n *Notifier) maybeNotify() {
 	}
 
 	cfg := n.provider.GetSystemConfig()
+	if cfg == nil {
+		return
+	}
 	zoneConfigUpdated := false
 	n.mu.deltaFilter.ForModified(cfg, func(kv roachpb.KeyValue) {
 		zoneConfigUpdated = true
