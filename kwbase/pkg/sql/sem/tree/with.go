@@ -31,18 +31,44 @@ func (node *With) Format(ctx *FmtCtx) {
 	if node == nil {
 		return
 	}
+	node.writeWithKeywordPrefix(ctx)
+	node.writeRecursiveModifier(ctx)
+	node.writeCTEList(ctx)
+	ctx.WriteByte(' ')
+}
+
+// writeWithKeywordPrefix emits the WITH keyword.
+func (node *With) writeWithKeywordPrefix(ctx *FmtCtx) {
 	ctx.WriteString("WITH ")
+}
+
+// writeRecursiveModifier emits the RECURSIVE keyword when the CTE is recursive.
+func (node *With) writeRecursiveModifier(ctx *FmtCtx) {
 	if node.Recursive {
 		ctx.WriteString("RECURSIVE ")
 	}
+}
+
+// writeCTEList iterates over the CTE definitions and formats each one as
+// "name AS (statement)", separated by commas.
+func (node *With) writeCTEList(ctx *FmtCtx) {
 	for i, cte := range node.CTEList {
-		if i != 0 {
-			ctx.WriteString(", ")
-		}
-		ctx.FormatNode(&cte.Name)
-		ctx.WriteString(" AS (")
-		ctx.FormatNode(cte.Stmt)
-		ctx.WriteString(")")
+		node.writeCTESeparator(ctx, i)
+		node.formatSingleCTE(ctx, cte)
 	}
-	ctx.WriteByte(' ')
+}
+
+// writeCTESeparator writes a comma before every CTE except the first.
+func (node *With) writeCTESeparator(ctx *FmtCtx, index int) {
+	if index != 0 {
+		ctx.WriteString(", ")
+	}
+}
+
+// formatSingleCTE outputs a single CTE in the form "name AS (statement)".
+func (node *With) formatSingleCTE(ctx *FmtCtx, cte *CTE) {
+	ctx.FormatNode(&cte.Name)
+	ctx.WriteString(" AS (")
+	ctx.FormatNode(cte.Stmt)
+	ctx.WriteString(")")
 }

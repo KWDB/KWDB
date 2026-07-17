@@ -18,17 +18,32 @@ type AlterTSDatabase struct {
 	PartitionInterval *TimeInput
 }
 
-// Format implements the NodeFormatter interface
+// alterTSDatabaseKeyword is the SQL keyword prefix for ALTER TS DATABASE SET.
+const alterTSDatabaseKeyword = "ALTER TS DATABASE SET"
+
+// compile-time interface conformance check
+var _ Statement = &AlterTSDatabase{}
+
+// Format implements the NodeFormatter interface.
 func (node *AlterTSDatabase) Format(ctx *FmtCtx) {
-	ctx.WriteString("ALTER TS DATABASE SET")
+	ctx.WriteString(alterTSDatabaseKeyword)
+	node.maybeWriteLifeTimeClause(ctx)
+	node.maybeWritePartitionIntervalClause(ctx)
+}
+
+// maybeWriteLifeTimeClause emits the LIFETIME setting when configured.
+func (node *AlterTSDatabase) maybeWriteLifeTimeClause(ctx *FmtCtx) {
 	if node.LifeTime != nil {
 		ctx.WriteString(" LIFETIME = ")
 		ctx.FormatNode(node.LifeTime)
 	}
+}
+
+// maybeWritePartitionIntervalClause emits the PARTITION INTERVAL setting
+// when configured.
+func (node *AlterTSDatabase) maybeWritePartitionIntervalClause(ctx *FmtCtx) {
 	if node.PartitionInterval != nil {
 		ctx.WriteString(" PARTITION INTERVAL = ")
 		ctx.FormatNode(node.PartitionInterval)
 	}
 }
-
-var _ Statement = &AlterTSDatabase{}

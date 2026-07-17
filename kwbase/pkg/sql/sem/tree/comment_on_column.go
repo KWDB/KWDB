@@ -32,14 +32,30 @@ type CommentOnColumn struct {
 	Comment *string
 }
 
+// commentOnColumnKeyword is the SQL keyword prefix for COMMENT ON COLUMN.
+const commentOnColumnKeyword = "COMMENT ON COLUMN "
+
 // Format implements the NodeFormatter interface.
 func (n *CommentOnColumn) Format(ctx *FmtCtx) {
-	ctx.WriteString("COMMENT ON COLUMN ")
-	ctx.FormatNode(n.ColumnItem)
+	formatCommentStatement(ctx, commentOnColumnKeyword, n.ColumnItem, n.Comment)
+}
+
+// formatCommentStatement formats a COMMENT ON <object> IS <value> statement.
+// The nameProvider provides the object name to format, and comment is the
+// optional comment text (or NULL).
+func formatCommentStatement(
+	ctx *FmtCtx, keyword string, nameProvider NodeFormatter, comment *string,
+) {
+	ctx.WriteString(keyword)
+	ctx.FormatNode(nameProvider)
 	ctx.WriteString(" IS ")
-	if n.Comment != nil {
-		tmp := *n.Comment
-		//lex.EncodeSQLStringWithFlags(&ctx.Buffer, *n.Comment, ctx.flags.EncodeFlags())
+	writeCommentValue(ctx, comment)
+}
+
+// writeCommentValue outputs a comment string value, properly escaped, or NULL.
+func writeCommentValue(ctx *FmtCtx, comment *string) {
+	if comment != nil {
+		tmp := *comment
 		ctx.WriteString("'" + strings.Replace(tmp, "'", "''", -1) + "'")
 	} else {
 		ctx.WriteString("NULL")

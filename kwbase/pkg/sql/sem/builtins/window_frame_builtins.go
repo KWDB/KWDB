@@ -36,16 +36,24 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// indexedValue combines a value from the row with the index of that row.
-type indexedValue struct {
+// frameCursor tracks which values have already been added to the current
+// window computation, preventing redundant work when the frame slides forward.
+type frameCursor struct {
+	prevStart int
+	prevEnd   int
+}
+
+// markedDatum pairs a datum value with its row index for use in the priority
+// deque maintained by the sliding window.
+type markedDatum struct {
 	value tree.Datum
 	idx   int
 }
 
 // slidingWindow maintains a deque of values along with corresponding indices
-// based on cmp function:
-// for Min behavior, cmp = -a.Compare(b)
-// for Max behavior, cmp = a.Compare(b)
+// ordered by a custom comparison function:
+//   - for Min behavior: cmp = -a.Compare(b)
+//   - for Max behavior: cmp = a.Compare(b)
 //
 // It assumes that the frame bounds will never go back, i.e. non-decreasing
 // sequences of frame start and frame end indices.
@@ -65,18 +73,25 @@ func makeSlidingWindow(
 }
 
 // add first removes all values that are "smaller or equal" (depending on cmp)
-// from the end of the deque and then appends 'iv' to the end. This way, the
+// from the end of the deque and then appends 'md' to the end. This way, the
 // deque always contains unique values sorted in descending order of their
 // "priority" (when we encounter duplicates, we always keep the one with the
 // largest idx).
-func (sw *slidingWindow) add(iv *indexedValue) {
+func (sw *slidingWindow) add(md *markedDatum) {
+	sw.removeLowerPriorityEntries(md)
+	sw.values.AddLast(md)
+}
+
+// removeLowerPriorityEntries discards entries from the end of the deque that
+// have priority <= the incoming datum's priority (per the cmp function).
+func (sw *slidingWindow) removeLowerPriorityEntries(md *markedDatum) {
 	for i := sw.values.Len() - 1; i >= 0; i-- {
-		if sw.cmp(sw.evalCtx, sw.values.Get(i).(*indexedValue).value, iv.value) > 0 {
+		existing := sw.values.Get(i).(*markedDatum)
+		if sw.cmp(sw.evalCtx, existing.value, md.value) > 0 {
 			break
 		}
 		sw.values.RemoveLast()
 	}
-	sw.values.AddLast(iv)
 }
 
 // removeAllBefore removes all values from the beginning of the deque that have
@@ -84,7 +99,7 @@ func (sw *slidingWindow) add(iv *indexedValue) {
 // start of the frame up to 'idx'.
 func (sw *slidingWindow) removeAllBefore(idx int) {
 	for i := 0; i < sw.values.Len() && i < idx; i++ {
-		if sw.values.Get(i).(*indexedValue).idx >= idx {
+		if sw.values.Get(i).(*markedDatum).idx >= idx {
 			break
 		}
 		sw.values.RemoveFirst()
@@ -94,7 +109,8 @@ func (sw *slidingWindow) removeAllBefore(idx int) {
 func (sw *slidingWindow) string() string {
 	var builder strings.Builder
 	for i := 0; i < sw.values.Len(); i++ {
-		builder.WriteString(fmt.Sprintf("(%v, %v)\t", sw.values.Get(i).(*indexedValue).value, sw.values.Get(i).(*indexedValue).idx))
+		md := sw.values.Get(i).(*markedDatum)
+		builder.WriteString(fmt.Sprintf("(%v, %v)\t", md.value, md.idx))
 	}
 	return builder.String()
 }
@@ -104,8 +120,14 @@ func (sw *slidingWindow) reset() {
 }
 
 type slidingWindowFunc struct {
-	sw      *slidingWindow
-	prevEnd int
+	sw     *slidingWindow
+	cursor *frameCursor
+}
+
+func newSlidingWindowFunc() *slidingWindowFunc {
+	return &slidingWindowFunc{
+		cursor: &frameCursor{},
+	}
 }
 
 // Compute implements WindowFunc interface.
@@ -122,70 +144,9 @@ func (w *slidingWindowFunc) Compute(
 	}
 
 	if !wfr.Frame.DefaultFrameExclusion() {
-		// We cannot use a sliding window approach because we have a frame
-		// exclusion clause - some rows will be in and out of the frame which
-		// breaks the necessary assumption, so we fallback to a naive quadratic
-		// approach.
-		var res tree.Datum
-		for idx := frameStartIdx; idx < frameEndIdx; idx++ {
-			if skipped, err := wfr.IsRowSkipped(ctx, idx); err != nil {
-				return nil, err
-			} else if skipped {
-				continue
-			}
-			args, err := wfr.ArgsByRowIdx(ctx, idx)
-			if err != nil {
-				return nil, err
-			}
-			if res == nil {
-				res = args[0]
-			} else {
-				if w.sw.cmp(evalCtx, args[0], res) > 0 {
-					res = args[0]
-				}
-			}
-		}
-		if res == nil {
-			// Spec: the frame is empty, so we return NULL.
-			return tree.DNull, nil
-		}
-		return res, nil
+		return w.computeWithExclusionFallback(ctx, evalCtx, wfr, frameStartIdx, frameEndIdx)
 	}
-
-	// We need to discard all values that are no longer in the frame.
-	w.sw.removeAllBefore(frameStartIdx)
-
-	// We need to add all values that just entered the frame and have not been
-	// added yet.
-	for idx := max(w.prevEnd, frameStartIdx); idx < frameEndIdx; idx++ {
-		if skipped, err := wfr.IsRowSkipped(ctx, idx); err != nil {
-			return nil, err
-		} else if skipped {
-			continue
-		}
-		args, err := wfr.ArgsByRowIdx(ctx, idx)
-		if err != nil {
-			return nil, err
-		}
-		value := args[0]
-		if value == tree.DNull {
-			// Null value can neither be minimum nor maximum over a window frame with
-			// non-null values, so we're not adding them to the sliding window. The
-			// case of a window frame with no non-null values is handled below.
-			continue
-		}
-		w.sw.add(&indexedValue{value: value, idx: idx})
-	}
-	w.prevEnd = frameEndIdx
-
-	if w.sw.values.Len() == 0 {
-		// Spec: the frame is empty, so we return NULL.
-		return tree.DNull, nil
-	}
-
-	// The datum with "highest priority" within the frame is at the very front
-	// of the deque.
-	return w.sw.values.GetFirst().(*indexedValue).value, nil
+	return w.computeWithSlidingWindow(ctx, wfr, frameStartIdx, frameEndIdx)
 }
 
 func max(a, b int) int {
@@ -195,9 +156,85 @@ func max(a, b int) int {
 	return b
 }
 
+// computeWithExclusionFallback handles frames that have non-default exclusion,
+// falling back to a naive quadratic scan over all rows in the frame.
+func (w *slidingWindowFunc) computeWithExclusionFallback(
+	ctx context.Context,
+	evalCtx *tree.EvalContext,
+	wfr *tree.WindowFrameRun,
+	frameStartIdx, frameEndIdx int,
+) (tree.Datum, error) {
+	var best tree.Datum
+	for idx := frameStartIdx; idx < frameEndIdx; idx++ {
+		if skipped, err := wfr.IsRowSkipped(ctx, idx); err != nil {
+			return nil, err
+		} else if skipped {
+			continue
+		}
+		args, err := wfr.ArgsByRowIdx(ctx, idx)
+		if err != nil {
+			return nil, err
+		}
+		best = updateBestDatum(best, args[0], evalCtx, w.sw.cmp)
+	}
+	if best == nil {
+		return tree.DNull, nil // Spec: the frame is empty, so we return NULL.
+	}
+	return best, nil
+}
+
+// computeWithSlidingWindow adds newly entering rows to the deque and removes
+// rows that have left the frame, then returns the highest-priority datum.
+func (w *slidingWindowFunc) computeWithSlidingWindow(
+	ctx context.Context, wfr *tree.WindowFrameRun, frameStartIdx, frameEndIdx int,
+) (tree.Datum, error) {
+	// Discard all values that are no longer in the frame.
+	w.sw.removeAllBefore(frameStartIdx)
+
+	// Add all values that just entered the frame and have not been added yet.
+	if err := w.addNewRowsToWindow(ctx, wfr, frameStartIdx, frameEndIdx); err != nil {
+		return nil, err
+	}
+	w.cursor.prevEnd = frameEndIdx
+
+	if w.sw.values.Len() == 0 {
+		return tree.DNull, nil // Spec: the frame is empty, so we return NULL.
+	}
+
+	// The datum with "highest priority" within the frame is at the very front
+	// of the deque.
+	return w.sw.values.GetFirst().(*markedDatum).value, nil
+}
+
+// addNewRowsToWindow iterates over rows that just entered the frame and adds
+// their non-null values to the sliding window deque.
+func (w *slidingWindowFunc) addNewRowsToWindow(
+	ctx context.Context, wfr *tree.WindowFrameRun, frameStartIdx, frameEndIdx int,
+) error {
+	for idx := max(w.cursor.prevEnd, frameStartIdx); idx < frameEndIdx; idx++ {
+		if skipped, err := wfr.IsRowSkipped(ctx, idx); err != nil {
+			return err
+		} else if skipped {
+			continue
+		}
+		args, err := wfr.ArgsByRowIdx(ctx, idx)
+		if err != nil {
+			return err
+		}
+		value := args[0]
+		if value == tree.DNull {
+			// Nulls are neither min nor max over a frame with non-null values;
+			// the case of an all-null frame is handled by the empty deque check.
+			continue
+		}
+		w.sw.add(&markedDatum{value: value, idx: idx})
+	}
+	return nil
+}
+
 // Reset implements tree.WindowFunc interface.
 func (w *slidingWindowFunc) Reset(context.Context) {
-	w.prevEnd = 0
+	w.cursor.prevEnd = 0
 	w.sw.reset()
 }
 
@@ -210,8 +247,8 @@ func (w *slidingWindowFunc) Close(context.Context, *tree.EvalContext) {
 // a frame. It assumes that the frame bounds will never go back, i.e.
 // non-decreasing sequences of frame start and frame end indices.
 type slidingWindowSumFunc struct {
-	agg                tree.AggregateFunc // one of the four SumAggregates
-	prevStart, prevEnd int
+	agg    tree.AggregateFunc // one of the four SumAggregates
+	cursor *frameCursor
 
 	// lastNonNullIdx is the index of the latest non-null value seen in the
 	// sliding window so far. noNonNullSeen indicates non-null values are yet to
@@ -224,12 +261,13 @@ const noNonNullSeen = -1
 func newSlidingWindowSumFunc(agg tree.AggregateFunc) *slidingWindowSumFunc {
 	return &slidingWindowSumFunc{
 		agg:            agg,
+		cursor:         &frameCursor{},
 		lastNonNullIdx: noNonNullSeen,
 	}
 }
 
-// removeAllBefore subtracts the values from all the rows that are no longer in
-// the frame.
+// subtractRowFromAggregate removes a row's contribution from the running sum
+// by adding its negated value to the aggregate.
 func (w *slidingWindowSumFunc) removeAllBefore(
 	ctx context.Context, evalCtx *tree.EvalContext, wfr *tree.WindowFrameRun,
 ) error {
@@ -237,7 +275,7 @@ func (w *slidingWindowSumFunc) removeAllBefore(
 	if err != nil {
 		return err
 	}
-	for idx := w.prevStart; idx < frameStartIdx && idx < w.prevEnd; idx++ {
+	for idx := w.cursor.prevStart; idx < frameStartIdx && idx < w.cursor.prevEnd; idx++ {
 		if skipped, err := wfr.IsRowSkipped(ctx, idx); err != nil {
 			return err
 		} else if skipped {
@@ -247,27 +285,7 @@ func (w *slidingWindowSumFunc) removeAllBefore(
 		if err != nil {
 			return err
 		}
-		value := args[0]
-		if value == tree.DNull {
-			// Null values do not contribute to the running sum, so there is nothing
-			// to subtract once they leave the window frame.
-			continue
-		}
-		switch v := value.(type) {
-		case *tree.DInt:
-			err = w.agg.Add(ctx, tree.NewDInt(-*v))
-		case *tree.DDecimal:
-			d := tree.DDecimal{}
-			d.Neg(&v.Decimal)
-			err = w.agg.Add(ctx, &d)
-		case *tree.DFloat:
-			err = w.agg.Add(ctx, tree.NewDFloat(-*v))
-		case *tree.DInterval:
-			err = w.agg.Add(ctx, &tree.DInterval{Duration: duration.Duration{}.Sub(v.Duration)})
-		default:
-			err = errors.AssertionFailedf("unexpected value %v", v)
-		}
-		if err != nil {
+		if err := w.subtractDatumFromAggregate(ctx, args[0]); err != nil {
 			return err
 		}
 	}
@@ -287,36 +305,32 @@ func (w *slidingWindowSumFunc) Compute(
 		return nil, err
 	}
 	if !wfr.Frame.DefaultFrameExclusion() {
-		// We cannot use a sliding window approach because we have a frame
-		// exclusion clause - some rows will be in and out of the frame which
-		// breaks the necessary assumption, so we fallback to a naive quadratic
-		// approach.
-		w.agg.Reset(ctx)
-		for idx := frameStartIdx; idx < frameEndIdx; idx++ {
-			if skipped, err := wfr.IsRowSkipped(ctx, idx); err != nil {
-				return nil, err
-			} else if skipped {
-				continue
-			}
-			args, err := wfr.ArgsByRowIdx(ctx, idx)
-			if err != nil {
-				return nil, err
-			}
-			if err = w.agg.Add(ctx, args[0]); err != nil {
-				return nil, err
-			}
-		}
-		return w.agg.Result()
+		return w.computeSumWithExclusionFallback(ctx, wfr, frameStartIdx, frameEndIdx)
 	}
 
-	// We need to discard all values that are no longer in the frame.
+	// Discard all values that are no longer in the frame.
 	if err = w.removeAllBefore(ctx, evalCtx, wfr); err != nil {
 		return nil, err
 	}
 
-	// We need to sum all values that just entered the frame and have not been
-	// added yet.
-	for idx := max(w.prevEnd, frameStartIdx); idx < frameEndIdx; idx++ {
+	// Sum all values that just entered the frame.
+	if err = w.addRowsToAggregate(ctx, wfr, frameStartIdx, frameEndIdx); err != nil {
+		return nil, err
+	}
+
+	w.cursor.prevStart = frameStartIdx
+	w.cursor.prevEnd = frameEndIdx
+
+	return w.evaluateFrameResult(frameStartIdx, frameEndIdx)
+}
+
+// computeSumWithExclusionFallback performs a naive full-frame summation when
+// a frame exclusion clause prevents using the sliding window optimization.
+func (w *slidingWindowSumFunc) computeSumWithExclusionFallback(
+	ctx context.Context, wfr *tree.WindowFrameRun, frameStartIdx, frameEndIdx int,
+) (tree.Datum, error) {
+	w.agg.Reset(ctx)
+	for idx := frameStartIdx; idx < frameEndIdx; idx++ {
 		if skipped, err := wfr.IsRowSkipped(ctx, idx); err != nil {
 			return nil, err
 		} else if skipped {
@@ -326,24 +340,47 @@ func (w *slidingWindowSumFunc) Compute(
 		if err != nil {
 			return nil, err
 		}
+		if err = w.agg.Add(ctx, args[0]); err != nil {
+			return nil, err
+		}
+	}
+	return w.agg.Result()
+}
+
+// addRowsToAggregate sums all non-null values that just entered the frame and
+// have not yet been added.
+func (w *slidingWindowSumFunc) addRowsToAggregate(
+	ctx context.Context, wfr *tree.WindowFrameRun, frameStartIdx, frameEndIdx int,
+) error {
+	for idx := max(w.cursor.prevEnd, frameStartIdx); idx < frameEndIdx; idx++ {
+		if skipped, err := wfr.IsRowSkipped(ctx, idx); err != nil {
+			return err
+		} else if skipped {
+			continue
+		}
+		args, err := wfr.ArgsByRowIdx(ctx, idx)
+		if err != nil {
+			return err
+		}
 		if args[0] != tree.DNull {
 			w.lastNonNullIdx = idx
-			err = w.agg.Add(ctx, args[0])
-			if err != nil {
-				return nil, err
+			if err = w.agg.Add(ctx, args[0]); err != nil {
+				return err
 			}
 		}
 	}
+	return nil
+}
 
-	w.prevStart = frameStartIdx
-	w.prevEnd = frameEndIdx
+// evaluateFrameResult determines whether to return the aggregate result or NULL
+// based on frame emptiness and whether all remaining values are nulls.
+func (w *slidingWindowSumFunc) evaluateFrameResult(
+	frameStartIdx, frameEndIdx int,
+) (tree.Datum, error) {
 	// If last non-null value has index smaller than the start of the window
-	// frame, then only nulls can be in the frame. This holds true as well for
-	// the special noNonNullsSeen index.
+	// frame, then only nulls can be in the frame.
 	onlyNulls := w.lastNonNullIdx < frameStartIdx
 	if frameStartIdx == frameEndIdx || onlyNulls {
-		// Either the window frame is empty or only null values are in the frame,
-		// so we return NULL as per spec.
 		return tree.DNull, nil
 	}
 	return w.agg.Result()
@@ -351,8 +388,8 @@ func (w *slidingWindowSumFunc) Compute(
 
 // Reset implements tree.WindowFunc interface.
 func (w *slidingWindowSumFunc) Reset(ctx context.Context) {
-	w.prevStart = 0
-	w.prevEnd = 0
+	w.cursor.prevStart = 0
+	w.cursor.prevEnd = 0
 	w.lastNonNullIdx = noNonNullSeen
 	w.agg.Reset(ctx)
 }
@@ -437,4 +474,46 @@ func (w *avgWindowFunc) Reset(ctx context.Context) {
 // Close implements WindowFunc interface.
 func (w *avgWindowFunc) Close(ctx context.Context, evalCtx *tree.EvalContext) {
 	w.sum.Close(ctx, evalCtx)
+}
+
+// updateBestDatum compares a candidate datum against the current best using
+// the provided comparison function and returns the better of the two.
+func updateBestDatum(
+	best, candidate tree.Datum,
+	evalCtx *tree.EvalContext,
+	cmp func(*tree.EvalContext, tree.Datum, tree.Datum) int,
+) tree.Datum {
+	if best == nil {
+		return candidate
+	}
+	if cmp(evalCtx, candidate, best) > 0 {
+		return candidate
+	}
+	return best
+}
+
+// subtractDatumFromAggregate removes a single datum's contribution from the
+// running aggregate by adding the negated value.
+func (w *slidingWindowSumFunc) subtractDatumFromAggregate(
+	ctx context.Context, value tree.Datum,
+) error {
+	if value == tree.DNull {
+		// Null values do not contribute to the running sum, so there is nothing
+		// to subtract once they leave the window frame.
+		return nil
+	}
+	switch v := value.(type) {
+	case *tree.DInt:
+		return w.agg.Add(ctx, tree.NewDInt(-*v))
+	case *tree.DDecimal:
+		d := tree.DDecimal{}
+		d.Neg(&v.Decimal)
+		return w.agg.Add(ctx, &d)
+	case *tree.DFloat:
+		return w.agg.Add(ctx, tree.NewDFloat(-*v))
+	case *tree.DInterval:
+		return w.agg.Add(ctx, &tree.DInterval{Duration: duration.Duration{}.Sub(v.Duration)})
+	default:
+		return errors.AssertionFailedf("unexpected value %v", v)
+	}
 }

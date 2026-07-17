@@ -116,24 +116,12 @@ func MakeExpression(
 			return execinfrapb.Expression{}, subqueryVisitor.err
 		}
 	}
-	// We format the expression using the IndexedVar and Placeholder formatting interceptors.
-	fmtCtx := execinfrapb.ExprFmtCtxBase(evalCtx)
-	fmtCtx.ExecInTSEngine = ctx.IsTs() && execInTSEngine
-	if indexVarMap != nil {
-		fmtCtx.SetIndexedVarFormat(func(ctx *tree.FmtCtx, idx int) {
-			remappedIdx := indexVarMap[idx]
-			if remappedIdx < 0 {
-				panic(fmt.Sprintf("unmapped index %d", idx))
-			}
-			ctx.Printf("@%d", remappedIdx+1)
-		})
+	// Format using helper to share logic with MakeTSExpression.
+	outStr, err := formatExpr(evalCtx, outExpr, indexVarMap, ctx.IsTs() && execInTSEngine)
+	if err != nil {
+		return execinfrapb.Expression{}, err
 	}
-	fmtCtx.FormatNode(outExpr)
-	fmtCtx.ExecInTSEngine = false
-	if log.V(1) {
-		log.Infof(evalCtx.Ctx(), "Expr %s:\n%s", fmtCtx.String(), tree.ExprDebugString(outExpr))
-	}
-	return execinfrapb.Expression{Expr: fmtCtx.CloseAndGetString()}, nil
+	return execinfrapb.Expression{Expr: outStr}, nil
 }
 
 // optimizeTSExpression optimize execinfrapb.Expression for tsReader.
@@ -202,9 +190,21 @@ func MakeTSExpression(
 	// change cast(null) to null
 	outExpr = optimizeTSExpression(outExpr)
 
-	// We format the expression using the IndexedVar and Placeholder formatting interceptors.
+	outStr, err := formatExpr(evalCtx, outExpr, indexVarMap, true)
+	if err != nil {
+		return execinfrapb.Expression{}, err
+	}
+	return execinfrapb.Expression{Expr: outStr}, nil
+}
+
+// formatExpr formats an expression into the execinfrapb.Expression string form
+// using IndexedVar and placeholder interceptors. It centralizes the common
+// formatting logic used by MakeExpression and MakeTSExpression.
+func formatExpr(
+	evalCtx *tree.EvalContext, outExpr tree.Expr, indexVarMap []int, execInTSEngine bool,
+) (string, error) {
 	fmtCtx := execinfrapb.ExprFmtCtxBase(evalCtx)
-	fmtCtx.ExecInTSEngine = true
+	fmtCtx.ExecInTSEngine = execInTSEngine
 	if indexVarMap != nil {
 		fmtCtx.SetIndexedVarFormat(func(ctx *tree.FmtCtx, idx int) {
 			remappedIdx := indexVarMap[idx]
@@ -215,11 +215,12 @@ func MakeTSExpression(
 		})
 	}
 	fmtCtx.FormatNode(outExpr)
+	// Turn off the flag so subsequent formatting doesn't inherit it.
 	fmtCtx.ExecInTSEngine = false
 	if log.V(1) {
 		log.Infof(evalCtx.Ctx(), "Expr %s:\n%s", fmtCtx.String(), tree.ExprDebugString(outExpr))
 	}
-	return execinfrapb.Expression{Expr: fmtCtx.CloseAndGetString()}, nil
+	return fmtCtx.CloseAndGetString(), nil
 }
 
 type evalAndReplaceSubqueryVisitor struct {

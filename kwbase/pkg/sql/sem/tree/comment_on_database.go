@@ -24,24 +24,16 @@
 
 package tree
 
-import "strings"
-
 // CommentOnDatabase represents an COMMENT ON DATABASE statement.
 type CommentOnDatabase struct {
 	Name    Name
 	Comment *string
 }
 
+// commentOnDatabaseKeyword is the SQL keyword prefix for COMMENT ON DATABASE.
+const commentOnDatabaseKeyword = "COMMENT ON DATABASE "
+
 // Format implements the NodeFormatter interface.
 func (n *CommentOnDatabase) Format(ctx *FmtCtx) {
-	ctx.WriteString("COMMENT ON DATABASE ")
-	ctx.FormatNode(&n.Name)
-	ctx.WriteString(" IS ")
-	if n.Comment != nil {
-		tmp := *n.Comment
-		//lex.EncodeSQLStringWithFlags(&ctx.Buffer, *n.Comment, ctx.flags.EncodeFlags())
-		ctx.WriteString("'" + strings.Replace(tmp, "'", "''", -1) + "'")
-	} else {
-		ctx.WriteString("NULL")
-	}
+	formatCommentStatement(ctx, commentOnDatabaseKeyword, &n.Name, n.Comment)
 }

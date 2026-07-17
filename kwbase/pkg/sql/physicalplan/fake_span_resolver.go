@@ -101,64 +101,14 @@ func (fit *fakeSpanResolverIterator) Seek(
 		return
 	}
 
-	// Populate splitKeys with potential split keys; all keys are strictly
-	// between span.Key and span.EndKey.
-	var splitKeys []roachpb.Key
-	lastKey := span.Key
-	for _, kv := range kvs {
-		// Extract the key for the row.
-		splitKey, err := keys.EnsureSafeSplitKey(kv.Key)
-		if err != nil {
-			fit.err = err
-			return
-		}
-		if !splitKey.Equal(lastKey) && span.ContainsKey(splitKey) {
-			splitKeys = append(splitKeys, splitKey)
-			lastKey = splitKey
-		}
+	// Populate split keys and generate splits using helper functions.
+	splitKeys, err := fit.collectSplitKeys(span, kvs)
+	if err != nil {
+		fit.err = err
+		return
 	}
 
-	// Generate fake splits. The number of splits is selected randomly between 0
-	// and a maximum value; we want to generate
-	//   x = #nodes * avgRangesPerNode
-	// splits on average, so the maximum number is 2x:
-	//   Expected[ rand(2x+1) ] = (0 + 1 + 2 + .. + 2x) / (2x + 1) = x.
-	maxSplits := 2 * len(fit.fsr.nodes) * avgRangesPerNode
-	if maxSplits > len(splitKeys) {
-		maxSplits = len(splitKeys)
-	}
-	numSplits := rand.Intn(maxSplits + 1)
-
-	// Use Robert Floyd's algorithm to generate numSplits distinct integers
-	// between 0 and len(splitKeys), just because it's so cool!
-	chosen := make(map[int]struct{})
-	for j := len(splitKeys) - numSplits; j < len(splitKeys); j++ {
-		t := rand.Intn(j + 1)
-		if _, alreadyChosen := chosen[t]; !alreadyChosen {
-			// Insert T.
-			chosen[t] = struct{}{}
-		} else {
-			// Insert J.
-			chosen[j] = struct{}{}
-		}
-	}
-
-	splits := make([]roachpb.Key, 0, numSplits+2)
-	splits = append(splits, span.Key)
-	for i := range splitKeys {
-		if _, ok := chosen[i]; ok {
-			splits = append(splits, splitKeys[i])
-		}
-	}
-	splits = append(splits, span.EndKey)
-
-	if scanDir == kvcoord.Descending {
-		// Reverse the order of the splits.
-		for i := 0; i < len(splits)/2; i++ {
-			j := len(splits) - i - 1
-			splits[i], splits[j] = splits[j], splits[i]
-		}
-	}
+	splits := fit.generateSplits(splitKeys, span, scanDir)
 
 	// Build ranges corresponding to the fake splits and assign them random
 	// replicas.
@@ -184,6 +134,66 @@ func (fit *fakeSpanResolverIterator) Seek(
 			fit.ranges[0].replica = prevRange.replica
 		}
 	}
+}
+
+// collectSplitKeys extracts candidate split keys from scan results.
+// Returns keys strictly between span.Key and span.EndKey.
+func (fit *fakeSpanResolverIterator) collectSplitKeys(
+	span roachpb.Span, kvs []kv.KeyValue,
+) ([]roachpb.Key, error) {
+	var splitKeys []roachpb.Key
+	lastKey := span.Key
+	for _, kv := range kvs {
+		splitKey, err := keys.EnsureSafeSplitKey(kv.Key)
+		if err != nil {
+			return nil, err
+		}
+		if !splitKey.Equal(lastKey) && span.ContainsKey(splitKey) {
+			splitKeys = append(splitKeys, splitKey)
+			lastKey = splitKey
+		}
+	}
+	return splitKeys, nil
+}
+
+// generateSplits builds the split list from candidate split keys, choosing a
+// random subset and ensuring span boundaries are included. The maximum average
+// splits is tuned by avgRangesPerNode.
+func (fit *fakeSpanResolverIterator) generateSplits(
+	splitKeys []roachpb.Key, span roachpb.Span, scanDir kvcoord.ScanDirection,
+) []roachpb.Key {
+	maxSplits := 2 * len(fit.fsr.nodes) * avgRangesPerNode
+	if maxSplits > len(splitKeys) {
+		maxSplits = len(splitKeys)
+	}
+	numSplits := rand.Intn(maxSplits + 1)
+
+	chosen := make(map[int]struct{})
+	for j := len(splitKeys) - numSplits; j < len(splitKeys); j++ {
+		t := rand.Intn(j + 1)
+		if _, alreadyChosen := chosen[t]; !alreadyChosen {
+			chosen[t] = struct{}{}
+		} else {
+			chosen[j] = struct{}{}
+		}
+	}
+
+	splits := make([]roachpb.Key, 0, numSplits+2)
+	splits = append(splits, span.Key)
+	for i := range splitKeys {
+		if _, ok := chosen[i]; ok {
+			splits = append(splits, splitKeys[i])
+		}
+	}
+	splits = append(splits, span.EndKey)
+
+	if scanDir == kvcoord.Descending {
+		for i := 0; i < len(splits)/2; i++ {
+			j := len(splits) - i - 1
+			splits[i], splits[j] = splits[j], splits[i]
+		}
+	}
+	return splits
 }
 
 // Valid is part of the SpanResolverIterator interface.

@@ -68,13 +68,66 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
+// udfFieldIndex enumerates the column positions in a UDF definition row.
+type udfFieldIndex int
+
 const (
-	funcNameIndex = iota
-	argTypesIndex
-	returnTypeIndex
-	typeLengthIndex
-	funcBodyIndex
+	udfFuncNameIdx udfFieldIndex = iota
+	udfArgTypesIdx
+	udfReturnTypeIdx
+	udfTypeLengthIdx
+	udfFuncBodyIdx
 )
+
+// sqlTypeMapping provides a lookup table from internal SQL type identifiers
+// to the corresponding types.T representations used in the type system.
+var sqlTypeMapping = map[int32]*types.T{
+	int32(sqlbase.DataType_TIMESTAMP):   types.Timestamp,
+	int32(sqlbase.DataType_BIGINT):      types.Int,
+	int32(sqlbase.DataType_SMALLINT):    types.Int2,
+	int32(sqlbase.DataType_INT):         types.Int4,
+	int32(sqlbase.DataType_FLOAT):       types.Float4,
+	int32(sqlbase.DataType_DOUBLE):      types.Float,
+	int32(sqlbase.DataType_BOOL):        types.Bool,
+	int32(sqlbase.DataType_CHAR):        types.Char,
+	int32(sqlbase.DataType_NCHAR):       types.NChar,
+	int32(sqlbase.DataType_VARCHAR):     types.VarChar,
+	int32(sqlbase.DataType_NVARCHAR):    types.NVarChar,
+	int32(sqlbase.DataType_TIMESTAMPTZ): types.TimestampTZ,
+}
+
+// intTypeIdentifiers contains all internal SQL type IDs that represent
+// integer-like types (smallint, int, bigint).
+var intTypeIdentifiers = []int32{
+	int32(sqlbase.DataType_INT),
+	int32(sqlbase.DataType_SMALLINT),
+	int32(sqlbase.DataType_BIGINT),
+}
+
+// floatTypeIdentifiers contains all internal SQL type IDs that represent
+// floating-point types (float4, float8/double).
+var floatTypeIdentifiers = []int32{
+	int32(sqlbase.DataType_DOUBLE),
+	int32(sqlbase.DataType_FLOAT),
+}
+
+// stringTypeIdentifiers contains all internal SQL type IDs that represent
+// character/string types.
+var stringTypeIdentifiers = []int32{
+	int32(sqlbase.DataType_CHAR),
+	int32(sqlbase.DataType_VARCHAR),
+	int32(sqlbase.DataType_NCHAR),
+	int32(sqlbase.DataType_NVARCHAR),
+}
+
+// ParseUDFType looks up an internal SQL type ID in the shared type mapping table
+// and returns the corresponding types.T representation.
+func ParseUDFType(typeInt int32) (*types.T, error) {
+	if typ, exists := sqlTypeMapping[typeInt]; exists {
+		return typ, nil
+	}
+	return nil, pgerror.Newf(pgcode.FdwInvalidDataType, "unknown udf type identifier: %d", typeInt)
+}
 
 // RegisterLuaUDFs takes a set of datums representing a row from a UDF definition table and converts them into a tree.FunctionDefinition.
 // This function is responsible for parsing the datums, validating their integrity and types, extracting the necessary UDF metadata,
@@ -112,7 +165,7 @@ func RegisterLuaUDFs(datums tree.Datums) (*tree.FunctionDefinition, error) {
 		return nil, pgerror.New(pgcode.Warning, "failed to parse descriptor for udf")
 	}
 
-	// Extract datum values.
+	// Extract datum values from the function descriptor.
 	funcName, funcBody := desc.Name, desc.FunctionBody
 	argumentArray, returnTypeArray := desc.ArgumentTypes, desc.ReturnType
 	argumentTypes, funcReturnType := make([]int32, len(argumentArray)), int32(returnTypeArray[0])
@@ -120,19 +173,19 @@ func RegisterLuaUDFs(datums tree.Datums) (*tree.FunctionDefinition, error) {
 		argumentTypes[i] = int32(v)
 	}
 
-	// Parsing parameter types
+	// Parsing parameter types from the descriptor.
 	paramTypes, err := ParseUDFTypes(argumentTypes)
 	if err != nil {
 		return nil, err
 	}
 
-	// Parse return value type
+	// Parse the return value type.
 	returnType, err := ParseUDFType(funcReturnType)
 	if err != nil {
 		return nil, err
 	}
 
-	// Create a wrapper for lua scripts
+	// Create a Go wrapper that executes the Lua script.
 	luaFunction := createLuaFunction(funcName, funcBody, argumentTypes, funcReturnType)
 
 	def := []tree.Overload{{
@@ -150,31 +203,6 @@ func RegisterLuaUDFs(datums tree.Datums) (*tree.FunctionDefinition, error) {
 		},
 		def,
 	), nil
-}
-
-// ParseUDFType is used to convert typeInt to *types.T
-func ParseUDFType(typeInt int32) (*types.T, error) {
-	// Define a map for type lookups
-	typeMap := map[int32]*types.T{
-		int32(sqlbase.DataType_TIMESTAMP):   types.Timestamp,
-		int32(sqlbase.DataType_BIGINT):      types.Int,
-		int32(sqlbase.DataType_SMALLINT):    types.Int2,
-		int32(sqlbase.DataType_INT):         types.Int4,
-		int32(sqlbase.DataType_FLOAT):       types.Float4,
-		int32(sqlbase.DataType_DOUBLE):      types.Float,
-		int32(sqlbase.DataType_BOOL):        types.Bool,
-		int32(sqlbase.DataType_CHAR):        types.Char,
-		int32(sqlbase.DataType_NCHAR):       types.NChar,
-		int32(sqlbase.DataType_VARCHAR):     types.VarChar,
-		int32(sqlbase.DataType_NVARCHAR):    types.NVarChar,
-		int32(sqlbase.DataType_TIMESTAMPTZ): types.TimestampTZ,
-	}
-
-	// Look up the type using the provided typeInt
-	if typ, exists := typeMap[typeInt]; exists {
-		return typ, nil
-	}
-	return nil, pgerror.Newf(pgcode.FdwInvalidDataType, "unknown udf type identifier: %d", typeInt)
 }
 
 // ParseUDFTypes is used to convert parameters to tree.TypeList
@@ -199,11 +227,11 @@ func validateDatums(datums tree.Datums) error {
 		expectedType *types.T
 		nullable     bool
 	}{
-		{"function_name", funcNameIndex, types.String, false},
-		{"argument_types", argTypesIndex, types.IntArray, false},
-		{"return_type", returnTypeIndex, types.IntArray, false},
-		{"types_length", typeLengthIndex, types.IntArray, false},
-		{"function_body", funcBodyIndex, types.String, false},
+		{"function_name", int(udfFuncNameIdx), types.String, false},
+		{"argument_types", int(udfArgTypesIdx), types.IntArray, false},
+		{"return_type", int(udfReturnTypeIdx), types.IntArray, false},
+		{"types_length", int(udfTypeLengthIdx), types.IntArray, false},
+		{"function_body", int(udfFuncBodyIdx), types.String, false},
 	}
 
 	for _, exp := range expectedTypes {
@@ -354,11 +382,7 @@ func goValueToLuaValue(val tree.Datum, paramType int32) (lua.LValue, error) {
 	}
 
 	// Extract the actual type name from the datum for a more informative error message.
-	actualTypeName := "unknown"
-	if val.ResolvedType() != nil {
-		actualTypeName = val.ResolvedType().Name()
-	}
-
+	actualTypeName := resolveDatumnTypeName(val)
 	return nil, pgerror.Newf(pgcode.DatatypeMismatch, "unsupported parameter type %v for value of type %v", paramType, actualTypeName)
 }
 
@@ -403,7 +427,9 @@ func luaValueToGoValue(val lua.LValue, returnType int32) (tree.Datum, error) {
 		}
 	}
 
-	return nil, pgerror.Newf(pgcode.DatatypeMismatch, "lua value type '%s' does not match expected SQL data type '%s'", val.Type().String(), expectedType.SQLString())
+	return nil, pgerror.Newf(pgcode.DatatypeMismatch,
+		"lua value type '%s' does not match expected SQL data type '%s'",
+		val.Type().String(), expectedType.SQLString())
 }
 
 // IntOverflowCheck is used to check integer type is out of bounds
@@ -417,4 +443,136 @@ func IntOverflowCheck(t int32, value float64) bool {
 		return value >= math.MinInt64 && value <= math.MaxInt64
 	}
 	return false
+}
+
+// isIntegerType checks whether the given internal type ID corresponds to an
+// integer type (smallint, int, or bigint).
+func isIntegerType(t int32) bool {
+	for _, id := range intTypeIdentifiers {
+		if id == t {
+			return true
+		}
+	}
+	return false
+}
+
+// isFloatType checks whether the given internal type ID corresponds to a
+// floating-point type (float4 or double/float8).
+func isFloatType(t int32) bool {
+	for _, id := range floatTypeIdentifiers {
+		if id == t {
+			return true
+		}
+	}
+	return false
+}
+
+// isCharStringType checks whether the given internal type ID corresponds to a
+// character/string type.
+func isCharStringType(t int32) bool {
+	for _, id := range stringTypeIdentifiers {
+		if id == t {
+			return true
+		}
+	}
+	return false
+}
+
+// convertGoIntegerToLua attempts to convert a Go datum of an integer-compatible
+// SQL type to a Lua LNumber. Returns the LValue and true if successful.
+func convertGoIntegerToLua(val tree.Datum, paramType int32) (lua.LValue, bool) {
+	if !isIntegerType(paramType) {
+		return nil, false
+	}
+	dInt, ok := val.(*tree.DInt)
+	if !ok || !IntOverflowCheck(paramType, float64(*dInt)) {
+		return nil, false
+	}
+	return lua.LNumber(*dInt), true
+}
+
+// convertGoFloatToLua attempts to convert a Go datum of a float-compatible
+// SQL type to a Lua LNumber.
+func convertGoFloatToLua(val tree.Datum, paramType int32) (lua.LValue, bool) {
+	if !isFloatType(paramType) {
+		return nil, false
+	}
+	dFloat, ok := val.(*tree.DFloat)
+	if !ok {
+		return nil, false
+	}
+	return lua.LNumber(*dFloat), true
+}
+
+// convertGoTimestampToLua converts a Go timestamp datum to a Unix epoch
+// Lua number.
+func convertGoTimestampToLua(val tree.Datum, paramType int32) (lua.LValue, bool) {
+	if paramType != int32(sqlbase.DataType_TIMESTAMP) {
+		return nil, false
+	}
+	dTimestamp, ok := val.(*tree.DTimestamp)
+	if !ok {
+		return nil, false
+	}
+	return lua.LNumber(dTimestamp.Unix()), true
+}
+
+// convertGoStringToLua converts a Go string datum to a Lua LString.
+func convertGoStringToLua(val tree.Datum, paramType int32) (lua.LValue, bool) {
+	if !isCharStringType(paramType) {
+		return nil, false
+	}
+	dString, ok := val.(*tree.DString)
+	if !ok {
+		return nil, false
+	}
+	return lua.LString(*dString), true
+}
+
+// resolveDatumnTypeName returns the type name of a datum or "unknown" if
+// unresolved.
+func resolveDatumnTypeName(val tree.Datum) string {
+	if val.ResolvedType() != nil {
+		return val.ResolvedType().Name()
+	}
+	return "unknown"
+}
+
+// convertLuaNumberToGo attempts to convert a Lua LNumber to the appropriate
+// Go datum for the given SQL return type. Returns (datum, true) on success.
+func convertLuaNumberToGo(val lua.LValue, returnType int32) (tree.Datum, bool) {
+	num, ok := val.(lua.LNumber)
+	if !ok {
+		return nil, false
+	}
+
+	switch {
+	case isIntegerType(returnType):
+		if !IntOverflowCheck(returnType, float64(num)) {
+			return nil, false
+		}
+		return tree.NewDInt(tree.DInt(num)), true
+	case returnType == int32(sqlbase.DataType_DOUBLE):
+		return tree.NewDFloat(tree.DFloat(num)), true
+	case returnType == int32(sqlbase.DataType_FLOAT):
+		if num > math.MaxFloat32 {
+			return tree.NewDFloat(tree.DFloat(math.Inf(+1))), true
+		}
+		return tree.NewDFloat(tree.DFloat(num)), true
+	case returnType == int32(sqlbase.DataType_TIMESTAMP):
+		return tree.MakeDTimestamp(timeutil.Unix(int64(num), 0), 0), true
+	}
+	return nil, false
+}
+
+// convertLuaStringToGo attempts to convert a Lua LString to a Go string datum.
+func convertLuaStringToGo(val lua.LValue, returnType int32) (tree.Datum, bool) {
+	if !isCharStringType(returnType) {
+		return nil, false
+	}
+	str, ok := val.(lua.LString)
+	if !ok {
+		return nil, false
+	}
+	return tree.NewDString(string(str)), true
 }

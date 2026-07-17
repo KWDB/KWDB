@@ -23,9 +23,12 @@ type AlterIndex struct {
 
 var _ Statement = &AlterIndex{}
 
+// alterIndexKeyword is the SQL keyword prefix for ALTER INDEX.
+const alterIndexKeyword = "ALTER INDEX "
+
 // Format implements the NodeFormatter interface.
 func (node *AlterIndex) Format(ctx *FmtCtx) {
-	ctx.WriteString("ALTER INDEX ")
+	ctx.WriteString(alterIndexKeyword)
 	if node.IfExists {
 		ctx.WriteString("IF EXISTS ")
 	}

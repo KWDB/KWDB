@@ -24,24 +24,16 @@
 
 package tree
 
-import "strings"
-
 // CommentOnTable represents an COMMENT ON TABLE statement.
 type CommentOnTable struct {
 	Table   *UnresolvedObjectName
 	Comment *string
 }
 
+// commentOnTableKeyword is the SQL keyword prefix for COMMENT ON TABLE.
+const commentOnTableKeyword = "COMMENT ON TABLE "
+
 // Format implements the NodeFormatter interface.
 func (n *CommentOnTable) Format(ctx *FmtCtx) {
-	ctx.WriteString("COMMENT ON TABLE ")
-	ctx.FormatNode(n.Table)
-	ctx.WriteString(" IS ")
-	if n.Comment != nil {
-		tmp := *n.Comment
-		//lex.EncodeSQLStringWithFlags(&ctx.Buffer, *n.Comment, ctx.flags.EncodeFlags())
-		ctx.WriteString("'" + strings.Replace(tmp, "'", "''", -1) + "'")
-	} else {
-		ctx.WriteString("NULL")
-	}
+	formatCommentStatement(ctx, commentOnTableKeyword, n.Table, n.Comment)
 }

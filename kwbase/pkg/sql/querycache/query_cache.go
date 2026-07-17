@@ -135,24 +135,10 @@ func New(memorySize int64) *C {
 	c.mu.availableMem = memorySize
 	c.mu.m = make(map[string]*entry, numEntries)
 	entries := make([]entry, numEntries)
-	// The used list is empty.
-	c.mu.used.next = &c.mu.used
-	c.mu.used.prev = &c.mu.used
-	// Make a linked list of entries, starting with the sentinel.
-	c.mu.free.next = &entries[0]
-	c.mu.free.prev = &entries[numEntries-1]
-	for i := range entries {
-		if i > 0 {
-			entries[i].prev = &entries[i-1]
-		} else {
-			entries[i].prev = &c.mu.free
-		}
-		if i+1 < len(entries) {
-			entries[i].next = &entries[i+1]
-		} else {
-			entries[i].next = &c.mu.free
-		}
-	}
+	// Initialize sentinel lists and the free pool of entries.
+	// The concrete construction is delegated to a helper so that the
+	// initialization logic is easier to read and can be reused in tests.
+	c.initEntryPool(entries)
 	return c
 }
 
@@ -200,24 +186,16 @@ func (c *C) Add(session *Session, d *CachedData) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	e, ok := c.mu.m[d.SQL]
-	if ok {
-		// The query already exists in the cache.
-		e.remove()
-		c.mu.availableMem += e.memoryEstimate()
-	} else {
-		// Get an entry to use for this query.
-		e = c.getEntry()
-		c.mu.m[d.SQL] = e
-	}
-
+	// Prepare or allocate an entry for this SQL string.
+	e := c.prepareEntryForAdd(d)
 	e.CachedData = *d
 
-	// Evict more entries if necessary.
+	// Evict more entries if necessary and account for the newly added
+	// memory consumption.
 	c.makeSpace(mem)
 	c.mu.availableMem -= mem
 
-	// Insert the entry at the front of the used list.
+	// Place the entry at the front of the used list (most-recently-used).
 	e.insertAfter(&c.mu.used)
 }
 
@@ -260,14 +238,9 @@ func (c *C) Clear() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Clear the map.
-	for sql, e := range c.mu.m {
-
-		c.mu.availableMem += e.memoryEstimate()
-		delete(c.mu.m, sql)
-		e.remove()
-		e.clear()
-		e.insertAfter(&c.mu.free)
+	// Recycle every used entry back into the free pool.
+	for _, e := range c.mu.m {
+		c.recycleEntry(e)
 	}
 }
 
@@ -277,11 +250,7 @@ func (c *C) Purge(sql string) {
 	defer c.mu.Unlock()
 
 	if e := c.mu.m[sql]; e != nil {
-		c.mu.availableMem += e.memoryEstimate()
-		delete(c.mu.m, sql)
-		e.clear()
-		e.remove()
-		e.insertAfter(&c.mu.free)
+		c.recycleEntry(e)
 	}
 }
 
@@ -385,4 +354,55 @@ func (s *Session) registerMiss() {
 func (s *Session) highMissRatio() bool {
 	const threshold = mmaScale * 80 / 100
 	return s.missRatioMMA > threshold
+}
+
+// --- Refactor helpers ---
+
+// initEntryPool initializes the used sentinel and free list from a slice of
+// preallocated entries. This is a thin refactor-extraction from New.
+func (c *C) initEntryPool(entries []entry) {
+	// The used list is empty.
+	c.mu.used.next = &c.mu.used
+	c.mu.used.prev = &c.mu.used
+	// Make a linked list of entries, starting with the sentinel.
+	c.mu.free.next = &entries[0]
+	c.mu.free.prev = &entries[len(entries)-1]
+	for i := range entries {
+		if i > 0 {
+			entries[i].prev = &entries[i-1]
+		} else {
+			entries[i].prev = &c.mu.free
+		}
+		if i+1 < len(entries) {
+			entries[i].next = &entries[i+1]
+		} else {
+			entries[i].next = &c.mu.free
+		}
+	}
+}
+
+// prepareEntryForAdd locates an existing entry for d.SQL or allocates a new
+// one, adjusting the available memory accounting as needed. Caller must hold
+// the cache mutex.
+func (c *C) prepareEntryForAdd(d *CachedData) *entry {
+	if e, ok := c.mu.m[d.SQL]; ok {
+		// Replace the existing entry: detach and reclaim its memory.
+		e.remove()
+		c.mu.availableMem += e.memoryEstimate()
+		return e
+	}
+	// No existing entry; allocate one from the free pool or evict one.
+	e := c.getEntry()
+	c.mu.m[d.SQL] = e
+	return e
+}
+
+// recycleEntry moves an entry to the free pool and removes it from the map.
+// Caller must hold the cache mutex.
+func (c *C) recycleEntry(e *entry) {
+	c.mu.availableMem += e.memoryEstimate()
+	delete(c.mu.m, e.SQL)
+	e.clear()
+	e.remove()
+	e.insertAfter(&c.mu.free)
 }

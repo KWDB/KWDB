@@ -195,6 +195,17 @@ func (sr *spanResolver) NewSpanResolverIterator(txn *kv.Txn) SpanResolverIterato
 	}
 }
 
+// newSpanResolverIteratorFactory centralizes creation of a spanResolverIterator
+// for testing and clarity.
+func newSpanResolverIteratorFactory(sr *spanResolver, txn *kv.Txn) *spanResolverIterator {
+	return &spanResolverIterator{
+		gossip:     sr.gossip,
+		it:         kvcoord.NewRangeIterator(sr.distSender),
+		oracle:     sr.oracleFactory.Oracle(txn),
+		queryState: replicaoracle.MakeQueryState(),
+	}
+}
+
 // Valid is part of the SpanResolverIterator interface.
 func (it *spanResolverIterator) Valid() bool {
 	return it.err == nil && it.it.Valid()

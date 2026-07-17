@@ -715,37 +715,37 @@ func makeAggOverloadWithReturnType(
 			aggWindowFunc := f(params, evalCtx, nil /* arguments */)
 			switch w := aggWindowFunc.(type) {
 			case *minAggregate:
-				min := &slidingWindowFunc{}
+				min := newSlidingWindowFunc()
 				min.sw = makeSlidingWindow(evalCtx, func(evalCtx *tree.EvalContext, a, b tree.Datum) int {
 					return -a.Compare(evalCtx, b)
 				})
 				return min
 			case *maxAggregate:
-				max := &slidingWindowFunc{}
+				max := newSlidingWindowFunc()
 				max.sw = makeSlidingWindow(evalCtx, func(evalCtx *tree.EvalContext, a, b tree.Datum) int {
 					return a.Compare(evalCtx, b)
 				})
 				return max
 			case *FirstAggregate:
-				first := &slidingWindowFunc{}
+				first := newSlidingWindowFunc()
 				first.sw = makeSlidingWindow(evalCtx, func(evalCtx *tree.EvalContext, a, b tree.Datum) int {
 					return a.Compare(evalCtx, b)
 				})
 				return first
 			case *FirstrowAggregate:
-				firstrow := &slidingWindowFunc{}
+				firstrow := newSlidingWindowFunc()
 				firstrow.sw = makeSlidingWindow(evalCtx, func(evalCtx *tree.EvalContext, a, b tree.Datum) int {
 					return a.Compare(evalCtx, b)
 				})
 				return firstrow
 			case *LastAggregate:
-				last := &slidingWindowFunc{}
+				last := newSlidingWindowFunc()
 				last.sw = makeSlidingWindow(evalCtx, func(evalCtx *tree.EvalContext, a, b tree.Datum) int {
 					return a.Compare(evalCtx, b)
 				})
 				return last
 			case *LastrowAggregate:
-				lastrow := &slidingWindowFunc{}
+				lastrow := newSlidingWindowFunc()
 				lastrow.sw = makeSlidingWindow(evalCtx, func(evalCtx *tree.EvalContext, a, b tree.Datum) int {
 					return a.Compare(evalCtx, b)
 				})

@@ -19,8 +19,16 @@ type ReplicateSetSecondary struct {
 	Host PartitionedBackup
 }
 
+// replicateSetSecondaryKeyword is the SQL keyword prefix for the statement.
+const replicateSetSecondaryKeyword = "REPLICATE SET SECONDARY"
+
 // Format implements the NodeFormatter interface.
 func (node *ReplicateSetSecondary) Format(ctx *FmtCtx) {
-	ctx.WriteString("REPLICATE SET SECONDARY")
+	ctx.WriteString(replicateSetSecondaryKeyword)
+	node.formatHostNode(ctx)
+}
+
+// formatHostNode writes the serialized Host field to the format context.
+func (node *ReplicateSetSecondary) formatHostNode(ctx *FmtCtx) {
 	ctx.FormatNode(&node.Host)
 }

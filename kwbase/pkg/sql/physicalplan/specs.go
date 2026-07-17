@@ -40,7 +40,7 @@ var flowSpecPool = sync.Pool{
 // NewFlowSpec returns a new FlowSpec, which may have non-zero capacity in its
 // slice fields.
 func NewFlowSpec(flowID execinfrapb.FlowID, gateway roachpb.NodeID) *execinfrapb.FlowSpec {
-	spec := flowSpecPool.Get().(*execinfrapb.FlowSpec)
+	spec := allocateFlowSpec()
 	spec.FlowID = flowID
 	spec.Gateway = gateway
 	return spec
@@ -49,10 +49,7 @@ func NewFlowSpec(flowID execinfrapb.FlowID, gateway roachpb.NodeID) *execinfrapb
 // ReleaseFlowSpec returns this FlowSpec back to the pool of FlowSpecs. It may
 // not be used again after this call.
 func ReleaseFlowSpec(spec *execinfrapb.FlowSpec) {
-	*spec = execinfrapb.FlowSpec{
-		Processors: spec.Processors[:0],
-	}
-	flowSpecPool.Put(spec)
+	resetFlowSpec(spec)
 }
 
 var trSpecPool = sync.Pool{
@@ -85,4 +82,20 @@ func ReleaseSetupFlowRequest(s *execinfrapb.SetupFlowRequest) {
 		}
 	}
 	ReleaseFlowSpec(&s.Flow)
+}
+
+// allocateFlowSpec centralizes allocation of a FlowSpec from the pool.
+// Kept as a small helper to make pooling behavior explicit and testable.
+func allocateFlowSpec() *execinfrapb.FlowSpec {
+	return flowSpecPool.Get().(*execinfrapb.FlowSpec)
+}
+
+// resetFlowSpec resets the provided FlowSpec to a clean state and returns it
+// to the internal sync.Pool. All fields that may retain references are
+// cleared. New helper so ReleaseFlowSpec is more declarative.
+func resetFlowSpec(spec *execinfrapb.FlowSpec) {
+	*spec = execinfrapb.FlowSpec{
+		Processors: spec.Processors[:0],
+	}
+	flowSpecPool.Put(spec)
 }

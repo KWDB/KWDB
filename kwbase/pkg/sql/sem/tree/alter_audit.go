@@ -33,17 +33,39 @@ type AlterAudit struct {
 
 // Format implements the NodeFormatter interface.
 func (n *AlterAudit) Format(ctx *FmtCtx) {
+	n.writeAlterAuditPrefix(ctx)
+	n.maybeWriteIfExistsClause(ctx)
+	n.writeAuditName(ctx)
+	n.writeAuditActionClause(ctx)
+}
+
+// writeAlterAuditPrefix emits the ALTER AUDIT keyword.
+func (n *AlterAudit) writeAlterAuditPrefix(ctx *FmtCtx) {
 	ctx.WriteString("ALTER AUDIT ")
+}
+
+// maybeWriteIfExistsClause emits IF EXISTS when the flag is set.
+func (n *AlterAudit) maybeWriteIfExistsClause(ctx *FmtCtx) {
 	if n.IfExists {
 		ctx.WriteString("IF EXISTS ")
 	}
+}
+
+// writeAuditName outputs the audit name node.
+func (n *AlterAudit) writeAuditName(ctx *FmtCtx) {
 	ctx.FormatNode(&n.Name)
-	if n.NewName != "" {
+}
+
+// writeAuditActionClause determines and emits the appropriate action clause
+// for the ALTER AUDIT statement: RENAME TO, ENABLE, or DISABLE.
+func (n *AlterAudit) writeAuditActionClause(ctx *FmtCtx) {
+	switch {
+	case n.NewName != "":
 		ctx.WriteString(" RENAME TO ")
 		ctx.FormatNode(&n.NewName)
-	} else if n.Enable {
+	case n.Enable:
 		ctx.WriteString(" ENABLE")
-	} else {
+	default:
 		ctx.WriteString(" DISABLE")
 	}
 }

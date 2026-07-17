@@ -11,24 +11,16 @@
 
 package tree
 
-import "strings"
-
 // CommentOnProcedure represents an COMMENT ON PROCEDURE statement.
 type CommentOnProcedure struct {
 	Name    TableName
 	Comment *string
 }
 
+// commentOnProcedureKeyword is the SQL keyword prefix for COMMENT ON PROCEDURE.
+const commentOnProcedureKeyword = "COMMENT ON PROCEDURE "
+
 // Format implements the NodeFormatter interface.
 func (n *CommentOnProcedure) Format(ctx *FmtCtx) {
-	ctx.WriteString("COMMENT ON PROCEDURE ")
-	ctx.FormatNode(&n.Name)
-	ctx.WriteString(" IS ")
-	if n.Comment != nil {
-		tmp := *n.Comment
-		//lex.EncodeSQLStringWithFlags(&ctx.Buffer, *n.Comment, ctx.flags.EncodeFlags())
-		ctx.WriteString("'" + strings.Replace(tmp, "'", "''", -1) + "'")
-	} else {
-		ctx.WriteString("NULL")
-	}
+	formatCommentStatement(ctx, commentOnProcedureKeyword, &n.Name, n.Comment)
 }

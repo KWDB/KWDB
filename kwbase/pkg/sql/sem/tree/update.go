@@ -38,26 +38,57 @@ type Update struct {
 // Format implements the NodeFormatter interface.
 func (node *Update) Format(ctx *FmtCtx) {
 	ctx.FormatNode(node.With)
+	node.writeUpdateSetClause(ctx)
+	node.maybeWriteFromClause(ctx)
+	node.maybeWriteWhereClause(ctx)
+	node.maybeWriteOrderByClause(ctx)
+	node.maybeWriteLimitClause(ctx)
+	node.maybeWriteReturningClause(ctx)
+}
+
+// writeUpdateSetClause outputs the UPDATE keyword, table, and SET expressions.
+func (node *Update) writeUpdateSetClause(ctx *FmtCtx) {
 	ctx.WriteString("UPDATE ")
 	ctx.FormatNode(node.Table)
 	ctx.WriteString(" SET ")
 	ctx.FormatNode(&node.Exprs)
+}
+
+// maybeWriteFromClause emits the FROM clause when the update references
+// additional tables.
+func (node *Update) maybeWriteFromClause(ctx *FmtCtx) {
 	if len(node.From) > 0 {
 		ctx.WriteString(" FROM ")
 		ctx.FormatNode(&node.From)
 	}
+}
+
+// maybeWriteWhereClause emits the WHERE clause when present.
+func (node *Update) maybeWriteWhereClause(ctx *FmtCtx) {
 	if node.Where != nil {
 		ctx.WriteByte(' ')
 		ctx.FormatNode(node.Where)
 	}
+}
+
+// maybeWriteOrderByClause emits the ORDER BY clause when present.
+func (node *Update) maybeWriteOrderByClause(ctx *FmtCtx) {
 	if len(node.OrderBy) > 0 {
 		ctx.WriteByte(' ')
 		ctx.FormatNode(&node.OrderBy)
 	}
+}
+
+// maybeWriteLimitClause emits the LIMIT clause when present.
+func (node *Update) maybeWriteLimitClause(ctx *FmtCtx) {
 	if node.Limit != nil {
 		ctx.WriteByte(' ')
 		ctx.FormatNode(node.Limit)
 	}
+}
+
+// maybeWriteReturningClause emits the RETURNING clause when present.
+func (node *Update) maybeWriteReturningClause(ctx *FmtCtx) {
 	if HasReturningClause(node.Returning) {
 		ctx.WriteByte(' ')
 		ctx.FormatNode(node.Returning)

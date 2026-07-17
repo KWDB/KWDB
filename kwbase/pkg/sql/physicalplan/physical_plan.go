@@ -1863,37 +1863,50 @@ func (p *PhysicalPlan) PopulateEndpoints(nodeAddresses map[roachpb.NodeID]string
 	for sIdx, s := range p.Streams {
 		p1 := &p.Processors[s.SourceProcessor]
 		p2 := &p.Processors[s.DestProcessor]
-		endpoint := execinfrapb.StreamEndpointSpec{StreamID: execinfrapb.StreamID(sIdx), DestProcessor: int32(s.DestProcessor)}
-		if p1.Node == p2.Node {
-			if p1.ExecInTSEngine() && !p2.ExecInTSEngine() {
-				endpoint.Type = execinfrapb.StreamEndpointType_QUEUE
-				p1.Spec.FinalTsProcessor = true
-			} else {
-				endpoint.Type = execinfrapb.StreamEndpointType_LOCAL
-			}
-		} else {
-			endpoint.Type = execinfrapb.StreamEndpointType_REMOTE
-		}
+		endpoint := p.makeStreamEndpoint(sIdx, s)
 		p2.Spec.Input[s.DestInput].Streams = append(p2.Spec.Input[s.DestInput].Streams, endpoint)
 		if endpoint.Type == execinfrapb.StreamEndpointType_REMOTE {
 			if !p.remotePlan {
 				p.remotePlan = true
 			}
+			// ensure TargetNodeID set for remote endpoints
 			endpoint.TargetNodeID = p2.Node
 		}
 
-		var router *execinfrapb.OutputRouterSpec
-		router = &p1.Spec.Output[0]
-		// We are about to put this stream on the len(router.Streams) position in
-		// the router; verify this matches the sourceRouterSlot. We expect it to
-		// because the streams should be in order; if that assumption changes we can
-		// reorder them here according to sourceRouterSlot.
-		if len(router.Streams) != s.SourceRouterSlot {
-			panic(fmt.Sprintf(
-				"sourceRouterSlot mismatch: %d, expected %d", len(router.Streams), s.SourceRouterSlot,
-			))
-		}
+		router := &p1.Spec.Output[0]
+		p.ensureRouterSlot(router, s.SourceRouterSlot)
 		router.Streams = append(router.Streams, endpoint)
+	}
+}
+
+// makeStreamEndpoint constructs a StreamEndpointSpec for the given stream
+// index and Stream. It centralizes the logic for deciding endpoint type so
+// PopulateEndpoints remains clearer.
+func (p *PhysicalPlan) makeStreamEndpoint(sIdx int, s Stream) execinfrapb.StreamEndpointSpec {
+	p1 := &p.Processors[s.SourceProcessor]
+	p2 := &p.Processors[s.DestProcessor]
+	endpoint := execinfrapb.StreamEndpointSpec{StreamID: execinfrapb.StreamID(sIdx), DestProcessor: int32(s.DestProcessor)}
+	if p1.Node == p2.Node {
+		if p1.ExecInTSEngine() && !p2.ExecInTSEngine() {
+			endpoint.Type = execinfrapb.StreamEndpointType_QUEUE
+			p1.Spec.FinalTsProcessor = true
+		} else {
+			endpoint.Type = execinfrapb.StreamEndpointType_LOCAL
+		}
+	} else {
+		endpoint.Type = execinfrapb.StreamEndpointType_REMOTE
+	}
+	return endpoint
+}
+
+// ensureRouterSlot verifies that the router currently expects to have the
+// next stream at position sourceRouterSlot. If the invariant does not hold
+// it panics, matching original behavior.
+func (p *PhysicalPlan) ensureRouterSlot(
+	router *execinfrapb.OutputRouterSpec, sourceRouterSlot int,
+) {
+	if len(router.Streams) != sourceRouterSlot {
+		panic(fmt.Sprintf("sourceRouterSlot mismatch: %d, expected %d", len(router.Streams), sourceRouterSlot))
 	}
 }
 

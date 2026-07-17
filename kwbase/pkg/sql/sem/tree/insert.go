@@ -40,6 +40,17 @@ type Insert struct {
 // Format implements the NodeFormatter interface.
 func (node *Insert) Format(ctx *FmtCtx) {
 	ctx.FormatNode(node.With)
+	node.writeInsertOrUpsertKeyword(ctx)
+	node.writeIntoAndTable(ctx)
+	node.writeColumnSpec(ctx)
+	node.writeValuesOrSelect(ctx)
+	node.maybeWriteOnConflictClause(ctx)
+	node.maybeWriteReturningClause(ctx)
+}
+
+// writeInsertOrUpsertKeyword outputs either UPSERT or INSERT (with optional
+// WITHOUT SCHEMA modifier) based on the OnConflict configuration.
+func (node *Insert) writeInsertOrUpsertKeyword(ctx *FmtCtx) {
 	if node.OnConflict.IsUpsertAlias() {
 		ctx.WriteString("UPSERT")
 	} else {
@@ -48,8 +59,17 @@ func (node *Insert) Format(ctx *FmtCtx) {
 			ctx.WriteString(" WITHOUT SCHEMA ")
 		}
 	}
+}
+
+// writeIntoAndTable outputs the INTO keyword followed by the table reference.
+func (node *Insert) writeIntoAndTable(ctx *FmtCtx) {
 	ctx.WriteString(" INTO ")
 	ctx.FormatNode(node.Table)
+}
+
+// writeColumnSpec outputs the parenthesized column list when column names are
+// specified, or the no-schema column list when applicable.
+func (node *Insert) writeColumnSpec(ctx *FmtCtx) {
 	if node.Columns != nil {
 		ctx.WriteByte('(')
 		ctx.FormatNode(&node.Columns)
@@ -59,30 +79,55 @@ func (node *Insert) Format(ctx *FmtCtx) {
 		ctx.FormatNode(&node.NoSchemaColumns)
 		ctx.WriteByte(')')
 	}
+}
+
+// writeValuesOrSelect outputs DEFAULT VALUES or the row source (VALUES/SELECT).
+func (node *Insert) writeValuesOrSelect(ctx *FmtCtx) {
 	if node.DefaultValues() {
 		ctx.WriteString(" DEFAULT VALUES")
 	} else {
 		ctx.WriteByte(' ')
 		ctx.FormatNode(node.Rows)
 	}
-	if node.OnConflict != nil && !node.OnConflict.IsUpsertAlias() {
-		ctx.WriteString(" ON CONFLICT")
-		if len(node.OnConflict.Columns) > 0 {
-			ctx.WriteString(" (")
-			ctx.FormatNode(&node.OnConflict.Columns)
-			ctx.WriteString(")")
-		}
-		if node.OnConflict.DoNothing {
-			ctx.WriteString(" DO NOTHING")
-		} else {
-			ctx.WriteString(" DO UPDATE SET ")
-			ctx.FormatNode(&node.OnConflict.Exprs)
-			if node.OnConflict.Where != nil {
-				ctx.WriteByte(' ')
-				ctx.FormatNode(node.OnConflict.Where)
-			}
+}
+
+// maybeWriteOnConflictClause outputs the ON CONFLICT DO UPDATE/NOTHING clause
+// when an explicit (non-UPSERT) OnConflict configuration is present.
+func (node *Insert) maybeWriteOnConflictClause(ctx *FmtCtx) {
+	if node.OnConflict == nil || node.OnConflict.IsUpsertAlias() {
+		return
+	}
+	ctx.WriteString(" ON CONFLICT")
+	node.writeOnConflictColumns(ctx)
+	node.writeOnConflictAction(ctx)
+}
+
+// writeOnConflictColumns outputs the parenthesized conflict column list.
+func (node *Insert) writeOnConflictColumns(ctx *FmtCtx) {
+	if len(node.OnConflict.Columns) > 0 {
+		ctx.WriteString(" (")
+		ctx.FormatNode(&node.OnConflict.Columns)
+		ctx.WriteString(")")
+	}
+}
+
+// writeOnConflictAction emits either DO NOTHING or DO UPDATE SET with optional
+// WHERE clause.
+func (node *Insert) writeOnConflictAction(ctx *FmtCtx) {
+	if node.OnConflict.DoNothing {
+		ctx.WriteString(" DO NOTHING")
+	} else {
+		ctx.WriteString(" DO UPDATE SET ")
+		ctx.FormatNode(&node.OnConflict.Exprs)
+		if node.OnConflict.Where != nil {
+			ctx.WriteByte(' ')
+			ctx.FormatNode(node.OnConflict.Where)
 		}
 	}
+}
+
+// maybeWriteReturningClause emits the RETURNING clause when present.
+func (node *Insert) maybeWriteReturningClause(ctx *FmtCtx) {
 	if HasReturningClause(node.Returning) {
 		ctx.WriteByte(' ')
 		ctx.FormatNode(node.Returning)

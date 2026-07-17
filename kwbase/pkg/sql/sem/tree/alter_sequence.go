@@ -23,9 +23,12 @@ type AlterSequence struct {
 	Options  SequenceOptions
 }
 
+// alterSequenceKeyword is the SQL keyword prefix for ALTER SEQUENCE.
+const alterSequenceKeyword = "ALTER SEQUENCE "
+
 // Format implements the NodeFormatter interface.
 func (node *AlterSequence) Format(ctx *FmtCtx) {
-	ctx.WriteString("ALTER SEQUENCE ")
+	ctx.WriteString(alterSequenceKeyword)
 	if node.IfExists {
 		ctx.WriteString("IF EXISTS ")
 	}
