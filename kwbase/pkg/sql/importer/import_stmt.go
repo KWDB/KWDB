@@ -645,8 +645,11 @@ func getOptsParas(fileFormat string, opts map[string]string) (roachpb.IOFileForm
 		if limitMemory > maxMemory {
 			return ioFileFormat, errors.Errorf("limit_memory exceeds maximum allowed value (1PB)")
 		}
-		ioFileFormat.Csv.LimitMemory = limitMemory
 	}
+	if limitMemory == 0 {
+		limitMemory = 1024 * 1024 * 10 //10MB
+	}
+	ioFileFormat.Csv.LimitMemory = limitMemory
 	// log.Infof(context.Background(), "logColumn %d, threads %d, batchRows %d",
 	// 	ioFileFormat.Csv.LogColumn, ioFileFormat.Csv.Threads, ioFileFormat.Csv.BatchRows)
 	return ioFileFormat, nil
