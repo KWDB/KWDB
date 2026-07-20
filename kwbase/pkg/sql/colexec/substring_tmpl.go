@@ -142,7 +142,7 @@ func (s *substring_StartType_LengthTypeOperator) Next(ctx context.Context) colda
 					continue
 				}
 
-				runes := runeVec.Get(rowIdx)
+				runes := []rune(string(runeVec.Get(rowIdx)))
 				// Substring start is 1 indexed.
 				start := int(startVec[rowIdx]) - 1
 				length := int(lengthVec[rowIdx])
@@ -165,7 +165,7 @@ func (s *substring_StartType_LengthTypeOperator) Next(ctx context.Context) colda
 				} else if start > len(runes) {
 					start = len(runes)
 				}
-				outputCol.Set(rowIdx, runes[start:end])
+				outputCol.Set(rowIdx, []byte(string(runes[start:end])))
 			}
 		},
 	)

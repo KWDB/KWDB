@@ -82,6 +82,26 @@ func TestBasicBuiltinFunctions(t *testing.T) {
 			inputTypes:   []types.T{*types.String},
 			outputTuples: tuples{{"Hello", 5}, {"The", 3}},
 		},
+		{
+			desc:      "SubstringUnicode",
+			expr:      "substring(@1, @2, @3)",
+			inputCols: []int{0, 1, 2},
+			inputTuples: tuples{
+				{"你好世界", 1, 1},
+				{"你好世界", 1, 2},
+				{"abc", 1, 2},
+				{"😀x", 1, 1},
+				{"😀x", 1, 2},
+			},
+			inputTypes: []types.T{*types.String, *types.Int, *types.Int},
+			outputTuples: tuples{
+				{"你好世界", 1, 1, "你"},
+				{"你好世界", 1, 2, "你好"},
+				{"abc", 1, 2, "ab"},
+				{"😀x", 1, 1, "😀"},
+				{"😀x", 1, 2, "😀x"},
+			},
+		},
 	}
 
 	for _, tc := range testCases {

@@ -786,6 +786,13 @@ func (c floatCustomizer) getCmpOpCompareFunc() compareFunc {
 
 func (c floatCustomizer) getBinOpAssignFunc() assignFunc {
 	return func(op overload, target, l, r string) string {
+		if op.BinOp == tree.Div {
+			return fmt.Sprintf(`
+			if %[3]s == 0.0 {
+				execerror.NonVectorizedPanic(tree.ErrDivByZero)
+			}
+			%[1]s = float64(%[2]s) / float64(%[3]s)`, target, l, r)
+		}
 		// The float64 customizer handles binOps with floats of different widths (in
 		// addition to handling float64-only arithmetic), so we must cast to float64
 		// in this case.
