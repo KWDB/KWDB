@@ -159,6 +159,13 @@ class Executer(object):
             path.dirname(sql_file),
             'master',
             f'{path.basename(sql_file)}_{self.__topology}{case_name}.master')
+        if not path.exists(master_file):
+          # if there's no master fi le for 5c or 5cr, we fall back to 1n.master
+          # this can reduce the master file we need to maintain         
+          master_file = path.join(
+              path.dirname(sql_file),
+              'master',
+              f'{path.basename(sql_file)}_1n{case_name}.master')
       else:
         master_file = path.join(
             path.dirname(sql_file),
@@ -169,6 +176,13 @@ class Executer(object):
               path.dirname(sql_file),
               'master',
               f'{path.basename(sql_file)}_{self.__topology}{case_name}.master')
+          if not path.exists(master_file):
+          # if there's no master file for 5c or 5cr, we fall back to 1n.master
+          # this can reduce the master file we need to maintain         
+            master_file = path.join(
+                path.dirname(sql_file),
+                'master',
+                f'{path.basename(sql_file)}_1n{case_name}.master')
       if getenv("OVERWRITE_MASTER") == "yes":
         output_path = master_file
       utils.FileWrite(output_path, output)
