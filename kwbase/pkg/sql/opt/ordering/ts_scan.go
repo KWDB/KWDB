@@ -35,7 +35,7 @@ func tsScanBuildProvided(expr memo.RelExpr, required *physical.OrderingChoice) o
 	indexColID := scan.Table.ColumnID(0)
 	descending := false
 	for right := 0; right < len(required.Columns); {
-		if required.Optional.Contains(indexColID) {
+		if required.OptionalContains(indexColID) {
 			continue
 		}
 		reqCol := &required.Columns[right]
@@ -77,7 +77,7 @@ func TSScanPrivateCanProvide(
 	descending := false
 	indexColID := s.Table.ColumnID(0)
 	for right := 0; right < len(required.Columns); {
-		if required.Optional.Contains(indexColID) {
+		if required.OptionalContains(indexColID) {
 			continue
 		}
 		reqCol := &required.Columns[right]

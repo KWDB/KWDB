@@ -63,11 +63,16 @@ func NewExprNameGenerator(prefix string) *ExprNameGenerator {
 // consistent name, always call GenerateName in a pre-order traversal of the
 // expression tree.
 func (g *ExprNameGenerator) GenerateName(op opt.Operator) string {
-	// Replace all instances of "-" in the operator name with "_" in order to
-	// create a legal table name.
-	operator := strings.Replace(op.String(), "-", "_", -1)
+	// Normalize the operator name for use as a legal SQL identifier.
+	operator := sanitizeOperatorName(op.String())
 	g.exprCount++
 	return fmt.Sprintf("%s_%s_%d", g.prefix, operator, g.exprCount)
+}
+
+// sanitizeOperatorName replaces dashes with underscores to produce a legal
+// table/column name from an operator description.
+func sanitizeOperatorName(raw string) string {
+	return strings.Replace(raw, "-", "_", -1)
 }
 
 // ColumnNameGenerator is used to generate a unique name for each column of a
@@ -94,24 +99,30 @@ func NewColumnNameGenerator(e RelExpr) *ColumnNameGenerator {
 // variable `save_tables_prefix` is non-empty.
 func (g *ColumnNameGenerator) GenerateName(col opt.ColumnID) string {
 	colMeta := g.e.Memo().Metadata().ColumnMeta(col)
-	colName := colMeta.Alias
+	colName := resolvePresentedColumnName(col, colMeta.Alias, g.pres)
+	return deduplicateColumnName(colName, g.seen)
+}
 
-	// Check whether the presentation has a different name for this column, and
-	// use it if available.
-	for i := range g.pres {
-		if g.pres[i].ID == col {
-			colName = g.pres[i].Alias
-			break
+// resolvePresentedColumnName looks up the column alias from the presentation
+// metadata, falling back to the base name from column metadata.
+func resolvePresentedColumnName(
+	col opt.ColumnID, baseName string, pres physical.Presentation,
+) string {
+	for i := range pres {
+		if pres[i].ID == col {
+			return pres[i].Alias
 		}
 	}
+	return baseName
+}
 
-	// Every column name must be unique.
-	if cnt, ok := g.seen[colName]; ok {
-		g.seen[colName]++
-		colName = fmt.Sprintf("%s_%d", colName, cnt)
-	} else {
-		g.seen[colName] = 1
+// deduplicateColumnName ensures the returned column name is unique by appending
+// a counter suffix when the same base name has been seen before.
+func deduplicateColumnName(baseName string, seen map[string]int) string {
+	if cnt, ok := seen[baseName]; ok {
+		seen[baseName]++
+		return fmt.Sprintf("%s_%d", baseName, cnt)
 	}
-
-	return colName
+	seen[baseName] = 1
+	return baseName
 }

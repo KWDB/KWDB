@@ -16,16 +16,19 @@ import "encoding/binary"
 // in-memory grouping key. The key is only for priTagValMap grouping; it is not
 // the payload primaryTag bytes and is not the KV primary tag key.
 func AppendTSPrimaryTagGroupingKeyBytes(dst []byte, value []byte) []byte {
-	var lenBuf [binary.MaxVarintLen64]byte
-	n := binary.PutUvarint(lenBuf[:], uint64(len(value)))
-	dst = append(dst, lenBuf[:n]...)
-	return append(dst, value...)
+	return appendPrefixedComponent(dst, value)
 }
 
 // AppendTSPrimaryTagGroupingKeyString appends one primary-tag component to an
 // in-memory grouping key. The key is only for priTagValMap grouping; it is not
 // the payload primaryTag bytes and is not the KV primary tag key.
 func AppendTSPrimaryTagGroupingKeyString(dst []byte, value string) []byte {
+	return appendPrefixedComponent(dst, []byte(value))
+}
+
+// appendPrefixedComponent appends a length-prefixed byte sequence to dst.
+// The length is encoded as a varint to ensure unambiguous tuple boundaries.
+func appendPrefixedComponent(dst []byte, value []byte) []byte {
 	var lenBuf [binary.MaxVarintLen64]byte
 	n := binary.PutUvarint(lenBuf[:], uint64(len(value)))
 	dst = append(dst, lenBuf[:n]...)

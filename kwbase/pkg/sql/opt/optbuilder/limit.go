@@ -53,10 +53,21 @@ func (b *Builder) buildLimit(limit *tree.Limit, parentScope, inScope *scope) {
 		)
 		inScope.expr = b.factory.ConstructLimit(input, limit, inScope.makeOrderingChoice())
 	}
-	// ordering is stored by limit or offset if rootExpr are limit or offset, we need not handle orderBy in fromSubquery.
+	// ordering is stored by limit or offset if rootExpr are limit or offset,
+	// we need not handle orderBy in fromSubquery.
 	// there exists some RBO rule that enables Limit push, eg: PushLimitIntoWindow
-	switch inScope.expr.(type) {
-	case *memo.LimitExpr, *memo.OffsetExpr:
+	if isExprLimitOrOffset(inScope.expr) {
 		inScope.noHandleOrderInFrom = true
 	}
+}
+
+// isExprLimitOrOffset returns true when the expression is a LimitExpr or
+// OffsetExpr, indicating that ordering is already handled by these operators
+// and the from-subquery code path should not manage ordering.
+func isExprLimitOrOffset(expr memo.RelExpr) bool {
+	switch expr.(type) {
+	case *memo.LimitExpr, *memo.OffsetExpr:
+		return true
+	}
+	return false
 }

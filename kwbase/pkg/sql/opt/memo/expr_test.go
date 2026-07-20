@@ -437,7 +437,7 @@ func TestExprSort(t *testing.T) {
 	}
 
 	w := memo.SortExpr{Input: helper.selectExpr}
-	w.InputOrdering.Optional = opt.ColSet{}
+	w.InputOrdering.OptionalInit(opt.ColSet{})
 	w.InputOrdering.Columns = make([]physical.OrderingColumnChoice, 1)
 	{
 		w.InputOrdering.Columns[0].Group.Add(1)

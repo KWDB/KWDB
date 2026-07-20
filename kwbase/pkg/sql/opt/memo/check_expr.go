@@ -91,48 +91,13 @@ func (m *Memo) CheckExpr(e opt.Expr) {
 			panic(errors.AssertionFailedf("NoIndexJoin and ForceIndex set"))
 		}
 
-	case *ProjectExpr:
-		for _, item := range t.Projections {
-			// Check that column id is set.
-			if item.Col == 0 {
-				panic(errors.AssertionFailedf("projections column cannot have id of 0"))
-			}
-
-			// Check that column is not both passthrough and synthesized.
-			if t.Passthrough.Contains(item.Col) {
-				panic(errors.AssertionFailedf(
-					"both passthrough and synthesized have column %d", log.Safe(item.Col)))
-			}
-
-			// Check that columns aren't passed through in projection expressions.
-			if v, ok := item.Element.(*VariableExpr); ok {
-				if v.Col == item.Col {
-					panic(errors.AssertionFailedf("projection passes through column %d", log.Safe(item.Col)))
-				}
-			}
-		}
-
 	case *SelectExpr:
 		checkFilters(t.Filters)
 
 	case *AggregationsExpr:
-		var checkAggs func(scalar opt.ScalarExpr)
-		checkAggs = func(scalar opt.ScalarExpr) {
-			switch scalar.Op() {
-			case opt.AggDistinctOp:
-				checkAggs(scalar.Child(0).(opt.ScalarExpr))
-
-			case opt.VariableOp:
-
-			default:
-				if !opt.IsAggregateOp(scalar) {
-					panic(errors.AssertionFailedf("aggregate contains illegal op: %s", log.Safe(scalar.Op())))
-				}
-			}
-		}
 		for _, item := range *t {
-			// Check that aggregations only contain aggregates and variables.
-			checkAggs(item.Agg)
+			// Verify that the aggregation item contains only valid aggregate operators.
+			validateAggregationOp(item.Agg)
 
 			// Check that column id is set.
 			if item.Col == 0 {
@@ -146,27 +111,18 @@ func (m *Memo) CheckExpr(e opt.Expr) {
 		}
 
 	case *DistinctOnExpr, *UpsertDistinctOnExpr:
-		checkErrorOnDup(e.(RelExpr))
-
-		// Check that aggregates can be only FirstAgg or ConstAgg.
 		for _, item := range *t.Child(1).(*AggregationsExpr) {
-			switch item.Agg.Op() {
-			case opt.FirstAggOp, opt.ConstAggOp:
-
-			default:
-				panic(errors.AssertionFailedf("distinct-on contains %s", log.Safe(item.Agg.Op())))
-			}
+			validateDistinctOnAggregation(item.Agg.Op())
 		}
 
 	case *GroupByExpr, *ScalarGroupByExpr:
-		checkErrorOnDup(e.(RelExpr))
-
-		// Check that aggregates cannot be FirstAgg.
 		for _, item := range *t.Child(1).(*AggregationsExpr) {
-			switch item.Agg.Op() {
-			case opt.FirstAggOp:
-				panic(errors.AssertionFailedf("group-by contains %s", log.Safe(item.Agg.Op())))
-			}
+			validateGroupByAggregation(item.Agg.Op())
+		}
+
+	case *ProjectExpr:
+		for _, item := range t.Projections {
+			validateProjectionItem(item, t.Passthrough)
 		}
 
 	case *IndexJoinExpr:
@@ -307,5 +263,57 @@ func checkErrorOnDup(e RelExpr) {
 	// Only UpsertDistinctOn should set the ErrorOnDup field to true.
 	if e.Op() != opt.UpsertDistinctOnOp && e.Private().(*GroupingPrivate).ErrorOnDup {
 		panic(errors.AssertionFailedf("%s should never set ErrorOnDup to true", log.Safe(e.Op())))
+	}
+}
+
+// validateAggregationOp recursively checks that a scalar expression within an
+// AggregationsExpr contains only valid aggregate operators (or AggDistinct
+// wrappers). Bare VariableOps are permitted only inside AggDistinct.
+func validateAggregationOp(scalar opt.ScalarExpr) {
+	switch scalar.Op() {
+	case opt.AggDistinctOp:
+		validateAggregationOp(scalar.Child(0).(opt.ScalarExpr))
+	case opt.VariableOp:
+		// Variables are valid children under AggDistinct.
+	default:
+		if !opt.IsAggregateOp(scalar) {
+			panic(errors.AssertionFailedf("aggregate contains illegal op: %s", log.Safe(scalar.Op())))
+		}
+	}
+}
+
+// validateDistinctOnAggregation asserts that the aggregate operator in a
+// DistinctOn expression is either FirstAgg or ConstAgg.
+func validateDistinctOnAggregation(op opt.Operator) {
+	switch op {
+	case opt.FirstAggOp, opt.ConstAggOp:
+	default:
+		panic(errors.AssertionFailedf("distinct-on contains %s", log.Safe(op)))
+	}
+}
+
+// validateGroupByAggregation asserts that the aggregate operator in a GroupBy
+// expression is not FirstAgg (which is incompatible with GroupBy).
+func validateGroupByAggregation(op opt.Operator) {
+	if op == opt.FirstAggOp {
+		panic(errors.AssertionFailedf("group-by contains %s", log.Safe(op)))
+	}
+}
+
+// validateProjectionItem performs sanity checks on a single projection item:
+// the column ID must be non-zero, the column must not be both passthrough and
+// synthesized, and the element must not be a trivial pass-through variable.
+func validateProjectionItem(item ProjectionsItem, passthrough opt.ColSet) {
+	if item.Col == 0 {
+		panic(errors.AssertionFailedf("projections column cannot have id of 0"))
+	}
+	if passthrough.Contains(item.Col) {
+		panic(errors.AssertionFailedf(
+			"both passthrough and synthesized have column %d", log.Safe(item.Col)))
+	}
+	if v, ok := item.Element.(*VariableExpr); ok {
+		if v.Col == item.Col {
+			panic(errors.AssertionFailedf("projection passes through column %d", log.Safe(item.Col)))
+		}
 	}
 }

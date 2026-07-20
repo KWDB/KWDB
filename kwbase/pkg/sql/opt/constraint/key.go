@@ -40,6 +40,9 @@ var EmptyKey = Key{}
 // correspond to a set of columns; it is the responsibility of the calling code
 // to keep track of them.
 // Key is immutable; it cannot be changed once created.
+//
+// Storage layout: firstVal is stored inline to avoid an extra allocation in
+// the common single-value case. Additional values live in otherVals.
 type Key struct {
 	// firstVal stores the first value in the key. Subsequent values are stored
 	// in otherVals. Inlining the first value avoids an extra allocation in the
@@ -58,7 +61,8 @@ func MakeKey(val tree.Datum) Key {
 }
 
 // MakeCompositeKey constructs an N-dimensional key from the given slice of
-// values.
+// values. Zero values produce an empty key; one value uses the inline form;
+// more values populate the otherVals slice.
 func MakeCompositeKey(vals ...tree.Datum) Key {
 	switch len(vals) {
 	case 0:
@@ -122,37 +126,14 @@ func (k Key) Value(nth int) tree.Datum {
 //	[... - /1/2] (inclusive end key)  : ExtendHigh: /1/2/High
 //	[... - /1/2) (exclusive end key)  : ExtendLow : /1/2/Low
 func (k Key) Compare(keyCtx *KeyContext, l Key, kext, lext KeyExtension) int {
+	// Compare values column by column up to the shorter key length.
+	if cmp := k.compareCommonPrefix(keyCtx, l); cmp != 0 {
+		return cmp
+	}
+
 	klen := k.Length()
 	llen := l.Length()
-	for i := 0; i < klen && i < llen; i++ {
-		if cmp := keyCtx.Compare(i, k.Value(i), l.Value(i)); cmp != 0 {
-			return cmp
-		}
-	}
-
-	if klen < llen {
-		// k matches a prefix of l:
-		//   k = /1
-		//   l = /1/2
-		// Which of these is "smaller" depends on whether k is extended with
-		// -inf or with +inf:
-		//   k (ExtendLow)  = /1/Low  < /1/2  ->  k is smaller (-1)
-		//   k (ExtendHigh) = /1/High > /1/2  ->  k is bigger  (1)
-		return kext.ToCmp()
-	} else if klen > llen {
-		// Inverse case of above.
-		return -lext.ToCmp()
-	}
-
-	// Equal keys:
-	//   k (ExtendLow)  vs. l (ExtendLow)   ->  equal   (0)
-	//   k (ExtendLow)  vs. l (ExtendHigh)  ->  smaller (-1)
-	//   k (ExtendHigh) vs. l (ExtendLow)   ->  bigger  (1)
-	//   k (ExtendHigh) vs. l (ExtendHigh)  ->  equal   (0)
-	if kext == lext {
-		return 0
-	}
-	return kext.ToCmp()
+	return resolveExtensionCmp(klen, llen, kext, lext)
 }
 
 // Concat creates a new composite key by extending this key's values with the
@@ -205,10 +186,8 @@ func (k Key) IsNextKey(keyCtx *KeyContext, other Key) bool {
 		return false
 	}
 	// All the datums up to the last one must be equal.
-	for i := 0; i < n-1; i++ {
-		if keyCtx.Compare(i, k.Value(i), other.Value(i)) != 0 {
-			return false
-		}
+	if !k.prefixEquals(keyCtx, other, n-1) {
+		return false
 	}
 
 	next, ok := keyCtx.Next(n-1, other.Value(n-1))
@@ -243,17 +222,10 @@ func (k Key) Next(keyCtx *KeyContext) (_ Key, ok bool) {
 	if !ok {
 		return Key{}, false
 	}
-	if col == 0 {
-		return Key{firstVal: nextVal}, true
-	}
-	// Keep the key up to col, and replace the value for col with nextVal.
-	vals := make([]tree.Datum, col)
-	copy(vals[:col-1], k.otherVals)
-	vals[col-1] = nextVal
-	return Key{firstVal: k.firstVal, otherVals: vals}, true
+	return k.replaceLastValue(col, nextVal), true
 }
 
-// Prev returns the next key; this only works for discrete types like integers.
+// Prev returns the previous key; this only works for discrete types like integers.
 //
 // Examples:
 //
@@ -273,14 +245,7 @@ func (k Key) Prev(keyCtx *KeyContext) (_ Key, ok bool) {
 	if !ok {
 		return Key{}, false
 	}
-	if col == 0 {
-		return Key{firstVal: prevVal}, true
-	}
-	// Keep the key up to col, and replace the value for col with prevVal.
-	vals := make([]tree.Datum, col)
-	copy(vals[:col-1], k.otherVals)
-	vals[col-1] = prevVal
-	return Key{firstVal: k.firstVal, otherVals: vals}, true
+	return k.replaceLastValue(col, prevVal), true
 }
 
 // String formats a key like this:
@@ -297,20 +262,97 @@ func (k Key) String() string {
 	return buf.String()
 }
 
-// KeyContext contains the necessary metadata for comparing Keys.
+// -------- internal helpers for Key --------
+
+// compareCommonPrefix compares values column by column up to the length of
+// the shorter key. Returns 0 if all compared values are equal, otherwise
+// returns the comparison result from the first differing column.
+func (k Key) compareCommonPrefix(keyCtx *KeyContext, l Key) int {
+	klen := k.Length()
+	llen := l.Length()
+	minLen := klen
+	if llen < minLen {
+		minLen = llen
+	}
+	for i := 0; i < minLen; i++ {
+		if cmp := keyCtx.Compare(i, k.Value(i), l.Value(i)); cmp != 0 {
+			return cmp
+		}
+	}
+	return 0
+}
+
+// prefixEquals checks that the first n values of k and other are identical.
+func (k Key) prefixEquals(keyCtx *KeyContext, other Key, n int) bool {
+	for i := 0; i < n; i++ {
+		if keyCtx.Compare(i, k.Value(i), other.Value(i)) != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// replaceLastValue creates a new key identical to k but with the value at
+// column col replaced by newVal. Used by Next/Prev to build successor keys.
+func (k Key) replaceLastValue(col int, newVal tree.Datum) Key {
+	if col == 0 {
+		return Key{firstVal: newVal}
+	}
+	// Keep the key up to col, and replace the value for col with newVal.
+	vals := make([]tree.Datum, col)
+	copy(vals[:col-1], k.otherVals)
+	vals[col-1] = newVal
+	return Key{firstVal: k.firstVal, otherVals: vals}
+}
+
+// resolveExtensionCmp determines comparison ordering when one key is a prefix
+// of another, using the key extension mapping:
+//
+//	k shorter than l: result = kext.ToCmp()
+//	l shorter than k: result = -lext.ToCmp()
+//	equal length:     0 if extensions equal, else kext.ToCmp()
+func resolveExtensionCmp(klen, llen int, kext, lext KeyExtension) int {
+	if klen < llen {
+		// k matches a prefix of l:
+		//   k = /1
+		//   l = /1/2
+		// Which of these is "smaller" depends on whether k is extended with
+		// -inf or with +inf:
+		//   k (ExtendLow)  = /1/Low  < /1/2  ->  k is smaller (-1)
+		//   k (ExtendHigh) = /1/High > /1/2  ->  k is bigger  (1)
+		return kext.ToCmp()
+	} else if klen > llen {
+		// Inverse case of above.
+		return -lext.ToCmp()
+	}
+
+	// Equal keys:
+	//   k (ExtendLow)  vs. l (ExtendLow)   ->  equal   (0)
+	//   k (ExtendLow)  vs. l (ExtendHigh)  ->  smaller (-1)
+	//   k (ExtendHigh) vs. l (ExtendLow)   ->  bigger  (1)
+	//   k (ExtendHigh) vs. l (ExtendHigh)  ->  equal   (0)
+	if kext == lext {
+		return 0
+	}
+	return kext.ToCmp()
+}
+
+// KeyContext contains the necessary metadata for comparing Keys:
+// the ordered Columns list and an EvalContext.
 type KeyContext struct {
 	Columns Columns
 	EvalCtx *tree.EvalContext
 }
 
-// MakeKeyContext initializes a KeyContext.
+// MakeKeyContext initializes a KeyContext from a Columns pointer and an
+// evaluation context.
 func MakeKeyContext(cols *Columns, evalCtx *tree.EvalContext) KeyContext {
 	return KeyContext{Columns: *cols, EvalCtx: evalCtx}
 }
 
 // Compare two values for a given column.
 // Returns 0 if the values are equal, -1 if a is less than b, or 1 if b is less
-// than a.
+// than a. The column's direction (ascending/descending) is taken into account.
 func (c *KeyContext) Compare(colIdx int, a, b tree.Datum) int {
 	// Fast path when the datums are the same.
 	if a == b {
@@ -324,24 +366,40 @@ func (c *KeyContext) Compare(colIdx int, a, b tree.Datum) int {
 }
 
 // Next returns the next value on a given column (for discrete types like
-// integers). See Datum.Next/Prev.
+// integers). For ascending columns this calls Datum.Next; for descending it
+// calls Datum.Prev. Returns (nil, false) if the value is already at the
+// extremum for its direction.
 func (c *KeyContext) Next(colIdx int, val tree.Datum) (_ tree.Datum, ok bool) {
-	if c.Columns.Get(colIdx).Ascending() {
-		if val.IsMax(c.EvalCtx) {
-			return nil, false
-		}
-		return val.Next(c.EvalCtx)
-	}
-	if val.IsMin(c.EvalCtx) {
-		return nil, false
-	}
-	return val.Prev(c.EvalCtx)
+	return c.adjacentValue(colIdx, val, true)
 }
 
 // Prev returns the previous value on a given column (for discrete types like
-// integers). See Datum.Next/Prev.
+// integers). For ascending columns this calls Datum.Prev; for descending it
+// calls Datum.Next. Returns (nil, false) if the value is already at the
+// extremum for its direction.
 func (c *KeyContext) Prev(colIdx int, val tree.Datum) (_ tree.Datum, ok bool) {
+	return c.adjacentValue(colIdx, val, false)
+}
+
+// adjacentValue is the unified implementation for Next and Prev. When next is
+// true it returns the successor value; otherwise the predecessor.
+// The direction of the column determines which Datum method is called and
+// which extremum check is used.
+func (c *KeyContext) adjacentValue(colIdx int, val tree.Datum, next bool) (_ tree.Datum, ok bool) {
 	if c.Columns.Get(colIdx).Ascending() {
+		if next {
+			if val.IsMax(c.EvalCtx) {
+				return nil, false
+			}
+			return val.Next(c.EvalCtx)
+		}
+		if val.IsMin(c.EvalCtx) {
+			return nil, false
+		}
+		return val.Prev(c.EvalCtx)
+	}
+	// Descending column: direction is inverted.
+	if next {
 		if val.IsMin(c.EvalCtx) {
 			return nil, false
 		}

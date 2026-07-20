@@ -628,9 +628,9 @@ func (m *Memo) SplitTagExpr(
 		}
 
 		mode := checkTagExpr(src, colMap)
-		canSplit := mode == 1<<hasTag || mode == (1<<hasTag+1<<hasConst)
+		canSplit := mode == tagOnlyMode || mode == tagAndConstMode
 		if m.CheckFlag(opt.ScalarSubQueryPush) {
-			canSplit = canSplit || mode == (1<<hasTag+1<<hasSubQuery)
+			canSplit = canSplit || mode == tagAndSubQueryMode
 		}
 		if canSplit {
 			return nil, FiltersExpr{FiltersItem{Condition: source.(opt.ScalarExpr)}}
@@ -781,6 +781,16 @@ const (
 	hasColumn = 3
 	// hasSubQuery sub query expr flag
 	hasSubQuery = 4
+)
+
+// Pre-computed tag expression mode combinations for use in SplitTagExpr.
+const (
+	// tagOnlyMode indicates the expression contains only tag columns.
+	tagOnlyMode = 1 << hasTag
+	// tagAndConstMode indicates the expression contains tag columns and constants.
+	tagAndConstMode = (1 << hasTag) | (1 << hasConst)
+	// tagAndSubQueryMode indicates the expression contains tag columns and subqueries.
+	tagAndSubQueryMode = (1 << hasTag) | (1 << hasSubQuery)
 )
 
 // checkTagExpr check if expr can push down, including src expr self and children

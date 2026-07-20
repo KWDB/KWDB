@@ -77,11 +77,7 @@ type FiltersItem struct {
 // Init initializes the constraint to the columns in the key context and with
 // the given spans.
 func (c *Constraint) Init(keyCtx *KeyContext, spans *Spans) {
-	for i := 1; i < spans.Count(); i++ {
-		if !spans.Get(i).StartsStrictlyAfter(keyCtx, spans.Get(i-1)) {
-			panic(errors.AssertionFailedf("spans must be ordered and non-overlapping"))
-		}
-	}
+	c.validateSpansOrdered(keyCtx, spans)
 	c.Columns = keyCtx.Columns
 	c.Spans = *spans
 	c.Spans.makeImmutable()
@@ -110,82 +106,15 @@ func (c *Constraint) IsUnconstrained() bool {
 // merged constraint can have values that are part of either of the input
 // constraints.
 func (c *Constraint) UnionWith(evalCtx *tree.EvalContext, other *Constraint) {
-	if !c.Columns.Equals(&other.Columns) {
-		panic(errors.AssertionFailedf("column mismatch"))
-	}
+	c.assertColumnsMatch(other)
 	if c.IsUnconstrained() || other.IsContradiction() {
 		return
 	}
 
 	// Use variation on merge sort, because both sets of spans are ordered and
 	// non-overlapping.
-
-	left := &c.Spans
-	leftIndex := 0
-	right := &other.Spans
-	rightIndex := 0
 	keyCtx := MakeKeyContext(&c.Columns, evalCtx)
-	var result Spans
-	result.Alloc(left.Count() + right.Count())
-
-	for leftIndex < left.Count() || rightIndex < right.Count() {
-		if rightIndex < right.Count() {
-			if leftIndex >= left.Count() ||
-				left.Get(leftIndex).Compare(&keyCtx, right.Get(rightIndex)) > 0 {
-				// Swap the two sets, so that going forward the current left
-				// span starts before the current right span.
-				left, right = right, left
-				leftIndex, rightIndex = rightIndex, leftIndex
-			}
-		}
-
-		// Merge this span with any overlapping spans in left or right. Initially,
-		// it can only overlap with spans in right, but after the merge we can
-		// have new overlaps; hence why this is a loop and we check against both
-		// left and right. For example:
-		//   left : [/1 - /10] [/20 - /30] [/40 - /50]
-		//   right: [/5 - /25] [/30 - /40]
-		//                             span
-		//   initial:                [/1 - /10]
-		//   merge with [/5 - /25]:  [/1 - /25]
-		//   merge with [/20 - /30]: [/1 - /30]
-		//   merge with [/30 - /40]: [/1 - /40]
-		//   merge with [/40 - /50]: [/1 - /50]
-		//
-		mergeSpan := *left.Get(leftIndex)
-		leftIndex++
-		for {
-			// Note that Span.TryUnionWith returns false for a different reason
-			// than Constraint.tryUnionWith. Span.TryUnionWith returns false
-			// when the spans are not contiguous, and therefore the union cannot
-			// be represented as a valid Span. Constraint.tryUnionWith returns
-			// false when the merged spans are unconstrained (cover entire key
-			// range), and therefore the union cannot be represented as a valid
-			// Constraint.
-			var ok bool
-			if leftIndex < left.Count() {
-				if mergeSpan.TryUnionWith(&keyCtx, left.Get(leftIndex)) {
-					leftIndex++
-					ok = true
-				}
-			}
-			if rightIndex < right.Count() {
-				if mergeSpan.TryUnionWith(&keyCtx, right.Get(rightIndex)) {
-					rightIndex++
-					ok = true
-				}
-			}
-
-			// If neither union succeeded, then it means either:
-			//   1. The spans don't merge into a single contiguous span, and will
-			//      need to be represented separately in this constraint.
-			//   2. There are no more spans to merge.
-			if !ok {
-				break
-			}
-		}
-		result.Append(&mergeSpan)
-	}
+	result := mergeSpansForUnion(keyCtx, c.Spans, other.Spans)
 
 	c.Spans = result
 	c.Spans.makeImmutable()
@@ -198,47 +127,15 @@ func (c *Constraint) UnionWith(evalCtx *tree.EvalContext, other *Constraint) {
 // If a constraint set has even one empty constraint, then the entire set
 // should be marked as empty and all constraints removed.
 func (c *Constraint) IntersectWith(evalCtx *tree.EvalContext, other *Constraint) {
-	if !c.Columns.Equals(&other.Columns) {
-		panic(errors.AssertionFailedf("column mismatch"))
-	}
+	c.assertColumnsMatch(other)
 	if c.IsContradiction() || other.IsUnconstrained() {
 		return
 	}
 
 	// Use variation on merge sort, because both sets of spans are ordered and
 	// non-overlapping.
-
-	left := &c.Spans
-	leftIndex := 0
-	right := &other.Spans
-	rightIndex := 0
 	keyCtx := MakeKeyContext(&c.Columns, evalCtx)
-	var result Spans
-	result.Alloc(left.Count())
-
-	for leftIndex < left.Count() && rightIndex < right.Count() {
-		if left.Get(leftIndex).StartsAfter(&keyCtx, right.Get(rightIndex)) {
-			rightIndex++
-			continue
-		}
-
-		mergeSpan := *left.Get(leftIndex)
-		if !mergeSpan.TryIntersectWith(&keyCtx, right.Get(rightIndex)) {
-			leftIndex++
-			continue
-		}
-		result.Append(&mergeSpan)
-
-		// Skip past whichever span ends first, or skip past both if they have
-		// the same endpoint.
-		cmp := left.Get(leftIndex).CompareEnds(&keyCtx, right.Get(rightIndex))
-		if cmp <= 0 {
-			leftIndex++
-		}
-		if cmp >= 0 {
-			rightIndex++
-		}
-	}
+	result := intersectSpansMerge(keyCtx, c.Spans, other.Spans)
 
 	c.Spans = result
 	c.Spans.makeImmutable()
@@ -248,35 +145,15 @@ func (c Constraint) String() string {
 	var b strings.Builder
 	b.WriteString(c.Columns.String())
 	b.WriteString(": ")
-	if c.IsUnconstrained() {
-		b.WriteString("unconstrained")
-	} else if c.IsContradiction() {
-		b.WriteString("contradiction")
-	} else {
-		b.WriteString(c.Spans.String())
-	}
+	b.WriteString(c.describeConstraintKind())
 	return b.String()
 }
 
 // ContainsSpan returns true if the constraint contains the given span (or a
-// span that contains it).
+// span that contains it). Uses binary search over ordered spans.
 func (c *Constraint) ContainsSpan(evalCtx *tree.EvalContext, sp *Span) bool {
 	keyCtx := MakeKeyContext(&c.Columns, evalCtx)
-	// Binary search to find an overlapping span.
-	for l, r := 0, c.Spans.Count()-1; l <= r; {
-		m := (l + r) / 2
-		cSpan := c.Spans.Get(m)
-		if sp.StartsAfter(&keyCtx, cSpan) {
-			l = m + 1
-		} else if cSpan.StartsAfter(&keyCtx, sp) {
-			r = m - 1
-		} else {
-			// The spans must overlap. Check if sp is fully contained.
-			return sp.CompareStarts(&keyCtx, cSpan) >= 0 &&
-				sp.CompareEnds(&keyCtx, cSpan) <= 0
-		}
-	}
-	return false
+	return c.binarySearchContains(&keyCtx, sp)
 }
 
 // Combine refines the receiver constraint using constraints on a suffix of the
@@ -295,119 +172,14 @@ func (c *Constraint) Combine(evalCtx *tree.EvalContext, other *Constraint) {
 		return
 	}
 	if other.IsContradiction() {
-		c.Spans = Spans{}
-		c.Spans.makeImmutable()
+		c.setContradiction()
 		return
 	}
 	offset := c.Columns.Count() - other.Columns.Count()
 
-	var result Spans
-	// We only initialize result if we determine that we need to modify the list
-	// of spans.
-	var resultInitialized bool
 	keyCtx := KeyContext{Columns: c.Columns, EvalCtx: evalCtx}
-
-	for i := 0; i < c.Spans.Count(); i++ {
-		sp := *c.Spans.Get(i)
-
-		startLen, endLen := sp.start.Length(), sp.end.Length()
-
-		// Try to extend the start and end keys.
-		// TODO(radu): we could look at offsets in between 0 and startLen/endLen and
-		// potentially tighten up the spans (e.g. (a, b) > (1, 2) AND b > 10).
-
-		if startLen == endLen && startLen == offset &&
-			sp.start.Compare(&keyCtx, sp.end, ExtendLow, ExtendLow) == 0 {
-			// Special case when the start and end keys are equal (i.e. an exact value
-			// on this column). This is the only case where we can break up a single
-			// span into multiple spans. Note that this implies inclusive boundaries.
-			//
-			// For example:
-			//  @1 = 1 AND @2 IN (3, 4, 5)
-			//  constraint[0]:
-			//    [/1 - /1]
-			//  constraint[1]:
-			//    [/3 - /3]
-			//    [/4 - /4]
-			//    [/5 - /5]
-			//  We break up the span to get:
-			//    [/1/3 - /1/3]
-			//    [/1/4 - /1/4]
-			//    [/1/5 - /1/5]
-
-			if !resultInitialized {
-				resultInitialized = true
-				result.Alloc(c.Spans.Count() + other.Spans.Count())
-				for j := 0; j < i; j++ {
-					result.Append(c.Spans.Get(j))
-				}
-			}
-			for j := 0; j < other.Spans.Count(); j++ {
-				extSp := other.Spans.Get(j)
-				var newSp Span
-				newSp.Init(
-					sp.start.Concat(extSp.start), extSp.startBoundary,
-					sp.end.Concat(extSp.end), extSp.endBoundary,
-				)
-				result.Append(&newSp)
-			}
-			continue
-		}
-
-		var modified bool
-		if startLen == offset && sp.startBoundary == IncludeBoundary {
-			// We can advance the starting boundary. Calculate constraints for the
-			// column that follows. If we have multiple constraints, we can only use
-			// the start of the first one to tighten the span.
-			// For example:
-			//   @1 >= 2 AND @2 IN (1, 2, 3).
-			//   constraints[0]:
-			//     [/2 - ]
-			//   constraints[1]:
-			//     [/1 - /1]
-			//     [/2 - /2]
-			//     [/3 - /3]
-			//   The best we can do is tighten the span to:
-			//     [/2/1 - ]
-			extSp := other.Spans.Get(0)
-			if extSp.start.Length() > 0 {
-				sp.start = sp.start.Concat(extSp.start)
-				sp.startBoundary = extSp.startBoundary
-				modified = true
-			}
-		}
-		// End key case is symmetric with the one above.
-		if endLen == offset && sp.endBoundary == IncludeBoundary {
-			extSp := other.Spans.Get(other.Spans.Count() - 1)
-			if extSp.end.Length() > 0 {
-				sp.end = sp.end.Concat(extSp.end)
-				sp.endBoundary = extSp.endBoundary
-				modified = true
-			}
-		}
-		if modified {
-			// We only initialize result if we need to modify the list of spans.
-			if !resultInitialized {
-				resultInitialized = true
-				result.Alloc(c.Spans.Count())
-				for j := 0; j < i; j++ {
-					result.Append(c.Spans.Get(j))
-				}
-			}
-			// The span can become invalid (empty). For example:
-			//   /1/2: [/1 - /1/2]
-			//   /2: [/5 - /5]
-			// This results in an invalid span [/1/5 - /1/2] which we must discard.
-			if sp.start.Compare(&keyCtx, sp.end, sp.startExt(), sp.endExt()) < 0 {
-				result.Append(&sp)
-			}
-		} else {
-			if resultInitialized {
-				result.Append(&sp)
-			}
-		}
-	}
-	if resultInitialized {
+	result, ok := c.combineSpansWithSuffix(keyCtx, other, offset)
+	if ok {
 		c.Spans = result
 		c.Spans.makeImmutable()
 	}
@@ -418,28 +190,7 @@ func (c *Constraint) Combine(evalCtx *tree.EvalContext, other *Constraint) {
 //	[/1 - /2] [/3 - /4] becomes [/1 - /4].
 func (c *Constraint) ConsolidateSpans(evalCtx *tree.EvalContext) {
 	keyCtx := KeyContext{Columns: c.Columns, EvalCtx: evalCtx}
-	var result Spans
-	for i := 1; i < c.Spans.Count(); i++ {
-		last := c.Spans.Get(i - 1)
-		sp := c.Spans.Get(i)
-		if last.endBoundary == IncludeBoundary && sp.startBoundary == IncludeBoundary &&
-			sp.start.IsNextKey(&keyCtx, last.end) {
-			// We only initialize `result` if we need to change something.
-			if result.Count() == 0 {
-				result.Alloc(c.Spans.Count() - 1)
-				for j := 0; j < i; j++ {
-					result.Append(c.Spans.Get(j))
-				}
-			}
-			r := result.Get(result.Count() - 1)
-			r.end = sp.end
-			r.endBoundary = sp.endBoundary
-		} else {
-			if result.Count() != 0 {
-				result.Append(sp)
-			}
-		}
-	}
+	result := c.consolidateConsecutiveSpans(&keyCtx)
 	if result.Count() != 0 {
 		c.Spans = result
 		c.Spans.makeImmutable()
@@ -460,22 +211,8 @@ func (c *Constraint) ExactPrefix(evalCtx *tree.EvalContext) int {
 	}
 
 	for col := 0; ; col++ {
-		// Check if all spans have the same value for this column.
-		var val tree.Datum
-		for i := 0; i < c.Spans.Count(); i++ {
-			sp := c.Spans.Get(i)
-			if sp.start.Length() <= col || sp.end.Length() <= col {
-				return col
-			}
-			startVal := sp.start.Value(col)
-			if startVal.Compare(evalCtx, sp.end.Value(col)) != 0 {
-				return col
-			}
-			if i == 0 {
-				val = startVal
-			} else if startVal.Compare(evalCtx, val) != 0 {
-				return col
-			}
+		if !c.allSpansHaveSameValueAtColumn(evalCtx, col) {
+			return col
 		}
 	}
 }
@@ -488,20 +225,7 @@ func (c *Constraint) ExactPrefix(evalCtx *tree.EvalContext) int {
 // has 2 constrained columns. This may be less than the total number of columns
 // in the constraint, especially if it represents an index constraint.
 func (c *Constraint) ConstrainedColumns(evalCtx *tree.EvalContext) int {
-	count := 0
-	for i := 0; i < c.Spans.Count(); i++ {
-		sp := c.Spans.Get(i)
-		start := sp.StartKey()
-		end := sp.EndKey()
-		if start.Length() > count {
-			count = start.Length()
-		}
-		if end.Length() > count {
-			count = end.Length()
-		}
-	}
-
-	return count
+	return c.maxKeyDepth()
 }
 
 // Prefix returns the length of the longest prefix of columns for which all the
@@ -517,20 +241,7 @@ func (c *Constraint) ConstrainedColumns(evalCtx *tree.EvalContext) int {
 //	/a/b/c: [/1/2/3 - /1/2/3] [/1/2/5 - /1/3/8] -> ExactPrefix = 1, Prefix = 1
 //	/a/b/c: [/1/2/3 - /1/2/3] [/1/3/3 - /1/3/3] -> ExactPrefix = 1, Prefix = 3
 func (c *Constraint) Prefix(evalCtx *tree.EvalContext) int {
-	prefix := 0
-	for ; prefix < c.Columns.Count(); prefix++ {
-		for i := 0; i < c.Spans.Count(); i++ {
-			sp := c.Spans.Get(i)
-			start := sp.StartKey()
-			end := sp.EndKey()
-			if start.Length() <= prefix || end.Length() <= prefix ||
-				start.Value(prefix).Compare(evalCtx, end.Value(prefix)) != 0 {
-				return prefix
-			}
-		}
-	}
-
-	return prefix
+	return c.findUniformSpanPrefix(evalCtx)
 }
 
 // ExtractConstCols returns a set of columns which are restricted to be
@@ -565,40 +276,16 @@ func (c *Constraint) ExtractNotNullCols(evalCtx *tree.EvalContext) opt.ColSet {
 	// has prefix 2. Only these columns and the first following column can be
 	// known to be not-null.
 	prefix := c.Prefix(evalCtx)
-	for i := 0; i < prefix; i++ {
-		// hasNull identifies cases like [/1/NULL/1 - /1/NULL/2].
-		hasNull := false
-		for j := 0; j < c.Spans.Count(); j++ {
-			start := c.Spans.Get(j).StartKey()
-			hasNull = hasNull || start.Value(i) == tree.DNull
-		}
-		if !hasNull {
-			res.Add(c.Columns.Get(i).ID())
-		}
-	}
+	c.addNonNullPrefixCols(&res, evalCtx, prefix)
 	if prefix == c.Columns.Count() {
 		return res
 	}
 
 	// Now look at the first column that follows the prefix.
-	col := c.Columns.Get(prefix)
-	for i := 0; i < c.Spans.Count(); i++ {
-		span := c.Spans.Get(i)
-		var key Key
-		var boundary SpanBoundary
-		if !col.Descending() {
-			key, boundary = span.StartKey(), span.StartBoundary()
-		} else {
-			key, boundary = span.EndKey(), span.EndBoundary()
-		}
-		// If the span is unbounded on the NULL side, or if it is of the form
-		// [/NULL - /x], the column is nullable.
-		if key.Length() <= prefix || (key.Value(prefix) == tree.DNull && boundary == IncludeBoundary) {
-			return res
-		}
+	if c.isFirstColBeyondPrefixNonNull(evalCtx, prefix) {
+		col := c.Columns.Get(prefix)
+		res.Add(col.ID())
 	}
-	// All spans constrain col to be not-null.
-	res.Add(col.ID())
 	return res
 }
 
@@ -622,7 +309,7 @@ func (c *Constraint) CalculateMaxResults(
 	// Ensure that if we have nullable columns, we are only reading non-null
 	// values, given that a unique index allows an arbitrary number of duplicate
 	// entries if they have NULLs.
-	if !indexCols.SubsetOf(notNullCols.Union(c.ExtractNotNullCols(evalCtx))) {
+	if !c.allColsAreNonNull(indexCols, notNullCols, evalCtx) {
 		return 0
 	}
 
@@ -631,98 +318,26 @@ func (c *Constraint) CalculateMaxResults(
 	// Check if the longest prefix of columns for which all the spans have the
 	// same start and end values covers all columns.
 	prefix := c.Prefix(evalCtx)
-	var distinctVals uint64
-	if prefix < numCols-1 {
-		return 0
-	} else if prefix == numCols-1 {
-		// If the prefix does not include the last column, calculate the number of
-		// distinct values possible in the span. This is only supported for int
-		// and date types.
-		for i := 0; i < c.Spans.Count(); i++ {
-			sp := c.Spans.Get(i)
-			start := sp.StartKey()
-			end := sp.EndKey()
-
-			// Ensure that the keys specify the last column.
-			if start.Length() != numCols || end.Length() != numCols {
-				return 0
-			}
-
-			// TODO(asubiotto): This logic is very similar to
-			// updateDistinctCountsFromConstraint. It would be nice to extract this
-			// logic somewhere.
-			colIdx := numCols - 1
-			startVal := start.Value(colIdx)
-			endVal := end.Value(colIdx)
-			var startIntVal, endIntVal int64
-			if startVal.ResolvedType().Family() == types.IntFamily &&
-				endVal.ResolvedType().Family() == types.IntFamily {
-				startIntVal = int64(*startVal.(*tree.DInt))
-				endIntVal = int64(*endVal.(*tree.DInt))
-			} else if startVal.ResolvedType().Family() == types.DateFamily &&
-				endVal.ResolvedType().Family() == types.DateFamily {
-				startDate := startVal.(*tree.DDate)
-				endDate := endVal.(*tree.DDate)
-				if !startDate.IsFinite() || !endDate.IsFinite() {
-					// One of the boundaries is not finite, so we can't determine the
-					// distinct count for this column.
-					return 0
-				}
-				startIntVal = int64(startDate.PGEpochDays())
-				endIntVal = int64(endDate.PGEpochDays())
-			} else {
-				return 0
-			}
-
-			if c.Columns.Get(colIdx).Ascending() {
-				distinctVals += uint64(endIntVal - startIntVal)
-			} else {
-				distinctVals += uint64(startIntVal - endIntVal)
-			}
-
-			// Add one since both start and end boundaries should be inclusive
-			// (due to Span.PreferInclusive).
-			distinctVals++
-		}
-	} else {
-		distinctVals = uint64(c.Spans.Count())
-	}
-	return distinctVals
+	return c.computeDistinctValCount(evalCtx, numCols, prefix)
 }
 
 // TransformSpansToTsSpans convert spans in constraint to TsSpans.
 func (c *Constraint) TransformSpansToTsSpans(precision int32) []execinfrapb.TsSpan {
+	prec := getPrecisionFactor(precision)
+
 	var tsSpans []execinfrapb.TsSpan
 	var s execinfrapb.TsSpan
-
-	assign := func(start Key, startBoundary bool, end Key, endBoundary bool) (int64, int64) {
-		var startNew int64
-		var endNew int64
-		var prec int64
-		switch precision {
-		case 3:
-			prec = 1e3
-		case 6:
-			prec = 1e6
-		default:
-			prec = 1e9
-		}
-		startNew, endNew = assignPrecision(start, startBoundary, end, endBoundary, prec)
-		return startNew, endNew
-	}
 
 	first := c.Spans.firstSpan
 	others := c.Spans.otherSpans
 
-	//s.FromTimeStamp = assign(first.start, "from", first.startBoundary)
-	//s.ToTimeStamp = assign(first.end, "to", first.endBoundary)
-	s.FromTimeStamp, s.ToTimeStamp = assign(first.start, bool(first.startBoundary), first.end, bool(first.endBoundary))
+	s.FromTimeStamp, s.ToTimeStamp = convertSpanToTimestamp(first.start, bool(first.startBoundary), first.end, bool(first.endBoundary), prec)
 	if s.FromTimeStamp != math.MinInt64 || s.ToTimeStamp != math.MaxInt64 {
 		tsSpans = append(tsSpans, s)
 	}
 
 	for i := range others {
-		s.FromTimeStamp, s.ToTimeStamp = assign(others[i].start, bool(others[i].startBoundary), others[i].end, bool(others[i].endBoundary))
+		s.FromTimeStamp, s.ToTimeStamp = convertSpanToTimestamp(others[i].start, bool(others[i].startBoundary), others[i].end, bool(others[i].endBoundary), prec)
 
 		if s.FromTimeStamp != math.MinInt64 || s.ToTimeStamp != math.MaxInt64 {
 			tsSpans = append(tsSpans, s)
@@ -801,51 +416,398 @@ func (c *Constraint) TransformSpansToOsnSpans() []execinfrapb.OsnSpan {
 //											 and its units depend on precision
 //	 endNew           - endNew represents the integer corresponding to the end time,
 //	                    and its units depend on precision
-func assignPrecision(
-	start Key, startBoundary bool, end Key, endBoundary bool, precision int64,
-) (startNew int64, endNew int64) {
-	if start.firstVal != nil {
-		if t, ok := start.firstVal.(*tree.DTimestampTZ); ok {
-			nanosecond := t.Time.Nanosecond()
-			second := t.Time.Unix()
-			if second < math.MinInt64/precision {
-				startNew = math.MinInt64
-			} else {
-				startNew = second*precision + int64(nanosecond)/(1e9/precision)
-				if startBoundary {
-					startNew++
-				}
-			}
-		}
-	}
+// func assignPrecision(  //TODO: not sure if we should keep this version of assignPrecision
+// 	start Key, startBoundary bool, end Key, endBoundary bool, precision int64,
+// ) (startNew int64, endNew int64) {
+// 	if start.firstVal != nil {
+// 		if t, ok := start.firstVal.(*tree.DTimestampTZ); ok {
+// 			nanosecond := t.Time.Nanosecond()
+// 			second := t.Time.Unix()
+// 			if second < math.MinInt64/precision {
+// 				startNew = math.MinInt64
+// 			} else {
+// 				startNew = second*precision + int64(nanosecond)/(1e9/precision)
+// 				if startBoundary {
+// 					startNew++
+// 				}
+// 			}
+// 		}
+// 	}
+// }
 
-	if end.firstVal != nil {
-		if t, ok := end.firstVal.(*tree.DTimestampTZ); ok {
-			nanosecond := t.Time.Nanosecond()
-			second := t.Time.Unix()
-			if second > math.MaxInt64/precision {
-				endNew = math.MaxInt64
-			} else {
-				if second*precision <= (math.MaxInt64 - int64(nanosecond)/(1e9/precision)) {
-					endNew = second*precision + int64(nanosecond)/(1e9/precision)
-					if endBoundary {
-						if nanosecond%int(1e9/precision) == 0 {
-							endNew--
-						}
-					}
-				} else {
-					endNew = math.MaxInt64
-				}
+// assertColumnsMatch panics if the two constraints have different columns.
+func (c *Constraint) assertColumnsMatch(other *Constraint) {
+	if !c.Columns.Equals(&other.Columns) {
+		panic(errors.AssertionFailedf("column mismatch"))
+	}
+}
+
+// validateSpansOrdered panics if the spans are not ordered and non-overlapping.
+func (c *Constraint) validateSpansOrdered(keyCtx *KeyContext, spans *Spans) {
+	for i := 1; i < spans.Count(); i++ {
+		if !spans.Get(i).StartsStrictlyAfter(keyCtx, spans.Get(i-1)) {
+			panic(errors.AssertionFailedf("spans must be ordered and non-overlapping"))
+		}
+	}
+}
+
+// setContradiction clears all spans, making the constraint represent a
+// contradictory condition (no possible values).
+func (c *Constraint) setContradiction() {
+	c.Spans = Spans{}
+	c.Spans.makeImmutable()
+}
+
+// describeConstraintKind returns "unconstrained", "contradiction", or the
+// span list string depending on the constraint's state.
+func (c Constraint) describeConstraintKind() string {
+	if c.IsUnconstrained() {
+		return "unconstrained"
+	} else if c.IsContradiction() {
+		return "contradiction"
+	}
+	return c.Spans.String()
+}
+
+// binarySearchContains uses binary search over sorted spans to find one that
+// contains the given span.
+func (c *Constraint) binarySearchContains(keyCtx *KeyContext, sp *Span) bool {
+	// Binary search to find an overlapping span.
+	for l, r := 0, c.Spans.Count()-1; l <= r; {
+		m := (l + r) / 2
+		cSpan := c.Spans.Get(m)
+		if sp.StartsAfter(keyCtx, cSpan) {
+			l = m + 1
+		} else if cSpan.StartsAfter(keyCtx, sp) {
+			r = m - 1
+		} else {
+			// The spans must overlap. Check if sp is fully contained.
+			return sp.CompareStarts(keyCtx, cSpan) >= 0 &&
+				sp.CompareEnds(keyCtx, cSpan) <= 0
+		}
+	}
+	return false
+}
+
+// allSpansHaveSameValueAtColumn checks whether all spans share the same start
+// and end value at the given column index, and that value is consistent across
+// all spans. Returns false when a span lacks that column's values or values differ.
+func (c *Constraint) allSpansHaveSameValueAtColumn(evalCtx *tree.EvalContext, col int) bool {
+	var val tree.Datum
+	for i := 0; i < c.Spans.Count(); i++ {
+		sp := c.Spans.Get(i)
+		if sp.start.Length() <= col || sp.end.Length() <= col {
+			return false
+		}
+		startVal := sp.start.Value(col)
+		if startVal.Compare(evalCtx, sp.end.Value(col)) != 0 {
+			return false
+		}
+		if i == 0 {
+			val = startVal
+		} else if startVal.Compare(evalCtx, val) != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// maxKeyDepth returns the maximum key length across all spans. This represents
+// the number of columns constrained by the Constraint.
+func (c *Constraint) maxKeyDepth() int {
+	count := 0
+	for i := 0; i < c.Spans.Count(); i++ {
+		sp := c.Spans.Get(i)
+		start := sp.StartKey()
+		end := sp.EndKey()
+		if sl := start.Length(); sl > count {
+			count = sl
+		}
+		if el := end.Length(); el > count {
+			count = el
+		}
+	}
+	return count
+}
+
+// findUniformSpanPrefix returns the length of the longest prefix of columns
+// for which all spans have the same start and end values.
+func (c *Constraint) findUniformSpanPrefix(evalCtx *tree.EvalContext) int {
+	prefix := 0
+	for ; prefix < c.Columns.Count(); prefix++ {
+		if !c.spansHaveUniformPrefixAt(evalCtx, prefix) {
+			return prefix
+		}
+	}
+	return prefix
+}
+
+// spansHaveUniformPrefixAt returns true if at column index prefix, every span
+// has equal start and end values and both are present.
+func (c *Constraint) spansHaveUniformPrefixAt(evalCtx *tree.EvalContext, prefix int) bool {
+	for i := 0; i < c.Spans.Count(); i++ {
+		sp := c.Spans.Get(i)
+		start := sp.StartKey()
+		end := sp.EndKey()
+		if start.Length() <= prefix || end.Length() <= prefix ||
+			start.Value(prefix).Compare(evalCtx, end.Value(prefix)) != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// addNonNullPrefixCols adds columns to res for which all spans guarantee
+// non-null values (no span has NULL as the start value for that column).
+func (c *Constraint) addNonNullPrefixCols(res *opt.ColSet, evalCtx *tree.EvalContext, prefix int) {
+	for i := 0; i < prefix; i++ {
+		if !c.anySpanStartsWithNullAt(i) {
+			res.Add(c.Columns.Get(i).ID())
+		}
+	}
+}
+
+// anySpanStartsWithNullAt returns true if any span has NULL as the start value
+// at the given column index.
+func (c *Constraint) anySpanStartsWithNullAt(col int) bool {
+	for j := 0; j < c.Spans.Count(); j++ {
+		start := c.Spans.Get(j).StartKey()
+		if start.Value(col) == tree.DNull {
+			return true
+		}
+	}
+	return false
+}
+
+// isFirstColBeyondPrefixNonNull returns true if the first column beyond the
+// prefix is guaranteed non-null across all spans.
+func (c *Constraint) isFirstColBeyondPrefixNonNull(evalCtx *tree.EvalContext, prefix int) bool {
+	col := c.Columns.Get(prefix)
+	for i := 0; i < c.Spans.Count(); i++ {
+		sp := c.Spans.Get(i)
+		var key Key
+		var boundary SpanBoundary
+		if !col.Descending() {
+			key, boundary = sp.StartKey(), sp.StartBoundary()
+		} else {
+			key, boundary = sp.EndKey(), sp.EndBoundary()
+		}
+		// If the span is unbounded on the NULL side, or if it is of the form
+		// [/NULL - /x], the column is nullable.
+		if key.Length() <= prefix || (key.Value(prefix) == tree.DNull && boundary == IncludeBoundary) {
+			return false
+		}
+	}
+	return true
+}
+
+// allColsAreNonNull checks whether all index columns are known non-null given
+// the constraint's not-null columns and a base set of not-null columns.
+func (c *Constraint) allColsAreNonNull(
+	indexCols, notNullCols opt.ColSet, evalCtx *tree.EvalContext,
+) bool {
+	return indexCols.SubsetOf(notNullCols.Union(c.ExtractNotNullCols(evalCtx)))
+}
+
+// computeDistinctValCount computes the maximum number of distinct results
+// possible from this constraint based on the prefix length.
+func (c *Constraint) computeDistinctValCount(
+	evalCtx *tree.EvalContext, numCols, prefix int,
+) uint64 {
+	switch {
+	case prefix < numCols-1:
+		return 0
+	case prefix == numCols-1:
+		// If the prefix does not include the last column, calculate the number of
+		// distinct values possible in the span. This is only supported for int
+		// and date types.
+		return c.sumDistinctValuesForLastCol(evalCtx, numCols)
+	default:
+		return uint64(c.Spans.Count())
+	}
+}
+
+// sumDistinctValuesForLastCol sums the number of distinct integer or date
+// values across all spans for the last column. Returns 0 if this cannot be
+// computed.
+func (c *Constraint) sumDistinctValuesForLastCol(evalCtx *tree.EvalContext, numCols int) uint64 {
+	var distinctVals uint64
+	colIdx := numCols - 1
+	for i := 0; i < c.Spans.Count(); i++ {
+		sp := c.Spans.Get(i)
+		start := sp.StartKey()
+		end := sp.EndKey()
+
+		// Ensure that the keys specify the last column.
+		if start.Length() != numCols || end.Length() != numCols {
+			return 0
+		}
+
+		// TODO(asubiotto): This logic is very similar to
+		// updateDistinctCountsFromConstraint. It would be nice to extract this
+		// logic somewhere.
+		startIntVal, endIntVal, ok := extractIntRange(evalCtx, start.Value(colIdx), end.Value(colIdx))
+		if !ok {
+			return 0
+		}
+
+		if c.Columns.Get(colIdx).Ascending() {
+			distinctVals += uint64(endIntVal - startIntVal)
+		} else {
+			distinctVals += uint64(startIntVal - endIntVal)
+		}
+
+		// Add one since both start and end boundaries should be inclusive
+		// (due to Span.PreferInclusive).
+		distinctVals++
+	}
+	return distinctVals
+}
+
+// combineSpansWithSuffix combines each span in the constraint with the suffix
+// constraint's spans. Returns the resulting Spans and true if spans were
+// modified.
+func (c *Constraint) combineSpansWithSuffix(
+	keyCtx KeyContext, other *Constraint, offset int,
+) (Spans, bool) {
+	var result Spans
+	var resultInitialized bool
+
+	for i := 0; i < c.Spans.Count(); i++ {
+		sp := *c.Spans.Get(i)
+		startLen, endLen := sp.start.Length(), sp.end.Length()
+
+		// Special case: exact value on the column matching the suffix boundary.
+		// This can break a single span into multiple refined spans.
+		if startLen == endLen && startLen == offset &&
+			sp.start.Compare(&keyCtx, sp.end, ExtendLow, ExtendLow) == 0 {
+
+			if !resultInitialized {
+				resultInitialized = true
+				result.Alloc(c.Spans.Count() + other.Spans.Count())
+				c.copyPrefixSpans(&result, i)
+			}
+			c.emitExactValueSpans(&result, &keyCtx, other, &sp)
+			continue
+		}
+
+		// Try to extend start and end keys with the suffix constraint.
+		modified := c.tryExtendStartKey(&sp, other, offset, startLen)
+		modified = c.tryExtendEndKey(&sp, other, offset, endLen) || modified
+
+		if modified {
+			if !resultInitialized {
+				resultInitialized = true
+				result.Alloc(c.Spans.Count())
+				c.copyPrefixSpans(&result, i)
+			}
+			// The span can become invalid (empty). For example:
+			//   /1/2: [/1 - /1/2]
+			//   /2: [/5 - /5]
+			// This results in an invalid span [/1/5 - /1/2] which we must discard.
+			if sp.start.Compare(&keyCtx, sp.end, sp.startExt(), sp.endExt()) < 0 {
+				result.Append(&sp)
+			}
+		} else {
+			if resultInitialized {
+				result.Append(&sp)
 			}
 		}
 	}
-	if start.firstVal == nil {
-		startNew = math.MinInt64
+	return result, resultInitialized
+}
+
+// copyPrefixSpans copies spans before index i from the constraint's Spans into result.
+func (c *Constraint) copyPrefixSpans(result *Spans, index int) {
+	for j := 0; j < index; j++ {
+		result.Append(c.Spans.Get(j))
 	}
-	if end.firstVal == nil {
-		endNew = math.MaxInt64
+}
+
+// emitExactValueSpans produces one span per suffix span when the prefix span
+// has an exact (point) value at the suffix boundary.
+func (c *Constraint) emitExactValueSpans(
+	result *Spans, keyCtx *KeyContext, other *Constraint, sp *Span,
+) {
+	for j := 0; j < other.Spans.Count(); j++ {
+		extSp := other.Spans.Get(j)
+		var newSp Span
+		newSp.Init(
+			sp.start.Concat(extSp.start), extSp.startBoundary,
+			sp.end.Concat(extSp.end), extSp.endBoundary,
+		)
+		result.Append(&newSp)
 	}
-	return startNew, endNew
+}
+
+// tryExtendStartKey attempts to extend the start key of the span with the
+// first span's start from the suffix constraint. Returns true if modified.
+func (c *Constraint) tryExtendStartKey(sp *Span, other *Constraint, offset, startLen int) bool {
+	if startLen != offset || sp.startBoundary != IncludeBoundary {
+		return false
+	}
+	// We can advance the starting boundary. Calculate constraints for the
+	// column that follows. If we have multiple constraints, we can only use
+	// the start of the first one to tighten the span.
+	extSp := other.Spans.Get(0)
+	if extSp.start.Length() > 0 {
+		sp.start = sp.start.Concat(extSp.start)
+		sp.startBoundary = extSp.startBoundary
+		return true
+	}
+	return false
+}
+
+// tryExtendEndKey attempts to extend the end key of the span with the
+// last span's end from the suffix constraint. Returns true if modified.
+func (c *Constraint) tryExtendEndKey(sp *Span, other *Constraint, offset, endLen int) bool {
+	if endLen != offset || sp.endBoundary != IncludeBoundary {
+		return false
+	}
+	// End key case is symmetric with the start key case.
+	extSp := other.Spans.Get(other.Spans.Count() - 1)
+	if extSp.end.Length() > 0 {
+		sp.end = sp.end.Concat(extSp.end)
+		sp.endBoundary = extSp.endBoundary
+		return true
+	}
+	return false
+}
+
+// consolidateConsecutiveSpans merges spans that have consecutive boundaries.
+func (c *Constraint) consolidateConsecutiveSpans(keyCtx *KeyContext) Spans {
+	var result Spans
+	for i := 1; i < c.Spans.Count(); i++ {
+		last := c.Spans.Get(i - 1)
+		sp := c.Spans.Get(i)
+		if c.spansHaveConsecutiveBoundaries(keyCtx, last, sp) {
+			// We only initialize `result` if we need to change something.
+			if result.Count() == 0 {
+				result.Alloc(c.Spans.Count() - 1)
+				for j := 0; j < i; j++ {
+					result.Append(c.Spans.Get(j))
+				}
+			}
+			// Extend the last result span's end to absorb sp.
+			r := result.Get(result.Count() - 1)
+			r.end = sp.end
+			r.endBoundary = sp.endBoundary
+		} else {
+			if result.Count() != 0 {
+				result.Append(sp)
+			}
+		}
+	}
+	return result
+}
+
+// spansHaveConsecutiveBoundaries returns true if two spans share consecutive
+// boundaries (last.end is immediately followed by sp.start), allowing them to
+// be merged.
+func (c *Constraint) spansHaveConsecutiveBoundaries(keyCtx *KeyContext, last, sp *Span) bool {
+	return last.endBoundary == IncludeBoundary &&
+		sp.startBoundary == IncludeBoundary &&
+		sp.start.IsNextKey(keyCtx, last.end)
 }
 
 var (
@@ -878,3 +840,232 @@ var (
 		"width_bucket":                 {},
 	}
 )
+
+// -------- standalone functions --------
+
+// mergeSpansForUnion merges two sets of spans (left and right) into a union,
+// using a merge-sort approach. The result contains one span per contiguous
+// merged region.
+func mergeSpansForUnion(keyCtx KeyContext, leftSpans, rightSpans Spans) Spans {
+	left := &leftSpans
+	leftIndex := 0
+	right := &rightSpans
+	rightIndex := 0
+	var result Spans
+	result.Alloc(left.Count() + right.Count())
+
+	for leftIndex < left.Count() || rightIndex < right.Count() {
+		if rightIndex < right.Count() {
+			if leftIndex >= left.Count() ||
+				left.Get(leftIndex).Compare(&keyCtx, right.Get(rightIndex)) > 0 {
+				// Swap the two sets, so that going forward the current left
+				// span starts before the current right span.
+				left, right = right, left
+				leftIndex, rightIndex = rightIndex, leftIndex
+			}
+		}
+
+		// Merge this span with any overlapping spans in left or right. Initially,
+		// it can only overlap with spans in right, but after the merge we can
+		// have new overlaps; hence why this is a loop and we check against both
+		// left and right. For example:
+		//   left : [/1 - /10] [/20 - /30] [/40 - /50]
+		//   right: [/5 - /25] [/30 - /40]
+		//                             span
+		//   initial:                [/1 - /10]
+		//   merge with [/5 - /25]:  [/1 - /25]
+		//   merge with [/20 - /30]: [/1 - /30]
+		//   merge with [/30 - /40]: [/1 - /40]
+		//   merge with [/40 - /50]: [/1 - /50]
+		mergeSpan := *left.Get(leftIndex)
+		leftIndex++
+		for {
+			// Note that Span.TryUnionWith returns false for a different reason
+			// than Constraint.tryUnionWith. Span.TryUnionWith returns false
+			// when the spans are not contiguous, and therefore the union cannot
+			// be represented as a valid Span. Constraint.tryUnionWith returns
+			// false when the merged spans are unconstrained (cover entire key
+			// range), and therefore the union cannot be represented as a valid
+			// Constraint.
+			var ok bool
+			if leftIndex < left.Count() {
+				if mergeSpan.TryUnionWith(&keyCtx, left.Get(leftIndex)) {
+					leftIndex++
+					ok = true
+				}
+			}
+			if rightIndex < right.Count() {
+				if mergeSpan.TryUnionWith(&keyCtx, right.Get(rightIndex)) {
+					rightIndex++
+					ok = true
+				}
+			}
+
+			// If neither union succeeded, then it means either:
+			//   1. The spans don't merge into a single contiguous span, and will
+			//      need to be represented separately in this constraint.
+			//   2. There are no more spans to merge.
+			if !ok {
+				break
+			}
+		}
+		result.Append(&mergeSpan)
+	}
+	return result
+}
+
+// intersectSpansMerge computes the intersection of two sets of ordered spans
+// using a merge-sort style approach.
+func intersectSpansMerge(keyCtx KeyContext, leftSpans, rightSpans Spans) Spans {
+	left := &leftSpans
+	leftIndex := 0
+	right := &rightSpans
+	rightIndex := 0
+	var result Spans
+	result.Alloc(left.Count())
+
+	for leftIndex < left.Count() && rightIndex < right.Count() {
+		if left.Get(leftIndex).StartsAfter(&keyCtx, right.Get(rightIndex)) {
+			rightIndex++
+			continue
+		}
+
+		mergeSpan := *left.Get(leftIndex)
+		if !mergeSpan.TryIntersectWith(&keyCtx, right.Get(rightIndex)) {
+			leftIndex++
+			continue
+		}
+		result.Append(&mergeSpan)
+
+		// Skip past whichever span ends first, or skip past both if they have
+		// the same endpoint.
+		cmp := left.Get(leftIndex).CompareEnds(&keyCtx, right.Get(rightIndex))
+		if cmp <= 0 {
+			leftIndex++
+		}
+		if cmp >= 0 {
+			rightIndex++
+		}
+	}
+	return result
+}
+
+// getPrecisionFactor returns the multiplication factor for timestamp precision.
+// Precision 3 -> 1e3 (millisecond), 6 -> 1e6 (microsecond), default -> 1e9 (nanosecond).
+func getPrecisionFactor(precision int32) int64 {
+	switch precision {
+	case 3:
+		return 1e3
+	case 6:
+		return 1e6
+	default:
+		return 1e9
+	}
+}
+
+// convertSpanToTimestamp converts a span's start and end keys into timestamp
+// integer representations using the given precision factor.
+func convertSpanToTimestamp(
+	start Key, startBoundary bool, end Key, endBoundary bool, prec int64,
+) (int64, int64) {
+	return assignPrecision(start, startBoundary, end, endBoundary, prec)
+}
+
+// extractIntRange extracts int64 range boundaries from datum values.
+// Supports IntFamily and DateFamily. Returns the start/end int values and true
+// on success, or false if the types are not supported.
+func extractIntRange(evalCtx *tree.EvalContext, startVal, endVal tree.Datum) (int64, int64, bool) {
+	var startIntVal, endIntVal int64
+	if startVal.ResolvedType().Family() == types.IntFamily &&
+		endVal.ResolvedType().Family() == types.IntFamily {
+		startIntVal = int64(*startVal.(*tree.DInt))
+		endIntVal = int64(*endVal.(*tree.DInt))
+		return startIntVal, endIntVal, true
+	} else if startVal.ResolvedType().Family() == types.DateFamily &&
+		endVal.ResolvedType().Family() == types.DateFamily {
+		startDate := startVal.(*tree.DDate)
+		endDate := endVal.(*tree.DDate)
+		if !startDate.IsFinite() || !endDate.IsFinite() {
+			// One of the boundaries is not finite, so we can't determine the
+			// distinct count for this column.
+			return 0, 0, false
+		}
+		startIntVal = int64(startDate.PGEpochDays())
+		endIntVal = int64(endDate.PGEpochDays())
+		return startIntVal, endIntVal, true
+	}
+	return 0, 0, false
+}
+
+// assignPrecision converts the datum type time to an integer according to precision
+//
+// in parameter:
+//
+//	start            - the start value of the interval for filtering time
+//	startBoundary		 - startBoundary indicates whether the span contains the start key value
+//	end              - the end value of the interval for filtering time
+//	endBoundary      - endBoundary indicates whether the span contains the end key value
+//	precision        - precision represents time precision
+//
+// out parameter:
+//
+//	 startNew         - startNew represents the integer corresponding to the start time,
+//											 and its units depend on precision
+//	 endNew           - endNew represents the integer corresponding to the end time,
+//	                    and its units depend on precision
+func assignPrecision(
+	start Key, startBoundary bool, end Key, endBoundary bool, precision int64,
+) (startNew int64, endNew int64) {
+	startNew = computeTimestampStart(start, startBoundary, precision)
+	endNew = computeTimestampEnd(end, endBoundary, precision)
+	return startNew, endNew
+}
+
+// computeTimestampStart converts a start key with a timestamp datum to an
+// integer representation according to the given precision.
+func computeTimestampStart(start Key, startBoundary bool, precision int64) int64 {
+	if start.firstVal == nil {
+		return math.MinInt64
+	}
+	t, ok := start.firstVal.(*tree.DTimestampTZ)
+	if !ok {
+		return math.MinInt64
+	}
+	nanosecond := t.Time.Nanosecond()
+	second := t.Time.Unix()
+	if second < math.MinInt64/precision {
+		return math.MinInt64
+	}
+	startNew := second*precision + int64(nanosecond)/(1e9/precision)
+	if startBoundary {
+		startNew++
+	}
+	return startNew
+}
+
+// computeTimestampEnd converts an end key with a timestamp datum to an
+// integer representation according to the given precision.
+func computeTimestampEnd(end Key, endBoundary bool, precision int64) int64 {
+	if end.firstVal == nil {
+		return math.MaxInt64
+	}
+	t, ok := end.firstVal.(*tree.DTimestampTZ)
+	if !ok {
+		return math.MaxInt64
+	}
+	nanosecond := t.Time.Nanosecond()
+	second := t.Time.Unix()
+	if second > math.MaxInt64/precision {
+		return math.MaxInt64
+	}
+	if second*precision <= (math.MaxInt64 - int64(nanosecond)/(1e9/precision)) {
+		endNew := second*precision + int64(nanosecond)/(1e9/precision)
+		if endBoundary {
+			if nanosecond%int(1e9/precision) == 0 {
+				endNew--
+			}
+		}
+		return endNew
+	}
+	return math.MaxInt64
+}

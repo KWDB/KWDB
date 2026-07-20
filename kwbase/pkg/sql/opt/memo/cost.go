@@ -35,19 +35,21 @@ type Cost float64
 // member will have a lower cost.
 var MaxCost = Cost(math.Inf(+1))
 
-// Less returns true if this cost is lower than the given cost.
+// ulpToleranceForCostComparison is the number of units-of-least-precision
+// allowed when comparing two costs. Two costs within this ULP distance are
+// considered equal. This tolerance accommodates floating-point variance
+// introduced by adding identical sub-costs in different orders. Using ULPs
+// rather than an absolute epsilon ensures the error budget scales with the
+// magnitude of the values.
+const ulpToleranceForCostComparison = 1000
+
+// Less returns true if this cost is significantly lower than the given cost.
+// Costs within ulpToleranceForCostComparison ULPs are treated as equal to avoid
+// spurious plan changes due to floating-point reordering.
 func (c Cost) Less(other Cost) bool {
-	// Two plans with the same cost can have slightly different floating point
-	// results (e.g. same subcosts being added up in a different order). So we
-	// treat plans with very similar cost as equal.
-	//
-	// We use "units of least precision" for similarity: this is the number of
-	// representable floating point numbers in-between the two values. This is
-	// better than a fixed epsilon because the allowed error is proportional to
-	// the magnitude of the numbers. Because the mantissa is in the low bits, we
-	// can just use the bit representations as integers.
-	const ulpTolerance = 1000
-	return math.Float64bits(float64(c))+ulpTolerance <= math.Float64bits(float64(other))
+	ourBits := math.Float64bits(float64(c))
+	otherBits := math.Float64bits(float64(other))
+	return ourBits+ulpToleranceForCostComparison <= otherBits
 }
 
 // Sub subtracts the other cost from this cost and returns the result.

@@ -84,7 +84,7 @@ type OrderingChoice struct {
 	// In addition, if Columns is empty, then Optional must be as well.
 	// After initial construction, Optional is immutable. To update, replace
 	// with a different set containing the desired columns.
-	Optional opt.ColSet
+	optional opt.ColSet
 
 	// Columns is the sequence of equivalent column groups that can be used to
 	// form each column in the sort key. Columns must not appear in the Optional
@@ -94,6 +94,46 @@ type OrderingChoice struct {
 
 	// OrderFlags order propertys
 	OrderFlags int
+}
+
+// OptionalAdd adds a column to the set of optional columns. The column must not already
+func (oc *OrderingChoice) OptionalAdd(col opt.ColumnID) {
+	oc.optional.Add(col)
+}
+
+// OptionalRemove removes a column from the set of optional columns. The column must not already
+func (oc *OrderingChoice) OptionalRemove(col opt.ColumnID) {
+	oc.optional.Remove(col)
+}
+
+// OptionalEmpty returns true if the set of optional columns is empty.
+func (oc *OrderingChoice) OptionalEmpty() bool {
+	return oc.optional.Empty()
+}
+
+// OptionalInit initializes the set of optional columns to be empty. This is used when an
+func (oc *OrderingChoice) OptionalInit(src opt.ColSet) {
+	oc.optional = src
+}
+
+// OptionalContains returns true if the given column is part of the set of optional columns.
+func (oc *OrderingChoice) OptionalContains(col opt.ColumnID) bool {
+	return oc.optional.Contains(col)
+}
+
+// OptionalSubsetOf returns true if the set of optional columns is a subset of the given column set.
+func (oc *OrderingChoice) OptionalSubsetOf(src opt.ColSet) bool {
+	return oc.optional.SubsetOf(src)
+}
+
+// OptionalIntersection returns the intersection of the set of optional columns and the given column set.
+func (oc *OrderingChoice) OptionalIntersection(src opt.ColSet) opt.ColSet {
+	return oc.optional.Intersection(src)
+}
+
+// Optional returns the set of optional columns.
+func (oc *OrderingChoice) Optional() opt.ColSet {
+	return oc.optional
 }
 
 // OrderingColumnChoice specifies the set of columns which can form one of the
@@ -195,7 +235,7 @@ func ParseOrderingChoice(s string) OrderingChoice {
 	if len(matches[2]) != 0 {
 		for _, idStr := range strings.Split(matches[2], ",") {
 			id, _ := strconv.Atoi(idStr)
-			ordering.Optional.Add(opt.ColumnID(id))
+			ordering.OptionalAdd(opt.ColumnID(id))
 		}
 	}
 
@@ -208,7 +248,7 @@ func ParseOrderingChoice(s string) OrderingChoice {
 // not.
 func ParseOrdering(str string) opt.Ordering {
 	prov := ParseOrderingChoice(str)
-	if !prov.Optional.Empty() {
+	if !prov.OptionalEmpty() {
 		panic(errors.AssertionFailedf("invalid ordering %s", str))
 	}
 	for i := range prov.Columns {
@@ -241,7 +281,7 @@ func (oc *OrderingChoice) Any() bool {
 
 // FromOrdering sets this OrderingChoice to the given opt.Ordering.
 func (oc *OrderingChoice) FromOrdering(ord opt.Ordering) {
-	oc.Optional = opt.ColSet{}
+	oc.OptionalInit(opt.ColSet{})
 	oc.Columns = make([]OrderingColumnChoice, len(ord))
 	for i := range ord {
 		oc.Columns[i].Group.Add(ord[i].ID())
@@ -253,10 +293,10 @@ func (oc *OrderingChoice) FromOrdering(ord opt.Ordering) {
 // and with the given optional columns. Any optional columns in the given
 // ordering are ignored.
 func (oc *OrderingChoice) FromOrderingWithOptCols(ord opt.Ordering, optCols opt.ColSet) {
-	oc.Optional = optCols.Copy()
+	oc.OptionalInit(optCols.Copy())
 	oc.Columns = make([]OrderingColumnChoice, 0, len(ord))
 	for i := range ord {
-		if !oc.Optional.Contains(ord[i].ID()) {
+		if !oc.OptionalContains(ord[i].ID()) {
 			oc.Columns = append(oc.Columns, OrderingColumnChoice{
 				Group:      opt.MakeColSet(ord[i].ID()),
 				Descending: ord[i].Descending(),
@@ -319,7 +359,7 @@ func (oc *OrderingChoice) ColSet() opt.ColSet {
 //	+(1|2|3)          !implies +(1|2)        (subset of choice not commutative)
 //	+(1|2)            !implies +1 opt(2)
 func (oc *OrderingChoice) Implies(other *OrderingChoice) bool {
-	if !oc.Optional.SubsetOf(other.Optional) {
+	if !oc.OptionalSubsetOf(other.Optional()) {
 		return false
 	}
 
@@ -335,7 +375,7 @@ func (oc *OrderingChoice) Implies(other *OrderingChoice) bool {
 			// The columns match.
 			left, right = left+1, right+1
 
-		case leftCol.Group.Intersects(other.Optional):
+		case leftCol.Group.Intersects(other.Optional()):
 			// Left column is optional in the right set.
 			left++
 
@@ -356,11 +396,11 @@ func (oc *OrderingChoice) Intersects(other *OrderingChoice) bool {
 			// The columns match.
 			left, right = left+1, right+1
 
-		case leftCol.Group.Intersects(other.Optional):
+		case leftCol.Group.Intersects(other.Optional()):
 			// Left column is optional in the right set.
 			left++
 
-		case rightCol.Group.Intersects(oc.Optional):
+		case rightCol.Group.Intersects(oc.Optional()):
 			// Right column is optional in the left set.
 			right++
 
@@ -416,18 +456,18 @@ func (oc *OrderingChoice) Intersection(other *OrderingChoice) OrderingChoice {
 			})
 			left, right = left+1, right+1
 
-		case leftCol.Group.Intersects(other.Optional):
+		case leftCol.Group.Intersects(other.Optional()):
 			// Left column is optional in the right set.
 			result = append(result, OrderingColumnChoice{
-				Group:      leftCol.Group.Intersection(other.Optional),
+				Group:      leftCol.Group.Intersection(other.Optional()),
 				Descending: leftCol.Descending,
 			})
 			left++
 
-		case rightCol.Group.Intersects(oc.Optional):
+		case rightCol.Group.Intersects(oc.Optional()):
 			// Right column is optional in the left set.
 			result = append(result, OrderingColumnChoice{
-				Group:      rightCol.Group.Intersection(oc.Optional),
+				Group:      rightCol.Group.Intersection(oc.Optional()),
 				Descending: rightCol.Descending,
 			})
 			right++
@@ -444,16 +484,16 @@ func (oc *OrderingChoice) Intersection(other *OrderingChoice) OrderingChoice {
 	for ; right < len(other.Columns); right++ {
 		result = append(result, other.Columns[right])
 	}
-	return OrderingChoice{
-		Optional: oc.Optional.Intersection(other.Optional),
-		Columns:  result,
-	}
+
+	ret := OrderingChoice{Columns: result}
+	ret.OptionalInit(oc.OptionalIntersection(other.Optional()))
+	return ret
 }
 
 // SubsetOfCols is true if the OrderingChoice only references columns in the
 // given set.
 func (oc *OrderingChoice) SubsetOfCols(cs opt.ColSet) bool {
-	if !oc.Optional.SubsetOf(cs) {
+	if !oc.OptionalSubsetOf(cs) {
 		return false
 	}
 	for i := range oc.Columns {
@@ -489,7 +529,7 @@ func (oc *OrderingChoice) CanProjectCols(cs opt.ColSet) bool {
 // instance matches the given column. The column matches if its id is part of
 // the equivalence group and if it has the same direction.
 func (oc *OrderingChoice) MatchesAt(index int, col opt.OrderingColumn) bool {
-	if oc.Optional.Contains(col.ID()) {
+	if oc.OptionalContains(col.ID()) {
 		return true
 	}
 	choice := &oc.Columns[index]
@@ -508,7 +548,7 @@ func (oc *OrderingChoice) MatchesAt(index int, col opt.OrderingColumn) bool {
 func (oc *OrderingChoice) AppendCol(id opt.ColumnID, descending bool) {
 	ordCol := OrderingColumnChoice{Descending: descending}
 	ordCol.Group.Add(id)
-	oc.Optional.Remove(id)
+	oc.OptionalRemove(id)
 	oc.Columns = append(oc.Columns, ordCol)
 }
 
@@ -516,7 +556,7 @@ func (oc *OrderingChoice) AppendCol(id opt.ColumnID, descending bool) {
 // ordering column array.
 func (oc *OrderingChoice) Copy() OrderingChoice {
 	var other OrderingChoice
-	other.Optional = oc.Optional
+	other.OptionalInit(oc.optional)
 	other.Columns = make([]OrderingColumnChoice, len(oc.Columns))
 	copy(other.Columns, oc.Columns)
 	return other
@@ -534,8 +574,8 @@ func (oc *OrderingChoice) CanSimplify(fdset *props.FuncDepSet) bool {
 	}
 
 	// Check whether optional columns can be added by the FD set.
-	optional := fdset.ComputeClosure(oc.Optional)
-	if !optional.Equals(oc.Optional) {
+	optional := fdset.ComputeClosure(oc.optional)
+	if !optional.Equals(oc.optional) {
 		return true
 	}
 
@@ -588,20 +628,20 @@ func (oc *OrderingChoice) CanSimplify(fdset *props.FuncDepSet) bool {
 //
 // This logic should be changed in concert with the CanSimplify logic.
 func (oc *OrderingChoice) Simplify(fdset *props.FuncDepSet) {
-	oc.Optional = fdset.ComputeClosure(oc.Optional)
+	oc.OptionalInit(fdset.ComputeClosure(oc.optional))
 
-	closure := oc.Optional
+	closure := oc.optional
 	n := 0
 	for i := range oc.Columns {
 		group := &oc.Columns[i]
 
 		// Constant columns from the FD set become optional ordering columns and
 		// so can be removed.
-		if group.Group.Intersects(oc.Optional) {
-			if group.Group.SubsetOf(oc.Optional) {
+		if group.Group.Intersects(oc.optional) {
+			if group.Group.SubsetOf(oc.optional) {
 				continue
 			}
-			group.Group = group.Group.Difference(oc.Optional)
+			group.Group = group.Group.Difference(oc.optional)
 		}
 
 		// If this group is functionally determined from previous groups, then
@@ -626,7 +666,7 @@ func (oc *OrderingChoice) Simplify(fdset *props.FuncDepSet) {
 
 	if len(oc.Columns) == 0 {
 		// Normalize Any case by dropping any optional columns.
-		oc.Optional = opt.ColSet{}
+		oc.optional = opt.ColSet{}
 	}
 }
 
@@ -642,7 +682,7 @@ func (oc *OrderingChoice) Truncate(prefix int) {
 		oc.Columns = oc.Columns[:prefix]
 		if len(oc.Columns) == 0 {
 			// Normalize Any case by dropping any optional columns.
-			oc.Optional = opt.ColSet{}
+			oc.optional = opt.ColSet{}
 		}
 	}
 }
@@ -651,8 +691,8 @@ func (oc *OrderingChoice) Truncate(prefix int) {
 // set. This method can only be used when the OrderingChoice can be expressed
 // with the given columns; i.e. all groups have at least one column in the set.
 func (oc *OrderingChoice) ProjectCols(cols opt.ColSet) {
-	if !oc.Optional.SubsetOf(cols) {
-		oc.Optional = oc.Optional.Intersection(cols)
+	if !oc.optional.SubsetOf(cols) {
+		oc.OptionalInit(oc.optional.Intersection(cols))
 	}
 	for i := range oc.Columns {
 		if !oc.Columns[i].Group.SubsetOf(cols) {
@@ -735,7 +775,7 @@ func (oc *OrderingChoice) Equals(rhs *OrderingChoice) bool {
 	if len(oc.Columns) != len(rhs.Columns) {
 		return false
 	}
-	if !oc.Optional.Equals(rhs.Optional) {
+	if !oc.optional.Equals(rhs.Optional()) {
 		return false
 	}
 
@@ -801,11 +841,11 @@ func (oc OrderingChoice) Format(buf *bytes.Buffer) {
 	}
 
 	// Write set of optional columns.
-	if !oc.Optional.Empty() {
+	if !oc.OptionalEmpty() {
 		if len(oc.Columns) != 0 {
 			buf.WriteByte(' ')
 		}
-		fmt.Fprintf(buf, "opt%s", oc.Optional)
+		fmt.Fprintf(buf, "opt%s", oc.Optional().String())
 	}
 }
 

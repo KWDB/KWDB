@@ -108,28 +108,45 @@ func (b *Builder) buildScalar(ctx *buildScalarCtx, scalar opt.ScalarExpr) (tree.
 		if err != nil {
 			return nil, err
 		}
-		if b.evalCtx != nil && scalar.CheckConstDeductionEnabled() {
-			value, err := texpr.Eval(b.evalCtx)
+		// Attempt constant folding when the evaluation context is available
+		// and the expression supports constant deduction.
+		if b.tryFoldConstantScalar(scalar, texpr) {
+			folded, err := b.evaluateAndFoldScalar(texpr)
 			if err != nil {
 				if errors.IsAssertionFailure(err) {
 					return nil, err
 				}
-				// Ignore any errors here (e.g. division by zero), so they can happen
-				// during execution where they are correctly handled. Note that in some
-				// cases we might not even get an error (if this particular expression
-				// does not get evaluated when the query runs, e.g. it's inside a CASE).
+				// Non-assertion errors (e.g. division by zero) are deferred to
+				// execution time where they are correctly handled. Some expressions
+				// may never actually be evaluated (e.g. inside an unexecuted CASE arm).
 				return texpr, nil
 			}
-			if value == tree.DNull {
-				// We don't want to return an expression that has a different type; cast
-				// the NULL if necessary.
-				return tree.ReType(tree.DNull, texpr.ResolvedType()), nil
-			}
-			return value, nil
+			return folded, nil
 		}
 		return texpr, nil
 	}
 	return nil, errors.Errorf("unsupported op %s", scalar.Op())
+}
+
+// tryFoldConstantScalar returns true when b.evalCtx is available and the scalar
+// expression supports constant deduction.
+func (b *Builder) tryFoldConstantScalar(scalar opt.ScalarExpr, _ tree.TypedExpr) bool {
+	return b.evalCtx != nil && scalar.CheckConstDeductionEnabled()
+}
+
+// evaluateAndFoldScalar attempts to evaluate a typed expression as a constant.
+// If the result is NULL it re-types the NULL datum; otherwise it returns the
+// evaluated value directly.
+func (b *Builder) evaluateAndFoldScalar(texpr tree.TypedExpr) (tree.TypedExpr, error) {
+	value, err := texpr.Eval(b.evalCtx)
+	if err != nil {
+		return nil, err
+	}
+	if value == tree.DNull {
+		// Preserve the expression type when returning NULL.
+		return tree.ReType(tree.DNull, texpr.ResolvedType()), nil
+	}
+	return value, nil
 }
 
 func (b *Builder) buildTypedExpr(

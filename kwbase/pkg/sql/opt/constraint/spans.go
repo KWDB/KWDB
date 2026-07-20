@@ -34,6 +34,9 @@ import (
 // Spans is a collection of spans. There are no general requirements on the
 // contents of the spans in the structure; the caller has to make sure they make
 // sense in the respective context.
+//
+// The internal representation optimizes for the common single-span case by
+// storing the first span inline; additional spans live in otherSpans.
 type Spans struct {
 	// firstSpan holds the first span and otherSpans hold any spans beyond the
 	// first. These are separated in order to optimize for the common case of a
@@ -50,10 +53,14 @@ func (s *Spans) Alloc(capacity int) {
 	// We don't preallocate if the capacity is only 2: pre-allocating the slice to
 	// size 1 is no better than allocating it on the first Append, but it's worse
 	// if we end up not needing it.
-	if capacity > 2 && s.numSpans == 0 {
+	if capacity > minCapacityForAlloc && s.numSpans == 0 {
 		s.otherSpans = make([]Span, 0, capacity-1)
 	}
 }
+
+// minCapacityForAlloc is the threshold below which we skip pre-allocation
+// of the otherSpans slice, because the overhead outweighs the benefit.
+const minCapacityForAlloc = 2
 
 // InitSingleSpan initializes the structure with a single span.
 func (s *Spans) InitSingleSpan(sp *Span) {
@@ -78,9 +85,7 @@ func (s *Spans) Get(nth int) *Span {
 
 // Append adds another span (at the end).
 func (s *Spans) Append(sp *Span) {
-	if s.immutable {
-		panic(errors.AssertionFailedf("mutation disallowed"))
-	}
+	s.guardMutation()
 	if s.numSpans == 0 {
 		s.firstSpan = *sp
 	} else {
@@ -91,9 +96,7 @@ func (s *Spans) Append(sp *Span) {
 
 // Truncate removes all but the first newLength spans.
 func (s *Spans) Truncate(newLength int) {
-	if s.immutable {
-		panic(errors.AssertionFailedf("mutation disallowed"))
-	}
+	s.guardMutation()
 	if int32(newLength) > s.numSpans {
 		panic(errors.AssertionFailedf("can't truncate to longer length"))
 	}
@@ -106,14 +109,7 @@ func (s *Spans) Truncate(newLength int) {
 }
 
 func (s Spans) String() string {
-	var b strings.Builder
-	for i := 0; i < s.Count(); i++ {
-		if i > 0 {
-			b.WriteRune(' ')
-		}
-		b.WriteString(s.Get(i).String())
-	}
-	return b.String()
+	return s.buildString()
 }
 
 // makeImmutable causes panics in any future calls to methods that mutate either
@@ -142,12 +138,41 @@ func (s *Spans) SortAndMerge(keyCtx *KeyContext) {
 
 	// Merge overlapping spans. We maintain the last span and extend it with
 	// whatever spans it overlaps with.
+	newCount := s.mergeOverlappingSpans(keyCtx)
+	s.Truncate(newCount)
+}
+
+// -------- internal helpers for Spans --------
+
+// guardMutation panics if the Spans structure is marked immutable.
+func (s *Spans) guardMutation() {
+	if s.immutable {
+		panic(errors.AssertionFailedf("mutation disallowed"))
+	}
+}
+
+// buildString formats the Spans collection as a space-separated list of spans.
+func (s Spans) buildString() string {
+	var b strings.Builder
+	for i := 0; i < s.Count(); i++ {
+		if i > 0 {
+			b.WriteRune(' ')
+		}
+		b.WriteString(s.Get(i).String())
+	}
+	return b.String()
+}
+
+// mergeOverlappingSpans merges adjacent or overlapping spans in a sorted
+// Spans collection. It returns the new span count after merging.
+// The caller is responsible for truncating the Spans to the returned count.
+func (s *Spans) mergeOverlappingSpans(keyCtx *KeyContext) int {
 	n := 0
 	currentSpan := *s.Get(0)
 	for i := 1; i < s.Count(); i++ {
 		sp := s.Get(i)
 		if sp.StartsStrictlyAfter(keyCtx, &currentSpan) {
-			// No overlap. "Output" the current span.
+			// No overlap. "Output" the current span and advance.
 			*s.Get(n) = currentSpan
 			n++
 			currentSpan = *sp
@@ -160,9 +185,11 @@ func (s *Spans) SortAndMerge(keyCtx *KeyContext) {
 		}
 	}
 	*s.Get(n) = currentSpan
-	s.Truncate(n + 1)
+	return n + 1
 }
 
+// spanSorter implements sort.Interface for sorting spans by their start
+// boundaries using the provided KeyContext.
 type spanSorter struct {
 	keyCtx KeyContext
 	spans  *Spans

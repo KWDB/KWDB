@@ -40,13 +40,30 @@ const (
 	ExtendHigh KeyExtension = true
 )
 
+const (
+	// comparisonDirectionLess is returned when the extended key sorts before another.
+	comparisonDirectionLess = -1
+	// comparisonDirectionGreater is returned when the extended key sorts after another.
+	comparisonDirectionGreater = 1
+)
+
 // ToCmp converts from a key extension value to a comparison value. ExtendLow
 // maps to -1 because it sorts before all other values. ExtendHigh maps to 1
 // because it sorts after all other values.
 func (e KeyExtension) ToCmp() int {
 	// Map ExtendLow into -1 and ExtendHigh into +1.
 	if e == ExtendLow {
-		return -1
+		return comparisonDirectionLess
 	}
-	return 1
+	return comparisonDirectionGreater
+}
+
+// isLow returns true if this extension sorts before all values (ExtendLow).
+func (e KeyExtension) isLow() bool {
+	return e == ExtendLow
+}
+
+// invert returns the opposite extension. ExtendLow becomes ExtendHigh and vice versa.
+func (e KeyExtension) invert() KeyExtension {
+	return !e
 }
