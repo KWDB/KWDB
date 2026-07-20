@@ -100,7 +100,7 @@ func (a UncachedPhysicalAccessor) GetSchema(
 	}
 
 	// Lookup the schema ID.
-	exists, schemaID, err := resolveSchemaID(ctx, txn, dbID, scName)
+	exists, schemaID, err := ResolveSchemaID(ctx, txn, dbID, scName)
 	if err != nil || !exists {
 		return exists, sqlbase.ResolvedSchema{}, err
 	}

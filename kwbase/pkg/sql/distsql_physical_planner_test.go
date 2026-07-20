@@ -1433,7 +1433,7 @@ func TestCheckSupportForNodeSimpleCases(t *testing.T) {
 
 	testCases := []struct {
 		name   string
-		node   planNode
+		node   PlanNode
 		expRec distRecommendation
 		expErr string
 	}{
@@ -1637,7 +1637,7 @@ func TestCheckSupportForNodeAdditionalBranches(t *testing.T) {
 
 	testCases := []struct {
 		name   string
-		node   planNode
+		node   PlanNode
 		expRec distRecommendation
 		expErr string
 	}{

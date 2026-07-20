@@ -103,7 +103,7 @@ func (p *PreparedStatement) incRef(ctx context.Context) {
 	p.refCount++
 }
 
-// preparedStatementsAccessor gives a planner access to a session's collection
+// preparedStatementsAccessor gives a GenericPlanner access to a session's collection
 // of prepared statements.
 type preparedStatementsAccessor interface {
 	// List returns all prepared statements as a map keyed by name.

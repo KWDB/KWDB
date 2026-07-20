@@ -45,6 +45,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgwirebase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlconst"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqltelemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/util/contextutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
@@ -80,12 +81,12 @@ var connResultsBufferSize = settings.RegisterPublicByteSizeSetting(
 )
 
 var logConnAuth = settings.RegisterPublicBoolSetting(
-	sql.ConnAuditingClusterSettingName,
+	sqlconst.ConnAuditingClusterSettingName,
 	"if set, log SQL client connect and disconnect events (note: may hinder performance on loaded nodes)",
 	false)
 
 var logSessionAuth = settings.RegisterPublicBoolSetting(
-	sql.AuthAuditingClusterSettingName,
+	sqlconst.AuthAuditingClusterSettingName,
 	"if set, log SQL session login/disconnection events (note: may hinder performance on loaded nodes)",
 	false)
 

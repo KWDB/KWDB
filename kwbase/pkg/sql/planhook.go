@@ -31,6 +31,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlconst"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 )
 
@@ -46,7 +47,7 @@ import (
 // plan execution.
 type planHookFn func(
 	context.Context, tree.Statement, PlanHookState,
-) (fn PlanHookRowFn, header sqlbase.ResultColumns, subplans []planNode, avoidBuffering bool, err error)
+) (fn PlanHookRowFn, header sqlbase.ResultColumns, subplans []PlanNode, avoidBuffering bool, err error)
 
 // PlanHookRowFn describes the row-production for hook-created plans. The
 // channel argument is used to return results to the plan's runner. It's
@@ -54,8 +55,8 @@ type planHookFn func(
 // sends on it when necessary. Any subplans returned by the hook when initially
 // called are passed back, planned and started, for the the RowFn's use.
 //
-// TODO(dt): should this take runParams like a normal planNode.Next?
-type PlanHookRowFn func(context.Context, []planNode, chan<- tree.Datums) error
+// TODO(dt): should this take RunParams like a normal PlanNode.Next?
+type PlanHookRowFn func(context.Context, []PlanNode, chan<- tree.Datums) error
 
 var planHooks []planHookFn
 
@@ -63,27 +64,28 @@ var planHooks []planHookFn
 // Additionally, it takes a context.
 type wrappedPlanHookFn func(
 	context.Context, tree.Statement, PlanHookState,
-) (planNode, error)
+) (PlanNode, error)
 
 var wrappedPlanHooks []wrappedPlanHookFn
 
-func (p *planner) RunParams(ctx context.Context) runParams {
-	return runParams{ctx, p.ExtendedEvalContext(), p}
+// RunParams creates run parameters for executing a plan hook
+func (p *GenericPlanner) RunParams(ctx context.Context) RunParams {
+	return RunParams{ctx, p.ExtendedEvalContext(), p}
 }
 
-// PlanHookState exposes the subset of planner needed by plan hooks.
+// PlanHookState exposes the subset of GenericPlanner needed by plan hooks.
 // We pass this as one interface, rather than individually passing each field or
 // interface as we find we need them, to avoid churn in the planHookFn sig and
 // the hooks that implement it.
 //
 // The PlanHookState is used by modules that are under the CCL. Since the OSS
 // modules cannot depend on the CCL modules, the CCL modules need to inform the
-// planner when they should be invoked (via plan hooks). The only way for the
-// CCL statements to get access to a "planner" is through this PlanHookState
+// GenericPlanner when they should be invoked (via plan hooks). The only way for the
+// CCL statements to get access to a "GenericPlanner" is through this PlanHookState
 // that gets passed back due to this inversion of roles.
 type PlanHookState interface {
 	SchemaResolver
-	RunParams(ctx context.Context) runParams
+	RunParams(ctx context.Context) RunParams
 	ExtendedEvalContext() *extendedEvalContext
 	SessionData() *sessiondata.SessionData
 	ExecCfg() *ExecutorConfig
@@ -92,12 +94,12 @@ type PlanHookState interface {
 	TypeAsString(e tree.Expr, op string) (func() (string, error), error)
 	TypeAsStringArray(e tree.Exprs, op string) (func() ([]string, error), error)
 	TypeAsStringOpts(
-		opts tree.KVOptions, optsValidate map[string]KVStringOptValidate,
+		opts tree.KVOptions, optsValidate map[string]sqlconst.KVStringOptValidate,
 	) (func() (map[string]string, error), error)
 	User() string
 	AuthorizationAccessor
 	// The role create/drop call into OSS code to reuse plan nodes.
-	// TODO(mberhault): it would be easier to just pass a planner to plan hooks.
+	// TODO(mberhault): it would be easier to just pass a GenericPlanner to plan hooks.
 	GetAllRoles(ctx context.Context) (map[string]bool, error)
 	BumpRoleMembershipTableVersion(ctx context.Context) error
 	EvalAsOfTimestamp(asOf tree.AsOfClause) (hlc.Timestamp, error)
@@ -110,16 +112,16 @@ type PlanHookState interface {
 	ResolveImmutableTableDescriptor(
 		ctx context.Context, tn *ObjectName, required bool, requiredType ResolveRequiredType,
 	) (table *ImmutableTableDescriptor, err error)
-	ShowCreate(
-		ctx context.Context, dbPrefix string, allDescs []sqlbase.Descriptor, desc *sqlbase.TableDescriptor, displayOptions ShowCreateDisplayOptions,
-	) (string, error)
+	// ShowCreate(
+	// 	ctx context.Context, dbPrefix string, allDescs []sqlbase.Descriptor, desc *sqlbase.TableDescriptor, displayOptions ddlopts.ShowCreateDisplayOptions,
+	// ) (string, error)
 	CreateSchemaNamespaceEntry(ctx context.Context, schemaNameKey roachpb.Key,
 		schemaID sqlbase.ID) error
 }
 
-// AddPlanHook adds a hook used to short-circuit creating a planNode from a
+// AddPlanHook adds a hook used to short-circuit creating a PlanNode from a
 // tree.Statement. If the func returned by the hook is non-nil, it is used to
-// construct a planNode that runs that func in a goroutine during Start.
+// construct a PlanNode that runs that func in a goroutine during Start.
 //
 // See PlanHookState comments for information about why plan hooks are needed.
 func AddPlanHook(f planHookFn) {
@@ -132,15 +134,17 @@ func ClearPlanHooks() {
 	planHooks = nil
 }
 
-// hookFnNode is a planNode implemented in terms of a function. It begins the
+// hookFnNode is a PlanNode implemented in terms of a function. It begins the
 // provided function during Start and serves the results it returns over the
 // channel.
+var _ PlanNode = &hookFnNode{}
+
 type hookFnNode struct {
-	optColumnsSlot
+	OptColumnsSlot
 
 	f        PlanHookRowFn
 	header   sqlbase.ResultColumns
-	subplans []planNode
+	subplans []PlanNode
 
 	run hookFnRun
 }
@@ -153,14 +157,14 @@ type hookFnRun struct {
 	row tree.Datums
 }
 
-func (f *hookFnNode) startExec(params runParams) error {
+func (f *hookFnNode) StartExec(params RunParams) error {
 	// TODO(dan): Make sure the resultCollector is set to flush after every row.
 	f.run.resultsCh = make(chan tree.Datums)
 	f.run.errCh = make(chan error)
 	go func() {
-		err := f.f(params.ctx, f.subplans, f.run.resultsCh)
+		err := f.f(params.Ctx, f.subplans, f.run.resultsCh)
 		select {
-		case <-params.ctx.Done():
+		case <-params.Ctx.Done():
 		case f.run.errCh <- err:
 		}
 		close(f.run.errCh)
@@ -169,10 +173,10 @@ func (f *hookFnNode) startExec(params runParams) error {
 	return nil
 }
 
-func (f *hookFnNode) Next(params runParams) (bool, error) {
+func (f *hookFnNode) Next(params RunParams) (bool, error) {
 	select {
-	case <-params.ctx.Done():
-		return false, params.ctx.Err()
+	case <-params.Ctx.Done():
+		return false, params.Ctx.Err()
 	case err := <-f.run.errCh:
 		return false, err
 	case f.run.row = <-f.run.resultsCh:
@@ -186,4 +190,16 @@ func (f *hookFnNode) Close(ctx context.Context) {
 	for _, sub := range f.subplans {
 		sub.Close(ctx)
 	}
+}
+
+// ResolveTableDescriptor resolves a table name to its mutable descriptor
+func (p *GenericPlanner) ResolveTableDescriptor(
+	ctx context.Context, tn *ObjectName, required bool,
+) (table *MutableTableDescriptor, err error) {
+	return p.ResolveMutableTableDescriptor(ctx, tn, required, ResolveRequireTableDesc)
+}
+
+// GetStmtSQL is get sql from PlanHookState
+func GetStmtSQL(p PlanHookState) string {
+	return p.(*GenericPlanner).stmt.SQL
 }

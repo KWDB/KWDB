@@ -35,8 +35,10 @@ import (
 // bufferNode consumes its input one row at a time, stores it in the buffer,
 // and passes the row through. The buffered rows can be iterated over multiple
 // times.
+var _ PlanNode = &bufferNode{}
+
 type bufferNode struct {
-	plan planNode
+	plan PlanNode
 
 	// TODO(yuzefovich): the buffer should probably be backed by disk. If so, the
 	// comments about TempStorage suggest that it should be used by DistSQL
@@ -48,7 +50,7 @@ type bufferNode struct {
 	label string
 }
 
-func (n *bufferNode) startExec(params runParams) error {
+func (n *bufferNode) StartExec(params RunParams) error {
 	n.bufferedRows = rowcontainer.NewRowContainer(
 		params.EvalContext().Mon.MakeBoundAccount(),
 		sqlbase.ColTypeInfoFromResCols(getPlanColumns(n.plan, false /* mut */)),
@@ -57,7 +59,7 @@ func (n *bufferNode) startExec(params runParams) error {
 	return nil
 }
 
-func (n *bufferNode) Next(params runParams) (bool, error) {
+func (n *bufferNode) Next(params RunParams) (bool, error) {
 	if err := params.p.cancelChecker.Check(); err != nil {
 		return false, err
 	}
@@ -68,7 +70,7 @@ func (n *bufferNode) Next(params runParams) (bool, error) {
 	if !ok {
 		return false, nil
 	}
-	if _, err = n.bufferedRows.AddRow(params.ctx, n.plan.Values()); err != nil {
+	if _, err = n.bufferedRows.AddRow(params.Ctx, n.plan.Values()); err != nil {
 		return false, err
 	}
 	n.passThruNextRowIdx++
@@ -87,6 +89,8 @@ func (n *bufferNode) Close(ctx context.Context) {
 // scanBufferNode behaves like an iterator into the bufferNode it is
 // referencing. The bufferNode can be iterated over multiple times
 // simultaneously, however, a new scanBufferNode is needed.
+var _ PlanNode = &scanBufferNode{}
+
 type scanBufferNode struct {
 	buffer *bufferNode
 
@@ -96,11 +100,11 @@ type scanBufferNode struct {
 	label string
 }
 
-func (n *scanBufferNode) startExec(runParams) error {
+func (n *scanBufferNode) StartExec(RunParams) error {
 	return nil
 }
 
-func (n *scanBufferNode) Next(runParams) (bool, error) {
+func (n *scanBufferNode) Next(RunParams) (bool, error) {
 	n.nextRowIdx++
 	return n.nextRowIdx <= n.buffer.bufferedRows.Len(), nil
 }

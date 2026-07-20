@@ -31,16 +31,18 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 )
 
-// distinctNode de-duplicates rows returned by a wrapped planNode.
-type distinctNode struct {
-	plan planNode
+// distinctNode de-duplicates rows returned by a wrapped PlanNode.
+var _ PlanNode = &distinctNode{}
 
-	// distinctOnColIdxs are the column indices of the child planNode and
+type distinctNode struct {
+	plan PlanNode
+
+	// distinctOnColIdxs are the column indices of the child PlanNode and
 	// is what defines the distinct key.
 	// For a normal DISTINCT (without the ON clause), distinctOnColIdxs
-	// contains all the column indices of the child planNode.
+	// contains all the column indices of the child PlanNode.
 	// Otherwise, distinctOnColIdxs is a strict subset of the child
-	// planNode's column indices indicating which columns are specified in
+	// PlanNode's column indices indicating which columns are specified in
 	// the DISTINCT ON (<exprs>) clause.
 	distinctOnColIdxs util.FastIntSet
 
@@ -75,11 +77,11 @@ type distinctNode struct {
 	engine tree.EngineType
 }
 
-func (n *distinctNode) startExec(params runParams) error {
+func (n *distinctNode) StartExec(params RunParams) error {
 	panic("distinctNode can't be called in local mode")
 }
 
-func (n *distinctNode) Next(params runParams) (bool, error) {
+func (n *distinctNode) Next(params RunParams) (bool, error) {
 	panic("distinctNode can't be called in local mode")
 }
 

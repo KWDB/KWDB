@@ -28,10 +28,10 @@ func TestZeroNode(t *testing.T) {
 		{Name: "col2", Typ: types.String},
 	}
 
-	// Test newZeroNode
-	zeroNode := newZeroNode(columns)
+	// Test NewZeroNode
+	zeroNode := NewZeroNode(columns)
 	if zeroNode == nil {
-		t.Error("newZeroNode should return a non-nil pointer")
+		t.Error("NewZeroNode should return a non-nil pointer")
 	}
 
 	// Verify columns are set correctly
@@ -45,14 +45,14 @@ func TestZeroNode(t *testing.T) {
 		}
 	}
 
-	// Test startExec
-	err := zeroNode.startExec(runParams{})
+	// Test StartExec
+	err := zeroNode.StartExec(RunParams{})
 	if err != nil {
-		t.Errorf("startExec should return nil, got %v", err)
+		t.Errorf("StartExec should return nil, got %v", err)
 	}
 
 	// Test Next
-	next, err := zeroNode.Next(runParams{})
+	next, err := zeroNode.Next(RunParams{})
 	if err != nil {
 		t.Errorf("Next should return nil error, got %v", err)
 	}
@@ -74,22 +74,22 @@ func TestZeroNode(t *testing.T) {
 func TestZeroNodeEmptyColumns(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	// Test with empty columns
-	zeroNode := newZeroNode(nil)
+	zeroNode := NewZeroNode(nil)
 	if zeroNode == nil {
-		t.Error("newZeroNode should return a non-nil pointer even with nil columns")
+		t.Error("NewZeroNode should return a non-nil pointer even with nil columns")
 	}
 
 	if zeroNode.columns != nil {
-		t.Error("columns should be nil when nil is passed to newZeroNode")
+		t.Error("columns should be nil when nil is passed to NewZeroNode")
 	}
 
 	// Test methods with empty columns
-	err := zeroNode.startExec(runParams{})
+	err := zeroNode.StartExec(RunParams{})
 	if err != nil {
-		t.Errorf("startExec should return nil, got %v", err)
+		t.Errorf("StartExec should return nil, got %v", err)
 	}
 
-	next, err := zeroNode.Next(runParams{})
+	next, err := zeroNode.Next(RunParams{})
 	if err != nil {
 		t.Errorf("Next should return nil error, got %v", err)
 	}

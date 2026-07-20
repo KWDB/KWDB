@@ -1372,7 +1372,7 @@ func getSessionVar(name string, missingOk bool) (bool, sessionVar, error) {
 }
 
 // GetSessionVar implements the EvalSessionAccessor interface.
-func (p *planner) GetSessionVar(
+func (p *GenericPlanner) GetSessionVar(
 	_ context.Context, varName string, missingOk bool,
 ) (bool, string, error) {
 	name := strings.ToLower(varName)
@@ -1385,7 +1385,7 @@ func (p *planner) GetSessionVar(
 }
 
 // GetUserDefinedVar implements the EvalSessionAccessor interface.
-func (p *planner) GetUserDefinedVar(
+func (p *GenericPlanner) GetUserDefinedVar(
 	_ context.Context, varName string, missingOk bool,
 ) (bool, interface{}, error) {
 	name := strings.ToLower(varName)
@@ -1396,7 +1396,7 @@ func (p *planner) GetUserDefinedVar(
 }
 
 // SetSessionVar implements the EvalSessionAccessor interface.
-func (p *planner) SetSessionVar(ctx context.Context, varName, newVal string) error {
+func (p *GenericPlanner) SetSessionVar(ctx context.Context, varName, newVal string) error {
 	name := strings.ToLower(varName)
 	_, v, err := getSessionVar(name, false /* missingOk */)
 	if err != nil {

@@ -34,8 +34,10 @@ import (
 
 // limitNode represents a node that limits the number of rows
 // returned or only return them past a given number (offset).
+var _ PlanNode = &limitNode{}
+
 type limitNode struct {
-	plan       planNode
+	plan       PlanNode
 	countExpr  tree.TypedExpr
 	offsetExpr tree.TypedExpr
 	evaluated  bool
@@ -48,11 +50,11 @@ type limitNode struct {
 	pushLimitToAggScan bool
 }
 
-func (n *limitNode) startExec(params runParams) error {
+func (n *limitNode) StartExec(params RunParams) error {
 	panic("limitNode cannot be run in local mode")
 }
 
-func (n *limitNode) Next(params runParams) (bool, error) {
+func (n *limitNode) Next(params RunParams) (bool, error) {
 	panic("limitNode cannot be run in local mode")
 }
 

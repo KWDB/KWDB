@@ -38,15 +38,17 @@ import (
 // nil). If there is an error, then return (nil, error).
 type virtualTableGenerator func() (tree.Datums, error)
 
-// virtualTableNode is a planNode that constructs its rows by repeatedly
+// virtualTableNode is a PlanNode that constructs its rows by repeatedly
 // invoking a virtualTableGenerator function.
+var _ PlanNode = &virtualTableNode{}
+
 type virtualTableNode struct {
 	columns    sqlbase.ResultColumns
 	next       virtualTableGenerator
 	currentRow tree.Datums
 }
 
-func (p *planner) newContainerVirtualTableNode(
+func (p *GenericPlanner) newContainerVirtualTableNode(
 	columns sqlbase.ResultColumns, capacity int, next virtualTableGenerator,
 ) *virtualTableNode {
 	return &virtualTableNode{
@@ -55,11 +57,11 @@ func (p *planner) newContainerVirtualTableNode(
 	}
 }
 
-func (n *virtualTableNode) startExec(runParams) error {
+func (n *virtualTableNode) StartExec(RunParams) error {
 	return nil
 }
 
-func (n *virtualTableNode) Next(params runParams) (bool, error) {
+func (n *virtualTableNode) Next(params RunParams) (bool, error) {
 	row, err := n.next()
 	if err != nil {
 		return false, err

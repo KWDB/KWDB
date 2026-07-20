@@ -33,13 +33,15 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
+var _ PlanNode = &unsplitNode{}
+
 type unsplitNode struct {
-	optColumnsSlot
+	OptColumnsSlot
 
 	tableDesc *sqlbase.TableDescriptor
 	index     *sqlbase.IndexDescriptor
 	run       unsplitRun
-	rows      planNode
+	rows      PlanNode
 }
 
 // unsplitRun contains the run-time state of unsplitNode during local execution.
@@ -47,14 +49,14 @@ type unsplitRun struct {
 	lastUnsplitKey []byte
 }
 
-func (n *unsplitNode) startExec(params runParams) error {
+func (n *unsplitNode) StartExec(params RunParams) error {
 	if n.tableDesc.IsTSTable() {
 		return sqlbase.TSUnsupportedError("unsplit")
 	}
 	return nil
 }
 
-func (n *unsplitNode) Next(params runParams) (bool, error) {
+func (n *unsplitNode) Next(params RunParams) (bool, error) {
 	if ok, err := n.rows.Next(params); err != nil || !ok {
 		return ok, err
 	}
@@ -65,7 +67,7 @@ func (n *unsplitNode) Next(params runParams) (bool, error) {
 		return false, err
 	}
 
-	if err := params.extendedEvalCtx.ExecCfg.DB.AdminUnsplit(params.ctx, rowKey); err != nil {
+	if err := params.extendedEvalCtx.ExecCfg.DB.AdminUnsplit(params.Ctx, rowKey); err != nil {
 		ctx := tree.NewFmtCtx(tree.FmtSimple)
 		row.Format(ctx)
 		return false, errors.Wrapf(err, "could not UNSPLIT AT %s", ctx)
@@ -87,8 +89,10 @@ func (n *unsplitNode) Close(ctx context.Context) {
 	n.rows.Close(ctx)
 }
 
+var _ PlanNode = &unsplitAllNode{}
+
 type unsplitAllNode struct {
-	optColumnsSlot
+	OptColumnsSlot
 
 	tableDesc *sqlbase.TableDescriptor
 	index     *sqlbase.IndexDescriptor
@@ -101,7 +105,7 @@ type unsplitAllRun struct {
 	lastUnsplitKey []byte
 }
 
-func (n *unsplitAllNode) startExec(params runParams) error {
+func (n *unsplitAllNode) StartExec(params RunParams) error {
 	// Use the internal executor to retrieve the split keys.
 	statement := `
 		SELECT
@@ -111,7 +115,7 @@ func (n *unsplitAllNode) startExec(params runParams) error {
 		WHERE
 			database_name=$1 AND table_name=$2 AND index_name=$3 AND split_enforced_until IS NOT NULL
 	`
-	dbDesc, err := sqlbase.GetDatabaseDescFromID(params.ctx, params.p.txn, n.tableDesc.ParentID)
+	dbDesc, err := sqlbase.GetDatabaseDescFromID(params.Ctx, params.p.txn, n.tableDesc.ParentID)
 	if err != nil {
 		return err
 	}
@@ -120,7 +124,7 @@ func (n *unsplitAllNode) startExec(params runParams) error {
 		indexName = n.index.Name
 	}
 	ranges, err := params.p.ExtendedEvalContext().InternalExecutor.(*InternalExecutor).QueryEx(
-		params.ctx, "split points query", params.p.txn, sqlbase.InternalExecutorSessionDataOverride{},
+		params.Ctx, "split points query", params.p.txn, sqlbase.InternalExecutorSessionDataOverride{},
 		statement,
 		dbDesc.Name,
 		n.tableDesc.Name,
@@ -137,14 +141,14 @@ func (n *unsplitAllNode) startExec(params runParams) error {
 	return nil
 }
 
-func (n *unsplitAllNode) Next(params runParams) (bool, error) {
+func (n *unsplitAllNode) Next(params RunParams) (bool, error) {
 	if len(n.run.keys) == 0 {
 		return false, nil
 	}
 	rowKey := n.run.keys[0]
 	n.run.keys = n.run.keys[1:]
 
-	if err := params.extendedEvalCtx.ExecCfg.DB.AdminUnsplit(params.ctx, rowKey); err != nil {
+	if err := params.extendedEvalCtx.ExecCfg.DB.AdminUnsplit(params.Ctx, rowKey); err != nil {
 		return false, errors.Wrapf(err, "could not UNSPLIT AT %s", keys.PrettyPrint(nil /* valDirs */, rowKey))
 	}
 

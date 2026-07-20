@@ -33,6 +33,7 @@ import (
 	"unicode"
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
+	ddlopts "gitee.com/kwbasedb/kwbase/pkg/sql/ddl_opts"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/exec"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
@@ -40,6 +41,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlconst"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/cloud"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
@@ -48,9 +50,9 @@ import (
 )
 
 type exportNode struct {
-	optColumnsSlot
+	OptColumnsSlot
 
-	source planNode
+	source PlanNode
 
 	expOpts   exportOptions
 	fileName  string
@@ -59,11 +61,11 @@ type exportNode struct {
 	isTS      bool
 }
 
-func (e *exportNode) startExec(params runParams) error {
+func (e *exportNode) StartExec(params RunParams) error {
 	panic("exportNode cannot be run in local mode")
 }
 
-func (e *exportNode) Next(params runParams) (bool, error) {
+func (e *exportNode) Next(params RunParams) (bool, error) {
 	panic("exportNode cannot be run in local mode")
 }
 
@@ -92,21 +94,21 @@ const (
 	exportOptionLimitMemory = "limit_memory"
 )
 
-var exportOptionExpectValues = map[string]KVStringOptValidate{
-	exportOptionChunkSize:   KVStringOptRequireValue,
-	exportOptionDelimiter:   KVStringOptRequireValue,
-	exportOptionNullAs:      KVStringOptRequireValue,
-	exportOptionOnlyData:    KVStringOptRequireNoValue,
-	exportOptionOnlyMeta:    KVStringOptRequireNoValue,
-	exportOptionForeignKey:  KVStringOptRequireNoValue,
-	exportOptionEnclosed:    KVStringOptRequireValue,
-	exportOptionEscaped:     KVStringOptRequireValue,
-	exportOptionColumnsName: KVStringOptRequireNoValue,
-	exportOptionCharset:     KVStringOptRequireValue,
-	exportOptionComment:     KVStringOptRequireNoValue,
-	exportOptionPrivileges:  KVStringOptRequireNoValue,
-	exportOptionThreads:     KVStringOptRequireValue,
-	exportOptionLimitMemory: KVStringOptRequireValue,
+var exportOptionExpectValues = map[string]sqlconst.KVStringOptValidate{
+	exportOptionChunkSize:   sqlconst.KVStringOptRequireValue,
+	exportOptionDelimiter:   sqlconst.KVStringOptRequireValue,
+	exportOptionNullAs:      sqlconst.KVStringOptRequireValue,
+	exportOptionOnlyData:    sqlconst.KVStringOptRequireNoValue,
+	exportOptionOnlyMeta:    sqlconst.KVStringOptRequireNoValue,
+	exportOptionForeignKey:  sqlconst.KVStringOptRequireNoValue,
+	exportOptionEnclosed:    sqlconst.KVStringOptRequireValue,
+	exportOptionEscaped:     sqlconst.KVStringOptRequireValue,
+	exportOptionColumnsName: sqlconst.KVStringOptRequireNoValue,
+	exportOptionCharset:     sqlconst.KVStringOptRequireValue,
+	exportOptionComment:     sqlconst.KVStringOptRequireNoValue,
+	exportOptionPrivileges:  sqlconst.KVStringOptRequireNoValue,
+	exportOptionThreads:     sqlconst.KVStringOptRequireValue,
+	exportOptionLimitMemory: sqlconst.KVStringOptRequireValue,
 }
 
 // ExportChunkSizeDefault The default limit for the number of rows in an exported file
@@ -176,7 +178,7 @@ func (ef *execFactory) ConstructExport(
 	}
 	export, ok := ef.planner.stmt.AST.(*tree.Export)
 	if !ok {
-		return nil, errors.Errorf("planner's statement is not Export")
+		return nil, errors.Errorf("GenericPlanner's statement is not Export")
 	}
 	if !tableSelect && export.FileFormat == "SQL" {
 		return nil, errors.Errorf("Exporting SQL only supports single table queries")
@@ -312,7 +314,7 @@ func (ef *execFactory) ConstructExport(
 		tablePrefix: tablePrefix,
 	}
 	return &exportNode{
-		source:    input.(planNode),
+		source:    input.(PlanNode),
 		fileName:  string(*fileNameStr),
 		expOpts:   expOpts,
 		queryName: queryName,
@@ -354,7 +356,7 @@ func (ef *execFactory) writeCreateFile(
 // foreignKey is the judgement for whether include foreignKey in create statement.
 func writeRelationalMeta(
 	ctx context.Context,
-	p *planner,
+	p *GenericPlanner,
 	input exec.Node,
 	file string,
 	foreignKey bool,
@@ -367,19 +369,19 @@ func writeRelationalMeta(
 	catalog := p.tableName.Catalog()
 
 	// Get create_stmt.
-	allDescs, err := p.Tables().getAllDescriptors(ctx, p.txn)
+	allDescs, err := p.Tables().TcGetAllDescriptors(ctx, p.txn)
 	if err != nil {
 		return err
 	}
-	lCtx := newInternalLookupCtx(allDescs, nil /* want all tables */)
-	var displayOptions ShowCreateDisplayOptions
+	lCtx := NewInternalLookupCtx(allDescs, nil /* want all tables */)
+	var displayOptions ddlopts.ShowCreateDisplayOptions
 	if withComment {
-		displayOptions = ShowCreateDisplayOptions{FKDisplayMode: OmitFKClausesFromCreate, IgnoreComments: false}
+		displayOptions = ddlopts.ShowCreateDisplayOptions{FKDisplayMode: ddlopts.OmitFKClausesFromCreate, IgnoreComments: false}
 	} else {
-		displayOptions = ShowCreateDisplayOptions{FKDisplayMode: OmitFKClausesFromCreate, IgnoreComments: true}
+		displayOptions = ddlopts.ShowCreateDisplayOptions{FKDisplayMode: ddlopts.OmitFKClausesFromCreate, IgnoreComments: true}
 	}
 	if foreignKey {
-		displayOptions.FKDisplayMode = IncludeFkClausesInCreate
+		displayOptions.FKDisplayMode = ddlopts.IncludeFkClausesInCreate
 	}
 	create, err := ShowCreateTable(ctx, p, tn, catalog, desc, lCtx, displayOptions)
 	if err != nil {
@@ -428,7 +430,7 @@ func writeRelationalMeta(
 	return es.WriteFile(ctx, filename, bytes.NewReader(bufBytes))
 }
 
-func getDBPrivileges(ctx context.Context, p *planner, database string) ([]string, error) {
+func getDBPrivileges(ctx context.Context, p *GenericPlanner, database string) ([]string, error) {
 	// set sessionData
 	p.ExtendedEvalContext().ExecCfg.InternalExecutor.SetSessionData(&sessiondata.SessionData{Database: strings.Trim(database, "\"")})
 	defer p.ExtendedEvalContext().ExecCfg.InternalExecutor.SetSessionData(new(sessiondata.SessionData))
@@ -466,7 +468,7 @@ WHERE table_schema = 'information_schema' and grantee != 'admin' and grantee != 
 }
 
 func getSCPrivileges(
-	ctx context.Context, p *planner, schema string, database string,
+	ctx context.Context, p *GenericPlanner, schema string, database string,
 ) ([]string, error) {
 	p.ExtendedEvalContext().ExecCfg.InternalExecutor.SetSessionData(&sessiondata.SessionData{Database: strings.Trim(database, "\"")})
 	defer p.ExtendedEvalContext().ExecCfg.InternalExecutor.SetSessionData(new(sessiondata.SessionData))
@@ -504,7 +506,7 @@ WHERE table_schema = '` + schema + `' and grantee != 'admin' and grantee != 'roo
 }
 
 func getTBPrivileges(
-	ctx context.Context, p *planner, table string, schema string, database string,
+	ctx context.Context, p *GenericPlanner, table string, schema string, database string,
 ) ([]string, error) {
 	searchPath := sessiondata.SetSearchPath(p.CurrentSearchPath(), []string{strings.Trim(schema, "\"")})
 	p.ExtendedEvalContext().ExecCfg.InternalExecutor.SetSessionData(&sessiondata.SessionData{Database: strings.Trim(database, "\""), SearchPath: searchPath})
@@ -554,7 +556,7 @@ WHERE table_schema = '` + schema + `' and table_name = '` + table + `' and grant
 
 // Get cluster_setting from system.settings. Write them into clustersetting.sql
 func getClusterSettingSQL(
-	ctx context.Context, p *planner, file string, res RestrictedCommandResult,
+	ctx context.Context, p *GenericPlanner, file string, res RestrictedCommandResult,
 ) error {
 	var buf bytes.Buffer
 	writer := csv.NewWriter(&buf)
@@ -608,7 +610,9 @@ func getClusterSettingSQL(
 }
 
 // Get user/role from system.users. Write them into users.sql
-func getUserSQL(ctx context.Context, p *planner, file string, res RestrictedCommandResult) error {
+func getUserSQL(
+	ctx context.Context, p *GenericPlanner, file string, res RestrictedCommandResult,
+) error {
 	var buf bytes.Buffer
 	writer := csv.NewWriter(&buf)
 	conf, err := cloud.ExternalStorageConfFromURI(file)
@@ -738,7 +742,9 @@ func getUserSQL(ctx context.Context, p *planner, file string, res RestrictedComm
 }
 
 // Read system.users, return USERNAMES and ROLENAMES
-func getUserAndRoleFromSysUsers(ctx context.Context, p *planner) ([]string, []string, error) {
+func getUserAndRoleFromSysUsers(
+	ctx context.Context, p *GenericPlanner,
+) ([]string, []string, error) {
 	selectStmt := fmt.Sprintf("SELECT * FROM system.users")
 	row, err := p.ExecCfg().InternalExecutor.Query(ctx, "select users statement", nil, selectStmt)
 	if err != nil {
@@ -761,7 +767,9 @@ func getUserAndRoleFromSysUsers(ctx context.Context, p *planner) ([]string, []st
 }
 
 // Read show users, return userOptionMap
-func getUserAndMemberFromSysMembers(ctx context.Context, p *planner) (map[string]string, error) {
+func getUserAndMemberFromSysMembers(
+	ctx context.Context, p *GenericPlanner,
+) (map[string]string, error) {
 	selectStmt := fmt.Sprintf("SHOW USERS")
 	row, err := p.ExecCfg().InternalExecutor.Query(ctx, "show users", nil, selectStmt)
 	if err != nil {
@@ -785,7 +793,7 @@ func getUserAndMemberFromSysMembers(ctx context.Context, p *planner) (map[string
 // It's different to get different type tables' create statement.
 func writeTimeSeriesMeta(
 	ctx context.Context,
-	p *planner,
+	p *GenericPlanner,
 	file string,
 	tableDesc *ImmutableTableDescriptor,
 	res RestrictedCommandResult,
@@ -975,7 +983,7 @@ func ExportCreateIndexStmtsWithTableDesc(
 // ExportCreateIndexStmtsWithoutTableDesc is to obtain table information
 // and assemble to create a common tag index statement.
 func ExportCreateIndexStmtsWithoutTableDesc(
-	ctx context.Context, tblName *tree.TableName, p planner,
+	ctx context.Context, tblName *tree.TableName, p GenericPlanner,
 ) ([]string, error) {
 	tableDesc, err := p.ResolveUncachedTableDescriptor(ctx, tblName, true, ResolveRequireTableDesc)
 	if err != nil {

@@ -39,14 +39,14 @@ type subquery struct {
 	execMode     rowexec.SubqueryExecMode
 	expanded     bool
 	started      bool
-	plan         planNode
+	plan         PlanNode
 	PlanmaybePhy planMaybePhysical
 	result       tree.Datum
 }
 
 // EvalSubquery is called by `tree.Eval()` method implementations to
 // retrieve the Datum result of a subquery.
-func (p *planner) EvalSubquery(expr *tree.Subquery) (result tree.Datum, err error) {
+func (p *GenericPlanner) EvalSubquery(expr *tree.Subquery) (result tree.Datum, err error) {
 	if expr.Idx == 0 {
 		return nil, errors.AssertionFailedf("subquery %q was not processed", expr)
 	}

@@ -34,7 +34,7 @@ import (
 
 // Deallocate implements the DEALLOCATE statement.
 // See https://www.postgresql.org/docs/current/static/sql-deallocate.html for details.
-func (p *planner) Deallocate(ctx context.Context, s *tree.Deallocate) (planNode, error) {
+func (p *GenericPlanner) Deallocate(ctx context.Context, s *tree.Deallocate) (PlanNode, error) {
 	if s.Name == "" {
 		p.preparedStatements.DeleteAll(ctx)
 	} else {
@@ -43,5 +43,5 @@ func (p *planner) Deallocate(ctx context.Context, s *tree.Deallocate) (planNode,
 				"prepared statement %q does not exist", s.Name)
 		}
 	}
-	return newZeroNode(nil /* columns */), nil
+	return NewZeroNode(nil /* columns */), nil
 }

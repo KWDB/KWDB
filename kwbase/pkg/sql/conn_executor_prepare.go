@@ -326,7 +326,7 @@ func (ex *connExecutor) populatePrepared(
 	ctx context.Context,
 	txn *kv.Txn,
 	placeholderHints tree.PlaceholderTypes,
-	p *planner,
+	p *GenericPlanner,
 	insidePrepareOfProcFlag uint8,
 ) (planFlags, error) {
 	if before := ex.server.cfg.TestingKnobs.BeforePrepare; before != nil {

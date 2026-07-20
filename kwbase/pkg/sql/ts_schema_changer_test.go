@@ -50,14 +50,14 @@ func TestHandleMutationForTSTable(t *testing.T) {
 		typeValue   int32
 		expectedErr bool
 	}{
-		{"add column", alterKwdbAddColumn, true},              // Expected to fail due to missing dependencies
-		{"drop column", alterKwdbDropColumn, true},            // Expected to fail due to missing dependencies
-		{"add tag", alterKwdbAddTag, true},                    // Expected to fail due to missing dependencies
-		{"drop tag", alterKwdbDropTag, true},                  // Expected to fail due to missing dependencies
-		{"alter column type", alterKwdbAlterColumnType, true}, // Expected to fail due to missing dependencies
-		{"alter tag type", alterKwdbAlterTagType, true},       // Expected to fail due to missing dependencies
-		{"create tag index", createTagIndex, true},            // Expected to fail due to missing dependencies
-		{"drop tag index", dropTagIndex, true},                // Expected to fail due to missing dependencies
+		{"add column", AlterKwdbAddColumn, true},              // Expected to fail due to missing dependencies
+		{"drop column", AlterKwdbDropColumn, true},            // Expected to fail due to missing dependencies
+		{"add tag", AlterKwdbAddTag, true},                    // Expected to fail due to missing dependencies
+		{"drop tag", AlterKwdbDropTag, true},                  // Expected to fail due to missing dependencies
+		{"alter column type", AlterKwdbAlterColumnType, true}, // Expected to fail due to missing dependencies
+		{"alter tag type", AlterKwdbAlterTagType, true},       // Expected to fail due to missing dependencies
+		{"create tag index", CreateTagIndex, true},            // Expected to fail due to missing dependencies
+		{"drop tag index", DropTagIndex, true},                // Expected to fail due to missing dependencies
 		{"unsupported type", 999, true},                       // Expected to fail with unsupported type error
 	}
 
@@ -90,20 +90,20 @@ func TestGetDDLOpType(t *testing.T) {
 		opType   int32
 		expected string
 	}{
-		{createKwdbTsTable, "create ts table"},
-		{alterKwdbAddTag, "add tag"},
-		{alterKwdbDropTag, "drop tag"},
-		{alterKwdbAlterTagType, "alter tag type"},
-		{alterKwdbAddColumn, "add column"},
-		{alterKwdbDropColumn, "drop column"},
-		{alterKwdbAlterColumnType, "alter column type"},
-		{alterKwdbAlterPartitionInterval, "alter partition interval"},
-		{alterKwdbAlterRetentions, "alter retentions"},
+		{CreateKwdbTsTable, "create ts table"},
+		{AlterKwdbAddTag, "add tag"},
+		{AlterKwdbDropTag, "drop tag"},
+		{AlterKwdbAlterTagType, "alter tag type"},
+		{AlterKwdbAddColumn, "add column"},
+		{AlterKwdbDropColumn, "drop column"},
+		{AlterKwdbAlterColumnType, "alter column type"},
+		{AlterKwdbAlterPartitionInterval, "alter partition interval"},
+		{AlterKwdbAlterRetentions, "alter retentions"},
 		{alterCompressInterval, "alter compress interval"},
 		{autonomy, "autonomy"},
 		{vacuum, "vacuum"},
-		{createTagIndex, "create tag index"},
-		{dropTagIndex, "drop tag index"},
+		{CreateTagIndex, "create tag index"},
+		{DropTagIndex, "drop tag index"},
 		{999, ""}, // Test unknown op type
 	}
 

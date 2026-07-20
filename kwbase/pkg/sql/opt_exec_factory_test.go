@@ -54,7 +54,7 @@ func TestExecFactoryConstructTSScan(t *testing.T) {
 	defer cleanup()
 
 	// Create execFactory
-	ef := makeExecFactory(p.(*planner))
+	ef := makeExecFactory(p.(*GenericPlanner))
 
 	// Create a mock table for testing
 	tabDesc := &sqlbase.ImmutableTableDescriptor{
@@ -144,7 +144,7 @@ func TestExecFactoryConstructTsInsertSelect(t *testing.T) {
 	s, _, _ := serverutils.StartServer(t, base.TestServerArgs{})
 	defer s.Stopper().Stop(ctx)
 
-	// Create a planner
+	// Create a GenericPlanner
 	execCfg := s.ExecutorConfig().(ExecutorConfig)
 	p, cleanup := NewInternalPlanner(
 		"test",
@@ -156,7 +156,7 @@ func TestExecFactoryConstructTsInsertSelect(t *testing.T) {
 	defer cleanup()
 
 	// Create execFactory
-	ef := makeExecFactory(p.(*planner))
+	ef := makeExecFactory(p.(*GenericPlanner))
 
 	// Create a simple values node for testing
 	rows := [][]tree.TypedExpr{
@@ -227,7 +227,7 @@ func TestExecFactoryConstructBatchLookUpJoin(t *testing.T) {
 	s, _, _ := serverutils.StartServer(t, base.TestServerArgs{})
 	defer s.Stopper().Stop(ctx)
 
-	// Create a planner
+	// Create a GenericPlanner
 	execCfg := s.ExecutorConfig().(ExecutorConfig)
 	p, cleanup := NewInternalPlanner(
 		"test",
@@ -239,7 +239,7 @@ func TestExecFactoryConstructBatchLookUpJoin(t *testing.T) {
 	defer cleanup()
 
 	// Create execFactory
-	ef := makeExecFactory(p.(*planner))
+	ef := makeExecFactory(p.(*GenericPlanner))
 
 	// Create left and right nodes for testing
 	leftRows := [][]tree.TypedExpr{
@@ -302,7 +302,7 @@ func TestExecFactoryConstructApplyJoin(t *testing.T) {
 	s, _, _ := serverutils.StartServer(t, base.TestServerArgs{})
 	defer s.Stopper().Stop(ctx)
 
-	// Create a planner
+	// Create a GenericPlanner
 	execCfg := s.ExecutorConfig().(ExecutorConfig)
 	p, cleanup := NewInternalPlanner(
 		"test",
@@ -314,7 +314,7 @@ func TestExecFactoryConstructApplyJoin(t *testing.T) {
 	defer cleanup()
 
 	// Create execFactory
-	ef := makeExecFactory(p.(*planner))
+	ef := makeExecFactory(p.(*GenericPlanner))
 
 	// Create left node for testing
 	leftRows := [][]tree.TypedExpr{
@@ -367,7 +367,7 @@ func TestExecFactoryConstructScanForZigzag(t *testing.T) {
 	s, _, _ := serverutils.StartServer(t, base.TestServerArgs{})
 	defer s.Stopper().Stop(ctx)
 
-	// Create a planner
+	// Create a GenericPlanner
 	execCfg := s.ExecutorConfig().(ExecutorConfig)
 	p, cleanup := NewInternalPlanner(
 		"test",
@@ -379,7 +379,7 @@ func TestExecFactoryConstructScanForZigzag(t *testing.T) {
 	defer cleanup()
 
 	// Create execFactory
-	ef := makeExecFactory(p.(*planner))
+	ef := makeExecFactory(p.(*GenericPlanner))
 
 	// Create table descriptor
 	tabDesc := &sqlbase.ImmutableTableDescriptor{
@@ -420,8 +420,8 @@ func TestExecFactoryConstructScanForZigzag(t *testing.T) {
 		cols.Add(1)
 
 		// Skip privilege checks for testing
-		p.(*planner).skipSelectPrivilegeChecks = true
-		defer func() { p.(*planner).skipSelectPrivilegeChecks = false }()
+		p.(*GenericPlanner).skipSelectPrivilegeChecks = true
+		defer func() { p.(*GenericPlanner).skipSelectPrivilegeChecks = false }()
 
 		scanNode, err := ef.constructScanForZigzag(indexDesc, tabDesc, cols)
 		if err != nil {
@@ -453,7 +453,7 @@ func TestExecFactoryConstructZigzagJoin(t *testing.T) {
 	s, _, _ := serverutils.StartServer(t, base.TestServerArgs{})
 	defer s.Stopper().Stop(ctx)
 
-	// Create a planner
+	// Create a GenericPlanner
 	execCfg := s.ExecutorConfig().(ExecutorConfig)
 	p, cleanup := NewInternalPlanner(
 		"test",
@@ -465,7 +465,7 @@ func TestExecFactoryConstructZigzagJoin(t *testing.T) {
 	defer cleanup()
 
 	// Create execFactory
-	ef := makeExecFactory(p.(*planner))
+	ef := makeExecFactory(p.(*GenericPlanner))
 
 	// Create table descriptor
 	tabDesc := &sqlbase.ImmutableTableDescriptor{
@@ -533,8 +533,8 @@ func TestExecFactoryConstructZigzagJoin(t *testing.T) {
 		reqOrdering := exec.OutputOrdering{}
 
 		// Skip privilege checks for testing
-		p.(*planner).skipSelectPrivilegeChecks = true
-		defer func() { p.(*planner).skipSelectPrivilegeChecks = false }()
+		p.(*GenericPlanner).skipSelectPrivilegeChecks = true
+		defer func() { p.(*GenericPlanner).skipSelectPrivilegeChecks = false }()
 
 		node, err := ef.ConstructZigzagJoin(leftTable, leftIndex, rightTable, rightIndex, leftEqCols, rightEqCols, leftCols, rightCols, onCond, fixedVals, reqOrdering)
 		if err != nil {
@@ -571,7 +571,7 @@ func TestExecFactoryBuildInstruction(t *testing.T) {
 	s, _, _ := serverutils.StartServer(t, base.TestServerArgs{})
 	defer s.Stopper().Stop(ctx)
 
-	// Create a planner
+	// Create a GenericPlanner
 	execCfg := s.ExecutorConfig().(ExecutorConfig)
 	p, cleanup := NewInternalPlanner(
 		"test",
@@ -583,7 +583,7 @@ func TestExecFactoryBuildInstruction(t *testing.T) {
 	defer cleanup()
 
 	// Create execFactory
-	ef := makeExecFactory(p.(*planner))
+	ef := makeExecFactory(p.(*GenericPlanner))
 
 	// Create scalar function
 	scalarFn := func(expr opt.ScalarExpr) (tree.TypedExpr, error) {
@@ -653,7 +653,7 @@ func TestExecFactoryConstructCreateTables(t *testing.T) {
 	s, _, _ := serverutils.StartServer(t, base.TestServerArgs{})
 	defer s.Stopper().Stop(ctx)
 
-	// Create a planner
+	// Create a GenericPlanner
 	execCfg := s.ExecutorConfig().(ExecutorConfig)
 	p, cleanup := NewInternalPlanner(
 		"test",
@@ -665,7 +665,7 @@ func TestExecFactoryConstructCreateTables(t *testing.T) {
 	defer cleanup()
 
 	// Create execFactory
-	ef := makeExecFactory(p.(*planner))
+	ef := makeExecFactory(p.(*GenericPlanner))
 
 	// Create database descriptor
 	dbDesc := &sqlbase.DatabaseDescriptor{
@@ -719,7 +719,7 @@ func TestExecFactoryMakeTSSpansForExpr(t *testing.T) {
 	s, _, _ := serverutils.StartServer(t, base.TestServerArgs{})
 	defer s.Stopper().Stop(ctx)
 
-	// Create a planner
+	// Create a GenericPlanner
 	execCfg := s.ExecutorConfig().(ExecutorConfig)
 	p, cleanup := NewInternalPlanner(
 		"test",
@@ -731,7 +731,7 @@ func TestExecFactoryMakeTSSpansForExpr(t *testing.T) {
 	defer cleanup()
 
 	// Create execFactory
-	ef := makeExecFactory(p.(*planner))
+	ef := makeExecFactory(p.(*GenericPlanner))
 
 	// Test case: MakeTSSpansForExpr with FiltersExpr
 	t.Run("MakeTSSpansForExpr with FiltersExpr", func(t *testing.T) {

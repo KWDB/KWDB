@@ -113,7 +113,7 @@ func (EngineMetrics) MetricStruct() {}
 //   - err is the error encountered, if any.
 func (ex *connExecutor) recordStatementSummary(
 	ctx context.Context,
-	planner *planner,
+	GenericPlanner *GenericPlanner,
 	automaticRetryCount int,
 	rowsAffected int,
 	err error,
@@ -143,8 +143,8 @@ func (ex *connExecutor) recordStatementSummary(
 	// overhead latency: txn/retry management, error checking, etc
 	execOverhead := svcLat - processingLat
 
-	stmt := planner.stmt
-	flags := planner.curPlan.flags
+	stmt := GenericPlanner.stmt
+	flags := GenericPlanner.curPlan.flags
 	if automaticRetryCount == 0 {
 		ex.updateOptCounters(flags)
 		m := &ex.metrics.EngineMetrics
@@ -162,7 +162,7 @@ func (ex *connExecutor) recordStatementSummary(
 	database := ex.sessionData.Database
 
 	ex.statsCollector.recordStatement(
-		stmt, planner.curPlan.instrumentation.savedPlanForStats,
+		stmt, GenericPlanner.curPlan.instrumentation.savedPlanForStats,
 		flags.IsSet(planFlagDistributed), flags.IsSet(planFlagImplicitTxn),
 		automaticRetryCount, rowsAffected, err,
 		parseLat, planLat, runLat, svcLat, execOverhead, bytesRead, rowsRead,

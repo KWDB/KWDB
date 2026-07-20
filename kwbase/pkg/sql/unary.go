@@ -30,9 +30,11 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 )
 
-// unaryNode is a planNode with no columns and a single row with empty results
+// unaryNode is a PlanNode with no columns and a single row with empty results
 // which is used by select statements that have no table. It is used for its
 // property as the join identity.
+var _ PlanNode = &unaryNode{}
+
 type unaryNode struct {
 	run unaryRun
 }
@@ -42,13 +44,13 @@ type unaryRun struct {
 	consumed bool
 }
 
-func (*unaryNode) startExec(runParams) error {
+func (*unaryNode) StartExec(RunParams) error {
 	return nil
 }
 
 func (*unaryNode) Values() tree.Datums { return nil }
 
-func (u *unaryNode) Next(runParams) (bool, error) {
+func (u *unaryNode) Next(RunParams) (bool, error) {
 	r := !u.run.consumed
 	u.run.consumed = true
 	return r, nil

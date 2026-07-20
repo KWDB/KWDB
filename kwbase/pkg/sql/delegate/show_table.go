@@ -33,6 +33,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqltelemetry"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlutil"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 )
 
@@ -294,7 +295,7 @@ func (d *delegator) delegateInstanceShowCreate(
 		value := ConvertTagValToString(row[i])
 		values = append(values, value)
 	}
-	stmt := ShowCreateInstanceTable(tree.Name(cTbNameSpace.STableName), cTbNameSpace.InstName, name, values, typ)
+	stmt := sqlutil.ShowCreateInstanceTable(tree.Name(cTbNameSpace.STableName), cTbNameSpace.InstName, name, values, typ)
 	query := `SELECT '%[1]s' AS table_name, e'%[2]s ' AS create_statement`
 	query = fmt.Sprintf(query, cTbNameSpace.InstName, stmt)
 	return parse(query)
@@ -327,39 +328,6 @@ func ConvertTagValToString(d tree.Datum) string {
 		res = val.String()
 	}
 	return res
-}
-
-// ShowCreateInstanceTable returns a valid SQL representation of the CREATE
-// INSTANCE TABLE statement used to create the given table.
-func ShowCreateInstanceTable(
-	sTable tree.Name, cTable string, attributeName []string, attributeValue []string, typ []types.T,
-) string {
-	f := tree.NewFmtCtx(tree.FmtSimple)
-	f.WriteString("CREATE ")
-	f.WriteString("TABLE ")
-	f.WriteString(cTable)
-	f.WriteString(" USING ")
-	f.FormatNode(&sTable)
-	f.WriteString(" (")
-	for i := range attributeName {
-		if i > 0 {
-			f.WriteString(", ")
-		}
-		f.WriteString("\n\t")
-		f.WriteString(attributeName[i])
-	}
-	f.WriteString(" )")
-	f.WriteString(" TAGS")
-	f.WriteString(" (")
-	for i := range attributeValue {
-		if i > 0 {
-			f.WriteString(", ")
-		}
-		f.WriteString("\n\t")
-		f.WriteString(attributeValue[i])
-	}
-	f.WriteString(" )")
-	return f.CloseAndGetString()
 }
 
 // delegateShowCreate rewrites ShowCreate statement to select statement which returns

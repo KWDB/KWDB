@@ -75,12 +75,12 @@ func (f TestProcedureSenderFactory) NonTransactionalSender() kv.Sender {
 func TestCallProcedure(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
-	p := makeTestPlanner()
+	p := MakeTestPlanner()
 	node := callProcedureNode{
 		procName: "test",
 		fn:       testProcedurePlanFn,
-		params: runParams{
-			ctx:             context.TODO(),
+		params: RunParams{
+			Ctx:             context.TODO(),
 			extendedEvalCtx: p.extendedEvalCtx.copy(),
 			p:               p,
 		},
@@ -121,9 +121,9 @@ func (t *testErrInstruction) Close() {}
 
 func TestCallProcedureStart(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	p := makeTestPlanner()
-	runParam := runParams{
-		ctx:             context.TODO(),
+	p := MakeTestPlanner()
+	runParam := RunParams{
+		Ctx:             context.TODO(),
 		extendedEvalCtx: p.extendedEvalCtx.copy(),
 		p:               p,
 	}
@@ -133,17 +133,17 @@ func TestCallProcedureStart(t *testing.T) {
 		params:   runParam,
 		ins:      &testErrInstruction{},
 	}
-	require.Error(t, test.startExec(runParam))
+	require.Error(t, test.StartExec(runParam))
 
 	runParam.p.extendedEvalCtx.TxnImplicit = false
-	require.Error(t, test.startExec(runParam))
+	require.Error(t, test.StartExec(runParam))
 }
 
 func TestHasNextResult(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	p := makeTestPlanner()
-	runParam := runParams{
-		ctx:             context.TODO(),
+	p := MakeTestPlanner()
+	runParam := RunParams{
+		Ctx:             context.TODO(),
 		extendedEvalCtx: p.extendedEvalCtx.copy(),
 		p:               p,
 	}

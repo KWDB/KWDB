@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlutil"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"github.com/stretchr/testify/require"
@@ -54,7 +55,7 @@ func TestShowCreateInstanceTable(t *testing.T) {
 	attributeValue := []string{"'val1'", "123"}
 	typ := []types.T{*types.String, *types.Int}
 
-	res := ShowCreateInstanceTable(sTable, cTable, attributeName, attributeValue, typ)
+	res := sqlutil.ShowCreateInstanceTable(sTable, cTable, attributeName, attributeValue, typ)
 	require.Contains(t, res, "CREATE TABLE inst_name USING stable_name")
 	require.Contains(t, res, "tag1")
 	require.Contains(t, res, "'val1'")

@@ -14,11 +14,8 @@ package sql
 import (
 	"context"
 
-	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/flowinfra"
-	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
-	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/procedure"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/rowcontainer"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
@@ -26,61 +23,13 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 )
 
-// GetCtx gets context
-func (r *runParams) GetCtx() context.Context {
-	return r.ctx
-}
-
-// SetUserDefinedVar sets user defined var
-func (r *runParams) SetUserDefinedVar(name string, v tree.Datum) error {
-	return r.p.sessionDataMutator.SetUserDefinedVar(name, v)
-}
-
-// DeallocatePrepare deallocate prepare
-func (r *runParams) DeallocatePrepare(name string) error {
-	if name == "" {
-		r.p.preparedStatements.DeleteAll(r.ctx)
-	} else {
-		if found := r.p.preparedStatements.Delete(r.ctx, name); !found {
-			return pgerror.Newf(pgcode.InvalidSQLStatementName,
-				"prepared statement %q does not exist", name)
-		}
-	}
-	return nil
-}
-
-// GetTxn returns txn
-func (r *runParams) GetTxn() *kv.Txn {
-	return r.p.Txn()
-}
-
-// SetTxn sets txn for plan
-func (r *runParams) SetTxn(t *kv.Txn) {
-	r.p.txn = t
-}
-
-// NewTxn creates new txn for plan
-func (r *runParams) NewTxn() {
-	r.p.txn = kv.NewTxn(r.GetCtx(), r.extendedEvalCtx.DB, r.extendedEvalCtx.NodeID)
-}
-
-// Rollback controls txn rollback
-func (r *runParams) Rollback() error {
-	return r.p.txn.Rollback(r.ctx)
-}
-
-// CommitOrCleanup controls txn Commit Or Cleanup
-func (r *runParams) CommitOrCleanup() error {
-	return r.p.txn.CommitOrCleanup(r.ctx)
-}
-
 // CursorExecHelper saves all info for execute cursor
 type CursorExecHelper struct {
 	// flow handle
 	cursorHandle flowinfra.Flow
 
 	// params for get next row data
-	params   *runParams
+	params   *RunParams
 	ctx      context.Context
 	planCtx  *PlanningCtx
 	receiver *DistSQLReceiver
@@ -117,11 +66,11 @@ func GetPlanResultColumn(p procedure.Plan) (procedure.Plan, sqlbase.ResultColumn
 }
 
 // runSubqueryPlan runs sub query plans
-// params : runParams
+// params : RunParams
 // plan : parent plan
 // recv : row container for save results
 // return run or not run and error
-func runSubqueryPlan(params *runParams, plan *planTop, recv *DistSQLReceiver) (bool, error) {
+func runSubqueryPlan(params *RunParams, plan *planTop, recv *DistSQLReceiver) (bool, error) {
 	if len(plan.subqueryPlans) > 0 {
 		// curPlan is the outer plan, but *plan is the recompiled inner plan.
 		// we must change curPlan to the inner plan If the inner plan refer to the subqueries(plan.subqueryPlan).
@@ -130,7 +79,7 @@ func runSubqueryPlan(params *runParams, plan *planTop, recv *DistSQLReceiver) (b
 		newPlan.curPlan = *plan
 		newPlan.extendedEvalCtx.Planner = &newPlan
 		if !params.p.extendedEvalCtx.ExecCfg.DistSQLPlanner.PlanAndRunSubqueries(
-			params.ctx,
+			params.Ctx,
 			&newPlan,
 			newPlan.extendedEvalCtx.copy,
 			plan.subqueryPlans,
@@ -155,7 +104,7 @@ func runSubqueryPlan(params *runParams, plan *planTop, recv *DistSQLReceiver) (b
 // Returns:
 // - err : if has error
 func runPlanImplement(
-	params runParams,
+	params RunParams,
 	plan *planTop,
 	rowResultWriter *RowResultWriter,
 	stType tree.StatementType,
@@ -184,7 +133,7 @@ func runPlanImplement(
 	planCtx.ignoreClose = ignoreClose
 
 	params.p.extendedEvalCtx.ExecCfg.DistSQLPlanner.PlanAndRun(
-		params.ctx, evalCtx, planCtx, params.p.Txn(), plan.plan, recv, params.p.GetStmt(), nil,
+		params.Ctx, evalCtx, planCtx, params.p.Txn(), plan.plan, recv, params.p.GetStmt(), nil,
 	)()
 	if recv.commErr != nil {
 		return recv.commErr
@@ -208,11 +157,11 @@ func RunPlanInsideProcedure(
 	stType tree.StatementType,
 ) (int, error) {
 	plan := planInterface.(*planTop)
-	params := paramsInterface.(*runParams)
+	params := paramsInterface.(*RunParams)
 	rowResultWriter := NewRowResultWriter(rowContainer)
 
 	distribute := shouldDistributePlan(
-		params.ctx, params.p.SessionData().DistSQLMode, params.p.extendedEvalCtx.ExecCfg.DistSQLPlanner, plan.plan)
+		params.Ctx, params.p.SessionData().DistSQLMode, params.p.extendedEvalCtx.ExecCfg.DistSQLPlanner, plan.plan)
 
 	err := runPlanImplement(*params, plan, rowResultWriter, stType, !distribute, false)
 	if stType == tree.RowsAffected {
@@ -229,10 +178,10 @@ func RunPlanInsideProcedure(
 // Returns:
 // - DistSQLReceiver
 func getDistSQLReceiverByParam(
-	params *runParams, rowResultWriter *RowResultWriter, stType tree.StatementType,
+	params *RunParams, rowResultWriter *RowResultWriter, stType tree.StatementType,
 ) *DistSQLReceiver {
 	return MakeDistSQLReceiver(
-		params.ctx, rowResultWriter, stType,
+		params.Ctx, rowResultWriter, stType,
 		params.extendedEvalCtx.ExecCfg.RangeDescriptorCache,
 		params.extendedEvalCtx.ExecCfg.LeaseHolderCache,
 		params.p.Txn(),
@@ -253,7 +202,7 @@ func getDistSQLReceiverByParam(
 // Returns:
 // - PlanningCtx
 func getPlanCtxByParam(
-	params *runParams,
+	params *RunParams,
 	plan *planTop,
 	evalCtx *extendedEvalContext,
 	stmtType tree.StatementType,
@@ -261,9 +210,9 @@ func getPlanCtxByParam(
 ) *PlanningCtx {
 	var planCtx *PlanningCtx
 	if local {
-		planCtx = params.p.extendedEvalCtx.ExecCfg.DistSQLPlanner.newLocalPlanningCtx(params.ctx, evalCtx)
+		planCtx = params.p.extendedEvalCtx.ExecCfg.DistSQLPlanner.newLocalPlanningCtx(params.Ctx, evalCtx)
 	} else {
-		planCtx = params.p.extendedEvalCtx.ExecCfg.DistSQLPlanner.NewPlanningCtx(params.ctx, evalCtx, params.p.Txn())
+		planCtx = params.p.extendedEvalCtx.ExecCfg.DistSQLPlanner.NewPlanningCtx(params.Ctx, evalCtx, params.p.Txn())
 	}
 
 	// Always plan local.
@@ -296,7 +245,7 @@ func StartPlanInsideProcedure(
 	stType tree.StatementType,
 	planInterface procedure.Plan,
 ) error {
-	params := paramsInterface.(*runParams)
+	params := paramsInterface.(*RunParams)
 	rowResultWriter := NewRowResultWriter(rowContainer)
 	receiver := getDistSQLReceiverByParam(params, rowResultWriter, stType)
 
@@ -313,7 +262,7 @@ func StartPlanInsideProcedure(
 	planCtx := getPlanCtxByParam(params, plan, evalCtx, stType, false)
 
 	flow, ctx := params.p.extendedEvalCtx.ExecCfg.DistSQLPlanner.PlanAndStart(
-		params.ctx, evalCtx, planCtx, params.p.Txn(), plan.plan, receiver, params.p.GetStmt(),
+		params.Ctx, evalCtx, planCtx, params.p.Txn(), plan.plan, receiver, params.p.GetStmt(),
 	)
 	if receiver.commErr != nil {
 		return receiver.commErr

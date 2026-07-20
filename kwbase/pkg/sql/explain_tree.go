@@ -65,9 +65,9 @@ func planToTree(ctx context.Context, top *planTop) *roachpb.ExplainTreePlanNode 
 		// replaced by DistSQL nodes. This prevents the walk from ending at these
 		// special replacement nodes.
 		// TODO(jordan): this is pretty hacky. We should modify DistSQL physical
-		//  planning to avoid mutating its input planNode tree instead.
+		//  planning to avoid mutating its input PlanNode tree instead.
 		followRowSourceToPlanNode: true,
-		enterNode: func(ctx context.Context, nodeName string, plan planNode) (bool, error) {
+		enterNode: func(ctx context.Context, nodeName string, plan PlanNode) (bool, error) {
 			nodeStack.push(&roachpb.ExplainTreePlanNode{
 				Name: nodeName,
 			})
@@ -121,7 +121,7 @@ func planToTree(ctx context.Context, top *planTop) *roachpb.ExplainTreePlanNode 
 				Value: attr,
 			})
 		},
-		leaveNode: func(nodeName string, plan planNode) error {
+		leaveNode: func(nodeName string, plan PlanNode) error {
 			if nodeStack.len() == 1 {
 				return nil
 			}

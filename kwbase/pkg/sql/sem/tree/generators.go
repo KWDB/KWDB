@@ -37,7 +37,7 @@ import (
 // Overview of the concepts:
 //
 // - ValueGenerator is an interface that offers a
-//   Start/Next/Values/Stop API similar to sql.planNode.
+//   Start/Next/Values/Stop API similar to sql.PlanNode.
 //
 // - because generators are regular functions, it is possible to use
 //   them in any expression context. This is useful to e.g

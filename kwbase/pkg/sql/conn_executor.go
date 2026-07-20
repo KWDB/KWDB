@@ -856,7 +856,7 @@ func (s *Server) newConnExecutor(
 			settings: s.cfg.Settings,
 		},
 		memMetrics: memMetrics,
-		planner:    planner{execCfg: s.cfg},
+		planner:    GenericPlanner{execCfg: s.cfg},
 
 		// ctxHolder will be reset at the start of run(). We only define
 		// it here so that an early call to close() doesn't panic.
@@ -1360,7 +1360,7 @@ type connExecutor struct {
 	// during serial execution. Since planners are not threadsafe, this is only
 	// safe to use when a statement is not being parallelized. It must be reset
 	// before using.
-	planner planner
+	planner GenericPlanner
 	// phaseTimes tracks session- and transaction-level phase times. It is
 	// copied-by-value when resetting statsCollector before executing each
 	// statement.
@@ -2309,7 +2309,7 @@ func (ex *connExecutor) execCopyIn(
 		ex.state.mon.Start(ctx, ex.sessionMon, mon.BoundAccount{} /* reserved */)
 		monToStop = ex.state.mon
 	}
-	txnOpt.resetPlanner = func(ctx context.Context, p *planner, txn *kv.Txn, txnTS time.Time, stmtTS time.Time) {
+	txnOpt.resetPlanner = func(ctx context.Context, p *GenericPlanner, txn *kv.Txn, txnTS time.Time, stmtTS time.Time) {
 		// HACK: We're reaching inside ex.state and changing sqlTimestamp by hand.
 		// It is used by resetPlanner. Normally sqlTimestamp is updated by the
 		// state machine, but the copyMachine manages its own transactions without
@@ -2328,7 +2328,7 @@ func (ex *connExecutor) execCopyIn(
 		cm, err = newCopyMachine(
 			ctx, cmd.Conn, cmd.Stmt, txnOpt, ex.server.cfg,
 			// execInsertPlan
-			func(ctx context.Context, p *planner, res RestrictedCommandResult) error {
+			func(ctx context.Context, p *GenericPlanner, res RestrictedCommandResult) error {
 				_, _, err := ex.execWithDistSQLEngine(ctx, p, tree.RowsAffected, res, false /* distribute */, nil /* progressAtomic */, "")
 				return err
 			},
@@ -2516,7 +2516,9 @@ func (ex *connExecutor) readWriteModeWithSessionDefault(
 // initEvalCtx initializes the fields of an extendedEvalContext that stay the
 // same across multiple statements. resetEvalCtx must also be called before each
 // statement, to reinitialize other fields.
-func (ex *connExecutor) initEvalCtx(ctx context.Context, evalCtx *extendedEvalContext, p *planner) {
+func (ex *connExecutor) initEvalCtx(
+	ctx context.Context, evalCtx *extendedEvalContext, p *GenericPlanner,
+) {
 	scInterface := newSchemaInterface(&ex.extraTxnState.tables, ex.server.cfg.VirtualSchemas)
 
 	ie := MakeInternalExecutor(
@@ -2610,7 +2612,7 @@ func (ex *connExecutor) implicitTxn() bool {
 
 // initPlanner initializes a planner so it can can be used for planning a
 // query in the context of this session.
-func (ex *connExecutor) initPlanner(ctx context.Context, p *planner) {
+func (ex *connExecutor) initPlanner(ctx context.Context, p *GenericPlanner) {
 	p.cancelChecker = sqlbase.NewCancelChecker(ctx)
 
 	ex.initEvalCtx(ctx, &p.extendedEvalCtx, p)
@@ -2624,7 +2626,7 @@ func (ex *connExecutor) initPlanner(ctx context.Context, p *planner) {
 }
 
 func (ex *connExecutor) resetPlanner(
-	ctx context.Context, p *planner, txn *kv.Txn, stmtTS time.Time,
+	ctx context.Context, p *GenericPlanner, txn *kv.Txn, stmtTS time.Time,
 ) {
 	p.txn = txn
 	p.stmt = nil
@@ -2643,7 +2645,7 @@ func (ex *connExecutor) resetPlanner(
 
 	p.autoCommit = false
 	p.isPreparing = false
-	p.avoidCachedDescriptors = false
+	p.AvoidCachedDescriptors = false
 	p.discardRows = false
 	p.collectBundle = false
 }
@@ -3246,8 +3248,8 @@ func (ex *connExecutor) SendDirectTsInsert(
 // buildInsertNode builds tsInsertNode or tsInsertWithCDCNode from payloadNodeMap.
 func buildInsertNode(
 	evalCtx *tree.EvalContext, payloadNodeMap map[int]*sqlbase.PayloadForDistTSInsert,
-) planNode {
-	var tsInsNode planNode
+) PlanNode {
+	var tsInsNode PlanNode
 	// When CDCData is not empty, it signifies that the insert operation includes data that needs to be pushed.
 	// As a result, a tsInsertWithCDCNode is generated to replace the normal insert process's tsInsertNode.
 	if payloadNodeMap[int(evalCtx.NodeID)].CDCData == nil {

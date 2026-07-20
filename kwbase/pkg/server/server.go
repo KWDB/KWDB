@@ -91,7 +91,9 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/colexec"
+	_ "gitee.com/kwbasedb/kwbase/pkg/sql/ddl" // TODO: Register DDL handlers to break circular dependency?
 	"gitee.com/kwbasedb/kwbase/pkg/sql/distsql"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/eventlog"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	_ "gitee.com/kwbasedb/kwbase/pkg/sql/gcjob" // register jobs declared outside of pkg/sql
@@ -2798,11 +2800,11 @@ func (s *Server) Decommission(ctx context.Context, setTo bool, nodeIDs []roachpb
 			return errors.Errorf("can not run node decommission when cluster has node %+v", liveness)
 		}
 	}
-	eventLogger := sql.MakeEventLogger(s.execCfg)
-	eventType := sql.EventLogNodeDecommissioned
+	eventLogger := eventlog.MakeEventLogger(s.execCfg)
+	eventType := eventlog.EventLogNodeDecommissioned
 	operation := target.Decommission
 	if !setTo {
-		eventType = sql.EventLogNodeRecommissioned
+		eventType = eventlog.EventLogNodeRecommissioned
 		operation = target.Recommission
 	}
 	auditInfo := server.MakeAuditInfo(timeutil.Now(), "", nil,

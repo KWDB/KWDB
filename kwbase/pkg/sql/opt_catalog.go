@@ -43,6 +43,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/privilege"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlconst"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/stats"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding"
@@ -55,8 +56,8 @@ import (
 // only include what the optimizer needs, and certain common lookups are cached
 // for faster performance.
 type optCatalog struct {
-	// planner needs to be set via a call to init before calling other methods.
-	planner *planner
+	// GenericPlanner needs to be set via a call to init before calling other methods.
+	planner *GenericPlanner
 
 	// cfg is the gossiped and cached system config. It may be nil if the node
 	// does not yet have it available.
@@ -77,7 +78,7 @@ var _ cat.Catalog = &optCatalog{}
 // init initializes an optCatalog instance (which the caller can pre-allocate).
 // The instance can be used across multiple queries, but reset() should be
 // called for each query.
-func (oc *optCatalog) init(planner *planner) {
+func (oc *optCatalog) init(planner *GenericPlanner) {
 	oc.planner = planner
 	oc.dataSources = make(map[*sqlbase.ImmutableTableDescriptor]cat.DataSource)
 }
@@ -122,7 +123,7 @@ func (os *optDatabase) Equals(other cat.Object) bool {
 // optSchema is a wrapper around sqlbase.DatabaseDescriptor that implements the
 // cat.Object and cat.Schema interfaces.
 type optSchema struct {
-	planner  *planner
+	planner  *GenericPlanner
 	database *sqlbase.DatabaseDescriptor
 	schema   *sqlbase.ResolvedSchema
 
@@ -181,9 +182,9 @@ func (oc *optCatalog) ResolveSchema(
 ) (cat.Schema, cat.SchemaName, error) {
 	if flags.AvoidDescriptorCaches {
 		defer func(prev bool) {
-			oc.planner.avoidCachedDescriptors = prev
-		}(oc.planner.avoidCachedDescriptors)
-		oc.planner.avoidCachedDescriptors = true
+			oc.planner.AvoidCachedDescriptors = prev
+		}(oc.planner.AvoidCachedDescriptors)
+		oc.planner.AvoidCachedDescriptors = true
 	}
 
 	// ResolveTargetObject wraps ResolveTarget in order to raise "schema not
@@ -334,7 +335,7 @@ func ResolveProcedureObject(
 // CreateProcedure object so that it can reuse the existing procedure
 // execution path.
 func ResolvePLpgSQLFunctionAsCreateProcedure(
-	ctx context.Context, p *planner, t *tree.TableName,
+	ctx context.Context, p *GenericPlanner, t *tree.TableName,
 ) (bool, *tree.CreateProcedure, error) {
 	funcName := string(t.TableName)
 
@@ -374,7 +375,7 @@ func ResolvePLpgSQLFunctionAsCreateProcedure(
 
 // ResolveAndCheckProcPrivilege resolves procedure and check privilege of procedure
 func ResolveAndCheckProcPrivilege(
-	ctx context.Context, p *planner, t *ObjectName, pri privilege.Kind,
+	ctx context.Context, p *GenericPlanner, t *ObjectName, pri privilege.Kind,
 ) error {
 	found, desc, err := ResolveProcedureObject(ctx, p, t)
 	if err != nil {
@@ -397,7 +398,7 @@ func GetProcedureMeta(
 	if err != nil {
 		return nil, err
 	}
-	found, scID, err := resolveSchemaID(ctx, txn, dbID, scName)
+	found, scID, err := ResolveSchemaID(ctx, txn, dbID, scName)
 	if err != nil {
 		return nil, err
 	}
@@ -474,8 +475,8 @@ func GetPLpgSQLFunctionMeta(
 	desc, routineType, err := GetRoutineMetaByID(
 		ctx,
 		txn,
-		UDFFunctionDBID,
-		UDFFunctionSchemaID,
+		sqlconst.UDFFunctionDBID,
+		sqlconst.UDFFunctionSchemaID,
 		funcName,
 	)
 	if err != nil {
@@ -595,9 +596,9 @@ func (oc *optCatalog) ResolveDatabase(
 ) (cat.Database, error) {
 	if flags.AvoidDescriptorCaches {
 		defer func(prev bool) {
-			oc.planner.avoidCachedDescriptors = prev
-		}(oc.planner.avoidCachedDescriptors)
-		oc.planner.avoidCachedDescriptors = true
+			oc.planner.AvoidCachedDescriptors = prev
+		}(oc.planner.AvoidCachedDescriptors)
+		oc.planner.AvoidCachedDescriptors = true
 	}
 	db, err := oc.planner.ResolveUncachedDatabaseByName(ctx, name, true)
 	if err != nil {
@@ -615,9 +616,9 @@ func (oc *optCatalog) ResolveDataSource(
 ) (cat.DataSource, cat.DataSourceName, error) {
 	if flags.AvoidDescriptorCaches {
 		defer func(prev bool) {
-			oc.planner.avoidCachedDescriptors = prev
-		}(oc.planner.avoidCachedDescriptors)
-		oc.planner.avoidCachedDescriptors = true
+			oc.planner.AvoidCachedDescriptors = prev
+		}(oc.planner.AvoidCachedDescriptors)
+		oc.planner.AvoidCachedDescriptors = true
 	}
 
 	oc.tn = *name
@@ -639,9 +640,9 @@ func (oc *optCatalog) ResolveDataSourceByID(
 ) (_ cat.DataSource, isAdding bool, _ error) {
 	if flags.AvoidDescriptorCaches {
 		defer func(prev bool) {
-			oc.planner.avoidCachedDescriptors = prev
-		}(oc.planner.avoidCachedDescriptors)
-		oc.planner.avoidCachedDescriptors = true
+			oc.planner.AvoidCachedDescriptors = prev
+		}(oc.planner.AvoidCachedDescriptors)
+		oc.planner.AvoidCachedDescriptors = true
 	}
 
 	tableLookup, err := oc.planner.LookupTableByID(ctx, sqlbase.ID(dataSourceID))
@@ -719,7 +720,7 @@ func (oc *optCatalog) GetCurrentDatabase(ctx context.Context) string {
 }
 
 // GetStatement is part of the cat.Catalog interface.
-// It returns statement with full path table name from planner.
+// It returns statement with full path table name from GenericPlanner.
 // It is only used to delete statement.
 func (oc *optCatalog) GetStatement(ctx context.Context) string {
 	var tableExpr *tree.AliasedTableExpr

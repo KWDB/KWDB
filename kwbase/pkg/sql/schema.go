@@ -16,16 +16,20 @@ import (
 	"strings"
 
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlconst"
+	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/cockroachdb/errors"
 )
 
-func (p *planner) schemaExists(
-	ctx context.Context, parentID sqlbase.ID, schema string,
+// SchemaExists checks whether a schema with the given name exists
+func SchemaExists(
+	ctx context.Context, p *GenericPlanner, parentID sqlbase.ID, schema string,
 ) (bool, error) {
 	// Check statically known schemas.
 	if schema == tree.PublicSchema {
@@ -69,4 +73,35 @@ var VirtualSchemaNames = map[string]struct{}{
 	sessiondata.PgCatalogName: {},
 	informationSchemaName:     {},
 	kwdbInternalName:          {},
+}
+
+// DropSchemaImpl performs the logic of dropping a user defined schema. It does
+// not create a job to perform the final cleanup of the schema.
+func DropSchemaImpl(
+	ctx context.Context,
+	p *GenericPlanner,
+	b *kv.Batch,
+	dbID sqlbase.ID,
+	rsSchema *sqlbase.ResolvedSchema,
+) error {
+	scDesc := rsSchema.Desc
+	if scDesc != nil {
+		// Delete schema desc from system.descriptor.
+		descKey := sqlbase.MakeDescMetadataKey(scDesc.ID)
+		if p.ExtendedEvalContext().Tracing.KVTracingEnabled() {
+			log.VEventf(ctx, 2, "Del %s", descKey)
+		}
+		b.Del(descKey)
+	}
+	// Delete the schema name from system.namespace.
+	if err := sqlbase.RemoveSchemaNamespaceEntry(
+		ctx,
+		p.Txn(),
+		dbID,
+		rsSchema.Name,
+	); err != nil {
+		return err
+	}
+	p.Tables().AddUncommittedSchema(rsSchema.Name, rsSchema.ID, dbID, sqlconst.DbDropped)
+	return nil
 }

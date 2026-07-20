@@ -41,8 +41,10 @@ var updateNodePool = sync.Pool{
 	},
 }
 
+var _ PlanNode = &updateNode{}
+
 type updateNode struct {
-	source planNode
+	source PlanNode
 
 	// columns is set if this UPDATE is returning any rows, to be
 	// consumed by a renderNode upstream. This occurs when there is a
@@ -138,7 +140,7 @@ type updateRun struct {
 	numPassthrough int
 }
 
-func (u *updateNode) startExec(params runParams) error {
+func (u *updateNode) StartExec(params RunParams) error {
 	if u.run.tu.tableDesc().IsTSTable() {
 		return sqlbase.TSUnsupportedError("update")
 	}
@@ -153,21 +155,21 @@ func (u *updateNode) startExec(params runParams) error {
 			params.EvalContext().Mon.MakeBoundAccount(),
 			sqlbase.ColTypeInfoFromResCols(u.columns), 0)
 	}
-	return u.run.tu.init(params.ctx, params.p.txn, params.EvalContext())
+	return u.run.tu.init(params.Ctx, params.p.txn, params.EvalContext())
 }
 
-// Next is required because batchedPlanNode inherits from planNode, but
+// Next is required because batchedPlanNode inherits from PlanNode, but
 // batchedPlanNode doesn't really provide it. See the explanatory comments
 // in plan_batch.go.
-func (u *updateNode) Next(params runParams) (bool, error) { panic("not valid") }
+func (u *updateNode) Next(params RunParams) (bool, error) { panic("not valid") }
 
-// Values is required because batchedPlanNode inherits from planNode, but
+// Values is required because batchedPlanNode inherits from PlanNode, but
 // batchedPlanNode doesn't really provide it. See the explanatory comments
 // in plan_batch.go.
 func (u *updateNode) Values() tree.Datums { panic("not valid") }
 
 // BatchedNext implements the batchedPlanNode interface.
-func (u *updateNode) BatchedNext(params runParams) (bool, error) {
+func (u *updateNode) BatchedNext(params RunParams) (bool, error) {
 	if u.run.done {
 		return false, nil
 	}
@@ -177,7 +179,7 @@ func (u *updateNode) BatchedNext(params runParams) (bool, error) {
 	// Advance one batch. First, clear the current batch.
 	u.run.rowCount = 0
 	if u.run.rows != nil {
-		u.run.rows.Clear(params.ctx)
+		u.run.rows.Clear(params.Ctx)
 	}
 
 	// Now consume/accumulate the rows for this batch.
@@ -252,21 +254,21 @@ func (u *updateNode) BatchedNext(params runParams) (bool, error) {
 	}
 
 	if u.run.rowCount > 0 {
-		if err := u.run.tu.atBatchEnd(params.ctx, u.run.traceKV); err != nil {
+		if err := u.run.tu.atBatchEnd(params.Ctx, u.run.traceKV); err != nil {
 			return false, err
 		}
 
 		if !lastBatch {
 			// We only run/commit the batch if there were some rows processed
 			// in this batch.
-			if err := u.run.tu.flushAndStartNewBatch(params.ctx); err != nil {
+			if err := u.run.tu.flushAndStartNewBatch(params.Ctx); err != nil {
 				return false, err
 			}
 		}
 	}
 
 	if lastBatch {
-		if _, err := u.run.tu.finalize(params.ctx, u.run.traceKV); err != nil {
+		if _, err := u.run.tu.finalize(params.Ctx, u.run.traceKV); err != nil {
 			return false, err
 		}
 		// Remember we're done for the next call to BatchedNext().
@@ -284,7 +286,7 @@ func (u *updateNode) BatchedNext(params runParams) (bool, error) {
 
 // processSourceRow processes one row from the source for update and, if
 // result rows are needed, saves it in the result row container.
-func (u *updateNode) processSourceRow(params runParams, sourceVals tree.Datums) error {
+func (u *updateNode) processSourceRow(params RunParams, sourceVals tree.Datums) error {
 	// sourceVals contains values for the columns from the table, in the order of the
 	// table descriptor. (One per column in u.tw.ru.FetchCols)
 	//
@@ -365,7 +367,7 @@ func (u *updateNode) processSourceRow(params runParams, sourceVals tree.Datums) 
 	}
 
 	// Queue the insert in the KV batch.
-	newValues, err := u.run.tu.rowForUpdate(params.ctx, oldValues, u.run.updateValues, u.run.traceKV)
+	newValues, err := u.run.tu.rowForUpdate(params.Ctx, oldValues, u.run.updateValues, u.run.traceKV)
 	if err != nil {
 		return err
 	}
@@ -405,7 +407,7 @@ func (u *updateNode) processSourceRow(params runParams, sourceVals tree.Datums) 
 			}
 		}
 
-		if _, err := u.run.rows.AddRow(params.ctx, resultValues); err != nil {
+		if _, err := u.run.rows.AddRow(params.Ctx, resultValues); err != nil {
 			return err
 		}
 	}

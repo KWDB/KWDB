@@ -18,7 +18,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 )
 
-// TestUnaryNodeStartExec tests the startExec method of unaryNode
+// TestUnaryNodeStartExec tests the StartExec method of unaryNode
 func TestUnaryNodeStartExec(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
@@ -28,17 +28,17 @@ func TestUnaryNodeStartExec(t *testing.T) {
 		testFunc  func(t *testing.T, u *unaryNode)
 	}{
 		{
-			name: "test startExec returns nil",
+			name: "test StartExec returns nil",
 			setupNode: func() *unaryNode {
 				return &unaryNode{}
 			},
 			testFunc: func(t *testing.T, u *unaryNode) {
-				params := runParams{
-					ctx: context.Background(),
+				params := RunParams{
+					Ctx: context.Background(),
 				}
-				err := u.startExec(params)
+				err := u.StartExec(params)
 				if err != nil {
-					t.Errorf("startExec() returned error: %v", err)
+					t.Errorf("StartExec() returned error: %v", err)
 				}
 			},
 		},
@@ -98,8 +98,8 @@ func TestUnaryNodeNext(t *testing.T) {
 				return &unaryNode{}
 			},
 			testFunc: func(t *testing.T, u *unaryNode) {
-				params := runParams{
-					ctx: context.Background(),
+				params := RunParams{
+					Ctx: context.Background(),
 				}
 
 				// First call should return true

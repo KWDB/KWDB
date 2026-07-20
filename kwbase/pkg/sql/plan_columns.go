@@ -29,35 +29,35 @@ import "gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 var noColumns = make(sqlbase.ResultColumns, 0)
 
 // planColumns returns the signature of rows logically computed
-// by the given planNode.
+// by the given PlanNode.
 // The signature consists of the list of columns with
 // their name and type.
 //
 // The length of the returned slice is guaranteed to be equal to the
-// length of the tuple returned by the planNode's Values() method
+// length of the tuple returned by the PlanNode's Values() method
 // during local execution.
 //
 // The returned slice is *not* mutable. To modify the result column
 // set, implement a separate recursion (e.g. needed_columns.go) or use
 // planMutableColumns defined below.
-func planColumns(plan planNode) sqlbase.ResultColumns {
+func planColumns(plan PlanNode) sqlbase.ResultColumns {
 	return getPlanColumns(plan, false)
 }
 
 // planMutableColumns is similar to planColumns() but returns a
 // ResultColumns slice that can be modified by the caller.
-func planMutableColumns(plan planNode) sqlbase.ResultColumns {
+func planMutableColumns(plan PlanNode) sqlbase.ResultColumns {
 	return getPlanColumns(plan, true)
 }
 
 // getPlanColumns implements the logic for the
 // planColumns/planMutableColumns functions. The mut argument
 // indicates whether the slice should be mutable (mut=true) or not.
-func getPlanColumns(plan planNode, mut bool) sqlbase.ResultColumns {
+func getPlanColumns(plan PlanNode, mut bool) sqlbase.ResultColumns {
 	switch n := plan.(type) {
 
 	// Nodes that define their own schema.
-	case *delayedNode:
+	case *DelayedNode:
 		return n.columns
 	case *groupNode:
 		return n.columns
@@ -181,15 +181,15 @@ func getPlanColumns(plan planNode, mut bool) sqlbase.ResultColumns {
 	return noColumns
 }
 
-// optColumnsSlot is a helper struct for nodes with a static signature
+// OptColumnsSlot is a helper struct for nodes with a static signature
 // (e.g. explainDistSQLNode). It allows instances to reuse a common
 // (shared) ResultColumns slice as long as no read/write access is
 // requested to the slice via planMutableColumns.
-type optColumnsSlot struct {
+type OptColumnsSlot struct {
 	columns sqlbase.ResultColumns
 }
 
-func (c *optColumnsSlot) getColumns(mut bool, cols sqlbase.ResultColumns) sqlbase.ResultColumns {
+func (c *OptColumnsSlot) getColumns(mut bool, cols sqlbase.ResultColumns) sqlbase.ResultColumns {
 	if c.columns != nil {
 		return c.columns
 	}

@@ -1334,7 +1334,7 @@ func TestLint(t *testing.T) {
 		if err := stream.ForEach(
 			stream.Sequence(
 				filter,
-				stream.GrepNot("sql/.*exported func .* returns unexported type sql.planNode"),
+				stream.GrepNot("sql/.*exported func .* returns unexported type sql.PlanNode"),
 				stream.GrepNot("pkg/sql/types/types.go.* var Uuid should be UUID"),
 				stream.GrepNot("pkg/sql/types/types.go.*don't use underscores in Go names; const T_"),
 			), func(s string) {

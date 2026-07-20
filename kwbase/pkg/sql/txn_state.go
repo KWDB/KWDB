@@ -122,7 +122,7 @@ type txnState struct {
 	isHistorical bool
 
 	// mon tracks txn-bound objects like the running state of
-	// planNode in the midst of performing a computation.
+	// PlanNode in the midst of performing a computation.
 	mon *mon.BytesMonitor
 
 	// adv is overwritten after every transition. It represents instructions for

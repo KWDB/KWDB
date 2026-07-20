@@ -47,8 +47,10 @@ var tableInserterPool = sync.Pool{
 	},
 }
 
+var _ PlanNode = &insertNode{}
+
 type insertNode struct {
-	source planNode
+	source PlanNode
 
 	// columns is set if this INSERT is returning any rows, to be
 	// consumed by a renderNode upstream. This occurs when there is a
@@ -106,7 +108,7 @@ type insertRun struct {
 }
 
 func (r *insertRun) initRowContainer(
-	params runParams, columns sqlbase.ResultColumns, rowCapacity int,
+	params RunParams, columns sqlbase.ResultColumns, rowCapacity int,
 ) {
 	if !r.rowsNeeded {
 		return
@@ -152,7 +154,7 @@ func (r *insertRun) initRowContainer(
 
 // processSourceRow processes one row from the source for insertion and, if
 // result rows are needed, saves it in the result row container.
-func (r *insertRun) processSourceRow(params runParams, rowVals tree.Datums) error {
+func (r *insertRun) processSourceRow(params RunParams, rowVals tree.Datums) error {
 	// The replication table can not able to insert
 	if r.ti.ri.Helper.TableDesc.TableDescriptor.ReplicateFrom != "" {
 		return errors.Errorf("INSERT INTO REPLICATION TABLE IS NOT ALLOWED")
@@ -171,7 +173,7 @@ func (r *insertRun) processSourceRow(params runParams, rowVals tree.Datums) erro
 	}
 
 	// Queue the insert in the KV batch.
-	if err := r.ti.row(params.ctx, rowVals, r.traceKV); err != nil {
+	if err := r.ti.row(params.Ctx, rowVals, r.traceKV); err != nil {
 		return err
 	}
 
@@ -188,7 +190,7 @@ func (r *insertRun) processSourceRow(params runParams, rowVals tree.Datums) erro
 			}
 		}
 
-		if _, err := r.rows.AddRow(params.ctx, r.resultRowBuffer); err != nil {
+		if _, err := r.rows.AddRow(params.Ctx, r.resultRowBuffer); err != nil {
 			return err
 		}
 	}
@@ -196,27 +198,27 @@ func (r *insertRun) processSourceRow(params runParams, rowVals tree.Datums) erro
 	return nil
 }
 
-func (n *insertNode) startExec(params runParams) error {
+func (n *insertNode) StartExec(params RunParams) error {
 	// Cache traceKV during execution, to avoid re-evaluating it for every row.
 	n.run.traceKV = params.p.ExtendedEvalContext().Tracing.KVTracingEnabled()
 
 	n.run.initRowContainer(params, n.columns, 0 /* rowCapacity */)
 
-	return n.run.ti.init(params.ctx, params.p.txn, params.EvalContext())
+	return n.run.ti.init(params.Ctx, params.p.txn, params.EvalContext())
 }
 
-// Next is required because batchedPlanNode inherits from planNode, but
+// Next is required because batchedPlanNode inherits from PlanNode, but
 // batchedPlanNode doesn't really provide it. See the explanatory comments
 // in plan_batch.go.
-func (n *insertNode) Next(params runParams) (bool, error) { panic("not valid") }
+func (n *insertNode) Next(params RunParams) (bool, error) { panic("not valid") }
 
-// Values is required because batchedPlanNode inherits from planNode, but
+// Values is required because batchedPlanNode inherits from PlanNode, but
 // batchedPlanNode doesn't really provide it. See the explanatory comments
 // in plan_batch.go.
 func (n *insertNode) Values() tree.Datums { panic("not valid") }
 
 // BatchedNext implements the batchedPlanNode interface.
-func (n *insertNode) BatchedNext(params runParams) (bool, error) {
+func (n *insertNode) BatchedNext(params RunParams) (bool, error) {
 	if n.run.done {
 		return false, nil
 	}
@@ -226,7 +228,7 @@ func (n *insertNode) BatchedNext(params runParams) (bool, error) {
 	// Advance one batch. First, clear the current batch.
 	n.run.rowCount = 0
 	if n.run.rows != nil {
-		n.run.rows.Clear(params.ctx)
+		n.run.rows.Clear(params.Ctx)
 	}
 
 	// Now consume/accumulate the rows for this batch.
@@ -274,21 +276,21 @@ func (n *insertNode) BatchedNext(params runParams) (bool, error) {
 	}
 
 	if n.run.rowCount > 0 {
-		if err := n.run.ti.atBatchEnd(params.ctx, n.run.traceKV); err != nil {
+		if err := n.run.ti.atBatchEnd(params.Ctx, n.run.traceKV); err != nil {
 			return false, err
 		}
 
 		if !lastBatch {
 			// We only run/commit the batch if there were some rows processed
 			// in this batch.
-			if err := n.run.ti.flushAndStartNewBatch(params.ctx); err != nil {
+			if err := n.run.ti.flushAndStartNewBatch(params.Ctx); err != nil {
 				return false, err
 			}
 		}
 	}
 
 	if lastBatch {
-		if _, err := n.run.ti.finalize(params.ctx, n.run.traceKV); err != nil {
+		if _, err := n.run.ti.finalize(params.Ctx, n.run.traceKV); err != nil {
 			return false, err
 		}
 		// Remember we're done for the next call to BatchedNext().
@@ -317,7 +319,7 @@ func (n *insertNode) Close(ctx context.Context) {
 	insertNodePool.Put(n)
 }
 
-// See planner.autoCommit.
+// See GenericPlanner.autoCommit.
 func (n *insertNode) enableAutoCommit() {
 	n.run.ti.enableAutoCommit()
 }

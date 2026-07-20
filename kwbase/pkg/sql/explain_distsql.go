@@ -36,13 +36,15 @@ import (
 	"github.com/opentracing/opentracing-go"
 )
 
-// explainDistSQLNode is a planNode that wraps a plan and returns
+// explainDistSQLNode is a PlanNode that wraps a plan and returns
 // information related to running that plan under DistSQL.
+var _ PlanNode = &explainDistSQLNode{}
+
 type explainDistSQLNode struct {
-	optColumnsSlot
+	OptColumnsSlot
 
 	options        *tree.ExplainOptions
-	plan           planNode
+	plan           PlanNode
 	subqueryPlans  []subquery
 	postqueryPlans []postquery
 
@@ -79,10 +81,10 @@ type distSQLExplainable interface {
 	makePlanForExplainDistSQL(*PlanningCtx, *DistSQLPlanner) (PhysicalPlan, error)
 }
 
-func (n *explainDistSQLNode) startExec(params runParams) error {
+func (n *explainDistSQLNode) StartExec(params RunParams) error {
 	distSQLPlanner := params.extendedEvalCtx.DistSQLPlanner
 	shouldPlanDistribute, recommendation := willDistributePlan(distSQLPlanner, n.plan, params)
-	planCtx := distSQLPlanner.NewPlanningCtx(params.ctx, params.extendedEvalCtx, params.p.txn)
+	planCtx := distSQLPlanner.NewPlanningCtx(params.Ctx, params.extendedEvalCtx, params.p.txn)
 	planCtx.isLocal = !shouldPlanDistribute
 	planCtx.ignoreClose = true
 	planCtx.planner = params.p
@@ -161,21 +163,21 @@ func (n *explainDistSQLNode) startExec(params runParams) error {
 		// separate recording for the child such that it's also guaranteed that we
 		// don't get a noopSpan.
 		var sp opentracing.Span
-		if parentSp := opentracing.SpanFromContext(params.ctx); parentSp != nil &&
+		if parentSp := opentracing.SpanFromContext(params.Ctx); parentSp != nil &&
 			!tracing.IsRecording(parentSp) {
 			tracer := parentSp.Tracer()
 			sp = tracer.StartSpan(
 				"explain-distsql", tracing.Recordable,
 				opentracing.ChildOf(parentSp.Context()),
-				tracing.LogTagsFromCtx(params.ctx))
+				tracing.LogTagsFromCtx(params.Ctx))
 		} else {
 			tracer := params.extendedEvalCtx.ExecCfg.AmbientCtx.Tracer
 			sp = tracer.StartSpan(
 				"explain-distsql", tracing.Recordable,
-				tracing.LogTagsFromCtx(params.ctx))
+				tracing.LogTagsFromCtx(params.Ctx))
 		}
 		tracing.StartRecording(sp, tracing.SnowballRecording)
-		ctx := opentracing.ContextWithSpan(params.ctx, sp)
+		ctx := opentracing.ContextWithSpan(params.Ctx, sp)
 		planCtx.ctx = ctx
 		// Make a copy of the evalContext with the recording span in it; we can't
 		// change the original.
@@ -292,7 +294,7 @@ func (n *explainDistSQLNode) startExec(params runParams) error {
 	return nil
 }
 
-func (n *explainDistSQLNode) Next(runParams) (bool, error) {
+func (n *explainDistSQLNode) Next(RunParams) (bool, error) {
 	if n.run.done {
 		return false, nil
 	}
@@ -323,7 +325,7 @@ func (n *explainDistSQLNode) Close(ctx context.Context) {
 // execution. It takes into account whether a distSQL plan can be made at all
 // and the session setting for distSQL.
 func willDistributePlan(
-	distSQLPlanner *DistSQLPlanner, plan planNode, params runParams,
+	distSQLPlanner *DistSQLPlanner, plan PlanNode, params RunParams,
 ) (bool, distRecommendation) {
 	var recommendation distRecommendation
 	if _, ok := plan.(distSQLExplainable); ok {
@@ -336,12 +338,12 @@ func willDistributePlan(
 }
 
 func makePhysicalPlan(
-	planCtx *PlanningCtx, distSQLPlanner *DistSQLPlanner, plan planNode,
+	planCtx *PlanningCtx, distSQLPlanner *DistSQLPlanner, plan PlanNode,
 ) (PhysicalPlan, error) {
 	var physPlan PhysicalPlan
 	var err error
-	if planNode, ok := plan.(distSQLExplainable); ok {
-		physPlan, err = planNode.makePlanForExplainDistSQL(planCtx, distSQLPlanner)
+	if PlanNode, ok := plan.(distSQLExplainable); ok {
+		physPlan, err = PlanNode.makePlanForExplainDistSQL(planCtx, distSQLPlanner)
 	} else {
 		physPlan, err = distSQLPlanner.createPlanForNode(planCtx, plan)
 	}

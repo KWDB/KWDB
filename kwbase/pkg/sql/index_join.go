@@ -35,8 +35,10 @@ import (
 // of a table. The input to an indexJoinNode is the result of scanning a
 // non-covering index (potentially processed through other operations like
 // filtering, sorting, limiting).
+var _ PlanNode = &indexJoinNode{}
+
 type indexJoinNode struct {
-	input planNode
+	input PlanNode
 
 	// Indices of the PK columns in the input plan.
 	keyCols []int
@@ -44,7 +46,7 @@ type indexJoinNode struct {
 	table *scanNode
 
 	// The columns returned by this node. While these are not ever different from
-	// the table scanNode in the heuristic planner, the optimizer plans them to
+	// the table scanNode in the heuristic GenericPlanner, the optimizer plans them to
 	// be different in some cases.
 	cols []sqlbase.ColumnDescriptor
 	// There is a 1-1 correspondence between cols and resultColumns.
@@ -53,11 +55,11 @@ type indexJoinNode struct {
 	reqOrdering ReqOrdering
 }
 
-func (n *indexJoinNode) startExec(params runParams) error {
+func (n *indexJoinNode) StartExec(params RunParams) error {
 	panic("indexJoinNode cannot be run in local mode")
 }
 
-func (n *indexJoinNode) Next(params runParams) (bool, error) {
+func (n *indexJoinNode) Next(params RunParams) (bool, error) {
 	panic("indexJoinNode cannot be run in local mode")
 }
 

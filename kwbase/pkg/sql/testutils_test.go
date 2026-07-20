@@ -125,8 +125,8 @@ func TestDistSQLPlannerExec(t *testing.T) {
 	// Test both distributed and non-distributed execution
 	for _, distribute := range []bool{true, false} {
 		t.Run(fmt.Sprintf("distribute=%t", distribute), func(t *testing.T) {
-			// Create an internal planner
-			planner, cleanup := NewInternalPlanner(
+			// Create an internal GenericPlanner
+			GenericPlanner, cleanup := NewInternalPlanner(
 				"test",
 				kv.NewTxn(ctx, s.DB(), s.NodeID()),
 				security.RootUser,
@@ -137,14 +137,14 @@ func TestDistSQLPlannerExec(t *testing.T) {
 
 			// Test a simple SELECT statement
 			sql := "SELECT k FROM test_db.test_table WHERE k=1"
-			err := dsp.Exec(ctx, planner, sql, distribute)
+			err := dsp.Exec(ctx, GenericPlanner, sql, distribute)
 			if err != nil {
 				t.Fatalf("Exec failed: %v", err)
 			}
 
 			// Test a more complex statement
 			sql = "SELECT count(*) FROM test_db.test_table"
-			err = dsp.Exec(ctx, planner, sql, distribute)
+			err = dsp.Exec(ctx, GenericPlanner, sql, distribute)
 			if err != nil {
 				t.Fatalf("Exec failed: %v", err)
 			}

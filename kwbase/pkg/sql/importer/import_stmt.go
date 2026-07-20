@@ -39,6 +39,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlconst"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqltelemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/cloud"
@@ -70,22 +71,22 @@ const (
 	optionWriteWAL       = "writewal"
 )
 
-var importOptionExpectValues = map[string]sql.KVStringOptValidate{
-	csvOptionDelimiter: sql.KVStringOptRequireValue,
-	optionComment:      sql.KVStringOptRequireNoValue,
-	optionPrivileges:   sql.KVStringOptRequireNoValue,
-	csvOptionNullIf:    sql.KVStringOptRequireValue,
-	csvOptionSkip:      sql.KVStringOptRequireValue,
-	csvOptionEscaped:   sql.KVStringOptRequireValue,
-	csvOptionEnclosed:  sql.KVStringOptRequireValue,
-	rejectedRows:       sql.KVStringOptRequireValue,
-	// csvOptionLogColumn:  sql.KVStringOptRequireValue,
-	csvOptionThreads:     sql.KVStringOptRequireValue,
-	csvOptionBatchRows:   sql.KVStringOptRequireValue,
-	csvOptionLimitMemory: sql.KVStringOptRequireValue,
-	csvOptionAutoShrink:  sql.KVStringOptRequireNoValue,
-	csvOptionCharset:     sql.KVStringOptRequireValue,
-	optionWriteWAL:       sql.KVStringOptRequireNoValue,
+var importOptionExpectValues = map[string]sqlconst.KVStringOptValidate{
+	csvOptionDelimiter: sqlconst.KVStringOptRequireValue,
+	optionComment:      sqlconst.KVStringOptRequireNoValue,
+	optionPrivileges:   sqlconst.KVStringOptRequireNoValue,
+	csvOptionNullIf:    sqlconst.KVStringOptRequireValue,
+	csvOptionSkip:      sqlconst.KVStringOptRequireValue,
+	csvOptionEscaped:   sqlconst.KVStringOptRequireValue,
+	csvOptionEnclosed:  sqlconst.KVStringOptRequireValue,
+	rejectedRows:       sqlconst.KVStringOptRequireValue,
+	// csvOptionLogColumn:  sqlconst.KVStringOptRequireValue,
+	csvOptionThreads:     sqlconst.KVStringOptRequireValue,
+	csvOptionBatchRows:   sqlconst.KVStringOptRequireValue,
+	csvOptionLimitMemory: sqlconst.KVStringOptRequireValue,
+	csvOptionAutoShrink:  sqlconst.KVStringOptRequireNoValue,
+	csvOptionCharset:     sqlconst.KVStringOptRequireValue,
+	optionWriteWAL:       sqlconst.KVStringOptRequireNoValue,
 }
 
 // importHeader is the header for RESTORE stmt results.
@@ -667,8 +668,8 @@ func importJobDescription(
 	stmt.Options = nil
 	for k, v := range opts {
 		opt := tree.KVOption{Key: tree.Name(k)}
-		val := importOptionExpectValues[k] == sql.KVStringOptRequireValue
-		val = val || (importOptionExpectValues[k] == sql.KVStringOptAny && len(v) > 0)
+		val := importOptionExpectValues[k] == sqlconst.KVStringOptRequireValue
+		val = val || (importOptionExpectValues[k] == sqlconst.KVStringOptAny && len(v) > 0)
 		if val {
 			opt.Value = tree.NewDString(v)
 		}

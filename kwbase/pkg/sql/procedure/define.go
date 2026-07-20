@@ -36,7 +36,7 @@ const HandlerLabel = "handler"
 // IntoLabel flags into
 const IntoLabel = "into"
 
-// RunParam is the interface of runParams
+// RunParam is the interface of RunParams
 type RunParam interface {
 	GetCtx() context.Context
 

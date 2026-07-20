@@ -37,9 +37,9 @@ type rebalanceTsDataNode struct {
 }
 
 // RebalanceTsDataNode rebalance ts data.
-func (p *planner) RebalanceTsDataNode(
+func (p *GenericPlanner) RebalanceTsDataNode(
 	ctx context.Context, n *tree.RebalanceTsData,
-) (planNode, error) {
+) (PlanNode, error) {
 	advance := settings.AllowAdvanceDistributeSetting.Get(p.execCfg.SV())
 	if !advance {
 		return nil, pgerror.New(pgcode.FeatureNotSupported, "rebalance ts data is not support when cluster setting server.advanced_distributed_operations.enabled is false.")
@@ -51,10 +51,10 @@ func (p *planner) RebalanceTsDataNode(
 	return &rebalanceTsDataNode{n: n}, nil
 }
 
-func (n *rebalanceTsDataNode) startExec(params runParams) error {
+func (n *rebalanceTsDataNode) StartExec(params RunParams) error {
 	return pgerror.New(pgcode.FeatureNotSupported, "rebalance ts data is not supported")
 }
 
-func (*rebalanceTsDataNode) Next(runParams) (bool, error) { return false, nil }
+func (*rebalanceTsDataNode) Next(RunParams) (bool, error) { return false, nil }
 func (*rebalanceTsDataNode) Values() tree.Datums          { return tree.Datums{} }
 func (*rebalanceTsDataNode) Close(context.Context)        {}

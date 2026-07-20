@@ -23,8 +23,9 @@
 
 package sql
 
-func (p *planner) SetSessionAuthorizationDefault() (planNode, error) {
+// SetSessionAuthorizationDefault resets the session authorization to the default user
+func (p *GenericPlanner) SetSessionAuthorizationDefault() (PlanNode, error) {
 	// This is currently a no-op - we don't support changing the session
 	// authorization, and the parser only accepts DEFAULT.
-	return newZeroNode(nil /* columns */), nil
+	return NewZeroNode(nil /* columns */), nil
 }

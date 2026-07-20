@@ -40,8 +40,10 @@ var upsertNodePool = sync.Pool{
 	},
 }
 
+var _ PlanNode = &upsertNode{}
+
 type upsertNode struct {
-	source planNode
+	source PlanNode
 
 	// columns is set if this UPDATE is returning any rows, to be
 	// consumed by a renderNode upstream. This occurs when there is a
@@ -67,7 +69,7 @@ type upsertRun struct {
 	traceKV bool
 }
 
-func (n *upsertNode) startExec(params runParams) error {
+func (n *upsertNode) StartExec(params RunParams) error {
 	if n.run.tw.tableDesc().IsTSTable() {
 		return sqlbase.TSUnsupportedError("upsert")
 	}
@@ -77,21 +79,21 @@ func (n *upsertNode) startExec(params runParams) error {
 	// cache traceKV during execution, to avoid re-evaluating it for every row.
 	n.run.traceKV = params.p.ExtendedEvalContext().Tracing.KVTracingEnabled()
 
-	return n.run.tw.init(params.ctx, params.p.txn, params.EvalContext())
+	return n.run.tw.init(params.Ctx, params.p.txn, params.EvalContext())
 }
 
-// Next is required because batchedPlanNode inherits from planNode, but
+// Next is required because batchedPlanNode inherits from PlanNode, but
 // batchedPlanNode doesn't really provide it. See the explanatory comments
 // in plan_batch.go.
-func (n *upsertNode) Next(params runParams) (bool, error) { panic("not valid") }
+func (n *upsertNode) Next(params RunParams) (bool, error) { panic("not valid") }
 
-// Values is required because batchedPlanNode inherits from planNode, but
+// Values is required because batchedPlanNode inherits from PlanNode, but
 // batchedPlanNode doesn't really provide it. See the explanatory comments
 // in plan_batch.go.
 func (n *upsertNode) Values() tree.Datums { panic("not valid") }
 
 // BatchedNext implements the batchedPlanNode interface.
-func (n *upsertNode) BatchedNext(params runParams) (bool, error) {
+func (n *upsertNode) BatchedNext(params RunParams) (bool, error) {
 	if n.run.done {
 		return false, nil
 	}
@@ -100,7 +102,7 @@ func (n *upsertNode) BatchedNext(params runParams) (bool, error) {
 
 	// Advance one batch. First, clear the current batch.
 	if n.run.tw.collectRows {
-		n.run.tw.rowsUpserted.Clear(params.ctx)
+		n.run.tw.rowsUpserted.Clear(params.Ctx)
 	}
 
 	// Now consume/accumulate the rows for this batch.
@@ -135,21 +137,21 @@ func (n *upsertNode) BatchedNext(params runParams) (bool, error) {
 	batchSize := n.run.tw.curBatchSize()
 
 	if batchSize > 0 {
-		if err := n.run.tw.atBatchEnd(params.ctx, n.run.traceKV); err != nil {
+		if err := n.run.tw.atBatchEnd(params.Ctx, n.run.traceKV); err != nil {
 			return false, err
 		}
 
 		if !lastBatch {
 			// We only run/commit the batch if there were some rows processed
 			// in this batch.
-			if err := n.run.tw.flushAndStartNewBatch(params.ctx); err != nil {
+			if err := n.run.tw.flushAndStartNewBatch(params.Ctx); err != nil {
 				return false, err
 			}
 		}
 	}
 
 	if lastBatch {
-		if _, err := n.run.tw.finalize(params.ctx, n.run.traceKV); err != nil {
+		if _, err := n.run.tw.finalize(params.Ctx, n.run.traceKV); err != nil {
 			return false, err
 		}
 		// Remember we're done for the next call to BatchedNext().
@@ -170,7 +172,7 @@ func (n *upsertNode) BatchedNext(params runParams) (bool, error) {
 
 // processSourceRow processes one row from the source for upsertion.
 // The table writer is in charge of accumulating the result rows.
-func (n *upsertNode) processSourceRow(params runParams, rowVals tree.Datums) error {
+func (n *upsertNode) processSourceRow(params RunParams, rowVals tree.Datums) error {
 	if err := enforceLocalColumnConstraints(rowVals, n.run.insertCols); err != nil {
 		return err
 	}
@@ -191,7 +193,7 @@ func (n *upsertNode) processSourceRow(params runParams, rowVals tree.Datums) err
 
 	// Process the row. This is also where the tableWriter will accumulate
 	// the row for later.
-	return n.run.tw.row(params.ctx, rowVals, n.run.traceKV)
+	return n.run.tw.row(params.Ctx, rowVals, n.run.traceKV)
 }
 
 // BatchedCount implements the batchedPlanNode interface.

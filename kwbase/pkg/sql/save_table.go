@@ -40,7 +40,7 @@ import (
 //
 // The node creates the table on startup. If the table exists, it errors out.
 type saveTableNode struct {
-	source planNode
+	source PlanNode
 
 	target tree.TableName
 
@@ -58,13 +58,13 @@ type saveTableNode struct {
 // saveTableInsertBatch is the number of rows per issued INSERT statement.
 const saveTableInsertBatch = 100
 
-func (p *planner) makeSaveTable(
-	source planNode, target *tree.TableName, colNames []string,
-) planNode {
+func (p *GenericPlanner) makeSaveTable(
+	source PlanNode, target *tree.TableName, colNames []string,
+) PlanNode {
 	return &saveTableNode{source: source, target: *target, colNames: colNames}
 }
 
-func (n *saveTableNode) startExec(params runParams) error {
+func (n *saveTableNode) StartExec(params RunParams) error {
 	create := &tree.CreateTable{
 		Table: n.target,
 	}
@@ -86,7 +86,7 @@ func (n *saveTableNode) startExec(params runParams) error {
 	}
 
 	_, err := params.p.ExtendedEvalContext().ExecCfg.InternalExecutor.Exec(
-		params.ctx,
+		params.Ctx,
 		"create save table",
 		nil, /* txn */
 		create.String(),
@@ -95,11 +95,11 @@ func (n *saveTableNode) startExec(params runParams) error {
 }
 
 // issue inserts rows into the target table of the saveTableNode.
-func (n *saveTableNode) issue(params runParams) error {
+func (n *saveTableNode) issue(params RunParams) error {
 	if v := &n.run.vals; len(v.Rows) > 0 {
 		stmt := fmt.Sprintf("INSERT INTO %s %s", n.target.String(), v.String())
 		if _, err := params.p.ExtendedEvalContext().ExecCfg.InternalExecutor.Exec(
-			params.ctx,
+			params.Ctx,
 			"insert into save table",
 			nil, /* txn */
 			stmt,
@@ -111,8 +111,8 @@ func (n *saveTableNode) issue(params runParams) error {
 	return nil
 }
 
-// Next is part of the planNode interface.
-func (n *saveTableNode) Next(params runParams) (bool, error) {
+// Next is part of the PlanNode interface.
+func (n *saveTableNode) Next(params RunParams) (bool, error) {
 	res, err := n.source.Next(params)
 	if err != nil {
 		return res, err
@@ -136,12 +136,12 @@ func (n *saveTableNode) Next(params runParams) (bool, error) {
 	return true, nil
 }
 
-// Values is part of the planNode interface.
+// Values is part of the PlanNode interface.
 func (n *saveTableNode) Values() tree.Datums {
 	return n.source.Values()
 }
 
-// Close is part of the planNode interface.
+// Close is part of the PlanNode interface.
 func (n *saveTableNode) Close(ctx context.Context) {
 	n.source.Close(ctx)
 }

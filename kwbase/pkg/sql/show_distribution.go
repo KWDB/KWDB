@@ -148,9 +148,9 @@ func processTableDistributionResponse(
 
 // ShowDistribution returns a SHOW DISTRIBUTION statement. The user must have any
 // privilege on the database or table.
-func (p *planner) ShowDistribution(
+func (p *GenericPlanner) ShowDistribution(
 	ctx context.Context, n *tree.ShowDistribution,
-) (planNode, error) {
+) (PlanNode, error) {
 	if n.IsDB {
 		dbName := string(n.Database)
 		dbDesc, err := p.ResolveUncachedDatabaseByName(ctx, dbName, true)
@@ -178,11 +178,11 @@ func (p *planner) ShowDistribution(
 			return nil, err
 		}
 
-		return &delayedNode{
-			name:    fmt.Sprintf("SHOW DISTRIBUTION FROM DATABASE %v", dbName),
-			columns: showDBDistributionColumns,
-			constructor: func(ctx context.Context, p *planner) (planNode, error) {
-				v := p.newContainerValuesNode(showDBDistributionColumns, capacity)
+		return NewDelayedNode(
+			fmt.Sprintf("SHOW DISTRIBUTION FROM DATABASE %v", dbName),
+			showDBDistributionColumns,
+			func(ctx context.Context, p *GenericPlanner) (PlanNode, error) {
+				v := p.NewContainerValuesNode(showDBDistributionColumns, capacity)
 				for _, row := range rows {
 					if _, err = v.rows.AddRow(ctx, row); err != nil {
 						v.Close(ctx)
@@ -191,7 +191,7 @@ func (p *planner) ShowDistribution(
 				}
 				return v, nil
 			},
-		}, nil
+			nil), nil
 	}
 	tblName := n.Table.ToTableName()
 	tableDesc, err := p.ResolveMutableTableDescriptor(
@@ -221,11 +221,11 @@ func (p *planner) ShowDistribution(
 		return nil, err
 	}
 
-	return &delayedNode{
+	return &DelayedNode{
 		name:    fmt.Sprintf("SHOW DISTRIBUTION FROM TABLE %v", n.Table),
 		columns: showTableDistributionColumns,
-		constructor: func(ctx context.Context, p *planner) (planNode, error) {
-			v := p.newContainerValuesNode(showTableDistributionColumns, capacity)
+		constructor: func(ctx context.Context, p *GenericPlanner) (PlanNode, error) {
+			v := p.NewContainerValuesNode(showTableDistributionColumns, capacity)
 			for _, row := range rows {
 				if _, err = v.rows.AddRow(ctx, row); err != nil {
 					v.Close(ctx)

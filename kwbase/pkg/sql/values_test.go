@@ -32,47 +32,21 @@ import (
 	"testing"
 	"time"
 
-	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/security"
-	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/bitarray"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
-	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 	"github.com/cockroachdb/apd"
 	"github.com/pkg/errors"
 )
 
-func makeTestPlanner() *planner {
-	// Initialize an Executorconfig sufficiently for the purposes of creating a
-	// planner.
-	var nodeID base.NodeIDContainer
-	nodeID.Set(context.TODO(), 1)
-	execCfg := ExecutorConfig{
-		Settings: cluster.MakeTestingClusterSettings(),
-		NodeInfo: NodeInfo{
-			NodeID: &nodeID,
-			ClusterID: func() uuid.UUID {
-				return uuid.MakeV4()
-			},
-		},
-	}
-
-	// TODO(andrei): pass the cleanup along to the caller.
-	p, _ /* cleanup */ := newInternalPlanner(
-		"test", nil /* txn */, security.RootUser, &MemoryMetrics{}, &execCfg,
-	)
-	return p
-}
-
 func TestValues(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
-	p := makeTestPlanner()
+	p := MakeTestPlanner()
 
 	vInt := int64(5)
 	vNum := 3.14159
@@ -152,7 +126,7 @@ func TestValues(t *testing.T) {
 	ctx := context.TODO()
 	for i, tc := range testCases {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			plan, err := func() (_ planNode, err error) {
+			plan, err := func() (_ PlanNode, err error) {
 				defer func() {
 					if r := recover(); r != nil {
 						err = errors.Errorf("%v", r)
@@ -169,8 +143,8 @@ func TestValues(t *testing.T) {
 			if plan == nil {
 				return
 			}
-			params := runParams{ctx: ctx, p: p, extendedEvalCtx: &p.extendedEvalCtx}
-			if err := startExec(params, plan); err != nil {
+			params := RunParams{Ctx: ctx, p: p, extendedEvalCtx: &p.extendedEvalCtx}
+			if err := StartExec(params, plan); err != nil {
 				t.Fatalf("%d: unexpected error in Start: %v", i, err)
 			}
 			var rows []tree.Datums

@@ -35,6 +35,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgwirebase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlconst"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"github.com/lib/pq"
 	"github.com/pkg/errors"
@@ -45,8 +46,8 @@ const (
 	copyOptionDest  = "destination"
 )
 
-var copyFileOptionExpectValues = map[string]KVStringOptValidate{
-	copyOptionDest: KVStringOptRequireValue,
+var copyFileOptionExpectValues = map[string]sqlconst.KVStringOptValidate{
+	copyOptionDest: sqlconst.KVStringOptRequireValue,
 }
 
 var _ copyMachineInterface = &fileUploadMachine{}
@@ -70,15 +71,15 @@ func newFileUploadMachine(
 	}
 	c := &copyMachine{
 		conn: conn,
-		// The planner will be prepared before use.
-		p: planner{execCfg: execCfg},
+		// The GenericPlanner will be prepared before use.
+		p: GenericPlanner{execCfg: execCfg},
 	}
 	f = &fileUploadMachine{
 		c:  c,
 		wg: &sync.WaitGroup{},
 	}
 
-	// We need a planner to do the initial planning, even if a planner
+	// We need a GenericPlanner to do the initial planning, even if a GenericPlanner
 	// is not required after that.
 	cleanup := c.p.preparePlannerForCopy(ctx, txnOpt)
 	defer func() {

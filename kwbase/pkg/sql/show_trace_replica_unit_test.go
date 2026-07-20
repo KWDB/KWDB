@@ -28,11 +28,11 @@ type mockPlanNode struct {
 	closed  bool
 }
 
-func (m *mockPlanNode) startExec(params runParams) error {
+func (m *mockPlanNode) StartExec(params RunParams) error {
 	return nil
 }
 
-func (m *mockPlanNode) Next(params runParams) (bool, error) {
+func (m *mockPlanNode) Next(params RunParams) (bool, error) {
 	if m.current >= len(m.rows) {
 		return false, nil
 	}
@@ -52,7 +52,7 @@ func (m *mockPlanNode) Close(ctx context.Context) {
 }
 
 // These are additional required methods for the planNode interface, not under test
-func (m *mockPlanNode) maybeReveal(_ runParams) {}
+func (m *mockPlanNode) maybeReveal(_ RunParams) {}
 
 func TestShowTraceReplicaHelpers(t *testing.T) {
 	defer leaktest.AfterTest(t)()
@@ -236,8 +236,8 @@ func TestShowTraceReplicaNodeClose(t *testing.T) {
 func TestShowTraceReplicaNodeStartExec(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	node := &showTraceReplicaNode{}
-	params := runParams{}
-	err := node.startExec(params)
+	params := RunParams{}
+	err := node.StartExec(params)
 	require.NoError(t, err)
 }
 

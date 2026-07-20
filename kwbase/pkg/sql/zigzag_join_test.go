@@ -43,13 +43,13 @@ package sql
 // 		reqOrdering: ReqOrdering{},
 // 	}
 
-// 	// Test startExec
+// 	// Test StartExec
 // 	defer func() {
 // 		if r := recover(); r == nil {
-// 			t.Error("startExec should have panicked")
+// 			t.Error("StartExec should have panicked")
 // 		}
 // 	}()
-// 	_ = zj.startExec(runParams{})
+// 	_ = zj.StartExec(RunParams{})
 
 // 	// Test Next
 // 	defer func() {
@@ -57,7 +57,7 @@ package sql
 // 			t.Error("Next should have panicked")
 // 		}
 // 	}()
-// 	_, _ = zj.Next(runParams{})
+// 	_, _ = zj.Next(RunParams{})
 
 // 	// Test Values
 // 	defer func() {

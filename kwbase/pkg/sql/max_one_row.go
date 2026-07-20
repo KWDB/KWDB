@@ -32,27 +32,29 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 )
 
-// max1RowNode wraps another planNode, returning at most 1 row from the wrapped
-// node. If the wrapped node produces more than 1 row, this planNode returns an
+// max1RowNode wraps another PlanNode, returning at most 1 row from the wrapped
+// node. If the wrapped node produces more than 1 row, this PlanNode returns an
 // error.
 //
 // This node is useful for constructing subqueries. Some ways of using
 // subqueries in SQL, such as using a subquery as an expression, expect that
 // the subquery can return at most 1 row - that expectation must be enforced at
 // runtime.
+var _ PlanNode = &max1RowNode{}
+
 type max1RowNode struct {
-	plan planNode
+	plan PlanNode
 
 	nexted    bool
 	values    tree.Datums
 	errorText string
 }
 
-func (m *max1RowNode) startExec(runParams) error {
+func (m *max1RowNode) StartExec(RunParams) error {
 	return nil
 }
 
-func (m *max1RowNode) Next(params runParams) (bool, error) {
+func (m *max1RowNode) Next(params RunParams) (bool, error) {
 	if m.nexted {
 		return false, nil
 	}

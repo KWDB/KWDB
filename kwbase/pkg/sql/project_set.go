@@ -47,8 +47,10 @@ import (
 // produces all the rows produced by zip(a, b, c, ...) with the values
 // of R prefixed. Formally, this performs a lateral cross join of R
 // with zip(a,b,c).
+var _ PlanNode = &projectSetNode{}
+
 type projectSetNode struct {
-	source     planNode
+	source     PlanNode
 	sourceCols sqlbase.ResultColumns
 
 	// columns contains all the columns from the source, and then
@@ -110,11 +112,11 @@ type projectSetRun struct {
 	done []bool
 }
 
-func (n *projectSetNode) startExec(runParams) error {
+func (n *projectSetNode) StartExec(RunParams) error {
 	return nil
 }
 
-func (n *projectSetNode) Next(params runParams) (bool, error) {
+func (n *projectSetNode) Next(params RunParams) (bool, error) {
 	for {
 		// If there's a cancellation request or a timeout, process it here.
 		if err := params.p.cancelChecker.Check(); err != nil {
@@ -146,7 +148,7 @@ func (n *projectSetNode) Next(params runParams) (bool, error) {
 					if gen == nil {
 						gen = builtins.EmptyGenerator()
 					}
-					if err := gen.Start(params.ctx, params.extendedEvalCtx.Txn); err != nil {
+					if err := gen.Start(params.Ctx, params.extendedEvalCtx.Txn); err != nil {
 						return false, err
 					}
 					n.run.gens[i] = gen
@@ -170,7 +172,7 @@ func (n *projectSetNode) Next(params runParams) (bool, error) {
 				// Yes. Is there still work to do for the current row?
 				if !n.run.done[i] {
 					// Yes; heck whether this source still has some values available.
-					hasVals, err := gen.Next(params.ctx)
+					hasVals, err := gen.Next(params.Ctx)
 					if err != nil {
 						return false, err
 					}

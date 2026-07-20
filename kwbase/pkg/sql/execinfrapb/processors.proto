@@ -173,11 +173,11 @@ message NoopCoreSpec {
   repeated bytes output_types = 3 [(gogoproto.nullable) = false, (gogoproto.customtype) = "gitee.com/kwbasedb/kwbase/pkg/sql/types.T"];
 }
 
-// LocalPlanNodeSpec is the specification for a local planNode wrapping
-// processor. It's created for situations where a planNode has no DistSQL
+// LocalPlanNodeSpec is the specification for a local PlanNode wrapping
+// processor. It's created for situations where a PlanNode has no DistSQL
 // processor equivalent, and constrains the plan to live on the gateway node.
 // This spec contains just an index, which is used by the execution engine to
-// find the planNode instance this processor is executing in an array of local
+// find the PlanNode instance this processor is executing in an array of local
 // planNodes. See LocalProcessors and LocalProcessorIndexes on
 // distsqlplan.PhysicalPlan.
 message LocalPlanNodeSpec {

@@ -52,11 +52,11 @@ type planNodeToRowSource struct {
 	started bool
 
 	fastPath    bool
-	node        planNode
-	params      runParams
+	node        PlanNode
+	params      RunParams
 	outputTypes []types.T
 
-	firstNotWrapped planNode
+	firstNotWrapped PlanNode
 
 	// run time state machine values
 	row sqlbase.EncDatumRow
@@ -67,7 +67,7 @@ type planNodeToRowSource struct {
 }
 
 func makePlanNodeToRowSource(
-	source planNode, params runParams, fastPath bool,
+	source PlanNode, params RunParams, fastPath bool,
 ) (*planNodeToRowSource, error) {
 	nodeColumns := planColumns(source)
 
@@ -114,21 +114,21 @@ func (p *planNodeToRowSource) InitWithOutput(
 
 // SetInput implements the LocalProcessor interface.
 // input is the first upstream RowSource. When we're done executing, we need to
-// drain this row source of its metadata in case the planNode tree we're
+// drain this row source of its metadata in case the PlanNode tree we're
 // wrapping returned an error, since planNodes don't know how to drain trailing
 // metadata.
 func (p *planNodeToRowSource) SetInput(ctx context.Context, input execinfra.RowSource) error {
 	if p.firstNotWrapped == nil {
-		// Short-circuit if we never set firstNotWrapped - indicating this planNode
+		// Short-circuit if we never set firstNotWrapped - indicating this PlanNode
 		// tree had no DistSQL-plannable subtrees.
 		return nil
 	}
 	p.AddInputToDrain(input)
-	// Search the plan we're wrapping for firstNotWrapped, which is the planNode
-	// that DistSQL planning resumed in. Replace that planNode with input,
-	// wrapped as a planNode.
+	// Search the plan we're wrapping for firstNotWrapped, which is the PlanNode
+	// that DistSQL planning resumed in. Replace that PlanNode with input,
+	// wrapped as a PlanNode.
 	return walkPlan(ctx, p.node, planObserver{
-		replaceNode: func(ctx context.Context, nodeName string, plan planNode) (planNode, error) {
+		replaceNode: func(ctx context.Context, nodeName string, plan PlanNode) (PlanNode, error) {
 			if plan == p.firstNotWrapped {
 				return makeRowSourceToPlanNode(input, p, planColumns(p.firstNotWrapped), p.firstNotWrapped), nil
 			}
@@ -154,11 +154,11 @@ func (p *planNodeToRowSource) Start(ctx context.Context) context.Context {
 	// We do not call p.StartInternal to avoid creating a span. Only the context
 	// needs to be set.
 	p.Ctx = ctx
-	p.params.ctx = ctx
+	p.params.Ctx = ctx
 	if !p.started {
 		p.started = true
 		// This starts all of the nodes below this node.
-		if err := startExec(p.params, p.node); err != nil {
+		if err := StartExec(p.params, p.node); err != nil {
 			p.MoveToDraining(err)
 			return ctx
 		}
@@ -198,13 +198,13 @@ func (p *planNodeToRowSource) Next() (sqlbase.EncDatumRow, *execinfrapb.Producer
 		// If our node is a "fast path node", it means that we're set up to just
 		// return a row count. So trigger the fast path and return the row count as
 		// a row with a single column.
-		fastPath, ok := p.node.(planNodeFastPath)
+		fastPath, ok := p.node.(PlanNodeFastPath)
 
 		if ok {
 			var res bool
 			if count, res = fastPath.FastPathResults(); res {
 				if p.params.extendedEvalCtx.Tracing.Enabled() {
-					log.VEvent(p.params.ctx, 2, "fast path completed")
+					log.VEvent(p.params.Ctx, 2, "fast path completed")
 				}
 			} else {
 				// Fall back to counting the rows.

@@ -44,8 +44,10 @@ import (
 //
 // The recursive query tree is regenerated each time using a callback
 // (implemented by the execbuilder).
+var _ PlanNode = &recursiveCTENode{}
+
 type recursiveCTENode struct {
-	initial planNode
+	initial PlanNode
 
 	genIterationFn exec.RecursiveCTEIterationFn
 
@@ -66,7 +68,7 @@ type recursiveCTERun struct {
 	done        bool
 }
 
-func (n *recursiveCTENode) startExec(params runParams) error {
+func (n *recursiveCTENode) StartExec(params RunParams) error {
 	n.workingRows = rowcontainer.NewRowContainer(
 		params.EvalContext().Mon.MakeBoundAccount(),
 		sqlbase.ColTypeInfoFromResCols(getPlanColumns(n.initial, false /* mut */)),
@@ -76,7 +78,7 @@ func (n *recursiveCTENode) startExec(params runParams) error {
 	return nil
 }
 
-func (n *recursiveCTENode) Next(params runParams) (bool, error) {
+func (n *recursiveCTENode) Next(params RunParams) (bool, error) {
 	if err := params.p.cancelChecker.Check(); err != nil {
 		return false, err
 	}
@@ -89,7 +91,7 @@ func (n *recursiveCTENode) Next(params runParams) (bool, error) {
 			return false, err
 		}
 		if ok {
-			if _, err = n.workingRows.AddRow(params.ctx, n.initial.Values()); err != nil {
+			if _, err = n.workingRows.AddRow(params.Ctx, n.initial.Values()); err != nil {
 				return false, err
 			}
 			return true, nil
@@ -115,7 +117,7 @@ func (n *recursiveCTENode) Next(params runParams) (bool, error) {
 	// Let's run another iteration.
 
 	lastWorkingRows := n.workingRows
-	defer lastWorkingRows.Close(params.ctx)
+	defer lastWorkingRows.Close(params.Ctx)
 
 	n.workingRows = rowcontainer.NewRowContainer(
 		params.EvalContext().Mon.MakeBoundAccount(),

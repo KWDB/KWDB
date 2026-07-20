@@ -3588,7 +3588,7 @@ func MakeNotNullCheckConstraint(
 ) *TableDescriptor_CheckConstraint {
 	name := fmt.Sprintf("%s_auto_not_null", colName)
 	// If generated name isn't unique, attempt to add a number to the end to
-	// get a unique name, as in generateNameForCheckConstraint().
+	// get a unique name, as in GenerateNameForCheckConstraint().
 	if _, ok := inuseNames[name]; ok {
 		i := 1
 		for {

@@ -35,7 +35,9 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding"
 )
 
-// showTraceNode is a planNode that processes session trace data.
+// showTraceNode is a PlanNode that processes session trace data.
+var _ PlanNode = &showTraceNode{}
+
 type showTraceNode struct {
 	columns sqlbase.ResultColumns
 	compact bool
@@ -50,8 +52,10 @@ type showTraceNode struct {
 // ShowTrace shows the current stored session trace, or the trace of a given
 // query.
 // Privileges: None.
-func (p *planner) ShowTrace(ctx context.Context, n *tree.ShowTraceForSession) (planNode, error) {
-	var node planNode = p.makeShowTraceNode(n.Compact, n.TraceType == tree.ShowTraceKV)
+func (p *GenericPlanner) ShowTrace(
+	ctx context.Context, n *tree.ShowTraceForSession,
+) (PlanNode, error) {
+	var node PlanNode = p.makeShowTraceNode(n.Compact, n.TraceType == tree.ShowTraceKV)
 
 	// Ensure the messages are sorted in age order, so that the user
 	// does not get confused.
@@ -76,7 +80,7 @@ func (p *planner) ShowTrace(ctx context.Context, n *tree.ShowTraceForSession) (p
 //
 //	verbose messages around the interaction of SQL with KV. Some of the
 //	messages are per-row.
-func (p *planner) makeShowTraceNode(compact bool, kvTracingEnabled bool) *showTraceNode {
+func (p *GenericPlanner) makeShowTraceNode(compact bool, kvTracingEnabled bool) *showTraceNode {
 	n := &showTraceNode{
 		kvTracingEnabled: kvTracingEnabled,
 		compact:          compact,
@@ -96,7 +100,7 @@ type traceRun struct {
 	curRow     int
 }
 
-func (n *showTraceNode) startExec(params runParams) error {
+func (n *showTraceNode) StartExec(params RunParams) error {
 	// Get all the data upfront and process the traces. Subsequent
 	// invocations of Next() will merely return the results.
 	traceRows, err := params.extendedEvalCtx.Tracing.getSessionTrace()
@@ -107,8 +111,8 @@ func (n *showTraceNode) startExec(params runParams) error {
 	return nil
 }
 
-// Next implements the planNode interface
-func (n *showTraceNode) Next(params runParams) (bool, error) {
+// Next implements the PlanNode interface
+func (n *showTraceNode) Next(params RunParams) (bool, error) {
 	if n.run.curRow >= len(n.run.resultRows) {
 		return false, nil
 	}

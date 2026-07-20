@@ -31,6 +31,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/jobs"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
+	"gitee.com/kwbasedb/kwbase/pkg/kv/kvclient/kvcoord"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/server/serverpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/exec"
@@ -42,6 +43,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlconst"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
@@ -132,15 +135,15 @@ type schemaInterface struct {
 	logical  SchemaAccessor
 }
 
-// planner is the centerpiece of SQL statement execution combining session
+// GenericPlanner is the centerpiece of SQL statement execution combining session
 // state and database state with the logic for SQL execution. It is logically
 // scoped to the execution of a single statement, and should not be used to
-// execute multiple statements. It is not safe to use the same planner from
+// execute multiple statements. It is not safe to use the same GenericPlanner from
 // multiple goroutines concurrently.
 //
 // planners are usually created by using the newPlanner method on a Session.
 // If one needs to be created outside of a Session, use makeInternalPlanner().
-type planner struct {
+type GenericPlanner struct {
 	txn *kv.Txn
 
 	// Reference to the corresponding sql Statement for this query.
@@ -159,16 +162,16 @@ type planner struct {
 
 	preparedStatements preparedStatementsAccessor
 
-	// avoidCachedDescriptors, when true, instructs all code that
+	// AvoidCachedDescriptors, when true, instructs all code that
 	// accesses table/view descriptors to force reading the descriptors
 	// within the transaction. This is necessary to read descriptors
 	// from the store for:
 	// 1. Descriptors that are part of a schema change but are not
 	// modified by the schema change. (reading a table in CREATE VIEW)
 	// 2. Disable the use of the table cache in tests.
-	avoidCachedDescriptors bool
+	AvoidCachedDescriptors bool
 
-	// If set, the planner should skip checking for the SELECT privilege when
+	// If set, the GenericPlanner should skip checking for the SELECT privilege when
 	// initializing plans to read from a table. This should be used with care.
 	skipSelectPrivilegeChecks bool
 
@@ -195,7 +198,7 @@ type planner struct {
 	// statement; it triggers saving of extra information like the plan string.
 	collectBundle bool
 
-	// isPreparing is true if this planner is currently preparing.
+	// isPreparing is true if this GenericPlanner is currently preparing.
 	isPreparing bool
 
 	// curPlan collects the properties of the current plan being prepared. This state
@@ -255,13 +258,33 @@ type planner struct {
 }
 
 // IsInternalSQL return IsInternalSQL
-func (p *planner) IsInternalSQL() bool {
+func (p *GenericPlanner) IsInternalSQL() bool {
 	return p.extendedEvalCtx.IsInternalSQL
 }
 
 // ExecutorConfig implements Planner interface.
-func (p *planner) ExecutorConfig() interface{} {
+func (p *GenericPlanner) ExecutorConfig() interface{} {
 	return p.execCfg
+}
+
+// GetTableName returns tablename.
+func (p *GenericPlanner) GetTableName() tree.TableName {
+	return p.tableName
+}
+
+// GetSemaCtx returns semaCtx.
+func (p *GenericPlanner) GetSemaCtx() *tree.SemaContext {
+	return &(p.semaCtx)
+}
+
+// GetTSEDBFromPlanHook retrieves the TS engine database from the plan hook
+func (p *GenericPlanner) GetTSEDBFromPlanHook() *kvcoord.DB {
+	return p.DistSQLPlanner().distSQLSrv.TseDB
+}
+
+// SetTxn associates a transaction with the planner
+func (p *GenericPlanner) SetTxn(txn *kv.Txn) {
+	p.txn = txn
 }
 
 func (ctx *extendedEvalContext) setSessionID(sessionID ClusterWideID) {
@@ -281,19 +304,19 @@ func NewInternalPlanner(
 	return newInternalPlanner(opName, txn, user, memMetrics, execCfg)
 }
 
-// newInternalPlanner creates a new planner instance for internal usage. This
-// planner is not associated with a sql session.
+// newInternalPlanner creates a new GenericPlanner instance for internal usage. This
+// GenericPlanner is not associated with a sql session.
 //
-// Since it can't be reset, the planner can be used only for planning a single
+// Since it can't be reset, the GenericPlanner can be used only for planning a single
 // statement.
 //
 // Returns a cleanup function that must be called once the caller is done with
-// the planner.
+// the GenericPlanner.
 func newInternalPlanner(
 	opName string, txn *kv.Txn, user string, memMetrics *MemoryMetrics, execCfg *ExecutorConfig,
-) (*planner, func()) {
-	// We need a context that outlives all the uses of the planner (since the
-	// planner captures it in the EvalCtx, and so does the cleanup function that
+) (*GenericPlanner, func()) {
+	// We need a context that outlives all the uses of the GenericPlanner (since the
+	// GenericPlanner captures it in the EvalCtx, and so does the cleanup function that
 	// we're going to return. We just create one here instead of asking the caller
 	// for a ctx with this property. This is really ugly, but the alternative of
 	// asking the caller for one is hard to explain. What we need is better and
@@ -311,7 +334,7 @@ func newInternalPlanner(
 		},
 		UserDefinedVars: make(map[string]interface{}),
 	}
-	// The table collection used by the internal planner does not rely on the
+	// The table collection used by the internal GenericPlanner does not rely on the
 	// databaseCache and there are no subscribers to the databaseCache, so we can
 	// leave it uninitialized.
 	tables := &TableCollection{
@@ -338,7 +361,7 @@ func newInternalPlanner(
 		ts = readTimestamp.GoTime()
 	}
 
-	p := &planner{execCfg: execCfg}
+	p := &GenericPlanner{execCfg: execCfg}
 
 	p.txn = txn
 	p.stmt = nil
@@ -351,7 +374,7 @@ func newInternalPlanner(
 	p.semaCtx.SQLUDFFunctionHandler = p
 
 	plannerMon := mon.MakeUnlimitedMonitor(ctx,
-		fmt.Sprintf("internal-planner.%s.%s", user, opName),
+		fmt.Sprintf("internal-GenericPlanner.%s.%s", user, opName),
 		mon.MemoryResource,
 		memMetrics.CurBytesCount, memMetrics.MaxBytesHist,
 		noteworthyInternalMemoryUsageBytes, execCfg.Settings)
@@ -392,9 +415,9 @@ func newInternalPlanner(
 }
 
 // internalExtendedEvalCtx creates an evaluation context for an "internal
-// planner". Since the eval context is supposed to be tied to a session and
+// GenericPlanner". Since the eval context is supposed to be tied to a session and
 // there's no session to speak of here, different fields are filled in here to
-// keep the tests using the internal planner passing.
+// keep the tests using the internal GenericPlanner passing.
 func internalExtendedEvalCtx(
 	ctx context.Context,
 	sd *sessiondata.SessionData,
@@ -436,77 +459,121 @@ func internalExtendedEvalCtx(
 	}
 }
 
-func (p *planner) PhysicalSchemaAccessor() SchemaAccessor {
+// PhysicalSchemaAccessor returns the physical schema accessor for direct catalog operations
+func (p *GenericPlanner) PhysicalSchemaAccessor() SchemaAccessor {
 	return p.extendedEvalCtx.schemaAccessors.physical
 }
 
-func (p *planner) LogicalSchemaAccessor() SchemaAccessor {
+// LogicalSchemaAccessor returns the logical schema accessor for virtual schema operations
+func (p *GenericPlanner) LogicalSchemaAccessor() SchemaAccessor {
 	return p.extendedEvalCtx.schemaAccessors.logical
 }
 
-// Note: if the context will be modified, use ExtendedEvalContextCopy instead.
-func (p *planner) ExtendedEvalContext() *extendedEvalContext {
+// ExtendedEvalContext returns the extended evaluation context for advanced expression evaluation
+// nolint:unexportedreturn
+func (p *GenericPlanner) ExtendedEvalContext() *extendedEvalContext {
 	return &p.extendedEvalCtx
 }
 
-func (p *planner) ExtendedEvalContextCopy() *extendedEvalContext {
+// ExtendedEvalContextCopy returns a copy of the extended evaluation context
+// nolint:unexportedreturn
+func (p *GenericPlanner) ExtendedEvalContextCopy() *extendedEvalContext {
 	return p.extendedEvalCtx.copy()
 }
 
-func (p *planner) CurrentDatabase() string {
+// CurrentDatabase returns the name of the current database
+func (p *GenericPlanner) CurrentDatabase() string {
 	return p.SessionData().Database
 }
 
-func (p *planner) CurrentSearchPath() sessiondata.SearchPath {
+// CurrentSearchPath returns the current schema search path
+func (p *GenericPlanner) CurrentSearchPath() sessiondata.SearchPath {
 	return p.SessionData().SearchPath
 }
 
-// EvalContext() provides convenient access to the planner's EvalContext().
-func (p *planner) EvalContext() *tree.EvalContext {
+// UpdateDescriptor updates the given descriptor's metadata and stores it in the KV batch.
+// It stores the descriptor under the specified key and logs the KV operation trace if KV tracing is enabled.
+func (p *GenericPlanner) UpdateDescriptor(
+	ctx context.Context, b *kv.Batch, desc sqlbase.DescriptorProto,
+) error {
+	descKey := sqlbase.MakeDescMetadataKey(desc.GetID())
+	descDesc := sqlbase.WrapDescriptor(desc)
+	if p.ExtendedEvalContext().Tracing.KVTracingEnabled() {
+		log.VEventf(ctx, 2, "Put %s -> %s", descKey, descDesc)
+	}
+	b.Put(descKey, descDesc)
+
+	return nil
+}
+
+// EvalContext returns the evaluation context for expression evaluation
+// EvalContext() provides convenient access to the GenericPlanner's EvalContext().
+func (p *GenericPlanner) EvalContext() *tree.EvalContext {
 	return &p.extendedEvalCtx.EvalContext
 }
 
-func (p *planner) Tables() *TableCollection {
+// Tables returns the table collection for schema access
+func (p *GenericPlanner) Tables() *TableCollection {
 	return p.extendedEvalCtx.Tables
 }
 
-// GetStmt get the sql from planner if the stmt not nil.
-func (p *planner) GetStmt() string {
+// GetSchemasForDatabase retrieves all schemas for a given database
+func (p *GenericPlanner) GetSchemasForDatabase(
+	ctx context.Context, txn *kv.Txn, dbID sqlbase.ID,
+) (map[sqlbase.ID]string, error) {
+	return p.extendedEvalCtx.Tables.GetSchemasForDatabase(ctx, txn, dbID)
+}
+
+// GetStmt get the sql from GenericPlanner if the stmt not nil.
+func (p *GenericPlanner) GetStmt() string {
 	if p.stmt != nil {
 		return p.stmt.SQL
 	}
 	return ""
 }
 
+// GetAST get the sql from GenericPlanner if the stmt not nil.
+func (p *GenericPlanner) GetAST() tree.Statement {
+	if p.stmt != nil {
+		return p.stmt.AST
+	}
+	return nil
+}
+
 // ExecCfg implements the PlanHookState interface.
-func (p *planner) ExecCfg() *ExecutorConfig {
+func (p *GenericPlanner) ExecCfg() *ExecutorConfig {
 	return p.extendedEvalCtx.ExecCfg
 }
 
-func (p *planner) LeaseMgr() *LeaseManager {
+// LeaseMgr returns the lease manager for schema lease operations
+func (p *GenericPlanner) LeaseMgr() *LeaseManager {
 	return p.Tables().leaseMgr
 }
 
-func (p *planner) Txn() *kv.Txn {
+// Txn returns the current transaction associated with the planner
+func (p *GenericPlanner) Txn() *kv.Txn {
 	return p.txn
 }
 
-func (p *planner) User() string {
+// User returns the current user for the planner session
+// User returns the current user for the planner session
+func (p *GenericPlanner) User() string {
 	return p.SessionData().User
 }
 
-func (p *planner) TemporarySchemaName() string {
+// TemporarySchemaName returns the name of the temporary schema for the session
+func (p *GenericPlanner) TemporarySchemaName() string {
 	return temporarySchemaName(p.ExtendedEvalContext().SessionID)
 }
 
 // DistSQLPlanner returns the DistSQLPlanner
-func (p *planner) DistSQLPlanner() *DistSQLPlanner {
+func (p *GenericPlanner) DistSQLPlanner() *DistSQLPlanner {
 	return p.extendedEvalCtx.DistSQLPlanner
 }
 
 // ParseType implements the tree.EvalPlanner interface.
 // We define this here to break the dependency from eval.go to the parser.
-func (p *planner) ParseType(sql string) (*types.T, error) {
+func (p *GenericPlanner) ParseType(sql string) (*types.T, error) {
 	return parser.ParseType(sql)
 }
 
@@ -515,12 +582,14 @@ func (p *planner) ParseType(sql string) (*types.T, error) {
 // sql/parser. sql/parser depends on tree to make objects, so tree cannot import
 // ParseQualifiedTableName even though some builtins need that function.
 // TODO(jordan): remove this once builtins can be moved outside of sql/sem/tree.
-func (p *planner) ParseQualifiedTableName(sql string) (*tree.TableName, error) {
+func (p *GenericPlanner) ParseQualifiedTableName(sql string) (*tree.TableName, error) {
 	return parser.ParseQualifiedTableName(sql)
 }
 
 // ResolveTableName implements the tree.EvalDatabase interface.
-func (p *planner) ResolveTableName(ctx context.Context, tn *tree.TableName) (tree.ID, error) {
+func (p *GenericPlanner) ResolveTableName(
+	ctx context.Context, tn *tree.TableName,
+) (tree.ID, error) {
 	desc, err := ResolveExistingObject(ctx, p, tn, tree.ObjectLookupFlagsWithRequired(), ResolveAnyDescType)
 	if err != nil {
 		return 0, err
@@ -541,12 +610,14 @@ func (p *planner) ResolveTableName(ctx context.Context, tn *tree.TableName) (tre
 
 // LookupTableByID looks up a table, by the given descriptor ID. Based on the
 // CommonLookupFlags, it could use or skip the TableCollection cache. See
-// TableCollection.getTableVersionByID for how it's used.
-func (p *planner) LookupTableByID(ctx context.Context, tableID sqlbase.ID) (row.TableEntry, error) {
-	flags := tree.ObjectLookupFlags{CommonLookupFlags: tree.CommonLookupFlags{AvoidCached: p.avoidCachedDescriptors}}
-	table, err := p.Tables().getTableVersionByID(ctx, p.txn, tableID, flags)
+// TableCollection.GetTableVersionByID for how it's used.
+func (p *GenericPlanner) LookupTableByID(
+	ctx context.Context, tableID sqlbase.ID,
+) (row.TableEntry, error) {
+	flags := tree.ObjectLookupFlags{CommonLookupFlags: tree.CommonLookupFlags{AvoidCached: p.AvoidCachedDescriptors}}
+	table, err := p.Tables().GetTableVersionByID(ctx, p.txn, tableID, flags)
 	if err != nil {
-		if err == errTableAdding {
+		if err == sqlerror.ErrTableAdding {
 			return row.TableEntry{IsAdding: true}, nil
 		}
 		return row.TableEntry{}, err
@@ -556,9 +627,31 @@ func (p *planner) LookupTableByID(ctx context.Context, tableID sqlbase.ID) (row.
 
 // TypeAsString enforces (not hints) that the given expression typechecks as a
 // string and returns a function that can be called to get the string value
-// during (planNode).Start.
+// during (PlanNode).Start.
 // To also allow NULLs to be returned, use TypeAsStringOrNull() instead.
-func (p *planner) TypeAsString(e tree.Expr, op string) (func() (string, error), error) {
+func (p *GenericPlanner) TypeAsString(e tree.Expr, op string) (func() (string, error), error) {
+	typedE, err := tree.TypeCheckAndRequire(e, &p.semaCtx, types.String, op)
+	if err != nil {
+		return nil, err
+	}
+	evalFn := p.makeStringEvalFn(typedE)
+	return func() (string, error) {
+		isNull, str, err := evalFn()
+		if err != nil {
+			return "", err
+		}
+		if isNull {
+			return "", errors.Errorf("expected string, got NULL")
+		}
+		return str, nil
+	}, nil
+}
+
+// TypeAsString enforces (not hints) that the given expression typechecks as a
+// string and returns a function that can be called to get the string value
+// during (PlanNode).Start.
+// To also allow NULLs to be returned, use TypeAsStringOrNull() instead.
+func TypeAsString(p *GenericPlanner, e tree.Expr, op string) (func() (string, error), error) {
 	typedE, err := tree.TypeCheckAndRequire(e, &p.semaCtx, types.String, op)
 	if err != nil {
 		return nil, err
@@ -577,7 +670,9 @@ func (p *planner) TypeAsString(e tree.Expr, op string) (func() (string, error), 
 }
 
 // TypeAsStringOrNull is like TypeAsString but allows NULLs.
-func (p *planner) TypeAsStringOrNull(e tree.Expr, op string) (func() (bool, string, error), error) {
+func (p *GenericPlanner) TypeAsStringOrNull(
+	e tree.Expr, op string,
+) (func() (bool, string, error), error) {
 	typedE, err := tree.TypeCheckAndRequire(e, &p.semaCtx, types.String, op)
 	if err != nil {
 		return nil, err
@@ -585,7 +680,7 @@ func (p *planner) TypeAsStringOrNull(e tree.Expr, op string) (func() (bool, stri
 	return p.makeStringEvalFn(typedE), nil
 }
 
-func (p *planner) makeStringEvalFn(typedE tree.TypedExpr) func() (bool, string, error) {
+func (p *GenericPlanner) makeStringEvalFn(typedE tree.TypedExpr) func() (bool, string, error) {
 	return func() (bool, string, error) {
 		d, err := typedE.Eval(p.EvalContext())
 		if err != nil {
@@ -602,21 +697,12 @@ func (p *planner) makeStringEvalFn(typedE tree.TypedExpr) func() (bool, string, 
 	}
 }
 
-// KVStringOptValidate indicates the requested validation of a TypeAsStringOpts
-// option.
-type KVStringOptValidate string
-
-// KVStringOptValidate values
-const (
-	KVStringOptAny            KVStringOptValidate = `any`
-	KVStringOptRequireNoValue KVStringOptValidate = `no-value`
-	KVStringOptRequireValue   KVStringOptValidate = `value`
-)
-
 // evalStringOptions evaluates the KVOption values as strings and returns them
 // in a map. Options with no value have an empty string.
 func evalStringOptions(
-	evalCtx *tree.EvalContext, opts []exec.KVOption, optValidate map[string]KVStringOptValidate,
+	evalCtx *tree.EvalContext,
+	opts []exec.KVOption,
+	optValidate map[string]sqlconst.KVStringOptValidate,
 ) (map[string]string, error) {
 	res := make(map[string]string, len(opts))
 	for _, opt := range opts {
@@ -630,12 +716,12 @@ func evalStringOptions(
 			return nil, err
 		}
 		if val == tree.DNull {
-			if validate == KVStringOptRequireValue {
+			if validate == sqlconst.KVStringOptRequireValue {
 				return nil, errors.Errorf("option %q requires a value", k)
 			}
 			res[k] = ""
 		} else {
-			if validate == KVStringOptRequireNoValue {
+			if validate == sqlconst.KVStringOptRequireNoValue {
 				return nil, errors.Errorf("option %q does not take a value", k)
 			}
 			str, ok := val.(*tree.DString)
@@ -650,9 +736,9 @@ func evalStringOptions(
 
 // TypeAsStringOpts enforces (not hints) that the given expressions
 // typecheck as strings, and returns a function that can be called to
-// get the string value during (planNode).Start.
-func (p *planner) TypeAsStringOpts(
-	opts tree.KVOptions, optValidate map[string]KVStringOptValidate,
+// get the string value during (PlanNode).Start.
+func (p *GenericPlanner) TypeAsStringOpts(
+	opts tree.KVOptions, optValidate map[string]sqlconst.KVStringOptValidate,
 ) (func() (map[string]string, error), error) {
 	typed := make(map[string]tree.TypedExpr, len(opts))
 	for _, opt := range opts {
@@ -663,13 +749,13 @@ func (p *planner) TypeAsStringOpts(
 		}
 
 		if opt.Value == nil {
-			if validate == KVStringOptRequireValue {
+			if validate == sqlconst.KVStringOptRequireValue {
 				return nil, errors.Errorf("option %q requires a value", k)
 			}
 			typed[k] = nil
 			continue
 		}
-		if validate == KVStringOptRequireNoValue {
+		if validate == sqlconst.KVStringOptRequireNoValue {
 			return nil, errors.Errorf("option %q does not take a value", k)
 		}
 		r, err := tree.TypeCheckAndRequire(opt.Value, &p.semaCtx, types.String, k)
@@ -705,8 +791,10 @@ func (p *planner) TypeAsStringOpts(
 
 // TypeAsStringArray enforces (not hints) that the given expressions all typecheck as
 // strings and returns a function that can be called to get the string values
-// during (planNode).Start.
-func (p *planner) TypeAsStringArray(exprs tree.Exprs, op string) (func() ([]string, error), error) {
+// during (PlanNode).Start.
+func (p *GenericPlanner) TypeAsStringArray(
+	exprs tree.Exprs, op string,
+) (func() ([]string, error), error) {
 	typedExprs := make([]tree.TypedExpr, len(exprs))
 	for i := range exprs {
 		typedE, err := tree.TypeCheckAndRequire(exprs[i], &p.semaCtx, types.String, op)
@@ -734,10 +822,11 @@ func (p *planner) TypeAsStringArray(exprs tree.Exprs, op string) (func() ([]stri
 }
 
 // SessionData is part of the PlanHookState interface.
-func (p *planner) SessionData() *sessiondata.SessionData {
+func (p *GenericPlanner) SessionData() *sessiondata.SessionData {
 	return p.EvalContext().SessionData
 }
 
+// MakeNewPlanAndRunForTsInsert creates and executes a plan for timeseries data insertion
 // txnModesSetter is an interface used by SQL execution to influence the current
 // transaction.
 type txnModesSetter interface {
@@ -747,8 +836,9 @@ type txnModesSetter interface {
 	setTransactionModes(modes tree.TransactionModes, asOfTs hlc.Timestamp) error
 }
 
+// MakeNewPlanAndRunForTsInsert creates and executes a plan for timeseries data insertion
 // MakeNewPlanAndRunForTsInsert
-/* @Description：create an internal planner as the planner and run;
+/* @Description：create an internal GenericPlanner as the GenericPlanner and run;
  * @In nodeIDs: node of exec ts insert;
  * @In payloads: insert data;
  * @In rowNums: number of entries written to each node
@@ -756,7 +846,7 @@ type txnModesSetter interface {
  * @Return 1: rowAffectNum
  * @Return 2: error
  */
-func (p *planner) MakeNewPlanAndRunForTsInsert(
+func (p *GenericPlanner) MakeNewPlanAndRunForTsInsert(
 	ctx context.Context, evalCtx *tree.EvalContext, param tree.TSInsertSelectParam,
 ) (int, error) {
 	if payloadNodeMap, ok := param.(*map[int]*sqlbase.PayloadForDistTSInsert); ok {
@@ -768,7 +858,7 @@ func (p *planner) MakeNewPlanAndRunForTsInsert(
 }
 
 // GetNodeIDNumber return node id.
-func (p *planner) GetNodeIDNumber() int32 {
+func (p *GenericPlanner) GetNodeIDNumber() int32 {
 	if p.execCfg != nil && p.execCfg.NodeID != nil {
 		return int32(p.execCfg.NodeID.Get())
 	}
@@ -776,14 +866,16 @@ func (p *planner) GetNodeIDNumber() int32 {
 }
 
 // GetRangeRowCountFromNode get the row count of ts range on remote node.
-func (p *planner) GetRangeRowCountFromNode(
+func (p *GenericPlanner) GetRangeRowCountFromNode(
 	ctx context.Context, rangeID roachpb.RangeID, nodeID roachpb.NodeID,
 ) (uint64, error) {
 	return p.ExecCfg().TsDB.GetRangeRowCount(ctx, rangeID, nodeID)
 }
 
 // RelocateRange relocate the range from source node to desc node.
-func (p *planner) RelocateRange(ctx context.Context, rangeID int64, src, dst roachpb.NodeID) error {
+func (p *GenericPlanner) RelocateRange(
+	ctx context.Context, rangeID int64, src, dst roachpb.NodeID,
+) error {
 	if err := p.RequireAdminRole(ctx, "relocate range"); err != nil {
 		return err
 	}
@@ -825,7 +917,9 @@ func (p *planner) RelocateRange(ctx context.Context, rangeID int64, src, dst roa
 }
 
 // GetRangeDebugInfo get range debug info by request.
-func (p *planner) GetRangeDebugInfo(ctx context.Context, rangeID int64) (interface{}, error) {
+func (p *GenericPlanner) GetRangeDebugInfo(
+	ctx context.Context, rangeID int64,
+) (interface{}, error) {
 	if err := p.RequireAdminRole(ctx, "get range debug info"); err != nil {
 		return nil, err
 	}
@@ -857,7 +951,7 @@ func (p *planner) GetRangeDebugInfo(ctx context.Context, rangeID int64) (interfa
 }
 
 // GetProblemRangesInfo get range debug info by request.
-func (p *planner) GetProblemRangesInfo(ctx context.Context) (interface{}, error) {
+func (p *GenericPlanner) GetProblemRangesInfo(ctx context.Context) (interface{}, error) {
 	if err := p.RequireAdminRole(ctx, "get problem ranges info"); err != nil {
 		return nil, err
 	}
@@ -868,4 +962,14 @@ func (p *planner) GetProblemRangesInfo(ctx context.Context) (interface{}, error)
 		return nil, err
 	}
 	return resp, nil
+}
+
+// BumpTableVersion increases the table version for the specified table name.
+// tableName is constructed by tree.MakeTableName(databaseName, tableName) or tree.NewTableName.
+func (p *GenericPlanner) BumpTableVersion(ctx context.Context, tableName *tree.TableName) error {
+	tableDesc, err := p.ResolveMutableTableDescriptor(ctx, tableName, true, ResolveAnyDescType)
+	if err != nil {
+		return err
+	}
+	return p.WriteSchemaChange(ctx, tableDesc, sqlbase.InvalidMutationID, "update version for table "+tableName.FQString())
 }

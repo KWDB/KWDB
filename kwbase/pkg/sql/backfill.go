@@ -43,6 +43,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/row"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/rowexec"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/schema"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/util/ctxgroup"
@@ -375,7 +376,7 @@ func (sc *SchemaChanger) dropConstraints(
 						if !ok {
 							return errors.AssertionFailedf("required table with ID %d not provided to update closure", sc.tableID)
 						}
-						if err := removeFKBackReferenceFromTable(backrefTable, def.Name, scTable.TableDesc()); err != nil {
+						if err := schema.RemoveFKBackReferenceFromTable(backrefTable, def.Name, scTable.TableDesc()); err != nil {
 							return err
 						}
 						scTable.OutboundFKs = append(scTable.OutboundFKs[:j], scTable.OutboundFKs[j+1:]...)
@@ -577,15 +578,15 @@ func (sc *SchemaChanger) validateConstraints(
 			return runHistoricalTxn(ctx, func(ctx context.Context, txn *kv.Txn, evalCtx *extendedEvalContext) error {
 				switch c.ConstraintType {
 				case sqlbase.ConstraintToUpdate_CHECK:
-					if err := validateCheckInTxn(ctx, sc.leaseMgr, &evalCtx.EvalContext, desc, txn, c.Check.Expr); err != nil {
+					if err := ValidateCheckInTxn(ctx, sc.leaseMgr, &evalCtx.EvalContext, desc, txn, c.Check.Expr); err != nil {
 						return err
 					}
 				case sqlbase.ConstraintToUpdate_FOREIGN_KEY:
-					if err := validateFkInTxn(ctx, sc.leaseMgr, &evalCtx.EvalContext, desc, txn, c.Name); err != nil {
+					if err := ValidateFkInTxn(ctx, sc.leaseMgr, &evalCtx.EvalContext, desc, txn, c.Name); err != nil {
 						return err
 					}
 				case sqlbase.ConstraintToUpdate_NOT_NULL:
-					if err := validateCheckInTxn(ctx, sc.leaseMgr, &evalCtx.EvalContext, desc, txn, c.Check.Expr); err != nil {
+					if err := ValidateCheckInTxn(ctx, sc.leaseMgr, &evalCtx.EvalContext, desc, txn, c.Check.Expr); err != nil {
 						// TODO (lucy): This should distinguish between constraint
 						// validation errors and other types of unexpected errors, and
 						// return a different error code in the former case
@@ -615,7 +616,7 @@ func (sc *SchemaChanger) validateConstraints(
 func (sc *SchemaChanger) getTableVersion(
 	ctx context.Context, txn *kv.Txn, tc *TableCollection, version sqlbase.DescriptorVersion,
 ) (*sqlbase.ImmutableTableDescriptor, error) {
-	tableDesc, err := tc.getTableVersionByID(ctx, txn, sc.tableID, tree.ObjectLookupFlags{})
+	tableDesc, err := tc.GetTableVersionByID(ctx, txn, sc.tableID, tree.ObjectLookupFlags{})
 	if err != nil {
 		return nil, err
 	}
@@ -887,7 +888,7 @@ func (sc *SchemaChanger) distBackfill(
 				}
 
 				for k := range fkTables {
-					table, err := tc.getTableVersionByID(ctx, txn, k, tree.ObjectLookupFlags{})
+					table, err := tc.GetTableVersionByID(ctx, txn, k, tree.ObjectLookupFlags{})
 					if err != nil {
 						return err
 					}
@@ -1227,7 +1228,7 @@ func (sc *SchemaChanger) validateForwardIndexes(
 				settings: sc.settings,
 			}
 			// pretend that the schema has been modified.
-			if err := tc.addUncommittedTable(*desc); err != nil {
+			if err := tc.AddUncommittedTable(*desc); err != nil {
 				return err
 			}
 
@@ -1364,9 +1365,12 @@ func (sc *SchemaChanger) truncateAndBackfillColumns(
 // can be executed immediately on the same version of the table.
 //
 // It operates entirely on the current goroutine and is thus able to
-// reuse the planner's kv.Txn safely.
+// reuse the GenericPlanner's kv.Txn safely.
 func runSchemaChangesInTxn(
-	ctx context.Context, planner *planner, tableDesc *sqlbase.MutableTableDescriptor, traceKV bool,
+	ctx context.Context,
+	planner *GenericPlanner,
+	tableDesc *sqlbase.MutableTableDescriptor,
+	traceKV bool,
 ) error {
 	if len(tableDesc.DrainingNames) > 0 {
 		// Reclaim all the old names. Leave the data and descriptor
@@ -1517,7 +1521,7 @@ func runSchemaChangesInTxn(
 				}
 				if len(oldIndex.Interleave.Ancestors) != 0 {
 					ancestorInfo := oldIndex.Interleave.Ancestors[len(oldIndex.Interleave.Ancestors)-1]
-					ancestor, err := planner.Tables().getMutableTableVersionByID(ctx, ancestorInfo.TableID, planner.txn)
+					ancestor, err := planner.Tables().GetMutableTableVersionByID(ctx, ancestorInfo.TableID, planner.txn)
 					if err != nil {
 						return err
 					}
@@ -1536,7 +1540,7 @@ func runSchemaChangesInTxn(
 							ancestorIdx.InterleavedBy = append(
 								ancestorIdx.InterleavedBy[:k], ancestorIdx.InterleavedBy[k+1:]...)
 							foundAncestor = true
-							if err := planner.writeSchemaChange(ctx, ancestor, sqlbase.InvalidMutationID, ""); err != nil {
+							if err := planner.WriteSchemaChange(ctx, ancestor, sqlbase.InvalidMutationID, ""); err != nil {
 								return err
 							}
 						}
@@ -1555,7 +1559,7 @@ func runSchemaChangesInTxn(
 		switch constraint.ConstraintType {
 		case sqlbase.ConstraintToUpdate_CHECK, sqlbase.ConstraintToUpdate_NOT_NULL:
 			if constraint.Check.Validity == sqlbase.ConstraintValidity_Validating {
-				if err := validateCheckInTxn(
+				if err := ValidateCheckInTxn(
 					ctx, planner.Tables().leaseMgr, planner.EvalContext(), tableDesc, planner.txn, constraint.Check.Expr,
 				); err != nil {
 					return err
@@ -1598,7 +1602,7 @@ func runSchemaChangesInTxn(
 			if selfReference {
 				referencedTableDesc = tableDesc
 			} else {
-				lookup, err := planner.Tables().getMutableTableVersionByID(ctx, fk.ReferencedTableID, planner.Txn())
+				lookup, err := planner.Tables().GetMutableTableVersionByID(ctx, fk.ReferencedTableID, planner.Txn())
 				if err != nil {
 					return errors.Errorf("error resolving referenced table ID %d: %v", fk.ReferencedTableID, err)
 				}
@@ -1610,7 +1614,7 @@ func runSchemaChangesInTxn(
 			// Write the other table descriptor here if it's not the current table
 			// we're already modifying.
 			if !selfReference {
-				if err := planner.writeSchemaChange(
+				if err := planner.WriteSchemaChange(
 					ctx, referencedTableDesc, sqlbase.InvalidMutationID,
 					fmt.Sprintf("updating referenced FK table %s(%d) table %s(%d)",
 						referencedTableDesc.Name, referencedTableDesc.ID, tableDesc.Name, tableDesc.ID),
@@ -1627,7 +1631,7 @@ func runSchemaChangesInTxn(
 	return nil
 }
 
-// validateCheckInTxn validates check constraints within the provided
+// ValidateCheckInTxn validates check constraints within the provided
 // transaction. If the provided table descriptor version is newer than the
 // cluster version, it will be used in the InternalExecutor that performs the
 // validation query.
@@ -1639,7 +1643,7 @@ func runSchemaChangesInTxn(
 //
 // It operates entirely on the current goroutine and is thus able to
 // reuse an existing kv.Txn safely.
-func validateCheckInTxn(
+func ValidateCheckInTxn(
 	ctx context.Context,
 	leaseMgr *LeaseManager,
 	evalCtx *tree.EvalContext,
@@ -1654,7 +1658,7 @@ func validateCheckInTxn(
 			settings: evalCtx.Settings,
 		}
 		// pretend that the schema has been modified.
-		if err := newTc.addUncommittedTable(*tableDesc); err != nil {
+		if err := newTc.AddUncommittedTable(*tableDesc); err != nil {
 			return err
 		}
 
@@ -1666,7 +1670,7 @@ func validateCheckInTxn(
 	return validateCheckExpr(ctx, checkExpr, tableDesc.TableDesc(), ie, txn)
 }
 
-// validateFkInTxn validates foreign key constraints within the provided
+// ValidateFkInTxn validates foreign key constraints within the provided
 // transaction. If the provided table descriptor version is newer than the
 // cluster version, it will be used in the InternalExecutor that performs the
 // validation query.
@@ -1678,7 +1682,7 @@ func validateCheckInTxn(
 //
 // It operates entirely on the current goroutine and is thus able to
 // reuse an existing kv.Txn safely.
-func validateFkInTxn(
+func ValidateFkInTxn(
 	ctx context.Context,
 	leaseMgr *LeaseManager,
 	evalCtx *tree.EvalContext,
@@ -1693,7 +1697,7 @@ func validateFkInTxn(
 			settings: evalCtx.Settings,
 		}
 		// pretend that the schema has been modified.
-		if err := newTc.addUncommittedTable(*tableDesc); err != nil {
+		if err := newTc.AddUncommittedTable(*tableDesc); err != nil {
 			return err
 		}
 
@@ -1757,7 +1761,7 @@ func columnBackfillInTxn(
 	// All the FKs here are guaranteed to be created in the same transaction
 	// or else this table would be created in the ADD state.
 	for k := range fkTables {
-		t := tc.getUncommittedTableByID(k)
+		t := tc.GetUncommittedTableByID(k)
 		if (uncommittedTable{}) == t || !t.IsNewTable() {
 			return errors.AssertionFailedf(
 				"table %s not created in the same transaction as id = %d", tableDesc.Name, k)

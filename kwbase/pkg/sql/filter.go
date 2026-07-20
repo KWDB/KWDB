@@ -34,6 +34,8 @@ import (
 // filterNode implements a filtering stage. It is intended to be used
 // during plan optimizations in order to avoid instantiating a fully
 // blown selectTopNode/renderNode pair.
+var _ PlanNode = &filterNode{}
+
 type filterNode struct {
 	source      planDataSource
 	filter      tree.TypedExpr
@@ -62,12 +64,12 @@ func (f *filterNode) IndexedVarNodeFormatter(idx int) tree.NodeFormatter {
 	return f.source.columns.NodeFormatter(idx)
 }
 
-func (f *filterNode) startExec(runParams) error {
+func (f *filterNode) StartExec(RunParams) error {
 	return nil
 }
 
-// Next implements the planNode interface.
-func (f *filterNode) Next(params runParams) (bool, error) {
+// Next implements the PlanNode interface.
+func (f *filterNode) Next(params RunParams) (bool, error) {
 	panic("filterNode cannot be run in local mode")
 }
 

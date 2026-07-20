@@ -32,7 +32,7 @@ import (
 )
 
 type lookupJoinNode struct {
-	input planNode
+	input PlanNode
 	table *scanNode
 
 	// joinType is either INNER or LEFT_OUTER.
@@ -65,11 +65,11 @@ func (lj *lookupJoinNode) CanParallelize() bool {
 	return lj.eqColsAreKey
 }
 
-func (lj *lookupJoinNode) startExec(params runParams) error {
+func (lj *lookupJoinNode) StartExec(params RunParams) error {
 	panic("lookupJoinNode cannot be run in local mode")
 }
 
-func (lj *lookupJoinNode) Next(params runParams) (bool, error) {
+func (lj *lookupJoinNode) Next(params RunParams) (bool, error) {
 	panic("lookupJoinNode cannot be run in local mode")
 }
 

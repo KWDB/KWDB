@@ -23,7 +23,7 @@ import (
 func TestDiscard(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
-	p := makeTestPlanner()
+	p := MakeTestPlanner()
 	ctx := context.TODO()
 
 	_, err := p.Discard(ctx, &tree.Discard{})

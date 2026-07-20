@@ -41,7 +41,7 @@ package sql
 //		&execCfg,
 //	)
 //	defer cleanup()
-//	p := internalPlanner.(*planner)
+//	p := internalPlanner.(*GenericPlanner)
 //
 //	initStmts := []string{
 //		`create tenant tenant1`,

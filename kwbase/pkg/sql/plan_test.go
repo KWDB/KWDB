@@ -48,7 +48,7 @@ func TestMaybePlanHook(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := &planner{}
+			p := &GenericPlanner{}
 
 			result, err := p.maybePlanHook(context.Background(), tt.stmt)
 
@@ -69,39 +69,39 @@ func TestMaybePlanHook(t *testing.T) {
 	}
 }
 
-// TestResetNewTxn tests the resetNewTxn function
+// TestResetNewTxn tests the ResetNewTxn function
 func TestResetNewTxn(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
 	tests := []struct {
 		name string
-		test func(t *testing.T, r *runParams)
+		test func(t *testing.T, r *RunParams)
 	}{
 		// {
 		// 	name: "reset new transaction basic test",
-		// 	test: func(t *testing.T, r *runParams) {
+		// 	test: func(t *testing.T, r *RunParams) {
 		// 		// Store original transaction
 		// 		originalTxn := r.p.txn
 
-		// 		// Call resetNewTxn - this will panic if DB is nil, but we want to test the function signature
+		// 		// Call ResetNewTxn - this will panic if DB is nil, but we want to test the function signature
 		// 		// and basic behavior when called
 		// 		defer func() {
 		// 			if r := recover(); r != nil {
 		// 				// Expected panic due to nil DB, this is acceptable for this test
-		// 				t.Logf("resetNewTxn() panicked as expected: %v", r)
+		// 				t.Logf("ResetNewTxn() panicked as expected: %v", r)
 		// 			}
 		// 		}()
 
-		// 		r.resetNewTxn()
+		// 		r.ResetNewTxn()
 
 		// 		// If we reach here without panic, verify that transaction was replaced
 		// 		if r.p.txn == originalTxn {
-		// 			t.Errorf("resetNewTxn() did not replace the transaction")
+		// 			t.Errorf("ResetNewTxn() did not replace the transaction")
 		// 		}
 
 		// 		// Verify that new transaction is not nil
 		// 		if r.p.txn == nil {
-		// 			t.Errorf("resetNewTxn() returned nil transaction")
+		// 			t.Errorf("ResetNewTxn() returned nil transaction")
 		// 		}
 		// 	},
 		// },
@@ -109,7 +109,7 @@ func TestResetNewTxn(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create a mock runParams with minimal setup
+			// Create a mock RunParams with minimal setup
 			extendedEvalCtx := &extendedEvalContext{
 				EvalContext: tree.EvalContext{
 					NodeID: roachpb.NodeID(1),
@@ -119,12 +119,12 @@ func TestResetNewTxn(t *testing.T) {
 			s, _, kvDB := serverutils.StartServer(t, base.TestServerArgs{})
 			defer s.Stopper().Stop(context.TODO())
 
-			p := &planner{
+			p := &GenericPlanner{
 				txn: kv.NewTxn(context.TODO(), kvDB, 1),
 			}
 
-			r := &runParams{
-				ctx:             context.TODO(),
+			r := &RunParams{
+				Ctx:             context.TODO(),
 				extendedEvalCtx: extendedEvalCtx,
 				p:               p,
 			}

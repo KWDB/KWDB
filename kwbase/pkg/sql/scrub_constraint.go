@@ -79,8 +79,8 @@ func newSQLCheckConstraintCheckOperation(
 // Start implements the checkOperation interface.
 // It creates a SELECT expression and generates a plan from it, which
 // then runs in the distSQL execution engine.
-func (o *sqlCheckConstraintCheckOperation) Start(params runParams) error {
-	ctx := params.ctx
+func (o *sqlCheckConstraintCheckOperation) Start(params RunParams) error {
+	ctx := params.Ctx
 	expr, err := parser.ParseExpr(o.checkDesc.Expr)
 	if err != nil {
 		return err
@@ -130,7 +130,7 @@ func (o *sqlCheckConstraintCheckOperation) Start(params runParams) error {
 }
 
 // Next implements the checkOperation interface.
-func (o *sqlCheckConstraintCheckOperation) Next(params runParams) (tree.Datums, error) {
+func (o *sqlCheckConstraintCheckOperation) Next(params RunParams) (tree.Datums, error) {
 	row := o.run.rows[o.run.rowIndex]
 	o.run.rowIndex++
 	timestamp := tree.MakeDTimestamp(

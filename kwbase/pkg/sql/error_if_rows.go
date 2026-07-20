@@ -30,10 +30,12 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 )
 
-// errorIfRowsNode wraps another planNode and returns an error if the wrapped
+// errorIfRowsNode wraps another PlanNode and returns an error if the wrapped
 // node produces any rows.
+var _ PlanNode = &errorIfRowsNode{}
+
 type errorIfRowsNode struct {
-	plan planNode
+	plan PlanNode
 
 	// mkErr creates the error message, given the values of the first row
 	// produced.
@@ -42,11 +44,11 @@ type errorIfRowsNode struct {
 	nexted bool
 }
 
-func (n *errorIfRowsNode) startExec(params runParams) error {
+func (n *errorIfRowsNode) StartExec(params RunParams) error {
 	return nil
 }
 
-func (n *errorIfRowsNode) Next(params runParams) (bool, error) {
+func (n *errorIfRowsNode) Next(params RunParams) (bool, error) {
 	if n.nexted {
 		return false, nil
 	}

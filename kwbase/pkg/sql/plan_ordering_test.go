@@ -19,150 +19,150 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 )
 
-// TestPlanReqOrdering tests the planReqOrdering function with different planNode types
+// TestPlanReqOrdering tests the planReqOrdering function with different PlanNode types
 func TestPlanReqOrdering(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
 	tests := []struct {
 		name     string
-		planNode planNode
+		PlanNode PlanNode
 		expected ReqOrdering
 	}{
 		{
 			name:     "test explainPlanNode",
-			planNode: &explainPlanNode{},
+			PlanNode: &explainPlanNode{},
 			expected: nil,
 		},
 		{
 			name:     "test limitNode",
-			planNode: &limitNode{},
+			PlanNode: &limitNode{},
 			expected: nil,
 		},
 		{
 			name:     "test max1RowNode",
-			planNode: &max1RowNode{},
+			PlanNode: &max1RowNode{},
 			expected: nil,
 		},
 		{
 			name:     "test spoolNode",
-			planNode: &spoolNode{},
+			PlanNode: &spoolNode{},
 			expected: nil,
 		},
 		{
 			name:     "test saveTableNode",
-			planNode: &saveTableNode{},
+			PlanNode: &saveTableNode{},
 			expected: nil,
 		},
 		{
 			name:     "test serializeNode",
-			planNode: &serializeNode{},
+			PlanNode: &serializeNode{},
 			expected: nil,
 		},
 		{
 			name:     "test deleteNode without rowsNeeded",
-			planNode: &deleteNode{},
+			PlanNode: &deleteNode{},
 			expected: nil,
 		},
 		{
 			name:     "test projectSetNode",
-			planNode: &projectSetNode{reqOrdering: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Ascending}}},
+			PlanNode: &projectSetNode{reqOrdering: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Ascending}}},
 			expected: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Ascending}},
 		},
 		{
 			name:     "test filterNode",
-			planNode: &filterNode{reqOrdering: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Descending}}},
+			PlanNode: &filterNode{reqOrdering: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Descending}}},
 			expected: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Descending}},
 		},
 		{
 			name:     "test groupNode",
-			planNode: &groupNode{reqOrdering: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Ascending}}},
+			PlanNode: &groupNode{reqOrdering: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Ascending}}},
 			expected: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Ascending}},
 		},
 		{
 			name:     "test distinctNode",
-			planNode: &distinctNode{reqOrdering: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Descending}}},
+			PlanNode: &distinctNode{reqOrdering: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Descending}}},
 			expected: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Descending}},
 		},
 		{
 			name:     "test indexJoinNode",
-			planNode: &indexJoinNode{reqOrdering: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Ascending}}},
+			PlanNode: &indexJoinNode{reqOrdering: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Ascending}}},
 			expected: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Ascending}},
 		},
 		{
 			name:     "test windowNode",
-			planNode: &windowNode{},
+			PlanNode: &windowNode{},
 			expected: nil,
 		},
 		{
 			name:     "test joinNode",
-			planNode: &joinNode{reqOrdering: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Ascending}}},
+			PlanNode: &joinNode{reqOrdering: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Ascending}}},
 			expected: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Ascending}},
 		},
 		{
 			name:     "test unionNode",
-			planNode: &unionNode{},
+			PlanNode: &unionNode{},
 			expected: nil,
 		},
 		{
 			name:     "test insertNode",
-			planNode: &insertNode{},
+			PlanNode: &insertNode{},
 			expected: nil,
 		},
 		{
 			name:     "test insertFastPathNode",
-			planNode: &insertFastPathNode{},
+			PlanNode: &insertFastPathNode{},
 			expected: nil,
 		},
 		{
 			name:     "test updateNode",
-			planNode: &updateNode{},
+			PlanNode: &updateNode{},
 			expected: nil,
 		},
 		{
 			name:     "test upsertNode",
-			planNode: &upsertNode{},
+			PlanNode: &upsertNode{},
 			expected: nil,
 		},
 		{
 			name:     "test scanNode",
-			planNode: &scanNode{reqOrdering: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Ascending}}},
+			PlanNode: &scanNode{reqOrdering: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Ascending}}},
 			expected: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Ascending}},
 		},
 		{
 			name:     "test ordinalityNode",
-			planNode: &ordinalityNode{reqOrdering: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Descending}}},
+			PlanNode: &ordinalityNode{reqOrdering: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Descending}}},
 			expected: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Descending}},
 		},
 		{
 			name:     "test renderNode",
-			planNode: &renderNode{reqOrdering: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Ascending}}},
+			PlanNode: &renderNode{reqOrdering: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Ascending}}},
 			expected: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Ascending}},
 		},
 		{
 			name:     "test sortNode",
-			planNode: &sortNode{ordering: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Descending}}},
+			PlanNode: &sortNode{ordering: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Descending}}},
 			expected: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Descending}},
 		},
 		{
 			name:     "test lookupJoinNode",
-			planNode: &lookupJoinNode{reqOrdering: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Ascending}}},
+			PlanNode: &lookupJoinNode{reqOrdering: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Ascending}}},
 			expected: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Ascending}},
 		},
 		{
 			name:     "test zigzagJoinNode",
-			planNode: &zigzagJoinNode{reqOrdering: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Descending}}},
+			PlanNode: &zigzagJoinNode{reqOrdering: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Descending}}},
 			expected: sqlbase.ColumnOrdering{{ColIdx: 0, Direction: encoding.Descending}},
 		},
 		{
 			name:     "test unknown node type",
-			planNode: &valuesNode{},
+			PlanNode: &valuesNode{},
 			expected: nil,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := planReqOrdering(tt.planNode)
+			result := planReqOrdering(tt.PlanNode)
 
 			if result == nil && tt.expected == nil {
 				return
@@ -201,12 +201,12 @@ func TestPlanReqOrderingDeleteNodeWithRowsNeeded(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		planNode planNode
+		PlanNode PlanNode
 		expected ReqOrdering
 	}{
 		{
 			name: "test deleteNode with rowsNeeded",
-			planNode: &deleteNode{
+			PlanNode: &deleteNode{
 				run: deleteRun{
 					rowsNeeded: true,
 				},
@@ -218,7 +218,7 @@ func TestPlanReqOrderingDeleteNodeWithRowsNeeded(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := planReqOrdering(tt.planNode)
+			result := planReqOrdering(tt.PlanNode)
 
 			if result == nil && tt.expected == nil {
 				return
@@ -257,12 +257,12 @@ func TestPlanReqOrderingExplainPlanNodeWithResults(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		planNode planNode
+		PlanNode PlanNode
 		expected ReqOrdering
 	}{
 		{
 			name: "test explainPlanNode with results",
-			planNode: &explainPlanNode{
+			PlanNode: &explainPlanNode{
 				run: explainPlanRun{
 					results: &valuesNode{},
 				},
@@ -273,7 +273,7 @@ func TestPlanReqOrderingExplainPlanNodeWithResults(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := planReqOrdering(tt.planNode)
+			result := planReqOrdering(tt.PlanNode)
 
 			if result == nil && tt.expected == nil {
 				return

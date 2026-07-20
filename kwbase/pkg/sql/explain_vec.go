@@ -43,13 +43,15 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// explainVecNode is a planNode that wraps a plan and returns
+// explainVecNode is a PlanNode that wraps a plan and returns
 // information related to running that plan with the vectorized engine.
+var _ PlanNode = &explainVecNode{}
+
 type explainVecNode struct {
-	optColumnsSlot
+	OptColumnsSlot
 
 	options *tree.ExplainOptions
-	plan    planNode
+	plan    PlanNode
 
 	stmtType tree.StatementType
 
@@ -66,7 +68,7 @@ type flowWithNode struct {
 	flow   *execinfrapb.FlowSpec
 }
 
-func (n *explainVecNode) startExec(params runParams) error {
+func (n *explainVecNode) StartExec(params RunParams) error {
 	n.run.values = make(tree.Datums, 1)
 	distSQLPlanner := params.extendedEvalCtx.DistSQLPlanner
 	willDistributePlan, _ := willDistributePlan(distSQLPlanner, n.plan, params)
@@ -130,7 +132,7 @@ func (n *explainVecNode) startExec(params runParams) error {
 				relProcessors = append(relProcessors, p)
 			}
 		}
-		opChains, err := colflow.SupportsVectorized(params.ctx, flowCtx, relProcessors, tsProcessors, fuseOpt, nil /* output */)
+		opChains, err := colflow.SupportsVectorized(params.Ctx, flowCtx, relProcessors, tsProcessors, fuseOpt, nil /* output */)
 		if err != nil {
 			return err
 		}
@@ -149,7 +151,7 @@ func (n *explainVecNode) startExec(params runParams) error {
 	return nil
 }
 
-func makeFlowCtx(planCtx *PlanningCtx, plan PhysicalPlan, params runParams) *execinfra.FlowCtx {
+func makeFlowCtx(planCtx *PlanningCtx, plan PhysicalPlan, params RunParams) *execinfra.FlowCtx {
 	flowCtx := &execinfra.FlowCtx{
 		NodeID:  planCtx.EvalContext().NodeID,
 		EvalCtx: planCtx.EvalContext(),
@@ -164,12 +166,12 @@ func makeFlowCtx(planCtx *PlanningCtx, plan PhysicalPlan, params runParams) *exe
 
 func makeExplainVecPlanningCtx(
 	distSQLPlanner *DistSQLPlanner,
-	params runParams,
+	params RunParams,
 	stmtType tree.StatementType,
 	subqueryPlans []subquery,
 	willDistributePlan bool,
 ) *PlanningCtx {
-	planCtx := distSQLPlanner.NewPlanningCtx(params.ctx, params.extendedEvalCtx, params.p.txn)
+	planCtx := distSQLPlanner.NewPlanningCtx(params.Ctx, params.extendedEvalCtx, params.p.txn)
 	planCtx.isLocal = !willDistributePlan
 	planCtx.ignoreClose = true
 	planCtx.planner = params.p
@@ -224,7 +226,7 @@ func doFormatOpChain(
 	}
 }
 
-func (n *explainVecNode) Next(runParams) (bool, error) {
+func (n *explainVecNode) Next(RunParams) (bool, error) {
 	if len(n.run.lines) == 0 {
 		return false, nil
 	}

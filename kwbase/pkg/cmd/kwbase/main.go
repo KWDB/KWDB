@@ -31,6 +31,7 @@ package main
 import (
 	"gitee.com/kwbasedb/kwbase/pkg/cli"
 	_ "gitee.com/kwbasedb/kwbase/pkg/sql/importer"
+	_ "gitee.com/kwbasedb/kwbase/pkg/stream"
 )
 
 func main() {

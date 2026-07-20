@@ -84,8 +84,8 @@ func newIndexCheckOperation(
 
 // Start will plan and run an index check using the distSQL execution
 // engine.
-func (o *indexCheckOperation) Start(params runParams) error {
-	ctx := params.ctx
+func (o *indexCheckOperation) Start(params RunParams) error {
+	ctx := params.Ctx
 
 	colToIdx := make(map[sqlbase.ColumnID]int)
 	for i := range o.tableDesc.Columns {
@@ -154,7 +154,7 @@ func (o *indexCheckOperation) Start(params runParams) error {
 }
 
 // Next implements the checkOperation interface.
-func (o *indexCheckOperation) Next(params runParams) (tree.Datums, error) {
+func (o *indexCheckOperation) Next(params RunParams) (tree.Datums, error) {
 	row := o.run.rows[o.run.rowIndex]
 	o.run.rowIndex++
 

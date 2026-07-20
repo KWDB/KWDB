@@ -1454,13 +1454,13 @@ func (p *PhysicalPlan) AddTSRendering(
 // Inputs:
 //
 //	indexVarMap is a mapping from columns that appear in an expression
-//	            (planNode columns) to columns in the output stream of a
+//	            (PlanNode columns) to columns in the output stream of a
 //	            processor.
 //	outputColumns is the list of output columns in the processor's
 //	              PostProcessSpec; it is effectively a mapping from the output
 //	              schema to the internal schema of a processor.
 //
-// Result: a "composite map" that maps the planNode columns to the internal
+// Result: a "composite map" that maps the PlanNode columns to the internal
 //
 //	columns of the processor.
 //

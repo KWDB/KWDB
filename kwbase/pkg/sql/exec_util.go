@@ -779,7 +779,7 @@ type ExecutorTestingKnobs struct {
 	// If a nil error is returned, planning continues as usual.
 	BeforePrepare func(ctx context.Context, stmt string, txn *kv.Txn) error
 
-	// BeforeGetTablesName is called by the Executor before getTablesNameByDatabase
+	// BeforeGetTablesName is called by the Executor before GetTablesNameByDatabase
 	// of export database
 	BeforeGetTablesName func(ctx context.Context, stmt string)
 
@@ -948,7 +948,7 @@ func shouldDistributeGivenRecAndMode(
 // shouldDistributePlan determines whether we should distribute the
 // given logical plan, based on the session settings.
 func shouldDistributePlan(
-	ctx context.Context, distSQLMode sessiondata.DistSQLExecMode, dp *DistSQLPlanner, plan planNode,
+	ctx context.Context, distSQLMode sessiondata.DistSQLExecMode, dp *DistSQLPlanner, plan PlanNode,
 ) bool {
 	if distSQLMode == sessiondata.DistSQLOff {
 		return false
@@ -1080,7 +1080,7 @@ func checkResultType(typ *types.T) error {
 
 // EvalAsOfTimestamp evaluates and returns the timestamp from an AS OF SYSTEM
 // TIME clause.
-func (p *planner) EvalAsOfTimestamp(asOf tree.AsOfClause) (_ hlc.Timestamp, err error) {
+func (p *GenericPlanner) EvalAsOfTimestamp(asOf tree.AsOfClause) (_ hlc.Timestamp, err error) {
 	ts, err := tree.EvalAsOfTimestamp(asOf, &p.semaCtx, p.EvalContext())
 	if err != nil {
 		return hlc.Timestamp{}, err
@@ -1117,7 +1117,7 @@ func ParseHLC(s string) (hlc.Timestamp, error) {
 // timestamp is not nil, it is the timestamp to which a transaction
 // should be set. The statements that will be checked are Select,
 // ShowTrace (of a Select statement), Scrub, Export, and CreateStats.
-func (p *planner) isAsOf(stmt tree.Statement) (*hlc.Timestamp, error) {
+func (p *GenericPlanner) isAsOf(stmt tree.Statement) (*hlc.Timestamp, error) {
 	var asOf tree.AsOfClause
 	switch s := stmt.(type) {
 	case *tree.Select:
@@ -2019,6 +2019,12 @@ type sessionDataMutator struct {
 	// onSessionDataChangeListeners stores all the observers to execute when
 	// session data is modified, keyed by the value to change on.
 	onSessionDataChangeListeners map[string][]func(val string)
+}
+
+// RegisterOnSessionDataChange adds a listener to execute when a change on the
+// given key is made using the mutator object.
+func (m *sessionDataMutator) GetData() *sessiondata.SessionData {
+	return m.data
 }
 
 // RegisterOnSessionDataChange adds a listener to execute when a change on the

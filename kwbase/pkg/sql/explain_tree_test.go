@@ -74,7 +74,7 @@ func TestPlanToTreeAndPlanToString(t *testing.T) {
 				&execCfg,
 			)
 			defer cleanup()
-			p := internalPlanner.(*planner)
+			p := internalPlanner.(*GenericPlanner)
 
 			p.stmt = &Statement{Statement: stmt}
 			if err := p.makeOptimizerPlan(ctx); err != nil {

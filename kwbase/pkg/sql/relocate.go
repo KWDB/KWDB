@@ -38,13 +38,15 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
+var _ PlanNode = &relocateNode{}
+
 type relocateNode struct {
-	optColumnsSlot
+	OptColumnsSlot
 
 	relocateLease bool
 	tableDesc     *sqlbase.TableDescriptor
 	index         *sqlbase.IndexDescriptor
-	rows          planNode
+	rows          PlanNode
 
 	run relocateRun
 }
@@ -59,7 +61,7 @@ type relocateRun struct {
 	storeMap map[roachpb.StoreID]roachpb.NodeID
 }
 
-func (n *relocateNode) startExec(runParams) error {
+func (n *relocateNode) StartExec(RunParams) error {
 	if n.tableDesc.IsTSTable() {
 		return sqlbase.TSUnsupportedError("relocate")
 	}
@@ -67,7 +69,7 @@ func (n *relocateNode) startExec(runParams) error {
 	return nil
 }
 
-func (n *relocateNode) Next(params runParams) (bool, error) {
+func (n *relocateNode) Next(params RunParams) (bool, error) {
 	// Each Next call relocates one range (corresponding to one row from n.rows).
 	// TODO(radu): perform multiple relocations in parallel.
 
@@ -131,18 +133,18 @@ func (n *relocateNode) Next(params runParams) (bool, error) {
 	}
 	rowKey = keys.MakeFamilyKey(rowKey, 0)
 
-	rangeDesc, err := lookupRangeDescriptor(params.ctx, params.extendedEvalCtx.ExecCfg.DB, rowKey)
+	rangeDesc, err := lookupRangeDescriptor(params.Ctx, params.extendedEvalCtx.ExecCfg.DB, rowKey)
 	if err != nil {
 		return false, errors.Wrapf(err, "error looking up range descriptor")
 	}
 	n.run.lastRangeStartKey = rangeDesc.StartKey.AsRawKey()
 
 	if n.relocateLease {
-		if err := params.p.ExecCfg().DB.AdminTransferLease(params.ctx, rowKey, leaseStoreID); err != nil {
+		if err := params.p.ExecCfg().DB.AdminTransferLease(params.Ctx, rowKey, leaseStoreID); err != nil {
 			return false, err
 		}
 	} else {
-		if err := params.p.ExecCfg().DB.AdminRelocateRange(params.ctx, rowKey, relocationTargets); err != nil {
+		if err := params.p.ExecCfg().DB.AdminRelocateRange(params.Ctx, rowKey, relocationTargets); err != nil {
 			return false, err
 		}
 	}

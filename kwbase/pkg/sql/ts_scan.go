@@ -148,7 +148,7 @@ func (n *tsScanNode) IndexedVarNodeFormatter(idx int) tree.NodeFormatter {
 	return (*tree.Name)(&n.resultColumns[idx].Name)
 }
 
-func (n *tsScanNode) startExec(params runParams) error {
+func (n *tsScanNode) StartExec(params RunParams) error {
 	return pgerror.New(pgcode.Warning, "time series query is not supported in subquery")
 }
 
@@ -159,7 +159,7 @@ func (n *tsScanNode) Close(context.Context) {
 
 func (n *tsScanNode) SkipClose() bool { return true }
 
-func (n *tsScanNode) Next(params runParams) (bool, error) {
+func (n *tsScanNode) Next(params RunParams) (bool, error) {
 	panic("scanNode can't be run in local mode")
 }
 
@@ -167,7 +167,9 @@ func (n *tsScanNode) Values() tree.Datums {
 	panic("scanNode can't be run in local mode")
 }
 
-func (p *planner) TSScan() *tsScanNode {
+// TSScan creates a scan node for reading from timeseries tables
+// nolint:unexportedreturn
+func (p *GenericPlanner) TSScan() *tsScanNode {
 	n := tsScanNodePool.Get().(*tsScanNode)
 	return n
 }
@@ -176,7 +178,7 @@ func (p *planner) TSScan() *tsScanNode {
 type synchronizerNode struct {
 	// resultColumns
 	columns sqlbase.ResultColumns
-	plan    planNode
+	plan    PlanNode
 
 	// parallel degree
 	degree int32
@@ -194,7 +196,7 @@ func (n *synchronizerNode) IndexedVarNodeFormatter(idx int) tree.NodeFormatter {
 	return (*tree.Name)(&n.columns[idx].Name)
 }
 
-func (n *synchronizerNode) startExec(params runParams) error {
+func (n *synchronizerNode) StartExec(params RunParams) error {
 	return pgerror.New(pgcode.Warning, "time series query is not supported in subquery")
 }
 
@@ -204,7 +206,7 @@ func (n *synchronizerNode) Close(ctx context.Context) {
 	}
 }
 
-func (n *synchronizerNode) Next(params runParams) (bool, error) {
+func (n *synchronizerNode) Next(params RunParams) (bool, error) {
 	panic("scanNode can't be run in local mode")
 }
 
@@ -220,7 +222,7 @@ var tsInsertSelectNodePool = sync.Pool{
 
 // tsInsertSelectNode insert into select
 type tsInsertSelectNode struct {
-	plan planNode
+	plan PlanNode
 
 	// TableID insert table id
 	TableID uint64
@@ -236,11 +238,11 @@ type tsInsertSelectNode struct {
 	TableType int32
 }
 
-func (t *tsInsertSelectNode) startExec(params runParams) error {
+func (t *tsInsertSelectNode) StartExec(params RunParams) error {
 	return nil
 }
 
-func (t *tsInsertSelectNode) Next(params runParams) (bool, error) {
+func (t *tsInsertSelectNode) Next(params RunParams) (bool, error) {
 	return false, nil
 }
 
@@ -256,4 +258,4 @@ func (t *tsInsertSelectNode) Close(ctx context.Context) {
 	tsInsertSelectNodePool.Put(t)
 }
 
-var _ planNode = &tsInsertSelectNode{}
+var _ PlanNode = &tsInsertSelectNode{}

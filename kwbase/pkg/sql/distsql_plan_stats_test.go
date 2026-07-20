@@ -386,7 +386,7 @@ func TestCreateTsStatsPlanDirect(t *testing.T) {
 	)
 	defer cleanup()
 
-	planner := plannerI.(*planner)
+	planner := plannerI.(*GenericPlanner)
 	dsp := planner.DistSQLPlanner()
 	planCtx := dsp.NewPlanningCtx(ctx, planner.ExtendedEvalContext(), txn)
 	planCtx.planner = planner
@@ -472,7 +472,7 @@ func TestCreateTsStatsPlanDirectInvalidColumn(t *testing.T) {
 	)
 	defer cleanup()
 
-	planner := plannerI.(*planner)
+	planner := plannerI.(*GenericPlanner)
 	dsp := planner.DistSQLPlanner()
 	planCtx := dsp.NewPlanningCtx(ctx, planner.ExtendedEvalContext(), txn)
 	planCtx.planner = planner

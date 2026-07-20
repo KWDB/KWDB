@@ -43,7 +43,7 @@ type ExplainOptions struct {
 type ExplainMode uint8
 
 const (
-	// ExplainPlan shows information about the planNode tree for a query.
+	// ExplainPlan shows information about the PlanNode tree for a query.
 	ExplainPlan ExplainMode = 1 + iota
 
 	// ExplainDistSQL shows the physical distsql plan for a query and whether a

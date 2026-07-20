@@ -1086,7 +1086,7 @@ func (b *Builder) buildTsInsertSelect(insert *memo.TSInsertSelectExpr) (execPlan
 		insTableID = uint64(insert.CTable)
 	}
 
-	// build planNode of subExpr
+	// build PlanNode of subExpr
 	input, err := b.buildRelational(insert.Input)
 	if err != nil {
 		return execPlan{}, err

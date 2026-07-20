@@ -46,7 +46,9 @@ import (
 )
 
 // IncrementSequence implements the tree.SequenceOperators interface.
-func (p *planner) IncrementSequence(ctx context.Context, seqName *tree.TableName) (int64, error) {
+func (p *GenericPlanner) IncrementSequence(
+	ctx context.Context, seqName *tree.TableName,
+) (int64, error) {
 	if p.EvalContext().TxnReadOnly {
 		return 0, readOnlyError("nextval()")
 	}
@@ -106,7 +108,7 @@ func boundsExceededError(descriptor *sqlbase.ImmutableTableDescriptor) error {
 }
 
 // GetLatestValueInSessionForSequence implements the tree.SequenceOperators interface.
-func (p *planner) GetLatestValueInSessionForSequence(
+func (p *GenericPlanner) GetLatestValueInSessionForSequence(
 	ctx context.Context, seqName *tree.TableName,
 ) (int64, error) {
 	descriptor, err := ResolveExistingObject(ctx, p, seqName, tree.ObjectLookupFlagsWithRequired(), ResolveRequireSequenceDesc)
@@ -125,7 +127,7 @@ func (p *planner) GetLatestValueInSessionForSequence(
 }
 
 // SetSequenceValue implements the tree.SequenceOperators interface.
-func (p *planner) SetSequenceValue(
+func (p *GenericPlanner) SetSequenceValue(
 	ctx context.Context, seqName *tree.TableName, newVal int64, isCalled bool,
 ) error {
 	if p.EvalContext().TxnReadOnly {
@@ -189,7 +191,7 @@ func MakeSequenceKeyVal(
 }
 
 // GetSequenceValue returns the current value of the sequence.
-func (p *planner) GetSequenceValue(
+func (p *GenericPlanner) GetSequenceValue(
 	ctx context.Context, desc *sqlbase.ImmutableTableDescriptor,
 ) (int64, error) {
 	if desc.SequenceOpts == nil {
@@ -207,13 +209,13 @@ func readOnlyError(s string) error {
 		"cannot execute %s in a read-only transaction", s)
 }
 
-// assignSequenceOptions moves options from the AST node to the sequence options descriptor,
+// AssignSequenceOptions moves options from the AST node to the sequence options descriptor,
 // starting with defaults and overriding them with user-provided options.
-func assignSequenceOptions(
+func AssignSequenceOptions(
 	opts *sqlbase.TableDescriptor_SequenceOpts,
 	optsNode tree.SequenceOptions,
 	setDefaults bool,
-	params *runParams,
+	params *RunParams,
 	sequenceID sqlbase.ID,
 ) error {
 	// All other defaults are dependent on the value of increment,
@@ -300,13 +302,13 @@ func assignSequenceOptions(
 			}
 			// The owner is being removed
 			if option.ColumnItemVal == nil {
-				if err := removeSequenceOwnerIfExists(params.ctx, params.p, sequenceID, opts); err != nil {
+				if err := removeSequenceOwnerIfExists(params.Ctx, params.p, sequenceID, opts); err != nil {
 					return err
 				}
 			} else {
 				// The owner is being added/modified
 				tableDesc, col, err := resolveColumnItemToDescriptors(
-					params.ctx, params.p, option.ColumnItemVal,
+					params.Ctx, params.p, option.ColumnItemVal,
 				)
 				if err != nil {
 					return err
@@ -315,10 +317,10 @@ func assignSequenceOptions(
 				// want it to be.
 				if opts.SequenceOwner.OwnerTableID != tableDesc.ID ||
 					opts.SequenceOwner.OwnerColumnID != col.ID {
-					if err := removeSequenceOwnerIfExists(params.ctx, params.p, sequenceID, opts); err != nil {
+					if err := removeSequenceOwnerIfExists(params.Ctx, params.p, sequenceID, opts); err != nil {
 						return err
 					}
-					err := addSequenceOwner(params.ctx, params.p, option.ColumnItemVal, sequenceID, opts)
+					err := addSequenceOwner(params.Ctx, params.p, option.ColumnItemVal, sequenceID, opts)
 					if err != nil {
 						return err
 					}
@@ -401,14 +403,14 @@ func assignSequenceOptions(
 
 func removeSequenceOwnerIfExists(
 	ctx context.Context,
-	p *planner,
+	p *GenericPlanner,
 	sequenceID sqlbase.ID,
 	opts *sqlbase.TableDescriptor_SequenceOpts,
 ) error {
 	if !opts.HasOwner() {
 		return nil
 	}
-	tableDesc, err := p.Tables().getMutableTableVersionByID(ctx, opts.SequenceOwner.OwnerTableID, p.txn)
+	tableDesc, err := p.Tables().GetMutableTableVersionByID(ctx, opts.SequenceOwner.OwnerTableID, p.txn)
 	if err != nil {
 		// Special case error swallowing for #50711 and #50781, which can cause a
 		// column to own sequences that have been dropped/do not exist.
@@ -439,7 +441,7 @@ func removeSequenceOwnerIfExists(
 	}
 	col.OwnsSequenceIds = append(col.OwnsSequenceIds[:refIdx], col.OwnsSequenceIds[refIdx+1:]...)
 	// TODO (lucy): Have more consistent/informative names for dependent jobs.
-	if err := p.writeSchemaChange(
+	if err := p.WriteSchemaChange(
 		ctx, tableDesc, sqlbase.InvalidMutationID, "removing sequence owner",
 	); err != nil {
 		return err
@@ -450,7 +452,7 @@ func removeSequenceOwnerIfExists(
 }
 
 func resolveColumnItemToDescriptors(
-	ctx context.Context, p *planner, columnItem *tree.ColumnItem,
+	ctx context.Context, p *GenericPlanner, columnItem *tree.ColumnItem,
 ) (*MutableTableDescriptor, *sqlbase.ColumnDescriptor, error) {
 	var tableName tree.TableName
 	if columnItem.TableName != nil {
@@ -470,7 +472,7 @@ func resolveColumnItemToDescriptors(
 
 func addSequenceOwner(
 	ctx context.Context,
-	p *planner,
+	p *GenericPlanner,
 	columnItemVal *tree.ColumnItem,
 	sequenceID sqlbase.ID,
 	opts *sqlbase.TableDescriptor_SequenceOpts,
@@ -485,16 +487,16 @@ func addSequenceOwner(
 	opts.SequenceOwner.OwnerColumnID = col.ID
 	opts.SequenceOwner.OwnerTableID = tableDesc.GetID()
 	// TODO (lucy): Have more consistent/informative names for dependent jobs.
-	return p.writeSchemaChange(
+	return p.WriteSchemaChange(
 		ctx, tableDesc, sqlbase.InvalidMutationID, "adding sequence owner",
 	)
 }
 
-// maybeAddSequenceDependencies adds references between the column and sequence descriptors,
+// MaybeAddSequenceDependencies adds references between the column and sequence descriptors,
 // if the column has a DEFAULT expression that uses one or more sequences. (Usually just one,
 // e.g. `DEFAULT nextval('my_sequence')`.
 // The passed-in column descriptor is mutated, and the modified sequence descriptors are returned.
-func maybeAddSequenceDependencies(
+func MaybeAddSequenceDependencies(
 	ctx context.Context,
 	sc SchemaResolver,
 	tableDesc *sqlbase.MutableTableDescriptor,
@@ -502,7 +504,7 @@ func maybeAddSequenceDependencies(
 	expr tree.TypedExpr,
 	backrefs map[sqlbase.ID]*sqlbase.MutableTableDescriptor,
 ) ([]*MutableTableDescriptor, error) {
-	seqNames, err := getUsedSequenceNames(expr)
+	seqNames, err := GetUsedSequenceNames(expr)
 	if err != nil {
 		return nil, err
 	}
@@ -515,7 +517,7 @@ func maybeAddSequenceDependencies(
 		tn := parsedSeqName.ToTableName()
 
 		var seqDesc *MutableTableDescriptor
-		p, ok := sc.(*planner)
+		p, ok := sc.(*GenericPlanner)
 		if ok {
 			seqDesc, err = p.ResolveMutableTableDescriptor(ctx, &tn, true /*required*/, ResolveRequireSequenceDesc)
 			if err != nil {
@@ -555,13 +557,32 @@ func maybeAddSequenceDependencies(
 	return seqDescs, nil
 }
 
-// dropSequencesOwnedByCol drops all the sequences from col.OwnsSequenceIDs.
+// DropSequenceImpl implements the core logic for dropping a sequence
+func (p *GenericPlanner) DropSequenceImpl(
+	ctx context.Context,
+	seqDesc *sqlbase.MutableTableDescriptor,
+	queueJob bool,
+	jobDesc string,
+	behavior tree.DropBehavior,
+) error {
+	if err := removeSequenceOwnerIfExists(ctx, p, seqDesc.ID, seqDesc.GetSequenceOpts()); err != nil {
+		return err
+	}
+	if err := p.initiateDropTable(ctx, seqDesc, queueJob, jobDesc, true /* drainName */); err != nil {
+		return err
+	}
+	// delete lastValue from sessionData
+	p.SessionData().SequenceState.DeleteLastValue(uint32(seqDesc.ID))
+	return nil
+}
+
+// DropSequencesOwnedByCol drops all the sequences from col.OwnsSequenceIDs.
 // Called when the respective column (or the whole table) is being dropped.
-func (p *planner) dropSequencesOwnedByCol(
-	ctx context.Context, col *sqlbase.ColumnDescriptor, queueJob bool,
+func DropSequencesOwnedByCol(
+	ctx context.Context, p *GenericPlanner, col *sqlbase.ColumnDescriptor, queueJob bool,
 ) error {
 	for _, sequenceID := range col.OwnsSequenceIds {
-		seqDesc, err := p.Tables().getMutableTableVersionByID(ctx, sequenceID, p.txn)
+		seqDesc, err := p.Tables().GetMutableTableVersionByID(ctx, sequenceID, p.txn)
 		// Special case error swallowing for #50781, which can cause a
 		// column to own sequences that do not exist.
 		if err != nil {
@@ -577,7 +598,7 @@ func (p *planner) dropSequencesOwnedByCol(
 		}
 		jobDesc := fmt.Sprintf("removing sequence %q dependent on column %q which is being dropped",
 			seqDesc.Name, col.ColName())
-		if err := p.dropSequenceImpl(
+		if err := p.DropSequenceImpl(
 			ctx, seqDesc, queueJob, jobDesc, tree.DropRestrict,
 		); err != nil {
 			return err
@@ -586,18 +607,19 @@ func (p *planner) dropSequencesOwnedByCol(
 	return nil
 }
 
-// removeSequenceDependencies:
+// RemoveSequenceDependencies removes all dependencies on a sequence before dropping it
+// RemoveSequenceDependencies:
 //   - removes the reference from the column descriptor to the sequence descriptor.
 //   - removes the reference from the sequence descriptor to the column descriptor.
 //   - writes the sequence descriptor and notifies a schema change.
 //
 // The column descriptor is mutated but not saved to persistent storage; the caller must save it.
-func (p *planner) removeSequenceDependencies(
+func (p *GenericPlanner) RemoveSequenceDependencies(
 	ctx context.Context, tableDesc *sqlbase.MutableTableDescriptor, col *sqlbase.ColumnDescriptor,
 ) error {
 	for _, sequenceID := range col.UsesSequenceIds {
 		// Get the sequence descriptor so we can remove the reference from it.
-		seqDesc, err := p.Tables().getMutableTableVersionByID(ctx, sequenceID, p.txn)
+		seqDesc, err := p.Tables().GetMutableTableVersionByID(ctx, sequenceID, p.txn)
 		if err != nil {
 			return err
 		}
@@ -652,7 +674,7 @@ func (p *planner) removeSequenceDependencies(
 
 		jobDesc := fmt.Sprintf("removing sequence %q dependent on column %q which is being dropped",
 			seqDesc.Name, col.ColName())
-		if err := p.writeSchemaChange(
+		if err := p.WriteSchemaChange(
 			ctx, seqDesc, sqlbase.InvalidMutationID, jobDesc,
 		); err != nil {
 			return err
@@ -664,11 +686,11 @@ func (p *planner) removeSequenceDependencies(
 	return nil
 }
 
-// getUsedSequenceNames returns the name of the sequence passed to
+// GetUsedSequenceNames returns the name of the sequence passed to
 // a call to nextval in the given expression, or nil if there is
 // no call to nextval.
 // e.g. nextval('foo') => "foo"; <some other expression> => nil
-func getUsedSequenceNames(defaultExpr tree.TypedExpr) ([]string, error) {
+func GetUsedSequenceNames(defaultExpr tree.TypedExpr) ([]string, error) {
 	searchPath := sessiondata.SearchPath{}
 	var names []string
 	_, err := tree.SimpleVisit(

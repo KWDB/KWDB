@@ -44,6 +44,8 @@ import (
 // during a table truncation.
 const TableTruncateChunkSize = indexTruncateChunkSize
 
+var _ PlanNode = &truncateNode{}
+
 type truncateNode struct {
 	n *tree.Truncate
 }
@@ -53,14 +55,14 @@ type truncateNode struct {
 //
 //	Notes: postgres requires TRUNCATE.
 //	       mysql requires DROP (for mysql >= 5.1.16, DELETE before that).
-func (p *planner) Truncate(ctx context.Context, n *tree.Truncate) (planNode, error) {
+func (p *GenericPlanner) Truncate(ctx context.Context, n *tree.Truncate) (PlanNode, error) {
 	return &truncateNode{n: n}, nil
 }
 
-func (t *truncateNode) startExec(params runParams) error {
+func (t *truncateNode) StartExec(params RunParams) error {
 	p := params.p
 	n := t.n
-	ctx := params.ctx
+	ctx := params.Ctx
 
 	// Since truncation may cascade to a given table any number of times, start by
 	// building the unique set (ID->name) of tables to truncate.
@@ -106,7 +108,7 @@ func (t *truncateNode) startExec(params runParams) error {
 			if _, ok := toTruncate[tableID]; ok {
 				return nil
 			}
-			other, err := p.Tables().getMutableTableVersionByID(ctx, tableID, p.txn)
+			other, err := p.Tables().GetMutableTableVersionByID(ctx, tableID, p.txn)
 			if err != nil {
 				return err
 			}
@@ -117,7 +119,7 @@ func (t *truncateNode) startExec(params runParams) error {
 			if err := p.CheckPrivilege(ctx, other, privilege.DROP); err != nil {
 				return err
 			}
-			otherName, err := p.getQualifiedTableName(ctx, other.TableDesc())
+			otherName, err := GetQualifiedTableName(ctx, p.Txn(), other.TableDesc())
 			if err != nil {
 				return err
 			}
@@ -153,25 +155,25 @@ func (t *truncateNode) startExec(params runParams) error {
 		}
 
 		// Log a Truncate Table event for this table.
-		params.p.SetAuditTarget(uint32(id), name, nil)
+		params.GetPlanner().SetAuditTarget(uint32(id), name, nil)
 	}
 
 	return nil
 }
 
-func (t *truncateNode) Next(runParams) (bool, error) { return false, nil }
+func (t *truncateNode) Next(RunParams) (bool, error) { return false, nil }
 func (t *truncateNode) Values() tree.Datums          { return tree.Datums{} }
 func (t *truncateNode) Close(context.Context)        {}
 
 // truncateTable truncates the data of a table in a single transaction. It
 // drops the table and recreates it with a new ID. The dropped table is
 // GC-ed later through an asynchronous schema change.
-func (p *planner) truncateTable(
+func (p *GenericPlanner) truncateTable(
 	ctx context.Context, id sqlbase.ID, jobDesc string, traceKV bool,
 ) error {
 	// Read the table descriptor because it might have changed
 	// while another table in the truncation list was truncated.
-	tableDesc, err := p.Tables().getMutableTableVersionByID(ctx, id, p.txn)
+	tableDesc, err := p.Tables().GetMutableTableVersionByID(ctx, id, p.txn)
 	if err != nil {
 		return err
 	}
@@ -252,7 +254,7 @@ func (p *planner) truncateTable(
 
 	for _, table := range tables {
 		// TODO (lucy): Have more consistent/informative names for dependent jobs.
-		if err := p.writeSchemaChange(
+		if err := p.WriteSchemaChange(
 			ctx, table, sqlbase.InvalidMutationID, "updating reference for truncated table",
 		); err != nil {
 			return err
@@ -282,7 +284,7 @@ func (p *planner) truncateTable(
 	// sqlbase.Descriptor.Table().
 	newTableDesc.ModificationTime = hlc.Timestamp{}
 	// TODO (lucy): Have more consistent/informative names for dependent jobs.
-	if err := p.createDescriptorWithID(
+	if err := p.CreateDescriptorWithID(
 		ctx, key, newID, newTableDesc, p.ExtendedEvalContext().Settings,
 		"creating new descriptor for truncated table",
 	); err != nil {
@@ -315,7 +317,7 @@ func (p *planner) truncateTable(
 }
 
 // For all the references from a table
-func (p *planner) findAllReferences(
+func (p *GenericPlanner) findAllReferences(
 	ctx context.Context, table sqlbase.MutableTableDescriptor,
 ) ([]*sqlbase.MutableTableDescriptor, error) {
 	refs, err := table.FindAllReferences()
@@ -327,7 +329,7 @@ func (p *planner) findAllReferences(
 		if id == table.ID {
 			continue
 		}
-		t, err := p.Tables().getMutableTableVersionByID(ctx, id, p.txn)
+		t, err := p.Tables().GetMutableTableVersionByID(ctx, id, p.txn)
 		if err != nil {
 			return nil, err
 		}
@@ -396,7 +398,9 @@ func reassignReferencedTables(
 
 // reassignComments reassign all comments on the table, indexes and columns.
 func reassignComments(
-	ctx context.Context, p *planner, oldTableDesc, newTableDesc *sqlbase.MutableTableDescriptor,
+	ctx context.Context,
+	p *GenericPlanner,
+	oldTableDesc, newTableDesc *sqlbase.MutableTableDescriptor,
 ) error {
 	_, err := p.ExtendedEvalContext().ExecCfg.InternalExecutor.ExecEx(
 		ctx,

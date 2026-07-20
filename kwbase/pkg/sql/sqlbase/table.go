@@ -204,7 +204,7 @@ func ValidateColumnDefType(t *types.T, tableType tree.TableType) error {
 //
 // If the column type *may* be SERIAL (or SERIAL-like), it is the
 // caller's responsibility to call sql.processSerialInColumnDef() and
-// sql.doCreateSequence() before MakeColumnDefDescs() to remove the
+// sql.DoCreateSequence() before MakeColumnDefDescs() to remove the
 // SERIAL type and replace it with a suitable integer type and default
 // expression.
 //

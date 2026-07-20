@@ -44,7 +44,7 @@ import (
 //
 //	Notes: postgres requires the object owner.
 //	       mysql requires the "grant option" and the same privileges, and sometimes superuser.
-func (p *planner) Grant(ctx context.Context, n *tree.Grant) (planNode, error) {
+func (p *GenericPlanner) Grant(ctx context.Context, n *tree.Grant) (PlanNode, error) {
 	if n.Targets.Databases != nil {
 		sqltelemetry.IncIAMGrantPrivilegesCounter(sqltelemetry.OnDatabase)
 	} else if n.Targets.Schemas != nil {
@@ -76,7 +76,7 @@ func (p *planner) Grant(ctx context.Context, n *tree.Grant) (planNode, error) {
 //
 //	Notes: postgres requires the object owner.
 //	       mysql requires the "grant option" and the same privileges, and sometimes superuser.
-func (p *planner) Revoke(ctx context.Context, n *tree.Revoke) (planNode, error) {
+func (p *GenericPlanner) Revoke(ctx context.Context, n *tree.Revoke) (PlanNode, error) {
 	if n.Targets.Databases != nil {
 		sqltelemetry.IncIAMRevokePrivilegesCounter(sqltelemetry.OnDatabase)
 	} else if n.Targets.Schemas != nil {
@@ -97,6 +97,8 @@ func (p *planner) Revoke(ctx context.Context, n *tree.Revoke) (planNode, error) 
 	}, nil
 }
 
+var _ PlanNode = &changePrivilegesNode{}
+
 type changePrivilegesNode struct {
 	targets         tree.TargetList
 	grantees        tree.NameList
@@ -105,13 +107,13 @@ type changePrivilegesNode struct {
 	changePrivilege func(*sqlbase.PrivilegeDescriptor, string)
 }
 
-// ReadingOwnWrites implements the planNodeReadingOwnWrites interface.
+// ReadingOwnWrites implements the PlanNodeReadingOwnWrites interface.
 // This is because GRANT/REVOKE performs multiple KV operations on descriptors
 // and expects to see its own writes.
 func (n *changePrivilegesNode) ReadingOwnWrites() {}
 
-func (n *changePrivilegesNode) startExec(params runParams) error {
-	ctx := params.ctx
+func (n *changePrivilegesNode) StartExec(params RunParams) error {
+	ctx := params.Ctx
 	p := params.p
 	// Check whether grantees exists
 	users, err := p.GetAllRoles(ctx)
@@ -132,7 +134,7 @@ func (n *changePrivilegesNode) startExec(params runParams) error {
 	var descriptors []sqlbase.DescriptorProto
 	// DDL statements avoid the cache to avoid leases, and can view non-public descriptors.
 	// TODO(vivek): check if the cache can be used.
-	p.runWithOptions(resolveFlags{skipCache: true}, func() {
+	p.RunWithOptions(ResolveFlags{SkipCache: true}, func() {
 		descriptors, err = getDescriptorsFromTargetList(ctx, p, n.targets)
 	})
 	if err != nil {
@@ -221,6 +223,6 @@ func (n *changePrivilegesNode) startExec(params runParams) error {
 	return nil
 }
 
-func (*changePrivilegesNode) Next(runParams) (bool, error) { return false, nil }
+func (*changePrivilegesNode) Next(RunParams) (bool, error) { return false, nil }
 func (*changePrivilegesNode) Values() tree.Datums          { return tree.Datums{} }
 func (*changePrivilegesNode) Close(context.Context)        {}

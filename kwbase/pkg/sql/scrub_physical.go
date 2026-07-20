@@ -77,8 +77,8 @@ func newPhysicalCheckOperation(
 // Start implements the checkOperation interface.
 // It will plan and run the physical data check using the distSQL
 // execution engine.
-func (o *physicalCheckOperation) Start(params runParams) error {
-	ctx := params.ctx
+func (o *physicalCheckOperation) Start(params RunParams) error {
+	ctx := params.Ctx
 	// Collect all of the columns, their types, and their IDs.
 	var columnIDs []tree.ColumnID
 	colIDToIdx := make(map[sqlbase.ColumnID]int, len(o.tableDesc.Columns))
@@ -152,7 +152,7 @@ func (o *physicalCheckOperation) Start(params runParams) error {
 }
 
 // Next implements the checkOperation interface.
-func (o *physicalCheckOperation) Next(params runParams) (tree.Datums, error) {
+func (o *physicalCheckOperation) Next(params RunParams) (tree.Datums, error) {
 	row := o.run.rows.At(o.run.rowIndex)
 	o.run.rowIndex++
 

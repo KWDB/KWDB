@@ -26,6 +26,7 @@ package sql
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt"
@@ -34,12 +35,57 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
 	"github.com/cockroachdb/errors"
 )
 
+// DDLHandler is a function that handles a DDL statement and returns a PlanNode.
+// It receives a *GenericPlanner and the AST node.
+type DDLHandler func(ctx context.Context, p *GenericPlanner, n tree.Statement) (PlanNode, error)
+
+var ddlHandlersMu syncutil.RWMutex
+var ddlHandlers = map[reflect.Type]DDLHandler{}
+
+// RegisterDDLHandler registers a DDL handler for a given statement type.
+// This is called from init() functions in packages that provide DDL implementations.
+func RegisterDDLHandler(t reflect.Type, handler DDLHandler) {
+	ddlHandlersMu.Lock()
+	defer ddlHandlersMu.Unlock()
+	ddlHandlers[t] = handler
+}
+
+// getDDLHandler returns the registered DDL handler for the given statement type.
+func getDDLHandler(t reflect.Type) (DDLHandler, bool) {
+	ddlHandlersMu.RLock()
+	defer ddlHandlersMu.RUnlock()
+	h, ok := ddlHandlers[t]
+	return h, ok
+}
+
+var planNodeNamesMu syncutil.RWMutex
+var planNodeNamesRegistry = map[reflect.Type]string{}
+
+// RegisterPlanNodeName registers a human-readable name for a PlanNode type.
+// This is called from init() functions in packages that provide PlanNode implementations
+// (such as the ddl package) to avoid circular imports with the sql package.
+func RegisterPlanNodeName(typ reflect.Type, name string) {
+	planNodeNamesMu.Lock()
+	defer planNodeNamesMu.Unlock()
+	planNodeNamesRegistry[typ] = name
+}
+
+// lookupPlanNodeName returns the registered name for a given PlanNode type,
+// or false if no name was registered.
+func lookupPlanNodeName(t reflect.Type) (string, bool) {
+	planNodeNamesMu.RLock()
+	defer planNodeNamesMu.RUnlock()
+	name, ok := planNodeNamesRegistry[t]
+	return name, ok
+}
+
 type opaqueMetadata struct {
 	info string
-	plan planNode
+	plan PlanNode
 }
 
 var _ opt.OpaqueMetadata = &opaqueMetadata{}
@@ -50,7 +96,7 @@ func (o *opaqueMetadata) String() string            { return o.info }
 func buildOpaque(
 	ctx context.Context, semaCtx *tree.SemaContext, evalCtx *tree.EvalContext, stmt tree.Statement,
 ) (opt.OpaqueMetadata, sqlbase.ResultColumns, error) {
-	p := evalCtx.Planner.(*planner)
+	p := evalCtx.Planner.(*GenericPlanner)
 
 	// Opaque statements handle their own scalar arguments, with no help from the
 	// optimizer. As such, they cannot contain subqueries.
@@ -58,105 +104,46 @@ func buildOpaque(
 	defer scalarProps.Restore(*scalarProps)
 	scalarProps.Require(stmt.StatementTag(), tree.RejectSubqueries)
 
-	var plan planNode
+	var plan PlanNode
 	var err error
 	switch n := stmt.(type) {
-	case *tree.AlterTSDatabase:
-		plan, err = p.AlterTSDatabase(ctx, n)
-	case *tree.AlterIndex:
-		plan, err = p.AlterIndex(ctx, n)
-	case *tree.AlterStream:
-		plan, err = p.AlterStream(ctx, n)
-	case *tree.AlterPipe:
-		plan, err = p.AlterPipe(ctx, n)
-	case *tree.AlterPub:
-		plan, err = p.AlterPublication(ctx, n)
-	case *tree.AlterTable:
-		plan, err = p.AlterTable(ctx, n)
-	case *tree.AlterRole:
-		plan, err = p.AlterRole(ctx, n)
-	case *tree.AlterSequence:
-		plan, err = p.AlterSequence(ctx, n)
-	case *tree.AlterAudit:
-		plan, err = p.AlterAudit(ctx, n)
-	case *tree.CommentOnColumn:
-		plan, err = p.CommentOnColumn(ctx, n)
-	case *tree.CommentOnDatabase:
-		plan, err = p.CommentOnDatabase(ctx, n)
-	case *tree.CommentOnProcedure:
-		plan, err = p.CommentOnProcedure(ctx, n)
-	case *tree.CommentOnIndex:
-		plan, err = p.CommentOnIndex(ctx, n)
-	case *tree.CommentOnTable:
-		plan, err = p.CommentOnTable(ctx, n)
-	case *tree.CreateDatabase:
-		plan, err = p.CreateDatabase(ctx, n)
-	case *tree.CreateFunction:
-		plan, err = p.CreateFunction(ctx, n)
-	case *tree.CreateSchedule:
-		plan, err = p.CreateSchedule(ctx, n)
-	case *tree.AlterSchedule:
-		plan, err = p.AlterSchedule(ctx, n)
+	// most of DDL statement handling functions has been moved to ddlHandlers
+	// we rely on this logic: reflect.TypeOf(stmt) --> statement Name --> ddlHandler
+	// for all the centralized DDL handling
+	case *tree.AlterAudit, *tree.AlterTSDatabase, *tree.AlterIndex, *tree.AlterPipe, *tree.AlterRole,
+		*tree.AlterPub, *tree.AlterSequence, *tree.AlterSchedule, *tree.AlterStream, *tree.AlterTable,
+		// Comment stmts
+		*tree.CommentOnColumn, *tree.CommentOnDatabase, *tree.CommentOnIndex,
+		*tree.CommentOnProcedure, *tree.CommentOnTable,
+		// Create stmts. No *tree.CreateTable
+		*tree.CreateAudit, *tree.CreateDatabase, *tree.CreateFunction,
+		*tree.CreateIndex, *tree.CreateSchedule,
+		*tree.CreateSchema, *tree.CreateRole, *tree.CreatePipe, *tree.CreatePublication, *tree.CreateSequence,
+		*tree.CreateStats, *tree.CreateStream,
+		// Drop stmts
+		*tree.DropAudit, *tree.DropDatabase, *tree.DropFunction, *tree.DropIndex,
+		*tree.DropRole, *tree.DropPipe, *tree.DropProcedure,
+		*tree.DropPublication, *tree.DropSequence, *tree.DropSchedule, *tree.DropSchema, *tree.DropStream,
+		*tree.DropTable, *tree.DropTrigger, *tree.DropView,
+		// Rename stmts
+		*tree.RenameColumn, *tree.RenameDatabase, *tree.RenameIndex, *tree.RenameTable, *tree.RenameTrigger,
+		*tree.ShowHistogram, *tree.ShowSortHistogram, *tree.ShowTableStats, *tree.ShowTriggers:
+		handler, ok := getDDLHandler(reflect.TypeOf(stmt))
+		if !ok {
+			panic(fmt.Sprintf("DDL statemnt to stmtName mapping failed: %s", stmt.String()))
+			return nil, nil, errors.Errorf("DDL statemnt to stmtName mapping failed: %s", stmt.String())
+		}
+		plan, err = handler(ctx, p, n)
 	case *tree.PauseSchedule:
 		plan, err = p.PauseSchedule(ctx, n)
 	case *tree.ResumeSchedule:
 		plan, err = p.ResumeSchedule(ctx, n)
-	case *tree.DropSchedule:
-		plan, err = p.DropSchedule(ctx, n)
-	case *tree.CreateIndex:
-		plan, err = p.CreateIndex(ctx, n)
-	case *tree.CreatePipe:
-		plan, err = p.CreatePipe(ctx, n)
-	case *tree.CreatePublication:
-		plan, err = p.CreatePublication(ctx, n)
-	case *tree.CreateSchema:
-		plan, err = p.CreateSchema(ctx, n)
-	case *tree.CreateRole:
-		plan, err = p.CreateRole(ctx, n)
-	case *tree.CreateSequence:
-		plan, err = p.CreateSequence(ctx, n)
-	case *tree.CreateStats:
-		plan, err = p.CreateStatistics(ctx, n)
-	case *tree.CreateStream:
-		plan, err = p.CreateStream(ctx, n)
-	case *tree.CreateAudit:
-		plan, err = p.CreateAudit(ctx, n)
+	case *tree.ShowDistribution:
+		plan, err = p.ShowDistribution(ctx, n)
 	case *tree.Deallocate:
 		plan, err = p.Deallocate(ctx, n)
 	case *tree.Discard:
 		plan, err = p.Discard(ctx, n)
-	case *tree.DropDatabase:
-		plan, err = p.DropDatabase(ctx, n)
-	case *tree.DropIndex:
-		plan, err = p.DropIndex(ctx, n)
-	case *tree.DropPipe:
-		plan, err = p.DropPipe(ctx, n)
-	case *tree.DropPublication:
-		plan, err = p.DropPublication(ctx, n)
-	case *tree.DropRole:
-		plan, err = p.DropRole(ctx, n)
-	case *tree.DropSchema:
-		plan, err = p.DropSchema(ctx, n)
-	case *tree.DropStream:
-		plan, err = p.DropStream(ctx, n)
-	case *tree.DropTable:
-		plan, err = p.DropTable(ctx, n)
-	case *tree.DropFunction:
-		plan, err = p.DropFunction(ctx, n)
-	case *tree.DropProcedure:
-		plan, err = p.DropProcedure(ctx, n)
-	case *tree.DropTrigger:
-		plan, err = p.DropTrigger(ctx, n)
-	case *tree.ShowTriggers:
-		plan, err = p.ShowTriggers(ctx, n)
-	case *tree.ShowDistribution:
-		plan, err = p.ShowDistribution(ctx, n)
-	case *tree.DropView:
-		plan, err = p.DropView(ctx, n)
-	case *tree.DropSequence:
-		plan, err = p.DropSequence(ctx, n)
-	case *tree.DropAudit:
-		plan, err = p.DropAudit(ctx, n)
 	case *tree.Grant:
 		plan, err = p.Grant(ctx, n)
 	case *tree.GrantRole:
@@ -167,16 +154,6 @@ func buildOpaque(
 		plan, err = p.RebalanceTsDataNode(ctx, n)
 	case *tree.RefreshMaterializedView:
 		plan, err = p.RefreshMaterializedView(ctx, n)
-	case *tree.RenameColumn:
-		plan, err = p.RenameColumn(ctx, n)
-	case *tree.RenameDatabase:
-		plan, err = p.RenameDatabase(ctx, n)
-	case *tree.RenameTrigger:
-		plan, err = p.RenameTrigger(ctx, n)
-	case *tree.RenameIndex:
-		plan, err = p.RenameIndex(ctx, n)
-	case *tree.RenameTable:
-		plan, err = p.RenameTable(ctx, n)
 	case *tree.Revoke:
 		plan, err = p.Revoke(ctx, n)
 	case *tree.RevokeRole:
@@ -199,18 +176,12 @@ func buildOpaque(
 		plan, err = p.SetSessionCharacteristics(n)
 	case *tree.ShowClusterSetting:
 		plan, err = p.ShowClusterSetting(ctx, n)
-	case *tree.ShowHistogram:
-		plan, err = p.ShowHistogram(ctx, n)
-	case *tree.ShowSortHistogram:
-		plan, err = p.ShowSortHistogram(ctx, n)
-	case *tree.ShowTableStats:
-		plan, err = p.ShowTableStats(ctx, n)
 	case *tree.ShowTraceForSession:
 		plan, err = p.ShowTrace(ctx, n)
 	case *tree.ShowZoneConfig:
 		plan, err = p.ShowZoneConfig(ctx, n)
 	case *tree.ShowFingerprints:
-		plan, err = p.ShowFingerprints(ctx, n)
+		plan, err = ShowFingerprints(ctx, p, n)
 	case *tree.Truncate:
 		plan, err = p.Truncate(ctx, n)
 	case *tree.Vacuum:

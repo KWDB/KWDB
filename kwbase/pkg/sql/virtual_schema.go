@@ -83,12 +83,12 @@ type virtualSchemaTable struct {
 	// populate, if non-nil, is a function that is used when creating a
 	// valuesNode. This function eagerly loads every row of the virtual table
 	// during initialization of the valuesNode.
-	populate func(ctx context.Context, p *planner, db *DatabaseDescriptor, addRow func(...tree.Datum) error) error
+	populate func(ctx context.Context, p *GenericPlanner, db *DatabaseDescriptor, addRow func(...tree.Datum) error) error
 
 	// generator, if non-nil, is a function that is used when creating a
 	// virtualTableNode. This function returns a virtualTableGenerator function
 	// which generates the next row of the virtual table when called.
-	generator func(ctx context.Context, p *planner, db *DatabaseDescriptor) (virtualTableGenerator, error)
+	generator func(ctx context.Context, p *GenericPlanner, db *DatabaseDescriptor) (virtualTableGenerator, error)
 }
 
 // virtualSchemaView represents a view within a virtualSchema
@@ -140,6 +140,14 @@ func (t virtualSchemaTable) initVirtualTableDesc(
 		false,                      /* temporary */
 	)
 	return mutDesc.TableDescriptor, err
+}
+
+func overrideColumnNames(cols sqlbase.ResultColumns, newNames tree.NameList) sqlbase.ResultColumns {
+	res := append(sqlbase.ResultColumns(nil), cols...)
+	for i := range res {
+		res[i].Name = string(newNames[i])
+	}
+	return res
 }
 
 // getComment is part of the virtualSchemaDef interface.
@@ -226,7 +234,7 @@ type virtualDefEntry struct {
 	validWithNoDatabaseContext bool
 }
 
-type virtualTableConstructor func(context.Context, *planner, string) (planNode, error)
+type virtualTableConstructor func(context.Context, *GenericPlanner, string) (PlanNode, error)
 
 var errInvalidDbPrefix = errors.WithHint(
 	pgerror.New(pgcode.UndefinedObject,
@@ -260,12 +268,12 @@ func (e virtualDefEntry) getPlanInfo(
 		})
 	}
 
-	constructor := func(ctx context.Context, p *planner, dbName string) (planNode, error) {
+	constructor := func(ctx context.Context, p *GenericPlanner, dbName string) (PlanNode, error) {
 		var dbDesc *DatabaseDescriptor
 		if dbName != "" {
 			var err error
 			dbDesc, err = p.LogicalSchemaAccessor().GetDatabaseDesc(ctx, p.txn,
-				dbName, tree.DatabaseLookupFlags{Required: true, AvoidCached: p.avoidCachedDescriptors})
+				dbName, tree.DatabaseLookupFlags{Required: true, AvoidCached: p.AvoidCachedDescriptors})
 			if err != nil {
 				return nil, err
 			}
@@ -288,7 +296,7 @@ func (e virtualDefEntry) getPlanInfo(
 				}
 				return p.newContainerVirtualTableNode(columns, 0, next), nil
 			}
-			v := p.newContainerValuesNode(columns, 0)
+			v := p.NewContainerValuesNode(columns, 0)
 
 			if err := def.populate(ctx, p, dbDesc, func(datums ...tree.Datum) error {
 				if r, c := len(datums), len(v.columns); r != c {

@@ -32,6 +32,20 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 )
 
+// AnalyzeExprWrap is a wrapper to analyzeExpr
+func AnalyzeExprWrap(
+	ctx context.Context,
+	p *GenericPlanner,
+	raw tree.Expr,
+	source *sqlbase.DataSourceInfo,
+	iVarHelper tree.IndexedVarHelper,
+	expectedType *types.T,
+	requireType bool,
+	typingContext string,
+) (tree.TypedExpr, error) {
+	return p.analyzeExpr(ctx, raw, source, iVarHelper, expectedType, requireType, typingContext)
+}
+
 // analyzeExpr performs semantic analysis of an expression, including:
 // - replacing sub-queries by a sql.subquery node;
 // - resolving names (optional);
@@ -40,7 +54,7 @@ import (
 // The parameters sources and IndexedVars, if both are non-nil, indicate
 // name resolution should be performed. The IndexedVars map will be filled
 // as a result.
-func (p *planner) analyzeExpr(
+func (p *GenericPlanner) analyzeExpr(
 	ctx context.Context,
 	raw tree.Expr,
 	source *sqlbase.DataSourceInfo,

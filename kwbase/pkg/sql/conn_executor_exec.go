@@ -637,7 +637,7 @@ func (ex *connExecutor) execStmtInOpenState(
 		// If we're in an explicit txn, we allow AOST but only if it matches with
 		// the transaction's timestamp. This is useful for running AOST statements
 		// using the InternalExecutor inside an external transaction; one might want
-		// to do that to force p.avoidCachedDescriptors to be set below.
+		// to do that to force p.AvoidCachedDescriptors to be set below.
 		ts, err := p.isAsOf(stmt.AST)
 		if err != nil {
 			return makeErrEvent(err)
@@ -983,7 +983,7 @@ func checkExportFile(ctx context.Context, p PlanHookState, file string) error {
 // expected that the caller will inspect res and react to query errors by
 // producing an appropriate state machine event.
 func (ex *connExecutor) dispatchToExecutionEngine(
-	ctx context.Context, planner *planner, res RestrictedCommandResult,
+	ctx context.Context, planner *GenericPlanner, res RestrictedCommandResult,
 ) error {
 	stmt := planner.stmt
 
@@ -1189,7 +1189,7 @@ func (ex *connExecutor) dispatchToExecutionEngine(
 
 // makeExecPlan creates an execution plan and populates planner.curPlan, using
 // either the optimizer or the heuristic planner.
-func (ex *connExecutor) makeExecPlan(ctx context.Context, planner *planner) error {
+func (ex *connExecutor) makeExecPlan(ctx context.Context, planner *GenericPlanner) error {
 	planner.curPlan.init(planner.stmt, ex.appStats)
 	if planner.collectBundle {
 		planner.curPlan.instrumentation.savePlanString = true
@@ -1252,10 +1252,10 @@ Hint_id=$2
 	readOnly := sqlbase.ReadOnly.Get(planner.ExecCfg().SV())
 	if !strings.HasPrefix(planner.SessionData().ApplicationName, sqlbase.InternalAppNamePrefix) && (readOnly || sqlbase.ReadOnlyInternal) {
 		o := planObserver{
-			enterNode: func(ctx context.Context, _ string, p planNode) (bool, error) {
+			enterNode: func(ctx context.Context, _ string, p PlanNode) (bool, error) {
 				return true, nil
 			},
-			leaveNode: func(_ string, n planNode) (err error) {
+			leaveNode: func(_ string, n PlanNode) (err error) {
 				err = checkPlanNodeType(n)
 				return err
 			},
@@ -1306,7 +1306,7 @@ Hint_id=$2
 // stmt is use for displaying sql in trace.
 func (ex *connExecutor) execWithDistSQLEngine(
 	ctx context.Context,
-	planner *planner,
+	planner *GenericPlanner,
 	stmtType tree.StatementType,
 	res RestrictedCommandResult,
 	distribute bool,
@@ -1438,7 +1438,7 @@ func (ex *connExecutor) execWithDistSQLEngine(
 
 // sendDedupClientNotice sends a notice out-of-band to the client.
 func (ex *connExecutor) sendDedupClientNotice(
-	ctx context.Context, planner *planner, recv *DistSQLReceiver,
+	ctx context.Context, planner *GenericPlanner, recv *DistSQLReceiver,
 ) {
 	if recv.useDeepRule {
 		var errMsg error
@@ -2023,13 +2023,20 @@ func (h ConnectionHandler) SendRes(
 	return nil
 }
 
-func checkPlanNodeType(n planNode) error {
+func checkPlanNodeType(n PlanNode) error {
+	// Check for the ReadOnlyPlanNode marker interface first. This allows
+	// packages that cannot be imported directly (like ddl) to mark their
+	// plan nodes as safe for read-only transactions without creating
+	// circular imports.
+	if _, ok := n.(ReadOnlyPlanNode); ok {
+		return nil
+	}
 	switch n.(type) {
-	case *valuesNode, *delayedNode, *scanBufferNode, *setVarNode,
+	case *valuesNode, *DelayedNode, *scanBufferNode, *setVarNode,
 		*scanNode, *tsScanNode, *groupNode, *joinNode, *projectSetNode,
 		*limitNode, *explainDistSQLNode, *explainPlanNode, *explainVecNode, *sortNode, *unionNode,
 		*distinctNode, *renderNode, *applyJoinNode, *indexJoinNode, *lookupJoinNode, *zigzagJoinNode,
-		*filterNode, *windowNode, *zeroNode, *showTraceNode, *showTraceReplicaNode, *showFingerprintsNode, *unaryNode:
+		*filterNode, *windowNode, *zeroNode, *showTraceNode, *showTraceReplicaNode, *unaryNode:
 		return nil
 	case *setClusterSettingNode:
 		if n.(*setClusterSettingNode).name != sqlbase.ClusterSettingReadOnly {
@@ -2060,7 +2067,7 @@ func checkPlanNodeType(n planNode) error {
 // subsequent intents. Additionally, a new method, dispatchReadCommittedStmtToExecutionEngine,
 // was introduced to enable statement-level retries specifically for the RC isolation level.
 func (ex *connExecutor) dispatchReadCommittedStmtToExecutionEngine(
-	ctx context.Context, p *planner, res RestrictedCommandResult,
+	ctx context.Context, p *GenericPlanner, res RestrictedCommandResult,
 ) error {
 	readCommittedSavePointToken, err := ex.state.mu.txn.CreateSavepoint(ctx)
 	if err != nil {

@@ -25,17 +25,21 @@
 package sql
 
 import (
+	"context"
 	"fmt"
 
 	"gitee.com/kwbasedb/kwbase/pkg/jobs"
 	"gitee.com/kwbasedb/kwbase/pkg/scheduledjobs"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 )
 
 // jobSchedulerEnv returns JobSchedulerEnv.
-func jobSchedulerEnv(params runParams) scheduledjobs.JobSchedulerEnv {
+func jobSchedulerEnv(params RunParams) scheduledjobs.JobSchedulerEnv {
 	if knobs, ok := params.ExecCfg().DistSQLSrv.TestingKnobs.JobsTestingKnobs.(*jobs.TestingKnobs); ok {
 		if knobs.JobSchedulerEnv != nil {
 			return knobs.JobSchedulerEnv
@@ -44,15 +48,15 @@ func jobSchedulerEnv(params runParams) scheduledjobs.JobSchedulerEnv {
 	return scheduledjobs.ProdJobSchedulerEnv
 }
 
-// loadSchedule loads schedule information.
-func loadSchedule(params runParams, scheduleName tree.Name) (*jobs.ScheduledJob, error) {
+// LoadSchedule loads schedule information.
+func LoadSchedule(params RunParams, scheduleName tree.Name) (*jobs.ScheduledJob, error) {
 	env := jobSchedulerEnv(params)
 	schedule := jobs.NewScheduledJob(env)
 
 	// Load schedule expression.  This is needed for resume command, but we
 	// also use this query to check for the schedule existence.
 	datums, cols, err := params.ExecCfg().InternalExecutor.QueryWithCols(
-		params.ctx,
+		params.Ctx,
 		"load-schedule",
 		params.EvalContext().Txn, sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
 		fmt.Sprintf(
@@ -75,20 +79,20 @@ func loadSchedule(params runParams, scheduleName tree.Name) (*jobs.ScheduledJob,
 	return schedule, nil
 }
 
-// updateSchedule executes update for the schedule.
-func updateSchedule(params runParams, schedule *jobs.ScheduledJob) error {
+// UpdateSchedule executes update for the schedule.
+func UpdateSchedule(params RunParams, schedule *jobs.ScheduledJob) error {
 	return schedule.Update(
-		params.ctx,
+		params.Ctx,
 		params.ExecCfg().InternalExecutor,
 		params.EvalContext().Txn,
 	)
 }
 
-// deleteSchedule deletes specified schedule.
-func deleteSchedule(params runParams, scheduleID int64) error {
+// DeleteSchedule deletes specified schedule.
+func DeleteSchedule(params RunParams, scheduleID int64) error {
 	env := jobSchedulerEnv(params)
 	_, err := params.ExecCfg().InternalExecutor.ExecEx(
-		params.ctx,
+		params.Ctx,
 		"delete-schedule",
 		params.EvalContext().Txn,
 		sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
@@ -99,4 +103,40 @@ func deleteSchedule(params runParams, scheduleID int64) error {
 		scheduleID,
 	)
 	return err
+}
+
+// CheckScheduledSQL checks whether the sql statement supports to be scheduled.
+func CheckScheduledSQL(ctx context.Context, p *GenericPlanner, sql string) error {
+	stmt, err := parser.ParseOne(sql)
+	if err != nil {
+		return err
+	}
+	// check if the sql statement is supported by schedule
+	switch stmt.AST.(type) {
+	// only support some dml statement for now
+	case *tree.Insert, *tree.Update, *tree.Delete:
+	default:
+		return pgerror.Newf(pgcode.FeatureNotSupported, "%s does not support to be scheduled", stmt.AST.StatementTag())
+	}
+	if stmt.NumPlaceholders != 0 {
+		return pgerror.New(pgcode.FeatureNotSupported, "scheduled sql does not support placeholder")
+	}
+	// make a new local planner to check the sql if correct
+	plan, cleanup := newInternalPlanner("sqlSchedule", p.txn, p.User(), &MemoryMetrics{}, p.execCfg)
+	defer cleanup()
+	localPlanner := plan
+	localPlanner.stmt = &Statement{Statement: stmt}
+	//localPlanner.SessionData().Database = p.CurrentDatabase()
+	//localPlanner.SessionData().SearchPath = p.CurrentSearchPath()
+
+	localPlanner.optPlanningCtx.init(localPlanner)
+
+	localPlanner.RunWithOptions(ResolveFlags{SkipCache: true}, func() {
+		err = localPlanner.makeOptimizerPlan(ctx)
+	})
+	if err != nil {
+		return err
+	}
+	defer localPlanner.curPlan.close(ctx)
+	return nil
 }

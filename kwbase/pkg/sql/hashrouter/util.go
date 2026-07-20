@@ -29,10 +29,10 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/sql"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/retry"
 )
@@ -66,7 +66,7 @@ func GetTableNodeIDs(
 		MaxRetries:     20,
 	}); r.Next(); {
 		if retErr = db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
-			ranges, err := sql.ScanMetaKVs(ctx, txn, roachpb.Span{
+			ranges, err := sqlutil.ScanMetaKVs(ctx, txn, roachpb.Span{
 				Key:    sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), 0, hashNum),
 				EndKey: sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), hashNum, hashNum),
 			})

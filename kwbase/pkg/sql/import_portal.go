@@ -22,7 +22,9 @@ import (
 )
 
 // CreateImportPortal returns a importPortalNode.
-func (p *planner) CreateImportPortal(ctx context.Context, n *tree.ImportPortal) (planNode, error) {
+func (p *GenericPlanner) CreateImportPortal(
+	ctx context.Context, n *tree.ImportPortal,
+) (PlanNode, error) {
 	return &spoolNode{source: &serializeNode{
 		source: &importPortalNode{
 			ip:      *n,
@@ -40,9 +42,9 @@ type importPortalNode struct {
 	done bool
 }
 
-func (n *importPortalNode) startExec(params runParams) error {
-	ctx, p := params.ctx, params.p
-	createFileFn, err := p.TypeAsString(n.ip.File, "IMPORT")
+func (n *importPortalNode) StartExec(params RunParams) error {
+	ctx, p := params.Ctx, params.p
+	createFileFn, err := TypeAsString(p, n.ip.File, "IMPORT")
 	if err != nil {
 		return err
 	}
@@ -90,21 +92,21 @@ func (n *importPortalNode) startExec(params runParams) error {
 	return nil
 }
 
-func (n *importPortalNode) Next(params runParams) (bool, error) { panic("not valid") }
+func (n *importPortalNode) Next(params RunParams) (bool, error) { panic("not valid") }
 
 // BatchedNext implements the batchedPlanNode interface.
-func (n *importPortalNode) BatchedNext(params runParams) (bool, error) {
+func (n *importPortalNode) BatchedNext(params RunParams) (bool, error) {
 	// Advance one batch. First, clear the current batch.
 	if n.done {
 		return false, nil
 	}
 	if n.rows != nil {
-		n.rows.Clear(params.ctx)
+		n.rows.Clear(params.Ctx)
 	}
 	// If result rows need to be accumulated, do it.
 	if n.rows != nil {
 		for _, value := range n.values {
-			_, err := n.rows.AddRow(params.ctx, value)
+			_, err := n.rows.AddRow(params.Ctx, value)
 			if err != nil {
 				return false, err
 			}

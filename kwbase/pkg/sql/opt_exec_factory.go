@@ -58,12 +58,12 @@ import (
 )
 
 type execFactory struct {
-	planner *planner
+	planner *GenericPlanner
 }
 
 var _ exec.Factory = &execFactory{}
 
-func makeExecFactory(p *planner) execFactory {
+func makeExecFactory(p *GenericPlanner) execFactory {
 	return execFactory{planner: p}
 }
 
@@ -118,7 +118,7 @@ func (ef *execFactory) ConstructScan(
 	}
 
 	if indexConstraint != nil && indexConstraint.IsContradiction() {
-		return newZeroNode(scan.resultColumns), nil
+		return NewZeroNode(scan.resultColumns), nil
 	}
 
 	scan.index = indexDesc
@@ -277,7 +277,7 @@ func (ef *execFactory) ConstructTsInsertSelect(
 	tableType int32,
 ) (exec.Node, error) {
 	insSel := tsInsertSelectNodePool.Get().(*tsInsertSelectNode)
-	insSel.plan = input.(planNode)
+	insSel.plan = input.(PlanNode)
 	insSel.TableID = tableID
 	insSel.TableName = tableName
 	insSel.DBID = dbID
@@ -298,7 +298,7 @@ func (ef *execFactory) ConstructTsInsertSelect(
 
 // ConstructSynchronizer construct synchronizer node
 func (ef *execFactory) ConstructSynchronizer(input exec.Node, degree int64) (exec.Node, error) {
-	plan := input.(planNode)
+	plan := input.(PlanNode)
 	resultCols := planColumns(plan)
 	mergeScanNode := &synchronizerNode{
 		columns: resultCols,
@@ -317,16 +317,16 @@ func (ef *execFactory) ConstructVirtualScan(table cat.Table) (exec.Node, error) 
 	}
 	columns, constructor := virtual.getPlanInfo(table.(*optVirtualTable).desc.TableDesc())
 
-	return &delayedNode{
+	return &DelayedNode{
 		columns: columns,
-		constructor: func(ctx context.Context, p *planner) (planNode, error) {
+		constructor: func(ctx context.Context, p *GenericPlanner) (PlanNode, error) {
 			return constructor(ctx, p, tn.Catalog())
 		},
 	}, nil
 }
 
 func asDataSource(n exec.Node) planDataSource {
-	plan := n.(planNode)
+	plan := n.(PlanNode)
 	return planDataSource{
 		columns: planColumns(plan),
 		plan:    plan,
@@ -335,7 +335,7 @@ func asDataSource(n exec.Node) planDataSource {
 
 // NumResultColumns is part of the exec.Factory interface.
 func (ef *execFactory) NumResultColumns(node exec.Node) int {
-	return len(planColumns(node.(planNode)))
+	return len(planColumns(node.(PlanNode)))
 }
 
 // ConstructFilter is part of the exec.Factory interface.
@@ -426,7 +426,7 @@ func (ef *execFactory) ConstructSimpleProject(
 	var inputCols sqlbase.ResultColumns
 	if colNames == nil {
 		// We will need the names of the input columns.
-		inputCols = planColumns(n.(planNode))
+		inputCols = planColumns(n.(PlanNode))
 	}
 
 	var rb renderBuilder
@@ -472,7 +472,7 @@ func (ef *execFactory) ConstructRender(
 
 // RenameColumns is part of the exec.Factory interface.
 func (ef *execFactory) RenameColumns(n exec.Node, colNames []string) (exec.Node, error) {
-	inputCols := planMutableColumns(n.(planNode))
+	inputCols := planMutableColumns(n.(PlanNode))
 	for i := range inputCols {
 		inputCols[i].Name = colNames[i]
 	}
@@ -519,7 +519,7 @@ func (ef *execFactory) ConstructBatchLookUpJoin(
 	)
 	// //lookup join
 	// n := &lookupJoinNode{
-	// 	input:        input.(planNode),
+	// 	input:        input.(PlanNode),
 	// 	table:        tableScan,
 	// 	joinType:     joinType,
 	// 	eqColsAreKey: eqColsAreKey,
@@ -654,7 +654,7 @@ func (ef *execFactory) ConstructMergeJoin(
 		node.mergeJoinOrdering[i].Direction = leftOrdering[i].Direction
 	}
 
-	// Set up node.props, which tells the distsql planner to maintain the
+	// Set up node.props, which tells the distsql GenericPlanner to maintain the
 	// resulting ordering (if needed).
 	node.reqOrdering = ReqOrdering(reqOrdering)
 
@@ -675,7 +675,7 @@ func (ef *execFactory) ConstructScalarGroupBy(
 		engine = tree.EngineTypeTimeseries
 	}
 	n := &groupNode{
-		plan:               input.(planNode),
+		plan:               input.(PlanNode),
 		funcs:              make([]*aggregateFuncHolder, 0, len(aggregations)),
 		columns:            make(sqlbase.ResultColumns, 0, len(aggregations)),
 		groupWindowID:      -1,
@@ -713,7 +713,7 @@ func (ef *execFactory) ConstructGroupBy(
 		groupWindowID = int32(private.GroupWindowIdOrdinal)
 	}
 	n := &groupNode{
-		plan:               input.(planNode),
+		plan:               input.(PlanNode),
 		funcs:              make([]*aggregateFuncHolder, 0, len(groupCols)+len(aggregations)),
 		columns:            make(sqlbase.ResultColumns, 0, len(groupCols)+len(aggregations)+len(*funcs)),
 		groupCols:          make([]int, len(groupCols)),
@@ -832,7 +832,7 @@ func (ef *execFactory) ConstructDistinct(
 		engine = tree.EngineTypeTimeseries
 	}
 	return &distinctNode{
-		plan:              input.(planNode),
+		plan:              input.(PlanNode),
 		distinctOnColIdxs: distinctCols,
 		columnsInOrder:    orderedCols,
 		reqOrdering:       ReqOrdering(reqOrdering),
@@ -846,7 +846,7 @@ func (ef *execFactory) ConstructDistinct(
 func (ef *execFactory) ConstructSetOp(
 	typ tree.UnionType, all bool, left, right exec.Node,
 ) (exec.Node, error) {
-	return ef.planner.newUnionNode(typ, all, left.(planNode), right.(planNode))
+	return ef.planner.newUnionNode(typ, all, left.(PlanNode), right.(PlanNode))
 }
 
 // ConstructSort is part of the exec.Factory interface.
@@ -858,7 +858,7 @@ func (ef *execFactory) ConstructSort(
 		engine = tree.EngineTypeTimeseries
 	}
 	return &sortNode{
-		plan:                 input.(planNode),
+		plan:                 input.(PlanNode),
 		ordering:             ordering,
 		alreadyOrderedPrefix: alreadyOrderedPrefix,
 		engine:               engine,
@@ -867,7 +867,7 @@ func (ef *execFactory) ConstructSort(
 
 // ConstructOrdinality is part of the exec.Factory interface.
 func (ef *execFactory) ConstructOrdinality(input exec.Node, colName string) (exec.Node, error) {
-	plan := input.(planNode)
+	plan := input.(PlanNode)
 	inputColumns := planColumns(plan)
 	cols := make(sqlbase.ResultColumns, len(inputColumns)+1)
 	copy(cols, inputColumns)
@@ -909,7 +909,7 @@ func (ef *execFactory) ConstructIndexJoin(
 	tableScan.disableBatchLimit()
 
 	n := &indexJoinNode{
-		input:         input.(planNode),
+		input:         input.(PlanNode),
 		table:         tableScan,
 		cols:          colDescs,
 		resultColumns: sqlbase.ResultColumnsFromColDescs(tabDesc.GetID(), colDescs),
@@ -949,7 +949,7 @@ func (ef *execFactory) ConstructLookupJoin(
 	tableScan.isSecondaryIndex = indexDesc != &tabDesc.PrimaryIndex
 
 	n := &lookupJoinNode{
-		input:        input.(planNode),
+		input:        input.(PlanNode),
 		table:        tableScan,
 		joinType:     joinType,
 		eqColsAreKey: eqColsAreKey,
@@ -963,7 +963,7 @@ func (ef *execFactory) ConstructLookupJoin(
 		n.eqCols[i] = int(c)
 	}
 	// Build the result columns.
-	inputCols := planColumns(input.(planNode))
+	inputCols := planColumns(input.(PlanNode))
 	var scanCols sqlbase.ResultColumns
 	if joinType != sqlbase.LeftSemiJoin && joinType != sqlbase.LeftAntiJoin {
 		scanCols = planColumns(tableScan)
@@ -1078,7 +1078,7 @@ func (ef *execFactory) ConstructZigzagJoin(
 func (ef *execFactory) ConstructLimit(
 	input exec.Node, limit, offset tree.TypedExpr, limitExpr memo.RelExpr, meta *opt.Metadata,
 ) (exec.Node, error) {
-	plan := input.(planNode)
+	plan := input.(PlanNode)
 	// If the input plan is also a limitNode that has just an offset, and we are
 	// only applying a limit, update the existing node. This is useful because
 	// Limit and Offset are separate operators which result in separate calls to
@@ -1118,7 +1118,7 @@ func (ef *execFactory) ConstructLimit(
 					offset, ok2 := offset.(*tree.DInt)
 					if ok1 && ok2 && (int64(*count)-int64(*offset) < ef.planner.SessionData().MaxPushLimitNumber) {
 						node.countExpr = v.countExpr
-						node.plan = applyOffsetOptimize(v.plan, false).(planNode)
+						node.plan = applyOffsetOptimize(v.plan, false).(PlanNode)
 						node.canOpt = true
 					}
 				}
@@ -1164,9 +1164,9 @@ func applyOffsetOptimize(src exec.Node, reverse bool) exec.Node {
 	case *sortNode:
 		return applyOffsetOptimize(t.plan, t.ordering[0].Direction == encoding.Descending)
 	case *synchronizerNode:
-		return applyOffsetOptimize(t.plan, reverse).(planNode)
+		return applyOffsetOptimize(t.plan, reverse).(PlanNode)
 	case *renderNode:
-		t.source.plan = applyOffsetOptimize(t.source.plan, reverse).(planNode)
+		t.source.plan = applyOffsetOptimize(t.source.plan, reverse).(PlanNode)
 		return t
 	}
 
@@ -1175,7 +1175,7 @@ func applyOffsetOptimize(src exec.Node, reverse bool) exec.Node {
 
 // ConstructMax1Row is part of the exec.Factory interface.
 func (ef *execFactory) ConstructMax1Row(input exec.Node, errorText string) (exec.Node, error) {
-	plan := input.(planNode)
+	plan := input.(PlanNode)
 	return &max1RowNode{
 		plan:      plan,
 		errorText: errorText,
@@ -1185,7 +1185,7 @@ func (ef *execFactory) ConstructMax1Row(input exec.Node, errorText string) (exec
 // ConstructBuffer is part of the exec.Factory interface.
 func (ef *execFactory) ConstructBuffer(input exec.Node, label string) (exec.Node, error) {
 	return &bufferNode{
-		plan:  input.(planNode),
+		plan:  input.(PlanNode),
 		label: label,
 	}, nil
 }
@@ -1203,7 +1203,7 @@ func (ef *execFactory) ConstructRecursiveCTE(
 	initial exec.Node, fn exec.RecursiveCTEIterationFn, label string,
 ) (exec.Node, error) {
 	return &recursiveCTENode{
-		initial:        initial.(planNode),
+		initial:        initial.(PlanNode),
 		genIterationFn: fn,
 		label:          label,
 	}, nil
@@ -1245,7 +1245,7 @@ func (ef *execFactory) ConstructWindow(
 	root exec.Node, wi exec.WindowInfo, execInTSEngine bool,
 ) (exec.Node, error) {
 	p := &windowNode{
-		plan:         root.(planNode),
+		plan:         root.(PlanNode),
 		columns:      wi.Cols,
 		windowRender: make([]tree.TypedExpr, len(wi.Cols)),
 	}
@@ -1300,7 +1300,7 @@ func (ef *execFactory) ConstructPlan(
 		root = spool.source
 	}
 	res := &planTop{
-		plan: root.(planNode),
+		plan: root.(PlanNode),
 		// TODO(radu): these fields can be modified by planning various opaque
 		// statements. We should have a cleaner way of plumbing these.
 		avoidBuffering:  ef.planner.curPlan.avoidBuffering,
@@ -1325,13 +1325,13 @@ func (ef *execFactory) ConstructPlan(
 				return nil, errors.Errorf("invalid SubqueryMode %d", in.Mode)
 			}
 			out.expanded = true
-			out.plan = in.Root.(planNode)
+			out.plan = in.Root.(PlanNode)
 		}
 	}
 	if len(postqueries) > 0 {
 		res.postqueryPlans = make([]postquery, len(postqueries))
 		for i := range res.postqueryPlans {
-			res.postqueryPlans[i].plan = postqueries[i].(planNode)
+			res.postqueryPlans[i].plan = postqueries[i].(PlanNode)
 		}
 	}
 
@@ -1521,7 +1521,7 @@ func (ef *execFactory) ConstructExplain(
 
 // ConstructShowTrace is part of the exec.Factory interface.
 func (ef *execFactory) ConstructShowTrace(typ tree.ShowTraceType, compact bool) (exec.Node, error) {
-	var node planNode = ef.planner.makeShowTraceNode(compact, typ == tree.ShowTraceKV)
+	var node PlanNode = ef.planner.makeShowTraceNode(compact, typ == tree.ShowTraceKV)
 
 	// Ensure the messages are sorted in age order, so that the user
 	// does not get confused.
@@ -1587,7 +1587,7 @@ func (ef *execFactory) ConstructInsert(
 	// Regular path for INSERT.
 	ins := insertNodePool.Get().(*insertNode)
 	*ins = insertNode{
-		source: input.(planNode),
+		source: input.(PlanNode),
 		run: insertRun{
 			ti:         tableInserter{ri: ri},
 			checkOrds:  checkOrdSet,
@@ -1856,7 +1856,7 @@ func (ef *execFactory) ConstructUpdate(
 
 	upd := updateNodePool.Get().(*updateNode)
 	*upd = updateNode{
-		source: input.(planNode),
+		source: input.(PlanNode),
 		run: updateRun{
 			tu:        tableUpdater{ru: ru},
 			checkOrds: checks,
@@ -2014,7 +2014,7 @@ func (ef *execFactory) ConstructUpsert(
 	// Instantiate the upsert node.
 	ups := upsertNodePool.Get().(*upsertNode)
 	*ups = upsertNode{
-		source: input.(planNode),
+		source: input.(PlanNode),
 		run: upsertRun{
 			checkOrds:  checks,
 			insertCols: ri.InsertCols,
@@ -2095,7 +2095,7 @@ func (ef *execFactory) ConstructDelete(
 	if !isNeedTrigger {
 		fastPathInterleaved := canDeleteFastInterleaved(tabDesc, fkTables)
 		if fastPathNode, ok := maybeCreateDeleteFastNode(
-			ctx, input.(planNode), tabDesc, fkTables, fastPathInterleaved, rowsNeeded); ok {
+			ctx, input.(PlanNode), tabDesc, fkTables, fastPathInterleaved, rowsNeeded); ok {
 			return fastPathNode, nil
 		}
 	}
@@ -2130,7 +2130,7 @@ func (ef *execFactory) ConstructDelete(
 	// Now make a delete node. We use a pool.
 	del := deleteNodePool.Get().(*deleteNode)
 	*del = deleteNode{
-		source: input.(planNode),
+		source: input.(PlanNode),
 		run: deleteRun{
 			td: tableDeleter{rd: rd, alloc: &ef.planner.alloc},
 		},
@@ -2220,10 +2220,11 @@ func (ef *execFactory) ConstructDeleteRange(
 func (ef *execFactory) ConstructCreateTable(
 	input exec.Node, schema cat.Schema, ct *tree.CreateTable,
 ) (exec.Node, error) {
-	nd := &createTableNode{n: ct, dbDesc: schema.(*optSchema).database}
+	var sourcePlan PlanNode
 	if input != nil {
-		nd.sourcePlan = input.(planNode)
+		sourcePlan = input.(PlanNode)
 	}
+	nd := NewCreateTableNode(ct, schema.(*optSchema).database, sourcePlan)
 	return nd, nil
 }
 
@@ -2231,14 +2232,14 @@ func (ef *execFactory) ConstructCreateTable(
 func (ef *execFactory) ConstructCreateTrigger(
 	ct *tree.CreateTrigger, deps opt.ViewDeps,
 ) (exec.Node, error) {
-	nd := &createTriggerNode{n: ct}
+	nd := NewCreateTriggerNode(ct)
 	return nd, nil
 }
 
 func (ef *execFactory) ConstructCreateProcedure(
 	cp *tree.CreateProcedure, schema cat.Schema, deps opt.ViewDeps,
 ) (exec.Node, error) {
-	planDeps := make(planDependencies, len(deps))
+	planDeps := make(PlanDependencies, len(deps))
 	for _, d := range deps {
 		desc, err := getDescForDataSource(d.DataSource)
 		if err != nil {
@@ -2270,11 +2271,11 @@ func (ef *execFactory) ConstructCreateProcedure(
 
 	if cp.SQLFunction != nil {
 		// Check duplicate user defined function name.
-		if err := ef.planner.checkUDFNameExists(string(cp.SQLFunction.FunctionName)); err != nil {
+		if err := CheckUDFNameExists(ef.planner, string(cp.SQLFunction.FunctionName)); err != nil {
 			return nil, err
 		}
 	}
-	nd := &createProcedureNode{n: cp, dbDesc: schema.(*optSchema).database, scID: scID, planDeps: planDeps}
+	nd := NewCreateProcedureNode(cp, schema.(*optSchema).database, scID, planDeps)
 	return nd, nil
 }
 
@@ -2389,13 +2390,13 @@ func (ef *execFactory) ConstructCallProcedure(
 func (ef *execFactory) ConstructCreateTables(
 	input exec.Node, schemas map[string]cat.Schema, ct *tree.CreateTable,
 ) (exec.Node, error) {
-	nd := createMultiInstTableNode{}
-	nd.dbDescs = make(map[string]*sqlbase.DatabaseDescriptor)
+	dbDescs := make(map[string]*sqlbase.DatabaseDescriptor)
+	ns := make([]*tree.CreateTable, 0, len(ct.Instances))
 	for _, ctbl := range ct.Instances {
 		if sqlbase.ContainsNonAlphaNumSymbol(ctbl.Name.String()) {
-			return &nd, sqlbase.NewTSNameInvalidError(ctbl.Name.String())
+			return nil, sqlbase.NewTSNameInvalidError(ctbl.Name.String())
 		}
-		nd.ns = append(nd.ns, &tree.CreateTable{
+		ns = append(ns, &tree.CreateTable{
 			Table:       ctbl.Name,
 			OnCommit:    ct.OnCommit,
 			TableType:   tree.InstanceTable,
@@ -2404,12 +2405,13 @@ func (ef *execFactory) ConstructCreateTables(
 		})
 	}
 	for k, v := range schemas {
-		nd.dbDescs[k] = v.(*optSchema).database
+		dbDescs[k] = v.(*optSchema).database
 	}
+	var sourcePlan PlanNode
 	if input != nil {
-		nd.sourcePlan = input.(planNode)
+		sourcePlan = input.(PlanNode)
 	}
-	return &nd, nil
+	return NewCreateMultiInstTableNode(ns, dbDescs, sourcePlan), nil
 }
 
 // ConstructCreateView is part of the exec.Factory interface.
@@ -2417,7 +2419,7 @@ func (ef *execFactory) ConstructCreateView(
 	schema cat.Schema, columns sqlbase.ResultColumns, cv *memo.CreateViewExpr,
 ) (exec.Node, error) {
 	deps := cv.Deps
-	planDeps := make(planDependencies, len(deps))
+	planDeps := make(PlanDependencies, len(deps))
 	for _, d := range deps {
 		desc, err := getDescForDataSource(d.DataSource)
 		if err != nil {
@@ -2447,16 +2449,16 @@ func (ef *execFactory) ConstructCreateView(
 	db := schema.Name().CatalogName
 	sc := schema.Name().SchemaName
 	viewTblName := tree.MakeTableNameWithSchema(db, sc, tree.Name(cv.ViewName))
-	return &createViewNode{
-		viewName:     &viewTblName,
-		ifNotExists:  cv.IfNotExists,
-		temporary:    cv.Temporary,
-		materialized: cv.Materialized,
-		viewQuery:    cv.ViewQuery,
-		dbDesc:       schema.(*optSchema).database,
-		columns:      columns,
-		planDeps:     planDeps,
-	}, nil
+	return NewCreateViewNode(
+		&viewTblName,
+		cv.IfNotExists,
+		cv.Temporary,
+		cv.Materialized,
+		cv.ViewQuery,
+		schema.(*optSchema).database,
+		columns,
+		planDeps,
+	), nil
 }
 
 // ConstructSequenceSelect is part of the exec.Factory interface.
@@ -2468,7 +2470,7 @@ func (ef *execFactory) ConstructSequenceSelect(sequence cat.Sequence) (exec.Node
 func (ef *execFactory) ConstructSaveTable(
 	input exec.Node, table *cat.DataSourceName, colNames []string,
 ) (exec.Node, error) {
-	return ef.planner.makeSaveTable(input.(planNode), table, colNames), nil
+	return ef.planner.makeSaveTable(input.(PlanNode), table, colNames), nil
 }
 
 // ConstructErrorIfRows is part of the exec.Factory interface.
@@ -2476,7 +2478,7 @@ func (ef *execFactory) ConstructErrorIfRows(
 	input exec.Node, mkErr func(tree.Datums) error,
 ) (exec.Node, error) {
 	return &errorIfRowsNode{
-		plan:  input.(planNode),
+		plan:  input.(PlanNode),
 		mkErr: mkErr,
 	}, nil
 }
@@ -2502,7 +2504,7 @@ func (ef *execFactory) ConstructAlterTableSplit(
 	return &splitNode{
 		tableDesc:      &index.Table().(*optTable).desc.TableDescriptor,
 		index:          index.(*optIndex).desc,
-		rows:           input.(planNode),
+		rows:           input.(PlanNode),
 		expirationTime: expirationTime,
 	}, nil
 }
@@ -2511,7 +2513,7 @@ func (ef *execFactory) ConstructAlterTableSplit(
 func (ef *execFactory) ConstructSelectInto(input exec.Node, vars opt.VarNames) (exec.Node, error) {
 
 	return &selectIntoNode{
-		rows: input.(planNode),
+		rows: input.(PlanNode),
 		vars: vars,
 	}, nil
 }
@@ -2523,7 +2525,7 @@ func (ef *execFactory) ConstructAlterTableUnsplit(
 	return &unsplitNode{
 		tableDesc: &index.Table().(*optTable).desc.TableDescriptor,
 		index:     index.(*optIndex).desc,
-		rows:      input.(planNode),
+		rows:      input.(PlanNode),
 	}, nil
 }
 
@@ -2543,7 +2545,7 @@ func (ef *execFactory) ConstructAlterTableRelocate(
 		relocateLease: relocateLease,
 		tableDesc:     &index.Table().(*optTable).desc.TableDescriptor,
 		index:         index.(*optIndex).desc,
-		rows:          input.(planNode),
+		rows:          input.(PlanNode),
 	}, nil
 }
 
@@ -2552,7 +2554,7 @@ func (ef *execFactory) ConstructControlJobs(
 	command tree.JobCommand, input exec.Node,
 ) (exec.Node, error) {
 	return &controlJobsNode{
-		rows:          input.(planNode),
+		rows:          input.(PlanNode),
 		desiredStatus: jobCommandToDesiredStatus[command],
 	}, nil
 }
@@ -2560,7 +2562,7 @@ func (ef *execFactory) ConstructControlJobs(
 // ConstructCancelQueries is part of the exec.Factory interface.
 func (ef *execFactory) ConstructCancelQueries(input exec.Node, ifExists bool) (exec.Node, error) {
 	return &cancelQueriesNode{
-		rows:     input.(planNode),
+		rows:     input.(PlanNode),
 		ifExists: ifExists,
 	}, nil
 }
@@ -2568,7 +2570,7 @@ func (ef *execFactory) ConstructCancelQueries(input exec.Node, ifExists bool) (e
 // ConstructCancelSessions is part of the exec.Factory interface.
 func (ef *execFactory) ConstructCancelSessions(input exec.Node, ifExists bool) (exec.Node, error) {
 	return &cancelSessionsNode{
-		rows:     input.(planNode),
+		rows:     input.(PlanNode),
 		ifExists: ifExists,
 	}, nil
 }
@@ -2576,7 +2578,7 @@ func (ef *execFactory) ConstructCancelSessions(input exec.Node, ifExists bool) (
 // renderBuilder encapsulates the code to build a renderNode.
 type renderBuilder struct {
 	r   *renderNode
-	res planNode
+	res PlanNode
 }
 
 // init initializes the renderNode with render expressions.
@@ -3311,7 +3313,7 @@ func (ef *execFactory) UpdateGroupInput(input *exec.Node) exec.Node {
 }
 
 // deleteSynchronizer delete the added synchronizer to avoid conflicts.
-func deleteSynchronizer(node *planNode) {
+func deleteSynchronizer(node *PlanNode) {
 	switch n := (*node).(type) {
 	case *synchronizerNode:
 		*node = n.plan
@@ -3521,7 +3523,7 @@ func (ef *execFactory) ProcessBljLeftColumns(
 		columns = n.columns
 	case *bufferNode:
 		return ef.ProcessBljLeftColumns(n.plan, mem)
-	case *delayedNode:
+	case *DelayedNode:
 		return ef.ProcessBljLeftColumns(n.plan, mem)
 	case *distinctNode:
 		return ef.ProcessBljLeftColumns(n.plan, mem)
@@ -3716,7 +3718,7 @@ func (ef *execFactory) FindTsScanNode(node exec.Node, mem *memo.Memo) opt.TableI
 			return tableID
 		}
 	case *scanNode:
-	case *delayedNode:
+	case *DelayedNode:
 		if tableID := ef.FindTsScanNode(n.plan, mem); tableID != 0 {
 			return tableID
 		}

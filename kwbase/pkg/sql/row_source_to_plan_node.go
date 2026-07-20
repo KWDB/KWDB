@@ -41,9 +41,9 @@ type rowSourceToPlanNode struct {
 	source    execinfra.RowSource
 	forwarder metadataForwarder
 
-	// originalPlanNode is the original planNode that the wrapped RowSource got
+	// originalPlanNode is the original PlanNode that the wrapped RowSource got
 	// planned for.
-	originalPlanNode planNode
+	originalPlanNode PlanNode
 
 	planCols sqlbase.ResultColumns
 
@@ -53,19 +53,19 @@ type rowSourceToPlanNode struct {
 	datumRow tree.Datums
 }
 
-var _ planNode = &rowSourceToPlanNode{}
+var _ PlanNode = &rowSourceToPlanNode{}
 
-// makeRowSourceToPlanNode creates a new planNode that wraps a RowSource. It
+// makeRowSourceToPlanNode creates a new PlanNode that wraps a RowSource. It
 // takes an optional metadataForwarder, which if non-nil is invoked for every
 // piece of metadata this wrapper receives from the wrapped RowSource.
-// It also takes an optional planNode, which is the planNode that the RowSource
-// that this rowSourceToPlanNode is wrapping originally replaced. That planNode
+// It also takes an optional PlanNode, which is the PlanNode that the RowSource
+// that this rowSourceToPlanNode is wrapping originally replaced. That PlanNode
 // will be closed when this one is closed.
 func makeRowSourceToPlanNode(
 	s execinfra.RowSource,
 	forwarder metadataForwarder,
 	planCols sqlbase.ResultColumns,
-	originalPlanNode planNode,
+	originalPlanNode PlanNode,
 ) *rowSourceToPlanNode {
 	row := make(tree.Datums, len(planCols))
 
@@ -78,13 +78,13 @@ func makeRowSourceToPlanNode(
 	}
 }
 
-func (r *rowSourceToPlanNode) startExec(params runParams) error {
+func (r *rowSourceToPlanNode) StartExec(params RunParams) error {
 	r.source.InitProcessorProcedure(params.p.Txn())
-	r.source.Start(params.ctx)
+	r.source.Start(params.Ctx)
 	return nil
 }
 
-func (r *rowSourceToPlanNode) Next(params runParams) (bool, error) {
+func (r *rowSourceToPlanNode) Next(params RunParams) (bool, error) {
 	for {
 		var p *execinfrapb.ProducerMetadata
 		r.row, p = r.source.Next()

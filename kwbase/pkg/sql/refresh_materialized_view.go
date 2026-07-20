@@ -35,14 +35,17 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
 )
 
+var _ PlanNode = &refreshMaterializedViewNode{}
+
 type refreshMaterializedViewNode struct {
 	n    *tree.RefreshMaterializedView
 	desc *sqlbase.MutableTableDescriptor
 }
 
-func (p *planner) RefreshMaterializedView(
+// RefreshMaterializedView refreshes the data in a materialized view
+func (p *GenericPlanner) RefreshMaterializedView(
 	ctx context.Context, n *tree.RefreshMaterializedView,
-) (planNode, error) {
+) (PlanNode, error) {
 	desc, err := p.ResolveMutableTableDescriptorEx(ctx, n.Name, true /* required */, ResolveRequireViewDesc)
 	if err != nil {
 		return nil, err
@@ -64,7 +67,7 @@ func (p *planner) RefreshMaterializedView(
 	return &refreshMaterializedViewNode{n: n, desc: desc}, nil
 }
 
-func (n *refreshMaterializedViewNode) startExec(params runParams) error {
+func (n *refreshMaterializedViewNode) StartExec(params RunParams) error {
 	if !params.p.EvalContext().TxnImplicit {
 		return pgerror.Newf(pgcode.InvalidTransactionState, "cannot refresh view in an explicit transaction")
 	}
@@ -100,14 +103,14 @@ func (n *refreshMaterializedViewNode) startExec(params runParams) error {
 		AsOf:            params.p.Txn().ReadTimestamp(),
 	})
 
-	return params.p.writeSchemaChange(
-		params.ctx,
+	return params.p.WriteSchemaChange(
+		params.Ctx,
 		n.desc,
 		n.desc.ClusterVersion.NextMutationID,
 		tree.AsStringWithFQNames(n.n, params.Ann()),
 	)
 }
 
-func (n *refreshMaterializedViewNode) Next(params runParams) (bool, error) { return false, nil }
+func (n *refreshMaterializedViewNode) Next(params RunParams) (bool, error) { return false, nil }
 func (n *refreshMaterializedViewNode) Values() tree.Datums                 { return tree.Datums{} }
 func (n *refreshMaterializedViewNode) Close(ctx context.Context)           {}

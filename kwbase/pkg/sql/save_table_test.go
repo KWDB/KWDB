@@ -21,18 +21,18 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 )
 
-// TestPlannerMakeSaveTable tests the makeSaveTable method of planner
+// TestPlannerMakeSaveTable tests the makeSaveTable method of GenericPlanner
 func TestPlannerMakeSaveTable(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
 	tests := []struct {
 		name      string
-		setupFunc func() (*planner, planNode, *tree.TableName, []string)
-		testFunc  func(t *testing.T, result planNode)
+		setupFunc func() (*GenericPlanner, PlanNode, *tree.TableName, []string)
+		testFunc  func(t *testing.T, result PlanNode)
 	}{
 		{
 			name: "test makeSaveTable returns valid node",
-			setupFunc: func() (*planner, planNode, *tree.TableName, []string) {
+			setupFunc: func() (*GenericPlanner, PlanNode, *tree.TableName, []string) {
 				// Create a mock source plan node
 				source := &saveTableMockPlanNode{
 					columns: []sqlbase.ResultColumn{
@@ -42,9 +42,9 @@ func TestPlannerMakeSaveTable(t *testing.T) {
 				}
 				target := tree.NewTableName("defaultdb", "test_table")
 				colNames := []string{"column1", "column2"}
-				return &planner{}, source, target, colNames
+				return &GenericPlanner{}, source, target, colNames
 			},
-			testFunc: func(t *testing.T, result planNode) {
+			testFunc: func(t *testing.T, result PlanNode) {
 				if result == nil {
 					t.Error("makeSaveTable() returned nil")
 				}
@@ -66,7 +66,7 @@ func TestPlannerMakeSaveTable(t *testing.T) {
 	}
 }
 
-// TestSaveTableNodeStartExec tests the startExec method of saveTableNode
+// TestSaveTableNodeStartExec tests the StartExec method of saveTableNode
 func TestSaveTableNodeStartExec(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
@@ -76,7 +76,7 @@ func TestSaveTableNodeStartExec(t *testing.T) {
 		testFunc  func(t *testing.T, n *saveTableNode)
 	}{
 		// {
-		// 	name: "test startExec with matching column names",
+		// 	name: "test StartExec with matching column names",
 		// 	setupNode: func() *saveTableNode {
 		// 		return &saveTableNode{
 		// 			source: &valuesNode{
@@ -89,25 +89,25 @@ func TestSaveTableNodeStartExec(t *testing.T) {
 		// 		}
 		// 	},
 		// 	testFunc: func(t *testing.T, n *saveTableNode) {
-		// 		params := runParams{
+		// 		params := RunParams{
 		// 			ctx: context.Background(),
-		// 			p:   &planner{},
+		// 			p:   &GenericPlanner{},
 		// 		}
 
-		// 		// startExec may panic due to nil internal executor, which is expected
+		// 		// StartExec may panic due to nil internal executor, which is expected
 		// 		defer func() {
 		// 			if r := recover(); r != nil {
-		// 				t.Logf("startExec() panicked as expected: %v", r)
+		// 				t.Logf("StartExec() panicked as expected: %v", r)
 		// 			}
 		// 		}()
-		// 		err := n.startExec(params)
+		// 		err := n.StartExec(params)
 		// 		if err != nil {
-		// 			t.Errorf("startExec() returned error: %v", err)
+		// 			t.Errorf("StartExec() returned error: %v", err)
 		// 		}
 		// 	},
 		// },
 		// {
-		// 	name: "test startExec with mismatched column names",
+		// 	name: "test StartExec with mismatched column names",
 		// 	setupNode: func() *saveTableNode {
 		// 		return &saveTableNode{
 		// 			source: &valuesNode{
@@ -120,20 +120,20 @@ func TestSaveTableNodeStartExec(t *testing.T) {
 		// 		}
 		// 	},
 		// 	testFunc: func(t *testing.T, n *saveTableNode) {
-		// 		params := runParams{
+		// 		params := RunParams{
 		// 			ctx: context.Background(),
-		// 			p:   &planner{},
+		// 			p:   &GenericPlanner{},
 		// 		}
 
-		// 		// startExec may panic due to nil internal executor, which is expected
+		// 		// StartExec may panic due to nil internal executor, which is expected
 		// 		defer func() {
 		// 			if r := recover(); r != nil {
-		// 				t.Logf("startExec() panicked as expected: %v", r)
+		// 				t.Logf("StartExec() panicked as expected: %v", r)
 		// 			}
 		// 		}()
-		// 		err := n.startExec(params)
+		// 		err := n.StartExec(params)
 		// 		if err == nil {
-		// 			t.Error("startExec() expected error for mismatched columns, got nil")
+		// 			t.Error("StartExec() expected error for mismatched columns, got nil")
 		// 		}
 		// 	},
 		// },
@@ -168,9 +168,9 @@ func TestSaveTableNodeNext(t *testing.T) {
 		// 		}
 		// 	},
 		// 	testFunc: func(t *testing.T, n *saveTableNode) {
-		// 		params := runParams{
+		// 		params := RunParams{
 		// 			ctx: context.Background(),
-		// 			p:   &planner{},
+		// 			p:   &GenericPlanner{},
 		// 		}
 
 		// 		// Next may panic due to nil internal executor, which is expected
@@ -199,9 +199,9 @@ func TestSaveTableNodeNext(t *testing.T) {
 		// 		}
 		// 	},
 		// 	testFunc: func(t *testing.T, n *saveTableNode) {
-		// 		params := runParams{
+		// 		params := RunParams{
 		// 			ctx: context.Background(),
-		// 			p:   &planner{},
+		// 			p:   &GenericPlanner{},
 		// 		}
 
 		// 		// Next may panic due to nil internal executor, which is expected
@@ -308,8 +308,8 @@ type saveTableMockPlanNode struct {
 	hasNext bool
 }
 
-func (m *saveTableMockPlanNode) startExec(params runParams) error    { return nil }
-func (m *saveTableMockPlanNode) Next(params runParams) (bool, error) { return m.hasNext, nil }
+func (m *saveTableMockPlanNode) StartExec(params RunParams) error    { return nil }
+func (m *saveTableMockPlanNode) Next(params RunParams) (bool, error) { return m.hasNext, nil }
 func (m *saveTableMockPlanNode) Values() tree.Datums                 { return m.values }
 func (m *saveTableMockPlanNode) Close(ctx context.Context)           {}
 

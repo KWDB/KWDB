@@ -34,7 +34,7 @@ import (
 )
 
 type sequenceSelectNode struct {
-	optColumnsSlot
+	OptColumnsSlot
 
 	desc *sqlbase.ImmutableTableDescriptor
 
@@ -42,9 +42,12 @@ type sequenceSelectNode struct {
 	done bool
 }
 
-var _ planNode = &sequenceSelectNode{}
+var _ PlanNode = &sequenceSelectNode{}
 
-func (p *planner) SequenceSelectNode(desc *sqlbase.ImmutableTableDescriptor) (planNode, error) {
+// SequenceSelectNode creates a plan node for selecting the next sequence value
+func (p *GenericPlanner) SequenceSelectNode(
+	desc *sqlbase.ImmutableTableDescriptor,
+) (PlanNode, error) {
 	if desc.SequenceOpts == nil {
 		return nil, errors.New(fmt.Sprintf("descriptor %s is not a sequence", desc.Name))
 	}
@@ -53,15 +56,15 @@ func (p *planner) SequenceSelectNode(desc *sqlbase.ImmutableTableDescriptor) (pl
 	}, nil
 }
 
-func (ss *sequenceSelectNode) startExec(runParams) error {
+func (ss *sequenceSelectNode) StartExec(RunParams) error {
 	return nil
 }
 
-func (ss *sequenceSelectNode) Next(params runParams) (bool, error) {
+func (ss *sequenceSelectNode) Next(params RunParams) (bool, error) {
 	if ss.done {
 		return false, nil
 	}
-	val, err := params.p.GetSequenceValue(params.ctx, ss.desc)
+	val, err := params.p.GetSequenceValue(params.Ctx, ss.desc)
 	if err != nil {
 		return false, err
 	}

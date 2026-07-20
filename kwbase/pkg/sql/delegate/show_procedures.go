@@ -30,7 +30,7 @@ func (d *delegator) delegateShowProcedures(n *tree.ShowProcedures) (tree.Stateme
 	_, name, err := d.catalog.ResolveSchema(d.ctx, flags, &n.TableNamePrefix)
 	if err != nil {
 		if d.catalog.GetCurrentDatabase(d.ctx) == "" && !n.ExplicitSchema {
-			return nil, errNoDatabase
+			return nil, ErrNoDatabase
 		}
 		if !n.TableNamePrefix.ExplicitCatalog && !n.TableNamePrefix.ExplicitSchema {
 			return nil, pgerror.New(

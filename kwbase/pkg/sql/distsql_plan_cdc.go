@@ -21,29 +21,20 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/metadata"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/physicalplan"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/privilege"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlconst"
+	"gitee.com/kwbasedb/kwbase/pkg/util/json"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
+	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
+	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 )
-
-// CDCWatermark saved the LowWatermark of table for cdc.
-type CDCWatermark struct {
-	TableID      uint64
-	TaskID       uint64
-	TaskType     sqlbase.CDCInstanceType
-	InternalType int32
-	LowWatermark int64
-	ClientID     interface{}
-}
-
-// cdcComputeRun is used in subscription to hold the result or error from the corresponding publication.
-type cdcComputeRun struct {
-	resultsCh chan tree.Datums
-	errCh     chan error
-}
 
 // createTsInsertWithCDCNodeForSingleMode construct TsInsertWithCDCProSpec for SingeMode and processors.
 func createTsInsertWithCDCNodeForSingleMode(n *tsInsertWithCDCNode) (PhysicalPlan, error) {
@@ -155,10 +146,12 @@ func buildCDCDataProto(cdcData *sqlbase.CDCData) execinfrapb.CDCData {
 	}
 }
 
-// addCDCWatermark adds a record with low watermark in system.kwdb_cdc_watermark for the specified table and task
+// AddCDCWatermark adds a record with low watermark in system.kwdb_cdc_watermark for the specified table and task
 // (such as pipe, subscription, stream and so on). The low watermark is max timestamp of retrieved data from table,
 // and if the task restarted, it will retrieve data from low watermark.
-func (p *planner) addCDCWatermark(ctx context.Context, cdcWatermark CDCWatermark) error {
+func (p *GenericPlanner) AddCDCWatermark(
+	ctx context.Context, cdcWatermark metadata.CDCWatermark,
+) error {
 	if _, err := p.ExecCfg().InternalExecutor.ExecEx(
 		ctx,
 		"insert-cdc-watermark",
@@ -180,8 +173,8 @@ values ($1,$2,$3,$4,$5,$6) ON CONFLICT(table_id,task_id,task_type,internal_type)
 	return nil
 }
 
-// addCDCDescriptorByTableID add CDC descriptor to table descriptor.
-func (p *planner) addCDCDescriptorByTableID(
+// AddCDCDescriptorByTableID add CDC descriptor to table descriptor.
+func (p *GenericPlanner) AddCDCDescriptorByTableID(
 	ctx context.Context,
 	tableID uint64,
 	instanceType sqlbase.CDCInstanceType,
@@ -195,11 +188,11 @@ func (p *planner) addCDCDescriptorByTableID(
 		return err
 	}
 
-	return p.addCDCDescriptor(ctx, tableDesc, instanceType, taskID, parameters)
+	return p.AddCDCDescriptor(ctx, tableDesc, instanceType, taskID, parameters)
 }
 
-// addCDCDescriptor add CDC descriptor to table descriptor.
-func (p *planner) addCDCDescriptor(
+// AddCDCDescriptor add CDC descriptor to table descriptor.
+func (p *GenericPlanner) AddCDCDescriptor(
 	ctx context.Context,
 	tableDesc *sqlbase.MutableTableDescriptor,
 	instanceType sqlbase.CDCInstanceType,
@@ -220,15 +213,15 @@ func (p *planner) addCDCDescriptor(
 		Version:    0,
 	})
 
-	return p.writeSchemaChange(
+	return p.WriteSchemaChange(
 		ctx, tableDesc, sqlbase.InvalidMutationID, "create cdc",
 	)
 }
 
 // loadCDCWatermarks loads cdc watermarks from system.kwdb_cdc_watermark, and returns slice of CDCWatermark.
-func (p *planner) loadCDCWatermarks(
+func (p *GenericPlanner) loadCDCWatermarks(
 	ctx context.Context, instanceType sqlbase.CDCInstanceType, tableID, taskID *uint64,
-) ([]CDCWatermark, error) {
+) ([]metadata.CDCWatermark, error) {
 	stmt := fmt.Sprintf(
 		`SELECT table_id,task_id,task_type,low_watermark FROM system.kwdb_cdc_watermark WHERE task_type = %d`,
 		instanceType)
@@ -251,10 +244,10 @@ func (p *planner) loadCDCWatermarks(
 		return nil, err
 	}
 
-	cdcWatermarks := make([]CDCWatermark, len(rows))
+	cdcWatermarks := make([]metadata.CDCWatermark, len(rows))
 
 	for i, row := range rows {
-		cdcWatermarks[i] = CDCWatermark{
+		cdcWatermarks[i] = metadata.CDCWatermark{
 			TableID:      uint64(tree.MustBeDInt(row[0])),
 			TaskID:       uint64(tree.MustBeDInt(row[1])),
 			TaskType:     sqlbase.CDCInstanceType(tree.MustBeDInt(row[2])),
@@ -265,8 +258,8 @@ func (p *planner) loadCDCWatermarks(
 	return cdcWatermarks, nil
 }
 
-// removeCDCDescriptorByTableName deletes the CDC from TableDescriptor by table name.
-func (p *planner) removeCDCDescriptorByTableID(
+// RemoveCDCDescriptorByTableID  deletes the CDC from TableDescriptor by table ID.
+func (p *GenericPlanner) RemoveCDCDescriptorByTableID(
 	ctx context.Context, tableID uint64, instanceType sqlbase.CDCInstanceType, taskID uint64,
 ) error {
 	tableDesc, err := sqlbase.GetMutableTableDescFromID(
@@ -280,7 +273,7 @@ func (p *planner) removeCDCDescriptorByTableID(
 }
 
 // removeCDC deletes the CDC from TableDescriptor.
-func (p *planner) removeCDCDescriptor(
+func (p *GenericPlanner) removeCDCDescriptor(
 	ctx context.Context,
 	tableDesc *sqlbase.MutableTableDescriptor,
 	instanceType sqlbase.CDCInstanceType,
@@ -301,13 +294,13 @@ func (p *planner) removeCDCDescriptor(
 
 	tableDesc.CDC = append(tableDesc.CDC[:cdcIdx], tableDesc.CDC[cdcIdx+1:]...)
 
-	return p.writeSchemaChange(
+	return p.WriteSchemaChange(
 		ctx, tableDesc, sqlbase.InvalidMutationID, "drop cdc",
 	)
 }
 
-// removeCDCWatermarks deletes the record(s) from system.kwdb_cdc_watermark.
-func (p *planner) removeCDCWatermarks(
+// RemoveCDCWatermarks deletes the record(s) from system.kwdb_cdc_watermark.
+func (p *GenericPlanner) RemoveCDCWatermarks(
 	ctx context.Context, instanceType sqlbase.CDCInstanceType, tableID, taskID *uint64,
 ) error {
 	stmt := fmt.Sprintf(`DELETE FROM system.kwdb_cdc_watermark WHERE task_type = %d`, instanceType)
@@ -330,10 +323,10 @@ func (p *planner) removeCDCWatermarks(
 	return err
 }
 
-// removeUnwantedCDCWatermarks deletes the unwanted record(s) from system.kwdb_cdc_watermark.
+// RemoveUnwantedCDCWatermarks deletes the unwanted record(s) from system.kwdb_cdc_watermark.
 // wantedTableIDs is the wanted records, and delete the records with the same task_id and task_type but table_id are not
 // in wantedTableIDs.
-func (p *planner) removeUnwantedCDCWatermarks(
+func (p *GenericPlanner) RemoveUnwantedCDCWatermarks(
 	ctx context.Context,
 	instanceType sqlbase.CDCInstanceType,
 	wantedTableIDs []string,
@@ -360,8 +353,8 @@ func (p *planner) removeUnwantedCDCWatermarks(
 	return err
 }
 
-// tableHasCDC checks whether the specified table has cdc tasks with specified type.
-func (p *planner) tableHasCDC(
+// TableHasCDC checks whether the specified table has cdc tasks with specified type.
+func (p *GenericPlanner) TableHasCDC(
 	ctx context.Context, instanceType sqlbase.CDCInstanceType, tableID *uint64,
 ) (bool, error) {
 	stmt := fmt.Sprintf(
@@ -385,18 +378,18 @@ func (p *planner) tableHasCDC(
 	return len(rows) > 0, nil
 }
 
-// sendDDLToPipe sends the ddl stmt to related pipe and restart pipe.
+// SendDDLToPipe sends the ddl stmt to related pipe and restart pipe.
 // 1. stop the running pipe.
 // 2. send ddl statement to pipe. if send ddl failed, record it in system.kwdb_unpush for resending.
 // 3. start the pipe again.
-func sendDDLToPipe(
-	params runParams,
+func SendDDLToPipe(
+	params RunParams,
 	dbName string,
 	schemaName string,
 	tableName string,
 	ddlType string,
 	stmt string,
-	pipeMetadata []*PipeMetadata,
+	pipeMetadata []*metadata.PipeMetadata,
 	currentTxn bool,
 ) error {
 	// record DDL stmt
@@ -404,7 +397,7 @@ func sendDDLToPipe(
 	for _, pipeMeta := range pipeMetadata {
 		if needRecordDDL(pipeMeta) {
 			if err := recordDDLtoUnpush(
-				params, false, pipeMeta.id, dbName, schemaName, tableName, ddlType, stmt, osn,
+				params, false, pipeMeta.ID, dbName, schemaName, tableName, ddlType, stmt, osn,
 			); err != nil {
 				return err
 			}
@@ -420,25 +413,25 @@ func sendDDLToPipe(
 		}
 
 		if currentTxn {
-			_ = params.p.Txn().Commit(params.ctx)
+			_ = params.p.Txn().Commit(params.Ctx)
 			currentTxn = false
 		}
 
-		log.Infof(params.ctx, "pipe[%s] is disabled by %s. stmt:%s", pipeMeta.name, ddlType, stmt)
-		query = fmt.Sprintf(`ALTER PIPE %s SET OPTIONS(enable='off')`, pipeMeta.name)
+		log.Infof(params.Ctx, "pipe[%s] is disabled by %s. stmt:%s", pipeMeta.Name, ddlType, stmt)
+		query = fmt.Sprintf(`ALTER PIPE %s SET OPTIONS(enable='off')`, pipeMeta.Name)
 		err := execStatementAboutPipe(params, currentTxn,
 			"alter-pipe-off", query)
 		if err != nil {
-			log.Warningf(params.ctx, "alter pipe[%s] off in %s failed. err: %s", pipeMeta.name, ddlType, err)
+			log.Warningf(params.Ctx, "alter pipe[%s] off in %s failed. err: %s", pipeMeta.Name, ddlType, err)
 		}
 
 		restartPipes = append(restartPipes, i)
 
 		if needSend(pipeMeta) {
-			sinURI := pipeMeta.paraInfo.PipeOptions.Sink
-			bufferSize := pipeMeta.paraInfo.PipeOptions.BufferSize
+			sinURI := pipeMeta.ParaInfo.PipeOptions.Sink
+			bufferSize := pipeMeta.ParaInfo.PipeOptions.BufferSize
 			err = params.ExecCfg().CDCCoordinator.SendToPipeImmediately(
-				params.ctx,
+				params.Ctx,
 				dbName,
 				schemaName,
 				tableName,
@@ -449,7 +442,7 @@ func sendDDLToPipe(
 				osn,
 			)
 			if err != nil {
-				log.Warningf(params.ctx, "pipe[%s] sends %s ddl failed. err: %s", pipeMeta.name, ddlType, err)
+				log.Warningf(params.Ctx, "pipe[%s] sends %s ddl failed. err: %s", pipeMeta.Name, ddlType, err)
 			}
 		}
 	}
@@ -458,13 +451,13 @@ func sendDDLToPipe(
 	for _, i := range restartPipes {
 		pipeMeta := pipeMetadata[i]
 
-		log.Infof(params.ctx, "pipe[%s] is enabled by %s. stmt:%s", pipeMeta.name, ddlType, stmt)
+		log.Infof(params.Ctx, "pipe[%s] is enabled by %s. stmt:%s", pipeMeta.Name, ddlType, stmt)
 		// restart pipe and reset low-watermark to osn
 		query = fmt.Sprintf(`ALTER PIPE %s SET OPTIONS(enable='on',low_watermark=%v)`,
-			pipeMeta.name, tree.MakeDTimestamp(osn, sqlbase.TSIDDPrecision))
+			pipeMeta.Name, tree.MakeDTimestamp(osn, sqlbase.TSIDDPrecision))
 		err := execStatementAboutPipe(params, currentTxn, "alter-pipe-on", query)
 		if err != nil {
-			log.Warningf(params.ctx, "alter pipe[%s] on in %s failed. err: %s", pipeMeta.name, ddlType, err)
+			log.Warningf(params.Ctx, "alter pipe[%s] on in %s failed. err: %s", pipeMeta.Name, ddlType, err)
 		}
 	}
 
@@ -473,7 +466,7 @@ func sendDDLToPipe(
 
 // recordDDLtoUnpush records the ddl to unpush.
 func recordDDLtoUnpush(
-	params runParams,
+	params RunParams,
 	currentTxn bool,
 	id uint64,
 	dbName, schemaName, tableName, ddlType, stmt string,
@@ -497,7 +490,7 @@ func recordDDLtoUnpush(
 	)
 
 	if err != nil {
-		log.Warningf(params.ctx, "inserts record in system.kwdb_unpush failed. stmt: %s. %v", stmt, err)
+		log.Warningf(params.Ctx, "inserts record in system.kwdb_unpush failed. stmt: %s. %v", stmt, err)
 		return err
 	}
 
@@ -507,13 +500,13 @@ func recordDDLtoUnpush(
 // execStatementAboutPipe executes the specified query with specified args.
 // if withCurrentTxn is true, the query is executed with current txn. Otherwise, create new txn and execute the query.
 func execStatementAboutPipe(
-	params runParams, withCurrentTxn bool, op string, query string, args ...interface{},
+	params RunParams, withCurrentTxn bool, op string, query string, args ...interface{},
 ) error {
 	var err error
 	if withCurrentTxn {
 		if len(args) > 0 {
 			_, err = params.ExecCfg().InternalExecutor.ExecEx(
-				params.ctx,
+				params.Ctx,
 				op,
 				params.p.txn,
 				sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
@@ -522,7 +515,7 @@ func execStatementAboutPipe(
 			)
 		} else {
 			_, err = params.ExecCfg().InternalExecutor.ExecEx(
-				params.ctx,
+				params.Ctx,
 				op,
 				params.p.txn,
 				sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
@@ -531,9 +524,9 @@ func execStatementAboutPipe(
 		}
 	} else {
 		if len(args) > 0 {
-			err = params.p.ExecCfg().DB.Txn(params.ctx, func(ctx context.Context, txn *kv.Txn) error {
+			err = params.p.ExecCfg().DB.Txn(params.Ctx, func(ctx context.Context, txn *kv.Txn) error {
 				_, errInner := params.ExecCfg().InternalExecutor.ExecEx(
-					params.ctx,
+					params.Ctx,
 					op,
 					txn,
 					sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
@@ -543,9 +536,9 @@ func execStatementAboutPipe(
 				return errInner
 			})
 		} else {
-			err = params.p.ExecCfg().DB.Txn(params.ctx, func(ctx context.Context, txn *kv.Txn) error {
+			err = params.p.ExecCfg().DB.Txn(params.Ctx, func(ctx context.Context, txn *kv.Txn) error {
 				_, errInner := params.ExecCfg().InternalExecutor.ExecEx(
-					params.ctx,
+					params.Ctx,
 					op,
 					txn,
 					sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
@@ -560,13 +553,13 @@ func execStatementAboutPipe(
 }
 
 // needRecordDDL returns if the pipe need save DDL
-func needRecordDDL(pipeMeta *PipeMetadata) bool {
-	if pipeMeta.paraInfo.PipeOptions.IgnoreHistory == optOn {
+func needRecordDDL(pipeMeta *metadata.PipeMetadata) bool {
+	if pipeMeta.ParaInfo.PipeOptions.IgnoreHistory == sqlconst.OptOn {
 		return false
 	}
 
-	if !strings.Contains(pipeMeta.paraInfo.PipeOptions.Publish, cdcpb.EventAll) &&
-		!strings.Contains(pipeMeta.paraInfo.PipeOptions.Publish, cdcpb.EventDDL) {
+	if !strings.Contains(pipeMeta.ParaInfo.PipeOptions.Publish, cdcpb.EventAll) &&
+		!strings.Contains(pipeMeta.ParaInfo.PipeOptions.Publish, cdcpb.EventDDL) {
 		return false
 	}
 
@@ -576,13 +569,13 @@ func needRecordDDL(pipeMeta *PipeMetadata) bool {
 // When the pipe is in the disabled state, the table low_watermark is not InvalidWatermark,
 // and the user has disabled ignore_history, it is necessary to record the DDL.
 // After restarting the pipe, send the data.
-func needSend(pipeMeta *PipeMetadata) bool {
-	if pipeMeta.status == statusDisable {
+func needSend(pipeMeta *metadata.PipeMetadata) bool {
+	if pipeMeta.Status == sqlconst.StatusDisable {
 		return false
 	}
 
-	if !strings.Contains(pipeMeta.paraInfo.PipeOptions.Publish, cdcpb.EventAll) &&
-		!strings.Contains(pipeMeta.paraInfo.PipeOptions.Publish, cdcpb.EventDDL) {
+	if !strings.Contains(pipeMeta.ParaInfo.PipeOptions.Publish, cdcpb.EventAll) &&
+		!strings.Contains(pipeMeta.ParaInfo.PipeOptions.Publish, cdcpb.EventDDL) {
 		return false
 	}
 
@@ -590,20 +583,20 @@ func needSend(pipeMeta *PipeMetadata) bool {
 }
 
 // needToRestart returns if the pipe need restart when DDL.
-func needToRestart(pipeMeta *PipeMetadata) bool {
-	return pipeMeta.status == statusEnable
+func needToRestart(pipeMeta *metadata.PipeMetadata) bool {
+	return pipeMeta.Status == sqlconst.StatusEnable
 }
 
 // checkDatabaseRelatedPubsAndSubs checks whether the specified databases have been published or subscribed.
 // Return error if anyone of the specified databases has been published or subscribed.
 func checkDatabaseRelatedPubsAndSubs(
-	ctx context.Context, p *planner, dbDesc *sqlbase.DatabaseDescriptor,
+	ctx context.Context, p *GenericPlanner, dbDesc *sqlbase.DatabaseDescriptor,
 ) error {
 	if dbDesc == nil {
 		return nil
 	}
 	// check whether the database to be deleted has been published.
-	pubDBMap, _, err := p.fetchAllPublishedObjects(ctx, dbDesc)
+	pubDBMap, _, err := FetchAllPublishedObjects(ctx, p, dbDesc)
 	if err != nil {
 		return err
 	}
@@ -616,25 +609,204 @@ func checkDatabaseRelatedPubsAndSubs(
 	return nil
 }
 
-// checkTableRelatedPubsAndSubs checks whether the specified table has been published or subscribed.
-// Return error if the specified table has been published or subscribed.
-func checkTableRelatedPubsAndSubs(
-	ctx context.Context,
-	p *planner,
-	tableID uint64,
-	tableName string,
-	opName string,
-	dbDesc *DatabaseDescriptor,
+// FetchAllPublishedObjects fetches and return all published databases and tables.
+// The first returned map is published databases, database name -> published.
+// The second returned map is published tables, table ID -> publication name.
+func FetchAllPublishedObjects(
+	ctx context.Context, p *GenericPlanner, dbDesc *DatabaseDescriptor,
+) (map[string]bool, map[uint64]string, error) {
+	rows, err := p.ExecCfg().InternalExecutor.QueryEx(
+		ctx,
+		"query-all-pubs",
+		p.txn,
+		sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
+		"SELECT name, database_id, parameters FROM system.kwdb_publications",
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// pub does not exist
+	if len(rows) == 0 {
+		return nil, nil, nil
+	}
+
+	var dbMap = make(map[string]bool)
+	var tableMap = make(map[uint64]string)
+	var pubInfo cdcpb.PubParameters
+	for _, row := range rows {
+		name := row[0].String()
+		dbID := sqlbase.ID(tree.MustBeDInt(row[1]))
+		pubInfo, err = cdcpb.UnmarshalPubParameters(tree.MustBeDJSON(row[2]).JSON)
+		if err != nil {
+			return nil, nil, nil
+		}
+		if dbID > 0 && dbDesc != nil && dbID == dbDesc.GetID() {
+			// database is published
+			dbMap[dbDesc.GetName()] = true
+		}
+		for _, tableInfo := range pubInfo.TableList {
+			tableMap[tableInfo.ID] = name
+			if _, ok := dbMap[tableInfo.Database]; !ok {
+				// table is published, put the parent database in dbMap, but the value is false.
+				dbMap[tableInfo.Database] = false
+			}
+		}
+	}
+	return dbMap, tableMap, nil
+}
+
+// CheckPubSubDDLPrivilege verifies if the user has `privilege` on `subscription`.
+func (p *GenericPlanner) CheckPubSubDDLPrivilege(
+	ctx context.Context, priv privilege.Kind, name string, owner string,
 ) error {
-	// check whether the database to be deleted has been published.
-	_, pubTableMap, err := p.fetchAllPublishedObjects(ctx, dbDesc)
+	// verify user has system admin role in separate power or admin role.
+	isAdmin, err := p.HasAdminRole(ctx)
 	if err != nil {
 		return err
 	}
-	if _, ok := pubTableMap[tableID]; ok {
-		return pgerror.Newf(pgcode.ObjectInUse,
-			"table %s is published and cannot be %s", tableName, opName)
+
+	if isAdmin {
+		return nil
 	}
 
+	// verify if the current user is creator of the specified object in alter and drop case.
+	currentUser := p.User()
+	if owner != currentUser {
+		return pgerror.Newf(pgcode.InsufficientPrivilege,
+			"user %s does not have %s privilege on %s",
+			currentUser, priv, name)
+	}
 	return nil
+}
+
+// MarshalCDCFilter extracts the filter expressions of metrics and tags from the physical plan
+// and marshals them to bytes. They will be applied during the data capture phase.
+func MarshalCDCFilter(
+	ctx context.Context,
+	txn *kv.Txn,
+	user string,
+	execCfg *ExecutorConfig,
+	tableInfo *cdcpb.CDCTableInfo,
+) ([]byte, [][]byte, error) {
+	// make a new local planner
+	plan, cleanup := newInternalPlanner("CDC-filter-builder", txn, user, &MemoryMetrics{}, execCfg)
+	defer cleanup()
+
+	// The column order in the filter must be consistent with that in the payload
+	query := fmt.Sprintf("SELECT * FROM %s.%s WHERE %s",
+		tableInfo.Database,
+		tableInfo.Table,
+		tableInfo.Filter)
+	stmt, err := parser.ParseOne(query)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	localPlanner := plan
+	localPlanner.stmt = &Statement{Statement: stmt}
+	localPlanner.forceFilterInME = true
+	localPlanner.optPlanningCtx.init(localPlanner)
+
+	localPlanner.RunWithOptions(ResolveFlags{SkipCache: true}, func() {
+		err = localPlanner.makeOptimizerPlan(ctx)
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	defer localPlanner.curPlan.close(ctx)
+	rec, err := localPlanner.DistSQLPlanner().checkSupportForNode(localPlanner.curPlan.plan)
+	isLocal := err != nil || rec == cannotDistribute
+	if len(localPlanner.curPlan.subqueryPlans) != 0 {
+		return nil, nil, pgerror.New(pgcode.FeatureNotSupported, "cannot include sub-query in the pub filter")
+	}
+
+	evalCtx := localPlanner.ExtendedEvalContext()
+	planCtx := localPlanner.DistSQLPlanner().NewPlanningCtx(ctx, evalCtx, txn)
+	planCtx.isLocal = isLocal
+	planCtx.cdcCtx = &CDCContext{}
+	planCtx.planner = localPlanner
+	planCtx.stmtType = tree.Rows
+
+	physPlan, err := localPlanner.DistSQLPlanner().createPlanForNode(planCtx, localPlanner.curPlan.plan)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	localPlanner.DistSQLPlanner().FinalizePlan(planCtx, &physPlan)
+
+	if len(physPlan.Processors) == 1 {
+		if physPlan.Processors[0].Spec.Core.Values != nil {
+			return nil, nil, pgerror.Newf(pgcode.FeatureNotSupported, "pub filter %q is invalid", tableInfo.Filter)
+		}
+	}
+
+	var metricsFilter []byte
+	var tagFilter [][]byte
+
+	if planCtx.cdcCtx != nil && planCtx.cdcCtx.metricsFilter.Expr != "" {
+		metricsFilter, err = protoutil.Marshal(&planCtx.cdcCtx.metricsFilter)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	if planCtx.cdcCtx != nil && planCtx.cdcCtx.tagFilter != nil {
+		for _, tf := range planCtx.cdcCtx.tagFilter {
+			filler, err := protoutil.Marshal(&tf)
+			if err != nil {
+				return nil, nil, err
+			}
+			tagFilter = append(tagFilter, filler)
+		}
+	}
+
+	return metricsFilter, tagFilter, nil
+}
+
+// ConstructRunInfo constructs run information for CDC job execution
+func ConstructRunInfo(
+	runInfoList []cdcpb.RunInfo, jobID int64, jobError error,
+) (string, json.JSON, error) {
+	status := sqlconst.StatusEnable
+	index := -1
+	for i, v := range runInfoList {
+		if v.JobID == jobID {
+			index = i
+			break
+		}
+	}
+
+	if index == -1 {
+		runInfoList = append(runInfoList, cdcpb.RunInfo{
+			JobID:     jobID,
+			StartTime: timeutil.Now().Format(time.RFC3339),
+		})
+
+		if len(runInfoList) > sqlconst.CdcMaxRunInfo {
+			runInfoList = runInfoList[1:]
+		}
+
+		index = len(runInfoList) - 1
+	}
+
+	if jobError != nil {
+		runInfoList[index].EndTime = timeutil.Now().Format(time.RFC3339)
+		errMsg := jobError.Error()
+
+		// error message 'stopped successfully' means the job is stopped by user,
+		// consider it as a normal situation.
+		if !strings.Contains(errMsg, "stopped successfully") {
+			runInfoList[index].ErrorMessage = errMsg
+		}
+		status = sqlconst.StatusDisable
+	}
+
+	rInfo, err := cdcpb.MarshalRunInfo(runInfoList)
+	if err != nil {
+		return "", nil, err
+	}
+
+	return status, rInfo, nil
 }

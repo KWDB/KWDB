@@ -31,7 +31,7 @@ import (
 
 // SetTransaction sets a transaction's isolation level, priority, ro/rw state,
 // and as of timestamp.
-func (p *planner) SetTransaction(n *tree.SetTransaction) (planNode, error) {
+func (p *GenericPlanner) SetTransaction(n *tree.SetTransaction) (PlanNode, error) {
 	var asOfTs hlc.Timestamp
 	if n.Modes.AsOf.Expr != nil {
 		var err error
@@ -45,5 +45,5 @@ func (p *planner) SetTransaction(n *tree.SetTransaction) (planNode, error) {
 	if err := p.extendedEvalCtx.TxnModesSetter.setTransactionModes(n.Modes, asOfTs); err != nil {
 		return nil, err
 	}
-	return newZeroNode(nil /* columns */), nil
+	return NewZeroNode(nil /* columns */), nil
 }

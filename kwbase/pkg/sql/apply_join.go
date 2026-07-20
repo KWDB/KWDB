@@ -117,7 +117,7 @@ func newApplyJoinNode(
 	pred *joinPredicate,
 	right memo.RelExpr,
 	planRightSideFn exec.ApplyJoinPlanRightSideFn,
-) (planNode, error) {
+) (PlanNode, error) {
 	switch joinType {
 	case sqlbase.JoinType_RIGHT_OUTER, sqlbase.JoinType_FULL_OUTER:
 		return nil, errors.AssertionFailedf("unsupported right outer apply join: %d", log.Safe(joinType))
@@ -136,7 +136,7 @@ func newApplyJoinNode(
 	}, nil
 }
 
-func (a *applyJoinNode) startExec(params runParams) error {
+func (a *applyJoinNode) StartExec(params RunParams) error {
 	// If needed, pre-allocate a right row of NULL tuples for when the
 	// join predicate fails to match.
 	if a.joinType == sqlbase.LeftOuterJoin {
@@ -153,7 +153,7 @@ func (a *applyJoinNode) startExec(params runParams) error {
 	return nil
 }
 
-func (a *applyJoinNode) Next(params runParams) (bool, error) {
+func (a *applyJoinNode) Next(params RunParams) (bool, error) {
 	if a.run.done {
 		return false, nil
 	}
@@ -192,7 +192,7 @@ func (a *applyJoinNode) Next(params runParams) (bool, error) {
 		}
 		// We're out of right side rows. Clear them, and reset the match state for
 		// next time.
-		a.run.rightRows.Clear(params.ctx)
+		a.run.rightRows.Clear(params.Ctx)
 		foundAMatch := a.run.leftRowFoundAMatch
 		a.run.leftRowFoundAMatch = false
 
@@ -261,16 +261,16 @@ func (a *applyJoinNode) Next(params runParams) (bool, error) {
 // a.run.rightRows, ready for retrieval. An error indicates that something went
 // wrong during execution of the right hand side of the join, and that we should
 // completely give up on the outer join.
-func (a *applyJoinNode) runRightSidePlan(params runParams, plan *planTop) error {
+func (a *applyJoinNode) runRightSidePlan(params RunParams, plan *planTop) error {
 	a.run.curRightRow = 0
-	a.run.rightRows.Clear(params.ctx)
+	a.run.rightRows.Clear(params.Ctx)
 	return runPlanInsidePlan(params, plan, a.run.rightRows)
 }
 
 // runPlanInsidePlan is used to run a plan and gather the results in a row
 // container, as part of the execution of an "outer" plan.
 func runPlanInsidePlan(
-	params runParams, plan *planTop, rowContainer *rowcontainer.RowContainer,
+	params RunParams, plan *planTop, rowContainer *rowcontainer.RowContainer,
 ) error {
 	rowResultWriter := NewRowResultWriter(rowContainer)
 	return runPlanImplement(params, plan, rowResultWriter, tree.Rows, true, false)

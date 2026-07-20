@@ -58,11 +58,13 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/eventlog"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlutil"
 	"gitee.com/kwbasedb/kwbase/pkg/ts/catalog"
 	"gitee.com/kwbasedb/kwbase/pkg/util/contextutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
@@ -1100,7 +1102,7 @@ func (s *adminServer) Events(
 		if err := scanner.ScanIndex(row, 4, &event.Info); err != nil {
 			return nil, err
 		}
-		if event.EventType == string(sql.EventLogSetClusterSetting) {
+		if event.EventType == string(eventlog.EventLogSetClusterSetting) {
 			if redactEvents {
 				event.Info = redactSettingsChange(event.Info)
 			}
@@ -1116,7 +1118,7 @@ func (s *adminServer) Events(
 
 // make a best-effort attempt at redacting the setting value.
 func redactSettingsChange(info string) string {
-	var s sql.EventLogSetClusterSettingDetail
+	var s eventlog.EventLogSetClusterSettingDetail
 	if err := json.Unmarshal([]byte(info), &s); err != nil {
 		return ""
 	}
@@ -2141,7 +2143,7 @@ func (s *adminServer) DataDistribution(
 		acct := s.memMonitor.MakeBoundAccount()
 		defer acct.Close(txnCtx)
 
-		kvs, err := sql.ScanMetaKVs(ctx, txn, roachpb.Span{
+		kvs, err := sqlutil.ScanMetaKVs(ctx, txn, roachpb.Span{
 			Key:    keys.UserTableDataMin,
 			EndKey: keys.MaxKey,
 		})
@@ -2870,7 +2872,7 @@ func getRangeDescByID(
 ) (roachpb.RangeDescriptor, error) {
 	var err error
 	var ranges []kv.KeyValue
-	if ranges, err = sql.ScanMetaKVs(ctx, txn, roachpb.Span{
+	if ranges, err = sqlutil.ScanMetaKVs(ctx, txn, roachpb.Span{
 		Key:    keys.UserTableDataMin,
 		EndKey: keys.MaxKey,
 	}); err != nil {

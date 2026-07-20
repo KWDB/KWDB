@@ -239,9 +239,9 @@ func TestTriggerHelperExecuteIns(t *testing.T) {
 		fn:      nil,
 	}
 
-	p := makeTestPlanner()
+	p := MakeTestPlanner()
 	ctx := context.TODO()
-	params := runParams{ctx: ctx, p: p, extendedEvalCtx: &p.extendedEvalCtx}
+	params := RunParams{Ctx: ctx, p: p, extendedEvalCtx: &p.extendedEvalCtx}
 
 	// Test case 1: ins is nil
 	err := h.ExecuteIns(params, &datums, nil)

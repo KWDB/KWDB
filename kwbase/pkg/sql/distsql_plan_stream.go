@@ -13,12 +13,14 @@ package sql
 
 import (
 	"context"
+	"fmt"
 
 	"gitee.com/kwbasedb/kwbase/pkg/cdc/cdcpb"
 	"gitee.com/kwbasedb/kwbase/pkg/jobs"
 	"gitee.com/kwbasedb/kwbase/pkg/jobs/jobspb"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
+	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/optbuilder"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
@@ -28,13 +30,61 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/rowcontainer"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlconst"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlutil"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/json"
+	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
+	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
 	"github.com/cockroachdb/logtags"
 	"github.com/pkg/errors"
 )
+
+// RowResultWriterAPI defines the API for writing row results in stream processing,
+// extending rowResultWriter with a Close method for cleanup.
+type RowResultWriterAPI interface {
+	rowResultWriter
+	Close()
+}
+
+// NewStreamResultWriter creates a new result writer for stream query results
+var NewStreamResultWriter func(
+	ctx context.Context,
+	metadata *cdcpb.StreamMetadata,
+	parameters *sqlutil.StreamParameters,
+	resultTypes []types.T,
+	targetTypes []types.T,
+	rowContainer *rowcontainer.RowContainer,
+	execCfg *ExecutorConfig,
+	stopper *stop.Stopper,
+) RowResultWriterAPI
+
+// MakeAndRunStreamPlan make and run stream plan and implements the Job interface.
+func MakeAndRunStreamPlan(
+	ctx context.Context,
+	job *jobs.Job,
+	originalPlan *GenericPlanner,
+	streamSpec *execinfrapb.StreamReaderSpec,
+	finishedSetupFn func(),
+) error {
+	streamTxn := kv.NewTxn(ctx, originalPlan.execCfg.DB, originalPlan.execCfg.NodeID.Get())
+	// make a new local planner
+	p, cleanup := newInternalPlanner("stream-physical-plan-builder", streamTxn, security.RootUser,
+		&MemoryMetrics{}, originalPlan.execCfg)
+	defer cleanup()
+	p.SessionData().Database = originalPlan.SessionData().Database
+	p.SessionData().SearchPath = originalPlan.SessionData().SearchPath
+
+	dsp := p.DistSQLPlanner()
+	// Prepare the planning context.
+	evalCtx := p.ExtendedEvalContext()
+	planCtx := dsp.NewPlanningCtx(ctx, evalCtx, streamTxn)
+	planCtx.planner = p
+	planCtx.streamSpec = streamSpec
+
+	return dsp.planAndRunCreateStream(ctx, evalCtx, planCtx, streamTxn, job, finishedSetupFn)
+}
 
 // planAndRunCreateStream builds and runs the plan of stream.
 func (dsp *DistSQLPlanner) planAndRunCreateStream(
@@ -69,7 +119,7 @@ func (dsp *DistSQLPlanner) planAndRunCreateStream(
 
 	localPlanner.optPlanningCtx.init(localPlanner)
 
-	localPlanner.runWithOptions(resolveFlags{skipCache: true}, func() {
+	localPlanner.RunWithOptions(ResolveFlags{SkipCache: true}, func() {
 		err = localPlanner.makeOptimizerPlan(ctx)
 	})
 	if err != nil {
@@ -105,14 +155,12 @@ func (dsp *DistSQLPlanner) planAndRunCreateStream(
 	dsp.FinalizePlan(planCtx, &physPlan)
 
 	colTypes := sqlbase.ColTypeInfoFromColTypes(physPlan.ResultTypes)
-	rowContainer := rowcontainer.NewRowContainer(evalCtx.Mon.MakeBoundAccount(), colTypes, streamInsertBatch)
+	rowContainer := rowcontainer.NewRowContainer(evalCtx.Mon.MakeBoundAccount(), colTypes, sqlconst.StreamInsertBatch)
 	streamResultWriter := NewStreamResultWriter(
 		ctx, streamDetails.StreamMetadata, &streamPara, physPlan.ResultTypes, streamDetails.TargetTableColTypes,
 		rowContainer, evalCtx.ExecCfg, dsp.stopper,
 	)
-	defer func() {
-		streamResultWriter.Close()
-	}()
+	defer streamResultWriter.Close()
 
 	recv := MakeDistSQLReceiver(
 		ctx,
@@ -133,9 +181,82 @@ func (dsp *DistSQLPlanner) planAndRunCreateStream(
 	return streamResultWriter.Err()
 }
 
-// createPlanForStream create a plan for stream.
-func createPlanForStream(
-	ctx context.Context, params runParams, query string, metadata *cdcpb.StreamMetadata, hasAgg bool,
+// MarshalStreamFilter extracts the filter expressions of metrics and tags from the physical plan
+// and marshals them to bytes. They will be applied during the data capture phase
+func MarshalStreamFilter(
+	params RunParams, metadata *cdcpb.StreamMetadata, sourceTable *cdcpb.CDCTableInfo,
+) error {
+	// make a new local planner
+	plan, cleanup := newInternalPlanner("stream-filter-builder", params.p.txn, params.p.User(),
+		&MemoryMetrics{}, params.ExecCfg())
+	defer cleanup()
+
+	// The column order in the filter must be consistent with that in the payload
+	streamQuery := fmt.Sprintf("SELECT * FROM %s.%s ",
+		sourceTable.Database,
+		sourceTable.Table)
+
+	if sourceTable.Filter != "" {
+		streamQuery += " WHERE " + sourceTable.Filter
+	}
+
+	stmt, err := parser.ParseOne(streamQuery)
+	if err != nil {
+		return err
+	}
+	localPlanner := plan
+	localPlanner.stmt = &Statement{Statement: stmt}
+	localPlanner.forceFilterInME = true
+	localPlanner.inStream = true
+	localPlanner.SessionData().Database = params.p.CurrentDatabase()
+	localPlanner.SessionData().SearchPath = params.p.CurrentSearchPath()
+
+	localPlanner.optPlanningCtx.init(localPlanner)
+
+	localPlanner.RunWithOptions(ResolveFlags{SkipCache: true}, func() {
+		err = localPlanner.makeOptimizerPlan(params.Ctx)
+	})
+	if err != nil {
+		return err
+	}
+	defer localPlanner.curPlan.close(params.Ctx)
+
+	evalCtx := localPlanner.ExtendedEvalContext()
+	planCtx := localPlanner.DistSQLPlanner().NewPlanningCtx(params.Ctx, evalCtx, params.p.txn)
+	planCtx.isLocal = true
+	planCtx.isStream = false
+	planCtx.cdcCtx = &CDCContext{}
+	planCtx.planner = localPlanner
+	planCtx.stmtType = tree.Rows
+
+	physPlan, err := localPlanner.DistSQLPlanner().createPlanForNode(planCtx, localPlanner.curPlan.plan)
+	if err != nil {
+		return err
+	}
+
+	localPlanner.DistSQLPlanner().FinalizePlan(planCtx, &physPlan)
+
+	if planCtx.cdcCtx.metricsFilter.Expr != "" {
+		metadata.MetricsFilter, err = protoutil.Marshal(&planCtx.cdcCtx.metricsFilter)
+		if err != nil {
+			return err
+		}
+	}
+
+	for _, tf := range planCtx.cdcCtx.tagFilter {
+		filler, err := protoutil.Marshal(&tf)
+		if err != nil {
+			return err
+		}
+		metadata.TagFilter = append(metadata.TagFilter, filler)
+	}
+
+	return nil
+}
+
+// CreatePlanForStream create a plan for stream.
+func CreatePlanForStream(
+	ctx context.Context, params RunParams, query string, metadata *cdcpb.StreamMetadata, hasAgg bool,
 ) (PhysicalPlan, error) {
 	var p PhysicalPlan
 	// make a new local planner
@@ -161,7 +282,7 @@ func createPlanForStream(
 
 	localPlanner.optPlanningCtx.init(localPlanner)
 
-	localPlanner.runWithOptions(resolveFlags{skipCache: true}, func() {
+	localPlanner.RunWithOptions(ResolveFlags{SkipCache: true}, func() {
 		err = localPlanner.makeOptimizerPlan(ctx)
 	})
 	if err != nil {
@@ -415,7 +536,7 @@ func (dsp *DistSQLPlanner) addStreamAggregators(
 
 	// Set up the final stage.
 	// Update p.PlanToStreamColMap; we will have a simple 1-to-1 mapping of
-	// planNode columns to stream columns because the aggregator
+	// PlanNode columns to stream columns because the aggregator
 	// has been programmed to produce the same columns as the groupNode.
 	p.PlanToStreamColMap = identityMap(p.PlanToStreamColMap, len(aggregations))
 

@@ -61,7 +61,7 @@ type deleteRangeNode struct {
 	// we can count the number of rows deleted.
 	fetcher row.Fetcher
 
-	// autoCommitEnabled is set to true if the optimizer proved that we can safely
+	// ddl_opts.AutoCommitEnabled is set to true if the optimizer proved that we can safely
 	// use autocommit - so that the number of possible returned keys from this
 	// operation is low. If this is true, we won't attempt to run the delete in
 	// batches and will just send one big delete with a commit statement attached.
@@ -71,8 +71,8 @@ type deleteRangeNode struct {
 	rowCount int
 }
 
-var _ planNode = &deleteRangeNode{}
-var _ planNodeFastPath = &deleteRangeNode{}
+var _ PlanNode = &deleteRangeNode{}
+var _ PlanNodeFastPath = &deleteRangeNode{}
 var _ batchedPlanNode = &deleteRangeNode{}
 
 // canDeleteFast determines if the deletion of `rows` can be done
@@ -84,10 +84,10 @@ var _ batchedPlanNode = &deleteRangeNode{}
 // (to ensure that keys deleted from child tables are truly within the range to be deleted).
 //
 // This logic should be kept in sync with exec.Builder.canUseDeleteRange.
-// TODO(andyk): Remove when the heuristic planner code is removed.
+// TODO(andyk): Remove when the heuristic GenericPlanner code is removed.
 func maybeCreateDeleteFastNode(
 	ctx context.Context,
-	source planNode,
+	source PlanNode,
 	desc *ImmutableTableDescriptor,
 	fkTables row.FkTableMetadata,
 	fastPathInterleaved bool,
@@ -155,7 +155,7 @@ func maybeCreateDeleteFastNode(
 }
 
 // BatchedNext implements the batchedPlanNode interface.
-func (d *deleteRangeNode) BatchedNext(params runParams) (bool, error) {
+func (d *deleteRangeNode) BatchedNext(params RunParams) (bool, error) {
 	return false, nil
 }
 
@@ -169,13 +169,13 @@ func (d *deleteRangeNode) BatchedValues(rowIdx int) tree.Datums {
 	panic("invalid")
 }
 
-// FastPathResults implements the planNodeFastPath interface.
+// FastPathResults implements the PlanNodeFastPath interface.
 func (d *deleteRangeNode) FastPathResults() (int, bool) {
 	return d.rowCount, true
 }
 
-// startExec implements the planNode interface.
-func (d *deleteRangeNode) startExec(params runParams) error {
+// StartExec implements the PlanNode interface.
+func (d *deleteRangeNode) StartExec(params RunParams) error {
 	if err := params.p.cancelChecker.Check(); err != nil {
 		return err
 	}
@@ -211,7 +211,7 @@ func (d *deleteRangeNode) startExec(params runParams) error {
 	); err != nil {
 		return err
 	}
-	ctx := params.ctx
+	ctx := params.Ctx
 	log.VEvent(ctx, 2, "fast delete: skipping scan")
 	spans := make([]roachpb.Span, len(d.spans))
 	copy(spans, d.spans)
@@ -267,7 +267,7 @@ func (d *deleteRangeNode) startExec(params runParams) error {
 }
 
 // deleteSpans adds each input span to a DelRange command in the given batch.
-func (d *deleteRangeNode) deleteSpans(params runParams, b *kv.Batch, spans roachpb.Spans) error {
+func (d *deleteRangeNode) deleteSpans(params RunParams, b *kv.Batch, spans roachpb.Spans) error {
 
 	txn := params.p.Txn()
 	// todo(fxy/zhuodong):
@@ -285,7 +285,7 @@ func (d *deleteRangeNode) deleteSpans(params runParams, b *kv.Batch, spans roach
 		}
 	}
 
-	ctx := params.ctx
+	ctx := params.Ctx
 	traceKV := params.p.ExtendedEvalContext().Tracing.KVTracingEnabled()
 	for _, span := range spans {
 		if traceKV {
@@ -331,15 +331,15 @@ func (d *deleteRangeNode) processResults(
 	return resumeSpans, nil
 }
 
-// Next implements the planNode interface.
-func (*deleteRangeNode) Next(params runParams) (bool, error) {
+// Next implements the PlanNode interface.
+func (*deleteRangeNode) Next(params RunParams) (bool, error) {
 	panic("invalid")
 }
 
-// Values implements the planNode interface.
+// Values implements the PlanNode interface.
 func (*deleteRangeNode) Values() tree.Datums {
 	panic("invalid")
 }
 
-// Close implements the planNode interface.
+// Close implements the PlanNode interface.
 func (*deleteRangeNode) Close(ctx context.Context) {}

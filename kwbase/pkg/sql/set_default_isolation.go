@@ -31,7 +31,10 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/errorutil/unimplemented"
 )
 
-func (p *planner) SetSessionCharacteristics(n *tree.SetSessionCharacteristics) (planNode, error) {
+// SetSessionCharacteristics configures session-level characteristics for the transaction
+func (p *GenericPlanner) SetSessionCharacteristics(
+	n *tree.SetSessionCharacteristics,
+) (PlanNode, error) {
 	// Note: We also support SET DEFAULT_TRANSACTION_ISOLATION TO ' .... ' above.
 	// Ensure both versions stay in sync.
 	switch n.Modes.Isolation {
@@ -59,5 +62,5 @@ func (p *planner) SetSessionCharacteristics(n *tree.SetSessionCharacteristics) (
 		return nil, unimplemented.New("default transaction priority",
 			"unsupported session default: transaction priority")
 	}
-	return newZeroNode(nil /* columns */), nil
+	return NewZeroNode(nil /* columns */), nil
 }

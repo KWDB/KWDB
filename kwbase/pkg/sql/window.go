@@ -32,7 +32,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 )
 
-// A windowNode implements the planNode interface and handles windowing logic.
+// A windowNode implements the PlanNode interface and handles windowing logic.
 //
 // windowRender will contain renders that will output the desired result
 // columns (so len(windowRender) == len(columns)).
@@ -50,9 +50,11 @@ import (
 //
 // Therefore, the schema of the source node will be changed to look as follows:
 // pass through column | OVER clauses columns | arguments to window functions.
+var _ PlanNode = &windowNode{}
+
 type windowNode struct {
 	// The source node.
-	plan planNode
+	plan PlanNode
 	// columns is the set of result columns.
 	columns sqlbase.ResultColumns
 
@@ -72,11 +74,11 @@ type windowNode struct {
 	engine tree.EngineType
 }
 
-func (n *windowNode) startExec(params runParams) error {
+func (n *windowNode) StartExec(params RunParams) error {
 	panic("windowNode can't be run in local mode")
 }
 
-func (n *windowNode) Next(params runParams) (bool, error) {
+func (n *windowNode) Next(params RunParams) (bool, error) {
 	panic("windowNode can't be run in local mode")
 }
 

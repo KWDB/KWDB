@@ -390,7 +390,7 @@ func TestKWDBInternalTablesPopulate(t *testing.T) {
 	// Get the executor config
 	execCfg := s.ExecutorConfig().(ExecutorConfig)
 
-	// Create a planner with admin privileges
+	// Create a GenericPlanner with admin privileges
 	localPlanner, cleanup := NewInternalPlanner(
 		"test",
 		kv.NewTxn(ctx, db, s.NodeID()),
@@ -399,7 +399,7 @@ func TestKWDBInternalTablesPopulate(t *testing.T) {
 		&execCfg,
 	)
 	defer cleanup()
-	p := localPlanner.(*planner)
+	p := localPlanner.(*GenericPlanner)
 	p.preparedStatements = connExPrepStmtsAccessor{
 		ex: &connExecutor{},
 	}
@@ -415,7 +415,7 @@ func TestKWDBInternalTablesPopulate(t *testing.T) {
 		Name: "test_db",
 	}
 
-	// Test cases for tables that only need a simple planner
+	// Test cases for tables that only need a simple GenericPlanner
 	simpleTestCases := []struct {
 		name     string
 		table    virtualSchemaTable
@@ -451,7 +451,7 @@ func TestKWDBInternalTablesPopulate(t *testing.T) {
 		})
 	}
 
-	// Test cases for tables that need a server and proper planner
+	// Test cases for tables that need a server and proper GenericPlanner
 	serverTestCases := []struct {
 		name  string
 		table virtualSchemaTable
@@ -586,7 +586,7 @@ func TestKWDBInternalTablesPopulate(t *testing.T) {
 
 			// Call populate
 			err := tc.table.populate(context.Background(), p, dbDesc, addRow)
-			// This might fail if the planner isn't properly initialized, but we're just testing that it doesn't panic
+			// This might fail if the GenericPlanner isn't properly initialized, but we're just testing that it doesn't panic
 			if err != nil {
 				t.Logf("populate returned error (expected in test environment): %v", err)
 			}
@@ -606,7 +606,7 @@ func TestAddPartitioningRows(t *testing.T) {
 	// Get the executor config
 	execCfg := s.ExecutorConfig().(ExecutorConfig)
 
-	// Create a planner with admin privileges
+	// Create a GenericPlanner with admin privileges
 	localPlanner, cleanup := NewInternalPlanner(
 		"test",
 		kv.NewTxn(ctx, db, s.NodeID()),
@@ -615,7 +615,7 @@ func TestAddPartitioningRows(t *testing.T) {
 		&execCfg,
 	)
 	defer cleanup()
-	p := localPlanner.(*planner)
+	p := localPlanner.(*GenericPlanner)
 
 	// Create a mock table descriptor with partitioning
 	table := &TableDescriptor{

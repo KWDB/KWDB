@@ -32,28 +32,32 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
+var _ PlanNode = &pauseScheduleNode{}
+
 type pauseScheduleNode struct {
 	n *tree.PauseSchedule
-	p *planner
+	p *GenericPlanner
 }
 
 // PauseSchedule pauses a Schedule.
-func (p *planner) PauseSchedule(ctx context.Context, n *tree.PauseSchedule) (planNode, error) {
+func (p *GenericPlanner) PauseSchedule(
+	ctx context.Context, n *tree.PauseSchedule,
+) (PlanNode, error) {
 	return &pauseScheduleNode{
 		n: n,
 		p: p,
 	}, nil
 }
 
-func (n *pauseScheduleNode) startExec(params runParams) error {
-	if isAdmin, err := n.p.HasAdminRole(params.ctx); !isAdmin {
+func (n *pauseScheduleNode) StartExec(params RunParams) error {
+	if isAdmin, err := n.p.HasAdminRole(params.Ctx); !isAdmin {
 		if err != nil {
 			return err
 		}
 		return errors.Errorf("%s is not superuser or membership of admin, has no privilege to PAUSE SCHEDULE",
 			n.p.User())
 	}
-	schedule, err := loadSchedule(params, n.n.ScheduleName)
+	schedule, err := LoadSchedule(params, n.n.ScheduleName)
 	if err != nil {
 		return err
 	}
@@ -65,14 +69,14 @@ func (n *pauseScheduleNode) startExec(params runParams) error {
 		return pgerror.Newf(pgcode.UndefinedObject, "schedule %s does not exist", n.n.ScheduleName)
 	}
 	schedule.Pause()
-	err = updateSchedule(params, schedule)
+	err = UpdateSchedule(params, schedule)
 	if err != nil {
 		return err
 	}
-	params.p.SetAuditTarget(0, string(n.n.ScheduleName), nil)
+	params.GetPlanner().SetAuditTarget(0, string(n.n.ScheduleName), nil)
 	return nil
 }
 
-func (*pauseScheduleNode) Next(runParams) (bool, error) { return false, nil }
+func (*pauseScheduleNode) Next(RunParams) (bool, error) { return false, nil }
 func (*pauseScheduleNode) Values() tree.Datums          { return tree.Datums{} }
 func (*pauseScheduleNode) Close(context.Context)        {}

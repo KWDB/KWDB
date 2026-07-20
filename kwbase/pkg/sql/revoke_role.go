@@ -32,12 +32,16 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlconst"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqltelemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/util/tracing"
 )
 
 // RevokeRoleNode removes entries from the system.role_members table.
 // This is called from REVOKE <ROLE>
+var _ PlanNode = &RevokeRoleNode{}
+
+// RevokeRoleNode represents a REVOKE ROLE statement execution node
 type RevokeRoleNode struct {
 	roles       tree.NameList
 	members     tree.NameList
@@ -51,11 +55,14 @@ type revokeRoleRun struct {
 }
 
 // RevokeRole represents a GRANT ROLE statement.
-func (p *planner) RevokeRole(ctx context.Context, n *tree.RevokeRole) (planNode, error) {
+func (p *GenericPlanner) RevokeRole(ctx context.Context, n *tree.RevokeRole) (PlanNode, error) {
 	return p.RevokeRoleNode(ctx, n)
 }
 
-func (p *planner) RevokeRoleNode(ctx context.Context, n *tree.RevokeRole) (*RevokeRoleNode, error) {
+// RevokeRoleNode implements RevokeRole.
+func (p *GenericPlanner) RevokeRoleNode(
+	ctx context.Context, n *tree.RevokeRole,
+) (*RevokeRoleNode, error) {
 	sqltelemetry.IncIAMRevokeCounter(n.AdminOption)
 
 	ctx, span := tracing.ChildSpan(ctx, n.StatementTag(), p.GetNodeIDNumber())
@@ -113,7 +120,8 @@ func (p *planner) RevokeRoleNode(ctx context.Context, n *tree.RevokeRole) (*Revo
 	}, nil
 }
 
-func (n *RevokeRoleNode) startExec(params runParams) error {
+// StartExec begins execution of the node
+func (n *RevokeRoleNode) StartExec(params RunParams) error {
 	opName := "revoke-role"
 
 	var memberStmt string
@@ -136,7 +144,7 @@ func (n *RevokeRoleNode) startExec(params runParams) error {
 					security.RootUser, sqlbase.AdminRole)
 			}
 			affected, err := params.extendedEvalCtx.ExecCfg.InternalExecutor.ExecEx(
-				params.ctx,
+				params.Ctx,
 				opName,
 				params.p.txn,
 				sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
@@ -149,12 +157,12 @@ func (n *RevokeRoleNode) startExec(params runParams) error {
 
 			rowsAffected += affected
 		}
-		params.p.SetAuditTarget(0, string(r), nil)
+		params.GetPlanner().SetAuditTarget(0, string(r), nil)
 	}
 
 	// We need to bump the table version to trigger a refresh if anything changed.
 	if rowsAffected > 0 {
-		if err := params.p.BumpRoleMembershipTableVersion(params.ctx); err != nil {
+		if err := params.GetPlanner().BumpTableVersion(params.Ctx, sqlconst.RoleMembersTableName); err != nil {
 			return err
 		}
 	}
@@ -164,11 +172,11 @@ func (n *RevokeRoleNode) startExec(params runParams) error {
 	return nil
 }
 
-// Next implements the planNode interface.
-func (*RevokeRoleNode) Next(runParams) (bool, error) { return false, nil }
+// Next implements the PlanNode interface.
+func (*RevokeRoleNode) Next(RunParams) (bool, error) { return false, nil }
 
-// Values implements the planNode interface.
+// Values implements the PlanNode interface.
 func (*RevokeRoleNode) Values() tree.Datums { return tree.Datums{} }
 
-// Close implements the planNode interface.
+// Close implements the PlanNode interface.
 func (*RevokeRoleNode) Close(context.Context) {}

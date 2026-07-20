@@ -101,7 +101,8 @@ var (
 // job to gracefully clean up these objects when it runs.
 const TemporarySchemaNameForRestorePrefix string = "pg_temp_0_"
 
-func (p *planner) getOrCreateTemporarySchema(
+// GetOrCreateTemporarySchema retrieves or creates the temporary schema for the session
+func (p *GenericPlanner) GetOrCreateTemporarySchema(
 	ctx context.Context, dbID sqlbase.ID,
 ) (sqlbase.ID, error) {
 	tempSchemaName := p.TemporarySchemaName()
@@ -126,7 +127,21 @@ func (p *planner) getOrCreateTemporarySchema(
 
 // CreateSchemaNamespaceEntry creates an entry for the schema in the
 // system.namespace table.
-func (p *planner) CreateSchemaNamespaceEntry(
+func (p *GenericPlanner) CreateSchemaNamespaceEntry(
+	ctx context.Context, schemaNameKey roachpb.Key, schemaID sqlbase.ID,
+) error {
+	if p.ExtendedEvalContext().Tracing.KVTracingEnabled() {
+		log.VEventf(ctx, 2, "CPut %s -> %d", schemaNameKey, schemaID)
+	}
+
+	b := &kv.Batch{}
+	b.CPut(schemaNameKey, schemaID, nil)
+
+	return p.txn.Run(ctx, b)
+}
+
+// CreateSchemaWithID creates a schema with a pre-assigned descriptor ID
+func (p *GenericPlanner) CreateSchemaWithID(
 	ctx context.Context, schemaNameKey roachpb.Key, schemaID sqlbase.ID,
 ) error {
 	if p.ExtendedEvalContext().Tracing.KVTracingEnabled() {
@@ -146,8 +161,8 @@ func temporarySchemaName(sessionID ClusterWideID) string {
 	return fmt.Sprintf("pg_temp_%d_%d", sessionID.Hi, sessionID.Lo)
 }
 
-// temporarySchemaSessionID returns the sessionID of the given temporary schema.
-func temporarySchemaSessionID(scName string) (bool, ClusterWideID, error) {
+// TemporarySchemaSessionID returns the sessionID of the given temporary schema.
+func TemporarySchemaSessionID(scName string) (bool, ClusterWideID, error) {
 	if !strings.HasPrefix(scName, "pg_temp_") {
 		return false, ClusterWideID{}, nil
 	}
@@ -517,7 +532,7 @@ func (c *TemporaryObjectCleaner) doTemporaryObjectCleanup(
 			return err
 		}
 		for _, scName := range schemaNames {
-			isTempSchema, sessionID, err := temporarySchemaSessionID(scName)
+			isTempSchema, sessionID, err := TemporarySchemaSessionID(scName)
 			if err != nil {
 				// This should not cause an error.
 				log.Warningf(ctx, "could not parse %q as temporary schema name", scName)

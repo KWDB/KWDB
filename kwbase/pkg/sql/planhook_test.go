@@ -41,7 +41,7 @@ func TestAddPlanHook(t *testing.T) {
 			ClearPlanHooks()
 
 			// Create a mock plan hook function
-			hookFn := func(ctx context.Context, stmt tree.Statement, state PlanHookState) (PlanHookRowFn, sqlbase.ResultColumns, []planNode, bool, error) {
+			hookFn := func(ctx context.Context, stmt tree.Statement, state PlanHookState) (PlanHookRowFn, sqlbase.ResultColumns, []PlanNode, bool, error) {
 				return nil, nil, nil, false, nil
 			}
 
@@ -79,7 +79,7 @@ func TestHookFnNodeMethods(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create a mock PlanHookRowFn
-			rowFn := func(ctx context.Context, subplans []planNode, resultsCh chan<- tree.Datums) error {
+			rowFn := func(ctx context.Context, subplans []PlanNode, resultsCh chan<- tree.Datums) error {
 				// Simulate sending one row
 				resultsCh <- tree.Datums{tree.NewDInt(1)}
 				return nil
@@ -89,10 +89,10 @@ func TestHookFnNodeMethods(t *testing.T) {
 			node := &hookFnNode{
 				f:        rowFn,
 				header:   sqlbase.ResultColumns{{Name: "test"}},
-				subplans: []planNode{},
+				subplans: []PlanNode{},
 			}
 
-			// Create mock runParams
+			// Create mock RunParams
 			extendedEvalCtx := &extendedEvalContext{
 				EvalContext: tree.EvalContext{
 					Annotations: &tree.Annotations{},
@@ -101,16 +101,16 @@ func TestHookFnNodeMethods(t *testing.T) {
 				ExecCfg: &ExecutorConfig{},
 			}
 
-			params := runParams{
-				ctx:             context.Background(),
+			params := RunParams{
+				Ctx:             context.Background(),
 				extendedEvalCtx: extendedEvalCtx,
-				p:               &planner{},
+				p:               &GenericPlanner{},
 			}
 
-			// Test startExec
-			err := node.startExec(params)
+			// Test StartExec
+			err := node.StartExec(params)
 			if err != nil {
-				t.Errorf("startExec() returned error: %v", err)
+				t.Errorf("StartExec() returned error: %v", err)
 			}
 
 			// Test Next and Values
@@ -154,13 +154,13 @@ func TestHookFnNodeWithSubplans(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create mock subplans
-			subplans := []planNode{
+			subplans := []PlanNode{
 				&valuesNode{},
 				&valuesNode{},
 			}
 
 			// Create a mock PlanHookRowFn that uses subplans
-			rowFn := func(ctx context.Context, subplans []planNode, resultsCh chan<- tree.Datums) error {
+			rowFn := func(ctx context.Context, subplans []PlanNode, resultsCh chan<- tree.Datums) error {
 				// Verify subplans are passed correctly
 				if len(subplans) != 2 {
 					t.Errorf("subplans length = %d, want 2", len(subplans))
@@ -178,7 +178,7 @@ func TestHookFnNodeWithSubplans(t *testing.T) {
 				subplans: subplans,
 			}
 
-			// Create mock runParams
+			// Create mock RunParams
 			extendedEvalCtx := &extendedEvalContext{
 				EvalContext: tree.EvalContext{
 					Annotations: &tree.Annotations{},
@@ -187,16 +187,16 @@ func TestHookFnNodeWithSubplans(t *testing.T) {
 				ExecCfg: &ExecutorConfig{},
 			}
 
-			params := runParams{
-				ctx:             context.Background(),
+			params := RunParams{
+				Ctx:             context.Background(),
 				extendedEvalCtx: extendedEvalCtx,
-				p:               &planner{},
+				p:               &GenericPlanner{},
 			}
 
-			// Test startExec
-			err := node.startExec(params)
+			// Test StartExec
+			err := node.StartExec(params)
 			if err != nil {
-				t.Errorf("startExec() returned error: %v", err)
+				t.Errorf("StartExec() returned error: %v", err)
 			}
 
 			// Test Next to get the result
@@ -235,7 +235,7 @@ func TestHookFnNodeErrorHandling(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create a PlanHookRowFn that returns an error
-			errorFn := func(ctx context.Context, subplans []planNode, resultsCh chan<- tree.Datums) error {
+			errorFn := func(ctx context.Context, subplans []PlanNode, resultsCh chan<- tree.Datums) error {
 				return context.Canceled
 			}
 
@@ -243,10 +243,10 @@ func TestHookFnNodeErrorHandling(t *testing.T) {
 			node := &hookFnNode{
 				f:        errorFn,
 				header:   sqlbase.ResultColumns{{Name: "test"}},
-				subplans: []planNode{},
+				subplans: []PlanNode{},
 			}
 
-			// Create mock runParams
+			// Create mock RunParams
 			extendedEvalCtx := &extendedEvalContext{
 				EvalContext: tree.EvalContext{
 					Annotations: &tree.Annotations{},
@@ -255,16 +255,16 @@ func TestHookFnNodeErrorHandling(t *testing.T) {
 				ExecCfg: &ExecutorConfig{},
 			}
 
-			params := runParams{
-				ctx:             context.Background(),
+			params := RunParams{
+				Ctx:             context.Background(),
 				extendedEvalCtx: extendedEvalCtx,
-				p:               &planner{},
+				p:               &GenericPlanner{},
 			}
 
-			// Test startExec
-			err := node.startExec(params)
+			// Test StartExec
+			err := node.StartExec(params)
 			if err != nil {
-				t.Errorf("startExec() returned error: %v", err)
+				t.Errorf("StartExec() returned error: %v", err)
 			}
 
 			// Test Next should return the error
@@ -296,20 +296,20 @@ func TestPlanHookStateInterface(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create a mock planner that implements PlanHookState
-			p := &planner{}
+			// Create a mock GenericPlanner that implements PlanHookState
+			p := &GenericPlanner{}
 
-			// Verify that planner implements PlanHookState
+			// Verify that GenericPlanner implements PlanHookState
 			var _ PlanHookState = p
 
 			// Test RunParams method
 			ctx := context.Background()
-			runParams := p.RunParams(ctx)
-			if runParams.ctx != ctx {
+			RunParams := p.RunParams(ctx)
+			if RunParams.Ctx != ctx {
 				t.Error("RunParams() did not set context correctly")
 			}
 
-			t.Logf("PlanHookState interface is properly implemented by planner")
+			t.Logf("PlanHookState interface is properly implemented by GenericPlanner")
 		})
 	}
 }
@@ -332,15 +332,15 @@ func TestMultiplePlanHooks(t *testing.T) {
 			ClearPlanHooks()
 
 			// Create multiple mock plan hook functions
-			hookFn1 := func(ctx context.Context, stmt tree.Statement, state PlanHookState) (PlanHookRowFn, sqlbase.ResultColumns, []planNode, bool, error) {
+			hookFn1 := func(ctx context.Context, stmt tree.Statement, state PlanHookState) (PlanHookRowFn, sqlbase.ResultColumns, []PlanNode, bool, error) {
 				return nil, nil, nil, false, nil
 			}
 
-			hookFn2 := func(ctx context.Context, stmt tree.Statement, state PlanHookState) (PlanHookRowFn, sqlbase.ResultColumns, []planNode, bool, error) {
+			hookFn2 := func(ctx context.Context, stmt tree.Statement, state PlanHookState) (PlanHookRowFn, sqlbase.ResultColumns, []PlanNode, bool, error) {
 				return nil, nil, nil, false, nil
 			}
 
-			hookFn3 := func(ctx context.Context, stmt tree.Statement, state PlanHookState) (PlanHookRowFn, sqlbase.ResultColumns, []planNode, bool, error) {
+			hookFn3 := func(ctx context.Context, stmt tree.Statement, state PlanHookState) (PlanHookRowFn, sqlbase.ResultColumns, []PlanNode, bool, error) {
 				return nil, nil, nil, false, nil
 			}
 

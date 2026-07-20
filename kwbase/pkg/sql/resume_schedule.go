@@ -32,28 +32,32 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
+var _ PlanNode = &resumeScheduleNode{}
+
 type resumeScheduleNode struct {
 	n *tree.ResumeSchedule
-	p *planner
+	p *GenericPlanner
 }
 
 // ResumeSchedule resumes a Schedule.
-func (p *planner) ResumeSchedule(ctx context.Context, n *tree.ResumeSchedule) (planNode, error) {
+func (p *GenericPlanner) ResumeSchedule(
+	ctx context.Context, n *tree.ResumeSchedule,
+) (PlanNode, error) {
 	return &resumeScheduleNode{
 		n: n,
 		p: p,
 	}, nil
 }
 
-func (n *resumeScheduleNode) startExec(params runParams) error {
-	if isAdmin, err := n.p.HasAdminRole(params.ctx); !isAdmin {
+func (n *resumeScheduleNode) StartExec(params RunParams) error {
+	if isAdmin, err := n.p.HasAdminRole(params.Ctx); !isAdmin {
 		if err != nil {
 			return err
 		}
 		return errors.Errorf("%s is not superuser or membership of admin, has no privilege to PAUSE SCHEDULE",
 			n.p.User())
 	}
-	schedule, err := loadSchedule(params, n.n.ScheduleName)
+	schedule, err := LoadSchedule(params, n.n.ScheduleName)
 	if err != nil {
 		return err
 	}
@@ -66,15 +70,15 @@ func (n *resumeScheduleNode) startExec(params runParams) error {
 	}
 	err = schedule.ScheduleNextRun()
 	if err == nil {
-		err = updateSchedule(params, schedule)
+		err = UpdateSchedule(params, schedule)
 	}
 	if err != nil {
 		return err
 	}
-	params.p.SetAuditTarget(0, string(n.n.ScheduleName), nil)
+	params.GetPlanner().SetAuditTarget(0, string(n.n.ScheduleName), nil)
 	return nil
 }
 
-func (*resumeScheduleNode) Next(runParams) (bool, error) { return false, nil }
+func (*resumeScheduleNode) Next(RunParams) (bool, error) { return false, nil }
 func (*resumeScheduleNode) Values() tree.Datums          { return tree.Datums{} }
 func (*resumeScheduleNode) Close(context.Context)        {}

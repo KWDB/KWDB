@@ -655,7 +655,7 @@ func NewColOperator(
 	supported, err := isSupported(streamingAllocator, flowCtx.EvalCtx.SessionData.VectorizeMode, spec)
 	if !supported {
 		// We refuse to wrap LocalPlanNode processor (which is a DistSQL wrapper
-		// around a planNode) because it creates complications, and a flow with
+		// around a PlanNode) because it creates complications, and a flow with
 		// such processor probably will not benefit from the vectorization.
 		if core.LocalPlanNode != nil {
 			return result, errors.Newf("core.LocalPlanNode is not supported")
