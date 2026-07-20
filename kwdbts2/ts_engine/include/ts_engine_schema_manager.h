@@ -28,6 +28,7 @@
 #include "cm_kwdb_context.h"
 #include "cm_func.h"
 #include "lg_api.h"
+#include "ts_db_schema_manager.h"
 #include "ts_table_schema_manager.h"
 #include "ts_partition_interval_recorder.h"
 #include "sys_utils.h"
@@ -41,7 +42,9 @@ class TsEngineSchemaManager {
  public:
   TsEngineSchemaManager() = delete;
 
-  explicit TsEngineSchemaManager(const std::string& schema_root_path);
+  // db_schema_mgr is owned by TSEngineImpl and must outlive this manager; it
+  // is wired into every TsTableSchemaManager created here.
+  TsEngineSchemaManager(const std::string& schema_root_path, TsDBSchemaManager* db_schema_mgr);
 
   ~TsEngineSchemaManager();
 
@@ -74,6 +77,8 @@ class TsEngineSchemaManager {
 
   fs::path GetSchemaPath() const {return schema_root_path_;}
 
+  TsDBSchemaManager* GetDbSchemaMgr() const { return db_schema_mgr_; }
+
   int rdLock();
 
   int wrLock();
@@ -85,6 +90,7 @@ class TsEngineSchemaManager {
   uint32_t vgroup_id_;
   string tbl_sub_path_;
   std::unordered_map<TSTableID, std::shared_ptr<TsTableSchemaManager>> table_schema_mgrs_;
+  TsDBSchemaManager* db_schema_mgr_;  // owned by TSEngineImpl
   KRWLatch mgrs_rw_latch_;
 };
 

@@ -281,6 +281,13 @@ KStatus TsTableSchemaManager::Init() {
       removeTagVersion(i);
     }
   }
+
+  auto dbid = this->GetDbID();
+  s = db_schema_mgr_->GetOrCreateDatabases(dbid, db_schema_);
+  if (s == FAIL) {
+    return FAIL;
+  }
+  assert(db_schema_ != nullptr);
   cur_version_ = metric_cur_version;
   LOG_INFO("Table [%lu] schema manager init success", table_id_);
   return SUCCESS;
@@ -356,6 +363,13 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
   }
   if (ts_version > cur_version_) {
     cur_version_ = ts_version;
+  }
+  if (db_schema_ == nullptr) {
+    auto s = db_schema_mgr_->GetOrCreateDatabases(db_id, db_schema_);
+    if (s != SUCCESS) {
+      LOG_ERROR("failed to GetOrCreateDatabases, db id %u", db_id);
+      return s;
+    }
   }
   return SUCCESS;
 }

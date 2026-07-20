@@ -82,6 +82,8 @@ class ExhaustiveFDGuard {
 // Test class for file descriptor exhaustion scenarios
 class TsEntitySegmentBuilderFDExhaustTest : public ::testing::Test {
  protected:
+  // Owned here; must outlive mgr (declared first, destroyed last).
+  std::unique_ptr<TsDBSchemaManager> db_schema_mgr_;
   std::unique_ptr<TsEngineSchemaManager> mgr;
   EngineOptions opts;
   std::unique_ptr<TsVGroup> vgroup;
@@ -98,7 +100,8 @@ class TsEntitySegmentBuilderFDExhaustTest : public ::testing::Test {
     original_fd_limit = lim.rlim_cur;
 
     EngineOptions::mem_segment_max_size = INT32_MAX;
-    mgr = std::make_unique<TsEngineSchemaManager>("schema_fd_test");
+    db_schema_mgr_ = std::make_unique<TsDBSchemaManager>(".");
+    mgr = std::make_unique<TsEngineSchemaManager>("schema_fd_test", db_schema_mgr_.get());
     std::shared_mutex wal_level_mutex;
     TsHashRWLatch tag_lock(EngineOptions::vgroup_max_num * 2, RWLATCH_ID_ENGINE_INSERT_TAG_RWLOCK);
     mgr->Init(nullptr);

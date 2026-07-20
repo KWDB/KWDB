@@ -29,6 +29,7 @@
 #include "settings.h"
 #include "ts_batch_data_worker.h"
 #include "ts_common.h"
+#include "ts_db_schema_manager.h"
 #include "ts_engine_schema_manager.h"
 #include "ts_flush_manager.h"
 #include "ts_partition_interval_recorder.h"
@@ -66,6 +67,9 @@ KStatus loadVGroupCfg(const fs::path& ts_store_path, std::map<int, std::string>&
  */
 class TSEngineImpl : public TSEngine {
  private:
+  // Declared before schema_mgr_: table schema managers hold a raw pointer to
+  // this, so it must outlive schema_mgr_ (members destroy in reverse order).
+  std::unique_ptr<TsDBSchemaManager> db_schema_mgr_ = nullptr;
   std::unique_ptr<TsEngineSchemaManager> schema_mgr_ = nullptr;
   std::vector<std::shared_ptr<TsVGroup>> vgroups_;
   int vgroup_max_num_{0};
@@ -222,9 +226,6 @@ class TSEngineImpl : public TSEngine {
 
   KStatus Recover(kwdbContext_p ctx) override;
 
-  // get max entity id
-  KStatus GetMaxEntityIdByVGroupId(kwdbContext_p ctx, uint32_t vgroup_id, uint32_t& entity_id);
-
   KStatus TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                      uint64_t range_id, uint64_t index, uint64_t& mtr_id, const char* tsx_id = nullptr) override;
 
@@ -370,9 +371,12 @@ class TSEngineImpl : public TSEngine {
 
   uint64_t insertToSnapshotCache(TsRangeImgrationInfo& snapshot);
 
-  KStatus writeEntityIdsBinary(const std::vector<uint32_t>& max_entity_id);
-
+  // Legacy vg.mei reader; used only by migrateLegacyMaxEntityIdFile.
   KStatus readEntityIds(std::vector<uint32_t>& max_entity_id);
+
+  // One-shot startup migration of the legacy vg.mei file into the per-db
+  // max_entity_id files; see the definition for the full contract.
+  KStatus migrateLegacyMaxEntityIdFile(kwdbContext_p ctx);
 };
 
 }  //  namespace kwdbts

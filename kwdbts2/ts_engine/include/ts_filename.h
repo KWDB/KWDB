@@ -12,9 +12,8 @@
 #pragma once
 #include <cstdint>
 #include <string>
-#include <string_view>
+#include "kwdb_type.h"
 
-#include "ts_version.h"
 namespace kwdbts {
 
 inline std::string LastSegmentFileName(uint64_t file_number) {

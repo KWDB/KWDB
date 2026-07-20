@@ -195,7 +195,7 @@ KStatus TsMemSegmentManager::PutData(TsRawPayload* pd, const std::shared_ptr<TsT
     }
   }
   row_in_pd = pdd->GenRowDataWithValidInfo(max_row_idx);
-  vgroup_->UpdateEntityLatestRow(entity_id, max_ts, row_in_pd, table_version);
+  vgroup_->UpdateEntityLatestRow(db_id, entity_id, max_ts, row_in_pd, table_version);
   free(row_in_pd.data);
   vgroup_->UpdateEntityAndMaxTs(tb_schema->GetTableId(), max_ts, entity_id);
 

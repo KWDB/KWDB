@@ -52,15 +52,21 @@ struct R {
 std::list<TsRawPayload*> payload_objs;
 class LastSegmentReadWriteTest : public testing::Test {
  protected:
+  std::unique_ptr<TsDBSchemaManager> db_schema_mgr = nullptr;
   std::shared_ptr<TsEngineSchemaManager> mgr = nullptr;
 
   TsIOEnv *env = &TsIOEnv::GetInstance();
   void SetUp() override {
+    fs::remove_all("db");
     fs::remove_all("schema");
     fs::remove(filename);
-    mgr = std::make_unique<TsEngineSchemaManager>("schema");
+    db_schema_mgr = std::make_unique<TsDBSchemaManager>(".");
+    mgr = std::make_unique<TsEngineSchemaManager>("schema", db_schema_mgr.get());
+    mgr->Init(nullptr);
+    db_schema_mgr->Init(mgr.get());
   }
   void TearDown() override {
+    fs::remove_all("db");
     fs::remove_all("schema");
     fs::remove(filename);
     for (auto p : payload_objs) {

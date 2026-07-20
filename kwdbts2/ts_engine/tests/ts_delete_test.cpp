@@ -93,7 +93,8 @@ TEST_F(TestV2DeleteTest, basicDelete) {
   std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = engine_->GetTsVGroups();
   std::shared_ptr<TsVGroup> entity_v_group;
   for (const auto& vgroup : *ts_vgroups) {
-    if (!vgroup || vgroup->GetMaxEntityID() < 1) {
+    auto max_eid = table_schema_mgr->GetDbSchemaMgr()->GetMaxEntityID(vgroup->GetVGroupID());
+    if (!vgroup || max_eid < 1) {
         continue;
     }
     entity_v_group = vgroup;
@@ -150,7 +151,8 @@ TEST_F(TestV2DeleteTest, MultiInsertAndDelete) {
   std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = engine_->GetTsVGroups();
   std::shared_ptr<TsVGroup> entity_v_group;
   for (const auto& vgroup : *ts_vgroups) {
-    if (!vgroup || vgroup->GetMaxEntityID() < 1) {
+    auto max_eid = table_schema_mgr->GetDbSchemaMgr()->GetMaxEntityID(vgroup->GetVGroupID());
+    if (!vgroup || max_eid < 1) {
         continue;
     }
     entity_v_group = vgroup;
@@ -207,7 +209,8 @@ TEST_F(TestV2DeleteTest, InsertAndDeleteAndInsert) {
   std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = engine_->GetTsVGroups();
   std::shared_ptr<TsVGroup> entity_v_group;
   for (const auto& vgroup : *ts_vgroups) {
-    if (!vgroup || vgroup->GetMaxEntityID() < 1) {
+    auto max_eid = table_schema_mgr->GetDbSchemaMgr()->GetMaxEntityID(vgroup->GetVGroupID());
+    if (!vgroup || max_eid < 1) {
         continue;
     }
     entity_v_group = vgroup;
@@ -267,7 +270,8 @@ TEST_F(TestV2DeleteTest, undoDelete) {
   std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = engine_->GetTsVGroups();
   std::shared_ptr<TsVGroup> entity_v_group;
   for (const auto& vgroup : *ts_vgroups) {
-    if (!vgroup || vgroup->GetMaxEntityID() < 1) {
+    auto max_eid = table_schema_mgr->GetDbSchemaMgr()->GetMaxEntityID(vgroup->GetVGroupID());
+    if (!vgroup || max_eid < 1) {
         continue;
     }
     entity_v_group = vgroup;
@@ -328,8 +332,9 @@ TEST_F(TestV2DeleteTest, undoPutAndRedoPut) {
   std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = engine_->GetTsVGroups();
   std::shared_ptr<TsVGroup> entity_v_group;
   for (const auto& vgroup : *ts_vgroups) {
-    if (!vgroup || vgroup->GetMaxEntityID() < 1) {
-        continue;
+    auto max_eid = table_schema_mgr->GetDbSchemaMgr()->GetMaxEntityID(vgroup->GetVGroupID());
+    if (!vgroup || max_eid < 1) {
+      continue;
     }
     entity_v_group = vgroup;
     break;
@@ -476,7 +481,8 @@ TEST_F(TestV2DeleteTest, CountStatsInvalidOnDeleteAfterFlush) {
   std::shared_ptr<TsVGroup> entity_vg;
   auto* vgroups = engine_->GetTsVGroups();
   for (auto& vg : *vgroups) {
-    if (vg && vg->GetMaxEntityID() >= 1) { entity_vg = vg; break; }
+    auto max_eid = table_schema_mgr->GetDbSchemaMgr()->GetMaxEntityID(vg->GetVGroupID());
+    if (vg && max_eid >= 1) { entity_vg = vg; break; }
   }
   ASSERT_NE(entity_vg, nullptr);
   auto db_id = table_schema_mgr->GetDbID();
