@@ -126,7 +126,10 @@ func loadYAML(dst interface{}, yamlString string) {
 	}
 }
 
-func (p *planner) SetZoneConfig(ctx context.Context, n *tree.SetZoneConfig) (planNode, error) {
+// SetZoneConfig applies a zone configuration to a table or database
+func (p *GenericPlanner) SetZoneConfig(
+	ctx context.Context, n *tree.SetZoneConfig,
+) (PlanNode, error) {
 	if err := checkPrivilegeForSetZoneConfig(ctx, p, n.ZoneSpecifier); err != nil {
 		return nil, err
 	}
@@ -203,7 +206,9 @@ func (p *planner) SetZoneConfig(ctx context.Context, n *tree.SetZoneConfig) (pla
 	}, nil
 }
 
-func checkPrivilegeForSetZoneConfig(ctx context.Context, p *planner, zs tree.ZoneSpecifier) error {
+func checkPrivilegeForSetZoneConfig(
+	ctx context.Context, p *GenericPlanner, zs tree.ZoneSpecifier,
+) error {
 	// For system ranges, the system database, or system tables, the user must be
 	// an admin. Otherwise we require CREATE privileges on the database or table
 	// in question.
@@ -262,12 +267,12 @@ type setZoneConfigRun struct {
 	numAffected int
 }
 
-// ReadingOwnWrites implements the planNodeReadingOwnWrites interface.
+// ReadingOwnWrites implements the PlanNodeReadingOwnWrites interface.
 // This is because CONFIGURE ZONE performs multiple KV operations on descriptors
 // and expects to see its own writes.
 func (n *setZoneConfigNode) ReadingOwnWrites() {}
 
-func (n *setZoneConfigNode) startExec(params runParams) error {
+func (n *setZoneConfigNode) StartExec(params RunParams) error {
 	var yamlConfig string
 	var setters []func(c *zonepb.ZoneConfig)
 	deleteZone := false
@@ -348,12 +353,12 @@ func (n *setZoneConfigNode) startExec(params runParams) error {
 	// resolve the table descriptor. If the specifier is for a database
 	// or range, this is a no-op and a nil pointer is returned as
 	// descriptor.
-	table, err := params.p.resolveTableForZone(params.ctx, &n.zoneSpecifier)
+	table, err := params.p.resolveTableForZone(params.Ctx, &n.zoneSpecifier)
 	if err != nil {
 		return err
 	}
 	if n.rebalance {
-		err = BalanceReplica(params.ctx, params.p.txn, params.ExecCfg(), params.p.Tables(),
+		err = BalanceReplica(params.Ctx, params.p.txn, params.ExecCfg(), params.p.Tables(),
 			&n.zoneSpecifier, table, params.p.User(), params.p.stmt.String())
 		if err != nil {
 			return err
@@ -402,7 +407,7 @@ func (n *setZoneConfigNode) startExec(params runParams) error {
 		// resolveZone determines the ID of the target object of the zone
 		// specifier. This ought to succeed regardless of whether there is
 		// already a zone config for the target object.
-		targetID, err := resolveZone(params.ctx, params.ExecCfg().Settings, params.p.txn, &zs)
+		targetID, err := resolveZone(params.Ctx, params.ExecCfg().Settings, params.p.txn, &zs)
 		if err != nil {
 			return err
 		}
@@ -426,7 +431,7 @@ func (n *setZoneConfigNode) startExec(params runParams) error {
 		}
 
 		// Retrieve the partial zone configuration
-		partialZone, err := getZoneConfigRaw(params.ctx, params.p.txn, targetID)
+		partialZone, err := getZoneConfigRaw(params.Ctx, params.p.txn, targetID)
 		if err != nil {
 			return err
 		}
@@ -456,7 +461,7 @@ func (n *setZoneConfigNode) startExec(params runParams) error {
 		// parameter getInheritedDefault to GetZoneConfigInTxn().
 		// These zones are only used for validations. The merged zone is will
 		// not be written.
-		_, completeZone, completeSubzone, err := GetZoneConfigInTxn(params.ctx, params.p.txn,
+		_, completeZone, completeSubzone, err := GetZoneConfigInTxn(params.Ctx, params.p.txn,
 			uint32(targetID), index, partition, n.setDefault)
 
 		if err == errNoZoneConfigApplies {
@@ -477,7 +482,7 @@ func (n *setZoneConfigNode) startExec(params runParams) error {
 		{
 			// Function for getting the zone config within the current transaction.
 			getKey := func(key roachpb.Key) (*roachpb.Value, error) {
-				kv, err := params.p.txn.Get(params.ctx, key)
+				kv, err := params.p.txn.Get(params.Ctx, key)
 				if err != nil {
 					return nil, err
 				}
@@ -611,7 +616,7 @@ func (n *setZoneConfigNode) startExec(params runParams) error {
 
 			// Validate that the result makes sense.
 			if err := validateZoneAttrsAndLocalities(
-				params.ctx,
+				params.Ctx,
 				params.extendedEvalCtx.StatusServer.Nodes,
 				&newZone,
 			); err != nil {
@@ -641,7 +646,7 @@ func (n *setZoneConfigNode) startExec(params runParams) error {
 				// here to complete the missing fields. The reason is because we don't know
 				// here if a zone is a placeholder or not. Can we do a GetConfigInTxn here?
 				// And if it is a placeholder, we use getZoneConfigRaw to create one.
-				completeZone, err = getZoneConfigRaw(params.ctx, params.p.txn, targetID)
+				completeZone, err = getZoneConfigRaw(params.Ctx, params.p.txn, targetID)
 				if err != nil {
 					return err
 				} else if completeZone == nil {
@@ -711,13 +716,13 @@ func (n *setZoneConfigNode) startExec(params runParams) error {
 		execConfig := params.extendedEvalCtx.ExecCfg
 		zoneToWrite := partialZone
 
-		n.run.numAffected, err = writeZoneConfig(params.ctx, params.p.txn,
+		n.run.numAffected, err = writeZoneConfig(params.Ctx, params.p.txn,
 			targetID, table, zoneToWrite, execConfig, hasNewSubzones)
 		if err != nil {
 			return err
 		}
 
-		params.p.SetAuditTarget(uint32(targetID), zs.String(), nil)
+		params.GetPlanner().SetAuditTarget(uint32(targetID), zs.String(), nil)
 		return nil
 	}
 	for _, zs := range specifiers {
@@ -735,7 +740,7 @@ func (n *setZoneConfigNode) startExec(params runParams) error {
 	return nil
 }
 
-func (n *setZoneConfigNode) Next(runParams) (bool, error) { return false, nil }
+func (n *setZoneConfigNode) Next(RunParams) (bool, error) { return false, nil }
 func (n *setZoneConfigNode) Values() tree.Datums          { return nil }
 func (*setZoneConfigNode) Close(context.Context)          {}
 

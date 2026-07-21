@@ -245,18 +245,18 @@ func zoneSpecifierNotFoundError(zs tree.ZoneSpecifier) error {
 // points to an index, that the index name is expanded to a valid
 // table.
 // Returns res = nil if the zone specifier is not for a table or index.
-func (p *planner) resolveTableForZone(
+func (p *GenericPlanner) resolveTableForZone(
 	ctx context.Context, zs *tree.ZoneSpecifier,
 ) (res *TableDescriptor, err error) {
 	if zs.TargetsIndex() {
 		var mutRes *MutableTableDescriptor
-		_, mutRes, err = expandMutableIndexName(ctx, p, &zs.TableOrIndex, true /* requireTable */)
+		_, mutRes, err = ExpandMutableIndexName(ctx, p, &zs.TableOrIndex, true /* requireTable */)
 		if mutRes != nil {
 			res = mutRes.TableDesc()
 		}
 	} else if zs.TargetsTable() {
 		var immutRes *ImmutableTableDescriptor
-		p.runWithOptions(resolveFlags{skipCache: true}, func() {
+		p.RunWithOptions(ResolveFlags{SkipCache: true}, func() {
 			flags := tree.ObjectLookupFlagsWithRequired()
 			flags.IncludeOffline = true
 			immutRes, err = ResolveExistingObject(ctx, p, &zs.TableOrIndex.Table, flags, ResolveAnyDescType)
@@ -329,7 +329,8 @@ func resolveSubzone(
 	return index, partitionName, nil
 }
 
-func deleteRemovedPartitionZoneConfigs(
+// DeleteRemovedPartitionZoneConfigs cleans up zone configurations for removed partitions
+func DeleteRemovedPartitionZoneConfigs(
 	ctx context.Context,
 	txn *kv.Txn,
 	tableDesc *sqlbase.TableDescriptor,

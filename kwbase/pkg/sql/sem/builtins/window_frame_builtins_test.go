@@ -88,7 +88,7 @@ func testMin(t *testing.T, evalCtx *tree.EvalContext, wfr *tree.WindowFrameRun) 
 	for offset := 0; offset < maxOffset; offset += int(rand.Int31n(maxOffset / 10)) {
 		wfr.StartBoundOffset = tree.NewDInt(tree.DInt(offset))
 		wfr.EndBoundOffset = tree.NewDInt(tree.DInt(offset))
-		min := &slidingWindowFunc{}
+		min := newSlidingWindowFunc()
 		min.sw = makeSlidingWindow(evalCtx, func(evalCtx *tree.EvalContext, a, b tree.Datum) int {
 			return -a.Compare(evalCtx, b)
 		})
@@ -131,7 +131,7 @@ func testMax(t *testing.T, evalCtx *tree.EvalContext, wfr *tree.WindowFrameRun) 
 	for offset := 0; offset < maxOffset; offset += int(rand.Int31n(maxOffset / 10)) {
 		wfr.StartBoundOffset = tree.NewDInt(tree.DInt(offset))
 		wfr.EndBoundOffset = tree.NewDInt(tree.DInt(offset))
-		max := &slidingWindowFunc{}
+		max := newSlidingWindowFunc()
 		max.sw = makeSlidingWindow(evalCtx, func(evalCtx *tree.EvalContext, a, b tree.Datum) int {
 			return a.Compare(evalCtx, b)
 		})
@@ -174,7 +174,7 @@ func testSumAndAvg(t *testing.T, evalCtx *tree.EvalContext, wfr *tree.WindowFram
 	for offset := 0; offset < maxOffset; offset += int(rand.Int31n(maxOffset / 10)) {
 		wfr.StartBoundOffset = tree.NewDInt(tree.DInt(offset))
 		wfr.EndBoundOffset = tree.NewDInt(tree.DInt(offset))
-		sum := &slidingWindowSumFunc{agg: &intSumAggregate{}}
+		sum := newSlidingWindowSumFunc(&intSumAggregate{})
 		avg := &avgWindowFunc{sum: newSlidingWindowSumFunc(&intSumAggregate{})}
 		for wfr.RowIdx = 0; wfr.RowIdx < wfr.PartitionSize(); wfr.RowIdx++ {
 			res, err := sum.Compute(evalCtx.Ctx(), evalCtx, wfr)

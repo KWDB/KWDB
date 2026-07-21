@@ -91,6 +91,21 @@ func (r *replicaRaftStorage) InitialState() (raftpb.HardState, raftpb.ConfState,
 	return hs, cs, nil
 }
 
+// CanArbiterPromote implements the Storage interface.
+func (r *replicaRaftStorage) CanArbiterPromote(leadID uint64) bool {
+	return true
+}
+
+// IsArbiter implements the Storage interface.
+func (r *replicaRaftStorage) IsArbiter() bool {
+	return false
+}
+
+// HasArbiter implements the Storage interface.
+func (r *replicaRaftStorage) HasArbiter() bool {
+	return false
+}
+
 // Entries implements the raft.Storage interface. Note that maxBytes is advisory
 // and this method will always return at least one entry even if it exceeds
 // maxBytes. Sideloaded proposals count towards maxBytes with their payloads inlined.

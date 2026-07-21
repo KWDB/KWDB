@@ -34,6 +34,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/roleoption"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlconst"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqltelemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/util/tracing"
 	"github.com/cockroachdb/errors"
@@ -41,6 +42,9 @@ import (
 
 // GrantRoleNode creates entries in the system.role_members table.
 // This is called from GRANT <ROLE>
+var _ PlanNode = &GrantRoleNode{}
+
+// GrantRoleNode represents a GRANT ROLE statement execution node
 type GrantRoleNode struct {
 	roles       tree.NameList
 	members     tree.NameList
@@ -54,11 +58,14 @@ type grantRoleRun struct {
 }
 
 // GrantRole represents a GRANT ROLE statement.
-func (p *planner) GrantRole(ctx context.Context, n *tree.GrantRole) (planNode, error) {
+func (p *GenericPlanner) GrantRole(ctx context.Context, n *tree.GrantRole) (PlanNode, error) {
 	return p.GrantRoleNode(ctx, n)
 }
 
-func (p *planner) GrantRoleNode(ctx context.Context, n *tree.GrantRole) (*GrantRoleNode, error) {
+// GrantRoleNode is the real impl for GrantRole
+func (p *GenericPlanner) GrantRoleNode(
+	ctx context.Context, n *tree.GrantRole,
+) (*GrantRoleNode, error) {
 	sqltelemetry.IncIAMGrantCounter(n.AdminOption)
 
 	ctx, span := tracing.ChildSpan(ctx, n.StatementTag(), p.GetNodeIDNumber())
@@ -165,7 +172,8 @@ func (p *planner) GrantRoleNode(ctx context.Context, n *tree.GrantRole) (*GrantR
 	}, nil
 }
 
-func (n *GrantRoleNode) startExec(params runParams) error {
+// StartExec begins execution of the node
+func (n *GrantRoleNode) StartExec(params RunParams) error {
 	opName := "grant-role"
 	// Add memberships. Existing memberships are allowed.
 	// If admin option is false, we do not remove it from existing memberships.
@@ -183,7 +191,7 @@ func (n *GrantRoleNode) startExec(params runParams) error {
 	for _, r := range n.roles {
 		for _, m := range n.members {
 			affected, err := params.extendedEvalCtx.ExecCfg.InternalExecutor.ExecEx(
-				params.ctx,
+				params.Ctx,
 				opName,
 				params.p.txn,
 				sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
@@ -196,12 +204,12 @@ func (n *GrantRoleNode) startExec(params runParams) error {
 
 			rowsAffected += affected
 		}
-		params.p.SetAuditTarget(0, string(r), nil)
+		params.GetPlanner().SetAuditTarget(0, string(r), nil)
 	}
 
 	// We need to bump the table version to trigger a refresh if anything changed.
 	if rowsAffected > 0 {
-		if err := params.p.BumpRoleMembershipTableVersion(params.ctx); err != nil {
+		if err := params.GetPlanner().BumpTableVersion(params.Ctx, sqlconst.RoleMembersTableName); err != nil {
 			return err
 		}
 	}
@@ -211,11 +219,11 @@ func (n *GrantRoleNode) startExec(params runParams) error {
 	return nil
 }
 
-// Next implements the planNode interface.
-func (*GrantRoleNode) Next(runParams) (bool, error) { return false, nil }
+// Next implements the PlanNode interface.
+func (*GrantRoleNode) Next(RunParams) (bool, error) { return false, nil }
 
-// Values implements the planNode interface.
+// Values implements the PlanNode interface.
 func (*GrantRoleNode) Values() tree.Datums { return tree.Datums{} }
 
-// Close implements the planNode interface.
+// Close implements the PlanNode interface.
 func (*GrantRoleNode) Close(context.Context) {}

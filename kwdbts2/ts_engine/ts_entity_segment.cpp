@@ -14,12 +14,12 @@
 #include <cstdint>
 #include <utility>
 
+#include "compression/ts_compressor_manager.h"
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
 #include "ts_agg.h"
 #include "ts_bitmap.h"
 #include "ts_bufferbuilder.h"
-#include "ts_compressor.h"
 #include "ts_entity_segment_handle.h"
 #include "ts_filename.h"
 #include "ts_io.h"
@@ -139,7 +139,7 @@ KStatus TsEntitySegmentBlockItemFile::GetBlockItem(uint64_t blk_id, TsEntitySegm
     return s;
   }
   *blk_item = reinterpret_cast<TsEntitySegmentBlockItem*>(blk_item_guard->data());
-  if ((*blk_item)->block_version == INVALID_BLOCK_VERSION) {
+  if ((*blk_item)->struct_version == INVALID_BLOCK_VERSION) {
     LOG_ERROR("TsEntitySegmentBlockItemFile block version is invalid, file_path=%s, block_id=%lu", file_path_.c_str(),
               blk_id);
     return FAIL;
@@ -321,7 +321,7 @@ TsEntityBlock::TsEntityBlock(uint32_t table_id, TsEntitySegmentBlockItem* block_
   agg_length_ = block_item->agg_len;
   block_id_ = block_item->block_id;
   segment_block_container_ = segment_block_container;
-  block_version_ = block_item->block_version;
+  block_version_ = block_item->struct_version;
   // reserve two columns for timestamp and OSN
   column_blocks_.resize(n_cols_);
 }

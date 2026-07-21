@@ -29,6 +29,18 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
 )
 
+// aggregateVisitorCheckResult represents the outcome of checking a function
+// expression for aggregate characteristics during the visitor walk.
+type aggregateVisitorCheckResult int
+
+const (
+	// aggregateCheckContinue indicates the walk should continue recursing into
+	// child expressions.
+	aggregateCheckContinue aggregateVisitorCheckResult = iota
+	// aggregateCheckStop indicates the walk should stop at this node.
+	aggregateCheckStop
+)
+
 // IsAggregateVisitor checks if walked expressions contain aggregate functions.
 type IsAggregateVisitor struct {
 	Aggregated bool
@@ -36,31 +48,55 @@ type IsAggregateVisitor struct {
 	searchPath sessiondata.SearchPath
 }
 
+// compile-time interface compliance check
 var _ tree.Visitor = &IsAggregateVisitor{}
 
 // VisitPre satisfies the Visitor interface.
 func (v *IsAggregateVisitor) VisitPre(expr tree.Expr) (recurse bool, newExpr tree.Expr) {
-	switch t := expr.(type) {
-	case *tree.FuncExpr:
-		if t.IsWindowFunctionApplication() {
-			// A window function application of an aggregate builtin is not an
-			// aggregate function, but it can contain aggregate functions.
-			return true, expr
-		}
-		fd, err := t.Func.Resolve(v.searchPath)
-		if err != nil {
-			return false, expr
-		}
-		if fd.Class == tree.AggregateClass {
-			v.Aggregated = true
-			return false, expr
-		}
-	case *tree.Subquery:
-		return false, expr
-	}
-
-	return true, expr
+	checkResult := v.evaluateExpressionForAggregates(expr)
+	return checkResult == aggregateCheckContinue, expr
 }
 
 // VisitPost satisfies the Visitor interface.
 func (*IsAggregateVisitor) VisitPost(expr tree.Expr) tree.Expr { return expr }
+
+// evaluateExpressionForAggregates examines the given expression to determine
+// whether the visitor should continue recursing or stop. It classifies
+// function expressions and subqueries and updates the Aggregated flag when an
+// aggregate function is detected.
+func (v *IsAggregateVisitor) evaluateExpressionForAggregates(
+	expr tree.Expr,
+) aggregateVisitorCheckResult {
+	switch typedExpr := expr.(type) {
+	case *tree.FuncExpr:
+		return v.handleFunctionExpression(typedExpr)
+	case *tree.Subquery:
+		return aggregateCheckStop
+	default:
+		return aggregateCheckContinue
+	}
+}
+
+// handleFunctionExpression processes a function expression, determining whether
+// it is an aggregate, a window function application, or a regular function.
+func (v *IsAggregateVisitor) handleFunctionExpression(
+	funcExpr *tree.FuncExpr,
+) aggregateVisitorCheckResult {
+	if funcExpr.IsWindowFunctionApplication() {
+		// A window function application of an aggregate builtin is not an
+		// aggregate function, but it can contain aggregate functions.
+		return aggregateCheckContinue
+	}
+
+	funcDef, err := funcExpr.Func.Resolve(v.searchPath)
+	if err != nil {
+		return aggregateCheckStop
+	}
+
+	if funcDef.Class == tree.AggregateClass {
+		v.Aggregated = true
+		return aggregateCheckStop
+	}
+
+	return aggregateCheckContinue
+}

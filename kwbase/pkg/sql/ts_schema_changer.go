@@ -31,6 +31,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlconst"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqltelemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -50,27 +51,40 @@ import (
 
 const (
 	_ = iota
-	createKwdbTsTable
+	// CreateKwdbTsTable for creating ts table
+	CreateKwdbTsTable
 	createKwdbInsTable
 	dropKwdbTsTable
 	dropKwdbInsTable
 	dropKwdbTsDatabase
-	alterKwdbAddTag
-	alterKwdbDropTag
-	alterKwdbAlterTagType
-	alterKwdbSetTagValue
-	alterKwdbAddColumn
-	alterKwdbDropColumn
-	alterKwdbAlterColumnType
-	alterKwdbAlterPartitionInterval
-	alterKwdbAlterRetentions
+	// AlterKwdbAddTag is the type of add tag
+	AlterKwdbAddTag
+	// AlterKwdbDropTag is the type of drop tag
+	AlterKwdbDropTag
+	// AlterKwdbAlterTagType is the type of alter tag type
+	AlterKwdbAlterTagType
+	// AlterKwdbSetTagValue is the type of alter tag type
+	AlterKwdbSetTagValue
+	// AlterKwdbAddColumn is the type of add column
+	AlterKwdbAddColumn
+	// AlterKwdbDropColumn is the type of drop column
+	AlterKwdbDropColumn
+	// AlterKwdbAlterColumnType is the type of alter column type
+	AlterKwdbAlterColumnType
+	// AlterKwdbAlterPartitionInterval is the type of alter parition interval
+	AlterKwdbAlterPartitionInterval
+	// AlterKwdbAlterRetentions is the type of alter retention
+	AlterKwdbAlterRetentions
 	alterCompressInterval
 	autonomy
 	vacuum
 	alterVacuumInterval
-	createTagIndex
-	dropTagIndex
-	alterTagIndex
+	// CreateTagIndex for creating index on top of tags
+	CreateTagIndex
+	// DropTagIndex for dropping index on top of tags
+	DropTagIndex
+	// AlterTagIndex for altering index on top of tags
+	AlterTagIndex
 	modifyColumnCompress
 )
 
@@ -89,7 +103,7 @@ type TSSchemaChangeWorker struct {
 	nodeID         roachpb.NodeID
 	db             *kv.DB
 	leaseMgr       *LeaseManager
-	p              *planner
+	p              *GenericPlanner
 	distSQLPlanner *DistSQLPlanner
 	jobRegistry    *jobs.Registry
 	// Keep a reference to the job related to this schema change
@@ -121,7 +135,7 @@ func (r *tsSchemaChangeResumer) Resume(
 		nodeID:         p.ExecCfg().NodeID.Get(),
 		db:             p.ExecCfg().DB,
 		leaseMgr:       p.ExecCfg().LeaseManager,
-		p:              p.(*planner),
+		p:              phs.(*GenericPlanner),
 		distSQLPlanner: p.DistSQLPlanner(),
 		jobRegistry:    p.ExecCfg().JobRegistry,
 		job:            r.job,
@@ -192,7 +206,7 @@ func (sw *TSSchemaChangeWorker) exec(ctx context.Context) error {
 		}
 	}
 	syncErr = sw.completeTsTxn(ctx, syncErr)
-	if d.Type == createKwdbTsTable {
+	if d.Type == CreateKwdbTsTable {
 		if sw.p.extendedEvalCtx.ExecCfg.TestingKnobs.RunCreateTableFailedAndRollback != nil {
 			syncErr = sw.p.extendedEvalCtx.ExecCfg.TestingKnobs.RunCreateTableFailedAndRollback()
 		}
@@ -302,9 +316,24 @@ func makeCompressInfo(kColDesc *sqlbase.KWDBKTSColumn, col sqlbase.ColumnDescrip
 			kColDesc.EncodeAlgo = sqlbase.ColumnEncodeAlgo_ENCODE_ALGO_CHIMP
 		case "bit-packing":
 			kColDesc.EncodeAlgo = sqlbase.ColumnEncodeAlgo_ENCODE_ALGO_BIT_PACKING
+		case "alp":
+			kColDesc.EncodeAlgo = sqlbase.ColumnEncodeAlgo_ENCODE_ALGO_ALP
+		case "elf":
+			kColDesc.EncodeAlgo = sqlbase.ColumnEncodeAlgo_ENCODE_ALGO_ELF
+		case "bss":
+			kColDesc.EncodeAlgo = sqlbase.ColumnEncodeAlgo_ENCODE_ALGO_BSS
+		case "fptrunc":
+			kColDesc.EncodeAlgo = sqlbase.ColumnEncodeAlgo_ENCODE_ALGO_FPTRUNC
+		case "delta-d":
+			kColDesc.EncodeAlgo = sqlbase.ColumnEncodeAlgo_ENCODE_ALGO_DELTA_D
+		case "rc":
+			kColDesc.EncodeAlgo = sqlbase.ColumnEncodeAlgo_ENCODE_ALGO_RC
 		case "disabled":
 			kColDesc.EncodeAlgo = sqlbase.ColumnEncodeAlgo_ENCODE_ALGO_DISABLED
 		}
+
+		kColDesc.RelErr = col.TsCol.RelErr
+		kColDesc.AbsErr = col.TsCol.AbsErr
 	}
 	if col.TsCol.CompressAlgo != nil {
 		switch *col.TsCol.CompressAlgo {
@@ -351,7 +380,7 @@ func (sw *TSSchemaChangeWorker) handleResult(
 	for opt := retry.Start(retryOpts); opt.Next(); {
 		var updateErr error
 		switch d.Type {
-		case createKwdbTsTable:
+		case CreateKwdbTsTable:
 			if syncErr != nil {
 				log.Infof(ctx, "TS SchemaChange job(create table) failed, reason: %s", syncErr.Error())
 			}
@@ -381,10 +410,10 @@ func (sw *TSSchemaChangeWorker) handleResult(
 		//		d.DropMEInfo[0].TableID,
 		//		syncErr,
 		//	)
-		case alterKwdbAddColumn, alterKwdbDropColumn, alterKwdbAlterColumnType, alterKwdbAddTag,
-			alterKwdbDropTag, alterKwdbAlterTagType, createTagIndex, dropTagIndex:
+		case AlterKwdbAddColumn, AlterKwdbDropColumn, AlterKwdbAlterColumnType, AlterKwdbAddTag,
+			AlterKwdbDropTag, AlterKwdbAlterTagType, CreateTagIndex, DropTagIndex:
 			updateErr = sw.handleMutationForTSTable(ctx, d, syncErr)
-		case alterKwdbAlterPartitionInterval:
+		case AlterKwdbAlterPartitionInterval:
 			updateErr = p.handleAlterPartitionInterval(
 				ctx,
 				d.SNTable.ID,
@@ -392,7 +421,7 @@ func (sw *TSSchemaChangeWorker) handleResult(
 				d.SNTable.TsTable.PartitionIntervalInput,
 				syncErr,
 			)
-		case alterKwdbAlterRetentions:
+		case AlterKwdbAlterRetentions:
 			updateErr = p.handleAlterRetentions(
 				ctx,
 				d.SNTable.ID,
@@ -400,7 +429,7 @@ func (sw *TSSchemaChangeWorker) handleResult(
 				d.SNTable.TsTable.Downsampling,
 				syncErr,
 			)
-		case alterKwdbSetTagValue:
+		case AlterKwdbSetTagValue:
 			// prepare instance table metadata being modified
 			insTable := sqlbase.InstNameSpace{
 				InstName:    d.SetTag.TableName,
@@ -435,7 +464,7 @@ func (sw *TSSchemaChangeWorker) handleResult(
 }
 
 // handleSchedule changes schedule status when job done.
-func (p *planner) handleSchedule(ctx context.Context, job *jobs.Job, syncErr error) error {
+func (p *GenericPlanner) handleSchedule(ctx context.Context, job *jobs.Job, syncErr error) error {
 	jobStatus := jobs.StatusSucceeded
 	if syncErr != nil {
 		jobStatus = jobs.StatusFailed
@@ -454,13 +483,13 @@ func (p *planner) handleSchedule(ctx context.Context, job *jobs.Job, syncErr err
 
 // handleSetTagValue restore instance table metadata is available,
 // and the time-series engine completes setting the tag value.
-func (p *planner) handleSetTagValue(
+func (p *GenericPlanner) handleSetTagValue(
 	ctx context.Context, desc sqlbase.TableDescriptor, insTable sqlbase.InstNameSpace, syncErr error,
 ) error {
 	updateErr := p.ExecCfg().DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
 		p.txn = txn
 		// rewrite instance table
-		if err := writeInstTableMeta(ctx, p.Txn(), []sqlbase.InstNameSpace{insTable}, true); err != nil {
+		if err := WriteInstTableMeta(ctx, p.Txn(), []sqlbase.InstNameSpace{insTable}, true); err != nil {
 			return err
 		}
 		if syncErr == nil {
@@ -477,7 +506,7 @@ func (p *planner) handleSetTagValue(
 
 // handleAlterPartitionInterval restore time-series table metadata is available,
 // and the time-series engine completes setting the PartitionInterval.
-func (p *planner) handleAlterPartitionInterval(
+func (p *GenericPlanner) handleAlterPartitionInterval(
 	ctx context.Context, tableID sqlbase.ID, partitionInterval uint64, input *string, syncErr error,
 ) error {
 	_, updateDescErr := p.ExecCfg().LeaseManager.Publish(
@@ -497,7 +526,7 @@ func (p *planner) handleAlterPartitionInterval(
 
 // handleAlterRetentions restore time-series table metadata is available,
 // and the time-series engine completes setting the Retentions.
-func (p *planner) handleAlterRetentions(
+func (p *GenericPlanner) handleAlterRetentions(
 	ctx context.Context, tableID sqlbase.ID, lifeTime uint64, downsampling []string, syncErr error,
 ) error {
 	_, updateDescErr := p.ExecCfg().LeaseManager.Publish(
@@ -518,7 +547,7 @@ func (p *planner) handleAlterRetentions(
 // handleDropTsDatabase processes metadata based on the result of AE execution.
 // If AE drops all the tables in this database success, delete corresponding metadata.
 // If AE fails, rollback the metadata.
-func (p *planner) handleDropTsDatabase(
+func (p *GenericPlanner) handleDropTsDatabase(
 	ctx context.Context,
 	dbDesc sqlbase.DatabaseDescriptor,
 	tables []sqlbase.TableDescriptor,
@@ -567,7 +596,7 @@ func (p *planner) handleDropTsDatabase(
 			})
 			descriptorIDs = append(descriptorIDs, desc.ID)
 			jobDesc := "handle drop table " + desc.Name
-			if _, err := p.dropTableImpl(ctx, tableDesc, false, jobDesc, tree.DropCascade); err != nil {
+			if _, err := DropTableImpl(ctx, p, tableDesc, false, jobDesc, tree.DropCascade); err != nil {
 				return err
 			}
 		}
@@ -596,7 +625,7 @@ func (p *planner) handleDropTsDatabase(
 			Kind: sqlbase.SchemaPublic,
 			Name: tree.PublicSchema,
 		}
-		if err := p.dropSchemaImpl(ctx, b, dbDesc.ID, &schemaToDelete); err != nil {
+		if err := DropSchemaImpl(ctx, p, b, dbDesc.ID, &schemaToDelete); err != nil {
 			return err
 		}
 
@@ -616,7 +645,7 @@ func (p *planner) handleDropTsDatabase(
 			// Delete the zone config entry for this database.
 			b.DelRange(zoneKeyPrefix, zoneKeyPrefix.PrefixEnd(), false /* returnKeys */)
 		}
-		p.Tables().addUncommittedDatabase(dbDesc.Name, dbDesc.ID, dbDropped)
+		p.Tables().AddUncommittedDatabase(dbDesc.Name, dbDesc.ID, sqlconst.DbDropped)
 
 		sj, err = jr.CreateStartableJobWithTxn(ctx, jobRecord, p.txn, nil)
 		if err != nil {
@@ -639,7 +668,7 @@ func (p *planner) handleDropTsDatabase(
 // handleDropTsTable handle result for drop template table and time series table.
 // if drop table success, drop table descriptor.
 // else if drop table failed, change table state to public.
-func (p *planner) handleDropTsTable(
+func (p *GenericPlanner) handleDropTsTable(
 	ctx context.Context, desc sqlbase.TableDescriptor, jr *jobs.Registry, syncErr error,
 ) error {
 	var sj *jobs.StartableJob
@@ -652,7 +681,7 @@ func (p *planner) handleDropTsTable(
 		}
 		// execute without error, then delete corresponding metadata
 		jobDesc := "handle drop table " + tableDesc.Name
-		if _, err := p.dropTableImpl(ctx, tableDesc, false, jobDesc, tree.DropCascade); err != nil {
+		if _, err := DropTableImpl(ctx, p, tableDesc, false, jobDesc, tree.DropCascade); err != nil {
 			return err
 		}
 		// Queue a new job.
@@ -698,7 +727,7 @@ func (p *planner) handleDropTsTable(
 // handleDropInsTable handle result for drop instance table.
 // if drop table success, delete instance table from system table.
 // else drop table failed, change table state to public.
-func (p *planner) handleDropInsTable(
+func (p *GenericPlanner) handleDropInsTable(
 	ctx context.Context, dbName string, tableName string, tableID uint32, syncErr error,
 ) error {
 	updateErr := p.ExecCfg().DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
@@ -712,7 +741,7 @@ func (p *planner) handleDropInsTable(
 			}
 			insTable.State = sqlbase.ChildDesc_PUBLIC
 			// rewrite instance table
-			if err := writeInstTableMeta(ctx, p.Txn(), []sqlbase.InstNameSpace{insTable}, true); err != nil {
+			if err := WriteInstTableMeta(ctx, p.Txn(), []sqlbase.InstNameSpace{insTable}, true); err != nil {
 				return err
 			}
 		} else {
@@ -732,7 +761,7 @@ func (p *planner) handleDropInsTable(
 // handleCreateInsTable handle result for create instance table.
 // if create table success, change table state to public.
 // else if create table failed, delete table from system table.
-func (p *planner) handleCreateInsTable(
+func (p *GenericPlanner) handleCreateInsTable(
 	ctx context.Context, insTable sqlbase.InstNameSpace, syncErr error,
 ) error {
 	updateErr := p.ExecCfg().DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
@@ -747,7 +776,7 @@ func (p *planner) handleCreateInsTable(
 		} else {
 			// change table state to public.
 			insTable.State = sqlbase.ChildDesc_PUBLIC
-			if err := writeInstTableMeta(ctx, p.Txn(), []sqlbase.InstNameSpace{insTable}, true); err != nil {
+			if err := WriteInstTableMeta(ctx, p.Txn(), []sqlbase.InstNameSpace{insTable}, true); err != nil {
 				return err
 			}
 		}
@@ -759,7 +788,7 @@ func (p *planner) handleCreateInsTable(
 // handleCreateTSTable processes metadata based on the result of AE execution.
 // If create table success, change tableState to PUBLIC.
 // If create table fails, rollback the metadata.
-func (p *planner) handleCreateTSTable(
+func (p *GenericPlanner) handleCreateTSTable(
 	ctx context.Context, tab sqlbase.TableDescriptor, syncErr error,
 ) error {
 	updateErr := p.ExecCfg().DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
@@ -807,7 +836,7 @@ func init() {
 func (sw *TSSchemaChangeWorker) makeAndRunDistPlan(
 	ctx context.Context, d jobspb.SyncMetaCacheDetails,
 ) error {
-	var newPlanNode planNode
+	var newPlanNode PlanNode
 	//var nodeID []roachpb.NodeID
 	opType := getDDLOpType(d.Type)
 	switch d.Type {
@@ -842,13 +871,13 @@ func (sw *TSSchemaChangeWorker) makeAndRunDistPlan(
 	//		log.Infof(ctx, "%s, jobID: %d, checkReplica finished", opType, sw.job.ID())
 	//	}
 	//	newPlanNode = &tsDDLNode{d: d, nodeID: nodeList}
-	case alterKwdbAddColumn, alterKwdbDropColumn, alterKwdbAlterColumnType, alterKwdbAddTag,
-		alterKwdbDropTag, alterKwdbAlterTagType, createTagIndex, dropTagIndex:
+	case AlterKwdbAddColumn, AlterKwdbDropColumn, AlterKwdbAlterColumnType, AlterKwdbAddTag,
+		AlterKwdbDropTag, AlterKwdbAlterTagType, CreateTagIndex, DropTagIndex:
 		log.Infof(ctx, "%s job start, name: %s, id: %d, column/tag name: %s, jobID: %d, current tsVersion: %d",
 			opType, d.SNTable.Name, d.SNTable.ID, d.AlterTag.Name, sw.job.ID(), int(d.SNTable.TsTable.TsVersion))
 
-		//needCheckReplica := d.Type == alterKwdbAddTag || d.Type == alterKwdbDropTag ||
-		//	d.Type == alterKwdbAlterTagType
+		//needCheckReplica := d.Type == AlterKwdbAddTag || d.Type == AlterKwdbDropTag ||
+		//	d.Type == AlterKwdbAlterTagType
 
 		tableDesc, notFirst, err := sw.notFirstInLine(ctx)
 		if err != nil {
@@ -882,7 +911,7 @@ func (sw *TSSchemaChangeWorker) makeAndRunDistPlan(
 		txnID := strconv.AppendInt([]byte{}, *sw.job.ID(), 10)
 		miniTxn := tsTxn{txnID: txnID, txnEvent: txnStart}
 		newPlanNode = &tsDDLNode{d: d, nodeID: nodeList, tsTxn: miniTxn}
-	case alterKwdbAlterPartitionInterval, alterKwdbAlterRetentions:
+	case AlterKwdbAlterPartitionInterval, AlterKwdbAlterRetentions:
 		log.Infof(ctx, "%s job start, name: %s, id: %d, jobID: %d, current tsVersion: %d", opType, d.SNTable.Name, d.SNTable.ID, sw.job.ID(), int(d.SNTable.TsTable.TsVersion))
 		// Get all healthy nodes.
 		var nodeList []roachpb.NodeID
@@ -908,7 +937,7 @@ func (sw *TSSchemaChangeWorker) makeAndRunDistPlan(
 		txnID := strconv.AppendInt([]byte{}, *sw.job.ID(), 10)
 		miniTxn := tsTxn{txnID: txnID, txnEvent: txnStart}
 		newPlanNode = &tsDDLNode{d: d, nodeID: nodeList, tsTxn: miniTxn}
-	case createKwdbTsTable:
+	case CreateKwdbTsTable:
 		log.Infof(ctx, "%s job start, name: %s, id: %d, jobID: %d",
 			opType, d.SNTable.Name, d.SNTable.ID, sw.job.ID())
 		var nodeList []roachpb.NodeID
@@ -996,10 +1025,10 @@ func (sw *TSSchemaChangeWorker) makeAndRunDistPlan(
 	})
 }
 
-func (p *planner) makeNewPlanAndRun(
-	ctx context.Context, txn *kv.Txn, newPlanNode planNode,
+func (p *GenericPlanner) makeNewPlanAndRun(
+	ctx context.Context, txn *kv.Txn, newPlanNode PlanNode,
 ) (int, error) {
-	// Create an internal planner as the planner used to serve the user query
+	// Create an internal GenericPlanner as the GenericPlanner used to serve the user query
 	// would have committed by this point.
 	plan := *p
 	localPlanner := &plan
@@ -1033,7 +1062,7 @@ func (p *planner) makeNewPlanAndRun(
 	rec, err := p.DistSQLPlanner().checkSupportForNode(localPlanner.curPlan.plan)
 	var planAndRunErr error
 	var rowAffectNum int
-	localPlanner.runWithOptions(resolveFlags{skipCache: true}, func() {
+	localPlanner.RunWithOptions(ResolveFlags{SkipCache: true}, func() {
 		isLocal := err != nil || rec == cannotDistribute
 		evalCtx := localPlanner.ExtendedEvalContext()
 		planCtx := p.DistSQLPlanner().NewPlanningCtx(ctx, evalCtx, txn)
@@ -1081,8 +1110,8 @@ func (sw *TSSchemaChangeWorker) sendTsTxn(
 	ctx context.Context, d jobspb.SyncMetaCacheDetails, event txnEvent,
 ) error {
 	switch d.Type {
-	case alterKwdbAddTag, alterKwdbAddColumn, alterKwdbDropColumn, alterKwdbDropTag,
-		alterKwdbAlterTagType, alterKwdbAlterColumnType, createTagIndex, dropTagIndex:
+	case AlterKwdbAddTag, AlterKwdbAddColumn, AlterKwdbDropColumn, AlterKwdbDropTag,
+		AlterKwdbAlterTagType, AlterKwdbAlterColumnType, CreateTagIndex, DropTagIndex:
 		nodeList := sw.healthyNodes
 		txnID := strconv.AppendInt([]byte{}, *sw.job.ID(), 10)
 		tsTxn := tsTxn{txnID: txnID, txnEvent: event}
@@ -1127,27 +1156,27 @@ func (sw *TSSchemaChangeWorker) checkReplica(
 
 func getDDLOpType(op int32) string {
 	switch op {
-	case createKwdbTsTable:
+	case CreateKwdbTsTable:
 		return "create ts table"
 	//case dropKwdbTsTable:
 	//	return "drop ts table"
 	//case dropKwdbTsDatabase:
 	//	return "drop ts database"
-	case alterKwdbAddTag:
+	case AlterKwdbAddTag:
 		return "add tag"
-	case alterKwdbDropTag:
+	case AlterKwdbDropTag:
 		return "drop tag"
-	case alterKwdbAlterTagType:
+	case AlterKwdbAlterTagType:
 		return "alter tag type"
-	case alterKwdbAddColumn:
+	case AlterKwdbAddColumn:
 		return "add column"
-	case alterKwdbDropColumn:
+	case AlterKwdbDropColumn:
 		return "drop column"
-	case alterKwdbAlterColumnType:
+	case AlterKwdbAlterColumnType:
 		return "alter column type"
-	case alterKwdbAlterPartitionInterval:
+	case AlterKwdbAlterPartitionInterval:
 		return "alter partition interval"
-	case alterKwdbAlterRetentions:
+	case AlterKwdbAlterRetentions:
 		return "alter retentions"
 	case alterCompressInterval:
 		return "alter compress interval"
@@ -1155,9 +1184,9 @@ func getDDLOpType(op int32) string {
 		return "autonomy"
 	case vacuum:
 		return "vacuum"
-	case createTagIndex:
+	case CreateTagIndex:
 		return "create tag index"
-	case dropTagIndex:
+	case DropTagIndex:
 		return "drop tag index"
 	}
 	return ""
@@ -1197,7 +1226,7 @@ func (sw *TSSchemaChangeWorker) handleMutationForTSTable(
 	var eventFn func(txn *kv.Txn) error
 	isSucceeded := true
 	switch d.Type {
-	case alterKwdbAddColumn, alterKwdbDropColumn, alterKwdbAddTag, alterKwdbDropTag, createTagIndex:
+	case AlterKwdbAddColumn, AlterKwdbDropColumn, AlterKwdbAddTag, AlterKwdbDropTag, CreateTagIndex:
 		updateFn = func(tableDesc *sqlbase.MutableTableDescriptor) error {
 			i := 0
 			for _, mutation := range tableDesc.Mutations {
@@ -1212,13 +1241,13 @@ func (sw *TSSchemaChangeWorker) handleMutationForTSTable(
 					}
 
 					// if drop column/tag, store column info as KWDBTSColumn into tableDesc
-					if d.Type == alterKwdbDropColumn || d.Type == alterKwdbDropTag {
+					if d.Type == AlterKwdbDropColumn || d.Type == AlterKwdbDropTag {
 						droppedCol := makeKWDBTSColumn(mutation.GetColumn())
 						tableDesc.DroppedTsColumns = append(tableDesc.DroppedTsColumns, droppedCol)
 					}
 
 				} else if mutation.Direction == sqlbase.DescriptorMutation_ADD {
-					if !(d.Type == createTagIndex || d.Type == dropTagIndex) {
+					if !(d.Type == CreateTagIndex || d.Type == DropTagIndex) {
 						// If adding columns fails, roll back ColumnFamilyDescriptor.
 						tableDesc.RemoveColumnFromFamily(mutation.GetColumn().ID)
 					}
@@ -1236,7 +1265,7 @@ func (sw *TSSchemaChangeWorker) handleMutationForTSTable(
 			if d.AlterTag.IsTagCol() && tableDesc.State != sqlbase.TableDescriptor_PUBLIC {
 				tableDesc.State = sqlbase.TableDescriptor_PUBLIC
 			}
-			if (d.Type == createTagIndex || d.Type == dropTagIndex) && tableDesc.State != sqlbase.TableDescriptor_PUBLIC {
+			if (d.Type == CreateTagIndex || d.Type == DropTagIndex) && tableDesc.State != sqlbase.TableDescriptor_PUBLIC {
 				tableDesc.State = sqlbase.TableDescriptor_PUBLIC
 			}
 			// Trim the executed mutations from the descriptor.
@@ -1250,7 +1279,7 @@ func (sw *TSSchemaChangeWorker) handleMutationForTSTable(
 			}
 			return nil
 		}
-	case alterKwdbAlterColumnType, alterKwdbAlterTagType:
+	case AlterKwdbAlterColumnType, AlterKwdbAlterTagType:
 		updateFn = func(tableDesc *sqlbase.MutableTableDescriptor) error {
 			i := 0
 			for _, mutation := range tableDesc.Mutations {
@@ -1299,7 +1328,7 @@ func (sw *TSSchemaChangeWorker) handleMutationForTSTable(
 			}
 			return nil
 		}
-	case dropTagIndex:
+	case DropTagIndex:
 		updateFn = func(tableDesc *sqlbase.MutableTableDescriptor) error {
 			i := 0
 			for _, mutation := range tableDesc.Mutations {
@@ -1343,22 +1372,22 @@ func (sw *TSSchemaChangeWorker) handleMutationForTSTable(
 	}
 
 	if isSucceeded {
-		if d.Type == alterKwdbDropColumn ||
-			d.Type == alterKwdbDropTag {
+		if d.Type == AlterKwdbDropColumn ||
+			d.Type == AlterKwdbDropTag {
 			// remove comment on column
 			eventFn = func(txn *kv.Txn) error {
-				if err := sw.p.removeColumnComment(
-					ctx, txn, sw.tableID, d.AlterTag.ID,
+				if err := RemoveColumnComment(ctx, sw.p,
+					txn, sw.tableID, d.AlterTag.ID,
 				); err != nil {
 					return err
 				}
 				return nil
 			}
-		} else if d.Type == dropTagIndex {
+		} else if d.Type == DropTagIndex {
 			// remove comment on index
 			eventFn = func(txn *kv.Txn) error {
-				if err := sw.p.removeIndexComment(
-					ctx, sw.tableID, d.CreateOrAlterTagIndex.ID,
+				if err := RemoveIndexComment(ctx, sw.p,
+					sw.tableID, d.CreateOrAlterTagIndex.ID,
 				); err != nil {
 					return err
 				}
@@ -1368,7 +1397,7 @@ func (sw *TSSchemaChangeWorker) handleMutationForTSTable(
 	}
 
 	if sw.p == nil {
-		return errors.Errorf("unvalidated planner")
+		return errors.Errorf("unvalidated GenericPlanner")
 	}
 	_, updateDescErr := sw.p.ExecCfg().LeaseManager.Publish(
 		ctx,

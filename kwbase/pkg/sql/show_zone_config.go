@@ -74,12 +74,15 @@ const (
 	fullConfigSQLCol
 )
 
-func (p *planner) ShowZoneConfig(ctx context.Context, n *tree.ShowZoneConfig) (planNode, error) {
-	return &delayedNode{
+// ShowZoneConfig displays the zone configuration for a table or database
+func (p *GenericPlanner) ShowZoneConfig(
+	ctx context.Context, n *tree.ShowZoneConfig,
+) (PlanNode, error) {
+	return &DelayedNode{
 		name:    n.String(),
 		columns: showZoneConfigColumns,
-		constructor: func(ctx context.Context, p *planner) (planNode, error) {
-			v := p.newContainerValuesNode(showZoneConfigColumns, 0)
+		constructor: func(ctx context.Context, p *GenericPlanner) (PlanNode, error) {
+			v := p.NewContainerValuesNode(showZoneConfigColumns, 0)
 
 			// This signifies SHOW ALL.
 			// However, SHOW ALL should be handled by the delegate.
@@ -102,7 +105,7 @@ func (p *planner) ShowZoneConfig(ctx context.Context, n *tree.ShowZoneConfig) (p
 }
 
 func getShowZoneConfigRow(
-	ctx context.Context, p *planner, zoneSpecifier tree.ZoneSpecifier,
+	ctx context.Context, p *GenericPlanner, zoneSpecifier tree.ZoneSpecifier,
 ) (tree.Datums, error) {
 	tblDesc, err := p.resolveTableForZone(ctx, &zoneSpecifier)
 	if err != nil {

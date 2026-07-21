@@ -54,12 +54,14 @@ const (
 	sampledLogicalPlanFmtFlags = tree.FmtHideConstants
 )
 
-// explainPlanNode wraps the logic for EXPLAIN as a planNode.
+// explainPlanNode wraps the logic for EXPLAIN as a PlanNode.
+var _ PlanNode = &explainPlanNode{}
+
 type explainPlanNode struct {
 	explainer explainer
 
 	// plan is the sub-node being explained.
-	plan planNode
+	plan PlanNode
 
 	// subqueryPlans contains the subquery plans for the explained query.
 	subqueryPlans []subquery
@@ -72,17 +74,17 @@ type explainPlanNode struct {
 	run explainPlanRun
 }
 
-// makeExplainPlanNodeWithPlan instantiates a planNode that EXPLAINs an
+// makeExplainPlanNodeWithPlan instantiates a PlanNode that EXPLAINs an
 // underlying plan.
-func (p *planner) makeExplainPlanNodeWithPlan(
+func (p *GenericPlanner) makeExplainPlanNodeWithPlan(
 	ctx context.Context,
 	opts *tree.ExplainOptions,
-	plan planNode,
+	plan PlanNode,
 	subqueryPlans []subquery,
 	postqueryPlans []postquery,
 	stmtType tree.StatementType,
 	mem *memo.Memo,
-) (planNode, error) {
+) (PlanNode, error) {
 	flags := explainFlags{
 		symbolicVars: opts.Flags[tree.ExplainFlagSymVars],
 	}
@@ -141,7 +143,7 @@ func (p *planner) makeExplainPlanNodeWithPlan(
 		postqueryPlans: postqueryPlans,
 		stmtType:       stmtType,
 		run: explainPlanRun{
-			results: p.newContainerValuesNode(columns, 0),
+			results: p.NewContainerValuesNode(columns, 0),
 		},
 	}
 	return node, nil
@@ -153,7 +155,7 @@ type explainPlanRun struct {
 	results *valuesNode
 }
 
-func (e *explainPlanNode) startExec(params runParams) error {
+func (e *explainPlanNode) StartExec(params RunParams) error {
 	if err := populateExplain(
 		params, &e.explainer, e.run.results,
 		e.plan, e.subqueryPlans, e.postqueryPlans,
@@ -165,7 +167,7 @@ func (e *explainPlanNode) startExec(params runParams) error {
 	return nil
 }
 
-func (e *explainPlanNode) Next(params runParams) (bool, error) { return e.run.results.Next(params) }
+func (e *explainPlanNode) Next(params RunParams) (bool, error) { return e.run.results.Next(params) }
 func (e *explainPlanNode) Values() tree.Datums                 { return e.run.results.Values() }
 
 func (e *explainPlanNode) Close(ctx context.Context) {
@@ -185,7 +187,7 @@ type explainEntry struct {
 	isNode                bool
 	level                 int
 	node, field, fieldVal string
-	plan                  planNode
+	plan                  PlanNode
 }
 
 // explainFlags contains parameters for the EXPLAIN logic.
@@ -233,13 +235,13 @@ type explainer struct {
 }
 
 // populateExplain walks the plan and generates rows in a valuesNode.
-// The subquery plans, if any are known to the planner, are printed
+// The subquery plans, if any are known to the GenericPlanner, are printed
 // at the bottom.
 func populateExplain(
-	params runParams,
+	params RunParams,
 	e *explainer,
 	v *valuesNode,
-	plan planNode,
+	plan PlanNode,
 	subqueryPlans []subquery,
 	postqueryPlans []postquery,
 	stmtType tree.StatementType,
@@ -292,7 +294,7 @@ func populateExplain(
 						relProcessors = append(relProcessors, p)
 					}
 				}
-				_, err := colflow.SupportsVectorized(params.ctx, flowCtx, relProcessors, tsProcessors, fuseOpt, nil /* output */)
+				_, err := colflow.SupportsVectorized(params.Ctx, flowCtx, relProcessors, tsProcessors, fuseOpt, nil /* output */)
 				isVec = isVec && (err == nil)
 				if !isVec {
 					break
@@ -331,7 +333,7 @@ func populateExplain(
 				tree.NewDString(ordering),      // Ordering
 			}
 		}
-		_, err := v.rows.AddRow(params.ctx, row)
+		_, err := v.rows.AddRow(params.Ctx, row)
 		return err
 	}
 
@@ -343,13 +345,13 @@ func populateExplain(
 		return err
 	}
 
-	e.populateEntries(params.ctx, plan, subqueryPlans, postqueryPlans, explainSubqueryFmtFlags)
+	e.populateEntries(params.Ctx, plan, subqueryPlans, postqueryPlans, explainSubqueryFmtFlags)
 	return e.emitRows(emitRow)
 }
 
 func (e *explainer) populateEntries(
 	ctx context.Context,
-	plan planNode,
+	plan PlanNode,
 	subqueryPlans []subquery,
 	postqueryPlans []postquery,
 	subqueryFmtFlags tree.FmtFlags,
@@ -373,7 +375,7 @@ func (e *explainer) populateEntries(
 // planObserver.
 func observePlan(
 	ctx context.Context,
-	plan planNode,
+	plan PlanNode,
 	subqueryPlans []subquery,
 	postqueryPlans []postquery,
 	observer planObserver,
@@ -503,9 +505,9 @@ func (e *explainer) emitRows(emitRow emitExplainRowFn) error {
 	return nil
 }
 
-// planToString uses explain() to build a string representation of the planNode.
+// planToString uses explain() to build a string representation of the PlanNode.
 func planToString(
-	ctx context.Context, plan planNode, subqueryPlans []subquery, postqueryPlans []postquery,
+	ctx context.Context, plan PlanNode, subqueryPlans []subquery, postqueryPlans []postquery,
 ) string {
 	e := explainer{
 		explainFlags: explainFlags{
@@ -585,7 +587,7 @@ func (e *explainer) expr(v observeVerbosity, nodeName, fieldName string, n int, 
 }
 
 // enterNode implements the planObserver interface.
-func (e *explainer) enterNode(_ context.Context, name string, plan planNode) (bool, error) {
+func (e *explainer) enterNode(_ context.Context, name string, plan PlanNode) (bool, error) {
 	e.entries = append(e.entries, explainEntry{
 		isNode: true,
 		level:  e.level,
@@ -620,13 +622,13 @@ func (e *explainer) addWarningMessage(nodeName, fieldName, attr string) {
 }
 
 // leaveNode implements the planObserver interface.
-func (e *explainer) leaveNode(name string, _ planNode) error {
+func (e *explainer) leaveNode(name string, _ PlanNode) error {
 	e.level--
 	return nil
 }
 
 // formatColumns converts a column signature for a data source /
-// planNode to a string. The column types are printed iff the 2nd
+// PlanNode to a string. The column types are printed iff the 2nd
 // argument specifies so.
 func formatColumns(cols sqlbase.ResultColumns, printTypes bool) string {
 	f := tree.NewFmtCtx(tree.FmtSimple)

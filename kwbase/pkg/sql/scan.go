@@ -48,6 +48,8 @@ var scanNodePool = sync.Pool{
 
 // A scanNode handles scanning over the key/value pairs for a table and
 // reconstructing them into rows.
+var _ PlanNode = &scanNode{}
+
 type scanNode struct {
 	// This struct must be allocated on the heap and its location stay
 	// stable after construction because it implements
@@ -185,7 +187,9 @@ type scanColumnsConfig struct {
 
 var publicColumnsCfg = scanColumnsConfig{}
 
-func (p *planner) Scan() *scanNode {
+// Scan creates a scan node for reading rows from a table
+// nolint:unexportedreturn
+func (p *GenericPlanner) Scan() *scanNode {
 	n := scanNodePool.Get().(*scanNode)
 	return n
 }
@@ -205,7 +209,7 @@ func (n *scanNode) IndexedVarNodeFormatter(idx int) tree.NodeFormatter {
 	return (*tree.Name)(&n.resultColumns[idx].Name)
 }
 
-func (n *scanNode) startExec(params runParams) error {
+func (n *scanNode) StartExec(params RunParams) error {
 	panic("scanNode can't be run in local mode")
 }
 
@@ -214,7 +218,7 @@ func (n *scanNode) Close(context.Context) {
 	scanNodePool.Put(n)
 }
 
-func (n *scanNode) Next(params runParams) (bool, error) {
+func (n *scanNode) Next(params RunParams) (bool, error) {
 	panic("scanNode can't be run in local mode")
 }
 
@@ -267,7 +271,7 @@ func (n *scanNode) limitHint() int64 {
 // Initializes a scanNode with a table descriptor.
 func (n *scanNode) initTable(
 	ctx context.Context,
-	p *planner,
+	p *GenericPlanner,
 	desc *sqlbase.ImmutableTableDescriptor,
 	indexFlags *tree.IndexFlags,
 	colCfg scanColumnsConfig,
@@ -386,7 +390,7 @@ func (n *scanNode) initCols() error {
 }
 
 // Initializes the column structures.
-func (n *scanNode) initDescDefaults(planDeps planDependencies, colCfg scanColumnsConfig) error {
+func (n *scanNode) initDescDefaults(planDeps PlanDependencies, colCfg scanColumnsConfig) error {
 	n.colCfg = colCfg
 	n.index = &n.desc.PrimaryIndex
 
@@ -394,7 +398,7 @@ func (n *scanNode) initDescDefaults(planDeps planDependencies, colCfg scanColumn
 		return err
 	}
 
-	// Register the dependency to the planner, if requested.
+	// Register the dependency to the GenericPlanner, if requested.
 	if planDeps != nil {
 		indexID := sqlbase.IndexID(0)
 		if n.specifiedIndex != nil {

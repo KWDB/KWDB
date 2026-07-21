@@ -38,21 +38,16 @@ type ExprTransformContext struct {
 	isAggregateVisitor IsAggregateVisitor
 }
 
-// NormalizeExpr is a wrapper around EvalContex.NormalizeExpr which
+// NormalizeExpr is a wrapper around EvalContext.NormalizeExpr which
 // avoids allocation of a normalizeVisitor. See normalize.go for
 // details.
 func (t *ExprTransformContext) NormalizeExpr(
 	ctx *tree.EvalContext, typedExpr tree.TypedExpr,
 ) (tree.TypedExpr, error) {
-	if ctx.SkipNormalize {
+	if t.shouldBypassNormalization(ctx) {
 		return typedExpr, nil
 	}
-	t.normalizeVisitor = tree.MakeNormalizeVisitor(ctx)
-	expr, _ := tree.WalkExpr(&t.normalizeVisitor, typedExpr)
-	if err := t.normalizeVisitor.Err(); err != nil {
-		return nil, err
-	}
-	return expr.(tree.TypedExpr), nil
+	return t.performNormalization(ctx, typedExpr)
 }
 
 // AggregateInExpr determines if an Expr contains an aggregate function.
@@ -66,7 +61,34 @@ func (t *ExprTransformContext) AggregateInExpr(
 	if expr == nil {
 		return false
 	}
+	return t.walkExpressionForAggregates(expr, searchPath)
+}
 
+// shouldBypassNormalization checks whether normalization should be skipped
+// based on the evaluation context's SkipNormalize flag.
+func (t *ExprTransformContext) shouldBypassNormalization(ctx *tree.EvalContext) bool {
+	return ctx.SkipNormalize
+}
+
+// performNormalization runs the normalization visitor over the typed expression
+// and returns the normalized result or an error.
+func (t *ExprTransformContext) performNormalization(
+	ctx *tree.EvalContext, typedExpr tree.TypedExpr,
+) (tree.TypedExpr, error) {
+	t.normalizeVisitor = tree.MakeNormalizeVisitor(ctx)
+	expr, _ := tree.WalkExpr(&t.normalizeVisitor, typedExpr)
+	if err := t.normalizeVisitor.Err(); err != nil {
+		return nil, err
+	}
+	return expr.(tree.TypedExpr), nil
+}
+
+// walkExpressionForAggregates prepares the aggregate-detection visitor and
+// walks the expression tree to determine whether any aggregate function is
+// present.
+func (t *ExprTransformContext) walkExpressionForAggregates(
+	expr tree.Expr, searchPath sessiondata.SearchPath,
+) bool {
 	t.isAggregateVisitor = IsAggregateVisitor{
 		searchPath: searchPath,
 	}

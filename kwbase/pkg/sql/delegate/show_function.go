@@ -47,10 +47,8 @@ func (d *delegator) delegateShowFunction(stmt *tree.ShowFunction) (tree.Statemen
 			}
 			if exist {
 				const getFunction = `SELECT function_name, argument_types, return_type, function_type, language from "".kwdb_internal.kwdb_functions WHERE function_name = %[1]s`
-				query = fmt.Sprintf(
-					getFunction,
-					fmt.Sprintf("'%s'", stmt.FuncName),
-				)
+				showName := FormatRoutineNameForShow(string(stmt.FuncName))
+				query = fmt.Sprintf(getFunction, formatRoutineNameLiteral(showName))
 			}
 		} else {
 			return nil, pgerror.New(pgcode.Syntax, "empty function name is not supported")
@@ -73,16 +71,68 @@ func checkFunctionExists(
 		"query functions",
 		nil,
 		queryFunc,
-		funcName,
+		FormatRoutineNameForShow(funcName),
 	)
 	if err != nil {
 		return false, err
 	}
 	// if the result is empty, it means there's no such function
 	if len(row) == 0 {
-		return false, pgerror.Newf(
-			pgcode.UndefinedObject, "function %s does not exists "+
-				"or current user does not have privilege on this function", funcName)
+		return false, pgerror.Newf(pgcode.UndefinedObject, "function %s does not exist", FormatRoutineNameForShow(funcName))
 	}
 	return true, nil
+}
+
+// delegateShowCreateFunction rewrites SHOW CREATE FUNCTION to a SELECT
+// statement which returns function_name and function_body from
+// kwdb_internal.kwdb_functions.
+func (d *delegator) delegateShowCreateFunction(
+	stmt *tree.ShowCreateFunction,
+) (tree.Statement, error) {
+	funcName := string(stmt.Name)
+	if funcName == "" {
+		return nil, pgerror.New(pgcode.Syntax, "empty function name is not supported")
+	}
+
+	exists, err := checkFunctionExists(
+		d.ctx,
+		d.evalCtx.InternalExecutor,
+		funcName,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, pgerror.Newf(
+			pgcode.UndefinedObject,
+			"function %s does not exist",
+			FormatRoutineNameForShow(funcName),
+		)
+	}
+
+	showName := FormatRoutineNameForShow(funcName)
+
+	query := fmt.Sprintf(
+		`SELECT function_name, function_body
+		   FROM "".kwdb_internal.kwdb_functions
+		  WHERE function_name = %s
+		    AND function_body IS NOT NULL
+		    AND function_body != ''`, formatRoutineNameLiteral(showName),
+	)
+
+	return parse(query)
+}
+
+// FormatRoutineNameForShow formats routine name.
+func FormatRoutineNameForShow(name string) string {
+	n := tree.Name(name)
+	f := tree.NewFmtCtx(tree.FmtParsable)
+	f.FormatNode(&n)
+	return f.CloseAndGetString()
+}
+
+func formatRoutineNameLiteral(s string) string {
+	f := tree.NewFmtCtx(tree.FmtParsable)
+	f.FormatNode(tree.NewDString(s))
+	return f.CloseAndGetString()
 }

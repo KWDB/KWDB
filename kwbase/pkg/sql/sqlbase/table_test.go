@@ -71,7 +71,7 @@ func TestMakeColumnDefDescs(t *testing.T) {
 		t.Fatal("statement DEFAULT 1 is parsed successfully")
 	}
 	colDef.DefaultExpr.Expr = expr
-	col, _, _, err := MakeColumnDefDescs(colDef, nil, tree.RelationalTable)
+	col, _, _, err := MakeColumnDefDescs(colDef, nil, false)
 	if err != nil {
 		t.Errorf("MakeColumnDefDescs failed: %v", err)
 	}

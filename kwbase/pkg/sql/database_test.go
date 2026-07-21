@@ -46,7 +46,7 @@ func TestMakeDatabaseDesc(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	desc := makeDatabaseDesc(stmt.AST.(*tree.CreateDatabase))
+	desc := MakeDatabaseDesc(stmt.AST.(*tree.CreateDatabase))
 	if desc.Name != "test" {
 		t.Fatalf("expected Name == test, got %s", desc.Name)
 	}
@@ -66,7 +66,7 @@ func TestDatabaseAccessors(t *testing.T) {
 	defer s.Stopper().Stop(context.TODO())
 
 	if err := kvDB.Txn(context.TODO(), func(ctx context.Context, txn *kv.Txn) error {
-		if _, err := getDatabaseDescByID(ctx, txn, sqlbase.SystemDB.ID); err != nil {
+		if _, err := GetDatabaseDescByID(ctx, txn, sqlbase.SystemDB.ID); err != nil {
 			return err
 		}
 		if _, err := MustGetDatabaseDescByID(ctx, txn, sqlbase.SystemDB.ID); err != nil {

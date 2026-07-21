@@ -75,6 +75,9 @@ func TryDelegate(
 	case *tree.ShowStreams:
 		return d.delegateShowStreams(t)
 
+	case *tree.ShowPipes:
+		return d.delegateShowPipes(t)
+
 	case *tree.ShowCreate:
 		return d.delegateShowCreate(t)
 
@@ -83,8 +86,12 @@ func TryDelegate(
 
 	case *tree.ShowCreateProcedure:
 		return d.delegateShowCreateProcedure(t)
+
 	case *tree.ShowCreateTrigger:
 		return d.delegateShowCreateTrigger(t)
+
+	case *tree.ShowCreateFunction:
+		return d.delegateShowCreateFunction(t)
 
 	case *tree.ShowDatabaseIndexes:
 		return d.delegateShowDatabaseIndexes(t)
@@ -139,8 +146,10 @@ func TryDelegate(
 
 	case *tree.ShowTables:
 		return d.delegateShowTables(t)
+
 	case *tree.ShowProcedures:
 		return d.delegateShowProcedures(t)
+
 	case *tree.ShowUsers:
 		return d.delegateShowRoles()
 
@@ -158,6 +167,9 @@ func TryDelegate(
 
 	case *tree.ShowAudits:
 		return d.delegateShowAudits(t)
+
+	case *tree.ShowPublications:
+		return d.delegateShowPublications(t)
 
 	case *tree.ShowSavepointStatus:
 		return nil, unimplemented.NewWithIssue(47333, "cannot use SHOW SAVEPOINT STATUS as a statement source")

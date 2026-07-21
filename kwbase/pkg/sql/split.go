@@ -36,12 +36,14 @@ import (
 	"github.com/pkg/errors"
 )
 
+var _ PlanNode = &splitNode{}
+
 type splitNode struct {
-	optColumnsSlot
+	OptColumnsSlot
 
 	tableDesc      *sqlbase.TableDescriptor
 	index          *sqlbase.IndexDescriptor
-	rows           planNode
+	rows           PlanNode
 	run            splitRun
 	expirationTime hlc.Timestamp
 }
@@ -52,14 +54,14 @@ type splitRun struct {
 	lastExpirationTime hlc.Timestamp
 }
 
-func (n *splitNode) startExec(params runParams) error {
+func (n *splitNode) StartExec(params RunParams) error {
 	if n.tableDesc.IsTSTable() {
 		return sqlbase.TSUnsupportedError("split")
 	}
 	return nil
 }
 
-func (n *splitNode) Next(params runParams) (bool, error) {
+func (n *splitNode) Next(params RunParams) (bool, error) {
 	// TODO(radu): instead of performing the splits sequentially, accumulate all
 	// the split keys and then perform the splits in parallel (e.g. split at the
 	// middle key and recursively to the left and right).
@@ -73,7 +75,7 @@ func (n *splitNode) Next(params runParams) (bool, error) {
 		return false, err
 	}
 
-	if err := params.extendedEvalCtx.ExecCfg.DB.AdminSplit(params.ctx, rowKey, rowKey, n.expirationTime); err != nil {
+	if err := params.extendedEvalCtx.ExecCfg.DB.AdminSplit(params.Ctx, rowKey, rowKey, n.expirationTime); err != nil {
 		return false, err
 	}
 

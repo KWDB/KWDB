@@ -39,7 +39,7 @@ import (
 )
 
 // Node represents a node in the execution tree
-// (currently maps to sql.planNode).
+// (currently maps to sql.PlanNode).
 type Node interface{}
 
 // Plan represents the plan for a query (currently maps to sql.planTop).
@@ -49,7 +49,7 @@ type Node interface{}
 type Plan interface{}
 
 // Factory defines the interface for building an execution plan, which consists
-// of a tree of execution nodes (currently a sql.planNode tree).
+// of a tree of execution nodes (currently a sql.PlanNode tree).
 //
 // The tree is always built bottom-up. The Construct methods either construct
 // leaf nodes, or they take other nodes previously constructed by this same
@@ -90,6 +90,7 @@ type Factory interface {
 
 	// ConstructTSScan returns a tsScan node of time series query.
 	ConstructTSScan(
+		md *opt.Metadata,
 		table cat.Table,
 		private *memo.TSScanPrivate,
 		tagFilter, primaryFilter, tagIndexFilter []tree.TypedExpr,
@@ -407,6 +408,7 @@ type Factory interface {
 		primaryTagID []uint32,
 		primaryTagValues, partOfPTgValues [][]byte,
 		isOutOfRange bool,
+		cdcData []byte,
 	) (Node, error)
 
 	// ConstructTSTagUpdate creates a node that implements an TIME SERIES DELETE statement.
@@ -417,6 +419,7 @@ type Factory interface {
 		pTagValueNotExist bool,
 		startKey, endKey roachpb.Key,
 		osnID uint64,
+		cdcData []byte,
 	) (Node, error)
 
 	// ConstructInsertFastPath creates a node that implements a special (but very

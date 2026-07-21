@@ -1,0 +1,277 @@
+// Copyright 2017 The Cockroach Authors.
+// Copyright (c) 2022-present, Shanghai Yunxi Technology Co, Ltd. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// This software (KWDB) is licensed under Mulan PSL v2.
+// You can use this software according to the terms and conditions of the Mulan PSL v2.
+// You may obtain a copy of Mulan PSL v2 at:
+//          http://license.coscl.org.cn/MulanPSL2
+// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+// EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+// MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+// See the Mulan PSL v2 for more details.
+
+package ddl
+
+import (
+	"context"
+	"strconv"
+	"strings"
+
+	"gitee.com/kwbasedb/kwbase/pkg/sql"
+	ddlopts "gitee.com/kwbasedb/kwbase/pkg/sql/ddl_opts"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlutil"
+)
+
+// ShowCreateTable returns a valid SQL representation of the CREATE
+// TABLE statement used to create the given table.
+//
+// The names of the tables references by foreign keys, and the
+// interleaved parent if any, are prefixed by their own database name
+// unless it is equal to the given dbPrefix. This allows us to elide
+// the prefix when the given table references other tables in the
+// current database.
+func ShowCreateTable(
+	ctx context.Context,
+	p *GenericPlanner,
+	tn *tree.Name,
+	dbPrefix string,
+	desc *TableDescriptor,
+	lCtx *sql.InternalLookupCtx,
+	displayOptions ddlopts.ShowCreateDisplayOptions,
+) (string, error) {
+	a := &sqlbase.DatumAlloc{}
+
+	f := tree.NewFmtCtx(tree.FmtSimple)
+	f.WriteString("CREATE ")
+	if desc.Temporary {
+		f.WriteString("TEMP ")
+	}
+	if desc.IsSparseTable() {
+		f.WriteString("SPARSE ")
+	}
+	f.WriteString("TABLE ")
+	f.FormatNode(tn)
+	f.WriteString(" (")
+	primaryKeyIsOnVisibleColumn := false
+	visibleCols := desc.VisibleColumns()
+	for i := range visibleCols {
+		col := &visibleCols[i]
+		if i != 0 {
+			f.WriteString(",")
+		}
+		f.WriteString("\n\t")
+		f.WriteString(col.SQLString())
+		if desc.IsPhysicalTable() && desc.PrimaryIndex.ColumnIDs[0] == col.ID {
+			// Only set primaryKeyIsOnVisibleColumn to true if the primary key
+			// is on a visible column (not rowid).
+			primaryKeyIsOnVisibleColumn = true
+		}
+	}
+	if !desc.IsTSTable() {
+		if primaryKeyIsOnVisibleColumn ||
+			(desc.IsPhysicalTable() && desc.PrimaryIndex.IsSharded()) {
+			f.WriteString(",\n\tCONSTRAINT ")
+			sqlutil.FormatQuoteNames(&f.Buffer, desc.PrimaryIndex.Name)
+			f.WriteString(" ")
+			f.WriteString(desc.PrimaryKeyString())
+		}
+		// TODO (lucy): Possibly include FKs in the mutations list here, or else
+		// exclude check mutations below, for consistency.
+		if displayOptions.FKDisplayMode != ddlopts.OmitFKClausesFromCreate {
+			for i := range desc.OutboundFKs {
+				fkCtx := tree.NewFmtCtx(tree.FmtSimple)
+				fk := &desc.OutboundFKs[i]
+				fkCtx.WriteString(",\n\tCONSTRAINT ")
+				fkCtx.FormatNameP(&fk.Name)
+				fkCtx.WriteString(" ")
+				if err := sql.ShowForeignKeyConstraint(&fkCtx.Buffer, dbPrefix, desc, fk, lCtx); err != nil {
+					if displayOptions.FKDisplayMode == ddlopts.OmitMissingFKClausesFromCreate {
+						continue
+					} else { // When FKDisplayMode == IncludeFkClausesInCreate.
+						return "", err
+					}
+				}
+				f.WriteString(fkCtx.String())
+			}
+		}
+		allIdx := append(desc.Indexes, desc.PrimaryIndex)
+		for i := range allIdx {
+			idx := &allIdx[i]
+			// Only add indexes to the create_statement column, and not to the
+			// create_nofks column if they are not associated with an INTERLEAVE
+			// statement.
+			// Initialize to false if Interleave has no ancestors, indicating that the
+			// index is not interleaved at all.
+			includeInterleaveClause := len(idx.Interleave.Ancestors) == 0
+			if displayOptions.FKDisplayMode != ddlopts.OmitFKClausesFromCreate {
+				// The caller is instructing us to not omit FK clauses from inside the CREATE.
+				// (i.e. the caller does not want them as separate DDL.)
+				// Since we're including FK clauses, we need to also include the PARTITION and INTERLEAVE
+				// clauses as well.
+				includeInterleaveClause = true
+			}
+			if idx.ID != desc.PrimaryIndex.ID && includeInterleaveClause {
+				// Showing the primary index is handled above.
+				f.WriteString(",\n\t")
+				f.WriteString(idx.SQLString(&sqlbase.AnonymousTable))
+				// Showing the INTERLEAVE and PARTITION BY for the primary index are
+				// handled last.
+
+				// Add interleave or Foreign Key indexes only to the create_table columns,
+				// and not the create_nofks column.
+				if includeInterleaveClause {
+					if err := showCreateInterleave(idx, &f.Buffer, dbPrefix, lCtx); err != nil {
+						return "", err
+					}
+				}
+				if err := sqlutil.ShowCreatePartitioning(
+					a, desc, idx, &idx.Partitioning, &f.Buffer, 1 /* indent */, 0, /* colOffset */
+				); err != nil {
+					return "", err
+				}
+			}
+		}
+
+		// Create the FAMILY and CONSTRAINTs of the CREATE statement
+		showFamilyClause(desc, f)
+		ShowConstraintClause(desc, f)
+	}
+
+	if desc.IsTSTable() {
+		f.WriteString("\n)")
+		f.WriteString(" TAGS")
+		f.WriteString(" (")
+		var primaryTags []string
+		var tagCount int
+		for i := range desc.Columns {
+			if desc.Columns[i].IsTagCol() {
+				if desc.TableType == tree.TemplateTable && desc.Columns[i].IsPrimaryTagCol() {
+					continue
+				}
+				if tagCount != 0 {
+					f.WriteString(",")
+				}
+				tagCount++
+				if desc.Columns[i].IsPrimaryTagCol() {
+					primaryTags = append(primaryTags, desc.Columns[i].Name)
+				}
+				f.WriteString("\n\t")
+				f.FormatNameP(&desc.Columns[i].Name)
+				f.WriteString(" ")
+				typeStr := desc.Columns[i].Type.SQLString()
+				f.WriteString(typeStr)
+				typ := desc.Columns[i].Type
+				// display types with length
+				if sql.IsTypeWithLength(typ.Oid()) && !strings.Contains(typeStr, "(") {
+					f.WriteString("(")
+					f.WriteString(strconv.Itoa(int(typ.InternalType.Width)))
+					f.WriteString(")")
+				}
+				if !desc.Columns[i].Nullable {
+					f.WriteString(" NOT NULL")
+				}
+			}
+		}
+		f.WriteString(" )")
+		if desc.IsTimeseriesTable() || desc.IsSparseTable() {
+			f.WriteString(" ")
+			f.WriteString("PRIMARY TAGS")
+			f.WriteString("(")
+			for i, pt := range primaryTags {
+				if i != 0 {
+					f.WriteString(", ")
+				}
+				f.FormatNameP(&pt)
+			}
+			f.WriteString(")")
+		}
+
+		f.WriteString("\n\t")
+		f.WriteString("retentions ")
+		if len(desc.TsTable.Downsampling) > 0 {
+			f.WriteString(desc.TsTable.Downsampling[0])
+		} else {
+			f.WriteString(strconv.Itoa(int(desc.TsTable.Lifetime)))
+			f.WriteString("s")
+		}
+	}
+
+	if err := showCreateInterleave(&desc.PrimaryIndex, &f.Buffer, dbPrefix, lCtx); err != nil {
+		return "", err
+	}
+	if err := sqlutil.ShowCreatePartitioning(
+		a, desc, &desc.PrimaryIndex, &desc.PrimaryIndex.Partitioning, &f.Buffer, 0 /* indent */, 0, /* colOffset */
+	); err != nil {
+		return "", err
+	}
+
+	if !displayOptions.IgnoreComments {
+		if err := showComments(desc, selectComment(ctx, p, desc.ID), &f.Buffer); err != nil {
+			return "", err
+		}
+	}
+
+	return f.CloseAndGetString(), nil
+}
+
+// ShowCreate returns a valid SQL representation of the CREATE
+// statement used to create the descriptor passed in. The
+//
+// The names of the tables references by foreign keys, and the
+// interleaved parent if any, are prefixed by their own database name
+// unless it is equal to the given dbPrefix. This allows us to elide
+// the prefix when the given table references other tables in the
+// current database.
+func ShowCreate(
+	ctx context.Context,
+	dbPrefix string,
+	allDescs []sqlbase.Descriptor,
+	desc *TableDescriptor,
+	displayOptions ddlopts.ShowCreateDisplayOptions,
+	p *GenericPlanner,
+) (string, error) {
+	var stmt string
+	var err error
+	tn := (*tree.Name)(&desc.Name)
+	if desc.IsView() {
+		stmt, err = sqlutil.ShowCreateView(ctx, tn, desc)
+	} else if desc.IsSequence() {
+		stmt, err = sqlutil.ShowCreateSequence(ctx, tn, desc)
+	} else {
+		lCtx := sql.NewInternalLookupCtxFromDescriptors(allDescs, nil /* want all tables */)
+		stmt, err = ShowCreateTable(ctx, p, tn, dbPrefix, desc, lCtx, displayOptions)
+	}
+
+	return stmt, err
+}
+
+// reParseCreateTrigger returns a valid SQL representation of the CREATE
+// TRIGGER statement used to create the given trigger.
+func reParseCreateTrigger(desc *sqlbase.TriggerDescriptor) (*tree.CreateTrigger, error) {
+	newStmt, err := parser.Parse(desc.TriggerBody)
+	if err != nil {
+		return nil, err
+	}
+	ct, ok := newStmt[0].AST.(*tree.CreateTrigger)
+	if !ok {
+		return nil, pgerror.Newf(pgcode.Syntax, "cannot parse \"%s\" as CREATE TRIGGER statement", newStmt[0].AST.String())
+	}
+	return ct, nil
+}

@@ -26,15 +26,31 @@ type CopyFrom struct {
 func (node *CopyFrom) Format(ctx *FmtCtx) {
 	ctx.WriteString("COPY ")
 	ctx.FormatNode(&node.Table)
+	node.maybeWriteColumnList(ctx)
+	ctx.WriteString(" FROM ")
+	node.writeCopySource(ctx)
+	node.maybeWriteOptions(ctx)
+}
+
+// maybeWriteColumnList outputs the parenthesized column list when columns
+// are specified.
+func (node *CopyFrom) maybeWriteColumnList(ctx *FmtCtx) {
 	if len(node.Columns) > 0 {
 		ctx.WriteString(" (")
 		ctx.FormatNode(&node.Columns)
 		ctx.WriteString(")")
 	}
-	ctx.WriteString(" FROM ")
+}
+
+// writeCopySource outputs the copy source, either STDIN or another source.
+func (node *CopyFrom) writeCopySource(ctx *FmtCtx) {
 	if node.Stdin {
 		ctx.WriteString("STDIN")
 	}
+}
+
+// maybeWriteOptions appends the WITH options clause when present.
+func (node *CopyFrom) maybeWriteOptions(ctx *FmtCtx) {
 	if node.Options != nil {
 		ctx.WriteString(" WITH ")
 		ctx.FormatNode(&node.Options)

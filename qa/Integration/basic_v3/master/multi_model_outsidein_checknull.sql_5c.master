@@ -607,11 +607,11 @@ ORDER BY s.work_area_sn;
              │                          | standard_val | standard_val
              └── hash-join              |              |
                   │                     | type         | inner
-                  │                     | equality     | (column11) = (standard_val)
+                  │                     | equality     | (column14) = (standard_val)
                   ├── synchronizer      |              |
                   │    └── render       |              |
                   │         │           | engine type  | time series
-                  │         │           | column11     | second_val + 5.0
+                  │         │           | column14     | second_val + 5.0
                   │         │           | value        | value
                   │         │           | state        | state
                   │         │           | second_val   | second_val
@@ -910,13 +910,13 @@ WHERE t.standard_avg + 5 = ts.second_val;
    │                                         | second_val    | second_val
    └── hash-join                             |               |
         │                                    | type          | inner
-        │                                    | equality      | (second_val) = (column22)
+        │                                    | equality      | (second_val) = (column28)
         ├── synchronizer                     |               |
         │    └── ts scan                     |               |
         │                                    | ts-table      | firegases
         │                                    | access mode   | tableTableMeta
         └── render                           |               |
-             │                               | column22      | avg + 5.0
+             │                               | column28      | avg + 5.0
              │                               | work_area_sn  | work_area_sn
              │                               | avg           | avg
              │                               | avg           | avg
@@ -2131,11 +2131,11 @@ ORDER BY s.work_area_sn;
              │                          | standard_val | standard_val
              └── hash-join              |              |
                   │                     | type         | inner
-                  │                     | equality     | (column11) = (standard_val)
+                  │                     | equality     | (column14) = (standard_val)
                   ├── synchronizer      |              |
                   │    └── render       |              |
                   │         │           | engine type  | time series
-                  │         │           | column11     | second_val + 5.0
+                  │         │           | column14     | second_val + 5.0
                   │         │           | value        | value
                   │         │           | state        | state
                   │         │           | second_val   | second_val
@@ -2434,13 +2434,13 @@ WHERE t.standard_avg + 5 = ts.second_val;
    │                                         | second_val    | second_val
    └── hash-join                             |               |
         │                                    | type          | inner
-        │                                    | equality      | (second_val) = (column22)
+        │                                    | equality      | (second_val) = (column28)
         ├── synchronizer                     |               |
         │    └── ts scan                     |               |
         │                                    | ts-table      | firegases
         │                                    | access mode   | tableTableMeta
         └── render                           |               |
-             │                               | column22      | avg + 5.0
+             │                               | column28      | avg + 5.0
              │                               | work_area_sn  | work_area_sn
              │                               | avg           | avg
              │                               | avg           | avg
@@ -3794,11 +3794,11 @@ ORDER BY s.work_area_sn;
              │                          | standard_val | standard_val
              └── hash-join              |              |
                   │                     | type         | inner
-                  │                     | equality     | (column11) = (standard_val)
+                  │                     | equality     | (column14) = (standard_val)
                   ├── synchronizer      |              |
                   │    └── render       |              |
                   │         │           | engine type  | time series
-                  │         │           | column11     | second_val + 5.0
+                  │         │           | column14     | second_val + 5.0
                   │         │           | value        | value
                   │         │           | state        | state
                   │         │           | second_val   | second_val
@@ -4097,13 +4097,13 @@ WHERE t.standard_avg + 5 = ts.second_val;
    │                                         | second_val    | second_val
    └── hash-join                             |               |
         │                                    | type          | inner
-        │                                    | equality      | (second_val) = (column22)
+        │                                    | equality      | (second_val) = (column28)
         ├── synchronizer                     |               |
         │    └── ts scan                     |               |
         │                                    | ts-table      | firegases
         │                                    | access mode   | tableTableMeta
         └── render                           |               |
-             │                               | column22      | avg + 5.0
+             │                               | column28      | avg + 5.0
              │                               | work_area_sn  | work_area_sn
              │                               | avg           | avg
              │                               | avg           | avg

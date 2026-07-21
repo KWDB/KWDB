@@ -45,7 +45,7 @@ type batchLookUpJoinNode struct {
 	columns sqlbase.ResultColumns
 }
 
-func (p *planner) makeBatchLookUpJoinNode(
+func (p *GenericPlanner) makeBatchLookUpJoinNode(
 	left planDataSource, right planDataSource, pred *joinPredicate,
 ) *batchLookUpJoinNode {
 	blj := &batchLookUpJoinNode{
@@ -58,21 +58,21 @@ func (p *planner) makeBatchLookUpJoinNode(
 	return blj
 }
 
-func (blj *batchLookUpJoinNode) startExec(params runParams) error {
+func (blj *batchLookUpJoinNode) StartExec(params RunParams) error {
 	panic("batchLookUpJoinNode cannot be run in local mode")
 }
 
-// Next implements the planNode interface.
-func (blj *batchLookUpJoinNode) Next(params runParams) (res bool, err error) {
+// Next implements the PlanNode interface.
+func (blj *batchLookUpJoinNode) Next(params RunParams) (res bool, err error) {
 	panic("batchLookUpJoinNode cannot be run in local mode")
 }
 
-// Values implements the planNode interface.
+// Values implements the PlanNode interface.
 func (blj *batchLookUpJoinNode) Values() tree.Datums {
 	panic("batchLookUpJoinNode cannot be run in local mode")
 }
 
-// Close implements the planNode interface.
+// Close implements the PlanNode interface.
 func (blj *batchLookUpJoinNode) Close(ctx context.Context) {
 	blj.right.plan.Close(ctx)
 	blj.left.plan.Close(ctx)

@@ -44,6 +44,8 @@ type DirectInsertTable struct {
 	Tname       *tree.TableName
 	Desc        tree.NameList
 	TableType   tree.TableType
+
+	Tab *sqlbase.TableDescriptor
 }
 
 // DatumConverter is a function type for converting raw value to tree.Datum
@@ -385,8 +387,10 @@ func BuildRowBytesForPrepareTsInsert(
 		NodeID:          nodeID,
 		PerNodePayloads: allPayloads,
 	}
+
 	di.PayloadNodeMap[int(evalCtx.NodeID)].CDCData = BuildCDCDataForDirectInsert(
-		&evalCtx, uint64(table.ID), table.Columns, di.InputValues, di.ColIndexs, cfg.CDCCoordinator)
+		&evalCtx, table.TableDescriptor, table.Columns, di.InputValues, di.ColIndexs, cfg.CDCCoordinator)
+
 	return nil
 }
 
@@ -1749,7 +1753,7 @@ func GetPayloadMapForMuiltNode(
 	}
 
 	di.PayloadNodeMap[int(evalCtx.NodeID)].CDCData = BuildCDCDataForDirectInsert(
-		&evalCtx, uint64(tabID), table.Columns, inputValues, di.ColIndexs, cfg.CDCCoordinator)
+		&evalCtx, table.TableDescriptor, table.Columns, inputValues, di.ColIndexs, cfg.CDCCoordinator)
 
 	return nil
 }
@@ -2231,7 +2235,7 @@ func boolFormatBinary(Args [][]byte, idx int) error {
 // BuildCDCDataForDirectInsert builds DirectInsert data for cdc.
 func BuildCDCDataForDirectInsert(
 	evalCtx *tree.EvalContext,
-	tableID uint64,
+	table sqlbase.TableDescriptor,
 	columns []sqlbase.ColumnDescriptor,
 	InputDatums []tree.Datums,
 	colIndex map[int]int,
@@ -2241,7 +2245,9 @@ func BuildCDCDataForDirectInsert(
 		return nil
 	}
 
-	if !cdcCoordinator.IsCDCEnabled(tableID) {
+	tableID := uint64(table.ID)
+
+	if !cdcCoordinator.WaitCDCEnabled(tableID, table.CDC) {
 		return nil
 	}
 

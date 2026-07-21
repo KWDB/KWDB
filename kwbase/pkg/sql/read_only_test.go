@@ -21,17 +21,7 @@ import (
 func TestCheckPlanNodeType(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
-	writePlanNodeList := []planNode{
-		&CreateRoleNode{},
-		&createAuditNode{},
-		&createDatabaseNode{},
-		&createIndexNode{},
-		&createSchemaNode{},
-		&createSequenceNode{},
-		&createStatsNode{},
-		&createTableNode{},
-		&createViewNode{},
-
+	writePlanNodeList := []PlanNode{
 		&insertNode{},
 		&tsInsertNode{},
 
@@ -42,30 +32,9 @@ func TestCheckPlanNodeType(t *testing.T) {
 		&deleteNode{},
 		&deleteRangeNode{},
 
-		&DropRoleNode{},
-		&dropAuditNode{},
-		&dropDatabaseNode{},
-		&dropIndexNode{},
-		&dropSchemaNode{},
-		&dropSequenceNode{},
-		&dropTableNode{},
-		&dropViewNode{},
-
-		&alterAuditNode{},
-		&alterIndexNode{},
-		&alterRoleNode{},
-		&alterSequenceNode{},
-		&alterTSDatabaseNode{},
-		&alterTableNode{},
-
-		&renameColumnNode{},
-		&renameDatabaseNode{},
-		&renameIndexNode{},
-		&renameTableNode{},
-
 		&truncateNode{},
 	}
-	readPlanNodeList := []planNode{
+	readPlanNodeList := []PlanNode{
 		&scanBufferNode{},
 		&scanNode{},
 		&tsScanNode{},

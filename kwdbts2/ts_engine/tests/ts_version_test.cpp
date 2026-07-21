@@ -176,7 +176,7 @@ class TsVersionTest : public testing::Test {
 
     EntitySegmentMetaInfo info;
     GenerateNewEntitySegment(mgr, par_id, entity_segment.get(), &info);
-    update.SetEntitySegment(par_id, info, false);
+    update.SetEntitySegment(par_id, info);
 
     if (!force_kill) {
       ASSERT_EQ(mgr->ApplyUpdate(&update), SUCCESS);
@@ -192,7 +192,7 @@ class TsVersionTest : public testing::Test {
 
     EntitySegmentMetaInfo info;
     GenerateNewEntitySegment(mgr, par_id, nullptr, &info);
-    update.SetEntitySegment(par_id, info, true);
+    update.ReplaceEntitySegmentForVacuum(par_id, info);
 
     if (!force_kill) {
       ASSERT_EQ(mgr->ApplyUpdate(&update), SUCCESS);
@@ -381,6 +381,77 @@ TEST_F(TsVersionTest, EncodeDecodeTest) {
     auto decoded_str = decoded.EncodeToString();
     EXPECT_EQ(decoded_str.AsStringView(), encoded.AsStringView());
   }
+}
+
+TEST_F(TsVersionTest, EntitySegmentCleanupIsScopedToVacuumReplacement) {
+  const PartitionIdentifier normal_partition = {1, 2, 3};
+  const PartitionIdentifier vacuum_partition = {1, 5, 6};
+
+  ASSERT_EQ(env->NewDirectory(vgroup_root / PartitionDirName(normal_partition)), SUCCESS);
+  ASSERT_EQ(env->NewDirectory(vgroup_root / PartitionDirName(vacuum_partition)), SUCCESS);
+
+  auto mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
+  ASSERT_EQ(mgr->Recover(false), SUCCESS);
+
+  TsVersionUpdate create_partitions;
+  create_partitions.PartitionDirCreated(normal_partition);
+  create_partitions.PartitionDirCreated(vacuum_partition);
+  ASSERT_EQ(mgr->ApplyUpdate(&create_partitions), SUCCESS);
+
+  EntitySegmentMetaInfo normal_initial;
+  EntitySegmentMetaInfo vacuum_initial;
+  GenerateNewEntitySegment(mgr.get(), normal_partition, nullptr, &normal_initial);
+  GenerateNewEntitySegment(mgr.get(), vacuum_partition, nullptr, &vacuum_initial);
+
+  TsVersionUpdate install_initial_segments;
+  install_initial_segments.SetEntitySegment(normal_partition, normal_initial);
+  install_initial_segments.SetEntitySegment(vacuum_partition, vacuum_initial);
+  ASSERT_EQ(mgr->ApplyUpdate(&install_initial_segments), SUCCESS);
+
+  auto normal_segment = mgr->Current()->GetPartition(normal_partition)->GetEntitySegment();
+  auto vacuum_segment = mgr->Current()->GetPartition(vacuum_partition)->GetEntitySegment();
+  ASSERT_NE(normal_segment, nullptr);
+  ASSERT_NE(vacuum_segment, nullptr);
+
+  const auto normal_old = normal_segment->GetHandleInfo();
+  const auto vacuum_old = vacuum_segment->GetHandleInfo();
+  EntitySegmentMetaInfo normal_replacement;
+  EntitySegmentMetaInfo vacuum_replacement;
+  GenerateNewEntitySegment(mgr.get(), normal_partition, normal_segment.get(), &normal_replacement);
+  GenerateNewEntitySegment(mgr.get(), vacuum_partition, nullptr, &vacuum_replacement);
+
+  TsVersionUpdate replacements;
+  replacements.SetEntitySegment(normal_partition, normal_replacement);
+  replacements.ReplaceEntitySegmentForVacuum(vacuum_partition, vacuum_replacement);
+  ASSERT_EQ(mgr->ApplyUpdate(&replacements), SUCCESS);
+
+  const auto normal_root = vgroup_root / PartitionDirName(normal_partition);
+  EXPECT_TRUE(fs::exists(normal_root / BlockHeaderFileName(normal_old.header_b_info.file_number)));
+  EXPECT_TRUE(fs::exists(normal_root / DataBlockFileName(normal_old.datablock_info.file_number)));
+  EXPECT_TRUE(fs::exists(normal_root / EntityAggFileName(normal_old.agg_info.file_number)));
+
+  const auto vacuum_root = vgroup_root / PartitionDirName(vacuum_partition);
+  mgr.reset();
+  mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
+  ASSERT_EQ(mgr->Recover(false), SUCCESS);
+
+  EXPECT_FALSE(fs::exists(normal_root / EntityHeaderFileName(normal_old.header_e_file_number)));
+  EXPECT_FALSE(fs::exists(vacuum_root / EntityHeaderFileName(vacuum_old.header_e_file_number)));
+  EXPECT_FALSE(fs::exists(vacuum_root / BlockHeaderFileName(vacuum_old.header_b_info.file_number)));
+  EXPECT_FALSE(fs::exists(vacuum_root / DataBlockFileName(vacuum_old.datablock_info.file_number)));
+  EXPECT_FALSE(fs::exists(vacuum_root / EntityAggFileName(vacuum_old.agg_info.file_number)));
+
+  auto recovered_vacuum_segment = mgr->Current()->GetPartition(vacuum_partition)->GetEntitySegment();
+  ASSERT_NE(recovered_vacuum_segment, nullptr);
+  const auto& recovered_vacuum = recovered_vacuum_segment->GetHandleInfo();
+  EXPECT_EQ(recovered_vacuum.header_e_file_number, vacuum_replacement.header_e_file_number);
+  EXPECT_EQ(recovered_vacuum.header_b_info.file_number, vacuum_replacement.header_b_info.file_number);
+  EXPECT_EQ(recovered_vacuum.datablock_info.file_number, vacuum_replacement.datablock_info.file_number);
+  EXPECT_EQ(recovered_vacuum.agg_info.file_number, vacuum_replacement.agg_info.file_number);
+  EXPECT_TRUE(fs::exists(vacuum_root / EntityHeaderFileName(vacuum_replacement.header_e_file_number)));
+  EXPECT_TRUE(fs::exists(vacuum_root / BlockHeaderFileName(vacuum_replacement.header_b_info.file_number)));
+  EXPECT_TRUE(fs::exists(vacuum_root / DataBlockFileName(vacuum_replacement.datablock_info.file_number)));
+  EXPECT_TRUE(fs::exists(vacuum_root / EntityAggFileName(vacuum_replacement.agg_info.file_number)));
 }
 
 TEST_F(TsVersionTest, RecoverFromEmptyDirTest) {

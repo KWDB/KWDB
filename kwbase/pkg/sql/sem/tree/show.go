@@ -301,6 +301,44 @@ func (s ScheduleState) Format(ctx *FmtCtx) {
 //	}
 //}
 
+// ShowPipes represents a SHOW PIPES statement.
+type ShowPipes struct {
+	ShowAll  bool
+	PipeName Name
+}
+
+var _ Statement = &ShowPipes{}
+
+// Format implements the NodeFormatter interface.
+func (n *ShowPipes) Format(ctx *FmtCtx) {
+	ctx.WriteString("SHOW ")
+	if n.ShowAll {
+		ctx.WriteString("PIPES")
+		return
+	}
+	ctx.WriteString("PIPE ")
+	n.PipeName.Format(ctx)
+}
+
+// ShowPublications represents a SHOW PUBLICATIONS statement.
+type ShowPublications struct {
+	ShowAll bool
+	PubName Name
+}
+
+var _ Statement = &ShowPublications{}
+
+// Format implements the NodeFormatter interface.
+func (n *ShowPublications) Format(ctx *FmtCtx) {
+	ctx.WriteString("SHOW ")
+	if n.ShowAll {
+		ctx.WriteString("PUBLICATIONS")
+		return
+	}
+	ctx.WriteString("PUBLICATION ")
+	n.PubName.Format(ctx)
+}
+
 // ShowSchedule represents a SHOW SCHEDULE statement.
 type ShowSchedule struct {
 	ShowAllSche  bool
@@ -656,6 +694,17 @@ type ShowCreateProcedure struct {
 // Format implements the NodeFormatter interface.
 func (node *ShowCreateProcedure) Format(ctx *FmtCtx) {
 	ctx.WriteString("SHOW CREATE PROCEDURE ")
+	ctx.FormatNode(&node.Name)
+}
+
+// ShowCreateFunction represents a SHOW CREATE Function statement.
+type ShowCreateFunction struct {
+	Name Name
+}
+
+// Format implements the NodeFormatter interface.
+func (node *ShowCreateFunction) Format(ctx *FmtCtx) {
+	ctx.WriteString("SHOW CREATE FUNCTION ")
 	ctx.FormatNode(&node.Name)
 }
 

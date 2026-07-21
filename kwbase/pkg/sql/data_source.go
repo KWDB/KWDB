@@ -27,17 +27,17 @@ package sql
 import "gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 
 // planDataSource contains the data source information for data
-// produced by a planNode.
+// produced by a PlanNode.
 type planDataSource struct {
 	// columns gives the result columns (always anonymous source).
 	columns sqlbase.ResultColumns
 
 	// plan which can be used to retrieve the data.
-	plan planNode
+	plan PlanNode
 }
 
 // CheckTsScanNode return tsScanNode
-func CheckTsScanNode(plan planNode) bool {
+func CheckTsScanNode(plan PlanNode) bool {
 	switch n := plan.(type) {
 	case *tsScanNode:
 		return true
@@ -85,7 +85,7 @@ func CheckTsScanNode(plan planNode) bool {
 		return CheckTsScanNode(n.source)
 	case *createTableNode:
 		return CheckTsScanNode(n.sourcePlan)
-	case *delayedNode:
+	case *DelayedNode:
 		return CheckTsScanNode(n.plan)
 	case *explainDistSQLNode:
 		return CheckTsScanNode(n.plan)

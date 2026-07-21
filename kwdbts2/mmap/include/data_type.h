@@ -16,6 +16,7 @@
 #include <string>
 #include <sstream>
 
+
 using namespace std;
 
 /******************************************************************************
@@ -217,16 +218,17 @@ enum ColumnFlag {
 #define TsColumnTailSize      40 // (sizeof(AttributeInfo) - 2 * sizeof(string) - sizeof(uint32_t))
 #define COLUMNATTR_LEN      64  // MAX_COLUMNATTR_LEN + 2
 struct AttributeInfo {
-  uint32_t id;           /// < column id.
-  char name[COLUMNATTR_LEN] = {0};       ///< column name.
-  int32_t type;           ///< column data type.
-  int32_t offset;         ///< Offset.
-  int32_t size;           ///< Size.
-  int32_t length;         ///< Length.
-  int32_t encoding;
-  int32_t flag;           ///< internal use.
-  int32_t max_len;        ///< max length for string; Geohash precision;
-  uint32_t version;       /// table column version
+  uint32_t id;                      /// < column id.
+  char name[COLUMNATTR_LEN] = {0};  ///< column name.
+  int32_t type;                     ///< column data type.
+  int32_t offset;                   ///< Offset.
+  int32_t size;                     ///< Size.
+  int32_t length;                   ///< Length.
+  uint16_t rel_err;                 // relative error for lossy compression
+  uint16_t abs_err;                 // absolute error for lossy compression
+  int32_t flag;                     ///< internal use.
+  int32_t max_len;                  ///< max length for string; Geohash precision;
+  uint32_t version;                 /// table column version
   ColumnFlag col_flag;
   uint8_t encode_algo;
   uint8_t compress_algo;
@@ -255,6 +257,8 @@ struct AttributeInfo {
 
   bool operator==(AttributeInfo& rhs) const;
 };
+
+static_assert(sizeof(AttributeInfo) == 108);
 
 inline bool isSameType(const AttributeInfo &a, const AttributeInfo &b) {
   return (a.type == b.type && a.size == b.size);

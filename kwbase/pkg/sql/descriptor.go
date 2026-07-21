@@ -37,6 +37,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlconst"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/cockroachdb/errors"
 )
@@ -48,16 +49,6 @@ import (
 // For higher levels in the SQL layer, these interface are likely not
 // suitable; consider instead schema_accessors.go and resolver.go.
 //
-
-var (
-	errEmptyDatabaseName = pgerror.New(pgcode.Syntax, "empty database name")
-	errNoDatabase        = pgerror.New(pgcode.InvalidName, "no database specified")
-	errNoSchema          = pgerror.Newf(pgcode.InvalidName, "no schema specified")
-	errNoTable           = pgerror.New(pgcode.InvalidName, "no table specified")
-	errNoProcedure       = pgerror.New(pgcode.InvalidName, "no procedure specified")
-	errNoMatch           = pgerror.New(pgcode.UndefinedObject, "no object matched")
-	errEmptyTriggerName  = pgerror.New(pgcode.Syntax, "empty trigger name")
-)
 
 // DefaultUserDBs is a set of the databases which are present in a new cluster.
 var DefaultUserDBs = map[string]struct{}{
@@ -81,13 +72,47 @@ func GenerateUniqueDescID(ctx context.Context, db *kv.DB) (sqlbase.ID, error) {
 	return sqlbase.ID(newVal - 1), nil
 }
 
-// createdatabase takes Database descriptor and creates it if needed,
+// IncUniqueDescID increases the value of DescIDGenerator to reach the target ID.
+func IncUniqueDescID(ctx context.Context, db *kv.DB, targetID int64) error {
+	// Increment unique descriptor counter.
+	newVal, err := kv.IncrementValRetryable(ctx, db, keys.DescIDGenerator, 0)
+	if err != nil {
+		return err
+	}
+	oldID := newVal - 1
+	if oldID < targetID {
+		newVal, err := kv.IncrementValRetryable(ctx, db, keys.DescIDGenerator, targetID-oldID)
+		if err != nil {
+			return err
+		}
+		oldID = newVal - 1
+	} else if oldID == targetID {
+		log.Warningf(ctx, "ReplayTSMetadata: primary target ID %d, secondary ID %d already exists", targetID, oldID)
+	} else {
+		log.Warningf(ctx, "ReplayTSMetadata: primary target ID %d, but secondary ID %d is greater", targetID, oldID)
+	}
+	return nil
+}
+
+// GenerateUniqueIDForMac returns the next available mac ID and increments
+// the counter. The incrementing is non-transactional, and the counter could be
+// incremented multiple times because of retries.
+func GenerateUniqueIDForMac(ctx context.Context, db *kv.DB, key roachpb.Key) (sqlbase.ID, error) {
+	// Increment unique descriptor counter.
+	newVal, err := kv.IncrementValRetryable(ctx, db, key, 1)
+	if err != nil {
+		return sqlbase.InvalidID, err
+	}
+	return sqlbase.ID(newVal - 1), nil
+}
+
+// CreatedatabaseImp takes Database descriptor and creates it if needed,
 // incrementing the descriptor counter. Returns true if the descriptor
 // is actually created, false if it already existed, or an error if one was
 // encountered. The ifNotExists flag is used to declare if the "already existed"
 // state should be an error (false) or a no-op (true).
 // createDatabase implements the DatabaseDescEditor interface.
-func (p *planner) createDatabase(
+func (p *GenericPlanner) CreatedatabaseImp(
 	ctx context.Context, desc *sqlbase.DatabaseDescriptor, ifNotExists bool, jobDesc string,
 ) (bool, error) {
 	shouldCreatePublicSchema := true
@@ -114,7 +139,7 @@ func (p *planner) createDatabase(
 		return false, err
 	}
 
-	if err := p.createDescriptorWithID(ctx, dKey.Key(), id, desc, nil, jobDesc); err != nil {
+	if err := p.CreateDescriptorWithID(ctx, dKey.Key(), id, desc, nil, jobDesc); err != nil {
 		return true, err
 	}
 
@@ -131,7 +156,8 @@ func (p *planner) createDatabase(
 	return true, nil
 }
 
-func (p *planner) createDescriptorWithID(
+// CreateDescriptorWithID creates a descriptor with a pre-assigned ID
+func (p *GenericPlanner) CreateDescriptorWithID(
 	ctx context.Context,
 	idKey roachpb.Key,
 	id sqlbase.ID,
@@ -165,13 +191,13 @@ func (p *planner) createDescriptorWithID(
 		if err := mutDesc.ValidateTable(); err != nil {
 			return err
 		}
-		if err := p.Tables().addUncommittedTable(*mutDesc); err != nil {
+		if err := p.Tables().AddUncommittedTable(*mutDesc); err != nil {
 			return err
 		}
 	}
 	sc, isSchema := descriptor.(*sqlbase.SchemaDescriptor)
 	if isSchema {
-		p.Tables().addUncommittedSchema(sc.Name, sc.ID, sc.ParentID, dbCreated)
+		p.Tables().AddUncommittedSchema(sc.Name, sc.ID, sc.ParentID, sqlconst.DbCreated)
 	}
 
 	if err := p.txn.Run(ctx, b); err != nil {
@@ -207,8 +233,15 @@ func GetDescriptorID(
 	return sqlbase.ID(gr.ValueInt()), nil
 }
 
-// resolveSchemaID resolves a schema's ID based on db and name.
-func resolveSchemaID(
+// LookupSchemaID resolves a schema's ID based on db and name.
+func LookupSchemaID(
+	ctx context.Context, txn *kv.Txn, dbID sqlbase.ID, scName string,
+) (bool, sqlbase.ID, error) {
+	return ResolveSchemaID(ctx, txn, dbID, scName)
+}
+
+// ResolveSchemaID resolves a schema's ID based on db and name.
+func ResolveSchemaID(
 	ctx context.Context, txn *kv.Txn, dbID sqlbase.ID, scName string,
 ) (bool, sqlbase.ID, error) {
 	// Try to use the system name resolution bypass. Avoids a hotspot by explicitly
@@ -258,7 +291,7 @@ func lookupDescriptorByID(
 // getDescriptorByID looks up the descriptor for `id`, validates it,
 // and unmarshals it into `descriptor`.
 //
-// In most cases you'll want to use wrappers: `getDatabaseDescByID` or
+// In most cases you'll want to use wrappers: `GetDatabaseDescByID` or
 // `getTableDescByID`.
 func getDescriptorByID(
 	ctx context.Context, txn *kv.Txn, id sqlbase.ID, descriptor sqlbase.DescriptorProto,
@@ -332,7 +365,7 @@ func CountUserDescriptors(ctx context.Context, txn *kv.Txn) (int, error) {
 }
 
 // GetAllDescriptors looks up and returns all available descriptors.
-// Modifying this method requires modifying method timekvserver.getAllDescriptors
+// Modifying this method requires modifying method timekvserver.TcGetAllDescriptors
 // at the same time.
 func GetAllDescriptors(ctx context.Context, txn *kv.Txn) ([]sqlbase.DescriptorProto, error) {
 	log.Eventf(ctx, "fetching all descriptors")
@@ -438,4 +471,16 @@ func WriteNewDescToBatch(
 	}
 	b.CPut(descKey, descDesc, nil)
 	return nil
+}
+
+// WriteDescToBatchWrap is an interface for writeDescToBatch
+func WriteDescToBatchWrap(
+	ctx context.Context,
+	kvTrace bool,
+	s *cluster.Settings,
+	b *kv.Batch,
+	descID sqlbase.ID,
+	desc sqlbase.DescriptorProto,
+) (err error) {
+	return writeDescToBatch(ctx, kvTrace, s, b, descID, desc)
 }

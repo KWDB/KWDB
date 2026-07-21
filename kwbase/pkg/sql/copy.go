@@ -84,14 +84,14 @@ type copyMachine struct {
 	conn pgwirebase.Conn
 
 	// execInsertPlan is a function to be used to execute the plan (stored in the
-	// planner) which performs an INSERT.
-	execInsertPlan func(ctx context.Context, p *planner, res RestrictedCommandResult) error
+	// GenericPlanner) which performs an INSERT.
+	execInsertPlan func(ctx context.Context, p *GenericPlanner, res RestrictedCommandResult) error
 
 	txnOpt copyTxnOpt
 
-	// p is the planner used to plan inserts. preparePlanner() needs to be called
+	// p is the GenericPlanner used to plan inserts. preparePlanner() needs to be called
 	// before preparing each new statement.
-	p planner
+	p GenericPlanner
 
 	// parsingEvalCtx is an EvalContext used for the very limited needs to strings
 	// parsing. Is it not correctly initialized with timestamps, transactions and
@@ -108,7 +108,7 @@ func newCopyMachine(
 	n *tree.CopyFrom,
 	txnOpt copyTxnOpt,
 	execCfg *ExecutorConfig,
-	execInsertPlan func(ctx context.Context, p *planner, res RestrictedCommandResult) error,
+	execInsertPlan func(ctx context.Context, p *GenericPlanner, res RestrictedCommandResult) error,
 ) (_ *copyMachine, retErr error) {
 	c := &copyMachine{
 		conn: conn,
@@ -117,12 +117,12 @@ func newCopyMachine(
 		table:   &n.Table,
 		columns: n.Columns,
 		txnOpt:  txnOpt,
-		// The planner will be prepared before use.
-		p:              planner{execCfg: execCfg},
+		// The GenericPlanner will be prepared before use.
+		p:              GenericPlanner{execCfg: execCfg},
 		execInsertPlan: execInsertPlan,
 	}
 
-	// We need a planner to do the initial planning, in addition
+	// We need a GenericPlanner to do the initial planning, in addition
 	// to those used for the main execution of the COPY afterwards.
 	cleanup := c.p.preparePlannerForCopy(ctx, txnOpt)
 	defer func() {
@@ -172,7 +172,7 @@ type copyTxnOpt struct {
 	txn           *kv.Txn
 	txnTimestamp  time.Time
 	stmtTimestamp time.Time
-	resetPlanner  func(ctx context.Context, p *planner, txn *kv.Txn, txnTS time.Time, stmtTS time.Time)
+	resetPlanner  func(ctx context.Context, p *GenericPlanner, txn *kv.Txn, txnTS time.Time, stmtTS time.Time)
 
 	// resetExecutor should be called upon completing a batch from the copy
 	// machine when the copy machine handles its own transaction.
@@ -300,19 +300,19 @@ func (c *copyMachine) processCopyData(
 	return c.processRows(ctx)
 }
 
-// preparePlannerForCopy resets the planner so that it can be used during
+// preparePlannerForCopy resets the GenericPlanner so that it can be used during
 // a COPY operation (either COPY to table, or COPY to file).
 //
 // Depending on how the requesting COPY machine was configured, a new
 // transaction might be created.
 //
 // It returns a cleanup function that needs to be called when we're
-// done with the planner (before preparePlannerForCopy is called
+// done with the GenericPlanner (before preparePlannerForCopy is called
 // again). The cleanup function commits the txn (if it hasn't already
 // been committed) or rolls it back depending on whether it is passed
 // an error. If an error is passed in to the cleanup function, the
 // same error is returned.
-func (p *planner) preparePlannerForCopy(
+func (p *GenericPlanner) preparePlannerForCopy(
 	ctx context.Context, txnOpt copyTxnOpt,
 ) func(context.Context, error) error {
 	txn := txnOpt.txn
@@ -341,7 +341,7 @@ func (p *planner) preparePlannerForCopy(
 		if prevErr == nil {
 			// Ensure that the txn is committed if the copyMachine is in charge of
 			// committing its transactions and the execution didn't already commit it
-			// (through the planner.autoCommit optimization).
+			// (through the GenericPlanner.autoCommit optimization).
 			if autoCommit && !txn.IsCommitted() {
 				return txn.CommitOrCleanup(ctx)
 			}

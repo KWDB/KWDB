@@ -12,28 +12,32 @@
 #include "ts_engine.h"
 
 #include <dirent.h>
-#include <future>
+
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
-#include <vector>
+#include <future>
+#include <map>
+#include <memory>
+#include <string>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
-#include <algorithm>
-#include <map>
-#include <string>
-#include <memory>
 #include <utility>
+#include <vector>
+
+#include "cm_kwdb_context.h"
+#include "compression/ts_compressor_base.h"
+#include "ee_executor.h"
+#include "ee_global.h"
 #include "kwdb_type.h"
 #include "lg_api.h"
 #include "settings.h"
+#include "sys_utils.h"
 #include "ts_flush_manager.h"
 #include "ts_payload.h"
-#include "ee_global.h"
-#include "ee_executor.h"
-#include "ts_compressor_impl.h"
-#include "ts_table_v2_impl.h"
-#include "sys_utils.h"
 #include "ts_std_utils.h"
+#include "ts_table_v2_impl.h"
 
 // V2
 int EngineOptions::vgroup_max_num = 4;
@@ -63,6 +67,7 @@ double EngineOptions::block_filter_sampling_ratio = 0.2;
 int EngineOptions::agg_stats_recalc_cycle = 60 * 30;
 uint32_t EngineOptions::metric_schema_cache_capacity = 100;
 bool EngineOptions::force_re_compress = false;
+bool EngineOptions::vacuum_concurrent = true;
 bool CLUSTER_SETTING_TS_TXN_ATOMICITY_ENABLE = false;
 
 extern std::map<std::string, std::string> g_cluster_settings;
@@ -2572,7 +2577,11 @@ uint64_t* snapshot_id, bool& is_dropped) {
       reinterpret_pointer_cast<TsTableImpl>(ts_snapshot_info.table),
       ts_snapshot_info.begin_hash, ts_snapshot_info.end_hash, ts_snapshot_info.table_version, scan_osn);
   ts_snapshot_info.op_osn = scan_osn;
-  s = ts_snapshot_info.del_iter->Init();
+  TS_OSN published_max_osn;
+  if (!schema_mgr_->GetTablePublishedMaxOSN(table_id, published_max_osn)) {
+    published_max_osn = UINT64_MAX;
+  }
+  s = ts_snapshot_info.del_iter->Init(published_max_osn);
   if (s == KStatus::FAIL) {
     LOG_ERROR("CreateSnapshotForRead STTableRangeDelAndTagInfo [%lu] failed.", table_id);
     return s;
@@ -2613,7 +2622,11 @@ KStatus TSEngineImpl::CreateSnapshotForWrite(kwdbContext_p ctx, const KTableKey&
       reinterpret_pointer_cast<TsTableImpl>(ts_snapshot_info.table),
       ts_snapshot_info.begin_hash, ts_snapshot_info.end_hash, ts_snapshot_info.table_version, osn);
   ts_snapshot_info.op_osn = osn;
-  s = ts_snapshot_info.del_iter->Init();
+  TS_OSN published_max_osn;
+  if (!schema_mgr_->GetTablePublishedMaxOSN(table_id, published_max_osn)) {
+    published_max_osn = UINT64_MAX;
+  }
+  s = ts_snapshot_info.del_iter->Init(published_max_osn);
   if (s == KStatus::FAIL) {
     LOG_ERROR("CreateSnapshotForRead STTableRangeDelAndTagInfo [%lu] failed.", table_id);
     return s;
@@ -2941,10 +2954,74 @@ KStatus TSEngineImpl::GetTsWaitThreadNum(kwdbContext_p ctx, void *resp) {
 }
 
 KStatus TSEngineImpl::Vacuum(kwdbContext_p ctx, bool force, bool only_agg) {
-  for (const auto& vgroup : vgroups_) {
-    vgroup->Vacuum(ctx, force, only_agg);
+  if (EngineOptions::vacuum_concurrent) {
+    // vacuum vgroups concurrently, one thread per vgroup
+    std::vector<std::thread> vacuum_threads;
+    std::vector<KStatus> statuses(vgroups_.size(), KStatus::SUCCESS);
+    vacuum_threads.reserve(vgroups_.size());
+
+    // Extract relation_ctx before spawning threads to avoid capturing ctx pointer in lambda.
+    // This makes the code safer and more explicit about what data is shared with worker threads.
+    uint64_t relation_ctx = ctx->relation_ctx;
+
+    size_t idx = 0;
+    for (const auto& vgroup : vgroups_) {
+      vacuum_threads.emplace_back([vgroup, idx, force, only_agg, relation_ctx, &statuses]() {
+        try {
+          // kwdbContext is not thread-safe (it owns a per-thread memory arena and
+          // mutable execution state), so every vacuum thread must run with its own
+          // context. We create a fresh context for each worker thread.
+          kwdbContext_t thread_context;
+          kwdbContext_p thread_ctx = &thread_context;
+          KStatus s = InitServerKWDBContext(thread_ctx);
+          if (s != KStatus::SUCCESS) {
+            LOG_ERROR("Vacuum vgroup [%d] failed, InitServerKWDBContext failed", vgroup->GetVGroupID());
+            statuses[idx] = s;
+            return;
+          }
+          thread_ctx->relation_ctx = relation_ctx;
+          s = vgroup->Vacuum(thread_ctx, force, only_agg);
+          if (s != KStatus::SUCCESS) {
+            LOG_WARN("Vacuum vgroup [%d] failed", vgroup->GetVGroupID());
+            statuses[idx] = s;
+          }
+        } catch (const std::exception& e) {
+          LOG_ERROR("Vacuum vgroup [%d] threw exception: %s", vgroup->GetVGroupID(), e.what());
+          statuses[idx] = KStatus::FAIL;
+        } catch (...) {
+          LOG_ERROR("Vacuum vgroup [%d] threw unknown exception", vgroup->GetVGroupID());
+          statuses[idx] = KStatus::FAIL;
+        }
+      });
+      idx++;
+    }
+    for (auto& t : vacuum_threads) {
+      t.join();
+    }
+    // Check if any vgroup vacuum failed
+    for (const auto& status : statuses) {
+      if (status != KStatus::SUCCESS) {
+        return KStatus::FAIL;
+      }
+    }
+  } else {
+    for (const auto& vgroup : vgroups_) {
+      KStatus s = vgroup->Vacuum(ctx, force, only_agg);
+      if (s != KStatus::SUCCESS) {
+        return s;
+      }
+    }
   }
   return SUCCESS;
+}
+
+KStatus TSEngineImpl::SetPublishedMaxOSN(std::unordered_map<TSTableID, TS_OSN>& tbl_osn) {
+  LOG_INFO("SetPublishedMaxOSN table number[%lu].", tbl_osn.size());
+  for (auto& tbl_osn_pair : tbl_osn) {
+    LOG_DEBUG("SetPublishedMaxOSN table[%lu] osn[%lu].", tbl_osn_pair.first, tbl_osn_pair.second);
+  }
+  schema_mgr_->SetTablePublishedMaxOSN(tbl_osn);
+  return KStatus::SUCCESS;
 }
 
 KStatus ConstructTableBlocksDistribution(const std::shared_ptr<TsTableSchemaManager>& tb_schema_mgr,

@@ -258,23 +258,29 @@ func (o *binPackingOracle) ChoosePreferredReplica(
 	}
 	replicas.OptimizeReplicaOrder(&o.nodeDesc, o.latencyFunc)
 
-	// Look for a replica that has been assigned some ranges, but it's not yet full.
+	// Use helper to select a replica according to bin-packing rules.
+	return o.selectReplicaFromList(replicas, queryState), nil
+}
+
+// selectReplicaFromList encapsulates the logic to pick a replica according
+// to bin-packing preferences: prefer already-assigned but not-full replicas,
+// otherwise pick the least-loaded replica.
+func (o *binPackingOracle) selectReplicaFromList(
+	replicas kvcoord.ReplicaSlice, queryState QueryState,
+) kvcoord.ReplicaInfo {
 	minLoad := int(math.MaxInt32)
 	var leastLoadedIdx int
 	for i, repl := range replicas {
 		assignedRanges := queryState.RangesPerNode[repl.NodeID]
 		if assignedRanges != 0 && assignedRanges < o.maxPreferredRangesPerLeaseHolder {
-			return repl, nil
+			return repl
 		}
 		if assignedRanges < minLoad {
 			leastLoadedIdx = i
 			minLoad = assignedRanges
 		}
 	}
-	// Either no replica was assigned any previous ranges, or all replicas are
-	// full. Use the least-loaded one (if all the load is 0, then the closest
-	// replica is returned).
-	return replicas[leastLoadedIdx], nil
+	return replicas[leastLoadedIdx]
 }
 
 // replicaSliceOrErr returns a ReplicaSlice for the given range descriptor.

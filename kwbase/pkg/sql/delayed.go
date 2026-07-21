@@ -31,43 +31,64 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 )
 
-// delayedNode wraps a planNode in cases where the planNode
+// DelayedNode wraps a PlanNode in cases where the PlanNode
 // constructor must be delayed during query execution (as opposed to
 // SQL prepare) for resource tracking purposes.
-type delayedNode struct {
+var _ PlanNode = &DelayedNode{}
+
+// DelayedNode is a planNode whose construction must be delayed during query
+// execution for resource tracking purposes.
+type DelayedNode struct {
 	name        string
 	columns     sqlbase.ResultColumns
 	constructor nodeConstructor
-	plan        planNode
+	plan        PlanNode
 }
 
-type nodeConstructor func(context.Context, *planner) (planNode, error)
+type nodeConstructor func(context.Context, *GenericPlanner) (PlanNode, error)
 
-func (d *delayedNode) Next(params runParams) (bool, error) { return d.plan.Next(params) }
-func (d *delayedNode) Values() tree.Datums                 { return d.plan.Values() }
+// Next performs one unit of work for the DelayedNode, delegating to the wrapped plan.
+func (d *DelayedNode) Next(params RunParams) (bool, error) { return d.plan.Next(params) }
 
-func (d *delayedNode) Close(ctx context.Context) {
+// Values returns the values at the current row, delegating to the wrapped plan.
+func (d *DelayedNode) Values() tree.Datums { return d.plan.Values() }
+
+// Close terminates the DelayedNode's execution and releases its resources.
+func (d *DelayedNode) Close(ctx context.Context) {
 	if d.plan != nil {
 		d.plan.Close(ctx)
 		d.plan = nil
 	}
 }
 
-// startExec constructs the wrapped planNode now that execution is underway.
-func (d *delayedNode) startExec(params runParams) error {
+// StartExec constructs the wrapped PlanNode now that execution is underway.
+func (d *DelayedNode) StartExec(params RunParams) error {
 	if d.plan != nil {
 		panic("wrapped plan should not yet exist")
 	}
 
-	plan, err := d.constructor(params.ctx, params.p)
+	plan, err := d.constructor(params.Ctx, params.p)
 	if err != nil {
 		return err
 	}
 	d.plan = plan
 
-	// Recursively invoke startExec on new plan. Normally, startExec doesn't
-	// recurse - calling children is handled by the planNode walker. The reason
-	// this won't suffice here is that the the child of this node doesn't exist
-	// until after startExec is invoked.
-	return startExec(params, plan)
+	// Recursively invoke StartExec on new plan. Normally, StartExec doesn't
+	// recurse - calling children is handled by the PlanNode walker. The reason
+	// this won't suffice here is that the child of this node doesn't exist
+	// until after StartExec is invoked.
+	return StartExec(params, plan)
+}
+
+// NewDelayedNode creates a new DelayedNode that wraps a plan whose construction
+// is deferred until execution begins.
+func NewDelayedNode(
+	name string, columns sqlbase.ResultColumns, constructor nodeConstructor, plan PlanNode,
+) *DelayedNode {
+	return &DelayedNode{
+		name:        name,
+		columns:     columns,
+		constructor: constructor,
+		plan:        plan,
+	}
 }

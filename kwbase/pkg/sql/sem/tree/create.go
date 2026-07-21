@@ -225,8 +225,9 @@ func (node *CreateStream) Format(ctx *FmtCtx) {
 	ctx.WriteString(" INTO ")
 	ctx.FormatNode(&node.Table)
 	if node.Options != nil {
-		ctx.WriteString(" WITH OPTIONS")
+		ctx.WriteString(" WITH OPTIONS (")
 		ctx.FormatNode(&node.Options)
+		ctx.WriteString(")")
 	}
 	ctx.WriteString(" AS ")
 	ctx.FormatNode(node.Query)
@@ -245,7 +246,7 @@ func (node *AlterStream) Format(ctx *FmtCtx) {
 	ctx.WriteString("ALTER STREAM ")
 	node.StreamName.Format(ctx)
 	if node.Options != nil {
-		ctx.WriteString(" SET OPTIONS ")
+		ctx.WriteString(" SET ")
 		ctx.FormatNode(&node.Options)
 	}
 }
@@ -350,6 +351,170 @@ func (node *CreateIndex) Format(ctx *FmtCtx) {
 	}
 }
 
+// CreatePipe represents a CREATE PIPE statement.
+type CreatePipe struct {
+	PipeName   Name
+	Database   Name
+	Table      TableName
+	TableNames TableNames
+	ColNames   NameList
+	Where      *Where
+	Options    KVOptions
+	Star       bool
+}
+
+var _ Statement = &CreatePipe{}
+
+// Format implements the NodeFormatter interface.
+func (node *CreatePipe) Format(ctx *FmtCtx) {
+	ctx.WriteString("CREATE PIPE ")
+	node.PipeName.Format(ctx)
+	if node.Database != "" {
+		ctx.WriteString(" FOR DATABASE ")
+		ctx.FormatNode(&node.Database)
+	} else {
+		// star or specified columns in single table
+		ctx.WriteString(" FOR TABLE ")
+		ctx.FormatNode(&node.TableNames)
+		if node.Table.TableName != "" {
+			ctx.WriteString(" (")
+			if node.Star {
+				ctx.WriteString(" * ")
+			} else {
+				ctx.FormatNode(&node.ColNames)
+			}
+			ctx.WriteString(")")
+			if node.Where != nil {
+				ctx.WriteString(" ")
+				ctx.FormatNode(node.Where)
+			}
+		}
+	}
+
+	if node.Options != nil {
+		ctx.WriteString(" WITH ")
+		ctx.FormatNode(&node.Options)
+	}
+}
+
+// AlterPipe represents an ALTER PIPE statement.
+type AlterPipe struct {
+	PipeName Name
+	Table    TableName
+	ColNames NameList
+	Where    *Where
+	Options  KVOptions
+	Star     bool
+}
+
+var _ Statement = &AlterPipe{}
+
+// Format implements the NodeFormatter interface.
+func (node *AlterPipe) Format(ctx *FmtCtx) {
+	ctx.WriteString("ALTER PIPE ")
+	node.PipeName.Format(ctx)
+	if node.Options != nil {
+		ctx.WriteString(" SET OPTIONS ( ")
+		ctx.FormatNode(&node.Options)
+		ctx.WriteString(" )")
+	} else {
+		ctx.WriteString(" SET TABLE ")
+		ctx.FormatNode(&node.Table)
+		ctx.WriteString(" (")
+		if node.Star {
+			ctx.WriteString(" * ")
+		} else {
+			ctx.FormatNode(&node.ColNames)
+		}
+		ctx.WriteString(") ")
+		if node.Where != nil {
+			ctx.FormatNode(node.Where)
+		}
+	}
+}
+
+// CreatePublication represents a CREATE PUBLICATION statement.
+type CreatePublication struct {
+	PubName    Name
+	Database   Name
+	Table      TableName
+	TableNames TableNames
+	ColNames   NameList
+	Where      *Where
+	Options    KVOptions
+	Star       bool
+}
+
+var _ Statement = &CreatePublication{}
+
+// Format implements the NodeFormatter interface.
+func (node *CreatePublication) Format(ctx *FmtCtx) {
+	ctx.WriteString("CREATE PUBLICATION ")
+	node.PubName.Format(ctx)
+	if node.Database != "" {
+		ctx.WriteString(" FOR DATABASE ")
+		ctx.FormatNode(&node.Database)
+	} else {
+		// star or specified columns in single table
+		ctx.WriteString(" FOR TABLE ")
+		ctx.FormatNode(&node.TableNames)
+		if node.Table.TableName != "" {
+			ctx.WriteString(" (")
+			if node.Star {
+				ctx.WriteString(" * ")
+			} else {
+				ctx.FormatNode(&node.ColNames)
+			}
+			ctx.WriteString(")")
+			if node.Where != nil {
+				ctx.WriteString(" ")
+				ctx.FormatNode(node.Where)
+			}
+		}
+
+	}
+	if node.Options != nil {
+		ctx.WriteString(" WITH ")
+		ctx.FormatNode(&node.Options)
+	}
+}
+
+// AlterPub represents an ALTER PUBLICATION statement.
+type AlterPub struct {
+	PubName  Name
+	Table    TableName
+	ColNames NameList
+	Where    *Where
+	Options  KVOptions
+	Star     bool
+}
+
+var _ Statement = &AlterPub{}
+
+// Format implements the NodeFormatter interface.
+func (node *AlterPub) Format(ctx *FmtCtx) {
+	ctx.WriteString("ALTER PUBLICATION ")
+	node.PubName.Format(ctx)
+	if node.Options != nil {
+		ctx.WriteString(" SET OPTIONS ( ")
+		ctx.FormatNode(&node.Options)
+		ctx.WriteString(" )")
+	} else {
+		ctx.WriteString(" SET TABLE ")
+		ctx.FormatNode(&node.Table)
+		ctx.WriteString(" (")
+		if node.Star {
+			ctx.WriteString(" * ")
+		} else {
+			ctx.FormatNode(&node.ColNames)
+		}
+		ctx.WriteString(") ")
+		if node.Where != nil {
+			ctx.FormatNode(node.Where)
+		}
+	}
+}
+
 // TableDef represents a column, index or constraint definition within a CREATE
 // TABLE statement.
 type TableDef interface {
@@ -433,6 +598,8 @@ type ColumnTableDef struct {
 	Comment      string
 	ColumnEncode struct {
 		EncodeAlgo *string
+		RelErr     *float64
+		AbsErr     *float64
 	}
 	ColumnCompress struct {
 		CompressAlgo  *string
@@ -559,6 +726,26 @@ func NewColumnTableDef(
 					"multiple encode type specified for column %q", name)
 			}
 			d.ColumnEncode.EncodeAlgo = &t.EncodeAlgo
+			if t.RelErr == nil {
+				d.ColumnEncode.RelErr = nil
+			} else {
+				v, err := t.RelErr.AsFloat()
+				if err != nil {
+					return nil, pgerror.Newf(pgcode.Syntax,
+						"can not convert %v to float64 for column %q", t.RelErr, name)
+				}
+				d.ColumnEncode.RelErr = &v
+			}
+			if t.AbsErr == nil {
+				d.ColumnEncode.AbsErr = nil
+			} else {
+				v, err := t.AbsErr.AsFloat()
+				if err != nil {
+					return nil, pgerror.Newf(pgcode.Syntax,
+						"can not convert %v to float64 for column %q", t.AbsErr, name)
+				}
+				d.ColumnEncode.AbsErr = &v
+			}
 		case *ColumnCompress:
 			if d.ColumnCompress.CompressAlgo != nil {
 				return nil, pgerror.Newf(pgcode.Syntax,
@@ -694,6 +881,14 @@ func (node *ColumnTableDef) Format(ctx *FmtCtx) {
 	if node.ColumnEncode.EncodeAlgo != nil {
 		ctx.WriteString(" ENCODE ")
 		ctx.WriteString(*node.ColumnEncode.EncodeAlgo)
+		if node.ColumnEncode.RelErr != nil {
+			ctx.WriteString(" REL ")
+			ctx.WriteString(strconv.FormatFloat(*node.ColumnEncode.RelErr, 'f', -1, 64))
+		}
+		if node.ColumnEncode.AbsErr != nil {
+			ctx.WriteString(" ABS ")
+			ctx.WriteString(strconv.FormatFloat(*node.ColumnEncode.AbsErr, 'f', -1, 64))
+		}
 	}
 	if node.ColumnCompress.CompressAlgo != nil {
 		ctx.WriteString(" COMPRESS ")
@@ -762,6 +957,8 @@ type ColumnComment string
 // ColumnEncode represents encode type on a column
 type ColumnEncode struct {
 	EncodeAlgo string
+	RelErr     *NumVal
+	AbsErr     *NumVal
 }
 
 // ColumnCompress represents compress type on a column
@@ -1288,6 +1485,13 @@ const (
 // IsSparseTable returns SparseTable
 func (tt TableType) IsSparseTable() bool {
 	return tt == SparseTable
+}
+
+// IsTSTableType returns true if table is time-series.
+func IsTSTableType(t TableType) bool {
+	return t == TimeseriesTable ||
+		t == TemplateTable ||
+		t == InstanceTable
 }
 
 // TableTypeName converts TableType to string of table type
@@ -1874,12 +2078,36 @@ func (o *KVOptions) formatAsRoleOptions(ctx *FmtCtx) {
 	}
 }
 
+// FunctionLanguage represents use defined function language.
+type FunctionLanguage string
+
+const (
+	// FunctionLangLua represents lua language
+	FunctionLangLua FunctionLanguage = "lua"
+	// FunctionLangSQL represents sql language
+	FunctionLangSQL FunctionLanguage = "sql"
+)
+
 // CreateFunction represents a CREATE FUNCTION statement.
 type CreateFunction struct {
 	FunctionName Name
 	Arguments    FuncArgDefs
 	ReturnType   *types.T
-	FuncBody     string
+	Language     FunctionLanguage
+	// Lua function body:
+	//   LANGUAGE LUA BEGIN 'function ... end' END
+	FuncBody string
+
+	// SQL function body:
+	//   LANGUAGE SQL BEGIN SELECT ...; END
+	Block *Block
+}
+
+// SQLFunctionWrapper represents user defined function definition.
+type SQLFunctionWrapper struct {
+	FunctionName Name
+	Arguments    FuncArgDefs
+	ReturnType   *types.T
 }
 
 // Format implements the NodeFormatter interface.
@@ -1899,12 +2127,20 @@ func (node *CreateFunction) Format(ctx *FmtCtx) {
 	ctx.WriteString(") ")
 	ctx.WriteString("RETURNS ")
 	ctx.WriteString(node.ReturnType.SQLString())
-	ctx.WriteString(" LUA")
-	ctx.WriteString(" BEGIN ")
-	ctx.WriteString("'")
-	ctx.WriteString(node.FuncBody)
-	ctx.WriteString("'")
-	ctx.WriteString(" END")
+	switch node.Language {
+	case FunctionLangLua:
+		ctx.WriteString(" LANGUAGE LUA BEGIN ")
+		ctx.WriteString("'")
+		ctx.WriteString(node.FuncBody)
+		ctx.WriteString("'")
+		ctx.WriteString(" END")
+
+	case FunctionLangSQL:
+		ctx.WriteString(" LANGUAGE SQL ")
+		if node.Block != nil {
+			ctx.FormatNode(node.Block)
+		}
+	}
 }
 
 // FuncArgDefs is used for represent udf arguments

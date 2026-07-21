@@ -14,18 +14,16 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <string>
 
+#include "compression/ts_compressor_manager.h"
 #include "data_type.h"
 #include "kwdb_type.h"
-#include "lg_api.h"
 #include "libkwdbts2.h"
 #include "settings.h"
 #include "ts_bitmap.h"
 #include "ts_bufferbuilder.h"
 #include "ts_coding.h"
 #include "ts_common.h"
-#include "ts_compressor.h"
 namespace kwdbts {
 void TsColumnBlockBuilder::AppendFixLenData(TSSlice data, int count, const TsBitmapBase* bitmap) {
   assert(bitmap != nullptr);
@@ -107,11 +105,10 @@ bool TsColumnBlock::GetCompressedData(TsBufferBuilder* out, TsColumnCompressInfo
 
   // 2. compress fixlen data
   TsBitmapBase* p_bitmap = bitmap_.get();
-  auto [first, second] = mgr.GetAlgorithm(static_cast<DATATYPE>(col_schema_.type), col_schema_);
-  // auto [first, second] = mgr.GetDefaultAlgorithm(static_cast<DATATYPE>(col_schema_.type));
+  auto cfg = mgr.GetCompConfig(table_id_, col_schema_);
   if (isVarLenType(col_schema_.type)) {
     // varchar use simple8b algorithm
-    first = compress ? EncodeAlgo::kSimple8B_V2_u32 : EncodeAlgo::kPlain;
+    cfg.encoder = compress ? EncodeAlgo::kSimple8B_V2_u32 : EncodeAlgo::kPlain;
 
     /* do not use bitmap to compress offset for varchar, otherwise, the query on varchar column will be wrong
        for example:
@@ -130,12 +127,12 @@ bool TsColumnBlock::GetCompressedData(TsBufferBuilder* out, TsColumnCompressInfo
 
   TSSlice input = fixlen_guard_.AsSlice();
   if (!compress) {
-    first = EncodeAlgo::kPlain;
-    second = CompressAlgo::kPlain;
+    cfg.encoder = EncodeAlgo::kPlain;
+    cfg.compressor = CompressAlgo::kPlain;
   }
 
   origin_size = out->size();
-  bool ok = mgr.CompressData(input, p_bitmap, count_, out, first, second, col_schema_.compress_level);
+  bool ok = mgr.CompressData(input, p_bitmap, count_, out, cfg);
   if (!ok) {
     return false;
   }
@@ -145,7 +142,7 @@ bool TsColumnBlock::GetCompressedData(TsBufferBuilder* out, TsColumnCompressInfo
   if (!varchar_guard_.empty()) {
     origin_size = out->size();
     auto comp_alg = compress ? EngineOptions::compression_algorithm : CompressAlgo::kPlain;
-    ok = mgr.CompressVarchar(varchar_guard_.AsSlice(), out, comp_alg, col_schema_.compress_level);
+    ok = mgr.CompressVarchar(varchar_guard_.AsSlice(), out, {EncodeAlgo::kPlain, comp_alg, col_schema_.compress_level});
     if (!ok) {
       return false;
     }
@@ -156,7 +153,7 @@ bool TsColumnBlock::GetCompressedData(TsBufferBuilder* out, TsColumnCompressInfo
   return true;
 }
 
-KStatus TsColumnBlock::ParseColumnData(const AttributeInfo& col_schema, TsSliceGuard&& compressed_data,
+KStatus TsColumnBlock::ParseColumnData(TSTableID table_id, const AttributeInfo& col_schema, TsSliceGuard&& compressed_data,
                                        const TsColumnCompressInfo& info, std::unique_ptr<TsColumnBlock>* colblock) {
   const auto& mgr = CompressorManager::GetInstance();
   assert(compressed_data.size() == info.bitmap_len + info.fixdata_len + info.vardata_len);
@@ -192,7 +189,7 @@ KStatus TsColumnBlock::ParseColumnData(const AttributeInfo& col_schema, TsSliceG
     }
   }
   colblock->reset(new TsColumnBlock(col_schema, info.row_count, std::move(bitmap), std::move(fixlen_guard),
-                                    std::move(varchar_guard)));
+                                    std::move(varchar_guard), table_id));
   return SUCCESS;
 }
 }  // namespace kwdbts

@@ -25,14 +25,14 @@ import (
 
 func TestUpdateSchedule(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	p := makeTestPlanner()
-	runParam := runParams{
-		ctx:             context.TODO(),
+	p := MakeTestPlanner()
+	runParam := RunParams{
+		Ctx:             context.TODO(),
 		extendedEvalCtx: p.extendedEvalCtx.copy(),
 		p:               p,
 	}
 	test := jobs.ScheduledJob{}
-	require.NoError(t, updateSchedule(runParam, &test))
+	require.NoError(t, UpdateSchedule(runParam, &test))
 }
 
 func TestDeleteSchedule(t *testing.T) {
@@ -43,14 +43,14 @@ func TestDeleteSchedule(t *testing.T) {
 
 	temp := s.ExecutorConfig()
 	ecf := temp.(ExecutorConfig)
-	p := makeTestPlanner()
+	p := MakeTestPlanner()
 	p.extendedEvalCtx.ExecCfg.DistSQLSrv = s.DistSQLServer().(*distsql.ServerImpl)
 	p.extendedEvalCtx.ExecCfg.InternalExecutor = ecf.InternalExecutor
-	runParam := runParams{
-		ctx:             context.TODO(),
+	runParam := RunParams{
+		Ctx:             context.TODO(),
 		extendedEvalCtx: p.extendedEvalCtx.copy(),
 		p:               p,
 	}
 
-	require.NoError(t, deleteSchedule(runParam, 1))
+	require.NoError(t, DeleteSchedule(runParam, 1))
 }

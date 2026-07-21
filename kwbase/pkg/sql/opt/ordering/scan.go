@@ -100,7 +100,7 @@ func ScanPrivateCanProvide(
 		}
 		indexCol := index.Column(left)
 		indexColID := s.Table.ColumnID(indexCol.Ordinal)
-		if required.Optional.Contains(indexColID) {
+		if required.OptionalContains(indexColID) {
 			left++
 			continue
 		}

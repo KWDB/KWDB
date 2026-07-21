@@ -53,7 +53,7 @@ type setVarNode struct {
 // Privileges: None.
 //
 //	Notes: postgres/mysql do not require privileges for session variables (some exceptions).
-func (p *planner) SetVar(ctx context.Context, n *tree.SetVar) (planNode, error) {
+func (p *GenericPlanner) SetVar(ctx context.Context, n *tree.SetVar) (PlanNode, error) {
 	if n.Name == "" {
 		// A client has sent the reserved internal syntax SET ROW ...,
 		// or the user entered `SET "" = foo`. Reject it.
@@ -131,7 +131,7 @@ func unresolvedNameToStrVal(expr tree.Expr) tree.Expr {
 	return expr
 }
 
-func (n *setVarNode) startExec(params runParams) error {
+func (n *setVarNode) StartExec(params RunParams) error {
 	var strVal string
 	var operation target.OperationType = target.Set
 	if n.isUserDefined {
@@ -153,7 +153,7 @@ func (n *setVarNode) startExec(params runParams) error {
 		var err error
 		if n.v.GetStringVal != nil {
 
-			strVal, err = n.v.GetStringVal(params.ctx, params.extendedEvalCtx, n.typedValues)
+			strVal, err = n.v.GetStringVal(params.Ctx, params.extendedEvalCtx, n.typedValues)
 		} else {
 			// No string converter defined, use the default one.
 
@@ -174,19 +174,19 @@ func (n *setVarNode) startExec(params runParams) error {
 		params.p.sessionDataMutator.data.SearchPath = SearchPath
 	}
 
-	params.p.SetAuditTarget(0, params.extendedEvalCtx.SessionID.String(), nil)
+	params.GetPlanner().SetAuditTarget(0, params.extendedEvalCtx.SessionID.String(), nil)
 
 	var err error
 	if n.v.RuntimeSet != nil {
-		err = n.v.RuntimeSet(params.ctx, params.extendedEvalCtx, strVal)
+		err = n.v.RuntimeSet(params.Ctx, params.extendedEvalCtx, strVal)
 		defer func() {
-			params.p.SetAuditInfo(params.ctx, params.p.Txn(), timeutil.Now(), target.ObjectSession, operation, err)
+			params.p.SetAuditInfo(params.Ctx, params.p.Txn(), timeutil.Now(), target.ObjectSession, operation, err)
 		}()
 		return err
 	}
-	err = n.v.Set(params.ctx, params.p.sessionDataMutator, strVal)
+	err = n.v.Set(params.Ctx, params.p.sessionDataMutator, strVal)
 	defer func() {
-		params.p.SetAuditInfo(params.ctx, params.p.Txn(), timeutil.Now(), target.ObjectSession, operation, err)
+		params.p.SetAuditInfo(params.Ctx, params.p.Txn(), timeutil.Now(), target.ObjectSession, operation, err)
 	}()
 	return err
 }
@@ -207,7 +207,7 @@ func getSessionVarDefaultString(
 	return false, ""
 }
 
-func (n *setVarNode) Next(_ runParams) (bool, error) { return false, nil }
+func (n *setVarNode) Next(_ RunParams) (bool, error) { return false, nil }
 func (n *setVarNode) Values() tree.Datums            { return nil }
 func (n *setVarNode) Close(_ context.Context)        {}
 

@@ -405,9 +405,9 @@ ORDER BY
              │                               | order              | +work_area_name,+measure_type
              └── hash-join                   |                    |
                   │                          | type               | inner
-                  │                          | equality           | (column26) = (column25)
+                  │                          | equality           | (column29) = (column28)
                   ├── render                 |                    |
-                  │    │                     | column26           | pipeline_sn::STRING(8)
+                  │    │                     | column29           | pipeline_sn::STRING(8)
                   │    │                     | work_area_name     | work_area_name
                   │    │                     | point_sn           | point_sn
                   │    │                     | measure_type       | measure_type
@@ -470,7 +470,7 @@ ORDER BY
                   │                          | order              | +work_area_name,+measure_type
                   └── cross-join             |                    |
                        │                     | type               | inner
-                       │                     | pred               | column25 = measure_type
+                       │                     | pred               | column28 = measure_type
                        ├── hash-join         |                    |
                        │    │                | type               | inner
                        │    │                | equality           | (work_area_sn) = (work_area_sn)
@@ -663,7 +663,7 @@ ORDER BY si.station_name;
              │                       | station_name                | station_name
              └── hash-join           |                             |
                   │                  | type                        | inner
-                  │                  | equality                    | (measure_type) = (column20)
+                  │                  | equality                    | (measure_type) = (column23)
                   ├── synchronizer   |                             |
                   │    └── ts scan   |                             |
                   │                  | ts-table                    | t_point

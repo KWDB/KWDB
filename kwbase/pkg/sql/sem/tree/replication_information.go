@@ -11,7 +11,14 @@
 
 package tree
 
-// ReplicationInformation represents a ALTER REPLICATE TO statement.
+// replicationAlterPrefix and replicationToClauseKeyword are the SQL fragments
+// used to format the ALTER ... REPLICATE TO statement.
+const (
+	replicationAlterPrefix     = "ALTER "
+	replicationToClauseKeyword = "REPLICATE TO "
+)
+
+// ReplicationInformation represents an ALTER REPLICATE TO statement.
 type ReplicationInformation struct {
 	Targets TargetList
 	To      PartitionedBackup
@@ -21,10 +28,21 @@ type ReplicationInformation struct {
 
 // Format implements the NodeFormatter interface.
 func (node *ReplicationInformation) Format(ctx *FmtCtx) {
-	ctx.WriteString("ALTER ")
+	node.writeAlterTargets(ctx)
+	node.maybeWriteReplicateToClause(ctx)
+}
+
+// writeAlterTargets outputs the ALTER prefix with the target list.
+func (node *ReplicationInformation) writeAlterTargets(ctx *FmtCtx) {
+	ctx.WriteString(replicationAlterPrefix)
 	ctx.FormatNode(&node.Targets)
+}
+
+// maybeWriteReplicateToClause outputs the REPLICATE TO clause when a
+// destination is specified.
+func (node *ReplicationInformation) maybeWriteReplicateToClause(ctx *FmtCtx) {
 	if node.To != nil {
-		ctx.WriteString("REPLICATE TO ")
+		ctx.WriteString(replicationToClauseKeyword)
 		ctx.FormatNode(&node.To)
 	}
 }

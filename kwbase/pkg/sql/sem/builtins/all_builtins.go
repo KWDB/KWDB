@@ -45,14 +45,30 @@ var AllAggregateBuiltinNames []string
 var AllWindowBuiltinNames []string
 
 func init() {
+	initializeBuiltinSubtypes()
+	registerAllBuiltinFunctions()
+	populateMissingCategories()
+	sortBuiltinNameArrays()
+}
+
+// initializeBuiltinSubtypes calls the initialization routines for each builtin
+// category: aggregates, window functions, generators, and PG-compat functions.
+func initializeBuiltinSubtypes() {
 	initAggregateBuiltins()
 	initWindowBuiltins()
 	initGeneratorBuiltins()
 	initPGBuiltins()
+	initPubAndSubBuiltins()
+}
 
+// registerAllBuiltinFunctions iterates over the builtins map, creates
+// tree.FunctionDefinition entries in tree.FunDefs, and populates the
+// AllBuiltinNames, AllAggregateBuiltinNames, and AllWindowBuiltinNames slices.
+func registerAllBuiltinFunctions() {
 	AllBuiltinNames = make([]string, 0, len(builtins))
 	AllAggregateBuiltinNames = make([]string, 0, len(aggregates))
 	tree.FunDefs = make(map[string]*tree.FunctionDefinition)
+
 	for name, def := range builtins {
 		fDef := tree.NewFunctionDefinition(name, &def.props, def.overloads)
 		tree.FunDefs[name] = fDef
@@ -61,14 +77,23 @@ func init() {
 			continue
 		}
 		AllBuiltinNames = append(AllBuiltinNames, name)
-		if def.props.Class == tree.AggregateClass {
-			AllAggregateBuiltinNames = append(AllAggregateBuiltinNames, name)
-		} else if def.props.Class == tree.WindowClass {
-			AllWindowBuiltinNames = append(AllWindowBuiltinNames, name)
-		}
+		classifyBuiltinByName(name, def)
 	}
+}
 
-	// Generate missing categories.
+// classifyBuiltinByName adds the named builtin to the appropriate category-specific
+// name slice based on its function class.
+func classifyBuiltinByName(name string, def builtinDefinition) {
+	if def.props.Class == tree.AggregateClass {
+		AllAggregateBuiltinNames = append(AllAggregateBuiltinNames, name)
+	} else if def.props.Class == tree.WindowClass {
+		AllWindowBuiltinNames = append(AllWindowBuiltinNames, name)
+	}
+}
+
+// populateMissingCategories fills in any empty Category fields on builtins by
+// deriving them from the function's overload types.
+func populateMissingCategories() {
 	for _, name := range AllBuiltinNames {
 		def := builtins[name]
 		if def.props.Category == "" {
@@ -76,7 +101,10 @@ func init() {
 			builtins[name] = def
 		}
 	}
+}
 
+// sortBuiltinNameArrays sorts all builtin name slices for deterministic iteration.
+func sortBuiltinNameArrays() {
 	sort.Strings(AllBuiltinNames)
 	sort.Strings(AllAggregateBuiltinNames)
 	sort.Strings(AllWindowBuiltinNames)

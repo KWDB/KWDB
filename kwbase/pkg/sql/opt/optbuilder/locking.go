@@ -114,51 +114,84 @@ func (lm *lockingSpec) apply(locking tree.LockingClause) {
 // is found then the resulting spec will contain exclusively that locking mode
 // and will no longer be restricted to specific target relations.
 func (lm lockingSpec) filter(alias tree.Name) lockingSpec {
-	var ret lockingSpec
-	var copied bool
-	updateRet := func(li *tree.LockingItem, len1 []*tree.LockingItem) {
-		if ret == nil && len(li.Targets) == 0 {
-			// Fast-path. We don't want the resulting spec to include targets,
-			// so we only allow this if the item we want to copy has none.
-			ret = len1
-			return
-		}
-		if !copied {
-			retCpy := make(lockingSpec, 1)
-			retCpy[0] = new(tree.LockingItem)
-			if len(ret) == 1 {
-				*retCpy[0] = *ret[0]
-			}
-			ret = retCpy
-			copied = true
-		}
-		// From https://www.postgresql.org/docs/12/sql-select.html#SQL-FOR-UPDATE-SHARE
-		// > If the same table is mentioned (or implicitly affected) by more
-		// > than one locking clause, then it is processed as if it was only
-		// > specified by the strongest one.
-		ret[0].Strength = ret[0].Strength.Max(li.Strength)
-		// > Similarly, a table is processed as NOWAIT if that is specified in
-		// > any of the clauses affecting it. Otherwise, it is processed as SKIP
-		// > LOCKED if that is specified in any of the clauses affecting it.
-		ret[0].WaitPolicy = ret[0].WaitPolicy.Max(li.WaitPolicy)
-	}
-
+	var lmFilter lockingSpecFilter
+	lmFilter.init()
 	for i, li := range lm {
 		len1 := lm[i : i+1 : i+1]
 		if len(li.Targets) == 0 {
 			// If no targets are specified, the clause affects all tables.
-			updateRet(li, len1)
+			lmFilter.update(li, len1)
 		} else {
 			// If targets are specified, the clause affects only those tables.
-			for _, target := range li.Targets {
-				if target.TableName == alias {
-					updateRet(li, len1)
-					break
-				}
+			if lockingItemTargetsTable(li, alias) {
+				lmFilter.update(li, len1)
 			}
 		}
 	}
-	return ret
+	return lmFilter.result()
+}
+
+// lockingSpecFilter accumulates the strongest locking mode and wait policy for
+// a table across multiple locking items.
+type lockingSpecFilter struct {
+	ret    lockingSpec
+	copied bool
+}
+
+// init prepares the filter for accumulation.
+func (f *lockingSpecFilter) init() {
+	f.ret = nil
+	f.copied = false
+}
+
+// update incorporates a locking item's strength and wait policy, tracking
+// whether a copy of the result has been made.
+func (f *lockingSpecFilter) update(li *tree.LockingItem, len1 []*tree.LockingItem) {
+	if f.ret == nil && len(li.Targets) == 0 {
+		// Fast-path: when no targets are present, reuse the original slice.
+		f.ret = len1
+		return
+	}
+	f.ensureCopied()
+	// From https://www.postgresql.org/docs/12/sql-select.html#SQL-FOR-UPDATE-SHARE :
+	// > If the same table is mentioned (or implicitly affected) by more
+	// > than one locking clause, then it is processed as if it was only
+	// > specified by the strongest one.
+	f.ret[0].Strength = f.ret[0].Strength.Max(li.Strength)
+	// > Similarly, a table is processed as NOWAIT if that is specified in
+	// > any of the clauses affecting it.
+	f.ret[0].WaitPolicy = f.ret[0].WaitPolicy.Max(li.WaitPolicy)
+}
+
+// ensureCopied makes a mutable copy of the result when the fast-path slice
+// can no longer be used.
+func (f *lockingSpecFilter) ensureCopied() {
+	if f.copied {
+		return
+	}
+	retCpy := make(lockingSpec, 1)
+	retCpy[0] = new(tree.LockingItem)
+	if len(f.ret) == 1 {
+		*retCpy[0] = *f.ret[0]
+	}
+	f.ret = retCpy
+	f.copied = true
+}
+
+// result returns the accumulated locking specification.
+func (f *lockingSpecFilter) result() lockingSpec {
+	return f.ret
+}
+
+// lockingItemTargetsTable returns true when the locking item's target list
+// includes the given table alias.
+func lockingItemTargetsTable(li *tree.LockingItem, alias tree.Name) bool {
+	for _, target := range li.Targets {
+		if target.TableName == alias {
+			return true
+		}
+	}
+	return false
 }
 
 // withoutTargets returns a new lockingSpec with all locking clauses that apply

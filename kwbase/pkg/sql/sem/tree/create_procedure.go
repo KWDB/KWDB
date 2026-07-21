@@ -60,6 +60,10 @@ type CreateProcedure struct {
 	ProcID   int32
 	DBID     int32
 	SchemaID int32
+
+	// Optional. Non-nil means this CREATE PROCEDURE was generated from
+	// CREATE FUNCTION ... LANGUAGE SQL and must also register a SQL UDF wrapper.
+	SQLFunction *SQLFunctionWrapper
 }
 
 // Format formats create procedure string

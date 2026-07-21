@@ -84,10 +84,14 @@ func (b *Builder) buildIf(
 	}
 	var ifCommand memo.IfCommand
 	b.isConditionContainsSubquery = true
+	exprTyp := exprTypeProcedure
+	if b.buildingSQLFunction {
+		exprTyp = exprTypeSQLFunction
+	}
 	cond := b.resolveAndBuildScalar(
 		condition,
 		types.Bool,
-		exprTypeProcedure,
+		exprTyp,
 		tree.RejectGenerators|tree.RejectWindowApplications|tree.RejectSubqueries,
 		inScope,
 	)
@@ -295,8 +299,14 @@ func (b *Builder) buildDeclareVar(dv tree.DeclareVar, inScope *scope) memo.ProcC
 			}
 		}
 	}
-	if err := checkProcParamType(dv.Typ); err != nil {
-		panic(err)
+	if b.buildingSQLFunction {
+		if err := checkFuncBodyType(dv.Typ); err != nil {
+			panic(err)
+		}
+	} else {
+		if err := checkProcParamType(dv.Typ); err != nil {
+			panic(err)
+		}
 	}
 
 	var typedExp tree.TypedExpr

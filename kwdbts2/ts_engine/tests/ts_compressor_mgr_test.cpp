@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 
-#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -8,14 +7,13 @@
 #include <numeric>
 #include <random>
 #include <string>
-#include <vector>
 
+#include "compression/ts_compressor_manager.h"
 #include "data_type.h"
 #include "libkwdbts2.h"
 #include "settings.h"
 #include "ts_bitmap.h"
 #include "ts_bufferbuilder.h"
-#include "ts_compressor.h"
 #include "ts_sliceguard.h"
 
 template <class T>
@@ -73,8 +71,9 @@ TYPED_TEST(CompressorManagerTester, TwoLevelCompress) {
   }
   kwdbts::TsBufferBuilder out;
   kwdbts::TsSliceGuard raw;
-  ASSERT_TRUE(inst.CompressData({reinterpret_cast<char*>(vec.data()), vec.size() * sz}, nullptr, vec.size(), &out,
-                                GetCompressorAlg<TypeParam>::Alg, kwdbts::CompressAlgo::kSnappy, 1));
+  kwdbts::TsCompressionConfig cfg{GetCompressorAlg<TypeParam>::Alg, kwdbts::CompressAlgo::kSnappy, 1};
+  ASSERT_TRUE(
+      inst.CompressData({reinterpret_cast<char*>(vec.data()), vec.size() * sz}, nullptr, vec.size(), &out, cfg));
   ASSERT_TRUE(inst.DecompressData(out.GetBuffer(), nullptr, vec.size(), &raw));
   ASSERT_EQ(raw.size(), vec.size() * sz);
   EXPECT_EQ(std::memcmp(vec.data(), raw.data(), raw.size()), 0);
@@ -83,8 +82,8 @@ TYPED_TEST(CompressorManagerTester, TwoLevelCompress) {
   for (int i = 0; i < count; ++i) {
     bitmap[i] = i % 7 ? kwdbts::kValid : kwdbts::kNull;
   }
-  ASSERT_TRUE(inst.CompressData({reinterpret_cast<char*>(vec.data()), vec.size() * sz}, &bitmap, vec.size(), &out,
-                    GetCompressorAlg<TypeParam>::Alg, kwdbts::CompressAlgo::kSnappy, 1));
+  ASSERT_TRUE(
+      inst.CompressData({reinterpret_cast<char*>(vec.data()), vec.size() * sz}, &bitmap, vec.size(), &out, cfg));
   ASSERT_TRUE(inst.DecompressData(out.GetBuffer(), &bitmap, vec.size(), &raw));
   ASSERT_EQ(raw.size(), vec.size() * sz);
   const TypeParam* pdata = reinterpret_cast<TypeParam*>(raw.data());
@@ -197,13 +196,12 @@ TYPED_TEST(CompressorManagerTester, Null_Compressions) {
     auto bitmap = GenerateMockBitmap(raw_data.size(), p);
 
     kwdbts::TsBufferBuilder compressed;
-    bool ok = inst.CompressData(raw_slice, bitmap.get(), count, &compressed, GetCompressorAlg<TypeParam>::Alg,
-                                kwdbts::CompressAlgo::kPlain, 0);
+    kwdbts::TsCompressionConfig cfg{GetCompressorAlg<TypeParam>::Alg, kwdbts::CompressAlgo::kPlain, 0};
+    bool ok = inst.CompressData(raw_slice, bitmap.get(), count, &compressed, cfg);
     ASSERT_TRUE(ok);
     ASSERT_GE(compressed.size(), sizeof(uint32_t));
     const size_t payload_size = compressed.size() - sizeof(uint32_t);
-    const bool first_stage_enabled = kwdbts::EngineOptions::compress_stage != 0 &&
-                                     kwdbts::EngineOptions::compress_stage != 2;
+    const bool first_stage_enabled = kwdbts::EngineOptions::compress_stage & kwdbts::kEncodeEnableMask;
     const size_t max_payload_size = first_stage_enabled ? sizeof(TypeParam) * bitmap->GetValidCount() : raw_slice.len;
     ASSERT_LE(payload_size, max_payload_size);
 
@@ -225,13 +223,13 @@ TEST(CompressorManager, ChimpAlgorithmMatchesFloatingType) {
   AttributeInfo attr_info{};
   attr_info.encode_algo = roachpb::ENCODE_ALGO_CHIMP;
 
-  auto [float_alg, float_general_alg] = inst.GetAlgorithm(DATATYPE::FLOAT, attr_info);
-  auto [double_alg, double_general_alg] = inst.GetAlgorithm(DATATYPE::DOUBLE, attr_info);
-  (void)float_general_alg;
-  (void)double_general_alg;
+  attr_info.type = DATATYPE::FLOAT;
+  auto float_cfg = inst.GetCompConfig(/*table_id=*/0, attr_info);
+  attr_info.type = DATATYPE::DOUBLE;
+  auto double_cfg = inst.GetCompConfig(/*table_id=*/0, attr_info);
 
-  EXPECT_EQ(float_alg, kwdbts::EncodeAlgo::kChimp_32);
-  EXPECT_EQ(double_alg, kwdbts::EncodeAlgo::kChimp_64);
+  EXPECT_EQ(float_cfg.encoder, kwdbts::EncodeAlgo::kChimp_32);
+  EXPECT_EQ(double_cfg.encoder, kwdbts::EncodeAlgo::kChimp_64);
 }
 
 TEST(CompressorManager, InvalidCompressionLevelFallsBackToDefault) {
@@ -240,9 +238,9 @@ TEST(CompressorManager, InvalidCompressionLevelFallsBackToDefault) {
   std::vector<int32_t> vec(4096);
   std::iota(vec.begin(), vec.end(), 0);
   kwdbts::TsBufferBuilder compressed;
+  kwdbts::TsCompressionConfig cfg{kwdbts::EncodeAlgo::kSimple8B_V2_s32, kwdbts::CompressAlgo::kZstd, 99};
   ASSERT_TRUE(inst.CompressData({reinterpret_cast<char*>(vec.data()), vec.size() * sizeof(int32_t)}, nullptr,
-                                vec.size(), &compressed, kwdbts::EncodeAlgo::kSimple8B_V2_s32,
-                                kwdbts::CompressAlgo::kZstd, 99));
+                                vec.size(), &compressed, cfg));
 
   kwdbts::TsSliceGuard raw;
   ASSERT_TRUE(inst.DecompressData(compressed.GetBuffer(), nullptr, vec.size(), &raw));
@@ -251,8 +249,9 @@ TEST(CompressorManager, InvalidCompressionLevelFallsBackToDefault) {
 
   std::string varchar(2048, 'x');
   kwdbts::TsBufferBuilder varchar_compressed;
-  ASSERT_TRUE(inst.CompressVarchar({varchar.data(), varchar.size()}, &varchar_compressed, kwdbts::CompressAlgo::kZstd,
-                                   -3));
+
+  cfg = kwdbts::TsCompressionConfig{kwdbts::EncodeAlgo::kPlain, kwdbts::CompressAlgo::kZstd, -3};
+  ASSERT_TRUE(inst.CompressVarchar({varchar.data(), varchar.size()}, &varchar_compressed, cfg));
   kwdbts::TsSliceGuard varchar_raw;
   ASSERT_TRUE(inst.DecompressVarchar(varchar_compressed.GetBuffer(), &varchar_raw));
   EXPECT_EQ(varchar_raw.AsStringView(), varchar);
@@ -282,21 +281,22 @@ TEST(CompressorManager, UnspecifiedCompressionLevelUsesClusterSetting) {
 
     kwdbts::TsBufferBuilder expected_numeric;
     kwdbts::TsBufferBuilder actual_numeric;
+    kwdbts::TsCompressionConfig cfg{kwdbts::EncodeAlgo::kSimple8B_V2_s32, kwdbts::CompressAlgo::kZstd,
+                                    tc.explicit_level};
     ASSERT_TRUE(inst.CompressData({reinterpret_cast<char*>(vec.data()), vec.size() * sizeof(int32_t)}, nullptr,
-                                  vec.size(), &expected_numeric, kwdbts::EncodeAlgo::kSimple8B_V2_s32,
-                                  kwdbts::CompressAlgo::kZstd, tc.explicit_level));
+                                  vec.size(), &expected_numeric, cfg));
+    cfg.level = roachpb::COMPRESS_LEVEL_UNSPECIFIED;
     ASSERT_TRUE(inst.CompressData({reinterpret_cast<char*>(vec.data()), vec.size() * sizeof(int32_t)}, nullptr,
-                                  vec.size(), &actual_numeric, kwdbts::EncodeAlgo::kSimple8B_V2_s32,
-                                  kwdbts::CompressAlgo::kZstd, roachpb::COMPRESS_LEVEL_UNSPECIFIED));
+                                  vec.size(), &actual_numeric, cfg));
     ASSERT_EQ(expected_numeric.size(), actual_numeric.size());
     EXPECT_EQ(std::memcmp(expected_numeric.data(), actual_numeric.data(), expected_numeric.size()), 0);
 
     kwdbts::TsBufferBuilder expected_varchar;
     kwdbts::TsBufferBuilder actual_varchar;
-    ASSERT_TRUE(inst.CompressVarchar({varchar.data(), varchar.size()}, &expected_varchar, kwdbts::CompressAlgo::kZstd,
-                                     tc.explicit_level));
-    ASSERT_TRUE(inst.CompressVarchar({varchar.data(), varchar.size()}, &actual_varchar, kwdbts::CompressAlgo::kZstd,
-                                     roachpb::COMPRESS_LEVEL_UNSPECIFIED));
+    cfg.level = static_cast<roachpb::ColumnCompressLevel>(tc.explicit_level);
+    ASSERT_TRUE(inst.CompressVarchar({varchar.data(), varchar.size()}, &expected_varchar, cfg));
+    cfg.level = roachpb::COMPRESS_LEVEL_UNSPECIFIED;
+    ASSERT_TRUE(inst.CompressVarchar({varchar.data(), varchar.size()}, &actual_varchar, cfg));
     ASSERT_EQ(expected_varchar.size(), actual_varchar.size());
     EXPECT_EQ(std::memcmp(expected_varchar.data(), actual_varchar.data(), expected_varchar.size()), 0);
   }
@@ -315,28 +315,32 @@ TEST(CompressorManager, UnspecifiedCompressionAlgorithmUsesCurrentClusterSetting
 
   kwdbts::EngineOptions::compress_stage = 0;
   kwdbts::EngineOptions::compression_algorithm = kwdbts::CompressAlgo::kLz4;
-  auto [first_stage0, second_stage0] = inst.GetAlgorithm(DATATYPE::INT32, attr_info);
-  auto [default_first_stage0, default_second_stage0] = inst.GetDefaultAlgorithm(DATATYPE::INT32);
-  EXPECT_EQ(first_stage0, kwdbts::EncodeAlgo::kSimple8B_V2_s32);
-  EXPECT_EQ(second_stage0, kwdbts::CompressAlgo::kPlain);
-  EXPECT_EQ(default_first_stage0, kwdbts::EncodeAlgo::kSimple8B_V2_s32);
-  EXPECT_EQ(default_second_stage0, kwdbts::CompressAlgo::kPlain);
+  attr_info.type = DATATYPE::INT32;
+  auto cfg0 = inst.GetCompConfig(/*table_id=*/0, attr_info);
+  auto cfg_default0 = inst.GetDefaultCompConfigByType(DATATYPE::INT32);
+  // GetCompConfig applies the compress_stage mask, so with stage=0 both
+  // encoder and compressor are forced to Plain regardless of cluster defaults.
+  EXPECT_EQ(cfg0.encoder, kwdbts::EncodeAlgo::kPlain);
+  EXPECT_EQ(cfg0.compressor, kwdbts::CompressAlgo::kPlain);
+  EXPECT_EQ(cfg_default0.encoder, kwdbts::EncodeAlgo::kSimple8B_V2_s32);
+  EXPECT_EQ(cfg_default0.compressor, kwdbts::CompressAlgo::kPlain);
 
   kwdbts::EngineOptions::compress_stage = 3;
   kwdbts::EngineOptions::compression_algorithm = kwdbts::CompressAlgo::kZstd;
-  auto [first_stage3, second_stage3] = inst.GetAlgorithm(DATATYPE::INT32, attr_info);
-  auto [default_first_stage3, default_second_stage3] = inst.GetDefaultAlgorithm(DATATYPE::INT32);
-  EXPECT_EQ(first_stage3, kwdbts::EncodeAlgo::kSimple8B_V2_s32);
-  EXPECT_EQ(second_stage3, kwdbts::CompressAlgo::kZstd);
-  EXPECT_EQ(default_first_stage3, kwdbts::EncodeAlgo::kSimple8B_V2_s32);
-  EXPECT_EQ(default_second_stage3, kwdbts::CompressAlgo::kZstd);
+  auto cfg3 = inst.GetCompConfig(/*table_id=*/0, attr_info);
+  auto cfg_default3 = inst.GetDefaultCompConfigByType(DATATYPE::INT32);
+  EXPECT_EQ(cfg3.encoder, kwdbts::EncodeAlgo::kSimple8B_V2_s32);
+  EXPECT_EQ(cfg3.compressor, kwdbts::CompressAlgo::kZstd);
+  EXPECT_EQ(cfg_default3.encoder, kwdbts::EncodeAlgo::kSimple8B_V2_s32);
+  EXPECT_EQ(cfg_default3.compressor, kwdbts::CompressAlgo::kZstd);
 
-  auto [ts_first, ts_second] = inst.GetAlgorithm(DATATYPE::TIMESTAMP64, attr_info);
-  auto [ts_default_first, ts_default_second] = inst.GetDefaultAlgorithm(DATATYPE::TIMESTAMP64);
-  EXPECT_EQ(ts_first, kwdbts::EncodeAlgo::kSimple8B_V2_s64);
-  EXPECT_EQ(ts_second, kwdbts::CompressAlgo::kPlain);
-  EXPECT_EQ(ts_default_first, kwdbts::EncodeAlgo::kSimple8B_V2_s64);
-  EXPECT_EQ(ts_default_second, kwdbts::CompressAlgo::kPlain);
+  attr_info.type = DATATYPE::TIMESTAMP64;
+  auto ts_cfg = inst.GetCompConfig(/*table_id=*/0, attr_info);
+  auto cfg_ts_default = inst.GetDefaultCompConfigByType(DATATYPE::TIMESTAMP64);
+  EXPECT_EQ(ts_cfg.encoder, kwdbts::EncodeAlgo::kSimple8B_V2_s64);
+  EXPECT_EQ(ts_cfg.compressor, kwdbts::CompressAlgo::kPlain);
+  EXPECT_EQ(cfg_ts_default.encoder, kwdbts::EncodeAlgo::kSimple8B_V2_s64);
+  EXPECT_EQ(cfg_ts_default.compressor, kwdbts::CompressAlgo::kPlain);
 
   kwdbts::EngineOptions::compress_stage = old_stage;
   kwdbts::EngineOptions::compression_algorithm = old_algorithm;
@@ -347,7 +351,8 @@ TEST(CompressorManager, VarcharCompressionFallsBackToPlainWhenPayloadGrows) {
 
   std::string input = "abc";
   kwdbts::TsBufferBuilder compressed;
-  ASSERT_TRUE(inst.CompressVarchar({input.data(), input.size()}, &compressed, kwdbts::CompressAlgo::kLz4, 1));
+  kwdbts::TsCompressionConfig cfg{kwdbts::EncodeAlgo::kSimple8B_V2_s32, kwdbts::CompressAlgo::kLz4, 1};
+  ASSERT_TRUE(inst.CompressVarchar({input.data(), input.size()}, &compressed, cfg));
 
   TSSlice header{compressed.data(), compressed.size()};
   uint16_t alg = 0;
@@ -365,14 +370,15 @@ TEST(CompressorManager, VarcharCompressionHonorsCompressStage) {
 
   std::string input(4096, 'x');
   kwdbts::TsBufferBuilder plain;
-  ASSERT_TRUE(inst.CompressVarchar({input.data(), input.size()}, &plain, kwdbts::CompressAlgo::kPlain,
-                                   roachpb::COMPRESS_LEVEL_UNSPECIFIED));
+  kwdbts::TsCompressionConfig cfg{kwdbts::EncodeAlgo::kPlain, kwdbts::CompressAlgo::kPlain,
+                                  roachpb::COMPRESS_LEVEL_UNSPECIFIED};
+  ASSERT_TRUE(inst.CompressVarchar({input.data(), input.size()}, &plain, cfg));
 
   for (uint8_t stage : {static_cast<uint8_t>(0), static_cast<uint8_t>(1)}) {
     kwdbts::EngineOptions::compress_stage = stage;
     kwdbts::TsBufferBuilder compressed;
-    ASSERT_TRUE(inst.CompressVarchar({input.data(), input.size()}, &compressed, kwdbts::CompressAlgo::kZstd,
-                                     roachpb::COMPRESS_LEVEL_UNSPECIFIED));
+    cfg.compressor = kwdbts::CompressAlgo::kZstd;
+    ASSERT_TRUE(inst.CompressVarchar({input.data(), input.size()}, &compressed, cfg));
     ASSERT_EQ(compressed.size(), plain.size());
     EXPECT_EQ(std::memcmp(compressed.data(), plain.data(), plain.size()), 0);
 
@@ -384,8 +390,7 @@ TEST(CompressorManager, VarcharCompressionHonorsCompressStage) {
   for (uint8_t stage : {static_cast<uint8_t>(2), static_cast<uint8_t>(3)}) {
     kwdbts::EngineOptions::compress_stage = stage;
     kwdbts::TsBufferBuilder compressed;
-    ASSERT_TRUE(inst.CompressVarchar({input.data(), input.size()}, &compressed, kwdbts::CompressAlgo::kZstd,
-                                     roachpb::COMPRESS_LEVEL_UNSPECIFIED));
+    ASSERT_TRUE(inst.CompressVarchar({input.data(), input.size()}, &compressed, cfg));
 
     TSSlice header{compressed.data(), compressed.size()};
     uint16_t alg = 0;
@@ -399,4 +404,3 @@ TEST(CompressorManager, VarcharCompressionHonorsCompressStage) {
 
   kwdbts::EngineOptions::compress_stage = old_stage;
 }
-

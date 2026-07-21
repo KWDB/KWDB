@@ -60,14 +60,19 @@ func (p *Provided) Equals(other *Provided) bool {
 	return p.Ordering.Equals(other.Ordering)
 }
 
+// String returns a compact human-readable representation.
 func (p *Provided) String() string {
-	var buf bytes.Buffer
+	return formatProvidedProps(p)
+}
 
+// formatProvidedProps writes the provided properties to a buffer and returns
+// the resulting string.
+func formatProvidedProps(p *Provided) string {
+	var buf bytes.Buffer
 	if len(p.Ordering) > 0 {
 		buf.WriteString("[ordering: ")
 		p.Ordering.Format(&buf)
 		buf.WriteByte(']')
 	}
-
 	return buf.String()
 }

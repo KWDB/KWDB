@@ -2164,6 +2164,38 @@ func (r *TsEngine) CountRangeData(
 	return uint64(*RangeCnt), nil
 }
 
+// SetPublishedMaxOSN set OSN of tables to clean
+func (r *TsEngine) SetPublishedMaxOSN(ctx context.Context, mapOSN map[uint64]uint64) error {
+	if r == nil {
+		return nil
+	}
+
+	r.checkOrWaitForOpen()
+
+	n := len(mapOSN)
+	var status C.TSStatus
+	if n == 0 {
+		status = C.TSSetPublishedMaxOSN(r.tdb, C.TSSlice{})
+	} else {
+		pairs := make([]uint64, 0, n*2)
+		for key, value := range mapOSN {
+			pairs = append(pairs, key, value)
+		}
+
+		cTsSlice := C.TSSlice{
+			data: (*C.char)(unsafe.Pointer(&pairs[0])),
+			len:  C.size_t(len(pairs) * 8),
+		}
+
+		status = C.TSSetPublishedMaxOSN(r.tdb, cTsSlice)
+	}
+
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "failed to SetPublishedMaxOSN ts storage")
+	}
+	return nil
+}
+
 // Vacuum vacuum partitions
 func (r *TsEngine) Vacuum(ctx context.Context, manual bool, onlyAgg bool) error {
 	if r == nil {

@@ -71,8 +71,8 @@ func newSQLForeignKeyCheckOperation(
 // Start implements the checkOperation interface.
 // It creates a query string and generates a plan from it, which then
 // runs in the distSQL execution engine.
-func (o *sqlForeignKeyCheckOperation) Start(params runParams) error {
-	ctx := params.ctx
+func (o *sqlForeignKeyCheckOperation) Start(params RunParams) error {
+	ctx := params.Ctx
 
 	checkQuery, _, err := nonMatchingRowQuery(
 		&o.tableDesc.TableDescriptor,
@@ -147,7 +147,7 @@ func (o *sqlForeignKeyCheckOperation) Start(params runParams) error {
 }
 
 // Next implements the checkOperation interface.
-func (o *sqlForeignKeyCheckOperation) Next(params runParams) (tree.Datums, error) {
+func (o *sqlForeignKeyCheckOperation) Next(params RunParams) (tree.Datums, error) {
 	row := o.run.rows[o.run.rowIndex]
 	o.run.rowIndex++
 

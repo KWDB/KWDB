@@ -205,7 +205,7 @@ var userLoginTimeout = settings.RegisterPublicNonNegativeDurationSetting(
 )
 
 // GetAllRoles returns a "set" (map) of Roles -> true.
-func (p *planner) GetAllRoles(ctx context.Context) (map[string]bool, error) {
+func (p *GenericPlanner) GetAllRoles(ctx context.Context) (map[string]bool, error) {
 	query := `SELECT username FROM system.users`
 	rows, err := p.ExtendedEvalContext().ExecCfg.InternalExecutor.QueryEx(
 		ctx, "read-users", p.txn,
@@ -227,13 +227,13 @@ var roleMembersTableName = tree.MakeTableName("system", "role_members")
 
 // BumpRoleMembershipTableVersion increases the table version for the
 // role membership table.
-func (p *planner) BumpRoleMembershipTableVersion(ctx context.Context) error {
+func (p *GenericPlanner) BumpRoleMembershipTableVersion(ctx context.Context) error {
 	tableDesc, err := p.ResolveMutableTableDescriptor(ctx, &roleMembersTableName, true, ResolveAnyDescType)
 	if err != nil {
 		return err
 	}
 
-	return p.writeSchemaChange(
+	return p.WriteSchemaChange(
 		ctx, tableDesc, sqlbase.InvalidMutationID, "updating version for role membership table",
 	)
 }

@@ -94,7 +94,7 @@ func TestTsScanNodeIndexedVarMethods(t *testing.T) {
 	}
 }
 
-// TestTsScanNodeStartExec tests the startExec method of tsScanNode
+// TestTsScanNodeStartExec tests the StartExec method of tsScanNode
 func TestTsScanNodeStartExec(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
@@ -104,7 +104,7 @@ func TestTsScanNodeStartExec(t *testing.T) {
 		expectedErr bool
 	}{
 		{
-			name: "test startExec returns warning",
+			name: "test StartExec returns warning",
 			setupNode: func() *tsScanNode {
 				return &tsScanNode{}
 			},
@@ -115,22 +115,22 @@ func TestTsScanNodeStartExec(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			n := tt.setupNode()
-			params := runParams{
-				ctx: context.Background(),
+			params := RunParams{
+				Ctx: context.Background(),
 			}
 
-			err := n.startExec(params)
+			err := n.StartExec(params)
 			if tt.expectedErr {
 				if err == nil {
-					t.Error("startExec() expected error, got nil")
+					t.Error("StartExec() expected error, got nil")
 				}
 				// Check if it contains the expected warning message
 				if err.Error() != "time series query is not supported in subquery" {
-					t.Errorf("startExec() error message = %v, want %v", err.Error(), "time series query is not supported in subquery")
+					t.Errorf("StartExec() error message = %v, want %v", err.Error(), "time series query is not supported in subquery")
 				}
 			} else {
 				if err != nil {
-					t.Errorf("startExec() unexpected error: %v", err)
+					t.Errorf("StartExec() unexpected error: %v", err)
 				}
 			}
 		})
@@ -226,8 +226,8 @@ func TestTsScanNodeNextAndValues(t *testing.T) {
 		// 				t.Error("Next should panic")
 		// 			}
 		// 		}()
-		// 		params := runParams{
-		// 			ctx: context.Background(),
+		// 		params := RunParams{
+		// 			Ctx: context.Background(),
 		// 		}
 		// 		_, _ = n.Next(params)
 		// 	},
@@ -256,21 +256,21 @@ func TestTsScanNodeNextAndValues(t *testing.T) {
 	}
 }
 
-// TestPlannerTSScan tests the TSScan method of planner
+// TestPlannerTSScan tests the TSScan method of GenericPlanner
 func TestPlannerTSScan(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
 	tests := []struct {
 		name      string
-		setupFunc func() *planner
-		testFunc  func(t *testing.T, p *planner)
+		setupFunc func() *GenericPlanner
+		testFunc  func(t *testing.T, p *GenericPlanner)
 	}{
 		{
 			name: "test TSScan returns valid node",
-			setupFunc: func() *planner {
-				return &planner{}
+			setupFunc: func() *GenericPlanner {
+				return &GenericPlanner{}
 			},
-			testFunc: func(t *testing.T, p *planner) {
+			testFunc: func(t *testing.T, p *GenericPlanner) {
 				result := p.TSScan()
 				if result == nil {
 					t.Error("TSScan() returned nil")
@@ -343,21 +343,21 @@ func TestSynchronizerNodeMethods(t *testing.T) {
 		// 	},
 		// },
 		{
-			name: "test startExec returns warning",
+			name: "test StartExec returns warning",
 			setupNode: func() *synchronizerNode {
 				return &synchronizerNode{}
 			},
 			testFunc: func(t *testing.T, n *synchronizerNode) {
-				params := runParams{
-					ctx: context.Background(),
+				params := RunParams{
+					Ctx: context.Background(),
 				}
-				err := n.startExec(params)
+				err := n.StartExec(params)
 				if err == nil {
-					t.Error("startExec() expected error, got nil")
+					t.Error("StartExec() expected error, got nil")
 				}
 				// Check if it contains the expected warning message
 				if err.Error() != "time series query is not supported in subquery" {
-					t.Errorf("startExec() error message = %v, want %v", err.Error(), "time series query is not supported in subquery")
+					t.Errorf("StartExec() error message = %v, want %v", err.Error(), "time series query is not supported in subquery")
 				}
 			},
 		},
@@ -372,8 +372,8 @@ func TestSynchronizerNodeMethods(t *testing.T) {
 		// 				t.Error("Next should panic")
 		// 			}
 		// 		}()
-		// 		params := runParams{
-		// 			ctx: context.Background(),
+		// 		params := RunParams{
+		// 			Ctx: context.Background(),
 		// 		}
 		// 		_, _ = n.Next(params)
 		// 	},
@@ -441,17 +441,17 @@ func TestTsInsertSelectNodeMethods(t *testing.T) {
 		testFunc  func(t *testing.T, n *tsInsertSelectNode)
 	}{
 		{
-			name: "test startExec returns nil",
+			name: "test StartExec returns nil",
 			setupNode: func() *tsInsertSelectNode {
 				return &tsInsertSelectNode{}
 			},
 			testFunc: func(t *testing.T, n *tsInsertSelectNode) {
-				params := runParams{
-					ctx: context.Background(),
+				params := RunParams{
+					Ctx: context.Background(),
 				}
-				err := n.startExec(params)
+				err := n.StartExec(params)
 				if err != nil {
-					t.Errorf("startExec() returned error: %v", err)
+					t.Errorf("StartExec() returned error: %v", err)
 				}
 			},
 		},
@@ -461,8 +461,8 @@ func TestTsInsertSelectNodeMethods(t *testing.T) {
 				return &tsInsertSelectNode{}
 			},
 			testFunc: func(t *testing.T, n *tsInsertSelectNode) {
-				params := runParams{
-					ctx: context.Background(),
+				params := RunParams{
+					Ctx: context.Background(),
 				}
 				hasNext, err := n.Next(params)
 				if err != nil {

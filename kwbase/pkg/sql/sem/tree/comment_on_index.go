@@ -24,24 +24,16 @@
 
 package tree
 
-import "strings"
-
 // CommentOnIndex represents a COMMENT ON INDEX statement.
 type CommentOnIndex struct {
 	Index   TableIndexName
 	Comment *string
 }
 
+// commentOnIndexKeyword is the SQL keyword prefix for COMMENT ON INDEX.
+const commentOnIndexKeyword = "COMMENT ON INDEX "
+
 // Format implements the NodeFormatter interface.
 func (n *CommentOnIndex) Format(ctx *FmtCtx) {
-	ctx.WriteString("COMMENT ON INDEX ")
-	ctx.FormatNode(&n.Index)
-	ctx.WriteString(" IS ")
-	if n.Comment != nil {
-		tmp := *n.Comment
-		//lex.EncodeSQLStringWithFlags(&ctx.Buffer, *n.Comment, ctx.flags.EncodeFlags())
-		ctx.WriteString("'" + strings.Replace(tmp, "'", "''", -1) + "'")
-	} else {
-		ctx.WriteString("NULL")
-	}
+	formatCommentStatement(ctx, commentOnIndexKeyword, &n.Index, n.Comment)
 }

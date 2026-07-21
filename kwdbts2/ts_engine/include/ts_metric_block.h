@@ -44,17 +44,18 @@ class TsMetricBlock {
 
  private:
   int count_;
+  TSTableID table_id_ = 0;
   std::vector<uint64_t> osn_buffer_;
   std::vector<std::unique_ptr<TsColumnBlock>> column_blocks_;
 
   TsMetricBlock(int count, std::vector<uint64_t>&& osn_buffer,
-                std::vector<std::unique_ptr<TsColumnBlock>>&& column_blocks)
-      : count_(count), osn_buffer_(std::move(osn_buffer)), column_blocks_(std::move(column_blocks)) {}
+                std::vector<std::unique_ptr<TsColumnBlock>>&& column_blocks, TSTableID table_id = 0)
+      : count_(count),
+        table_id_(table_id),
+        osn_buffer_(std::move(osn_buffer)),
+        column_blocks_(std::move(column_blocks)) {}
 
  public:
-  static KStatus ParseCompressedMetricData(const std::vector<AttributeInfo>& schema, TsSliceGuard&& compressed_data,
-                                           const TsMetricCompressInfo& compress_info,
-                                           std::unique_ptr<TsMetricBlock>* metric_block);
   const uint64_t* GetOSNAddr() const { return reinterpret_cast<const uint64_t*>(osn_buffer_.data()); }
   const timestamp64* GetTSAddr() const { return reinterpret_cast<const timestamp64*>(column_blocks_[0]->GetColAddr()); }
   int GetColNum() const { return column_blocks_.size(); }
@@ -73,6 +74,7 @@ class TsMetricBlockBuilder {
   std::shared_ptr<MMapMetricsTable> schema_table_;
   const std::vector<AttributeInfo>* col_schemas_{nullptr};
   std::vector<std::unique_ptr<TsColumnBlockBuilder>> column_block_builders_;
+  TSTableID table_id_;
 
   int count_ = 0;
   std::vector<uint64_t> osn_buffer_;
@@ -86,9 +88,10 @@ class TsMetricBlockBuilder {
       : table_schema_manager_(std::move(table_schema_manager)),
         schema_table_(std::move(schema_table)),
         col_schemas_(col_schemas),
-        column_block_builders_(col_schemas_->size()) {
+        column_block_builders_(col_schemas_->size()),
+        table_id_(table_schema_manager_->GetTableId()) {
     for (size_t i = 0; i < col_schemas->size(); i++) {
-      column_block_builders_[i] = std::make_unique<TsColumnBlockBuilder>((*col_schemas_)[i]);
+      column_block_builders_[i] = std::make_unique<TsColumnBlockBuilder>(table_id_, (*col_schemas_)[i]);
     }
   }
 

@@ -38,10 +38,10 @@ import (
 func PlanAndRunCTAS(
 	ctx context.Context,
 	dsp *DistSQLPlanner,
-	planner *planner,
+	planner *GenericPlanner,
 	txn *kv.Txn,
 	isLocal bool,
-	in planNode,
+	in PlanNode,
 	out execinfrapb.ProcessorCoreUnion,
 	recv *DistSQLReceiver,
 ) {

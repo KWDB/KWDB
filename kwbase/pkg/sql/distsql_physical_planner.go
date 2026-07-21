@@ -61,6 +61,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/physicalplan/replicaoracle"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlconst"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
@@ -78,20 +79,20 @@ import (
 // DistSQLPlanner is used to generate distributed plans from logical
 // plans. A rough overview of the process:
 //
-//   - the plan is based on a planNode tree (in the future it will be based on an
+//   - the plan is based on a PlanNode tree (in the future it will be based on an
 //     intermediate representation tree). Only a subset of the possible trees is
 //     supported (this can be checked via CheckSupport).
 //
-//   - we generate a PhysicalPlan for the planNode tree recursively. The
+//   - we generate a PhysicalPlan for the PlanNode tree recursively. The
 //     PhysicalPlan consists of a network of processors and streams, with a set
 //     of unconnected "result routers". The PhysicalPlan also has information on
-//     ordering and on the mapping planNode columns to columns in the result
+//     ordering and on the mapping PlanNode columns to columns in the result
 //     streams (all result routers output streams with the same schema).
 //
 //     The PhysicalPlan for a scanNode leaf consists of TableReaders, one for each node
 //     that has one or more ranges.
 //
-//   - for each an internal planNode we start with the plan of the child node(s)
+//   - for each an internal PlanNode we start with the plan of the child node(s)
 //     and add processing stages (connected to the result routers of the children
 //     node).
 type DistSQLPlanner struct {
@@ -429,7 +430,7 @@ func newQueryNotSupportedErrorf(format string, args ...interface{}) error {
 }
 
 // planNodeNotSupportedErr is the catch-all error value returned from
-// checkSupportForNode when a planNode type does not support distributed
+// checkSupportForNode when a PlanNode type does not support distributed
 // execution.
 var planNodeNotSupportedErr = newQueryNotSupportedError("unsupported node")
 
@@ -440,7 +441,7 @@ var cannotDistributeRowLevelLockingErr = newQueryNotSupportedError(
 // mustWrapNode returns true if a node has no DistSQL-processor equivalent.
 // This must be kept in sync with createPlanForNode.
 // TODO(jordan): refactor these to use the observer pattern to avoid duplication.
-func (dsp *DistSQLPlanner) mustWrapNode(planCtx *PlanningCtx, node planNode) bool {
+func (dsp *DistSQLPlanner) mustWrapNode(planCtx *PlanningCtx, node PlanNode) bool {
 	switch n := node.(type) {
 	// Keep these cases alphabetized, please!
 	// batchLookUpJoinNode is only used in query plan for multiple model processing
@@ -484,7 +485,7 @@ func (dsp *DistSQLPlanner) mustWrapNode(planCtx *PlanningCtx, node planNode) boo
 // The error doesn't indicate complete failure - it's instead the reason that
 // this plan couldn't be distributed.
 // TODO(radu): add tests for this.
-func (dsp *DistSQLPlanner) checkSupportForNode(node planNode) (distRecommendation, error) {
+func (dsp *DistSQLPlanner) checkSupportForNode(node PlanNode) (distRecommendation, error) {
 	switch n := node.(type) {
 	// Keep these cases alphabetized, please!
 	case *distinctNode:
@@ -726,14 +727,14 @@ type PlanningCtx struct {
 	// hasBatchLookUpJoin is set to true if the query has batchLookUpJoin node.
 	hasBatchLookUpJoin bool
 
-	planner *planner
+	planner *GenericPlanner
 	// ignoreClose, when set to true, will prevent the closing of the planner's
 	// current plan. Only the top-level query needs to close it, but everything
 	// else (like sub- and postqueries, or EXPLAIN ANALYZE) should set this to
-	// true to avoid double closes of the planNode tree.
+	// true to avoid double closes of the PlanNode tree.
 	ignoreClose bool
 	stmtType    tree.StatementType
-	// planDepth is set to the current depth of the planNode tree. It's used to
+	// planDepth is set to the current depth of the PlanNode tree. It's used to
 	// keep track of whether it's valid to run a root node in a special fast path
 	// mode.
 	planDepth int
@@ -789,10 +790,20 @@ func (p *PlanningCtx) EvalContext() *tree.EvalContext {
 	return &p.ExtendedEvalCtx.EvalContext
 }
 
+// Ctx returns the associated EvalContext, or nil if there isn't one.
+func (p *PlanningCtx) Ctx() context.Context {
+	return p.ctx
+}
+
 // IsLocal returns true if this PlanningCtx is being used to plan a query that
 // has no remote flows.
 func (p *PlanningCtx) IsLocal() bool {
 	return p.isLocal
+}
+
+// SetPlanner updates planner
+func (p *PlanningCtx) SetPlanner(gp *GenericPlanner) {
+	p.planner = gp
 }
 
 // EvaluateSubqueries returns true if this plan requires subqueries be fully
@@ -851,18 +862,18 @@ func (p *PlanningCtx) sanityCheckAddresses() error {
 	return nil
 }
 
-// PhysicalPlan is a partial physical plan which corresponds to a planNode
-// (partial in that it can correspond to a planNode subtree and not necessarily
-// to the entire planNode for a given query).
+// PhysicalPlan is a partial physical plan which corresponds to a PlanNode
+// (partial in that it can correspond to a PlanNode subtree and not necessarily
+// to the entire PlanNode for a given query).
 //
 // It augments physicalplan.PhysicalPlan with information relating the physical
-// plan to a planNode subtree.
+// plan to a PlanNode subtree.
 //
-// These plans are built recursively on a planNode tree.
+// These plans are built recursively on a PlanNode tree.
 type PhysicalPlan struct {
 	physicalplan.PhysicalPlan
 
-	// PlanToStreamColMap maps planNode columns (see planColumns()) to columns in
+	// PlanToStreamColMap maps PlanNode columns (see planColumns()) to columns in
 	// the result streams. These stream indices correspond to the streams
 	// referenced in ResultTypes.
 	//
@@ -872,7 +883,7 @@ type PhysicalPlan struct {
 	// (This is due to some processors not being configurable to output only
 	// certain columns and will be fixed.)
 	//
-	// Conversely, in some cases not all planNode columns have a corresponding
+	// Conversely, in some cases not all PlanNode columns have a corresponding
 	// result stream column (these map to index -1); this is the case for scanNode
 	// and indexJoinNode where not all columns in the table are actually used in
 	// the plan, but are kept for possible use downstream (e.g., sorting).
@@ -1897,9 +1908,13 @@ func buildTSColsAndTSColMap(
 		}
 	}
 
+	// Add time series hidden columns (_osn, _op, _event)
+	tsCols, tsColMap = addTsHiddenTSColumns(n, tsCols, tsColMap)
+
 	resCols := make([]int, 0)
 	for _, resCol := range n.resultColumns {
-		if columnIDSet.Contains(opt.ColumnID(resCol.PGAttributeNum)) {
+		if columnIDSet.Contains(opt.ColumnID(resCol.PGAttributeNum)) || resCol.PGAttributeNum == sqlbase.OsnColIdx ||
+			resCol.PGAttributeNum == sqlbase.OpColIdx || resCol.PGAttributeNum == sqlbase.EventColIdx {
 			if index, ok := tsColMap[resCol.PGAttributeNum]; ok {
 				resCols = append(resCols, index.idx)
 			} else {
@@ -1910,6 +1925,50 @@ func buildTSColsAndTSColMap(
 		}
 	}
 	return tsCols, tsColMap, resCols
+}
+
+// addTsHiddenTSColumns adds the time series hidden columns (_osn, _op, _event)
+// to the TS column metadata and column index map.
+func addTsHiddenTSColumns(
+	n *tsScanNode, tsCols []sqlbase.TSCol, tsColMap map[sqlbase.ColumnID]tsColIndex,
+) ([]sqlbase.TSCol, map[sqlbase.ColumnID]tsColIndex) {
+	// Add _osn column
+	tsCol1 := sqlbase.TSCol{
+		SqlType:            sqlbase.DataType_TIMESTAMP,
+		StorageType:        sqlbase.DataType_BIGINT,
+		StorageLen:         8,
+		VariableLengthType: sqlbase.VariableLengthType_ColStorageTypeTuple,
+		ColumnType:         sqlbase.ColumnType_TYPE_DATA,
+		Nullable:           false,
+	}
+	tsCols = append(tsCols, tsCol1)
+	tsColMap[sqlbase.OsnColIdx] = tsColIndex{sqlbase.OsnColIdx, *types.Int, tsCol1.ColumnType}
+
+	// Add _op column
+	tsCol2 := sqlbase.TSCol{
+		SqlType:            sqlbase.DataType_TIMESTAMP,
+		StorageType:        sqlbase.DataType_BYTES,
+		StorageLen:         1,
+		VariableLengthType: sqlbase.VariableLengthType_ColStorageTypeTuple,
+		ColumnType:         sqlbase.ColumnType_TYPE_DATA,
+		Nullable:           false,
+	}
+	tsCols = append(tsCols, tsCol2)
+	tsColMap[sqlbase.OpColIdx] = tsColIndex{sqlbase.OpColIdx, *types.Bytes, tsCol2.ColumnType}
+
+	// Add _event column
+	tsCol3 := sqlbase.TSCol{
+		SqlType:            sqlbase.DataType_TIMESTAMP,
+		StorageType:        sqlbase.DataType_BYTES,
+		StorageLen:         16,
+		VariableLengthType: sqlbase.VariableLengthType_ColStorageTypeTuple,
+		ColumnType:         sqlbase.ColumnType_TYPE_DATA,
+		Nullable:           true,
+	}
+	tsCols = append(tsCols, tsCol3)
+	tsColMap[sqlbase.EventColIdx] = tsColIndex{sqlbase.EventColIdx, *types.Bytes, tsCol3.ColumnType}
+
+	return tsCols, tsColMap
 }
 
 // build HashtsCols and tsColMap by cols
@@ -1992,8 +2051,8 @@ func (p *PhysicalPlan) initPhyPlanForTsReaders(
 			*n.blockFilter[i].ColID = uint32(tsColIdx.idx + 1)
 		}
 	}
-	tr := execinfrapb.TSReaderSpec{TableID: uint64(n.Table.ID()), TsSpans: n.tsSpans, TableVersion: n.Table.GetTSVersion(),
-		OrderedScan: n.orderedType.UserOrderedScan(), TsTablereaderId: planCtx.tsTableReaderID, BlockFilter: n.blockFilter, TsFill: n.tsFill}
+	tr := execinfrapb.TSReaderSpec{TableID: uint64(n.Table.ID()), TsSpans: n.tsSpans, OsnSpans: n.osnSpans, TableVersion: n.Table.GetTSVersion(),
+		OrderedScan: n.orderedType.UserOrderedScan(), TsTablereaderId: planCtx.tsTableReaderID, BlockFilter: n.blockFilter, HasOsnCol: n.HasOsnCols, TsFill: n.tsFill}
 
 	if n.orderedType.NeedReverse() || n.reverse {
 		reverse := true
@@ -2237,9 +2296,11 @@ func (p *PhysicalPlan) buildPhyPlanForTagReaders(
 	var outCols []uint32
 	n.ScanSource.ForEach(func(i int) {
 		outCols = append(outCols, uint32(i-1))
-		if col, ok := tsColMap[sqlbase.ColumnID(n.Table.Column(i-1).ColID())]; ok {
-			if col.colType == sqlbase.ColumnType_TYPE_PTAG || col.colType == sqlbase.ColumnType_TYPE_TAG {
-				post.OutputColumns = append(post.OutputColumns, uint32(col.idx))
+		if i-1 < n.Table.DeletableColumnCount() {
+			if col, ok := tsColMap[sqlbase.ColumnID(n.Table.Column(i-1).ColID())]; ok {
+				if col.colType == sqlbase.ColumnType_TYPE_PTAG || col.colType == sqlbase.ColumnType_TYPE_TAG {
+					post.OutputColumns = append(post.OutputColumns, uint32(col.idx))
+				}
 			}
 		}
 	})
@@ -2863,6 +2924,10 @@ func (dsp *DistSQLPlanner) createTSDelete(
 			Spans:           n.spans,
 		}
 
+		if planCtx != nil && n.nodeIDs[i] == planCtx.EvalContext().NodeID {
+			tsDelete.CDCData = n.cdcData
+		}
+
 		proc := physicalplan.Processor{
 			Node: n.nodeIDs[i],
 			Spec: execinfrapb.ProcessorSpec{
@@ -2904,6 +2969,10 @@ func (dsp *DistSQLPlanner) createTSTagUpdate(
 		tsTagUpdate.EndKey = n.endKey
 		tsTagUpdate.OsnId = n.osnID
 
+		if planCtx != nil && n.nodeIDs[i] == planCtx.EvalContext().NodeID {
+			tsTagUpdate.CDCData = n.cdcData
+		}
+
 		proc := physicalplan.Processor{
 			Node: n.nodeIDs[i],
 			Spec: execinfrapb.ProcessorSpec{
@@ -2943,7 +3012,7 @@ func (dsp *DistSQLPlanner) operateTSData(
 		return p, pgerror.New(pgcode.WrongObjectType, "operate type is not supported")
 	}
 	for _, table := range n.desc {
-		if table.TsTable.Lifetime == 0 || table.TsTable.Lifetime == InvalidLifetime {
+		if table.TsTable.Lifetime == 0 || table.TsTable.Lifetime == sqlconst.InvalidLifetime {
 			endTime = math.MinInt64
 		} else {
 			endTime = timeutil.Now().Unix() - int64(table.TsTable.Lifetime)
@@ -3028,7 +3097,7 @@ func (dsp *DistSQLPlanner) createTSDDL(planCtx *PlanningCtx, n *tsDDLNode) (Phys
 		}
 
 		switch n.d.Type {
-		case createKwdbTsTable:
+		case CreateKwdbTsTable:
 			//If modified, the function SQL needs to be synchronously modified MakeNormalTSTableMeta and kvsserver.makeNormalTSTableMeta
 			createKObjectTable := makeKObjectTableForTs(n.d)
 			meta, err := protoutil.Marshal(&createKObjectTable)
@@ -3051,8 +3120,8 @@ func (dsp *DistSQLPlanner) createTSDDL(planCtx *PlanningCtx, n *tsDDLNode) (Phys
 		//	}
 		//	proc.Spec.Core = execinfrapb.ProcessorCoreUnion{TsPro: tsDrop}
 		//	p.TsOperator = tsDrop.TsOperator
-		case alterKwdbAddTag, alterKwdbAddColumn, alterKwdbDropTag, alterKwdbDropColumn,
-			alterKwdbAlterTagType, alterKwdbAlterColumnType:
+		case AlterKwdbAddTag, AlterKwdbAddColumn, AlterKwdbDropTag, AlterKwdbDropColumn,
+			AlterKwdbAlterTagType, AlterKwdbAlterColumnType:
 			var tsAlterColumn = &execinfrapb.TsAlterProSpec{}
 			col := n.d.AlterTag
 			tsColumn := sqlbase.KWDBKTSColumn{
@@ -3066,7 +3135,7 @@ func (dsp *DistSQLPlanner) createTSDDL(planCtx *PlanningCtx, n *tsDDLNode) (Phys
 			}
 			makeCompressInfo(&tsColumn, col)
 			switch n.d.Type {
-			case alterKwdbAlterTagType, alterKwdbAlterColumnType:
+			case AlterKwdbAlterTagType, AlterKwdbAlterColumnType:
 				oriCol := n.d.OriginColumn
 				oriTSCol := sqlbase.KWDBKTSColumn{
 					ColumnId:           uint32(oriCol.ID),
@@ -3087,9 +3156,9 @@ func (dsp *DistSQLPlanner) createTSDDL(planCtx *PlanningCtx, n *tsDDLNode) (Phys
 				tsAlterColumn.OriginalCol = oriColMeta
 			}
 			switch n.d.Type {
-			case alterKwdbAddTag, alterKwdbAddColumn:
+			case AlterKwdbAddTag, AlterKwdbAddColumn:
 				tsAlterColumn.TsOperator = execinfrapb.OperatorType_TsAddColumn
-			case alterKwdbAlterColumnType, alterKwdbAlterTagType:
+			case AlterKwdbAlterColumnType, AlterKwdbAlterTagType:
 				tsAlterColumn.TsOperator = execinfrapb.OperatorType_TsAlterType
 			default:
 				tsAlterColumn.TsOperator = execinfrapb.OperatorType_TsDropColumn
@@ -3112,7 +3181,7 @@ func (dsp *DistSQLPlanner) createTSDDL(planCtx *PlanningCtx, n *tsDDLNode) (Phys
 			tsAlterColumn.TxnID = n.txnID
 			proc.Spec.Core = execinfrapb.ProcessorCoreUnion{TsAlter: tsAlterColumn}
 			p.TsOperator = tsAlterColumn.TsOperator
-		case createTagIndex, dropTagIndex, alterTagIndex:
+		case CreateTagIndex, DropTagIndex, AlterTagIndex:
 			var tsAlter = &execinfrapb.TsAlterProSpec{}
 			idx := n.d.CreateOrAlterTagIndex
 			tagIDs := make([]uint32, 0, len(idx.ColumnIDs))
@@ -3122,11 +3191,11 @@ func (dsp *DistSQLPlanner) createTSDDL(planCtx *PlanningCtx, n *tsDDLNode) (Phys
 			tsAlter.TagIndexID = uint32(idx.ID)
 			tsAlter.TagIndexColumns = tagIDs
 			switch n.d.Type {
-			case createTagIndex:
+			case CreateTagIndex:
 				tsAlter.TsOperator = execinfrapb.OperatorType_TsCreateTagIndex
-			case dropTagIndex:
+			case DropTagIndex:
 				tsAlter.TsOperator = execinfrapb.OperatorType_TsDropTagIndex
-			case alterTagIndex:
+			case AlterTagIndex:
 				tsAlter.TsOperator = execinfrapb.OperatorType_TsAlterTagIndex
 			}
 			if n.txnEvent == txnRollback {
@@ -3142,14 +3211,14 @@ func (dsp *DistSQLPlanner) createTSDDL(planCtx *PlanningCtx, n *tsDDLNode) (Phys
 			tsAlter.TxnID = n.txnID
 			proc.Spec.Core = execinfrapb.ProcessorCoreUnion{TsAlter: tsAlter}
 			p.TsOperator = tsAlter.TsOperator
-		case alterKwdbAlterPartitionInterval:
+		case AlterKwdbAlterPartitionInterval:
 			var tsAlter = &execinfrapb.TsAlterProSpec{}
 			tsAlter.TsOperator = execinfrapb.OperatorType_TsAlterPartitionInterval
 			tsAlter.TsTableID = uint64(n.d.SNTable.ID)
 			tsAlter.PartitionInterval = n.d.SNTable.TsTable.PartitionInterval
 			proc.Spec.Core = execinfrapb.ProcessorCoreUnion{TsAlter: tsAlter}
 			p.TsOperator = tsAlter.TsOperator
-		case alterKwdbAlterRetentions:
+		case AlterKwdbAlterRetentions:
 			var tsAlter = &execinfrapb.TsAlterProSpec{}
 			tsAlter.TsOperator = execinfrapb.OperatorType_TsAlterRetentions
 			tsAlter.TsTableID = uint64(n.d.SNTable.ID)
@@ -3568,7 +3637,7 @@ func getMiddleAggAndType(
 		// operations are relatively expensive.
 		relToAbsLocalIdx := make([]uint32, len(info.MiddleStage))
 
-		// Note the planNode first feeds the input (inputTypes) into the local aggregators.
+		// Note the PlanNode first feeds the input (inputTypes) into the local aggregators.
 		for i, stageInfo := range info.MiddleStage {
 			// The input of the final aggregators is specified as the relative indices of the local aggregation values.
 			// We need to map these to the corresponding absolute indices in localAggs.
@@ -4178,7 +4247,7 @@ func pushAggToScan(
 // - planCtx: ctx
 // - funcs: are the aggregation functions that the renders use
 // - aggFuncs: agg funcInfos
-// - planToStreamColMap: maps planNode columns (see planColumns()) to columns in the result streams
+// - planToStreamColMap: maps PlanNode columns (see planColumns()) to columns in the result streams
 // - canLocal: can exec on local plan
 // - statisticIndex: the column index of agg func used from statistic reader
 // Returns:
@@ -4282,7 +4351,7 @@ func getAggFuncAndType(
 
 // addDistinct add distinct
 func (dsp *DistSQLPlanner) addDistinct(
-	aggregations []execinfrapb.AggregatorSpec_Aggregation, p *PhysicalPlan, plan planNode,
+	aggregations []execinfrapb.AggregatorSpec_Aggregation, p *PhysicalPlan, plan PlanNode,
 ) {
 	for _, e := range aggregations {
 		if !e.Distinct {
@@ -4702,7 +4771,7 @@ func (dsp *DistSQLPlanner) addAggregators(
 
 	// Set up the final stage.
 	// Update p.PlanToStreamColMap; we will have a simple 1-to-1 mapping of
-	// planNode columns to stream columns because the aggregator
+	// PlanNode columns to stream columns because the aggregator
 	// has been programmed to produce the same columns as the groupNode.
 	p.PlanToStreamColMap = identityMap(p.PlanToStreamColMap, len(aggregations))
 
@@ -4812,7 +4881,7 @@ func (dsp *DistSQLPlanner) addTSAggregators(
 
 	// Set up the final stage.
 	// Update p.PlanToStreamColMap; we will have a simple 1-to-1 mapping of
-	// planNode columns to stream columns because the aggregator
+	// PlanNode columns to stream columns because the aggregator
 	// has been programmed to produce the same columns as the groupNode.
 	p.PlanToStreamColMap = identityMap(p.PlanToStreamColMap, len(aggregations))
 
@@ -5281,9 +5350,9 @@ func (dsp *DistSQLPlanner) createPlanForGroup(
 }
 
 // getTypesForPlanResult returns the types of the elements in the result streams
-// of a plan that corresponds to a given planNode. If planToStreamColMap is nil,
+// of a plan that corresponds to a given PlanNode. If planToStreamColMap is nil,
 // a 1-1 mapping is assumed.
-func getTypesForPlanResult(node planNode, planToStreamColMap []int) ([]types.T, error) {
+func getTypesForPlanResult(node PlanNode, planToStreamColMap []int) ([]types.T, error) {
 	nodeColumns := planColumns(node)
 	if planToStreamColMap == nil {
 		// No remapping.
@@ -5593,7 +5662,7 @@ func (dsp *DistSQLPlanner) createPlanForBatchLookUpJoin(
 }
 
 func (dsp *DistSQLPlanner) createPlanForNode(
-	planCtx *PlanningCtx, node planNode,
+	planCtx *PlanningCtx, node PlanNode,
 ) (plan PhysicalPlan, err error) {
 	planCtx.planDepth++
 
@@ -5613,6 +5682,13 @@ func (dsp *DistSQLPlanner) createPlanForNode(
 
 		if err := plan.AddFilter(n.filter, planCtx, plan.PlanToStreamColMap, n.engine == tree.EngineTypeTimeseries); err != nil {
 			return PhysicalPlan{}, err
+		}
+		if planCtx.cdcCtx != nil && n.filter != nil {
+			planCtx.cdcCtx.metricsFilter, err = physicalplan.MakeExpression(
+				n.filter, planCtx, plan.PlanToStreamColMap, false, false)
+			if err != nil {
+				return PhysicalPlan{}, err
+			}
 		}
 	case *synchronizerNode:
 		plan, err = dsp.createPlanForSynchronizer(planCtx, n)
@@ -5874,28 +5950,28 @@ func (dsp *DistSQLPlanner) createPlanForNode(
 	return plan, err
 }
 
-// wrapPlan produces a DistSQL processor for an arbitrary planNode. This is
-// invoked when a particular planNode can't be distributed for some reason. It
+// wrapPlan produces a DistSQL processor for an arbitrary PlanNode. This is
+// invoked when a particular PlanNode can't be distributed for some reason. It
 // will create a planNodeToRowSource wrapper for the sub-tree that's not
 // plannable by DistSQL. If that sub-tree has DistSQL-plannable sources, they
 // will be planned by DistSQL and connected to the wrapper.
-func (dsp *DistSQLPlanner) wrapPlan(planCtx *PlanningCtx, n planNode) (PhysicalPlan, error) {
+func (dsp *DistSQLPlanner) wrapPlan(planCtx *PlanningCtx, n PlanNode) (PhysicalPlan, error) {
 	useFastPath := planCtx.planDepth == 1 && planCtx.stmtType == tree.RowsAffected
 
-	// First, we search the planNode tree we're trying to wrap for the first
-	// DistSQL-enabled planNode in the tree. If we find one, we ask the planner to
-	// continue the DistSQL planning recursion on that planNode.
+	// First, we search the PlanNode tree we're trying to wrap for the first
+	// DistSQL-enabled PlanNode in the tree. If we find one, we ask the planner to
+	// continue the DistSQL planning recursion on that PlanNode.
 	seenTop := false
 	nParents := uint32(0)
 	var p PhysicalPlan
 	var nodeID = dsp.nodeDesc.NodeID
 	var query string
-	// This will be set to first DistSQL-enabled planNode we find, if any. We'll
+	// This will be set to first DistSQL-enabled PlanNode we find, if any. We'll
 	// modify its parent later to connect its source to the DistSQL-planned
 	// subtree.
-	var firstNotWrapped planNode
+	var firstNotWrapped PlanNode
 	if err := walkPlan(planCtx.ctx, n, planObserver{
-		enterNode: func(ctx context.Context, nodeName string, plan planNode) (bool, error) {
+		enterNode: func(ctx context.Context, nodeName string, plan PlanNode) (bool, error) {
 			switch plan.(type) {
 			case *explainDistSQLNode, *explainPlanNode, *explainVecNode:
 				// Don't continue recursing into explain nodes - they need to be left
@@ -5932,13 +6008,13 @@ func (dsp *DistSQLPlanner) wrapPlan(planCtx *PlanningCtx, n planNode) (PhysicalP
 	// Copy the evalCtx.
 	evalCtx := *planCtx.ExtendedEvalCtx
 	if nodeID == dsp.nodeDesc.NodeID {
-		// We permit the planNodeToRowSource to trigger the wrapped planNode's fast
+		// We permit the planNodeToRowSource to trigger the wrapped PlanNode's fast
 		// path if its the very first node in the flow, and if the statement type we're
 		// expecting is in fact RowsAffected. RowsAffected statements return a single
 		// row with the number of rows affected by the statement, and are the only
 		// types of statement where it's valid to invoke a plan's fast path.
 		wrapper, err := makePlanNodeToRowSource(n,
-			runParams{
+			RunParams{
 				extendedEvalCtx: &evalCtx,
 				p:               planCtx.planner,
 			},
@@ -6085,8 +6161,8 @@ func (dsp *DistSQLPlanner) createValuesPlan(
 func (dsp *DistSQLPlanner) createPlanForValues(
 	planCtx *PlanningCtx, n *valuesNode,
 ) (PhysicalPlan, error) {
-	params := runParams{
-		ctx:             planCtx.ctx,
+	params := RunParams{
+		Ctx:             planCtx.ctx,
 		extendedEvalCtx: planCtx.ExtendedEvalCtx,
 	}
 	colTypes, err := getTypesForPlanResult(n, nil /* planToStreamColMap */)
@@ -6094,7 +6170,7 @@ func (dsp *DistSQLPlanner) createPlanForValues(
 		return PhysicalPlan{}, err
 	}
 
-	if err := n.startExec(params); err != nil {
+	if err := n.StartExec(params); err != nil {
 		return PhysicalPlan{}, err
 	}
 	defer n.Close(planCtx.ctx)
@@ -6104,7 +6180,7 @@ func (dsp *DistSQLPlanner) createPlanForValues(
 	numRows := n.rows.Len()
 	rawBytes := make([][]byte, numRows)
 	for i := 0; i < numRows; i++ {
-		if next, err := n.Next(runParams{ctx: planCtx.ctx}); !next {
+		if next, err := n.Next(RunParams{Ctx: planCtx.ctx}); !next {
 			return PhysicalPlan{}, err
 		}
 
@@ -6280,6 +6356,16 @@ func (dsp *DistSQLPlanner) createPlanForProjectSet(
 	plan, err := dsp.createPlanForNode(planCtx, n.source)
 	if err != nil {
 		return PhysicalPlan{}, err
+	}
+	// ProjectSet runs in the relational engine. Add a relational processor to
+	// receive rows when its input is produced by the time-series engine.
+	if plan.ChildIsExecInTSEngine() {
+		plan.AddNoGroupingStage(
+			execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
+			execinfrapb.PostProcessSpec{OutputTypes: plan.ResultTypes},
+			plan.ResultTypes,
+			plan.MergeOrdering,
+		)
 	}
 	numResults := len(plan.ResultTypes)
 
@@ -7549,5 +7635,16 @@ func visitTableMeta(
 			}
 		}
 	}
+
+	// Add osn hidden columns
+	descColumnIDs = append(descColumnIDs, sqlbase.OsnColIdx)
+	typs = append(typs, *types.Int)
+
+	descColumnIDs = append(descColumnIDs, sqlbase.OpColIdx)
+	typs = append(typs, *types.Bytes)
+
+	descColumnIDs = append(descColumnIDs, sqlbase.EventColIdx)
+	typs = append(typs, *types.Bytes)
+
 	return ptCols, typs, descColumnIDs, columnIDSet
 }

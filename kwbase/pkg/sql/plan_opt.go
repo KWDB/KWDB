@@ -59,7 +59,7 @@ var autonomicOptimizationEnable = settings.RegisterBoolSetting(
 //   - Types
 //   - AnonymizedStr
 //   - Memo (for reuse during exec, if appropriate).
-func (p *planner) prepareUsingOptimizer(
+func (p *GenericPlanner) prepareUsingOptimizer(
 	ctx context.Context, insidePrepareOfProcFlag uint8,
 ) (planFlags, error) {
 	stmt := p.stmt
@@ -78,18 +78,18 @@ func (p *planner) prepareUsingOptimizer(
 	stmt.Prepared.AnonymizedStr = anonymizeStmt(stmt.AST)
 
 	switch stmt.AST.(type) {
-	case *tree.AlterIndex, *tree.AlterTable, *tree.AlterSequence, *tree.AlterSchedule,
+	case *tree.AlterIndex, *tree.AlterPipe, *tree.AlterTable, *tree.AlterSequence, *tree.AlterSchedule,
 		*tree.AlterStream,
 		*tree.BeginTransaction,
 		*tree.CommentOnColumn, *tree.CommentOnDatabase, *tree.CommentOnIndex, *tree.CommentOnTable,
 		*tree.CommentOnProcedure,
 		*tree.CommitTransaction,
 		*tree.CopyFrom, *tree.CreateDatabase, *tree.CreateFunction, *tree.CreateIndex, *tree.CreateView,
-		*tree.CreateSchedule,
+		*tree.CreateSchedule, *tree.CreatePipe,
 		*tree.CreateSequence,
 		*tree.CreateStats,
 		*tree.CreateStream,
-		*tree.Deallocate, *tree.Discard, *tree.DropDatabase, *tree.DropIndex,
+		*tree.Deallocate, *tree.Discard, *tree.DropDatabase, *tree.DropIndex, *tree.DropPipe,
 		*tree.DropStream,
 		*tree.DropTable, *tree.DropView, *tree.DropSequence,
 		*tree.Execute,
@@ -102,7 +102,8 @@ func (p *planner) prepareUsingOptimizer(
 		*tree.ReplicationControl,
 		*tree.RollbackToSavepoint, *tree.RollbackTransaction,
 		*tree.Savepoint, *tree.SetTransaction, *tree.SetTracing, *tree.SetSessionAuthorizationDefault,
-		*tree.SetSessionCharacteristics:
+		*tree.SetSessionCharacteristics,
+		*tree.CreatePublication, *tree.AlterPub, *tree.DropPublication:
 		// These statements do not have result columns and do not support placeholders
 		// so there is no need to do anything during prepare.
 		//
@@ -205,9 +206,14 @@ func (p *planner) prepareUsingOptimizer(
 	return opc.flags, nil
 }
 
+// MakeOptimizerPlan is a wrapper to makeOptimizerPlan
+func MakeOptimizerPlan(ctx context.Context, p *GenericPlanner) error {
+	return p.makeOptimizerPlan(ctx)
+}
+
 // makeOptimizerPlan generates a plan using the cost-based optimizer.
 // On success, it populates p.curPlan.
-func (p *planner) makeOptimizerPlan(ctx context.Context) error {
+func (p *GenericPlanner) makeOptimizerPlan(ctx context.Context) error {
 	stmt := p.stmt
 
 	if p.ExecCfg().StartMode != StartSingleNode {
@@ -219,7 +225,8 @@ func (p *planner) makeOptimizerPlan(ctx context.Context) error {
 	var execMemo *memo.Memo
 	var layerType tree.PhysicalLayerType
 	var err error
-	useProcedureCache := stmt.AST.StatOp() == "CALL" && opt.CheckOptMode(opt.TSQueryOptMode.Get(&p.ExecCfg().Settings.SV), opt.EnableProcedureCache)
+	useProcedureCache := stmt.AST.StatOp() == "CALL" && opt.CheckOptMode(opt.TSQueryOptMode.Get(&p.ExecCfg().Settings.SV), opt.EnableProcedureCache) &&
+		p.resolveSQLFunctionAsProcedure == false
 
 	if useProcedureCache {
 		// Try to find the cached memo in the procedure cache
@@ -280,7 +287,7 @@ func (p *planner) makeOptimizerPlan(ctx context.Context) error {
 }
 
 type optPlanningCtx struct {
-	p *planner
+	p *GenericPlanner
 
 	// catalog is initialized once, and reset for each query. This allows the
 	// catalog objects to be reused across queries in the same session.
@@ -307,12 +314,12 @@ type optPlanningCtx struct {
 
 // init performs one-time initialization of the planning context; reset() must
 // also be called before each use.
-func (opc *optPlanningCtx) init(p *planner) {
+func (opc *optPlanningCtx) init(p *GenericPlanner) {
 	opc.p = p
 	opc.catalog.init(p)
 }
 
-// reset initializes the planning context for the statement in the planner.
+// reset initializes the planning context for the statement in the GenericPlanner.
 func (opc *optPlanningCtx) reset() {
 	p := opc.p
 	opc.catalog.reset()
@@ -365,7 +372,7 @@ func (opc *optPlanningCtx) log(ctx context.Context, msg string) {
 
 // buildReusableMemo builds the statement into a memo that can be stored for
 // prepared statements and can later be used as a starting point for
-// optimization. The returned memo is fully detached from the planner and can be
+// optimization. The returned memo is fully detached from the GenericPlanner and can be
 // used with reuseMemo independently and concurrently by multiple threads.
 func (opc *optPlanningCtx) buildReusableMemo(
 	ctx context.Context, insidePrepareOfProcFlag uint8,
@@ -682,7 +689,7 @@ func (opc *optPlanningCtx) buildExecMemo(
 }
 
 // handleProcedureCache handles the procedure cache lookup, validation, and update logic.
-func (p *planner) handleProcedureCache(
+func (p *GenericPlanner) handleProcedureCache(
 	ctx context.Context, stmt *Statement, opc *optPlanningCtx,
 ) (execMemo *memo.Memo, layerType tree.PhysicalLayerType, err error) {
 	procedureName := stmt.AST.(*tree.CallProcedure).Name

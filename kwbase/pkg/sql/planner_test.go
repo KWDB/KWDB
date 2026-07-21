@@ -32,6 +32,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlconst"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -39,7 +40,7 @@ import (
 
 func TestTypeAsString(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	p := planner{}
+	p := GenericPlanner{}
 
 	testData := []struct {
 		expr        tree.Expr
@@ -57,7 +58,7 @@ func TestTypeAsString(t *testing.T) {
 
 	t.Run("TypeAsString", func(t *testing.T) {
 		for _, td := range testData {
-			fn, err := p.TypeAsString(td.expr, "test")
+			fn, err := TypeAsString(&p, td.expr, "test")
 			if err != nil {
 				if !td.expectedErr {
 					t.Fatalf("expected no error; got %v", err)
@@ -101,7 +102,7 @@ func TestTypeAsString(t *testing.T) {
 
 func TestTypeAsStringOrNull(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	p := planner{}
+	p := GenericPlanner{}
 
 	tests := []struct {
 		name        string
@@ -152,7 +153,7 @@ func TestTypeAsStringOrNull(t *testing.T) {
 
 func TestTypeAsStringOpts(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	p := planner{}
+	p := GenericPlanner{}
 
 	tests := []struct {
 		name        string
@@ -165,7 +166,7 @@ func TestTypeAsStringOpts(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fn, err := p.TypeAsStringOpts(tt.opts, map[string]KVStringOptValidate{})
+			fn, err := p.TypeAsStringOpts(tt.opts, map[string]sqlconst.KVStringOptValidate{})
 			if err != nil {
 				if !tt.expectedErr {
 					t.Fatalf("expected no error; got %v", err)
@@ -188,7 +189,7 @@ func TestTypeAsStringOpts(t *testing.T) {
 
 func TestParseType(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	p := planner{}
+	p := GenericPlanner{}
 
 	tests := []struct {
 		name        string
@@ -220,7 +221,7 @@ func TestParseType(t *testing.T) {
 
 func TestParseQualifiedTableName(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	p := planner{}
+	p := GenericPlanner{}
 
 	tests := []struct {
 		name        string
@@ -255,11 +256,11 @@ func TestPlannerGetters(t *testing.T) {
 
 	tests := []struct {
 		name string
-		test func(t *testing.T, p *planner)
+		test func(t *testing.T, p *GenericPlanner)
 	}{
 		{
 			name: "IsInternalSQL",
-			test: func(t *testing.T, p *planner) {
+			test: func(t *testing.T, p *GenericPlanner) {
 				result := p.IsInternalSQL()
 				if result != false {
 					t.Errorf("IsInternalSQL() = %v, want false", result)
@@ -268,7 +269,7 @@ func TestPlannerGetters(t *testing.T) {
 		},
 		{
 			name: "ExecutorConfig",
-			test: func(t *testing.T, p *planner) {
+			test: func(t *testing.T, p *GenericPlanner) {
 				result := p.ExecutorConfig()
 				if result == nil {
 					t.Errorf("ExecutorConfig() = nil, want non-nil")
@@ -277,7 +278,7 @@ func TestPlannerGetters(t *testing.T) {
 		},
 		{
 			name: "ExtendedEvalContext",
-			test: func(t *testing.T, p *planner) {
+			test: func(t *testing.T, p *GenericPlanner) {
 				result := p.ExtendedEvalContext()
 				if result == nil {
 					t.Errorf("ExtendedEvalContext() = nil, want non-nil")
@@ -286,7 +287,7 @@ func TestPlannerGetters(t *testing.T) {
 		},
 		{
 			name: "ExtendedEvalContextCopy",
-			test: func(t *testing.T, p *planner) {
+			test: func(t *testing.T, p *GenericPlanner) {
 				result := p.ExtendedEvalContextCopy()
 				if result == nil {
 					t.Errorf("ExtendedEvalContextCopy() = nil, want non-nil")
@@ -295,7 +296,7 @@ func TestPlannerGetters(t *testing.T) {
 		},
 		{
 			name: "EvalContext",
-			test: func(t *testing.T, p *planner) {
+			test: func(t *testing.T, p *GenericPlanner) {
 				result := p.EvalContext()
 				if result == nil {
 					t.Logf("EvalContext() returned nil as expected")
@@ -304,7 +305,7 @@ func TestPlannerGetters(t *testing.T) {
 		},
 		{
 			name: "Tables",
-			test: func(t *testing.T, p *planner) {
+			test: func(t *testing.T, p *GenericPlanner) {
 				result := p.Tables()
 				if result != nil {
 					t.Errorf("Tables() = %v, want nil", result)
@@ -313,7 +314,7 @@ func TestPlannerGetters(t *testing.T) {
 		},
 		{
 			name: "GetStmt",
-			test: func(t *testing.T, p *planner) {
+			test: func(t *testing.T, p *GenericPlanner) {
 				result := p.GetStmt()
 				if result != "" {
 					t.Errorf("GetStmt() = %v, want empty string", result)
@@ -322,7 +323,7 @@ func TestPlannerGetters(t *testing.T) {
 		},
 		{
 			name: "ExecCfg",
-			test: func(t *testing.T, p *planner) {
+			test: func(t *testing.T, p *GenericPlanner) {
 				result := p.ExecCfg()
 				if result != nil {
 					t.Errorf("ExecCfg() = %v, want nil", result)
@@ -331,7 +332,7 @@ func TestPlannerGetters(t *testing.T) {
 		},
 		//{
 		//	name: "LeaseMgr",
-		//	test: func(t *testing.T, p *planner) {
+		//	test: func(t *testing.T, p *GenericPlanner) {
 		//		result := p.LeaseMgr()
 		//		if result != nil {
 		//			t.Errorf("LeaseMgr() = %v, want nil", result)
@@ -340,7 +341,7 @@ func TestPlannerGetters(t *testing.T) {
 		//},
 		{
 			name: "Txn",
-			test: func(t *testing.T, p *planner) {
+			test: func(t *testing.T, p *GenericPlanner) {
 				result := p.Txn()
 				if result != nil {
 					t.Errorf("Txn() = %v, want nil", result)
@@ -349,7 +350,7 @@ func TestPlannerGetters(t *testing.T) {
 		},
 		{
 			name: "DistSQLPlanner",
-			test: func(t *testing.T, p *planner) {
+			test: func(t *testing.T, p *GenericPlanner) {
 				result := p.DistSQLPlanner()
 				if result != nil {
 					t.Errorf("DistSQLPlanner() = %v, want nil", result)
@@ -358,7 +359,7 @@ func TestPlannerGetters(t *testing.T) {
 		},
 		{
 			name: "GetNodeIDNumber",
-			test: func(t *testing.T, p *planner) {
+			test: func(t *testing.T, p *GenericPlanner) {
 				result := p.GetNodeIDNumber()
 				if result != 0 {
 					t.Errorf("GetNodeIDNumber() = %v, want 0", result)
@@ -369,7 +370,7 @@ func TestPlannerGetters(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := &planner{}
+			p := &GenericPlanner{}
 			tt.test(t, p)
 		})
 	}
@@ -389,7 +390,7 @@ func TestRelocateRange(t *testing.T) {
 	// Get the executor config
 	execCfg := s.ExecutorConfig().(ExecutorConfig)
 
-	// Create a planner with admin privileges
+	// Create a GenericPlanner with admin privileges
 	localPlanner, cleanup := NewInternalPlanner(
 		"test",
 		kv.NewTxn(ctx, db, s.NodeID()), // No transaction needed for this test
@@ -398,7 +399,7 @@ func TestRelocateRange(t *testing.T) {
 		&execCfg,
 	)
 	defer cleanup()
-	p := localPlanner.(*planner)
+	p := localPlanner.(*GenericPlanner)
 	// Test case 1: RelocateRange with invalid range ID
 	t.Run("RelocateRange with invalid range ID", func(t *testing.T) {
 		// Test RelocateRange with a range ID that doesn't exist
@@ -424,7 +425,7 @@ func TestGetRangeDebugInfo(t *testing.T) {
 	// Get the executor config
 	execCfg := s.ExecutorConfig().(ExecutorConfig)
 
-	// Create a planner with admin privileges
+	// Create a GenericPlanner with admin privileges
 	localPlanner, cleanup := NewInternalPlanner(
 		"test",
 		kv.NewTxn(ctx, db, s.NodeID()), // No transaction needed for this test
@@ -433,7 +434,7 @@ func TestGetRangeDebugInfo(t *testing.T) {
 		&execCfg,
 	)
 	defer cleanup()
-	p := localPlanner.(*planner)
+	p := localPlanner.(*GenericPlanner)
 	// Test case 1: GetRangeDebugInfo with invalid range ID
 	t.Run("GetRangeDebugInfo with invalid range ID", func(t *testing.T) {
 		// Test GetRangeDebugInfo with a range ID that doesn't exist

@@ -36,7 +36,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-// unionNode is a planNode whose rows are the result of one of three set
+// unionNode is a PlanNode whose rows are the result of one of three set
 // operations (UNION, INTERSECT, or EXCEPT) on left and right. There are two
 // variations of each set operation: distinct, which always returns unique
 // results, and all, which does no uniqueing.
@@ -74,10 +74,12 @@ import (
 //	  both, don't emit. Otherwise, if the count for the row was > 0, emit and
 //	  decrement the entry. Otherwise, the row was on the right, but we've
 //	  already emitted as many as were on the right, don't emit.
+var _ PlanNode = &unionNode{}
+
 type unionNode struct {
 	// right and left are the data source operands.
 	// right is read first, to populate the `emit` field.
-	right, left planNode
+	right, left PlanNode
 
 	// columns contains the metadata for the results of this node.
 	columns sqlbase.ResultColumns
@@ -94,9 +96,9 @@ type unionNode struct {
 	all bool
 }
 
-func (p *planner) newUnionNode(
-	typ tree.UnionType, all bool, left, right planNode,
-) (planNode, error) {
+func (p *GenericPlanner) newUnionNode(
+	typ tree.UnionType, all bool, left, right PlanNode,
+) (PlanNode, error) {
 	emitAll := false
 	switch typ {
 	case tree.UnionOp:
@@ -160,11 +162,11 @@ func (p *planner) newUnionNode(
 	return node, nil
 }
 
-func (n *unionNode) startExec(params runParams) error {
+func (n *unionNode) StartExec(params RunParams) error {
 	panic("unionNode cannot be run in local mode")
 }
 
-func (n *unionNode) Next(params runParams) (bool, error) {
+func (n *unionNode) Next(params RunParams) (bool, error) {
 	panic("unionNode cannot be run in local mode")
 }
 

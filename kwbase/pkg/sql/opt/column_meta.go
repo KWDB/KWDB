@@ -158,6 +158,9 @@ const (
 	TSColTag = 2
 	// TSColPrimaryTag means primary tag col in timeseries table
 	TSColPrimaryTag = 3
+	// TSHiddenCol means default hidden col in time series table
+	// Currently contains _osn, _op, _event
+	TSHiddenCol = 4
 )
 
 // ToSet converts a column id list to a column id set.

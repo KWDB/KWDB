@@ -31,7 +31,7 @@ import (
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/security"
-	"gitee.com/kwbasedb/kwbase/pkg/sql"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlutil"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
@@ -187,7 +187,7 @@ func runCreateClientCert(cmd *cobra.Command, args []string) error {
 	var err error
 	var username string
 	// We intentionally allow the `node` user to have a cert.
-	if username, err = sql.NormalizeAndValidateUsernameNoBlacklist(args[0]); err != nil {
+	if username, err = sqlutil.NormalizeAndValidateUsernameNoBlacklist(args[0]); err != nil {
 		return errors.Wrap(err, "failed to generate client certificate and key")
 	}
 

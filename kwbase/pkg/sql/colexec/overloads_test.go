@@ -236,6 +236,28 @@ func TestFloatComparison(t *testing.T) {
 	require.Equal(t, false, performGEFloat64Int64(f, 3))
 }
 
+func TestFloatDivByZero(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	testCases := []struct {
+		name     string
+		dividend float64
+		divisor  float64
+	}{
+		{name: "positive-by-zero", dividend: 1.0, divisor: 0.0},
+		{name: "zero-by-zero", dividend: 0.0, divisor: 0.0},
+		{name: "negative-by-negative-zero", dividend: -1.0, divisor: math.Copysign(0, -1)},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := execerror.CatchVectorizedRuntimeError(func() {
+				performDivFloat64Float64(tc.dividend, tc.divisor)
+			})
+			require.True(t, errors.Is(err, tree.ErrDivByZero))
+		})
+	}
+}
+
 func TestIntComparison(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	i := int64(2)

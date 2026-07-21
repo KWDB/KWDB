@@ -35,7 +35,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
 )
 
-var errNoDatabase = pgerror.New(pgcode.InvalidName, "no database specified")
+// ErrNoDatabase is returned when no database has been specified in the current session
+var ErrNoDatabase = pgerror.New(pgcode.InvalidName, "no database specified")
 
 // delegateShowTables implements SHOW TABLES which returns all the tables.
 // Privileges: None.
@@ -47,7 +48,7 @@ func (d *delegator) delegateShowTables(n *tree.ShowTables) (tree.Statement, erro
 	_, name, err := d.catalog.ResolveSchema(d.ctx, flags, &n.TableNamePrefix)
 	if err != nil {
 		if d.catalog.GetCurrentDatabase(d.ctx) == "" && !n.ExplicitSchema {
-			return nil, errNoDatabase
+			return nil, ErrNoDatabase
 		}
 		if !n.TableNamePrefix.ExplicitCatalog && !n.TableNamePrefix.ExplicitSchema {
 			return nil, pgerror.New(

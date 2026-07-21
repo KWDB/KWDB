@@ -57,7 +57,7 @@ func TestCheckBeforeExport(t *testing.T) {
 		conn.implicitTxn(),
 	)
 
-	p := makeTestPlanner()
+	p := MakeTestPlanner()
 	_, err = checkBeforeExport(ctx, p, res, conn, ast)
 	require.Error(t, err)
 
@@ -318,7 +318,7 @@ func TestExportRelationalAndTsDatabase(t *testing.T) {
 	)
 	conn.planner.ExtendedEvalContext().TxnImplicit = true
 
-	p := makeTestPlanner()
+	p := MakeTestPlanner()
 	p.txn = db.NewTxn(ctx, "test")
 	conn.planner.txn = p.txn
 	ast.FileFormat = "CSV"

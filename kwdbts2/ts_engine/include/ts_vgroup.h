@@ -37,7 +37,6 @@
 #include "ts_version.h"
 #include "ts_partition_agg.h"
 
-extern uint16_t CLUSTER_SETTING_MAX_ROWS_PER_BLOCK;         // PARTITION_ROWS from cluster setting
 extern bool CLUSTER_SETTING_COUNT_USE_STATISTICS;          // COUNT_USE_STATISTICS from cluster setting
 extern bool CLUSTER_SETTING_PARTITION_AGG;
 
@@ -383,6 +382,7 @@ class TsVGroup {
                                 const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                                 const std::shared_ptr<MMapMetricsTable>& scan_schema,
                                 const std::vector<KwTsSpan>& ts_spans, const std::vector<k_uint32>& scan_cols,
+                                const std::vector<Sumfunctype>& scan_agg_types,
                                 timestamp64& entity_last_ts, bool& last_payload_valid, ResultSet* res);
 
   bool isEntityLatestRowPayloadValid(uint32_t db_id, EntityID entity_id) {
@@ -565,7 +565,8 @@ class TsVGroup {
                                          bool call_by_vacuum = false, bool force_vacuum = false,
                                          bool force_compact_l0 = false, bool* skipped = nullptr);
 
-  KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, const TsBlockSpan& ts_blk_span,
+  KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols,
+                                      const std::vector<Sumfunctype>& scan_agg_types, const TsBlockSpan& ts_blk_span,
                                       const vector<AttributeInfo>& attrs, ResultSet* res);
 };
 

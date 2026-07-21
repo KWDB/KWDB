@@ -1,0 +1,1024 @@
+> drop database if exists pipe_db_fvt cascade;
+DROP DATABASE
+> create ts database pipe_db_fvt;
+CREATE TS DATABASE
+> drop database if exists pipe_db_fvt1 cascade;
+DROP DATABASE
+> create ts database pipe_db_fvt1;
+CREATE TS DATABASE
+> drop database if exists pipe_db_fvt2 cascade;
+DROP DATABASE
+> create ts database pipe_db_fvt2;
+CREATE TS DATABASE
+> create table defaultdb.mock_sink_to_db (topic string not null,kind string,db_name string,tb_name string,key int8,data string);
+CREATE TABLE
+> create pipe test_pipe1 for table pipe_db_fvt.cpu(k_timestamp, usage_user,hostname) where usage_user > 50 with options (enable='off',sink='kafka://localhost:9095?topic_name=test_topic1');
+ERROR: relation "pipe_db_fvt.cpu" does not exist
+SQLSTATE: 42P01
+> create table pipe_db_fvt.cpu
+(
+    k_timestamp      timestamp not null,
+    usage_user       bigint    not null,
+    usage_system     bigint    not null,
+    usage_idle       bigint    not null,
+    usage_nice       bigint    not null,
+    usage_iowait     bigint    not null,
+    usage_irq        bigint    not null,
+    usage_softirq    bool      not null,
+    usage_softirq_f  float,
+    usage_steal      bigint,
+    usage_guest      bigint,
+    usage_guest_nice bigint
+) attributes (
+    hostname char(30) not null,
+    region char(30),
+    datacenter char(30),
+    rack char(30),
+    os char(30),
+    arch char(30),
+    team char(30),
+    service char(30),
+    service_version char(30),
+    service_environment char(30)
+    )
+primary attributes (hostname);
+CREATE TABLE
+> create pipe test_pipe1 for table pipe_db_fvt.cpu(k_timestamp, usage_user,hostname)
+       where (usage_user > 50 or abs(usage_user) < 99 and usage_steal is not null or usage_softirq = true)
+             and (hostname = 'host_1' or hostname = 'host_2')
+             and (k_timestamp >= '2023-06-01 10:10:00' and k_timestamp < '2023-06-01 20:20:00')
+       with options (enable='off',buffer_size='10',ignore_history='off',sink='kafka://localhost:9095?topic_name=test_topic1');
+CREATE PIPE
+> create pipe test_pipe1_1 for table pipe_db_fvt.cpu(k_timestamp, usage_user,hostname)
+       where usage_user > 50 or abs(usage_user) < 99 and usage_steal is not null and usage_softirq = true
+             and hostname = 'host_1' or hostname = 'host_2' or os = 'Ubuntu'
+       with options (enable='off',sink='kafka://localhost:9095?topic_name=test_topic1_1');
+CREATE PIPE
+> create pipe test_pipe1_2 for table pipe_db_fvt.cpu(k_timestamp, usage_user,hostname)
+       where usage_user > 50 or abs(usage_user) < 99 or usage_steal is not null or usage_softirq = true
+             and hostname = 'host_1' or hostname = 'host_2' and os = 'Ubuntu'
+       with options (enable='off',sink='kafka://localhost:9095?topic_name=test_topic1_2');
+CREATE PIPE
+> create pipe test_pipe1_3 for table pipe_db_fvt.cpu(k_timestamp, usage_user,hostname)
+       where (usage_user > 50 or abs(usage_user) < 99 and usage_steal is not null or usage_softirq = true)
+             and (hostname = 'host_1' or hostname = 'host_2')
+       with options (sink='kafka://localhost:9095?topic_name=test_topic1_3');
+ERROR: Kafka topic "kafka://localhost:9095?topic_name=test_topic1_3" is not available: connecting to kafka: localhost:9095: kafka: client has run out of available brokers to talk to (Is your cluster reachable?)
+SQLSTATE: 57P03
+> create pipe test_pipe1_4 for table pipe_db_fvt.cpu(k_timestamp, usage_user,hostname)
+       where (usage_user > 50 or abs(usage_user) < 99 and usage_steal is not null or usage_softirq = true)
+             and (hostname = 'host_1' or hostname = 'host_2')
+       with options (enable='off',sink='kafka://localhost:9095?topic_name=test_topic1_4', message_format='postgresql');
+ERROR: invalid message_format: postgresql
+SQLSTATE: 22023
+> create pipe test_pipe1_5 for table pipe_db_fvt.cpu(k_timestamp, usage_user,hostname)
+       where (usage_user > 50 or abs(usage_user) < 99 and usage_steal is not null or usage_softirq = true)
+             and (hostname = 'host_1' or hostname = 'host_2')
+             between k_timestamp >= '2023-06-01 10:10:00' and k_timestamp < '2023-06-01 20:20:00'
+       with options (enable='off',sink='kafka://localhost:9095?topic_name=test_topic1_5');
+ERROR: check-where-expr: unsupported comparison operator: <bool> < <timestamptz(3)>
+SQLSTATE: 22023
+> create pipe test_pipe1_6 for table pipe_db_fvt.cpu(k_timestamp, usage_user,hostname)
+       where time_bucket(k_timestamp,'6h') < '2023-06-01 20:20:00' and abs(usage_user) < 99
+       with options (enable='off',sink='kafka://localhost:9095?topic_name=test_topic1_6');
+ERROR: function "time_bucket" is not supported by pipe filter
+SQLSTATE: 0A000
+> create pipe test_pipe1_7 for table pipe_db_fvt.cpu(k_timestamp1,usage_user,hostname)
+       with options (enable='off',sink='kafka://localhost:9095?topic_name=test_topic1_err');
+ERROR: column "k_timestamp1" does not exist
+SQLSTATE: 42703
+> create pipe test_pipe1_8 for table pipe_db_fvt.cpu(k_timestamp,usage_user,hostname)
+       where usage_user1 < 99
+       with options (enable='off',sink='kafka://localhost:9095?topic_name=test_topic1_err');
+ERROR: column "usage_user1" does not exist
+SQLSTATE: 42703
+> create pipe test_pipe1_9 for table pipe_db_fvt.cpu(k_timestamp,usage_user,hostname)
+       where hostname SIMILAR TO 'host_1' and k_timestamp>'-1001-01-01 00:00:00'
+       with options (enable='off',sink='kafka://localhost:9095?topic_name=test_topic1_err');
+CREATE PIPE
+> select name,
+       table_name,
+       column_names,
+       filter,
+       options,
+       low_watermark,
+       status,
+       create_by,
+       start_time,
+       end_time,
+       error_message
+from [show pipe test_pipe1];
+     name    |       table_name       |          column_names           |                                                                                                                         filter                                                                                                                          |                                                                                           options                                                                                            |    low_watermark    | status  | create_by | start_time | end_time | error_message
+-------------+------------------------+---------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------------------+---------+-----------+------------+----------+----------------
+  test_pipe1 | pipe_db_fvt.public.cpu | k_timestamp,usage_user,hostname | ((((usage_user > 50) OR ((abs(usage_user) < 99) AND (usage_steal IS NOT NULL))) OR (usage_softirq = true)) AND ((hostname = 'host_1') OR (hostname = 'host_2'))) AND ((k_timestamp >= '2023-06-01 10:10:00') AND (k_timestamp < '2023-06-01 20:20:00')) | {"buffer_size": 10, "enable": "off", "ignore_history": "off", "message_format": "json", "publish": "insert", "retrieve_tags": "on", "sink": "kafka://localhost:9095?topic_name=test_topic1"} | 1970-01-01 00:00:00 | Disable | root      | NULL       | NULL     | NULL
+(1 row)
+> alter pipe test_pipe1 set options(enable='On');
+ERROR: failed to start pipe "test_pipe1" with error: connecting to kafka: localhost:9095: kafka: client has run out of available brokers to talk to (Is your cluster reachable?)
+> alter pipe test_pipe1 set options(enable='oN');
+ERROR: failed to start pipe "test_pipe1" with error: connecting to kafka: localhost:9095: kafka: client has run out of available brokers to talk to (Is your cluster reachable?)
+> alter pipe test_pipe1 set options(enable='OfF');
+ALTER PIPE
+> alter pipe test_pipe1 set options(enable='aaa');
+ERROR: enable parameter "aaa" is invalid
+SQLSTATE: 22023
+> alter pipe test_pipe1 set options(sink='kafka://localhost:9095?topic_name=test_topic_alter1');
+ALTER PIPE
+> select name,
+       table_name,
+       column_names,
+       filter,
+       options,
+       low_watermark,
+       status,
+       create_by,
+       start_time,
+       end_time,
+       error_message
+from [show pipe test_pipe1];
+     name    |       table_name       |          column_names           |                                                                                                                         filter                                                                                                                          |                                                                                              options                                                                                               |    low_watermark    | status  | create_by | start_time | end_time | error_message
+-------------+------------------------+---------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------------------+---------+-----------+------------+----------+----------------
+  test_pipe1 | pipe_db_fvt.public.cpu | k_timestamp,usage_user,hostname | ((((usage_user > 50) OR ((abs(usage_user) < 99) AND (usage_steal IS NOT NULL))) OR (usage_softirq = true)) AND ((hostname = 'host_1') OR (hostname = 'host_2'))) AND ((k_timestamp >= '2023-06-01 10:10:00') AND (k_timestamp < '2023-06-01 20:20:00')) | {"buffer_size": 10, "enable": "off", "ignore_history": "off", "message_format": "json", "publish": "insert", "retrieve_tags": "on", "sink": "kafka://localhost:9095?topic_name=test_topic_alter1"} | 1970-01-01 00:00:00 | Disable | root      | NULL       | NULL     | NULL
+(1 row)
+> alter pipe test_pipe1 set options(sink='kafka://localhost:9095?topic_name=test_topic_alter2', enable='ON');
+ERROR: failed to start pipe "test_pipe1" with error: connecting to kafka: localhost:9095: kafka: client has run out of available brokers to talk to (Is your cluster reachable?)
+> alter pipe test_pipe1 set options(message_format='json');
+ALTER PIPE
+> alter pipe test_pipe1 set options(message_format='jSON');
+ALTER PIPE
+> alter pipe test_pipe1 set options(message_format='zzz');
+ERROR: invalid message_format: zzz
+SQLSTATE: 22023
+> alter pipe test_pipe1 set options(buffer_size='');
+ERROR: buffer_size parameter "" is invalid
+SQLSTATE: 22023
+> alter pipe test_pipe1 set options(buffer_size='-1');
+ERROR: buffer_size parameter "-1" must between 0 and 1024
+SQLSTATE: 22023
+> alter pipe test_pipe1 set options(buffer_size='a');
+ERROR: buffer_size parameter "a" is invalid
+SQLSTATE: 22023
+> alter pipe test_pipe1 set options(buffer_size=2);
+ERROR: at or near "2": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+alter pipe test_pipe1 set options(buffer_size=2)
+                                              ^
+HINT: try \h ALTER PIPE
+> alter pipe test_pipe1 set options(buffer_size='0');
+ALTER PIPE
+> alter pipe test_pipe1 set options(buffer_size='1');
+ALTER PIPE
+> alter pipe test_pipe1 set options(ignore_history='');
+ERROR: ignore_history parameter "" is invalid
+SQLSTATE: 22023
+> alter pipe test_pipe1 set options(ignore_history='a');
+ERROR: ignore_history parameter "a" is invalid
+SQLSTATE: 22023
+> alter pipe test_pipe1 set options(ignore_history='on');
+ALTER PIPE
+> create pipe test_pipe2 for table pipe_db_fvt.cpu(*) where usage_user != 50 with options (enable = 'off',sink='kafka://localhost:9095?topic_name=test_topic2');
+CREATE PIPE
+> select name,
+       table_name,
+       column_names,
+       filter,
+       options,
+       low_watermark,
+       status,
+       create_by,
+       start_time,
+       end_time,
+       error_message
+from [show pipe test_pipe2];
+     name    |       table_name       |                                                                                                                   column_names                                                                                                                   |      filter      |                                                                                          options                                                                                           |    low_watermark    | status  | create_by | start_time | end_time | error_message
+-------------+------------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------------------+---------+-----------+------------+----------+----------------
+  test_pipe2 | pipe_db_fvt.public.cpu | k_timestamp,usage_user,usage_system,usage_idle,usage_nice,usage_iowait,usage_irq,usage_softirq,usage_softirq_f,usage_steal,usage_guest,usage_guest_nice,hostname,region,datacenter,rack,os,arch,team,service,service_version,service_environment | usage_user != 50 | {"buffer_size": 1, "enable": "off", "ignore_history": "on", "message_format": "json", "publish": "insert", "retrieve_tags": "on", "sink": "kafka://localhost:9095?topic_name=test_topic2"} | 1970-01-01 00:00:00 | Disable | root      | NULL       | NULL     | NULL
+(1 row)
+> create pipe test_pipe3 for table pipe_db_fvt.cpu(*) where abs(usage_user) > 50 and usage_softirq = true with options (enable = 'off',sink = 'kafka://localhost:9095?topic_name=test_topic3');
+CREATE PIPE
+> select name,
+       table_name,
+       filter,
+       options,
+       low_watermark
+from [show pipe test_pipe3];
+     name    |       table_name       |                      filter                       |                                                                                          options                                                                                           |    low_watermark
+-------------+------------------------+---------------------------------------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------------------
+  test_pipe3 | pipe_db_fvt.public.cpu | (abs(usage_user) > 50) AND (usage_softirq = true) | {"buffer_size": 1, "enable": "off", "ignore_history": "on", "message_format": "json", "publish": "insert", "retrieve_tags": "on", "sink": "kafka://localhost:9095?topic_name=test_topic3"} | 1970-01-01 00:00:00
+(1 row)
+> create pipe test_pipe4 for table pipe_db_fvt.cpu(*) where abs(usage_user + usage_system) + abs(usage_system + 1) = 50 with options (enable='off',sink='kafka://localhost:9095?topic_name=test_topic4');
+CREATE PIPE
+> select name,
+       table_name,
+       filter,
+       options,
+       low_watermark
+from [show pipe test_pipe4];
+     name    |       table_name       |                            filter                             |                                                                                          options                                                                                           |    low_watermark
+-------------+------------------------+---------------------------------------------------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------------------
+  test_pipe4 | pipe_db_fvt.public.cpu | (abs(usage_user + usage_system) + abs(usage_system + 1)) = 50 | {"buffer_size": 1, "enable": "off", "ignore_history": "on", "message_format": "json", "publish": "insert", "retrieve_tags": "on", "sink": "kafka://localhost:9095?topic_name=test_topic4"} | 1970-01-01 00:00:00
+(1 row)
+> create pipe test_pipe5 for table pipe_db_fvt.cpu(*) where usage_user is null with options (enable='off',sink='kafka://localhost:9095?topic_name=test_topic5');
+CREATE PIPE
+> select name,
+       table_name,
+       filter,
+       options,
+       low_watermark
+from [show pipe test_pipe5];
+     name    |       table_name       |       filter       |                                                                                          options                                                                                           |    low_watermark
+-------------+------------------------+--------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------------------
+  test_pipe5 | pipe_db_fvt.public.cpu | usage_user IS NULL | {"buffer_size": 1, "enable": "off", "ignore_history": "on", "message_format": "json", "publish": "insert", "retrieve_tags": "on", "sink": "kafka://localhost:9095?topic_name=test_topic5"} | 1970-01-01 00:00:00
+(1 row)
+> create pipe test_pipe6 for table pipe_db_fvt.cpu(*) where usage_user is not null with options (enable='off',sink='kafka://localhost:9095?topic_name=test_topic6');
+CREATE PIPE
+> select name,
+       table_name,
+       filter,
+       options,
+       low_watermark
+from [show pipe test_pipe6];
+     name    |       table_name       |         filter         |                                                                                          options                                                                                           |    low_watermark
+-------------+------------------------+------------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------------------
+  test_pipe6 | pipe_db_fvt.public.cpu | usage_user IS NOT NULL | {"buffer_size": 1, "enable": "off", "ignore_history": "on", "message_format": "json", "publish": "insert", "retrieve_tags": "on", "sink": "kafka://localhost:9095?topic_name=test_topic6"} | 1970-01-01 00:00:00
+(1 row)
+> create pipe test_pipe6_1 for table pipe_db_fvt.cpu(*) with enable='off',sink='kafka://localhost:9095?topic_name=Test_TopiC6_1';
+CREATE PIPE
+> select name,
+       table_name,
+       column_names,
+       filter,
+       options,
+       low_watermark
+from [show pipe test_pipe6_1];
+      name     |       table_name       |                                                                                                                   column_names                                                                                                                   | filter |                                                                                           options                                                                                            |    low_watermark
+---------------+------------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+--------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------------------
+  test_pipe6_1 | pipe_db_fvt.public.cpu | k_timestamp,usage_user,usage_system,usage_idle,usage_nice,usage_iowait,usage_irq,usage_softirq,usage_softirq_f,usage_steal,usage_guest,usage_guest_nice,hostname,region,datacenter,rack,os,arch,team,service,service_version,service_environment |        | {"buffer_size": 1, "enable": "off", "ignore_history": "on", "message_format": "json", "publish": "insert", "retrieve_tags": "on", "sink": "kafka://localhost:9095?topic_name=Test_TopiC6_1"} | 1970-01-01 00:00:00
+(1 row)
+> create pipe test_pipe6_2 for table pipe_db_fvt.cpu(*) with eNabLe='off',sInK='kafka://localhost:9095?topic_name=test_topic6_2';
+CREATE PIPE
+> create pipe test_pipe1 for table pipe_db_fvt.cpu(k_timestamp, usage_user ,hostname) where usage_user > 50 with options (enable='off',sink='kafka://localhost:9095?topic_name=test_topic1');
+ERROR: pipe "test_pipe1" already exists
+SQLSTATE: 42710
+> create pipe test_pipe7 for table pipe_db_fvt.cpu(usage_user1) where usage_user is not null with options (enable='off',sink='kafka://localhost:9095?topic_name=test_topic1');
+ERROR: column "usage_user1" does not exist
+SQLSTATE: 42703
+> create pipe test_pipe8 for table pipe_db_fvt.cpu(*) where usage_user1 != 50 with options (enable='off',sink='kafka://localhost:9095?topic_name=test_topic1');
+ERROR: column "usage_user1" does not exist
+SQLSTATE: 42703
+> create pipe test_pipe9 for table pipe_db_fvt.cpu(*) where abs(usage_user1) >= 50 with enable='off',sink='kafka://localhost:9095?topic_name=test_topic1';
+ERROR: column "usage_user1" does not exist
+SQLSTATE: 42703
+> create pipe test_pipe9_1 for table pipe_db_fvt.cpu(*) where 1=2 with enable='off',sink='kafka://localhost:9095?topic_name=test_topic9_1';
+CREATE PIPE
+> create pipe test_pipe9_2 for table pipe_db_fvt.cpu(*) where 1=1 with enable='off',sink='kafka://localhost:9095?topic_name=test_topic9_2';
+CREATE PIPE
+> create pipe test_pipe9_3 for table pipe_db_fvt.cpu(*) where round(usage_softirq_f) >= 50 with enable='off',sink='kafka://localhost:9095?topic_name=test_topic9_3';
+CREATE PIPE
+> create pipe test_pipe9_4 for table pipe_db_fvt.cpu(*) where mod(usage_user,2) >= 50 with enable='off',sink='kafka://localhost:9095?topic_name=test_topic9_4';
+CREATE PIPE
+> create pipe test_pipe9_5 for table pipe_db_fvt.cpu(*) where ceiling(usage_user) >= 50 with enable='off',sink='kafka://localhost:9095?topic_name=test_topic9_5';
+CREATE PIPE
+> create pipe test_pipe9_6 for table pipe_db_fvt.cpu(*) where floor(usage_user) >= 50 with enable='off',sink='kafka://localhost:9095?topic_name=test_topic9_6';
+CREATE PIPE
+> create pipe test_pipe9_7 for table pipe_db_fvt.cpu(*) where round(usage_user) >= 50 with enable='off',sink='kafka://localhost:9095?topic_name=test_topic9_3';
+ERROR: unknown signature: round(INT8)
+SQLSTATE: 42883
+> create pipe test_pipe9_8 for table pipe_db_fvt.cpu(*) where mod(usage_user) >= 50 with enable='off',sink='kafka://localhost:9095?topic_name=test_topic9_8';
+ERROR: unknown signature: mod(INT8)
+SQLSTATE: 42883
+> create pipe test_pipe9_11 for table pipe_db_fvt.cpu(*) where max(usage_user) >= 50 with enable='off',sink='kafka://localhost:9095?topic_name=test_topic1';
+ERROR: function "max" is not supported by pipe filter
+SQLSTATE: 0A000
+> create pipe test_pipe9_11 for table pipe_db_fvt.cpu(*) where min(usage_user) >= 50 with enable='off',sink='kafka://localhost:9095?topic_name=test_topic1';
+ERROR: function "min" is not supported by pipe filter
+SQLSTATE: 0A000
+> create pipe test_pipe9_11 for table pipe_db_fvt.cpu(*) where sum(usage_user) >= 50 with enable='off',sink='kafka://localhost:9095?topic_name=test_topic1';
+ERROR: function "sum" is not supported by pipe filter
+SQLSTATE: 0A000
+> create pipe test_pipe9_11 for table pipe_db_fvt.cpu(*) where avg(usage_user) >= 50 with enable='off',sink='kafka://localhost:9095?topic_name=test_topic1';
+ERROR: function "avg" is not supported by pipe filter
+SQLSTATE: 0A000
+> create pipe test_pipe9_11 for table pipe_db_fvt.cpu(*) where first(usage_user) >= 50 with enable='off',sink='kafka://localhost:9095?topic_name=test_topic1';
+ERROR: first() can only be used in timeseries table query or subquery
+SQLSTATE: 0A000
+> create pipe test_pipe9_11 for table pipe_db_fvt.cpu(*) where last(usage_user) >= 50 with enable='off',sink='kafka://localhost:9095?topic_name=test_topic1';
+ERROR: last() can only be used in timeseries table query or subquery
+SQLSTATE: 0A000
+> create pipe test_pipe9_11 for table pipe_db_fvt.cpu(*) where count(usage_user) >= 50 with enable='off',sink='kafka://localhost:9095?topic_name=test_topic1';
+ERROR: function "count" is not supported by pipe filter
+SQLSTATE: 0A000
+> create pipe test_pipe9_11 for table pipe_db_fvt.cpu(*) where count(distinct usage_user) >= 50 with enable='off',sink='kafka://localhost:9095?topic_name=test_topic1';
+ERROR: function "count" is not supported by pipe filter
+SQLSTATE: 0A000
+> create pipe test_pipe9_11 for table pipe_db_fvt.cpu(*) where cast(usage_user as bool) = true with enable='off',sink='kafka://localhost:9095?topic_name=test_topic1';
+ERROR: expr "CAST(usage_user AS BOOL)" is not supported by pipe filter
+SQLSTATE: 0A000
+> create pipe test_pipe9_11 for table pipe_db_fvt.cpu(*) where now()>timestamp'1970-1-1 00:00:00' with enable='off',sink='kafka://localhost:9095?topic_name=test_topic1';
+ERROR: function "now" is not supported by pipe filter
+SQLSTATE: 0A000
+> create pipe test_pipe9_11 for table pipe_db_fvt.cpu(*) where now()>k_timestamp with enable='off',sink='kafka://localhost:9095?topic_name=test_topic1';
+ERROR: function "now" is not supported by pipe filter
+SQLSTATE: 0A000
+> create pipe test_pipe10 for table pipe_db_fvt.cpu(*) where abs(usage_user1) <= 50 with options (enable1='off',sink='kafka://localhost:9095?topic_name=test_topic1');
+ERROR: invalid option "enable1"
+> create pipe test_pipe10 for table pipe_db_fvt.cpu(*) where abs(usage_user) <= 50 with options (enable1='off',sink='kafka://localhost:9095?topic_name=test_topic1');
+ERROR: invalid option "enable1"
+> create pipe test_pipe11 for table pipe_db_fvt.cpu(*) where abs(usage_user1) != 50 with options (enable='off',sink1='kafka://localhost:9095?topic_name=test_topic1');
+ERROR: invalid option "sink1"
+> create pipe test_pipe11 for table pipe_db_fvt.cpu(*) where abs(usage_user) != 50 with options (enable='off',sink1='kafka://localhost:9095?topic_name=test_topic1');
+ERROR: invalid option "sink1"
+> create pipe test_pipe12 for table pipe_db_fvt.cpu(*) where abs(usage_user) + abs(usage_system) = 50 with Enable='off';
+ERROR: option "sink" is required.
+SQLSTATE: 22023
+> create pipe test_pipe13 for table pipe_db_fvt.cpu(*) where abs(usage_user) + abs(usage_system) = 50 with Sink='kafka://localhost:9095?topic_name=test_topic1';
+ERROR: Kafka topic "kafka://localhost:9095?topic_name=test_topic1" is not available: connecting to kafka: localhost:9095: kafka: client has run out of available brokers to talk to (Is your cluster reachable?)
+SQLSTATE: 57P03
+> create pipe test_pipe14 for table pipe_db_fvt.cpu(*) where abs(usage_user) + abs(usage_system) = 50 with Message_Format='json';
+ERROR: option "sink" is required.
+SQLSTATE: 22023
+> create pipe test_pipe15 for table pipe_db_fvt.cpu(*) where abccc(usage_user) + bcaaa(usage_system) = 50 with enable='off',sink='kafka://localhost:9095?topic_name=test_topic15';
+ERROR: unknown function: abccc()
+SQLSTATE: 42883
+> select name from [show pipes];
+      name
+----------------
+  test_pipe1
+  test_pipe1_1
+  test_pipe1_2
+  test_pipe1_9
+  test_pipe2
+  test_pipe3
+  test_pipe4
+  test_pipe5
+  test_pipe6
+  test_pipe6_1
+  test_pipe6_2
+  test_pipe9_1
+  test_pipe9_2
+  test_pipe9_3
+  test_pipe9_4
+  test_pipe9_5
+  test_pipe9_6
+(17 rows)
+> DROP PIPE IF EXISTS test_pipe15;
+DROP PIPE
+> alter pipe test_pipe1 set table pipe_db_fvt.cpu(usage_user,usage_system,hostname,k_timestamp) where usage_system >= 20;
+ALTER PIPE
+> select name,
+       table_name,
+       column_names,
+       filter,
+       options,
+       low_watermark,
+       status,
+       create_by,
+       start_time,
+       end_time,
+       error_message
+from [show pipe test_pipe1];
+     name    |       table_name       |                 column_names                 |       filter       |                                                                                             options                                                                                              |    low_watermark    | status  | create_by | start_time | end_time | error_message
+-------------+------------------------+----------------------------------------------+--------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------------------+---------+-----------+------------+----------+----------------
+  test_pipe1 | pipe_db_fvt.public.cpu | usage_user,usage_system,hostname,k_timestamp | usage_system >= 20 | {"buffer_size": 1, "enable": "off", "ignore_history": "on", "message_format": "json", "publish": "insert", "retrieve_tags": "on", "sink": "kafka://localhost:9095?topic_name=test_topic_alter1"} | 1970-01-01 00:00:00 | Disable | root      | NULL       | NULL     | NULL
+(1 row)
+> alter pipe test_pipe1 set table pipe_db_fvt.cpu(*) where abs(usage_system) < 50;
+ALTER PIPE
+> select name,
+       table_name,
+       column_names,
+       filter,
+       options,
+       low_watermark,
+       status,
+       create_by,
+       start_time,
+       end_time,
+       error_message
+from [show pipe test_pipe1];
+     name    |       table_name       |                                                                                                                   column_names                                                                                                                   |         filter         |                                                                                             options                                                                                              |    low_watermark    | status  | create_by | start_time | end_time | error_message
+-------------+------------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+------------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------------------+---------+-----------+------------+----------+----------------
+  test_pipe1 | pipe_db_fvt.public.cpu | k_timestamp,usage_user,usage_system,usage_idle,usage_nice,usage_iowait,usage_irq,usage_softirq,usage_softirq_f,usage_steal,usage_guest,usage_guest_nice,hostname,region,datacenter,rack,os,arch,team,service,service_version,service_environment | abs(usage_system) < 50 | {"buffer_size": 1, "enable": "off", "ignore_history": "on", "message_format": "json", "publish": "insert", "retrieve_tags": "on", "sink": "kafka://localhost:9095?topic_name=test_topic_alter1"} | 1970-01-01 00:00:00 | Disable | root      | NULL       | NULL     | NULL
+(1 row)
+> alter pipe test_pipe1 set table pipe_db_fvt.cpu(*) where abs(usage_idle) + abs(usage_system) <= 50;
+ALTER PIPE
+> select name,
+       table_name,
+       column_names,
+       filter,
+       options,
+       low_watermark,
+       status,
+       create_by,
+       start_time,
+       end_time,
+       error_message
+from [show pipe test_pipe1];
+     name    |       table_name       |                                                                                                                   column_names                                                                                                                   |                   filter                    |                                                                                             options                                                                                              |    low_watermark    | status  | create_by | start_time | end_time | error_message
+-------------+------------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------------------+---------+-----------+------------+----------+----------------
+  test_pipe1 | pipe_db_fvt.public.cpu | k_timestamp,usage_user,usage_system,usage_idle,usage_nice,usage_iowait,usage_irq,usage_softirq,usage_softirq_f,usage_steal,usage_guest,usage_guest_nice,hostname,region,datacenter,rack,os,arch,team,service,service_version,service_environment | (abs(usage_idle) + abs(usage_system)) <= 50 | {"buffer_size": 1, "enable": "off", "ignore_history": "on", "message_format": "json", "publish": "insert", "retrieve_tags": "on", "sink": "kafka://localhost:9095?topic_name=test_topic_alter1"} | 1970-01-01 00:00:00 | Disable | root      | NULL       | NULL     | NULL
+(1 row)
+> alter pipe test_pipe1 set table pipe_db_fvt.cpu(*) where usage_system is null;
+ALTER PIPE
+> select name,
+       table_name,
+       column_names,
+       filter,
+       options,
+       low_watermark,
+       status,
+       create_by,
+       start_time,
+       end_time,
+       error_message
+from [show pipe test_pipe1];
+     name    |       table_name       |                                                                                                                   column_names                                                                                                                   |        filter        |                                                                                             options                                                                                              |    low_watermark    | status  | create_by | start_time | end_time | error_message
+-------------+------------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------------------+---------+-----------+------------+----------+----------------
+  test_pipe1 | pipe_db_fvt.public.cpu | k_timestamp,usage_user,usage_system,usage_idle,usage_nice,usage_iowait,usage_irq,usage_softirq,usage_softirq_f,usage_steal,usage_guest,usage_guest_nice,hostname,region,datacenter,rack,os,arch,team,service,service_version,service_environment | usage_system IS NULL | {"buffer_size": 1, "enable": "off", "ignore_history": "on", "message_format": "json", "publish": "insert", "retrieve_tags": "on", "sink": "kafka://localhost:9095?topic_name=test_topic_alter1"} | 1970-01-01 00:00:00 | Disable | root      | NULL       | NULL     | NULL
+(1 row)
+> alter pipe test_pipe1 set table pipe_db_fvt.cpu(*) where usage_system is not null;
+ALTER PIPE
+> select name,
+       table_name,
+       column_names,
+       filter,
+       options,
+       low_watermark,
+       status,
+       create_by,
+       start_time,
+       end_time,
+       error_message
+from [show pipe test_pipe1];
+     name    |       table_name       |                                                                                                                   column_names                                                                                                                   |          filter          |                                                                                             options                                                                                              |    low_watermark    | status  | create_by | start_time | end_time | error_message
+-------------+------------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+--------------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------------------+---------+-----------+------------+----------+----------------
+  test_pipe1 | pipe_db_fvt.public.cpu | k_timestamp,usage_user,usage_system,usage_idle,usage_nice,usage_iowait,usage_irq,usage_softirq,usage_softirq_f,usage_steal,usage_guest,usage_guest_nice,hostname,region,datacenter,rack,os,arch,team,service,service_version,service_environment | usage_system IS NOT NULL | {"buffer_size": 1, "enable": "off", "ignore_history": "on", "message_format": "json", "publish": "insert", "retrieve_tags": "on", "sink": "kafka://localhost:9095?topic_name=test_topic_alter1"} | 1970-01-01 00:00:00 | Disable | root      | NULL       | NULL     | NULL
+(1 row)
+> alter pipe test_pipe1 set table pipe_db_fvt.cpu(usage_user);
+ALTER PIPE
+> select name,
+       table_name,
+       column_names,
+       filter,
+       options,
+       low_watermark,
+       status,
+       create_by,
+       start_time,
+       end_time,
+       error_message
+from [show pipe test_pipe1];
+     name    |       table_name       | column_names | filter |                                                                                             options                                                                                              |    low_watermark    | status  | create_by | start_time | end_time | error_message
+-------------+------------------------+--------------+--------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------------------+---------+-----------+------------+----------+----------------
+  test_pipe1 | pipe_db_fvt.public.cpu | usage_user   |        | {"buffer_size": 1, "enable": "off", "ignore_history": "on", "message_format": "json", "publish": "insert", "retrieve_tags": "on", "sink": "kafka://localhost:9095?topic_name=test_topic_alter1"} | 1970-01-01 00:00:00 | Disable | root      | NULL       | NULL     | NULL
+(1 row)
+> alter pipe test_pipe1 set table pipe_db_fvt.cpu(*);
+ALTER PIPE
+> select name,
+       table_name,
+       column_names,
+       filter,
+       options,
+       low_watermark,
+       status,
+       create_by,
+       start_time,
+       end_time,
+       error_message
+from [show pipes]
+where name ='test_pipe1';
+     name    |       table_name       |                                                                                                                   column_names                                                                                                                   | filter |                                                                                             options                                                                                              |    low_watermark    | status  | create_by | start_time | end_time | error_message
+-------------+------------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+--------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------------------+---------+-----------+------------+----------+----------------
+  test_pipe1 | pipe_db_fvt.public.cpu | k_timestamp,usage_user,usage_system,usage_idle,usage_nice,usage_iowait,usage_irq,usage_softirq,usage_softirq_f,usage_steal,usage_guest,usage_guest_nice,hostname,region,datacenter,rack,os,arch,team,service,service_version,service_environment |        | {"buffer_size": 1, "enable": "off", "ignore_history": "on", "message_format": "json", "publish": "insert", "retrieve_tags": "on", "sink": "kafka://localhost:9095?topic_name=test_topic_alter1"} | 1970-01-01 00:00:00 | Disable | root      | NULL       | NULL     | NULL
+(1 row)
+> alter pipe test_pipe1 set table pipe_db_fvt.cpu(usage_user1) where usage_user is not null;
+ERROR: column "usage_user1" does not exist
+SQLSTATE: 42703
+> alter pipe test_pipe1 set table pipe_db_fvt.cpu(*) where usage_user1 > 50;
+ERROR: column "usage_user1" does not exist
+SQLSTATE: 42703
+> alter pipe test_pipe1 set table pipe_db_fvt.cpu(*) where abs(usage_user1) > 50;
+ERROR: column "usage_user1" does not exist
+SQLSTATE: 42703
+> alter pipe test_pipe1 set table pipe_db_fvt.cpu(*) where abs(usage_user1) > 50 and usage_system <= -10;
+ERROR: column "usage_user1" does not exist
+SQLSTATE: 42703
+> alter pipe test_pipe1 set options (enable='ofF',sink='kafka://localhost:9095?topic_name=Test_topic1');
+ALTER PIPE
+> select name,
+       table_name,
+       column_names,
+       filter,
+       options,
+       low_watermark,
+       status,
+       create_by,
+       start_time,
+       end_time,
+       error_message
+from [show pipes]
+where name ='test_pipe1';
+     name    |       table_name       |                                                                                                                   column_names                                                                                                                   | filter |                                                                                          options                                                                                           |    low_watermark    | status  | create_by | start_time | end_time | error_message
+-------------+------------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+--------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------------------+---------+-----------+------------+----------+----------------
+  test_pipe1 | pipe_db_fvt.public.cpu | k_timestamp,usage_user,usage_system,usage_idle,usage_nice,usage_iowait,usage_irq,usage_softirq,usage_softirq_f,usage_steal,usage_guest,usage_guest_nice,hostname,region,datacenter,rack,os,arch,team,service,service_version,service_environment |        | {"buffer_size": 1, "enable": "off", "ignore_history": "on", "message_format": "json", "publish": "insert", "retrieve_tags": "on", "sink": "kafka://localhost:9095?topic_name=Test_topic1"} | 1970-01-01 00:00:00 | Disable | root      | NULL       | NULL     | NULL
+(1 row)
+> alter pipe test_pipe1 set enable='oFf',sink='kafka://localhost:9095?topic_name=tesT_Topic1';
+ALTER PIPE
+> alter pipe test_pipe1 set options (enable='oN',sink='kafka://localhost:9095?topic_name=tesT_topic1');
+ERROR: failed to start pipe "test_pipe1" with error: connecting to kafka: localhost:9095: kafka: client has run out of available brokers to talk to (Is your cluster reachable?)
+> select name,
+       table_name,
+       column_names,
+       filter,
+       options,
+       low_watermark,
+       status,
+       create_by,
+       start_time,
+       end_time,
+       error_message
+from [show pipes]
+where name ='test_pipe1';
+     name    |       table_name       |                                                                                                                   column_names                                                                                                                   | filter |                                                                                          options                                                                                           |    low_watermark    | status  | create_by | start_time | end_time | error_message
+-------------+------------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+--------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------------------+---------+-----------+------------+----------+----------------
+  test_pipe1 | pipe_db_fvt.public.cpu | k_timestamp,usage_user,usage_system,usage_idle,usage_nice,usage_iowait,usage_irq,usage_softirq,usage_softirq_f,usage_steal,usage_guest,usage_guest_nice,hostname,region,datacenter,rack,os,arch,team,service,service_version,service_environment |        | {"buffer_size": 1, "enable": "off", "ignore_history": "on", "message_format": "json", "publish": "insert", "retrieve_tags": "on", "sink": "kafka://localhost:9095?topic_name=tesT_Topic1"} | 1970-01-01 00:00:00 | Disable | root      | NULL       | NULL     | NULL
+(1 row)
+> alter pipe test_pipe1 set enable='ON',sink='kafka://localhost:9095?topic_name=test_Topic1';
+ERROR: failed to start pipe "test_pipe1" with error: connecting to kafka: localhost:9095: kafka: client has run out of available brokers to talk to (Is your cluster reachable?)
+> alter pipe test_pipe1 set options (enable='off',sink='kafka1://localhost:9095?topic_name=test_topic1');
+ERROR: Sink schema "kafka1" is not yet supported
+> alter pipe test_pipe1 set enable='off',sink='aaa://localhost:9095?topic_name=test_topic1';
+ERROR: Sink schema "aaa" is not yet supported
+> alter pipe test_pipe1 set enable='off',sink='kafka://localhost:9095?topic_name=';
+ERROR: topic_name is empty
+> alter pipe test_pipe1 set options (enable='off',sink='kafka://localhost:9095?topic_name');
+ERROR: topic_name is empty
+> alter pipe test_pipe1 set enable1='off',sink='kafka://localhost:9095?topic_name=test_topic1';
+ERROR: invalid option "enable1"
+> alter pipe test_pipe1 set options (enable='off',sink1='kafka://localhost:9095?topic_name=test_topic1');
+ERROR: invalid option "sink1"
+> select name from [show pipes];
+      name
+----------------
+  test_pipe1
+  test_pipe1_1
+  test_pipe1_2
+  test_pipe1_9
+  test_pipe2
+  test_pipe3
+  test_pipe4
+  test_pipe5
+  test_pipe6
+  test_pipe6_1
+  test_pipe6_2
+  test_pipe9_1
+  test_pipe9_2
+  test_pipe9_3
+  test_pipe9_4
+  test_pipe9_5
+  test_pipe9_6
+(17 rows)
+> drop pipe test_pipe2;
+DROP PIPE
+> drop pipe test_pipe2;
+ERROR: pipe "test_pipe2" does not exist
+SQLSTATE: 42704
+> drop pipe IF EXISTS test_pipe2;
+DROP PIPE
+> select name from [show pipes];
+      name
+----------------
+  test_pipe1
+  test_pipe1_1
+  test_pipe1_2
+  test_pipe1_9
+  test_pipe3
+  test_pipe4
+  test_pipe5
+  test_pipe6
+  test_pipe6_1
+  test_pipe6_2
+  test_pipe9_1
+  test_pipe9_2
+  test_pipe9_3
+  test_pipe9_4
+  test_pipe9_5
+  test_pipe9_6
+(16 rows)
+> create table pipe_db_fvt.cpu1
+(
+    k_timestamp      timestamp not null,
+    usage_user       bigint    not null,
+    usage_system     bigint    not null,
+    usage_idle       bigint    not null,
+    usage_nice       bigint    not null,
+    usage_iowait     bigint    not null,
+    usage_irq        bigint    not null,
+    usage_softirq    bigint    not null,
+    usage_steal      bigint,
+    usage_guest      bigint,
+    usage_guest_nice bigint
+) attributes (
+    hostname char(30) not null,
+    region char(30),
+    datacenter char(30),
+    rack char(30),
+    os char(30),
+    arch char(30),
+    team char(30),
+    service char(30),
+    service_version char(30),
+    service_environment char(30)
+    )
+primary attributes (hostname);
+CREATE TABLE
+> create pipe test_pipe21 for table pipe_db_fvt.cpu1(*) where usage_user > 50 with options (enable='off',sink='kafka://localhost:9095?topic_name=test_topic1');
+CREATE PIPE
+> create pipe test_pipe22 for table pipe_db_fvt.cpu1(*) where usage_user > 50 with options (enable='off',sink='kafka://localhost:9095?topic_name=test_topic1');
+CREATE PIPE
+> drop table pipe_db_fvt.cpu1;
+DROP TABLE
+> drop pipe test_pipe21;
+DROP PIPE
+> drop pipe test_pipe22;
+DROP PIPE
+> drop table pipe_db_fvt.cpu1;
+ERROR: relation "pipe_db_fvt.cpu1" does not exist
+SQLSTATE: 42P01
+> select name from [show pipes];
+      name
+----------------
+  test_pipe1
+  test_pipe1_1
+  test_pipe1_2
+  test_pipe1_9
+  test_pipe3
+  test_pipe4
+  test_pipe5
+  test_pipe6
+  test_pipe6_1
+  test_pipe6_2
+  test_pipe9_1
+  test_pipe9_2
+  test_pipe9_3
+  test_pipe9_4
+  test_pipe9_5
+  test_pipe9_6
+(16 rows)
+> create table pipe_db_fvt.cpu2
+(
+    k_timestamp      timestamp not null,
+    usage_user       bigint    not null,
+    usage_system     bigint    not null,
+    usage_idle       bigint    not null,
+    usage_nice       bigint    not null,
+    usage_iowait     bigint    not null,
+    usage_irq        bigint    not null,
+    usage_softirq    bigint    not null,
+    usage_steal      bigint,
+    usage_guest      bigint,
+    usage_guest_nice bigint
+) attributes (
+    hostname char(30) not null,
+    region char(30) not null,
+    datacenter char(30) not null,
+    rack char(30),
+    os char(30),
+    arch char(30),
+    team char(30),
+    service char(30),
+    service_version char(30),
+    service_environment char(30)
+    )
+primary attributes (hostname,region,datacenter);
+CREATE TABLE
+> create pipe test_pipe21 for table pipe_db_fvt.cpu2(*)
+       where ((hostname = 'host_1' OR hostname = 'host_2')) AND (region = 'beijing' OR region = 'shanghai')
+             AND (((usage_user > 50 OR usage_user < 90) AND (abs(usage_system) > 30 OR abs(usage_system) <80)))
+       with options (enable='off',sink='kafka://localhost:9095?topic_name=test_topic1');
+CREATE PIPE
+> create pipe test_pipe22 for table pipe_db_fvt.cpu2(*)
+       where hostname = 'host1' OR region = 'beijing' AND usage_user > 50
+       with options (enable='off',sink='kafka://localhost:9095?topic_name=test_topic1');
+CREATE PIPE
+> alter table pipe_db_fvt.cpu2 drop column usage_guest;
+ALTER TABLE
+> alter table pipe_db_fvt.cpu2 add column usage_guest_a int;
+ALTER TABLE
+> alter table pipe_db_fvt.cpu2 rename column usage_irq to usage_irq1;
+ALTER TABLE
+> alter table pipe_db_fvt.cpu2 add tag a1 timestamp;
+ERROR: tag a1: unsupported tag type timestamp in timeseries table
+SQLSTATE: 42809
+> alter table pipe_db_fvt.cpu2 drop tag service_environment;
+ALTER TABLE
+> alter table pipe_db_fvt.cpu2 rename tag team to team1;
+ALTER TABLE
+> alter table pipe_db_fvt.cpu2 alter column usage_steal type int;
+ERROR: column: "usage_steal": cannot convert INT8 to INT4
+SQLSTATE: 42846
+> alter table pipe_db_fvt.cpu2 alter tag os type char(100);
+ALTER TABLE
+> drop pipe test_pipe21;
+DROP PIPE
+> drop pipe test_pipe22;
+DROP PIPE
+> alter table pipe_db_fvt.cpu2 drop column usage_guest;
+ERROR: column "usage_guest" does not exist
+SQLSTATE: 42703
+> alter table pipe_db_fvt.cpu2 add column usage_guest_b int;
+ALTER TABLE
+> alter table pipe_db_fvt.cpu2 rename column usage_irq to usage_irq1;
+ERROR: column "usage_irq" does not exist
+SQLSTATE: 42703
+> alter table pipe_db_fvt.cpu2 add tag a1 int;
+ALTER TABLE
+> alter table pipe_db_fvt.cpu2 drop tag service_environment;
+ERROR: tag "service_environment" does not exist
+SQLSTATE: 42704
+> alter table pipe_db_fvt.cpu2 rename tag team to team1;
+ERROR: column "team" does not exist
+SQLSTATE: 42703
+> alter table pipe_db_fvt.cpu2 alter column usage_steal type int;
+ERROR: column: "usage_steal": cannot convert INT8 to INT4
+SQLSTATE: 42846
+> alter table pipe_db_fvt.cpu2 alter tag os type char(100);
+ALTER TABLE
+> update system.kwdb_pipes set low_water_mark=1000 where name='test_pipe1';
+UPDATE 1
+> alter pipe test_pipe1 set table pipe_db_fvt.cpu2(*) where abs(usage_idle) + abs(usage_system) <= 50;
+ALTER PIPE
+> select name,
+       table_name,
+       column_names,
+       filter,
+       options,
+       low_watermark,
+       status,
+       create_by,
+       start_time,
+       end_time,
+       error_message
+from [show pipes]
+where name ='test_pipe1';
+     name    |       table_name        |                                                                                                           column_names                                                                                                            |                   filter                    |                                                                                          options                                                                                           |    low_watermark    | status  | create_by | start_time | end_time | error_message
+-------------+-------------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------------------+---------+-----------+------------+----------+----------------
+  test_pipe1 | pipe_db_fvt.public.cpu2 | k_timestamp,usage_user,usage_system,usage_idle,usage_nice,usage_iowait,usage_irq1,usage_softirq,usage_steal,usage_guest_nice,hostname,region,datacenter,rack,os,arch,team1,service,service_version,usage_guest_a,usage_guest_b,a1 | (abs(usage_idle) + abs(usage_system)) <= 50 | {"buffer_size": 1, "enable": "off", "ignore_history": "on", "message_format": "json", "publish": "insert", "retrieve_tags": "on", "sink": "kafka://localhost:9095?topic_name=tesT_Topic1"} | 1970-01-01 00:00:00 | Disable | root      | NULL       | NULL     | NULL
+(1 row)
+> create pipe test_pipe21 for table pipe_db_fvt.cpu2(*) where usage_user > 50 with options (enable='off',sink='kafka://localhost:9095?topic_name=test_topic1');
+CREATE PIPE
+> select name,
+       table_name,
+       column_names,
+       filter,
+       options,
+       low_watermark,
+       status,
+       create_by,
+       start_time,
+       end_time,
+       error_message
+from [show pipe test_pipe21];
+     name     |       table_name        |                                                                                                           column_names                                                                                                            |     filter      |                                                                                          options                                                                                           |    low_watermark    | status  | create_by | start_time | end_time | error_message
+--------------+-------------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+-----------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------------------+---------+-----------+------------+----------+----------------
+  test_pipe21 | pipe_db_fvt.public.cpu2 | k_timestamp,usage_user,usage_system,usage_idle,usage_nice,usage_iowait,usage_irq1,usage_softirq,usage_steal,usage_guest_nice,hostname,region,datacenter,rack,os,arch,team1,service,service_version,usage_guest_a,usage_guest_b,a1 | usage_user > 50 | {"buffer_size": 1, "enable": "off", "ignore_history": "on", "message_format": "json", "publish": "insert", "retrieve_tags": "on", "sink": "kafka://localhost:9095?topic_name=test_topic1"} | 1970-01-01 00:00:00 | Disable | root      | NULL       | NULL     | NULL
+(1 row)
+> drop table pipe_db_fvt.cpu2;
+DROP TABLE
+> drop table pipe_db_fvt.cpu2 cascade;
+ERROR: relation "pipe_db_fvt.cpu2" does not exist
+SQLSTATE: 42P01
+> select name,table_name from [show pipes] where name ='test_pipe21';
+     name     |       table_name
+--------------+--------------------------
+  test_pipe21 | pipe_db_fvt.public.cpu2
+(1 row)
+> create table pipe_db_fvt1.cpu3
+(
+    k_timestamp      timestamp not null,
+    usage_user       bigint    not null,
+    usage_system     bigint    not null,
+    usage_idle       bigint    not null,
+    usage_nice       bigint    not null,
+    usage_iowait     bigint    not null,
+    usage_irq        bigint    not null,
+    usage_softirq    bigint    not null,
+    usage_steal      bigint,
+    usage_guest      bigint,
+    usage_guest_nice bigint
+) attributes (
+    hostname char(30) not null,
+    region char(30),
+    datacenter char(30),
+    rack char(30),
+    os char(30),
+    arch char(30),
+    team char(30),
+    service char(30),
+    service_version char(30),
+    service_environment char(30)
+    )
+primary attributes (hostname);
+CREATE TABLE
+> create table pipe_db_fvt1.kafka_error
+(
+    k_timestamp      timestamp not null,
+    usage_user       bigint    not null,
+    usage_system     bigint    not null,
+    usage_idle       bigint    not null,
+    usage_nice       bigint    not null,
+    usage_iowait     bigint    not null,
+    usage_irq        bigint    not null,
+    usage_softirq    bigint    not null,
+    usage_steal      bigint,
+    usage_guest      bigint,
+    usage_guest_nice bigint
+) attributes (
+    hostname char(30) not null,
+    region char(30),
+    datacenter char(30),
+    rack char(30),
+    os char(30),
+    arch char(30),
+    team char(30),
+    service char(30),
+    service_version char(30),
+    service_environment char(30)
+    )
+primary attributes (hostname);
+CREATE TABLE
+> insert into pipe_db_fvt1.kafka_error values('2000-01-01 00:00:00',58,2,24,61,22,63,6,44,80,38,'host_1','eu-central-1','eu-central-1a','6','Ubuntu15.10','x86','SF','19','1','host_0');
+INSERT 1
+> create pipe test_pipe31 for table pipe_db_fvt1.cpu3(*) where usage_user > 50 with options (
+       enable='off',sink='mock://localhost:9095?topic_name=test_topic31');
+CREATE PIPE
+> create pipe test_pipe32 for table pipe_db_fvt1.cpu3(*) where usage_user > 50 with options (
+       enable='on',buffer_size='0',sink='mock://root@127.0.102.145:26257?topic_name=test_topic32&mock_sink_to_db=defaultdb.mock_sink_to_db');
+CREATE PIPE
+> create pipe test_pipe33 for table pipe_db_fvt1.cpu3(*) where usage_user > 50 and os = 'Ubuntu15.10' with options (
+       enable='on',buffer_size='0',sink='mock://root@127.0.102.145:26257?topic_name=test_topic33&mock_sink_to_db=defaultdb.mock_sink_to_db');
+CREATE PIPE
+> create pipe test_pipe34 for table pipe_db_fvt1.kafka_error with options (
+       enable='on',buffer_size='0',sink='mock://root@127.0.102.145:26257?topic_name=test_topic34&mock_sink_to_db=defaultdb.mock_sink_to_db');
+CREATE PIPE
+> create pipe test_pipe35 for table pipe_db_fvt1.kafka_error with options (enable='on',buffer_size='0',ignore_history='off',
+       sink='mock://root@127.0.102.145:26257?topic_name=test_topic35&mock_sink_to_db=defaultdb.mock_sink_to_db');
+CREATE PIPE
+> select pg_sleep(4);
+  pg_sleep
+------------
+    true
+(1 row)
+> insert into pipe_db_fvt1.cpu3 values('2000-01-01 00:00:00',58,2,24,61,22,63,6,44,80,38,'host_1','eu-central-1','eu-central-1a','6','Ubuntu15.10','x86','SF','19','1','host_0');
+INSERT 1
+> insert into pipe_db_fvt1.cpu3 (k_timestamp, usage_user, usage_system, usage_idle,usage_nice,usage_iowait,usage_irq,usage_softirq,usage_steal,usage_guest,usage_guest_nice,hostname) values
+('2000-01-02 00:00:00',58,2,24,61,22,63,6,44,80,38,'host_0'),('2000-01-03 00:00:00',1,1,1,1,1,1,1,1,1,1,'host_1'),('2000-01-04 00:00:00',55,1,1,1,1,1,1,1,1,1,'host_2'),('2000-01-05 00:00:00',3,3,3,3,3,3,3,3,3,3,'host_2');
+INSERT 4
+> insert into pipe_db_fvt1.kafka_error values('2000-01-01 00:01:00',58,2,24,61,22,63,6,44,80,38,'host_1','eu-central-1','eu-central-1a','6','Ubuntu15.10','x86','SF','19','1','host_0');
+INSERT 1
+> select pg_sleep(2);
+  pg_sleep
+------------
+    true
+(1 row)
+> drop database pipe_db_fvt1;
+ERROR: relation is used by pipe [ test_pipe31, test_pipe32, test_pipe33 ]
+> drop pipe test_pipe31;
+DROP PIPE
+> drop pipe test_pipe32;
+DROP PIPE
+> drop pipe test_pipe33;
+DROP PIPE
+> select status,error_message from [show pipes] where name in ('test_pipe34','test_pipe35');
+  status  |                                   error_message
+----------+-------------------------------------------------------------------------------------
+  Disable | Failed to produce message to topic test_topic34:
+          | kafka server: Message was too large, server rejected it to avoid allocation error.
+  Disable | Failed to produce message to topic test_topic35:
+          | kafka server: Message was too large, server rejected it to avoid allocation error.
+(2 rows)
+> drop pipe test_pipe34;
+DROP PIPE
+> drop pipe test_pipe35;
+DROP PIPE
+> drop database pipe_db_fvt1 cascade;
+DROP DATABASE
+> select topic,kind,db_name,tb_name,data from defaultdb.mock_sink_to_db
+where topic in ('test_topic32','test_topic33','test_topic34','test_topic35') order by topic,key;
+     topic     |  kind  |   db_name    | tb_name |                                                               data
+---------------+--------+--------------+---------+------------------------------------------------------------------------------------------------------------------------------------
+  test_topic32 | insert | pipe_db_fvt1 | cpu3    | [946684800000,58,2,24,61,22,63,6,44,80,38,"host_1","eu-central-1","eu-central-1a","6","Ubuntu15.10","x86","SF","19","1","host_0"]
+  test_topic32 | insert | pipe_db_fvt1 | cpu3    | [946771200000,58,2,24,61,22,63,6,44,80,38,"host_0",null,null,null,null,null,null,null,null,null]
+  test_topic32 | insert | pipe_db_fvt1 | cpu3    | [946944000000,55,1,1,1,1,1,1,1,1,1,"host_2",null,null,null,null,null,null,null,null,null]
+  test_topic33 | insert | pipe_db_fvt1 | cpu3    | [946684800000,58,2,24,61,22,63,6,44,80,38,"host_1","eu-central-1","eu-central-1a","6","Ubuntu15.10","x86","SF","19","1","host_0"]
+(4 rows)
+> select name from [show pipes];
+      name
+----------------
+  test_pipe1
+  test_pipe1_1
+  test_pipe1_2
+  test_pipe1_9
+  test_pipe3
+  test_pipe4
+  test_pipe5
+  test_pipe6
+  test_pipe6_1
+  test_pipe6_2
+  test_pipe9_1
+  test_pipe9_2
+  test_pipe9_3
+  test_pipe9_4
+  test_pipe9_5
+  test_pipe9_6
+  test_pipe21
+(17 rows)
+> select * from [show cluster settings] where variable like 'ts.pipe%' or variable like 'ts.cdc%';
+          variable         | value | setting_type |            description
+---------------------------+-------+--------------+-------------------------------------
+  ts.cdc.max_active_number | 10    | i            | the max number of running cdc task
+  ts.pipe.sink_max_retries | 5     | i            | the max retry times of pipe sink
+(2 rows)
+> set cluster setting ts.cdc.max_active_number=20;
+SET CLUSTER SETTING
+> set cluster setting ts.cdc.max_active_number=-1;
+ERROR: cannot set ts.cdc.max_active_number to a value < 1: -1
+> set cluster setting ts.pipe.sink_max_retries=12;
+SET CLUSTER SETTING
+> set cluster setting ts.pipe.sink_max_retries=-1;
+ERROR: cannot set ts.pipe.sink_max_retries to a negative value: -1
+> show cluster setting ts.pipe.heartbeat.interval;
+  ts.pipe.heartbeat.interval
+------------------------------
+  00:00:02
+(1 row)
+> set cluster setting ts.pipe.heartbeat.interval="1s";
+SET CLUSTER SETTING
+> set cluster setting ts.pipe.heartbeat.interval=0;
+ERROR: argument of SET CLUSTER SETTING ts.pipe.heartbeat.interval must be type interval, not type int
+SQLSTATE: 42804
+> select * from [show cluster settings] where variable like 'ts.pipe%' or variable like 'ts.cdc%';
+          variable         | value | setting_type |            description
+---------------------------+-------+--------------+-------------------------------------
+  ts.cdc.max_active_number | 20    | i            | the max number of running cdc task
+  ts.pipe.sink_max_retries | 12    | i            | the max retry times of pipe sink
+(2 rows)
+> drop pipe test_pipe1_1;
+DROP PIPE
+> drop pipe test_pipe1_2;
+DROP PIPE
+> drop pipe test_pipe1_9;
+DROP PIPE
+> drop pipe test_pipe1;
+DROP PIPE
+> drop pipe test_pipe1_1;
+ERROR: pipe "test_pipe1_1" does not exist
+SQLSTATE: 42704
+> drop pipe test_pipe1_2;
+ERROR: pipe "test_pipe1_2" does not exist
+SQLSTATE: 42704
+> drop pipe test_pipe1_9;
+ERROR: pipe "test_pipe1_9" does not exist
+SQLSTATE: 42704
+> drop pipe test_pipe3;
+DROP PIPE
+> drop pipe test_pipe4;
+DROP PIPE
+> drop pipe test_pipe5;
+DROP PIPE
+> drop pipe test_pipe6;
+DROP PIPE
+> drop pipe test_pipe6_1;
+DROP PIPE
+> drop pipe test_pipe6_2;
+DROP PIPE
+> drop pipe test_pipe9_1;
+DROP PIPE
+> drop pipe test_pipe9_2;
+DROP PIPE
+> drop pipe test_pipe9_3;
+DROP PIPE
+> drop pipe test_pipe9_4;
+DROP PIPE
+> drop pipe test_pipe9_5;
+DROP PIPE
+> drop pipe test_pipe9_6;
+DROP PIPE
+> drop pipe test_pipe21;
+DROP PIPE
+> select name,table_name,status from [show pipes];
+  name | table_name | status
+-------+------------+---------
+(0 rows)
+> drop database if exists pipe_db_fvt cascade;
+DROP DATABASE
+> drop database if exists pipe_db_fvt1 cascade;
+DROP DATABASE
+> drop database if exists pipe_db_fvt2 cascade;
+DROP DATABASE
+> drop table defaultdb.mock_sink_to_db cascade;
+DROP TABLE
+> select pg_sleep(10);
+  pg_sleep
+------------
+    true
+(1 row)

@@ -3,7 +3,7 @@
 # Export library path
 export LD_LIBRARY_PATH=/home/inspur/install/lib
 
-apt-get update && apt-get install -y protobuf-compiler libgflags-dev libprotoc-dev libprotobuf-dev
+# apt-get update && apt-get install -y protobuf-compiler libgflags-dev libprotoc-dev libprotobuf-dev
 
 # Start Service
 cd /home/inspur/install/bin

@@ -31,6 +31,10 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt"
 )
 
+// ============================================================================
+// Required
+// ============================================================================
+
 // Required properties are interesting characteristics of an expression that
 // impact its layout, presentation, or location, but not its logical content.
 // Examples include row order, column naming, and data distribution (physical
@@ -67,6 +71,8 @@ type Required struct {
 	// using math.Ceil.
 	LimitHint float64
 
+	// MustAddSort is true when a sort node must be added regardless of
+	// other properties.
 	MustAddSort bool
 }
 
@@ -89,8 +95,83 @@ func (p *Required) ColSet() opt.ColSet {
 	return colSet
 }
 
+// Equals returns true if the two physical properties are identical.
+func (p *Required) Equals(rhs *Required) bool {
+	return p.Presentation.Equals(rhs.Presentation) &&
+		p.Ordering.Equals(&rhs.Ordering) &&
+		p.LimitHint == rhs.LimitHint
+}
+
+// String returns a compact human-readable summary of the required properties.
+// Example: "[presentation: a:1,b:2] [ordering: +1,+5] [limit hint: 10.00]"
 func (p *Required) String() string {
+	return formatRequiredString(p)
+}
+
+// ============================================================================
+// Presentation
+// ============================================================================
+
+// Presentation specifies the naming, membership (including duplicates), and
+// order of result columns that are required of or provided by an operator.
+// While it cannot add unique columns, Presentation can rename, reorder,
+// duplicate and discard columns. If Presentation is not defined, then no
+// particular column presentation is required or provided. For example:
+//
+//	a.y:2 a.x:1 a.y:2 column1:3
+type Presentation []opt.AliasedColumn
+
+// Any is true if any column presentation is allowed or can be provided.
+func (p Presentation) Any() bool {
+	return p == nil
+}
+
+// Equals returns true iff this presentation exactly matches the given
+// presentation.
+func (p Presentation) Equals(rhs Presentation) bool {
+	// The 0 column presentation is not the same as the nil presentation.
+	if p.Any() != rhs.Any() {
+		return false
+	}
+	if len(p) != len(rhs) {
+		return false
+	}
+	for i := 0; i < len(p); i++ {
+		if p[i] != rhs[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// String returns "a:1,b:2" style representation.
+func (p Presentation) String() string {
 	var buf bytes.Buffer
+	p.format(&buf)
+	return buf.String()
+}
+
+// format writes each "alias:id" pair separated by commas.
+func (p Presentation) format(buf *bytes.Buffer) {
+	for i, col := range p {
+		if i > 0 {
+			buf.WriteString(",")
+		}
+		fmt.Fprintf(buf, "%s:%d", col.Alias, col.ID)
+	}
+}
+
+// ============================================================================
+// String formatting helpers (placed at end to keep exported API near the top)
+// ============================================================================
+
+// formatRequiredString produces the bracketed human-readable representation of
+// a Required properties set. It uses a local output helper to avoid repetition
+// across the three property kinds (presentation / ordering / limit hint).
+func formatRequiredString(p *Required) string {
+	var buf bytes.Buffer
+
+	// output is a small helper that writes a named property section.
 	output := func(name string, fn func(*bytes.Buffer)) {
 		if buf.Len() != 0 {
 			buf.WriteByte(' ')
@@ -117,57 +198,4 @@ func (p *Required) String() string {
 		return "[]"
 	}
 	return buf.String()
-}
-
-// Equals returns true if the two physical properties are identical.
-func (p *Required) Equals(rhs *Required) bool {
-	return p.Presentation.Equals(rhs.Presentation) && p.Ordering.Equals(&rhs.Ordering) && p.LimitHint == rhs.LimitHint
-}
-
-// Presentation specifies the naming, membership (including duplicates), and
-// order of result columns that are required of or provided by an operator.
-// While it cannot add unique columns, Presentation can rename, reorder,
-// duplicate and discard columns. If Presentation is not defined, then no
-// particular column presentation is required or provided. For example:
-//
-//	a.y:2 a.x:1 a.y:2 column1:3
-type Presentation []opt.AliasedColumn
-
-// Any is true if any column presentation is allowed or can be provided.
-func (p Presentation) Any() bool {
-	return p == nil
-}
-
-// Equals returns true iff this presentation exactly matches the given
-// presentation.
-func (p Presentation) Equals(rhs Presentation) bool {
-	// The 0 column presentation is not the same as the nil presentation.
-	if p.Any() != rhs.Any() {
-		return false
-	}
-	if len(p) != len(rhs) {
-		return false
-	}
-
-	for i := 0; i < len(p); i++ {
-		if p[i] != rhs[i] {
-			return false
-		}
-	}
-	return true
-}
-
-func (p Presentation) String() string {
-	var buf bytes.Buffer
-	p.format(&buf)
-	return buf.String()
-}
-
-func (p Presentation) format(buf *bytes.Buffer) {
-	for i, col := range p {
-		if i > 0 {
-			buf.WriteString(",")
-		}
-		fmt.Fprintf(buf, "%s:%d", col.Alias, col.ID)
-	}
 }

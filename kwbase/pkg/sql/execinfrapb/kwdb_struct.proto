@@ -46,6 +46,12 @@ message TsSpan {
   optional int64 toTimeStamp = 2 [(gogoproto.nullable) = false];
 }
 
+message OsnSpan {
+  optional uint64 fromTimeStamp = 1 [(gogoproto.nullable) = false];
+
+  optional uint64 toTimeStamp = 2 [(gogoproto.nullable) = false];
+}
+
 enum TSTableReadMode {
   tagIndex = 0;
   tagIndexTable = 1;
@@ -135,6 +141,9 @@ message TSReaderSpec {
   required bool OrderedScan = 12 [(gogoproto.nullable) = false];
   repeated TSBlockFilter blockFilter = 13;
   optional TSFill tsFill = 14;
+  required bool HasOsnCol = 15 [(gogoproto.nullable) = false];
+  // osn time range
+  repeated OsnSpan osn_spans = 16 [(gogoproto.nullable) = false];
 }
 
 // StatisticTSTableReader operator

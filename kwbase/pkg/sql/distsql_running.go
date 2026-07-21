@@ -857,7 +857,7 @@ func (dsp *DistSQLPlanner) RunClearUp(
 		// a copy of the planner and bind it to the function.
 		curPlan := &planCtx.planner.curPlan
 		return func() {
-			// We need to close the planNode tree we translated into a DistSQL plan
+			// We need to close the PlanNode tree we translated into a DistSQL plan
 			// before flow.Cleanup, which closes memory accounts that expect to be
 			// emptied.
 			curPlan.execErr = recv.resultWriter.Err()
@@ -1388,7 +1388,7 @@ func (r *DistSQLReceiver) updateCaches(ctx context.Context, ranges []roachpb.Ran
 // error in the provided receiver.
 func (dsp *DistSQLPlanner) PlanAndRunSubqueries(
 	ctx context.Context,
-	planner *planner,
+	planner *GenericPlanner,
 	evalCtxFactory func() *extendedEvalContext,
 	subqueryPlans []subquery,
 	recv *DistSQLReceiver,
@@ -1430,7 +1430,7 @@ func (dsp *DistSQLPlanner) planAndRunSubquery(
 	ctx context.Context,
 	planIdx int,
 	subqueryPlan subquery,
-	planner *planner,
+	planner *GenericPlanner,
 	evalCtx *extendedEvalContext,
 	subqueryPlans []subquery,
 	recv *DistSQLReceiver,
@@ -1564,7 +1564,7 @@ func (dsp *DistSQLPlanner) planAndRunSubquery(
 	return nil
 }
 
-// PlanAndRun generates a physical plan from a planNode tree and executes it. It
+// PlanAndRun generates a physical plan from a PlanNode tree and executes it. It
 // assumes that the tree is supported (see CheckSupport).
 //
 // All errors encountered are reported to the DistSQLReceiver's resultWriter.
@@ -1588,7 +1588,7 @@ func (dsp *DistSQLPlanner) PlanAndRun(
 	evalCtx *extendedEvalContext,
 	planCtx *PlanningCtx,
 	txn *kv.Txn,
-	plan planNode,
+	plan PlanNode,
 	recv *DistSQLReceiver,
 	stmt string,
 	di *DirectInsert,
@@ -1610,7 +1610,7 @@ func (dsp *DistSQLPlanner) PlanAndRun(
 
 // GetPhysPlan gets physical plan
 func (dsp *DistSQLPlanner) GetPhysPlan(
-	ctx context.Context, planCtx *PlanningCtx, plan planNode, recv *DistSQLReceiver, stmt string,
+	ctx context.Context, planCtx *PlanningCtx, plan PlanNode, recv *DistSQLReceiver, stmt string,
 ) *PhysicalPlan {
 	log.VEventf(ctx, 1, "creating DistSQL plan with isLocal=%v", planCtx.isLocal)
 	physPlan, err := dsp.createPlanForNode(planCtx, plan)
@@ -1631,7 +1631,7 @@ func (dsp *DistSQLPlanner) PlanAndStart(
 	evalCtx *extendedEvalContext,
 	planCtx *PlanningCtx,
 	txn *kv.Txn,
-	plan planNode,
+	plan PlanNode,
 	recv *DistSQLReceiver,
 	stmt string,
 ) (flowinfra.Flow, context.Context) {
@@ -1646,7 +1646,7 @@ func (dsp *DistSQLPlanner) PlanAndStart(
 // that error in the provided receiver.
 func (dsp *DistSQLPlanner) PlanAndRunPostqueries(
 	ctx context.Context,
-	planner *planner,
+	planner *GenericPlanner,
 	evalCtxFactory func() *extendedEvalContext,
 	postqueryPlans []postquery,
 	recv *DistSQLReceiver,
@@ -1681,7 +1681,7 @@ func (dsp *DistSQLPlanner) PlanAndRunPostqueries(
 func (dsp *DistSQLPlanner) planAndRunPostquery(
 	ctx context.Context,
 	postqueryPlan postquery,
-	planner *planner,
+	planner *GenericPlanner,
 	evalCtx *extendedEvalContext,
 	recv *DistSQLReceiver,
 	maybeDistribute bool,

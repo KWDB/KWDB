@@ -269,9 +269,9 @@ the pipeline of filtering, grouping, filtering and sorting.
 However, this naive execution plan would have poor performance if the first
 scans return large amounts of data: if we are scanning orders of magnitude extra
 data, only to discard the vast majority of rows as we filter out the few rows
-that we need, this is needlessly inefficient. Instead, the query planner
+that we need, this is needlessly inefficient. Instead, the query GenericPlanner
 attempts to take advantage of secondary indexes to limit the data retrieved by
-the leafs. Additionally, the query planner makes joins between tables faster by
+the leafs. Additionally, the query GenericPlanner makes joins between tables faster by
 taking advantage of the different sort orders of various secondary indexes, and
 avoiding re-sorting (or taking advantage of partial sorts to limit the amount
 of sorting done). As query planning is under active development, the details of
@@ -279,7 +279,7 @@ how we implement this are in flux and will continue to be in flux for the
 foreseeable future. This section is intended to provide a high-level overview of
 a few of the techniques involved.
 
-For a SELECT query, after parsing it, the query planner performs semantic
+For a SELECT query, after parsing it, the query GenericPlanner performs semantic
 analysis to statically verify if the query obeys basic type-safety checks, and
 to resolve names within the query to actual objects within the system. Let's
 consider a query which looks up the stock of an item in the inventory table
@@ -287,24 +287,24 @@ named "foo" with item_id X:
 
 	SELECT stock FROM inventory WHERE item_id = X AND name = 'test'
 
-The query planner first needs to resolve the "inventory" qualified name in the
+The query GenericPlanner first needs to resolve the "inventory" qualified name in the
 FROM clause to the appropriate TableDescriptor. It also needs to resolve the
 "item_id", "stock" and "name" column references to the appropriate column
 descriptions with the "inventory" TableDescriptor. Lastly, as part of semantic
-analysis, the query planner verifies that the expressions in the select targets
+analysis, the query GenericPlanner verifies that the expressions in the select targets
 and the WHERE clause are valid (e.g. the WHERE clause evaluates to a boolean).
 
-From that starting point, the query planner then analyzes the GROUP BY and ORDER
+From that starting point, the query GenericPlanner then analyzes the GROUP BY and ORDER
 BY clauses, adding "hidden" targets for expressions used in those clauses that
 are not explicit targets of the query. Our example query does not have any GROUP
 BY or ORDER BY clauses, so we move straight to the next step: index
-selection. Index selection is the stage where the query planner selects the best
+selection. Index selection is the stage where the query GenericPlanner selects the best
 index to scan and selects the start and end keys that minimize the amount of
-scanned data.  Depending on the complexity of the query, the query planner might
+scanned data.  Depending on the complexity of the query, the query GenericPlanner might
 even select multiple ranges to scan from an index or multiple ranges from
 different indexes.
 
-How does the query planner decide which index to use and which range of the
+How does the query GenericPlanner decide which index to use and which range of the
 index to scan? We currently use a restricted form of value propagation in order
 to determine the range of possible values for columns referenced in the WHERE
 clause. Using this range information, each index is examined to determine if it

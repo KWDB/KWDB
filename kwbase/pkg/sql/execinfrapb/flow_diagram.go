@@ -234,6 +234,23 @@ func getTSSpanStr(src []TsSpan) string {
 	return spanStr.String()
 }
 
+// getOsnSpanStr get osn span string
+func getOsnSpanStr(src []OsnSpan) string {
+	var spanStr strings.Builder
+	spanStr.WriteString("osn Spans: ")
+	spanStr.WriteString(fmt.Sprintf("%v - %v", src[0].FromTimeStamp, src[0].ToTimeStamp))
+
+	if len(src) > 1 {
+		spanStr.WriteString(fmt.Sprintf(" and %d other", len(src)-1))
+	}
+
+	if len(src) > 2 {
+		spanStr.WriteString("s") // pluralize the 'other'
+	}
+
+	return spanStr.String()
+}
+
 // summary implements the diagramCellType interface.
 func (tr *TableReaderSpec) summary() (string, []string) {
 	details := []string{indexDetail(&tr.Table, tr.IndexIdx)}
@@ -275,8 +292,16 @@ func (tr *TSReaderSpec) summary() (string, []string) {
 		details = append(details, fmt.Sprintf("Ordered scan: %v", tr.OrderedScan))
 	}
 
+	if tr.HasOsnCol {
+		details = append(details, fmt.Sprintf("Has osn column: %v", tr.HasOsnCol))
+	}
+
 	if len(tr.TsSpans) > 0 {
 		details = append(details, getTSSpanStr(tr.TsSpans))
+	}
+
+	if len(tr.OsnSpans) > 0 {
+		details = append(details, getOsnSpanStr(tr.OsnSpans))
 	}
 
 	if tr.Aggregator != nil {

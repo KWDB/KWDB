@@ -141,7 +141,7 @@ func (dsp *DistSQLPlanner) createStatsPlan(
 
 	// Create the table readers; for this we initialize a dummy scanNode.
 	scan := scanNode{desc: desc}
-	err := scan.initDescDefaults(nil /* planDependencies */, colCfg)
+	err := scan.initDescDefaults(nil /* PlanDependencies */, colCfg)
 	if err != nil {
 		return PhysicalPlan{}, err
 	}
@@ -432,7 +432,8 @@ func (dsp *DistSQLPlanner) createTsStatsPlan(
 	return p, nil
 }
 
-func (dsp *DistSQLPlanner) createPlanForCreateStats(
+// CreatePlanForCreateStats creates a distributed execution plan for statistics creation
+func (dsp *DistSQLPlanner) CreatePlanForCreateStats(
 	planCtx *PlanningCtx, job *jobs.Job,
 ) (PhysicalPlan, error) {
 	details := job.Details().(jobspb.CreateStatsDetails)
@@ -466,7 +467,8 @@ func (dsp *DistSQLPlanner) createPlanForCreateStats(
 	return dsp.createStatsPlan(planCtx, tableDesc, reqStats, job)
 }
 
-func (dsp *DistSQLPlanner) planAndRunCreateStats(
+// PlanAndRunCreateStats plans and executes statistics creation in distributed mode
+func (dsp *DistSQLPlanner) PlanAndRunCreateStats(
 	ctx context.Context,
 	evalCtx *extendedEvalContext,
 	planCtx *PlanningCtx,
@@ -476,7 +478,7 @@ func (dsp *DistSQLPlanner) planAndRunCreateStats(
 ) error {
 	ctx = logtags.AddTag(ctx, "create-stats-distsql", nil)
 
-	physPlan, err := dsp.createPlanForCreateStats(planCtx, job)
+	physPlan, err := dsp.CreatePlanForCreateStats(planCtx, job)
 	if err != nil {
 		return err
 	}

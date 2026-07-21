@@ -25,8 +25,6 @@
 package tree
 
 import (
-	"strings"
-
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqltelemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
 )
@@ -206,20 +204,20 @@ type ConcurrentFuncRegistry struct {
 func (r *ConcurrentFuncRegistry) RegisterFunc(name string, fn *FunctionDefinition) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.funcs[strings.ToLower(name)] = fn
+	r.funcs[name] = fn
 }
 
 // DeleteFunc drops custom function.
 func (r *ConcurrentFuncRegistry) DeleteFunc(name string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	delete(r.funcs, strings.ToLower(name))
+	delete(r.funcs, name)
 }
 
 // LookupFunc finds custom function.
 func (r *ConcurrentFuncRegistry) LookupFunc(name string) (*FunctionDefinition, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	fn, exists := r.funcs[strings.ToLower(name)]
+	fn, exists := r.funcs[name]
 	return fn, exists
 }

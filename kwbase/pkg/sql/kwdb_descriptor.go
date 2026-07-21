@@ -29,6 +29,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/builtins"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlconst"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlutil"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
@@ -106,8 +107,8 @@ func InitInstDescriptor(
 	return instNamespace
 }
 
-// writeInstTableMeta writes KWDBTagValue descriptor to table of system.
-func writeInstTableMeta(
+// WriteInstTableMeta writes KWDBTagValue descriptor to table of system.
+func WriteInstTableMeta(
 	ctx context.Context, txn *kv.Txn, instNames []sqlbase.InstNameSpace, overWrite bool,
 ) error {
 	var rows []tree.Datums
@@ -340,8 +341,8 @@ type ScheduleDetail struct {
 
 // Schedules all currently supported schedules
 var Schedules = map[string]ScheduleDetail{
-	ScheduleVacuum: {
-		Name:     ScheduleVacuum,
+	sqlconst.ScheduleVacuum: {
+		Name:     sqlconst.ScheduleVacuum,
 		Executor: VacuumExecutorName,
 		CronExpr: "@hourly",
 	},
@@ -421,9 +422,13 @@ func InitTsTxnJob(
 	})
 }
 
-// createTSSchemaChangeJob creates a new job to synchronize the metadata cache with the agent.
-func (p *planner) createTSSchemaChangeJob(
-	ctx context.Context, details jobspb.SyncMetaCacheDetails, jobDesc string, txn *kv.Txn,
+// CreateTSSchemaChangeJob creates a new job to synchronize the metadata cache with the agent.
+func CreateTSSchemaChangeJob(
+	ctx context.Context,
+	p *GenericPlanner,
+	details jobspb.SyncMetaCacheDetails,
+	jobDesc string,
+	txn *kv.Txn,
 ) (int64, error) {
 	// Queue a new job.
 	jobRecord := jobs.Record{

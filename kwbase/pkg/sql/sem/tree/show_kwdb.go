@@ -18,11 +18,10 @@ type ShowTags struct {
 
 // Format implements the NodeFormatter interface.
 func (node *ShowTags) Format(ctx *FmtCtx) {
-	ctx.WriteString("SHOW TAGS FROM ")
-	ctx.FormatNode(node.Table)
+	formatShowClause(ctx, showTagsKeyword, node.Table)
 }
 
-// ShowRetentions represents a SHOW AUDITS statement.
+// ShowRetentions represents a SHOW RETENTIONS statement.
 type ShowRetentions struct {
 	// Table Name
 	Table *UnresolvedObjectName
@@ -30,8 +29,7 @@ type ShowRetentions struct {
 
 // Format implements the NodeFormatter interface.
 func (n *ShowRetentions) Format(ctx *FmtCtx) {
-	ctx.WriteString("SHOW RETENTIONS ON TABLE ")
-	ctx.FormatNode(n.Table)
+	formatShowClause(ctx, showRetentionsKeyword, n.Table)
 }
 
 // ShowTagValues represents a SHOW TAG VALUES statement.
@@ -42,6 +40,18 @@ type ShowTagValues struct {
 
 // Format implements the NodeFormatter interface.
 func (n *ShowTagValues) Format(ctx *FmtCtx) {
-	ctx.WriteString("SHOW TAG VALUES FROM ")
-	ctx.FormatNode(n.Table)
+	formatShowClause(ctx, showTagValuesKeyword, n.Table)
+}
+
+// SQL keyword constants for SHOW statements.
+const (
+	showTagsKeyword       = "SHOW TAGS FROM "
+	showRetentionsKeyword = "SHOW RETENTIONS ON TABLE "
+	showTagValuesKeyword  = "SHOW TAG VALUES FROM "
+)
+
+// formatShowClause writes a keyword prefix followed by a formatted table name.
+func formatShowClause(ctx *FmtCtx, keyword string, table *UnresolvedObjectName) {
+	ctx.WriteString(keyword)
+	ctx.FormatNode(table)
 }

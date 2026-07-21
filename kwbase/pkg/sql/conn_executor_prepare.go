@@ -326,7 +326,7 @@ func (ex *connExecutor) populatePrepared(
 	ctx context.Context,
 	txn *kv.Txn,
 	placeholderHints tree.PlaceholderTypes,
-	p *planner,
+	p *GenericPlanner,
 	insidePrepareOfProcFlag uint8,
 ) (planFlags, error) {
 	if before := ex.server.cfg.TestingKnobs.BeforePrepare; before != nil {
@@ -607,7 +607,8 @@ func (ex *connExecutor) execPreparedirectBind(
 
 			// When the table has the pipe enabled, bind data needs to be converted into datums for filter.
 			if ex.server.GetCFG().CDCCoordinator != nil {
-				if ex.server.GetCFG().CDCCoordinator.IsCDCEnabled(uint64(ps.PrepareInsertDirect.Dit.TabID)) {
+				if ex.server.GetCFG().CDCCoordinator.IsCDCEnabled(uint64(ps.PrepareInsertDirect.Dit.TabID)) ||
+					len(table.CDC) > 0 {
 					di.InputValues, err = getPrepareInputValues(ptCtx, &bindCmd, ps.InferredTypes, &di)
 					if err != nil {
 						return err

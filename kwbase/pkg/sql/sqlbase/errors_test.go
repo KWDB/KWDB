@@ -138,37 +138,6 @@ func TestNewUnsupportedSchemaUsageError(t *testing.T) {
 	}
 }
 
-func TestNewCCLRequiredError(t *testing.T) {
-	innerErr := errors.New("feature requires CCL")
-	err := sqlbase.NewCCLRequiredError(innerErr)
-	if err == nil {
-		t.Fatal("Expected error, got nil")
-	}
-
-	pgErr := pgerror.Flatten(err)
-	if pgErr.Code != pgcode.CCLRequired {
-		t.Errorf("Expected code %s, got %s", pgcode.CCLRequired, pgErr.Code)
-	}
-
-	if !strings.Contains(pgErr.Message, "feature requires CCL") {
-		t.Errorf("Expected message to contain inner error, got %q", pgErr.Message)
-	}
-}
-
-func TestIsCCLRequiredError(t *testing.T) {
-	innerErr := errors.New("feature requires CCL")
-	cclErr := sqlbase.NewCCLRequiredError(innerErr)
-
-	if !sqlbase.IsCCLRequiredError(cclErr) {
-		t.Error("Expected IsCCLRequiredError to return true for CCL required error")
-	}
-
-	otherErr := sqlbase.NewNonNullViolationError("test")
-	if sqlbase.IsCCLRequiredError(otherErr) {
-		t.Error("Expected IsCCLRequiredError to return false for non-CCL required error")
-	}
-}
-
 func TestNewUndefinedDatabaseError(t *testing.T) {
 	dbName := "nonexistent_db"
 	err := sqlbase.NewUndefinedDatabaseError(dbName)

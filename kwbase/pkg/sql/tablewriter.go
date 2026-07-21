@@ -28,6 +28,7 @@ import (
 	"context"
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
+	ddl_opts "gitee.com/kwbasedb/kwbase/pkg/sql/ddl_opts"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/mutations"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/row"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/rowcontainer"
@@ -112,20 +113,13 @@ type tableWriter interface {
 	curBatchSize() int
 }
 
-type autoCommitOpt int
-
-const (
-	autoCommitDisabled autoCommitOpt = 0
-	autoCommitEnabled  autoCommitOpt = 1
-)
-
 // tableWriterBase is meant to be used to factor common code between
 // the other tableWriters.
 type tableWriterBase struct {
 	// txn is the current KV transaction.
 	txn *kv.Txn
 	// is autoCommit turned on.
-	autoCommit autoCommitOpt
+	autoCommit ddl_opts.AutoCommitOpt
 	// b is the current batch.
 	b *kv.Batch
 	// batchSize is the current batch size (when known).
@@ -162,7 +156,7 @@ func (tb *tableWriterBase) curBatchSize() int { return tb.batchSize }
 func (tb *tableWriterBase) finalize(
 	ctx context.Context, tableDesc *sqlbase.ImmutableTableDescriptor,
 ) (err error) {
-	if tb.autoCommit == autoCommitEnabled &&
+	if tb.autoCommit == ddl_opts.AutoCommitEnabled &&
 		// Also, we don't want to try to commit here if the deadline is expired.
 		// If we bubble back up to SQL then maybe we can get a fresh deadline
 		// before committing.
@@ -183,5 +177,5 @@ func (tb *tableWriterBase) finalize(
 }
 
 func (tb *tableWriterBase) enableAutoCommit() {
-	tb.autoCommit = autoCommitEnabled
+	tb.autoCommit = ddl_opts.AutoCommitEnabled
 }

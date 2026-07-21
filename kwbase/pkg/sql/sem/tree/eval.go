@@ -3605,6 +3605,30 @@ type EvalContext struct {
 	// IsTrigger is true when the the SQL has trigger.
 	IsTrigger        bool
 	IsFloat32Compare bool
+
+	// SQLUDFFunctionHandler is used to execute SQL user defined functions
+	// during expression evaluation.
+	SQLUDFFunctionHandler SQLUDFFunctionHandler
+}
+
+// SQLUDFFunctionHandler provides the SQL UDF handler required by both
+// semantic analysis and execution.
+type SQLUDFFunctionHandler interface {
+	// ResolveFunctionFromCatalog loads a persisted user defined function
+	// from system.user_defined_routine and registers it into tree.ConcurrentFunDefs.
+	ResolveFunctionFromCatalog(
+		name *UnresolvedName,
+		searchPath sessiondata.SearchPath,
+	) (*FunctionDefinition, bool, error)
+
+	// SQLUDFCallProcedure executes SQL UDF by procedure and returns
+	// the first row and first column as the scalar function result.
+	SQLUDFCallProcedure(
+		ctx context.Context,
+		funcName string,
+		returnType *types.T,
+		args Datums,
+	) (Datum, error)
 }
 
 // GroupWindow record group_window information.

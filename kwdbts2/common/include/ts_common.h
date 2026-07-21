@@ -138,8 +138,6 @@ enum class EncodeAlgo : uint16_t {
 
   kChimp_32 = 11,
   kChimp_64 = 12,
-  // kALP,
-  // kELF,
 
   kSimple8B_V2_s8 = 13,
   kSimple8B_V2_s16 = 14,
@@ -153,6 +151,20 @@ enum class EncodeAlgo : uint16_t {
   kBitPacking = 21,
 
   kDisabled = 22,
+
+  kELF_32 = 23,
+  kELF_64 = 24,
+  kALP_32 = 25,
+  kALP_64 = 26,
+  kFptrunc_32 = 27,
+  kFptrunc_64 = 28,
+  kBSS_32 = 29,
+  kBSS_64 = 30,
+
+  kRC = 31,
+
+  kDeltaD = 32,
+
   TS_COMP_ALG_LAST
 };
 
@@ -285,7 +297,7 @@ struct Batch {
   // row_idx  start from 0
   virtual KStatus isNull(k_uint32 row_idx, bool* is_null) const {
     if (bitmap == nullptr) {
-      *is_null = true;
+      *is_null = (mem == nullptr);
       return KStatus::SUCCESS;
     }
     if (row_idx >= count) {

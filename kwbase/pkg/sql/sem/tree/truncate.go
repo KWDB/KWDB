@@ -38,15 +38,30 @@ type Truncate struct {
 	DropBehavior DropBehavior
 }
 
+// truncateTableKeyword is the SQL keyword prefix for TRUNCATE TABLE.
+const truncateTableKeyword = "TRUNCATE TABLE "
+
 // Format implements the NodeFormatter interface.
 func (node *Truncate) Format(ctx *FmtCtx) {
-	ctx.WriteString("TRUNCATE TABLE ")
+	node.writeTruncateKeywordAndTables(ctx)
+	node.maybeWriteDropBehavior(ctx)
+}
+
+// writeTruncateKeywordAndTables outputs the TRUNCATE TABLE keyword followed by
+// the comma-separated table names.
+func (node *Truncate) writeTruncateKeywordAndTables(ctx *FmtCtx) {
+	ctx.WriteString(truncateTableKeyword)
 	sep := ""
 	for i := range node.Tables {
 		ctx.WriteString(sep)
 		ctx.FormatNode(&node.Tables[i])
 		sep = ", "
 	}
+}
+
+// maybeWriteDropBehavior appends the drop behavior clause when it is not the
+// default (RESTRICT).
+func (node *Truncate) maybeWriteDropBehavior(ctx *FmtCtx) {
 	if node.DropBehavior != DropDefault {
 		ctx.WriteByte(' ')
 		ctx.WriteString(node.DropBehavior.String())

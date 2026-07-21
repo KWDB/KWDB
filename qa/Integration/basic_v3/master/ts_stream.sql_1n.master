@@ -401,6 +401,11 @@ ERROR: relation "cpu" is used by stream [ test_stream1, test_stream2, test_strea
 ERROR: relation "cpu" is used by stream [ test_stream1, test_stream2, test_stream3, test_stream4, test_stream5 ]
 > alter table stream_db_fvt.cpu add column usage_user_a int;
 ERROR: relation "cpu" is used by stream [ test_stream1 ]
+> select pg_sleep(3);
+  pg_sleep
+------------
+    true
+(1 row)
 > alter stream test_stream1 set enable='OFF';
 ALTER STREAM
 > alter table stream_db_fvt_out.cpu_stream_out add column count_a int;

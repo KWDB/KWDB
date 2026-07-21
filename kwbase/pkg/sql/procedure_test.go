@@ -27,7 +27,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 )
 
-// TestRunParams tests the runParams methods
+// TestRunParams tests the RunParams methods
 func TestRunParams(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	logScope := log.Scope(t)
@@ -45,7 +45,7 @@ func TestRunParams(t *testing.T) {
 	// Get the executor config
 	execCfg := s.ExecutorConfig().(ExecutorConfig)
 
-	// Create a planner
+	// Create a GenericPlanner
 	internalPlanner, cleanup := NewInternalPlanner(
 		"test",
 		kv.NewTxn(ctx, s.DB(), s.NodeID()),
@@ -55,25 +55,25 @@ func TestRunParams(t *testing.T) {
 	)
 	defer cleanup()
 
-	p := internalPlanner.(*planner)
-	// Create runParams
-	runParams := &runParams{
-		ctx:             ctx,
+	p := internalPlanner.(*GenericPlanner)
+	// Create RunParams
+	RunParams := &RunParams{
+		Ctx:             ctx,
 		p:               p,
 		extendedEvalCtx: p.ExtendedEvalContext(),
 	}
 
 	// Ensure extendedEvalCtx has DB set
-	runParams.extendedEvalCtx.DB = s.DB()
+	RunParams.extendedEvalCtx.DB = s.DB()
 
-	// Ensure planner has preparedStatements set
+	// Ensure GenericPlanner has preparedStatements set
 	p.preparedStatements = connExPrepStmtsAccessor{
 		ex: &connExecutor{},
 	}
 
 	// Test GetCtx
 	t.Run("GetCtx", func(t *testing.T) {
-		gotCtx := runParams.GetCtx()
+		gotCtx := RunParams.GetCtx()
 		if gotCtx != ctx {
 			t.Error("GetCtx should return the correct context")
 		}
@@ -81,7 +81,7 @@ func TestRunParams(t *testing.T) {
 
 	// Test GetTxn
 	t.Run("GetTxn", func(t *testing.T) {
-		txn := runParams.GetTxn()
+		txn := RunParams.GetTxn()
 		if txn == nil {
 			t.Error("GetTxn should return non-nil transaction")
 		}
@@ -90,17 +90,17 @@ func TestRunParams(t *testing.T) {
 	// Test SetTxn
 	t.Run("SetTxn", func(t *testing.T) {
 		newTxn := kv.NewTxn(ctx, s.DB(), s.NodeID())
-		runParams.SetTxn(newTxn)
-		if runParams.GetTxn() != newTxn {
+		RunParams.SetTxn(newTxn)
+		if RunParams.GetTxn() != newTxn {
 			t.Error("SetTxn should set the transaction")
 		}
 	})
 
 	// Test NewTxn
 	t.Run("NewTxn", func(t *testing.T) {
-		oldTxn := runParams.GetTxn()
-		runParams.NewTxn()
-		newTxn := runParams.GetTxn()
+		oldTxn := RunParams.GetTxn()
+		RunParams.NewTxn()
+		newTxn := RunParams.GetTxn()
 		if newTxn == oldTxn {
 			t.Error("NewTxn should create a new transaction")
 		}
@@ -108,7 +108,7 @@ func TestRunParams(t *testing.T) {
 
 	// Test SetUserDefinedVar
 	t.Run("SetUserDefinedVar", func(t *testing.T) {
-		err := runParams.SetUserDefinedVar("test_var", tree.NewDInt(42))
+		err := RunParams.SetUserDefinedVar("test_var", tree.NewDInt(42))
 		if err != nil {
 			t.Errorf("SetUserDefinedVar should not return error, got %v", err)
 		}
@@ -117,13 +117,13 @@ func TestRunParams(t *testing.T) {
 	// Test DeallocatePrepare
 	t.Run("DeallocatePrepare", func(t *testing.T) {
 		// Test with empty name (delete all)
-		err := runParams.DeallocatePrepare("")
+		err := RunParams.DeallocatePrepare("")
 		if err != nil {
 			t.Errorf("DeallocatePrepare should not return error, got %v", err)
 		}
 
 		// Test with non-existent name (should return error)
-		err = runParams.DeallocatePrepare("non_existent")
+		err = RunParams.DeallocatePrepare("non_existent")
 		if err == nil {
 			t.Error("DeallocatePrepare should return error for non-existent prepared statement")
 		}
@@ -178,7 +178,7 @@ func TestRunPlanInsideProcedure(t *testing.T) {
 	// Get the executor config
 	execCfg := s.ExecutorConfig().(ExecutorConfig)
 
-	// Create a planner
+	// Create a GenericPlanner
 	internalPlanner, cleanup := NewInternalPlanner(
 		"test",
 		kv.NewTxn(ctx, s.DB(), s.NodeID()),
@@ -187,11 +187,11 @@ func TestRunPlanInsideProcedure(t *testing.T) {
 		&execCfg,
 	)
 	defer cleanup()
-	p := internalPlanner.(*planner)
+	p := internalPlanner.(*GenericPlanner)
 
-	// Create runParams
-	runParams := &runParams{
-		ctx:             ctx,
+	// Create RunParams
+	RunParams := &RunParams{
+		Ctx:             ctx,
 		p:               p,
 		extendedEvalCtx: p.ExtendedEvalContext(),
 	}
@@ -210,7 +210,7 @@ func TestRunPlanInsideProcedure(t *testing.T) {
 	defer rowContainer.Close(ctx)
 
 	// Test RunPlanInsideProcedure
-	rowsAffected, err := RunPlanInsideProcedure(runParams, plan, rowContainer, tree.RowsAffected)
+	rowsAffected, err := RunPlanInsideProcedure(RunParams, plan, rowContainer, tree.RowsAffected)
 	if err != nil {
 		t.Errorf("RunPlanInsideProcedure should not return error, got %v", err)
 	}
@@ -237,7 +237,7 @@ func TestStartPlanInsideProcedure(t *testing.T) {
 	// Get the executor config
 	execCfg := s.ExecutorConfig().(ExecutorConfig)
 
-	// Create a planner
+	// Create a GenericPlanner
 	internalPlanner, cleanup := NewInternalPlanner(
 		"test",
 		kv.NewTxn(ctx, s.DB(), s.NodeID()),
@@ -246,11 +246,11 @@ func TestStartPlanInsideProcedure(t *testing.T) {
 		&execCfg,
 	)
 	defer cleanup()
-	p := internalPlanner.(*planner)
+	p := internalPlanner.(*GenericPlanner)
 
-	// Create runParams
-	runParams := &runParams{
-		ctx:             ctx,
+	// Create RunParams
+	RunParams := &RunParams{
+		Ctx:             ctx,
 		p:               p,
 		extendedEvalCtx: p.ExtendedEvalContext(),
 	}
@@ -272,7 +272,7 @@ func TestStartPlanInsideProcedure(t *testing.T) {
 	cursorExecHelper := &CursorExecHelper{}
 
 	// Test StartPlanInsideProcedure
-	err := StartPlanInsideProcedure(runParams, cursorExecHelper, rowContainer, tree.RowsAffected, plan)
+	err := StartPlanInsideProcedure(RunParams, cursorExecHelper, rowContainer, tree.RowsAffected, plan)
 	// Note: This test may fail because it requires a fully initialized plan
 	// but we're testing the function signature and basic functionality
 	if err != nil {

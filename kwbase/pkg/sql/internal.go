@@ -32,6 +32,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/audit"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgwirebase"
@@ -342,7 +343,7 @@ func (ie *InternalExecutor) IsTsTable(
 		}
 
 		sd := &sessiondata.SessionData{User: user}
-		pp := &planner{
+		pp := &GenericPlanner{
 			txn:     txn,
 			execCfg: cfg,
 			curPlan: planTop{},
@@ -355,7 +356,7 @@ func (ie *InternalExecutor) IsTsTable(
 				ExecCfg:         cfg,
 				schemaAccessors: newSchemaInterface(tables, cfg.VirtualSchemas),
 			},
-			avoidCachedDescriptors: true,
+			AvoidCachedDescriptors: true,
 		}
 
 		if err := pp.CheckPrivilege(ctx, table.TableDesc(), privilege.INSERT); err != nil {
@@ -391,8 +392,7 @@ func (ie *InternalExecutor) GetAudiLogVesion(ctx context.Context) (uint32, error
 
 	defer tables.releaseTables(ctx)
 	err := ie.s.cfg.DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
-		var auditTableName = tree.MakeTableName("system", "audits")
-		_, _, _, _, version1, err := tables.GetObjectDesc(ctx, txn, &auditTableName, false, "", nil, true)
+		_, _, _, _, version1, err := tables.GetObjectDesc(ctx, txn, &audit.AuditTableName, false, "", nil, true)
 		if err != nil {
 			return err
 		}

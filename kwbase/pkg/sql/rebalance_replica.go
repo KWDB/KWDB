@@ -31,6 +31,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"github.com/pkg/errors"
@@ -113,7 +114,7 @@ func BalanceReplica(
 			hashNum: table.TsTable.HashNum,
 		})
 	} else if zs.NamedZone.String() == "default" {
-		descriptors, err := tc.getAllDescriptors(ctx, txn)
+		descriptors, err := tc.TcGetAllDescriptors(ctx, txn)
 		if err != nil {
 			return err
 		}
@@ -432,7 +433,7 @@ func getTableRanges(
 	var curRanges []CurrentRange
 	var numRepl = 3
 	if err := exec.DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
-		ranges, err := ScanMetaKVs(ctx, txn, roachpb.Span{
+		ranges, err := sqlutil.ScanMetaKVs(ctx, txn, roachpb.Span{
 			Key:    sqlbase.MakeTsRangeKey(tableID, 0, hashNum),
 			EndKey: sqlbase.MakeTsRangeKey(tableID, hashNum, hashNum),
 		})
@@ -657,7 +658,7 @@ func (r *replicaRebalanceResumer) Resume(
 			if err != nil {
 				return err
 			}
-			dbDesc, err = getDatabaseDescByID(ctx, txn, tbDesc.ParentID)
+			dbDesc, err = GetDatabaseDescByID(ctx, txn, tbDesc.ParentID)
 			return err
 		})
 		var startPoint, endPoint uint64

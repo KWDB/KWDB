@@ -334,6 +334,7 @@ enum class VersionUpdateType : uint8_t {
   kNewCountStatFile = 9,
   kNewVersionNumber = 10,
   kNewAggFile = 11,
+  kDeleteEntitySegment = 12,
 };
 
 enum class LastSegmentMetaType : uint8_t {
@@ -358,6 +359,7 @@ class TsVersionUpdate {
   static constexpr uint16_t kHasCountStats    = 1 << 8;
   static constexpr uint16_t kHasNewVersion    = 1 << 9;
   static constexpr uint16_t kHasNewAgg        = 1 << 10;
+  static constexpr uint16_t kHasDelEntitySeg  = 1 << 11;
 
   uint16_t flags_ = 0;
 
@@ -371,8 +373,8 @@ class TsVersionUpdate {
   std::shared_ptr<TsMemSegment> new_memseg_;
   int64_t del_memseg_id_ = -1;
 
-  bool delete_all_prev_entity_segment_ = false;
   std::map<PartitionIdentifier, EntitySegmentMetaInfo> entity_segment_;
+  std::set<PartitionIdentifier> delete_entity_segments_;
 
   uint64_t next_file_number_ = 0;
 
@@ -389,7 +391,8 @@ class TsVersionUpdate {
   static constexpr uint16_t kMemSegMask = kHasNewMemSeg | kHasDelMemSeg;
 
   bool NeedRecordFileNumber() const {
-    return (flags_ & (kHasNewLastSeg | kHasEntitySeg | kHasDelLastSeg | kHasCountStats | kHasNewAgg)) != 0;
+    return (flags_ & (kHasNewLastSeg | kHasEntitySeg | kHasDelLastSeg | kHasCountStats | kHasNewAgg |
+                      kHasDelEntitySeg)) != 0;
   }
   bool NeedRecord() const { return (flags_ & ~kMemSegMask) != 0; }
   bool MemSegmentsOnly() const { return (flags_ & kMemSegMask) && !(flags_ & ~kMemSegMask); }
@@ -429,11 +432,22 @@ class TsVersionUpdate {
     new_memseg_ = std::move(mem);
   }
 
-  void SetEntitySegment(const PartitionIdentifier &partition_id, EntitySegmentMetaInfo info, bool delete_all_prev_files) {
+  void SetEntitySegment(const PartitionIdentifier &partition_id, EntitySegmentMetaInfo info) {
     updated_partitions_.insert(partition_id);
     entity_segment_[partition_id] = info;
+    delete_entity_segments_.erase(partition_id);
     flags_ |= kHasEntitySeg;
-    delete_all_prev_entity_segment_ = delete_all_prev_files;
+  }
+
+  void ReplaceEntitySegmentForVacuum(const PartitionIdentifier &partition_id, EntitySegmentMetaInfo info) {
+    SetEntitySegment(partition_id, std::move(info));
+    DeleteEntitySegment(partition_id);
+  }
+
+  void DeleteEntitySegment(const PartitionIdentifier &partition_id) {
+    updated_partitions_.insert(partition_id);
+    delete_entity_segments_.insert(partition_id);
+    flags_ |= kHasDelEntitySeg;
   }
 
   void GetEntitySegmentInfo(const PartitionIdentifier &partition_id, EntitySegmentMetaInfo *info) {

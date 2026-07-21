@@ -34,7 +34,6 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvclient/kvcoord"
-	//mgr "gitee.com/kwbasedb/kwbase/pkg/replicationmgr"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
@@ -44,6 +43,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlconst"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqltelemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/stats"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
@@ -80,9 +80,9 @@ type setClusterSettingNode struct {
 
 // SetClusterSetting sets session variables.
 // Privileges: super user.
-func (p *planner) SetClusterSetting(
+func (p *GenericPlanner) SetClusterSetting(
 	ctx context.Context, n *tree.SetClusterSetting,
-) (planNode, error) {
+) (PlanNode, error) {
 	if err := p.RequireAdminRole(ctx, "SET CLUSTER SETTING"); err != nil {
 		return nil, err
 	}
@@ -359,13 +359,14 @@ var CheckClusterSetting = map[string]CheckOperation{
 	"ts.block_filter.sampling_ratio":     checkTsBlockFilterSamplingRatio,
 	"ts.agg_recalc.cycle":                checkTsCountRecalcCycle,
 	"ts.force_re_compress.enabled":       checkBool,
+	"ts.vacuum.concurrent.enabled":       checkBool,
 	"ts.partition_agg.enabled":           checkBool,
 }
 
 // TsRaftlogCombineWalClusterSettingName is the name of the ts raftlog combine wal cluster setting.
 const TsRaftlogCombineWalClusterSettingName = "ts.raftlog_combine_wal.enabled"
 
-func (n *setClusterSettingNode) startExec(params runParams) error {
+func (n *setClusterSettingNode) StartExec(params RunParams) error {
 	//if n.name == mgr.ClusterSettingReplicaRole &&
 	//	!strings.Contains(params.SessionData().ApplicationName, mgr.SettingReplicaRoleOpName) {
 	//	return errors.Errorf("CLUSTER SETTING :\"%s\" cannot be set manually", mgr.ClusterSettingReplicaRole)
@@ -375,7 +376,7 @@ func (n *setClusterSettingNode) startExec(params runParams) error {
 	}
 	execCfg := params.extendedEvalCtx.ExecCfg
 	var expectedEncodedValue string
-	if err := execCfg.DB.Txn(params.ctx, func(ctx context.Context, txn *kv.Txn) error {
+	if err := execCfg.DB.Txn(params.Ctx, func(ctx context.Context, txn *kv.Txn) error {
 		var reportedValue string
 		if n.value == nil {
 			reportedValue = "DEFAULT"
@@ -412,7 +413,7 @@ func (n *setClusterSettingNode) startExec(params runParams) error {
 				}
 				prev = datums[0]
 			}
-			encoded, err := toSettingString(ctx, n.st, n.name, n.setting, value, prev)
+			encoded, err := toSettingString(ctx, params.p, n.st, n.name, n.setting, value, prev)
 			expectedEncodedValue = encoded
 			if err != nil {
 				return err
@@ -444,7 +445,10 @@ func (n *setClusterSettingNode) startExec(params runParams) error {
 					if params.ExecCfg().StartMode != StartMultiReplica {
 						return errors.New("set ts.raftlog_combine_wal.enabled to true is not supported in MPP mode")
 					}
-					if sqlbase.CheckWhetherHasTsTable(params.ctx, txn) {
+					if sqlbase.CheckWhetherHasTsTable(params.Ctx, txn) {
+						return errors.Newf("cluster has time-series table, cannot set %s to true", TsRaftlogCombineWalClusterSettingName)
+					}
+					if sqlbase.CheckWhetherHasTsTable(params.Ctx, txn) {
 						return errors.New("cluster has time-series table, cannot set ts.raftlog_combine_wal.enabled to true")
 					}
 					deRule := tse.DeDuplicateRule.Get(&n.st.SV)
@@ -492,14 +496,14 @@ func (n *setClusterSettingNode) startExec(params runParams) error {
 			case "false":
 				telemetry.Inc(sqltelemetry.TurnAutoStatsOffUseCounter)
 			}
-		case ConnAuditingClusterSettingName:
+		case sqlconst.ConnAuditingClusterSettingName:
 			switch expectedEncodedValue {
 			case "true":
 				telemetry.Inc(sqltelemetry.TurnConnAuditingOnUseCounter)
 			case "false":
 				telemetry.Inc(sqltelemetry.TurnConnAuditingOffUseCounter)
 			}
-		case AuthAuditingClusterSettingName:
+		case sqlconst.AuthAuditingClusterSettingName:
 			switch expectedEncodedValue {
 			case "true":
 				telemetry.Inc(sqltelemetry.TurnAuthAuditingOnUseCounter)
@@ -548,13 +552,14 @@ func (n *setClusterSettingNode) startExec(params runParams) error {
 		}
 
 		params.p.SetAuditTarget(0, n.name, nil)
-		return MakeEventLogger(params.extendedEvalCtx.ExecCfg).InsertEventRecord(
+		return InsertEventRecordFunc(
 			ctx,
+			params.extendedEvalCtx.ExecCfg,
 			txn,
-			EventLogSetClusterSetting,
-			0, /* no target */
+			EventLogSetClusterSettingType,
+			0, /*no target*/
 			int32(params.extendedEvalCtx.NodeID),
-			EventLogSetClusterSettingDetail{n.name, reportedValue, params.SessionData().User},
+			map[string]interface{}{"SettingName": n.name, "Value": reportedValue, "User": params.SessionData().User},
 		)
 	}); err != nil {
 		return err
@@ -576,7 +581,7 @@ func (n *setClusterSettingNode) startExec(params runParams) error {
 	})
 	if err != nil {
 		log.Warningf(
-			params.ctx, "SET CLUSTER SETTING %q timed out waiting for value %q, observed %q",
+			params.Ctx, "SET CLUSTER SETTING %q timed out waiting for value %q, observed %q",
 			n.name, expectedEncodedValue, observed,
 		)
 	}
@@ -626,12 +631,12 @@ func (n *setClusterSettingNode) startExec(params runParams) error {
 
 		boWhiteLists := []sqlbase.WhiteList{whiteList}
 
-		err = WriteWhiteListDesc(params.ctx, params.p.txn, execCfg.InternalExecutor, params.p.EvalContext().NodeID, boWhiteLists, true)
+		err = WriteWhiteListDesc(params.Ctx, params.p.txn, execCfg.InternalExecutor, params.p.EvalContext().NodeID, boWhiteLists, true)
 		if err != nil {
 			return err
 		}
 
-		err = UpdateWhiteListMap(params.ctx, params.p.txn, execCfg.InternalExecutor, params.ExecCfg().TSWhiteListMap)
+		err = UpdateWhiteListMap(params.Ctx, params.p.txn, execCfg.InternalExecutor, params.ExecCfg().TSWhiteListMap)
 		if err != nil {
 			return err
 		}
@@ -653,11 +658,11 @@ func (n *setClusterSettingNode) startExec(params runParams) error {
 		buffer.WriteString(values[2])
 		buffer.WriteString(` ]`)
 		_, err := execCfg.InternalExecutor.Exec(
-			params.ctx, `delete bo_black_list`, params.p.txn, buffer.String(), name)
+			params.Ctx, `delete bo_black_list`, params.p.txn, buffer.String(), name)
 		if err != nil {
 			return err
 		}
-		err = UpdateWhiteListMap(params.ctx, params.p.txn, execCfg.InternalExecutor, params.ExecCfg().TSWhiteListMap)
+		err = UpdateWhiteListMap(params.Ctx, params.p.txn, execCfg.InternalExecutor, params.ExecCfg().TSWhiteListMap)
 		if err != nil {
 			return err
 		}
@@ -666,7 +671,7 @@ func (n *setClusterSettingNode) startExec(params runParams) error {
 	return err
 }
 
-func (n *setClusterSettingNode) Next(_ runParams) (bool, error) { return false, nil }
+func (n *setClusterSettingNode) Next(_ RunParams) (bool, error) { return false, nil }
 func (n *setClusterSettingNode) Values() tree.Datums            { return nil }
 func (n *setClusterSettingNode) Close(_ context.Context)        {}
 
@@ -679,7 +684,12 @@ func (n *setClusterSettingNode) Close(_ context.Context)        {}
 //
 //	current value of the setting, read from the system.settings table.
 func toSettingString(
-	ctx context.Context, st *cluster.Settings, name string, s settings.Setting, d, prev tree.Datum,
+	ctx context.Context,
+	p *GenericPlanner,
+	st *cluster.Settings,
+	name string,
+	s settings.Setting,
+	d, prev tree.Datum,
 ) (string, error) {
 	switch setting := s.(type) {
 	case *settings.StringSetting:

@@ -213,9 +213,10 @@ func (b *Builder) buildTSInsert(tsInsert *memo.TSInsertExpr) (execPlan, error) {
 		tab.GetTableType(),
 		tab.GetTableType() == tree.InstanceTable,
 		tsVersion,
-		hashNum,
 		b.CDCCoordinator,
+		tab.GetCDC().([]sqlbase.CDCDescriptor),
 		b.TsIDGen,
+		hashNum,
 	)
 
 	if err != nil {
@@ -223,7 +224,7 @@ func (b *Builder) buildTSInsert(tsInsert *memo.TSInsertExpr) (execPlan, error) {
 	}
 
 	var node exec.Node
-	if b.CDCCoordinator != nil && b.CDCCoordinator.IsCDCEnabled(uint64(tab.ID())) {
+	if payloadNodeMap[int(b.evalCtx.NodeID)].CDCData != nil {
 		node, err = b.factory.ConstructTSInsertWithCDC(payloadNodeMap)
 	} else {
 		node, err = b.factory.ConstructTSInsert(payloadNodeMap)
@@ -259,9 +260,10 @@ func BuildInputForTSInsert(
 	tableType tree.TableType,
 	isInsertInstTable bool,
 	tsVersion uint32,
-	hashNum uint64,
 	cdcCoordinator execinfra.CDCCoordinator,
+	cdc []sqlbase.CDCDescriptor,
 	tsIDGen *sqlbase.TSIDGenerator,
+	hashNum uint64,
 ) (map[int]*sqlbase.PayloadForDistTSInsert, error) {
 	colIndexs := make(map[int]int, len(colIndexsInMemo))
 	for k, v := range colIndexsInMemo {
@@ -316,9 +318,9 @@ func BuildInputForTSInsert(
 	pArgs.V2DataHeader = v2DataInfo.DataHeader
 	pArgs.V2DataCols = v2DataInfo.DataCols
 
-	isStream := false
+	isCDCEnable := false
 	if cdcCoordinator != nil {
-		isStream = cdcCoordinator.IsCDCEnabled(uint64(tabID))
+		isCDCEnable = cdcCoordinator.WaitCDCEnabled(uint64(tabID), cdc)
 	}
 
 	var inputDatums []tree.Datums
@@ -333,7 +335,7 @@ func BuildInputForTSInsert(
 	}
 
 	payloadNodeMap, err := BuildRowBytesForTsInsert(evalCtx, InputRows, inputDatums, dataCols, colIndexs, pArgs, dbID, tabID, hashNum)
-	if isStream && err == nil {
+	if isCDCEnable && err == nil {
 		cdcData, maxTime := cdcCoordinator.CaptureData(evalCtx, uint64(tabID), columns, inputDatums, colIndexs)
 		payloadNodeMap[int(evalCtx.NodeID)].CDCData = &sqlbase.CDCData{
 			TableID:      uint64(tabID),
@@ -1519,13 +1521,19 @@ func BuildPayloadForTsInsert(
 	tableID uint32,
 	hashNum uint64,
 ) ([]byte, []byte, error) {
+	var osn uint64
+	if evalCtx.StartDistributeMode {
+		osn = 0
+	} else {
+		osn = pArgs.TsIDGen.GetNextID()
+	}
 	rowNum := len(primaryTagRowIdx)
 	tsPayload := NewTsPayload()
 	tsPayload.SetArgs(pArgs)
 	tsPayload.SetHeader(PayloadHeader{
 		TxnID:          txn.ID(),
 		PayloadVersion: pArgs.PayloadVersion,
-		UniqueTsID:     pArgs.TsIDGen.GetNextID(),
+		UniqueTsID:     osn,
 		DBID:           dbID,
 		TBID:           uint64(tableID),
 		TSVersion:      pArgs.TSVersion,
@@ -2791,7 +2799,7 @@ func (b *Builder) tryBuildFastPathInsert(ins *memo.InsertExpr) (_ execPlan, ok b
 		return execPlan{}, false, nil
 	}
 
-	rows, err := b.buildValuesRows(values)
+	rows, err := buildValuesRows(b, values)
 	if err != nil {
 		return execPlan{}, false, err
 	}
@@ -3064,6 +3072,12 @@ func (b *Builder) buildTSDelete(tsDelete *memo.TSDeleteExpr) (execPlan, error) {
 		})
 	}
 	hashNum := tsDelete.HashNum
+	var cdcData []byte
+	if b.CDCCoordinator != nil &&
+		b.CDCCoordinator.WaitCDCEnabled(uint64(tab.ID()), tab.GetCDC().([]sqlbase.CDCDescriptor)) {
+		cdcData = []byte(b.catalog.GetStatement(b.evalCtx.Ctx()))
+	}
+
 	if tsDelete.InputRows == nil && tab.IsTSTable() {
 		node, err := b.factory.ConstructTSDelete(
 			[]roachpb.NodeID{b.evalCtx.NodeID},
@@ -3074,7 +3088,9 @@ func (b *Builder) buildTSDelete(tsDelete *memo.TSDeleteExpr) (execPlan, error) {
 			[]uint32{}, // primary tag IDs
 			[][]byte{}, // primary tag value
 			[][]byte{}, // incomplete tag values
-			false)
+			false,
+			cdcData,
+		)
 		if err != nil {
 			return execPlan{}, err
 		}
@@ -3141,7 +3157,9 @@ func (b *Builder) buildTSDelete(tsDelete *memo.TSDeleteExpr) (execPlan, error) {
 		tagIDs,
 		primaryTagVals,
 		partOfPTagValues,
-		isOutOfRange)
+		isOutOfRange,
+		cdcData,
+	)
 	if err != nil {
 		return execPlan{}, err
 	}
@@ -3162,6 +3180,7 @@ func (b *Builder) buildTSUpdate(tsUpdate *memo.TSUpdateExpr) (execPlan, error) {
 			tsUpdate.PTagValueNotExist,
 			nil, nil,
 			0,
+			[]byte{},
 		)
 		if err != nil {
 			return execPlan{}, err
@@ -3273,6 +3292,13 @@ func (b *Builder) buildTSUpdate(tsUpdate *memo.TSUpdateExpr) (execPlan, error) {
 		startKey = sqlbase.MakeTsHashPointKey(sqlbase.ID(tab.ID()), uint64(hashPoints[0]), uint64(hashNum))
 		endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tab.ID()), uint64(hashPoints[0])+1, uint64(hashNum))
 	}
+
+	var cdcData []byte
+	if b.CDCCoordinator != nil &&
+		b.CDCCoordinator.WaitCDCEnabled(uint64(tab.ID()), tab.GetCDC().([]sqlbase.CDCDescriptor)) {
+		cdcData = []byte(b.catalog.GetStatement(b.evalCtx.Ctx()))
+	}
+
 	node, err := b.factory.ConstructTSTagUpdate(
 		[]roachpb.NodeID{nodeID},
 		uint64(tab.ID()),
@@ -3282,6 +3308,7 @@ func (b *Builder) buildTSUpdate(tsUpdate *memo.TSUpdateExpr) (execPlan, error) {
 		tsUpdate.PTagValueNotExist,
 		startKey, endKey,
 		osnID,
+		cdcData,
 	)
 	if err != nil {
 		return execPlan{}, err

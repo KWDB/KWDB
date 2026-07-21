@@ -51,12 +51,18 @@ const (
 	TSBOStringMaxLen      = 1023
 )
 
+// minRelErr is the minimum allowed REL error bound.
+// Values smaller than this risk being truncated to zero by the storage engine.
+const minRelErr = 1e-9
+
 // TableTypeMap identify what type the table is.
 type TableTypeMap map[tree.TableType]int
 
 // CompressInfo is ts column compress information.
 type CompressInfo struct {
 	EncodeAlgo    *string
+	RelErr        *float64
+	AbsErr        *float64
 	CompressAlgo  *string
 	CompressLevel *string
 }
@@ -198,7 +204,7 @@ func ValidateColumnDefType(t *types.T, tableType tree.TableType) error {
 //
 // If the column type *may* be SERIAL (or SERIAL-like), it is the
 // caller's responsibility to call sql.processSerialInColumnDef() and
-// sql.doCreateSequence() before MakeColumnDefDescs() to remove the
+// sql.DoCreateSequence() before MakeColumnDefDescs() to remove the
 // SERIAL type and replace it with a suitable integer type and default
 // expression.
 //
@@ -208,7 +214,7 @@ func ValidateColumnDefType(t *types.T, tableType tree.TableType) error {
 // The DEFAULT expression is returned in TypedExpr form for analysis (e.g. recording
 // sequence dependencies).
 func MakeColumnDefDescs(
-	d *tree.ColumnTableDef, semaCtx *tree.SemaContext, tableType tree.TableType,
+	d *tree.ColumnTableDef, semaCtx *tree.SemaContext, isView bool,
 ) (*ColumnDescriptor, *IndexDescriptor, tree.TypedExpr, error) {
 	if d.IsSerial {
 		// To the reader of this code: if control arrives here, this means
@@ -233,17 +239,18 @@ func MakeColumnDefDescs(
 		Name:     string(d.Name),
 		Nullable: d.Nullable.Nullability != tree.NotNull && !d.PrimaryKey.IsPrimaryKey,
 	}
-
-	// Validate and assign column type.
-	err := ValidateColumnDefType(d.Type, tree.RelationalTable)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	// bytes(n)/varbytes(n) are not allowed in relational mode.
-	if d.Type.TypeEngine() == types.TIMESERIES.Mask() {
-		return nil, nil, nil, pgerror.Newf(
-			pgcode.WrongObjectType, "column %s: unsupported column type %s with length in relational table",
-			d.Name, d.Type.Name())
+	if !isView {
+		// Validate and assign column type.
+		err := ValidateColumnDefType(d.Type, tree.RelationalTable)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		// bytes(n)/varbytes(n) are not allowed in relational mode.
+		if d.Type.TypeEngine() == types.TIMESERIES.Mask() {
+			return nil, nil, nil, pgerror.Newf(
+				pgcode.WrongObjectType, "column %s: unsupported column type %s with length in relational table",
+				d.Name, d.Type.Name())
+		}
 	}
 	col.Type = *d.Type
 
@@ -562,23 +569,49 @@ func (col *ColumnDescriptor) checkColumnCompress(compressInfo CompressInfo) erro
 		enType := strings.ToLower(*encodeAlgo)
 		if enType != "disabled" {
 			switch col.Type.Oid() {
-			case oid.T_int2, oid.T_int4, oid.T_int8, oid.T_timestamp, oid.T_timestamptz:
+			case oid.T_int2, oid.T_int4, oid.T_int8:
 				if enType != "simple8b" {
 					return pgerror.Newf(pgcode.FeatureNotSupported, "type %s does not support encode type %s", col.Type.Name(), enType)
 				}
+			case oid.T_timestamp, oid.T_timestamptz:
+				switch enType {
+				case "simple8b", "delta-d":
+				default:
+					return pgerror.Newf(pgcode.FeatureNotSupported, "type %s does not support encode type %s", col.Type.Name(), enType)
+				}
 			case oid.T_float4, oid.T_float8:
-				if enType != "chimp" {
+				switch enType {
+				case "chimp", "alp", "elf", "bss", "fptrunc":
+				default:
 					return pgerror.Newf(pgcode.FeatureNotSupported, "type %s does not support encode type %s", col.Type.Name(), enType)
 				}
 			case oid.T_bool:
-				if enType != "bit-packing" {
+				switch enType {
+				case "bit-packing", "rc":
+				default:
 					return pgerror.Newf(pgcode.FeatureNotSupported, "type %s does not support encode type %s", col.Type.Name(), enType)
 				}
 			default:
 				return pgerror.Newf(pgcode.FeatureNotSupported, "type %s does not support encode type %s", col.Type.Name(), enType)
 			}
 		}
+		if enType != "fptrunc" {
+			if compressInfo.RelErr != nil {
+				return pgerror.Newf(pgcode.FeatureNotSupported, "encode type %s does not support REL", enType)
+			}
+			if compressInfo.AbsErr != nil {
+				return pgerror.Newf(pgcode.FeatureNotSupported, "encode type %s does not support ABS", enType)
+			}
+		}
+		if compressInfo.RelErr != nil && (*compressInfo.RelErr <= minRelErr || *compressInfo.RelErr >= 1) {
+			return pgerror.Newf(pgcode.InvalidParameterValue, "REL value must be in (%g, 1), got %v", minRelErr, *compressInfo.RelErr)
+		}
+		if compressInfo.AbsErr != nil && *compressInfo.AbsErr <= 0 {
+			return pgerror.Newf(pgcode.InvalidParameterValue, "ABS value must be > 0, got %v", *compressInfo.AbsErr)
+		}
 		col.TsCol.EncodeAlgo = &enType
+		col.TsCol.RelErr = compressInfo.RelErr
+		col.TsCol.AbsErr = compressInfo.AbsErr
 	}
 	if compressAlgo != nil {
 		cpType := strings.ToLower(*compressAlgo)

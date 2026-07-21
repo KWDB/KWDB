@@ -150,7 +150,7 @@ func TestShowTraceReplicaNodeMethods(t *testing.T) {
 	// Create a mock showTraceReplicaNode
 	node := &showTraceReplicaNode{}
 
-	// Test Values method (should return nil before startExec)
+	// Test Values method (should return nil before StartExec)
 	values := node.Values()
 	require.Nil(t, values)
 }

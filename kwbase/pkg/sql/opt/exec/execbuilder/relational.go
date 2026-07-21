@@ -493,14 +493,26 @@ func (b *Builder) buildRelational(e memo.RelExpr) (execPlan, error) {
 }
 
 func (b *Builder) buildValues(values *memo.ValuesExpr) (execPlan, error) {
-	rows, err := b.buildValuesRows(values)
+	rows, err := b.constructTypedRowsFromValues(values)
 	if err != nil {
 		return execPlan{}, err
 	}
 	return b.constructValues(rows, values.Cols)
 }
 
-func (b *Builder) buildValuesRows(values *memo.ValuesExpr) ([][]tree.TypedExpr, error) {
+// constructTypedRowsFromValues builds all typed row expressions from a ValuesExpr.
+func (b *Builder) constructTypedRowsFromValues(
+	values *memo.ValuesExpr,
+) ([][]tree.TypedExpr, error) {
+	ops, err := buildValuesRows(b, values)
+	if err != nil {
+		return nil, err
+	}
+	return ops, nil
+}
+
+// buildValuesRows converts ValuesExpr tuple rows into typed expression rows.
+func buildValuesRows(b *Builder, values *memo.ValuesExpr) ([][]tree.TypedExpr, error) {
 	numCols := len(values.Cols)
 
 	rows := make([][]tree.TypedExpr, len(values.Rows))
@@ -588,7 +600,7 @@ func (b *Builder) getOutputColumns(needCols opt.ColSet, tableID opt.TableID) opt
 	// get table descriptor.
 	table := b.mem.Metadata().Table(tableID)
 	n := 0
-	for i := 0; i < table.DeletableColumnCount(); i++ {
+	for i := 0; i < table.AllColumnCount(); i++ {
 		logicalID := tableID.ColumnID(i)
 		if needCols.Contains(logicalID) {
 			output.Set(int(logicalID), n)
@@ -760,7 +772,7 @@ func (b *Builder) buildTimesScan(scan *memo.TSScanExpr) (execPlan, error) {
 	}
 
 	// build scanNode.
-	root, err := b.factory.ConstructTSScan(table, &scan.TSScanPrivate, tagFilter, primaryFilter, tagIndexFilter, blockFilter, rowCount, scan.Flags.Fill)
+	root, err := b.factory.ConstructTSScan(md, table, &scan.TSScanPrivate, tagFilter, primaryFilter, tagIndexFilter, blockFilter, rowCount, scan.Flags.Fill)
 	if err != nil {
 		return execPlan{}, err
 	}
@@ -1086,7 +1098,7 @@ func (b *Builder) buildTsInsertSelect(insert *memo.TSInsertSelectExpr) (execPlan
 		insTableID = uint64(insert.CTable)
 	}
 
-	// build planNode of subExpr
+	// build PlanNode of subExpr
 	input, err := b.buildRelational(insert.Input)
 	if err != nil {
 		return execPlan{}, err

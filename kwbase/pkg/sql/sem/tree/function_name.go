@@ -27,6 +27,8 @@ package tree
 import (
 	"fmt"
 
+	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/cockroachdb/errors"
@@ -73,6 +75,49 @@ func (fn *ResolvableFunctionReference) Resolve(
 		return nil, errors.AssertionFailedf("unknown function name type: %+v (%T)",
 			fn.FunctionReference, fn.FunctionReference,
 		)
+	}
+}
+
+// ResolveWithSemaContext resolves the function reference using the normal
+// in-memory lookup first. If the function is not found and semaCtx provides
+// a FunctionResolver, it tries to load the function from the user_defined_routine
+// and registers it into ConcurrentFunDefs.
+func (fn *ResolvableFunctionReference) ResolveWithSemaContext(
+	searchPath sessiondata.SearchPath, semaCtx *SemaContext,
+) (*FunctionDefinition, error) {
+	switch t := fn.FunctionReference.(type) {
+	case *FunctionDefinition:
+		return t, nil
+
+	case *UnresolvedName:
+		fd, err := t.ResolveFunction(searchPath)
+		if err == nil {
+			fn.FunctionReference = fd
+			return fd, nil
+		}
+
+		if pgerror.GetPGCode(err) != pgcode.UndefinedFunction {
+			return nil, err
+		}
+
+		if semaCtx == nil || semaCtx.SQLUDFFunctionHandler == nil {
+			return nil, err
+		}
+
+		fd, found, loadErr := semaCtx.SQLUDFFunctionHandler.ResolveFunctionFromCatalog(t, searchPath)
+		if loadErr != nil {
+			return nil, loadErr
+		}
+		if !found {
+			return nil, err
+		}
+
+		fn.FunctionReference = fd
+		return fd, nil
+
+	default:
+		return nil, errors.AssertionFailedf("unknown function name type: %+v (%T)",
+			fn.FunctionReference, fn.FunctionReference)
 	}
 }
 

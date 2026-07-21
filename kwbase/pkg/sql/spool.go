@@ -32,23 +32,23 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 )
 
-// spoolNode ensures that a child planNode is executed to completion
+// spoolNode ensures that a child PlanNode is executed to completion
 // during the start phase. The results, if any, are collected. The
 // child node is guaranteed to run to completion.
 // If hardLimit is set, only that number of rows is collected, but
 // the child node is still run to completion.
 type spoolNode struct {
-	source    planNode
+	source    PlanNode
 	rows      *rowcontainer.RowContainer
 	hardLimit int64
 	curRowIdx int
 }
 
-func (s *spoolNode) startExec(params runParams) error {
+func (s *spoolNode) StartExec(params RunParams) error {
 	// If FastPathResults() on the source indicates that the results are
 	// already available (2nd value true), then the computation is
 	// already done at start time and spooling is unnecessary.
-	if f, ok := s.source.(planNodeFastPath); ok {
+	if f, ok := s.source.(PlanNodeFastPath); ok {
 		_, done := f.FastPathResults()
 		if done {
 			return nil
@@ -73,7 +73,7 @@ func (s *spoolNode) startExec(params runParams) error {
 			break
 		}
 		if s.hardLimit == 0 || int64(s.rows.Len()) < s.hardLimit {
-			if _, err := s.rows.AddRow(params.ctx, s.source.Values()); err != nil {
+			if _, err := s.rows.AddRow(params.Ctx, s.source.Values()); err != nil {
 				return err
 			}
 		}
@@ -82,16 +82,16 @@ func (s *spoolNode) startExec(params runParams) error {
 	return nil
 }
 
-// FastPathResults implements the planNodeFastPath interface.
+// FastPathResults implements the PlanNodeFastPath interface.
 func (s *spoolNode) FastPathResults() (int, bool) {
 	// If the source implements the fast path interface, let it report
 	// its status through. This lets e.g. the fast path of a DELETE or
 	// an UPSERT report that they have finished its computing already,
 	// so the calls to Next() on the spool itself can also be elided.
 	// If FastPathResults() on the source says the fast path is unavailable,
-	// then startExec() on the spool will also notice that and
+	// then StartExec() on the spool will also notice that and
 	// spooling will occur as expected.
-	if f, ok := s.source.(planNodeFastPath); ok {
+	if f, ok := s.source.(PlanNodeFastPath); ok {
 		return f.FastPathResults()
 	}
 	return 0, false
@@ -100,18 +100,18 @@ func (s *spoolNode) FastPathResults() (int, bool) {
 // spooled implements the planNodeSpooled interface.
 func (s *spoolNode) spooled() {}
 
-// Next is part of the planNode interface.
-func (s *spoolNode) Next(params runParams) (bool, error) {
+// Next is part of the PlanNode interface.
+func (s *spoolNode) Next(params RunParams) (bool, error) {
 	s.curRowIdx++
 	return s.curRowIdx < s.rows.Len(), nil
 }
 
-// Values is part of the planNode interface.
+// Values is part of the PlanNode interface.
 func (s *spoolNode) Values() tree.Datums {
 	return s.rows.At(s.curRowIdx)
 }
 
-// Close is part of the planNode interface.
+// Close is part of the PlanNode interface.
 func (s *spoolNode) Close(ctx context.Context) {
 	s.source.Close(ctx)
 	if s.rows != nil {

@@ -583,6 +583,8 @@ TSStatus TsGetValidColumns(TSEngine* engine, TSTableID table_id, uint32_t table_
                            TSSlice* primary_tags, size_t primary_tags_num,
                            ValidColumns* valid_columns);
 
+TSStatus TSSetPublishedMaxOSN(TSEngine* engine, TSSlice tbl_osn_vec);
+
 TSStatus TSRaftOpen(RaftStore** engine, TSSlice dir);
 
 TSStatus TSWriteRaftLog(RaftStore *engine, int cnt, TSRaftlog *raftlog, bool sync);

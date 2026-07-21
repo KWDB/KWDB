@@ -1,0 +1,538 @@
+// Copyright (c) 2022-present, Shanghai Yunxi Technology Co, Ltd.
+//
+// This software (KWDB) is licensed under Mulan PSL v2.
+// You can use this software according to the terms and conditions of the Mulan PSL v2.
+// You may obtain a copy of Mulan PSL v2 at:
+//          http://license.coscl.org.cn/MulanPSL2
+// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+// EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+// MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+// See the Mulan PSL v2 for more details.
+
+package stream
+
+import (
+	"context"
+	"time"
+
+	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/rowcontainer"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlutil"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
+	"gitee.com/kwbasedb/kwbase/pkg/util/log"
+	"gitee.com/kwbasedb/kwbase/pkg/util/mon"
+	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
+	"github.com/lib/pq/oid"
+)
+
+// streamDiskBackedRowBuffer stores the data in disk.
+type streamDiskBackedRowBuffer struct {
+	rows        *rowcontainer.DiskBackedRowContainer
+	iter        rowcontainer.RowIterator
+	memMonitor  *mon.BytesMonitor
+	diskMonitor *mon.BytesMonitor
+}
+
+// streamMemRowBuffer stores data in memory.
+type streamMemRowBuffer struct {
+	rows       *rowcontainer.MemRowContainer
+	iter       rowcontainer.RowIterator
+	memMonitor *mon.BytesMonitor
+}
+
+type streamReaderRowBuffer struct {
+	// ctx is context.
+	ctx context.Context
+	// rowBufferRWMutex is used to ensure concurrent read and write operations on the cache.
+	rowBufferRWMutex syncutil.RWMutex
+
+	// streamOpts is options of stream.
+	streamOpts *sqlutil.ParsedStreamOptions
+	// recalculator is used to recalculate expired data.
+	recalculator *streamRecalculator
+	// hasAgg indicates that the current stream has aggregations.
+	hasAgg bool
+
+	// unordered received row buffer
+	receivedRowsBuffer *streamDiskBackedRowBuffer
+
+	// ordered in-memory buffer of out-of-order rows
+	outOfOrderRowBuffer *streamMemRowBuffer
+
+	// ordered output row buffer
+	outputRowsBuffer *streamDiskBackedRowBuffer
+	// output row buffer of low-latency mode
+	lowLatencyBuffer chan sqlbase.EncDatumRow
+}
+
+func newStreamReaderRowBuffer(
+	flowCtx *execinfra.FlowCtx,
+	spec *execinfrapb.StreamReaderSpec,
+	ordering sqlbase.ColumnOrdering,
+	streamOpts *sqlutil.ParsedStreamOptions,
+	recalculator *streamRecalculator,
+	hasAgg bool,
+) *streamReaderRowBuffer {
+	buffer := &streamReaderRowBuffer{}
+	buffer.ctx = flowCtx.EvalCtx.Ctx()
+	buffer.streamOpts = streamOpts
+	buffer.recalculator = recalculator
+	buffer.hasAgg = hasAgg
+
+	if buffer.streamOpts.SyncTime == 0 {
+		var bufSize uint64
+		rowSize := computerRowSize(spec.TargetColTypes)
+		if rowSize == 0 || buffer.streamOpts.BufferSize < rowSize {
+			bufSize = 1
+		} else {
+			bufSize = buffer.streamOpts.BufferSize / rowSize
+		}
+
+		buffer.lowLatencyBuffer = make(chan sqlbase.EncDatumRow, bufSize)
+		log.Infof(buffer.ctx, "stream buffer size:%d, row width:%d", bufSize, rowSize)
+	}
+
+	// Limit the memory use by creating a child monitor with a hard limit.
+	// The rows in receivedRowsBuffer and outputRowsBuffer will overflow to disk if this limit is not enough.
+
+	{
+		buffer.receivedRowsBuffer = &streamDiskBackedRowBuffer{}
+
+		buffer.receivedRowsBuffer.memMonitor = execinfra.NewLimitedMonitor(
+			buffer.ctx, flowCtx.EvalCtx.Mon, flowCtx.Cfg,
+			"stream-reader-receive-limited",
+		)
+		buffer.receivedRowsBuffer.diskMonitor = execinfra.NewMonitor(
+			flowCtx.EvalCtx.Ctx(), flowCtx.Cfg.DiskMonitor,
+			"stream-reader-receive-disk",
+		)
+
+		buffer.receivedRowsBuffer.rows = &rowcontainer.DiskBackedRowContainer{}
+		buffer.receivedRowsBuffer.rows.Init(
+			nil,
+			spec.CDCColumns.CDCTypes,
+			flowCtx.EvalCtx,
+			flowCtx.Cfg.TempStorage,
+			buffer.receivedRowsBuffer.memMonitor,
+			buffer.receivedRowsBuffer.diskMonitor,
+			0, /* rowCapacity */
+		)
+	}
+
+	{
+		memRowBuffer := &streamMemRowBuffer{}
+		monitor := mon.MakeMonitorInheritWithLimit(
+			"stream-reader-disorder-buffer-limit", int64(streamOpts.BufferSize) /* limit */, flowCtx.EvalCtx.Mon)
+		monitor.Start(buffer.ctx, flowCtx.EvalCtx.Mon, mon.BoundAccount{})
+		memRowBuffer.memMonitor = &monitor
+
+		memRowBuffer.rows = &rowcontainer.MemRowContainer{}
+		memRowBuffer.rows.InitWithMon(
+			ordering /* ordering */, spec.CDCColumns.CDCTypes, flowCtx.EvalCtx, memRowBuffer.memMonitor, 0, /* rowCapacity */
+		)
+
+		memRowBuffer.iter = memRowBuffer.rows.NewIterator(buffer.ctx)
+		memRowBuffer.iter.Rewind()
+		buffer.outOfOrderRowBuffer = memRowBuffer
+	}
+
+	{
+		buffer.outputRowsBuffer = &streamDiskBackedRowBuffer{}
+
+		buffer.outputRowsBuffer.memMonitor = execinfra.NewLimitedMonitor(
+			buffer.ctx, flowCtx.EvalCtx.Mon, flowCtx.Cfg,
+			"stream-reader-output-limited",
+		)
+		buffer.outputRowsBuffer.diskMonitor = execinfra.NewMonitor(
+			flowCtx.EvalCtx.Ctx(), flowCtx.Cfg.DiskMonitor,
+			"stream-reader-output-disk",
+		)
+
+		outRows := rowcontainer.DiskBackedRowContainer{}
+		outRows.Init(
+			ordering,
+			spec.CDCColumns.CDCTypes,
+			flowCtx.EvalCtx,
+			flowCtx.Cfg.TempStorage,
+			buffer.outputRowsBuffer.memMonitor,
+			buffer.outputRowsBuffer.diskMonitor,
+			0, /* rowCapacity */
+		)
+		buffer.outputRowsBuffer.rows = &outRows
+
+		buffer.outputRowsBuffer.iter = buffer.outputRowsBuffer.rows.NewFinalIterator(buffer.ctx)
+		buffer.outputRowsBuffer.iter.Rewind()
+	}
+
+	return buffer
+}
+
+// AddRowWithoutLock needs the caller requests/releases the lock of write via Lock()/Unlock() method
+func (s *streamReaderRowBuffer) AddRowWithoutLock(
+	ctx context.Context, row sqlbase.EncDatumRow,
+) error {
+	err := s.receivedRowsBuffer.rows.AddRow(ctx, row)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// AddRow adds the row to the received buffer.
+func (s *streamReaderRowBuffer) AddRow(ctx context.Context, row sqlbase.EncDatumRow) error {
+	s.rowBufferRWMutex.Lock()
+	defer s.rowBufferRWMutex.Unlock()
+	err := s.receivedRowsBuffer.rows.AddRow(ctx, row)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// AddRowOutput directly adds the row to the output buffer, skipping the sorting process.
+func (s *streamReaderRowBuffer) AddRowOutput(ctx context.Context, row sqlbase.EncDatumRow) error {
+	s.rowBufferRWMutex.Lock()
+	defer s.rowBufferRWMutex.Unlock()
+	err := s.outputRowsBuffer.rows.AddRow(ctx, row)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// AddRowLowLatency directly adds the row to the output buffer, skipping the sorting process.
+func (s *streamReaderRowBuffer) AddRowLowLatency(row sqlbase.EncDatumRow) {
+	s.lowLatencyBuffer <- row
+}
+
+// GetBufferLowLatency directly gets the output buffer, skipping the sorting process.
+func (s *streamReaderRowBuffer) GetBufferLowLatency() chan sqlbase.EncDatumRow {
+	return s.lowLatencyBuffer
+}
+
+// EncFirstRow returns the first row as an EncDatumRow.
+func (s *streamReaderRowBuffer) EncFirstRow() (sqlbase.EncDatumRow, error) {
+	// The Read Lock is enough here since, on the emitting phase, the only caller is streamReaderProcessor.Next().
+	s.rowBufferRWMutex.RLock()
+	defer s.rowBufferRWMutex.RUnlock()
+	if s.outputRowsBuffer.iter == nil {
+		return nil, nil
+	}
+
+	valid, err := s.outputRowsBuffer.iter.Valid()
+	if err != nil {
+		return nil, err
+	}
+
+	if valid {
+		row, err := s.outputRowsBuffer.iter.Row()
+		if err != nil {
+			return nil, err
+		}
+		return row, nil
+	}
+
+	return nil, nil
+}
+
+// Next points the iterator to the next piece of data.
+func (s *streamReaderRowBuffer) Next() {
+	// The Read Lock is enough here since, on the emitting phase, the only caller is streamReaderProcessor.Next().
+	s.rowBufferRWMutex.RLock()
+	defer s.rowBufferRWMutex.RUnlock()
+	s.outputRowsBuffer.iter.Next()
+}
+
+// HasRow checks if there is data received.
+func (s *streamReaderRowBuffer) HasRow() bool {
+	s.rowBufferRWMutex.RLock()
+	defer s.rowBufferRWMutex.RUnlock()
+	if s.receivedRowsBuffer.iter != nil {
+		if ok, _ := s.receivedRowsBuffer.iter.Valid(); ok {
+			return true
+		}
+	}
+
+	if s.outputRowsBuffer.iter != nil {
+		if ok, _ := s.outputRowsBuffer.iter.Valid(); ok {
+			return true
+		}
+	}
+
+	return s.outOfOrderRowBuffer.rows.Len() > 0
+}
+
+// HasOutputRow checks if there is data ready for output.
+func (s *streamReaderRowBuffer) HasOutputRow() (bool, error) {
+	s.rowBufferRWMutex.RLock()
+	defer s.rowBufferRWMutex.RUnlock()
+	if s.outputRowsBuffer.iter == nil {
+		return false, nil
+	}
+	return s.outputRowsBuffer.iter.Valid()
+}
+
+// HasOrderRow checks if there is sorted data.
+func (s *streamReaderRowBuffer) HasOrderRow() bool {
+	s.rowBufferRWMutex.Lock()
+	defer s.rowBufferRWMutex.Unlock()
+
+	return s.outOfOrderRowBuffer.rows.Len() > 0
+}
+
+func (s *streamReaderRowBuffer) emitReceivedRowsToOutputBuffer(
+	expiredTime time.Time, emitTimestamp time.Time,
+) error {
+	s.rowBufferRWMutex.Lock()
+	defer s.rowBufferRWMutex.Unlock()
+
+	if s.outputRowsBuffer.iter != nil {
+		validOut, err := s.outputRowsBuffer.iter.Valid()
+		if err != nil {
+			return err
+		}
+		// the outputRowsBuffer is not empty
+		if validOut {
+			return nil
+		}
+
+		s.outputRowsBuffer.iter.Close()
+		s.outputRowsBuffer.iter = nil
+
+		if err := s.outputRowsBuffer.rows.UnsafeReset(s.ctx); err != nil {
+			return err
+		}
+	}
+
+	s.receivedRowsBuffer.iter = s.receivedRowsBuffer.rows.NewFinalIterator(s.ctx)
+	s.receivedRowsBuffer.iter.Rewind()
+
+	validReceived, err := s.receivedRowsBuffer.iter.Valid()
+	if err != nil {
+		return err
+	}
+
+	var row sqlbase.EncDatumRow
+
+	// the received row buffer is not empty
+	if validReceived {
+		receivedIter := s.receivedRowsBuffer.iter
+
+		for {
+			valid, err := receivedIter.Valid()
+			if err != nil {
+				return err
+			}
+			if valid {
+				row, err = receivedIter.Row()
+				if err != nil {
+					return err
+				}
+
+				err := s.outOfOrderRowBuffer.rows.AddRow(s.ctx, row)
+				if err != nil {
+					return err
+				}
+
+				receivedIter.Next()
+			} else {
+				break
+			}
+		}
+		if err := s.receivedRowsBuffer.rows.UnsafeReset(s.ctx); err != nil {
+			return err
+		}
+	}
+
+	if _, err = s.processOrderBuffer(validReceived, expiredTime, emitTimestamp); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *streamReaderRowBuffer) processOrderBuffer(
+	validReceived bool, expiredTime time.Time, emitTimestamp time.Time,
+) (time.Time, error) {
+	maxTime := expiredTime
+	recordNum := s.outOfOrderRowBuffer.rows.Len()
+	// the out-of-order buffer is empty
+	if recordNum == 0 {
+		return maxTime, nil
+	}
+
+	// has new incoming rows
+	if validReceived {
+		s.outOfOrderRowBuffer.rows.Sort(s.ctx)
+	}
+	discardNum := 0
+	var rowTs time.Time
+	for idx := 0; idx < recordNum; idx++ {
+		outRow := s.outOfOrderRowBuffer.rows.EncRow(0)
+		s.outOfOrderRowBuffer.rows.PopFirst()
+
+		switch outRow[0].Datum.ResolvedType().InternalType.Family {
+		case types.TimestampFamily:
+			rowTs = outRow[0].Datum.(*tree.DTimestamp).UTC()
+		case types.TimestampTZFamily:
+			rowTs = outRow[0].Datum.(*tree.DTimestampTZ).UTC()
+		default:
+			break
+		}
+
+		if s.hasAgg {
+			// if it belongs to the previous emitted batch
+			if rowTs.Before(expiredTime) {
+				// the current row is expired one, add it to the stream recalculator
+				if !s.streamOpts.IgnoreExpired {
+					// copy the original row to a new EncDatumRow
+					s.recalculator.HandleExpiredRows(outRow.Copy())
+				} else {
+					discardNum++
+				}
+
+				continue
+			} else if rowTs.After(emitTimestamp) {
+				err := s.outOfOrderRowBuffer.rows.AddRow(s.ctx, outRow)
+				if err != nil {
+					return maxTime, err
+				}
+				if rowTs.After(maxTime) {
+					maxTime = rowTs
+				}
+				continue
+			}
+		}
+
+		if err := s.outputRowsBuffer.rows.AddRow(s.ctx, outRow); err != nil {
+			return maxTime, err
+		}
+	}
+
+	if discardNum > 0 {
+		log.Info(s.ctx, "send: ", recordNum-s.outOfOrderRowBuffer.rows.Len()-discardNum,
+			" discard: ", discardNum,
+			" remain: ", s.outOfOrderRowBuffer.rows.Len(),
+			" total: ", recordNum,
+			expiredTime, emitTimestamp)
+	}
+
+	s.outputRowsBuffer.iter = s.outputRowsBuffer.rows.NewFinalIterator(s.ctx)
+	s.outputRowsBuffer.iter.Rewind()
+
+	return maxTime, nil
+}
+
+// Lock locks the buffer.
+func (s *streamReaderRowBuffer) Lock() {
+	s.rowBufferRWMutex.Lock()
+}
+
+// Unlock unlocks the buffer.
+func (s *streamReaderRowBuffer) Unlock() {
+	s.rowBufferRWMutex.Unlock()
+}
+
+// Close closes the buffer.
+func (s *streamReaderRowBuffer) Close() {
+	s.rowBufferRWMutex.Lock()
+	s.rowBufferRWMutex.Unlock()
+
+	s.receivedRowsBuffer.rows.Close(s.ctx)
+	s.receivedRowsBuffer.memMonitor.Stop(s.ctx)
+	s.receivedRowsBuffer.diskMonitor.Stop(s.ctx)
+
+	s.outOfOrderRowBuffer.rows.Close(s.ctx)
+	s.outOfOrderRowBuffer.memMonitor.Stop(s.ctx)
+
+	s.outputRowsBuffer.rows.Close(s.ctx)
+	s.outputRowsBuffer.memMonitor.Stop(s.ctx)
+	s.outputRowsBuffer.diskMonitor.Stop(s.ctx)
+}
+
+// computerRowSize returns row width from row types.
+func computerRowSize(rowType []types.T) uint64 {
+	var rowSize uint64
+	for colIdx := 0; colIdx < len(rowType); colIdx++ {
+		storeLen := uint64(0)
+		fixedStoreLen := uint64(0)
+		colType := rowType[colIdx].InternalType.Oid
+		colFam := rowType[colIdx].Family()
+
+		switch colFam {
+		case types.BoolFamily:
+			storeLen = 1
+			fixedStoreLen = 1
+		case types.IntFamily:
+			switch colType {
+			case oid.T_int2:
+				storeLen = 2
+				fixedStoreLen = 2
+			case oid.T_int4:
+				storeLen = 4
+				fixedStoreLen = 4
+			case oid.T_int8:
+				storeLen = 8
+				fixedStoreLen = 8
+			}
+		case types.FloatFamily:
+			switch colType {
+			case oid.T_float4:
+				storeLen = 4
+				fixedStoreLen = 4
+			case oid.T_float8:
+				storeLen = 8
+				fixedStoreLen = 8
+			}
+		case types.DecimalFamily:
+			storeLen = 4
+			fixedStoreLen = 4
+		case types.TimeFamily, types.TimestampFamily, types.TimestampTZFamily:
+			storeLen = 8
+			fixedStoreLen = 8
+		case types.StringFamily, types.BytesFamily:
+			colWidth := uint64(rowType[colIdx].InternalType.Width)
+			if colType == oid.Oid(91002) || colType == oid.Oid(91004) {
+				colWidth *= 4
+			}
+			if colWidth == 0 {
+				switch colType {
+				case oid.T_char, oid.T_bpchar:
+					storeLen = 1
+					fixedStoreLen = 3
+				case oid.T_bytea:
+					storeLen = 3
+					fixedStoreLen = 5
+				case oid.Oid(91002):
+					storeLen = 4
+					fixedStoreLen = 6
+				case oid.T_varchar, oid.T_varbytea, oid.Oid(91004), oid.T_text:
+					storeLen = 255
+					fixedStoreLen = 257
+				}
+			} else {
+				switch colType {
+				case oid.T_char, oid.T_bpchar, oid.Oid(91002), oid.T_varchar, oid.Oid(91004), oid.T_text:
+					storeLen = colWidth + 1
+					fixedStoreLen = storeLen + 2
+				case oid.T_bytea:
+					storeLen = colWidth + 2
+					fixedStoreLen = storeLen + 2
+				case oid.T_varbytea:
+					storeLen = colWidth
+					fixedStoreLen = storeLen + 2
+				}
+			}
+		}
+
+		rowSize += fixedStoreLen
+	}
+
+	return rowSize
+}

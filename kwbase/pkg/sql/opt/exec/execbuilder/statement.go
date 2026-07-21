@@ -145,66 +145,14 @@ func (b *Builder) buildExplain(explain *memo.ExplainExpr) (execPlan, error) {
 	var node exec.Node
 
 	if explain.Options.Mode == tree.ExplainOpt {
-		fmtFlags := memo.ExprFmtHideAll
-		switch {
-		case explain.Options.Flags[tree.ExplainFlagVerbose]:
-			fmtFlags = memo.ExprFmtHideQualifications | memo.ExprFmtHideScalars |
-				memo.ExprFmtHideTypes | memo.ExprFmtHideNotNull
-
-		case explain.Options.Flags[tree.ExplainFlagTypes]:
-			fmtFlags = memo.ExprFmtHideQualifications
-		}
-
-		// Format the plan here and pass it through to the exec factory.
-
-		// If catalog option was passed, show catalog object details for all tables.
-		var planText bytes.Buffer
-		if explain.Options.Flags[tree.ExplainFlagCatalog] {
-			for _, t := range b.mem.Metadata().AllTables() {
-				tp := treeprinter.New()
-				cat.FormatTable(b.catalog, t.Table, tp)
-				planText.WriteString(tp.String())
-			}
-			// TODO(radu): add views, sequences
-		}
-
-		f := memo.MakeExprFmtCtx(fmtFlags, b.mem, b.catalog)
-		f.FormatExpr(explain.Input)
-		planText.WriteString(f.Buffer.String())
-
-		// If we're going to display the environment, there's a bunch of queries we
-		// need to run to get that information, and we can't run them from here, so
-		// tell the exec factory what information it needs to fetch.
-		var envOpts exec.ExplainEnvData
-		if explain.Options.Flags[tree.ExplainFlagEnv] {
-			envOpts = b.getEnvData()
-		}
-
 		var err error
-		node, err = b.factory.ConstructExplainOpt(planText.String(), envOpts)
+		node, err = b.buildExplainOptPlan(explain)
 		if err != nil {
 			return execPlan{}, err
 		}
 	} else {
-
-		// The auto commit flag should reflect what would happen if this statement
-		// was run without the explain, so recalculate it.
-		defer func(oldVal bool) {
-			b.allowAutoCommit = oldVal
-		}(b.allowAutoCommit)
-		b.allowAutoCommit = b.canAutoCommit(explain.Input)
-
-		input, err := b.buildRelational(explain.Input)
-		if err != nil {
-			return execPlan{}, err
-		}
-
-		plan, err := b.factory.ConstructPlan(input.root, b.subqueries, b.postqueries)
-		if err != nil {
-			return execPlan{}, err
-		}
-
-		node, err = b.factory.ConstructExplain(&explain.Options, explain.StmtType, plan, b.mem)
+		var err error
+		node, err = b.buildExplainDistSQLPlan(explain)
 		if err != nil {
 			return execPlan{}, err
 		}
@@ -219,6 +167,81 @@ func (b *Builder) buildExplain(explain *memo.ExplainExpr) (execPlan, error) {
 	b.subqueries = b.subqueries[:0]
 	b.postqueries = b.postqueries[:0]
 	return ep, nil
+}
+
+// buildExplainOptPlan builds the plan for EXPLAIN (OPT).
+func (b *Builder) buildExplainOptPlan(explain *memo.ExplainExpr) (exec.Node, error) {
+	opts := &explain.Options
+	fmtFlags := resolveExplainFormatFlags(opts)
+
+	var planText bytes.Buffer
+
+	// If catalog option was passed, show catalog object details for all tables.
+	appendCatalogDetailsIfRequested(&planText, opts, b.mem, b.catalog)
+
+	f := memo.MakeExprFmtCtx(fmtFlags, b.mem, b.catalog)
+	f.FormatExpr(explain.Input)
+	planText.WriteString(f.Buffer.String())
+
+	// If ENV flag is set, tell the exec factory what environment data to fetch.
+	var envOpts exec.ExplainEnvData
+	if opts.Flags[tree.ExplainFlagEnv] {
+		envOpts = b.getEnvData()
+	}
+
+	return b.factory.ConstructExplainOpt(planText.String(), envOpts)
+}
+
+// resolveExplainFormatFlags determines the formatting flags for EXPLAIN (OPT)
+// based on the explain options.
+func resolveExplainFormatFlags(opts *tree.ExplainOptions) memo.ExprFmtFlags {
+	fmtFlags := memo.ExprFmtHideAll
+	if opts.Flags[tree.ExplainFlagVerbose] {
+		fmtFlags = memo.ExprFmtHideQualifications | memo.ExprFmtHideScalars |
+			memo.ExprFmtHideTypes | memo.ExprFmtHideNotNull
+	} else if opts.Flags[tree.ExplainFlagTypes] {
+		fmtFlags = memo.ExprFmtHideQualifications
+	}
+	return fmtFlags
+}
+
+// appendCatalogDetailsIfRequested writes catalog object details to the buffer
+// when the EXPLAIN catalog flag is set.
+func appendCatalogDetailsIfRequested(
+	buf *bytes.Buffer, opts *tree.ExplainOptions, mem *memo.Memo, catalog cat.Catalog,
+) {
+	if !opts.Flags[tree.ExplainFlagCatalog] {
+		return
+	}
+	for _, t := range mem.Metadata().AllTables() {
+		tp := treeprinter.New()
+		cat.FormatTable(catalog, t.Table, tp)
+		buf.WriteString(tp.String())
+	}
+	// TODO(radu): add views, sequences
+}
+
+// buildExplainDistSQLPlan builds the plan for a non-OPT EXPLAIN (distributed
+// execution path).
+func (b *Builder) buildExplainDistSQLPlan(explain *memo.ExplainExpr) (exec.Node, error) {
+	// The auto commit flag should reflect what would happen if this statement
+	// was run without the explain, so recalculate it.
+	defer func(oldVal bool) {
+		b.allowAutoCommit = oldVal
+	}(b.allowAutoCommit)
+	b.allowAutoCommit = b.canAutoCommit(explain.Input)
+
+	input, err := b.buildRelational(explain.Input)
+	if err != nil {
+		return nil, err
+	}
+
+	plan, err := b.factory.ConstructPlan(input.root, b.subqueries, b.postqueries)
+	if err != nil {
+		return nil, err
+	}
+
+	return b.factory.ConstructExplain(&explain.Options, explain.StmtType, plan, b.mem)
 }
 
 func (b *Builder) buildShowTrace(show *memo.ShowTraceForSessionExpr) (execPlan, error) {

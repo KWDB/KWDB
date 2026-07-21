@@ -177,14 +177,6 @@ int setAttributeInfo(vector<AttributeInfo> &info) {
       it.max_len = it.size;
     it.offset = offset;
     offset += it.size;
-    if (it.type == STRING) {
-#if defined(USE_SMART_INDEX)
-      if ((encoding & SMART_INDEX) && !actual_dim.empty()) {
-        it.encoding = SMART_INDEX;
-      } else
-#endif
-      it.encoding = DICTIONARY;
-    }
   }
   return offset;
 }

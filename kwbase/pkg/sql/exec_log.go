@@ -34,6 +34,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/security/audit/server"
 	"gitee.com/kwbasedb/kwbase/pkg/security/audit/setting"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/audit"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/privilege"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -130,7 +131,7 @@ func (s executorType) logLabel() string { return logLabels[s] }
 
 // maybeLogStatement conditionally records the current statement
 // (p.curPlan) to the exec / audit logs.
-func (p *planner) maybeLogStatement(
+func (p *GenericPlanner) maybeLogStatement(
 	ctx context.Context,
 	execType executorType,
 	numRetries, rows int,
@@ -140,7 +141,7 @@ func (p *planner) maybeLogStatement(
 	p.maybeLogStatementInternal(ctx, execType, numRetries, rows, err, queryReceived)
 }
 
-func (p *planner) maybeLogStatementInternal(
+func (p *GenericPlanner) maybeLogStatementInternal(
 	ctx context.Context, execType executorType, numRetries, rows int, err error, startTime time.Time,
 ) {
 	// Note: if you find the code below crashing because p.execCfg == nil,
@@ -204,7 +205,7 @@ func (p *planner) maybeLogStatementInternal(
 			auditTxn = p.execCfg.DB.NewTxn(ctx, "audit txn")
 		}
 
-		objDesc, e := p.PhysicalSchemaAccessor().GetObjectDesc(ctx, auditTxn, p.ExecCfg().Settings, &auditTableName,
+		objDesc, e := p.PhysicalSchemaAccessor().GetObjectDesc(ctx, auditTxn, p.ExecCfg().Settings, &audit.AuditTableName,
 			p.ObjectLookupFlags(true /*required*/, false /*requireMutable*/))
 		if e != nil {
 			log.Warningf(ctx, "got error when set audit strategy version, err:%s", e)
@@ -248,7 +249,7 @@ func (p *planner) maybeLogStatementInternal(
 // contributors who later add features do not have to remember to call
 // this to get it right.
 
-func (p *planner) maybeAudit(desc sqlbase.DescriptorProto, priv privilege.Kind) {
+func (p *GenericPlanner) maybeAudit(desc sqlbase.DescriptorProto, priv privilege.Kind) {
 	if sqlbase.IsReservedID(desc.GetID()) {
 		return
 	}
@@ -277,28 +278,32 @@ type auditEvent struct {
 	id         map[uint64]bool
 }
 
-func (p *planner) SetAuditTargetAndType(
+// SetAuditTargetAndType configures the audit target and its type for the current session
+func (p *GenericPlanner) SetAuditTargetAndType(
 	id uint32, name string, cascade []string, targetType target.AuditObjectType,
 ) {
 	p.SetAuditTarget(id, name, cascade)
 	p.SetTargetType(targetType)
 }
 
-func (p *planner) SetAuditTarget(id uint32, name string, cascade []string) {
+// SetAuditTarget sets the audit target object for the current session
+func (p *GenericPlanner) SetAuditTarget(id uint32, name string, cascade []string) {
 	if p.curPlan.auditInfo == nil {
 		p.InitAuditInfo()
 	}
 	p.curPlan.auditInfo.SetTarget(id, name, cascade)
 }
 
-func (p *planner) SetTargetType(objType target.AuditObjectType) {
+// SetTargetType sets the audit target type (e.g., table, database) for the current session
+func (p *GenericPlanner) SetTargetType(objType target.AuditObjectType) {
 	if p.curPlan.auditInfo == nil {
 		p.InitAuditInfo()
 	}
 	p.curPlan.auditInfo.SetTargetType(objType)
 }
 
-func (p *planner) SetAuditEvent() {
+// SetAuditEvent sets the audit event type for the current operation
+func (p *GenericPlanner) SetAuditEvent() {
 	if p.curPlan.auditInfo == nil {
 		p.curPlan.auditInfo = &server.AuditInfo{}
 	}
@@ -306,18 +311,22 @@ func (p *planner) SetAuditEvent() {
 	p.curPlan.auditInfo.SetEventType(oprType)
 }
 
-func (p *planner) SetAuditLevel(level target.AuditLevelType) {
+// SetAuditLevel sets the audit logging level for the current session
+func (p *GenericPlanner) SetAuditLevel(level target.AuditLevelType) {
 	if p.curPlan.auditInfo == nil {
 		p.curPlan.auditInfo = &server.AuditInfo{}
+
 	}
 	p.curPlan.auditInfo.SetAuditLevel(level)
 }
 
-func (p *planner) InitAuditInfo() {
+// InitAuditInfo initializes the audit information structure with default values
+func (p *GenericPlanner) InitAuditInfo() {
 	p.curPlan.auditInfo = &server.AuditInfo{}
 }
 
-func (p *planner) LogAudit(
+// LogAudit writes an audit log entry with the configured audit information
+func (p *GenericPlanner) LogAudit(
 	ctx context.Context, txn *kv.Txn, rows int, err error, startTime time.Time,
 ) {
 	if p.curPlan.auditInfo == nil {
@@ -335,7 +344,8 @@ func (p *planner) LogAudit(
 	}
 }
 
-func (p *planner) SetAuditInfo(
+// SetAuditInfo configures audit information for the planner's current operation
+func (p *GenericPlanner) SetAuditInfo(
 	ctx context.Context,
 	txn *kv.Txn,
 	startTime time.Time,
@@ -358,7 +368,8 @@ func (p *planner) SetAuditInfo(
 	}
 }
 
-func (p *planner) SetBasicAuditInfo(startTime time.Time, rows int, err error) {
+// SetBasicAuditInfo initializes basic audit information including user and target details
+func (p *GenericPlanner) SetBasicAuditInfo(startTime time.Time, rows int, err error) {
 	if p.curPlan.auditInfo == nil {
 		p.InitAuditInfo()
 	}

@@ -121,7 +121,7 @@ func (ins *StmtIns) getPlan(rCtx *SpExecContext) (Plan, error) {
 }
 
 // getPlanAndContainer gets plan and container
-// memo.Expr generates planNode through CBO optimization and logical planning compilation
+// memo.Expr generates PlanNode through CBO optimization and logical planning compilation
 func (ins *StmtIns) getPlanAndContainer(
 	rCtx *SpExecContext, cols *sqlbase.ResultColumns, mon *mon.BytesMonitor,
 ) (Plan, *rowcontainer.RowContainer, error) {
@@ -169,7 +169,7 @@ func (ins *StmtIns) executeImplement(
 	if err != nil {
 		return err
 	}
-	//defer plan.close(params.ctx)
+	//defer plan.close(params.Ctx)
 	newResult.Result = res
 	old := params.GetTxn()
 	defer func() {

@@ -51,6 +51,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
+	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/builtins"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
@@ -283,7 +284,6 @@ func (uc *UDFCache) refreshUDFCacheEntry(ctx context.Context, udfName string) {
 	}
 
 	e.Fn, e.err = fn, err
-	tree.ConcurrentFunDefs.RegisterFunc(udfName, fn)
 	e.refreshing = false
 
 	if !found {
@@ -337,16 +337,6 @@ func (uc *UDFCache) DeleteUDF(ctx context.Context, udfName string) {
 		log.VEventf(ctx, 0, "udf '%s' not found in cache, no need to delete", udfName)
 	}
 	tree.ConcurrentFunDefs.DeleteFunc(udfName)
-	const deleteUdfQuery = `
-	   Delete 
-	   FROM system.user_defined_routine
-	   WHERE name = $1 and routine_type = $2
-	 `
-	_, err := uc.SQLExecutor.Query(ctx, "Delete-udf", nil /* txn */, deleteUdfQuery, udfName, sqlbase.Function)
-	if err != nil {
-		log.Errorf(context.Background(), "delete udf(%s) error: %v", udfName, err)
-		return
-	}
 }
 
 // getUdfFromDB is used to get user defined function
@@ -354,24 +344,32 @@ func (uc *UDFCache) getUdfFromDB(
 	ctx context.Context, udfName string,
 ) (*tree.FunctionDefinition, error) {
 	const getUdfQuery = `
-	 SELECT descriptor
+	 SELECT name, descriptor, routine_type
 	 FROM system.user_defined_routine
-	 WHERE name = $1 and routine_type = $2
+	 WHERE name = $1 and routine_type in ($2, $3)
 	 LIMIT 1
 	 `
 
-	rows, err := uc.SQLExecutor.Query(ctx, "Get-udf", nil /* txn */, getUdfQuery, udfName, sqlbase.Function)
+	rows, err := uc.SQLExecutor.QueryEx(
+		ctx,
+		"Get-udf",
+		nil, /* txn */
+		sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
+		getUdfQuery,
+		udfName,
+		sqlbase.LUAFunction,
+		sqlbase.SQLFunction)
 	if err != nil {
 		return nil, err
 	}
 
 	var udfFn *tree.FunctionDefinition
-	for _, row := range rows {
-		udf, err := builtins.RegisterLuaUDFs(row)
+	if len(rows) > 0 {
+		fd, err := registerUDFRowFromCatalog(rows[0])
 		if err != nil {
 			return nil, err
 		}
-		udfFn = udf
+		udfFn = fd
 	}
 
 	if udfFn == nil {

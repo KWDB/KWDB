@@ -46,8 +46,10 @@ import (
 // In other words, *ordinalityNode establishes a barrier to many
 // common SQL optimizations*. Its use should be limited in clients to
 // situations where the corresponding performance cost is affordable.
+var _ PlanNode = &ordinalityNode{}
+
 type ordinalityNode struct {
-	source      planNode
+	source      PlanNode
 	columns     sqlbase.ResultColumns
 	reqOrdering ReqOrdering
 
@@ -60,11 +62,11 @@ type ordinalityRun struct {
 	curCnt int64
 }
 
-func (o *ordinalityNode) startExec(runParams) error {
+func (o *ordinalityNode) StartExec(RunParams) error {
 	panic("ordinalityNode can't be run in local mode")
 }
 
-func (o *ordinalityNode) Next(params runParams) (bool, error) {
+func (o *ordinalityNode) Next(params RunParams) (bool, error) {
 	panic("ordinalityNode can't be run in local mode")
 }
 

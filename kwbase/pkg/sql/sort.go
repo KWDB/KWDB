@@ -33,8 +33,10 @@ import (
 
 // sortNode represents a node that sorts the rows returned by its
 // sub-node.
+var _ PlanNode = &sortNode{}
+
 type sortNode struct {
-	plan     planNode
+	plan     PlanNode
 	ordering sqlbase.ColumnOrdering
 	// When alreadyOrderedPrefix is non-zero, the input is already ordered on
 	// the prefix ordering[:alreadyOrderedPrefix].
@@ -44,11 +46,11 @@ type sortNode struct {
 	engine tree.EngineType
 }
 
-func (n *sortNode) startExec(runParams) error {
+func (n *sortNode) StartExec(RunParams) error {
 	panic("sortNode cannot be run in local mode")
 }
 
-func (n *sortNode) Next(params runParams) (bool, error) {
+func (n *sortNode) Next(params RunParams) (bool, error) {
 	panic("sortNode cannot be run in local mode")
 }
 

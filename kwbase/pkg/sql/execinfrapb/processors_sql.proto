@@ -42,7 +42,6 @@ import "sql/execinfrapb/data.proto";
 import "sql/execinfrapb/processors_base.proto";
 import "gogoproto/gogo.proto";
 import "sql/hashrouter/api/entity.proto";
-import "cdc/cdcpb/cdc.proto";
 
 // ValuesCoreSpec is the core of a processor that has no inputs and generates
 // "pre-canned" rows. This is not intended to be used for very large datasets.
@@ -237,6 +236,7 @@ message TsDeleteProSpec {
   repeated DeleteEntityGroup entity_groups = 7 [(gogoproto.nullable) = false];
   optional uint64 hashNum = 8 [(gogoproto.nullable) = false];
   repeated bytes part_primary_tags = 9;
+  optional bytes cdc_data = 10 [(gogoproto.customname) = "CDCData"];
 }
 
 // DeleteEntityGroup just for delete multi entities.
@@ -255,6 +255,7 @@ message TsTagUpdateProSpec {
   optional bytes start_key = 7;
   optional bytes end_key = 8;
   optional uint64 osnId = 9[(gogoproto.nullable) = false];
+  optional bytes cdc_data = 10[(gogoproto.customname) = "CDCData"];
 }
 
 message TsCreateTableProSpec {
@@ -1058,18 +1059,20 @@ message TsInsertWithCDCProSpec {
   repeated bytes primary_tag_key = 3;
   repeated payloadForDistributeMode allPayload = 4;
   repeated bytes payloadPrefix = 5;
-  optional CDCData cdc_data = 6[(gogoproto.nullable) = false, (gogoproto.customname) = "CDCData"];
+  optional CDCData cdc_data = 6 [(gogoproto.nullable) = false, (gogoproto.customname) = "CDCData"];
 }
 
 // CDCData stores data that will send to CDC Task.
 message CDCData {
-  optional uint64 table_id = 1[(gogoproto.nullable) = false, (gogoproto.customname) = "TableID"];
-  optional int64  min_timestamp = 2[(gogoproto.nullable) = false];
+  optional uint64 table_id = 1 [(gogoproto.nullable) = false, (gogoproto.customname) = "TableID"];
+  optional int64  min_timestamp = 2 [(gogoproto.nullable) = false];
   repeated CDCPushData push_data = 3;
+  optional uint64  osn = 4 [(gogoproto.nullable) = false, (gogoproto.customname) = "OSN"];
 }
 
+// CDCData stores data that will send to CDC Task.
 message CDCPushData {
   optional uint64 task_id = 1[(gogoproto.nullable) = false, (gogoproto.customname) = "TaskID"];
-  optional cdcpb.TSCDCInstanceType task_type = 2[(gogoproto.nullable) = false];
+  optional sqlbase.CDCInstanceType task_type = 2[(gogoproto.nullable) = false];
   repeated bytes  data = 3;
 }

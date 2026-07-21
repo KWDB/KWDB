@@ -562,7 +562,7 @@ func (h *batchLookupJoiner) pushToProbeSide() (
 					}
 				}
 				// DataType_DECIMAL, DataType_DATE never used in table.go:
-				// - in create_table.go, in checkTSColValidity, seems like ts table doesn't support decimal col
+				// - in create_table.go, in CheckTSColValidity, seems like ts table doesn't support decimal col
 				// currently, transfer decimal cols into float
 			}
 			curColInfo := tse.ColumnInfo{

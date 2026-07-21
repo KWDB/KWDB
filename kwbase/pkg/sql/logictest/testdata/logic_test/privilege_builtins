@@ -984,3 +984,39 @@ query B
 SELECT has_column_privilege('hcp_test'::REGCLASS, 4, 'SELECT')
 ----
 true
+
+statement ok
+CREATE DATABASE function_privilege_db
+
+statement ok
+SET DATABASE = function_privilege_db
+
+# Switch to a user without any privileges.
+user testuser
+
+statement ok
+SET DATABASE = function_privilege_db
+
+statement ok
+CREATE FUNCTION ordinary_func(a INT, b INT)
+RETURNS INT
+LANGUAGE LUA
+BEGIN
+'function ordinary_func(a, b)
+    return a + b
+end'
+END;
+
+statement ok
+SHOW FUNCTIONS
+
+statement ok
+SHOW FUNCTION ordinary_func
+
+statement ok
+DROP FUNCTION ordinary_func
+
+user root
+
+statement ok
+DROP DATABASE function_privilege_db

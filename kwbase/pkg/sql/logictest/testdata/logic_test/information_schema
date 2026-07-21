@@ -263,6 +263,7 @@ kwdb_internal       kv_store_status
 kwdb_internal       kwdb_attributes
 kwdb_internal       kwdb_functions
 kwdb_internal       kwdb_object_create_statement
+kwdb_internal       kwdb_pipes
 kwdb_internal       kwdb_procedures
 kwdb_internal       kwdb_retention
 kwdb_internal       kwdb_schedules
@@ -280,6 +281,7 @@ kwdb_internal       node_transactions
 kwdb_internal       node_txn_stats
 kwdb_internal       partitions
 kwdb_internal       predefined_comments
+kwdb_internal       publications
 kwdb_internal       ranges
 kwdb_internal       ranges_no_leases
 kwdb_internal       schema_changes
@@ -418,6 +420,7 @@ kv_store_status
 kwdb_attributes
 kwdb_functions
 kwdb_object_create_statement
+kwdb_pipes
 kwdb_procedures
 kwdb_retention
 kwdb_schedules
@@ -435,6 +438,7 @@ node_transactions
 node_txn_stats
 partitions
 predefined_comments
+publications
 ranges
 ranges_no_leases
 schema_changes
@@ -581,6 +585,7 @@ system         kwdb_internal       kv_store_status                    SYSTEM VIE
 system         kwdb_internal       kwdb_attributes                    SYSTEM VIEW  NO                  1        1283818853
 system         kwdb_internal       kwdb_functions                     SYSTEM VIEW  NO                  1        1283818853
 system         kwdb_internal       kwdb_object_create_statement       SYSTEM VIEW  NO                  1        1283818853
+system         kwdb_internal       kwdb_pipes                         SYSTEM VIEW  NO                  1        1283818853
 system         kwdb_internal       kwdb_procedures                    SYSTEM VIEW  NO                  1        1283818853
 system         kwdb_internal       kwdb_retention                     SYSTEM VIEW  NO                  1        1283818853
 system         kwdb_internal       kwdb_schedules                     SYSTEM VIEW  NO                  1        1283818853
@@ -598,6 +603,7 @@ system         kwdb_internal       node_transactions                  SYSTEM VIE
 system         kwdb_internal       node_txn_stats                     SYSTEM VIEW  NO                  1        1283818853
 system         kwdb_internal       partitions                         SYSTEM VIEW  NO                  1        1283818853
 system         kwdb_internal       predefined_comments                SYSTEM VIEW  NO                  1        1283818853
+system         kwdb_internal       publications                       SYSTEM VIEW  NO                  1        1283818853
 system         kwdb_internal       ranges                             SYSTEM VIEW  NO                  1        1283818853
 system         kwdb_internal       ranges_no_leases                   SYSTEM VIEW  NO                  1        1283818853
 system         kwdb_internal       schema_changes                     SYSTEM VIEW  NO                  1        1283818853
@@ -692,7 +698,9 @@ system         public              scheduled_jobs                     BASE TABLE
 system         public              user_defined_routine               BASE TABLE   YES                 1        630200280
 system         public              kwdb_cdc_watermark                 BASE TABLE   YES                 1        630200280
 system         public              kwdb_streams                       BASE TABLE   YES                 1        630200280
-
+system         public              kwdb_pipes                         BASE TABLE   YES                 1        630200280
+system         public              kwdb_unpush                        BASE TABLE   YES                 1        630200280
+system         public              kwdb_publications                  BASE TABLE   YES                 1        630200280
 
 statement ok
 ALTER TABLE other_db.xyz ADD COLUMN j INT
@@ -787,6 +795,26 @@ system              public             630200280_60_3_not_null   system         
 system              public             630200280_60_4_not_null   system         public        kwdb_cdc_watermark               CHECK            NO             NO
 system              public             630200280_60_5_not_null   system         public        kwdb_cdc_watermark               CHECK            NO             NO
 system              public             primary                   system         public        kwdb_cdc_watermark               PRIMARY KEY      NO             NO
+system              public             630200280_62_10_not_null  system         public        kwdb_pipes                       CHECK            NO             NO
+system              public             630200280_62_1_not_null   system         public        kwdb_pipes                       CHECK            NO             NO
+system              public             630200280_62_2_not_null   system         public        kwdb_pipes                       CHECK            NO             NO
+system              public             630200280_62_3_not_null   system         public        kwdb_pipes                       CHECK            NO             NO
+system              public             630200280_62_4_not_null   system         public        kwdb_pipes                       CHECK            NO             NO
+system              public             630200280_62_5_not_null   system         public        kwdb_pipes                       CHECK            NO             NO
+system              public             630200280_62_6_not_null   system         public        kwdb_pipes                       CHECK            NO             NO
+system              public             630200280_62_7_not_null   system         public        kwdb_pipes                       CHECK            NO             NO
+system              public             630200280_62_8_not_null   system         public        kwdb_pipes                       CHECK            NO             NO
+system              public             630200280_62_9_not_null   system         public        kwdb_pipes                       CHECK            NO             NO
+system              public             primary                   system         public        kwdb_pipes                       PRIMARY KEY      NO             NO
+system              public             unique_name_idx           system         public        kwdb_pipes                       UNIQUE           NO             NO
+system              public             630200280_64_1_not_null   system         public        kwdb_publications                CHECK            NO             NO
+system              public             630200280_64_2_not_null   system         public        kwdb_publications                CHECK            NO             NO
+system              public             630200280_64_3_not_null   system         public        kwdb_publications                CHECK            NO             NO
+system              public             630200280_64_4_not_null   system         public        kwdb_publications                CHECK            NO             NO
+system              public             630200280_64_5_not_null   system         public        kwdb_publications                CHECK            NO             NO
+system              public             630200280_64_6_not_null   system         public        kwdb_publications                CHECK            NO             NO
+system              public             primary                   system         public        kwdb_publications                PRIMARY KEY      NO             NO
+system              public             unique_name_idx           system         public        kwdb_publications                UNIQUE           NO             NO
 system              public             630200280_42_10_not_null  system         public        kwdb_replication_info            CHECK            NO             NO
 system              public             630200280_42_11_not_null  system         public        kwdb_replication_info            CHECK            NO             NO
 system              public             630200280_42_1_not_null   system         public        kwdb_replication_info            CHECK            NO             NO
@@ -818,6 +846,15 @@ system              public             630200280_47_4_not_null   system         
 system              public             630200280_47_5_not_null   system         public        kwdb_ts_table                    CHECK            NO             NO
 system              public             primary                   system         public        kwdb_ts_table                    PRIMARY KEY      NO             NO
 system              public             unique_instance_name_idx  system         public        kwdb_ts_table                    UNIQUE           NO             NO
+system              public             630200280_63_1_not_null   system         public        kwdb_unpush                      CHECK            NO             NO
+system              public             630200280_63_2_not_null   system         public        kwdb_unpush                      CHECK            NO             NO
+system              public             630200280_63_3_not_null   system         public        kwdb_unpush                      CHECK            NO             NO
+system              public             630200280_63_4_not_null   system         public        kwdb_unpush                      CHECK            NO             NO
+system              public             630200280_63_5_not_null   system         public        kwdb_unpush                      CHECK            NO             NO
+system              public             630200280_63_6_not_null   system         public        kwdb_unpush                      CHECK            NO             NO
+system              public             630200280_63_7_not_null   system         public        kwdb_unpush                      CHECK            NO             NO
+system              public             630200280_63_8_not_null   system         public        kwdb_unpush                      CHECK            NO             NO
+system              public             primary                   system         public        kwdb_unpush                      PRIMARY KEY      NO             NO
 system              public             630200280_11_1_not_null   system         public        lease                            CHECK            NO             NO
 system              public             630200280_11_2_not_null   system         public        lease                            CHECK            NO             NO
 system              public             630200280_11_3_not_null   system         public        lease                            CHECK            NO             NO
@@ -1107,6 +1144,30 @@ system              public             630200280_61_6_not_null   target_table_id
 system              public             630200280_61_7_not_null   source_table_id IS NOT NULL
 system              public             630200280_61_8_not_null   job_id IS NOT NULL
 system              public             630200280_61_9_not_null   parameters IS NOT NULL
+system              public             630200280_62_10_not_null  low_water_mark IS NOT NULL
+system              public             630200280_62_1_not_null   id IS NOT NULL
+system              public             630200280_62_2_not_null   name IS NOT NULL
+system              public             630200280_62_3_not_null   parameters IS NOT NULL
+system              public             630200280_62_4_not_null   create_at IS NOT NULL
+system              public             630200280_62_5_not_null   create_by IS NOT NULL
+system              public             630200280_62_6_not_null   status IS NOT NULL
+system              public             630200280_62_7_not_null   run_info IS NOT NULL
+system              public             630200280_62_8_not_null   job_id IS NOT NULL
+system              public             630200280_62_9_not_null   source_id IS NOT NULL
+system              public             630200280_63_1_not_null   pusher_id IS NOT NULL
+system              public             630200280_63_2_not_null   type IS NOT NULL
+system              public             630200280_63_3_not_null   database_name IS NOT NULL
+system              public             630200280_63_4_not_null   schema_name IS NOT NULL
+system              public             630200280_63_5_not_null   table_name IS NOT NULL
+system              public             630200280_63_6_not_null   operation IS NOT NULL
+system              public             630200280_63_7_not_null   op_time IS NOT NULL
+system              public             630200280_63_8_not_null   statement IS NOT NULL
+system              public             630200280_64_1_not_null   id IS NOT NULL
+system              public             630200280_64_2_not_null   name IS NOT NULL
+system              public             630200280_64_3_not_null   parameters IS NOT NULL
+system              public             630200280_64_4_not_null   database_id IS NOT NULL
+system              public             630200280_64_5_not_null   create_at IS NOT NULL
+system              public             630200280_64_6_not_null   create_by IS NOT NULL
 system              public             630200280_6_1_not_null    name IS NOT NULL
 system              public             630200280_6_2_not_null    value IS NOT NULL
 system              public             630200280_6_3_not_null    lastUpdated IS NOT NULL
@@ -1130,6 +1191,10 @@ system         public        kwdb_cdc_watermark               internal_type   sy
 system         public        kwdb_cdc_watermark               table_id        system              public             primary
 system         public        kwdb_cdc_watermark               task_id         system              public             primary
 system         public        kwdb_cdc_watermark               task_type       system              public             primary
+system         public        kwdb_pipes                       id              system              public             primary
+system         public        kwdb_pipes                       name            system              public             unique_name_idx
+system         public        kwdb_publications                id              system              public             primary
+system         public        kwdb_publications                name            system              public             unique_name_idx
 system         public        kwdb_replication_info            agent_type      system              public             primary
 system         public        kwdb_replication_info            replica_desc    system              public             primary
 system         public        kwdb_streams                     id              system              public             primary
@@ -1137,6 +1202,9 @@ system         public        kwdb_streams                     name            sy
 system         public        kwdb_ts_table                    db_name         system              public             unique_instance_name_idx
 system         public        kwdb_ts_table                    instance_id     system              public             primary
 system         public        kwdb_ts_table                    instance_name   system              public             unique_instance_name_idx
+system         public        kwdb_unpush                      op_time         system              public             primary
+system         public        kwdb_unpush                      pusher_id       system              public             primary
+system         public        kwdb_unpush                      type            system              public             primary
 system         public        lease                            descID          system              public             primary
 system         public        lease                            expiration      system              public             primary
 system         public        lease                            nodeID          system              public             primary
@@ -1308,6 +1376,22 @@ system         public        kwdb_cdc_watermark               low_watermark     
 system         public        kwdb_cdc_watermark               table_id                  1
 system         public        kwdb_cdc_watermark               task_id                   2
 system         public        kwdb_cdc_watermark               task_type                 3
+system         public        kwdb_pipes                       create_at                 4
+system         public        kwdb_pipes                       create_by                 5
+system         public        kwdb_pipes                       id                        1
+system         public        kwdb_pipes                       job_id                    8
+system         public        kwdb_pipes                       low_water_mark            10
+system         public        kwdb_pipes                       name                      2
+system         public        kwdb_pipes                       parameters                3
+system         public        kwdb_pipes                       run_info                  7
+system         public        kwdb_pipes                       source_id                 9
+system         public        kwdb_pipes                       status                    6
+system         public        kwdb_publications                create_at                 5
+system         public        kwdb_publications                create_by                 6
+system         public        kwdb_publications                database_id               4
+system         public        kwdb_publications                id                        1
+system         public        kwdb_publications                name                      2
+system         public        kwdb_publications                parameters                3
 system         public        kwdb_replication_info            agent_type                6
 system         public        kwdb_replication_info            dest_cluster_id           5
 system         public        kwdb_replication_info            replica_desc              8
@@ -1335,6 +1419,14 @@ system         public        kwdb_ts_table                    desc              
 system         public        kwdb_ts_table                    instance_id               1
 system         public        kwdb_ts_table                    instance_name             3
 system         public        kwdb_ts_table                    template_id               4
+system         public        kwdb_unpush                      database_name             3
+system         public        kwdb_unpush                      op_time                   7
+system         public        kwdb_unpush                      operation                 6
+system         public        kwdb_unpush                      pusher_id                 1
+system         public        kwdb_unpush                      schema_name               4
+system         public        kwdb_unpush                      statement                 8
+system         public        kwdb_unpush                      table_name                5
+system         public        kwdb_unpush                      type                      2
 system         public        lease                            descID                    1
 system         public        lease                            expiration                4
 system         public        lease                            nodeID                    3
@@ -1819,6 +1911,7 @@ NULL     public   system         kwdb_internal       kv_store_status            
 NULL     public   system         kwdb_internal       kwdb_attributes                    SELECT          NULL          YES
 NULL     public   system         kwdb_internal       kwdb_functions                     SELECT          NULL          YES
 NULL     public   system         kwdb_internal       kwdb_object_create_statement       SELECT          NULL          YES
+NULL     public   system         kwdb_internal       kwdb_pipes                         SELECT          NULL          YES
 NULL     public   system         kwdb_internal       kwdb_procedures                    SELECT          NULL          YES
 NULL     public   system         kwdb_internal       kwdb_retention                     SELECT          NULL          YES
 NULL     public   system         kwdb_internal       kwdb_schedules                     SELECT          NULL          YES
@@ -1836,6 +1929,7 @@ NULL     public   system         kwdb_internal       node_transactions          
 NULL     public   system         kwdb_internal       node_txn_stats                     SELECT          NULL          YES
 NULL     public   system         kwdb_internal       partitions                         SELECT          NULL          YES
 NULL     public   system         kwdb_internal       predefined_comments                SELECT          NULL          YES
+NULL     public   system         kwdb_internal       publications                       SELECT          NULL          YES
 NULL     public   system         kwdb_internal       ranges                             SELECT          NULL          YES
 NULL     public   system         kwdb_internal       ranges_no_leases                   SELECT          NULL          YES
 NULL     public   system         kwdb_internal       schema_changes                     SELECT          NULL          YES
@@ -1961,6 +2055,26 @@ NULL     root     system         public              kwdb_cdc_watermark         
 NULL     root     system         public              kwdb_cdc_watermark                 INSERT          NULL          NO
 NULL     root     system         public              kwdb_cdc_watermark                 SELECT          NULL          YES
 NULL     root     system         public              kwdb_cdc_watermark                 UPDATE          NULL          NO
+NULL     admin    system         public              kwdb_pipes                         DELETE          NULL          NO
+NULL     admin    system         public              kwdb_pipes                         GRANT           NULL          NO
+NULL     admin    system         public              kwdb_pipes                         INSERT          NULL          NO
+NULL     admin    system         public              kwdb_pipes                         SELECT          NULL          YES
+NULL     admin    system         public              kwdb_pipes                         UPDATE          NULL          NO
+NULL     root     system         public              kwdb_pipes                         DELETE          NULL          NO
+NULL     root     system         public              kwdb_pipes                         GRANT           NULL          NO
+NULL     root     system         public              kwdb_pipes                         INSERT          NULL          NO
+NULL     root     system         public              kwdb_pipes                         SELECT          NULL          YES
+NULL     root     system         public              kwdb_pipes                         UPDATE          NULL          NO
+NULL     admin    system         public              kwdb_publications                  DELETE          NULL          NO
+NULL     admin    system         public              kwdb_publications                  GRANT           NULL          NO
+NULL     admin    system         public              kwdb_publications                  INSERT          NULL          NO
+NULL     admin    system         public              kwdb_publications                  SELECT          NULL          YES
+NULL     admin    system         public              kwdb_publications                  UPDATE          NULL          NO
+NULL     root     system         public              kwdb_publications                  DELETE          NULL          NO
+NULL     root     system         public              kwdb_publications                  GRANT           NULL          NO
+NULL     root     system         public              kwdb_publications                  INSERT          NULL          NO
+NULL     root     system         public              kwdb_publications                  SELECT          NULL          YES
+NULL     root     system         public              kwdb_publications                  UPDATE          NULL          NO
 NULL     admin    system         public              kwdb_replication_info              DELETE          NULL          NO
 NULL     admin    system         public              kwdb_replication_info              GRANT           NULL          NO
 NULL     admin    system         public              kwdb_replication_info              INSERT          NULL          NO
@@ -1991,6 +2105,16 @@ NULL     root     system         public              kwdb_ts_table              
 NULL     root     system         public              kwdb_ts_table                      INSERT          NULL          NO
 NULL     root     system         public              kwdb_ts_table                      SELECT          NULL          YES
 NULL     root     system         public              kwdb_ts_table                      UPDATE          NULL          NO
+NULL     admin    system         public              kwdb_unpush                        DELETE          NULL          NO
+NULL     admin    system         public              kwdb_unpush                        GRANT           NULL          NO
+NULL     admin    system         public              kwdb_unpush                        INSERT          NULL          NO
+NULL     admin    system         public              kwdb_unpush                        SELECT          NULL          YES
+NULL     admin    system         public              kwdb_unpush                        UPDATE          NULL          NO
+NULL     root     system         public              kwdb_unpush                        DELETE          NULL          NO
+NULL     root     system         public              kwdb_unpush                        GRANT           NULL          NO
+NULL     root     system         public              kwdb_unpush                        INSERT          NULL          NO
+NULL     root     system         public              kwdb_unpush                        SELECT          NULL          YES
+NULL     root     system         public              kwdb_unpush                        UPDATE          NULL          NO
 NULL     admin    system         public              lease                              DELETE          NULL          NO
 NULL     admin    system         public              lease                              GRANT           NULL          NO
 NULL     admin    system         public              lease                              INSERT          NULL          NO

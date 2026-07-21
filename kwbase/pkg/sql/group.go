@@ -35,14 +35,16 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/mon"
 )
 
-// A groupNode implements the planNode interface and handles the grouping logic.
-// It "wraps" a planNode which is used to retrieve the ungrouped results.
+// A groupNode implements the PlanNode interface and handles the grouping logic.
+// It "wraps" a PlanNode which is used to retrieve the ungrouped results.
+var _ PlanNode = &groupNode{}
+
 type groupNode struct {
 	// The schema for this groupNode.
 	columns sqlbase.ResultColumns
 
 	// The source node (which returns values that feed into the aggregation).
-	plan planNode
+	plan PlanNode
 
 	// Indices of the group by columns in the source plan.
 	groupCols []int
@@ -80,11 +82,11 @@ type groupNode struct {
 	optType opt.GroupOptType
 }
 
-func (n *groupNode) startExec(params runParams) error {
+func (n *groupNode) StartExec(params RunParams) error {
 	panic("groupNode cannot be run in local mode")
 }
 
-func (n *groupNode) Next(params runParams) (bool, error) {
+func (n *groupNode) Next(params RunParams) (bool, error) {
 	panic("groupNode cannot be run in local mode")
 }
 

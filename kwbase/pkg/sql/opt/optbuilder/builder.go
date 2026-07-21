@@ -208,6 +208,10 @@ type Builder struct {
 	// PrepareNamespaces records sql.PreparedStatement
 	// during the compilation process in procedure
 	PrepareNamespaces map[string]interface{}
+
+	// buildingSQLFunction is true when a LANGUAGE SQL UDF is compiled through
+	// the procedure.
+	buildingSQLFunction bool
 }
 
 // TriggerBuilder contains some elements that are only used to build trigger.
@@ -482,6 +486,10 @@ func (b *Builder) buildStmt(
 		return b.buildCreateProcedure(stmt, inScope)
 	case *tree.CreateProcedurePG:
 		return b.buildCreateProcedurePG(stmt, inScope)
+	// LANGUAGE SQL will be rewritten to CREATE PROCEDURE.
+	// LANGUAGE LUA will keep using the existing opaque ddl path.
+	case *tree.CreateFunction:
+		return b.buildCreateFunction(stmt, inScope)
 
 	case *tree.CallProcedure:
 		return b.buildCallProcedure(stmt, inScope)

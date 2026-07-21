@@ -159,6 +159,8 @@ message TSCol {
   optional string encode_algo = 8;
   optional string compress_algo = 9;
   optional string compress_level = 10;
+  optional double rel_err = 11;
+  optional double abs_err = 12;
 }
 
 // ColumnFamilyDescriptor is set of columns stored together in one kv entry.
@@ -628,6 +630,7 @@ message FunctionDescriptor {
   optional uint32 function_type = 6 [(gogoproto.nullable) = false];
   optional string language = 7 [(gogoproto.nullable) = false];
   optional string db_name = 8 [(gogoproto.nullable) = false];
+  repeated string argument_names = 9;
 }
 
 message ProcedureDescriptor {
@@ -648,6 +651,7 @@ message ProcedureDescriptor {
     (gogoproto.casttype) = "ID"];
   optional string language = 8 [(gogoproto.nullable) = false];
   optional PrivilegeDescriptor privileges = 9;
+  optional bytes returnType = 10 [(gogoproto.nullable) = false, (gogoproto.customtype) = "gitee.com/kwbasedb/kwbase/pkg/sql/types.T"];
 }
 
 message ProcParam {

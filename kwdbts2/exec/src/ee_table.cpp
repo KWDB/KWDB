@@ -53,6 +53,12 @@ Field *TABLE::GetFieldWithColNum(k_uint32 num) {
   } else if (num < field_num_ + rel_fields_.size()) {
     // handle relational fields for multiple model processing
     table_field = rel_fields_[num - field_num_];
+  } else if (num == OsnColIdx) {
+    table_field = fields_[field_num_ - 3];
+  } else if (num == OpColIdx) {
+    table_field = fields_[field_num_ - 2];
+  } else if (num == EventColIdx) {
+    table_field = fields_[field_num_ - 1];
   }
 
   return table_field;
@@ -200,7 +206,11 @@ KStatus TABLE::InitField(kwdbContext_p ctx, const TSCol &col, k_uint32 index,
       break;
     }
     case roachpb::DataType::BINARY: {
-      *field = new FieldBlob();
+      if (min_tag_id_ != 0 && index > min_tag_id_ && col.column_type() == roachpb::KWDBKTSColumn::TYPE_DATA) {
+        *field = new FieldOSNBlob();
+      } else {
+        *field = new FieldBlob();
+      }
       break;
     }
     case roachpb::DataType::NCHAR: {

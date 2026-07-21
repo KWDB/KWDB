@@ -38,7 +38,7 @@ import (
 // etc) is encountered, or a function that may change value for every
 // row in a table, the 2nd return value is true.
 // If any star is expanded, the 3rd return value is true.
-func (p *planner) resolveNames(
+func (p *GenericPlanner) resolveNames(
 	expr tree.Expr, source *sqlbase.DataSourceInfo, ivarHelper tree.IndexedVarHelper,
 ) (tree.Expr, bool, error) {
 	if expr == nil {

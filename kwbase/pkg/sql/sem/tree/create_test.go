@@ -373,10 +373,11 @@ func TestCreateFunctionFormat(t *testing.T) {
 			{ArgName: "b", ArgType: types.String},
 		},
 		ReturnType: types.Bool,
+		Language:   FunctionLangLua,
 		FuncBody:   "return a > 0",
 	}
 
 	ctx := NewFmtCtx(FmtSimple)
 	node.Format(ctx)
-	require.Equal(t, `CREATE FUNCTION my_func (a INT8, b STRING) RETURNS BOOL LUA BEGIN 'return a > 0' END`, ctx.CloseAndGetString())
+	require.Equal(t, `CREATE FUNCTION my_func (a INT8, b STRING) RETURNS BOOL LANGUAGE LUA BEGIN 'return a > 0' END`, ctx.CloseAndGetString())
 }

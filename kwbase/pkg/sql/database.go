@@ -37,6 +37,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlconst"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 )
 
@@ -80,7 +81,8 @@ func (dc *databaseCache) setID(name string, id sqlbase.ID) {
 	dc.databases.Store(name, id)
 }
 
-func makeDatabaseDesc(p *tree.CreateDatabase) sqlbase.DatabaseDescriptor {
+// MakeDatabaseDesc creates a database descriptor from a CREATE DATABASE statement
+func MakeDatabaseDesc(p *tree.CreateDatabase) sqlbase.DatabaseDescriptor {
 	return sqlbase.DatabaseDescriptor{
 		Name:       string(p.Name),
 		Privileges: sqlbase.NewDefaultPrivilegeDescriptor(),
@@ -105,10 +107,10 @@ func getDatabaseID(
 	return dbID, nil
 }
 
-// getDatabaseDescByID looks up the database descriptor given its ID,
+// GetDatabaseDescByID looks up the database descriptor given its ID,
 // returning nil if the descriptor is not found. If you want the "not
 // found" condition to return an error, use mustGetDatabaseDescByID() instead.
-func getDatabaseDescByID(
+func GetDatabaseDescByID(
 	ctx context.Context, txn *kv.Txn, id sqlbase.ID,
 ) (*sqlbase.DatabaseDescriptor, error) {
 	desc := &sqlbase.DatabaseDescriptor{}
@@ -157,7 +159,7 @@ func getTempTableSchemaNameByID(
 func MustGetDatabaseDescByID(
 	ctx context.Context, txn *kv.Txn, id sqlbase.ID,
 ) (*sqlbase.DatabaseDescriptor, error) {
-	desc, err := getDatabaseDescByID(ctx, txn, id)
+	desc, err := GetDatabaseDescByID(ctx, txn, id)
 	if err != nil {
 		return nil, err
 	}
@@ -331,9 +333,9 @@ func (dc *databaseCache) getCachedDatabaseID(name string) (sqlbase.ID, error) {
 	return sqlbase.ID(id), err
 }
 
-// renameDatabase implements the DatabaseDescEditor interface.
-func (p *planner) renameDatabase(
-	ctx context.Context, oldDesc *sqlbase.DatabaseDescriptor, newName string,
+// RenameDatabase handles the renaming of a database
+func RenameDatabase(
+	ctx context.Context, p *GenericPlanner, oldDesc *sqlbase.DatabaseDescriptor, newName string,
 ) error {
 	oldName := oldDesc.Name
 	oldDesc.SetName(newName)
@@ -368,8 +370,8 @@ func (p *planner) renameDatabase(
 		return err
 	}
 
-	p.Tables().addUncommittedDatabase(oldName, descID, dbDropped)
-	p.Tables().addUncommittedDatabase(newName, descID, dbCreated)
+	p.Tables().AddUncommittedDatabase(oldName, descID, sqlconst.DbDropped)
+	p.Tables().AddUncommittedDatabase(newName, descID, sqlconst.DbCreated)
 
 	return p.txn.Run(ctx, b)
 }

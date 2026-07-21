@@ -38,8 +38,10 @@ import (
 	"github.com/pkg/errors"
 )
 
+var _ PlanNode = &scatterNode{}
+
 type scatterNode struct {
-	optColumnsSlot
+	OptColumnsSlot
 
 	run scatterRun
 }
@@ -47,8 +49,8 @@ type scatterNode struct {
 // Scatter moves ranges to random stores
 // (`ALTER TABLE/INDEX ... SCATTER ...` statement)
 // Privileges: INSERT on table.
-func (p *planner) Scatter(ctx context.Context, n *tree.Scatter) (planNode, error) {
-	tableDesc, index, err := p.getTableAndIndex(ctx, &n.TableOrIndex, privilege.INSERT)
+func (p *GenericPlanner) Scatter(ctx context.Context, n *tree.Scatter) (PlanNode, error) {
+	tableDesc, index, err := p.GetTableAndIndex(ctx, &n.TableOrIndex, privilege.INSERT)
 	if err != nil {
 		return nil, err
 	}
@@ -144,14 +146,14 @@ type scatterRun struct {
 	ranges   []roachpb.AdminScatterResponse_Range
 }
 
-func (n *scatterNode) startExec(params runParams) error {
+func (n *scatterNode) StartExec(params RunParams) error {
 	db := params.p.ExecCfg().DB
 	req := &roachpb.AdminScatterRequest{
 		RequestHeader:   roachpb.RequestHeader{Key: n.run.span.Key, EndKey: n.run.span.EndKey},
 		RandomizeLeases: true,
 	}
-	log.VEventf(params.ctx, 3, "send AdminScatterRequest to [%v, %v]", n.run.span.Key, n.run.span.EndKey)
-	res, pErr := kv.SendWrapped(params.ctx, db.NonTransactionalSender(), req)
+	log.VEventf(params.Ctx, 3, "send AdminScatterRequest to [%v, %v]", n.run.span.Key, n.run.span.EndKey)
+	res, pErr := kv.SendWrapped(params.Ctx, db.NonTransactionalSender(), req)
 	if pErr != nil {
 		return pErr.GoError()
 	}
@@ -160,7 +162,7 @@ func (n *scatterNode) startExec(params runParams) error {
 	return nil
 }
 
-func (n *scatterNode) Next(params runParams) (bool, error) {
+func (n *scatterNode) Next(params RunParams) (bool, error) {
 	n.run.rangeIdx++
 	hasNext := n.run.rangeIdx < len(n.run.ranges)
 	return hasNext, nil

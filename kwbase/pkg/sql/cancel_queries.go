@@ -35,16 +35,18 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
+var _ PlanNode = &cancelQueriesNode{}
+
 type cancelQueriesNode struct {
-	rows     planNode
+	rows     PlanNode
 	ifExists bool
 }
 
-func (n *cancelQueriesNode) startExec(runParams) error {
+func (n *cancelQueriesNode) StartExec(RunParams) error {
 	return nil
 }
 
-func (n *cancelQueriesNode) Next(params runParams) (bool, error) {
+func (n *cancelQueriesNode) Next(params RunParams) (bool, error) {
 	// TODO(knz): instead of performing the cancels sequentially,
 	// accumulate all the query IDs and then send batches to each of the
 	// nodes.
@@ -78,7 +80,7 @@ func (n *cancelQueriesNode) Next(params runParams) (bool, error) {
 		Username: params.SessionData().User,
 	}
 
-	response, err := statusServer.CancelQuery(params.ctx, request)
+	response, err := statusServer.CancelQuery(params.Ctx, request)
 	if err != nil {
 		return false, err
 	}
@@ -87,7 +89,7 @@ func (n *cancelQueriesNode) Next(params runParams) (bool, error) {
 		return false, errors.Newf("could not cancel query %s: %s", queryID, response.Error)
 	}
 
-	params.p.SetAuditTarget(0, queryID.String(), nil)
+	params.GetPlanner().SetAuditTarget(0, queryID.String(), nil)
 	return true, nil
 }
 

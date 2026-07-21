@@ -39,6 +39,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/roleoption"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlconst"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlutil"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
@@ -89,11 +91,11 @@ type AuthorizationAccessor interface {
 	SetAuditTargetAndType(id uint32, name string, cascade []string, targetType target.AuditObjectType)
 }
 
-var _ AuthorizationAccessor = &planner{}
+var _ AuthorizationAccessor = &GenericPlanner{}
 
 // CheckPrivilege implements the AuthorizationAccessor interface.
 // Requires a valid transaction to be open.
-func (p *planner) CheckPrivilege(
+func (p *GenericPlanner) CheckPrivilege(
 	ctx context.Context, descriptor sqlbase.DescriptorProto, privilege privilege.Kind,
 ) error {
 	// Verify that the txn is valid in any case, so that
@@ -148,7 +150,7 @@ func (p *planner) CheckPrivilege(
 
 // CheckPrivilegeBitmap check if desc has privileges in privilege map
 func CheckPrivilegeBitmap(
-	ctx context.Context, p *planner, desc sqlbase.DescriptorProto, PrivilegeBitmap uint32,
+	ctx context.Context, p *GenericPlanner, desc sqlbase.DescriptorProto, PrivilegeBitmap uint32,
 ) error {
 	for privs := PrivilegeBitmap; privs != 0; {
 		priv := privilege.Kind(bits.TrailingZeros32(privs))
@@ -164,7 +166,9 @@ func CheckPrivilegeBitmap(
 
 // CheckAnyPrivilege implements the AuthorizationAccessor interface.
 // Requires a valid transaction to be open.
-func (p *planner) CheckAnyPrivilege(ctx context.Context, descriptor sqlbase.DescriptorProto) error {
+func (p *GenericPlanner) CheckAnyPrivilege(
+	ctx context.Context, descriptor sqlbase.DescriptorProto,
+) error {
 	// Verify that the txn is valid in any case, so that
 	// we don't get the risk to say "OK" to root requests
 	// with an invalid API usage.
@@ -206,7 +210,7 @@ func (p *planner) CheckAnyPrivilege(ctx context.Context, descriptor sqlbase.Desc
 
 // HasAdminRole implements the AuthorizationAccessor interface.
 // Requires a valid transaction to be open.
-func (p *planner) HasAdminRole(ctx context.Context) (bool, error) {
+func (p *GenericPlanner) HasAdminRole(ctx context.Context) (bool, error) {
 	user := p.SessionData().User
 	if user == "" {
 		return false, errors.AssertionFailedf("empty user")
@@ -219,7 +223,7 @@ func (p *planner) HasAdminRole(ctx context.Context) (bool, error) {
 	}
 
 	// Check if user is 'root' or 'node'.
-	// TODO(knz): planner HasAdminRole has no business authorizing
+	// TODO(knz): GenericPlanner HasAdminRole has no business authorizing
 	// the "node" principal - node should not be issuing SQL queries.
 	if user == security.RootUser || user == security.NodeUser {
 		return true, nil
@@ -241,7 +245,7 @@ func (p *planner) HasAdminRole(ctx context.Context) (bool, error) {
 
 // RequireAdminRole implements the AuthorizationAccessor interface.
 // Requires a valid transaction to be open.
-func (p *planner) RequireAdminRole(ctx context.Context, action string) error {
+func (p *GenericPlanner) RequireAdminRole(ctx context.Context, action string) error {
 	ok, err := p.HasAdminRole(ctx)
 
 	if err != nil {
@@ -259,7 +263,7 @@ func (p *planner) RequireAdminRole(ctx context.Context, action string) error {
 // returns a map of "role" -> "isAdmin".
 // The "isAdmin" flag applies to both direct and indirect members.
 // Requires a valid transaction to be open.
-func (p *planner) MemberOfWithAdminOption(
+func (p *GenericPlanner) MemberOfWithAdminOption(
 	ctx context.Context, member string,
 ) (map[string]bool, error) {
 	if p.txn == nil || !p.txn.IsOpen() {
@@ -326,7 +330,7 @@ func (p *planner) MemberOfWithAdminOption(
 // TODO(mberhault): this is the naive way and performs a full lookup for each user,
 // we could save detailed memberships (as opposed to fully expanded) and reuse them
 // across users. We may then want to lookup more than just this user.
-func (p *planner) resolveMemberOfWithAdminOption(
+func (p *GenericPlanner) resolveMemberOfWithAdminOption(
 	ctx context.Context, member string,
 ) (map[string]bool, error) {
 	ret := map[string]bool{}
@@ -371,7 +375,7 @@ func (p *planner) resolveMemberOfWithAdminOption(
 // Only works on checking the "positive version" of the privilege.
 // Requires a valid transaction to be open.
 // Example: CREATEROLE instead of NOCREATEROLE.
-func (p *planner) HasRoleOption(ctx context.Context, roleOption roleoption.Option) error {
+func (p *GenericPlanner) HasRoleOption(ctx context.Context, roleOption roleoption.Option) error {
 	// Verify that the txn is valid in any case, so that
 	// we don't get the risk to say "OK" to root requests
 	// with an invalid API usage.
@@ -384,7 +388,7 @@ func (p *planner) HasRoleOption(ctx context.Context, roleOption roleoption.Optio
 		return nil
 	}
 
-	normalizedName, err := NormalizeAndValidateUsername(user)
+	normalizedName, err := sqlutil.NormalizeAndValidateUsername(user)
 	if err != nil {
 		return err
 	}
@@ -412,7 +416,7 @@ func (p *planner) HasRoleOption(ctx context.Context, roleOption roleoption.Optio
 		sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
 		fmt.Sprintf(
 			`SELECT 1 from %s WHERE option = '%s' AND username = ANY($1) LIMIT 1`,
-			RoleOptionsTableName,
+			sqlconst.RoleOptionsTableName,
 			roleOption.String()),
 		roles)
 
@@ -447,24 +451,18 @@ const ConnAuditingClusterSettingName = "server.auth_log.sql_connections.enabled"
 // create a circular dependency.
 const AuthAuditingClusterSettingName = "server.auth_log.sql_sessions.enabled"
 
-// shouldCheckPublicSchema indicates whether canCreateOnSchema should check
-// CREATE privileges for the public schema.
-type shouldCheckPublicSchema bool
-
-const (
-	checkPublicSchema     shouldCheckPublicSchema = true
-	skipCheckPublicSchema shouldCheckPublicSchema = false
-)
-
-// canCreateOnSchema returns whether a user has permission to create new objects
+// CanCreateOnSchema returns whether a user has permission to create new objects
 // on the specified schema. For `public` schemas, it checks if the user has
 // CREATE privileges on the specified dbID. Note that skipCheckPublicSchema may
 // be passed to skip this check, since some callers check this separately.
 //
 // Privileges on temporary schemas are not validated. This is the caller's
 // responsibility.
-func (p *planner) canCreateOnSchema(
-	ctx context.Context, scName string, dbID sqlbase.ID, checkPublicSchema shouldCheckPublicSchema,
+func (p *GenericPlanner) CanCreateOnSchema(
+	ctx context.Context,
+	scName string,
+	dbID sqlbase.ID,
+	checkPublicSchema sqlconst.ShouldCheckPublicSchema,
 ) error {
 	_, resolvedSchema, err := p.ResolveUncachedSchemaDescriptor(ctx, dbID, scName, true /* required */)
 	if err != nil {
@@ -478,7 +476,7 @@ func (p *planner) canCreateOnSchema(
 			// The caller wishes to skip this check.
 			return nil
 		}
-		dbDesc, err := getDatabaseDescByID(ctx, p.Txn(), dbID)
+		dbDesc, err := GetDatabaseDescByID(ctx, p.Txn(), dbID)
 		if err != nil {
 			return err
 		}
@@ -496,8 +494,8 @@ func (p *planner) canCreateOnSchema(
 	}
 }
 
-// canDropInsTable returns whether a user has permission to drop the instance table.
-func (p *planner) canDropInsTable(ctx context.Context, templateTableID sqlbase.ID) error {
+// CanDropInsTable returns whether a user has permission to drop the instance table.
+func CanDropInsTable(ctx context.Context, p *GenericPlanner, templateTableID sqlbase.ID) error {
 	// get template tableDesc by ID
 	tplTable, err := sqlbase.GetTableDescFromID(ctx, p.txn, templateTableID)
 	if err != nil {

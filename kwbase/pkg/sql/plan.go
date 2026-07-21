@@ -33,53 +33,139 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/security/audit/server"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 )
 
-// runParams is a struct containing all parameters passed to planNode.Next() and
+// RunParams is a struct containing all parameters passed to PlanNode.Next() and
 // startPlan.
-type runParams struct {
+type RunParams struct {
 	// context.Context for this method call.
-	ctx context.Context
+	Ctx context.Context
 
 	// extendedEvalCtx groups fields useful for this execution.
 	// Used during local execution and distsql physical planning.
 	extendedEvalCtx *extendedEvalContext
 
-	// planner associated with this execution. Only used during local
+	// GenericPlanner associated with this execution. Only used during local
 	// execution.
-	p *planner
+	p *GenericPlanner
 }
 
-// EvalContext() gives convenient access to the runParam's EvalContext().
-func (r *runParams) EvalContext() *tree.EvalContext {
+// NewRunParams creates a new RunParams instance with the given context,
+// extended evaluation context, and planner.
+func NewRunParams(
+	Ctx context.Context, extendedEvalCtx *extendedEvalContext, p *GenericPlanner,
+) *RunParams {
+	return &RunParams{
+		Ctx:             Ctx,
+		extendedEvalCtx: extendedEvalCtx,
+		p:               p,
+	}
+}
+
+// EvalContext gives convenient access to the runParam's EvalContext.
+func (r *RunParams) EvalContext() *tree.EvalContext {
 	return &r.extendedEvalCtx.EvalContext
 }
 
+// ExtEvalContext returns extendedEvalCtx.
+// nolint:unexportedreturn
+func (r *RunParams) ExtEvalContext() *extendedEvalContext { //nolint:unexportedreturn
+	return r.extendedEvalCtx
+}
+
 // SessionData gives convenient access to the runParam's SessionData.
-func (r *runParams) SessionData() *sessiondata.SessionData {
+func (r *RunParams) SessionData() *sessiondata.SessionData {
 	return r.extendedEvalCtx.SessionData
 }
 
 // ExecCfg gives convenient access to the runParam's ExecutorConfig.
-func (r *runParams) ExecCfg() *ExecutorConfig {
+func (r *RunParams) ExecCfg() *ExecutorConfig {
 	return r.extendedEvalCtx.ExecCfg
 }
 
+// PlannerExecCfg gives convenient access to the runParam's ExecutorConfig.
+func (r *RunParams) PlannerExecCfg() *ExecutorConfig {
+	return r.p.extendedEvalCtx.ExecCfg
+}
+
+// PlannerTxn returns the txn under GenericPlanner
+func (r *RunParams) PlannerTxn() *kv.Txn {
+	return r.p.txn
+}
+
+// GetPlanner returns p
+func (r *RunParams) GetPlanner() *GenericPlanner {
+	return r.p
+}
+
+// GetPSessDataMutator returns the planner's sessionDataMutator.
+// nolint:unexportedreturn
+func (r *RunParams) GetPSessDataMutator() *sessionDataMutator {
+	return r.p.sessionDataMutator
+}
+
+// GetPSQL returns stmt.SQL
+func (r *RunParams) GetPSQL() string {
+	return r.p.stmt.SQL
+}
+
+// GetPAst returns
+func (r *RunParams) GetPAst() tree.Statement {
+	return r.p.stmt.AST
+}
+
+// GetPSession returns the planner's SessionData.
+func (r *RunParams) GetPSession() *sessiondata.SessionData {
+	return r.p.SessionData()
+}
+
+// GetPSemaCtx returns the planner's SemaContext.
+func (r *RunParams) GetPSemaCtx() *tree.SemaContext {
+	return r.p.GetSemaCtx()
+}
+
+// GetTxn returns txn
+func (r *RunParams) GetTxn() *kv.Txn {
+	return r.p.Txn()
+}
+
+// SetTxn sets txn for plan
+func (r *RunParams) SetTxn(t *kv.Txn) {
+	r.p.txn = t
+}
+
+// NewTxn creates new txn for plan
+func (r *RunParams) NewTxn() {
+	r.p.txn = kv.NewTxn(r.GetCtx(), r.extendedEvalCtx.DB, r.extendedEvalCtx.NodeID)
+}
+
+// Rollback controls txn rollback
+func (r *RunParams) Rollback() error {
+	return r.p.txn.Rollback(r.Ctx)
+}
+
+// CommitOrCleanup controls txn Commit Or Cleanup
+func (r *RunParams) CommitOrCleanup() error {
+	return r.p.txn.CommitOrCleanup(r.Ctx)
+}
+
 // Ann is a shortcut for the Annotations from the eval context.
-func (r *runParams) Ann() *tree.Annotations {
+func (r *RunParams) Ann() *tree.Annotations {
 	return r.extendedEvalCtx.EvalContext.Annotations
 }
 
-// createTimeForNewTableDescriptor consults the cluster version to determine
+// CreationTimeForNewTableDescriptor consults the cluster version to determine
 // whether the CommitTimestamp() needs to be observed when creating a new
 // TableDescriptor. See TableDescriptor.ModificationTime.
 //
 // TODO(ajwerner): remove in 20.1.
-func (r *runParams) creationTimeForNewTableDescriptor() (hlc.Timestamp, error) {
+func (r *RunParams) CreationTimeForNewTableDescriptor() (hlc.Timestamp, error) {
 	// Before 19.2 we needed to observe the transaction CommitTimestamp to ensure
 	// that CreateAsOfTime and ModificationTime reflected the timestamp at which the
 	// creating transaction committed. Starting in 19.2 we use a zero-valued
@@ -87,7 +173,7 @@ func (r *runParams) creationTimeForNewTableDescriptor() (hlc.Timestamp, error) {
 	// upon reading use the MVCC timestamp to populate the values.
 	var ts hlc.Timestamp
 	if !r.ExecCfg().Settings.Version.IsActive(
-		r.ctx, clusterversion.VersionTableDescModificationTimeFromMVCC,
+		r.Ctx, clusterversion.VersionTableDescModificationTimeFromMVCC,
 	) {
 		var err error
 		ts, err = r.p.txn.CommitTimestamp()
@@ -98,17 +184,29 @@ func (r *runParams) creationTimeForNewTableDescriptor() (hlc.Timestamp, error) {
 	return ts, nil
 }
 
-// planNode defines the interface for executing a query or portion of a query.
+// ReadOnlyPlanNode is a marker interface for PlanNode implementations
+// that are safe to execute in read-only transactions. This interface
+// is used to break circular dependency between the sql and ddl packages:
+// ddl nodes that should be allowed in read-only transactions implement
+// this interface without requiring sql to import ddl directly.
+type ReadOnlyPlanNode interface {
+	PlanNode
+	// ReadOnlyPlanNodeMarker is a marker method that indicates this node
+	// is safe for read-only transactions.
+	ReadOnlyPlanNodeMarker()
+}
+
+// PlanNode defines the interface for executing a query or portion of a query.
 //
 // The following methods apply to planNodes and contain special cases
 // for each type; they thus need to be extended when adding/removing
-// planNode instances:
+// PlanNode instances:
 // - planVisitor.visit()           (walk.go)
 // - planNodeNames                 (walk.go)
 // - setLimitHint()                (limit_hint.go)
 // - planColumns()                 (plan_columns.go)
-type planNode interface {
-	startExec(params runParams) error
+type PlanNode interface {
+	StartExec(params RunParams) error
 
 	// Next performs one unit of work, returning false if an error is
 	// encountered or if there is no more work to do. For statements
@@ -117,8 +215,8 @@ type planNode interface {
 	//
 	// Available after startPlan(). It is illegal to call Next() after it returns
 	// false. It is legal to call Next() even if the node implements
-	// planNodeFastPath and the FastPathResults() method returns true.
-	Next(params runParams) (bool, error)
+	// PlanNodeFastPath and the FastPathResults() method returns true.
+	Next(params RunParams) (bool, error)
 
 	// Values returns the values at the current row. The result is only valid
 	// until the next call to Next().
@@ -126,12 +224,12 @@ type planNode interface {
 	// Available after Next().
 	Values() tree.Datums
 
-	// Close terminates the planNode execution and releases its resources.
+	// Close terminates the PlanNode execution and releases its resources.
 	// This method should be called if the node has been used in any way (any
 	// methods on it have been called) after it was constructed. Note that this
-	// doesn't imply that startExec() has been necessarily called.
+	// doesn't imply that StartExec() has been necessarily called.
 	//
-	// This method must not be called during execution - the planNode
+	// This method must not be called during execution - the PlanNode
 	// tree must remain "live" and readable via walk() even after
 	// execution completes.
 	//
@@ -140,13 +238,13 @@ type planNode interface {
 	Close(ctx context.Context)
 }
 
-// PlanNode is the exported name for planNode. Useful for CCL hooks.
-type PlanNode = planNode
+// PlanNode is the exported name for PlanNode. Useful for CCL hooks.
+// type PlanNode = PlanNode
 
-// planNodeFastPath is implemented by nodes that can perform all their
+// PlanNodeFastPath is implemented by nodes that can perform all their
 // work during startPlan(), possibly affecting even multiple rows. For
 // example, DELETE can do this.
-type planNodeFastPath interface {
+type PlanNodeFastPath interface {
 	// FastPathResults returns the affected row count and true if the
 	// node has no result set and has already executed when startPlan() completes.
 	// Note that Next() must still be valid even if this method returns
@@ -154,141 +252,24 @@ type planNodeFastPath interface {
 	FastPathResults() (int, bool)
 }
 
-// planNodeReadingOwnWrites can be implemented by planNodes which do
+// PlanNodeReadingOwnWrites can be implemented by planNodes which do
 // not use the standard SQL principle of reading at the snapshot
 // established at the start of the transaction. It requests that
-// the top-level (shared) `startExec` function disable stepping
-// mode for the duration of the node's `startExec()` call.
+// the top-level (shared) `StartExec` function disable stepping
+// mode for the duration of the node's `StartExec()` call.
 //
 // This done e.g. for most DDL statements that perform multiple KV
 // operations on descriptors, expecting to read their own writes.
 //
-// Note that only `startExec()` runs with the modified stepping mode,
+// Note that only `StartExec()` runs with the modified stepping mode,
 // not the `Next()` methods. This interface (and the idea of
 // temporarily disabling stepping mode) is neither sensical nor
 // applicable to planNodes whose execution is interleaved with
 // that of others.
-type planNodeReadingOwnWrites interface {
+type PlanNodeReadingOwnWrites interface {
 	// ReadingOwnWrites is a marker interface.
 	ReadingOwnWrites()
 }
-
-var _ planNode = &alterTSDatabaseNode{}
-var _ planNode = &alterIndexNode{}
-var _ planNode = &alterSequenceNode{}
-var _ planNode = &alterStreamNode{}
-var _ planNode = &alterTableNode{}
-var _ planNode = &alterScheduleNode{}
-var _ planNode = &alterAuditNode{}
-var _ planNode = &bufferNode{}
-var _ planNode = &cancelQueriesNode{}
-var _ planNode = &cancelSessionsNode{}
-var _ planNode = &changePrivilegesNode{}
-var _ planNode = &createDatabaseNode{}
-var _ planNode = &createFunctionNode{}
-var _ planNode = &createIndexNode{}
-var _ planNode = &createSequenceNode{}
-var _ planNode = &createStatsNode{}
-var _ planNode = &createProcedureNode{}
-var _ planNode = &createTriggerNode{}
-var _ planNode = &createStreamNode{}
-var _ planNode = &createTableNode{}
-var _ planNode = &CreateRoleNode{}
-var _ planNode = &createViewNode{}
-var _ planNode = &createScheduleNode{}
-var _ planNode = &createAuditNode{}
-var _ planNode = &delayedNode{}
-var _ planNode = &deleteNode{}
-var _ planNode = &deleteRangeNode{}
-var _ planNode = &distinctNode{}
-var _ planNode = &dropDatabaseNode{}
-var _ planNode = &dropIndexNode{}
-var _ planNode = &dropScheduleNode{}
-var _ planNode = &dropSchemaNode{}
-var _ planNode = &dropSequenceNode{}
-var _ planNode = &dropStreamNode{}
-var _ planNode = &dropTableNode{}
-var _ planNode = &DropRoleNode{}
-var _ planNode = &dropViewNode{}
-var _ planNode = &dropFunctionNode{}
-var _ planNode = &dropProcedureNode{}
-var _ planNode = &dropAuditNode{}
-var _ planNode = &errorIfRowsNode{}
-var _ planNode = &explainDistSQLNode{}
-var _ planNode = &explainPlanNode{}
-var _ planNode = &explainVecNode{}
-var _ planNode = &filterNode{}
-var _ planNode = &GrantRoleNode{}
-var _ planNode = &groupNode{}
-var _ planNode = &hookFnNode{}
-var _ planNode = &indexJoinNode{}
-var _ planNode = &insertNode{}
-var _ planNode = &insertFastPathNode{}
-var _ planNode = &joinNode{}
-var _ planNode = &limitNode{}
-var _ planNode = &max1RowNode{}
-var _ planNode = &operateDataNode{}
-var _ planNode = &ordinalityNode{}
-var _ planNode = &projectSetNode{}
-var _ planNode = &pauseScheduleNode{}
-var _ planNode = &recursiveCTENode{}
-var _ planNode = &refreshMaterializedViewNode{}
-var _ planNode = &relocateNode{}
-var _ planNode = &renameColumnNode{}
-var _ planNode = &renameDatabaseNode{}
-var _ planNode = &renameIndexNode{}
-var _ planNode = &renameTableNode{}
-var _ planNode = &resumeScheduleNode{}
-var _ planNode = &renderNode{}
-var _ planNode = &RevokeRoleNode{}
-var _ planNode = &rowCountNode{}
-var _ planNode = &scanBufferNode{}
-var _ planNode = &scanNode{}
-var _ planNode = &scatterNode{}
-var _ planNode = &serializeNode{}
-var _ planNode = &sequenceSelectNode{}
-var _ planNode = &showFingerprintsNode{}
-var _ planNode = &showTraceNode{}
-var _ planNode = &sortNode{}
-var _ planNode = &splitNode{}
-var _ planNode = &selectIntoNode{}
-var _ planNode = &tsDDLNode{}
-var _ planNode = &vacuumNode{}
-
-// var _ planNode = &replicationControlNode{}
-// var _ planNode = &replicateSetRoleNode{}
-// var _ planNode = &replicateSetSecondaryNode{}
-var _ planNode = &unsplitNode{}
-var _ planNode = &unsplitAllNode{}
-var _ planNode = &truncateNode{}
-var _ planNode = &unaryNode{}
-var _ planNode = &unionNode{}
-var _ planNode = &updateNode{}
-var _ planNode = &upsertNode{}
-var _ planNode = &valuesNode{}
-var _ planNode = &virtualTableNode{}
-var _ planNode = &windowNode{}
-var _ planNode = &zeroNode{}
-
-var _ planNodeFastPath = &deleteRangeNode{}
-var _ planNodeFastPath = &rowCountNode{}
-var _ planNodeFastPath = &serializeNode{}
-var _ planNodeFastPath = &setZoneConfigNode{}
-var _ planNodeFastPath = &controlJobsNode{}
-var _ planNodeFastPath = &dropScheduleNode{}
-
-var _ planNodeReadingOwnWrites = &alterIndexNode{}
-var _ planNodeReadingOwnWrites = &alterSequenceNode{}
-var _ planNodeReadingOwnWrites = &alterTableNode{}
-var _ planNodeReadingOwnWrites = &createIndexNode{}
-var _ planNodeReadingOwnWrites = &createSequenceNode{}
-var _ planNodeReadingOwnWrites = &createProcedureNode{}
-var _ planNodeReadingOwnWrites = &createTriggerNode{}
-var _ planNodeReadingOwnWrites = &createTableNode{}
-var _ planNodeReadingOwnWrites = &createViewNode{}
-var _ planNodeReadingOwnWrites = &changePrivilegesNode{}
-var _ planNodeReadingOwnWrites = &dropSchemaNode{}
-var _ planNodeReadingOwnWrites = &setZoneConfigNode{}
 
 // planNodeRequireSpool serves as marker for nodes whose parent must
 // ensure that the node is fully run to completion (and the results
@@ -297,6 +278,31 @@ var _ planNodeReadingOwnWrites = &setZoneConfigNode{}
 type planNodeRequireSpool interface {
 	requireSpool()
 }
+
+// PlanNodeWithSourcePlan is implemented by PlanNodes that contain a source
+// PlanNode accessible via the SourcePlan() method. This allows code in the
+// sql package to traverse plan trees without importing packages like ddl.
+type PlanNodeWithSourcePlan interface {
+	PlanNode
+	SourcePlan() PlanNode
+}
+
+// PlanNodeWithSourcePlanSetter is implemented by PlanNodes that support
+// replacing their source PlanNode via SetSourcePlan(). Used by plan visitors
+// that need to mutate the plan tree (e.g., the EXPLAIN walker).
+type PlanNodeWithSourcePlanSetter interface {
+	PlanNodeWithSourcePlan
+	SetSourcePlan(PlanNode)
+}
+
+var _ PlanNodeFastPath = &deleteRangeNode{}
+var _ PlanNodeFastPath = &rowCountNode{}
+var _ PlanNodeFastPath = &serializeNode{}
+var _ PlanNodeFastPath = &setZoneConfigNode{}
+var _ PlanNodeFastPath = &controlJobsNode{}
+
+var _ PlanNodeReadingOwnWrites = &changePrivilegesNode{}
+var _ PlanNodeReadingOwnWrites = &setZoneConfigNode{}
 
 var _ planNodeRequireSpool = &serializeNode{}
 
@@ -326,7 +332,7 @@ type planTop struct {
 	stmt *Statement
 
 	// plan is the top-level node of the logical plan.
-	plan planNode
+	plan PlanNode
 
 	// mem/catalog retains the memo and catalog that were used to create the
 	// plan.
@@ -334,11 +340,11 @@ type planTop struct {
 	catalog *optCatalog
 
 	// deps, if non-nil, collects the table/view dependencies for this query.
-	// Any planNode constructors that resolves a table name or reference in the query
+	// Any PlanNode constructors that resolves a table name or reference in the query
 	// to a descriptor must register this descriptor into planDeps.
 	// This is (currently) used by CREATE VIEW.
 	// TODO(knz): Remove this in favor of a better encapsulated mechanism.
-	deps planDependencies
+	deps PlanDependencies
 
 	// subqueryPlans contains all the sub-query plans.
 	subqueryPlans []subquery
@@ -375,15 +381,15 @@ type physicalPlanTop struct {
 	*PhysicalPlan
 	// planNodesToClose contains the planNodes that are a part of the physical
 	// plan (via planNodeToRowSource wrapping). These planNodes need to be
-	// closed explicitly since we don't have a planNode tree that performs the
+	// closed explicitly since we don't have a PlanNode tree that performs the
 	// closure.
-	planNodesToClose []planNode
+	planNodesToClose []PlanNode
 }
 
 // postquery is a query tree that is executed after the main one. It can only
 // return an error (for example, foreign key violation).
 type postquery struct {
-	plan planNode
+	plan PlanNode
 }
 
 // init resets planTop to point to a given statement; used at the start of the
@@ -419,51 +425,51 @@ func (p *planTop) close(ctx context.Context) {
 }
 
 // planMaybePhysical is a utility struct representing a plan. It can currently
-// use either planNode or DistSQL spec representation, but eventually will be
+// use either PlanNode or DistSQL spec representation, but eventually will be
 // replaced by the latter representation directly.
 type planMaybePhysical struct {
-	planNode planNode
+	PlanNode PlanNode
 	// physPlan (when non-nil) contains the physical plan that has not yet
 	// been finalized.
 	physPlan *physicalPlanTop
 }
 
-// startExec calls startExec() on each planNode using a depth-first, post-order
+// StartExec calls StartExec() on each PlanNode using a depth-first, post-order
 // traversal.  The subqueries, if any, are also started.
 //
-// If the planNode also implements the nodeReadingOwnWrites interface,
+// If the PlanNode also implements the nodeReadingOwnWrites interface,
 // the txn is temporarily reconfigured to use read-your-own-writes for
-// the duration of the call to startExec. This is used e.g. by
+// the duration of the call to StartExec. This is used e.g. by
 // DDL statements.
 //
 // Reminder: walkPlan() ensures that subqueries and sub-plans are
-// started before startExec() is called.
-func startExec(params runParams, plan planNode) error {
+// started before StartExec() is called.
+func StartExec(params RunParams, plan PlanNode) error {
 
 	o := planObserver{
-		enterNode: func(ctx context.Context, _ string, p planNode) (bool, error) {
+		enterNode: func(ctx context.Context, _ string, p PlanNode) (bool, error) {
 			switch p.(type) {
 			case *explainPlanNode, *explainDistSQLNode, *explainVecNode:
 				// Do not recurse: we're not starting the plan if we just show its structure with EXPLAIN.
 				return false, nil
 			case *showTraceNode:
-				// showTrace needs to override the params struct, and does so in its startExec() method.
+				// showTrace needs to override the params struct, and does so in its StartExec() method.
 				return false, nil
 			}
 			return true, nil
 		},
-		leaveNode: func(_ string, n planNode) (err error) {
-			if _, ok := n.(planNodeReadingOwnWrites); ok {
-				prevMode := params.p.Txn().ConfigureStepping(params.ctx, kv.SteppingDisabled)
-				defer func() { _ = params.p.Txn().ConfigureStepping(params.ctx, prevMode) }()
+		leaveNode: func(_ string, n PlanNode) (err error) {
+			if _, ok := n.(PlanNodeReadingOwnWrites); ok {
+				prevMode := params.p.Txn().ConfigureStepping(params.Ctx, kv.SteppingDisabled)
+				defer func() { _ = params.p.Txn().ConfigureStepping(params.Ctx, prevMode) }()
 			}
-			return n.startExec(params)
+			return n.StartExec(params)
 		},
 	}
-	return walkPlan(params.ctx, plan, o)
+	return walkPlan(params.Ctx, plan, o)
 }
 
-func (p *planner) maybePlanHook(ctx context.Context, stmt tree.Statement) (planNode, error) {
+func (p *GenericPlanner) maybePlanHook(ctx context.Context, stmt tree.Statement) (PlanNode, error) {
 	// TODO(dan): This iteration makes the plan dispatch no longer constant
 	// time. We could fix that with a map of `reflect.Type` but including
 	// reflection in such a primary codepath is unfortunate. Instead, the
@@ -490,15 +496,38 @@ func (p *planner) maybePlanHook(ctx context.Context, stmt tree.Statement) (planN
 	return nil, nil
 }
 
-// resetNewTxn Create a new Txn and replace the old Txn.
-func (r *runParams) resetNewTxn() {
-	newTxn := kv.NewTxn(r.ctx, r.extendedEvalCtx.DB, r.extendedEvalCtx.NodeID)
+// ResetNewTxn Create a new Txn and replace the old Txn.
+func (r *RunParams) ResetNewTxn() {
+	newTxn := kv.NewTxn(r.Ctx, r.extendedEvalCtx.DB, r.extendedEvalCtx.NodeID)
 	*r.p.txn = *newTxn
+}
+
+// GetCtx gets context
+func (r *RunParams) GetCtx() context.Context {
+	return r.Ctx
+}
+
+// SetUserDefinedVar sets user defined var
+func (r *RunParams) SetUserDefinedVar(name string, v tree.Datum) error {
+	return r.p.sessionDataMutator.SetUserDefinedVar(name, v)
+}
+
+// DeallocatePrepare deallocate prepare
+func (r *RunParams) DeallocatePrepare(name string) error {
+	if name == "" {
+		r.p.preparedStatements.DeleteAll(r.Ctx)
+	} else {
+		if found := r.p.preparedStatements.Delete(r.Ctx, name); !found {
+			return pgerror.Newf(pgcode.InvalidSQLStatementName,
+				"prepared statement %q does not exist", name)
+		}
+	}
+	return nil
 }
 
 // Mark transaction as operating on the system DB if the descriptor id
 // is within the SystemConfig range.
-func (p *planner) maybeSetSystemConfig(id sqlbase.ID) error {
+func (p *GenericPlanner) maybeSetSystemConfig(id sqlbase.ID) error {
 	if !sqlbase.IsSystemConfigID(id) {
 		return nil
 	}
@@ -584,7 +613,7 @@ func (pi *planInstrumentation) savePlanInfo(ctx context.Context, curPlan *planTo
 }
 
 // getHintID return the sql external hint id
-func (p *planner) getHintID() int64 {
+func (p *GenericPlanner) getHintID() int64 {
 	if p.EvalContext().HintModelTiDB || p.EvalContext().HintStmtEmbed {
 		return -1
 	}

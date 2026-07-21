@@ -696,7 +696,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 // below; search this file for "Keyword category lists".
 
 // Ordinary key words in alphabetical order.
-%token <str> ABORT ACTION ADD ADMIN AFTER AGGREGATE AUDIT AUDITS
+%token <str> ABORT ABS ACTION ADD ADMIN AFTER AGGREGATE AUDIT AUDITS
 %token <str> ALL ALTER ANALYSE ANALYZE AND AND_AND ANY ANNOTATE_TYPE APPLICATIONS ARRAY AS ASC
 %token <str> ASYMMETRIC ASSIGN AT ATTRIBUTE ATTRIBUTES AUTHORIZATION AUTOMATIC
 
@@ -761,14 +761,14 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %token <str> OF OFF OFFSET OID OIDS OIDVECTOR ON ONLY OPT OPTION OPTIONS OR
 %token <str> ORDER ORDINALITY OTHERS OUT INOUT OUTER OVER OVERLAPS OVERLAY OWNED OPERATOR
 
-%token <str> PARENT PARTIAL PARTITION PARTITIONS PASSWORD PAUSE PHYSICAL PLACING
+%token <str> PARENT PARTIAL PARTITION PARTITIONS PASSWORD PAUSE PHYSICAL PIPE PIPES PLACING
 %token <str> PLAN PLANS POSITION PRECEDES PRECEDING PRECISION PREPARE PRESERVE PREVIOUS PRIMARY PRIORITY
-%token <str> PROCEDURAL PUBLIC PUBLICATION PROCEDURE PROCEDURES
+%token <str> PROCEDURAL PUB PUBLIC PUBLICATION PUBLICATIONS PUBS PROCEDURE PROCEDURES
 
 %token <str> QUERIES QUERY
 
 %token <str> RANGE RANGES RD READ REAL REBALANCE RECURSIVE REF REFERENCES REFRESH
-%token <str> REGCLASS REGPROC REGPROCEDURE REGNAMESPACE REGTYPE REINDEX
+%token <str> REGCLASS REGPROC REGPROCEDURE REGNAMESPACE REGTYPE REINDEX REL
 %token <str> REMOVE_PATH RENAME REPEATABLE REPLACE
 %token <str> RELEASE RESET RESTORE RESTRICT RESUME RETENTIONS RETURNING RECURRING RETURNS REVOKE RIGHT
 %token <str> ROLE ROLES ROLLBACK ROLLUP ROW ROWS RSHIFT RULE
@@ -776,7 +776,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %token <str> S SAMPLE SAVEPOINT SCATTER SCHEDULE SCHEDULES SCHEMA SCHEMAS SCRUB SEARCH SECOND SECONDARY SELECT SEQUENCE SEQUENCES
 %token <str> SERIAL SERIAL2 SERIAL4 SERIAL8
 %token <str> SERIALIZABLE SERVER SERVICE SESSION SESSIONS SESSION_USER SET SETTING SETTINGS
-%token <str> SHARE SHOW SIMILAR SIMPLE SKIP SLIDING SMALLINT SMALLSERIAL SNAPSHOT SOME SPARSE SPLIT SQL
+%token <str> SHARE SHOW SIMILAR SIMPLE SINK SKIP SLIDING SMALLINT SMALLSERIAL SNAPSHOT SOME SPARSE SPLIT SQL
 %token <str> STR_TO_DATE
 
 %token <str> START STARTTIME STATISTICS STATUS STDIN STREAM STREAMS STRICT STRING STORE STORED STORING SUBSTRING SUCCESS
@@ -829,6 +829,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.Statement> alter_ddl_stmt
 %type <tree.Statement> alter_table_stmt
 %type <tree.Statement> alter_index_stmt
+%type <tree.Statement> alter_pipe_stmt
 %type <tree.Statement> alter_view_stmt
 %type <tree.Statement> alter_sequence_stmt
 %type <tree.Statement> alter_database_stmt
@@ -840,6 +841,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.Statement> alter_audit_stmt
 %type <tree.Statement> alter_procedure_stmt
 %type <tree.Statement> alter_trigger_stmt
+%type <tree.Statement> alter_pub_stmt
 
 // ALTER RANGE
 %type <tree.Statement> alter_zone_range_stmt
@@ -888,7 +890,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.Statement> cancel_queries_stmt
 %type <tree.Statement> cancel_sessions_stmt
 %type <tree.Statement> close_cursor_stmt fetch_cursor_stmt open_cursor_stmt
-%type <tree.Statement> declare_stmt proc_if_stmt proc_while_stmt
+%type <tree.Statement> declare_stmt proc_if_stmt proc_while_stmt func_if_stmt func_while_stmt
 %type <tree.Statement> proc_set_stmt proc_leave_stmt
 %type <tree.Statement> trigger_if_stmt trigger_while_stmt
 
@@ -911,6 +913,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.Statement> create_database_stmt
 %type <tree.Statement> create_ts_database_stmt
 %type <tree.Statement> create_index_stmt
+%type <tree.Statement> create_pipe_stmt
 %type <tree.Statement> create_role_stmt
 %type <tree.Statement> create_schema_stmt
 %type <tree.Statement> create_schedule_for_sql_stmt
@@ -927,6 +930,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.Statement> create_trigger_stmt
 %type <tree.Statement> create_function_stmt
 %type <tree.Statement> create_audit_stmt
+%type <tree.Statement> create_pub_stmt
 
 %type <tree.Statement> create_stats_stmt
 %type <*tree.CreateStatsOptions> opt_create_stats_options
@@ -941,6 +945,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.Statement> drop_ddl_stmt
 %type <tree.Statement> drop_database_stmt
 %type <tree.Statement> drop_index_stmt
+%type <tree.Statement> drop_pipe_stmt
 %type <tree.Statement> drop_role_stmt
 %type <tree.Statement> drop_schema_stmt
 %type <tree.Statement> drop_procedure_stmt
@@ -952,6 +957,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.Statement> drop_schedule_stmt
 %type <tree.Statement> drop_audit_stmt
 %type <tree.Statement> drop_function_stmt
+%type <tree.Statement> drop_pub_stmt
 
 %type <tree.Statement> explain_stmt
 %type <tree.Statement> prepare_stmt
@@ -984,6 +990,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.Statement> abort_stmt
 %type <tree.Statement> rollback_stmt
 %type <tree.Statement> savepoint_stmt
+%type <tree.Statement> function_body_stmt
 
 %type <tree.Statement> preparable_set_stmt nonpreparable_set_stmt
 %type <tree.Statement> set_session_stmt
@@ -1012,6 +1019,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.Statement> show_sort_histogram_stmt
 %type <tree.Statement> show_indexes_stmt
 %type <tree.Statement> show_partitions_stmt
+%type <tree.Statement> show_pipes_stmt
 %type <tree.Statement> show_jobs_stmt
 %type <tree.Statement> show_queries_stmt
 %type <tree.Statement> show_ranges_stmt
@@ -1038,6 +1046,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.Statement> show_schedule_stmt
 %type <tree.Statement> show_schedules_stmt
 %type <tree.Statement> show_audits_stmt
+%type <tree.Statement> show_pubs_stmt
 
 %type <str> session_var numeric_typename
 %type <*string> comment_text
@@ -1103,7 +1112,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <str> db_object_name_component transaction_name
 %type <*tree.UnresolvedObjectName> table_name standalone_index_name sequence_name type_name view_name db_object_name simple_db_object_name complex_db_object_name
 %type <*tree.UnresolvedObjectName> procedure_name
-%type <str> schema_name schedule_name stream_name audit_name function_name argument_name cursor_name
+%type <str> pipe_name pub_name schema_name schedule_name stream_name audit_name function_name argument_name cursor_name
 %type <[]string> schema_name_list function_name_list
 %type <*tree.UnresolvedName> table_pattern complex_table_pattern
 %type <*tree.UnresolvedName> column_path prefixed_column_path column_path_with_star last_column
@@ -1307,6 +1316,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.ReferenceActions> reference_actions
 %type <tree.ReferenceAction> reference_action reference_on_delete reference_on_update
 %type <*string> opt_compress_level opt_compress_algo opt_encode_algo
+%type <*tree.NumVal> opt_encode_rel opt_encode_abs
 
 %type <tree.Expr> func_application func_expr_common_subexpr special_function
 %type <tree.Expr> func_expr func_expr_windowless
@@ -1318,9 +1328,9 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <[]*tree.ProcedureParameter> parameter_list
 %type <*tree.ProcedureParameter> parameter
 //%type <tree.ProcDirection> opt_direction
-%type <[]tree.Statement> proc_stmt_list opt_stmt_else while_body trigger_stmt_list
-%type <tree.Statement> opt_procedure_block proc_handler_body trigger_body
-%type <[]tree.ElseIf> opt_stmt_elsifs
+%type <[]tree.Statement> proc_stmt_list opt_stmt_else while_body trigger_stmt_list func_stmt_list func_else_stmt func_while_body
+%type <tree.Statement> opt_procedure_block proc_handler_body trigger_body opt_function_block
+%type <[]tree.ElseIf> opt_stmt_elsifs func_elsifs_stmt
 
 %type <[]tree.Statement> trigger_while_body opt_trigger_stmt_else
 %type <[]tree.ElseIf> opt_trigger_stmt_elsifs
@@ -1360,6 +1370,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 //%type <tree.ChildTableDef> child_table_clause
 //%type <tree.ChildTableDefs> child_table_list_clause
 
+%type <str> pub_keyword_alternatives pubs_keyword_alternatives
 %type <tree.Expr>  cron_expr opt_description sconst_or_placeholder
 
 // Precedence: lowest to highest
@@ -1469,11 +1480,13 @@ alter_stmt:
   alter_ddl_stmt      // help texts in sub-rule
 | alter_role_stmt     // EXTEND WITH HELP: ALTER ROLE
 | alter_audit_stmt    // EXTEND WITH HELP: ALTER AUDIT
+| alter_pub_stmt      // EXTEND WITH HELP: ALTER PUBLICATION
 | ALTER error         // SHOW HELP: ALTER
 
 alter_ddl_stmt:
   alter_table_stmt     // EXTEND WITH HELP: ALTER TABLE
 | alter_index_stmt     // EXTEND WITH HELP: ALTER INDEX
+| alter_pipe_stmt      // EXTEND WITH HELP: ALTER PIPE
 | alter_view_stmt      // EXTEND WITH HELP: ALTER VIEW
 | alter_sequence_stmt  // EXTEND WITH HELP: ALTER SEQUENCE
 | alter_database_stmt  // EXTEND WITH HELP: ALTER DATABASE
@@ -2014,16 +2027,27 @@ alter_table_cmd:
   //		 [ ENCODE <encode_algo> ]
   //	   [ COMPRESS <compress_algo> ]
   //     [ LEVEL <compress_level> ]
-| ALTER opt_column column_name opt_set_data opt_alter_type opt_collate opt_alter_column_using opt_encode_algo opt_compress_algo opt_compress_level
+| ALTER opt_column column_name opt_set_data opt_alter_type opt_collate opt_alter_column_using opt_encode_algo opt_encode_rel opt_encode_abs opt_compress_algo opt_compress_level
   {
+    var relErr, absErr *float64
+    if nv := $9.numVal(); nv != nil {
+        v, _ := nv.AsFloat()
+        relErr = &v
+    }
+    if nv := $10.numVal(); nv != nil {
+        v, _ := nv.AsFloat()
+        absErr = &v
+    }
     $$.val = &tree.AlterTableAlterColumnType{
       Column: tree.Name($3),
       ToType: $5.colType(),
       Collation: $6,
       Using: $7.expr(),
 			EncodeAlgo:		 $8.strPtr(),
-			CompressAlgo:  $9.strPtr(),
-			CompressLevel: $10.strPtr(),
+			RelErr:        relErr,
+			AbsErr:        absErr,
+			CompressAlgo:  $11.strPtr(),
+			CompressLevel: $12.strPtr(),
     }
   }
 | ALTER attribute_tag attribute_name opt_set_data TYPE typename
@@ -2318,6 +2342,51 @@ import_format:
   {
     $$ = strings.ToUpper($1)
   }
+
+// %Help: ALTER PIPE - alter pipe
+// %Category: DDL
+// %Text:
+// ALTER PIPE <pipe_name> SET TABLE <table_name> ( <elements...> ) WHERE <expr>
+// ALTER PIPE <pipe_name> SET OPTIONS <option> [= <value>] [, ...]
+// ALTER PIPE <pipe_name> SET SINK <option> [= <value>] [, ...]
+//
+// %SeeAlso: CREATE PIPE, DROP PIPE, SHOW PIPES
+alter_pipe_stmt:
+  ALTER PIPE pipe_name SET TABLE table_name '(' name_list ')' opt_where_clause
+  {
+  	name := $6.unresolvedObjectName().ToTableName()
+    $$.val = &tree.AlterPipe {
+			PipeName:			tree.Name($3),
+			Table:   			name,
+      ColNames: 		$8.nameList(),
+      Where:				tree.NewWhere(tree.AstWhere, $10.expr()),
+    }
+  }
+| ALTER PIPE pipe_name SET TABLE table_name '(' '*' ')' opt_where_clause
+  {
+  	name := $6.unresolvedObjectName().ToTableName()
+    $$.val = &tree.AlterPipe {
+			PipeName:			tree.Name($3),
+			Table:   			name,
+      Where:				tree.NewWhere(tree.AstWhere, $10.expr()),
+      Star:					true,
+    }
+  }
+| ALTER PIPE pipe_name SET OPTIONS '(' kv_option_list ')'
+  {
+    $$.val = &tree.AlterPipe {
+			PipeName:			tree.Name($3),
+      Options: 			$7.kvOptions(),
+    }
+  }
+| ALTER PIPE pipe_name SET kv_option_list
+  {
+    $$.val = &tree.AlterPipe {
+			PipeName:			tree.Name($3),
+      Options: 			$5.kvOptions(),
+    }
+  }
+| ALTER PIPE error // SHOW HELP: ALTER PIPE
 
 // %Help: IMPORT - load data from file in a distributed manner
 // %Category: DML
@@ -2717,7 +2786,7 @@ create_unsupported:
 //| CREATE OR REPLACE FUNCTION error { return unimplementedWithIssueDetail(sqllex, 17511, "create function") }
 | CREATE opt_or_replace opt_trusted opt_procedural LANGUAGE name error { return unimplementedWithIssueDetail(sqllex, 17511, "create language " + $6) }
 | CREATE OPERATOR error { return unimplemented(sqllex, "create operator") }
-| CREATE PUBLICATION error { return unimplemented(sqllex, "create publication") }
+// | CREATE PUBLICATION error { return unimplemented(sqllex, "create publication") }
 | CREATE opt_or_replace RULE error { return unimplemented(sqllex, "create rule") }
 | CREATE SERVER error { return unimplemented(sqllex, "create server") }
 | CREATE SUBSCRIPTION error { return unimplemented(sqllex, "create subscription") }
@@ -2748,7 +2817,7 @@ drop_unsupported:
 //| DROP FUNCTION error { return unimplementedWithIssueDetail(sqllex, 17511, "drop function") }
 | DROP opt_procedural LANGUAGE name error { return unimplementedWithIssueDetail(sqllex, 17511, "drop language " + $4) }
 | DROP OPERATOR error { return unimplemented(sqllex, "drop operator") }
-| DROP PUBLICATION error { return unimplemented(sqllex, "drop publication") }
+//| DROP PUBLICATION error { return unimplemented(sqllex, "drop publication") }
 | DROP RULE error { return unimplemented(sqllex, "drop rule") }
 | DROP SERVER error { return unimplemented(sqllex, "drop server") }
 | DROP SUBSCRIPTION error { return unimplemented(sqllex, "drop subscription") }
@@ -2760,6 +2829,7 @@ create_ddl_stmt:
 | create_ts_database_stmt // EXTEND WITH HELP: CREATE TS DATABASE
 | create_database_stmt // EXTEND WITH HELP: CREATE DATABASE
 | create_index_stmt    // EXTEND WITH HELP: CREATE INDEX
+| create_pipe_stmt		 // EXTEND WITH HELP: CREATE PIPE
 | create_schema_stmt   // EXTEND WITH HELP: CREATE SCHEMA
 | create_stream_stmt   // EXTEND WITH HELP: CREATE STREAM
 | create_table_stmt    // EXTEND WITH HELP: CREATE TABLE
@@ -2772,6 +2842,7 @@ create_ddl_stmt:
 | create_view_stmt     // EXTEND WITH HELP: CREATE VIEW
 | create_sequence_stmt // EXTEND WITH HELP: CREATE SEQUENCE
 | create_function_stmt // EXTEND WITH HELP: CREATE FUNCTION
+| create_pub_stmt		   // EXTEND WITH HELP: CREATE PUBLICATION
 | create_trigger_stmt
 
 trigger_body_stmt:
@@ -2804,6 +2875,14 @@ procedure_body_stmt:
 | proc_prepare_stmt
 | execute_stmt
 | deallocate_stmt
+
+function_body_stmt:
+ select_stmt
+| declare_stmt
+| proc_set_stmt
+| func_if_stmt
+| func_while_stmt
+| proc_leave_stmt
 
 proc_prepare_stmt:
   PREPARE table_alias_name prep_type_clause AS proc_preparable_stmt
@@ -3181,6 +3260,7 @@ drop_stmt:
 drop_ddl_stmt:
   drop_database_stmt // EXTEND WITH HELP: DROP DATABASE
 | drop_index_stmt    // EXTEND WITH HELP: DROP INDEX
+| drop_pipe_stmt     // EXTEND WITH HELP: DROP PIPE
 | drop_table_stmt    // EXTEND WITH HELP: DROP TABLE
 | drop_view_stmt     // EXTEND WITH HELP: DROP VIEW
 | drop_sequence_stmt // EXTEND WITH HELP: DROP SEQUENCE
@@ -3189,6 +3269,7 @@ drop_ddl_stmt:
 | drop_function_stmt // EXTEND WITH HELP: DROP FUNCTION
 | drop_procedure_stmt // EXTEND WITH HELP: DROP PROCEDURE
 | drop_trigger_stmt  // EXTEND WITH HELP: DROP TRIGGER
+| drop_pub_stmt      // EXTEND WITH HELP: DROP PUBLICATION
 
 // %Help: DROP VIEW - remove a view
 // %Category: DDL
@@ -3277,6 +3358,27 @@ drop_index_stmt:
     }
   }
 | DROP INDEX error // SHOW HELP: DROP INDEX
+
+// %Help: DROP PIPE - remove a pipe
+// %Category: DDL
+// %Text: DROP PIPE [IF EXISTS] <pipe_name>
+// %SeeAlso: CREATE PIPE, ALTER PIPE, SHOW PIPES
+drop_pipe_stmt:
+  DROP PIPE pipe_name
+  {
+    $$.val = &tree.DropPipe{
+      PipeName: tree.Name($3),
+      IfExists: false,
+    }
+  }
+| DROP PIPE IF EXISTS pipe_name
+  {
+    $$.val = &tree.DropPipe{
+      PipeName: tree.Name($5),
+      IfExists: true,
+    }
+  }
+| DROP PIPE error // SHOW HELP: DROP PIPE
 
 // %Help: DROP DATABASE - remove a database
 // %Category: DDL
@@ -3405,7 +3507,7 @@ drop_procedure_stmt:
 // %Help: DROP FUNCTION - remove a function
 // %Category: DDL
 // %Text: DROP FUNCTION <function_name>
-// %SeeAlso: CREATE FUNCTION, SHOW FUNCTION, SHOW FUNCTIONS
+// %SeeAlso: CREATE FUNCTION, SHOW FUNCTION, SHOW FUNCTIONS, SHOW CREATE FUNCTION
 drop_function_stmt:
   DROP FUNCTION function_name_list
   {
@@ -3467,6 +3569,27 @@ drop_audit_stmt:
     $$.val = &tree.DropAudit{Names: $5.nameList(), IfExists: true}
   }
 | DROP AUDIT error  // SHOW HELP: DROP AUDIT
+
+// %Help: DROP PUBLICATION - remove a publication
+// %Category: DDL
+// %Text: DROP PUBLICATION [IF EXISTS] <pub_name>
+// %SeeAlso: CREATE PUBLICATION, ALTER PUBLICATION, SHOW PUBLICATIONS
+drop_pub_stmt:
+  DROP pub_keyword_alternatives pub_name
+  {
+    $$.val = &tree.DropPublication{
+      PubName: tree.Name($3),
+      IfExists: false,
+    }
+  }
+| DROP pub_keyword_alternatives IF EXISTS pub_name
+  {
+    $$.val = &tree.DropPublication{
+      PubName: tree.Name($5),
+      IfExists: true,
+    }
+  }
+| DROP pub_keyword_alternatives error // SHOW HELP: DROP PUBLICATION
 
 // %Help: EXPLAIN - show the logical plan of a query
 // %Category: Misc
@@ -4207,6 +4330,7 @@ show_stmt:
 | show_sort_histogram_stmt
 | show_indexes_stmt         // EXTEND WITH HELP: SHOW INDEXES
 | show_partitions_stmt
+| show_pipes_stmt         	// EXTEND WITH HELP: SHOW PIPES
 | show_jobs_stmt            // EXTEND WITH HELP: SHOW JOBS
 | show_queries_stmt         // EXTEND WITH HELP: SHOW QUERIES
 | show_ranges_stmt          // EXTEND WITH HELP: SHOW RANGES
@@ -4233,6 +4357,7 @@ show_stmt:
 | show_retention_stmt       // EXTEND WITH HELP: SHOW RETENTIONS
 | show_functions_stmt       // EXTEND WITH HELP: SHOW FUNCTIONS
 | show_function_stmt        // EXTEND WITH HELP: SHOW FUNCTION
+| show_pubs_stmt            // EXTEND WITH HELP: SHOW PUBLICATIONS
 | SHOW error                // SHOW HELP: SHOW
 
 reindex_stmt:
@@ -4585,6 +4710,52 @@ show_distribution_stmt:
     $$.val = &tree.ShowDistribution{IsTable: true, Table: $5.unresolvedObjectName()}
   }
 | SHOW DISTRIBUTION error // SHOW HELP: SHOW DISTRIBUTION
+
+// %Help: SHOW PIPES - list pipes
+// %Category: DDL
+// %Text:
+// SHOW PIPES
+// SHOW PIPE <pipe_name>
+// %SeeAlso: ALTER PIPE, CREATE PIPE, DROP PIPE
+show_pipes_stmt:
+  SHOW PIPES
+  {
+    $$.val = &tree.ShowPipes{
+    	ShowAll:  true,
+    }
+  }
+| SHOW PIPE pipe_name
+  {
+		$$.val = &tree.ShowPipes{
+			ShowAll:  false,
+			PipeName: tree.Name($3),
+		}
+  }
+| SHOW PIPES error // SHOW HELP: SHOW PIPES
+
+// %Help: SHOW PUBLICATIONS - list publications
+// %Category: DDL
+// %Text:
+// SHOW PUBLICATIONS | PUBS
+// SHOW PUBLICATION | PUB <pub_name>
+// %SeeAlso: ALTER PUBLICATION, CREATE PUBLICATION, DROP PUBLICATION
+show_pubs_stmt:
+  SHOW pubs_keyword_alternatives
+  {
+    $$.val = &tree.ShowPublications{
+    	ShowAll:  true,
+    }
+  }
+| SHOW pub_keyword_alternatives pub_name
+  {
+		$$.val = &tree.ShowPublications{
+			ShowAll:  false,
+			PubName: tree.Name($3),
+		}
+  }
+| SHOW pub_keyword_alternatives error // SHOW HELP: SHOW PUBLICATIONS
+| SHOW pubs_keyword_alternatives error // SHOW HELP: SHOW PUBLICATIONS
+
 
 // %Help: SHOW DATABASES - list databases
 // %Category: DDL
@@ -4983,6 +5154,11 @@ show_create_stmt:
 		tab := $6.unresolvedObjectName().ToTableName()
 		$$.val = &tree.ShowCreateTrigger{Name: tree.Name($4), TabName: tab}
 	}
+| SHOW CREATE FUNCTION function_name
+  {
+    name := tree.Name($4)
+    $$.val = &tree.ShowCreateFunction{Name: name}
+  }
 | SHOW CREATE error // SHOW HELP: SHOW CREATE
 
 create_kw:
@@ -6278,14 +6454,31 @@ col_qualification:
 	{
 		$$.val = tree.NamedColumnQualification{Qualification: tree.ColumnComment($3)}
 	}
-| ENCODE non_reserved_word_or_sconst
+| ENCODE non_reserved_word_or_sconst opt_encode_rel opt_encode_abs
 	{
-    $$.val = tree.NamedColumnQualification{Qualification: &tree.ColumnEncode{EncodeAlgo: $2}}
+    $$.val = tree.NamedColumnQualification{Qualification: &tree.ColumnEncode{EncodeAlgo: $2, RelErr: $3.numVal(), AbsErr: $4.numVal()}}
 	}
 | COMPRESS non_reserved_word_or_sconst opt_compress_level
 	{
 		$$.val = tree.NamedColumnQualification{Qualification: &tree.ColumnCompress{CompressAlgo: $2, CompressLevel: $3.strPtr()}}
 	}
+
+opt_encode_rel:
+  REL signed_fconst
+  {
+    relErr := $2
+    $$.val = relErr.numVal()
+  }
+| /* EMPTY */ { $$.val = (*tree.NumVal)(nil) }
+
+opt_encode_abs:
+  ABS signed_fconst
+  {
+    absErr := $2
+    $$.val = absErr.numVal()
+  }
+| /* EMPTY */ { $$.val = (*tree.NumVal)(nil) }
+
 
 opt_compress_level:
 	LEVEL non_reserved_word_or_sconst
@@ -7389,6 +7582,7 @@ trigger_while_body:
 // %Category: DDL
 // %Text:
 // CREATE FUNCTION <function_name> ( <arguments...> ) RETURNS <typename> LANGUAGE LUA BEGIN <func_body> END
+// CREATE FUNCTION <function_name> ( <arguments...> ) RETURNS <typename> LANGUAGE SQL BEGIN <sql_stmt_list> END
 //
 // Function arguments:
 //  <var_name> <type>
@@ -7405,7 +7599,31 @@ create_function_stmt:
     	FunctionName:   tree.Name($3),
     	Arguments:  		args,
     	ReturnType:		  $8.colType(),
+    	Language:       tree.FunctionLangLua,
     	FuncBody:   		$12,
+    }
+  }
+| CREATE FUNCTION function_name '(' arg_def_list ')' RETURNS typename LANGUAGE SQL opt_function_block
+  {
+    args := make(tree.FuncArgDefs, 0)
+    if $5.val != nil {
+      args = $5.argDefs()
+    }
+
+    bodyBlock := $11.block()
+
+    if bodyBlock == nil {
+      sqllex.Error("the function body is missing in sql function")
+      return 1
+    }
+
+    $$.val = &tree.CreateFunction{
+      FunctionName: tree.Name($3),
+      Arguments:    args,
+      ReturnType:   $8.colType(),
+      Language:     tree.FunctionLangSQL,
+      FuncBody:     "",
+      Block:        bodyBlock,
     }
   }
 | CREATE FUNCTION error // SHOW HELP: CREATE FUNCTION
@@ -7433,6 +7651,86 @@ arg_def:
   	}
     $$.val = argDef
   }
+
+// opt_function_block represents the stored function body enclosed in BEGIN...END.
+// This syntax is typically used in the kwbase client along with delimiter.
+opt_function_block:
+   BEGIN func_stmt_list END
+  {
+    $$.val = &tree.Block{
+      Body:  $2.stmts(),
+    }
+  }
+| /* empty */ %prec VALUES
+	{
+		$$.val = (*tree.Block)(nil)
+	}
+
+func_stmt_list:
+  /* empty */ %prec VALUES
+  {
+    $$.val = []tree.Statement(nil)
+  }
+  | func_stmt_list function_body_stmt ';'
+  {
+    $$.val = append($1.stmts(), $2.stmt())
+  }
+
+func_if_stmt:
+	IF a_expr THEN func_stmt_list func_elsifs_stmt func_else_stmt ENDIF
+	{
+		$$.val = &tree.ProcIf{
+			Condition: $2.expr(),
+			ThenBody: $4.stmts(),
+			ElseIfList: $5.elseIf(),
+			ElseBody: $6.stmts(),
+		}
+	}
+
+func_elsifs_stmt:
+	func_elsifs_stmt ELSIF a_expr THEN func_stmt_list
+	{
+		newStmt := tree.ElseIf{
+			Condition: $3.expr(),
+			Stmts: $5.stmts(),
+		}
+		$$.val = append($1.elseIf(), newStmt)
+	}
+| /* EMPTY */
+	{
+		$$.val = []tree.ElseIf(nil)
+	}
+
+func_else_stmt:
+	/* empty */
+	{
+		$$.val = []tree.Statement(nil)
+	}
+| ELSE func_stmt_list
+	{
+		$$.val = $2.stmts()
+	}
+
+func_while_stmt:
+	opt_loop_label WHILE a_expr DO func_while_body opt_label
+	{
+		loopLabel, loopEndLabel := $1, $6
+		if err := checkLoopLabels(loopLabel, loopEndLabel); err != nil {
+			return setErr(sqllex, err)
+		}
+		$$.val = &tree.ProcWhile{
+		  Label: $1,
+			Condition: $3.expr(),
+			Body: $5.stmts(),
+		}
+	}
+
+func_while_body:
+ func_stmt_list ENDWHILE
+ {
+   $$.val = $1.stmts()
+ }
+
 
 opt_nullable:
   NOT NULL
@@ -7882,6 +8180,151 @@ opt_audit_operation:
   {
     $$.val = tree.NameList(nil)
   }
+
+// %Help: CREATE PIPE - create a new pipe
+// %Category: DDL
+// %Text:
+// CREATE PIPE <pipe_name> FOR TABLE <table_name> ( <elements...> ) WHERE <expr> [ WITH OPTIONS <option> [= <value>] [, ...] ]
+//
+// %SeeAlso: ALTER PIPE, DROP PIPE, SHOW PIPES
+create_pipe_stmt:
+  CREATE PIPE pipe_name FOR TABLE table_name '(' name_list ')' opt_where_clause opt_with_options
+  {
+  	name := $6.unresolvedObjectName().ToTableName()
+    $$.val = &tree.CreatePipe {
+      PipeName: 		tree.Name($3),
+      Table:        name,
+      ColNames: 		$8.nameList(),
+      Where:				tree.NewWhere(tree.AstWhere, $10.expr()),
+      Options: 			$11.kvOptions(),
+    }
+  }
+| CREATE PIPE pipe_name FOR TABLE table_name '(' '*' ')' opt_where_clause opt_with_options
+  {
+  	name := $6.unresolvedObjectName().ToTableName()
+    $$.val = &tree.CreatePipe {
+      PipeName: 		tree.Name($3),
+      Table:        name,
+      Where:				tree.NewWhere(tree.AstWhere, $10.expr()),
+      Options: 			$11.kvOptions(),
+      Star:         true,
+    }
+  }
+| CREATE PIPE pipe_name FOR TABLE table_name_list opt_with_options
+  {
+    $$.val = &tree.CreatePipe {
+      PipeName: 		tree.Name($3),
+      TableNames:   $6.tableNames(),
+      Options: 			$7.kvOptions(),
+      Star:         true,
+    }
+  }
+| CREATE PIPE pipe_name FOR DATABASE database_name opt_with_options
+  {
+    $$.val = &tree.CreatePipe {
+      PipeName: 		tree.Name($3),
+      Database:     tree.Name($6),
+      Options: 			$7.kvOptions(),
+      Star:         true,
+    }
+  }
+| CREATE PIPE error // SHOW HELP: CREATE PIPE
+
+// %Help: CREATE PUBLICATION - create a new publication
+// %Category: DDL
+// %Text:
+// CREATE PUBLICATION <pub_name> FOR TABLE <table_name> ( <elements...> ) WHERE <expr> [ WITH OPTIONS <option> [= <value>] [, ...] ]
+//
+// %SeeAlso: ALTER PUBLICATION, DROP PUBLICATION, SHOW PUBLICATIONS
+create_pub_stmt:
+  CREATE pub_keyword_alternatives pub_name FOR TABLE table_name '(' name_list ')' opt_where_clause opt_with_options
+  {
+  	name := $6.unresolvedObjectName().ToTableName()
+    $$.val = &tree.CreatePublication {
+      PubName: 		  tree.Name($3),
+      Table:        name,
+      ColNames: 		$8.nameList(),
+      Where:				tree.NewWhere(tree.AstWhere, $10.expr()),
+      Options: 			$11.kvOptions(),
+    }
+  }
+| CREATE pub_keyword_alternatives pub_name FOR TABLE table_name '(' '*' ')' opt_where_clause opt_with_options
+  {
+  	name := $6.unresolvedObjectName().ToTableName()
+    $$.val = &tree.CreatePublication {
+      PubName: 		  tree.Name($3),
+      Table:        name,
+      Where:				tree.NewWhere(tree.AstWhere, $10.expr()),
+      Options: 			$11.kvOptions(),
+      Star:         true,
+    }
+  }
+| CREATE pub_keyword_alternatives pub_name FOR TABLE table_name_list opt_with_options
+  {
+    $$.val = &tree.CreatePublication {
+      PubName: 		  tree.Name($3),
+      TableNames:   $6.tableNames(),
+      Options: 			$7.kvOptions(),
+      Star:         true,
+    }
+  }
+| CREATE pub_keyword_alternatives pub_name FOR DATABASE database_name opt_with_options
+  {
+    $$.val = &tree.CreatePublication {
+      PubName: 		  tree.Name($3),
+      Database:     tree.Name($6),
+      Options: 			$7.kvOptions(),
+      Star:         true,
+    }
+  }
+| CREATE pub_keyword_alternatives error // SHOW HELP: CREATE PUBLICATION
+
+// %Help: ALTER PUBLICATION - change the definition of a publication
+// %Category: DDL
+// %Text:
+// ALTER PUBLICATION <pub_name> SET TABLE table_name [ * ] [ ( column_name [, ... ] ) ] [ WHERE ( expression ) ] [, ... ]
+// ALTER PUBLICATION <pub_name> SET OPTIONS(key = value[, ...])
+//
+// %SeeAlso: CREATE PUBLICATION, ALTER PUBLICATION, DROP PUBLICATION, SHOW PUBLICATIONS
+alter_pub_stmt:
+  ALTER pub_keyword_alternatives pub_name SET TABLE table_name opt_where_clause
+  {
+  	name := $6.unresolvedObjectName().ToTableName()
+    $$.val = &tree.AlterPub {
+      PubName: 		  tree.Name($3),
+      Table:        name,
+      Where:				tree.NewWhere(tree.AstWhere, $7.expr()),
+      Star:         true,
+    }
+  }
+|  ALTER pub_keyword_alternatives pub_name SET TABLE table_name '(' name_list ')' opt_where_clause
+  {
+  	name := $6.unresolvedObjectName().ToTableName()
+    $$.val = &tree.AlterPub {
+      PubName: 		  tree.Name($3),
+      Table:        name,
+      ColNames: 		$8.nameList(),
+      Where:				tree.NewWhere(tree.AstWhere, $10.expr()),
+    }
+  }
+| ALTER pub_keyword_alternatives pub_name SET TABLE table_name '(' '*' ')' opt_where_clause
+  {
+  	name := $6.unresolvedObjectName().ToTableName()
+    $$.val = &tree.AlterPub {
+      PubName: 		  tree.Name($3),
+      Table:        name,
+      Where:				tree.NewWhere(tree.AstWhere, $10.expr()),
+      Star:         true,
+    }
+  }
+| ALTER pub_keyword_alternatives pub_name SET OPTIONS '(' kv_option_list ')'
+  {
+    $$.val = &tree.AlterPub {
+      PubName: 		  tree.Name($3),
+      Options: 			$7.kvOptions(),
+    }
+  }
+| ALTER pub_keyword_alternatives error // SHOW HELP: ALTER PUBLICATION
 
 // %Help: CREATE INDEX - create a new index
 // %Category: DDL
@@ -10374,6 +10817,20 @@ opt_where_clause:
 | /* EMPTY */
   {
     $$.val = tree.Expr(nil)
+  }
+
+pub_keyword_alternatives:
+  PUBLICATION
+| PUB
+  {
+    $$ = ""
+  }
+
+pubs_keyword_alternatives:
+  PUBLICATIONS
+| PUBS
+  {
+    $$ = ""
   }
 
 fill_clause:
@@ -13219,6 +13676,10 @@ index_name:            unrestricted_name
 
 opt_index_name:        opt_name
 
+pipe_name:             name
+
+pub_name:              name
+
 zone_name:             unrestricted_name
 
 target_name:           unrestricted_name
@@ -13454,6 +13915,7 @@ unrestricted_name:
 // "Unreserved" keywords --- available for use as any kind of name.
 unreserved_keyword:
   ABORT
+| ABS
 | CAR_HINT
 | LEADING_TABLE
 | IGNORE_INDEX_ONLY
@@ -13692,6 +14154,8 @@ unreserved_keyword:
 | PASSWORD
 | PAUSE
 | PHYSICAL
+| PIPE
+| PIPES
 | PLAN
 | PLANS
 | PRECEDES
@@ -13702,8 +14166,11 @@ unreserved_keyword:
 | PRIORITY
 | PROCEDURE
 | PROCEDURES
+| PUB
 | PUBLIC
 | PUBLICATION
+| PUBLICATIONS
+| PUBS
 | QUERIES
 | QUERY
 | RANGE
@@ -13712,6 +14179,7 @@ unreserved_keyword:
 | READ
 | RECURSIVE
 | REF
+| REL
 | REFRESH
 | REGCLASS
 | REGPROC
@@ -13762,6 +14230,7 @@ unreserved_keyword:
 | SHARE
 | SHOW
 | SIMPLE
+| SINK
 | SKIP
 | SCHEDULE
 | SCHEDULES

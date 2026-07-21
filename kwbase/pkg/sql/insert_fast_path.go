@@ -58,6 +58,8 @@ func init() {
 // and performing FK checks. It is used when all the foreign key checks can be
 // performed via a direct lookup in an index, and when the input is VALUES of
 // limited size (at most exec.InsertFastPathMaxRows).
+var _ PlanNode = &insertFastPathNode{}
+
 type insertFastPathNode struct {
 	// input values, similar to a valuesNode.
 	input [][]tree.TypedExpr
@@ -214,14 +216,14 @@ func (r *insertFastPathRun) addFKChecks(
 
 // runFKChecks runs the fkBatch and checks that all spans return at least one
 // key.
-func (n *insertFastPathNode) runFKChecks(params runParams) error {
+func (n *insertFastPathNode) runFKChecks(params RunParams) error {
 	if len(n.run.fkBatch.Requests) == 0 {
 		return nil
 	}
 	defer n.run.fkBatch.Reset()
 
 	// Run the FK checks batch.
-	br, err := params.p.txn.Send(params.ctx, n.run.fkBatch)
+	br, err := params.p.txn.Send(params.Ctx, n.run.fkBatch)
 	if err != nil {
 		return err.GoError()
 	}
@@ -238,7 +240,7 @@ func (n *insertFastPathNode) runFKChecks(params runParams) error {
 	return nil
 }
 
-func (n *insertFastPathNode) startExec(params runParams) error {
+func (n *insertFastPathNode) StartExec(params RunParams) error {
 	// Cache traceKV during execution, to avoid re-evaluating it for every row.
 	n.run.traceKV = params.p.ExtendedEvalContext().Tracing.KVTracingEnabled()
 
@@ -265,21 +267,21 @@ func (n *insertFastPathNode) startExec(params runParams) error {
 		}
 	}
 
-	return n.run.ti.init(params.ctx, params.p.txn, params.EvalContext())
+	return n.run.ti.init(params.Ctx, params.p.txn, params.EvalContext())
 }
 
-// Next is required because batchedPlanNode inherits from planNode, but
+// Next is required because batchedPlanNode inherits from PlanNode, but
 // batchedPlanNode doesn't really provide it. See the explanatory comments
 // in plan_batch.go.
-func (n *insertFastPathNode) Next(params runParams) (bool, error) { panic("not valid") }
+func (n *insertFastPathNode) Next(params RunParams) (bool, error) { panic("not valid") }
 
-// Values is required because batchedPlanNode inherits from planNode, but
+// Values is required because batchedPlanNode inherits from PlanNode, but
 // batchedPlanNode doesn't really provide it. See the explanatory comments
 // in plan_batch.go.
 func (n *insertFastPathNode) Values() tree.Datums { panic("not valid") }
 
 // BatchedNext implements the batchedPlanNode interface.
-func (n *insertFastPathNode) BatchedNext(params runParams) (bool, error) {
+func (n *insertFastPathNode) BatchedNext(params RunParams) (bool, error) {
 	if n.run.done {
 		return false, nil
 	}
@@ -308,7 +310,7 @@ func (n *insertFastPathNode) BatchedNext(params runParams) (bool, error) {
 
 		// Add FK existence checks.
 		if len(n.run.fkChecks) > 0 {
-			if err := n.run.addFKChecks(params.ctx, rowIdx, inputRow); err != nil {
+			if err := n.run.addFKChecks(params.Ctx, rowIdx, inputRow); err != nil {
 				return false, err
 			}
 		}
@@ -321,11 +323,11 @@ func (n *insertFastPathNode) BatchedNext(params runParams) (bool, error) {
 		return false, err
 	}
 
-	if err := n.run.ti.atBatchEnd(params.ctx, n.run.traceKV); err != nil {
+	if err := n.run.ti.atBatchEnd(params.Ctx, n.run.traceKV); err != nil {
 		return false, err
 	}
 
-	if _, err := n.run.ti.finalize(params.ctx, n.run.traceKV); err != nil {
+	if _, err := n.run.ti.finalize(params.Ctx, n.run.traceKV); err != nil {
 		return false, err
 	}
 	// Remember we're done for the next call to BatchedNext().
@@ -352,7 +354,7 @@ func (n *insertFastPathNode) Close(ctx context.Context) {
 	insertFastPathNodePool.Put(n)
 }
 
-// See planner.autoCommit.
+// See GenericPlanner.autoCommit.
 func (n *insertFastPathNode) enableAutoCommit() {
 	n.run.ti.enableAutoCommit()
 }

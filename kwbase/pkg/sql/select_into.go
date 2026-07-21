@@ -19,17 +19,19 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 )
 
+var _ PlanNode = &selectIntoNode{}
+
 type selectIntoNode struct {
-	rows planNode
+	rows PlanNode
 	vars []string
 	end  bool
 }
 
-func (n *selectIntoNode) startExec(params runParams) error {
+func (n *selectIntoNode) StartExec(params RunParams) error {
 	return nil
 }
 
-func (n *selectIntoNode) Next(params runParams) (bool, error) {
+func (n *selectIntoNode) Next(params RunParams) (bool, error) {
 	if n.end {
 		return false, nil
 	}

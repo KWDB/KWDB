@@ -310,7 +310,7 @@ CREATE TABLE pg_catalog.pg_am (
 	amhandler OID,
 	amtype CHAR
 )`,
-	populate: func(_ context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(_ context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		// add row for forward indexes
 		if err := addRow(
 			forwardIndexOid,                      // oid - all versions
@@ -403,7 +403,7 @@ CREATE TABLE pg_catalog.pg_attrdef (
 	adbin STRING,
 	adsrc STRING
 )`,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		h := makeOidHasher()
 		return forEachTableDesc(ctx, p, dbContext, virtualMany,
 			func(db *sqlbase.DatabaseDescriptor, scName string, table *sqlbase.TableDescriptor) error {
@@ -466,7 +466,7 @@ CREATE TABLE pg_catalog.pg_attribute (
 	attoptions STRING[],
 	attfdwoptions STRING[]
 )`,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		h := makeOidHasher()
 		return forEachTableDesc(ctx, p, dbContext, virtualMany, func(db *sqlbase.DatabaseDescriptor, scName string, table *sqlbase.TableDescriptor) error {
 			// addColumn adds adds either a table or a index column to the pg_attribute table.
@@ -530,7 +530,7 @@ CREATE TABLE pg_catalog.pg_cast (
 	castcontext CHAR,
 	castmethod CHAR
 )`,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		// TODO(someone): to populate this, we should split up the big PerformCast
 		// method in tree/eval.go into entries in a list. Then, this virtual table
 		// can simply range over the list. This would probably be better for
@@ -558,7 +558,7 @@ CREATE TABLE pg_catalog.pg_authid (
   rolpassword TEXT, 
   rolvaliduntil TIMESTAMPTZ
 )`,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		h := makeOidHasher()
 		return forEachRole(ctx, p, func(username string, isRole bool, noLogin bool) error {
 			isRoot := tree.DBool(username == security.RootUser || username == sqlbase.AdminRole)
@@ -592,7 +592,7 @@ CREATE TABLE pg_catalog.pg_auth_members (
 	grantor OID,
 	admin_option BOOL
 )`,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		h := makeOidHasher()
 		return forEachRoleMembership(ctx, p,
 			func(roleName, memberName string, isAdmin bool) error {
@@ -616,7 +616,7 @@ CREATE TABLE pg_catalog.pg_available_extensions (
 	installed_version TEXT,
 	"comment" TEXT
 )`,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		// We support no extensions.
 		return nil
 	},
@@ -666,7 +666,7 @@ CREATE TABLE pg_catalog.pg_class (
 	relacl STRING[],
 	reloptions STRING[]
 )`,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		h := makeOidHasher()
 		return forEachTableDesc(ctx, p, dbContext, virtualMany,
 			func(db *sqlbase.DatabaseDescriptor, scName string, table *sqlbase.TableDescriptor) error {
@@ -826,9 +826,9 @@ CREATE TABLE pg_catalog.pg_collation (
   collcollate STRING,
   collctype STRING
 )`,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		h := makeOidHasher()
-		return forEachDatabaseDesc(ctx, p, dbContext, false /* requiresPrivileges */, func(db *DatabaseDescriptor) error {
+		return ForEachDatabaseDesc(ctx, p, dbContext, false /* requiresPrivileges */, func(db *DatabaseDescriptor) error {
 			namespaceOid := h.NamespaceOid(db, pgCatalogName)
 			for _, tag := range collate.Supported() {
 				collName := tag.String()
@@ -922,7 +922,7 @@ CREATE TABLE pg_catalog.pg_constraint (
 	-- style string, for use by pg_get_constraintdef().
 	condef STRING
 )`,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		h := makeOidHasher()
 		return forEachTableDescWithTableLookup(ctx, p, dbContext, hideVirtual /*virtual tables have no constraints*/, func(
 			db *sqlbase.DatabaseDescriptor,
@@ -930,7 +930,7 @@ CREATE TABLE pg_catalog.pg_constraint (
 			table *sqlbase.TableDescriptor,
 			tableLookup tableLookupFn,
 		) error {
-			conInfo, err := table.GetConstraintInfoWithLookup(tableLookup.getTableByID)
+			conInfo, err := table.GetConstraintInfoWithLookup(tableLookup.GetTableByID)
 			if err != nil {
 				return err
 			}
@@ -969,7 +969,7 @@ CREATE TABLE pg_catalog.pg_constraint (
 					contype = conTypeFK
 					// Foreign keys don't have a single linked index. Pick the first one
 					// that matches on the referenced table.
-					referencedTable, err := tableLookup.getTableByID(con.FK.ReferencedTableID)
+					referencedTable, err := tableLookup.GetTableByID(con.FK.ReferencedTableID)
 					if err != nil {
 						return err
 					}
@@ -996,7 +996,7 @@ CREATE TABLE pg_catalog.pg_constraint (
 						return err
 					}
 					var buf bytes.Buffer
-					if err := showForeignKeyConstraint(&buf, db.Name, table, con.FK, tableLookup); err != nil {
+					if err := ShowForeignKeyConstraint(&buf, db.Name, table, con.FK, tableLookup); err != nil {
 						return err
 					}
 					condef = tree.NewDString(buf.String())
@@ -1104,7 +1104,7 @@ CREATE TABLE pg_catalog.pg_conversion (
 	conproc OID,
   condefault BOOL
 )`,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		return nil
 	},
 }
@@ -1131,8 +1131,8 @@ CREATE TABLE pg_catalog.pg_database (
 	datacl STRING[],
 	datstatement STRING
 )`,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
-		return forEachDatabaseDesc(ctx, p, nil /*all databases*/, false, /* requiresPrivileges */
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		return ForEachDatabaseDesc(ctx, p, nil /*all databases*/, false, /* requiresPrivileges */
 			func(db *sqlbase.DatabaseDescriptor) error {
 				databaseType := tree.NewDString(tree.EngineName(db.EngineType))
 				stmt := showCreateDatabase(db)
@@ -1172,7 +1172,7 @@ CREATE TABLE pg_catalog.pg_default_acl (
 	defaclobjtype CHAR,
 	defaclacl STRING[]
 )`,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		return nil
 	},
 }
@@ -1217,7 +1217,7 @@ CREATE TABLE pg_catalog.pg_depend (
   refobjsubid INT4,
   deptype CHAR
 )`,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		vt := p.getVirtualTabler()
 		pgConstraintsDesc, err := vt.getVirtualTableDesc(&pgConstraintsTableName)
 		if err != nil {
@@ -1251,7 +1251,7 @@ CREATE TABLE pg_catalog.pg_depend (
 					depTypeAuto,          // deptype
 				)
 			}
-			conInfo, err := table.GetConstraintInfoWithLookup(tableLookup.getTableByID)
+			conInfo, err := table.GetConstraintInfoWithLookup(tableLookup.GetTableByID)
 			if err != nil {
 				return err
 			}
@@ -1262,7 +1262,7 @@ CREATE TABLE pg_catalog.pg_depend (
 
 				// Foreign keys don't have a single linked index. Pick the first one
 				// that matches on the referenced table.
-				referencedTable, err := tableLookup.getTableByID(con.FK.ReferencedTableID)
+				referencedTable, err := tableLookup.GetTableByID(con.FK.ReferencedTableID)
 				if err != nil {
 					return err
 				}
@@ -1295,7 +1295,7 @@ CREATE TABLE pg_catalog.pg_depend (
 // getComments returns all comments in the database. A comment is represented
 // as a datum row, containing object id, sub id (column id in the case of
 // columns), comment text, and comment type (keys.FooCommentType).
-func getComments(ctx context.Context, p *planner) ([]tree.Datums, error) {
+func getComments(ctx context.Context, p *GenericPlanner) ([]tree.Datums, error) {
 	return p.extendedEvalCtx.ExecCfg.InternalExecutor.Query(
 		ctx,
 		"select-comments",
@@ -1321,7 +1321,7 @@ CREATE TABLE pg_catalog.pg_description (
 )`,
 	populate: func(
 		ctx context.Context,
-		p *planner,
+		p *GenericPlanner,
 		dbContext *DatabaseDescriptor,
 		addRow func(...tree.Datum) error) error {
 
@@ -1375,7 +1375,7 @@ CREATE TABLE pg_catalog.pg_shdescription (
 	classoid OID,
 	description STRING
 )`,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		// See comment above - could make this more efficient if necessary.
 		comments, err := getComments(ctx, p)
 		if err != nil {
@@ -1410,7 +1410,7 @@ CREATE TABLE pg_catalog.pg_enum (
   enumsortorder FLOAT4,
   enumlabel STRING
 )`,
-	populate: func(_ context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(_ context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		// Enum types are not currently supported.
 		return nil
 	},
@@ -1430,7 +1430,7 @@ CREATE TABLE pg_catalog.pg_extension (
   extconfig STRING,
   extcondition STRING
 )`,
-	populate: func(_ context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(_ context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		// Extensions are not supported.
 		return nil
 	},
@@ -1449,7 +1449,7 @@ CREATE TABLE pg_catalog.pg_foreign_data_wrapper (
   fdwacl STRING[],
   fdwoptions STRING[]
 )`,
-	populate: func(_ context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(_ context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		// Foreign data wrappers are not supported.
 		return nil
 	},
@@ -1469,7 +1469,7 @@ CREATE TABLE pg_catalog.pg_foreign_server (
   srvacl STRING[],
   srvoptions STRING[]
 )`,
-	populate: func(_ context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(_ context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		// Foreign servers are not supported.
 		return nil
 	},
@@ -1484,7 +1484,7 @@ CREATE TABLE pg_catalog.pg_foreign_table (
   ftserver OID,
   ftoptions STRING[]
 )`,
-	populate: func(_ context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(_ context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		// Foreign tables are not supported.
 		return nil
 	},
@@ -1525,7 +1525,7 @@ CREATE TABLE pg_catalog.pg_index (
     indexprs STRING,
     indpred STRING
 )`,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		h := makeOidHasher()
 		return forEachTableDesc(ctx, p, dbContext, hideVirtual, /* virtual tables do not have indexes */
 			func(db *sqlbase.DatabaseDescriptor, scName string, table *sqlbase.TableDescriptor) error {
@@ -1612,7 +1612,7 @@ CREATE TABLE pg_catalog.pg_indexes (
 	tablespace NAME,
 	indexdef STRING
 )`,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		h := makeOidHasher()
 		return forEachTableDescWithTableLookup(ctx, p, dbContext, hideVirtual, /* virtual tables do not have indexes */
 			func(db *sqlbase.DatabaseDescriptor, scName string, table *sqlbase.TableDescriptor, tableLookup tableLookupFn) error {
@@ -1641,7 +1641,7 @@ CREATE TABLE pg_catalog.pg_indexes (
 // String method.
 func indexDefFromDescriptor(
 	ctx context.Context,
-	p *planner,
+	p *GenericPlanner,
 	db *sqlbase.DatabaseDescriptor,
 	table *sqlbase.TableDescriptor,
 	index *sqlbase.IndexDescriptor,
@@ -1670,11 +1670,11 @@ func indexDefFromDescriptor(
 	}
 	if len(index.Interleave.Ancestors) > 0 {
 		intl := index.Interleave
-		parentTable, err := tableLookup.getTableByID(intl.Ancestors[len(intl.Ancestors)-1].TableID)
+		parentTable, err := tableLookup.GetTableByID(intl.Ancestors[len(intl.Ancestors)-1].TableID)
 		if err != nil {
 			return "", err
 		}
-		parentDb, err := tableLookup.getDatabaseByID(parentTable.ParentID)
+		parentDb, err := tableLookup.GetDatabaseByID(parentTable.ParentID)
 		if err != nil {
 			return "", err
 		}
@@ -1706,7 +1706,7 @@ CREATE TABLE pg_catalog.pg_inherits (
 	inhparent OID,
 	inhseqno INT4
 )`,
-	populate: func(_ context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(_ context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		// Table inheritance is not supported.
 		return nil
 	},
@@ -1727,7 +1727,7 @@ CREATE TABLE pg_catalog.pg_language (
 	lanvalidator OID,
 	lanacl STRING[]
 )`,
-	populate: func(_ context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(_ context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		// Languages to write functions and stored procedures are not supported.
 		return nil
 	},
@@ -1754,7 +1754,7 @@ CREATE TABLE pg_catalog.pg_locks (
   granted BOOLEAN,
   fastpath BOOLEAN
 )`,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		return nil
 	},
 }
@@ -1772,7 +1772,7 @@ CREATE TABLE pg_catalog.pg_matviews (
   ispopulated BOOL,
   definition TEXT
 )`,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		return nil
 	},
 }
@@ -1787,9 +1787,9 @@ CREATE TABLE pg_catalog.pg_namespace (
 	nspowner OID,
 	nspacl STRING[]
 )`,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		h := makeOidHasher()
-		return forEachDatabaseDesc(ctx, p, dbContext, false, /* requiresPrivileges */
+		return ForEachDatabaseDesc(ctx, p, dbContext, false, /* requiresPrivileges */
 			func(db *sqlbase.DatabaseDescriptor) error {
 				return forEachSchemaName(ctx, p, db, false, func(sc sqlbase.ResolvedSchema) error {
 					return addRow(
@@ -1833,7 +1833,7 @@ CREATE TABLE pg_catalog.pg_operator (
 	oprrest OID,
 	oprjoin OID
 )`,
-	populate: func(ctx context.Context, p *planner, db *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, db *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		h := makeOidHasher()
 		nspOid := h.NamespaceOid(db, pgCatalogName)
 		addOp := func(opName string, kind tree.Datum, params tree.TypeList, returnTyper tree.ReturnTyper) error {
@@ -1938,7 +1938,7 @@ CREATE TABLE pg_catalog.pg_prepared_xacts (
   owner NAME,
   database NAME
 )`,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		return nil
 	},
 }
@@ -1959,7 +1959,7 @@ CREATE TABLE pg_catalog.pg_prepared_statements (
 	parameter_types REGTYPE[],
 	from_sql boolean
 )`,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		for name, stmt := range p.preparedStatements.List() {
 			placeholderTypes := stmt.PrepareMetadata.PlaceholderTypesInfo.Types
 			paramTypes := tree.NewDArray(types.RegType)
@@ -2036,9 +2036,9 @@ CREATE TABLE pg_catalog.pg_proc (
 	proconfig STRING[],
 	proacl STRING[]
 )`,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		h := makeOidHasher()
-		return forEachDatabaseDesc(ctx, p, dbContext, false, /* requiresPrivileges */
+		return ForEachDatabaseDesc(ctx, p, dbContext, false, /* requiresPrivileges */
 			func(db *DatabaseDescriptor) error {
 				nspOid := h.NamespaceOid(db, pgCatalogName)
 				for _, name := range builtins.AllBuiltinNames {
@@ -2171,7 +2171,7 @@ CREATE TABLE pg_catalog.pg_range (
 	rngcanonical OID,
 	rngsubdiff OID
 )`,
-	populate: func(_ context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(_ context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		// We currently do not support any range types, so this table is empty.
 		// This table should be populated when any range types are added to
 		// oidToDatum (and therefore pg_type).
@@ -2193,7 +2193,7 @@ CREATE TABLE pg_catalog.pg_rewrite (
 	ev_qual TEXT,
 	ev_action TEXT
 )`,
-	populate: func(_ context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(_ context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		// Rewrite rules are not supported.
 		return nil
 	},
@@ -2219,7 +2219,7 @@ CREATE TABLE pg_catalog.pg_roles (
 	rolbypassrls BOOL,
 	rolconfig STRING[]
 )`,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		// We intentionally do not check if the user has access to system.user.
 		// Because Postgres allows access to pg_roles by non-privileged users, we
 		// need to do the same. This shouldn't be an issue, because pg_roles doesn't
@@ -2264,7 +2264,7 @@ CREATE TABLE pg_catalog.pg_seclabels (
 	provider TEXT,
 	label TEXT
 )`,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		return nil
 	},
 }
@@ -2283,7 +2283,7 @@ CREATE TABLE pg_catalog.pg_sequence (
 	seqcache INT8,
 	seqcycle BOOL
 )`,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		return forEachTableDesc(ctx, p, dbContext, hideVirtual, /* virtual schemas do not have indexes */
 			func(db *sqlbase.DatabaseDescriptor, scName string, table *sqlbase.TableDescriptor) error {
 				if !table.IsSequence() {
@@ -2332,7 +2332,7 @@ CREATE TABLE pg_catalog.pg_settings (
     sourceline INT4,
     pending_restart BOOL
 )`,
-	populate: func(_ context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(_ context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		for _, vName := range varNames {
 			gen := varGen[vName]
 			if gen.Hidden {
@@ -2395,7 +2395,7 @@ CREATE TABLE pg_catalog.pg_shdepend (
 	refobjid OID,
 	deptype CHAR
 )`,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		return nil
 	},
 }
@@ -2414,7 +2414,7 @@ CREATE TABLE pg_catalog.pg_tables (
 	hastriggers BOOL,
 	rowsecurity BOOL
 )`,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		// Note: pg_catalog.pg_tables is not well-defined if the dbContext is
 		// empty -- listing tables across databases can yield duplicate
 		// schema/table names.
@@ -2449,7 +2449,7 @@ CREATE TABLE pg_catalog.pg_tablespace (
 	spcacl TEXT[],
 	spcoptions TEXT[]
 )`,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		return addRow(
 			oidZero,                       // oid
 			tree.NewDString("pg_default"), // spcname
@@ -2485,7 +2485,7 @@ CREATE TABLE pg_catalog.pg_trigger (
 	tgoldtable NAME,
 	tgnewtable NAME
 )`,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		// Triggers are unsupported.
 		return nil
 	},
@@ -2570,9 +2570,9 @@ CREATE TABLE pg_catalog.pg_type (
 	typdefault STRING,
 	typacl STRING[]
 )`,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		h := makeOidHasher()
-		return forEachDatabaseDesc(ctx, p, dbContext, false, /* requiresPrivileges */
+		return ForEachDatabaseDesc(ctx, p, dbContext, false, /* requiresPrivileges */
 			func(db *DatabaseDescriptor) error {
 				nspOid := h.NamespaceOid(db, pgCatalogName)
 
@@ -2667,7 +2667,7 @@ CREATE TABLE pg_catalog.pg_user (
 	valuntil TIMESTAMP,
 	useconfig TEXT[]
 )`,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		h := makeOidHasher()
 		return forEachRole(ctx, p,
 			func(username string, isRole bool, noLogin bool) error {
@@ -2700,7 +2700,7 @@ CREATE TABLE pg_catalog.pg_user_mapping (
 	umserver OID,
 	umoptions TEXT[]
 )`,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		// This table stores the mapping to foreign server users.
 		// Foreign servers are not supported.
 		return nil
@@ -2733,7 +2733,7 @@ CREATE TABLE pg_catalog.pg_stat_activity (
 	query TEXT
 )
 `,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		return nil
 	},
 }
@@ -2750,7 +2750,7 @@ CREATE TABLE pg_catalog.pg_seclabel (
 	label TEXT
 )
 `,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		return nil
 	},
 }
@@ -2766,7 +2766,7 @@ CREATE TABLE pg_catalog.pg_shseclabel (
 	label TEXT
 )
 `,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		return nil
 	},
 }
@@ -2784,7 +2784,7 @@ CREATE TABLE pg_catalog.pg_stat_all_indexes (
 	idx_tup_read INT,
 	idx_tup_fetch INT
 )`,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		return nil
 	},
 }
@@ -2871,7 +2871,7 @@ CREATE TABLE pg_catalog.pg_views (
 	viewowner STRING,
 	definition STRING
 )`,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		// Note: pg_views is not well defined if the dbContext is empty,
 		// because it does not distinguish views in separate databases.
 		return forEachTableDesc(ctx, p, dbContext, hideVirtual, /*virtual schemas do not have views*/

@@ -26,7 +26,9 @@ package sql
 
 import (
 	"context"
+	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/config"
@@ -41,6 +43,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/privilege"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlconst"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/stats"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding"
@@ -53,8 +56,8 @@ import (
 // only include what the optimizer needs, and certain common lookups are cached
 // for faster performance.
 type optCatalog struct {
-	// planner needs to be set via a call to init before calling other methods.
-	planner *planner
+	// GenericPlanner needs to be set via a call to init before calling other methods.
+	planner *GenericPlanner
 
 	// cfg is the gossiped and cached system config. It may be nil if the node
 	// does not yet have it available.
@@ -75,7 +78,7 @@ var _ cat.Catalog = &optCatalog{}
 // init initializes an optCatalog instance (which the caller can pre-allocate).
 // The instance can be used across multiple queries, but reset() should be
 // called for each query.
-func (oc *optCatalog) init(planner *planner) {
+func (oc *optCatalog) init(planner *GenericPlanner) {
 	oc.planner = planner
 	oc.dataSources = make(map[*sqlbase.ImmutableTableDescriptor]cat.DataSource)
 }
@@ -120,7 +123,7 @@ func (os *optDatabase) Equals(other cat.Object) bool {
 // optSchema is a wrapper around sqlbase.DatabaseDescriptor that implements the
 // cat.Object and cat.Schema interfaces.
 type optSchema struct {
-	planner  *planner
+	planner  *GenericPlanner
 	database *sqlbase.DatabaseDescriptor
 	schema   *sqlbase.ResolvedSchema
 
@@ -179,9 +182,9 @@ func (oc *optCatalog) ResolveSchema(
 ) (cat.Schema, cat.SchemaName, error) {
 	if flags.AvoidDescriptorCaches {
 		defer func(prev bool) {
-			oc.planner.avoidCachedDescriptors = prev
-		}(oc.planner.avoidCachedDescriptors)
-		oc.planner.avoidCachedDescriptors = true
+			oc.planner.AvoidCachedDescriptors = prev
+		}(oc.planner.AvoidCachedDescriptors)
+		oc.planner.AvoidCachedDescriptors = true
 	}
 
 	// ResolveTargetObject wraps ResolveTarget in order to raise "schema not
@@ -229,6 +232,10 @@ func (oc *optCatalog) ResetTxn(ctx context.Context) {
 func (oc *optCatalog) ResolveProcCatalog(
 	ctx context.Context, t *tree.TableName, checkPri bool,
 ) (bool, *tree.CreateProcedure, error) {
+	if oc.planner.resolveSQLFunctionAsProcedure {
+		return ResolvePLpgSQLFunctionAsCreateProcedure(ctx, oc.planner, t)
+	}
+
 	found, desc, err := ResolveProcedureObject(ctx, oc.planner, t)
 	if err != nil {
 		return false, nil, err
@@ -324,9 +331,51 @@ func ResolveProcedureObject(
 	return false, nil, nil
 }
 
+// ResolvePLpgSQLFunctionAsCreateProcedure resolves a SQL UDF as a
+// CreateProcedure object so that it can reuse the existing procedure
+// execution path.
+func ResolvePLpgSQLFunctionAsCreateProcedure(
+	ctx context.Context, p *GenericPlanner, t *tree.TableName,
+) (bool, *tree.CreateProcedure, error) {
+	funcName := string(t.TableName)
+
+	desc, err := GetPLpgSQLFunctionMeta(ctx, p.Txn(), funcName)
+	if err != nil {
+		return false, nil, err
+	}
+	if desc == nil {
+		return false, nil, nil
+	}
+
+	var params []*tree.ProcedureParameter
+	for i := range desc.Parameters {
+		typ := desc.Parameters[i].Type
+		param := &tree.ProcedureParameter{
+			Name:      tree.Name(desc.Parameters[i].Name),
+			Type:      &typ,
+			Direction: tree.InDirection,
+		}
+		params = append(params, param)
+	}
+
+	res := tree.CreateProcedure{
+		Name: tree.MakeUnqualifiedTableName(
+			tree.Name(funcName),
+		),
+		Parameters:   params,
+		BodyStr:      desc.ProcBody,
+		ProcID:       int32(desc.ID),
+		DBID:         int32(desc.DbID),
+		SchemaID:     int32(desc.SchemaID),
+		ReturnedType: &desc.ReturnType,
+	}
+
+	return true, &res, nil
+}
+
 // ResolveAndCheckProcPrivilege resolves procedure and check privilege of procedure
 func ResolveAndCheckProcPrivilege(
-	ctx context.Context, p *planner, t *ObjectName, pri privilege.Kind,
+	ctx context.Context, p *GenericPlanner, t *ObjectName, pri privilege.Kind,
 ) error {
 	found, desc, err := ResolveProcedureObject(ctx, p, t)
 	if err != nil {
@@ -349,7 +398,7 @@ func GetProcedureMeta(
 	if err != nil {
 		return nil, err
 	}
-	found, scID, err := resolveSchemaID(ctx, txn, dbID, scName)
+	found, scID, err := ResolveSchemaID(ctx, txn, dbID, scName)
 	if err != nil {
 		return nil, err
 	}
@@ -383,6 +432,63 @@ func GetProcedureMeta(
 		return nil, nil
 	}
 	return &desc, nil
+}
+
+// GetRoutineMetaByID reads routine metadata from system.user_defined_routine
+// by database ID, schema ID, and routine name.
+func GetRoutineMetaByID(
+	ctx context.Context, txn *kv.Txn, dbID int, scID int, routineName string,
+) (*sqlbase.ProcedureDescriptor, int, error) {
+	k := keys.MakeTablePrefix(uint32(sqlbase.UDRTable.ID))
+	k = encoding.EncodeUvarintAscending(k, uint64(sqlbase.UDRTable.PrimaryIndex.ID))
+	k = encoding.EncodeUvarintAscending(k, uint64(dbID))
+	k = encoding.EncodeUvarintAscending(k, uint64(scID))
+	k = encoding.EncodeStringAscending(k, routineName)
+
+	rows, err := sqlbase.GetKWDBMetadataRows(ctx, txn, k, sqlbase.UDRTable)
+	if err != nil {
+		return nil, 0, err
+	}
+	if rows == nil {
+		return nil, 0, nil
+	}
+
+	routineType := int(tree.MustBeDInt(rows[0][5]))
+
+	var desc sqlbase.ProcedureDescriptor
+	val := tree.MustBeDBytes(rows[0][3])
+	if err := protoutil.Unmarshal([]byte(val), &desc); err != nil {
+		return nil, 0, errors.NewAssertionErrorWithWrappedErrf(
+			err,
+			"failed to parse value for key %q",
+			k,
+		)
+	}
+
+	return &desc, routineType, nil
+}
+
+// GetPLpgSQLFunctionMeta loads SQL UDF metadata from the fixed UDF namespace.
+func GetPLpgSQLFunctionMeta(
+	ctx context.Context, txn *kv.Txn, funcName string,
+) (*sqlbase.ProcedureDescriptor, error) {
+	desc, routineType, err := GetRoutineMetaByID(
+		ctx,
+		txn,
+		sqlconst.UDFFunctionDBID,
+		sqlconst.UDFFunctionSchemaID,
+		funcName,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if desc == nil {
+		return nil, nil
+	}
+	if routineType != int(sqlbase.SQLFunction) {
+		return nil, pgerror.Newf(pgcode.WrongObjectType, "%s is not a sql function", funcName)
+	}
+	return desc, nil
 }
 
 // GetAllProcDescByParentID gets Procedure descriptor by dbID and schemaID
@@ -490,9 +596,9 @@ func (oc *optCatalog) ResolveDatabase(
 ) (cat.Database, error) {
 	if flags.AvoidDescriptorCaches {
 		defer func(prev bool) {
-			oc.planner.avoidCachedDescriptors = prev
-		}(oc.planner.avoidCachedDescriptors)
-		oc.planner.avoidCachedDescriptors = true
+			oc.planner.AvoidCachedDescriptors = prev
+		}(oc.planner.AvoidCachedDescriptors)
+		oc.planner.AvoidCachedDescriptors = true
 	}
 	db, err := oc.planner.ResolveUncachedDatabaseByName(ctx, name, true)
 	if err != nil {
@@ -510,9 +616,9 @@ func (oc *optCatalog) ResolveDataSource(
 ) (cat.DataSource, cat.DataSourceName, error) {
 	if flags.AvoidDescriptorCaches {
 		defer func(prev bool) {
-			oc.planner.avoidCachedDescriptors = prev
-		}(oc.planner.avoidCachedDescriptors)
-		oc.planner.avoidCachedDescriptors = true
+			oc.planner.AvoidCachedDescriptors = prev
+		}(oc.planner.AvoidCachedDescriptors)
+		oc.planner.AvoidCachedDescriptors = true
 	}
 
 	oc.tn = *name
@@ -534,9 +640,9 @@ func (oc *optCatalog) ResolveDataSourceByID(
 ) (_ cat.DataSource, isAdding bool, _ error) {
 	if flags.AvoidDescriptorCaches {
 		defer func(prev bool) {
-			oc.planner.avoidCachedDescriptors = prev
-		}(oc.planner.avoidCachedDescriptors)
-		oc.planner.avoidCachedDescriptors = true
+			oc.planner.AvoidCachedDescriptors = prev
+		}(oc.planner.AvoidCachedDescriptors)
+		oc.planner.AvoidCachedDescriptors = true
 	}
 
 	tableLookup, err := oc.planner.LookupTableByID(ctx, sqlbase.ID(dataSourceID))
@@ -611,6 +717,61 @@ func (oc *optCatalog) CheckAnyPrivilege(ctx context.Context, o cat.Object) error
 // GetCurrentDatabase is part of the cat.Catalog interface.
 func (oc *optCatalog) GetCurrentDatabase(ctx context.Context) string {
 	return oc.planner.SessionData().Database
+}
+
+// GetStatement is part of the cat.Catalog interface.
+// It returns statement with full path table name from GenericPlanner.
+// It is only used to delete statement.
+func (oc *optCatalog) GetStatement(ctx context.Context) string {
+	var tableExpr *tree.AliasedTableExpr
+	var ok bool
+
+	switch expr := oc.planner.stmt.AST.(type) {
+	case *tree.Delete:
+		tableExpr, ok = expr.Table.(*tree.AliasedTableExpr)
+	case *tree.Update:
+		tableExpr, ok = expr.Table.(*tree.AliasedTableExpr)
+	default:
+		ok = false
+	}
+
+	if !ok {
+		oc.planner.stmt.AST.String()
+	}
+
+	//if delExpr, ok := oc.planner.stmt.AST.(*tree.Delete); ok {
+	//if tableExpr, ok := delExpr.Table.(*tree.AliasedTableExpr); ok {
+	if tableName, ok := tableExpr.Expr.(*tree.TableName); ok {
+		if tableName.CatalogName == "" && tableName.SchemaName == "" {
+			tableName.CatalogName = tree.Name(oc.planner.SessionData().Database)
+			tableName.SchemaName = tree.PublicSchemaName
+		}
+		if tableName.CatalogName == "" {
+			if tableName.SchemaName == tree.PublicSchemaName {
+				tableName.CatalogName = tree.Name(oc.planner.SessionData().Database)
+			} else {
+				tableName.CatalogName = tableName.SchemaName
+				tableName.SchemaName = tree.PublicSchemaName
+			}
+		}
+		tableName.ExplicitCatalog = true
+		tableName.ExplicitSchema = true
+
+		if oc.planner.stmt.Prepared != nil {
+			stmt := oc.planner.stmt.AST.String()
+			for i, v := range oc.planner.extendedEvalCtx.Placeholders.Values {
+				arg := fmt.Sprintf("$%d", i+1)
+				val := v.String()
+				stmt = strings.ReplaceAll(stmt, arg, val)
+			}
+
+			return stmt
+		}
+	}
+	//}
+	//}
+
+	return oc.planner.stmt.AST.String()
 }
 
 // HasAdminRole is part of the cat.Catalog interface.
@@ -1183,6 +1344,11 @@ func (ot *optTable) DeletableColumnCount() int {
 	return len(ot.desc.DeletableColumns())
 }
 
+// AllColumnCount is part of the cat.Table interface.
+func (ot *optTable) AllColumnCount() int {
+	return len(ot.desc.DeletableColumns()) + 3
+}
+
 // Column is part of the cat.Table interface.
 func (ot *optTable) Column(i int) cat.Column {
 	return &ot.desc.DeletableColumns()[i]
@@ -1281,6 +1447,11 @@ func (ot *optTable) lookupColumnOrdinal(colID sqlbase.ColumnID) (int, error) {
 
 func (ot *optTable) GetParentID() tree.ID {
 	return tree.ID(ot.desc.GetParentID())
+}
+
+// GetCDC is part of the cat.Table interface.
+func (ot *optTable) GetCDC() interface{} {
+	return ot.desc.CDC
 }
 
 // optIndex is a wrapper around sqlbase.IndexDescriptor that caches some
@@ -1921,6 +2092,11 @@ func (ot *optVirtualTable) DeletableColumnCount() int {
 	return len(ot.desc.DeletableColumns())
 }
 
+// AllColumnCount is part of the cat.Table interface.
+func (ot *optVirtualTable) AllColumnCount() int {
+	return len(ot.desc.DeletableColumns()) + 3
+}
+
 // Column is part of the cat.Table interface.
 func (ot *optVirtualTable) Column(i int) cat.Column {
 	return &ot.desc.DeletableColumns()[i]
@@ -2035,4 +2211,9 @@ func (oi *optVirtualFamily) Column(i int) cat.FamilyColumn {
 // Table is part of the cat.Family interface.
 func (oi *optVirtualFamily) Table() cat.Table {
 	return oi.tab
+}
+
+// GetCDC is part of the cat.Family interface.
+func (ot *optVirtualTable) GetCDC() interface{} {
+	return nil
 }

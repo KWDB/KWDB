@@ -45,20 +45,45 @@ type Delete struct {
 // Format implements the NodeFormatter interface.
 func (node *Delete) Format(ctx *FmtCtx) {
 	ctx.FormatNode(node.With)
+	node.writeDeleteFromClause(ctx)
+	node.maybeWriteWhereClause(ctx)
+	node.maybeWriteOrderByClause(ctx)
+	node.maybeWriteLimitClause(ctx)
+	node.maybeWriteReturningClause(ctx)
+}
+
+// writeDeleteFromClause outputs the DELETE FROM keyword followed by the table.
+func (node *Delete) writeDeleteFromClause(ctx *FmtCtx) {
 	ctx.WriteString("DELETE FROM ")
 	ctx.FormatNode(node.Table)
+}
+
+// maybeWriteWhereClause emits the WHERE clause when present.
+func (node *Delete) maybeWriteWhereClause(ctx *FmtCtx) {
 	if node.Where != nil {
 		ctx.WriteByte(' ')
 		ctx.FormatNode(node.Where)
 	}
+}
+
+// maybeWriteOrderByClause emits the ORDER BY clause when present.
+func (node *Delete) maybeWriteOrderByClause(ctx *FmtCtx) {
 	if len(node.OrderBy) > 0 {
 		ctx.WriteByte(' ')
 		ctx.FormatNode(&node.OrderBy)
 	}
+}
+
+// maybeWriteLimitClause emits the LIMIT clause when present.
+func (node *Delete) maybeWriteLimitClause(ctx *FmtCtx) {
 	if node.Limit != nil {
 		ctx.WriteByte(' ')
 		ctx.FormatNode(node.Limit)
 	}
+}
+
+// maybeWriteReturningClause emits the RETURNING clause when present.
+func (node *Delete) maybeWriteReturningClause(ctx *FmtCtx) {
 	if HasReturningClause(node.Returning) {
 		ctx.WriteByte(' ')
 		ctx.FormatNode(node.Returning)

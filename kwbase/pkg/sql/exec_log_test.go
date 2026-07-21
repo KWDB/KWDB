@@ -43,7 +43,7 @@ func TestMaybeLogStatementInternal(t *testing.T) {
 	s, _, kvdb := serverutils.StartServer(t, params)
 	defer s.Stopper().Stop(ctx)
 
-	p := makeTestPlanner()
+	p := MakeTestPlanner()
 
 	setting.AuditEnabled.Override(&p.execCfg.Settings.SV, true)
 	p.execCfg.DB = kvdb
@@ -66,13 +66,13 @@ func TestMaybeLogStatementInternal(t *testing.T) {
 
 func TestSetAuditEvent(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	p := makeTestPlanner()
+	p := MakeTestPlanner()
 	p.curPlan.stmt = &Statement{Statement: parser.Statement{AST: &tree.ProcSet{Name: "e1", Value: tree.MakeDBool(true)}}}
 	p.SetAuditEvent()
 }
 
 func TestSetAuditLevel(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	p := makeTestPlanner()
+	p := MakeTestPlanner()
 	p.SetAuditLevel(target.StmtLevel)
 }

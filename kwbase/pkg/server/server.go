@@ -91,7 +91,9 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/colexec"
+	_ "gitee.com/kwbasedb/kwbase/pkg/sql/ddl" // TODO: Register DDL handlers to break circular dependency?
 	"gitee.com/kwbasedb/kwbase/pkg/sql/distsql"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/eventlog"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	_ "gitee.com/kwbasedb/kwbase/pkg/sql/gcjob" // register jobs declared outside of pkg/sql
@@ -275,6 +277,11 @@ var (
 		"ts.force_re_compress.enabled",
 		"whether to force recompression when block span gets compressed data",
 		false)
+
+	tsVacuumConcurrent = settings.RegisterPublicBoolSetting(
+		"ts.vacuum.concurrent.enabled",
+		"whether to vacuum vgroups concurrently, one thread per vgroup",
+		true)
 
 	tsPartitionAgg = settings.RegisterPublicBoolSetting(
 		"ts.partition_agg.enabled",
@@ -922,7 +929,7 @@ func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
 
 	// initialize the CDC Coordinator to handle the connection from Pipe Job.
 	s.distSQLServer.CDCCoordinator = cdc.NewCoordinator(
-		s.st, s.grpc.Server, s.stopper, s.gossip, s.internalExecutor, s.status,
+		s.st, s.grpc.Server, s.stopper, s.gossip, internalExecutor, s.status, s.jobRegistry,
 	)
 
 	// TODO(andrei): We're creating an initServer even through the inspection of
@@ -2433,6 +2440,11 @@ func (s *Server) Start(ctx context.Context) error {
 		scheduledjobs.ProdJobSchedulerEnv,
 	)
 
+	s.execCfg.CDCCoordinator.SetTsEngine(s.tsEngine)
+	if err = s.execCfg.CDCCoordinator.SetCDCTableOSN(ctx); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -2788,11 +2800,11 @@ func (s *Server) Decommission(ctx context.Context, setTo bool, nodeIDs []roachpb
 			return errors.Errorf("can not run node decommission when cluster has node %+v", liveness)
 		}
 	}
-	eventLogger := sql.MakeEventLogger(s.execCfg)
-	eventType := sql.EventLogNodeDecommissioned
+	eventLogger := eventlog.MakeEventLogger(s.execCfg)
+	eventType := eventlog.EventLogNodeDecommissioned
 	operation := target.Decommission
 	if !setTo {
-		eventType = sql.EventLogNodeRecommissioned
+		eventType = eventlog.EventLogNodeRecommissioned
 		operation = target.Recommission
 	}
 	auditInfo := server.MakeAuditInfo(timeutil.Now(), "", nil,

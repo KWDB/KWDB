@@ -48,6 +48,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/eventlog"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/storage"
 	"gitee.com/kwbasedb/kwbase/pkg/tse"
@@ -168,7 +169,7 @@ type Node struct {
 	clusterID   *base.ClusterIDContainer // UUID for Cockroach cluster
 	Descriptor  roachpb.NodeDescriptor   // Node ID, network/physical topology
 	storeCfg    kvserver.StoreConfig     // Config to use and pass to stores
-	eventLogger sql.EventLogger
+	eventLogger eventlog.EventLogger
 	auditServer *server.AuditServer
 
 	stores      *kvserver.Stores // Access to node-local stores
@@ -283,9 +284,9 @@ func NewNode(
 	auditServer *server.AuditServer,
 	clusterID *base.ClusterIDContainer,
 ) *Node {
-	var eventLogger sql.EventLogger
+	var eventLogger eventlog.EventLogger
 	if execCfg != nil {
-		eventLogger = sql.MakeEventLogger(execCfg)
+		eventLogger = eventlog.MakeEventLogger(execCfg)
 	}
 
 	n := &Node{
@@ -308,7 +309,7 @@ func NewNode(
 
 // InitLogger needs to be called if a nil execCfg was passed to NewNode().
 func (n *Node) InitLogger(execCfg *sql.ExecutorConfig) {
-	n.eventLogger = sql.MakeEventLogger(execCfg)
+	n.eventLogger = eventlog.MakeEventLogger(execCfg)
 }
 
 // String implements fmt.Stringer.

@@ -36,7 +36,8 @@ type replicationToNode struct {
 }
 
 // ReplicationTo ...
-func (p *planner) ReplicationTo(
+// nolint:unexportedreturn
+func (p *GenericPlanner) ReplicationTo(
 	ctx context.Context, n *tree.ReplicationInformation,
 ) (*replicationToNode, error) {
 	var replTarget ReplTarget
@@ -61,7 +62,7 @@ func (p *planner) ReplicationTo(
 	return &replicationToNode{replInfo: n, replTarget: replTarget, isTs: isTs}, nil
 }
 
-func (n *replicationToNode) startExec(params runParams) error {
+func (n *replicationToNode) StartExec(params RunParams) error {
 	if n.isTs {
 		// ts table
 	} else {
@@ -70,7 +71,7 @@ func (n *replicationToNode) startExec(params runParams) error {
 	return nil
 }
 
-func (n *replicationToNode) Next(params runParams) (bool, error) { return false, nil }
+func (n *replicationToNode) Next(params RunParams) (bool, error) { return false, nil }
 
 func (n *replicationToNode) Values() tree.Datums { return tree.Datums{} }
 

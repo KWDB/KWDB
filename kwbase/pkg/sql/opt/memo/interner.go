@@ -455,7 +455,7 @@ func (h *hasher) HashOrdering(val opt.Ordering) {
 }
 
 func (h *hasher) HashOrderingChoice(val physical.OrderingChoice) {
-	h.HashColSet(val.Optional)
+	h.HashColSet(val.Optional())
 
 	for i := range val.Columns {
 		choice := &val.Columns[i]

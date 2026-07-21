@@ -19,19 +19,19 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 )
 
-// TestPlannerVacuum tests the Vacuum method of planner
+// TestPlannerVacuum tests the Vacuum method of GenericPlanner
 func TestPlannerVacuum(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
 	tests := []struct {
 		name        string
-		setupFunc   func() (*planner, *tree.Vacuum)
+		setupFunc   func() (*GenericPlanner, *tree.Vacuum)
 		expectedErr bool
 	}{
 		{
 			name: "test Vacuum returns valid node",
-			setupFunc: func() (*planner, *tree.Vacuum) {
-				return &planner{}, &tree.Vacuum{}
+			setupFunc: func() (*GenericPlanner, *tree.Vacuum) {
+				return &GenericPlanner{}, &tree.Vacuum{}
 			},
 			expectedErr: false,
 		},
@@ -64,7 +64,7 @@ func TestPlannerVacuum(t *testing.T) {
 	}
 }
 
-// TestVacuumNodeStartExec tests the startExec method of vacuumNode
+// TestVacuumNodeStartExec tests the StartExec method of vacuumNode
 func TestVacuumNodeStartExec(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
@@ -74,17 +74,17 @@ func TestVacuumNodeStartExec(t *testing.T) {
 		testFunc  func(t *testing.T, n *vacuumNode)
 	}{
 		{
-			name: "test startExec returns nil",
+			name: "test StartExec returns nil",
 			setupNode: func() *vacuumNode {
 				return &vacuumNode{}
 			},
 			testFunc: func(t *testing.T, n *vacuumNode) {
-				params := runParams{
-					ctx: context.Background(),
+				params := RunParams{
+					Ctx: context.Background(),
 				}
-				err := n.startExec(params)
+				err := n.StartExec(params)
 				if err != nil {
-					t.Errorf("startExec() returned error: %v", err)
+					t.Errorf("StartExec() returned error: %v", err)
 				}
 			},
 		},
@@ -113,8 +113,8 @@ func TestVacuumNodeNext(t *testing.T) {
 				return &vacuumNode{}
 			},
 			testFunc: func(t *testing.T, n *vacuumNode) {
-				params := runParams{
-					ctx: context.Background(),
+				params := RunParams{
+					Ctx: context.Background(),
 				}
 				hasNext, err := n.Next(params)
 				if err != nil {

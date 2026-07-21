@@ -83,7 +83,7 @@ func (t *triggerHelper) NeedExecuteAfterTrigger() bool {
 
 // ExecuteIns executes instruction
 func (t *triggerHelper) ExecuteIns(
-	params runParams, sourceValue *tree.Datums, ins procedure.Instruction,
+	params RunParams, sourceValue *tree.Datums, ins procedure.Instruction,
 ) error {
 	t.internalValues = sourceValue
 
@@ -110,7 +110,7 @@ func (t *triggerHelper) ExecuteIns(
 
 	t.placeholders = params.extendedEvalCtx.TriggerColHolders
 	t.execCtx.SetProcedureTxn(tree.ProcedureTransactionStart)
-	//params.p.txn.Step(params.ctx, false)
+	//params.p.txn.Step(params.Ctx, false)
 	params.EvalContext().IsTrigger = true
 	defer func() {
 		params.EvalContext().IsTrigger = false
@@ -124,11 +124,11 @@ func (t *triggerHelper) ExecuteIns(
 }
 
 // ExecuteBeforeIns executes before instruction
-func (t *triggerHelper) ExecuteBeforeIns(params runParams, sourceValue *tree.Datums) error {
+func (t *triggerHelper) ExecuteBeforeIns(params RunParams, sourceValue *tree.Datums) error {
 	return t.ExecuteIns(params, sourceValue, t.beforeIns)
 }
 
 // ExecuteAfterIns executes after instruction
-func (t *triggerHelper) ExecuteAfterIns(params runParams, sourceValue *tree.Datums) error {
+func (t *triggerHelper) ExecuteAfterIns(params RunParams, sourceValue *tree.Datums) error {
 	return t.ExecuteIns(params, sourceValue, t.afterIns)
 }

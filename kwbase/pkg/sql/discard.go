@@ -35,7 +35,7 @@ import (
 
 // Discard implements the DISCARD statement.
 // See https://www.postgresql.org/docs/9.6/static/sql-discard.html for details.
-func (p *planner) Discard(ctx context.Context, s *tree.Discard) (planNode, error) {
+func (p *GenericPlanner) Discard(ctx context.Context, s *tree.Discard) (PlanNode, error) {
 	switch s.Mode {
 	case tree.DiscardModeAll:
 		if !p.autoCommit {
@@ -53,7 +53,7 @@ func (p *planner) Discard(ctx context.Context, s *tree.Discard) (planNode, error
 	default:
 		return nil, errors.AssertionFailedf("unknown mode for DISCARD: %d", s.Mode)
 	}
-	return newZeroNode(nil /* columns */), nil
+	return NewZeroNode(nil /* columns */), nil
 }
 
 func resetSessionVars(ctx context.Context, m *sessionDataMutator) error {

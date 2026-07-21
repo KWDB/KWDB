@@ -15,10 +15,11 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <cstring>
 #include <cstdio>
+#include <cstring>
 #include <utility>
 
+#include "compression/ts_compressor_manager.h"
 #include "data_type.h"
 #include "kwdb_type.h"
 #include "settings.h"
@@ -231,7 +232,13 @@ KStatus TsEntityBlockBuilder::Append(const shared_ptr<TsBlockSpan>& span, bool& 
         block.buffer.append(osn_col_value, written_rows * d_size);
       } else {
         if (!direct_copy.copied_to_dest) {
-          block.buffer.append(col_val, written_rows * d_size);
+          if (col_val != nullptr) {
+            block.buffer.append(col_val, written_rows * d_size);
+          } else {
+            // Column does not exist in this block's original schema version.
+            // Bitmap already marks all rows kNull; fill zeros as placeholder.
+            block.buffer.resize(block.buffer.size() + written_rows * d_size);
+          }
         }
       }
     }
@@ -277,21 +284,21 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
     TsBitmapBase* b = has_bitmap ? block.bitmap.get() : nullptr;
     // compress col data & write to buffer
     if (0 == col_idx) {
+      attr_info.type = d_type;
       attr_info.encode_algo = roachpb::ENCODE_ALGO_SIMPLE8B;
       attr_info.compress_algo = roachpb::COMPRESS_ALGO_DISABLED;
       attr_info.compress_level = roachpb::COMPRESS_LEVEL_UNSPECIFIED;
     } else {
       attr_info = metric_schema_[col_idx - 1];
     }
-    auto [encode_algo, compress_algo] = mgr.GetAlgorithm(d_type, attr_info);
+    auto cfg = mgr.GetCompConfig(table_id_, attr_info);
     if (is_var_col) {
       // varchar offset use simple8b algorithm
-      encode_algo = EncodeAlgo::kSimple8B_V2_u32;
+      cfg.encoder = EncodeAlgo::kSimple8B_V2_u32;
       // var offset data
       TsBufferBuilder compressed;
       TSSlice var_offsets = {block.buffer.data(), n_rows_ * sizeof(uint32_t)};
-      bool ok = mgr.CompressData(var_offsets, nullptr, n_rows_, &compressed,
-        encode_algo, compress_algo, attr_info.compress_level);
+      bool ok = mgr.CompressData(var_offsets, nullptr, n_rows_, &compressed, cfg);
       if (!ok) {
         LOG_ERROR("Compress var offset data failed, tb_id [%u], tb_version [%u], entity_id [%lu], col_idx [%d]",
           table_id_, table_version_, entity_id_, col_idx);
@@ -304,7 +311,7 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
       compressed.clear();
       uint32_t var_data_offset = EngineOptions::max_rows_per_block * sizeof(uint32_t);
       ok = mgr.CompressVarchar({block.buffer.data() + var_data_offset, block.buffer.size() - var_data_offset},
-                        &compressed, compress_algo, metric_schema_[col_idx - 1].compress_level);
+                               &compressed, cfg);
       if (!ok) {
         LOG_ERROR("Compress var data failed, tb_id [%u], tb_version [%u], entity_id [%lu], col_idx [%d]",
           table_id_, table_version_, entity_id_, col_idx);
@@ -314,7 +321,7 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
     } else {
       TsBufferBuilder compressed;
       TSSlice plain{block.buffer.data(), block.buffer.size()};
-      mgr.CompressData(plain, b, n_rows_, &compressed, encode_algo, compress_algo, attr_info.compress_level);
+      mgr.CompressData(plain, b, n_rows_, &compressed, cfg);
       data_buffer->append(compressed);
     }
     // col offset
@@ -510,7 +517,7 @@ KStatus TsEntitySegmentBuilder::WriteBlock(TsEntityKey& entity_key, TsSegmentWri
   TsBufferBuilder data_buffer;
   TsBufferBuilder agg_buffer;
   TsEntitySegmentBlockItem block_item;
-  block_item.block_version = CURRENT_BLOCK_VERSION;
+  block_item.struct_version = CURRENT_BLOCK_VERSION;
   KStatus s = block_->GetCompressData(block_item, &data_buffer, &agg_buffer);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBuilder::Compact failed, get block compress data failed.")
@@ -814,7 +821,7 @@ KStatus TsEntitySegmentBuilder::Compact(TsVersionUpdate* update,
     LOG_ERROR("TsEntitySegmentBuilder::Compact failed, finalize failed.");
     return FAIL;
   }
-  update->SetEntitySegment(partition_id_, info, false);
+  update->SetEntitySegment(partition_id_, info);
   return KStatus::SUCCESS;
 }
 
@@ -854,11 +861,11 @@ KStatus TsEntitySegmentBuilder::WriteBatch(TSTableID tbl_id, uint32_t entity_id,
   TsEntitySegmentBlockItem block_item;
   uint32_t block_data_header_size = TsBatchData::block_span_data_header_size_;
   if (batch_version == 0) {
-    block_item.block_version = DecodeFixed32(block_data.data + TsBatchData::block_version_offset_in_span_data_);
+    block_item.struct_version = DecodeFixed32(block_data.data + TsBatchData::block_version_offset_in_span_data_);
   } else if (batch_version == 1) {
-    block_item.block_version = DecodeFixed32(block_data.data + TsBatchData::block_version_offset_in_span_data_);
+    block_item.struct_version = DecodeFixed32(block_data.data + TsBatchData::block_version_offset_in_span_data_);
   } else if (batch_version == 2) {
-    block_item.block_version = DecodeFixed32(block_data.data + TsBatchData::block_version_offset_in_span_data_);
+    block_item.struct_version = DecodeFixed32(block_data.data + TsBatchData::block_version_offset_in_span_data_);
   } else {
     LOG_ERROR("TsEntitySegmentBuilder::WriteBatch failed, invalid batch version: %u", batch_version);
     return FAIL;
@@ -994,7 +1001,7 @@ KStatus TsEntitySegmentBuilder::WriteBatchFinish(TsVersionUpdate *update) {
     LOG_ERROR("WriteBatchFinish failed, Finalize failed.");
     return FAIL;
   }
-  update->SetEntitySegment(partition_id_, info, false);
+  update->SetEntitySegment(partition_id_, info);
   return KStatus::SUCCESS;
 }
 

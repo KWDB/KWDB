@@ -26,8 +26,8 @@ import (
 // TestSetSessionAuthorizationDefault tests the SetSessionAuthorizationDefault method
 func TestSetSessionAuthorizationDefault(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	// Create a test planner
-	p := &planner{}
+	// Create a test GenericPlanner
+	p := &GenericPlanner{}
 
 	// Test SetSessionAuthorizationDefault
 	node, err := p.SetSessionAuthorizationDefault()
@@ -45,7 +45,7 @@ func TestSetSessionAuthorizationDefault(t *testing.T) {
 // TestSetSessionCharacteristics tests the SetSessionCharacteristics method
 func TestSetSessionCharacteristics(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	// Create a test planner with sessionDataMutator
+	// Create a test GenericPlanner with sessionDataMutator
 	s, _, _ := serverutils.StartServer(t, base.TestServerArgs{})
 	ctx := context.Background()
 	defer s.Stopper().Stop(ctx)
@@ -57,7 +57,7 @@ func TestSetSessionCharacteristics(t *testing.T) {
 		&MemoryMetrics{},
 		&execCfg,
 	)
-	p := plan.(*planner)
+	p := plan.(*GenericPlanner)
 	defer cleanup()
 
 	// Test cases for different isolation levels and read write modes

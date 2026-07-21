@@ -75,20 +75,20 @@ type zigzagJoinSide struct {
 	fixedVals *valuesNode
 }
 
-func (zj *zigzagJoinNode) startExec(params runParams) error {
+func (zj *zigzagJoinNode) StartExec(params RunParams) error {
 	panic("zigzag joins cannot be executed outside of distsql")
 }
 
-// Next is part of the planNode interface.
-func (zj *zigzagJoinNode) Next(params runParams) (bool, error) {
+// Next is part of the PlanNode interface.
+func (zj *zigzagJoinNode) Next(params RunParams) (bool, error) {
 	panic("zigzag joins cannot be executed outside of distsql")
 }
 
-// Values is part of the planNode interface.
+// Values is part of the PlanNode interface.
 func (zj *zigzagJoinNode) Values() tree.Datums {
 	panic("zigzag joins cannot be executed outside of distsql")
 }
 
-// Close is part of the planNode interface.
+// Close is part of the PlanNode interface.
 func (zj *zigzagJoinNode) Close(ctx context.Context) {
 }

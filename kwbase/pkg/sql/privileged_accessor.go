@@ -39,7 +39,7 @@ import (
 // LookupNamespaceID implements tree.PrivilegedAccessor.
 // TODO(sqlexec): make this work for any arbitrary schema.
 // This currently only works for public schemas and databases.
-func (p *planner) LookupNamespaceID(
+func (p *GenericPlanner) LookupNamespaceID(
 	ctx context.Context, parentID int64, name string,
 ) (tree.DInt, bool, error) {
 	var r tree.Datums
@@ -83,7 +83,7 @@ func (p *planner) LookupNamespaceID(
 }
 
 // LookupZoneConfigByNamespaceID implements tree.PrivilegedAccessor.
-func (p *planner) LookupZoneConfigByNamespaceID(
+func (p *GenericPlanner) LookupZoneConfigByNamespaceID(
 	ctx context.Context, id int64,
 ) (tree.DBytes, bool, error) {
 	if err := p.checkDescriptorPermissions(ctx, sqlbase.ID(id)); err != nil {
@@ -111,7 +111,7 @@ func (p *planner) LookupZoneConfigByNamespaceID(
 // checkDescriptorPermissions returns nil if the executing user has permissions
 // to check the permissions of a descriptor given its ID, or the id given
 // is not a descriptor of a table or database.
-func (p *planner) checkDescriptorPermissions(ctx context.Context, id sqlbase.ID) error {
+func (p *GenericPlanner) checkDescriptorPermissions(ctx context.Context, id sqlbase.ID) error {
 	desc, found, err := lookupDescriptorByID(ctx, p.txn, id)
 	if err != nil {
 		return err

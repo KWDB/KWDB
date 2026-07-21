@@ -121,7 +121,7 @@ func (s *Server) refreshSettings() {
 	if kv.FollowerReadEnable {
 		if s.tsEngine == nil {
 			// todo(qzy): confirm the warning log
-			log.Warningf(ctx, "ts engine is not creted")
+			log.Warningf(ctx, "ts engine is not created")
 		} else if !s.tsEngine.IsOpen() {
 			log.Infof(ctx, "try open ts engine")
 			if err := s.tsEngine.Open(s.node.Descriptor.RangeIndex); err != nil {
@@ -156,7 +156,7 @@ func (s *Server) refreshSettings() {
 					// for opening of tsengine. It depends on the speed of refreshing cluster
 					// setting, usually quick enough. We will optimize it later if necessary.
 					if s.tsEngine == nil {
-						log.Warningf(ctx, "ts engine is not creted")
+						log.Warningf(ctx, "ts engine is not created")
 					} else if !s.tsEngine.IsOpen() {
 						log.Infof(ctx, "try open ts engine")
 						if err := s.tsEngine.Open(s.node.Descriptor.RangeIndex); err != nil {

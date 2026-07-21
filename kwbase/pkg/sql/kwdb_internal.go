@@ -27,6 +27,7 @@ package sql
 import (
 	"bytes"
 	"context"
+	ejson "encoding/json"
 	"fmt"
 	"net"
 	"net/url"
@@ -37,6 +38,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/build"
+	"gitee.com/kwbasedb/kwbase/pkg/cdc/cdcpb"
 	"gitee.com/kwbasedb/kwbase/pkg/clusterversion"
 	"gitee.com/kwbasedb/kwbase/pkg/config/zonepb"
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
@@ -50,6 +52,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/server/status/statuspb"
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
+	ddlopts "gitee.com/kwbasedb/kwbase/pkg/sql/ddl_opts"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/delegate"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/builtins"
@@ -134,6 +138,8 @@ var kwdbInternal = virtualSchema{
 		sqlbase.CrdbInternalKWDBStreamsTableID:          kwdbInternalKWDBStreamTable,
 		sqlbase.CrdbInternalTSEInfoID:                   kwdbInternalTSEngineInfo,
 		sqlbase.CrdbInternalTSTransactionRecordID:       kwdbInternalTSTransactionRecord,
+		sqlbase.KwdbInternalKWDBPublicationsTableID:     kwdbInternalKWDBPublicationsTable,
+		sqlbase.CrdbInternalKWDBPipeTableID:             kwdbInternalKWDBPipeTable,
 	},
 	validWithNoDatabaseContext: true,
 }
@@ -146,7 +152,7 @@ CREATE TABLE kwdb_internal.node_build_info (
   field   STRING NOT NULL,
   value   STRING NOT NULL
 )`,
-	populate: func(_ context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(_ context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		execCfg := p.ExecCfg()
 		nodeID := tree.NewDInt(tree.DInt(int64(execCfg.NodeID.Get())))
 		info := build.GetInfo()
@@ -179,7 +185,7 @@ CREATE TABLE kwdb_internal.node_runtime_info (
   field     STRING NOT NULL,
   value     STRING NOT NULL
 )`,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		if err := p.RequireAdminRole(ctx, "access the node runtime information"); err != nil {
 			return err
 		}
@@ -249,8 +255,8 @@ CREATE TABLE kwdb_internal.tables (
   audit_mode               STRING NOT NULL,
   schema_name              STRING NOT NULL
 )`,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
-		descs, err := p.Tables().getAllDescriptors(ctx, p.txn)
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		descs, err := p.Tables().TcGetAllDescriptors(ctx, p.txn)
 		if err != nil {
 			return err
 		}
@@ -356,8 +362,8 @@ CREATE TABLE kwdb_internal.schema_changes (
   state         STRING NOT NULL,
   direction     STRING NOT NULL
 )`,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
-		descs, err := p.Tables().getAllDescriptors(ctx, p.txn)
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		descs, err := p.Tables().TcGetAllDescriptors(ctx, p.txn)
 		if err != nil {
 			return err
 		}
@@ -418,7 +424,7 @@ CREATE TABLE kwdb_internal.leases (
   expiration  TIMESTAMP NOT NULL,
   deleted     BOOL NOT NULL
 )`,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		nodeID := tree.NewDInt(tree.DInt(int64(p.execCfg.NodeID.Get())))
 
 		leaseMgr := p.LeaseMgr()
@@ -504,7 +510,7 @@ CREATE TABLE kwdb_internal.jobs (
 	created_by_id         INT8
 )`,
 	comment: `decoded job metadata from system.jobs (KV scan)`,
-	generator: func(ctx context.Context, p *planner, _ *DatabaseDescriptor) (virtualTableGenerator, error) {
+	generator: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor) (virtualTableGenerator, error) {
 		currentUser := p.SessionData().User
 		isAdmin, err := p.HasAdminRole(ctx)
 		if err != nil {
@@ -716,7 +722,7 @@ CREATE TABLE kwdb_internal.node_statement_statistics (
   user_name           STRING,
   database            STRING
 )`,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		if err := p.RequireAdminRole(ctx, "access application statistics"); err != nil {
 			return err
 		}
@@ -820,7 +826,7 @@ CREATE TABLE kwdb_internal.node_txn_stats (
   committed_count    INT8 NOT NULL,
   implicit_count     INT8 NOT NULL
 )`,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		if err := p.RequireAdminRole(ctx, "access application statistics"); err != nil {
 			return err
 		}
@@ -884,7 +890,7 @@ CREATE TABLE kwdb_internal.session_trace (
   message     STRING NOT NULL,     -- The logged message.
   age         INTERVAL NOT NULL    -- The age of this message relative to the beginning of the trace.
 )`,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		rows, err := p.ExtendedEvalContext().Tracing.getSessionTrace()
 		if err != nil {
 			return err
@@ -912,7 +918,7 @@ CREATE TABLE kwdb_internal.cluster_settings (
   public        BOOL NOT NULL, -- whether the setting is documented, which implies the user can expect support.
   description   STRING NOT NULL
 )`,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		if err := p.RequireAdminRole(ctx, "read kwdb_internal.cluster_settings"); err != nil {
 			return err
 		}
@@ -951,7 +957,7 @@ CREATE TABLE kwdb_internal.session_variables (
   value    STRING NOT NULL,
   hidden   BOOL   NOT NULL
 )`,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		for _, vName := range varNames {
 			gen := varGen[vName]
 			value := gen.Get(&p.extendedEvalCtx)
@@ -980,7 +986,7 @@ CREATE TABLE kwdb_internal.%s (
 var kwdbInternalLocalTxnsTable = virtualSchemaTable{
 	comment: "running user transactions visible by the current user (RAM; local node only)",
 	schema:  fmt.Sprintf(txnsSchemaPattern, "node_transactions"),
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		if err := p.RequireAdminRole(ctx, "read kwdb_internal.node_transactions"); err != nil {
 			return err
 		}
@@ -996,7 +1002,7 @@ var kwdbInternalLocalTxnsTable = virtualSchemaTable{
 var kwdbInternalClusterTxnsTable = virtualSchemaTable{
 	comment: "running user transactions visible by the current user (cluster RPC; expensive!)",
 	schema:  fmt.Sprintf(txnsSchemaPattern, "cluster_transactions"),
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		if err := p.RequireAdminRole(ctx, "read kwdb_internal.cluster_transactions"); err != nil {
 			return err
 		}
@@ -1063,7 +1069,7 @@ CREATE TABLE kwdb_internal.%s (
 	exec_progress    INT             -- the percentage of overall progress
 )`
 
-func (p *planner) makeSessionsRequest(ctx context.Context) serverpb.ListSessionsRequest {
+func (p *GenericPlanner) makeSessionsRequest(ctx context.Context) serverpb.ListSessionsRequest {
 	req := serverpb.ListSessionsRequest{Username: p.SessionData().User}
 	if err := p.RequireAdminRole(ctx, "list sessions"); err == nil {
 		// The root user can see all sessions.
@@ -1102,7 +1108,7 @@ func getSessionID(session serverpb.Session) tree.Datum {
 var kwdbInternalLocalQueriesTable = virtualSchemaTable{
 	comment: "running queries visible by current user (RAM; local node only)",
 	schema:  fmt.Sprintf(queriesSchemaPattern, "node_queries"),
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		req := p.makeSessionsRequest(ctx)
 		response, err := p.extendedEvalCtx.StatusServer.ListLocalSessions(ctx, &req)
 		if err != nil {
@@ -1117,7 +1123,7 @@ var kwdbInternalLocalQueriesTable = virtualSchemaTable{
 var kwdbInternalClusterQueriesTable = virtualSchemaTable{
 	comment: "running queries visible by current user (cluster RPC; expensive!)",
 	schema:  fmt.Sprintf(queriesSchemaPattern, "cluster_queries"),
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		req := p.makeSessionsRequest(ctx)
 		response, err := p.extendedEvalCtx.StatusServer.ListSessions(ctx, &req)
 		if err != nil {
@@ -1225,7 +1231,7 @@ CREATE TABLE kwdb_internal.%s (
 var kwdbInternalLocalSessionsTable = virtualSchemaTable{
 	comment: "running sessions visible by current user (RAM; local node only)",
 	schema:  fmt.Sprintf(sessionsSchemaPattern, "node_sessions"),
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		req := p.makeSessionsRequest(ctx)
 		response, err := p.extendedEvalCtx.StatusServer.ListLocalSessions(ctx, &req)
 		if err != nil {
@@ -1240,7 +1246,7 @@ var kwdbInternalLocalSessionsTable = virtualSchemaTable{
 var kwdbInternalClusterSessionsTable = virtualSchemaTable{
 	comment: "running sessions visible to current user (cluster RPC; expensive!)",
 	schema:  fmt.Sprintf(sessionsSchemaPattern, "cluster_sessions"),
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		req := p.makeSessionsRequest(ctx)
 		response, err := p.extendedEvalCtx.StatusServer.ListSessions(ctx, &req)
 		if err != nil {
@@ -1341,7 +1347,7 @@ var kwdbInternalLocalMetricsTable = virtualSchemaTable{
   name               STRING NOT NULL,  -- name of the metric
   value							 FLOAT NOT NULL    -- value of the metric
 )`,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		if err := p.RequireAdminRole(ctx, "read kwdb_internal.node_metrics"); err != nil {
 			return err
 		}
@@ -1383,7 +1389,7 @@ CREATE TABLE kwdb_internal.builtin_functions (
   category  STRING NOT NULL,
   details   STRING NOT NULL
 )`,
-	populate: func(ctx context.Context, _ *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, _ *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		for _, name := range builtins.AllBuiltinNames {
 			props, overloads := builtins.GetBuiltinProperties(name)
 			for _, f := range overloads {
@@ -1423,7 +1429,7 @@ CREATE TABLE kwdb_internal.create_statements (
   zone_configuration_statements STRING[] NOT NULL
 )
 `,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		contextName := ""
 		if dbContext != nil {
 			contextName = dbContext.Name
@@ -1491,15 +1497,15 @@ CREATE TABLE kwdb_internal.create_statements (
 				var err error
 				if table.IsView() {
 					descType = typeView
-					stmt, err = ShowCreateView(ctx, (*tree.Name)(&table.Name), table)
+					stmt, err = sqlutil.ShowCreateView(ctx, (*tree.Name)(&table.Name), table)
 				} else if table.IsSequence() {
 					descType = typeSequence
-					stmt, err = ShowCreateSequence(ctx, (*tree.Name)(&table.Name), table)
+					stmt, err = sqlutil.ShowCreateSequence(ctx, (*tree.Name)(&table.Name), table)
 				} else {
 					descType = typeTable
 					tn := (*tree.Name)(&table.Name)
-					displayOptions := ShowCreateDisplayOptions{
-						FKDisplayMode: OmitFKClausesFromCreate,
+					displayOptions := ddlopts.ShowCreateDisplayOptions{
+						FKDisplayMode: ddlopts.OmitFKClausesFromCreate,
 					}
 					createNofk, err = ShowCreateTable(ctx, p, tn, contextName, table, lCtx, displayOptions)
 					if err != nil {
@@ -1508,7 +1514,7 @@ CREATE TABLE kwdb_internal.create_statements (
 					if err := showAlterStatementWithInterleave(ctx, tn, contextName, lCtx, table.Indexes, table, alterStmts, validateStmts); err != nil {
 						return err
 					}
-					displayOptions.FKDisplayMode = IncludeFkClausesInCreate
+					displayOptions.FKDisplayMode = ddlopts.IncludeFkClausesInCreate
 					stmt, err = ShowCreateTable(ctx, p, tn, contextName, table, lCtx, displayOptions)
 				}
 				if err != nil {
@@ -1576,7 +1582,7 @@ CREATE TABLE kwdb_internal.create_statements (
 								}
 							}
 							// TODO(wy):get tag value
-							childStmt := ShowCreateInstanceTable(tree.Name(table.Name), childName, name, nil, typ)
+							childStmt := sqlutil.ShowCreateInstanceTable(tree.Name(table.Name), childName, name, nil, typ)
 							if err := addRow(
 								dbDescID,
 								parentNameStr,
@@ -1619,7 +1625,7 @@ func showAlterStatementWithInterleave(
 		f.WriteString(" ADD CONSTRAINT ")
 		f.FormatNameP(&fk.Name)
 		f.WriteByte(' ')
-		if err := showForeignKeyConstraint(&f.Buffer, contextName, table, fk, lCtx); err != nil {
+		if err := ShowForeignKeyConstraint(&f.Buffer, contextName, table, fk, lCtx); err != nil {
 			return err
 		}
 		if err := alterStmts.Append(tree.NewDString(f.CloseAndGetString())); err != nil {
@@ -1648,7 +1654,7 @@ func showAlterStatementWithInterleave(
 			var err error
 			var parentName tree.TableName
 			if lCtx != nil {
-				parentName, err = lCtx.getParentAsTableName(parentTableID, contextName)
+				parentName, err = lCtx.GetParentAsTableName(parentTableID, contextName)
 				if err != nil {
 					return err
 				}
@@ -1722,7 +1728,7 @@ CREATE TABLE kwdb_internal.table_columns (
   hidden           BOOL NOT NULL
 )
 `,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		return forEachTableDescAll(ctx, p, dbContext, hideVirtual,
 			func(db *DatabaseDescriptor, _ string, table *TableDescriptor) error {
 				tableID := tree.NewDInt(tree.DInt(table.ID))
@@ -1767,7 +1773,7 @@ CREATE TABLE kwdb_internal.table_indexes (
   is_inverted      BOOL NOT NULL
 )
 `,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		primary := tree.NewDString("primary")
 		secondary := tree.NewDString("secondary")
 		return forEachTableDescAll(ctx, p, dbContext, hideVirtual,
@@ -1820,7 +1826,7 @@ CREATE TABLE kwdb_internal.index_columns (
   column_direction STRING
 )
 `,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		key := tree.NewDString("key")
 		storing := tree.NewDString("storing")
 		extra := tree.NewDString("extra")
@@ -1936,7 +1942,7 @@ CREATE TABLE kwdb_internal.backward_dependencies (
   dependson_details  STRING
 )
 `,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		fkDep := tree.NewDString("fk")
 		viewDep := tree.NewDString("view")
 		sequenceDep := tree.NewDString("sequence")
@@ -1968,7 +1974,7 @@ CREATE TABLE kwdb_internal.backward_dependencies (
 
 				for i := range table.OutboundFKs {
 					fk := &table.OutboundFKs[i]
-					refTbl, err := tableLookup.getTableByID(fk.ReferencedTableID)
+					refTbl, err := tableLookup.GetTableByID(fk.ReferencedTableID)
 					if err != nil {
 						return err
 					}
@@ -2050,7 +2056,7 @@ CREATE TABLE kwdb_internal.feature_usage (
   usage_count           INT8 NOT NULL
 )
 `,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		for feature, count := range telemetry.GetFeatureCounts(telemetry.Raw, telemetry.ReadOnly) {
 			if count == 0 {
 				// Skip over empty counters to avoid polluting the output.
@@ -2085,7 +2091,7 @@ CREATE TABLE kwdb_internal.forward_dependencies (
   dependedonby_details  STRING
 )
 `,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		fkDep := tree.NewDString("fk")
 		viewDep := tree.NewDString("view")
 		interleaveDep := tree.NewDString("interleave")
@@ -2241,15 +2247,15 @@ CREATE TABLE kwdb_internal.ranges_no_leases (
 	split_enforced_until TIMESTAMP
 )
 `,
-	generator: func(ctx context.Context, p *planner, _ *DatabaseDescriptor) (virtualTableGenerator, error) {
+	generator: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor) (virtualTableGenerator, error) {
 		if err := p.RequireAdminRole(ctx, "read kwdb_internal.ranges_no_leases"); err != nil {
 			return nil, err
 		}
-		descs, err := p.Tables().getAllDescriptors(ctx, p.txn)
+		descs, err := p.Tables().TcGetAllDescriptors(ctx, p.txn)
 		if err != nil {
 			return nil, err
 		}
-		// TODO(knz): maybe this could use internalLookupCtx.
+		// TODO(knz): maybe this could use InternalLookupCtx.
 		dbNames := make(map[uint64]string)
 		tableNames := make(map[uint64]string)
 		indexNames := make(map[uint64]map[sqlbase.IndexID]string)
@@ -2268,7 +2274,7 @@ CREATE TABLE kwdb_internal.ranges_no_leases (
 				dbNames[id] = desc.GetName()
 			}
 		}
-		ranges, err := ScanMetaKVs(ctx, p.txn, roachpb.Span{
+		ranges, err := sqlutil.ScanMetaKVs(ctx, p.txn, roachpb.Span{
 			Key:    keys.MinKey,
 			EndKey: keys.MaxKey,
 		})
@@ -2383,7 +2389,7 @@ type NamespaceKey struct {
 
 // getAllNames returns a map from ID to namespaceKey for every entry in
 // system.namespace.
-func (p *planner) getAllNames(ctx context.Context) (map[sqlbase.ID]NamespaceKey, error) {
+func (p *GenericPlanner) getAllNames(ctx context.Context) (map[sqlbase.ID]NamespaceKey, error) {
 	return getAllNames(ctx, p.txn, p.ExtendedEvalContext().ExecCfg.InternalExecutor)
 }
 
@@ -2466,7 +2472,7 @@ CREATE TABLE kwdb_internal.zones (
 	full_config_sql STRING
 )
 `,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		namespace, err := p.getAllNames(ctx)
 		if err != nil {
 			return err
@@ -2626,7 +2632,7 @@ CREATE TABLE kwdb_internal.zones (
 	},
 }
 
-func getAllNodeDescriptors(p *planner) ([]roachpb.NodeDescriptor, error) {
+func getAllNodeDescriptors(p *GenericPlanner) ([]roachpb.NodeDescriptor, error) {
 	g := p.ExecCfg().Gossip
 	var descriptors []roachpb.NodeDescriptor
 	if err := g.IterateInfos(gossip.KeyNodeIDPrefix, func(key string, i gossip.Info) error {
@@ -2663,52 +2669,44 @@ CREATE TABLE kwdb_internal.kwdb_functions (
 	argument_types		 STRING,
   return_type        STRING,
   function_type      STRING,
-	language				   STRING
+	language				   STRING,
+  function_body      STRING
 )
 `,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
-		query := fmt.Sprintf("SELECT descriptor from system.user_defined_routine WHERE routine_type = %d", sqlbase.Function)
-		rows, err := p.extendedEvalCtx.ExecCfg.InternalExecutor.Query(ctx, "show-functions", p.txn, query)
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		query := fmt.Sprintf(
+			`SELECT descriptor, routine_type
+			   FROM system.user_defined_routine
+			  WHERE routine_type IN (%d, %d)`,
+			sqlbase.LUAFunction,
+			sqlbase.SQLFunction,
+		)
+		rows, err := p.extendedEvalCtx.ExecCfg.InternalExecutor.QueryEx(
+			ctx,
+			"show-functions",
+			p.txn,
+			sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
+			query)
 		if err != nil {
 			return err
 		}
 		for _, row := range rows {
-			if row == nil || len(row) == 0 {
+			if row == nil || len(row) < 2 {
 				continue
 			}
 
-			var desc sqlbase.FunctionDescriptor
-			val := tree.MustBeDBytes(row[0])
-			if err := protoutil.Unmarshal([]byte(val), &desc); err != nil {
-				return pgerror.New(pgcode.Warning, "failed to parse descriptor for udf")
-			}
+			routineType := int(tree.MustBeDInt(row[1]))
 
-			funcName := desc.Name
-			argTypArray := desc.ArgumentTypes
-			returnTypArray := desc.ReturnType
-			funcTyp := desc.FunctionType
-			language := desc.Language
+			switch routineType {
+			case int(sqlbase.LUAFunction):
+				if err := populateLuaFunctionRow(row[0], addRow); err != nil {
+					return err
+				}
 
-			argTypes := getArrayStr(argTypArray)
-			returnTypes := getArrayStr(returnTypArray)
-
-			funcTypStr := ""
-			if funcTyp == uint32(sqlbase.DefinedFunction) {
-				funcTypStr = "function"
-			} else if funcTyp == uint32(sqlbase.DefinedAggregation) {
-				funcTypStr = "aggregation"
-			} else {
-				funcTypStr = "unknown"
-			}
-
-			if err := addRow(
-				tree.NewDString(funcName),    // function_name
-				tree.NewDString(argTypes),    // argument_types
-				tree.NewDString(returnTypes), // return_types
-				tree.NewDString(funcTypStr),  // function_type
-				tree.NewDString(language),    // language
-			); err != nil {
-				return err
+			case int(sqlbase.SQLFunction):
+				if err := populateSQLFunctionRow(row[0], addRow); err != nil {
+					return err
+				}
 			}
 		}
 		return nil
@@ -2727,7 +2725,7 @@ CREATE TABLE kwdb_internal.kwdb_procedures (
   procedure_body    STRING   
 )
 `,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		procDescs, err := GetAllProcDesc(ctx, p.txn)
 		if err != nil {
 			return err
@@ -2774,7 +2772,7 @@ CREATE TABLE kwdb_internal.kwdb_triggers (
   create_statement  STRING
 )
 `,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 
 		return forEachTableDescWithTableLookupInternal(ctx, p, dbContext, virtualOnce, true, /*allowAdding*/
 			func(db *DatabaseDescriptor, scName string, table *TableDescriptor, lCtx tableLookupFn) error {
@@ -2817,7 +2815,7 @@ CREATE TABLE kwdb_internal.kwdb_schedules (
 	state   				   BYTES,
   recur              STRING
 )
-`, populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+`, populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		query := `SELECT schedule_id, schedule_name, schedule_state, next_run, execution_args, schedule_expr FROM system.scheduled_jobs`
 		rows, err := p.extendedEvalCtx.ExecCfg.InternalExecutor.Query(ctx, "show-schedules", p.txn, query)
 		if err != nil {
@@ -2891,7 +2889,7 @@ CREATE TABLE kwdb_internal.gossip_nodes (
   leases                INT8 NOT NULL
 )
 	`,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		if err := p.RequireAdminRole(ctx, "read kwdb_internal.gossip_nodes"); err != nil {
 			return err
 		}
@@ -3005,7 +3003,7 @@ CREATE TABLE kwdb_internal.gossip_liveness (
   updated_at      TIMESTAMP
 )
 	`,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		// ATTENTION: The contents of this table should only access gossip data
 		// which is highly available. DO NOT CALL functions which require the
 		// cluster to be healthy, such as StatusServer.Nodes().
@@ -3078,7 +3076,7 @@ CREATE TABLE kwdb_internal.gossip_alerts (
   value           FLOAT NOT NULL   -- value of the alert (depends on subsystem, can be NaN)
 )
 	`,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		if err := p.RequireAdminRole(ctx, "read kwdb_internal.gossip_alerts"); err != nil {
 			return err
 		}
@@ -3144,7 +3142,7 @@ CREATE TABLE kwdb_internal.gossip_network (
   target_id       INT8 NOT NULL     -- target node of a gossip connection
 )
 	`,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		if err := p.RequireAdminRole(ctx, "read kwdb_internal.gossip_network"); err != nil {
 			return err
 		}
@@ -3168,7 +3166,7 @@ CREATE TABLE kwdb_internal.gossip_network (
 // how many columns of the index have been partitioned already.
 func addPartitioningRows(
 	ctx context.Context,
-	p *planner,
+	p *GenericPlanner,
 	database string,
 	table *sqlbase.TableDescriptor,
 	index *sqlbase.IndexDescriptor,
@@ -3382,7 +3380,7 @@ CREATE TABLE kwdb_internal.partitions (
 	subzone_id INT8 -- references a subzone id in the kwdb_internal.zones table
 )
 	`,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		dbName := ""
 		if dbContext != nil {
 			dbName = dbContext.Name
@@ -3427,7 +3425,7 @@ CREATE TABLE kwdb_internal.kv_node_status (
   activity       JSON NOT NULL
 )
 	`,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		if err := p.RequireAdminRole(ctx, "read kwdb_internal.kv_node_status"); err != nil {
 			return err
 		}
@@ -3530,7 +3528,7 @@ CREATE TABLE kwdb_internal.kv_store_status (
   metrics            JSON NOT NULL
 )
 	`,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		if err := p.RequireAdminRole(ctx, "read kwdb_internal.kv_store_status"); err != nil {
 			return err
 		}
@@ -3639,7 +3637,7 @@ CREATE TABLE kwdb_internal.predefined_comments (
 	"COMMENT" STRING
 )`,
 	populate: func(
-		ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error,
+		ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error,
 	) error {
 		tableCommentKey := tree.NewDInt(keys.TableCommentType)
 		vt := p.getVirtualTabler()
@@ -3669,7 +3667,7 @@ CREATE TABLE kwdb_internal.predefined_comments (
 	},
 }
 
-func (p *planner) getCurrentUserName(ctx context.Context) (bool, string, error) {
+func (p *GenericPlanner) getCurrentUserName(ctx context.Context) (bool, string, error) {
 	user := p.SessionData().User
 	if user == security.RootUser {
 		return true, ``, nil
@@ -3704,7 +3702,7 @@ CREATE TABLE kwdb_internal.audit_policies (
 	level			INT8,
 	enable			bool NOT NULL
 )`,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		query := `SELECT * FROM system.audits`
 		rows, err := p.extendedEvalCtx.ExecCfg.InternalExecutor.Query(ctx, "show-audits", p.txn, query)
 		if err != nil {
@@ -3792,10 +3790,10 @@ CREATE TABLE kwdb_internal.kwdb_attributes (
 	nullable				 bool
 )
 `,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 
 		// get all descriptors
-		descs, err := p.Tables().getAllDescriptors(ctx, p.txn)
+		descs, err := p.Tables().TcGetAllDescriptors(ctx, p.txn)
 		if err != nil {
 			return err
 		}
@@ -3943,7 +3941,7 @@ CREATE TABLE kwdb_internal.kwdb_object_create_statement (
     statement   STRING
 )
 `,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 
 		// build database create statement
 		descriptors, err := GetAllDescriptors(ctx, p.Txn())
@@ -4006,7 +4004,7 @@ CREATE TABLE kwdb_internal.kwdb_retention (
     lifetime 				INT
 )
 `,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 
 		// build database create statement
 		descriptors, err := GetAllDescriptors(ctx, p.Txn())
@@ -4052,7 +4050,7 @@ CREATE TABLE kwdb_internal.kwdb_tse_info (
     wal_level INT
 )
 `,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 
 		walLevel, err := p.ExecCfg().TsEngine.GetWalLevel()
 		if err != nil {
@@ -4062,6 +4060,238 @@ CREATE TABLE kwdb_internal.kwdb_tse_info (
 			tree.NewDInt(tree.DInt(walLevel)), // table_id
 		); err != nil {
 			return err
+		}
+
+		return nil
+	},
+}
+
+var kwdbInternalKWDBPipeTable = virtualSchemaTable{
+	comment: "kwdb pipes info",
+	schema: `
+CREATE TABLE kwdb_internal.kwdb_pipes (
+  name           		STRING,
+  table_name        STRING,
+  column_names      STRING,
+  filter						STRING,
+  options           JSONB,
+  low_watermark			STRING,
+  status						STRING,
+  create_at					TIMESTAMP,
+  create_by					STRING,
+  start_time   			TIMESTAMP,
+  end_time					TIMESTAMP,
+  error_message     String
+)
+`,
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+
+		query := `SELECT p.id,p.name,p.parameters,p.create_at,p.create_by,p.status,p.run_info,p.job_id,p.source_id, w.lw, w.tids 
+FROM system.kwdb_pipes p
+LEFT JOIN (select task_id, array_agg(low_watermark) AS lw ,array_agg(table_id) AS tids FROM system.kwdb_cdc_watermark c group by task_id) AS w
+ON w.task_id=p.id`
+		rows, err := p.extendedEvalCtx.ExecCfg.InternalExecutor.Query(ctx, "show-pipes", p.txn, query)
+		if err != nil {
+			return err
+		}
+		for _, row := range rows {
+			name := tree.MustBeDString(row[1])
+			params := tree.MustBeDJSON(row[2])
+			createAt := tree.MustBeDTimestamp(row[3])
+			createBy := tree.MustBeDString(row[4])
+			status := tree.MustBeDString(row[5])
+			pipeRun := tree.MustBeDJSON(row[6]).JSON
+
+			pipeParas, err := cdcpb.UnmarshalPipeParameters(params.JSON)
+			if err != nil {
+				return err
+			}
+			table := ""
+			tableOrder := make([]uint64, len(pipeParas.Tables))
+			for i := range pipeParas.Tables {
+				tableName := pipeParas.Tables[i].Table
+				databaseName := pipeParas.Tables[i].Database
+				schemaName := pipeParas.Tables[i].Schema
+				if i > 0 {
+					table += ","
+				}
+				table += databaseName + "." + schemaName + "." + tableName
+				tableOrder[i] = pipeParas.TableIDs[i]
+			}
+
+			colNames := ""
+			filter := ""
+			if len(pipeParas.Tables) == 1 {
+				colNames = strings.Join(pipeParas.Tables[0].ColNames, ",")
+				filter = pipeParas.Tables[0].Filter
+			}
+
+			options, err := params.JSON.FetchValKey("options")
+			if err != nil {
+				return err
+			}
+
+			lowWatermark := ""
+			if row[9] != tree.DNull {
+				lowWatermarks := tree.MustBeDArray(row[9]).Array
+				tableIDs := tree.MustBeDArray(row[10]).Array
+				// tableID -> lowWatermark
+				tableToLowWatermark := make(map[uint64]tree.Datum, len(lowWatermarks))
+				for i := range lowWatermarks {
+					tableID := uint64(tree.MustBeDInt(tableIDs[i]))
+					tableToLowWatermark[tableID] = lowWatermarks[i]
+				}
+				for idx, tableID := range tableOrder {
+					if idx > 0 {
+						lowWatermark += ","
+					}
+					lwInt := int64(tree.MustBeDInt(tableToLowWatermark[tableID]))
+					lwTime := timeutil.FromTimestamp(lwInt, 9)
+					lwDatum := tree.MakeDTimestamp(lwTime, time.Nanosecond)
+					lowWatermark += strings.Trim(lwDatum.String(), "'")
+				}
+			}
+
+			runInfo, err := cdcpb.UnmarshalRunInfo(pipeRun)
+			if err != nil {
+				return err
+			}
+
+			var start, end, errMsg tree.Datum
+			lastRunIndex := len(runInfo) - 1
+			if lastRunIndex > -1 {
+				startTime, err := time.Parse(time.RFC3339, runInfo[lastRunIndex].StartTime)
+				if err != nil {
+					start = tree.DNull
+				} else {
+					start = tree.MakeDTimestamp(startTime, time.Microsecond)
+				}
+
+				endTime, err := time.Parse(time.RFC3339, runInfo[lastRunIndex].EndTime)
+				if err != nil {
+					end = tree.DNull
+				} else {
+					end = tree.MakeDTimestamp(endTime, time.Microsecond)
+				}
+
+				errMsg = tree.NewDString(runInfo[lastRunIndex].ErrorMessage)
+			} else {
+				start = tree.DNull
+				end = tree.DNull
+				errMsg = tree.DNull
+			}
+
+			if err := addRow(
+				&name,
+				tree.NewDString(table),
+				tree.NewDString(colNames),
+				tree.NewDString(filter),
+				tree.NewDJSON(options),
+				tree.NewDString(lowWatermark),
+				&status,
+				&createAt,
+				&createBy,
+				start,
+				end,
+				errMsg,
+			); err != nil {
+				return err
+			}
+		}
+		return nil
+	},
+}
+
+// subSession is used for show publications, to construct the array about subscription field.
+type subSession struct {
+	SessionID string `json:"session_id"`
+	UserName  string `json:"user"`
+}
+
+// kwdbInternalKWDBPublicationsTable is used for show publications.
+var kwdbInternalKWDBPublicationsTable = virtualSchemaTable{
+	comment: "kwdb publication info",
+	schema: `
+CREATE TABLE kwdb_internal.publications (
+  name           STRING,
+  pub_objects    STRING,
+  parameter      JSON,
+  create_at      TIMESTAMP,
+  create_by      STRING,
+  subscription   JSON
+)
+`,
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		rows, err := p.execCfg.InternalExecutor.QueryEx(ctx,
+			"query-publications",
+			p.Txn(),
+			sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
+			"SELECT name, parameters, create_at, create_by FROM system.kwdb_publications")
+		if err != nil {
+			return err
+		}
+		sessionRows, sessionErr := p.execCfg.InternalExecutor.QueryEx(ctx,
+			"query-sub-sessions",
+			p.Txn(),
+			sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
+			"SELECT session_id, user_name, application_name FROM [SHOW CLUSTER SESSIONS] WHERE application_name LIKE 'sub$$$%'")
+		if sessionErr != nil {
+			return sessionErr
+		}
+		subSessionMap := make(map[string][]subSession)
+		for _, sessionRow := range sessionRows {
+			sessionID := string(*sessionRow[0].(*tree.DString))
+			userName := string(*sessionRow[1].(*tree.DString))
+			appName := string(*sessionRow[2].(*tree.DString))
+			pubName := appName[6:]
+			subSessionMap[pubName] = append(subSessionMap[pubName], subSession{SessionID: sessionID, UserName: userName})
+		}
+
+		for _, row := range rows {
+			name := tree.MustBeDString(row[0])
+			parameter := tree.MustBeDJSON(row[1])
+			createAt := tree.MustBeDTimestamp(row[2])
+			createBy := tree.MustBeDString(row[3])
+			pubObjects := ""
+			pubPara, err1 := cdcpb.UnmarshalPubParameters(parameter.JSON)
+			if err1 != nil {
+				return err1
+			}
+			for idx, tableInfo := range pubPara.TableList {
+				if idx > 0 {
+					pubObjects += ","
+				}
+				pubObjects += tableInfo.Database + "." + tableInfo.Schema + "." + tableInfo.Table
+			}
+
+			var subSessions tree.DJSON
+			pubNameStr := string(*row[0].(*tree.DString))
+			subSessionArray, ok := subSessionMap[pubNameStr]
+			if ok {
+				subSessionBytes, err := ejson.Marshal(subSessionArray)
+				if err != nil {
+					return err
+				}
+				subSessionJSON, err := json.ParseJSON(string(subSessionBytes))
+				subSessions = *tree.NewDJSON(subSessionJSON)
+			} else {
+				jsonNull, err := tree.MakeDJSON(nil)
+				if err != nil {
+					return err
+				}
+				subSessions = tree.MustBeDJSON(jsonNull)
+			}
+
+			if err := addRow(
+				&name,                       // name
+				tree.NewDString(pubObjects), // pub_objects
+				&parameter,                  // parameter
+				&createAt,                   // create_at
+				&createBy,                   // create_by
+				&subSessions,                // subscription
+			); err != nil {
+				return err
+			}
 		}
 
 		return nil
@@ -4084,7 +4314,7 @@ CREATE TABLE kwdb_internal.kwdb_streams (
   error_message            String
 )
 `,
-	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 
 		query := `SELECT id,name,create_by,create_at,status,target_table_id,job_id,parameters,run_info FROM system.kwdb_streams`
 		rows, err := p.extendedEvalCtx.ExecCfg.InternalExecutor.Query(ctx, "show-streams", p.txn, query)
@@ -4175,7 +4405,7 @@ CREATE TABLE kwdb_internal.ts_inflight_transactions (
     status STRING
 )
 `,
-	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+	populate: func(ctx context.Context, p *GenericPlanner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 
 		startKey := roachpb.Key(keys.MakeTablePrefix(keys.TsTxnTableID))
 		endKey := startKey.PrefixEnd()
@@ -4203,4 +4433,215 @@ CREATE TABLE kwdb_internal.ts_inflight_transactions (
 
 		return nil
 	},
+}
+
+// populateLuaFunctionRow appends one Lua UDF row to kwdb_internal.kwdb_functions.
+func populateLuaFunctionRow(descDatum tree.Datum, addRow func(...tree.Datum) error) error {
+	var desc sqlbase.FunctionDescriptor
+
+	val := tree.MustBeDBytes(descDatum)
+	if err := protoutil.Unmarshal([]byte(val), &desc); err != nil {
+		return pgerror.New(pgcode.Warning, "failed to parse descriptor for udf")
+	}
+
+	funcName := delegate.FormatRoutineNameForShow(desc.Name)
+	argTypes := getLuaUDFTypeArrayStrForShowCreate(desc.ArgumentTypes)
+	returnTypes := getLuaUDFTypeArrayStrForShowCreate(desc.ReturnType)
+	language := desc.Language
+
+	funcTypStr := "unknown"
+	switch desc.FunctionType {
+	case uint32(sqlbase.DefinedFunction):
+		funcTypStr = "function"
+	case uint32(sqlbase.DefinedAggregation):
+		funcTypStr = "aggregation"
+	}
+
+	functionBody := buildCreateLuaFunctionStmt(&desc)
+
+	return addRow(
+		tree.NewDString(funcName),     // function_name
+		tree.NewDString(argTypes),     // argument_types
+		tree.NewDString(returnTypes),  // return_type
+		tree.NewDString(funcTypStr),   // function_type
+		tree.NewDString(language),     // language
+		tree.NewDString(functionBody), // function_body
+	)
+}
+
+// populateSQLFunctionRow appends one SQL UDF row to kwdb_internal.kwdb_functions.
+func populateSQLFunctionRow(descDatum tree.Datum, addRow func(...tree.Datum) error) error {
+	var desc sqlbase.ProcedureDescriptor
+
+	val := tree.MustBeDBytes(descDatum)
+	if err := protoutil.Unmarshal([]byte(val), &desc); err != nil {
+		return pgerror.New(pgcode.Warning, "failed to parse descriptor for sql udf")
+	}
+
+	funcName := delegate.FormatRoutineNameForShow(desc.Name)
+	argTypes := formatProcParamTypes(desc.Parameters)
+	returnType := formatProcedureReturnType(&desc)
+	functionBody := buildCreatePLpgSQLFunctionStmt(&desc)
+
+	return addRow(
+		tree.NewDString(funcName),     // function_name
+		tree.NewDString(argTypes),     // argument_types
+		tree.NewDString(returnType),   // return_type
+		tree.NewDString("function"),   // function_type
+		tree.NewDString("SQL"),        // language
+		tree.NewDString(functionBody), // function_body
+	)
+}
+
+// formatProcParamTypes formats procedure parameter types as a comma-separated list.
+func formatProcParamTypes(params []sqlbase.ProcParam) string {
+	if len(params) == 0 {
+		return "NULL"
+	}
+
+	types := make([]string, 0, len(params))
+	for _, param := range params {
+		types = append(types, param.Type.SQLString())
+	}
+	return strings.Join(types, ", ")
+}
+
+// formatProcParamDefs formats procedure parameters as "name type" definitions.
+func formatProcParamDefs(params []sqlbase.ProcParam) string {
+	if len(params) == 0 {
+		return ""
+	}
+
+	defs := make([]string, 0, len(params))
+	for _, param := range params {
+		defs = append(defs, fmt.Sprintf("%s %s", param.Name, param.Type.SQLString()))
+	}
+	return strings.Join(defs, ", ")
+}
+
+// formatProcedureReturnType returns the SQL string of the procedure return type.
+func formatProcedureReturnType(desc *sqlbase.ProcedureDescriptor) string {
+	if desc == nil {
+		return ""
+	}
+	return desc.ReturnType.SQLString()
+}
+
+// buildCreatePLpgSQLFunctionStmt builds the CREATE FUNCTION statement
+// for a SQL UDF backed by a ProcedureDescriptor.
+func buildCreatePLpgSQLFunctionStmt(desc *sqlbase.ProcedureDescriptor) string {
+	if desc == nil {
+		return ""
+	}
+
+	funcName := delegate.FormatRoutineNameForShow(desc.Name)
+	argDefs := formatProcParamDefs(desc.Parameters)
+	returnType := formatProcedureReturnType(desc)
+
+	body := strings.TrimSpace(desc.ProcBody)
+
+	// desc.ProcBody may be generated from CREATE PROCEDURE during the internal
+	// procedure wrapper path. SHOW CREATE FUNCTION should expose the user-facing
+	// CREATE FUNCTION syntax, so keep only the BEGIN...END body if possible.
+	upperBody := strings.ToUpper(body)
+	if idx := strings.Index(upperBody, "BEGIN"); idx >= 0 {
+		body = strings.TrimSpace(body[idx:])
+	}
+
+	return fmt.Sprintf(
+		"CREATE FUNCTION %s(%s)\nRETURNS %s\nLANGUAGE SQL\n%s",
+		funcName,
+		argDefs,
+		returnType,
+		body,
+	)
+}
+
+// buildCreateLuaFunctionStmt builds the CREATE FUNCTION statement
+// for a Lua UDF descriptor.
+func buildCreateLuaFunctionStmt(desc *sqlbase.FunctionDescriptor) string {
+	if desc == nil {
+		return ""
+	}
+
+	funcName := delegate.FormatRoutineNameForShow(desc.Name)
+	argTypes := formatLuaParamDefsForShowCreate(desc)
+	returnTypes := getLuaUDFTypeArrayStrForShowCreate(desc.ReturnType)
+	language := desc.Language
+	if language == "" {
+		language = "LUA"
+	}
+
+	// Replace desc.FuncBody with the actual field that stores the Lua script.
+	body := strings.TrimSpace(desc.FunctionBody)
+
+	return fmt.Sprintf(
+		"CREATE FUNCTION %s(%s)\nRETURNS %s\nLANGUAGE %s\nBEGIN\n%s\nEND",
+		funcName,
+		argTypes,
+		returnTypes,
+		language,
+		formatLuaBodyAsSCONST(body),
+	)
+}
+
+// formatLuaParamDefsForShowCreate formats lua function parameters as "name type" definitions.
+func formatLuaParamDefsForShowCreate(desc *sqlbase.FunctionDescriptor) string {
+	if desc == nil || len(desc.ArgumentTypes) == 0 {
+		return ""
+	}
+
+	defs := make([]string, 0, len(desc.ArgumentTypes))
+	for i, typeID := range desc.ArgumentTypes {
+		typ := getLuaUDFTypeStrForShowCreate(typeID)
+
+		name := fmt.Sprintf("arg%d", i+1)
+		if i < len(desc.ArgumentNames) && desc.ArgumentNames[i] != "" {
+			name = delegate.FormatRoutineNameForShow(desc.ArgumentNames[i])
+		}
+
+		defs = append(defs, fmt.Sprintf("%s %s", name, typ))
+	}
+	return strings.Join(defs, ", ")
+}
+
+// formatLuaBodyAsSCONST formats a Lua script as a SQL string const.
+func formatLuaBodyAsSCONST(body string) string {
+	body = strings.TrimSpace(body)
+
+	// If the descriptor already stores the script as a SQL string,
+	// keep it as-is.
+	if strings.HasPrefix(body, "'") && strings.HasSuffix(body, "'") {
+		return body
+	}
+
+	return "'" + strings.ReplaceAll(body, "'", "''") + "'"
+}
+
+// getLuaUDFTypeArrayStrForShowCreate formats Lua UDF argument and return types
+// for SHOW CREATE FUNCTION.
+func getLuaUDFTypeArrayStrForShowCreate(typeIDs []uint32) string {
+	if len(typeIDs) == 0 {
+		return "NULL"
+	}
+
+	typeNames := make([]string, 0, len(typeIDs))
+	for _, typeID := range typeIDs {
+		typeNames = append(typeNames, getLuaUDFTypeStrForShowCreate(typeID))
+	}
+	return strings.Join(typeNames, ", ")
+}
+
+// getLuaUDFTypeStrForShowCreate formats one Lua UDF type for SHOW CREATE FUNCTION.
+func getLuaUDFTypeStrForShowCreate(typeID uint32) string {
+	switch typeID {
+	case uint32(sqlbase.DataType_DOUBLE):
+		// Lua UDF CREATE FUNCTION commonly uses FLOAT8, while the descriptor
+		// stores the return type as DataType_DOUBLE.
+		return "FLOAT8"
+	default:
+		// Reuse the existing formatter for all other types to avoid changing
+		// current display behavior.
+		return getArrayStr([]uint32{typeID})
+	}
 }

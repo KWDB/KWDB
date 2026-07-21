@@ -908,10 +908,10 @@ VALUES ('adminUser', 'abc'), ('bob', 'xyz')`
 //		{sql.EventLogCreateDatabase, false, 0, false, 3},
 //		{sql.EventLogDropTable, false, 0, false, 2},
 //		{sql.EventLogCreateTable, false, 0, false, 3},
-//		{sql.EventLogSetClusterSetting, false, 0, false, 4},
+//		{eventlog.EventLogSetClusterSetting, false, 0, false, 4},
 //		// We use limit=true with no limit here because otherwise the
 //		// expCount will mess up the expected total count below.
-//		{sql.EventLogSetClusterSetting, true, 0, true, 4},
+//		{eventlog.EventLogSetClusterSetting, true, 0, true, 4},
 //		{sql.EventLogCreateTable, true, 0, false, 3},
 //		{sql.EventLogCreateTable, true, -1, false, 3},
 //		{sql.EventLogCreateTable, true, 2, false, 2},
@@ -970,7 +970,7 @@ VALUES ('adminUser', 'abc'), ('bob', 'xyz')`
 //					}
 //				}
 //
-//				isSettingChange := e.EventType == string(sql.EventLogSetClusterSetting)
+//				isSettingChange := e.EventType == string(eventlog.EventLogSetClusterSetting)
 //
 //				if e.TargetID == 0 && !isSettingChange {
 //					t.Errorf("%d: missing/empty TargetID", i)

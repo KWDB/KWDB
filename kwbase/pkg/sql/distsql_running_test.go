@@ -85,7 +85,7 @@ func TestDistSQLRunningInAbortedTxn(t *testing.T) {
 		&execCfg,
 	)
 	defer cleanup()
-	p := internalPlanner.(*planner)
+	p := internalPlanner.(*GenericPlanner)
 	query := "select * from test.t"
 	stmt, err := parser.ParseOne(query)
 	if err != nil {

@@ -388,10 +388,10 @@ func TestToSettingString(t *testing.T) {
 		{"bool setting with bool datum", boolSetting, tree.MakeDBool(tree.DBool(true)), "true", false},
 		{"int setting with int datum", intSetting, tree.NewDInt(tree.DInt(42)), "42", false},
 	}
-
+	p := MakeTestPlanner()
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := toSettingString(ctx, st, tc.name, tc.setting, tc.datum, nil)
+			result, err := toSettingString(ctx, p, st, tc.name, tc.setting, tc.datum, nil)
 			if (err != nil) != tc.hasError {
 				t.Errorf("toSettingString: expected error = %t, got error = %v", tc.hasError, err)
 			}
@@ -420,7 +420,7 @@ func TestSetClusterSetting(t *testing.T) {
 	// Get the executor config
 	execCfg := s.ExecutorConfig().(ExecutorConfig)
 
-	// Create a planner with admin privileges
+	// Create a GenericPlanner with admin privileges
 	p, cleanup := NewInternalPlanner(
 		"test",
 		kv.NewTxn(ctx, s.DB(), s.NodeID()),
@@ -428,7 +428,7 @@ func TestSetClusterSetting(t *testing.T) {
 		&MemoryMetrics{},
 		&execCfg,
 	)
-	planner := p.(*planner)
+	GenericPlanner := p.(*GenericPlanner)
 	defer cleanup()
 
 	// Test cases for different cluster settings
@@ -453,7 +453,7 @@ func TestSetClusterSetting(t *testing.T) {
 			}
 
 			// Test SetClusterSetting
-			node, err := planner.SetClusterSetting(ctx, n)
+			node, err := GenericPlanner.SetClusterSetting(ctx, n)
 			if (err != nil) != tc.expected {
 				t.Errorf("SetClusterSetting for %s: expected error = %t, got error = %v", tc.name, tc.expected, err)
 			}
@@ -466,19 +466,19 @@ func TestSetClusterSetting(t *testing.T) {
 					return
 				}
 
-				// Test startExec for invalid values
+				// Test StartExec for invalid values
 				if tc.setting == "ts.dedup.rule" && tc.value.String() == "'invalid'" {
-					// Create runParams
-					runParams := runParams{
-						ctx:             ctx,
-						p:               planner,
-						extendedEvalCtx: planner.ExtendedEvalContext(),
+					// Create RunParams
+					RunParams := RunParams{
+						Ctx:             ctx,
+						p:               GenericPlanner,
+						extendedEvalCtx: GenericPlanner.ExtendedEvalContext(),
 					}
 
-					// Test startExec - should return error for invalid dedup rule
-					err := setClusterNode.startExec(runParams)
+					// Test StartExec - should return error for invalid dedup rule
+					err := setClusterNode.StartExec(RunParams)
 					if err == nil {
-						t.Error("startExec should return error for invalid ts.dedup.rule")
+						t.Error("StartExec should return error for invalid ts.dedup.rule")
 					}
 				}
 			}

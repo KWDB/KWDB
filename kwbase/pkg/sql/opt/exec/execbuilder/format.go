@@ -30,49 +30,64 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 )
 
+// installFormatInterceptor registers the scalar formatting interceptor
+// that converts scalar expressions into SQL text for EXPLAIN output.
 func init() {
-	// Install the interceptor that implements the ExprFmtHideScalars functionality.
-	memo.ScalarFmtInterceptor = fmtInterceptor
+	memo.ScalarFmtInterceptor = formatScalarForExplain
 }
 
-// fmtInterceptor is a function suitable for memo.ScalarFmtInterceptor. It detects
-// if an expression tree contains only scalar expressions; if so, it tries to
-// execbuild them and print the SQL expressions.
-func fmtInterceptor(f *memo.ExprFmtCtx, scalar opt.ScalarExpr) string {
-	if !onlyScalars(scalar) {
+// formatScalarForExplain is the registered interceptor for ExprFmtHideScalars.
+// It attempts to execbuild scalar expressions and render them as SQL text,
+// falling back to the default format when building is not possible.
+func formatScalarForExplain(f *memo.ExprFmtCtx, scalar opt.ScalarExpr) string {
+	if !isPurelyScalarExpression(scalar) {
 		return ""
 	}
 
-	// Let the filters node show up; we will apply the code on each filter.
+	// Allow the filters node to pass through; formatting is per-filter.
 	if scalar.Op() == opt.FiltersOp {
 		return ""
 	}
 
-	// Build the scalar expression and format it as a single string.
-	bld := New(nil /* factory */, f.Memo, nil /* catalog */, scalar, nil /* evalCtx */)
-	md := f.Memo.Metadata()
-	ivh := tree.MakeIndexedVarHelper(nil /* container */, md.NumColumns())
-	expr, err := bld.BuildScalar(&ivh)
+	// Build the scalar expression and format it as SQL text.
+	formatted, err := buildAndFormatScalar(f.Memo, scalar, f.ColumnString)
 	if err != nil {
-		// Not all scalar operators are supported (e.g. Projections).
 		return ""
 	}
-	fmtCtx := tree.NewFmtCtx(tree.FmtSimple)
-	fmtCtx.SetIndexedVarFormat(func(ctx *tree.FmtCtx, idx int) {
-		ctx.WriteString(f.ColumnString(opt.ColumnID(idx + 1)))
-	})
-	expr.Format(fmtCtx)
-	return fmtCtx.String()
+	return formatted
 }
 
-func onlyScalars(expr opt.Expr) bool {
+// isPurelyScalarExpression recursively verifies that an expression tree
+// contains only scalar (non-relational) operators.
+func isPurelyScalarExpression(expr opt.Expr) bool {
 	if !opt.IsScalarOp(expr) {
 		return false
 	}
 	for i, n := 0, expr.ChildCount(); i < n; i++ {
-		if !onlyScalars(expr.Child(i)) {
+		if !isPurelyScalarExpression(expr.Child(i)) {
 			return false
 		}
 	}
 	return true
+}
+
+// buildAndFormatScalar execbuilds a scalar expression and formats it as SQL text,
+// using the provided columnNameLookup function to resolve column references.
+func buildAndFormatScalar(
+	mem *memo.Memo, scalar opt.ScalarExpr, columnNameLookup func(opt.ColumnID) string,
+) (string, error) {
+	bld := New(nil /* factory */, mem, nil /* catalog */, scalar, nil /* evalCtx */)
+
+	ivh := tree.MakeIndexedVarHelper(nil /* container */, mem.Metadata().NumColumns())
+	expr, err := bld.BuildScalar(&ivh)
+	if err != nil {
+		return "", err
+	}
+
+	fmtCtx := tree.NewFmtCtx(tree.FmtSimple)
+	fmtCtx.SetIndexedVarFormat(func(ctx *tree.FmtCtx, idx int) {
+		ctx.WriteString(columnNameLookup(opt.ColumnID(idx + 1)))
+	})
+	expr.Format(fmtCtx)
+	return fmtCtx.String(), nil
 }

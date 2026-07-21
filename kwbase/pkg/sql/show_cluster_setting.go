@@ -48,7 +48,7 @@ import (
 
 var versionName = "version"
 
-func (p *planner) showStateMachineSetting(
+func (p *GenericPlanner) showStateMachineSetting(
 	ctx context.Context, st *cluster.Settings, s *settings.StateMachineSetting, name string,
 ) (string, error) {
 	var res string
@@ -110,10 +110,10 @@ func (p *planner) showStateMachineSetting(
 	return res, nil
 }
 
-func (p *planner) ShowClusterSetting(
+// ShowClusterSetting displays the value of a cluster setting
+func (p *GenericPlanner) ShowClusterSetting(
 	ctx context.Context, n *tree.ShowClusterSetting,
-) (planNode, error) {
-
+) (PlanNode, error) {
 	if err := p.RequireAdminRole(ctx, "SHOW CLUSTER SETTING"); err != nil {
 		return nil, err
 	}
@@ -142,10 +142,10 @@ func (p *planner) ShowClusterSetting(
 	}
 
 	columns := sqlbase.ResultColumns{{Name: name, Typ: dType}}
-	return &delayedNode{
+	return &DelayedNode{
 		name:    "SHOW CLUSTER SETTING " + name,
 		columns: columns,
-		constructor: func(ctx context.Context, p *planner) (planNode, error) {
+		constructor: func(ctx context.Context, p *GenericPlanner) (PlanNode, error) {
 			var d tree.Datum
 			switch s := val.(type) {
 			case *settings.IntSetting:
@@ -178,7 +178,7 @@ func (p *planner) ShowClusterSetting(
 				return nil, errors.Errorf("unknown setting type for %s: %s", name, val.Typ())
 			}
 
-			v := p.newContainerValuesNode(columns, 0)
+			v := p.NewContainerValuesNode(columns, 0)
 			if _, err := v.rows.AddRow(ctx, tree.Datums{d}); err != nil {
 				v.rows.Close(ctx)
 				return nil, err

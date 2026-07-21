@@ -36,6 +36,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
@@ -192,7 +193,7 @@ func clearTableData(
 		// Unsplit all manually split ranges in the table so they can be
 		// automatically merged by the merge queue.
 		err := db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
-			ranges, err := sql.ScanMetaKVs(ctx, txn, table.TableSpan())
+			ranges, err := sqlutil.ScanMetaKVs(ctx, txn, table.TableSpan())
 			if err != nil {
 				return err
 			}

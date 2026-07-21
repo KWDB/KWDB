@@ -37,8 +37,11 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
+var _ PlanNode = &showFingerprintsNode{}
+var _ ReadOnlyPlanNode = &showFingerprintsNode{}
+
 type showFingerprintsNode struct {
-	optColumnsSlot
+	OptColumnsSlot
 
 	tableDesc *sqlbase.ImmutableTableDescriptor
 	indexes   []*sqlbase.IndexDescriptor
@@ -63,11 +66,11 @@ type showFingerprintsNode struct {
 // query can be used:
 //
 //	SELECT * FROM [SHOW EXPERIMENTAL_FINGERPRINTS FROM TABLE foo] AS OF SYSTEM TIME xxx
-func (p *planner) ShowFingerprints(
-	ctx context.Context, n *tree.ShowFingerprints,
-) (planNode, error) {
+func ShowFingerprints(
+	ctx context.Context, p *GenericPlanner, n *tree.ShowFingerprints,
+) (PlanNode, error) {
 	// timeseries check
-	_, found, err := sqlbase.ResolveInstanceName(ctx, p.txn, p.CurrentDatabase(), n.Table.Parts[0])
+	_, found, err := sqlbase.ResolveInstanceName(ctx, p.Txn(), p.CurrentDatabase(), n.Table.Parts[0])
 	if err != nil {
 		return nil, err
 	}
@@ -103,12 +106,12 @@ type showFingerprintsRun struct {
 	values []tree.Datum
 }
 
-func (n *showFingerprintsNode) startExec(params runParams) error {
+func (n *showFingerprintsNode) StartExec(params RunParams) error {
 	n.run.values = []tree.Datum{tree.DNull, tree.DNull}
 	return nil
 }
 
-func (n *showFingerprintsNode) Next(params runParams) (bool, error) {
+func (n *showFingerprintsNode) Next(params RunParams) (bool, error) {
 	if n.run.rowIdx >= len(n.indexes) {
 		return false, nil
 	}
@@ -160,16 +163,16 @@ func (n *showFingerprintsNode) Next(params runParams) (bool, error) {
 	  FROM [%d AS t]@{FORCE_INDEX=[%d]}
 	`, strings.Join(cols, `,`), n.tableDesc.ID, index.ID)
 	// If were'in in an AOST context, propagate it to the inner statement so that
-	// the inner statement gets planned with planner.avoidCachedDescriptors set,
+	// the inner statement gets planned with GenericPlanner.AvoidCachedDescriptors set,
 	// like the outter one.
 	if params.p.semaCtx.AsOfTimestamp != nil {
-		ts := params.p.txn.ReadTimestamp()
+		ts := params.PlannerTxn().ReadTimestamp()
 		sql = sql + " AS OF SYSTEM TIME " + ts.AsOfSystemTime()
 	}
 
-	fingerprintCols, err := params.extendedEvalCtx.ExecCfg.InternalExecutor.QueryRowEx(
-		params.ctx, "hash-fingerprint",
-		params.p.txn,
+	fingerprintCols, err := params.ExecCfg().InternalExecutor.QueryRowEx(
+		params.Ctx, "hash-fingerprint",
+		params.PlannerTxn(),
 		sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
 		sql,
 	)
@@ -192,3 +195,6 @@ func (n *showFingerprintsNode) Next(params runParams) (bool, error) {
 
 func (n *showFingerprintsNode) Values() tree.Datums     { return n.run.values }
 func (n *showFingerprintsNode) Close(_ context.Context) {}
+
+// ReadOnlyPlanNodeMarker implements the ReadOnlyPlanNode interface.
+func (n *showFingerprintsNode) ReadOnlyPlanNodeMarker() {}

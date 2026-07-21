@@ -46,7 +46,7 @@ type noticeSender interface {
 }
 
 // SendClientNotice implements the tree.ClientNoticeSender interface.
-func (p *planner) SendClientNotice(ctx context.Context, err error) {
+func (p *GenericPlanner) SendClientNotice(ctx context.Context, err error) {
 	if log.V(2) {
 		log.Infof(ctx, "out-of-band notice: %+v", err)
 	}

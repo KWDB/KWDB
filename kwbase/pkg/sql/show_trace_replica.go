@@ -48,21 +48,21 @@ import (
 // sovereignty work may require the RangeInfo plumbing and we should revisit
 // this then.
 type showTraceReplicaNode struct {
-	optColumnsSlot
+	OptColumnsSlot
 
 	// plan is the wrapped execution plan that will be traced.
-	plan planNode
+	plan PlanNode
 
 	run struct {
 		values tree.Datums
 	}
 }
 
-func (n *showTraceReplicaNode) startExec(params runParams) error {
+func (n *showTraceReplicaNode) StartExec(params RunParams) error {
 	return nil
 }
 
-func (n *showTraceReplicaNode) Next(params runParams) (bool, error) {
+func (n *showTraceReplicaNode) Next(params RunParams) (bool, error) {
 	var timestampD tree.Datum
 	var tag string
 	for {

@@ -25,18 +25,18 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 )
 
-// mockRows is a mock implementation of planNode for testing selectIntoNode
-// mockRows 是一个模拟的 planNode 实现，用于测试 selectIntoNode
+// mockRows is a mock implementation of PlanNode for testing selectIntoNode
+// mockRows 是一个模拟的 PlanNode 实现，用于测试 selectIntoNode
 type mockRows struct {
 	values [][]tree.Datum
 	index  int
 }
 
-func (m *mockRows) startExec(params runParams) error {
+func (m *mockRows) StartExec(params RunParams) error {
 	return nil
 }
 
-func (m *mockRows) Next(params runParams) (bool, error) {
+func (m *mockRows) Next(params RunParams) (bool, error) {
 	if m.index >= len(m.values) {
 		return false, nil
 	}
@@ -74,20 +74,20 @@ func TestSelectIntoNode(t *testing.T) {
 			end:  false,
 		}
 
-		// Create a planner with sessionDataMutator
-		p := &planner{
+		// Create a GenericPlanner with sessionDataMutator
+		p := &GenericPlanner{
 			sessionDataMutator: &sessionDataMutator{
 				data: &sessiondata.SessionData{},
 			},
 		}
 
-		// Create runParams
-		runParams := runParams{
+		// Create RunParams
+		RunParams := RunParams{
 			p: p,
 		}
 
 		// Test Next
-		ok, err := n.Next(runParams)
+		ok, err := n.Next(RunParams)
 		if err != nil {
 			t.Errorf("Next should not return error, got %v", err)
 		}
@@ -96,7 +96,7 @@ func TestSelectIntoNode(t *testing.T) {
 		}
 
 		// Test Next again (should return false)
-		ok, err = n.Next(runParams)
+		ok, err = n.Next(RunParams)
 		if err != nil {
 			t.Errorf("Next should not return error, got %v", err)
 		}
@@ -120,16 +120,16 @@ func TestSelectIntoNode(t *testing.T) {
 			end:  false,
 		}
 
-		// Create a planner
-		p := &planner{}
+		// Create a GenericPlanner
+		p := &GenericPlanner{}
 
-		// Create runParams
-		runParams := runParams{
+		// Create RunParams
+		RunParams := RunParams{
 			p: p,
 		}
 
 		// Test Next (should return error)
-		_, err := n.Next(runParams)
+		_, err := n.Next(RunParams)
 		if err == nil {
 			t.Error("Next should return error for zero rows")
 		}
@@ -153,16 +153,16 @@ func TestSelectIntoNode(t *testing.T) {
 			end:  false,
 		}
 
-		// Create a planner
-		p := &planner{}
+		// Create a GenericPlanner
+		p := &GenericPlanner{}
 
-		// Create runParams
-		runParams := runParams{
+		// Create RunParams
+		RunParams := RunParams{
 			p: p,
 		}
 
 		// Test Next (should return error)
-		_, err := n.Next(runParams)
+		_, err := n.Next(RunParams)
 		if err == nil {
 			t.Error("Next should return error for more than one row")
 		}
@@ -185,33 +185,33 @@ func TestSelectIntoNode(t *testing.T) {
 			end:  false,
 		}
 
-		// Create a planner
-		p := &planner{}
+		// Create a GenericPlanner
+		p := &GenericPlanner{}
 
-		// Create runParams
-		runParams := runParams{
+		// Create RunParams
+		RunParams := RunParams{
 			p: p,
 		}
 
 		// Test Next (should return error)
-		_, err := n.Next(runParams)
+		_, err := n.Next(RunParams)
 		if err == nil {
 			t.Error("Next should return error for column count mismatch")
 		}
 	})
 
-	// Test case 5: Test startExec
-	t.Run("startExec", func(t *testing.T) {
+	// Test case 5: Test StartExec
+	t.Run("StartExec", func(t *testing.T) {
 		// Create selectIntoNode
 		n := &selectIntoNode{}
 
-		// Create runParams
-		runParams := runParams{}
+		// Create RunParams
+		RunParams := RunParams{}
 
-		// Test startExec
-		err := n.startExec(runParams)
+		// Test StartExec
+		err := n.StartExec(RunParams)
 		if err != nil {
-			t.Errorf("startExec should not return error, got %v", err)
+			t.Errorf("StartExec should not return error, got %v", err)
 		}
 	})
 
@@ -246,7 +246,7 @@ func TestSelectIntoNode(t *testing.T) {
 // TestResolveNames tests the resolveNames method
 func TestResolveNames(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	// Create a planner
+	// Create a GenericPlanner
 	// Start a test server
 	ctx := context.Background()
 	s, conn, _ := serverutils.StartServer(t, base.TestServerArgs{})
@@ -259,7 +259,7 @@ func TestResolveNames(t *testing.T) {
 	// Get the executor config
 	execCfg := s.ExecutorConfig().(ExecutorConfig)
 
-	// Create a planner with admin privileges
+	// Create a GenericPlanner with admin privileges
 	p, cleanup := NewInternalPlanner(
 		"test",
 		kv.NewTxn(ctx, s.DB(), s.NodeID()),
@@ -267,14 +267,14 @@ func TestResolveNames(t *testing.T) {
 		&MemoryMetrics{},
 		&execCfg,
 	)
-	planner := p.(*planner)
+	GenericPlanner := p.(*GenericPlanner)
 	defer cleanup()
 
 	// Create a simple expression
 	expr := tree.NewDInt(1)
 
 	// Test resolveNames with nil source and ivarHelper
-	resolvedExpr, hasColumns, err := planner.resolveNames(expr, nil, tree.IndexedVarHelper{})
+	resolvedExpr, hasColumns, err := GenericPlanner.resolveNames(expr, nil, tree.IndexedVarHelper{})
 	if err != nil {
 		t.Errorf("resolveNames should not return error, got %v", err)
 	}
@@ -286,7 +286,7 @@ func TestResolveNames(t *testing.T) {
 	}
 
 	// Test resolveNames with nil expr
-	resolvedExpr, hasColumns, err = planner.resolveNames(nil, nil, tree.IndexedVarHelper{})
+	resolvedExpr, hasColumns, err = GenericPlanner.resolveNames(nil, nil, tree.IndexedVarHelper{})
 	if err != nil {
 		t.Errorf("resolveNames should not return error for nil expr, got %v", err)
 	}

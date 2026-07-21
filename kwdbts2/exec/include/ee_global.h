@@ -206,7 +206,7 @@ inline uint64_t decode_fixed64(const uint8_t* buf) {
 // using RawString = std::string;
 // using RawStringPad16 = std::string;
 // #endif
-
+#define OSN_EXTEND_COL_NUM 3
 enum PgCompressMode {
   // PgCompressOff means that pg extend is disabled.
   PgCompressOff = 0,

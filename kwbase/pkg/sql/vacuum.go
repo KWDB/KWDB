@@ -17,19 +17,21 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 )
 
+var _ PlanNode = &vacuumNode{}
+
 type vacuumNode struct {
 	aggregateOnly bool
 }
 
 // Vacuum creates a vacuum plan node.
-func (p *planner) Vacuum(ctx context.Context, n *tree.Vacuum) (planNode, error) {
+func (p *GenericPlanner) Vacuum(ctx context.Context, n *tree.Vacuum) (PlanNode, error) {
 	return &vacuumNode{aggregateOnly: n.AggregateOnly}, nil
 }
 
-func (*vacuumNode) startExec(params runParams) error {
+func (*vacuumNode) StartExec(params RunParams) error {
 	return nil
 }
 
-func (*vacuumNode) Next(runParams) (bool, error) { return false, nil }
+func (*vacuumNode) Next(RunParams) (bool, error) { return false, nil }
 func (*vacuumNode) Values() tree.Datums          { return tree.Datums{} }
 func (*vacuumNode) Close(context.Context)        {}

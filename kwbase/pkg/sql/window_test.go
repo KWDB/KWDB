@@ -29,20 +29,20 @@ func TestWindowNodeMethods(t *testing.T) {
 		testFunc  func(t *testing.T, n *windowNode)
 	}{
 		// {
-		// 	name: "test startExec panic",
+		// 	name: "test StartExec panic",
 		// 	setupNode: func() *windowNode {
 		// 		return &windowNode{}
 		// 	},
 		// 	testFunc: func(t *testing.T, n *windowNode) {
 		// 		defer func() {
 		// 			if r := recover(); r == nil {
-		// 				t.Error("startExec should panic")
+		// 				t.Error("StartExec should panic")
 		// 			}
 		// 		}()
-		// 		params := runParams{
+		// 		params := RunParams{
 		// 			ctx: context.Background(),
 		// 		}
-		// 		_ = n.startExec(params)
+		// 		_ = n.StartExec(params)
 		// 	},
 		// },
 		// {
@@ -56,7 +56,7 @@ func TestWindowNodeMethods(t *testing.T) {
 		// 				t.Error("Next should panic")
 		// 			}
 		// 		}()
-		// 		params := runParams{
+		// 		params := RunParams{
 		// 			ctx: context.Background(),
 		// 		}
 		// 		_, _ = n.Next(params)

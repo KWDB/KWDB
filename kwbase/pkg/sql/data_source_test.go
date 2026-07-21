@@ -19,7 +19,7 @@ import (
 
 func TestCheckTsScanNode(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	var p planNode
+	var p PlanNode
 	tsScan := &tsScanNode{}
 	CheckTsScanNode(tsScan)
 

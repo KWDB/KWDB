@@ -39,7 +39,7 @@ func (r *tsTxnResumer) Resume(
 	if phs == nil {
 		return nil
 	}
-	p := phs.(PlanHookState).(*planner)
+	p := phs.(PlanHookState).(*GenericPlanner)
 	// handle ts txn record in job, and this job will be always running
 	for timer := time.NewTimer(0); ; {
 		select {
@@ -60,7 +60,7 @@ func (r *tsTxnResumer) Resume(
 //   - Deletes the record if status is Committed or Aborted
 //   - Sends a rollback request if status is Pending
 //   - Sends a commit request if status is Prepared
-func (p *planner) handleTsTxnRecord(ctx context.Context) error {
+func (p *GenericPlanner) handleTsTxnRecord(ctx context.Context) error {
 	// make ts txn record start key
 	startKey := roachpb.Key(keys.MakeTablePrefix(keys.TsTxnTableID))
 	endKey := startKey.PrefixEnd()

@@ -31,8 +31,10 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 )
 
-// joinNode is a planNode whose rows are the result of an inner or
+// joinNode is a PlanNode whose rows are the result of an inner or
 // left/right outer join.
+var _ PlanNode = &joinNode{}
+
 type joinNode struct {
 	joinType sqlbase.JoinType
 
@@ -55,7 +57,7 @@ type joinNode struct {
 	columns sqlbase.ResultColumns
 }
 
-func (p *planner) makeJoinNode(
+func (p *GenericPlanner) makeJoinNode(
 	left planDataSource, right planDataSource, pred *joinPredicate,
 ) *joinNode {
 	n := &joinNode{
@@ -68,21 +70,21 @@ func (p *planner) makeJoinNode(
 	return n
 }
 
-func (n *joinNode) startExec(params runParams) error {
+func (n *joinNode) StartExec(params RunParams) error {
 	panic("joinNode cannot be run in local mode")
 }
 
-// Next implements the planNode interface.
-func (n *joinNode) Next(params runParams) (res bool, err error) {
+// Next implements the PlanNode interface.
+func (n *joinNode) Next(params RunParams) (res bool, err error) {
 	panic("joinNode cannot be run in local mode")
 }
 
-// Values implements the planNode interface.
+// Values implements the PlanNode interface.
 func (n *joinNode) Values() tree.Datums {
 	panic("joinNode cannot be run in local mode")
 }
 
-// Close implements the planNode interface.
+// Close implements the PlanNode interface.
 func (n *joinNode) Close(ctx context.Context) {
 	n.right.plan.Close(ctx)
 	n.left.plan.Close(ctx)

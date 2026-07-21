@@ -28,7 +28,7 @@ SQLSTATE: 0A000
 -----------------
 (0 rows)
 > SHOW FUNCTION check_substring;
-ERROR: function check_substring does not exists or current user does not have privilege on this function
+ERROR: function check_substring does not exist
 SQLSTATE: 42704
 > select check_substring('abcdefg', 'cde');
 ERROR: unknown function: check_substring()

@@ -60,17 +60,15 @@ type DropDatabase struct {
 	DropBehavior DropBehavior
 }
 
+// dropDatabaseKeyword is the SQL keyword for DROP DATABASE.
+const dropDatabaseKeyword = "DROP DATABASE "
+
 // Format implements the NodeFormatter interface.
 func (node *DropDatabase) Format(ctx *FmtCtx) {
-	ctx.WriteString("DROP DATABASE ")
-	if node.IfExists {
-		ctx.WriteString("IF EXISTS ")
-	}
+	ctx.WriteString(dropDatabaseKeyword)
+	formatIfExistsClause(ctx, node.IfExists)
 	ctx.FormatNode(&node.Name)
-	if node.DropBehavior != DropDefault {
-		ctx.WriteByte(' ')
-		ctx.WriteString(node.DropBehavior.String())
-	}
+	formatDropBehaviorClause(ctx, node.DropBehavior)
 }
 
 // DropIndex represents a DROP INDEX statement.
@@ -81,20 +79,50 @@ type DropIndex struct {
 	Concurrently bool
 }
 
+// dropIndexKeyword is the SQL keyword for DROP INDEX.
+const dropIndexKeyword = "DROP INDEX "
+
 // Format implements the NodeFormatter interface.
 func (node *DropIndex) Format(ctx *FmtCtx) {
-	ctx.WriteString("DROP INDEX ")
-	if node.Concurrently {
-		ctx.WriteString("CONCURRENTLY ")
-	}
+	ctx.WriteString(dropIndexKeyword)
+	formatConcurrentlyClause(ctx, node.Concurrently)
+	formatIfExistsClause(ctx, node.IfExists)
+	ctx.FormatNode(&node.IndexList)
+	formatDropBehaviorClause(ctx, node.DropBehavior)
+}
+
+// DropPipe represents a DROP PIPE statement.
+type DropPipe struct {
+	PipeName Name
+	IfExists bool
+}
+
+var _ Statement = &DropPipe{}
+
+// Format implements the NodeFormatter interface.
+func (node *DropPipe) Format(ctx *FmtCtx) {
+	ctx.WriteString("DROP PIPE ")
 	if node.IfExists {
 		ctx.WriteString("IF EXISTS ")
 	}
-	ctx.FormatNode(&node.IndexList)
-	if node.DropBehavior != DropDefault {
-		ctx.WriteByte(' ')
-		ctx.WriteString(node.DropBehavior.String())
+	node.PipeName.Format(ctx)
+}
+
+// DropPublication represents a DROP PUBLICATION statement.
+type DropPublication struct {
+	PubName  Name
+	IfExists bool
+}
+
+var _ Statement = &DropPublication{}
+
+// Format implements the NodeFormatter interface.
+func (node *DropPublication) Format(ctx *FmtCtx) {
+	ctx.WriteString("DROP PUBLICATION ")
+	if node.IfExists {
+		ctx.WriteString("IF EXISTS ")
 	}
+	node.PubName.Format(ctx)
 }
 
 // DropTable represents a DROP TABLE statement.
@@ -104,17 +132,15 @@ type DropTable struct {
 	DropBehavior DropBehavior
 }
 
+// dropTableKeyword is the SQL keyword for DROP TABLE.
+const dropTableKeyword = "DROP TABLE "
+
 // Format implements the NodeFormatter interface.
 func (node *DropTable) Format(ctx *FmtCtx) {
-	ctx.WriteString("DROP TABLE ")
-	if node.IfExists {
-		ctx.WriteString("IF EXISTS ")
-	}
+	ctx.WriteString(dropTableKeyword)
+	formatIfExistsClause(ctx, node.IfExists)
 	ctx.FormatNode(&node.Names)
-	if node.DropBehavior != DropDefault {
-		ctx.WriteByte(' ')
-		ctx.WriteString(node.DropBehavior.String())
-	}
+	formatDropBehaviorClause(ctx, node.DropBehavior)
 }
 
 // DropView represents a DROP VIEW statement.
@@ -132,14 +158,9 @@ func (node *DropView) Format(ctx *FmtCtx) {
 		ctx.WriteString("MATERIALIZED ")
 	}
 	ctx.WriteString("VIEW ")
-	if node.IfExists {
-		ctx.WriteString("IF EXISTS ")
-	}
+	formatIfExistsClause(ctx, node.IfExists)
 	ctx.FormatNode(&node.Names)
-	if node.DropBehavior != DropDefault {
-		ctx.WriteByte(' ')
-		ctx.WriteString(node.DropBehavior.String())
-	}
+	formatDropBehaviorClause(ctx, node.DropBehavior)
 }
 
 // DropSequence represents a DROP SEQUENCE statement.
@@ -149,17 +170,15 @@ type DropSequence struct {
 	DropBehavior DropBehavior
 }
 
+// dropSequenceKeyword is the SQL keyword for DROP SEQUENCE.
+const dropSequenceKeyword = "DROP SEQUENCE "
+
 // Format implements the NodeFormatter interface.
 func (node *DropSequence) Format(ctx *FmtCtx) {
-	ctx.WriteString("DROP SEQUENCE ")
-	if node.IfExists {
-		ctx.WriteString("IF EXISTS ")
-	}
+	ctx.WriteString(dropSequenceKeyword)
+	formatIfExistsClause(ctx, node.IfExists)
 	ctx.FormatNode(&node.Names)
-	if node.DropBehavior != DropDefault {
-		ctx.WriteByte(' ')
-		ctx.WriteString(node.DropBehavior.String())
-	}
+	formatDropBehaviorClause(ctx, node.DropBehavior)
 }
 
 // DropRole represents a DROP ROLE statement
@@ -172,15 +191,18 @@ type DropRole struct {
 // Format implements the NodeFormatter interface.
 func (node *DropRole) Format(ctx *FmtCtx) {
 	ctx.WriteString("DROP")
+	node.writeRoleOrUserKeyword(ctx)
+	formatIfExistsClause(ctx, node.IfExists)
+	ctx.FormatNode(&node.Names)
+}
+
+// writeRoleOrUserKeyword appends either " ROLE " or " USER " based on IsRole.
+func (node *DropRole) writeRoleOrUserKeyword(ctx *FmtCtx) {
 	if node.IsRole {
 		ctx.WriteString(" ROLE ")
 	} else {
 		ctx.WriteString(" USER ")
 	}
-	if node.IfExists {
-		ctx.WriteString("IF EXISTS ")
-	}
-	ctx.FormatNode(&node.Names)
 }
 
 // DropSchema represents a DROP SCHEMA command.
@@ -190,22 +212,15 @@ type DropSchema struct {
 	DropBehavior DropBehavior
 }
 
+// dropSchemaKeyword is the SQL keyword for DROP SCHEMA.
+const dropSchemaKeyword = "DROP SCHEMA "
+
 // Format implements the NodeFormatter interface.
 func (node *DropSchema) Format(ctx *FmtCtx) {
-	ctx.WriteString("DROP SCHEMA ")
-	if node.IfExists {
-		ctx.WriteString("IF EXISTS ")
-	}
-	for i := range node.Names {
-		if i > 0 {
-			ctx.WriteString(", ")
-		}
-		ctx.FormatNameP(&node.Names[i])
-	}
-	if node.DropBehavior != DropDefault {
-		ctx.WriteString(" ")
-		ctx.WriteString(node.DropBehavior.String())
-	}
+	ctx.WriteString(dropSchemaKeyword)
+	formatIfExistsClause(ctx, node.IfExists)
+	formatCommaSeparatedNames(ctx, node.Names)
+	formatDropBehaviorClause(ctx, node.DropBehavior)
 }
 
 // DropFunction represents a DROP function command.
@@ -234,15 +249,14 @@ type DropProcedure struct {
 	IfExists bool
 }
 
+// dropProcedureKeyword is the SQL keyword for DROP PROCEDURE.
+const dropProcedureKeyword = "DROP PROCEDURE "
+
 // Format implements the NodeFormatter interface.
 func (node *DropProcedure) Format(ctx *FmtCtx) {
-	ctx.WriteString("DROP PROCEDURE ")
-	if node.IfExists {
-		ctx.WriteString("IF EXISTS ")
-		ctx.FormatNode(&node.Name)
-	} else {
-		ctx.FormatNode(&node.Name)
-	}
+	ctx.WriteString(dropProcedureKeyword)
+	formatIfExistsClause(ctx, node.IfExists)
+	ctx.FormatNode(&node.Name)
 }
 
 // DropTrigger represents a DROP TRIGGER command.
@@ -252,15 +266,14 @@ type DropTrigger struct {
 	Table    TableName
 }
 
+// dropTriggerKeyword is the SQL keyword for DROP TRIGGER.
+const dropTriggerKeyword = "DROP TRIGGER "
+
 // Format implements the NodeFormatter interface.
 func (node *DropTrigger) Format(ctx *FmtCtx) {
-	ctx.WriteString("DROP TRIGGER ")
-	if node.IfExists {
-		ctx.WriteString("IF EXISTS ")
-		ctx.FormatNode(&node.Name)
-	} else {
-		ctx.FormatNode(&node.Name)
-	}
+	ctx.WriteString(dropTriggerKeyword)
+	formatIfExistsClause(ctx, node.IfExists)
+	ctx.FormatNode(&node.Name)
 	ctx.WriteString(" ON ")
 	ctx.FormatNode(&node.Table)
 }
@@ -271,12 +284,13 @@ type DropAudit struct {
 	IfExists bool
 }
 
+// dropAuditKeyword is the SQL keyword for DROP AUDIT.
+const dropAuditKeyword = "DROP AUDIT "
+
 // Format implements the NodeFormatter interface.
 func (node *DropAudit) Format(ctx *FmtCtx) {
-	ctx.WriteString("DROP AUDIT ")
-	if node.IfExists {
-		ctx.WriteString("IF EXISTS ")
-	}
+	ctx.WriteString(dropAuditKeyword)
+	formatIfExistsClause(ctx, node.IfExists)
 	ctx.FormatNode(&node.Names)
 }
 
@@ -288,11 +302,48 @@ type DropStream struct {
 
 var _ Statement = &DropStream{}
 
+// dropStreamKeyword is the SQL keyword for DROP STREAM.
+const dropStreamKeyword = "DROP STREAM "
+
 // Format implements the NodeFormatter interface.
 func (node *DropStream) Format(ctx *FmtCtx) {
-	ctx.WriteString("DROP STREAM ")
-	if node.IfExists {
+	ctx.WriteString(dropStreamKeyword)
+	formatIfExistsClause(ctx, node.IfExists)
+	node.StreamName.Format(ctx)
+}
+
+// dropFunctionKeyword is the SQL keyword for DROP FUNCTION.
+const dropFunctionKeyword = "DROP FUNCTION "
+
+// formatIfExistsClause writes "IF EXISTS " when the flag is true.
+func formatIfExistsClause(ctx *FmtCtx, ifExists bool) {
+	if ifExists {
 		ctx.WriteString("IF EXISTS ")
 	}
-	node.StreamName.Format(ctx)
+}
+
+// formatConcurrentlyClause writes "CONCURRENTLY " when the flag is true.
+func formatConcurrentlyClause(ctx *FmtCtx, concurrently bool) {
+	if concurrently {
+		ctx.WriteString("CONCURRENTLY ")
+	}
+}
+
+// formatDropBehaviorClause appends the drop behavior keyword when it is not
+// the default.
+func formatDropBehaviorClause(ctx *FmtCtx, behavior DropBehavior) {
+	if behavior != DropDefault {
+		ctx.WriteByte(' ')
+		ctx.WriteString(behavior.String())
+	}
+}
+
+// formatCommaSeparatedNames outputs a list of string names separated by commas.
+func formatCommaSeparatedNames(ctx *FmtCtx, names []string) {
+	for idx := range names {
+		if idx > 0 {
+			ctx.WriteString(", ")
+		}
+		ctx.FormatNameP(&names[idx])
+	}
 }

@@ -251,7 +251,7 @@ func TestSetupAllNodesPlanning(t *testing.T) {
 	)
 	defer cleanup()
 
-	p := plannerI.(*planner)
+	p := plannerI.(*GenericPlanner)
 
 	planCtx, nodes, err := execCfg.DistSQLPlanner.setupAllNodesPlanning(ctx, p.ExtendedEvalContext(), &execCfg)
 	if err != nil {
@@ -613,7 +613,7 @@ func TestDistIngestReturnsErrorForSucceededJob(t *testing.T) {
 	)
 	defer cleanup()
 
-	_, err := DistIngest(ctx, plannerI.(*planner), table, from, job, 1)
+	_, err := DistIngest(ctx, plannerI.(*GenericPlanner), table, from, job, 1)
 	if err == nil {
 		t.Fatal("expected DistIngest to fail")
 	}

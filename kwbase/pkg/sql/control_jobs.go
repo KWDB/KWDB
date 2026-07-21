@@ -36,7 +36,7 @@ import (
 )
 
 type controlJobsNode struct {
-	rows          planNode
+	rows          PlanNode
 	desiredStatus jobs.Status
 	numRows       int
 }
@@ -47,12 +47,12 @@ var jobCommandToDesiredStatus = map[tree.JobCommand]jobs.Status{
 	tree.PauseJob:  jobs.StatusPaused,
 }
 
-// FastPathResults implements the planNodeFastPath inteface.
+// FastPathResults implements the PlanNodeFastPath inteface.
 func (n *controlJobsNode) FastPathResults() (int, bool) {
 	return n.numRows, true
 }
 
-func (n *controlJobsNode) startExec(params runParams) error {
+func (n *controlJobsNode) StartExec(params RunParams) error {
 	reg := params.p.ExecCfg().JobRegistry
 	for {
 		ok, err := n.rows.Next(params)
@@ -74,7 +74,7 @@ func (n *controlJobsNode) startExec(params runParams) error {
 		}
 
 		// TODO(liyang):Prohibit users from manually controlling replication related JOBs
-		//row, err := params.extendedEvalCtx.InternalExecutor.QueryRow(params.ctx,
+		//row, err := params.extendedEvalCtx.InternalExecutor.QueryRow(params.Ctx,
 		//	"SELECT JOB TYPE",
 		//	params.p.Txn(),
 		//	`SELECT job_type from kwdb_internal.jobs where job_id =$1`,
@@ -84,11 +84,11 @@ func (n *controlJobsNode) startExec(params runParams) error {
 		//}
 		switch n.desiredStatus {
 		case jobs.StatusPaused:
-			err = reg.PauseRequested(params.ctx, params.p.txn, int64(jobID))
+			err = reg.PauseRequested(params.Ctx, params.p.txn, int64(jobID))
 		case jobs.StatusRunning:
-			err = reg.Resume(params.ctx, params.p.txn, int64(jobID))
+			err = reg.Resume(params.Ctx, params.p.txn, int64(jobID))
 		case jobs.StatusCanceled:
-			err = reg.CancelRequested(params.ctx, params.p.txn, int64(jobID))
+			err = reg.CancelRequested(params.Ctx, params.p.txn, int64(jobID))
 		default:
 			err = errors.AssertionFailedf("unhandled status %v", n.desiredStatus)
 		}
@@ -96,7 +96,7 @@ func (n *controlJobsNode) startExec(params runParams) error {
 			return err
 		}
 		n.numRows++
-		params.p.SetAuditTarget(0, strconv.FormatInt(int64(jobID), 10), nil)
+		params.GetPlanner().SetAuditTarget(0, strconv.FormatInt(int64(jobID), 10), nil)
 	}
 	switch n.desiredStatus {
 	case jobs.StatusPaused:
@@ -110,7 +110,7 @@ func (n *controlJobsNode) startExec(params runParams) error {
 	return nil
 }
 
-func (*controlJobsNode) Next(runParams) (bool, error) { return false, nil }
+func (*controlJobsNode) Next(RunParams) (bool, error) { return false, nil }
 
 func (*controlJobsNode) Values() tree.Datums { return nil }
 

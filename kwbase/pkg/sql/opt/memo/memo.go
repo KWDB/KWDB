@@ -1384,6 +1384,7 @@ func (m *Memo) dealWithOrderBy(sort *SortExpr, ret *CrossEngCheckResults, props 
 	// OrderGroupBy case, reset bestProps of (memo.GroupByExpr or memo.DistinctOnExpr)
 	if props != nil {
 		sort.best.required = props.required
+		sort.best.provided = props.provided
 		props.required = &physical.Required{}
 		props.provided = physical.Provided{}
 	}
@@ -1487,6 +1488,18 @@ func (m *Memo) tsScanFillStatistic(
 		colMeta := m.Metadata().ColumnMeta(colID)
 		allColsPrimary = allColsPrimary && colMeta.IsPrimaryTag()
 	})
+
+	// if scan has osn column, can not use statistics reader operator
+	var hasOsnCol bool
+	tsScan.Cols.ForEach(func(colID opt.ColumnID) {
+		colMeta := m.Metadata().ColumnMeta(colID)
+		if colMeta.TSType == opt.TSHiddenCol {
+			hasOsnCol = true
+		}
+	})
+	if hasOsnCol {
+		return
+	}
 
 	tableMeta := m.Metadata().TableMeta(tsScan.Table)
 	if !allColsPrimary || (tempSet.Len() != 0 && tempSet.Len() != tableMeta.PrimaryTagCount) ||

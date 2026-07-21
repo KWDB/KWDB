@@ -51,7 +51,7 @@ type exportOptions struct {
 // checkBeforeExport is used to check some roles of export before running, such as privilege and options.
 func checkBeforeExport(
 	ctx context.Context,
-	planner *planner,
+	GenericPlanner *GenericPlanner,
 	res RestrictedCommandResult,
 	ex *connExecutor,
 	exp *tree.Export,
@@ -69,7 +69,8 @@ func checkBeforeExport(
 	if err := ex.planner.RequireAdminRole(ctx, "EXPORT"); err != nil {
 		return expOpts, err
 	}
-	optsFn, err := planner.TypeAsStringOpts(exp.Options, exportOptionExpectValues)
+
+	optsFn, err := GenericPlanner.TypeAsStringOpts(exp.Options, exportOptionExpectValues)
 	if err != nil {
 		return expOpts, err
 	}
@@ -77,7 +78,7 @@ func checkBeforeExport(
 	if err != nil {
 		return expOpts, err
 	}
-	expOpts, err = checkExportOptions(exp, planner, res, opts)
+	expOpts, err = checkExportOptions(exp, GenericPlanner, res, opts)
 	if err != nil {
 		return expOpts, err
 	}
@@ -91,7 +92,7 @@ func checkBeforeExport(
 // exportRelationalAndTsDatabase is used to distinguish and export relational database and time series database.
 func exportRelationalAndTsDatabase(
 	ctx context.Context,
-	planner *planner,
+	GenericPlanner *GenericPlanner,
 	res RestrictedCommandResult,
 	ex *connExecutor,
 	exp *tree.Export,
@@ -99,24 +100,24 @@ func exportRelationalAndTsDatabase(
 ) error {
 	var err error
 	var dbID sqlbase.ID
-	defer planner.SetAuditTarget(uint32(dbID), string(exp.Database), nil)
-	dbID, err = getDatabaseID(ctx, planner.txn, string(exp.Database), true)
+	defer GenericPlanner.SetAuditTarget(uint32(dbID), string(exp.Database), nil)
+	dbID, err = getDatabaseID(ctx, GenericPlanner.txn, string(exp.Database), true)
 	if err != nil {
 		res.SetError(err)
 		return err
 	}
 
 	var dbDesc *sqlbase.DatabaseDescriptor
-	dbDesc, err = getDatabaseDescByID(ctx, planner.txn, dbID)
+	dbDesc, err = GetDatabaseDescByID(ctx, GenericPlanner.txn, dbID)
 	if err != nil {
 		res.SetError(err)
 		return err
 	}
 	if dbDesc.EngineType == tree.EngineTypeTimeseries {
 		// export ts database: export all meta and dispatch table
-		return ex.dispatchExportTSDB(ctx, planner, res, expOpts)
+		return ex.dispatchExportTSDB(ctx, GenericPlanner, res, expOpts)
 	} else if dbDesc.EngineType == tree.EngineTypeRelational {
-		return ex.dispatchExportDB(ctx, planner, res, expOpts)
+		return ex.dispatchExportDB(ctx, GenericPlanner, res, expOpts)
 	}
 	return nil
 }
@@ -125,9 +126,12 @@ func exportRelationalAndTsDatabase(
 // 1. writes down database and schema's meta file first.
 // 2. rewrites the plan and recall the func dispatchToExecutionEngine for every table
 func (ex *connExecutor) dispatchExportDB(
-	ctx context.Context, planner *planner, res RestrictedCommandResult, expOpts exportOptions,
+	ctx context.Context,
+	GenericPlanner *GenericPlanner,
+	res RestrictedCommandResult,
+	expOpts exportOptions,
 ) error {
-	exp := planner.stmt.AST.(*tree.Export)
+	exp := GenericPlanner.stmt.AST.(*tree.Export)
 	dbPath := exp.File.(*tree.StrVal).RawString()
 	// createStmtFunc
 	createStmtFunc := func(ctx context.Context, uri, filename, content string) error {
@@ -139,7 +143,7 @@ func (ex *connExecutor) dispatchExportDB(
 		if err != nil {
 			return err
 		}
-		es, err := planner.execCfg.DistSQLSrv.ExternalStorage(ctx, conf)
+		es, err := GenericPlanner.execCfg.DistSQLSrv.ExternalStorage(ctx, conf)
 		if err != nil {
 			return err
 		}
@@ -155,7 +159,7 @@ func (ex *connExecutor) dispatchExportDB(
 	if ContainsUpperCase(DatabaseName) {
 		DatabaseName = "\"" + DatabaseName + "\""
 	}
-	planner.stmt.AST.(*tree.Export).IgnoreCheckComment = true
+	GenericPlanner.stmt.AST.(*tree.Export).IgnoreCheckComment = true
 	var findComment bool
 	sqlDB := "CREATE DATABASE " + DatabaseName + ";"
 	if expOpts.withComment {
@@ -181,7 +185,7 @@ func (ex *connExecutor) dispatchExportDB(
 
 	if expOpts.withPrivileges {
 		// get GRANT ON DATABASE
-		dbSQL, err := getDBPrivileges(ctx, planner, DatabaseName)
+		dbSQL, err := getDBPrivileges(ctx, GenericPlanner, DatabaseName)
 		if err != nil {
 			res.SetError(err)
 			return nil
@@ -194,16 +198,16 @@ func (ex *connExecutor) dispatchExportDB(
 	}
 
 	if ex.server.cfg.TestingKnobs.BeforeGetTablesName != nil {
-		ex.server.cfg.TestingKnobs.BeforeGetTablesName(ctx, planner.stmt.String())
+		ex.server.cfg.TestingKnobs.BeforeGetTablesName(ctx, GenericPlanner.stmt.String())
 	}
 
 	var tableNames []*tree.TableName
 	var err error
 	if expOpts.withComment && !findComment {
 		tableNames, findComment, err = getTablesNameByDBWithFindComment(
-			planner.ExtendedEvalContext().Ctx(),
-			planner.execCfg.InternalExecutor,
-			planner.txn,
+			GenericPlanner.ExtendedEvalContext().Ctx(),
+			GenericPlanner.execCfg.InternalExecutor,
+			GenericPlanner.txn,
 			exp.Database)
 		if err != nil {
 			res.SetError(err)
@@ -214,10 +218,10 @@ func (ex *connExecutor) dispatchExportDB(
 			return nil
 		}
 	} else {
-		tableNames, err = getTablesNameByDatabase(
-			planner.ExtendedEvalContext().Ctx(),
-			planner.execCfg.InternalExecutor,
-			planner.txn,
+		tableNames, err = GetTablesNameByDatabase(
+			GenericPlanner.ExtendedEvalContext().Ctx(),
+			GenericPlanner.execCfg.InternalExecutor,
+			GenericPlanner.txn,
 			exp.Database)
 		if err != nil {
 			res.SetError(err)
@@ -226,7 +230,7 @@ func (ex *connExecutor) dispatchExportDB(
 	}
 
 	if err := createStmtFunc(
-		planner.EvalContext().Ctx(),
+		GenericPlanner.EvalContext().Ctx(),
 		dbPath,
 		strings.Replace(exportFilePatternSQL, exportFilePatternPart, "meta", -1),
 		sqlDB,
@@ -242,9 +246,9 @@ func (ex *connExecutor) dispatchExportDB(
 		return nil
 	}
 	relPath := uri.Path
-	// set planner
-	planner.tableName.CatalogName = exp.Database
-	planner.tableName.ExplicitCatalog = true
+	// set GenericPlanner
+	GenericPlanner.tableName.CatalogName = exp.Database
+	GenericPlanner.tableName.ExplicitCatalog = true
 	// create_stmt of schema
 	schemas := make(map[string]struct{}, 0)
 	for _, tbl := range tableNames {
@@ -262,7 +266,7 @@ func (ex *connExecutor) dispatchExportDB(
 				schemas[string(tbl.SchemaName)] = struct{}{}
 				if expOpts.withPrivileges {
 					// get GRANT ON SCHEMA
-					scSQL, err := getSCPrivileges(ctx, planner, string(tbl.SchemaName), tbl.Catalog())
+					scSQL, err := getSCPrivileges(ctx, GenericPlanner, string(tbl.SchemaName), tbl.Catalog())
 					if err != nil {
 						res.SetError(err)
 						return nil
@@ -274,7 +278,7 @@ func (ex *connExecutor) dispatchExportDB(
 					}
 				}
 				if err := createStmtFunc(
-					planner.EvalContext().Ctx(),
+					GenericPlanner.EvalContext().Ctx(),
 					uri.String(),
 					strings.Replace(exportFilePatternSQL, exportFilePatternPart, "meta", -1),
 					sqlSC,
@@ -301,17 +305,17 @@ func (ex *connExecutor) dispatchExportDB(
 				TableSelect: true,
 			},
 		}
-		// set planner
+		// set GenericPlanner
 		exp.Format(f)
-		planner.stmt.AST = exp
-		planner.stmt.SQL = f.String()
+		GenericPlanner.stmt.AST = exp
+		GenericPlanner.stmt.SQL = f.String()
 		f.Reset()
 
-		planner.tableName.TableName = tbl.TableName
-		planner.tableName.SchemaName = tbl.SchemaName
-		planner.tableName.ExplicitSchema = true
+		GenericPlanner.tableName.TableName = tbl.TableName
+		GenericPlanner.tableName.SchemaName = tbl.SchemaName
+		GenericPlanner.tableName.ExplicitSchema = true
 
-		err = ex.dispatchToExecutionEngine(ctx, planner, res)
+		err = ex.dispatchToExecutionEngine(ctx, GenericPlanner, res)
 
 		if res.Err() != nil {
 			res.AppendNotice(res.Err())
@@ -325,8 +329,8 @@ func (ex *connExecutor) dispatchExportDB(
 	return nil
 }
 
-// getTablesNameByDatabase is used to get all table names in the target database which name is dbName.
-func getTablesNameByDatabase(
+// GetTablesNameByDatabase is used to get all table names in the target database which name is dbName.
+func GetTablesNameByDatabase(
 	ctx context.Context, exec *InternalExecutor, txn *kv.Txn, dbName tree.Name,
 ) ([]*tree.TableName, error) {
 	// tables
@@ -354,7 +358,7 @@ func getTablesNameByDatabase(
 	return tableNames, nil
 }
 
-// getTablesNameByDBWithFindComment is same as getTablesNameByDatabase. In addition, check whether comments exists.
+// getTablesNameByDBWithFindComment is same as GetTablesNameByDatabase. In addition, check whether comments exists.
 func getTablesNameByDBWithFindComment(
 	ctx context.Context, exec *InternalExecutor, txn *kv.Txn, dbName tree.Name,
 ) ([]*tree.TableName, bool, error) {
@@ -391,7 +395,7 @@ func getTablesNameByDBWithFindComment(
 
 // checkExportOptions is used to check whether the export options is legal.
 func checkExportOptions(
-	exp *tree.Export, p *planner, res RestrictedCommandResult, opts map[string]string,
+	exp *tree.Export, p *GenericPlanner, res RestrictedCommandResult, opts map[string]string,
 ) (exportOptions, error) {
 	delimiter := ','
 	var expOpts exportOptions
@@ -577,15 +581,18 @@ func checkExportOptions(
 // Time series database's create statement is different and its only include public schema.
 // And the way to get time series table is also different from relational table, so we call the func getTablesNameByTSDatabase.
 func (ex *connExecutor) dispatchExportTSDB(
-	ctx context.Context, planner *planner, res RestrictedCommandResult, expOpts exportOptions,
+	ctx context.Context,
+	GenericPlanner *GenericPlanner,
+	res RestrictedCommandResult,
+	expOpts exportOptions,
 ) error {
-	exp := planner.stmt.AST.(*tree.Export)
+	exp := GenericPlanner.stmt.AST.(*tree.Export)
 	dbPath := exp.File.(*tree.StrVal).RawString()
 	// dispatch need super and normal tables, meta sql need child tables additionally
 	disTableNames, creates, err := getTablesNameByTSDatabase(
-		planner.ExtendedEvalContext().Ctx(),
-		planner.execCfg.InternalExecutor,
-		planner.txn,
+		GenericPlanner.ExtendedEvalContext().Ctx(),
+		GenericPlanner.execCfg.InternalExecutor,
+		GenericPlanner.txn,
 		exp.Database)
 	if err != nil {
 		res.SetError(err)
@@ -602,7 +609,7 @@ func (ex *connExecutor) dispatchExportTSDB(
 			res.SetError(err)
 			return nil
 		}
-		es, err := planner.execCfg.DistSQLSrv.ExternalStorage(ctx, conf)
+		es, err := GenericPlanner.execCfg.DistSQLSrv.ExternalStorage(ctx, conf)
 		if err != nil {
 			res.SetError(err)
 			return nil
@@ -666,7 +673,7 @@ func (ex *connExecutor) dispatchExportTSDB(
 			return nil
 		}
 		for _, tableName := range disTableNames {
-			indexs, err := ExportCreateIndexStmtsWithoutTableDesc(ctx, tableName, *planner)
+			indexs, err := ExportCreateIndexStmtsWithoutTableDesc(ctx, tableName, *GenericPlanner)
 			if err != nil {
 				res.SetError(err)
 				return nil
@@ -680,7 +687,7 @@ func (ex *connExecutor) dispatchExportTSDB(
 		}
 		if expOpts.withPrivileges {
 			// get GRANT ON DATABASE
-			dbSQL, err := getDBPrivileges(ctx, planner, DatabaseName)
+			dbSQL, err := getDBPrivileges(ctx, GenericPlanner, DatabaseName)
 			if dbSQL != nil {
 				for _, sql := range dbSQL {
 					if _, err = writer.GetBufio().WriteString(sql + "\n"); err != nil {
@@ -691,7 +698,7 @@ func (ex *connExecutor) dispatchExportTSDB(
 			}
 			for _, tbName := range disTableNames {
 				// get GRANT ON TABLE
-				tbSQL, err := getTBPrivileges(ctx, planner, tbName.TableName.String(), tbName.SchemaName.String(), tbName.CatalogName.String())
+				tbSQL, err := getTBPrivileges(ctx, GenericPlanner, tbName.TableName.String(), tbName.SchemaName.String(), tbName.CatalogName.String())
 				if err != nil {
 					res.SetError(err)
 					return nil
@@ -720,9 +727,9 @@ func (ex *connExecutor) dispatchExportTSDB(
 		return nil
 	}
 	relPath := uri.Path
-	// set planner
-	planner.tableName.CatalogName = exp.Database
-	planner.tableName.ExplicitCatalog = true
+	// set GenericPlanner
+	GenericPlanner.tableName.CatalogName = exp.Database
+	GenericPlanner.tableName.ExplicitCatalog = true
 	isSucceed := true
 	for _, tbl := range disTableNames {
 		uri.Path = path.Join(relPath, string(tbl.SchemaName), string(tbl.TableName))
@@ -742,18 +749,18 @@ func (ex *connExecutor) dispatchExportTSDB(
 				TableSelect: true,
 			},
 		}
-		// set planner
+		// set GenericPlanner
 		exp.Format(f)
-		planner.stmt.AST = exp
-		planner.stmt.SQL = f.String()
+		GenericPlanner.stmt.AST = exp
+		GenericPlanner.stmt.SQL = f.String()
 		f.Reset()
 
-		planner.tableName.TableName = tbl.TableName
+		GenericPlanner.tableName.TableName = tbl.TableName
 		// ts database only contains public schema
-		planner.tableName.SchemaName = tbl.SchemaName
-		planner.tableName.ExplicitSchema = true
-		planner.stmt.AST.(*tree.Export).IsTS = true
-		err = ex.dispatchToExecutionEngine(ctx, planner, res)
+		GenericPlanner.tableName.SchemaName = tbl.SchemaName
+		GenericPlanner.tableName.ExplicitSchema = true
+		GenericPlanner.stmt.AST.(*tree.Export).IsTS = true
+		err = ex.dispatchToExecutionEngine(ctx, GenericPlanner, res)
 		if res.Err() != nil {
 			isSucceed = false
 			res.AppendNotice(res.Err())
@@ -782,7 +789,7 @@ func (ex *connExecutor) dispatchExportTSDB(
 	return nil
 }
 
-// getTablesNameByTSDatabase is same as getTablesNameByDatabase, but for getting time series table.
+// GetTablesNameByTSDatabase is same as GetTablesNameByDatabase, but for getting time series table.
 // Module(Super) tables and time series tables are in kwdb_internal.create_statements.
 // Instance(Child) tables are in kwdb_internal.instance_statement.
 func getTablesNameByTSDatabase(

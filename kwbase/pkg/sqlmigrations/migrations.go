@@ -351,6 +351,18 @@ var backwardCompatibleMigrations = []migrationDescriptor{
 		name:   "create system.kwdb_streams table",
 		workFn: createStreamsTable,
 	},
+	{
+		name:   "create system.kwdb_pipes table",
+		workFn: createPipeTable,
+	},
+	{
+		name:   "create system.kwdb_unpush table",
+		workFn: createUnpushTable,
+	},
+	{
+		name:   "create system.kwdb_publications table",
+		workFn: createPublicationTable,
+	},
 }
 
 func staticIDs(ids ...sqlbase.ID) func(ctx context.Context, db db) ([]sqlbase.ID, error) {
@@ -1900,4 +1912,19 @@ func createCDCWatermarkTable(ctx context.Context, r runner) error {
 // createStreamsTable create stream metadata table in the system database
 func createStreamsTable(ctx context.Context, r runner) error {
 	return createSystemTable(ctx, r, sqlbase.StreamsTable)
+}
+
+// createPipeTable create pipe table in database system
+func createPipeTable(ctx context.Context, r runner) error {
+	return createSystemTable(ctx, r, sqlbase.PipeTable)
+}
+
+// createUnpushTable create pipe unsend table in database system
+func createUnpushTable(ctx context.Context, r runner) error {
+	return createSystemTable(ctx, r, sqlbase.UnpushTable)
+}
+
+// createPublicationTable create pipe unsend table in database system
+func createPublicationTable(ctx context.Context, r runner) error {
+	return createSystemTable(ctx, r, sqlbase.PubTable)
 }

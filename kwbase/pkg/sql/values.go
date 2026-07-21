@@ -40,6 +40,8 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
+var _ PlanNode = &valuesNode{}
+
 type valuesNode struct {
 	columns sqlbase.ResultColumns
 	tuples  [][]tree.TypedExpr
@@ -64,7 +66,7 @@ type tsInsertNode struct {
 	allNodePayloadInfos [][]*sqlbase.SinglePayloadInfo
 }
 
-// FastPathResults implements the planNodeFastPath interface.
+// FastPathResults implements the PlanNodeFastPath interface.
 func (t *tsInsertNode) FastPathResults() (int, bool) {
 	var rownums uint32
 	for _, perNodeInfos := range t.allNodePayloadInfos {
@@ -75,15 +77,15 @@ func (t *tsInsertNode) FastPathResults() (int, bool) {
 	return int(rownums), true
 }
 
-func (t *tsInsertNode) startExec(params runParams) error {
-	//if err := params.p.txn.Commit(params.ctx); err != nil {
+func (t *tsInsertNode) StartExec(params RunParams) error {
+	//if err := params.p.txn.Commit(params.Ctx); err != nil {
 	//	return err
 	//}
-	//return masterengine.SendInsertToAe(params.ctx, masterengine.GetConnectIDFromCtx(params.ctx), t.payload)
+	//return masterengine.SendInsertToAe(params.Ctx, masterengine.GetConnectIDFromCtx(params.Ctx), t.payload)
 	return nil
 }
 
-func (t *tsInsertNode) Next(params runParams) (bool, error) {
+func (t *tsInsertNode) Next(params RunParams) (bool, error) {
 	return false, nil
 }
 
@@ -112,8 +114,8 @@ var tsInsertWithCDCNodePool = sync.Pool{
 	},
 }
 
-var _ planNode = &tsInsertNode{}
-var _ planNodeFastPath = &tsInsertNode{}
+var _ PlanNode = &tsInsertNode{}
+var _ PlanNodeFastPath = &tsInsertNode{}
 
 var tsDeleteNodePool = sync.Pool{
 	New: func() interface{} {
@@ -121,7 +123,7 @@ var tsDeleteNodePool = sync.Pool{
 	},
 }
 
-// FastPathResults implements the planNodeFastPath interface.
+// FastPathResults implements the PlanNodeFastPath interface.
 func (t *tsDeleteNode) FastPathResults() (int, bool) {
 	return 0, true
 }
@@ -137,13 +139,14 @@ type tsDeleteNode struct {
 	spans           []execinfrapb.Span
 	// if primary tag of type int out of range, we will return delete 0 directly
 	wrongPTag bool
+	cdcData   []byte
 }
 
-func (t *tsDeleteNode) startExec(params runParams) error {
+func (t *tsDeleteNode) StartExec(params RunParams) error {
 	return nil
 }
 
-func (t *tsDeleteNode) Next(params runParams) (bool, error) {
+func (t *tsDeleteNode) Next(params RunParams) (bool, error) {
 	return false, nil
 }
 
@@ -156,8 +159,8 @@ func (t *tsDeleteNode) Close(ctx context.Context) {
 	tsDeleteNodePool.Put(t)
 }
 
-var _ planNode = &tsDeleteNode{}
-var _ planNodeFastPath = &tsDeleteNode{}
+var _ PlanNode = &tsDeleteNode{}
+var _ PlanNodeFastPath = &tsDeleteNode{}
 
 var tsTagUpdateNodePool = sync.Pool{
 	New: func() interface{} {
@@ -165,7 +168,7 @@ var tsTagUpdateNodePool = sync.Pool{
 	},
 }
 
-// FastPathResults implements the planNodeFastPath interface.
+// FastPathResults implements the PlanNodeFastPath interface.
 func (t *tsTagUpdateNode) FastPathResults() (int, bool) {
 	return 0, true
 }
@@ -182,13 +185,14 @@ type tsTagUpdateNode struct {
 	startKey  roachpb.Key
 	endKey    roachpb.Key
 	osnID     uint64
+	cdcData   []byte
 }
 
-func (t *tsTagUpdateNode) startExec(params runParams) error {
+func (t *tsTagUpdateNode) StartExec(params RunParams) error {
 	return nil
 }
 
-func (t *tsTagUpdateNode) Next(params runParams) (bool, error) {
+func (t *tsTagUpdateNode) Next(params RunParams) (bool, error) {
 	return false, nil
 }
 
@@ -201,8 +205,10 @@ func (t *tsTagUpdateNode) Close(ctx context.Context) {
 	tsTagUpdateNodePool.Put(t)
 }
 
-var _ planNode = &tsTagUpdateNode{}
-var _ planNodeFastPath = &tsTagUpdateNode{}
+var _ PlanNode = &tsTagUpdateNode{}
+var _ PlanNodeFastPath = &tsTagUpdateNode{}
+
+var _ PlanNode = &operateDataNode{}
 
 type operateDataNode struct {
 	operateType int32
@@ -210,20 +216,20 @@ type operateDataNode struct {
 	desc        []sqlbase.TableDescriptor
 }
 
-func (c *operateDataNode) startExec(params runParams) error {
+func (c *operateDataNode) StartExec(params RunParams) error {
 	return nil
 }
 
-func (c *operateDataNode) Next(runParams) (bool, error) { return false, nil }
+func (c *operateDataNode) Next(RunParams) (bool, error) { return false, nil }
 
 func (c *operateDataNode) Values() tree.Datums { return nil }
 
 func (c *operateDataNode) Close(ctx context.Context) {}
 
 // Values implements the VALUES clause.
-func (p *planner) Values(
+func (p *GenericPlanner) Values(
 	ctx context.Context, origN tree.Statement, desiredTypes []*types.T,
-) (planNode, error) {
+) (PlanNode, error) {
 	v := &valuesNode{
 		specifiedInQuery: true,
 	}
@@ -296,7 +302,11 @@ func (p *planner) Values(
 	return v, nil
 }
 
-func (p *planner) newContainerValuesNode(columns sqlbase.ResultColumns, capacity int) *valuesNode {
+// NewContainerValuesNode creates a values node for container-typed result sets
+// nolint:unexportedreturn
+func (p *GenericPlanner) NewContainerValuesNode(
+	columns sqlbase.ResultColumns, capacity int,
+) *valuesNode {
 	return &valuesNode{
 		columns: columns,
 		valuesRun: valuesRun{
@@ -313,9 +323,9 @@ type valuesRun struct {
 	nextRow int // The index of the next row.
 }
 
-func (n *valuesNode) startExec(params runParams) error {
+func (n *valuesNode) StartExec(params RunParams) error {
 	if n.rows != nil {
-		// n.rows was already created in newContainerValuesNode.
+		// n.rows was already created in NewContainerValuesNode.
 		// Nothing to do here.
 		return nil
 	}
@@ -339,14 +349,14 @@ func (n *valuesNode) startExec(params runParams) error {
 				return err
 			}
 		}
-		if _, err := n.rows.AddRow(params.ctx, row); err != nil {
+		if _, err := n.rows.AddRow(params.Ctx, row); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (n *valuesNode) Next(runParams) (bool, error) {
+func (n *valuesNode) Next(RunParams) (bool, error) {
 	if n.nextRow >= n.rows.Len() {
 		return false, nil
 	}
@@ -364,6 +374,11 @@ func (n *valuesNode) Close(ctx context.Context) {
 		n.rows = nil
 	}
 	n.nextRow = 0
+}
+
+// AddRowToValueNode is a wrapper for n.rows.AddRow
+func (n *valuesNode) AddRowToValueNode(ctx context.Context, row tree.Datums) (tree.Datums, error) {
+	return n.rows.AddRow(ctx, row)
 }
 
 func newValuesListLenErr(exp, got int) error {

@@ -108,7 +108,7 @@ func (dsp *DistSQLPlanner) Exec(
 	if err != nil {
 		return err
 	}
-	p := localPlanner.(*planner)
+	p := localPlanner.(*GenericPlanner)
 	p.stmt = &Statement{Statement: stmt}
 	if err := p.makeOptimizerPlan(ctx); err != nil {
 		return err

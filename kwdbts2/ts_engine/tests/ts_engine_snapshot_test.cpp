@@ -73,7 +73,7 @@ class TestEngineSnapshotImgrate : public ::testing::Test {
     delete ts_engine_src_;
     delete ts_engine_desc_;
   }
-  
+
   void InsertData(TSEngineImpl* ts_e, TSTableID table_id, TSEntityID dev_id, timestamp64 start_ts, int num, KTimestamp interval = 1000, TS_OSN osn = 10) {
     std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
     bool is_dropped = false;
@@ -442,7 +442,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertPartitions) {
   s = ts_engine_desc_->DeleteSnapshot(ctx_, desc_snapshot_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
-  // recover 
+  // recover
   delete ts_engine_desc_;
   ts_engine_desc_ = new TSEngineImpl(opts_);
   ts_engine_desc_->Init(ctx_);
@@ -644,6 +644,10 @@ TEST_F(TestEngineSnapshotImgrate, ConvertManyDataDiffEntitiesFaild1) {
   CheckTagValue(entity_id_list, rs, count);
   delete iter;
 
+  std::unordered_map<TSTableID, TS_OSN> tbl_osn;
+  tbl_osn[cur_table_id] = 1;
+  ts_engine_src_->SetPublishedMaxOSN(tbl_osn);
+
   // create table 1008
   s = ts_engine_desc_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -679,25 +683,6 @@ TEST_F(TestEngineSnapshotImgrate, ConvertManyDataDiffEntitiesFaild1) {
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(entity_store.size(), 4);
 
-  std::shared_ptr<TsTable> ts_table_src;
-  ctx_->ts_engine = ts_engine_src_;
-  s = ts_engine_src_->GetTsTable(ctx_, cur_table_id, ts_table_src, is_dropped);
-  EXPECT_EQ(s , KStatus::SUCCESS);
-  s = ts_table_src->DeleteTotalRange(ctx_, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, 1, UINT64_MAX);
-  ASSERT_EQ(s, KStatus::SUCCESS);
-  ts_table_v2 = dynamic_pointer_cast<TsTableImpl>(ts_table_src);
-  std::vector<k_uint32> scan_cols = {0};
-  osn_spans.clear();
-  osn_spans.push_back({0, UINT64_MAX});
- entity_id_list.clear();
-  rs.clear();
-  s = ts_table_v2->GetTagIteratorByOSN(ctx_, 1, scan_cols, osn_spans, UINT64_MAX, &hash_id_spans, &iter);
-  ASSERT_EQ(s, KStatus::SUCCESS);
-  s = iter->Next(&entity_id_list, &rs, &count);
-  ASSERT_EQ(s, KStatus::SUCCESS);
-  ASSERT_EQ(count, 0);
-  delete iter;
-
   std::shared_ptr<TsTable> ts_table_dest;
   s = ts_engine_desc_->GetTsTable(ctx_, cur_table_id, ts_table_dest, is_dropped);
   EXPECT_EQ(s , KStatus::SUCCESS);
@@ -729,6 +714,7 @@ TEST_F(TestEngineSnapshotImgrate, ConvertManyDataDiffEntitiesFaild1) {
   std::vector<KwTsSpan> ts_spans;
   ts_spans.push_back({INT64_MIN, INT64_MAX});
   kwdbts::TsIterator *m_iter;
+  std::vector<k_uint32> scan_cols = {0};
   uint32_t total = 0;
   osn_spans.clear();
   osn_spans.push_back({1000, 2000});
@@ -786,7 +772,62 @@ TEST_F(TestEngineSnapshotImgrate, ConvertManyDataDiffEntitiesFaild1) {
   } while (count > 0);
   ASSERT_EQ(total,  5);
   delete m_iter;
-  
+
+  std::shared_ptr<TsTable> ts_table_desc;
+  ctx_->ts_engine = ts_engine_desc_;
+  s = ts_engine_desc_->GetTsTable(ctx_, cur_table_id, ts_table_desc, is_dropped);
+  EXPECT_EQ(s , KStatus::SUCCESS);
+  s = ts_table_desc->DeleteTotalRange(ctx_, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, 1, UINT64_MAX);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ts_table_v2 = dynamic_pointer_cast<TsTableImpl>(ts_table_desc);
+
+  osn_spans.clear();
+  osn_spans.push_back({0, UINT64_MAX});
+  entity_id_list.clear();
+  rs.clear();
+  s = ts_table_v2->GetTagIteratorByOSN(ctx_, 1, scan_cols, osn_spans, UINT64_MAX, &hash_id_spans, &iter);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = iter->Next(&entity_id_list, &rs, &count);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(count, 0);
+  delete iter;
+
+  tbl_osn.clear();
+  ts_engine_src_->SetPublishedMaxOSN(tbl_osn);
+  s = ts_engine_desc_->CreateSnapshotForWrite(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id, is_dropped, 100);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = ts_engine_src_->CreateSnapshotForRead(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, UINT64_MAX, &snapshot_id, is_dropped);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  do {
+    s = ts_engine_src_->GetSnapshotNextBatchData(ctx_, snapshot_id, &snapshot_data, is_dropped);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    if (snapshot_data.data != nullptr) {
+      s = ts_engine_desc_->WriteSnapshotBatchData(ctx_, desc_snapshot_id, snapshot_data, is_dropped);
+      ASSERT_EQ(s, KStatus::SUCCESS);
+      free(snapshot_data.data);
+    }
+  } while (snapshot_data.len > 0);
+  s = ts_engine_src_->DeleteSnapshot(ctx_, snapshot_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = ts_engine_desc_->WriteSnapshotSuccess(ctx_, desc_snapshot_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = ts_engine_desc_->DeleteSnapshot(ctx_, desc_snapshot_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  s = ts_engine_desc_->GetTsTable(ctx_, cur_table_id, ts_table_dest, is_dropped);
+  EXPECT_EQ(s , KStatus::SUCCESS);
+  ts_table_v2 = dynamic_pointer_cast<TsTableImpl>(ts_table_dest);
+  entity_id_list.clear();
+  rs.clear();
+  rs.setColumnNum(4);
+  s = ts_table_v2->GetTagIteratorByOSN(ctx_, 1, scan_cols_t, osn_spans, UINT64_MAX, &hash_id_spans, &iter);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = iter->Next(&entity_id_list, &rs, &count);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(count, entity_num - 1);
+  ASSERT_EQ(entity_id_list.size(), entity_num -1);
+  delete iter;
+
   s = ts_engine_src_->DropTsTable(ctx_, cur_table_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
   s = ts_engine_desc_->DropTsTable(ctx_, cur_table_id);
@@ -974,12 +1015,12 @@ TEST_F(TestEngineSnapshotImgrate, DestNoEmptyThreeTimes) {
     s = ts_engine_desc_->DeleteSnapshot(ctx_, desc_snapshot_id);
     ASSERT_EQ(s, KStatus::SUCCESS);
   }
-  
+
   ctx_->ts_engine = ts_engine_desc_;
   s = dynamic_pointer_cast<TsTableImpl>(ts_table)->GetRangeRowCount(ctx_, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, UINT64_MAX, &count);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(count, entity_num * 5);
-  
+
   s = ts_engine_src_->DropTsTable(ctx_, cur_table_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
   s = ts_engine_desc_->DropTsTable(ctx_, cur_table_id);
@@ -1048,7 +1089,7 @@ TEST_F(TestEngineSnapshotImgrate, ConvertManyDataSameEntityDestNoEmptyRollback) 
     s = ts_engine_desc_->DeleteSnapshot(ctx_, desc_snapshot_id);
     ASSERT_EQ(s, KStatus::SUCCESS);
   }
-  
+
   ctx_->ts_engine = ts_engine_desc_;
   s = dynamic_pointer_cast<TsTableImpl>(ts_table)->GetRangeRowCount(ctx_, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, UINT64_MAX, &count);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -1058,7 +1099,7 @@ TEST_F(TestEngineSnapshotImgrate, ConvertManyDataSameEntityDestNoEmptyRollback) 
   ctx_->ts_engine = ts_engine_src_;
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(entity_store.size(), 0);
-  
+
   s = ts_engine_src_->DropTsTable(ctx_, cur_table_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
   s = ts_engine_desc_->DropTsTable(ctx_, cur_table_id);
@@ -1119,7 +1160,7 @@ TEST_F(TestEngineSnapshotImgrate, mulitSnapshot) {
   for (size_t i = 0; i < thread_num; i++) {
     threads[i].join();
   }
-  
+
   s = ts_engine_src_->DropTsTable(ctx_, cur_table_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
   s = ts_engine_desc_->DropTsTable(ctx_, cur_table_id);
@@ -1161,6 +1202,9 @@ TEST_F(TestEngineSnapshotImgrate, ConvertUpdateEntities) {
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(entity_store.size(), 1);
 
+  std::unordered_map<TSTableID, TS_OSN> tbl_osn;
+  tbl_osn[cur_table_id] = 1;
+  ts_engine_src_->SetPublishedMaxOSN(tbl_osn);
   // create table 1008
   s = ts_engine_desc_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -1191,12 +1235,6 @@ TEST_F(TestEngineSnapshotImgrate, ConvertUpdateEntities) {
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   ts_table_v2 = dynamic_pointer_cast<TsTableImpl>(ts_table);
-  entity_store.clear();
-  ctx_->ts_engine = ts_engine_desc_;
-  s = ts_table_v2->GetEntityIdByHashSpan(ctx_, {0, UINT64_MAX}, UINT64_MAX, entity_store);
-  ASSERT_EQ(s, KStatus::SUCCESS);
-  ASSERT_EQ(entity_store.size(), 1);
-
   std::vector<k_uint32> scan_cols = {0};
   std::vector<KwOSNSpan> osn_spans;
   osn_spans.push_back({0, 10187});
@@ -1209,6 +1247,28 @@ TEST_F(TestEngineSnapshotImgrate, ConvertUpdateEntities) {
   uint32_t count;
   std::vector<HashIdSpan> hash_id_spans;
   hash_id_spans.push_back({2, 2});
+  s = ts_table_v2->GetTagIteratorByOSN(ctx_, 1, scan_cols, osn_spans, UINT64_MAX, &hash_id_spans, &iter);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = iter->Next(&entity_id_list, &rs, &count);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(count, 4);
+  delete iter;
+  iter = nullptr;
+
+  ts_table_v2 = dynamic_pointer_cast<TsTableImpl>(ts_table);
+  entity_store.clear();
+  ctx_->ts_engine = ts_engine_desc_;
+  s = ts_table_v2->GetEntityIdByHashSpan(ctx_, {0, UINT64_MAX}, UINT64_MAX, entity_store);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(entity_store.size(), 1);
+
+  osn_spans.clear();
+  osn_spans.push_back({0, 10187});
+  ts_spans.clear();
+  ts_spans.push_back({INT64_MIN, INT64_MAX});
+  entity_id_list.clear();
+  rs.clear();
+  rs.setColumnNum(1);
   s = ts_table_v2->GetTagIteratorByOSN(ctx_, 1, scan_cols, osn_spans, UINT64_MAX, &hash_id_spans, &iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   s = iter->Next(&entity_id_list, &rs, &count);
@@ -1227,6 +1287,7 @@ TEST_F(TestEngineSnapshotImgrate, ConvertUpdateEntities) {
   ASSERT_EQ(op_osns[3]->osn, 10187);
   ASSERT_EQ(op_osns[3]->type, OperatorTypeOfRecord::OP_TYPE_TAG_UPDATE);
   delete iter;
+  iter = nullptr;
 
   entity_id_list.clear();
   rs.clear();
@@ -1252,6 +1313,7 @@ TEST_F(TestEngineSnapshotImgrate, ConvertUpdateEntities) {
   ASSERT_EQ(op_osns[3]->osn, 10187);
   ASSERT_EQ(op_osns[3]->type, OperatorTypeOfRecord::OP_TYPE_TAG_UPDATE);
   delete iter;
+  iter = nullptr;
 
   kwdbts::TsIterator *m_iter;
   uint32_t total = 0;
@@ -1272,6 +1334,7 @@ TEST_F(TestEngineSnapshotImgrate, ConvertUpdateEntities) {
   ASSERT_EQ(KUint64(rs.data[1][4]->mem), 10186);
   ASSERT_EQ(KUint64((char*)(rs.data[1][4]->mem) + 24), 10186);
   delete m_iter;
+  m_iter = nullptr;
 
   osn_spans.clear();
   osn_spans.push_back({10187, 10188});
@@ -1308,6 +1371,7 @@ TEST_F(TestEngineSnapshotImgrate, ConvertUpdateEntities) {
   ASSERT_EQ(KUint64(rs.data[3][1]->mem), 0);
   ASSERT_EQ(KUint64((char*)(rs.data[3][1]->mem) + 8), 0);
   delete m_iter;
+  m_iter = nullptr;
 
   osn_spans.clear();
   osn_spans.push_back({10187, 10189});
@@ -1341,6 +1405,38 @@ TEST_F(TestEngineSnapshotImgrate, ConvertUpdateEntities) {
   ASSERT_EQ(KUint64(rs.data[3][0]->mem), 0);
   ASSERT_EQ(KUint64((char*)(rs.data[3][0]->mem) + 8), 123456);
   delete m_iter;
+  m_iter = nullptr;
+
+  tbl_osn.clear();
+  ts_engine_src_->SetPublishedMaxOSN(tbl_osn);
+  s = ts_engine_desc_->CreateSnapshotForWrite(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id, is_dropped, 100888);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = ts_engine_src_->CreateSnapshotForRead(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, UINT64_MAX, &snapshot_id, is_dropped);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  do {
+    s = ts_engine_src_->GetSnapshotNextBatchData(ctx_, snapshot_id, &snapshot_data, is_dropped);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    if (snapshot_data.data != nullptr) {
+      s = ts_engine_desc_->WriteSnapshotBatchData(ctx_, desc_snapshot_id, snapshot_data, is_dropped);
+      ASSERT_EQ(s, KStatus::SUCCESS);
+      free(snapshot_data.data);
+    }
+  } while (snapshot_data.len > 0);
+  s = ts_engine_src_->DeleteSnapshot(ctx_, snapshot_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = ts_engine_desc_->WriteSnapshotSuccess(ctx_, desc_snapshot_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = ts_engine_desc_->DeleteSnapshot(ctx_, desc_snapshot_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  osn_spans.clear();
+  osn_spans.push_back({0, UINT64_MAX});
+  s = ts_table_v2->GetTagIteratorByOSN(ctx_, 1, scan_cols, osn_spans, UINT64_MAX, &hash_id_spans, &iter);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = iter->Next(&entity_id_list, &rs, &count);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(count, 1);
+  delete iter;
+  iter = nullptr;
 
   s = ts_engine_src_->DropTsTable(ctx_, cur_table_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -1511,5 +1607,469 @@ TEST_F(TestEngineSnapshotImgrate, ConvertOnlyTagExists) {
   delete iter;
 
   s = ts_engine_desc_->DropTsTable(ctx_, cur_table_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+}
+
+// ========== OSN Snapshot Filtering Tests ==========
+
+// Helper: execute snapshot migration
+static void MigrateSnapshot(TSEngineImpl* src, TSEngineImpl* desc, kwdbContext_p ctx,
+                            KTableKey table_id, uint64_t desc_osn, bool is_dropped) {
+  uint64_t snapshot_id;
+  KStatus s = src->CreateSnapshotForRead(ctx, table_id, 0, UINT64_MAX,
+             {INT64_MIN, INT64_MAX}, UINT64_MAX, &snapshot_id, is_dropped);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  uint64_t desc_snapshot_id;
+  s = desc->CreateSnapshotForWrite(ctx, table_id, 0, UINT64_MAX,
+      {INT64_MIN, INT64_MAX}, &desc_snapshot_id, is_dropped, desc_osn);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  TSSlice snapshot_data{nullptr, 0};
+  do {
+    s = src->GetSnapshotNextBatchData(ctx, snapshot_id, &snapshot_data, is_dropped);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    if (snapshot_data.data != nullptr) {
+      s = desc->WriteSnapshotBatchData(ctx, desc_snapshot_id, snapshot_data, is_dropped);
+      ASSERT_EQ(s, KStatus::SUCCESS);
+      free(snapshot_data.data);
+    }
+  } while (snapshot_data.len > 0);
+  s = src->DeleteSnapshot(ctx, snapshot_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = desc->WriteSnapshotSuccess(ctx, desc_snapshot_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = desc->DeleteSnapshot(ctx, desc_snapshot_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+}
+
+// Test 1: watermark=0 filters nothing
+// Scenario: insert 3 entities (OSN=20), delete 1 entity (OSN=50), set watermark OSN=0
+// Expected: all OSN>=0, TAG_DELETE (osn=50) not filtered, dest has 3 entities with 1 TAG_DELETE
+TEST_F(TestEngineSnapshotImgrate, OSNWatermarkZeroNoFilter) {
+  roachpb::CreateTsTable meta;
+  KTableKey cur_table_id = 2001;
+  ConstructRoachpbTable(&meta, cur_table_id);
+  std::shared_ptr<TsTable> ts_table;
+  KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ctx_->ts_engine = ts_engine_src_;
+
+  // Insert 3 entities (OSN=20)
+  for (int i = 1; i <= 3; i++) {
+    InsertData(ts_engine_src_, cur_table_id, i, 12345 + i * 1000, 5, 1000, 20);
+  }
+  // Delete entity 1 (OSN=50): original INSERT type changed to TAG_DELETE, osn changed to 50
+  auto ts_table_v2 = dynamic_pointer_cast<TsTableImpl>(ts_table);
+  std::string pkey_str = GetPrimaryKey(ts_engine_src_, cur_table_id, 1);
+  std::vector<std::string> pkeys = {pkey_str};
+  uint64_t del_count;
+  s = ts_table_v2->DeleteEntities(ctx_, pkeys, &del_count, 0, 50, true);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  // Set watermark=0, all OSN>=0, no records filtered
+  std::unordered_map<TSTableID, TS_OSN> tbl_osn;
+  tbl_osn[cur_table_id] = 0;
+  ts_engine_src_->SetPublishedMaxOSN(tbl_osn);
+
+  // Create dest table and migrate
+  s = ts_engine_desc_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  bool is_dropped = false;
+  MigrateSnapshot(ts_engine_src_, ts_engine_desc_, ctx_, cur_table_id, 100, is_dropped);
+
+  // Verify: dest has 3 entity records, 1 TAG_DELETE (osn=50), 2 INSERT (osn=20)
+  std::shared_ptr<TsTable> ts_table_dest;
+  s = ts_engine_desc_->GetTsTable(ctx_, cur_table_id, ts_table_dest, is_dropped);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ts_table_v2 = dynamic_pointer_cast<TsTableImpl>(ts_table_dest);
+  ctx_->ts_engine = ts_engine_desc_;
+
+  std::vector<k_uint32> scan_cols = {0};
+  std::vector<KwOSNSpan> osn_spans = {{0, UINT64_MAX}};
+  BaseEntityIterator *iter;
+  std::vector<kwdbts::EntityResultIndex> entity_id_list;
+  ResultSet rs;
+  rs.setColumnNum(1);
+  uint32_t count;
+  std::vector<HashIdSpan> hash_id_spans = {{2, 2}};
+  s = ts_table_v2->GetTagIteratorByOSN(ctx_, 1, scan_cols, osn_spans, UINT64_MAX, &hash_id_spans, &iter);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = iter->Next(&entity_id_list, &rs, &count);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(count, 3);
+
+  int tag_delete_cnt = 0, insert_cnt = 0;
+  for (size_t i = 0; i < count; i++) {
+    auto op_osn = reinterpret_cast<OperatorInfoOfRecord*>(entity_id_list[i].op_with_osn.get());
+    if (op_osn->type == OperatorTypeOfRecord::OP_TYPE_TAG_DELETE) {
+      ASSERT_EQ(op_osn->osn, 50);
+      tag_delete_cnt++;
+    } else if (op_osn->type == OperatorTypeOfRecord::OP_TYPE_INSERT) {
+      insert_cnt++;
+    }
+  }
+  ASSERT_EQ(tag_delete_cnt, 1);
+  ASSERT_EQ(insert_cnt, 2);
+  delete iter;
+
+  ctx_->ts_engine = ts_engine_src_;
+  s = ts_engine_src_->DropTsTable(ctx_, cur_table_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = ts_engine_desc_->DropTsTable(ctx_, cur_table_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+}
+
+// Test 2: watermark above TAG_DELETE OSN - deleted entity excluded from dest
+// Scenario: insert 3 entities (OSN=20), delete entity 1 (OSN=50), set watermark OSN=100
+// Expected: TAG_DELETE (osn=50<100) filtered, original INSERT already overwritten as TAG_DELETE,
+//        so the entity is excluded from migration, dest has only 2 INSERT entities
+TEST_F(TestEngineSnapshotImgrate, WatermarkAboveTagDelete) {
+  roachpb::CreateTsTable meta;
+  KTableKey cur_table_id = 2002;
+  ConstructRoachpbTable(&meta, cur_table_id);
+  std::shared_ptr<TsTable> ts_table;
+  KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ctx_->ts_engine = ts_engine_src_;
+
+  // Insert 3 entities (OSN=20)
+  for (int i = 1; i <= 3; i++) {
+    InsertData(ts_engine_src_, cur_table_id, i, 12345 + i * 1000, 5, 1000, 20);
+  }
+  // Delete entity 1 (OSN=50)
+  auto ts_table_v2 = dynamic_pointer_cast<TsTableImpl>(ts_table);
+  std::string pkey_str = GetPrimaryKey(ts_engine_src_, cur_table_id, 1);
+  std::vector<std::string> pkeys = {pkey_str};
+  uint64_t del_count;
+  s = ts_table_v2->DeleteEntities(ctx_, pkeys, &del_count, 0, 50, true);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  // Set watermark=100 > delete OSN(50), TAG_DELETE filtered
+  std::unordered_map<TSTableID, TS_OSN> tbl_osn;
+  tbl_osn[cur_table_id] = 100;
+  ts_engine_src_->SetPublishedMaxOSN(tbl_osn);
+
+  // Create dest table and migrate
+  s = ts_engine_desc_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  bool is_dropped = false;
+  MigrateSnapshot(ts_engine_src_, ts_engine_desc_, ctx_, cur_table_id, 200, is_dropped);
+
+  // Verify: dest has only 2 entities (both INSERT), deleted entity not on dest
+  std::shared_ptr<TsTable> ts_table_dest;
+  s = ts_engine_desc_->GetTsTable(ctx_, cur_table_id, ts_table_dest, is_dropped);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ts_table_v2 = dynamic_pointer_cast<TsTableImpl>(ts_table_dest);
+  ctx_->ts_engine = ts_engine_desc_;
+
+  // GetEntityIdByHashSpan returns only active entities (excludes deleted)
+  std::vector<kwdbts::EntityResultIndex> entity_store;
+  s = ts_table_v2->GetEntityIdByHashSpan(ctx_, {0, UINT64_MAX}, UINT64_MAX, entity_store);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(entity_store.size(), 2);
+
+  // GetTagIteratorByOSN returns all tag records, filtered entities excluded
+  std::vector<k_uint32> scan_cols = {0};
+  std::vector<KwOSNSpan> osn_spans = {{0, UINT64_MAX}};
+  BaseEntityIterator *iter;
+  std::vector<kwdbts::EntityResultIndex> entity_id_list;
+  ResultSet rs;
+  rs.setColumnNum(1);
+  uint32_t count;
+  std::vector<HashIdSpan> hash_id_spans = {{2, 2}};
+  s = ts_table_v2->GetTagIteratorByOSN(ctx_, 1, scan_cols, osn_spans, UINT64_MAX, &hash_id_spans, &iter);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = iter->Next(&entity_id_list, &rs, &count);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  // TAG_DELETE filtered, only 2 INSERT records remain
+  ASSERT_EQ(count, 2);
+  for (size_t i = 0; i < count; i++) {
+    auto op_osn = reinterpret_cast<OperatorInfoOfRecord*>(entity_id_list[i].op_with_osn.get());
+    ASSERT_EQ(op_osn->type, OperatorTypeOfRecord::OP_TYPE_INSERT);
+    ASSERT_EQ(op_osn->osn, 20);
+  }
+  delete iter;
+
+  ctx_->ts_engine = ts_engine_src_;
+  s = ts_engine_src_->DropTsTable(ctx_, cur_table_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = ts_engine_desc_->DropTsTable(ctx_, cur_table_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+}
+
+// Test 3: watermark below TAG_DELETE OSN - delete record migrated normally
+// Scenario: insert 3 entities (OSN=20), delete entity 1 (OSN=50), set watermark OSN=30
+// Expected: TAG_DELETE (osn=50>=30) not filtered, dest has 3 entities with 1 TAG_DELETE
+TEST_F(TestEngineSnapshotImgrate, WatermarkBelowTagDelete) {
+  roachpb::CreateTsTable meta;
+  KTableKey cur_table_id = 2003;
+  ConstructRoachpbTable(&meta, cur_table_id);
+  std::shared_ptr<TsTable> ts_table;
+  KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ctx_->ts_engine = ts_engine_src_;
+
+  // Insert 3 entities (OSN=20)
+  for (int i = 1; i <= 3; i++) {
+    InsertData(ts_engine_src_, cur_table_id, i, 12345 + i * 1000, 5, 1000, 20);
+  }
+  // Delete entity 1 (OSN=50)
+  auto ts_table_v2 = dynamic_pointer_cast<TsTableImpl>(ts_table);
+  std::string pkey_str = GetPrimaryKey(ts_engine_src_, cur_table_id, 1);
+  std::vector<std::string> pkeys = {pkey_str};
+  uint64_t del_count;
+  s = ts_table_v2->DeleteEntities(ctx_, pkeys, &del_count, 0, 50, true);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  // Set watermark=30 <= delete OSN(50), TAG_DELETE not filtered
+  std::unordered_map<TSTableID, TS_OSN> tbl_osn;
+  tbl_osn[cur_table_id] = 30;
+  ts_engine_src_->SetPublishedMaxOSN(tbl_osn);
+
+  // Create dest table and migrate
+  s = ts_engine_desc_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  bool is_dropped = false;
+  MigrateSnapshot(ts_engine_src_, ts_engine_desc_, ctx_, cur_table_id, 200, is_dropped);
+
+  // Verify: dest has 3 entity records, 1 TAG_DELETE (osn=50)
+  std::shared_ptr<TsTable> ts_table_dest;
+  s = ts_engine_desc_->GetTsTable(ctx_, cur_table_id, ts_table_dest, is_dropped);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ts_table_v2 = dynamic_pointer_cast<TsTableImpl>(ts_table_dest);
+  ctx_->ts_engine = ts_engine_desc_;
+
+  std::vector<k_uint32> scan_cols = {0};
+  std::vector<KwOSNSpan> osn_spans = {{0, UINT64_MAX}};
+  BaseEntityIterator *iter;
+  std::vector<kwdbts::EntityResultIndex> entity_id_list;
+  ResultSet rs;
+  rs.setColumnNum(1);
+  uint32_t count;
+  std::vector<HashIdSpan> hash_id_spans = {{2, 2}};
+  s = ts_table_v2->GetTagIteratorByOSN(ctx_, 1, scan_cols, osn_spans, UINT64_MAX, &hash_id_spans, &iter);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = iter->Next(&entity_id_list, &rs, &count);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(count, 3);
+
+  int tag_delete_cnt = 0, insert_cnt = 0;
+  for (size_t i = 0; i < count; i++) {
+    auto op_osn = reinterpret_cast<OperatorInfoOfRecord*>(entity_id_list[i].op_with_osn.get());
+    if (op_osn->type == OperatorTypeOfRecord::OP_TYPE_TAG_DELETE) {
+      ASSERT_EQ(op_osn->osn, 50);
+      tag_delete_cnt++;
+    } else if (op_osn->type == OperatorTypeOfRecord::OP_TYPE_INSERT) {
+      insert_cnt++;
+    }
+  }
+  ASSERT_EQ(tag_delete_cnt, 1);
+  ASSERT_EQ(insert_cnt, 2);
+  delete iter;
+
+  ctx_->ts_engine = ts_engine_src_;
+  s = ts_engine_src_->DropTsTable(ctx_, cur_table_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = ts_engine_desc_->DropTsTable(ctx_, cur_table_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+}
+
+// Test 4: watermark above TAG_UPDATE OSN - update filtered but new INSERT kept
+// Scenario: insert entity (OSN=20), update entity (OSN=50), set watermark OSN=100
+// Expected: TAG_UPDATE (osn=50<100) filtered, new INSERT (osn=50, type=INSERT) kept,
+//        entity exists on dest with only the INSERT record
+TEST_F(TestEngineSnapshotImgrate, WatermarkFilterTagUpdate) {
+  roachpb::CreateTsTable meta;
+  KTableKey cur_table_id = 2006;
+  ConstructRoachpbTable(&meta, cur_table_id);
+  std::shared_ptr<TsTable> ts_table;
+  KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ctx_->ts_engine = ts_engine_src_;
+
+  // Insert entity (OSN=20)
+  InsertData(ts_engine_src_, cur_table_id, 1, 12345, 5, 1000, 20);
+  // Update entity (OSN=50): original record type changed to TAG_UPDATE (osn=50), insert new INSERT record (osn=50)
+  UpdateTag(ts_engine_src_, cur_table_id, 1, 50);
+
+  // Set watermark=100 > update OSN(50)
+  std::unordered_map<TSTableID, TS_OSN> tbl_osn;
+  tbl_osn[cur_table_id] = 100;
+  ts_engine_src_->SetPublishedMaxOSN(tbl_osn);
+
+  // Create dest table and migrate
+  s = ts_engine_desc_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  bool is_dropped = false;
+  MigrateSnapshot(ts_engine_src_, ts_engine_desc_, ctx_, cur_table_id, 200, is_dropped);
+
+  // Verify: entity exists on dest (TAG_UPDATE filtered, but new INSERT record kept)
+  std::shared_ptr<TsTable> ts_table_dest;
+  s = ts_engine_desc_->GetTsTable(ctx_, cur_table_id, ts_table_dest, is_dropped);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  auto ts_table_v2 = dynamic_pointer_cast<TsTableImpl>(ts_table_dest);
+  ctx_->ts_engine = ts_engine_desc_;
+
+  // Active entity count is 1
+  std::vector<kwdbts::EntityResultIndex> entity_store;
+  s = ts_table_v2->GetEntityIdByHashSpan(ctx_, {0, UINT64_MAX}, UINT64_MAX, entity_store);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(entity_store.size(), 1);
+
+  // Verify tag records: TAG_UPDATE filtered, only INSERT record remains
+  std::vector<k_uint32> scan_cols = {0};
+  std::vector<KwOSNSpan> osn_spans = {{0, UINT64_MAX}};
+  BaseEntityIterator *iter;
+  std::vector<kwdbts::EntityResultIndex> entity_id_list;
+  ResultSet rs;
+  rs.setColumnNum(1);
+  uint32_t count;
+  std::vector<HashIdSpan> hash_id_spans = {{2, 2}};
+  s = ts_table_v2->GetTagIteratorByOSN(ctx_, 1, scan_cols, osn_spans, UINT64_MAX, &hash_id_spans, &iter);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = iter->Next(&entity_id_list, &rs, &count);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  // TAG_UPDATE (osn=50) filtered (50<100 and type!=INSERT), new INSERT (osn=50) kept
+  ASSERT_EQ(count, 1);
+  auto op_osn = reinterpret_cast<OperatorInfoOfRecord*>(entity_id_list[0].op_with_osn.get());
+  ASSERT_EQ(op_osn->type, OperatorTypeOfRecord::OP_TYPE_INSERT);
+  delete iter;
+
+  ctx_->ts_engine = ts_engine_src_;
+  s = ts_engine_src_->DropTsTable(ctx_, cur_table_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = ts_engine_desc_->DropTsTable(ctx_, cur_table_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+}
+
+// Test 5: independent watermarks for two tables - different watermarks produce different filter results
+// Scenario: create tables tbl_a and tbl_b, insert 3 entities each (OSN=20), delete 1 entity each (OSN=50)
+//        only set tbl_a watermark=40 (below delete OSN=50), tbl_b not in watermark map
+// Expected: tbl_a TAG_DELETE (osn=50>=40) not filtered, dest has 3 entities with 1 TAG_DELETE
+//        tbl_b not in watermark map, pubsub_min_osn=UINT64_MAX, all non-INSERT with osn<UINT64_MAX filtered
+//        deleted entity excluded from dest, only 2 INSERT entities
+TEST_F(TestEngineSnapshotImgrate, TwoTableIndependentWatermark) {
+  roachpb::CreateTsTable meta;
+  KTableKey tbl_a_id = 2007;
+  KTableKey tbl_b_id = 2008;
+  ConstructRoachpbTable(&meta, tbl_a_id);
+  std::shared_ptr<TsTable> ts_table_a;
+  KStatus s = ts_engine_src_->CreateTsTable(ctx_, tbl_a_id, &meta, ts_table_a);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ctx_->ts_engine = ts_engine_src_;
+
+  roachpb::CreateTsTable meta_b;
+  ConstructRoachpbTable(&meta_b, tbl_b_id);
+  std::shared_ptr<TsTable> ts_table_b;
+  s = ts_engine_src_->CreateTsTable(ctx_, tbl_b_id, &meta_b, ts_table_b);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  // Insert 3 entities into each table (OSN=20)
+  for (int i = 1; i <= 3; i++) {
+    InsertData(ts_engine_src_, tbl_a_id, i, 12345 + i * 1000, 5, 1000, 20);
+    InsertData(ts_engine_src_, tbl_b_id, i, 54321 + i * 1000, 5, 1000, 20);
+  }
+  // Delete entity 1 from each table (OSN=50)
+  auto ts_table_a_v2 = dynamic_pointer_cast<TsTableImpl>(ts_table_a);
+  auto ts_table_b_v2 = dynamic_pointer_cast<TsTableImpl>(ts_table_b);
+  std::string pkey_a = GetPrimaryKey(ts_engine_src_, tbl_a_id, 1);
+  std::string pkey_b = GetPrimaryKey(ts_engine_src_, tbl_b_id, 1);
+  std::vector<std::string> pkeys_a = {pkey_a};
+  std::vector<std::string> pkeys_b = {pkey_b};
+  uint64_t del_count;
+  s = ts_table_a_v2->DeleteEntities(ctx_, pkeys_a, &del_count, 0, 50, true);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = ts_table_b_v2->DeleteEntities(ctx_, pkeys_b, &del_count, 0, 50, true);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  // Only set tbl_a watermark=40 (below delete OSN=50), tbl_b not in watermark map
+  std::unordered_map<TSTableID, TS_OSN> tbl_osn;
+  tbl_osn[tbl_a_id] = 40;
+  ts_engine_src_->SetPublishedMaxOSN(tbl_osn);
+
+  // Create two dest tables and migrate
+  s = ts_engine_desc_->CreateTsTable(ctx_, tbl_a_id, &meta, ts_table_a);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = ts_engine_desc_->CreateTsTable(ctx_, tbl_b_id, &meta_b, ts_table_b);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  bool is_dropped = false;
+  MigrateSnapshot(ts_engine_src_, ts_engine_desc_, ctx_, tbl_a_id, 200, is_dropped);
+  MigrateSnapshot(ts_engine_src_, ts_engine_desc_, ctx_, tbl_b_id, 200, is_dropped);
+
+  // Verify tbl_a: watermark=40 < delete OSN(50), TAG_DELETE not filtered, dest has 3 entities with 1 TAG_DELETE
+  std::shared_ptr<TsTable> ts_table_dest_a;
+  s = ts_engine_desc_->GetTsTable(ctx_, tbl_a_id, ts_table_dest_a, is_dropped);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ts_table_a_v2 = dynamic_pointer_cast<TsTableImpl>(ts_table_dest_a);
+  ctx_->ts_engine = ts_engine_desc_;
+
+  std::vector<k_uint32> scan_cols = {0};
+  std::vector<KwOSNSpan> osn_spans = {{0, UINT64_MAX}};
+  BaseEntityIterator *iter;
+  std::vector<kwdbts::EntityResultIndex> entity_id_list;
+  ResultSet rs;
+  rs.setColumnNum(1);
+  uint32_t count;
+  std::vector<HashIdSpan> hash_id_spans = {{2, 2}};
+  s = ts_table_a_v2->GetTagIteratorByOSN(ctx_, 1, scan_cols, osn_spans, UINT64_MAX, &hash_id_spans, &iter);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = iter->Next(&entity_id_list, &rs, &count);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(count, 3);
+  int tag_delete_cnt = 0, insert_cnt = 0;
+  for (size_t i = 0; i < count; i++) {
+    auto op_osn = reinterpret_cast<OperatorInfoOfRecord*>(entity_id_list[i].op_with_osn.get());
+    if (op_osn->type == OperatorTypeOfRecord::OP_TYPE_TAG_DELETE) {
+      ASSERT_EQ(op_osn->osn, 50);
+      tag_delete_cnt++;
+    } else if (op_osn->type == OperatorTypeOfRecord::OP_TYPE_INSERT) {
+      insert_cnt++;
+    }
+  }
+  ASSERT_EQ(tag_delete_cnt, 1);
+  ASSERT_EQ(insert_cnt, 2);
+  delete iter;
+
+  // Verify tbl_b: table not in watermark map, pubsub_min_osn=UINT64_MAX,
+  // all non-INSERT records with osn<UINT64_MAX filtered, deleted entity excluded from dest, only 2 INSERT
+  std::shared_ptr<TsTable> ts_table_dest_b;
+  s = ts_engine_desc_->GetTsTable(ctx_, tbl_b_id, ts_table_dest_b, is_dropped);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ts_table_b_v2 = dynamic_pointer_cast<TsTableImpl>(ts_table_dest_b);
+
+  std::vector<kwdbts::EntityResultIndex> entity_store_b;
+  s = ts_table_b_v2->GetEntityIdByHashSpan(ctx_, {0, UINT64_MAX}, UINT64_MAX, entity_store_b);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(entity_store_b.size(), 2);
+
+  entity_id_list.clear();
+  rs.clear();
+  tag_delete_cnt = 0;
+  insert_cnt = 0;
+  s = ts_table_b_v2->GetTagIteratorByOSN(ctx_, 1, scan_cols, osn_spans, UINT64_MAX, &hash_id_spans, &iter);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = iter->Next(&entity_id_list, &rs, &count);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(count, 2);
+  for (size_t i = 0; i < count; i++) {
+    auto op_osn = reinterpret_cast<OperatorInfoOfRecord*>(entity_id_list[i].op_with_osn.get());
+    if (op_osn->type == OperatorTypeOfRecord::OP_TYPE_TAG_DELETE) {
+      tag_delete_cnt++;
+    } else if (op_osn->type == OperatorTypeOfRecord::OP_TYPE_INSERT) {
+      insert_cnt++;
+    }
+  }
+  ASSERT_EQ(tag_delete_cnt, 0);
+  ASSERT_EQ(insert_cnt, 2);
+  delete iter;
+
+  ctx_->ts_engine = ts_engine_src_;
+  s = ts_engine_src_->DropTsTable(ctx_, tbl_a_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = ts_engine_desc_->DropTsTable(ctx_, tbl_a_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = ts_engine_src_->DropTsTable(ctx_, tbl_b_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = ts_engine_desc_->DropTsTable(ctx_, tbl_b_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
 }

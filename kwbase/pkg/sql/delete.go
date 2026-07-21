@@ -42,8 +42,10 @@ var deleteNodePool = sync.Pool{
 	},
 }
 
+var _ PlanNode = &deleteNode{}
+
 type deleteNode struct {
-	source planNode
+	source PlanNode
 
 	// columns is set if this DELETE is returning any rows, to be
 	// consumed by a renderNode upstream. This occurs when there is a
@@ -82,7 +84,7 @@ type deleteRun struct {
 	rowIdxToRetIdx []int
 }
 
-func (d *deleteNode) startExec(params runParams) error {
+func (d *deleteNode) StartExec(params RunParams) error {
 	if d.run.td.tableDesc().IsTSTable() {
 		return sqlbase.TSUnsupportedError("delete")
 	}
@@ -97,21 +99,21 @@ func (d *deleteNode) startExec(params runParams) error {
 			params.EvalContext().Mon.MakeBoundAccount(),
 			sqlbase.ColTypeInfoFromResCols(d.columns), 0)
 	}
-	return d.run.td.init(params.ctx, params.p.txn, params.EvalContext())
+	return d.run.td.init(params.Ctx, params.p.txn, params.EvalContext())
 }
 
-// Next is required because batchedPlanNode inherits from planNode, but
+// Next is required because batchedPlanNode inherits from PlanNode, but
 // batchedPlanNode doesn't really provide it. See the explanatory comments
 // in plan_batch.go.
-func (d *deleteNode) Next(params runParams) (bool, error) { panic("not valid") }
+func (d *deleteNode) Next(params RunParams) (bool, error) { panic("not valid") }
 
-// Values is required because batchedPlanNode inherits from planNode, but
+// Values is required because batchedPlanNode inherits from PlanNode, but
 // batchedPlanNode doesn't really provide it. See the explanatory comments
 // in plan_batch.go.
 func (d *deleteNode) Values() tree.Datums { panic("not valid") }
 
 // BatchedNext implements the batchedPlanNode interface.
-func (d *deleteNode) BatchedNext(params runParams) (bool, error) {
+func (d *deleteNode) BatchedNext(params RunParams) (bool, error) {
 	if d.run.done {
 		return false, nil
 	}
@@ -121,7 +123,7 @@ func (d *deleteNode) BatchedNext(params runParams) (bool, error) {
 	// Advance one batch. First, clear the current batch.
 	d.run.rowCount = 0
 	if d.run.rows != nil {
-		d.run.rows.Clear(params.ctx)
+		d.run.rows.Clear(params.Ctx)
 	}
 	// Now consume/accumulate the rows for this batch.
 	lastBatch := false
@@ -167,21 +169,21 @@ func (d *deleteNode) BatchedNext(params runParams) (bool, error) {
 	}
 
 	if d.run.rowCount > 0 {
-		if err := d.run.td.atBatchEnd(params.ctx, d.run.traceKV); err != nil {
+		if err := d.run.td.atBatchEnd(params.Ctx, d.run.traceKV); err != nil {
 			return false, err
 		}
 
 		if !lastBatch {
 			// We only run/commit the batch if there were some rows processed
 			// in this batch.
-			if err := d.run.td.flushAndStartNewBatch(params.ctx); err != nil {
+			if err := d.run.td.flushAndStartNewBatch(params.Ctx); err != nil {
 				return false, err
 			}
 		}
 	}
 
 	if lastBatch {
-		if _, err := d.run.td.finalize(params.ctx, d.run.traceKV); err != nil {
+		if _, err := d.run.td.finalize(params.Ctx, d.run.traceKV); err != nil {
 			return false, err
 		}
 		// Remember we're done for the next call to BatchedNext().
@@ -199,9 +201,9 @@ func (d *deleteNode) BatchedNext(params runParams) (bool, error) {
 
 // processSourceRow processes one row from the source for deletion and, if
 // result rows are needed, saves it in the result row container
-func (d *deleteNode) processSourceRow(params runParams, sourceVals tree.Datums) error {
+func (d *deleteNode) processSourceRow(params RunParams, sourceVals tree.Datums) error {
 	// Queue the deletion in the KV batch.
-	if err := d.run.td.row(params.ctx, sourceVals, d.run.traceKV); err != nil {
+	if err := d.run.td.row(params.Ctx, sourceVals, d.run.traceKV); err != nil {
 		return err
 	}
 
@@ -221,7 +223,7 @@ func (d *deleteNode) processSourceRow(params runParams, sourceVals tree.Datums) 
 			}
 		}
 
-		if _, err := d.run.rows.AddRow(params.ctx, resultValues); err != nil {
+		if _, err := d.run.rows.AddRow(params.Ctx, resultValues); err != nil {
 			return err
 		}
 	}

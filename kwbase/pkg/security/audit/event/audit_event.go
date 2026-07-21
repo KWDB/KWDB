@@ -56,7 +56,7 @@ func InitEvents(
 		eventAction: map[actions.ActionID]actions.AuditAction{
 			//actions.MailSend:       actions.NewMailAction(mail),
 			actions.LogRecord: actions.NewRecordToLog(execCfg.AuditLogger),
-			//actions.WriteIntoTable: actions.NewRecodeToTable(execCfg.DB, sql.MakeEventLogger(execCfg)),
+			//actions.WriteIntoTable: actions.NewRecodeToTable(execCfg.DB, eventlog.MakeEventLogger(execCfg)),
 		},
 		eventMetric: map[target.AuditObjectType]target.AuditMetrics{
 			target.ObjectNode:           object.NewNodeMetric(ctx),

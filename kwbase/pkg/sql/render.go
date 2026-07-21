@@ -39,6 +39,8 @@ import (
 
 // renderNode encapsulates the render logic of a select statement:
 // expressing new values using expressions over source values.
+var _ PlanNode = &renderNode{}
+
 type renderNode struct {
 	// This struct must be allocated on the heap and its location stay
 	// stable after construction because it implements
@@ -91,11 +93,11 @@ func (r *renderNode) IndexedVarNodeFormatter(idx int) tree.NodeFormatter {
 	return r.source.columns.NodeFormatter(idx)
 }
 
-func (r *renderNode) startExec(runParams) error {
+func (r *renderNode) StartExec(RunParams) error {
 	panic("renderNode can't be run in local mode")
 }
 
-func (r *renderNode) Next(params runParams) (bool, error) {
+func (r *renderNode) Next(params RunParams) (bool, error) {
 	panic("renderNode can't be run in local mode")
 }
 
@@ -110,7 +112,7 @@ func (r *renderNode) Close(ctx context.Context) { r.source.plan.Close(ctx) }
 // specified in any part of the query, then it must be consistent with
 // what is known to the Executor. If the AsOfClause contains a
 // timestamp, then true will be returned.
-func (p *planner) getTimestamp(asOf tree.AsOfClause) (hlc.Timestamp, bool, error) {
+func (p *GenericPlanner) getTimestamp(asOf tree.AsOfClause) (hlc.Timestamp, bool, error) {
 	if asOf.Expr != nil {
 		// At this point, the executor only knows how to recognize AS OF
 		// SYSTEM TIME at the top level. When it finds it there,

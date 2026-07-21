@@ -79,17 +79,6 @@ func NewUnsupportedSchemaUsageError(name string) error {
 		"unsupported schema specification: %q", name)
 }
 
-// NewCCLRequiredError creates an error for when a CCL feature is used in an OSS
-// binary.
-func NewCCLRequiredError(err error) error {
-	return pgerror.WithCandidateCode(err, pgcode.CCLRequired)
-}
-
-// IsCCLRequiredError returns whether the error is a CCLRequired error.
-func IsCCLRequiredError(err error) bool {
-	return errHasCode(err, pgcode.CCLRequired)
-}
-
 // NewUndefinedDatabaseError creates an error that represents a missing database.
 func NewUndefinedDatabaseError(name string) error {
 	// Postgres will return an UndefinedTable error on queries that go to a "relation"

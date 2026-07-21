@@ -40,7 +40,7 @@ import (
 )
 
 type scrubNode struct {
-	optColumnsSlot
+	OptColumnsSlot
 
 	n *tree.Scrub
 
@@ -65,14 +65,14 @@ type checkOperation interface {
 
 	// Start initializes the check. In many cases, this does the bulk of
 	// the work behind a check.
-	Start(params runParams) error
+	Start(params RunParams) error
 
 	// Next will return the next check result. The datums returned have
 	// the column types specified by scrubTypes, which are the valeus
 	// returned to the user.
 	//
 	// Next is not called if Done() is false.
-	Next(params runParams) (tree.Datums, error)
+	Next(params RunParams) (tree.Datums, error)
 
 	// Done indicates when there are no more results to iterate through.
 	Done(context.Context) bool
@@ -83,7 +83,7 @@ type checkOperation interface {
 
 // Scrub checks the database.
 // Privileges: superuser.
-func (p *planner) Scrub(ctx context.Context, n *tree.Scrub) (planNode, error) {
+func (p *GenericPlanner) Scrub(ctx context.Context, n *tree.Scrub) (PlanNode, error) {
 	if err := p.RequireAdminRole(ctx, "SCRUB"); err != nil {
 		return nil, err
 	}
@@ -96,13 +96,13 @@ type scrubRun struct {
 	row        tree.Datums
 }
 
-func (n *scrubNode) startExec(params runParams) error {
+func (n *scrubNode) StartExec(params RunParams) error {
 	switch n.n.Typ {
 	case tree.ScrubTable:
 		// If the tableName provided refers to a view and error will be
 		// returned here.
 		tableDesc, err := params.p.ResolveExistingObjectEx(
-			params.ctx, n.n.Table, true /*required*/, ResolveRequireTableDesc)
+			params.Ctx, n.n.Table, true /*required*/, ResolveRequireTableDesc)
 		if err != nil {
 			return err
 		}
@@ -110,12 +110,12 @@ func (n *scrubNode) startExec(params runParams) error {
 			return sqlbase.TSUnsupportedError("scrub table")
 		}
 		if err := n.startScrubTable(
-			params.ctx, params.p, tableDesc, params.p.ResolvedName(n.n.Table),
+			params.Ctx, params.p, tableDesc, params.p.ResolvedName(n.n.Table),
 		); err != nil {
 			return err
 		}
 	case tree.ScrubDatabase:
-		if err := n.startScrubDatabase(params.ctx, params.p, &n.n.Database); err != nil {
+		if err := n.startScrubDatabase(params.Ctx, params.p, &n.n.Database); err != nil {
 			return err
 		}
 	default:
@@ -124,7 +124,7 @@ func (n *scrubNode) startExec(params runParams) error {
 	return nil
 }
 
-func (n *scrubNode) Next(params runParams) (bool, error) {
+func (n *scrubNode) Next(params RunParams) (bool, error) {
 	for len(n.run.checkQueue) > 0 {
 		nextCheck := n.run.checkQueue[0]
 		if !nextCheck.Started() {
@@ -135,7 +135,7 @@ func (n *scrubNode) Next(params runParams) (bool, error) {
 
 		// Check if the iterator is finished before calling Next. This
 		// happens if there are no more results to report.
-		if !nextCheck.Done(params.ctx) {
+		if !nextCheck.Done(params.Ctx) {
 			var err error
 			n.run.row, err = nextCheck.Next(params)
 			if err != nil {
@@ -144,7 +144,7 @@ func (n *scrubNode) Next(params runParams) (bool, error) {
 			return true, nil
 		}
 
-		nextCheck.Close(params.ctx)
+		nextCheck.Close(params.Ctx)
 		// Prepare the next iterator. If we happen to finish this iterator,
 		// we want to begin the next one so we still return a result.
 		n.run.checkQueue = n.run.checkQueue[1:]
@@ -166,7 +166,9 @@ func (n *scrubNode) Close(ctx context.Context) {
 
 // startScrubDatabase prepares a scrub check for each of the tables in
 // the database. Views are skipped without errors.
-func (n *scrubNode) startScrubDatabase(ctx context.Context, p *planner, name *tree.Name) error {
+func (n *scrubNode) startScrubDatabase(
+	ctx context.Context, p *GenericPlanner, name *tree.Name,
+) error {
 	// Check that the database exists.
 	database := string(*name)
 	dbDesc, err := p.ResolveUncachedDatabaseByName(ctx, database, true /*required*/)
@@ -174,11 +176,11 @@ func (n *scrubNode) startScrubDatabase(ctx context.Context, p *planner, name *tr
 		return err
 	}
 
-	if err := TSDatabaseUnsupportedErr(dbDesc.EngineType, "scrub database"); err != nil {
-		return err
+	if dbDesc.EngineType == tree.EngineTypeTimeseries {
+		return errors.New("scrub database is not supported in timeseries database")
 	}
 
-	schemas, err := p.Tables().getSchemasForDatabase(ctx, p.txn, dbDesc.ID)
+	schemas, err := p.Tables().GetSchemasForDatabase(ctx, p.txn, dbDesc.ID)
 	if err != nil {
 		return err
 	}
@@ -213,7 +215,7 @@ func (n *scrubNode) startScrubDatabase(ctx context.Context, p *planner, name *tr
 
 func (n *scrubNode) startScrubTable(
 	ctx context.Context,
-	p *planner,
+	p *GenericPlanner,
 	tableDesc *sqlbase.ImmutableTableDescriptor,
 	tableName *tree.TableName,
 ) error {
@@ -428,7 +430,7 @@ func createIndexCheckOperations(
 // implemented.
 func createConstraintCheckOperations(
 	ctx context.Context,
-	p *planner,
+	p *GenericPlanner,
 	constraintNames tree.NameList,
 	tableDesc *sqlbase.ImmutableTableDescriptor,
 	tableName *tree.TableName,
@@ -479,7 +481,11 @@ func createConstraintCheckOperations(
 // scrubRunDistSQL run a distSQLPhysicalPlan plan in distSQL. If
 // RowContainer is returned, the caller must close it.
 func scrubRunDistSQL(
-	ctx context.Context, planCtx *PlanningCtx, p *planner, plan *PhysicalPlan, columnTypes []types.T,
+	ctx context.Context,
+	planCtx *PlanningCtx,
+	p *GenericPlanner,
+	plan *PhysicalPlan,
+	columnTypes []types.T,
 ) (*rowcontainer.RowContainer, error) {
 	ci := sqlbase.ColTypeInfoFromColTypes(columnTypes)
 	acc := p.extendedEvalCtx.Mon.MakeBoundAccount()

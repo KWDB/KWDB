@@ -53,14 +53,18 @@ var virtualSequenceOpts = tree.SequenceOptions{
 	tree.SequenceOption{Name: tree.SeqOptVirtual},
 }
 
-// processSerialInColumnDef analyzes a column definition and determines
+// ProcessSerialInColumnDef analyzes a column definition and determines
 // whether to use a sequence if the requested type is SERIAL-like.
 // If a sequence must be created, it returns an ObjectName to use
 // to create the new sequence and the DatabaseDescriptor of the
 // parent database where it should be created.
 // The ColumnTableDef is not mutated in-place; instead a new one is returned.
-func (p *planner) processSerialInColumnDef(
-	ctx context.Context, d *tree.ColumnTableDef, tableName *ObjectName, isTSTable bool,
+func ProcessSerialInColumnDef(
+	ctx context.Context,
+	p *GenericPlanner,
+	d *tree.ColumnTableDef,
+	tableName *ObjectName,
+	isTSTable bool,
 ) (*tree.ColumnTableDef, *DatabaseDescriptor, *ObjectName, tree.SequenceOptions, error) {
 	if !d.IsSerial {
 		// Column is not SERIAL: nothing to do.

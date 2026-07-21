@@ -28,15 +28,25 @@ type ReplicateSetRole struct {
 	RoleType RoleType
 }
 
+// replicateSetRoleKeyword is the SQL keyword for REPLICATE SET ROLE.
+const replicateSetRoleKeyword = "REPLICATE SET ROLE"
+
+// roleTypeSuffixes maps RoleType values to their SQL keyword suffixes.
+var roleTypeSuffixes = map[RoleType]string{
+	RoleTypeDefault:   " DEFAULT",
+	RoleTypePrimary:   " PRIMARY",
+	RoleTypeSecondary: " SECONDARY",
+}
+
 // Format implements the NodeFormatter interface.
 func (node *ReplicateSetRole) Format(ctx *FmtCtx) {
-	ctx.WriteString("REPLICATE SET ROLE")
-	switch node.RoleType {
-	case RoleTypeDefault:
-		ctx.WriteString(" DEFAULT")
-	case RoleTypePrimary:
-		ctx.WriteString(" PRIMARY")
-	case RoleTypeSecondary:
-		ctx.WriteString(" SECONDARY")
+	ctx.WriteString(replicateSetRoleKeyword)
+	node.writeRoleTypeSuffix(ctx)
+}
+
+// writeRoleTypeSuffix appends the role type suffix based on the configured role.
+func (node *ReplicateSetRole) writeRoleTypeSuffix(ctx *FmtCtx) {
+	if suffix, ok := roleTypeSuffixes[node.RoleType]; ok {
+		ctx.WriteString(suffix)
 	}
 }

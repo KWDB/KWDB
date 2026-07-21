@@ -769,3 +769,20 @@ var DistAggregationTable = map[execinfrapb.AggregatorSpec_Func]DistAggregationIn
 		},
 	},
 }
+
+// newFinalStageInfo creates a FinalStageInfo value. This helper centralizes
+// construction and documents intent; it is a refactor aid and does not
+// introduce behavior change.
+func newFinalStageInfo(fn execinfrapb.AggregatorSpec_Func, localIdxs []uint32) FinalStageInfo {
+	return FinalStageInfo{Fn: fn, LocalIdxs: localIdxs}
+}
+
+// newDistAggregationInfo creates a DistAggregationInfo with the provided
+// local/middle/final stages and optional rendering. Kept as a helper to make
+// table construction clearer in future changes.
+func newDistAggregationInfo(
+	local, middle, final []FinalStageInfo,
+	render func(*tree.IndexedVarHelper, []int) (tree.TypedExpr, error),
+) DistAggregationInfo {
+	return DistAggregationInfo{LocalStage: local, MiddleStage: middle, FinalStage: final, FinalRendering: render}
+}

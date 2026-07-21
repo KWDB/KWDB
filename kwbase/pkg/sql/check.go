@@ -41,6 +41,19 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
+func labeledRowValues(cols []sqlbase.ColumnDescriptor, values tree.Datums) string {
+	var s bytes.Buffer
+	for i := range cols {
+		if i != 0 {
+			s.WriteString(`, `)
+		}
+		s.WriteString(cols[i].Name)
+		s.WriteString(`=`)
+		s.WriteString(values[i].String())
+	}
+	return s.String()
+}
+
 // validateCheckExpr verifies that the given CHECK expression returns true
 // for all the rows in the table.
 //
@@ -171,7 +184,7 @@ func matchFullUnacceptableKeyQuery(
 // # LIMIT 1  -- if limitResults is set
 //
 // TODO(radu): change this to a query which executes as an anti-join when we
-// remove the heuristic planner.
+// remove the heuristic GenericPlanner.
 func nonMatchingRowQuery(
 	srcTbl *sqlbase.TableDescriptor,
 	fk *sqlbase.ForeignKeyConstraint,

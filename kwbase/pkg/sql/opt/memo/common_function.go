@@ -628,9 +628,9 @@ func (m *Memo) SplitTagExpr(
 		}
 
 		mode := checkTagExpr(src, colMap)
-		canSplit := mode == 1<<hasTag || mode == (1<<hasTag+1<<hasConst)
+		canSplit := mode == tagOnlyMode || mode == tagAndConstMode
 		if m.CheckFlag(opt.ScalarSubQueryPush) {
-			canSplit = canSplit || mode == (1<<hasTag+1<<hasSubQuery)
+			canSplit = canSplit || mode == tagAndSubQueryMode
 		}
 		if canSplit {
 			return nil, FiltersExpr{FiltersItem{Condition: source.(opt.ScalarExpr)}}
@@ -783,6 +783,16 @@ const (
 	hasSubQuery = 4
 )
 
+// Pre-computed tag expression mode combinations for use in SplitTagExpr.
+const (
+	// tagOnlyMode indicates the expression contains only tag columns.
+	tagOnlyMode = 1 << hasTag
+	// tagAndConstMode indicates the expression contains tag columns and constants.
+	tagAndConstMode = (1 << hasTag) | (1 << hasConst)
+	// tagAndSubQueryMode indicates the expression contains tag columns and subqueries.
+	tagAndSubQueryMode = (1 << hasTag) | (1 << hasSubQuery)
+)
+
 // checkTagExpr check if expr can push down, including src expr self and children
 func checkTagExpr(src opt.Expr, colMap TagColMap) tagExprMode {
 	switch source := src.(type) {
@@ -840,16 +850,22 @@ func GetBlockFilter(expr opt.Expr, tabID opt.TableID, memo *Memo) FiltersExpr {
 // check if the filter type can be converted to blockfilter
 // blockFilter only supports the following types of expr:
 // !=, >, <, =, >=, <=, between.. and... , in, not in, is null, is not null.
-func checkFilterTypeSupported(cond opt.Expr) bool {
+func checkFilterTypeSupported(cond opt.Expr, md *opt.Metadata) bool {
 	switch cond.(type) {
 	// support !=, >, <, =, >=, <=, between.. and... , in, not in, is null, is not null.
 	case *NeExpr, *GtExpr, *LtExpr, *EqExpr, *GeExpr, *LeExpr, *InExpr, *NotInExpr, *IsExpr, *IsNotExpr:
+		// osn column can not use block filter
+		if variable, ok := cond.Child(0).(*VariableExpr); ok {
+			if md.ColumnMeta(variable.Col).TSType == opt.TSHiddenCol {
+				return false
+			}
+		}
 		return true
 	default:
 		childCount := cond.ChildCount()
 		if childCount > 0 {
 			for i := 0; i < childCount; i++ {
-				childFlag := checkFilterTypeSupported(cond.Child(i))
+				childFlag := checkFilterTypeSupported(cond.Child(i), md)
 				if !childFlag {
 					return false
 				}
@@ -871,7 +887,7 @@ func shouldAddBlockFilter(filter FiltersItem, tabID opt.TableID, memo *Memo) boo
 		return false
 	}
 
-	if !checkFilterTypeSupported(filter.Condition) {
+	if !checkFilterTypeSupported(filter.Condition, memo.Metadata()) {
 		return false
 	}
 

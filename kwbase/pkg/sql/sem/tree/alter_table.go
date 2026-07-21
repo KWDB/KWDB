@@ -25,6 +25,7 @@
 package tree
 
 import (
+	"strconv"
 	"strings"
 
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
@@ -230,6 +231,8 @@ type AlterTableAlterColumnType struct {
 	ToType        *types.T
 	Using         Expr
 	EncodeAlgo    *string
+	RelErr        *float64
+	AbsErr        *float64
 	CompressAlgo  *string
 	CompressLevel *string
 }
@@ -259,6 +262,14 @@ func (node *AlterTableAlterColumnType) Format(ctx *FmtCtx) {
 	if node.EncodeAlgo != nil {
 		ctx.WriteString(" ENCODE ")
 		ctx.WriteString(*node.EncodeAlgo)
+		if node.RelErr != nil {
+			ctx.WriteString(" REL ")
+			ctx.WriteString(strconv.FormatFloat(*node.RelErr, 'f', -1, 64))
+		}
+		if node.AbsErr != nil {
+			ctx.WriteString(" ABS ")
+			ctx.WriteString(strconv.FormatFloat(*node.AbsErr, 'f', -1, 64))
+		}
 	}
 	if node.CompressAlgo != nil {
 		ctx.WriteString(" COMPRESS ")

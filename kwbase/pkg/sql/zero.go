@@ -31,18 +31,22 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 )
 
-// zeroNode is a planNode with no columns and no rows and is used for nodes that
+// zeroNode is a PlanNode with no columns and no rows and is used for nodes that
 // have no results. (e.g. a table for which the filtering condition has a
 // contradiction).
+var _ PlanNode = &zeroNode{}
+
 type zeroNode struct {
 	columns sqlbase.ResultColumns
 }
 
-func newZeroNode(columns sqlbase.ResultColumns) *zeroNode {
+// NewZeroNode creates a node that returns zero rows
+// nolint:unexportedreturn
+func NewZeroNode(columns sqlbase.ResultColumns) *zeroNode {
 	return &zeroNode{columns: columns}
 }
 
-func (*zeroNode) startExec(runParams) error    { return nil }
-func (*zeroNode) Next(runParams) (bool, error) { return false, nil }
+func (*zeroNode) StartExec(RunParams) error    { return nil }
+func (*zeroNode) Next(RunParams) (bool, error) { return false, nil }
 func (*zeroNode) Values() tree.Datums          { return nil }
 func (*zeroNode) Close(context.Context)        {}

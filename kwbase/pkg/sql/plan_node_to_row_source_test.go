@@ -27,7 +27,7 @@ func TestSetInput(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
 	t.Run("set_input", func(t *testing.T) {
-		// Create a mock planNode with columns
+		// Create a mock PlanNode with columns
 		source := &valuesNode{
 			columns: sqlbase.ResultColumns{
 				{Name: "col1", Typ: types.Int},
@@ -35,7 +35,7 @@ func TestSetInput(t *testing.T) {
 			},
 		}
 
-		// Create mock runParams
+		// Create mock RunParams
 		extendedEvalCtx := &extendedEvalContext{
 			EvalContext: tree.EvalContext{
 				Annotations: &tree.Annotations{},
@@ -44,10 +44,10 @@ func TestSetInput(t *testing.T) {
 			ExecCfg: &ExecutorConfig{},
 		}
 
-		params := runParams{
-			ctx:             context.Background(),
+		params := RunParams{
+			Ctx:             context.Background(),
 			extendedEvalCtx: extendedEvalCtx,
-			p:               &planner{},
+			p:               &GenericPlanner{},
 		}
 
 		// Test makePlanNodeToRowSource
@@ -63,7 +63,7 @@ func TestInitProcessorProcedure(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
 	t.Run("init_processor_procedure", func(t *testing.T) {
-		// Create a mock planNode with columns
+		// Create a mock PlanNode with columns
 		source := &valuesNode{
 			columns: sqlbase.ResultColumns{
 				{Name: "col1", Typ: types.Int},
@@ -71,7 +71,7 @@ func TestInitProcessorProcedure(t *testing.T) {
 			},
 		}
 
-		// Create mock runParams
+		// Create mock RunParams
 		extendedEvalCtx := &extendedEvalContext{
 			EvalContext: tree.EvalContext{
 				Annotations: &tree.Annotations{},
@@ -81,10 +81,10 @@ func TestInitProcessorProcedure(t *testing.T) {
 			ExecCfg: &ExecutorConfig{},
 		}
 
-		params := runParams{
-			ctx:             context.Background(),
+		params := RunParams{
+			Ctx:             context.Background(),
 			extendedEvalCtx: extendedEvalCtx,
-			p:               &planner{},
+			p:               &GenericPlanner{},
 		}
 
 		// Test makePlanNodeToRowSource
@@ -117,7 +117,7 @@ func TestMakePlanNodeToRowSource(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create a mock planNode with columns
+			// Create a mock PlanNode with columns
 			source := &valuesNode{
 				columns: sqlbase.ResultColumns{
 					{Name: "col1", Typ: types.Int},
@@ -125,7 +125,7 @@ func TestMakePlanNodeToRowSource(t *testing.T) {
 				},
 			}
 
-			// Create mock runParams
+			// Create mock RunParams
 			extendedEvalCtx := &extendedEvalContext{
 				EvalContext: tree.EvalContext{
 					Annotations: &tree.Annotations{},
@@ -134,10 +134,10 @@ func TestMakePlanNodeToRowSource(t *testing.T) {
 				ExecCfg: &ExecutorConfig{},
 			}
 
-			params := runParams{
-				ctx:             context.Background(),
+			params := RunParams{
+				Ctx:             context.Background(),
 				extendedEvalCtx: extendedEvalCtx,
-				p:               &planner{},
+				p:               &GenericPlanner{},
 			}
 
 			// Test makePlanNodeToRowSource
@@ -159,7 +159,7 @@ func TestMakePlanNodeToRowSource(t *testing.T) {
 				t.Errorf("makePlanNodeToRowSource() fastPath = %v, want %v", rowSource.fastPath, tt.fastPath)
 			}
 
-			if rowSource.params.ctx != params.ctx {
+			if rowSource.params.Ctx != params.Ctx {
 				t.Error("makePlanNodeToRowSource() did not set params correctly")
 			}
 
@@ -190,7 +190,7 @@ func TestPlanNodeToRowSourceInterface(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create a mock planNode with columns
+			// Create a mock PlanNode with columns
 			source := &valuesNode{
 				columns: sqlbase.ResultColumns{
 					{Name: "col1", Typ: types.Int},
@@ -198,7 +198,7 @@ func TestPlanNodeToRowSourceInterface(t *testing.T) {
 				},
 			}
 
-			// Create mock runParams
+			// Create mock RunParams
 			extendedEvalCtx := &extendedEvalContext{
 				EvalContext: tree.EvalContext{
 					Annotations: &tree.Annotations{},
@@ -207,10 +207,10 @@ func TestPlanNodeToRowSourceInterface(t *testing.T) {
 				ExecCfg: &ExecutorConfig{},
 			}
 
-			params := runParams{
-				ctx:             context.Background(),
+			params := RunParams{
+				Ctx:             context.Background(),
 				extendedEvalCtx: extendedEvalCtx,
-				p:               &planner{},
+				p:               &GenericPlanner{},
 			}
 
 			rowSource, err := makePlanNodeToRowSource(source, params, false)
@@ -226,8 +226,8 @@ func TestPlanNodeToRowSourceInterface(t *testing.T) {
 				t.Error("planNodeToRowSource.node is nil")
 			}
 
-			if rowSource.params.ctx == nil {
-				t.Error("planNodeToRowSource.params.ctx is nil")
+			if rowSource.params.Ctx == nil {
+				t.Error("planNodeToRowSource.params.Ctx is nil")
 			}
 
 			if len(rowSource.outputTypes) == 0 {
@@ -257,7 +257,7 @@ func TestPlanNodeToRowSourceCallProcedure(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create a mock planNode with columns
+			// Create a mock PlanNode with columns
 			source := &valuesNode{
 				columns: sqlbase.ResultColumns{
 					{Name: "col1", Typ: types.Int},
@@ -265,7 +265,7 @@ func TestPlanNodeToRowSourceCallProcedure(t *testing.T) {
 				},
 			}
 
-			// Create mock runParams
+			// Create mock RunParams
 			extendedEvalCtx := &extendedEvalContext{
 				EvalContext: tree.EvalContext{
 					Annotations: &tree.Annotations{},
@@ -274,10 +274,10 @@ func TestPlanNodeToRowSourceCallProcedure(t *testing.T) {
 				ExecCfg: &ExecutorConfig{},
 			}
 
-			params := runParams{
-				ctx:             context.Background(),
+			params := RunParams{
+				Ctx:             context.Background(),
 				extendedEvalCtx: extendedEvalCtx,
-				p:               &planner{},
+				p:               &GenericPlanner{},
 			}
 
 			rowSource, err := makePlanNodeToRowSource(source, params, false)
@@ -320,7 +320,7 @@ func TestPlanNodeToRowSourceFastPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create a mock planNode with columns
+			// Create a mock PlanNode with columns
 			source := &valuesNode{
 				columns: sqlbase.ResultColumns{
 					{Name: "col1", Typ: types.Int},
@@ -328,7 +328,7 @@ func TestPlanNodeToRowSourceFastPath(t *testing.T) {
 				},
 			}
 
-			// Create mock runParams
+			// Create mock RunParams
 			extendedEvalCtx := &extendedEvalContext{
 				EvalContext: tree.EvalContext{
 					Annotations: &tree.Annotations{},
@@ -337,10 +337,10 @@ func TestPlanNodeToRowSourceFastPath(t *testing.T) {
 				ExecCfg: &ExecutorConfig{},
 			}
 
-			params := runParams{
-				ctx:             context.Background(),
+			params := RunParams{
+				Ctx:             context.Background(),
 				extendedEvalCtx: extendedEvalCtx,
-				p:               &planner{},
+				p:               &GenericPlanner{},
 			}
 
 			rowSource, err := makePlanNodeToRowSource(source, params, tt.fastPath)
@@ -377,7 +377,7 @@ func TestPlanNodeToRowSourceInternalClose(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create a mock planNode with columns
+			// Create a mock PlanNode with columns
 			source := &valuesNode{
 				columns: sqlbase.ResultColumns{
 					{Name: "col1", Typ: types.Int},
@@ -385,7 +385,7 @@ func TestPlanNodeToRowSourceInternalClose(t *testing.T) {
 				},
 			}
 
-			// Create mock runParams
+			// Create mock RunParams
 			extendedEvalCtx := &extendedEvalContext{
 				EvalContext: tree.EvalContext{
 					Annotations: &tree.Annotations{},
@@ -394,10 +394,10 @@ func TestPlanNodeToRowSourceInternalClose(t *testing.T) {
 				ExecCfg: &ExecutorConfig{},
 			}
 
-			params := runParams{
-				ctx:             context.Background(),
+			params := RunParams{
+				Ctx:             context.Background(),
 				extendedEvalCtx: extendedEvalCtx,
-				p:               &planner{},
+				p:               &GenericPlanner{},
 			}
 
 			rowSource, err := makePlanNodeToRowSource(source, params, false)

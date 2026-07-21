@@ -43,6 +43,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/schema"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
@@ -249,11 +250,11 @@ func (sc *SchemaChanger) backfillQueryIntoTable(
 	return sc.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
 		txn.SetFixedTimestamp(ctx, ts)
 
-		// Create an internal planner as the planner used to serve the user query
+		// Create an internal GenericPlanner as the GenericPlanner used to serve the user query
 		// would have committed by this point.
 		p, cleanup := NewInternalPlanner(desc, txn, security.RootUser, &MemoryMetrics{}, sc.execCfg)
 		defer cleanup()
-		localPlanner := p.(*planner)
+		localPlanner := p.(*GenericPlanner)
 		stmt, err := parser.ParseOne(query)
 		if err != nil {
 			return err
@@ -263,7 +264,7 @@ func (sc *SchemaChanger) backfillQueryIntoTable(
 		localPlanner.stmt = &Statement{Statement: stmt}
 		localPlanner.optPlanningCtx.init(localPlanner)
 
-		localPlanner.runWithOptions(resolveFlags{skipCache: true}, func() {
+		localPlanner.RunWithOptions(ResolveFlags{SkipCache: true}, func() {
 			err = localPlanner.makeOptimizerPlan(ctx)
 		})
 
@@ -302,7 +303,7 @@ func (sc *SchemaChanger) backfillQueryIntoTable(
 
 		rec, err := sc.distSQLPlanner.checkSupportForNode(localPlanner.curPlan.plan)
 		var planAndRunErr error
-		localPlanner.runWithOptions(resolveFlags{skipCache: true}, func() {
+		localPlanner.RunWithOptions(ResolveFlags{SkipCache: true}, func() {
 			// Resolve subqueries before running the queries' physical plan.
 			if len(localPlanner.curPlan.subqueryPlans) != 0 {
 				if !sc.distSQLPlanner.PlanAndRunSubqueries(
@@ -521,7 +522,7 @@ func (sc *SchemaChanger) exec(ctx context.Context) error {
 		// Unsplit all manually split ranges in the table so they can be
 		// automatically merged by the merge queue.
 		if err := sc.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
-			ranges, err := ScanMetaKVs(ctx, txn, tableDesc.TableSpan())
+			ranges, err := sqlutil.ScanMetaKVs(ctx, txn, tableDesc.TableSpan())
 			if err != nil {
 				return err
 			}
@@ -773,7 +774,7 @@ func (sc *SchemaChanger) rollbackSchemaChange(ctx context.Context, err error) er
 				if dependencyDesc.Dropped() {
 					continue
 				}
-				dependencyDesc.DependedOnBy = removeMatchingReferences(dependencyDesc.DependedOnBy, desc.ID)
+				dependencyDesc.DependedOnBy = RemoveMatchingReferences(dependencyDesc.DependedOnBy, desc.ID)
 				if err := writeDescToBatch(ctx, false /* kvTrace */, sc.settings, b, depID, dependencyDesc); err != nil {
 					return err
 				}
@@ -1480,7 +1481,7 @@ func (sc *SchemaChanger) maybeReverseMutations(ctx context.Context, causingError
 					if !ok {
 						return errors.AssertionFailedf("required table with ID %d not provided to update closure", sc.tableID)
 					}
-					if err := removeFKBackReferenceFromTable(backrefTable, fk.Name, scDesc.TableDesc()); err != nil {
+					if err := schema.RemoveFKBackReferenceFromTable(backrefTable, fk.Name, scDesc.TableDesc()); err != nil {
 						// The function being called will return an assertion error if the
 						// backreference was not found, but it may not have been installed
 						// during the incomplete schema change, so we swallow the error.
