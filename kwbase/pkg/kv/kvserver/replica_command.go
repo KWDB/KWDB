@@ -1767,9 +1767,11 @@ func prepareChangeReplicasTrigger(
 		if len(added) > 0 {
 			deprecatedChangeType = roachpb.ADD_REPLICA
 			deprecatedRepDesc = added[0]
-		} else {
+		} else if len(removed) > 0 {
 			deprecatedChangeType = roachpb.REMOVE_REPLICA
 			deprecatedRepDesc = removed[0]
+		} else {
+			return nil, errors.New("cannot create ChangeReplicasTrigger for empty change on pre-atomic cluster")
 		}
 		crt = &roachpb.ChangeReplicasTrigger{
 			// NB: populate Desc as well because locally we rely on it being
