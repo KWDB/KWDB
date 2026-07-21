@@ -892,6 +892,9 @@ func (t *timeSeriesImportInfo) ingestForAllPayload(
 		var payloadSet [][]byte
 		for _, val := range payloadNodeMap[int(t.flowCtx.EvalCtx.NodeID)].PerNodePayloads {
             payloadSet = append(payloadSet, val.Payload)
+            if osn == 0 {
+                osn = sqlbase.DecodeOsnIDFromPayload(val.Payload)
+            }
         }
         resp, _, err := t.flowCtx.Cfg.TsEngine.PutData(uint64(t.tbID), payloadSet, uint64(0), t.writeWAL, nil)
         if err != nil {
@@ -902,10 +905,10 @@ func (t *timeSeriesImportInfo) ingestForAllPayload(
             }
             return err
         }
-        t.handleDedupResp(ctx, resp, false, int64(len(datums)), datums, string(val.PrimaryTagKey))
+        t.handleDedupResp(ctx, resp, false, int64(len(datums)), datums, "string(val.PrimaryTagKey)")
 
         if cdcSendData != nil {
-            cdcSendData.OSN = sqlbase.DecodeOsnIDFromPayload(val.Payload)
+            cdcSendData.OSN = osn
             t.flowCtx.Cfg.CDCCoordinator.SendRows(cdcSendData)
         }
 
