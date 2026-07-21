@@ -891,28 +891,28 @@ func (t *timeSeriesImportInfo) ingestForAllPayload(
 	if t.flowCtx.EvalCtx.StartSinglenode {
 		var payloadSet [][]byte
 		for _, val := range payloadNodeMap[int(t.flowCtx.EvalCtx.NodeID)].PerNodePayloads {
-            payloadSet = append(payloadSet, val.Payload)
-            if osn == 0 {
-                osn = sqlbase.DecodeOsnIDFromPayload(val.Payload)
-            }
-        }
-        resp, _, err := t.flowCtx.Cfg.TsEngine.PutData(uint64(t.tbID), payloadSet, uint64(0), t.writeWAL, nil)
-        if err != nil {
-            for i := range datums {
-                cols := datums[i]
-                rowString := tree.ConvertDatumsToStr(cols, ',')
-                t.handleCoruptedResult(ctx, rowString, err)
-            }
-            return err
-        }
-        t.handleDedupResp(ctx, resp, false, int64(len(datums)), datums, "string(val.PrimaryTagKey)")
+			payloadSet = append(payloadSet, val.Payload)
+			if osn == 0 {
+				osn = sqlbase.DecodeOsnIDFromPayload(val.Payload)
+			}
+		}
+		resp, _, err := t.flowCtx.Cfg.TsEngine.PutData(uint64(t.tbID), payloadSet, uint64(0), t.writeWAL, nil)
+		if err != nil {
+			for i := range datums {
+				cols := datums[i]
+				rowString := tree.ConvertDatumsToStr(cols, ',')
+				t.handleCoruptedResult(ctx, rowString, err)
+			}
+			return err
+		}
+		t.handleDedupResp(ctx, resp, false, int64(len(datums)), datums, "string(val.PrimaryTagKey)")
 
-        if cdcSendData != nil {
-            cdcSendData.OSN = osn
-            t.flowCtx.Cfg.CDCCoordinator.SendRows(cdcSendData)
-        }
+		if cdcSendData != nil {
+			cdcSendData.OSN = osn
+			t.flowCtx.Cfg.CDCCoordinator.SendRows(cdcSendData)
+		}
 
-        return err
+		return err
 	}
 
 	ba := t.txn.NewBatch()
@@ -945,8 +945,8 @@ func (t *timeSeriesImportInfo) ingestForAllPayload(
 		ruleType, succeedCount, _ = resp.DedupRule, resp.Header().NumKeys, resp.DiscardBitmap
 		allSucceedCount += succeedCount
 		if osn == 0 || osn > resp.OsnID {
-            osn = resp.OsnID
-        }
+			osn = resp.OsnID
+		}
 	}
 	switch ruleType {
 	case int64(execinfrapb.DedupRule_TsReject):
@@ -965,7 +965,7 @@ func (t *timeSeriesImportInfo) ingestForAllPayload(
 	default:
 		t.addResultCount(int64(len(datums)))
 	}
-    if cdcSendData != nil {
+	if cdcSendData != nil {
 		cdcSendData.OSN = osn
 		t.flowCtx.Cfg.CDCCoordinator.SendRows(cdcSendData)
 	}
