@@ -546,3 +546,31 @@ INSERT INTO t_state_w.tb VALUES ('2023-10-01 10:10:00', '2023-10-01 10:10:00', 3
 INSERT INTO t_state_w.tb VALUES ('2023-10-01 10:15:00', '2023-10-01 10:15:00', 4, 4, 4, 4.4, 4.4, FALSE, 'D', 'Test4', 'D', 'NChar4', 'Desc4', 'Varchar254_4', 'Varchar4096_4', 'Nvarchar4', 'Nvarchar255_4', 'Nvarchar4096_4', 'Varbytes4', 'Varbytes100_4', 'Varbytes4', 'Varbytes254_4', 'Varbytes4096_4', 4, 4, 4, FALSE, 4.4, 4.4, 'D', 'Tag8_4', 'D', 'Nchar254_4', 'Varchar4', 'Tag12_4', 'Varbytes4', 'Varbytes100_4', 'Varbytes4', 'Varbytes255_4');
 SELECT first(k_timestamp) AS start_time, last(k_timestamp) AS end_time, count(*) AS record_count, last(e1) AS last_e1, last(e2) AS last_e2, last(e3) AS last_e3, last(e4) AS last_e4, last(e5) AS last_e5, last(e6) AS last_e6, last(e7) AS last_e7, last(e8) AS last_e8, last(e9) AS last_e9, last(e10) AS last_e10, last(e11) AS last_e11, last(e12) AS last_e12, last(e13) AS last_e13, last(e14) AS last_e14, last(e15) AS last_e15, last(e16) AS last_e16, last(e17) AS last_e17, last(e18) AS last_e18, last(e19) AS last_e19, last(e20) AS last_e20, last(e21) AS last_e21, last(e22) AS last_e22, last(t1) AS last_t1, last(t2) AS last_t2, last(t3) AS last_t3, last(t4) AS last_t4, last(t5) AS last_t5, last(t6) AS last_t6, last(t7) AS last_t7, last(t8) AS last_t8, last(t9) AS last_t9, last(t10) AS last_t10, last(t11) AS last_t11, last(t12) AS last_t12, last(t13) AS last_t13, last(t14) AS last_t14, last(t15) AS last_t15, last(t16) AS last_t16 FROM t_state_w.tb GROUP BY state_window(case when e8 = 'B' then 1 when e8 = 'D' then 0 end);
 drop database t_state_w cascade;
+
+---------- fix time_window timestamp cast with timestamptz first start ----------
+SET vectorize = off;
+
+CREATE TS DATABASE test_time_window_cast;
+
+CREATE TABLE test_time_window_cast.t_tz (
+    ts TIMESTAMPTZ NOT NULL,
+    v INT
+) TAGS (
+    id INT NOT NULL
+) PRIMARY TAGS (id);
+
+INSERT INTO test_time_window_cast.t_tz VALUES
+    ('2020-01-01 00:00:00+00', 1, 1),
+    ('2020-01-01 00:00:05+00', 2, 1),
+    ('2020-01-01 00:00:08+00', 3, 1),
+    ('2020-01-01 00:00:20+00', 4, 1),
+    ('2020-01-01 00:00:25+00', 5, 1);
+
+SELECT first(ts) AS f, count(*) AS c
+FROM test_time_window_cast.t_tz
+GROUP BY time_window(ts::timestamp, '10s')
+ORDER BY f;
+
+DROP DATABASE test_time_window_cast CASCADE;
+SET vectorize = DEFAULT;
+---------- fix time_window timestamp cast with timestamptz first end ----------

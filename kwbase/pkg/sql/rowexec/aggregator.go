@@ -495,19 +495,18 @@ func (gw *groupWindow) handleTimeWindowWithNoSlide(
 			gw.timeWindowHelper.tsTimeStampStartTZ = *newTimeDur
 			gw.groupWindowValue++
 			if gw.groupFirst >= 0 {
-				row[gw.groupFirst].Datum = newTimeDur
+				row[gw.groupFirst].Datum = makeTimeWindowBoundary(newTimeDur.Time, &typ[gw.groupFirst])
 			}
 			if gw.groupLast >= 0 {
-				row[gw.groupLast].Datum = newEndTimeDur
+				row[gw.groupLast].Datum = makeTimeWindowBoundary(newEndTimeDur.Time, &typ[gw.groupLast])
 			}
 		} else {
 			durTime := duration.Add(newTimeDur.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration.Duration)
-			newTime := &tree.DTimestampTZ{Time: durTime}
 			if gw.groupFirst >= 0 {
-				row[gw.groupFirst].Datum = newTime
+				row[gw.groupFirst].Datum = makeTimeWindowBoundary(durTime, &typ[gw.groupFirst])
 			}
 			if gw.groupLast >= 0 {
-				row[gw.groupLast].Datum = newTime
+				row[gw.groupLast].Datum = makeTimeWindowBoundary(durTime, &typ[gw.groupLast])
 			}
 		}
 		row[gw.groupWindowColID] = encodeDatum(gw.groupWindowValue, typ[gw.groupWindowColID])
@@ -531,19 +530,18 @@ func (gw *groupWindow) handleTimeWindowWithNoSlide(
 			gw.timeWindowHelper.tsTimeStampStart = *newTimeDur
 			gw.groupWindowValue++
 			if gw.groupFirst >= 0 {
-				row[gw.groupFirst].Datum = newTimeDur
+				row[gw.groupFirst].Datum = makeTimeWindowBoundary(newTimeDur.Time, &typ[gw.groupFirst])
 			}
 			if gw.groupLast >= 0 {
-				row[gw.groupLast].Datum = newEndTimeDur
+				row[gw.groupLast].Datum = makeTimeWindowBoundary(newEndTimeDur.Time, &typ[gw.groupLast])
 			}
 		} else {
 			durTime := duration.Add(newTimeDur.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration.Duration)
-			newTime := &tree.DTimestamp{Time: durTime}
 			if gw.groupFirst >= 0 {
-				row[gw.groupFirst].Datum = newTime
+				row[gw.groupFirst].Datum = makeTimeWindowBoundary(durTime, &typ[gw.groupFirst])
 			}
 			if gw.groupLast >= 0 {
-				row[gw.groupLast].Datum = newTime
+				row[gw.groupLast].Datum = makeTimeWindowBoundary(durTime, &typ[gw.groupLast])
 			}
 		}
 		row[gw.groupWindowColID] = encodeDatum(gw.groupWindowValue, typ[gw.groupWindowColID])
@@ -551,6 +549,16 @@ func (gw *groupWindow) handleTimeWindowWithNoSlide(
 		return errors.New("first arg should be timestamp or timestamptz")
 	}
 	return nil
+}
+
+// makeTimeWindowBoundary preserves the type of the internal first/last column.
+// The time_window expression can be explicitly cast to a different timestamp
+// family than the source timestamp selected by first(ts) or last(ts).
+func makeTimeWindowBoundary(t time.Time, typ *types.T) tree.Datum {
+	if typ.Family() == types.TimestampTZFamily {
+		return tree.MakeDTimestampTZ(t, 0)
+	}
+	return tree.MakeDTimestamp(t, 0)
 }
 
 // handleTimeTZWindowWithSlide is used to handle the sliding time window with timestampTZ.

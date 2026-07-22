@@ -37,6 +37,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
+	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 )
 
 type aggTestSpec struct {
@@ -57,6 +58,28 @@ func aggregations(aggTestSpecs []aggTestSpec) []execinfrapb.AggregatorSpec_Aggre
 		agg[i].FilterColIdx = spec.filterColIdx
 	}
 	return agg
+}
+
+func TestMakeTimeWindowBoundary(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	testCases := []struct {
+		name string
+		typ  *types.T
+		want *types.T
+	}{
+		{name: "timestamp", typ: types.Timestamp, want: types.Timestamp},
+		{name: "timestamp with time zone", typ: types.TimestampTZ, want: types.TimestampTZ},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := makeTimeWindowBoundary(timeutil.Unix(0, 0), tc.typ)
+			if !got.ResolvedType().Equivalent(tc.want) {
+				t.Fatalf("makeTimeWindowBoundary() type = %s, want %s", got.ResolvedType(), tc.want)
+			}
+		})
+	}
 }
 
 // TODO(irfansharif): Add tests to verify the following aggregation functions:
