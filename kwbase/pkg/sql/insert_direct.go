@@ -435,7 +435,8 @@ func TsprepareTypeCheck(
 					err = intFormatText(Args, idx, inferTypes[idx], column)
 				case oid.T_float8, oid.T_float4:
 					err = floatFormatText(Args, idx, inferTypes[idx], column)
-				case oid.T_varchar, oid.T_bpchar, oid.T_bytea, oid.T_varbytea, types.T_nchar, types.T_nvarchar:
+				case oid.T_char, oid.T_varchar, oid.T_bpchar, oid.T_text, oid.T_bytea, oid.T_varbytea, types.T_nchar,
+					types.T_nvarchar, types.T_geometry:
 					err = charFormatText(ptCtx, Args, idx, column, isFirstCols, &rowTimestamps)
 				case oid.T_bool:
 					err = boolFormatText(Args, idx)
@@ -452,7 +453,8 @@ func TsprepareTypeCheck(
 					err = float8FormatBinary(Args, idx, column)
 				case oid.T_float4:
 					err = float4FormatBinary(Args, idx, column)
-				case oid.T_varchar, oid.T_bpchar, oid.T_bytea, oid.T_varbytea, types.T_nchar, types.T_nvarchar:
+				case oid.T_char, oid.T_varchar, oid.T_bpchar, oid.T_text, oid.T_bytea, oid.T_varbytea, types.T_nchar,
+					types.T_nvarchar, types.T_geometry:
 					err = charFormatBinary(ptCtx, Args, idx, column, isFirstCols, &rowTimestamps)
 				case oid.T_bool:
 					err = boolFormatBinary(Args, idx)
