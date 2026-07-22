@@ -32,6 +32,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/builtins"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
@@ -124,29 +125,19 @@ func (n *createFunctionNode) StartExec(params RunParams) error {
 	if err := sql.WriteKWDBDesc(params.Ctx, params.PlannerTxn(), sqlbase.UDRTable, rows, false); err != nil {
 		return err
 	}
-	if err := params.PlannerTxn().Commit(params.Ctx); err != nil {
+
+	// Register UDF definition
+	fd, err := builtins.RegisterLuaUDFs(tree.Datums{tree.NewDBytes(tree.DBytes(descValue))})
+	if err != nil {
 		return err
 	}
 
-	if err := sql.GossipUdfAdded(params.ExecCfg().Gossip, funcName); err != nil {
+	tree.ConcurrentFunDefs.RegisterFunc(funcName, fd)
+
+	if err := sql.GossipUdfAdded(params.GetPlanner().ExecCfg().Gossip, funcName); err != nil {
 		return err
 	}
 
-	// Since gossip execution is asynchronous, a waiting mechanism is added to ensure that functions are registered immediately.
-	timeout := time.After(3 * time.Second)
-	ticker := time.NewTicker(300 * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-timeout:
-			return pgerror.Newf(pgcode.Warning, "create %s function hits timeout problem broadcasting across cluster, it might not be available on other nodes", funcName)
-		case <-ticker.C:
-			if _, ok := tree.ConcurrentFunDefs.LookupFunc(funcName); ok {
-				return nil
-			}
-		}
-	}
 	return nil
 }
 
