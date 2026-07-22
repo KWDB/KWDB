@@ -304,9 +304,20 @@ KStatus TSEngineImpl::Init(kwdbContext_p ctx) {
   PreClearDroppedTables();
   fs::path db_path{options_.db_path};
   assert(!db_path.empty());
-  schema_mgr_ = std::make_unique<TsEngineSchemaManager>(db_path / schema_directory);
+  // Db-level schema state lives beside (not inside) the table schema dir so
+  // the numeric table-dir scanners never see it; the db manager is created
+  // first because every table schema manager holds a raw pointer to it.
+  db_schema_mgr_ = std::make_unique<TsDBSchemaManager>(options_.db_path);
+  schema_mgr_ = std::make_unique<TsEngineSchemaManager>(db_path / schema_directory, db_schema_mgr_.get());
   KStatus s = schema_mgr_->Init(ctx);
   if (s != KStatus::SUCCESS) {
+    return s;
+  }
+  // Recover per-db entity id counters (persisted files merged with the tag
+  // table scan); must run after the table schema managers are loaded.
+  s = db_schema_mgr_->Init(schema_mgr_.get());
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("TsDBSchemaManager init failed");
     return s;
   }
 
@@ -326,12 +337,6 @@ KStatus TSEngineImpl::Init(kwdbContext_p ctx) {
     return s;
   }
 
-  std::vector<uint32_t> max_entity_id_MEI(options_.vgroup_max_num, 0);
-  if (readEntityIds(max_entity_id_MEI) == KStatus::FAIL) {
-    LOG_ERROR("Failed to read entity ids from MEI file.")
-    return KStatus::FAIL;
-  }
-
   for (int vgroup_id = 1; vgroup_id <= EngineOptions::vgroup_max_num; vgroup_id++) {
     std::unique_ptr<TsVGroup> vgroup = nullptr;
     if (vgroup_configured) {
@@ -344,17 +349,23 @@ KStatus TSEngineImpl::Init(kwdbContext_p ctx) {
     if (s != KStatus::SUCCESS) {
       return s;
     }
-    uint32_t entity_id = 0;
-    s = GetMaxEntityIdByVGroupId(ctx, vgroup_id, entity_id);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("GetMaxEntityIdByVGroupId failed, vgroup id:%d", vgroup_id);
-      return s;
-    }
-    entity_id = max(entity_id, max_entity_id_MEI[vgroup_id - 1]);
-
-    vgroup->InitEntityID(entity_id);
     vgroups_.push_back(std::move(vgroup));
   }
+
+  // Must run after vgroups are loaded (partition lists enumerate dbs whose
+  // tables were all dropped) and before WAL recovery allocates entity ids.
+  s = migrateLegacyMaxEntityIdFile(ctx);
+  if (s != KStatus::SUCCESS) {
+    return s;
+  }
+
+  // Pre-populate last-row caches with Recovering entries so the first
+  // GetEntityLastRow after restart lazily recovers the real last row from
+  // disk, matching the old InitEntityID behaviour.
+  for (auto& vgroup : vgroups_) {
+    vgroup->InitEntityLatestRowForRestart(schema_mgr_.get());
+  }
+
   LOG_INFO("TS engine WAL level is: %d", options_.wal_level);
   wal_mgr_ = std::make_unique<WALMgr>(options_.db_path, "engine", &options_);
   auto res = wal_mgr_->Init(ctx);
@@ -551,6 +562,14 @@ KStatus TSEngineImpl::CheckAndDropTsTable(kwdbContext_p ctx, const KTableKey& ta
     LOG_ERROR("Get table [%lu] schema manager failed", table_id);
     return s;
   }
+  auto db_schema = table_schema_mgr->GetDbSchemaMgr();
+  if (db_schema != nullptr) {
+    s = db_schema->Persist();
+    if (s == FAIL) {
+      return FAIL;
+    }
+  }
+
   schema_mgr_->SetTableDropped(table_id);
   if (tables_cache_->Exists(table_id)) {
     tables_cache_->Erase(table_id);
@@ -799,7 +818,12 @@ KStatus TSEngineImpl::InsertTagData(kwdbContext_p ctx, const std::shared_ptr<TsT
         LOG_ERROR("GetColumnsExcludeDropped failed.");
         return s;
       }
-      entity_id = vgroup->AllocateEntityID();
+      s = tb_schema->AllocateEntityID(vgroup_id, entity_id);
+      if (s == FAIL) {
+        LOG_ERROR("cannot allocate entity id for new tag. table id: %lu, maybe the table is dropped.",
+                  tb_schema->GetTableId());
+        return FAIL;
+      }
       s = putTagData(ctx, tb_schema->GetTableId(), vgroup_id, entity_id, p);
       if (s != KStatus::SUCCESS) {
         return s;
@@ -2048,6 +2072,16 @@ KStatus TSEngineImpl::readEntityIds(std::vector<uint32_t>& max_entity_ids) {
   max_entity_id_file_.seekg(0, std::ios::beg);
   size_t file_size = kwdbts::EngineOptions::vgroup_max_num * sizeof(uint32_t);
 
+  // The legacy file has one uint32 per vgroup; a size mismatch means
+  // vgroup_max_num changed across restarts, which is not supported.
+  std::error_code ec;
+  auto real_size = fs::file_size(filePath, ec);
+  if (ec || real_size != file_size) {
+    LOG_ERROR("MEI file [%s] size %lu does not match vgroup_max_num %d", filePath.c_str(),
+              ec ? 0UL : real_size, kwdbts::EngineOptions::vgroup_max_num)
+    return KStatus::FAIL;
+  }
+
   max_entity_id_file_.read(reinterpret_cast<char*>(max_entity_ids.data()), file_size);
 
   if (!max_entity_id_file_) {
@@ -2058,50 +2092,50 @@ KStatus TSEngineImpl::readEntityIds(std::vector<uint32_t>& max_entity_ids) {
   return KStatus::SUCCESS;
 }
 
-KStatus TSEngineImpl::writeEntityIdsBinary(const std::vector<uint32_t>& max_entity_ids) {
-  fs::path filePath = fs::path(options_.db_path) / "vg.mei";
-  std::lock_guard<std::mutex> lock(file_mutex_);
-  max_entity_id_file_.open(filePath, std::ios::out | std::ios::binary);
-  if (!max_entity_id_file_.is_open()) {
-    LOG_ERROR("Cannot open the MEI file.[%s]", filePath.c_str())
+// One-shot migration of the legacy vg.mei file (per-vgroup global max entity
+// ids, written by DropTsTable before entity ids became per-db). The legacy
+// max carries no db dimension, so every db that may hold pre-upgrade data
+// gets it as a per-vgroup floor, then per-db max_entity_id files are
+// persisted and vg.mei is removed. Idempotent: merging is max-based and the
+// file is removed only after all per-db files are persisted, so a crash
+// mid-migration just re-runs it on the next startup.
+KStatus TSEngineImpl::migrateLegacyMaxEntityIdFile(kwdbContext_p ctx) {
+  fs::path mei_path = fs::path(options_.db_path) / "vg.mei";
+  if (!fs::exists(mei_path)) {
+    return KStatus::SUCCESS;
+  }
+  std::vector<uint32_t> legacy_max_ids(EngineOptions::vgroup_max_num, 0);
+  if (readEntityIds(legacy_max_ids) == KStatus::FAIL) {
+    // vg.mei exists means a table was dropped before the upgrade; starting
+    // with a corrupt file could reuse entity ids of that dropped data.
+    LOG_ERROR("Failed to read legacy MEI file [%s], refuse to start", mei_path.c_str());
     return KStatus::FAIL;
   }
-  Defer defer {[&]() {
-    max_entity_id_file_.close();
-    max_entity_id_file_.clear();
-  }};
-  max_entity_id_file_.seekp(0, std::ios::beg);
-
-  size_t size = EngineOptions::vgroup_max_num * sizeof(uint32_t);
-  char* data = new char[size];
-  uint64_t offset = 0;
-  for (auto entity_id : max_entity_ids) {
-    memcpy(data + offset, &entity_id, sizeof(uint32_t));
-    offset += sizeof(uint32_t);
+  // Dbs with any partition on disk may hold pre-upgrade data, including dbs
+  // whose tables were all dropped and are thus invisible to the tag scan.
+  std::set<uint32_t> dbs_with_data;
+  for (const auto& vgroup : vgroups_) {
+    for (const auto& [par_id, par_version] : vgroup->CurrentVersion()->GetAllPartitions()) {
+      dbs_with_data.insert(std::get<0>(par_id));
+    }
   }
-  max_entity_id_file_.write(data, size);
-  max_entity_id_file_.flush();
-  delete []data;
+  KStatus s = schema_mgr_->GetDbSchemaMgr()->MigrateLegacyVgMei(legacy_max_ids, dbs_with_data);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Failed to migrate legacy MEI file [%s]", mei_path.c_str());
+    return s;
+  }
+  std::error_code ec;
+  fs::remove(mei_path, ec);
+  if (ec) {
+    // Not fatal: migration re-runs idempotently on next startup.
+    LOG_WARN("Failed to remove legacy MEI file [%s]: %s", mei_path.c_str(), ec.message().c_str());
+  } else {
+    LOG_INFO("Migrated legacy MEI file into per-db max_entity_id files");
+  }
   return KStatus::SUCCESS;
 }
 
 KStatus TSEngineImpl::DropTsTable(kwdbContext_p ctx, const KTableKey& table_id) {
-  // wirte cur max entity id to MEI file.
-  std::vector<uint32_t> max_entity_ids(kwdbts::EngineOptions::vgroup_max_num, 0);
-  for (auto vgrp_id = 1; vgrp_id <= kwdbts::EngineOptions::vgroup_max_num; ++vgrp_id) {
-    uint32_t entity_id{0};
-    if (GetMaxEntityIdByVGroupId(ctx, vgrp_id, entity_id) == KStatus::FAIL) {
-      LOG_ERROR("Failed to GetMaxEntityIdByVGroupId for vgroup[%d]", vgrp_id)
-      return KStatus::FAIL;
-    }
-    max_entity_ids[vgrp_id - 1] = entity_id;
-  }
-
-  if (writeEntityIdsBinary(max_entity_ids) == KStatus::FAIL) {
-    LOG_ERROR("Failed to writeEntityIdsBinary.")
-    return KStatus::FAIL;
-  }
-
   auto s = CheckAndDropTsTable(ctx, table_id);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("DropTsTable table[%lu] failed.", table_id);
@@ -2917,25 +2951,6 @@ KStatus TSEngineImpl::SetUseRaftLogAsWAL(kwdbContext_p ctx, bool use) {
 
 KStatus TSEngineImpl::GetTsWaitThreadNum(kwdbContext_p ctx, void *resp) {
   return GetWaitThreadNum(ctx, resp);
-}
-
-// get max entity id
-KStatus TSEngineImpl::GetMaxEntityIdByVGroupId(kwdbContext_p ctx, uint32_t vgroup_id, uint32_t& entity_id) {
-  std::vector<std::shared_ptr<TsTableSchemaManager>> tb_schema_manager;
-  KStatus s = GetAllTableSchemaMgrs(tb_schema_manager);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("Get all schema manager failed.");
-    return s;
-  }
-  std::shared_ptr<TagTable> tag_table;
-  for (const auto& schema_mgr : tb_schema_manager) {
-    s = schema_mgr->GetTagSchema(ctx, &tag_table);
-    if (s != KStatus::SUCCESS) {
-      return s;
-    }
-    tag_table->GetMaxEntityIdByVGroupId(vgroup_id, entity_id);
-  }
-  return KStatus::SUCCESS;
 }
 
 KStatus TSEngineImpl::Vacuum(kwdbContext_p ctx, bool force, bool only_agg) {

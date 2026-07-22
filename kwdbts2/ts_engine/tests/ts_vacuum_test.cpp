@@ -45,6 +45,7 @@ class VacuumTest : public testing::Test {
     opts_.db_path = "./tsdb";
   }
 
+  std::unique_ptr<TsDBSchemaManager> db_schema_mgr = nullptr;
   std::unique_ptr<TsEngineSchemaManager> schema_mgr_;
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;
   const std::vector<AttributeInfo>* metric_schema_{nullptr};
@@ -58,7 +59,10 @@ class VacuumTest : public testing::Test {
     fs::remove_all("./schema");
 
     InitKWDBContext(ctx_);
-    schema_mgr_ = std::make_unique<TsEngineSchemaManager>(opts_.db_path + "/schema");
+    db_schema_mgr = std::make_unique<TsDBSchemaManager>(opts_.db_path);
+    schema_mgr_ = std::make_unique<TsEngineSchemaManager>(opts_.db_path + "/schema", db_schema_mgr.get());
+    schema_mgr_->Init(nullptr);
+    db_schema_mgr->Init(schema_mgr_.get());
 
     ConstructRoachpbTableWithTypes(&meta, table_id, dtypes);
     std::shared_ptr<TsTable> ts_table;

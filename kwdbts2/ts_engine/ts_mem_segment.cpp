@@ -195,7 +195,7 @@ KStatus TsMemSegmentManager::PutData(TsRawPayload* pd, const std::shared_ptr<TsT
     }
   }
   row_in_pd = pdd->GenRowDataWithValidInfo(max_row_idx);
-  vgroup_->UpdateEntityLatestRow(entity_id, max_ts, row_in_pd, table_version);
+  vgroup_->UpdateEntityLatestRow(db_id, entity_id, max_ts, row_in_pd, table_version);
   free(row_in_pd.data);
   vgroup_->UpdateEntityAndMaxTs(tb_schema->GetTableId(), max_ts, entity_id);
 
@@ -707,8 +707,10 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
 
 KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& blocks,
                                     const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
-                                    const std::shared_ptr<MMapMetricsTable>& scan_schema,
-                                    TsScanStats* ts_scan_stats) {
+                                    const std::shared_ptr<MMapMetricsTable>& scan_schema, TsScanStats* ts_scan_stats) {
+  if (0 == intent_row_num_.load()) {
+    return KStatus::SUCCESS;
+  }
   std::list<const kwdbts::TSMemSegRowData*> row_datas;
   bool ok = GetEntityRows(filter, &row_datas);
   if (!ok) {

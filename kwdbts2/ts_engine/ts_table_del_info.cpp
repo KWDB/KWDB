@@ -16,6 +16,8 @@
 #include <list>
 #include <unordered_map>
 #include "ts_table_del_info.h"
+#include "lg_api.h"
+#include "libkwdbts2.h"
 #include "ts_compatibility.h"
 #include "ts_vgroup.h"
 #include "ts_ts_lsn_span_utils.h"
@@ -304,7 +306,13 @@ KStatus STTableRangeDelAndTagInfo::WriteDeleteTagRecord(kwdbContext_p ctx, TsRaw
     entity_id = iter->second.entityId;
     pkey_update_idx_.erase(iter);
   } else {
-    entity_id = vgroup->AllocateEntityID();
+    TSEntityID tmp_eid;
+    auto s = table_->GetSchemaManager()->AllocateEntityID(vgroup_id, tmp_eid);
+    if (s == FAIL) {
+      LOG_ERROR("cannot allocate entity id, table id[%lu]. Maybe table is dropped.", table_->GetTableId());
+      return s;
+    }
+    entity_id = tmp_eid;
   }
 
   if (tag_table->InsertDeletedTagRecord(p, vgroup_id, entity_id, p.GetOSN(), type, row_info) < 0) {
@@ -330,7 +338,13 @@ KStatus STTableRangeDelAndTagInfo::WriteUpdateTagRecord(kwdbContext_p ctx, TsRaw
 
   auto iter = pkey_update_idx_.find(std::string(pkey.data, pkey.len));
   if (iter == pkey_update_idx_.end()) {
-    entity_id = table_->GetVGroupByID(vgroup_id)->AllocateEntityID();
+    TSEntityID tmp_eid = 0;
+    auto s = table_->GetSchemaManager()->AllocateEntityID(vgroup_id, tmp_eid);
+    if (s == FAIL) {
+      LOG_ERROR("cannot allocate entity id from table %lu, may be the table is dropped.", table_->GetTableId());
+      return FAIL;
+    }
+    entity_id = tmp_eid;
     EntityResultIndex& cur_idx = pkey_update_idx_[std::string(pkey.data, pkey.len)];
     cur_idx.entityId = entity_id;
     cur_idx.subGroupId = vgroup_id;
@@ -352,7 +366,13 @@ KStatus STTableRangeDelAndTagInfo::WriteInsertTagRecord(kwdbContext_p ctx, TsRaw
   uint32_t groupid = GetConsistentVgroupId(pkey.data, pkey.len, EngineOptions::vgroup_max_num);
   auto iter = pkey_update_idx_.find(std::string(pkey.data, pkey.len));
   if (iter == pkey_update_idx_.end()) {
-    entity_id = table_->GetVGroupByID(groupid)->AllocateEntityID();
+    TSEntityID tmp_eid = 0;  // allocate entity id
+    auto s = table_->GetSchemaManager()->AllocateEntityID(groupid, tmp_eid);
+    if (s == FAIL) {
+      LOG_ERROR("cannot allocate entity id from table %lu, may be the table is dropped.", table_->GetTableId());
+      return FAIL;
+    }
+    entity_id = tmp_eid;
   } else {
     assert(iter->second.subGroupId == groupid);
     entity_id = iter->second.entityId;

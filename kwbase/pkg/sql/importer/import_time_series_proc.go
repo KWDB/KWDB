@@ -252,8 +252,6 @@ type timeSeriesImportInfo struct {
 // datumsInfo channel passed datums between readAndConvert and buildPayloadAndSend. which canbe assaigned by priVal
 type datumsInfo struct {
 	datums []tree.Datums
-	priVal string
-	size   int64
 }
 
 const defaultBatchSize = 500
@@ -371,11 +369,17 @@ func initPrettyColsAndComputeColumnSize(
 	txn := flowCtx.Cfg.DB.NewTxn(ctx, `import_ingest_ts_data`)
 	singleColSize := execbuilder.PreComputePayloadSize(&pArgs, 1)
 	maxBatchSize := int64(maxRPCPayloadLength / singleColSize)
-	batchSize := int64(spec.Format.Csv.BatchRows)
+
+	var columnLen uint64
+	for _, col := range columns {
+		columnLen += col.TsCol.StorageLen
+	}
+
+	batchSize := uint64(spec.Format.Csv.LimitMemory) / columnLen
 	if batchSize <= 0 {
 		batchSize = defaultBatchSize
-	} else if batchSize > maxBatchSize {
-		batchSize = maxBatchSize
+	} else if batchSize > uint64(maxBatchSize) {
+		batchSize = uint64(maxBatchSize)
 	}
 
 	var isSparseTable bool
@@ -384,7 +388,7 @@ func initPrettyColsAndComputeColumnSize(
 	}
 
 	t := &timeSeriesImportInfo{prettyCols: pArgs.PrettyCols, pArgs: pArgs, columns: columns, colIndexs: colIndexs,
-		autoShrink: autoShrink, logColumnID: logColumnID, batchSize: batchSize, fileSplitInfos: fileSplitInfos,
+		autoShrink: autoShrink, logColumnID: logColumnID, batchSize: int64(batchSize), fileSplitInfos: fileSplitInfos,
 		parallelNums: parallelNums, dbID: dbID, tbID: tbID, hashNum: hashNum, flowCtx: flowCtx, dataIndexs: dataIndexs,
 		datumsCh: datumsCh, txn: txn, primaryTagCols: primaryTagCols, isSparseTable: isSparseTable, dataCols: dataCols,
 		table: spec.Table.Desc, OptimizedDispatch: spec.OptimizedDispatch, writeWAL: spec.WriteWAL}
@@ -505,11 +509,9 @@ func (t *timeSeriesImportInfo) getType(id int) (oid.Oid, bool) {
 
 // recordBatch represents recordBatch of data to convert.
 type recordDatums struct {
-	datumsMap   map[string][]tree.Datums
-	count       int64
-	batchSize   int64
-	size        int64
-	historySize int64
+	datumsMap map[string][]tree.Datums
+	count     int64
+	batchSize int64
 }
 
 // append: add datums elements by priVal
@@ -521,7 +523,6 @@ func (r *recordDatums) append(datums tree.Datums, priVal string, readSize int64)
 	}
 	datumSlice = append(datumSlice, datums)
 	r.datumsMap[priVal] = datumSlice
-	r.size = r.LineSize(readSize)
 	r.count++
 }
 
@@ -545,13 +546,11 @@ func (r *recordDatums) flush(ctx context.Context, t *timeSeriesImportInfo) {
 				t.handleCoruptedResult(ctx, tree.ConvertDatumsToStr(datum, ','), ctx.Err())
 			}
 		default:
-			t.datumsCh[workerID] <- datumsInfo{datums: datums, priVal: priVal, size: r.size}
+			t.datumsCh[workerID] <- datumsInfo{datums: datums}
 		}
 	}
-	r.historySize += r.size
 	r.datumsMap = make(map[string][]tree.Datums)
 	r.count = 0
-	r.size = 0
 }
 
 // SetCsvOpt apply opt in roachpb params to csvReader
@@ -572,15 +571,9 @@ func SetCsvOpt(csvReader *csv.Reader, opts roachpb.CSVOptions) {
 }
 
 const (
-	minimalBatchSize       = 10000
-	durationShrink         = 10
-	importDatumDefaultSize = 1 << 20 //1 MiB
+	minimalBatchSize = 10000
+	durationShrink   = 10
 )
-
-// LineSize returns the size of the recordDatums
-func (r *recordDatums) LineSize(allSize int64) int64 {
-	return allSize - r.historySize
-}
 
 // readCSVFile read data from csv file ,skip rows that have been specified
 // by the user or rows that have already been imported.Check if the length
@@ -691,13 +684,7 @@ func (t *timeSeriesImportInfo) readAndConvertTimeSeriesFile(
 		} else {
 			rb.append(datums, priVal, csvReader.ReadSize())
 		}
-		var shouldLimit bool
-		if t.opts.LimitMemory != 0 {
-			shouldLimit = rb.count > avgBatchSize || rb.LineSize(csvReader.ReadSize()) >= t.opts.LimitMemory
-		} else {
-			shouldLimit = rb.count > avgBatchSize
-		}
-		if shouldLimit {
+		if rb.count > avgBatchSize {
 			everFlushed = true
 			rb.flush(ctx, t)
 		}
@@ -826,9 +813,10 @@ func foundNoEmptyColNumbers(datums []tree.Datums, colNum int) []int {
 	return result
 }
 
-func (t *timeSeriesImportInfo) ingest(
+func (t *timeSeriesImportInfo) ingestForAllPayload(
 	ctx context.Context, datums []tree.Datums, workerID int,
 ) error {
+
 	if len(datums) == 0 {
 		return nil
 	}
@@ -901,25 +889,30 @@ func (t *timeSeriesImportInfo) ingest(
 
 	// start && single-node
 	if t.flowCtx.EvalCtx.StartSinglenode {
+		var payloadSet [][]byte
 		for _, val := range payloadNodeMap[int(t.flowCtx.EvalCtx.NodeID)].PerNodePayloads {
-			resp, _, err := t.flowCtx.Cfg.TsEngine.PutData(uint64(t.tbID), [][]byte{val.Payload}, uint64(0), t.writeWAL, nil)
-			if err != nil {
-				for i := range datums {
-					cols := datums[i]
-					rowString := tree.ConvertDatumsToStr(cols, ',')
-					t.handleCoruptedResult(ctx, rowString, err)
-				}
-				return err
+			payloadSet = append(payloadSet, val.Payload)
+			if osn == 0 {
+				osn = sqlbase.DecodeOsnIDFromPayload(val.Payload)
 			}
-			t.handleDedupResp(ctx, resp, false, int64(len(datums)), datums, string(val.PrimaryTagKey))
-
-			if cdcSendData != nil {
-				cdcSendData.OSN = sqlbase.DecodeOsnIDFromPayload(val.Payload)
-				t.flowCtx.Cfg.CDCCoordinator.SendRows(cdcSendData)
+		}
+		resp, _, err := t.flowCtx.Cfg.TsEngine.PutData(uint64(t.tbID), payloadSet, uint64(0), t.writeWAL, nil)
+		if err != nil {
+			for i := range datums {
+				cols := datums[i]
+				rowString := tree.ConvertDatumsToStr(cols, ',')
+				t.handleCoruptedResult(ctx, rowString, err)
 			}
-
 			return err
 		}
+		t.handleDedupResp(ctx, resp, false, int64(len(datums)), datums, "string(val.PrimaryTagKey)")
+
+		if cdcSendData != nil {
+			cdcSendData.OSN = osn
+			t.flowCtx.Cfg.CDCCoordinator.SendRows(cdcSendData)
+		}
+
+		return err
 	}
 
 	ba := t.txn.NewBatch()
@@ -936,22 +929,41 @@ func (t *timeSeriesImportInfo) ingest(
 			CloseWAL:     !t.writeWAL,
 			HashNum:      t.hashNum,
 		})
-		err = t.flowCtx.Cfg.TseDB.Run(ctx, ba)
-		if err != nil {
-			for i := range datums {
-				cols := datums[i]
-				rowString := tree.ConvertDatumsToStr(cols, ',')
-				t.handleCoruptedResult(ctx, rowString, err)
-			}
-			return err
+	}
+	err = t.flowCtx.Cfg.TseDB.Run(ctx, ba)
+	if err != nil {
+		for i := range datums {
+			cols := datums[i]
+			rowString := tree.ConvertDatumsToStr(cols, ',')
+			t.handleCoruptedResult(ctx, rowString, err)
 		}
-		for respsID := range ba.RawResponse().Responses {
-			resp := ba.RawResponse().Responses[respsID].GetInner().(*roachpb.TsRowPutResponse)
-			t.handleDedupResp(ctx, resp, true, int64(len(datums)), datums, string(val.PrimaryTagKey))
-			if osn == 0 || osn > resp.OsnID {
-				osn = resp.OsnID
-			}
+		return err
+	}
+	var ruleType, succeedCount, allSucceedCount int64
+	for respsID := range ba.RawResponse().Responses {
+		resp := ba.RawResponse().Responses[respsID].GetInner().(*roachpb.TsRowPutResponse)
+		ruleType, succeedCount, _ = resp.DedupRule, resp.Header().NumKeys, resp.DiscardBitmap
+		allSucceedCount += succeedCount
+		if osn == 0 || osn > resp.OsnID {
+			osn = resp.OsnID
 		}
+	}
+	switch ruleType {
+	case int64(execinfrapb.DedupRule_TsReject):
+		// reject dedup rule: all rows will abandon
+		if allSucceedCount != 0 {
+			t.addResultCount(int64(len(datums)))
+			break
+		}
+		atomic.AddInt64(&t.AbandonCount, int64(len(datums)))
+	case int64(execinfrapb.DedupRule_TsDiscard):
+		// discard dedup rule: only map with bit 1 was abandon
+		t.addResultCount(allSucceedCount)
+		if allSucceedCount != int64(len(datums)) {
+			atomic.AddInt64(&t.AbandonCount, int64(len(datums))-allSucceedCount)
+		}
+	default:
+		t.addResultCount(int64(len(datums)))
 	}
 	if cdcSendData != nil {
 		cdcSendData.OSN = osn
@@ -1042,131 +1054,33 @@ func (t *timeSeriesImportInfo) ingestDatums(ctx context.Context, closeChan chan 
 			log.Infof(ctx, "[import] write to storage goroutine [%d] finished\n", i)
 		}()
 		datumsChan := t.datumsCh[i]
-		tickDuration := durationShrink * time.Second
-		tick := time.NewTimer(tickDuration)
-		datumsMap := make(map[string][]tree.Datums)
-		avgBatchSize := int(t.batchSize)
+		datumSlice := make([]tree.Datums, 0)
+		var datumNumbers int64
 		for {
 			select {
 			case datumsInfo := <-datumsChan:
 				// every time get datums from convert string to datum finished. assign to target priValrows. if need send to storage. then send.
 				// otherwise put datums to map[priVal]
-				var memorySize int64
-				datumSlice, ok := datumsMap[datumsInfo.priVal]
-				if !ok {
-					datumSlice = make([]tree.Datums, 0, t.batchSize)
-				}
-				memorySize += datumsInfo.size
-				datumSlice = append(datumSlice, datumsInfo.datums...)
-				// fmt.Printf("datumSlice len %d\n",len(datumSlice))
-				var shouldSend bool
-				if t.opts.LimitMemory != 0 {
-					shouldSend = len(datumSlice) > avgBatchSize || memorySize > t.opts.LimitMemory
+				if datumNumbers+int64(len(datumsInfo.datums)) > t.batchSize {
+					if err := t.ingestForAllPayload(ctx, datumSlice, i); err != nil {
+						return err
+					}
+					datumSlice = datumSlice[:0]
+					datumSlice = append(datumSlice, datumsInfo.datums...)
+					datumNumbers = int64(len(datumsInfo.datums))
 				} else {
-					shouldSend = len(datumSlice) > avgBatchSize
+					datumSlice = append(datumSlice, datumsInfo.datums...)
+					datumNumbers += int64(len(datumsInfo.datums))
 				}
-				if shouldSend {
-					// log.Infof(ctx, "import debug info t.ingest by count %d", len(datumSlice))
-					if err := t.ingest(ctx, datumSlice, i); err != nil {
-						var starts, ends string
-						if !reflect.ValueOf(datumSlice[0][t.logColumnID]).IsNil() {
-							starts = datumSlice[0][t.logColumnID].String()
-						}
-						if !reflect.ValueOf(datumSlice[len(datumSlice)-1][t.logColumnID]).IsNil() {
-							ends = datumSlice[len(datumSlice)-1][t.logColumnID].String()
-						}
-						log.Errorf(ctx, "[import]write to storage error, err:%s {data:{%s***%s}...{%s****%s} len: %d}",
-							err.Error(),
-							datumsInfo.priVal, starts,
-							datumsInfo.priVal, ends,
-							len(datumSlice))
-					}
-					datumSlice = make([]tree.Datums, 0, t.batchSize)
-					tick.Reset(tickDuration)
-				}
-				datumsMap[datumsInfo.priVal] = datumSlice
-				if len(datumsMap) > avgBatchSize {
-					// ptag more than batch, every batch data maybe 1. make [][]payload to write
-					for ptag, datums := range datumsMap {
-						if len(datums) > 0 {
-							if err := t.ingest(ctx, datums, i); err != nil {
-								var starts, ends string
-								if !reflect.ValueOf(datumSlice[0][t.logColumnID]).IsNil() {
-									starts = datumSlice[0][t.logColumnID].String()
-								}
-								if !reflect.ValueOf(datumSlice[len(datumSlice)-1][t.logColumnID]).IsNil() {
-									ends = datumSlice[len(datumSlice)-1][t.logColumnID].String()
-								}
-								log.Errorf(ctx, "[import]write to storage error, err:%s {data:{%s***%s}...{%s****%s} len: %d}",
-									err.Error(),
-									datumsInfo.priVal, starts,
-									datumsInfo.priVal, ends,
-									len(datumSlice))
-							}
-							datumsMap[ptag] = make([]tree.Datums, 0, t.batchSize)
-						}
-					}
-				}
-				if t.result.seq != 0 && t.result.seq/int64(avgBatchSize) == 0 {
-					log.Infof(ctx, "%d rows has been write to storage", t.result.seq)
-				}
-			case <-tick.C:
-				// 10s never send to storage. send all ptag datums ever got. and shrink batch by flag
-				tickBatch := 0
-				for priVal, datums := range datumsMap {
-					datumsMap[priVal] = make([]tree.Datums, 0, len(datums))
-					if len(datums) > 0 {
-						tickBatch += len(datums)
-						if err := t.ingest(ctx, datums, i); err != nil {
-							var starts, ends string
-							if !reflect.ValueOf(datums[0][t.logColumnID]).IsNil() {
-								starts = datums[0][t.logColumnID].String()
-							}
-							if !reflect.ValueOf(datums[len(datums)-1][t.logColumnID]).IsNil() {
-								ends = datums[len(datums)-1][t.logColumnID].String()
-							}
-							log.Errorf(ctx, "[import]write to storage error, err:%s {data:{%s***%s}...{%s****%s} len: %d}",
-								err.Error(),
-								priVal, starts,
-								priVal, ends,
-								len(datums))
-						}
-					}
-				}
-				if avgBatchSize > durationShrink && t.autoShrink {
-					avgBatchSize = (avgBatchSize + tickBatch) / durationShrink
-					tickBatch = 0
-					t.batchSize = int64(avgBatchSize)
-					log.Infof(ctx, "import debug info shrink batch, avgBatchSize=%d", avgBatchSize)
-				}
-				tick.Reset(tickDuration)
 			case <-ctx.Done():
 				return ctx.Err()
 			case <-closeChan:
 				// all datums read finished. which may remain in channel. get and send to storage
 				for datumsInfo := range datumsChan {
-					datumSlice, ok := datumsMap[datumsInfo.priVal]
-					if !ok {
-						datumSlice = make([]tree.Datums, 0, t.batchSize)
-					}
 					datumSlice = append(datumSlice, datumsInfo.datums...)
-					datumsMap[datumsInfo.priVal] = datumSlice
 				}
-				for priVal, datums := range datumsMap {
-					if err := t.ingest(ctx, datums, i); err != nil {
-						var starts, ends string
-						if !reflect.ValueOf(datums[0][t.logColumnID]).IsNil() {
-							starts = datums[0][t.logColumnID].String()
-						}
-						if !reflect.ValueOf(datums[len(datums)-1][t.logColumnID]).IsNil() {
-							ends = datums[len(datums)-1][t.logColumnID].String()
-						}
-						log.Errorf(ctx, "[import]write to storage error, err:%s {data:{%s***%s}...{%s****%s} len: %d}",
-							err.Error(),
-							priVal, starts,
-							priVal, ends,
-							len(datums))
-					}
+				if err := t.ingestForAllPayload(ctx, datumSlice, i); err != nil {
+					return err
 				}
 				return nil
 			}

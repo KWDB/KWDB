@@ -366,13 +366,15 @@ KStatus TsTableImpl::GetOffsetIterator(kwdbContext_p ctx, const IteratorParams &
     ts_scan_cols.emplace_back(actual_cols[col]);
   }
 
+
   std::unordered_map<uint32_t, std::vector<EntityID>> vgroup_ids;
   std::unordered_map<uint32_t, std::shared_ptr<TsVGroup>> vgroups;
   if (params.entity_ids.empty()) {
     k_uint32 max_vgroup_id = vgroups_.size();
     for (k_uint32 vgroup_id = 1; vgroup_id <= max_vgroup_id; ++vgroup_id) {
       std::shared_ptr<TsVGroup> vgroup = vgroups_[vgroup_id - 1];
-      std::vector<EntityID> entities(vgroup->GetMaxEntityID());
+      auto max_entity_id = table_schema_mgr_->GetMaxEntityID(vgroup_id);
+      std::vector<EntityID> entities(max_entity_id);
       if (entities.empty()) continue;
       std::iota(entities.begin(), entities.end(), 1);
       vgroup_ids[vgroup_id] = entities;
@@ -549,8 +551,6 @@ KStatus TsTableImpl::DeleteEntities(kwdbContext_p ctx,  std::vector<std::string>
     if (s != KStatus::SUCCESS) {
       LOG_WARN("DeleteEntity failed. vgrp[%u], entity_id[%u]", v_group_id, entity_id);
     }
-    GetVGroupByID(v_group_id)->ResetEntityMaxTs(table_id_, INT64_MAX, entity_id);
-    GetVGroupByID(v_group_id)->ResetEntityLatestRow(entity_id, INT64_MAX);
   }
   return KStatus::SUCCESS;
 }
@@ -1013,18 +1013,8 @@ KStatus TsTableImpl::DeleteData(kwdbContext_p ctx, uint64_t range_group_id, std:
     }
   }
   // write WAL and remove metric datas.
-  auto s = GetVGroupByID(v_group_id)->DeleteData(ctx, table_id_, primary_tag, entity_id,
-                                                ts_spans, count, mtr_id, osn, true);
-  if (s != KStatus::SUCCESS) {
-    return s;
-  }
-  timestamp64 max_ts = INT64_MIN;
-  for (auto span : ts_spans) {
-    max_ts = (max_ts < span.end) ? span.end : max_ts;
-  }
-  GetVGroupByID(v_group_id)->ResetEntityMaxTs(table_id_, max_ts, entity_id);
-  GetVGroupByID(v_group_id)->ResetEntityLatestRow(entity_id, max_ts);
-  return KStatus::SUCCESS;
+  return GetVGroupByID(v_group_id)
+      ->DeleteData(ctx, table_id_, primary_tag, entity_id, ts_spans, count, mtr_id, osn, true);
 }
 
 KStatus TsTableImpl::DeleteEntityByTag(kwdbContext_p ctx, const std::vector<uint32_t/*index_id*/> &tags_index_id,
@@ -1211,7 +1201,8 @@ KStatus TsTableImpl::GetLastRowBatch(kwdbContext_p ctx, uint32_t table_version, 
   EntityResultIndex entity_id = {0, 0, 0};
 
   for (auto& vgroup : vgroups_) {
-    if (0 == vgroup->GetMaxEntityID()) continue;
+    auto max_entity_id = table_schema_mgr_->GetMaxEntityID(vgroup->GetVGroupID());
+    if (max_entity_id == 0) continue;
     // TODO(liumengzhen) problem of multiple tables exists.
     if (!vgroup->isLastRowEntityPayloadValid(table_id_)) {
       valid = false;

@@ -22,6 +22,7 @@
 #include "settings.h"
 #include "sys_utils.h"
 #include "test_util.h"
+#include "ts_db_schema_manager.h"
 #include "ts_mem_segment_mgr.h"
 
 using namespace kwdbts;  // NOLINT
@@ -29,6 +30,7 @@ using namespace roachpb;
 
 class TsVGroupTest : public ::testing::Test {
  protected:
+  std::unique_ptr<TsDBSchemaManager> db_schema_mgr;
   std::unique_ptr<TsEngineSchemaManager> mgr;
   EngineOptions opts;
   std::unique_ptr<TsVGroup> vgroup;
@@ -65,13 +67,16 @@ class TsVGroupTest : public ::testing::Test {
   ~TsVGroupTest() override = default;
 
   void SetUp() override {
+    System("rm -rf db");
     System("rm -rf schema");
     System("rm -rf db001-123");
 
-    mgr = std::make_unique<TsEngineSchemaManager>("schema");
+    db_schema_mgr = std::make_unique<TsDBSchemaManager>(".");
+    mgr = std::make_unique<TsEngineSchemaManager>("schema", db_schema_mgr.get());
     std::shared_mutex wal_level_mutex;
     TsHashRWLatch tag_lock(EngineOptions::vgroup_max_num * 2, RWLATCH_ID_ENGINE_INSERT_TAG_RWLOCK);
     mgr->Init(nullptr);
+    db_schema_mgr->Init(mgr.get());
     opts.db_path = "db001-123";
     vgroup = std::make_unique<TsVGroup>(&opts, 0, mgr.get(), &wal_level_mutex, &tag_lock, false);
     EXPECT_EQ(vgroup->Init(&ctx), KStatus::SUCCESS);

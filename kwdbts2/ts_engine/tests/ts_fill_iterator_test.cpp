@@ -66,7 +66,8 @@ TEST_F(TestFillIterator, NONE) {
 
   std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = engine_->GetTsVGroups();
   for (const auto& vgroup : *ts_vgroups) {
-    if (!vgroup || vgroup->GetMaxEntityID() < 1) {
+    auto max_entity_id = table_schema_mgr->GetDbSchemaMgr()->GetMaxEntityID(vgroup->GetVGroupID());
+    if (!vgroup || max_entity_id < 1) {
       continue;
     }
     TsStorageIterator* ts_iter;
@@ -160,7 +161,8 @@ TEST_F(TestFillIterator, EXACT) {
 
   std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = engine_->GetTsVGroups();
   for (const auto& vgroup : *ts_vgroups) {
-    if (!vgroup || vgroup->GetMaxEntityID() < 1) {
+    auto max_entity_id = table_schema_mgr->GetDbSchemaMgr()->GetMaxEntityID(vgroup->GetVGroupID());
+    if (!vgroup || max_entity_id < 1) {
       continue;
     }
     TsStorageIterator* ts_iter;
@@ -264,7 +266,8 @@ TEST_F(TestFillIterator, PREVIOUS) {
 
   std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = engine_->GetTsVGroups();
   for (const auto& vgroup : *ts_vgroups) {
-    if (!vgroup || vgroup->GetMaxEntityID() < 1) {
+    auto max_entity_id = table_schema_mgr->GetDbSchemaMgr()->GetMaxEntityID(vgroup->GetVGroupID());
+    if (!vgroup || max_entity_id < 1) {
       continue;
     }
     TsStorageIterator* ts_iter;
@@ -369,7 +372,8 @@ TEST_F(TestFillIterator, NEXT) {
 
   std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = engine_->GetTsVGroups();
   for (const auto& vgroup : *ts_vgroups) {
-    if (!vgroup || vgroup->GetMaxEntityID() < 1) {
+    auto max_entity_id = table_schema_mgr->GetDbSchemaMgr()->GetMaxEntityID(vgroup->GetVGroupID());
+    if (!vgroup || max_entity_id < 1) {
       continue;
     }
     TsStorageIterator* ts_iter;
@@ -497,7 +501,8 @@ TEST_F(TestFillIterator, CLOSER) {
 
   std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = engine_->GetTsVGroups();
   for (const auto& vgroup : *ts_vgroups) {
-    if (!vgroup || vgroup->GetMaxEntityID() < 1) {
+    auto max_entity_id = table_schema_mgr->GetDbSchemaMgr()->GetMaxEntityID(vgroup->GetVGroupID());
+    if (!vgroup || max_entity_id < 1) {
       continue;
     }
     TsStorageIterator* ts_iter;
@@ -620,7 +625,8 @@ TEST_F(TestFillIterator, CONSTANT) {
 
   std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = engine_->GetTsVGroups();
   for (const auto& vgroup : *ts_vgroups) {
-    if (!vgroup || vgroup->GetMaxEntityID() < 1) {
+    auto max_entity_id = table_schema_mgr->GetDbSchemaMgr()->GetMaxEntityID(vgroup->GetVGroupID());
+    if (!vgroup || max_entity_id < 1) {
       continue;
     }
     TsStorageIterator* ts_iter;
@@ -747,7 +753,8 @@ TEST_F(TestFillIterator, LINEAR) {
 
   std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = engine_->GetTsVGroups();
   for (const auto& vgroup : *ts_vgroups) {
-    if (!vgroup || vgroup->GetMaxEntityID() < 1) {
+    auto max_entity_id = table_schema_mgr->GetDbSchemaMgr()->GetMaxEntityID(vgroup->GetVGroupID());
+    if (!vgroup || max_entity_id < 1) {
       continue;
     }
     TsStorageIterator* ts_iter;

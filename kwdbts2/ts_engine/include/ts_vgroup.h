@@ -26,6 +26,7 @@
 #include "data_type.h"
 #include "iterator.h"
 #include "kwdb_type.h"
+#include "libkwdbts2.h"
 #include "st_transaction_mgr.h"
 #include "st_wal_mgr.h"
 #include "ts_engine_schema_manager.h"
@@ -65,12 +66,6 @@ class TsVGroup {
   fs::path path_;
   fs::path user_defined_path_;
 
-  // max entity id of this vgroup
-  uint64_t max_entity_id_{0};
-
-  // mutex for initialize/allocate/get max_entity_id_
-  mutable std::mutex entity_id_mutex_;
-
   EngineOptions* engine_options_ = nullptr;
 
   std::shared_mutex* engine_wal_level_mutex_ = nullptr;
@@ -107,7 +102,19 @@ class TsVGroup {
     TSSlice last_payload;
   };
   mutable std::shared_mutex entity_latest_row_mutex_;
-  std::unordered_map<uint32_t, TsTableLastRow> entity_latest_row_;
+  struct DBEntityKey {
+    uint32_t db_id = 0;
+    TSEntityID entity_id = 0;
+    bool operator==(const DBEntityKey& other) const {
+      return db_id == other.db_id && entity_id == other.entity_id;
+    }
+  };
+  struct DBEntityKeyHash {
+    uint64_t operator()(const DBEntityKey& key) const {
+      return (static_cast<uint64_t>(key.db_id) << 32) + key.entity_id;
+    }
+  };
+  std::unordered_map<DBEntityKey, TsTableLastRow, DBEntityKeyHash> entity_latest_row_;
   size_t cur_mem_size_ = 0;
 
 
@@ -136,13 +143,7 @@ class TsVGroup {
 
   std::string GetFileName() const;
 
-  TSEntityID AllocateEntityID();
-
-  TSEntityID GetMaxEntityID() const;
-
   uint64_t GetMaxOSN() const { return CurrentVersion()->GetMaxOSN(); }
-
-  void InitEntityID(TSEntityID entity_id);
 
   void LockLevelMutex() {
     if (engine_wal_level_mutex_ != nullptr) {
@@ -384,10 +385,12 @@ class TsVGroup {
                                 const std::vector<Sumfunctype>& scan_agg_types,
                                 timestamp64& entity_last_ts, bool& last_payload_valid, ResultSet* res);
 
-  bool isEntityLatestRowPayloadValid(EntityID entity_id) {
+  bool isEntityLatestRowPayloadValid(uint32_t db_id, EntityID entity_id) {
+    DBEntityKey key{db_id, entity_id};
     std::shared_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
-    if (!entity_latest_row_.count(entity_id)) return false;
-    TsTableLastRow last_row = entity_latest_row_[entity_id];
+    auto it =  entity_latest_row_.find(key);
+    if (it == entity_latest_row_.end()) return false;
+    const TsTableLastRow& last_row = it->second;
     return last_row.status != TsEntityLatestRowStatus::Recovering && last_row.is_payload_valid;
   }
 
@@ -415,11 +418,12 @@ class TsVGroup {
     LOG_INFO("recycled %lu bytes for last cache", recycled_size);
   }
 
-  void UpdateEntityLatestRow(EntityID entity_id, timestamp64 max_ts,
+  void UpdateEntityLatestRow(uint32_t db_id, EntityID entity_id, timestamp64 max_ts,
     const TSSlice& payload, uint32_t tbl_version) {
+    DBEntityKey key{db_id, entity_id};
     std::unique_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
-    if (!entity_latest_row_.count(entity_id) || max_ts >= entity_latest_row_[entity_id].last_ts) {
-      TsTableLastRow& last_row = entity_latest_row_[entity_id];
+    if (!entity_latest_row_.count(key) || max_ts >= entity_latest_row_[key].last_ts) {
+      TsTableLastRow& last_row = entity_latest_row_[key];
       // update last payload
       if (EngineOptions::last_cache_max_size != 0) {
         assert(payload.len > 0);
@@ -471,11 +475,39 @@ class TsVGroup {
     }
   }
 
-  void ResetEntityLatestRow(EntityID entity_id, timestamp64 max_ts) {
+  void ResetEntityLatestRow(uint32_t db_id, EntityID entity_id, timestamp64 max_ts) {
+    DBEntityKey key{db_id, entity_id};
     std::unique_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
-    if (entity_latest_row_.count(entity_id) && max_ts >= entity_latest_row_[entity_id].last_ts) {
-      entity_latest_row_[entity_id].status = TsEntityLatestRowStatus::Recovering;
-      entity_latest_row_[entity_id].is_payload_valid = false;
+    auto it = entity_latest_row_.find(key);
+    if (it == entity_latest_row_.end()) return;
+    auto& last_row = it->second;
+    if (max_ts >= last_row.last_ts) {
+      last_row.status = TsEntityLatestRowStatus::Recovering;
+      last_row.is_payload_valid = false;
+    }
+  }
+
+  // Pre-populate entity_latest_row_ with Recovering entries for every known
+  // entity, mirroring the old InitEntityID per-vgroup prefill but now scoped
+  // per (db, vgroup). After this, the first GetEntityLastRow for an entity
+  // that had data on disk before the restart lazily recovers the real last
+  // row from the partition scan path.
+  // Bounded by the tag-scan max instead of the counter max on purpose: ids
+  // above the tag max belong to dropped entities with no tag, which no query
+  // can reference — using the counter max would create huge dormant maps
+  // after the vg.mei migration raises every db's counters to the legacy
+  // global max.
+  void InitEntityLatestRowForRestart(TsEngineSchemaManager* schema_mgr) {
+    const auto& tag_max_map = schema_mgr->GetDbSchemaMgr()->GetTagScanMaxEntityIds();
+    std::unique_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
+    for (const auto& [db_id, vg_max_map] : tag_max_map) {
+      auto it = vg_max_map.find(vgroup_id_);
+      if (it == vg_max_map.end()) {
+        continue;
+      }
+      for (TSEntityID eid = 1; eid <= it->second; eid++) {
+        entity_latest_row_[DBEntityKey{db_id, eid}].status = TsEntityLatestRowStatus::Recovering;
+      }
     }
   }
 
@@ -524,7 +556,7 @@ class TsVGroup {
     const std::map<std::shared_ptr<TsTableSchemaManager>, std::vector<uint32_t>>& table_entity_map,
     std::map<std::shared_ptr<TsTableSchemaManager>, ClassifiedEntities>& cla_entities, bool* should_calc);
 
-  [[nodiscard]] KStatus PartitionCompactNoLockImpl(kwdbContext_p ctx, bool force_write_entity,
+  [[nodiscard]] KStatus PartitionCompactNoLockImpl(kwdbContext_p ctx, bool call_by_vacuum,
                                                    const std::shared_ptr<const TsPartitionVersion>& partition,
                                                    int level, int group,
                                                    const std::vector<std::shared_ptr<TsLastSegment>>& lastsegments);

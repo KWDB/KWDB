@@ -182,6 +182,7 @@ TEST_F(TestPartitionAgg, basicPartitionAgg) {
   ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
   const auto& attrs = *schema->getSchemaInfoExcludeDroppedPtr();
   for (const auto& vgroup : *ts_vgroups) {
+    auto max_entity_id = table_schema_mgr->GetDbSchemaMgr()->GetMaxEntityID(vgroup->GetVGroupID());
     ASSERT_EQ(vgroup->CalcPartitionAgg(), KStatus::SUCCESS);
     TsStorageIterator* ts_iter;
     KwTsSpan ts_span = {INT64_MIN, INT64_MAX};
@@ -195,7 +196,7 @@ TEST_F(TestPartitionAgg, basicPartitionAgg) {
       auto agg_reader = partition->GetAggReader();
       ASSERT_NE(agg_reader, nullptr);
       ASSERT_TRUE(agg_reader->IsSparseLayout());
-      for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
+      for (k_uint32 entity_id = 1; entity_id <= max_entity_id; entity_id++) {
         TsEntityPartitionAggIndex agg_index;
         agg_index.entity_id = entity_id;
         ASSERT_EQ(agg_reader->GetPartitionAggIndex(agg_index), KStatus::SUCCESS);
@@ -241,7 +242,7 @@ TEST_F(TestPartitionAgg, basicPartitionAgg) {
         }
       }
     }
-    for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
+    for (k_uint32 entity_id = 1; entity_id <= max_entity_id; entity_id++) {
       std::vector<uint32_t> entity_ids = {entity_id};
       std::vector<KwTsSpan> ts_spans = {ts_span};
       std::vector<BlockFilter> block_filter = {};
@@ -345,6 +346,7 @@ TEST_F(TestPartitionAgg, basicPartitionAggDelete) {
   ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
   const auto& attrs = *schema->getSchemaInfoExcludeDroppedPtr();
   for (const auto& vgroup : *ts_vgroups) {
+    auto max_entity_id = table_schema_mgr->GetDbSchemaMgr()->GetMaxEntityID(vgroup->GetVGroupID());
     ASSERT_EQ(vgroup->CalcPartitionAgg(), KStatus::SUCCESS);
     TsStorageIterator* ts_iter;
     KwTsSpan ts_span = {INT64_MIN, INT64_MAX};
@@ -359,7 +361,7 @@ TEST_F(TestPartitionAgg, basicPartitionAggDelete) {
       auto agg_reader = partition->GetAggReader();
       ASSERT_NE(agg_reader, nullptr);
       ASSERT_TRUE(agg_reader->IsSparseLayout());
-      for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
+      for (k_uint32 entity_id = 1; entity_id <= max_entity_id; entity_id++) {
         TsEntityPartitionAggIndex agg_index;
         agg_index.entity_id = entity_id;
         ASSERT_EQ(agg_reader->GetPartitionAggIndex(agg_index), KStatus::SUCCESS);
@@ -429,7 +431,7 @@ TEST_F(TestPartitionAgg, basicPartitionAggDelete) {
         }
       }
     }
-    for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
+    for (k_uint32 entity_id = 1; entity_id <= max_entity_id; entity_id++) {
       std::vector<uint32_t> entity_ids = {entity_id};
       std::vector<KwTsSpan> ts_spans = {ts_span};
       std::vector<BlockFilter> block_filter = {};

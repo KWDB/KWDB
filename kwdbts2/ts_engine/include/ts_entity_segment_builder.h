@@ -250,7 +250,7 @@ class TsEntitySegmentBuilder {
 
   [[nodiscard]] KStatus WriteBlock(TsEntityKey& entity_key, TsSegmentWriteStats* stats);
 
-  [[nodiscard]] KStatus WriteCachedBlockSpan(bool call_by_vacuum, TsEntityKey& entity_key, TsSegmentWriteStats* stats);
+  [[nodiscard]] KStatus WriteCachedBlockSpan(TsEntityKey& entity_key, TsSegmentWriteStats* stats);
 
 
   TsIOEnv* io_env_;
@@ -309,7 +309,7 @@ class TsEntitySegmentBuilder {
     std::move(spans.begin(), spans.end(), std::back_inserter(block_spans_));
   }
 
-  [[nodiscard]] KStatus Compact(bool call_by_vacuum, TsVersionUpdate* update,
+  [[nodiscard]] KStatus Compact(TsVersionUpdate* update,
                                 std::vector<std::shared_ptr<TsBlockSpan>>* residual_spans, TsSegmentWriteStats* stats);
 
   [[nodiscard]] KStatus WriteBatch(TSTableID tbl_id, uint32_t entity_id, uint32_t table_version, uint32_t batch_version,

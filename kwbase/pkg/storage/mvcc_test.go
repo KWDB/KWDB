@@ -107,7 +107,7 @@ var mvccEngineImpls = []struct {
 	create func() Engine
 }{
 	{"rocksdb", createTestRocksDBEngine},
-	{"pebble", createTestPebbleEngine},
+	// pebble removed: mvccScanToBytes no longer supports non-specialized iterators.
 }
 
 // makeTxn creates a new transaction using the specified base

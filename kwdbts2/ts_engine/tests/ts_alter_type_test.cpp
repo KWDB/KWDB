@@ -285,10 +285,11 @@ class TsAlterTypeTest : public TsEngineTestBase {
     uint64_t total = 0;
     auto* ts_vgroups = engine_->GetTsVGroups();
     for (const auto& vgroup : *ts_vgroups) {
-      if (!vgroup || vgroup->GetMaxEntityID() < 1) {
+      auto max_eid = schema_mgr->GetDbSchemaMgr()->GetMaxEntityID(vgroup->GetVGroupID());
+      if (!vgroup || max_eid < 1) {
         continue;
       }
-      for (k_uint32 eid = 1; eid <= vgroup->GetMaxEntityID(); ++eid) {
+      for (k_uint32 eid = 1; eid <= max_eid; ++eid) {
         TsStorageIterator* ts_iter = nullptr;
         std::vector<uint32_t> eids = {eid};
         KwTsSpan ts_span = {INT64_MIN, INT64_MAX};
@@ -335,10 +336,11 @@ class TsAlterTypeTest : public TsEngineTestBase {
     uint64_t total = 0;
     auto* ts_vgroups = engine_->GetTsVGroups();
     for (const auto& vgroup : *ts_vgroups) {
-      if (!vgroup || vgroup->GetMaxEntityID() < 1) {
+      auto max_eid = schema_mgr->GetDbSchemaMgr()->GetMaxEntityID(vgroup->GetVGroupID());
+      if (!vgroup || max_eid < 1) {
         continue;
       }
-      for (k_uint32 eid = 1; eid <= vgroup->GetMaxEntityID(); ++eid) {
+      for (k_uint32 eid = 1; eid <= max_eid; ++eid) {
         TsStorageIterator* ts_iter = nullptr;
         std::vector<uint32_t> eids = {eid};
         std::vector<KwTsSpan> ts_spans = {ts_span};
@@ -383,10 +385,11 @@ class TsAlterTypeTest : public TsEngineTestBase {
 
     auto* ts_vgroups = engine_->GetTsVGroups();
     for (const auto& vgroup : *ts_vgroups) {
-      if (!vgroup || vgroup->GetMaxEntityID() < 1) {
+      auto max_eid = schema_mgr->GetDbSchemaMgr()->GetMaxEntityID(vgroup->GetVGroupID());
+      if (!vgroup || max_eid < 1) {
         continue;
       }
-      for (k_uint32 eid = 1; eid <= vgroup->GetMaxEntityID(); ++eid) {
+      for (k_uint32 eid = 1; eid <= max_eid; ++eid) {
         TsStorageIterator* ts_iter = nullptr;
         std::vector<uint32_t> eids = {eid};
         KwTsSpan ts_span = {INT64_MIN, INT64_MAX};
@@ -436,10 +439,11 @@ class TsAlterTypeTest : public TsEngineTestBase {
 
     auto* ts_vgroups = engine_->GetTsVGroups();
     for (const auto& vgroup : *ts_vgroups) {
-      if (!vgroup || vgroup->GetMaxEntityID() < 1) {
+      auto max_eid = schema_mgr->GetDbSchemaMgr()->GetMaxEntityID(vgroup->GetVGroupID());
+      if (!vgroup || max_eid < 1) {
         continue;
       }
-      for (k_uint32 eid = 1; eid <= vgroup->GetMaxEntityID(); ++eid) {
+      for (k_uint32 eid = 1; eid <= max_eid; ++eid) {
         TsStorageIterator* ts_iter = nullptr;
         std::vector<uint32_t> eids = {eid};
         KwTsSpan ts_span = {INT64_MIN, INT64_MAX};
@@ -483,10 +487,11 @@ class TsAlterTypeTest : public TsEngineTestBase {
 
     auto* ts_vgroups = engine_->GetTsVGroups();
     for (const auto& vgroup : *ts_vgroups) {
-      if (!vgroup || vgroup->GetMaxEntityID() < 1) {
+      auto max_eid = schema_mgr->GetDbSchemaMgr()->GetMaxEntityID(vgroup->GetVGroupID());
+      if (!vgroup || max_eid < 1) {
         continue;
       }
-      for (k_uint32 eid = 1; eid <= vgroup->GetMaxEntityID(); ++eid) {
+      for (k_uint32 eid = 1; eid <= max_eid; ++eid) {
         TsStorageIterator* ts_iter = nullptr;
         std::vector<uint32_t> eids = {eid};
         std::vector<KwTsSpan> ts_spans = {ts_span};

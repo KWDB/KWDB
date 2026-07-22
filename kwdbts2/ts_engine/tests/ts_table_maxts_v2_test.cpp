@@ -163,7 +163,7 @@ TEST_F(TestTsTableMaxTSV2, InsertManyTags1) {
   EXPECT_GE(entity_id.subGroupId, 1);
   EXPECT_LE(entity_id.subGroupId, opts_.vgroup_max_num);
   auto vgroup = engine_->GetTsVGroup(entity_id.subGroupId);
-  EXPECT_EQ(entity_id.entityId, vgroup->GetMaxEntityID());
+  EXPECT_EQ(entity_id.entityId,  table_schema_mgr->GetDbSchemaMgr()->GetMaxEntityID(vgroup->GetVGroupID()));
   EXPECT_EQ(ts, start_ts + entity_num);
 }
 
@@ -212,7 +212,7 @@ TEST_F(TestTsTableMaxTSV2, restart) {
   EXPECT_GE(entity_id1.subGroupId, 1);
   EXPECT_LE(entity_id1.subGroupId, opts_.vgroup_max_num);
   auto vgroup = engine_->GetTsVGroup(entity_id1.subGroupId);
-  EXPECT_EQ(entity_id1.entityId, vgroup->GetMaxEntityID());
+  EXPECT_EQ(entity_id1.entityId, table_schema_mgr->GetDbSchemaMgr()->GetMaxEntityID(vgroup->GetVGroupID()));
   EXPECT_EQ(ts1, start_ts + entity_num);
 
   ts_table1.reset();
@@ -277,7 +277,7 @@ TEST_F(TestTsTableMaxTSV2, deleteSomeData) {
   EXPECT_GE(entity_id1.subGroupId, 1);
   EXPECT_LE(entity_id1.subGroupId, opts_.vgroup_max_num);
   auto vgroup1 = engine_->GetTsVGroup(entity_id1.subGroupId);
-  EXPECT_EQ(entity_id1.entityId, vgroup1->GetMaxEntityID());
+  EXPECT_EQ(entity_id1.entityId, table_schema_mgr->GetDbSchemaMgr()->GetMaxEntityID(vgroup1->GetVGroupID()));
   EXPECT_EQ(ts1, start_ts + entity_num);
 
   uint64_t tmp_count;
@@ -295,10 +295,11 @@ TEST_F(TestTsTableMaxTSV2, deleteSomeData) {
   EXPECT_GE(entity_id2.subGroupId, 1);
   EXPECT_LE(entity_id2.subGroupId, opts_.vgroup_max_num);
   auto vgroup2 = engine_->GetTsVGroup(entity_id2.subGroupId);
+  auto max_id = table_schema_mgr->GetDbSchemaMgr()->GetMaxEntityID(vgroup2->GetVGroupID());
   if (entity_id1.subGroupId == entity_id2.subGroupId) {
-    EXPECT_EQ(entity_id2.entityId, vgroup2->GetMaxEntityID() - 1);
+    EXPECT_EQ(entity_id2.entityId, max_id - 1);
   } else {
-    EXPECT_EQ(entity_id2.entityId, vgroup2->GetMaxEntityID());
+    EXPECT_EQ(entity_id2.entityId, max_id);
   }
   EXPECT_EQ(ts2, start_ts + entity_num - 1);
 

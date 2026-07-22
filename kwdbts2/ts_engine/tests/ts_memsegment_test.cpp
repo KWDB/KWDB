@@ -39,6 +39,7 @@ class MemSegmentTester : public testing::Test {
   TSTableID table_id = 123;
   uint32_t db_id = 122;
 
+  std::unique_ptr<TsDBSchemaManager> db_schema_mgr = nullptr;
   std::unique_ptr<TsEngineSchemaManager> mgr;
   std::vector<TagInfo> tag_schema;
   const std::vector<AttributeInfo>* metric_schema = nullptr;
@@ -48,8 +49,13 @@ class MemSegmentTester : public testing::Test {
  public:
   MemSegmentTester() {
     roachpb::CreateTsTable meta;
+    fs::remove_all("db");
     fs::remove_all("schema");
-    mgr = std::make_unique<TsEngineSchemaManager>("schema");
+    db_schema_mgr = std::make_unique<TsDBSchemaManager>(".");
+    mgr = std::make_unique<TsEngineSchemaManager>("schema", db_schema_mgr.get());
+    mgr->Init(nullptr);
+    db_schema_mgr->Init(mgr.get());
+
     ConstructRoachpbTableWithTypes(&meta, table_id, dtypes);
     mgr->CreateTable(nullptr, db_id, table_id, &meta);
     mgr->GetTableSchemaMgr(table_id, schema_mgr);

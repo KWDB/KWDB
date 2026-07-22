@@ -26,6 +26,7 @@
 #include "sys_utils.h"
 #include "test_util.h"
 #include "ts_block.h"
+#include "ts_db_schema_manager.h"
 #include "ts_entity_segment_builder.h"
 #include "ts_entity_segment_data.h"
 #include "ts_filename.h"
@@ -40,6 +41,7 @@ using namespace roachpb;
 
 class TsEntitySegmentTest : public ::testing::Test {
  protected:
+  std::unique_ptr<TsDBSchemaManager> db_schema_mgr = nullptr;
   std::unique_ptr<TsEngineSchemaManager> mgr;
 
   EngineOptions opts;
@@ -81,13 +83,16 @@ class TsEntitySegmentTest : public ::testing::Test {
   ~TsEntitySegmentTest() override = default;
 
   void SetUp() override {
+    System("rm -rf db");
     System("rm -rf schema");
     System("rm -rf db001-123");
 
-    mgr = std::make_unique<TsEngineSchemaManager>("schema");
+    db_schema_mgr = std::make_unique<TsDBSchemaManager>(".");
+    mgr = std::make_unique<TsEngineSchemaManager>("schema", db_schema_mgr.get());
     std::shared_mutex wal_level_mutex;
     TsHashRWLatch tag_lock(EngineOptions::vgroup_max_num * 2 , RWLATCH_ID_ENGINE_INSERT_TAG_RWLOCK);
     mgr->Init(nullptr);
+    db_schema_mgr->Init(mgr.get());
     opts.db_path = "db001-123";
     vgroup = std::make_unique<TsVGroup>(&opts, 0, mgr.get(), &wal_level_mutex, &tag_lock, false);
     EXPECT_EQ(vgroup->Init(&ctx), KStatus::SUCCESS);
@@ -1248,5 +1253,5 @@ TEST_F(TsEntitySegmentTest, BUG_IEOYSN) {
   TsVersionUpdate update;
   std::vector<std::shared_ptr<TsBlockSpan>> residual;
   TsSegmentWriteStats stats;
-  ASSERT_EQ(builder.Compact(true, &update, &residual, &stats), SUCCESS);
+  ASSERT_EQ(builder.Compact(&update, &residual, &stats), SUCCESS);
 }

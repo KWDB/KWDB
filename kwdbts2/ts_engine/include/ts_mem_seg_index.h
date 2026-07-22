@@ -34,6 +34,7 @@ namespace kwdbts {
 struct TSMemSegRowData {
   // the flowing fields WILL BE used to sort and in big-endian order.
  private:
+  uint64_t database_id = 0;
   uint64_t entity_id = 0;
   uint64_t ts = 0;
   uint64_t osn = 0;
@@ -41,9 +42,8 @@ struct TSMemSegRowData {
   // the following fields WILL NOT BE used to sort and in little-endian order.
  protected:
   TSTableID table_id;
-  uint32_t table_version;
-  uint32_t database_id;
   TsRawPayload* payload_obj;
+  uint32_t table_version;
   uint32_t row_idx_in_payload;
 
  private:
@@ -51,8 +51,12 @@ struct TSMemSegRowData {
 
  public:
   TSMemSegRowData(uint32_t db_id, TSTableID tbl_id, uint32_t tbl_version, TSEntityID en_id)
-      : entity_id(htobe64(en_id)), table_id(tbl_id), table_version(tbl_version),
-        database_id(db_id), payload_obj(nullptr), row_idx_in_payload(0) {}
+      : database_id(htobe64(db_id)),
+        entity_id(htobe64(en_id)),
+        table_id(tbl_id),
+        payload_obj(nullptr),
+        table_version(tbl_version),
+        row_idx_in_payload(0) {}
 
   virtual ~TSMemSegRowData() {}
   void SetRowData(TsRawPayload* p, uint32_t row_idx) {
@@ -67,7 +71,9 @@ struct TSMemSegRowData {
     osn = htobe64(clsn);
     little_endian_lsn = clsn;
   }
-  static constexpr size_t GetKeyLen() { return 24; }  // sizeof(entity_id) + sizeof(ts) + sizeof(osn)
+  static constexpr size_t GetKeyLen() {
+    return 32;
+  }  // 32 sizeof(database_id) + sizeof(entity_id) + sizeof(ts) + sizeof(osn)
 
   TSEntityID GetEntityId() const { return be64toh(entity_id); }
   timestamp64 GetTS() const { return static_cast<timestamp64>(be64toh(ts) ^ (1ULL << 63)); }
@@ -79,7 +85,7 @@ struct TSMemSegRowData {
   }
   TSTableID GetTableId() const { return table_id; }
   uint32_t GetTableVersion() const { return table_version; }
-  uint32_t GetDatabaseId() const { return database_id; }
+  uint32_t GetDatabaseId() const { return be64toh(database_id); }
 
   uint32_t GetPayloadVersion() const { return payload_obj->GetPayloadVersion(); }
 
@@ -87,10 +93,10 @@ struct TSMemSegRowData {
   uint32_t GetRowIdxInPD() const { return row_idx_in_payload; }
 
   inline bool SameEntityAndTableVersion(const TSMemSegRowData* b) const {
-    return this->entity_id == b->entity_id && this->table_version == b->table_version;
+    return std::memcmp(&this->database_id, &b->database_id, 16) == 0 && this->table_version == b->table_version;
   }
   inline bool SameEntityAndTs(const TSMemSegRowData* b) const {
-    return std::memcmp(&(this->entity_id), &(b->entity_id), 16) == 0;  // Compare entity_id and ts only
+    return std::memcmp(&(this->database_id), &(b->database_id), 24) == 0;  // Compare database_id, entity_id and ts
   }
   inline bool SameTableId(const TSMemSegRowData* b) const { return this->table_id == b->table_id; }
 };
@@ -147,7 +153,15 @@ struct TSRowDataComparator {
     return reinterpret_cast<const TSMemSegRowData*>(b);
   }
 
-  int operator()(const char* a, const char* b) const { return memcmp(a, b, TSMemSegRowData::GetKeyLen()); }
+  int operator()(const char* a, const char* b) const {
+    // Skiplist keys are the raw bytes of TSMemSegRowData, whose leading 8
+    // bytes are the vptr (the class is polymorphic). Skip it so the compare
+    // window is exactly the big-endian sort fields
+    // {database_id, entity_id, ts, osn}. The is_polymorphic guard keeps the
+    // offset correct if the virtual destructor is ever removed.
+    constexpr int offset = 8 * static_cast<int>(std::is_polymorphic_v<TSMemSegRowData>);
+    return memcmp(a + offset, b + offset, TSMemSegRowData::GetKeyLen());
+  }
 };
 
 // skiplist node, one node is one row data.

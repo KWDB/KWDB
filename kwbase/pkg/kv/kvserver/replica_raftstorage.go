@@ -1600,7 +1600,14 @@ func (r *Replica) applySnapshot(
 	// time we hold the lease, recompute the log size before making decisions.
 	r.mu.raftLogSizeTrusted = false
 	r.assertStateLocked(ctx, r.store.Engine())
-	r.mu.Unlock()
+	// Refresh ValBytes/LiveBytes from TsEngine in memory only after disk/memory
+	// agree. On-disk RangeAppliedState stays as ingested from the snapshot.
+	if inSnap.IsTSSnapshot {
+		r.mu.Unlock()
+		r.reconcileTSRangeStatsForSnapshot(ctx)
+	} else {
+		r.mu.Unlock()
+	}
 
 	// The rangefeed processor is listening for the logical ops attached to
 	// each raft command. These will be lost during a snapshot, so disconnect

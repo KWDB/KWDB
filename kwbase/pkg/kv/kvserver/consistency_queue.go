@@ -95,6 +95,11 @@ func (q *consistencyQueue) shouldQueue(
 	if interval <= 0 {
 		return false, 0
 	}
+	// TS range user data lives in TsEngine; MVCCStats on disk may legitimately
+	// diverge across replicas. Skip automatic consistency checks.
+	if isTSRangeDescriptor(repl.Desc()) {
+		return false, 0
+	}
 
 	shouldQ, priority := true, float64(0)
 	if !repl.store.cfg.TestingKnobs.DisableLastProcessedCheck {

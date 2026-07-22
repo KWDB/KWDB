@@ -65,7 +65,6 @@ TsVGroup::TsVGroup(EngineOptions* engine_options, uint32_t vgroup_id, TsEngineSc
       schema_mgr_(schema_mgr),
       tag_lock_(tag_lock),
       path_(fs::path(engine_options->db_path) / VGroupDirName(vgroup_id)),
-      max_entity_id_(0),
       engine_options_(engine_options),
       engine_wal_level_mutex_(engine_mutex),
       version_manager_(std::make_unique<TsVersionManager>(&TsIOEnv::GetInstance(), path_)),
@@ -79,7 +78,6 @@ TsVGroup::TsVGroup(EngineOptions* engine_options, uint32_t vgroup_id, TsEngineSc
       schema_mgr_(schema_mgr),
       tag_lock_(tag_lock),
       path_(fs::path(engine_options->db_path) / VGroupDirName(vgroup_id)),
-      max_entity_id_(0),
       engine_options_(engine_options),
       engine_wal_level_mutex_(engine_mutex),
       version_manager_(std::make_unique<TsVersionManager>(&TsIOEnv::GetInstance(), path_)),
@@ -205,28 +203,6 @@ KStatus TsVGroup::PutData(kwdbContext_p ctx, const std::shared_ptr<TsTableSchema
 }
 
 fs::path TsVGroup::GetPath() const { return path_; }
-
-TSEntityID TsVGroup::AllocateEntityID() {
-  std::lock_guard<std::mutex> lock1(entity_id_mutex_);
-  std::unique_lock<std::shared_mutex> lock2(entity_latest_row_mutex_);
-  uint64_t max_entity_id = ++max_entity_id_;
-  entity_latest_row_[max_entity_id].status = TsEntityLatestRowStatus::Uninitialized;
-  return max_entity_id;
-}
-
-TSEntityID TsVGroup::GetMaxEntityID() const {
-  std::lock_guard<std::mutex> lock(entity_id_mutex_);
-  return max_entity_id_;
-}
-
-void TsVGroup::InitEntityID(TSEntityID entity_id) {
-  std::lock_guard<std::mutex> lock1(entity_id_mutex_);
-  std::unique_lock<shared_mutex> lock2(entity_latest_row_mutex_);
-  max_entity_id_ = entity_id;
-  for (int i = 1; i <= max_entity_id_; ++i) {
-    entity_latest_row_[i].status = TsEntityLatestRowStatus::Recovering;
-  }
-}
 
 KStatus TsVGroup::RemoveChkFile(kwdbContext_p ctx) {
   wal_manager_->Lock();
@@ -444,11 +420,13 @@ KStatus TsVGroup::GetEntityLastRow(const std::shared_ptr<TsTableSchemaManager>& 
                                    uint32_t entity_id, const std::vector<KwTsSpan>& ts_spans,
                                    timestamp64& entity_last_ts) {
   entity_last_ts = INVALID_TS;
+  DBEntityKey key{table_schema_mgr->GetDbID(), entity_id};
   std::shared_lock<std::shared_mutex> lock1(entity_latest_row_mutex_);
-  TsTableLastRow& last_row = entity_latest_row_[entity_id];
-  if (last_row.status == TsEntityLatestRowStatus::Uninitialized) {
+  auto it = entity_latest_row_.find(key);
+  if (it == entity_latest_row_.end() || it->second.status == TsEntityLatestRowStatus::Uninitialized) {
     return KStatus::SUCCESS;
   }
+  auto& last_row = it->second;
   if (last_row.status == TsEntityLatestRowStatus::Valid) {
     if (checkTimestampWithSpans(ts_spans, last_row.last_ts, last_row.last_ts) != TimestampCheckResult::NonOverlapping) {
       entity_last_ts = last_row.last_ts;
@@ -499,7 +477,7 @@ KStatus TsVGroup::GetEntityLastRow(const std::shared_ptr<TsTableSchemaManager>& 
   }
   std::unique_lock<std::shared_mutex> lock3(entity_latest_row_mutex_);
   if (last_block_span != nullptr) {
-    if (!entity_latest_row_.count(entity_id) || last_row.status != TsEntityLatestRowStatus::Valid ||
+    if (!entity_latest_row_.count(key) || last_row.status != TsEntityLatestRowStatus::Valid ||
         last_block_span->GetLastTS() >= last_row.last_ts) {
       last_row.is_payload_valid = false;
       last_row.last_ts = last_block_span->GetLastTS();
@@ -582,8 +560,9 @@ KStatus TsVGroup::GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_versio
                                         const std::vector<KwTsSpan>& ts_spans, const std::vector<k_uint32>& scan_cols,
                                         const std::vector<Sumfunctype>& scan_agg_types,
                                         timestamp64& entity_last_ts, bool& last_payload_valid, ResultSet* res) {
+  DBEntityKey key{table_schema_mgr->GetDbID(), entity_id};
   std::shared_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
-  auto it = entity_latest_row_.find(entity_id);
+  auto it = entity_latest_row_.find(key);
   if (it == entity_latest_row_.end() || it->second.status == TsEntityLatestRowStatus::Recovering
       || !it->second.is_payload_valid) {
     return KStatus::SUCCESS;
@@ -689,7 +668,7 @@ void TsVGroup::closeCompactThread() {
   }
 }
 
-KStatus TsVGroup::PartitionCompactNoLockImpl(kwdbContext_p ctx, bool force_write_entity,
+KStatus TsVGroup::PartitionCompactNoLockImpl(kwdbContext_p ctx, bool call_by_vacuum,
                                              const std::shared_ptr<const TsPartitionVersion>& partition, int level,
                                              int group,
                                              const std::vector<std::shared_ptr<TsLastSegment>>& last_segments) {
@@ -708,7 +687,7 @@ KStatus TsVGroup::PartitionCompactNoLockImpl(kwdbContext_p ctx, bool force_write
     for (const auto& l : last_segments) {
       ss << l->GetFileNumber() << ", ";
     }
-    if (!force_write_entity) {
+    if (!call_by_vacuum) {
       LOG_INFO("Compact %s at vgroup: %d, level: %d, group: %d, last segments:(%s)", partition_name.c_str(),
                this->vgroup_id_, level, group, ss.str().c_str());
     } else {
@@ -743,7 +722,7 @@ KStatus TsVGroup::PartitionCompactNoLockImpl(kwdbContext_p ctx, bool force_write
       return s;
     }
 
-    s = builder.Compact(force_write_entity, &update, &residual_spans, &entity_stats);
+    s = builder.Compact(&update, &residual_spans, &entity_stats);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("partition[%s] compact failed, TsEntitySegmentBuilder build failed", path_.c_str());
       return s;
@@ -757,7 +736,6 @@ KStatus TsVGroup::PartitionCompactNoLockImpl(kwdbContext_p ctx, bool force_write
 
   // 3. write last segment
   if (!residual_spans.empty()) {
-    assert(!force_write_entity);
     ss << "last segment: ";
     int next_level = std::min<int>(level + 1, TsPartitionVersion::LastSegmentContainer::kMaxLevel - 1);
 
@@ -1086,7 +1064,7 @@ KStatus TsVGroup::FlushImmSegment(std::unique_ptr<TsLastSegmentBuilder>& lastseg
         entityseg_builder.PutBlockSpans(spans);
         TsVersionUpdate temp_update;
         TsSegmentWriteStats stats;
-        s = entityseg_builder.Compact(false, &temp_update, &lastseg_spans, &stats);
+        s = entityseg_builder.Compact(&temp_update, &lastseg_spans, &stats);
         if (s == FAIL) {
           LOG_ERROR("flush to entity segment failed.");
           return FAIL;
@@ -1658,6 +1636,8 @@ KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::strin
       return s;
     }
   }
+  ResetEntityMaxTs(table_id, INT64_MAX, e_id);
+  ResetEntityLatestRow(tb_schema_manager->GetDbID(), e_id, INT64_MAX);
   return KStatus::SUCCESS;
 }
 
@@ -1719,6 +1699,12 @@ const std::vector<KwTsSpan>& ts_spans, bool user_del) {
     }
   }
   mem_segment_mgr_->DeleteData(tbl_id, e_id, par_ids);
+  timestamp64 max_ts = INT64_MIN;
+  for (auto span : ts_spans) {
+    max_ts = (max_ts < span.end) ? span.end : max_ts;
+  }
+  ResetEntityMaxTs(tbl_id, max_ts, e_id);
+  ResetEntityLatestRow(db_id, e_id, max_ts);
   return KStatus::SUCCESS;
 }
 
@@ -1804,7 +1790,7 @@ KStatus TsVGroup::WriteBatchData(TSTableID tbl_id, uint32_t table_version, TSEnt
     return s;
   }
 
-  ResetEntityLatestRow(entity_id, INT64_MAX);
+  ResetEntityLatestRow(database_id, entity_id, INT64_MAX);
   ResetEntityMaxTs(tbl_id, INT64_MAX, entity_id);
   return KStatus::SUCCESS;
 }
@@ -2020,7 +2006,11 @@ KStatus TsVGroup::redoPutTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TS
   uint8_t payload_data_flag = p.GetRowType();
   if (new_tag) {
     vgroup_id = GetVGroupID();
-    entity_id = AllocateEntityID();
+    s = tb_schema->AllocateEntityID(vgroup_id, entity_id);
+    if (s == FAIL) {
+      LOG_ERROR("AllocateEntityID failed, maybe the table is dropped");
+      return FAIL;
+    }
     // 1. Write tag data
     assert(payload_data_flag == DataTagFlag::DATA_AND_TAG || payload_data_flag == DataTagFlag::TAG_ONLY);
     std::shared_ptr<TsTableSchemaManager> tb_schema_manager;
@@ -2958,6 +2948,7 @@ KStatus TsVGroup::InvalidateCountStats(const std::map<TSTableID, std::vector<TSE
 
   TsVersionUpdate update;
   for (auto& [par_id, par_version] : all_partitions) {
+    auto db_id = std::get<0>(par_id);
     std::vector<TsEntityCountStats> flush_infos;
     std::set<std::pair<TSTableID, TSEntityID>> affected_set;
     for (auto& [table_id, entities] : affected_entities) {
@@ -2980,6 +2971,12 @@ KStatus TsVGroup::InvalidateCountStats(const std::map<TSTableID, std::vector<TSE
     uint64_t file_number = version_manager_->NewFileNumber();
     update.AddCountFile(par_id, {file_number, flush_infos});
 
+    auto db_schema = schema_mgr_->GetDbSchemaMgr()->GetDatabase(db_id);
+    if (db_schema == nullptr) {
+      LOG_ERROR("InvalidateCountStats: db_schema is nullptr, db_id=%u", db_id);
+      return FAIL;
+    }
+    auto max_entity_id = db_schema->GetMaxEntityID(vgroup_id_);
     // Invalidate partition agg index for affected entities
     auto agg_reader = par_version->GetAggReader();
     if (agg_reader) {
@@ -2987,14 +2984,14 @@ KStatus TsVGroup::InvalidateCountStats(const std::map<TSTableID, std::vector<TSE
       uint64_t agg_file_number = version_manager_->NewFileNumber();
       fs::path agg_path = par_version->GetPartitionPath() / AggFileName(agg_file_number);
       auto partition_agg_builder =
-          std::make_shared<TsPartitionAggBuilder>(env, agg_path, GetMaxEntityID());
+          std::make_shared<TsPartitionAggBuilder>(env, agg_path, max_entity_id);
       KStatus s = partition_agg_builder->Open();
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("InvalidateCountStats: Open partition[%s] agg file failed", agg_path.c_str());
         return s;
       }
 
-      for (uint32_t entity_id = 1; entity_id <= GetMaxEntityID(); entity_id++) {
+      for (uint32_t entity_id = 1; entity_id <= max_entity_id; entity_id++) {
         TsEntityPartitionAggIndex agg_index;
         agg_index.entity_id = entity_id;
         s = agg_reader->GetPartitionAggIndex(agg_index);
@@ -3138,11 +3135,18 @@ KStatus TsVGroup::CalcPartitionAgg(bool force) {
   if (table_entity_map.empty()) {
     return KStatus::SUCCESS;
   }
-  TSEntityID max_agg_entity_id = GetMaxEntityID();
+
+  std::unordered_map<uint32_t, TSEntityID> max_entity_id_map;
   for (const auto& [tb_schema, entities] : table_entity_map) {
-    for (auto entity_id : entities) {
-      max_agg_entity_id = std::max(max_agg_entity_id, static_cast<TSEntityID>(entity_id));
+    auto db_id = tb_schema->GetDbID();
+    auto entity_id_1 = tb_schema->GetMaxEntityID(vgroup_id_);
+    if (entities.empty()) {
+      max_entity_id_map[db_id] = std::max(max_entity_id_map[db_id], entity_id_1);
+      continue;
     }
+    auto entity_id_2 = *std::max_element(entities.begin(), entities.end());
+    auto max_entity_id = std::max<TSEntityID>(entity_id_1, entity_id_2);
+    max_entity_id_map[db_id] = std::max(max_entity_id_map[db_id], max_entity_id);
   }
 
   std::shared_ptr<const TsVGroupVersion> cur_version = version_manager_->Current();
@@ -3150,6 +3154,18 @@ KStatus TsVGroup::CalcPartitionAgg(bool force) {
   TsIOEnv* env = &TsIOEnv::GetInstance();
   TsVersionUpdate update;
   for (auto& [par_id, par_version] : all_partitions) {
+    auto db_id = std::get<0>(par_id);
+    TSEntityID max_eid = 0;
+    {
+      auto it = max_entity_id_map.find(db_id);
+      if (it == max_entity_id_map.end()) {
+        LOG_WARN("Max entity id not found for db_id [%u], skipping partition %s",
+                 db_id, par_version->GetPartitionIdentifierStr().c_str());
+        continue;
+      }
+      max_eid = it->second;
+    }
+
     if (force) {
       while (!par_version->TrySetBusy(PartitionStatus::CalculatingAgg)) {
         std::this_thread::sleep_for(std::chrono::seconds(2));
@@ -3184,7 +3200,7 @@ KStatus TsVGroup::CalcPartitionAgg(bool force) {
     auto file_number = version_manager_->NewFileNumber();
     fs::path agg_path = par_version->GetPartitionPath() / AggFileName(file_number);
     auto partition_agg_builder =
-          std::make_shared<TsPartitionAggBuilder>(env, agg_path, max_agg_entity_id);
+          std::make_shared<TsPartitionAggBuilder>(env, agg_path, max_eid);
     s = partition_agg_builder->Open();
     if (s != SUCCESS) {
       LOG_ERROR("Open partition[%s] agg file failed", agg_path.c_str());

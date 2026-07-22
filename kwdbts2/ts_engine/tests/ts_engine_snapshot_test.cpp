@@ -261,9 +261,13 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOtherEmpty) {
   s = ts_engine_desc_->DeleteSnapshot(ctx_, desc_snapshot_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
+  std::vector<std::shared_ptr<TsDBSchema>> db_schemas;
+  ts_engine_desc_->GetEngineSchemaManager()->GetDbSchemaMgr()->GetAllDbSchema(db_schemas);
+  ASSERT_EQ(db_schemas.size(), 1);
   std::vector<EntityResultIndex> entity_ids;
-  for(auto vg : *(ts_engine_desc_->GetTsVGroups())) {
-    if (vg->GetMaxEntityID() > 0) {
+  for (auto vg : *(ts_engine_desc_->GetTsVGroups())) {
+    auto max_entity_id = db_schemas[0]->GetMaxEntityID(vg->GetVGroupID());
+    if (max_entity_id > 0) {
       entity_ids.push_back(EntityResultIndex(1, 1, vg->GetVGroupID()));
       break;
     }
@@ -289,9 +293,13 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
   ctx_->ts_engine = ts_engine_src_;
   // input data to  table 1007
   InsertData(ts_engine_src_, cur_table_id, 1, 12345, 5);
+  std::vector<std::shared_ptr<TsDBSchema>> db_schemas;
+  ts_engine_src_->GetEngineSchemaManager()->GetDbSchemaMgr()->GetAllDbSchema(db_schemas);
+  ASSERT_EQ(db_schemas.size(), 1);
   std::vector<EntityResultIndex> entity_ids;
   for(auto vg : *(ts_engine_src_->GetTsVGroups())) {
-    if (vg->GetMaxEntityID() > 0) {
+    auto max_entity_id = db_schemas[0]->GetMaxEntityID(vg->GetVGroupID());
+    if (max_entity_id > 0) {
       entity_ids.push_back(EntityResultIndex(1, 1, vg->GetVGroupID()));
       break;
     }
@@ -352,8 +360,11 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
   ASSERT_EQ(cols.size(), src_valid_col_num);
 
   entity_ids.clear();
-  for(auto vg : *(ts_engine_desc_->GetTsVGroups())) {
-    if (vg->GetMaxEntityID() > 0) {
+  ts_engine_desc_->GetEngineSchemaManager()->GetDbSchemaMgr()->GetAllDbSchema(db_schemas);
+  ASSERT_EQ(db_schemas.size(), 1);
+  for (auto vg : *(ts_engine_desc_->GetTsVGroups())) {
+    auto max_entity_id = db_schemas[0]->GetMaxEntityID(vg->GetVGroupID());
+    if (max_entity_id > 0) {
       entity_ids.push_back(EntityResultIndex(1, 1, vg->GetVGroupID()));
       break;
     }
@@ -394,9 +405,13 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertPartitions) {
   for (size_t i = 0; i < partition_num; i++) {
     InsertData(ts_engine_src_, cur_table_id, 1, 12345 + i * interval, 5);
   }
+  std::vector<std::shared_ptr<TsDBSchema>> db_schemas;
+  ts_engine_src_->GetEngineSchemaManager()->GetDbSchemaMgr()->GetAllDbSchema(db_schemas);
+  ASSERT_EQ(db_schemas.size(), 1);
   std::vector<EntityResultIndex> entity_ids;
-  for(auto vg : *(ts_engine_src_->GetTsVGroups())) {
-    if (vg->GetMaxEntityID() > 0) {
+  for (auto vg : *(ts_engine_src_->GetTsVGroups())) {
+    auto max_entity_id = db_schemas[0]->GetMaxEntityID(vg->GetVGroupID());
+    if (max_entity_id > 0) {
       entity_ids.push_back(EntityResultIndex(1, 1, vg->GetVGroupID()));
       break;
     }
@@ -433,8 +448,11 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertPartitions) {
   ts_engine_desc_->Init(ctx_);
 
   entity_ids.clear();
-  for(auto vg : *(ts_engine_desc_->GetTsVGroups())) {
-    if (vg->GetMaxEntityID() > 0) {
+  ts_engine_desc_->GetEngineSchemaManager()->GetDbSchemaMgr()->GetAllDbSchema(db_schemas);
+  ASSERT_EQ(db_schemas.size(), 1);
+  for (auto vg : *(ts_engine_desc_->GetTsVGroups())) {
+    auto max_entity_id = db_schemas[0]->GetMaxEntityID(vg->GetVGroupID());
+    if (max_entity_id > 0) {
       entity_ids.push_back(EntityResultIndex(1, 1, vg->GetVGroupID()));
       break;
     }
@@ -471,9 +489,13 @@ TEST_F(TestEngineSnapshotImgrate, InsertPartitionsRollback) {
   for (size_t i = 0; i < partition_num; i++) {
     InsertData(ts_engine_src_, cur_table_id, 1, 12345 + i * interval, 5);
   }
+  std::vector<std::shared_ptr<TsDBSchema>> db_schemas;
+  ts_engine_src_->GetEngineSchemaManager()->GetDbSchemaMgr()->GetAllDbSchema(db_schemas);
+  ASSERT_EQ(db_schemas.size(), 1);
   std::vector<EntityResultIndex> entity_ids;
-  for(auto vg : *(ts_engine_src_->GetTsVGroups())) {
-    if (vg->GetMaxEntityID() > 0) {
+  for (auto vg : *(ts_engine_src_->GetTsVGroups())) {
+    auto max_entity_id = db_schemas[0]->GetMaxEntityID(vg->GetVGroupID());
+    if (max_entity_id > 0) {
       entity_ids.push_back(EntityResultIndex(1, 1, vg->GetVGroupID()));
       break;
     }
@@ -546,8 +568,11 @@ TEST_F(TestEngineSnapshotImgrate, InsertPartitionsRollback) {
   delete iter;
 
   entity_ids.clear();
-  for(auto vg : *(ts_engine_desc_->GetTsVGroups())) {
-    if (vg->GetMaxEntityID() > 0) {
+  ts_engine_desc_->GetEngineSchemaManager()->GetDbSchemaMgr()->GetAllDbSchema(db_schemas);
+  ASSERT_EQ(db_schemas.size(), 1);
+  for (auto vg : *(ts_engine_desc_->GetTsVGroups())) {
+    auto max_entity_id = db_schemas[0]->GetMaxEntityID(vg->GetVGroupID());
+    if (max_entity_id > 0) {
       entity_ids.push_back(EntityResultIndex(1, 1, vg->GetVGroupID()));
       break;
     }

@@ -13,19 +13,21 @@
 #include <cstdint>
 #include <cstdio>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <utility>
-#include <string>
 #include <vector>
 
 #include "data_type.h"
 #include "kwdb_type.h"
+#include "libkwdbts2.h"
 #include "me_metadata.pb.h"
-#include "ts_common.h"
-#include "mmap/mmap_tag_table.h"
 #include "mmap/mmap_metrics_table.h"
-#include "ts_metrics_table_version_manager.h"
+#include "mmap/mmap_tag_table.h"
 #include "sys_utils.h"
+#include "ts_common.h"
+#include "ts_db_schema_manager.h"
+#include "ts_metrics_table_version_manager.h"
 
 namespace kwdbts {
 class SchemaVersionConv {
@@ -63,6 +65,9 @@ class TsTableSchemaManager {
   bool sparse_table_ = false;
   std::atomic<bool> dropped_ = false;
 
+  TsDBSchemaManager* db_schema_mgr_;
+  std::shared_ptr<TsDBSchema> db_schema_;
+
  protected:
   uint32_t cur_version_{0};
   std::shared_ptr<MetricsVersionManager> metric_mgr_{nullptr};
@@ -75,9 +80,11 @@ class TsTableSchemaManager {
  public:
   TsTableSchemaManager() = delete;
 
-  TsTableSchemaManager(const fs::path& schema_root_path, const TSTableID tbl_id) : table_id_(tbl_id),
-    table_version_rw_lock_(RWLATCH_ID_TABLE_VERSION_RWLOCK),
-    ver_conv_rw_lock_(RWLATCH_ID_VERSION_CONV_RWLOCK) {
+  TsTableSchemaManager(const fs::path& schema_root_path, const TSTableID tbl_id, TsDBSchemaManager* db_schema_mgr)
+      : table_id_(tbl_id),
+        db_schema_mgr_{db_schema_mgr},
+        table_version_rw_lock_(RWLATCH_ID_TABLE_VERSION_RWLOCK),
+        ver_conv_rw_lock_(RWLATCH_ID_VERSION_CONV_RWLOCK) {
     table_path_ = schema_root_path / fs::path(std::to_string(tbl_id) + "/");
     metric_path_ = "metric";
     tag_path_ = "tag/";  // tag use '+' to generate file path, '/' is needed.
@@ -110,6 +117,30 @@ class TsTableSchemaManager {
   std::shared_ptr<TagTable> GetTagTable() {
     return tag_table_;
   }
+
+  // Entity IDs are allocated per (db, vgroup) via the table's TsDBSchema.
+  // db_schema_ is bound in Init()/CreateTable(); it stays null only for a
+  // degenerate table (e.g. metric schema missing after a partial create), in
+  // which case allocation fails gracefully instead of dereferencing null.
+  KStatus AllocateEntityID(uint32_t vgroup_id, TSEntityID& entity_id) {
+    if (db_schema_ == nullptr) {
+      LOG_ERROR("table %lu has no db schema (metric schema missing?), cannot allocate entity id", table_id_);
+      return FAIL;
+    }
+    entity_id = db_schema_->DBAllocateEntityID(vgroup_id);
+    return SUCCESS;
+  }
+
+  // Returns 0 (no entities) for a degenerate table without db schema; callers
+  // already treat 0 as "no entities in this vgroup" and skip.
+  TSEntityID GetMaxEntityID(uint32_t vgroup_id) const {
+    if (db_schema_ == nullptr) {
+      return 0;
+    }
+    return db_schema_->GetMaxEntityID(vgroup_id);
+  }
+
+  TsDBSchema* GetDbSchemaMgr() const { return db_schema_.get(); }
 
   KStatus CreateTable(kwdbContext_p ctx, roachpb::CreateTsTable* meta, uint32_t db_id,
                       uint32_t ts_version, ErrorInfo& err_info);

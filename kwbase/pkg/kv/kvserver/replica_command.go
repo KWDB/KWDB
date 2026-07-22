@@ -1027,6 +1027,13 @@ func IsSnapshotError(err error) bool {
 	})
 }
 
+// changeReplicasOpts controls optional behavior for replication changes.
+type changeReplicasOpts struct {
+	// tsStatsReconciledForSnapshot is set when TS range MVCCStats were already
+	// refreshed from TsEngine before snapshot sizing (e.g. by queue timeout path).
+	tsStatsReconciledForSnapshot bool
+}
+
 // ChangeReplicas atomically changes the replicas that are members of a range.
 // The change is performed in a distributed transaction and takes effect when
 // that transaction is committed. This transaction confirms that the supplied
@@ -1131,9 +1138,10 @@ func (r *Replica) ChangeReplicas(
 
 	if unroll {
 		// Legacy behavior.
+		opts := changeReplicasOpts{}
 		for i := range chgs {
 			var err error
-			desc, err = r.changeReplicasImpl(ctx, desc, priority, reason, details, chgs[i:i+1])
+			desc, err = r.changeReplicasImpl(ctx, desc, priority, reason, details, chgs[i:i+1], opts)
 			if err != nil {
 				return nil, err
 			}
@@ -1141,7 +1149,7 @@ func (r *Replica) ChangeReplicas(
 		return desc, nil
 	}
 	// Atomic replication change.
-	return r.changeReplicasImpl(ctx, desc, priority, reason, details, chgs)
+	return r.changeReplicasImpl(ctx, desc, priority, reason, details, chgs, changeReplicasOpts{})
 }
 
 func (r *Replica) changeReplicasImpl(
@@ -1151,6 +1159,7 @@ func (r *Replica) changeReplicasImpl(
 	reason storagepb.RangeLogEventReason,
 	details string,
 	chgs roachpb.ReplicationChanges,
+	opts changeReplicasOpts,
 ) (updatedDesc *roachpb.RangeDescriptor, _ error) {
 	var err error
 	// If in a joint config, clean up. The assumption here is that the caller
@@ -1225,7 +1234,7 @@ func (r *Replica) changeReplicasImpl(
 	log.VEventf(ctx, 3, " atomicReplicationChange begin")
 	// Catch up any learners, then run the atomic replication change that adds the
 	// final voters and removes any undesirable replicas.
-	desc, err = r.atomicReplicationChange(ctx, desc, priority, reason, details, chgs)
+	desc, err = r.atomicReplicationChange(ctx, desc, priority, reason, details, chgs, opts)
 	if err != nil {
 		// If the error occurred while transitioning out of an atomic replication change,
 		// try again here with a fresh descriptor; this is a noop otherwise.
@@ -1453,12 +1462,14 @@ func (r *Replica) atomicReplicationChange(
 	reason storagepb.RangeLogEventReason,
 	details string,
 	chgs roachpb.ReplicationChanges,
+	opts changeReplicasOpts,
 ) (*roachpb.RangeDescriptor, error) {
 	// TODO(dan): We allow ranges with learner replicas to split, so in theory
 	// this may want to detect that and retry, sending a snapshot and promoting
 	// both sides.
 
 	iChgs := make([]internalReplicationChange, 0, len(chgs))
+	tsStatsReconciled := opts.tsStatsReconciledForSnapshot
 
 	for _, target := range chgs.Additions() {
 		iChgs = append(iChgs, internalReplicationChange{target: target, typ: internalChangeTypePromoteLearner})
@@ -1492,7 +1503,13 @@ func (r *Replica) atomicReplicationChange(
 		// orphaned learner. Second, this tickled some bugs in etcd/raft around
 		// switching between StateSnapshot and StateProbe. Even if we worked through
 		// these, it would be susceptible to future similar issues.
-		if desc.GetRangeType() == roachpb.TS_RANGE {
+		if isTSRangeDescriptor(desc) {
+			// Admin and other direct conf-change paths reconcile here. The replicate
+			// and raft snapshot queues already refresh stats in totalBytesForQueueTimeout.
+			if !tsStatsReconciled {
+				r.reconcileTSRangeStatsForSnapshot(ctx)
+				tsStatsReconciled = true
+			}
 			// for TS replicas, call the timing engine interface to obtain a snapshot and apply it
 			exist := false
 			if r.store.TsEngine != nil && desc.TableId != 0 {
@@ -1501,7 +1518,7 @@ func (r *Replica) atomicReplicationChange(
 			if err := r.sendTSSnapshot(ctx, rDesc, SnapshotRequest_LEARNER, priority, exist); err != nil {
 				return nil, err
 			}
-		} else if desc.GetRangeType() == roachpb.DEFAULT_RANGE {
+		} else {
 			if err := r.sendSnapshot(ctx, rDesc, SnapshotRequest_LEARNER, priority); err != nil {
 				return nil, err
 			}
@@ -2078,6 +2095,9 @@ func (r *Replica) sendTSSnapshot(
 	if err != nil {
 		return errors.Wrapf(err, "%s: failed to generate %s TS snapshot", r, snapType)
 	}
+	if snap.State.Stats != nil && isTSRangeDescriptor(r.Desc()) {
+		*snap.State.Stats = r.GetMVCCStats()
+	}
 	defer snap.Close()
 	log.Event(ctx, "generated TS snapshot")
 	durGenerate := timeutil.Since(start)
@@ -2110,6 +2130,11 @@ func (r *Replica) sendTSSnapshot(
 		}
 	}
 
+	rangeSize := int64(0)
+	if snap.State.Stats != nil {
+		rangeSize = snap.State.Stats.Total()
+	}
+
 	req := SnapshotRequest_Header{
 		State:                      snap.State,
 		UnreplicatedTruncatedState: !usesReplicatedTruncatedState,
@@ -2125,8 +2150,7 @@ func (r *Replica) sendTSSnapshot(
 				Snapshot: snap.RaftSnap,
 			},
 		},
-		// TODO: Use TS range size
-		RangeSize:  r.GetMVCCStats().Total(),
+		RangeSize:  rangeSize,
 		CanDecline: false,
 		Priority:   priority,
 		Strategy:   SnapshotRequest_TS_BATCH,

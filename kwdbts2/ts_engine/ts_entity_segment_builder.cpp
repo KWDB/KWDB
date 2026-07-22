@@ -610,8 +610,7 @@ KStatus TsEntitySegmentBuilder::Open() {
   return SUCCESS;
 }
 
-KStatus TsEntitySegmentBuilder::WriteCachedBlockSpan(bool call_by_vacuum, TsEntityKey& entity_key,
-                                                     TsSegmentWriteStats* stats) {
+KStatus TsEntitySegmentBuilder::WriteCachedBlockSpan(TsEntityKey& entity_key, TsSegmentWriteStats* stats) {
   KStatus s = KStatus::SUCCESS;
   while (!cached_spans_.empty()) {
     if (cached_spans_.front()->GetRowNum() == 0) {
@@ -619,7 +618,7 @@ KStatus TsEntitySegmentBuilder::WriteCachedBlockSpan(bool call_by_vacuum, TsEnti
       continue;
     }
 
-    if (!call_by_vacuum && cached_count_ < EngineOptions::min_rows_per_block) {
+    if (cached_count_ < EngineOptions::min_rows_per_block) {
       // Writes the incomplete data back to the last segment
       auto row_num = cached_spans_.front()->GetRowNum();
       lastsegment_block_spans_.push_back(std::move(cached_spans_.front()));
@@ -683,7 +682,7 @@ KStatus TsEntitySegmentBuilder::Finalize() {
   return SUCCESS;
 }
 
-KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* update,
+KStatus TsEntitySegmentBuilder::Compact(TsVersionUpdate* update,
                                         std::vector<std::shared_ptr<TsBlockSpan>>* residual_spans,
                                         TsSegmentWriteStats* stats) {
   std::unique_lock lock{mutex_};
@@ -736,7 +735,7 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
       continue;
     }
 
-    s = WriteCachedBlockSpan(call_by_vacuum, entity_key, stats);
+    s = WriteCachedBlockSpan(entity_key, stats);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsEntitySegmentBuilder::Compact failed, write cached block span failed.")
       return s;
@@ -776,7 +775,7 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
     cached_spans_.push_back(std::move(block_span));
   }
 
-  s = WriteCachedBlockSpan(call_by_vacuum, entity_key, stats);
+  s = WriteCachedBlockSpan(entity_key, stats);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBuilder::Compact failed, write cached block span failed.")
     return s;

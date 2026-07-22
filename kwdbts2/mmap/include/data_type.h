@@ -327,3 +327,9 @@ std::string getDataTypeName(int32_t data_type);
 
 #define isTransient(x)			((x & ST_TRANSIENT) != 0)
 
+
+
+
+using DatabaseID = uint32_t;
+using PartitionIdentifier = std::tuple<DatabaseID, timestamp64, timestamp64>;  // (dbid, start_time, end_time);
+

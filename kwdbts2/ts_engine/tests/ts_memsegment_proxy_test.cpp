@@ -18,6 +18,8 @@ using namespace roachpb;
 
 class TsMemSegmentProxyTest : public ::testing::Test {
  protected:
+  // Owned here; must outlive mgr (declared first, destroyed last).
+  std::unique_ptr<TsDBSchemaManager> db_schema_mgr_;
   std::unique_ptr<TsEngineSchemaManager> mgr;
 
   EngineOptions opts;
@@ -81,7 +83,8 @@ class TsMemSegmentProxyTest : public ::testing::Test {
     fs::remove_all(schema_path);
     fs::remove_all(db_path);
 
-    mgr = std::make_unique<TsEngineSchemaManager>(schema_path);
+    db_schema_mgr_ = std::make_unique<TsDBSchemaManager>(".");
+    mgr = std::make_unique<TsEngineSchemaManager>(schema_path, db_schema_mgr_.get());
     std::shared_mutex wal_level_mutex;
     ASSERT_EQ(mgr->Init(nullptr), KStatus::SUCCESS);
     opts.db_path = db_path;
