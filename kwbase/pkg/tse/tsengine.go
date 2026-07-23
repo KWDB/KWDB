@@ -420,6 +420,18 @@ func loadGoContextHandle(handle uint64) (context.Context, bool) {
 	return ctx, ok
 }
 
+func filterValidTsSpans(tsSpans []*roachpb.TsSpan, opName string) []*roachpb.TsSpan {
+	var actualSpans []*roachpb.TsSpan
+	for i := 0; i < len(tsSpans); i++ {
+		if tsSpans[i].TsStart > tsSpans[i].TsEnd {
+			log.Warningf(context.TODO(), "%s ignore ts_span [%d ~ %d]", opName, tsSpans[i].TsStart, tsSpans[i].TsEnd)
+			continue
+		}
+		actualSpans = append(actualSpans, tsSpans[i])
+	}
+	return actualSpans
+}
+
 // tzCache caches time.Location objects for performance
 var tzCache sync.Map // map[string]*time.Location
 
@@ -1927,15 +1939,19 @@ func (r *TsEngine) DeleteRangeData(
 		begin: C.uint64_t(beginHash),
 		end:   C.uint64_t(endHash),
 	}
-
-	cTsSpans := make([]C.KwTsSpan, len(tsSpans))
-	for i := 0; i < len(tsSpans); i++ {
-		cTsSpans[i].begin = C.int64_t(tsSpans[i].TsStart)
-		cTsSpans[i].end = C.int64_t(tsSpans[i].TsEnd)
+	actualSpans := filterValidTsSpans(tsSpans, "DeleteRangeData")
+	if len(actualSpans) == 0 {
+		log.Infof(context.TODO(), "DeleteRangeData ts_span empty, no need to process.")
+		return 0, nil
+	}
+	cTsSpans := make([]C.KwTsSpan, len(actualSpans))
+	for i := 0; i < len(actualSpans); i++ {
+		cTsSpans[i].begin = C.int64_t(actualSpans[i].TsStart)
+		cTsSpans[i].end = C.int64_t(actualSpans[i].TsEnd)
 	}
 	cKwTsSpans := C.KwTsSpans{
 		spans: (*C.KwTsSpan)(unsafe.Pointer(&cTsSpans[0])),
-		len:   C.int32_t(len(tsSpans)),
+		len:   C.int32_t(len(actualSpans)),
 	}
 
 	var delCnt *C.uint64_t
@@ -1952,7 +1968,7 @@ func (r *TsEngine) DeleteRangeData(
 		C.uint64_t(tsTxnID),
 		C.uint64_t(osnID))
 	if err := statusToError(status); err != nil {
-		return uint64(*delCnt), errors.New("Data deletion failed or partially failed")
+		return uint64(*delCnt), errors.Wrap(err, "failed to delete range data")
 	}
 	return uint64(*delCnt), nil
 }
@@ -1995,19 +2011,19 @@ func (r *TsEngine) DeleteData(
 	}
 	defer C.free(unsafe.Pointer(cTsSlice.data))
 
-	cTsSpans := make([]C.KwTsSpan, len(tsSpans))
-	for i := 0; i < len(tsSpans); i++ {
-		// todo(liangbo01) ts span invaild, ignore it.
-		if tsSpans[i].TsStart > tsSpans[i].TsEnd {
-			log.Infof(context.TODO(), "DeleteData ignore ts_span [%s ~ %s]", tsSpans[i].TsStart, tsSpans[i].TsEnd)
-			continue
-		}
-		cTsSpans[i].begin = C.int64_t(tsSpans[i].TsStart)
-		cTsSpans[i].end = C.int64_t(tsSpans[i].TsEnd)
+	actualSpans := filterValidTsSpans(tsSpans, "DeleteData")
+	if len(actualSpans) == 0 {
+		log.Infof(context.TODO(), "DeleteData ts_span empty, no need to process.")
+		return 0, nil
+	}
+	cTsSpans := make([]C.KwTsSpan, len(actualSpans))
+	for i := 0; i < len(actualSpans); i++ {
+		cTsSpans[i].begin = C.int64_t(actualSpans[i].TsStart)
+		cTsSpans[i].end = C.int64_t(actualSpans[i].TsEnd)
 	}
 	cKwTsSpans := C.KwTsSpans{
 		spans: (*C.KwTsSpan)(unsafe.Pointer(&cTsSpans[0])),
-		len:   C.int32_t(len(tsSpans)),
+		len:   C.int32_t(len(actualSpans)),
 	}
 
 	var delCnt *C.uint64_t
@@ -2069,18 +2085,19 @@ func (r *TsEngine) TsDeleteMetricByTag(
 		}
 	}
 
-	cTsSpans := make([]C.KwTsSpan, len(tsSpans))
-	for i := 0; i < len(tsSpans); i++ {
-		if tsSpans[i].TsStart > tsSpans[i].TsEnd {
-			log.Infof(context.TODO(), "DeleteData ignore ts_span [%s ~ %s]", tsSpans[i].TsStart, tsSpans[i].TsEnd)
-			continue
-		}
-		cTsSpans[i].begin = C.int64_t(tsSpans[i].TsStart)
-		cTsSpans[i].end = C.int64_t(tsSpans[i].TsEnd)
+	actualSpans := filterValidTsSpans(tsSpans, "TsDeleteMetricByTag")
+	if len(actualSpans) == 0 {
+		log.Infof(context.TODO(), "TsDeleteMetricByTag ts_span empty, no need to process.")
+		return 0, nil
+	}
+	cTsSpans := make([]C.KwTsSpan, len(actualSpans))
+	for i := 0; i < len(actualSpans); i++ {
+		cTsSpans[i].begin = C.int64_t(actualSpans[i].TsStart)
+		cTsSpans[i].end = C.int64_t(actualSpans[i].TsEnd)
 	}
 	cKwTsSpans := C.KwTsSpans{
 		spans: (*C.KwTsSpan)(unsafe.Pointer(&cTsSpans[0])),
-		len:   C.int32_t(len(tsSpans)),
+		len:   C.int32_t(len(actualSpans)),
 	}
 
 	numColumn := len(indexColumns)
@@ -2135,14 +2152,19 @@ func (r *TsEngine) CountRangeData(
 		end:   C.uint64_t(endHash),
 	}
 
-	cTsSpans := make([]C.KwTsSpan, len(tsSpans))
-	for i := 0; i < len(tsSpans); i++ {
-		cTsSpans[i].begin = C.int64_t(tsSpans[i].TsStart)
-		cTsSpans[i].end = C.int64_t(tsSpans[i].TsEnd)
+	actualSpans := filterValidTsSpans(tsSpans, "CountRangeData")
+	if len(actualSpans) == 0 {
+		log.Infof(context.TODO(), "CountRangeData ts_span empty, no need to process.")
+		return 0, nil
+	}
+	cTsSpans := make([]C.KwTsSpan, len(actualSpans))
+	for i := 0; i < len(actualSpans); i++ {
+		cTsSpans[i].begin = C.int64_t(actualSpans[i].TsStart)
+		cTsSpans[i].end = C.int64_t(actualSpans[i].TsEnd)
 	}
 	cKwTsSpans := C.KwTsSpans{
 		spans: (*C.KwTsSpan)(unsafe.Pointer(&cTsSpans[0])),
-		len:   C.int32_t(len(tsSpans)),
+		len:   C.int32_t(len(actualSpans)),
 	}
 
 	var RangeCnt *C.uint64_t
@@ -2159,7 +2181,7 @@ func (r *TsEngine) CountRangeData(
 		C.uint64_t(tsTxnID),
 		C.uint64_t(osnID))
 	if err := statusToError(status); err != nil {
-		return uint64(*RangeCnt), errors.New("Data count failed or partially failed")
+		return uint64(*RangeCnt), errors.Wrap(err, "failed to count range data")
 	}
 	return uint64(*RangeCnt), nil
 }
