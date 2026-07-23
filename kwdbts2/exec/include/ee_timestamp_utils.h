@@ -10,6 +10,7 @@
 // Mulan PSL v2 for more details.
 #pragma once
 
+#include <cctype>
 #include <regex>
 #include <utility>
 #include <vector>
@@ -53,6 +54,9 @@ inline std::string replaceTimeUnit(KString timestring) {
         break;
       }
     }
+    result.erase(std::remove_if(result.begin(), result.end(),
+                                [](unsigned char c) { return std::isspace(c); }),
+                 result.end());
     return result;
 }
 

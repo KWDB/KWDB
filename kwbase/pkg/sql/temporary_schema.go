@@ -58,11 +58,22 @@ import (
 
 // TempObjectCleanupInterval is a ClusterSetting controlling how often
 // temporary objects get cleaned up.
-var TempObjectCleanupInterval = settings.RegisterPublicDurationSetting(
-	"sql.temp_object_cleaner.cleanup_interval",
-	"how often to clean up orphaned temporary objects",
-	30*time.Minute,
-)
+var TempObjectCleanupInterval = func() *settings.DurationSetting {
+	const key = "sql.temp_object_cleaner.cleanup_interval"
+	s := settings.RegisterValidatedDurationSetting(
+		key,
+		"how often to clean up orphaned temporary objects",
+		30*time.Minute,
+		func(v time.Duration) error {
+			if v <= 0 {
+				return errors.Errorf("cannot set %s to a non-positive duration: %s", key, v)
+			}
+			return nil
+		},
+	)
+	s.SetVisibility(settings.Public)
+	return s
+}()
 
 var (
 	temporaryObjectCleanerActiveCleanersMetric = metric.Metadata{

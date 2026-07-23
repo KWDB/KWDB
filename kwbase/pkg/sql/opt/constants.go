@@ -79,10 +79,15 @@ var PushdownAll = settings.RegisterPublicBoolSetting(
 )
 
 // TSParallelDegree ts engine parallel exec degree
-var TSParallelDegree = settings.RegisterPublicIntSetting(
-	"ts.parallel_degree",
-	"degree of parallelism in ts",
-	0)
+var TSParallelDegree = func() *settings.IntSetting {
+	s := settings.RegisterNonNegativeIntSetting(
+		"ts.parallel_degree",
+		"degree of parallelism in ts",
+		0,
+	)
+	s.SetVisibility(settings.Public)
+	return s
+}()
 
 // TSQueryOptMode is a cluster setting that controls each optimization switch.
 // The value of cluster setting ts.sql.query_opt_mode represents

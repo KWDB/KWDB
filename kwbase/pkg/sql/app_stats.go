@@ -95,7 +95,7 @@ var txnStatsEnable = settings.RegisterPublicBoolSetting(
 
 // sqlStatsCollectionLatencyThreshold specifies the minimum amount of time
 // consumed by a SQL statement before it is collected for statistics reporting.
-var sqlStatsCollectionLatencyThreshold = settings.RegisterPublicDurationSetting(
+var sqlStatsCollectionLatencyThreshold = settings.RegisterPublicNonNegativeDurationSetting(
 	"sql.metrics.statement_details.threshold",
 	"minimum execution time to cause statistics to be collected",
 	0,

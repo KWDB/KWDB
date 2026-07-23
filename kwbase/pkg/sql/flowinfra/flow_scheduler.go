@@ -41,11 +41,15 @@ import (
 
 const flowDoneChanSize = 8
 
-var settingMaxRunningFlows = settings.RegisterPublicIntSetting(
-	"sql.distsql.max_running_flows",
-	"maximum number of concurrent flows that can be run on a node",
-	500,
-)
+var settingMaxRunningFlows = func() *settings.IntSetting {
+	s := settings.RegisterPositiveIntSetting(
+		"sql.distsql.max_running_flows",
+		"maximum number of concurrent flows that can be run on a node",
+		500,
+	)
+	s.SetVisibility(settings.Public)
+	return s
+}()
 
 // FlowScheduler manages running flows and decides when to queue and when to
 // start flows. The main interface it presents is ScheduleFlows, which passes a

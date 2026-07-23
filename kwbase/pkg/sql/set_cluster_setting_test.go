@@ -402,6 +402,67 @@ func TestToSettingString(t *testing.T) {
 	}
 }
 
+func TestClusterSettingRejectsOutOfRangeValues(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	ctx := context.Background()
+	s, conn, _ := serverutils.StartServer(t, base.TestServerArgs{})
+	defer s.Stopper().Stop(ctx)
+
+	r := sqlutils.MakeSQLRunner(conn)
+	testCases := []struct {
+		name  string
+		query string
+		errRE string
+	}{
+		{
+			name:  "inside-out ratio below zero",
+			query: "SET CLUSTER SETTING sql.opt.inside_out_row_ratio = -0.1",
+			errRE: `outside the range \[0, 1\]`,
+		},
+		{
+			name:  "inside-out ratio above one",
+			query: "SET CLUSTER SETTING sql.opt.inside_out_row_ratio = 1.5",
+			errRE: `outside the range \[0, 1\]`,
+		},
+		{
+			name:  "negative TS parallel degree",
+			query: "SET CLUSTER SETTING ts.parallel_degree = -1",
+			errRE: `negative value`,
+		},
+		{
+			name:  "non-positive max running flows",
+			query: "SET CLUSTER SETTING sql.distsql.max_running_flows = -1",
+			errRE: `value < 1`,
+		},
+		{
+			name:  "negative slow query threshold",
+			query: "SET CLUSTER SETTING sql.log.slow_query.latency_threshold = '-1s'",
+			errRE: `negative duration`,
+		},
+		{
+			name:  "negative statement details threshold",
+			query: "SET CLUSTER SETTING sql.metrics.statement_details.threshold = '-1s'",
+			errRE: `negative duration`,
+		},
+		{
+			name:  "non-positive cleanup interval",
+			query: "SET CLUSTER SETTING sql.temp_object_cleaner.cleanup_interval = '-1s'",
+			errRE: `non-positive duration`,
+		},
+		{
+			name:  "negative transaction trace threshold",
+			query: "SET CLUSTER SETTING sql.trace.txn.enable_threshold = '-1s'",
+			errRE: `negative duration`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			r.ExpectErr(t, tc.errRE, tc.query)
+		})
+	}
+}
+
 // TestSetClusterSetting tests the SetClusterSetting method
 func TestSetClusterSetting(t *testing.T) {
 	defer leaktest.AfterTest(t)()

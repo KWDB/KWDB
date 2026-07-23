@@ -412,6 +412,27 @@ static String upper(Field **args, k_int32 arg_count) {
   return s0;
 }
 
+static bool isInitCapSeparator(unsigned char c) {
+  return c < 0x80 && !std::isalnum(c) && c != '_';
+}
+
+static String initCap(const String &input) {
+  String result(input.length_);
+  result.copy_string(input);
+
+  bool at_word_start = true;
+  for (size_t i = 0; i < result.length_; ++i) {
+    unsigned char c = static_cast<unsigned char>(result.ptr_[i]);
+    if (at_word_start) {
+      result.ptr_[i] = static_cast<char>(std::toupper(c));
+    } else {
+      result.ptr_[i] = static_cast<char>(std::tolower(c));
+    }
+    at_word_start = isInitCapSeparator(c);
+  }
+  return result;
+}
+
 static String left(Field **args, k_int32 arg_count) {
   String s1 = args[0]->ValStr();
   auto in_str_list = str2Utf8List(std::string(s1.getptr(), s1.length_));
@@ -920,9 +941,7 @@ char *FieldFuncInitCap::get_ptr(RowBatch *batch) {
     case roachpb::DataType::BINARY:
     case roachpb::DataType::VARBINARY: {
       String s1 = args_[0]->ValStr(ptr);
-      strvalue_ = String(s1.length());
-      strvalue_.copy_string(s1);
-      strvalue_.ptr_[0] = std::toupper(strvalue_.ptr_[0]);
+      strvalue_ = initCap(s1);
       break;
     }
     default:
@@ -954,10 +973,7 @@ String FieldFuncInitCap::ValStr() {
     }
 
     String s1 = args_[0]->ValStr();
-    String result(s1.length());
-    result.copy_string(s1);
-    result.ptr_[0] = std::toupper(result.ptr_[0]);
-    return result;
+    return initCap(s1);
   }
 }
 

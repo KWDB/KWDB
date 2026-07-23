@@ -936,6 +936,30 @@ TEST_F(TestFieldFunc, TestFieldTimeBucketMonthInterval) {
   }
 }
 
+TEST_F(TestFieldFunc, TestFieldTimeBucketSpacedInterval) {
+  struct TestCase {
+    KString interval;
+    k_int64 expected;
+  };
+  const std::vector<TestCase> test_cases = {
+      {"1 day", 1705276800000},
+      {"1 month", 1704067200000},
+      {"2 hours", 1705320000000},
+      {"1day", 1705276800000},
+      {"1mon", 1704067200000},
+  };
+
+  for (const auto& test_case : test_cases) {
+    FieldConstString interval(roachpb::DataType::CHAR, test_case.interval);
+    FieldConstInt timestamp(roachpb::DataType::TIMESTAMPTZ, 1705320000000, sizeof(k_int64));
+    std::list<Field *> args = {&timestamp, &interval};
+    FieldFuncTimeBucket field(args, 0);
+
+    EXPECT_EQ(field.ValInt(), test_case.expected) << "interval: " << test_case.interval;
+    EXPECT_FALSE(EEPgErrorInfo::IsError()) << "interval: " << test_case.interval;
+  }
+}
+
 TEST_F(TestFieldFunc, TestFieldWidthBucketSpecialCases) {
   {
     std::list<Field *> args;

@@ -287,6 +287,37 @@ TEST_F(TestFieldIterator, TestStringFunc) {
   }
 }
 
+TEST_F(TestFieldIterator, InitCapMatchesRelationalSemantics) {
+  struct TestCase {
+    KString input;
+    KString expected;
+  };
+  const TestCase test_cases[] = {
+      {"hello WORLD", "Hello World"},
+      {"abcDEF", "Abcdef"},
+      {"foo bar", "Foo Bar"},
+      {"FOO-BAR", "Foo-Bar"},
+      {"FOO_BAR", "Foo_bar"},
+      {"", ""},
+  };
+
+  for (const auto &test_case : test_cases) {
+    FieldConstString input(roachpb::DataType::VARCHAR, test_case.input);
+    FieldFuncInitCap init_cap(&input);
+    String result = init_cap.ValStr();
+    EXPECT_EQ(KString(result.ptr_, result.length_), test_case.expected)
+        << test_case.input;
+
+    BatchStringField batch_input(roachpb::DataType::VARCHAR, test_case.input);
+    FieldFuncInitCap batch_init_cap(&batch_input);
+    char *batch_result = batch_init_cap.get_ptr(nullptr);
+    ASSERT_NE(batch_result, nullptr);
+    EXPECT_EQ(KString(batch_result, test_case.expected.length()),
+              test_case.expected)
+        << test_case.input;
+  }
+}
+
 // Test FieldNum
 // TEST_F(TestFieldIterator, TestFieldNum) {
 //   FieldNum field_num(0, roachpb::DataType::INT, sizeof(k_int32));

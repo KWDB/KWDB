@@ -127,7 +127,7 @@ var defaultIntSize = func() *settings.IntSetting {
 // that any positive duration will enable tracing and will slow down
 // all execution because traces are gathered for all transactions even
 // if they are not output.
-var traceTxnThreshold = settings.RegisterPublicDurationSetting(
+var traceTxnThreshold = settings.RegisterPublicNonNegativeDurationSetting(
 	"sql.trace.txn.enable_threshold",
 	"duration beyond which all transactions are traced (set to 0 to disable)", 0,
 )
@@ -182,9 +182,20 @@ var ReorderJoinsLimitClusterValue = settings.RegisterValidatedIntSetting(
 )
 
 // TSInsideOutRowRatio is used to set the number of output rows for the GroupByExpr after push down.
-var TSInsideOutRowRatio = settings.RegisterPublicFloatSetting(
-	"sql.opt.inside_out_row_ratio", "adjust output row of group by in inside-out case", 0.9,
-)
+var TSInsideOutRowRatio = func() *settings.FloatSetting {
+	const key = "sql.opt.inside_out_row_ratio"
+	s := settings.RegisterValidatedFloatSetting(
+		key, "adjust output row of group by in inside-out case", 0.9,
+		func(v float64) error {
+			if v < 0 || v > 1 {
+				return errors.Errorf("cannot set %s outside the range [0, 1]: %f", key, v)
+			}
+			return nil
+		},
+	)
+	s.SetVisibility(settings.Public)
+	return s
+}()
 
 var requireExplicitPrimaryKeysClusterMode = settings.RegisterBoolSetting(
 	"sql.defaults.require_explicit_primary_keys.enabled",
