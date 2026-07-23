@@ -43,6 +43,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
+	"github.com/lib/pq"
 	"github.com/lib/pq/oid"
 )
 
@@ -146,6 +147,12 @@ const (
 	maxRetries = 10
 	// varchar length
 	varcharlen = 254
+
+	// format of parser time to string
+	timeParserFormat = "15:04:05"
+
+	// format of parser timeTZ to string
+	timeTZParserFormat = "15:04:05-07:00:00"
 )
 
 // MetricData is used for opentsdb json
@@ -1120,7 +1127,7 @@ func (s *restfulServer) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 			// get row data.
 			for _, datums := range re.Rows {
-				restData, resErr := makeQueryRes(datums, h.GetTimeZone(), connCache.isStrTimezone, nameIdx, colFloatFuncs)
+				restData, resErr := makeQueryRes(datums, h.GetTimeZone(), nameIdx, colFloatFuncs)
 				if resErr != nil {
 					s.sendJSONResponse(ctx, w, RestfulResponseCodeFail, nil, resErr.Error())
 					return
@@ -1156,11 +1163,18 @@ func (s *restfulServer) handleQuery(w http.ResponseWriter, r *http.Request) {
 	refreshRequestTime(connCache)
 }
 
+func dealWithTimestamp(location *time.Location, format string, origin string) (string, error) {
+	t, err := pq.ParseTimestamp(location, origin)
+	if err != nil {
+		return "", err
+	}
+	return t.Format(format), nil
+}
+
 // makeQueryRes change query result to make it same as original to make test access
 func makeQueryRes(
 	datums tree.Datums,
 	location *time.Location,
-	isStrTimezone bool,
 	nameIdx map[int]string,
 	colFloatFuncs []func(val *tree.DFloat, originStr *string),
 ) ([]string, error) {
@@ -1170,16 +1184,13 @@ func makeQueryRes(
 			ts.Time = ts.Time.In(location)
 		}
 		str := sqlbase.DatumToString(datum)
+		canTrimStr := false
+		var timeErr error
 		switch datum.(type) {
-		case *tree.DInterval, *tree.DTimestampTZ, *tree.DUuid, *tree.DJSON, *tree.DIPAddr, *tree.DTime, *tree.DDate:
-			if len(str) > 0 && str[0] == '\'' {
-				str = str[1:]
-			}
-			if len(str) > 0 && str[len(str)-1] == '\'' {
-				str = str[:len(str)-1]
-			}
+		case *tree.DInterval, *tree.DTimestampTZ, *tree.DTimeTZ, *tree.DUuid, *tree.DJSON, *tree.DIPAddr, *tree.DTime, *tree.DDate:
+			canTrimStr = true
 		}
-		if _, ok := nameIdx[i]; ok {
+		if _, ok := nameIdx[i]; ok || canTrimStr {
 			if len(str) > 0 && str[0] == '\'' {
 				str = str[1:]
 			}
@@ -1189,49 +1200,32 @@ func makeQueryRes(
 		}
 		switch val := datum.(type) {
 		case *tree.DTimestamp:
-			strs := strings.Split(val.Time.Format(time.RFC822), " ")
-			zoneStr := strs[len(strs)-1]
-			timeStr := strings.Split(str, "+")
-			if len(timeStr) == 2 {
-				tz := strings.ReplaceAll(timeStr[1], ":", "")
-				if isStrTimezone {
-					str = timeStr[0] + " +" + tz + " " + zoneStr
-				} else {
-					str = timeStr[0] + " +" + tz + " +" + tz
-				}
-			} else {
-				idx := strings.LastIndex(str, "-")
-				tz := strings.ReplaceAll(str[idx:], ":", "")
-				if isStrTimezone {
-					str = str[:idx] + " " + tz + " " + zoneStr
-				} else {
-					str = str[:idx] + " " + tz + " " + tz
-				}
-			}
-		case *tree.DTimestampTZ:
-			strs := strings.Split(val.Time.Format(time.RFC822), " ")
-			zoneStr := strs[len(strs)-1]
-			timeStr := strings.Split(str, "+")
-			if len(timeStr) == 2 {
-				tz := strings.ReplaceAll(timeStr[1], ":", "")
-				if isStrTimezone {
-					str = timeStr[0] + " +" + tz + " " + zoneStr
-				} else {
-					str = timeStr[0] + " +" + tz + " +" + tz
-				}
-			} else {
-				idx := strings.LastIndex(str, "-")
-				tz := strings.ReplaceAll(str[idx:], ":", "")
-				if isStrTimezone {
-					str = str[:idx] + " " + tz + " " + zoneStr
-				} else {
-					str = str[:idx] + " " + tz + " " + tz
-				}
+			str, timeErr = dealWithTimestamp(nil, tree.DateTimeOutputFormat, str)
+			if timeErr != nil {
+				return []string{}, timeErr
 			}
 		case *tree.DDate:
-			str = str + " 00:00:00 +0000 +0000"
+			str, timeErr = dealWithTimestamp(nil, tree.DateFormat, str)
+			if timeErr != nil {
+				return []string{}, timeErr
+			}
+		case *tree.DTimestampTZ:
+			str, timeErr = dealWithTimestamp(location, tree.TimestampOutputFormat, str)
+			if timeErr != nil {
+				return []string{}, timeErr
+			}
 		case *tree.DTime:
-			str = "0000-01-01 " + str + " +0000 UTC"
+			t, err := time.Parse(timeParserFormat, str)
+			if err != nil {
+				return []string{}, err
+			}
+			str = t.Format(tree.TimeFormat)
+		case *tree.DTimeTZ:
+			t, err := time.Parse(timeTZParserFormat, str)
+			if err != nil {
+				return []string{}, err
+			}
+			str = t.Format(tree.TimeTZFormat)
 		case *tree.DCollatedString:
 			str = val.Contents
 		case *tree.DFloat:
