@@ -138,3 +138,23 @@ ERROR: invalid value, the range of ts.rows_per_block.min_limit is [1, 50000]
 SET CLUSTER SETTING
 > SET CLUSTER SETTING ts.rows_per_block.max_limit=4096;
 SET CLUSTER SETTING
+> SET CLUSTER SETTING server.rest.timeout = 0;
+ERROR: invalid value, server.rest.timeout must be greater than 0
+SQLSTATE: 22023
+> SET CLUSTER SETTING server.rest.timeout = -1;
+ERROR: invalid value, server.rest.timeout must be greater than 0
+SQLSTATE: 22023
+> SET CLUSTER SETTING server.rest.timeout = 100;
+SET CLUSTER SETTING
+> SHOW CLUSTER SETTING server.rest.timeout;
+  server.rest.timeout
+-----------------------
+                  100
+(1 row)
+> SET CLUSTER SETTING server.rest.timeout = default;
+SET CLUSTER SETTING
+> SHOW CLUSTER SETTING server.rest.timeout;
+  server.rest.timeout
+-----------------------
+                   60
+(1 row)

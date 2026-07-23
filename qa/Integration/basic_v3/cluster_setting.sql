@@ -59,3 +59,10 @@ SET CLUSTER SETTING ts.rows_per_block.min_limit=50001;
 
 SET CLUSTER SETTING ts.rows_per_block.min_limit=512;
 SET CLUSTER SETTING ts.rows_per_block.max_limit=4096;
+
+SET CLUSTER SETTING server.rest.timeout = 0;
+SET CLUSTER SETTING server.rest.timeout = -1;
+SET CLUSTER SETTING server.rest.timeout = 100;
+SHOW CLUSTER SETTING server.rest.timeout;
+SET CLUSTER SETTING server.rest.timeout = default;
+SHOW CLUSTER SETTING server.rest.timeout;

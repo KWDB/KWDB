@@ -215,10 +215,17 @@ type restfulConnPool struct {
 }
 
 // SQLRestfulTimeOut maximum overdue time
-var SQLRestfulTimeOut = settings.RegisterPublicIntSetting(
+var SQLRestfulTimeOut = settings.RegisterValidatedIntSetting(
 	"server.rest.timeout",
 	"time out for restful api(in minutes)",
 	60,
+	func(v int64) error {
+		if v <= 0 {
+			return pgerror.Newf(pgcode.InvalidParameterValue,
+				"invalid value, server.rest.timeout must be greater than 0")
+		}
+		return nil
+	},
 )
 
 // SQLRestfulTimeZone information of timezone
