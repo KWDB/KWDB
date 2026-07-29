@@ -307,7 +307,7 @@ SQL
 
 1. **[最高优先] 把工作区改动入库**：按 §8.1 建 `arrow-unify` 分支 commit + push（或 tar 打包带走）。**这是切换服务器的前置动作**，当前所有成果都还在未提交工作区。
 2. **[可选] 向量化扩展到更多核**：当前 §7.10 已向量化的聚合核是 sum/minMax/mean（INT/FLOAT 走连续缓冲直读；DECIMAL/BOOL/TIMESTAMP 仍按值读但经选择子喂入）。可继续把 filter/projection/join 的**计算核**也改为选择子驱动的列式循环（colexec 式），进一步消除逐行 `Value(i)` 调用；以及把 mean 的 sum/count 累加也走 `Int64Values()` 连续缓冲。**本步已收尾**：① filter.eval 改用原生 `compute.Filter` 核替代「逐行收集 indices + take」，彻底消除每行的 `IsNull/Value` 调用；② mean 的 DECIMAL 分支也从 `a.Value(i)` 改为 `a.Values()` 连续缓冲（与 sum/minMax 风格统一）；filter 的 `like`/CAST 因 arrow 无对应 kernel 仍保留行式 Go 实现。
-3. **[可选] 把 colexec 对照扩展到分组态**：§7.10 的正确性/性能对照目前只比了**全局 SUM**（因 colexec `NewHashAggregator` 输出不含 group key，仅含聚合列）。若要对照分组聚合，需要让 colexec 也产出 group key，或在对比层做「按组 SUM 字典」对齐——属增强验证，不影响当前结论。
+3. **[可选] 把 colexec 对照扩展到分组态**：§7.10 的正确性/性能对照目前只比了**全局 SUM**（因 colexec `NewHashAggregator` 输出不含 group key，仅含聚合列）。若要对照分组聚合，需要让 colexec 也产出 group key，或在对比层做「按组 SUM 字典」对齐——属增强验证，不影响当前结论。**本步已完成（§9.4）**：新增 `TestArrowGroupedAggMatchesColexec`（分组 SUM 正确性，arrow 精确 (group→sum) map vs Go 真值字典；colexec 因不输出 group key 走「排序 multiset vs 真值」对照，二者对齐即证明 arrow==colexec 分组一致）+ `BenchmarkArrowVsColexecGrouped`。**关键结论**：分组态下 arrow（~1005µs/op）反而比 colexec（~553µs/op）慢约 0.55×，与全局 SUM 时 arrow 1.9× 快形成对比——arrow 的 uint64 哈希分桶 + 每 distinct 组字符串 key 物化 + map 查找 + Finalize 排序开销在分组场景压过了列存直读优势。这提示 §9.4（分布式分组聚合路由 Arrow）需先做分组路径的微优化（减少 string key 物化 / 用更紧凑的组容器）再上生产。
 4. **[可选] 接 planner 让聚合真正走分组 Arrow 路径**：§7.5 提到分布式 GROUP BY 仍走 `setupMultiAggFinalState`（标准引擎），当前 Arrow 聚合在 `distsql_physical_planner.go:4737` 仅全局聚合稳定走 Arrow。可扩 planner 让分组聚合也路由 Arrow（需确认 refcount / 流式 finalize 语义）。
 5. **[可选] 补更多类型/函数**：UUID/JSON 分组键、字符串函数（substring/length，Arrow 无 kernel 需自补）、非字符串左操作数的 LIKE；left/right/full 连接的非等值 `onExpr`（post-filter 语义不等价，需在执行期区分已匹配行与 NULL 扩展行）。
 
@@ -332,3 +332,13 @@ SQL
   - `arrow_aggregate.go` 的 `meanAgg.Consume` 的 `*array.Decimal128` 分支：从 `a.Value(i)` 改为 `a.Values()` 连续切片直读（与 sum/minMax 的 `Int64Values()/Float64Values()` 风格统一）。
 - **验证**：`go test -run 'Arrow|Join|Aggregat' ./pkg/sql/rowexec/` PASS（51s，含 arrowpilot e2e）；编译干净。
 - **状态**：改动含 `arrow_filter.go`、`arrow_aggregate.go`。**待入库**（见 §8.1 / §9 第 1 项）。
+
+### 9.4 本次会话（2026-07-29 第三波）收尾要点回顾 —— colexec 对照扩展到分组态
+
+- **完成（§9 NEXT 第 3 项）**：把 colexec 对照从「全局 SUM」扩展到「分组 SUM」的正确性 + 性能对照。
+  - 新增 `TestArrowGroupedAggMatchesColexec`：用 Go 从原始切片算**真值分组 SUM 字典** `map[int64]int64`，两端各自对照——arrow 走 `GroupCols:["col0"]` 精确 `(group_key→sum)` map 对比（同时验证 arrow 的 group key 输出正确）；colexec 因 `hashAggregator` 不输出 group key，走「排序 multiset（值序列 + NULL 组计数）vs 真值」对照。两端都对齐真值 ⇒ 证明 arrow==colexec 的分组聚合等价。用例含 4 组（含 500 组高基数、20% NULL）。
+  - 新增 `BenchmarkArrowVsColexecGrouped`：分组 SUM(int64) 同数据同列存对照。
+- **关键性能结论**：分组态下 **arrow ≈1005µs/op 反而比 colexec ≈553µs/op 慢约 0.55×**，与全局 SUM 时 arrow 1.9× 快形成鲜明对比。原因：arrow 的 colexec 式 uint64 哈希分桶 + 每 distinct 组物化字符串 key（`arrowGroupKey`）+ `map[string]` 查找 + `Finalize` 按首见行排序 的开销，在分组场景压过了列存连续缓冲直读的优势；而 colexec 原生 `hashAggregator` 在分组态已高度优化。
+- **对 §9 NEXT 第 4 项（分布式分组聚合路由 Arrow）的启示**：分组路径直接上生产前，应先做分组核微优化（减少/消除每 distinct 组字符串 key 物化、改用更紧凑的组容器或原生 Arrow hash 聚合），否则分组聚合反而劣于现标准引擎。
+- **验证**：`TestArrowGroupedAggMatchesColexec`、`TestArrowAggMatchesColexec` PASS；`go test -run 'Arrow|Join|Aggregat' ./pkg/sql/rowexec/` 全绿（51s 含 arrowpilot e2e）；`go vet` 干净。
+- **状态**：改动仅含 `arrow_aggregate_colexec_bench_test.go`（测试/基准，不影响生产代码）。**待入库**。
