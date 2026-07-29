@@ -533,7 +533,11 @@ func BenchmarkArrowVsColexecGrouped(b *testing.B) {
 	defer cleanup()
 
 	b.Run("arrow", func(b *testing.B) {
-		b.ResetTimer()
+		// The aggregator consumes+releases its input record on each call, so a
+		// fresh record is built per iteration. This matches the pre-optimization
+		// benchmark shape and keeps arrow/colexec on equal footing (colexec pays
+		// record->batch conversion once outside its loop, arrow pays record build
+		// per call — both reflect realistic per-invocation cost).
 		for i := 0; i < b.N; i++ {
 			rec := buildIntRecord(alloc, groups, vals, nulls)
 			if _, _, err := runArrowGroupedSum(ctx, alloc, rec); err != nil {

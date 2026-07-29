@@ -6,9 +6,6 @@ package rowexec
 
 import (
 	"context"
-	"encoding/binary"
-	"fmt"
-	"strings"
 
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
@@ -91,44 +88,6 @@ func (a *arrowAggregatorCore) releaseCols(cols []arrow.Array, upTo int) {
 			cols[i].Release()
 		}
 	}
-}
-
-// groupKey builds a canonical, collision-free key for row i over the grouping
-// columns.
-func (a *arrowAggregatorCore) groupKey(rec arrow.Record, row int) string {
-	var sb strings.Builder
-	for _, gc := range a.spec.GroupCols {
-		col := arrowOperandColumn(rec, gc)
-		if col.IsNull(row) {
-			sb.WriteString("\x00∅\x00")
-			continue
-		}
-		switch col.DataType().ID() {
-		case arrow.INT64:
-			fmt.Fprintf(&sb, "i%d\x1f", col.(*array.Int64).Value(row))
-		case arrow.TIMESTAMP:
-			fmt.Fprintf(&sb, "i%d\x1f", int64(col.(*array.Timestamp).Value(row)))
-		case arrow.FLOAT64:
-			fmt.Fprintf(&sb, "f%g\x1f", col.(*array.Float64).Value(row))
-		case arrow.BOOL:
-			fmt.Fprintf(&sb, "b%v\x1f", col.(*array.Boolean).Value(row))
-		case arrow.STRING:
-			sb.WriteString("s")
-			sb.WriteString(col.(*array.String).Value(row))
-			sb.WriteString("\x1f")
-		case arrow.DECIMAL128:
-			num := col.(*array.Decimal128).Value(row)
-			var buf [16]byte
-			binary.BigEndian.PutUint64(buf[0:8], uint64(num.HighBits()))
-			binary.BigEndian.PutUint64(buf[8:16], num.LowBits())
-			sb.WriteString("d")
-			sb.Write(buf[:])
-			sb.WriteString("\x1f")
-		default:
-			fmt.Fprintf(&sb, "x%d\x1f", row)
-		}
-	}
-	return sb.String()
 }
 
 func (a *arrowAggregatorCore) inputType(rec arrow.Record, colName string) arrow.DataType {

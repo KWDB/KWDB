@@ -338,7 +338,19 @@ SQL
 - **完成（§9 NEXT 第 3 项）**：把 colexec 对照从「全局 SUM」扩展到「分组 SUM」的正确性 + 性能对照。
   - 新增 `TestArrowGroupedAggMatchesColexec`：用 Go 从原始切片算**真值分组 SUM 字典** `map[int64]int64`，两端各自对照——arrow 走 `GroupCols:["col0"]` 精确 `(group_key→sum)` map 对比（同时验证 arrow 的 group key 输出正确）；colexec 因 `hashAggregator` 不输出 group key，走「排序 multiset（值序列 + NULL 组计数）vs 真值」对照。两端都对齐真值 ⇒ 证明 arrow==colexec 的分组聚合等价。用例含 4 组（含 500 组高基数、20% NULL）。
   - 新增 `BenchmarkArrowVsColexecGrouped`：分组 SUM(int64) 同数据同列存对照。
-- **关键性能结论**：分组态下 **arrow ≈1005µs/op 反而比 colexec ≈553µs/op 慢约 0.55×**，与全局 SUM 时 arrow 1.9× 快形成鲜明对比。原因：arrow 的 colexec 式 uint64 哈希分桶 + 每 distinct 组物化字符串 key（`arrowGroupKey`）+ `map[string]` 查找 + `Finalize` 按首见行排序 的开销，在分组场景压过了列存连续缓冲直读的优势；而 colexec 原生 `hashAggregator` 在分组态已高度优化。
-- **对 §9 NEXT 第 4 项（分布式分组聚合路由 Arrow）的启示**：分组路径直接上生产前，应先做分组核微优化（减少/消除每 distinct 组字符串 key 物化、改用更紧凑的组容器或原生 Arrow hash 聚合），否则分组聚合反而劣于现标准引擎。
+- **关键性能结论（初测）**：分组态下 **arrow ≈1005µs/op 反而比 colexec ≈553µs/op 慢约 0.55×**。原因初判为 arrow 的 colexec 式 uint64 哈希分桶 + 每 distinct 组物化字符串 key（`arrowGroupKey`）+ `map[string]` 查找。后经 §9.5 剖析，**真正瓶颈不是 `map[string]`**，而是「每分组每 1 行调用一次 scalarAgg.Consume（逐行 IsNull/Value 访问器）」——colexec 是把整段 selection vector 一次性喂入。详见 §9.5。
 - **验证**：`TestArrowGroupedAggMatchesColexec`、`TestArrowAggMatchesColexec` PASS；`go test -run 'Arrow|Join|Aggregat' ./pkg/sql/rowexec/` 全绿（51s 含 arrowpilot e2e）；`go vet` 干净。
 - **状态**：改动仅含 `arrow_aggregate_colexec_bench_test.go`（测试/基准，不影响生产代码）。**待入库**。
+
+### 9.5 本次会话（2026-07-29 第四波）收尾要点回顾 —— 分组核重写（Arrow 原生式 Grouper）
+
+- **背景**：用户指出"Go 版 arrow 若无对应实现，可参考 C++ 版本在 kwbase 重写添加"。核查结论：vendor 的 Arrow **Go v17（乃至上游 `main`）都没有原生分组/Grouper 实现**——仅全局标量聚合 + `compute.Unique`，`FuncHashAgg` 只是占位枚举；handoff §8 提到的 `arrow/compute/aggregate` 本地补丁当前树中并不存在。因此"直接调用 Arrow 自带分组"不可行，正确路子是**参考 Arrow C++ `GrouperFastImpl`（`arrow/cpp/src/arrow/compute/row/grouper.cc`）在 kwbase 重写一个等价的 Go 分组核**。
+- **重写内容（`arrow_aggregate.go` + `arrow_aggregator.go`）**：
+  1. **开放寻址分组表 `arrowGroupTable`**（等价 C++ `GrouperFastImpl` 思路，去 `map[string]`）：仅存 dense group id（uint32 数组）+ 每槽首见行索引，线性探测（组从不删除故无 tombstone）；group key 值**不再常驻**，由 `MaterializeRow` 在 `Finalize` 时按首见行从当前 batch 重建。彻底消除每 distinct 组的 Go string 物化。
+  2. **列索引预解析**：`resolveColIdxs` 把 groupCols 名字解析为整型列索引一次，`arrowGroupHashIdx`/`arrowGroupRowEqualIdx`/`MaterializeRow` 全走索引，消除热路径上每行列的 `Schema.FieldIndices`（map 查找）开销。
+  3. **批量喂入（关键）**：`Consume` 先按组累积行索引 `sels[gid]`，循环结束后再**每个组一次性用整段 selection vector 调 `scalarAggregator.Consume`**——与 colexec 把整段 selection vector 喂入等价，消除"每分组每行一次 Consume 的逐行 IsNull/Value 访问器"开销（这才是真实瓶颈）。
+  4. 删除旧 `arrowGroupKey`（`arrow_aggregate.go`）与 `arrowAggregatorCore.groupKey`（`arrow_aggregator.go`）两处 string 物化函数。
+- **性能演进（n=10000, 16 组，同数据）**：arrow 分组 1005µs(初测 0.55×) → 去 FieldIndices 后仍 ~1005µs → **批量喂入后 694µs，约 colexec(490µs) 的 1.4×**。CPU profile 确认剩余成本集中在哈希分组本身（`findOrInsert`+`arrowGroupHashIdx`+`maphash/aeshash`，与 colexec 同样要逐行哈希），**架构已与 colexec 持平**，剩余 1.4× 主要是 Go 逐行 `maphash` 与 GC，非结构性缺陷。
+- **验证**：`TestArrowGroupedAggMatchesColexec`（分组正确性：arrow 精确 group→sum map vs Go 真值；colexec multiset vs 真值）PASS；`go test -run 'Arrow|Join|Aggregat' ./pkg/sql/rowexec/` 全绿（52s 含 arrowpilot e2e）；`go vet` 干净。
+- **对 §9 NEXT 第 4 项（分布式分组聚合路由 Arrow）的启示**：分组核经本波重写已与 colexec **架构持平且性能接近（1.4×）**，不再是"劣于标准引擎"的障碍；但生产路由前仍建议确认流式多 batch 的 `Finalize`/refcount 语义（见 planner.go:4737 现状）。若要把剩余 1.4× 抹平，可选方向：用更快的非加密哈希（如 wyhash/xxhash）替代 `maphash`、或对高频单列 int 组键走特化快速路径。
+- **状态**：改动含 `arrow_aggregate.go`、`arrow_aggregator.go`。**待入库**。
