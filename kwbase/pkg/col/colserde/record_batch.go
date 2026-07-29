@@ -30,8 +30,8 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/col/colserde/arrowserde"
 	"gitee.com/kwbasedb/kwbase/pkg/col/coltypes"
-	"github.com/apache/arrow/go/arrow/array"
-	"github.com/apache/arrow/go/arrow/memory"
+	"github.com/apache/arrow/go/v17/arrow/array"
+	"github.com/apache/arrow/go/v17/arrow/memory"
 	flatbuffers "github.com/google/flatbuffers/go"
 	"github.com/pkg/errors"
 )

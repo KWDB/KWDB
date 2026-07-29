@@ -33,9 +33,9 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/col/coldata"
 	"gitee.com/kwbasedb/kwbase/pkg/col/coltypes"
 	"gitee.com/kwbasedb/kwbase/pkg/util/duration"
-	"github.com/apache/arrow/go/arrow"
-	"github.com/apache/arrow/go/arrow/array"
-	"github.com/apache/arrow/go/arrow/memory"
+	"github.com/apache/arrow/go/v17/arrow"
+	"github.com/apache/arrow/go/v17/arrow/array"
+	"github.com/apache/arrow/go/v17/arrow/memory"
 	"github.com/cockroachdb/errors"
 )
 
@@ -138,7 +138,7 @@ func (c *ArrowBatchConverter) BatchToArrow(batch coldata.Batch) ([]*array.Data, 
 			switch typ {
 			case coltypes.Bool:
 				c.builders.boolBuilder.AppendValues(vec.Bool()[:n], nil /* valid */)
-				data = c.builders.boolBuilder.NewBooleanArray().Data()
+				data = c.builders.boolBuilder.NewBooleanArray().Data().(*array.Data)
 			case coltypes.Decimal:
 				decimals := vec.Decimal()[:n]
 				for _, d := range decimals {
@@ -148,7 +148,7 @@ func (c *ArrowBatchConverter) BatchToArrow(batch coldata.Batch) ([]*array.Data, 
 					}
 					c.builders.binaryBuilder.Append(marshaled)
 				}
-				data = c.builders.binaryBuilder.NewBinaryArray().Data()
+				data = c.builders.binaryBuilder.NewBinaryArray().Data().(*array.Data)
 			case coltypes.Timestamp:
 				timestamps := vec.Timestamp()[:n]
 				for _, ts := range timestamps {
@@ -158,7 +158,7 @@ func (c *ArrowBatchConverter) BatchToArrow(batch coldata.Batch) ([]*array.Data, 
 					}
 					c.builders.binaryBuilder.Append(marshaled)
 				}
-				data = c.builders.binaryBuilder.NewBinaryArray().Data()
+				data = c.builders.binaryBuilder.NewBinaryArray().Data().(*array.Data)
 			case coltypes.Interval:
 				intervals := vec.Interval()[:n]
 				// Appending to the binary builder will copy the bytes, so it's safe to
@@ -174,7 +174,7 @@ func (c *ArrowBatchConverter) BatchToArrow(batch coldata.Batch) ([]*array.Data, 
 					binary.LittleEndian.PutUint64(scratchIntervalBytes[sizeOfInt64*2:sizeOfInt64*3], uint64(days))
 					c.builders.binaryBuilder.Append(scratchIntervalBytes)
 				}
-				data = c.builders.binaryBuilder.NewBinaryArray().Data()
+				data = c.builders.binaryBuilder.NewBinaryArray().Data().(*array.Data)
 			default:
 				panic(fmt.Sprintf("unexpected type %s", typ))
 			}
@@ -286,7 +286,7 @@ func (c *ArrowBatchConverter) ArrowToBatch(data []*array.Data, b coldata.Batch) 
 		vec := b.ColVec(i)
 		d := data[i]
 
-		var arr array.Interface
+		var arr arrow.Array
 		switch typ {
 		case coltypes.Bool:
 			boolArr := array.NewBooleanData(d)

@@ -35,7 +35,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/col/coltypes"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
-	"github.com/apache/arrow/go/arrow/array"
+	"github.com/apache/arrow/go/v17/arrow/array"
 	mmap "github.com/edsrzf/mmap-go"
 	flatbuffers "github.com/google/flatbuffers/go"
 	"github.com/pkg/errors"

@@ -41,9 +41,9 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"gitee.com/kwbasedb/kwbase/pkg/util/randutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
-	"github.com/apache/arrow/go/arrow"
-	"github.com/apache/arrow/go/arrow/array"
-	"github.com/apache/arrow/go/arrow/memory"
+	"github.com/apache/arrow/go/v17/arrow"
+	"github.com/apache/arrow/go/v17/arrow/array"
+	"github.com/apache/arrow/go/v17/arrow/memory"
 	"github.com/cockroachdb/apd"
 	"github.com/stretchr/testify/require"
 )
@@ -193,7 +193,7 @@ func randomDataFromType(rng *rand.Rand, t coltypes.T, n int, nullProbability flo
 	default:
 		panic(fmt.Sprintf("unsupported type %s", t))
 	}
-	return builder.NewArray().Data()
+	return builder.NewArray().Data().(*array.Data)
 }
 
 func TestRecordBatchSerializer(t *testing.T) {
@@ -211,9 +211,9 @@ func TestRecordBatchSerializer(t *testing.T) {
 		require.NoError(t, err)
 		b := array.NewInt64Builder(memory.DefaultAllocator)
 		b.AppendValues([]int64{1, 2}, nil /* valid */)
-		firstCol := b.NewArray().Data()
+		firstCol := b.NewArray().Data().(*array.Data)
 		b.AppendValues([]int64{3}, nil /* valid */)
-		secondCol := b.NewArray().Data()
+		secondCol := b.NewArray().Data().(*array.Data)
 		_, _, err = s.Serialize(&bytes.Buffer{}, []*array.Data{firstCol, secondCol})
 		require.True(t, testutils.IsError(err, "mismatched data lengths"), err)
 	})

@@ -1813,6 +1813,14 @@ func (dsp *DistSQLPlanner) createTableReaders(
 	}
 	p.SetLastStagePost(post, typs)
 
+	// Arrow filter unification: if the scan carries a filter that is fully
+	// arrow-computable, route it to a dedicated ArrowFilter stage instead of
+	// baking it into the TableReader's PostProcess. We skip virtual catalog
+	// tables to avoid disturbing internal introspection queries.
+	if n.filter != nil && !n.desc.IsVirtualTable() && physicalplan.ArrowFilterEnabled(planCtx.EvalContext()) {
+		p.InterceptArrowFilterForScan(n.filter, scanNodeToTableOrdinalMap)
+	}
+
 	var outCols []uint32
 	if overrideResultColumns == nil {
 		outCols = getOutputColumnsFromScanNode(n, scanNodeToTableOrdinalMap)
@@ -4730,6 +4738,17 @@ func (dsp *DistSQLPlanner) addAggregators(
 		// No GROUP BY, or we have a single stream. Use a single final aggregator.
 		// If the previous stage was all on a single node, put the final
 		// aggregator there. Otherwise, bring the results back on this node.
+		if physicalplan.ArrowAggregatorEnabled(planCtx.EvalContext()) &&
+			canArrowAggregate(finalAggsSpec, p.ResultTypes, n.engine) {
+			plan := buildArrowAggPlan(finalAggsSpec)
+			expr, err := arrowUnificationMarshal(plan)
+			if err != nil {
+				return err
+			}
+			core := execinfrapb.ProcessorCoreUnion{ArrowAggregator: expr}
+			p.AddNoGroupingStage(core, finalAggsPost, finalOutTypes, p.MergeOrdering)
+			return nil
+		}
 		dsp.addSingleGroupState(p, prevStageNode, finalAggsSpec, finalAggsPost, finalOutTypes)
 	} else {
 		// We distribute (by group columns) to multiple processors.
@@ -5421,7 +5440,37 @@ func (dsp *DistSQLPlanner) createPlanForJoin(
 
 	// Create the Core spec.
 	var core execinfrapb.ProcessorCoreUnion
-	if leftMergeOrd.Columns == nil {
+	// §7.4: an inner join with an arrow-evaluable non-equi onExpr is routed
+	// through the Arrow join with the onExpr applied as a post-filter stage; a
+	// plain equi-join is routed through Arrow when eligible; otherwise the
+	// standard joiner is used. Outer joins with an onExpr keep the standard
+	// engine because the ON condition must be evaluated during matching (not as
+	// a post-filter), so NULL-extended outer rows are still emitted.
+	canArrow := leftMergeOrd.Columns == nil &&
+		physicalplan.ArrowJoinEnabled(planCtx.EvalContext()) &&
+		canArrowJoin(tree.EngineTypeRelational, leftEqCols, rightEqCols, joinType, leftTypes, rightTypes)
+	var onFilter string
+		if canArrow && n.pred.onCond != nil {
+		if joinType != sqlbase.InnerJoin {
+			canArrow = false
+		} else {
+			idxMap := arrowJoinInputCols(len(leftTypes), len(rightTypes))
+			onFilter, _ = p.BuildArrowOnExprJSON(n.pred.onCond, idxMap)
+			if onFilter == "" {
+				canArrow = false
+			}
+		}
+	}
+	if canArrow {
+		// Route the equi-join (and optional non-equi onExpr post-filter) through
+		// the Arrow compute engine.
+		plan := buildArrowJoinPlan(leftEqCols, rightEqCols, joinType, onFilter)
+		expr, err := arrowUnificationMarshal(plan)
+		if err != nil {
+			return PhysicalPlan{}, err
+		}
+		core = execinfrapb.ProcessorCoreUnion{ArrowJoin: expr}
+	} else if leftMergeOrd.Columns == nil {
 		core.HashJoiner = &execinfrapb.HashJoinerSpec{
 			LeftEqColumns:        leftEqCols,
 			RightEqColumns:       rightEqCols,

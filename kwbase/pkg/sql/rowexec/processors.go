@@ -136,6 +136,30 @@ func NewProcessor(
 		}
 		return newNoopProcessor(flowCtx, processorID, inputs[0], post, outputs[0], core.Noop)
 	}
+	if core.ArrowProjection != nil {
+		if err := checkNumInOut(inputs, outputs, 1, 1); err != nil {
+			return nil, err
+		}
+		return newArrowProjectionProcessor(flowCtx, processorID, core.ArrowProjection, inputs[0], post, outputs[0])
+	}
+	if core.ArrowFilter != nil {
+		if err := checkNumInOut(inputs, outputs, 1, 1); err != nil {
+			return nil, err
+		}
+		return newArrowFilterProcessor(flowCtx, processorID, core.ArrowFilter, inputs[0], post, outputs[0])
+	}
+	if core.ArrowAggregator != nil {
+		if err := checkNumInOut(inputs, outputs, 1, 1); err != nil {
+			return nil, err
+		}
+		return newArrowAggregatorProcessor(flowCtx, processorID, core.ArrowAggregator, inputs[0], post, outputs[0])
+	}
+	if core.ArrowJoin != nil {
+		if err := checkNumInOut(inputs, outputs, 2, 1); err != nil {
+			return nil, err
+		}
+		return newArrowJoinProcessor(flowCtx, processorID, core.ArrowJoin, inputs[0], inputs[1], post, outputs[0])
+	}
 	if core.Values != nil {
 		if err := checkNumInOut(inputs, outputs, 0, 1); err != nil {
 			return nil, err

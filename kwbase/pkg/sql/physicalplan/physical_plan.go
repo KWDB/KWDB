@@ -30,6 +30,7 @@ package physicalplan
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"regexp"
@@ -39,6 +40,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
+	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
@@ -52,6 +54,84 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 	"github.com/pkg/errors"
 )
+
+// arrowProjectionEnabledSetting, when set, routes arrow-computable projection
+// expressions (e.g. `a+b`) through the Arrow compute engine instead of the
+// scalar tree-evaluator. It is opt-in to keep default behavior unchanged.
+var arrowProjectionEnabledSetting = settings.RegisterBoolSetting(
+	"sql.arrow_projection.enabled",
+	"if set, arrow-computable projection expressions are evaluated using the Arrow compute engine",
+	false,
+)
+
+func arrowProjectionEnabled(evalCtx *tree.EvalContext) bool {
+	if evalCtx == nil || evalCtx.Settings == nil {
+		return false
+	}
+	return arrowProjectionEnabledSetting.Get(&evalCtx.Settings.SV)
+}
+
+// ArrowFilterEnabled reports whether arrow-computable filters are routed
+// through the Arrow compute engine.
+func ArrowFilterEnabled(evalCtx *tree.EvalContext) bool {
+	return arrowFilterEnabled(evalCtx)
+}
+
+// ArrowAggregatorEnabled reports whether aggregations are routed through the
+// Arrow compute engine.
+func ArrowAggregatorEnabled(evalCtx *tree.EvalContext) bool {
+	return arrowAggregatorEnabled(evalCtx)
+}
+
+// ArrowJoinEnabled reports whether equi-joins are routed through the Arrow
+// compute engine.
+func ArrowJoinEnabled(evalCtx *tree.EvalContext) bool {
+	return arrowJoinEnabled(evalCtx)
+}
+
+// arrowFilterEnabledSetting routes arrow-computable boolean filter expressions
+// (e.g. `a > 1`, `a > b AND b < 5`) through the Arrow compute engine.
+var arrowFilterEnabledSetting = settings.RegisterBoolSetting(
+	"sql.arrow_filter.enabled",
+	"if set, arrow-computable filter expressions are evaluated using the Arrow compute engine",
+	false,
+)
+
+// arrowAggregatorEnabledSetting routes sum/count/min/max/mean aggregations
+// through the Arrow compute engine.
+var arrowAggregatorEnabledSetting = settings.RegisterBoolSetting(
+	"sql.arrow_aggregator.enabled",
+	"if set, aggregations are evaluated using the Arrow compute engine",
+	false,
+)
+
+// arrowJoinEnabledSetting routes equi-joins through the Arrow compute engine.
+var arrowJoinEnabledSetting = settings.RegisterBoolSetting(
+	"sql.arrow_join.enabled",
+	"if set, equi-joins are evaluated using the Arrow compute engine",
+	false,
+)
+
+func arrowFilterEnabled(evalCtx *tree.EvalContext) bool {
+	if evalCtx == nil || evalCtx.Settings == nil {
+		return false
+	}
+	return arrowFilterEnabledSetting.Get(&evalCtx.Settings.SV)
+}
+
+func arrowAggregatorEnabled(evalCtx *tree.EvalContext) bool {
+	if evalCtx == nil || evalCtx.Settings == nil {
+		return false
+	}
+	return arrowAggregatorEnabledSetting.Get(&evalCtx.Settings.SV)
+}
+
+func arrowJoinEnabled(evalCtx *tree.EvalContext) bool {
+	if evalCtx == nil || evalCtx.Settings == nil {
+		return false
+	}
+	return arrowJoinEnabledSetting.Get(&evalCtx.Settings.SV)
+}
 
 // Processor contains the information associated with a processor in a plan.
 type Processor struct {
@@ -1208,6 +1288,15 @@ func exprColumn(expr tree.TypedExpr, indexVarMap []int) (int, bool) {
 func (p *PhysicalPlan) AddRendering(
 	exprs []tree.TypedExpr, exprCtx ExprContext, indexVarMap []int, outTypes []types.T, pushTS bool,
 ) error {
+	// Arrow projection acceleration: if enabled and all render expressions are
+	// arrow-computable, evaluate the projection through the Arrow compute engine
+	// via a dedicated processor stage.
+	if enabled := arrowProjectionEnabled(exprCtx.EvalContext()); enabled {
+		if p.canArrowRender(exprs, indexVarMap) && hasArrowComputeExpr(exprs) {
+			return p.addArrowRendering(exprs, indexVarMap, outTypes)
+		}
+	}
+
 	// First check if we need an Evaluator, or we are just shuffling values. We
 	// also check if the rendering is a no-op ("identity").
 	needRendering := false
@@ -1395,6 +1484,535 @@ func (p *PhysicalPlan) AddTSRendering(
 	return nil
 }
 
+// arrowProjectionPlan is the JSON-serialized plan carried inside
+// ProcessorCoreUnion.ArrowProjection.Expr. It mirrors the struct defined in the
+// rowexec package (the executor), with identical JSON tags; the JSON bytes are
+// the only contract between the planner and the executor.
+type arrowProjectionPlan struct {
+	Cols []arrowProjectionCol `json:"cols"`
+}
+
+type arrowArg struct {
+	// Col is the index of the input (stream) column this argument reads from.
+	// It is -1 when ConstInt/ConstFloat/ConstBool/ConstStr carry the value
+	// instead (a literal).
+	Col int `json:"col"`
+	// Constant literal values; exactly one is set when Col == -1.
+	ConstInt   *int64   `json:"cint,omitempty"`
+	ConstFloat *float64 `json:"cfloat,omitempty"`
+	ConstBool  *bool    `json:"cbool,omitempty"`
+	ConstStr   *string  `json:"cstr,omitempty"`
+}
+
+type arrowProjectionCol struct {
+	Kind   string     `json:"kind"`   // "compute" or "passthrough"
+	Func   string     `json:"func"`   // for compute: add/sub/mul/div/negate/copy
+	Inputs []arrowArg `json:"inputs"` // for compute: arguments (columns and/or constants)
+	Input  int        `json:"input"`  // for passthrough: input column index
+}
+
+// arrowOperandArg classifies a projection operand as either an input column
+// reference or a supported constant literal, returning the arrowArg plus the
+// operand's resolved type. ok is false for operands that cannot be accelerated
+// (non-column, non-constant expressions, or unsupported types).
+func (p *PhysicalPlan) arrowOperandArg(
+	e tree.TypedExpr, indexVarMap []int,
+) (arrowArg, *types.T, bool) {
+	if colIdx, ok := exprColumn(e, indexVarMap); ok {
+		if colIdx < 0 || colIdx >= len(p.ResultTypes) {
+			return arrowArg{}, nil, false
+		}
+		return arrowArg{Col: colIdx}, &p.ResultTypes[colIdx], true
+	}
+	switch c := e.(type) {
+	case *tree.DInt:
+		v := int64(*c)
+		return arrowArg{Col: -1, ConstInt: &v}, e.ResolvedType(), true
+	case *tree.DFloat:
+		v := float64(*c)
+		return arrowArg{Col: -1, ConstFloat: &v}, e.ResolvedType(), true
+	}
+	return arrowArg{}, nil, false
+}
+
+// canArrowRender reports whether all render expressions can be evaluated by the
+// Arrow compute engine, and whether the current plan state is simple enough to
+// route through a dedicated arrow projection stage. It only returns true when
+// the last stage's post is an identity (no projection, no render) and there is
+// no merge ordering to preserve (both conditions hold for a simple
+// `SELECT a+b FROM t`).
+// hasArrowComputeExpr reports whether at least one render expression is a real
+// Arrow compute operation (binary/unary). It is used to avoid routing a purely
+// passthrough render (e.g. `SELECT a FROM t`) through the Arrow stage, which
+// would add a processor for zero benefit.
+func hasArrowComputeExpr(exprs []tree.TypedExpr) bool {
+	for _, e := range exprs {
+		switch e.(type) {
+		case *tree.BinaryExpr, *tree.UnaryExpr:
+			return true
+		}
+	}
+	return false
+}
+
+func (p *PhysicalPlan) canArrowRender(exprs []tree.TypedExpr, indexVarMap []int) bool {
+	post := p.GetLastStagePost()
+	if len(post.RenderExprs) > 0 {
+		// The last stage already renders; adding another stage would double-render.
+		return false
+	}
+	if len(p.MergeOrdering.Columns) > 0 {
+		// Ordering handling would require adding passthrough columns and adjusting
+		// the downstream merge, which is out of scope for this first integration.
+		return false
+	}
+	for _, e := range exprs {
+		switch ex := e.(type) {
+		case *tree.BinaryExpr:
+			switch ex.Operator {
+			case tree.Plus, tree.Minus, tree.Mult, tree.Div:
+			default:
+				return false
+			}
+			la, lty, ok1 := p.arrowOperandArg(ex.Left.(tree.TypedExpr), indexVarMap)
+			ra, rty, ok2 := p.arrowOperandArg(ex.Right.(tree.TypedExpr), indexVarMap)
+			if !ok1 || !ok2 {
+				return false
+			}
+			if la.Col < 0 && ra.Col < 0 {
+				// Need at least one input column to reference.
+				return false
+			}
+			if lty.Family() != rty.Family() {
+				// Keep both operands the same type so the arrow kernel needs no
+				// implicit promotion; the scalar path handles mixed types.
+				return false
+			}
+			if !arrowSupportedComputeType(lty) || !arrowSupportedComputeType(ex.ResolvedType()) {
+				return false
+			}
+		case *tree.UnaryExpr:
+			if ex.Operator != tree.UnaryMinus {
+				return false
+			}
+			a, ty, ok := p.arrowOperandArg(ex.Expr.(tree.TypedExpr), indexVarMap)
+			if !ok || a.Col < 0 {
+				return false
+			}
+			if !arrowSupportedComputeType(ty) || !arrowSupportedComputeType(ex.ResolvedType()) {
+				return false
+			}
+		default:
+			// Plain column reference: allowed as a passthrough (identity copy).
+			if _, ok := exprColumn(e, indexVarMap); !ok {
+				return false
+			}
+			if !arrowSupportedComputeType(e.ResolvedType()) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// arrowSupportedComputeType reports whether the Arrow compute kernels we have
+// wired up can handle a value of the given type for arithmetic (add/sub/mul/
+// div) and passthrough.
+func arrowSupportedComputeType(t *types.T) bool {
+	switch t.Family() {
+	case types.IntFamily, types.FloatFamily, types.BoolFamily, types.StringFamily, types.BytesFamily:
+		return true
+	}
+	return false
+}
+
+// addArrowRendering builds a dedicated arrow projection stage that evaluates
+// the render expressions via the Arrow compute engine. The previous (last)
+// stage keeps emitting its full output (identity post); the new stage consumes
+// those columns and produces exactly the rendered output columns.
+func (p *PhysicalPlan) addArrowRendering(
+	exprs []tree.TypedExpr, indexVarMap []int, outTypes []types.T,
+) error {
+	plan := arrowProjectionPlan{Cols: make([]arrowProjectionCol, 0, len(exprs))}
+	outT := make([]types.T, 0, len(exprs))
+	for _, e := range exprs {
+		switch ex := e.(type) {
+		case *tree.BinaryExpr:
+			l, _, _ := p.arrowOperandArg(ex.Left.(tree.TypedExpr), indexVarMap)
+			r, _, _ := p.arrowOperandArg(ex.Right.(tree.TypedExpr), indexVarMap)
+			var fn string
+			switch ex.Operator {
+			case tree.Plus:
+				fn = "add"
+			case tree.Minus:
+				fn = "subtract"
+			case tree.Mult:
+				fn = "multiply"
+			case tree.Div:
+				fn = "divide"
+			}
+			plan.Cols = append(plan.Cols, arrowProjectionCol{
+				Kind:   "compute",
+				Func:   fn,
+				Inputs: []arrowArg{l, r},
+			})
+			outT = append(outT, *ex.ResolvedType())
+		case *tree.UnaryExpr:
+			a, _, _ := p.arrowOperandArg(ex.Expr.(tree.TypedExpr), indexVarMap)
+			plan.Cols = append(plan.Cols, arrowProjectionCol{
+				Kind:   "compute",
+				Func:   "negate",
+				Inputs: []arrowArg{a},
+			})
+			outT = append(outT, *ex.ResolvedType())
+		default:
+			col, _ := exprColumn(e, indexVarMap)
+			plan.Cols = append(plan.Cols, arrowProjectionCol{
+				Kind:  "passthrough",
+				Input: col,
+			})
+			outT = append(outT, *e.ResolvedType())
+		}
+	}
+	planBytes, err := json.Marshal(plan)
+	if err != nil {
+		return err
+	}
+	core := execinfrapb.ProcessorCoreUnion{
+		ArrowProjection: &execinfrapb.Expression{Expr: string(planBytes)},
+	}
+	// The arrow stage consumes the previous stage's full output (identity post)
+	// and produces exactly the rendered columns, so its own post is identity.
+	p.AddNoGroupingStage(core, execinfrapb.PostProcessSpec{}, outT, p.MergeOrdering)
+	return nil
+}
+
+// arrowFilterPlan is the JSON-serialized plan carried inside
+// ProcessorCoreUnion.ArrowFilter.Expr. Its JSON shape mirrors the struct
+// defined in the rowexec package; the JSON bytes are the only contract between
+// the planner and the executor.
+type arrowFilterPlan struct {
+	Root arrowFilterNode `json:"root"`
+}
+
+type arrowFilterNode struct {
+	Func     string              `json:"func"`
+	Operands []arrowFilterOperand `json:"ops"`
+}
+
+type arrowFilterOperand struct {
+	Leaf *arrowFilterLeaf `json:"leaf,omitempty"`
+	Expr *arrowFilterNode `json:"expr,omitempty"`
+}
+
+type arrowFilterLeaf struct {
+	Col        int                `json:"col"`
+	ConstInt   *int64             `json:"cint,omitempty"`
+	ConstFloat *float64           `json:"cfloat,omitempty"`
+	ConstBool  *bool              `json:"cbool,omitempty"`
+	ConstStr   *string            `json:"cstr,omitempty"`
+	Binary     *arrowFilterBinary `json:"bin,omitempty"`
+	// Cast is a type conversion applied to Arg, supporting CAST(col AS ...) inside
+	// arrow filter predicates (e.g. CAST(i AS STRING) LIKE '1%').
+	Cast *arrowFilterCast `json:"cast,omitempty"`
+}
+
+// arrowFilterBinary is a nested arithmetic expression (add/sub/mul/div) that a
+// leaf operand can expand into, so comparisons against computed columns (e.g.
+// `a * 2 > b`) are fully evaluated by the Arrow compute engine.
+type arrowFilterBinary struct {
+	Func string            `json:"func"`
+	Args []arrowFilterLeaf `json:"args"`
+}
+
+// arrowFilterCast is a type conversion leaf. Type encodes the target Arrow type
+// as a compact tag ("STRING"/"INT"/"FLOAT"); Arg is the inner leaf operand.
+type arrowFilterCast struct {
+	Func string          `json:"func"`
+	Type string          `json:"type"`
+	Arg  arrowFilterLeaf `json:"arg"`
+}
+
+// arrowFilterLeafFromExpr classifies a filter operand expression as an
+// arrowFilterLeaf: an input column, a constant literal, or a nested arithmetic
+// expression (add/sub/mul/div) over such leaves. It returns the leaf, its
+// resolved type, and whether it is arrow-computable.
+func (p *PhysicalPlan) arrowFilterLeafFromExpr(
+	e tree.TypedExpr, indexVarMap []int,
+) (*arrowFilterLeaf, *types.T, bool) {
+	if colIdx, ok := exprColumn(e, indexVarMap); ok {
+		// The column type is carried by the IndexedVar itself, so we do not need
+		// p.ResultTypes here. This also lets the same builder be used for a join
+		// onExpr whose indices reference the (left++right) input space rather than
+		// the join's output columns (§7.4).
+		return &arrowFilterLeaf{Col: colIdx}, e.ResolvedType(), true
+	}
+	switch c := e.(type) {
+	case *tree.DInt:
+		v := int64(*c)
+		return &arrowFilterLeaf{Col: -1, ConstInt: &v}, e.ResolvedType(), true
+	case *tree.DFloat:
+		v := float64(*c)
+		return &arrowFilterLeaf{Col: -1, ConstFloat: &v}, e.ResolvedType(), true
+	case *tree.DBool:
+		v := bool(*c)
+		return &arrowFilterLeaf{Col: -1, ConstBool: &v}, e.ResolvedType(), true
+	case *tree.DString:
+		s := string(*c)
+		return &arrowFilterLeaf{Col: -1, ConstStr: &s}, e.ResolvedType(), true
+	case *tree.BinaryExpr:
+		var fn string
+		switch c.Operator {
+		case tree.Plus:
+			fn = "add"
+		case tree.Minus:
+			fn = "subtract"
+		case tree.Mult:
+			fn = "multiply"
+		case tree.Div:
+			fn = "divide"
+		default:
+			return nil, nil, false
+		}
+		l, lty, ok1 := p.arrowFilterLeafFromExpr(c.Left.(tree.TypedExpr), indexVarMap)
+		r, rty, ok2 := p.arrowFilterLeafFromExpr(c.Right.(tree.TypedExpr), indexVarMap)
+		if !ok1 || !ok2 {
+			return nil, nil, false
+		}
+		if lty.Family() != rty.Family() {
+			return nil, nil, false
+		}
+		return &arrowFilterLeaf{
+			Binary: &arrowFilterBinary{Func: fn, Args: []arrowFilterLeaf{*l, *r}},
+		}, lty, true
+	case *tree.CastExpr:
+		inner, _, ok := p.arrowFilterLeafFromExpr(c.Expr.(tree.TypedExpr), indexVarMap)
+		if !ok {
+			return nil, nil, false
+		}
+		// Only casts that depend on a column (not pure constants) are routed to
+		// the Arrow engine, so the runtime cast always operates on an array.
+		if inner.Col < 0 && inner.Binary == nil && inner.Cast == nil {
+			return nil, nil, false
+		}
+		tag, ok := arrowCastTargetTag(c.ResolvedType())
+		if !ok {
+			return nil, nil, false
+		}
+		return &arrowFilterLeaf{
+			Cast: &arrowFilterCast{Func: "cast", Type: tag, Arg: *inner},
+		}, c.ResolvedType(), true
+	}
+	return nil, nil, false
+}
+
+// arrowCastTargetTag maps a KWDB type to the compact tag used by the Arrow
+// filter cast kernel. Only numeric/string targets are supported.
+func arrowCastTargetTag(t *types.T) (string, bool) {
+	if t == nil {
+		return "", false
+	}
+	switch t.Family() {
+	case types.StringFamily, types.BytesFamily:
+		return "STRING", true
+	case types.IntFamily:
+		return "INT", true
+	case types.FloatFamily:
+		return "FLOAT", true
+	}
+	return "", false
+}
+
+// canArrowFilterExpr reports whether a boolean filter expression can be
+// evaluated entirely by the Arrow compute engine (equality/comparison on
+// columns/constants/computed leaves, combined with and/or/not).
+func (p *PhysicalPlan) canArrowFilterExpr(e tree.TypedExpr, indexVarMap []int) bool {
+	switch ex := e.(type) {
+	case *tree.ComparisonExpr:
+		switch ex.Operator {
+		case tree.EQ, tree.LT, tree.GT, tree.LE, tree.GE, tree.NE:
+			l, lty, ok1 := p.arrowFilterLeafFromExpr(ex.Left.(tree.TypedExpr), indexVarMap)
+			r, rty, ok2 := p.arrowFilterLeafFromExpr(ex.Right.(tree.TypedExpr), indexVarMap)
+			if !ok1 || !ok2 {
+				return false
+			}
+			// Require at least one column or computed-column reference so that
+			// trivially constant predicates are not accelerated.
+			if l.Col < 0 && l.Binary == nil && l.Cast == nil && r.Col < 0 && r.Binary == nil && r.Cast == nil {
+				return false
+			}
+			if lty.Family() != rty.Family() {
+				return false
+			}
+			return arrowSupportedCompareType(lty)
+		case tree.Like, tree.NotLike, tree.ILike, tree.NotILike:
+			// LIKE requires a string-typed left operand (column or CAST to
+			// string) and a constant string pattern. Arrow compute v17 has no
+			// match_like kernel, so these are evaluated by a Go kernel; only the
+			// constant-pattern form is routed to the Arrow engine.
+			l, lty, ok1 := p.arrowFilterLeafFromExpr(ex.Left.(tree.TypedExpr), indexVarMap)
+			r, rty, ok2 := p.arrowFilterLeafFromExpr(ex.Right.(tree.TypedExpr), indexVarMap)
+			if !ok1 || !ok2 {
+				return false
+			}
+			if lty.Family() != types.StringFamily {
+				return false
+			}
+			if rty.Family() != types.StringFamily {
+				return false
+			}
+			// Left must reference a column/computed column; pattern must be a constant.
+			if l.Col < 0 && l.Binary == nil && l.Cast == nil {
+				return false
+			}
+			if r.ConstStr == nil {
+				return false
+			}
+			return true
+		}
+		return false
+	case *tree.AndExpr:
+		return p.canArrowFilterExpr(ex.Left.(tree.TypedExpr), indexVarMap) &&
+			p.canArrowFilterExpr(ex.Right.(tree.TypedExpr), indexVarMap)
+	case *tree.OrExpr:
+		return p.canArrowFilterExpr(ex.Left.(tree.TypedExpr), indexVarMap) &&
+			p.canArrowFilterExpr(ex.Right.(tree.TypedExpr), indexVarMap)
+	case *tree.NotExpr:
+		return p.canArrowFilterExpr(ex.Expr.(tree.TypedExpr), indexVarMap)
+	}
+	return false
+}
+
+// arrowSupportedCompareType reports whether the Arrow comparison kernels can
+// handle the given type.
+func arrowSupportedCompareType(t *types.T) bool {
+	switch t.Family() {
+	case types.IntFamily, types.FloatFamily, types.BoolFamily, types.StringFamily, types.BytesFamily:
+		return true
+	}
+	return false
+}
+
+// buildArrowFilterNode translates a typed filter expression into the JSON plan
+// tree. The second return is false if the expression cannot be accelerated.
+func (p *PhysicalPlan) buildArrowFilterNode(e tree.TypedExpr, indexVarMap []int) (arrowFilterNode, bool) {
+	switch ex := e.(type) {
+	case *tree.ComparisonExpr:
+		if !p.canArrowFilterExpr(e, indexVarMap) {
+			return arrowFilterNode{}, false
+		}
+		var fn string
+		switch ex.Operator {
+		case tree.EQ:
+			fn = "equal"
+		case tree.LT:
+			fn = "less"
+		case tree.GT:
+			fn = "greater"
+		case tree.LE:
+			fn = "less_equal"
+		case tree.GE:
+			fn = "greater_equal"
+		case tree.NE:
+			fn = "not_equal"
+		case tree.Like:
+			fn = "like"
+		case tree.NotLike:
+			fn = "not_like"
+		case tree.ILike:
+			fn = "ilike"
+		case tree.NotILike:
+			fn = "not_ilike"
+		}
+		l, _, _ := p.arrowFilterLeafFromExpr(ex.Left.(tree.TypedExpr), indexVarMap)
+		r, _, _ := p.arrowFilterLeafFromExpr(ex.Right.(tree.TypedExpr), indexVarMap)
+		return arrowFilterNode{
+			Func: fn,
+			Operands: []arrowFilterOperand{
+				{Leaf: l},
+				{Leaf: r},
+			},
+		}, true
+	case *tree.AndExpr:
+		l, ok1 := p.buildArrowFilterNode(ex.Left.(tree.TypedExpr), indexVarMap)
+		r, ok2 := p.buildArrowFilterNode(ex.Right.(tree.TypedExpr), indexVarMap)
+		if !ok1 || !ok2 {
+			return arrowFilterNode{}, false
+		}
+		return arrowFilterNode{Func: "and", Operands: []arrowFilterOperand{{Expr: &l}, {Expr: &r}}}, true
+	case *tree.OrExpr:
+		l, ok1 := p.buildArrowFilterNode(ex.Left.(tree.TypedExpr), indexVarMap)
+		r, ok2 := p.buildArrowFilterNode(ex.Right.(tree.TypedExpr), indexVarMap)
+		if !ok1 || !ok2 {
+			return arrowFilterNode{}, false
+		}
+		return arrowFilterNode{Func: "or", Operands: []arrowFilterOperand{{Expr: &l}, {Expr: &r}}}, true
+	case *tree.NotExpr:
+		c, ok := p.buildArrowFilterNode(ex.Expr.(tree.TypedExpr), indexVarMap)
+		if !ok {
+			return arrowFilterNode{}, false
+		}
+		return arrowFilterNode{Func: "not", Operands: []arrowFilterOperand{{Expr: &c}}}, true
+	}
+	return arrowFilterNode{}, false
+}
+
+// addArrowFilter builds a dedicated arrow filter stage that evaluates the
+// boolean expression via the Arrow compute engine and emits the matching input
+// rows (all columns preserved).
+func (p *PhysicalPlan) addArrowFilter(
+	expr tree.TypedExpr, exprCtx ExprContext, indexVarMap []int,
+) error {
+	node, ok := p.buildArrowFilterNode(expr, indexVarMap)
+	if !ok {
+		return fmt.Errorf("arrow filter: expression not arrow-computable")
+	}
+	plan := arrowFilterPlan{Root: node}
+	b, err := json.Marshal(plan)
+	if err != nil {
+		return err
+	}
+	core := execinfrapb.ProcessorCoreUnion{
+		ArrowFilter: &execinfrapb.Expression{Expr: string(b)},
+	}
+	p.AddNoGroupingStage(core, execinfrapb.PostProcessSpec{}, p.ResultTypes, p.MergeOrdering)
+	return nil
+}
+
+// InterceptArrowFilterForScan, when the given scan filter is arrow-computable,
+// strips the filter from the current last-stage post (the TableReader that
+// carries it) and adds a dedicated ArrowFilter stage that outputs the same
+// columns. It must be invoked before any projection is applied to the plan.
+// The caller is responsible for gating on the cluster setting (it is expected
+// to only call this when ArrowFilterEnabled is true). It returns true if it
+// intercepted the filter.
+func (p *PhysicalPlan) InterceptArrowFilterForScan(filter tree.TypedExpr, indexVarMap []int) bool {
+	if filter == nil {
+		return false
+	}
+	if !p.canArrowFilterExpr(filter, indexVarMap) {
+		return false
+	}
+	node, ok := p.buildArrowFilterNode(filter, indexVarMap)
+	if !ok {
+		return false
+	}
+	b, err := json.Marshal(arrowFilterPlan{Root: node})
+	if err != nil {
+		return false
+	}
+	// Strip the filter from the current last-stage post (the TableReader) and
+	// perform the filtering in a dedicated ArrowFilter stage instead.
+	post := p.GetLastStagePost()
+	post.Filter = execinfrapb.Expression{}
+	p.SetLastStagePost(post, p.ResultTypes)
+	core := execinfrapb.ProcessorCoreUnion{
+		ArrowFilter: &execinfrapb.Expression{Expr: string(b)},
+	}
+	p.AddNoGroupingStage(core, execinfrapb.PostProcessSpec{}, p.ResultTypes, p.MergeOrdering)
+	return true
+}
+
 // reverseProjection remaps expression variable indices to refer to internal
 // columns (i.e. before post-processing) of a processor instead of output
 // columns (i.e. after post-processing).
@@ -1480,6 +2098,26 @@ func (p *PhysicalPlan) AddRelationalFilter(
 	addNoop bool,
 	execInTSEngine bool,
 ) error {
+	// Arrow filter acceleration: route arrow-computable boolean filter
+	// expressions through the Arrow compute engine via a dedicated stage. We
+	// only do this when the current post is a simple identity (no filter, no
+	// render, no offset/limit) so we don't disturb downstream post-processing.
+	if arrowFilterEnabled(exprCtx.EvalContext()) && post.Filter.Empty() &&
+		len(post.RenderExprs) == 0 && post.Offset == 0 && post.Limit == 0 {
+		if node, ok := p.buildArrowFilterNode(expr, indexVarMap); ok {
+			plan := arrowFilterPlan{Root: node}
+			b, err := json.Marshal(plan)
+			if err != nil {
+				return err
+			}
+			core := execinfrapb.ProcessorCoreUnion{
+				ArrowFilter: &execinfrapb.Expression{Expr: string(b)},
+			}
+			p.AddNoGroupingStage(core, execinfrapb.PostProcessSpec{}, p.ResultTypes, p.MergeOrdering)
+		return nil
+	}
+}
+
 	if addNoop {
 		*post = execinfrapb.PostProcessSpec{OutputTypes: p.ResultTypes}
 		p.AddNoGroupingStage(
@@ -1510,6 +2148,26 @@ func (p *PhysicalPlan) AddRelationalFilter(
 	}
 	p.AddFilterToPostSpec(&filter, false)
 	return nil
+}
+
+// BuildArrowOnExprJSON builds the arrow filter JSON plan for a join onExpr
+// (§7.4). It returns ("", false) when the expression is not arrow-computable, so
+// the caller can fall back to the standard join engine. The resulting JSON shape
+// mirrors arrowFilterPlan and is consumed by the arrow join executor as a
+// post-filter stage applied after the equi-join.
+func (p *PhysicalPlan) BuildArrowOnExprJSON(e tree.TypedExpr, indexVarMap []int) (string, bool) {
+	if !p.canArrowFilterExpr(e, indexVarMap) {
+		return "", false
+	}
+	node, ok := p.buildArrowFilterNode(e, indexVarMap)
+	if !ok {
+		return "", false
+	}
+	b, err := json.Marshal(arrowFilterPlan{Root: node})
+	if err != nil {
+		return "", false
+	}
+	return string(b), true
 }
 
 // AddFilter adds a filter on the output of a plan. The filter is added either

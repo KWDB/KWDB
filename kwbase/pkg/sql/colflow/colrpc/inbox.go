@@ -38,7 +38,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
-	"github.com/apache/arrow/go/arrow/array"
+	"github.com/apache/arrow/go/v17/arrow/array"
 	"github.com/cockroachdb/logtags"
 )
 

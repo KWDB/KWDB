@@ -35,7 +35,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/colexec"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"gitee.com/kwbasedb/kwbase/pkg/util/randutil"
-	"github.com/apache/arrow/go/arrow/array"
+	"github.com/apache/arrow/go/v17/arrow/array"
 	"github.com/stretchr/testify/require"
 )
 
