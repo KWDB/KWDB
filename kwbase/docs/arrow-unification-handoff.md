@@ -262,6 +262,15 @@ SQL
     - **修复回归**：`arrowHashAggregator.Consume` 分组遍历 `map[uint64][]int32` 的桶顺序**不确定**，导致 `order`（首见组顺序）偶发错乱（`TestArrowHashAggregatorTimestamp` 时好时坏，依赖 `maphash.MakeSeed()` 进程级随机）。在 `Finalize` 中按各组首见行号 `groupRow[key]` 对 `order` 做 `sort.SliceStable` 排序，恢复「按行首见顺序」确定性语义（纯输出顺序修复，不影响聚合值——每组 state 按组键累加、可交换）。修复后 `go test -run 'Arrow|Aggregat'` **连续 20/20 PASS**（此前偶发 FAIL），`go vet` 干净。
     - 验证总览：`go vet ./pkg/sql/rowexec/` 干净；`TestArrowAggMatchesColexec` PASS；`go test -run 'Arrow|Aggregat' ./pkg/sql/rowexec/` 20 连跑全绿；`arrowpilot` e2e 全链路 PASS。
 
+11. **JOIN 计算核向量化（§7.11 colexec 式哈希分桶）**：**已完成**（2026-07-29）
+    - 背景：§7.10 完成聚合核向量化后，四个 opt-in 算子里仅 **JOIN 仍是逐行**——`arrow_join.go` 的 `recordKey` 每行用 `strings.Builder`+`fmt.Fprintf` 构造字符串组合键，`build`/`probe` 都逐行查 `map[string][]int32`。这正是 §7.10 聚合里替换掉的同一种「逐行字符串键」模式（colexec 本身非逐行）。
+    - 优化（`arrow_join.go` `arrowJoinCore.eval` + 新 helper `joinKeyArrays`/`joinHasNull`/`joinRowHash`/`joinRowsEqual`/`arrValEqual`）：
+      1. **colexec 式 uint64 哈希分桶**：`joinRowHash`（复用聚合 `arrowGroupHash` 的字节折叠思路，零分配、按类型标签+值字节）替代逐行 string 构造；build 阶段把右表键按哈希分桶，probe 阶段左表键算哈希后只在同桶内比对，碰撞由 `joinRowsEqual`（按值比较，NULL 不参与）回退——与 §7.10 聚合分组同构。
+      2. **稳定性修复**：哈希种子在 build+probe **前设一次**（`seed.SetSeed(maphash.MakeSeed())`），`joinRowHash` 内用 `seed.Reset()` 保留种子（不能每次 `MakeSeed` 随机，否则左右同键值哈希不一致 → 零匹配）。
+      3. **空侧守卫**：仅当该侧 `nL>0`/`nR>0` 才 `joinKeyArrays` 解析键列。原因：planner 把非等值谓词下推成 arrow filter 后，filter 输出 **0 行且 0 列**的退化 record；baseline 的 `recordHasNull`/`recordKey` 写在 `for r<nR` 循环体内（nR==0 不执行故不触碰），而 eager 解析会 `arrowOperandColumn` 越界 panic。空侧本就不可能产生匹配对，跳过键解析正确（outer join 的 unmatched 行由 Phase 2/3 用各自有列 record 正常发出）。
+    - 正确性/性能：inner/left/right/full + 非等值 post-filter 全链路经 `arrowpilot` e2e 验证 PASS（41.3s，与 baseline 一致）；`go vet ./pkg/sql/rowexec/` 干净；`go test -run 'Arrow|Join|Aggregat' ./pkg/sql/rowexec/` PASS。
+    - **待办（NEXT）**：可仿 §7.10 为 JOIN 也加 **colexec 对照**（`colexec.HashJoiner` 正确性+性能），进一步坐实「融合 colexec 算法」；filter/projection 核已走 arrow compute（原生向量化），暂无需改。
+
 ---
 
 ## 8. 快速恢复 checklist（新机器 / 新会话）

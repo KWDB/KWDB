@@ -17,7 +17,9 @@ package rowexec
 import (
 	"context"
 	"fmt"
-	"strings"
+	"hash/maphash"
+	"math"
+	"unsafe"
 
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
@@ -160,14 +162,34 @@ func (j *arrowJoinCore) eval(ctx context.Context, leftRec, rightRec arrow.Record
 	nL := int(leftRec.NumRows())
 	nR := int(rightRec.NumRows())
 
-	// Build the right-side hash table.
-	rightMap := make(map[string][]int32)
+	// Build the right-side hash buckets. Colexec-style: bucket by a uint64 hash
+	// of the key columns (no per-row string allocation, unlike the former
+	// recordKey string builder); collisions are resolved by value equality in
+	// the probe. NULL keys are excluded (NULL != NULL).
+	//
+	// The key arrays are only resolved for a side that actually has rows. Some
+	// upstreams (e.g. an arrow filter that excludes every row) emit a degenerate
+	// record with 0 rows AND 0 columns; resolving its key columns via
+	// arrowOperandColumn would panic. When a side is empty there can be no
+	// matched pair anyway, so skipping its key arrays is correct (outer-join
+	// unmatched rows are emitted from the non-empty side's columns in Phases
+	// 2/3 below).
+	var leftArrs, rightArrs []arrow.Array
+	if nL > 0 {
+		leftArrs = joinKeyArrays(leftRec, j.spec.LeftKeys)
+	}
+	if nR > 0 {
+		rightArrs = joinKeyArrays(rightRec, j.spec.RightKeys)
+	}
+	var seed maphash.Hash
+	seed.SetSeed(maphash.MakeSeed())
+	rightBuckets := make(map[uint64][]int32)
 	for r := 0; r < nR; r++ {
-		if recordHasNull(rightRec, j.spec.RightKeys, r) {
+		if joinHasNull(rightArrs, r) {
 			continue
 		}
-		key := recordKey(rightRec, j.spec.RightKeys, r)
-		rightMap[key] = append(rightMap[key], int32(r))
+		h := joinRowHash(rightArrs, r, &seed)
+		rightBuckets[h] = append(rightBuckets[h], int32(r))
 	}
 
 	leftOutIdx := make([]int32, 0, nL)
@@ -176,19 +198,17 @@ func (j *arrowJoinCore) eval(ctx context.Context, leftRec, rightRec arrow.Record
 	rightMatched := make([]bool, nR)
 	// Phase 1: matched pairs (left-major, ascending right index, deterministic).
 	for l := 0; l < nL; l++ {
-		if recordHasNull(leftRec, j.spec.LeftKeys, l) {
+		if joinHasNull(leftArrs, l) {
 			continue
 		}
-		key := recordKey(leftRec, j.spec.LeftKeys, l)
-		matches := rightMap[key]
-		if len(matches) == 0 {
-			continue
-		}
-		leftMatched[l] = true
-		for _, m := range matches {
-			rightMatched[m] = true
-			leftOutIdx = append(leftOutIdx, int32(l))
-			rightOutIdx = append(rightOutIdx, m)
+		h := joinRowHash(leftArrs, l, &seed)
+		for _, m := range rightBuckets[h] {
+			if joinRowsEqual(leftArrs, l, rightArrs, int(m)) {
+				rightMatched[m] = true
+				leftMatched[l] = true
+				leftOutIdx = append(leftOutIdx, int32(l))
+				rightOutIdx = append(rightOutIdx, m)
+			}
 		}
 	}
 	// Phase 2: unmatched left rows (NULL right side) for left/full outer.
@@ -229,43 +249,104 @@ func (j *arrowJoinCore) eval(ctx context.Context, leftRec, rightRec arrow.Record
 	return array.NewRecord(schema, outCols, int64(len(leftOutIdx))), nil
 }
 
-// recordHasNull reports whether any of the named columns is NULL at the given
-// row. A NULL equality key must not match anything.
-func recordHasNull(rec arrow.Record, cols []string, row int) bool {
-	for _, c := range cols {
-		col := arrowOperandColumn(rec, c)
-		if col.IsNull(row) {
+// joinKeyArrays resolves the join key columns (by name) to their arrays.
+func joinKeyArrays(rec arrow.Record, cols []string) []arrow.Array {
+	out := make([]arrow.Array, len(cols))
+	for i, c := range cols {
+		out[i] = arrowOperandColumn(rec, c)
+	}
+	return out
+}
+
+// joinHasNull reports whether any key column is NULL at the given row.
+func joinHasNull(arrs []arrow.Array, row int) bool {
+	for _, a := range arrs {
+		if a.IsNull(row) {
 			return true
 		}
 	}
 	return false
 }
 
-// recordKey builds a canonical key for a row from the named columns.
-func recordKey(rec arrow.Record, cols []string, row int) string {
-	var sb strings.Builder
-	for _, c := range cols {
-		col := arrowOperandColumn(rec, c)
-		if col.IsNull(row) {
-			sb.WriteString("\x00∅\x00")
-			continue
-		}
-		switch col.DataType().ID() {
+// joinRowHash folds the key-column values of a row into a uint64 hash. It is
+// the colexec-style replacement for the former per-row recordKey string
+// builder: it allocates nothing per row and only falls back to value
+// comparison (joinRowsEqual) on hash collision.
+func joinRowHash(arrs []arrow.Array, row int, seed *maphash.Hash) uint64 {
+	seed.Reset()
+	for _, a := range arrs {
+		switch a.DataType().ID() {
 		case arrow.INT64:
-			fmt.Fprintf(&sb, "i%d\x1f", col.(*array.Int64).Value(row))
+			seed.WriteString("i")
+			v := uint64(a.(*array.Int64).Value(row))
+			seed.Write((*[8]byte)(unsafe.Pointer(&v))[:])
 		case arrow.FLOAT64:
-			fmt.Fprintf(&sb, "f%g\x1f", col.(*array.Float64).Value(row))
+			seed.WriteString("f")
+			v := math.Float64bits(a.(*array.Float64).Value(row))
+			seed.Write((*[8]byte)(unsafe.Pointer(&v))[:])
 		case arrow.BOOL:
-			fmt.Fprintf(&sb, "b%v\x1f", col.(*array.Boolean).Value(row))
+			seed.WriteString("b")
+			if a.(*array.Boolean).Value(row) {
+				seed.WriteByte(1)
+			} else {
+				seed.WriteByte(0)
+			}
 		case arrow.STRING:
-			sb.WriteString("s")
-			sb.WriteString(col.(*array.String).Value(row))
-			sb.WriteString("\x1f")
+			seed.WriteString("s")
+			seed.WriteString(a.(*array.String).Value(row))
+		case arrow.TIMESTAMP:
+			seed.WriteString("t")
+			v := uint64(a.(*array.Timestamp).Value(row))
+			seed.Write((*[8]byte)(unsafe.Pointer(&v))[:])
+		case arrow.DECIMAL128:
+			seed.WriteString("d")
+			d := a.(*array.Decimal128).Value(row)
+			hb := uint64(d.HighBits())
+			lb := d.LowBits()
+			seed.Write((*[8]byte)(unsafe.Pointer(&hb))[:])
+			seed.Write((*[8]byte)(unsafe.Pointer(&lb))[:])
 		default:
-			fmt.Fprintf(&sb, "x%d\x1f", row)
+			seed.WriteString("x")
 		}
 	}
-	return sb.String()
+	return seed.Sum64()
+}
+
+// joinRowsEqual reports whether the key columns of left row l equal those of
+// right row r. Used to resolve hash-bucket collisions; if either side is NULL
+// the keys are not considered equal (NULL != NULL).
+func joinRowsEqual(left []arrow.Array, l int, right []arrow.Array, r int) bool {
+	for k := range left {
+		if left[k].IsNull(l) || right[k].IsNull(r) {
+			return false
+		}
+		if !arrValEqual(left[k], l, right[k], r) {
+			return false
+		}
+	}
+	return true
+}
+
+// arrValEqual compares the value at (a,i) with (b,j) for the supported join
+// key types. The caller must ensure neither position is NULL.
+func arrValEqual(a arrow.Array, i int, b arrow.Array, j int) bool {
+	switch a.DataType().ID() {
+	case arrow.INT64:
+		return a.(*array.Int64).Value(i) == b.(*array.Int64).Value(j)
+	case arrow.FLOAT64:
+		return a.(*array.Float64).Value(i) == b.(*array.Float64).Value(j)
+	case arrow.BOOL:
+		return a.(*array.Boolean).Value(i) == b.(*array.Boolean).Value(j)
+	case arrow.STRING:
+		return a.(*array.String).Value(i) == b.(*array.String).Value(j)
+	case arrow.TIMESTAMP:
+		return a.(*array.Timestamp).Value(i) == b.(*array.Timestamp).Value(j)
+	case arrow.DECIMAL128:
+		da := a.(*array.Decimal128).Value(i)
+		db := b.(*array.Decimal128).Value(j)
+		return da.HighBits() == db.HighBits() && da.LowBits() == db.LowBits()
+	}
+	return false
 }
 
 // gatherColumn builds an output column by gathering the rows listed in idxs
