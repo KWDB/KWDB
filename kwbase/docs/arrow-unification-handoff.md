@@ -1,7 +1,7 @@
 # Arrow 统一化 —— 进度 / 计划 / 上下文交接文档（HANDOFF）
 
 > 用途：本文件用于「切换机器 / 新会话」时无需重新探索即可继续推进 KWDB 的 Arrow 统一化工作。
-> 最后更新：**2026-07-27**（对应 git 分支 `master`，多文件未提交改动 + 一批未跟踪的新文件；**全部改动尚未 commit/push**，见 §8.1）。
+> 最后更新：**2026-07-29**（Arrow 统一化源码 + 文档已 commit 并 push 到 `kwdb-exec` 远端 `arrow-unify` 分支，commit `491776a8`；`vendor` 子模块的 Arrow v17 补丁仅本地提交 `26d879c`、未推 kw-vendor.git，见 §8.1）。
 > 配套权威设计文档：`docs/arrow-unification-architecture.md`（§1–§12 是完整演进记录，本文件是「快进快照」）。
 
 ---
@@ -266,18 +266,18 @@ SQL
 
 ## 8. 快速恢复 checklist（新机器 / 新会话）
 
-> ⚠️ **本文件与所有改动都在仓库工作区、尚未提交。** 切换服务器本质是把「工作区改动 + 构建产物 + 依赖」整体搬到新机。下面 §8.1 是搬运步骤，§8.2 是新机最低恢复项。
+> ⚠️ **入库状态（2026-07-29 更新）**：Arrow 统一化源码 + 文档**已提交并推送到 `kwdb-exec` 远端分支 `arrow-unify`**（commit `491776a8`，已 `git ls-remote` 核实）。但 `vendor` 是**子模块**（上游 `kw-vendor.git`），里面的 Arrow v17 升级 + aggregate 补丁只提交在**本地子模块**（`26d879c`），**尚未推到 `kw-vendor.git`**——换机后 `git submodule update` 会因找不到 `26d879c` 失败。详见 §8.1 的两种解决路径。**另外 `.codebuddy/`、`kwdbts2/third_party`（C++ 第三方库）、`mod-doc/` 被刻意排除在提交之外**，需单独 tar 携带。
 
 ### 8.1 把改动搬到新服务器（git 状态 + 搬运）
 
-- **当前 git 状态（务必先确认）**：所有 Arrow 统一化改动**未 commit、未 push**，位于 `master` 分支工作区。含：
-  - 已修改 tracked 文件：`kwbase/pkg/col/colserde/*`、`types_integration_test.go`、`colrpc/inbox.go`、`distsql_physical_planner.go`、`physicalplan/physical_plan.go`、`rowexec/processors.go`、`kwbase/vendor`、`kwdbts2/third_party`。
-  - 未跟踪新文件：`docs/`、`pkg/sql/arrow_unification.go`、`pkg/sql/arrowsmoke/`、`pkg/sql/colexec/arrow_bridge*.go`、`rowexec/arrow_adapter.go` / `arrow_aggregate*.go` / `arrow_aggregator*.go` / `arrow_filter*.go` / `arrow_join*.go` / `arrow_*.go` 系列、`rowexec/arrowpilot/`（部分）等。
-- **搬运方式（三选一，推荐 ①）**：
-  1. **建分支 + commit + push（最稳）**：`git checkout -b arrow-unify && git add -A && git commit -m 'WIP: arrow unification §7.1-§7.10' && git push -u origin arrow-unify`。新机 `git clone`/`git fetch` 后 `git checkout arrow-unify`。注意 `vendor/` 与 `kwdbts2/third_party` 含未跟踪大文件/二进制，确认 `.gitignore` 是否包含它们——若不想入库，用 ② 单独带。
-  2. **整体打包工作区**：`tar czf arrow-wip.tgz kwbase/ kwdbts2/`（含未跟踪文件；排除 `build/lib/*.so` 用 ③ 重建）。适合不能 push 的内网友好环境。
-  3. **`git stash` 携带**：`git stash -u`（含未跟踪）后把 stash 导出；不如 ①② 稳，仅作临时过渡。
-- **不要漏的隐藏依赖**：`vendor/github.com/apache/arrow/go/v17` 被我们**改过**（补了 `arrow/compute/aggregate` 与两个 shim `JohnCGriffin/overflow`、`zeebo/xxh3`），且 `kwdbts2/third_party` 有未跟踪内容。若新机用 `go mod download` 重新拉 vendor 会**覆盖我们的修改**——务必把改后的 `vendor/` 一并带过去（或记录 §10.2 的改动，重新打补丁）。
+- **当前 git 状态**：
+  - 主仓库 `arrow-unify` 分支已 push 到 `kwdb-exec`（`https://gitee.com/kaiwuDB/kwdb-exec`，SSH：`git@gitee.com:kaiwuDB/kwdb-exec.git`）。包含：所有 Arrow 统一化 Go 源码（`pkg/sql/...`、`pkg/col/colserde/...`）+ `docs/` 交接文档。**未含** `.codebuddy/`、`kwdbts2/third_party`、`mod-doc/`（本地数据 / C++ 第三方库，需另行 tar）。
+  - `vendor` 子模块：`491776a8` 记录其指针为 `26d879c`（本地子模块提交，含 apache/arrow v17 升级 + `arrow/compute/aggregate` 补丁 + 两个 shim `JohnCGriffin/overflow`、`zeebo/xxh3`）。该 `26d879c` **仅在本地**，未 push 到 `kw-vendor.git`。
+- **vendor 子模块如何解决（二选一，否则新机无法构建）**：
+  1. **推送到 kw-vendor.git**：在 `vendor/` 子模块内 `git push <kw-vendor 远端> <当前分支>`（本机已提交 `26d879c`）。这样 `kwdb-exec` 的子模块指针 `26d879c` 在 `kw-vendor.git` 可达，`git submodule update` 即通。**注意**：这会把整个 Arrow v0→v17 升级推到共享 vendor 仓库，属对共享依赖的改动，需确认你对该仓库有推送权且团队认可（本会话未擅自推送 kw-vendor）。
+  2. **tar 携带补丁（不碰 kw-vendor）**：在新机 clone `kwdb-exec` 后，把本机 `vendor/github.com/apache/arrow/go/v17` 整个目录 + `vendor/github.com/JohnCGriffin/overflow` + `vendor/github.com/zeebo/xxh3` 打包，解压覆盖到新机 `vendor/` 对应位置，再 `git -C vendor checkout 26d879c`（或直接在子模块内 `git commit` 同样内容）。这避免改动共享 vendor 仓库。
+- **C++ 引擎与第三方库（必须单独带）**：`libkwdbts2.so`（151MB，构建产物，不在仓库）与 `kwdbts2/third_party`（C++ 第三方依赖，子模块，`?` 未跟踪）不在 git 内。换机需 `tar` 这两部分，或在新机从 `kwdbts2/` 源码重新构建（重度 C++ 步骤）。
+- **新机拉取命令**：`git clone -b arrow-unify git@gitee.com:kaiwuDB/kwdb-exec.git && cd kwbase && git submodule update --init vendor`（路径按 §8.2 调整；若走路径②则覆盖 v17 后再 checkout `26d879c`）。
 
 ### 8.2 新服务器最低恢复项
 
