@@ -366,6 +366,13 @@ func gatherColumn(alloc memory.Allocator, src arrow.Array, idxs []int32) arrow.A
 }
 
 func appendValueAt(b array.Builder, src arrow.Array, idx int) {
+	// The source row itself may be NULL (e.g. a NULL join key on an unmatched
+	// outer-join row); in that case emit a null rather than the underlying
+	// zero value, which would otherwise surface as a spurious 0/NULL mix.
+	if src.IsNull(idx) {
+		b.AppendNull()
+		return
+	}
 	switch src.DataType().ID() {
 	case arrow.INT64:
 		b.(*array.Int64Builder).Append(src.(*array.Int64).Value(idx))
@@ -375,6 +382,10 @@ func appendValueAt(b array.Builder, src arrow.Array, idx int) {
 		b.(*array.BooleanBuilder).Append(src.(*array.Boolean).Value(idx))
 	case arrow.STRING:
 		b.(*array.StringBuilder).Append(src.(*array.String).Value(idx))
+	case arrow.TIMESTAMP:
+		b.(*array.TimestampBuilder).Append(src.(*array.Timestamp).Value(idx))
+	case arrow.DECIMAL128:
+		b.(*array.Decimal128Builder).Append(src.(*array.Decimal128).Value(idx))
 	default:
 		b.AppendNull()
 	}

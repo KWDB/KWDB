@@ -269,7 +269,9 @@ SQL
       2. **稳定性修复**：哈希种子在 build+probe **前设一次**（`seed.SetSeed(maphash.MakeSeed())`），`joinRowHash` 内用 `seed.Reset()` 保留种子（不能每次 `MakeSeed` 随机，否则左右同键值哈希不一致 → 零匹配）。
       3. **空侧守卫**：仅当该侧 `nL>0`/`nR>0` 才 `joinKeyArrays` 解析键列。原因：planner 把非等值谓词下推成 arrow filter 后，filter 输出 **0 行且 0 列**的退化 record；baseline 的 `recordHasNull`/`recordKey` 写在 `for r<nR` 循环体内（nR==0 不执行故不触碰），而 eager 解析会 `arrowOperandColumn` 越界 panic。空侧本就不可能产生匹配对，跳过键解析正确（outer join 的 unmatched 行由 Phase 2/3 用各自有列 record 正常发出）。
     - 正确性/性能：inner/left/right/full + 非等值 post-filter 全链路经 `arrowpilot` e2e 验证 PASS（41.3s，与 baseline 一致）；`go vet ./pkg/sql/rowexec/` 干净；`go test -run 'Arrow|Join|Aggregat' ./pkg/sql/rowexec/` PASS。
-    - **待办（NEXT）**：可仿 §7.10 为 JOIN 也加 **colexec 对照**（`colexec.HashJoiner` 正确性+性能），进一步坐实「融合 colexec 算法」；filter/projection 核已走 arrow compute（原生向量化），暂无需改。
+    - **colexec 对照（本步追加）**：仿 §7.10 导出 `colexec.NewHashJoiner`（包装 `makeHashJoinerSpec`+`newHashJoiner`），新增 `arrow_join_colexec_bench_test.go`（外部包 `rowexec_test`，复用 §7.10 的 `oneShotBatchSource`）。`TestArrowJoinMatchesColexec` 用「输出按整行排序后做多重集相等」对照：覆盖 **inner/left/right/full 四种类型 × 多对多 fan-out / NULL 键**两个数据集，逐一验证 arrow join 与 colexec 原生向量化 hash joiner 输出完全一致；`BenchmarkArrowVsColexecJoin` 在 1024 行、64 键（~16× 扇出）数据集上对比——**Arrow 9.82 ms/op vs Colexec 12.5 ms/op，Arrow 约 1.27× 快**（arrow join 输出走 `gatherColumn` 零拷贝构造，且无 colexec hash-table 跨 batch build 开销）。
+    - **顺带修复的真实缺陷**：对照测试暴露 outer join 对 **NULL 键行**的错误——`gatherColumn`/`appendValueAt` 只处理「对侧未命中填 NULL（idx=-1）」，未处理「源行自身为 NULL」，对 NULL 键行直接取值（arrow 返回零值）导致 key 列输出 `0` 而非 `NULL`。已在 `appendValueAt` 取值前加 `src.IsNull(idx)` 检查（并补全 `TIMESTAMP`/`DECIMAL128` 分支），修复后 left/right/full 的 NULL 键行与 colexec 完全一致。
+    - 验证：`TestArrowJoinMatchesColexec` PASS；`go vet ./pkg/sql/rowexec/` 干净；`go test -run 'Arrow|Join|Aggregat' ./pkg/sql/rowexec/` PASS（51s，含 arrowpilot e2e）。filter/projection 核已走 arrow compute（原生向量化），暂无需改。
 
 ---
 
@@ -301,7 +303,7 @@ SQL
 
 ## 9. 当前总待办 / 后续候选（NEXT）
 
-> §7.1–§7.10 全部 ✅。下面按收益/风险排序，挑一个继续；**第一项（git 入库）建议优先于任何新开发**，否则换机容易丢改动。
+> §7.1–§7.11 全部 ✅（含 JOIN colexec 对照）。下面按收益/风险排序，挑一个继续；**第一项（git 入库）建议优先于任何新开发**，否则换机容易丢改动。
 
 1. **[最高优先] 把工作区改动入库**：按 §8.1 建 `arrow-unify` 分支 commit + push（或 tar 打包带走）。**这是切换服务器的前置动作**，当前所有成果都还在未提交工作区。
 2. **[可选] 向量化扩展到更多核**：当前 §7.10 已向量化的聚合核是 sum/minMax/mean（INT/FLOAT 走连续缓冲直读；DECIMAL/BOOL/TIMESTAMP 仍按值读但经选择子喂入）。可继续把 filter/projection/join 的**计算核**也改为选择子驱动的列式循环（colexec 式），进一步消除逐行 `Value(i)` 调用；以及把 mean 的 sum/count 累加也走 `Int64Values()` 连续缓冲。
@@ -315,3 +317,10 @@ SQL
 - **修复回归**：`arrowHashAggregator.Consume` 遍历 `map[uint64][]int32` 桶顺序不确定 → `Finalize` 加 `sort.SliceStable(h.order)` 按首见行号排序，恢复确定性组顺序。`go test -run 'Arrow|Aggregat' ./pkg/sql/rowexec/` **连续 20/20 PASS**，`go vet` 干净。
 - **验证**：`arrowpilot` e2e 全链路 PASS；`go vet ./pkg/sql/rowexec/` 干净。
 - **未提交**：全部改动仍在 `master` 工作区（见 §8.1）。
+
+### 9.2 本次会话（2026-07-29）收尾要点回顾
+
+- **完成**：§7.11 JOIN 计算核 colexec 对照——导出 `colexec.NewHashJoiner`，新增 `arrow_join_colexec_bench_test.go`（`TestArrowJoinMatchesColexec` 正确性对照 + `BenchmarkArrowVsColexecJoin` 性能基准）。四种 join 类型 × 多对多/NULL 键数据集证实 arrow join 与 colexec 原生 hash joiner 输出**完全一致**；Arrow 9.82 ms/op vs Colexec 12.5 ms/op（约 1.27× 快）。
+- **修复真实缺陷**：对照暴露 outer join 对 NULL 键行把 key 列输出成 `0` 而非 `NULL`——`appendValueAt` 补齐 `src.IsNull(idx)` 检查 + `TIMESTAMP`/`DECIMAL128` 分支。
+- **验证**：`TestArrowJoinMatchesColexec` PASS；`go vet ./pkg/sql/rowexec/` 干净；`go test -run 'Arrow|Join|Aggregat' ./pkg/sql/rowexec/` PASS（51s，含 arrowpilot e2e）。
+- **状态**：改动含 `hashjoiner.go`(新增导出 `NewHashJoiner`)、`arrow_join.go`(NULL 修复)、`arrow_join_colexec_bench_test.go`(新增)。**待入库**（见 §8.1 / §9 第 1 项）。

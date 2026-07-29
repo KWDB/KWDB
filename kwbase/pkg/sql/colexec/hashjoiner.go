@@ -593,6 +593,25 @@ func (hj *hashJoiner) resetOutput() {
 	}
 }
 
+// NewHashJoiner builds an in-memory equality hash join operator. It is exported
+// for cross-engine comparison tests (rowexec's arrow join vs colexec's
+// vectorized hash join): the left and right sources are the probe and build
+// sides respectively, and the output batch concatenates the left columns
+// followed by the right columns, mirroring arrowJoin's output layout.
+func NewHashJoiner(
+	allocator *Allocator,
+	joinType sqlbase.JoinType,
+	leftEqCols, rightEqCols []uint32,
+	leftTypes, rightTypes []coltypes.T,
+	leftSource, rightSource Operator,
+) (Operator, error) {
+	spec, err := makeHashJoinerSpec(joinType, leftEqCols, rightEqCols, leftTypes, rightTypes, false)
+	if err != nil {
+		return nil, err
+	}
+	return newHashJoiner(allocator, spec, leftSource, rightSource), nil
+}
+
 func (hj *hashJoiner) reset(ctx context.Context) {
 	for _, input := range []Operator{hj.inputOne, hj.inputTwo} {
 		if r, ok := input.(resetter); ok {
