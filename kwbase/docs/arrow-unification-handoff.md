@@ -306,7 +306,7 @@ SQL
 > §7.1–§7.11 全部 ✅（含 JOIN colexec 对照）。下面按收益/风险排序，挑一个继续；**第一项（git 入库）建议优先于任何新开发**，否则换机容易丢改动。
 
 1. **[最高优先] 把工作区改动入库**：按 §8.1 建 `arrow-unify` 分支 commit + push（或 tar 打包带走）。**这是切换服务器的前置动作**，当前所有成果都还在未提交工作区。
-2. **[可选] 向量化扩展到更多核**：当前 §7.10 已向量化的聚合核是 sum/minMax/mean（INT/FLOAT 走连续缓冲直读；DECIMAL/BOOL/TIMESTAMP 仍按值读但经选择子喂入）。可继续把 filter/projection/join 的**计算核**也改为选择子驱动的列式循环（colexec 式），进一步消除逐行 `Value(i)` 调用；以及把 mean 的 sum/count 累加也走 `Int64Values()` 连续缓冲。
+2. **[可选] 向量化扩展到更多核**：当前 §7.10 已向量化的聚合核是 sum/minMax/mean（INT/FLOAT 走连续缓冲直读；DECIMAL/BOOL/TIMESTAMP 仍按值读但经选择子喂入）。可继续把 filter/projection/join 的**计算核**也改为选择子驱动的列式循环（colexec 式），进一步消除逐行 `Value(i)` 调用；以及把 mean 的 sum/count 累加也走 `Int64Values()` 连续缓冲。**本步已收尾**：① filter.eval 改用原生 `compute.Filter` 核替代「逐行收集 indices + take」，彻底消除每行的 `IsNull/Value` 调用；② mean 的 DECIMAL 分支也从 `a.Value(i)` 改为 `a.Values()` 连续缓冲（与 sum/minMax 风格统一）；filter 的 `like`/CAST 因 arrow 无对应 kernel 仍保留行式 Go 实现。
 3. **[可选] 把 colexec 对照扩展到分组态**：§7.10 的正确性/性能对照目前只比了**全局 SUM**（因 colexec `NewHashAggregator` 输出不含 group key，仅含聚合列）。若要对照分组聚合，需要让 colexec 也产出 group key，或在对比层做「按组 SUM 字典」对齐——属增强验证，不影响当前结论。
 4. **[可选] 接 planner 让聚合真正走分组 Arrow 路径**：§7.5 提到分布式 GROUP BY 仍走 `setupMultiAggFinalState`（标准引擎），当前 Arrow 聚合在 `distsql_physical_planner.go:4737` 仅全局聚合稳定走 Arrow。可扩 planner 让分组聚合也路由 Arrow（需确认 refcount / 流式 finalize 语义）。
 5. **[可选] 补更多类型/函数**：UUID/JSON 分组键、字符串函数（substring/length，Arrow 无 kernel 需自补）、非字符串左操作数的 LIKE；left/right/full 连接的非等值 `onExpr`（post-filter 语义不等价，需在执行期区分已匹配行与 NULL 扩展行）。
@@ -324,3 +324,11 @@ SQL
 - **修复真实缺陷**：对照暴露 outer join 对 NULL 键行把 key 列输出成 `0` 而非 `NULL`——`appendValueAt` 补齐 `src.IsNull(idx)` 检查 + `TIMESTAMP`/`DECIMAL128` 分支。
 - **验证**：`TestArrowJoinMatchesColexec` PASS；`go vet ./pkg/sql/rowexec/` 干净；`go test -run 'Arrow|Join|Aggregat' ./pkg/sql/rowexec/` PASS（51s，含 arrowpilot e2e）。
 - **状态**：改动含 `hashjoiner.go`(新增导出 `NewHashJoiner`)、`arrow_join.go`(NULL 修复)、`arrow_join_colexec_bench_test.go`(新增)。**待入库**（见 §8.1 / §9 第 1 项）。
+
+### 9.3 本次会话（2026-07-29 第二波）收尾要点回顾
+
+- **完成（§9.2 项收尾）**：把 filter/projection/join 计算核进一步列式化、把 mean 的 DECIMAL 累加也走连续缓冲。
+  - `arrow_filter.go` 的 `eval`：原「逐行 `for i { mask.IsNull/Value }` 收集 indices → 每列 `compute.take`」改为直接用原生 `compute.Filter(col, mask)` 核一次性按布尔掩码选择所有列（默认 `NullSelectionBehavior=DROP`，与原 `mask.IsNull(i) || !mask.Value(i)` 语义完全一致），彻底消除逐行循环。
+  - `arrow_aggregate.go` 的 `meanAgg.Consume` 的 `*array.Decimal128` 分支：从 `a.Value(i)` 改为 `a.Values()` 连续切片直读（与 sum/minMax 的 `Int64Values()/Float64Values()` 风格统一）。
+- **验证**：`go test -run 'Arrow|Join|Aggregat' ./pkg/sql/rowexec/` PASS（51s，含 arrowpilot e2e）；编译干净。
+- **状态**：改动含 `arrow_filter.go`、`arrow_aggregate.go`。**待入库**（见 §8.1 / §9 第 1 项）。

@@ -789,13 +789,14 @@ func (m *meanAgg) Consume(arr arrow.Array, sel []int32) error {
 		}
 	case *array.Decimal128:
 		sc := a.DataType().(*arrow.Decimal128Type).Scale
+		dvals := a.Values()
 		hasNulls := a.NullN() > 0
 		if sel == nil {
-			for i := 0; i < a.Len(); i++ {
+			for i := range dvals {
 				if hasNulls && a.IsNull(i) {
 					continue
 				}
-				v := decimal128ToApd(a.Value(i), sc)
+				v := decimal128ToApd(dvals[i], sc)
 				tree.ExactCtx.Add(&m.sumD, &m.sumD, &v)
 				m.cntI++
 			}
@@ -805,7 +806,7 @@ func (m *meanAgg) Consume(arr arrow.Array, sel []int32) error {
 				if hasNulls && a.IsNull(ii) {
 					continue
 				}
-				v := decimal128ToApd(a.Value(ii), sc)
+				v := decimal128ToApd(dvals[ii], sc)
 				tree.ExactCtx.Add(&m.sumD, &m.sumD, &v)
 				m.cntI++
 			}

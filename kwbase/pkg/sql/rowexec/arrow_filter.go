@@ -97,22 +97,17 @@ func (f *arrowFilterCore) eval(ctx context.Context, rec arrow.Record) (arrow.Rec
 	}
 	defer mask.Release()
 
-	// Gather the indices of the matching rows.
-	b := array.NewInt32Builder(f.alloc)
-	for i := 0; i < int(rec.NumRows()); i++ {
-		if mask.IsNull(i) || !mask.Value(i) {
-			continue
-		}
-		b.Append(int32(i))
-	}
-	indices := b.NewArray()
-	defer indices.Release()
-
+	// Select the matching rows from every column via the native arrow compute
+	// Filter kernel. A null predicate bit is dropped (DefaultFilterOptions),
+	// which matches the prior "mask.IsNull(i) || !mask.Value(i)" semantics,
+	// eliminating the per-row index-gathering loop.
+	filterDatum := compute.NewDatum(mask)
+	defer filterDatum.Release()
 	results := make([]compute.Datum, rec.NumCols())
 	cols := make([]arrow.Array, rec.NumCols())
 	for ci := 0; ci < int(rec.NumCols()); ci++ {
 		col := rec.Column(ci)
-		res, err := compute.CallFunction(ctx, "take", nil, compute.NewDatum(col), compute.NewDatum(indices))
+		res, err := compute.Filter(ctx, compute.NewDatum(col), filterDatum, compute.FilterOptions{})
 		if err != nil {
 			for j := 0; j < ci; j++ {
 				cols[j].Release()
@@ -123,7 +118,7 @@ func (f *arrowFilterCore) eval(ctx context.Context, rec arrow.Record) (arrow.Rec
 		results[ci] = res
 		cols[ci] = res.(*compute.ArrayDatum).MakeArray()
 	}
-	out := array.NewRecord(rec.Schema(), cols, int64(indices.Len()))
+	out := array.NewRecord(rec.Schema(), cols, int64(cols[0].Len()))
 	for _, r := range results {
 		r.Release()
 	}
