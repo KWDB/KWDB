@@ -11,7 +11,6 @@ import (
 	"hash/maphash"
 	"math"
 	"math/big"
-	"sort"
 
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
@@ -919,13 +918,13 @@ type arrowHashAggregator struct {
 
 	states   [][]scalarAggregator // per dense group id, per agg (nil for count_all/ident)
 	counts   []int64               // COUNT(*) per dense group id
-	order    []int32               // dense group ids in first-seen order
-	sels     [][]int32             // row selection vector per dense group id (batched feed)
-	firstRow []int32               // input-batch row index of each group's first-seen row
-	table    *arrowGroupTable      // open-addressing group table (replaces map[string])
-	hashSeed maphash.Hash          // reused hashing state
-	curRec   arrow.Record           // current input batch (groups are re-materialized from it)
-	inTypes  []arrow.DataType      // resolved input type per agg (for output typing)
+	order   []int32               // dense group ids in first-seen order
+	sels    [][]int32             // row selection vector per dense group id (batched feed)
+	keyRecs    []arrow.Record   // retained group-key row per dense group id (captured at discovery)
+	groupTypes []arrow.DataType // group col arrow types, captured from first input batch
+	table      *arrowGroupTable // open-addressing group table (replaces map[string])
+	hashSeed   maphash.Hash     // reused hashing state
+	inTypes    []arrow.DataType // resolved input type per agg (for output typing)
 }
 
 func newArrowHashAggregator(alloc memory.Allocator, groupCols []string, aggs []ArrowAggExpr) *arrowHashAggregator {
@@ -935,7 +934,7 @@ func newArrowHashAggregator(alloc memory.Allocator, groupCols []string, aggs []A
 		aggs:      aggs,
 		states:    make([][]scalarAggregator, 1, 256), // id 0 is invalid; groups start at id 1
 		counts:    make([]int64, 1, 256),
-		firstRow:  make([]int32, 1, 256),
+		keyRecs:   make([]arrow.Record, 0, 1),
 		sels:      make([][]int32, 1, 256),
 		order:     nil,
 		table:     newArrowGroupTable(5),
@@ -949,14 +948,14 @@ func newArrowHashAggregator(alloc memory.Allocator, groupCols []string, aggs []A
 //
 // Grouping uses an open-addressing hash table (arrowGroupTable) keyed only by a
 // dense group id — mirroring Apache Arrow C++'s GrouperFastImpl, which backs
-// native grouped aggregation in Arrow C++. The actual group-key values are NOT
-// stored in the long-lived state; they are re-materialized from the current
-// batch on demand (see MaterializeRow). This removes the per-group Go string
-// allocation and the map[string] bookkeeping that previously dominated the
-// grouped path's overhead.
+// native grouped aggregation in Arrow C++. The actual group-key values are
+// captured once, at the moment a group is first discovered, into a small
+// retained one-row record (see materializeGroupKeyRow) and released only after
+// Finalize. This makes aggregation correct across multiple streaming input
+// batches: each group's key is owned independently of the batch it was seen in,
+// so a later batch cannot clobber an earlier group's key.
 func (h *arrowHashAggregator) Consume(ctx context.Context, rec arrow.Record) error {
 	n := int(rec.NumRows())
-	h.curRec = rec // retained as the source for Finalize's group re-materialization
 
 	if len(h.groupCols) == 0 {
 		// Global aggregation: a single group containing every row. We set up the
@@ -967,19 +966,25 @@ func (h *arrowHashAggregator) Consume(ctx context.Context, rec arrow.Record) err
 			h.order = []int32{gid}
 			h.states = append(h.states, h.newStates(rec))
 			h.counts = append(h.counts, 0)
-			h.firstRow = append(h.firstRow, 0)
 		}
 		return h.feedGroup(ctx, gid, rec, allRows(n))
 	}
 
 	colIdxs := resolveColIdxs(rec, h.groupCols)
+	if len(h.groupTypes) == 0 {
+		for _, ci := range colIdxs {
+			h.groupTypes = append(h.groupTypes, rec.Column(ci).DataType())
+		}
+	}
 	for i := 0; i < n; i++ {
-		gid, isNew := h.table.findOrInsert(rec, colIdxs, i, &h.hashSeed, func() int32 {
+		gid, isNew := h.table.findOrInsert(rec, colIdxs, i, h.keyRecs, &h.hashSeed, func() int32 {
 			// allocate a new dense group id (1-based; 0 is the invalid sentinel)
 			id := int32(len(h.states))
 			h.states = append(h.states, nil)
 			h.counts = append(h.counts, 0)
-			h.firstRow = append(h.firstRow, int32(i))
+			if len(colIdxs) > 0 {
+				h.keyRecs = append(h.keyRecs, materializeGroupKeyRow(h.alloc, rec, colIdxs, i))
+			}
 			h.sels = append(h.sels, nil)
 			return id
 		})
@@ -995,10 +1000,18 @@ func (h *arrowHashAggregator) Consume(ctx context.Context, rec arrow.Record) err
 	// Consume calls into ~|groups| batched calls, which is the dominant win for
 	// the grouped path: colexec does the same and avoids the per-row IsNull/Value
 	// accessor overhead that dominated our earlier per-row feed.
+	//
+	// The feed happens within Consume, against the CURRENT batch's columns, and
+	// the per-group selection vector is reset afterwards. This is what makes the
+	// aggregator correct across multiple streaming input batches: a group's
+	// selection vector only ever contains row indices valid for the batch being
+	// fed, so indices from an earlier batch can never leak into a later batch's
+	// column. The scalar kernels accumulate state across batches internally.
 	for _, gid := range h.order {
 		if err := h.feedGroup(ctx, gid, rec, h.sels[gid]); err != nil {
 			return err
 		}
+		h.sels[gid] = h.sels[gid][:0]
 	}
 	return nil
 }
@@ -1069,16 +1082,19 @@ func (h *arrowHashAggregator) newStates(rec arrow.Record) []scalarAggregator {
 }
 
 // Finalize emits one output row per group (group columns first, then aggregates
-// in Aggs order). Group-key columns are re-materialized from the current batch
-// (MaterializeRow) using each group's first-seen row, so no per-group record is
-// retained across Consume calls.
+// in Aggs order). Group-key columns are rebuilt from the per-group key records
+// captured at discovery time (see materializeGroupKeyRow), so aggregation is
+// correct across multiple streaming input batches.
 func (h *arrowHashAggregator) Finalize() (arrow.Record, error) {
-	// h.order is appended in first-seen order already; for global agg it is a
-	// single id. Sort by first-seen row to restore deterministic "first-seen
-	// order" output regardless of the table's internal slot layout.
-	sort.SliceStable(h.order, func(i, j int) bool {
-		return h.firstRow[h.order[i]] < h.firstRow[h.order[j]]
-	})
+	// h.order is appended in first-seen order as groups are discovered, so it is
+	// already deterministic; no re-sort is needed (and sorting by a per-batch row
+	// index would be incorrect across batches).
+	defer func() {
+		for _, k := range h.keyRecs {
+			k.Release()
+		}
+		h.keyRecs = nil
+	}()
 
 	// Output width: the grouping columns (pass-through, one value per group)
 	// followed by the aggregate columns. Global aggregation emits no group
@@ -1088,16 +1104,22 @@ func (h *arrowHashAggregator) Finalize() (arrow.Record, error) {
 	cols := make([]arrow.Array, numOut)
 	outIdx := 0
 
-	// Pass-through grouping columns: re-materialize each group's first row from
-	// the current batch (MaterializeRow), so no per-group record is retained
-	// across Consume calls.
+	// Pass-through grouping columns: rebuild them directly from the per-group key
+	// records captured at discovery time (see materializeGroupKeyRow). We build
+	// fresh arrays owned solely by the output record (rather than borrowing the
+	// columns out of the key records), so there is no aliasing / double-release and
+	// the result is correct across streaming multi-batch input.
 	if len(h.groupCols) > 0 {
-		gRec := MaterializeRow(h.curRec, resolveColIdxs(h.curRec, h.groupCols), h.firstRow)
-		defer gRec.Release()
-		for _, gc := range h.groupCols {
-			col := arrowOperandColumn(gRec, gc)
-			fields[outIdx] = arrow.Field{Name: fmt.Sprintf("col%d", outIdx), Type: col.DataType(), Nullable: true}
-			cols[outIdx] = col
+		for c := 0; c < len(h.groupCols); c++ {
+			dt := h.groupTypes[c]
+			b := array.NewBuilder(h.alloc, dt)
+			for _, gid := range h.order {
+				s := arrayScalarAt(h.keyRecs[gid-1].Column(c), 0)
+				appendScalar(b, s, dt)
+			}
+			cols[outIdx] = b.NewArray()
+			b.Release()
+			fields[outIdx] = arrow.Field{Name: fmt.Sprintf("col%d", outIdx), Type: dt, Nullable: true}
 			outIdx++
 		}
 	}
@@ -1110,9 +1132,6 @@ func (h *arrowHashAggregator) Finalize() (arrow.Record, error) {
 			var sc scalar.Scalar
 			if agg.Func == "count_all" {
 				sc = scalar.NewInt64Scalar(h.counts[gid])
-			} else if agg.Func == "ident" {
-				col := arrowOperandColumn(h.curRec, agg.Input)
-				sc = arrayScalarAt(col, int(h.firstRow[gid]))
 			} else {
 				var err error
 				sc, err = h.states[gid][i].Finalize()
@@ -1131,7 +1150,13 @@ func (h *arrowHashAggregator) Finalize() (arrow.Record, error) {
 	}
 
 	schema := arrow.NewSchema(fields, nil)
-	return array.NewRecord(schema, cols, int64(len(h.order))), nil
+	out := array.NewRecord(schema, cols, int64(len(h.order)))
+	// array.NewRecord retains every column; release the builder's initial ref so
+	// the record is the sole owner and releasing it frees the buffers.
+	for _, c := range cols {
+		c.Release()
+	}
+	return out, nil
 }
 
 func (h *arrowHashAggregator) releaseUpTo(cols []arrow.Array, upTo int) {
@@ -1261,6 +1286,53 @@ func arrowGroupRowEqualIdx(rec arrow.Record, idxs []int, i, j int) bool {
 	return true
 }
 
+// arrowGroupKeyEqual reports whether the row's grouping-column values equal a
+// previously captured group key (null-aware). Unlike arrowGroupRowEqualIdx, the
+// key is a retained 1-row record (see materializeGroupKeyRow), so equality is
+// correct across input batches: a group first seen in an earlier batch keeps its
+// key independent of the batch currently being processed.
+func arrowGroupKeyEqual(rec arrow.Record, idxs []int, row int, key arrow.Record) bool {
+	for c, ci := range idxs {
+		col := rec.Column(ci)
+		ni, nk := col.IsNull(row), key.Column(c).IsNull(0)
+		if ni || nk {
+			if ni != nk {
+				return false
+			}
+			continue
+		}
+		switch col.DataType().ID() {
+		case arrow.INT64:
+			if col.(*array.Int64).Value(row) != key.Column(c).(*array.Int64).Value(0) {
+				return false
+			}
+		case arrow.TIMESTAMP:
+			if int64(col.(*array.Timestamp).Value(row)) != int64(key.Column(c).(*array.Timestamp).Value(0)) {
+				return false
+			}
+		case arrow.FLOAT64:
+			if col.(*array.Float64).Value(row) != key.Column(c).(*array.Float64).Value(0) {
+				return false
+			}
+		case arrow.BOOL:
+			if col.(*array.Boolean).Value(row) != key.Column(c).(*array.Boolean).Value(0) {
+				return false
+			}
+		case arrow.STRING:
+			if col.(*array.String).Value(row) != key.Column(c).(*array.String).Value(0) {
+				return false
+			}
+		case arrow.DECIMAL128:
+			if col.(*array.Decimal128).Value(row) != key.Column(c).(*array.Decimal128).Value(0) {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 // resolveColIdxs resolves grouping column names to integer indices once, so the
 // hot grouping path never pays Schema.FieldIndices (a map-backed lookup) per row.
 func resolveColIdxs(rec arrow.Record, cols []string) []int {
@@ -1294,7 +1366,6 @@ func resolveColIdxs(rec arrow.Record, cols []string) []int {
 type arrowGroupTable struct {
 	groups []int32  // dense group id per slot; -1 = empty
 	hashes []uint64 // cached hash per occupied slot
-	rows   []int32  // first-seen input-batch row index for each occupied slot
 	mask   uint64   // len(groups)-1, len is a power of two
 }
 
@@ -1310,14 +1381,13 @@ func newArrowGroupTable(minBits uint) *arrowGroupTable {
 	return &arrowGroupTable{
 		groups: groups,
 		hashes: make([]uint64, cap),
-		rows:   make([]int32, cap),
 		mask:   cap - 1,
 	}
 }
 
 // grow doubles the table capacity and re-inserts all live entries.
 func (t *arrowGroupTable) grow() {
-	oldGroups, oldHashes, oldRows := t.groups, t.hashes, t.rows
+	oldGroups, oldHashes := t.groups, t.hashes
 	cap := uint64(len(oldGroups)) << 1
 	groups := make([]int32, cap)
 	for i := range groups {
@@ -1325,22 +1395,20 @@ func (t *arrowGroupTable) grow() {
 	}
 	t.groups = groups
 	t.hashes = make([]uint64, cap)
-	t.rows = make([]int32, cap)
 	t.mask = cap - 1
 	for i := range oldGroups {
 		if g := oldGroups[i]; g != arrowGroupEmpty {
-			t.insert(oldHashes[i], g, oldRows[i])
+			t.insert(oldHashes[i], g)
 		}
 	}
 }
 
-func (t *arrowGroupTable) insert(h uint64, id int32, row int32) {
+func (t *arrowGroupTable) insert(h uint64, id int32) {
 	slot := h & t.mask
 	for {
 		if t.groups[slot] == arrowGroupEmpty {
 			t.groups[slot] = id
 			t.hashes[slot] = h
-			t.rows[slot] = row
 			return
 		}
 		slot = (slot + 1) & t.mask
@@ -1349,9 +1417,11 @@ func (t *arrowGroupTable) insert(h uint64, id int32, row int32) {
 
 // findOrInsert returns the dense group id for the row's grouping columns,
 // creating a new id (via allocGroupID) if the group is unseen. idxs are the
-// pre-resolved integer column indices (resolved once in Consume); h is reused
-// across calls to avoid allocation.
-func (t *arrowGroupTable) findOrInsert(rec arrow.Record, idxs []int, row int, h *maphash.Hash, allocGroupID func() int32) (int32, bool) {
+// pre-resolved integer column indices (resolved once in Consume); keyRecs holds
+// the captured group-key record per dense group id (so value equality is correct
+// regardless of which input batch a group was first seen in); h is reused across
+// calls to avoid allocation.
+func (t *arrowGroupTable) findOrInsert(rec arrow.Record, idxs []int, row int, keyRecs []arrow.Record, h *maphash.Hash, allocGroupID func() int32) (int32, bool) {
 	hash := arrowGroupHashIdx(rec, idxs, row, h)
 	// Probe for an existing group, stopping at the first empty slot.
 	slot := hash & t.mask
@@ -1362,7 +1432,7 @@ func (t *arrowGroupTable) findOrInsert(rec arrow.Record, idxs []int, row int, h 
 			firstEmpty = slot
 			break
 		}
-		if t.hashes[slot] == hash && arrowGroupRowEqualIdx(rec, idxs, row, int(t.rows[slot])) {
+		if t.hashes[slot] == hash && arrowGroupKeyEqual(rec, idxs, row, keyRecs[g-1]) {
 			return g, false
 		}
 		slot = (slot + 1) & t.mask
@@ -1370,12 +1440,11 @@ func (t *arrowGroupTable) findOrInsert(rec arrow.Record, idxs []int, row int, h 
 	// Not found: grow if the load is high, then insert at the first empty slot.
 	if t.used()*2 >= len(t.groups) {
 		t.grow()
-		return t.findOrInsert(rec, idxs, row, h, allocGroupID)
+		return t.findOrInsert(rec, idxs, row, keyRecs, h, allocGroupID)
 	}
 	id := allocGroupID()
 	t.groups[firstEmpty] = id
 	t.hashes[firstEmpty] = hash
-	t.rows[firstEmpty] = int32(row)
 	return id, true
 }
 
@@ -1391,51 +1460,34 @@ func (t *arrowGroupTable) used() int {
 	return n
 }
 
-// MaterializeRow rebuilds the group-key record (one row per distinct group) from
-// the current input batch, using each group's first-seen row. This replaces the
-// map[string]arrow.Record bookkeeping that previously stored a full record per
-// group. firstRow[g] holds the input-batch row index for dense group id g, and
-// colIdxs are the pre-resolved integer column indices of the grouping columns.
-func MaterializeRow(rec arrow.Record, colIdxs []int, firstRow []int32) arrow.Record {
-	builders := make([]array.Builder, len(colIdxs))
-	outCols := make([]arrow.Array, len(colIdxs))
-	schemaFields := make([]arrow.Field, len(colIdxs))
-	cols := make([]arrow.Array, len(colIdxs))
-	for i, ci := range colIdxs {
-		col := rec.Column(ci)
-		cols[i] = col
-		builders[i] = array.NewBuilder(memory.NewGoAllocator(), col.DataType())
-		schemaFields[i] = rec.Schema().Field(ci)
-	}
-	for g := int32(1); g < int32(len(firstRow)); g++ {
-		row := int(firstRow[g])
-		for i, col := range cols {
-			if col.IsNull(row) {
-				builders[i].AppendNull()
-				continue
-			}
-			switch col.DataType().ID() {
-			case arrow.INT64:
-				builders[i].(*array.Int64Builder).Append(col.(*array.Int64).Value(row))
-			case arrow.TIMESTAMP:
-				builders[i].(*array.TimestampBuilder).Append(col.(*array.Timestamp).Value(row))
-			case arrow.FLOAT64:
-				builders[i].(*array.Float64Builder).Append(col.(*array.Float64).Value(row))
-			case arrow.BOOL:
-				builders[i].(*array.BooleanBuilder).Append(col.(*array.Boolean).Value(row))
-			case arrow.STRING:
-				builders[i].(*array.StringBuilder).Append(col.(*array.String).Value(row))
-			case arrow.DECIMAL128:
-				builders[i].(*array.Decimal128Builder).Append(col.(*array.Decimal128).Value(row))
-			default:
-				builders[i].AppendNull()
-			}
+// materializeGroupKeyRow copies one input row's grouping columns into a new,
+// owned one-row record. The copy is independent of the source batch's lifetime,
+// so the group key survives after the batch is released — this is what makes
+// streaming multi-batch aggregation correct (a group first seen in an earlier
+// batch keeps its key even after that batch is gone).
+func materializeGroupKeyRow(alloc memory.Allocator, rec arrow.Record, colIdxs []int, row int) arrow.Record {
+	nc := len(colIdxs)
+	fields := make([]arrow.Field, nc)
+	cols := make([]arrow.Array, nc)
+	for c, ci := range colIdxs {
+		dt := rec.Column(ci).DataType()
+		fields[c] = rec.Schema().Field(ci)
+		b := array.NewBuilder(alloc, dt)
+		src := rec.Column(ci)
+		if src.IsNull(row) {
+			b.AppendNull()
+		} else {
+			s := arrayScalarAt(src, row)
+			appendScalar(b, s, dt)
 		}
+		cols[c] = b.NewArray()
+		b.Release()
 	}
-	for i := range builders {
-		outCols[i] = builders[i].NewArray()
-		builders[i].Release()
+	out := array.NewRecord(arrow.NewSchema(fields, nil), cols, 1)
+	for _, c := range cols {
+		c.Release()
 	}
-	schema := arrow.NewSchema(schemaFields, nil)
-	return array.NewRecord(schema, outCols, int64(len(firstRow)-1))
+	return out
 }
+
+

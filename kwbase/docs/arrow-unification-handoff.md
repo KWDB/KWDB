@@ -308,7 +308,7 @@ SQL
 1. **[最高优先] 把工作区改动入库**：按 §8.1 建 `arrow-unify` 分支 commit + push（或 tar 打包带走）。**这是切换服务器的前置动作**，当前所有成果都还在未提交工作区。
 2. **[可选] 向量化扩展到更多核**：当前 §7.10 已向量化的聚合核是 sum/minMax/mean（INT/FLOAT 走连续缓冲直读；DECIMAL/BOOL/TIMESTAMP 仍按值读但经选择子喂入）。可继续把 filter/projection/join 的**计算核**也改为选择子驱动的列式循环（colexec 式），进一步消除逐行 `Value(i)` 调用；以及把 mean 的 sum/count 累加也走 `Int64Values()` 连续缓冲。**本步已收尾**：① filter.eval 改用原生 `compute.Filter` 核替代「逐行收集 indices + take」，彻底消除每行的 `IsNull/Value` 调用；② mean 的 DECIMAL 分支也从 `a.Value(i)` 改为 `a.Values()` 连续缓冲（与 sum/minMax 风格统一）；filter 的 `like`/CAST 因 arrow 无对应 kernel 仍保留行式 Go 实现。
 3. **[可选] 把 colexec 对照扩展到分组态**：§7.10 的正确性/性能对照目前只比了**全局 SUM**（因 colexec `NewHashAggregator` 输出不含 group key，仅含聚合列）。若要对照分组聚合，需要让 colexec 也产出 group key，或在对比层做「按组 SUM 字典」对齐——属增强验证，不影响当前结论。**本步已完成（§9.4）**：新增 `TestArrowGroupedAggMatchesColexec`（分组 SUM 正确性，arrow 精确 (group→sum) map vs Go 真值字典；colexec 因不输出 group key 走「排序 multiset vs 真值」对照，二者对齐即证明 arrow==colexec 分组一致）+ `BenchmarkArrowVsColexecGrouped`。**关键结论**：分组态下 arrow（~1005µs/op）反而比 colexec（~553µs/op）慢约 0.55×，与全局 SUM 时 arrow 1.9× 快形成对比——arrow 的 uint64 哈希分桶 + 每 distinct 组字符串 key 物化 + map 查找 + Finalize 排序开销在分组场景压过了列存直读优势。这提示 §9.4（分布式分组聚合路由 Arrow）需先做分组路径的微优化（减少 string key 物化 / 用更紧凑的组容器）再上生产。
-4. **[可选] 接 planner 让聚合真正走分组 Arrow 路径**：§7.5 提到分布式 GROUP BY 仍走 `setupMultiAggFinalState`（标准引擎），当前 Arrow 聚合在 `distsql_physical_planner.go:4737` 仅全局聚合稳定走 Arrow。可扩 planner 让分组聚合也路由 Arrow（需确认 refcount / 流式 finalize 语义）。
+4. ~~**[可选] 接 planner 让聚合真正走分组 Arrow 路径**：§7.5 提到分布式 GROUP BY 仍走 `setupMultiAggFinalState`（标准引擎），当前 Arrow 聚合在 `distsql_physical_planner.go:4737` 仅全局聚合稳定走 Arrow。可扩 planner 让分组聚合也路由 Arrow（需确认 refcount / 流式 finalize 语义）。~~ ✅ **已完成（§9.6）**：两阶段分布式分组聚合已路由 Arrow——本地 partial 阶段（`addTwiceAggregators` 经 `arrowAggCoreFor` 出 `ArrowAggregator` core）+ 最终 merge 阶段（`setupMultiAggFinalState` 经 `addRelationalFinalAggStateSpec(useArrow)`）；流式多 batch 的 `Finalize`/refcount 语义已确认正确无泄漏（见 §9.6）。**AVG 在两阶段 merge 路径被排除**（Arrow 核是单遍累加器，无法合并 `(sum,count)` 部分聚合，sum of means ≠ mean），单遍（单节点）路径仍走 Arrow。
 5. **[可选] 补更多类型/函数**：UUID/JSON 分组键、字符串函数（substring/length，Arrow 无 kernel 需自补）、非字符串左操作数的 LIKE；left/right/full 连接的非等值 `onExpr`（post-filter 语义不等价，需在执行期区分已匹配行与 NULL 扩展行）。
 
 ### 9.1 本次会话（2026-07-27）收尾要点回顾
@@ -354,3 +354,28 @@ SQL
 - **验证**：`TestArrowGroupedAggMatchesColexec`（分组正确性：arrow 精确 group→sum map vs Go 真值；colexec multiset vs 真值）PASS；`go test -run 'Arrow|Join|Aggregat' ./pkg/sql/rowexec/` 全绿（52s 含 arrowpilot e2e）；`go vet` 干净。
 - **对 §9 NEXT 第 4 项（分布式分组聚合路由 Arrow）的启示**：分组核经本波重写已与 colexec **架构持平且性能接近（1.4×）**，不再是"劣于标准引擎"的障碍；但生产路由前仍建议确认流式多 batch 的 `Finalize`/refcount 语义（见 planner.go:4737 现状）。若要把剩余 1.4× 抹平，可选方向：用更快的非加密哈希（如 wyhash/xxhash）替代 `maphash`、或对高频单列 int 组键走特化快速路径。
 - **状态**：改动含 `arrow_aggregate.go`、`arrow_aggregator.go`。**待入库**。
+
+---
+
+### §9.6 第四波收尾·分布式分组聚合路由 Arrow（2026-07-29）
+
+目标：把两阶段分布式 GROUP BY 聚合真正路由到 Arrow 分组核，并确认流式多 batch 的 `Finalize`/refcount 语义正确无泄漏（§9 NEXT 第 4 项）。
+
+- **流式多 batch Finalize / refcount 修复（核心正确性）**：
+  - `findOrInsert` 中 `keyRecs[g]` 改为 `keyRecs[g-1]`：`gid` 是 1-based（slot 0 为无效占位），而 `keyRecs` 是 0-based append 顺序，原写法越界（`index out of range [8] with length 8`）。跨 batch 分组比较现在统一对 `keyRecs[g-1]` 用 `arrowGroupKeyEqual`，不再依赖已释放的当批行索引。
+  - `Finalize` 分组列改为用 `array.NewBuilder` **直接重建**（从 `h.keyRecs[gid-1].Column(c)` 取 scalar），不再借用 `concatKeyRecords` 产出的 `gRec` 的列。原写法把 `gRec` 的列塞进 `cols` 又 `defer gRec.Release()`，导致 `out` 记录引用的列被双重释放（use-after-free / 泄漏）。新写法分组列与聚合列一样**仅由 `out` 持有**，干净释放。
+  - 删除 `concatKeyRecords` 助手；新增 `groupTypes []arrow.DataType`（首个输入 batch 捕获），让 `Finalize` 在零组（空输入）时也能重建正确类型的分组列。
+  - 新增 `TestArrowGroupedStreamingMultiBatch`（4 case：单/多 batch、多组、稀疏 NULL）。`memory.NewCheckedAllocator` + `leaktest.AfterTest` 校验：单 batch / 多 batch / 多组 / 稀疏 NULL **全绿，零泄漏**（`AssertSize 0`）。
+- **分布式分组聚合路由（planner）**：
+  - 新增 `arrowAggCoreFor(spec)` → `execinfrapb.ProcessorCoreUnion{ArrowAggregator: expr}`（`expr = arrowUnificationMarshal(buildArrowAggPlan(spec))`，core 字段是 `*Expression`，**不是不存在的 `ArrowAggregatorSpec`/`IDENT` enum**）。
+  - `addTwiceAggregators` 本地 partial 阶段：当 `ArrowAggregatorEnabled && canArrowAggregate(localAggsSpec) && !specUsesMean` 时以 Arrow core 出 `localCore`；构建失败则**静默回退 colexec**（不再 return error，避免 query 全盘失败）。
+  - `setupMultiAggFinalState` 最终 merge 阶段：新增 `useArrow` 参数，按 `canArrowAggregate(finalAggsSpec) && !specUsesMean` 决定；`addRelationalFinalAggStateSpec(..., useArrow)` 出 `ArrowAggregator` core；构建失败回退 `useArrow=false`（colexec），且 `arrowAggCoreFor` 在 `AddProcessor` 之前 return error，**不会重复追加 processor**，回退安全。
+  - `canArrowAggregate` 放宽：`case AggregatorSpec_ANY_NOT_NULL`（分组列透传）；`groupCols` 支持 int/decimal/string/float/timestamp/bool 比较类型；`buildArrowAggPlan` 跳过 `ANY_NOT_NULL`（`continue`）且用 `append` 组装 `aggs`。
+- **正确性护栏**：`specUsesMean(spec)` 排除 AVG——两阶段 merge 时 Arrow 核是单遍累加器，无法合并 `(sum,count)` 部分聚合（sum of means ≠ true mean）。单遍（单节点/单流）路径 `canArrowAggregate` 仍允许 AVG（正确）。sum/count/min/max 的 merge 操作等于聚合操作，两阶段 Arrow 路由正确。
+- **验证**（均从 gitee 软链路径、`GO111MODULE=off`、带 §1.1 的 `CGO_LDFLAGS`/`LD_LIBRARY_PATH` 环境变量执行——**换机务必先按 §1.1/§8 准备 vendor 子模块与 `libkwdbts2.so`**）：
+  - `go test -run 'TestArrowGroupedStreamingMultiBatch' ./pkg/sql/rowexec/` 全绿，零泄漏。
+  - `go test -run 'Arrow|Join|Aggregat' ./pkg/sql/rowexec/` 全绿（51.8s），含 `TestArrowGroupedAggMatchesColexec`（arrow 分组 vs colexec 精确一致）。
+  - `go build ./pkg/sql/...` 干净。
+- **改动文件**：`arrow_aggregate.go`、`arrow_aggregator.go`、`arrow_aggregate_streaming_test.go`（新增）、`arrow_unification.go`、`distsql_physical_planner.go`。
+- **状态**：**待入库**（kwdb-exec/arrow-unify）。
+- **NEXT（可选，抹平剩余 ~1.4× vs colexec）**：更快非加密哈希（wyhash/xxhash）替代 `maphash`；单列 int 组键特化快速路径；补 UUID/JSON 分组键、字符串函数 kernel、非字符串 LEFT LIKE 操作数；并为分布式两阶段 AVG 提供 Arrow 部分聚合 + merge 能力（解除 `specUsesMean` 排除）。

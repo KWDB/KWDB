@@ -93,12 +93,19 @@ func buildIntRecord(alloc memory.Allocator, groups, vals []int64, nulls []bool) 
 			vb.Append(vals[i])
 		}
 	}
-	cols := []arrow.Array{gb.NewArray(), vb.NewArray()}
+	gArr := gb.NewArray()
+	vArr := vb.NewArray()
+	cols := []arrow.Array{gArr, vArr}
 	fields := []arrow.Field{
 		{Name: "col0", Type: arrow.PrimitiveTypes.Int64, Nullable: true},
 		{Name: "col1", Type: arrow.PrimitiveTypes.Int64, Nullable: true},
 	}
-	return array.NewRecord(arrow.NewSchema(fields, nil), cols, int64(len(groups)))
+	out := array.NewRecord(arrow.NewSchema(fields, nil), cols, int64(len(groups)))
+	// array.NewRecord retains every column; release the builder's initial ref so
+	// the record is the sole owner and releasing it frees the buffers.
+	gArr.Release()
+	vArr.Release()
+	return out
 }
 
 // runArrowSumGrouped runs our vectorized (colexec-style) arrow aggregation via

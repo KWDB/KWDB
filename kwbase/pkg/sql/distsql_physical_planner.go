@@ -3898,8 +3898,22 @@ func (dsp *DistSQLPlanner) addTwiceAggregators(
 		GroupWindowId:    n.groupWindowID,
 	}
 
+	// Route the local (partial) aggregation stage through the Arrow grouped
+	// kernel when the feature is enabled and the spec is supported. The local
+	// stage emits the same intermediate types as the colexec partial
+	// aggregator, so the downstream final (merge) stage is unchanged.
+	localCore := execinfrapb.ProcessorCoreUnion{Aggregator: &localAggsSpec}
+	if physicalplan.ArrowAggregatorEnabled(planCtx.EvalContext()) &&
+		canArrowAggregate(localAggsSpec, p.ResultTypes, n.engine) && !specUsesMean(localAggsSpec) {
+		// Route the local (partial) stage through the Arrow kernel; on any
+		// unexpected build error, fall back to the colexec core. MEAN is excluded
+		// above because the Arrow kernel cannot merge (sum,count) partials.
+		if ac, err := arrowAggCoreFor(localAggsSpec); err == nil {
+			localCore = ac
+		}
+	}
 	p.AddNoGroupingStage(
-		execinfrapb.ProcessorCoreUnion{Aggregator: &localAggsSpec},
+		localCore,
 		execinfrapb.PostProcessSpec{},
 		intermediateTypes,
 		execinfrapb.Ordering{Columns: ordCols},
@@ -4444,6 +4458,19 @@ func setupNewResultRouter(p *PhysicalPlan, pIdxStart physicalplan.ProcessorIdx) 
 	}
 }
 
+// arrowAggCoreFor builds the Arrow aggregator processor core for an aggregator
+// spec by lowering it to the Arrow JSON plan (see buildArrowAggPlan). The Arrow
+// path is an opt-in alternative to the colexec hash aggregator; any error falls
+// back to the colexec core at the call site.
+func arrowAggCoreFor(spec execinfrapb.AggregatorSpec) (execinfrapb.ProcessorCoreUnion, error) {
+	plan := buildArrowAggPlan(spec)
+	expr, err := arrowUnificationMarshal(plan)
+	if err != nil {
+		return execinfrapb.ProcessorCoreUnion{}, err
+	}
+	return execinfrapb.ProcessorCoreUnion{ArrowAggregator: expr}, nil
+}
+
 // addRelationalFinalAggStateSpec add relational final agg state spec to physical
 func addRelationalFinalAggStateSpec(
 	planCtx *PlanningCtx,
@@ -4451,7 +4478,16 @@ func addRelationalFinalAggStateSpec(
 	finalAggsSpec execinfrapb.AggregatorSpec,
 	finalAggsPost execinfrapb.PostProcessSpec,
 	stageID int32,
-) {
+	useArrow bool,
+) error {
+	core := execinfrapb.ProcessorCoreUnion{Aggregator: &finalAggsSpec}
+	if useArrow {
+		ac, err := arrowAggCoreFor(finalAggsSpec)
+		if err != nil {
+			return err
+		}
+		core = ac
+	}
 	for _, resultProc := range p.ResultRouters {
 		proc := physicalplan.Processor{
 			Node: p.Processors[resultProc].Node,
@@ -4460,7 +4496,7 @@ func addRelationalFinalAggStateSpec(
 					// The other fields will be filled in by mergeResultStreams.
 					ColumnTypes: p.ResultTypes,
 				}},
-				Core: execinfrapb.ProcessorCoreUnion{Aggregator: &finalAggsSpec},
+				Core: core,
 				Post: finalAggsPost,
 				Output: []execinfrapb.OutputRouterSpec{{
 					Type: execinfrapb.OutputRouterSpec_PASS_THROUGH,
@@ -4470,6 +4506,7 @@ func addRelationalFinalAggStateSpec(
 		}
 		p.AddProcessor(proc)
 	}
+	return nil
 }
 
 // addTSFinalAggStateSpec add ts final aggregator.
@@ -4506,7 +4543,8 @@ func (dsp *DistSQLPlanner) setupMultiAggFinalState(
 	reqOrdering *ReqOrdering,
 	finalAggsSpec execinfrapb.AggregatorSpec,
 	finalAggsPost execinfrapb.PostProcessSpec,
-) {
+	engine tree.EngineType,
+) error {
 	// ts engine compute twice agg , relational engine compute third agg
 	// Set up the output routers from the previous stage.
 	setupChildDistributionStrategy(p, execinfrapb.OutputRouterSpec_BY_HASH, finalAggsSpec.GroupCols)
@@ -4516,7 +4554,21 @@ func (dsp *DistSQLPlanner) setupMultiAggFinalState(
 	// working on the final stage.
 	pIdxStart := physicalplan.ProcessorIdx(len(p.Processors))
 
-	addRelationalFinalAggStateSpec(planCtx, p, finalAggsSpec, finalAggsPost, p.NewStageID())
+	// Route the final (merge) aggregation stage through the Arrow grouped
+	// kernel when the feature is enabled and the spec is supported. The final
+	// post (renders / projections, e.g. avg = sum/count) is applied by the
+	// Arrow processor's own post-processing, just like the colexec aggregator.
+	useArrow := physicalplan.ArrowAggregatorEnabled(planCtx.EvalContext()) &&
+		canArrowAggregate(finalAggsSpec, p.ResultTypes, engine) && !specUsesMean(finalAggsSpec)
+	if err := addRelationalFinalAggStateSpec(planCtx, p, finalAggsSpec, finalAggsPost, p.NewStageID(), useArrow); err != nil {
+		if !useArrow {
+			return err
+		}
+		// Arrow core construction unexpectedly failed; fall back to colexec.
+		if ferr := addRelationalFinalAggStateSpec(planCtx, p, finalAggsSpec, finalAggsPost, p.NewStageID(), false); ferr != nil {
+			return ferr
+		}
+	}
 
 	// Connect the streams.
 	connectStreamForMultiAgg(p, pIdxStart)
@@ -4526,6 +4578,7 @@ func (dsp *DistSQLPlanner) setupMultiAggFinalState(
 
 	p.ResultTypes = finalOutTypes
 	p.SetMergeOrdering(dsp.convertOrdering(*reqOrdering, p.PlanToStreamColMap))
+	return nil
 }
 
 func (dsp *DistSQLPlanner) setupMultiAggFinalStateForTSNew(
@@ -4752,7 +4805,9 @@ func (dsp *DistSQLPlanner) addAggregators(
 		dsp.addSingleGroupState(p, prevStageNode, finalAggsSpec, finalAggsPost, finalOutTypes)
 	} else {
 		// We distribute (by group columns) to multiple processors.
-		dsp.setupMultiAggFinalState(planCtx, p, finalOutTypes, &n.reqOrdering, finalAggsSpec, finalAggsPost)
+		if err := dsp.setupMultiAggFinalState(planCtx, p, finalOutTypes, &n.reqOrdering, finalAggsSpec, finalAggsPost, n.engine); err != nil {
+			return err
+		}
 	}
 
 	return nil

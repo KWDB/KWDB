@@ -43,6 +43,8 @@ func NewArrowAggregator(alloc memory.Allocator, input UnifiedProcessor, spec Arr
 type arrowAggregator struct {
 	arrowAggregatorCore
 	input UnifiedProcessor
+	ha    *arrowHashAggregator
+	done  bool
 }
 
 // Allocator implements UnifiedProcessor.
@@ -51,35 +53,38 @@ func (a *arrowAggregatorCore) Allocator() memory.Allocator { return a.alloc }
 // Init implements UnifiedProcessor.
 func (a *arrowAggregator) Init(ctx context.Context) { a.input.Init(ctx) }
 
-// Next implements UnifiedProcessor. It emits exactly one aggregated Record
-// (one row per group, or a single row for global aggregation) then reports done.
+// Next implements UnifiedProcessor. It accumulates every input batch into the
+// grouped aggregation state and emits exactly one aggregated Record (one row
+// per group, or a single row for global aggregation) once the input is
+// exhausted. This makes the operator a proper streaming accumulator: it is
+// correct whether the input arrives as a single record or many streaming
+// records, and it always releases each input record after consuming it.
 func (a *arrowAggregator) Next(ctx context.Context) (arrow.Record, bool, error) {
-	rec, done, err := a.input.Next(ctx)
-	if err != nil {
-		return nil, false, err
-	}
-	if done {
+	if a.done {
 		return nil, true, nil
 	}
-	out, err := a.eval(ctx, rec)
-	if err != nil {
+	if a.ha == nil {
+		a.ha = newArrowHashAggregator(a.alloc, a.spec.GroupCols, a.spec.Aggs)
+	}
+	for {
+		rec, done, err := a.input.Next(ctx)
+		if err != nil {
+			return nil, false, err
+		}
+		if done {
+			out, err := a.ha.Finalize()
+			if err != nil {
+				return nil, false, err
+			}
+			a.done = true
+			return out, false, nil
+		}
+		if err := a.ha.Consume(ctx, rec); err != nil {
+			rec.Release()
+			return nil, false, err
+		}
 		rec.Release()
-		return nil, false, err
 	}
-	rec.Release()
-	return out, false, nil
-}
-
-func (a *arrowAggregatorCore) eval(ctx context.Context, rec arrow.Record) (arrow.Record, error) {
-	// Delegate to the pure-Arrow aggregate kernel layer (arrow_aggregate.go),
-	// modelled on C++ HashAggregateFunction. It assigns rows to groups, runs one
-	// ScalarAggregator per (group, aggregate), and finalizes to one row per group
-	// (or a single row for global aggregation).
-	ha := newArrowHashAggregator(a.alloc, a.spec.GroupCols, a.spec.Aggs)
-	if err := ha.Consume(ctx, rec); err != nil {
-		return nil, err
-	}
-	return ha.Finalize()
 }
 
 func (a *arrowAggregatorCore) releaseCols(cols []arrow.Array, upTo int) {

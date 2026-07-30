@@ -95,6 +95,9 @@ func canArrowAggregate(
 			}
 		case execinfrapb.AggregatorSpec_COUNT_ROWS:
 			// COUNT(*) handled via count_all.
+		case execinfrapb.AggregatorSpec_ANY_NOT_NULL:
+			// Grouping-column pass-through; the grouping column itself is
+			// validated via the GroupCols loop below. No per-row aggregation.
 		default:
 			return false
 		}
@@ -110,26 +113,45 @@ func canArrowAggregate(
 	return true
 }
 
+// specUsesMean reports whether the aggregator spec contains an AVG/MEAN
+// aggregation. MEAN must not be routed through the Arrow kernel in a two-stage
+// (distributed, partial→merge) plan: the Arrow aggregator is a single-pass
+// accumulator and cannot merge (sum,count) partials, so summing partial means
+// does not equal the true mean. MEAN is only safe in a single-pass plan, so the
+// merge stages (local partial + final merge) must exclude it.
+func specUsesMean(spec execinfrapb.AggregatorSpec) bool {
+	for _, a := range spec.Aggregations {
+		if a.Func == execinfrapb.AggregatorSpec_AVG {
+			return true
+		}
+	}
+	return false
+}
+
 func buildArrowAggPlan(spec execinfrapb.AggregatorSpec) arrowAggPlan {
 	groupCols := make([]int, len(spec.GroupCols))
 	for i, g := range spec.GroupCols {
 		groupCols[i] = int(g)
 	}
-	aggs := make([]arrowAggExprJS, len(spec.Aggregations))
-	for i, a := range spec.Aggregations {
+		aggs := make([]arrowAggExprJS, 0, len(spec.Aggregations))
+	for _, a := range spec.Aggregations {
 		switch a.Func {
+		case execinfrapb.AggregatorSpec_ANY_NOT_NULL:
+			// Grouping-column pass-through is emitted by the executor as the
+			// materialized group-key column; skip it in the Arrow plan.
+			continue
 		case execinfrapb.AggregatorSpec_SUM:
-			aggs[i] = arrowAggExprJS{Func: "sum", Input: int(a.ColIdx[0])}
+			aggs = append(aggs, arrowAggExprJS{Func: "sum", Input: int(a.ColIdx[0])})
 		case execinfrapb.AggregatorSpec_MIN:
-			aggs[i] = arrowAggExprJS{Func: "min", Input: int(a.ColIdx[0])}
+			aggs = append(aggs, arrowAggExprJS{Func: "min", Input: int(a.ColIdx[0])})
 		case execinfrapb.AggregatorSpec_MAX:
-			aggs[i] = arrowAggExprJS{Func: "max", Input: int(a.ColIdx[0])}
+			aggs = append(aggs, arrowAggExprJS{Func: "max", Input: int(a.ColIdx[0])})
 		case execinfrapb.AggregatorSpec_AVG:
-			aggs[i] = arrowAggExprJS{Func: "mean", Input: int(a.ColIdx[0])}
+			aggs = append(aggs, arrowAggExprJS{Func: "mean", Input: int(a.ColIdx[0])})
 		case execinfrapb.AggregatorSpec_COUNT:
-			aggs[i] = arrowAggExprJS{Func: "count", Input: int(a.ColIdx[0])}
+			aggs = append(aggs, arrowAggExprJS{Func: "count", Input: int(a.ColIdx[0])})
 		case execinfrapb.AggregatorSpec_COUNT_ROWS:
-			aggs[i] = arrowAggExprJS{Func: "count_all", Input: -1}
+			aggs = append(aggs, arrowAggExprJS{Func: "count_all", Input: -1})
 		}
 	}
 	return arrowAggPlan{GroupCols: groupCols, Aggs: aggs}
