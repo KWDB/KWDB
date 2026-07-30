@@ -1823,6 +1823,17 @@ func arrowCastTargetTag(t *types.T) (string, bool) {
 	return "", false
 }
 
+// arrowFilterStringCastable reports whether a type can be the left operand of a
+// LIKE by being cast to string inside the Arrow kernel (matches castToString:
+// int/float/bool/string -> string).
+func arrowFilterStringCastable(t *types.T) bool {
+	switch t.Family() {
+	case types.StringFamily, types.IntFamily, types.FloatFamily, types.BoolFamily:
+		return true
+	}
+	return false
+}
+
 // canArrowFilterExpr reports whether a boolean filter expression can be
 // evaluated entirely by the Arrow compute engine (equality/comparison on
 // columns/constants/computed leaves, combined with and/or/not).
@@ -1855,7 +1866,10 @@ func (p *PhysicalPlan) canArrowFilterExpr(e tree.TypedExpr, indexVarMap []int) b
 			if !ok1 || !ok2 {
 				return false
 			}
-			if lty.Family() != types.StringFamily {
+			// A non-string left operand (int/float/bool) is cast to string by
+			// buildArrowFilterNode so the Arrow kernel can stringify it before
+			// matching; only genuinely un-castable types are rejected here.
+			if !arrowFilterStringCastable(lty) {
 				return false
 			}
 			if rty.Family() != types.StringFamily {
@@ -1924,8 +1938,19 @@ func (p *PhysicalPlan) buildArrowFilterNode(e tree.TypedExpr, indexVarMap []int)
 		case tree.NotILike:
 			fn = "not_ilike"
 		}
-		l, _, _ := p.arrowFilterLeafFromExpr(ex.Left.(tree.TypedExpr), indexVarMap)
+		l, lty, _ := p.arrowFilterLeafFromExpr(ex.Left.(tree.TypedExpr), indexVarMap)
 		r, _, _ := p.arrowFilterLeafFromExpr(ex.Right.(tree.TypedExpr), indexVarMap)
+		// A non-string left operand is wrapped in a CAST to STRING so the Arrow
+		// kernel can stringify it before the LIKE match (e.g. `i LIKE '1%'` on an
+		// integer column). The eval layer (evalLike + evalCast) already handles a
+		// casted left operand.
+		if lty.Family() != types.StringFamily {
+			if tag, ok := arrowCastTargetTag(types.String); ok {
+				l = &arrowFilterLeaf{Cast: &arrowFilterCast{Func: "cast", Type: tag, Arg: *l}}
+			} else {
+				return arrowFilterNode{}, false
+			}
+		}
 		return arrowFilterNode{
 			Func: fn,
 			Operands: []arrowFilterOperand{

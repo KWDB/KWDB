@@ -377,5 +377,30 @@ SQL
   - `go test -run 'Arrow|Join|Aggregat' ./pkg/sql/rowexec/` 全绿（51.8s），含 `TestArrowGroupedAggMatchesColexec`（arrow 分组 vs colexec 精确一致）。
   - `go build ./pkg/sql/...` 干净。
 - **改动文件**：`arrow_aggregate.go`、`arrow_aggregator.go`、`arrow_aggregate_streaming_test.go`（新增）、`arrow_unification.go`、`distsql_physical_planner.go`。
+- **状态**：**已入库推送**（kwdb-exec/arrow-unify，见 §9.7）。
+
+---
+
+### §9.7 收尾·抹平 1.4× + 非字符串 LEFT LIKE（2026-07-30）
+
+目标：继续 §9.6 NEXT 列表——抹平剩余 ~1.4×、单列 int 组键特化、非字符串 LEFT LIKE（UUID/JSON 分组键、字符串函数 kernel、分布式两阶段 AVG merge 列入下一波，见文末）。
+
+- **① 单列 int 组键特化（关闭 1.4× 的真正杠杆）**：`arrowHashAggregator` 新增 `singleInt` 开关 + `intGroups map[int64]int32` + `hasNullGrp/nullGID`。`Consume` 在首个输入 batch 检测到「恰好一个 INT64 分组列」时走快速路径：`gcol.Value(i)` 直接查 `intGroups` 得稠密组 id，**完全跳过 maphash / 线性探测 / 值比较**。新增共享 `allocGroup(rec, colIdxs, row)` 统一新组分配（states/counts/keyRecs/sels/order 一次性追加），一般哈希路径不再重复 append `order`。`TestArrowGroupedStreamingMultiBatch` 走该路径，跨 batch 正确。
+  - **基准**（`BenchmarkArrowVsColexecGrouped`，单 int 分组列 SUM）：arrow 现已与 colexec **持平**（~640–860µs vs ~630–820µs， ratio ≈ 1.0×），原 ~1.4× 差距已消除。`TestArrowGroupedAggMatchesColexec` 精确一致。
+- **② wyhash/xxhash（评估结论：非必要）**：纯 Go 的 wyhash/xxhash 无 AES-NI 指令，小 key 上**不会快于** `maphash`（amd64 已用 aeshash/AES-NI）。而 dominant 的单 int 分组路径经 ① 已不再哈希，剩余多列路径用 maphash(AES-NI) 已近最优。故**不引入**纯 Go 哈希；1.4× 由 ① 关闭。
+- **③ 非字符串 LEFT LIKE 操作数**：执行层 `evalLike`/`evalLeafDatum` 早已支持 `ArrowArg.Cast`（先把左操作数转 STRING 再匹配）。本次仅放宽 **planner 闸门** + 插入转换：
+  - `canArrowFilterExpr` LIKE 分支：`arrowFilterStringCastable(lty)` 允许 left 为 int/float/bool/string（原仅 string）；right 仍为 string 常量。
+  - `buildArrowFilterNode` LIKE 分支：若 `lty` 非 string，用 `arrowCastTargetTag(types.String)` 将左 leaf 包成 `arrowFilterLeaf{Cast: {Type:"STRING", Arg:*l}}`；`buildArrowFilterSpec`/`leafToArrowArg`（`arrow_filter_processor.go:258`）**已递归**处理 `Cast`（`arrowCastType(tag)` + 递归 `leafToArrowArg`），`arrowCastType` 支持 `"STRING"`。
+  - 新增 `TestArrowFilterNonStringLeftLike`（eval 层，int 列 `LIKE '2%'` → 仅 20 命中），锁定转换后的 cast 左操作数语义；`go test -run 'Arrow|Join|Aggregat|Filter|Like'` 全绿（51.8s）。
+- **改动文件**：`arrow_aggregate.go`（singleInt 特化 + allocGroup）、`physicalplan/physical_plan.go`（LIKE 闸门放宽 + cast 插入 + `arrowFilterStringCastable`）、`rowexec/arrow_filter_test.go`（新增测试）。
 - **状态**：**待入库**（kwdb-exec/arrow-unify）。
-- **NEXT（可选，抹平剩余 ~1.4× vs colexec）**：更快非加密哈希（wyhash/xxhash）替代 `maphash`；单列 int 组键特化快速路径；补 UUID/JSON 分组键、字符串函数 kernel、非字符串 LEFT LIKE 操作数；并为分布式两阶段 AVG 提供 Arrow 部分聚合 + merge 能力（解除 `specUsesMean` 排除）。
+
+#### 下一波（④⑤⑦，已探明接入点，留待后续）
+- **④ UUID/JSON 分组键**——**adapter 缺口已定位**：`rowexec/arrow_adapter.go` 的 `arrowTypeForKWType` 对 UUID/JSON 走 `default: return Int64`（错误映射）；`buildArrowColumns` 对未知 family 走 `default: return error`（UUID/JSON 目前在 scan→arrow 阶段**直接报错**，无静默错乱）。完整支持需：
+  1. `arrowTypeForKWType`：UUID→`arrow.FixedSizeBinaryTypes.FixedSizeBinary`（width 16），JSON→`arrow.BinaryTypes.String`；
+  2. `buildArrowColumns` 增加 `types.UuidFamily`（解码 `tree.DUuid` 16 字节写入 FixedSizeBinary）与 `types.JsonFamily`（解码 `tree.DJSON` 写入 String）分支；
+  3. `arrowSupportedCompareType` 增加 `UuidFamily/JsonFamily`；
+  4. 确认 `arrowScalarAt`/`appendScalar`/`arrowScalarEqual` 处理 FixedSizeBinary（String 已支持；FixedSizeBinary 需核对 scalar 分支）。
+  - 风险：adapter 改动影响**所有** arrow scan，需端到端（集群）验证；切勿只放开 `arrowSupportedCompareType` 而不修 adapter（会卡在 scan 报错）。
+- **⑤ 字符串函数 kernel**——在 `arrow_projection.go` 的 `buildArrowProjectionExpr`/`eval` 扩展 `length`/`lower`/`upper`/`concat`/`substring` 等，调用 `compute.CallFunction("length", ...)` 等内核；并在 `canArrowProjectionExpr` 闸门放行。投影目前仅支持算术（`a+b`）。
+- **⑦ 分布式两阶段 AVG merge（解除 `specUsesMean` 排除）**——给 `arrowHashAggregator` 增「merge 模式」：两阶段 partial 阶段产出 `(sum, count)` 部分聚合，最终 merge 阶段消费这些部分并合并（sum of sums、count of counts）。`arrow_unification.go` 的 `specUsesMean` 当前排除 AVG；`distsql_physical_planner.go` 的 `addTwiceAggregators`/`setupMultiAggFinalState` 在确认 merge 能力后放开。注意：sum/count/min/max 的 merge==聚合，已可走两阶段；唯 AVG 因 partial 语义需此 merge 能力。

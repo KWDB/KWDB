@@ -916,15 +916,26 @@ type arrowHashAggregator struct {
 	groupCols []string
 	aggs      []ArrowAggExpr
 
-	states   [][]scalarAggregator // per dense group id, per agg (nil for count_all/ident)
-	counts   []int64               // COUNT(*) per dense group id
-	order   []int32               // dense group ids in first-seen order
-	sels    [][]int32             // row selection vector per dense group id (batched feed)
+	states     [][]scalarAggregator // per dense group id, per agg (nil for count_all/ident)
+	counts     []int64               // COUNT(*) per dense group id
+	order      []int32               // dense group ids in first-seen order
+	sels       [][]int32             // row selection vector per dense group id (batched feed)
 	keyRecs    []arrow.Record   // retained group-key row per dense group id (captured at discovery)
 	groupTypes []arrow.DataType // group col arrow types, captured from first input batch
 	table      *arrowGroupTable // open-addressing group table (replaces map[string])
 	hashSeed   maphash.Hash     // reused hashing state
 	inTypes    []arrow.DataType // resolved input type per agg (for output typing)
+
+	// singleInt fast path: when there is exactly one grouping column and it is a
+	// non-nullable-able INT64, we skip the general hash table entirely and map the
+	// raw int64 key directly to a dense group id with a Go map. This removes the
+	// per-row maphash + linear-probe + value-equality cost that dominated the
+	// grouped path and is the single largest lever for closing the ~1.4x gap to
+	// colexec on the common "GROUP BY <int id>" workload.
+	singleInt   bool
+	intGroups   map[int64]int32 // group value -> dense group id (singleInt mode)
+	hasNullGrp  bool            // whether the null group key has been seen
+	nullGID     int32           // dense id for the NULL group key (singleInt mode)
 }
 
 func newArrowHashAggregator(alloc memory.Allocator, groupCols []string, aggs []ArrowAggExpr) *arrowHashAggregator {
@@ -939,7 +950,24 @@ func newArrowHashAggregator(alloc memory.Allocator, groupCols []string, aggs []A
 		order:     nil,
 		table:     newArrowGroupTable(5),
 		inTypes:   make([]arrow.DataType, len(aggs)),
+		intGroups: make(map[int64]int32),
 	}
+}
+
+// allocGroup allocates a fresh dense group id (1-based; 0 is the invalid
+// sentinel), appends the per-group accumulator state, count, retained key row,
+// selection vector, and first-seen order entry. It is the single allocation
+// point shared by both the general hashing path and the single-int fast path.
+func (h *arrowHashAggregator) allocGroup(rec arrow.Record, colIdxs []int, row int) int32 {
+	id := int32(len(h.states))
+	h.states = append(h.states, nil)
+	h.counts = append(h.counts, 0)
+	if len(colIdxs) > 0 {
+		h.keyRecs = append(h.keyRecs, materializeGroupKeyRow(h.alloc, rec, colIdxs, row))
+	}
+	h.sels = append(h.sels, nil)
+	h.order = append(h.order, id)
+	return id
 }
 
 // Consume accumulates one input batch into the aggregated state. It is safe to
@@ -975,24 +1003,49 @@ func (h *arrowHashAggregator) Consume(ctx context.Context, rec arrow.Record) err
 		for _, ci := range colIdxs {
 			h.groupTypes = append(h.groupTypes, rec.Column(ci).DataType())
 		}
+		// Fast path eligibility: exactly one grouping column and it is INT64.
+		h.singleInt = len(h.groupCols) == 1 && h.groupTypes[0].ID() == arrow.INT64
 	}
-	for i := 0; i < n; i++ {
-		gid, isNew := h.table.findOrInsert(rec, colIdxs, i, h.keyRecs, &h.hashSeed, func() int32 {
-			// allocate a new dense group id (1-based; 0 is the invalid sentinel)
-			id := int32(len(h.states))
-			h.states = append(h.states, nil)
-			h.counts = append(h.counts, 0)
-			if len(colIdxs) > 0 {
-				h.keyRecs = append(h.keyRecs, materializeGroupKeyRow(h.alloc, rec, colIdxs, i))
+
+	if h.singleInt {
+		// Single INT64 group key: map the raw int64 directly to a dense group id.
+		// No hashing, no linear probing, no value-equality comparison per row.
+		gcol := rec.Column(colIdxs[0]).(*array.Int64)
+		for i := 0; i < n; i++ {
+			var gid int32
+			if gcol.IsNull(i) {
+				if !h.hasNullGrp {
+					gid = h.allocGroup(rec, colIdxs, i)
+					h.hasNullGrp = true
+					h.nullGID = gid
+					h.states[gid] = h.newStates(rec)
+				} else {
+					gid = h.nullGID
+				}
+			} else {
+				v := gcol.Value(i)
+				if id, ok := h.intGroups[v]; ok {
+					gid = id
+				} else {
+					gid = h.allocGroup(rec, colIdxs, i)
+					h.intGroups[v] = gid
+					h.states[gid] = h.newStates(rec)
+				}
 			}
-			h.sels = append(h.sels, nil)
-			return id
-		})
-		if isNew {
-			h.order = append(h.order, gid)
-			h.states[gid] = h.newStates(rec)
+			h.sels[gid] = append(h.sels[gid], int32(i))
 		}
-		h.sels[gid] = append(h.sels[gid], int32(i))
+	} else {
+		for i := 0; i < n; i++ {
+			gid, isNew := h.table.findOrInsert(rec, colIdxs, i, h.keyRecs, &h.hashSeed, func() int32 {
+				return h.allocGroup(rec, colIdxs, i)
+			})
+			if isNew {
+				// order was already appended inside allocGroup; only the per-agg
+				// accumulator state remains to be initialized here.
+				h.states[gid] = h.newStates(rec)
+			}
+			h.sels[gid] = append(h.sels[gid], int32(i))
+		}
 	}
 	// Feed each group's value segment in ONE call with a contiguous selection
 	// vector, exactly like colexec feeds a selection vector into its accumulators
