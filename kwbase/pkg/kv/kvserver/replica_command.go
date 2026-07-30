@@ -2097,8 +2097,15 @@ func (r *Replica) sendTSSnapshot(
 	if err != nil {
 		return errors.Wrapf(err, "%s: failed to generate %s TS snapshot", r, snapType)
 	}
+	// Refresh only ValBytes/LiveBytes on the stats loaded from the engine
+	// snapshot. Replacing the whole blob with r.GetMVCCStats() is unsafe:
+	// KeyCount/ValCount may advance in memory after the engine snap is taken
+	// (CreateSnapshotForRead can take seconds), while SSTs still carry the older
+	// RangeAppliedState — the receiver then Fatals in assertStateLocked.
 	if snap.State.Stats != nil && isTSRangeDescriptor(r.Desc()) {
-		*snap.State.Stats = r.GetMVCCStats()
+		correctTSRangeMVCCStatsFromDataVolume(
+			ctx, r.store.metrics, r.store.TsEngine, r.Desc(), snap.State.Stats,
+		)
 	}
 	defer snap.Close()
 	log.Event(ctx, "generated TS snapshot")

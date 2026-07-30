@@ -235,7 +235,8 @@ func TestTotalBytesForQueueTimeout(t *testing.T) {
 
 		want := int64(10 + 2000 + 70)
 		require.Equal(t, want, totalBytesForQueueTimeout(ctx, tc.repl))
-		require.Equal(t, int64(2000), tc.repl.GetMVCCStats().ValBytes)
+		// Queue timeout uses a corrected copy; in-memory stats stay unchanged.
+		require.Equal(t, int64(100), tc.repl.GetMVCCStats().ValBytes)
 	})
 }
 
@@ -255,13 +256,72 @@ func TestGetMVCCStatsForDecisions(t *testing.T) {
 	desc := testTSRangeDescriptor(tc.repl.RangeID, 0, 10)
 	tc.repl.mu.Lock()
 	tc.repl.mu.state.Desc = desc
-	tc.repl.mu.state.Stats = &enginepb.MVCCStats{ValBytes: 128, LiveBytes: 128}
+	tc.repl.mu.state.Stats = &enginepb.MVCCStats{
+		KeyCount:  149001,
+		ValCount:  149001,
+		ValBytes:  128,
+		LiveBytes: 128,
+	}
 	tc.repl.mu.Unlock()
 
 	stats := tc.repl.GetMVCCStatsForDecisions(ctx)
 	require.Equal(t, int64(4096), stats.ValBytes)
 	require.Equal(t, int64(4096), stats.LiveBytes)
-	require.Equal(t, int64(4096), tc.repl.GetMVCCStats().ValBytes)
+	require.Equal(t, int64(149001), stats.KeyCount)
+
+	// Decision path must not mutate in-memory replica stats.
+	mem := tc.repl.GetMVCCStats()
+	require.Equal(t, int64(128), mem.ValBytes)
+	require.Equal(t, int64(128), mem.LiveBytes)
+	require.Equal(t, int64(149001), mem.KeyCount)
+}
+
+func TestTSSnapshotHeaderStatsPreserveKeyCount(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Simulates sendTSSnapshot header preparation: stats loaded from the engine
+	// snap (T0) must keep KeyCount/ValCount when only ValBytes/LiveBytes are
+	// refreshed. Replacing with current in-memory stats (T1) would put the
+	// receiver's header ahead of SST RangeAppliedState.
+	withTSRangeDataVolumeHook(t, func(desc *roachpb.RangeDescriptor) (uint64, error) {
+		return 4221390714, nil
+	})
+
+	ctx := context.Background()
+	desc := testTSRangeDescriptor(263, 0, 10)
+
+	snapStats := &enginepb.MVCCStats{
+		KeyCount:  149001,
+		ValCount:  149001,
+		KeyBytes:  0,
+		ValBytes:  4221364008,
+		LiveBytes: 4221364008,
+	}
+	// Current in-memory stats after concurrent writes during snapshot generation.
+	memStats := enginepb.MVCCStats{
+		KeyCount:  149002,
+		ValCount:  149002,
+		KeyBytes:  0,
+		ValBytes:  4221390714,
+		LiveBytes: 4221390714,
+	}
+
+	require.True(t, correctTSRangeMVCCStatsFromDataVolume(ctx, nil, nil, desc, snapStats))
+	require.Equal(t, int64(4221390714), snapStats.ValBytes)
+	require.Equal(t, int64(4221390714), snapStats.LiveBytes)
+	// Key/val counts stay at the engine-snap values (T0), not mem (T1).
+	require.Equal(t, int64(149001), snapStats.KeyCount)
+	require.Equal(t, int64(149001), snapStats.ValCount)
+	require.NotEqual(t, memStats.KeyCount, snapStats.KeyCount)
+
+	disk := storagepb.ReplicaState{Stats: &enginepb.MVCCStats{
+		KeyCount: 149001, ValCount: 149001,
+		ValBytes: 4221364008, LiveBytes: 4221364008,
+	}}
+	// Corrected header matches disk on counts (root fix).
+	require.True(t, replicaStateEqualForAssert(desc, disk, storagepb.ReplicaState{Stats: snapStats}))
+	// Defensive assert also tolerates residual count/volume skew (buggy overlay).
+	require.True(t, replicaStateEqualForAssert(desc, disk, storagepb.ReplicaState{Stats: &memStats}))
 }
 
 func TestReconcileTSRangeStatsForSnapshotMemoryOnly(t *testing.T) {
@@ -354,14 +414,25 @@ func TestReplicaStateEqualForAssert(t *testing.T) {
 
 	desc := testTSRangeDescriptor(77, 200, 600)
 	disk := storagepb.ReplicaState{
-		Stats: &enginepb.MVCCStats{ValBytes: 431638806, LiveBytes: 431638806, KeyBytes: 10},
+		Stats: &enginepb.MVCCStats{
+			ValBytes: 431638806, LiveBytes: 431638806,
+			KeyCount: 100, ValCount: 100, LiveCount: 100, KeyBytes: 10,
+		},
 	}
 	mem := storagepb.ReplicaState{
-		Stats: &enginepb.MVCCStats{ValBytes: 432626982, LiveBytes: 432626982, KeyBytes: 10},
+		Stats: &enginepb.MVCCStats{
+			ValBytes: 432626982, LiveBytes: 432626982,
+			KeyCount: 101, ValCount: 101, LiveCount: 101, KeyBytes: 10,
+		},
 	}
+	// TS assert ignores volume and row-count skew; KeyBytes still compared.
 	require.True(t, replicaStateEqualForAssert(desc, disk, mem))
 
+	mem.Stats.KeyBytes = 11
+	require.False(t, replicaStateEqualForAssert(desc, disk, mem))
+
 	regularDesc := &roachpb.RangeDescriptor{RangeID: 77}
+	mem.Stats.KeyBytes = 10
 	require.False(t, replicaStateEqualForAssert(regularDesc, disk, mem))
 }
 

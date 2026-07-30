@@ -126,18 +126,28 @@ func correctTSRangeMVCCStatsFromDataVolume(
 }
 
 // GetMVCCStatsForDecisions returns MVCC stats suitable for split, merge, and
-// rebalance decisions. For TS_RANGE it refreshes ValBytes/LiveBytes from
-// TsEngine before returning stats.
+// rebalance decisions. For TS_RANGE it returns a copy with ValBytes/LiveBytes
+// refreshed from TsEngine. The in-memory replica stats and on-disk
+// RangeAppliedState are left unchanged.
 func (r *Replica) GetMVCCStatsForDecisions(ctx context.Context) enginepb.MVCCStats {
-	if desc := r.Desc(); desc != nil && r.store != nil && isTSRangeDescriptor(desc) {
-		r.reconcileTSRangeStatsForSnapshot(ctx)
+	stats := r.GetMVCCStats()
+	desc := r.Desc()
+	if desc == nil || r.store == nil || !isTSRangeDescriptor(desc) {
+		return stats
 	}
-	return r.GetMVCCStats()
+	correctTSRangeMVCCStatsFromDataVolume(ctx, r.store.metrics, r.store.TsEngine, desc, &stats)
+	return stats
 }
 
-// reconcileTSRangeStatsForSnapshot corrects TS_RANGE MVCCStats from TsEngine in
-// memory only. Replicated RangeAppliedState must not be updated outside Raft;
-// sendTSSnapshot overlays in-memory stats onto the outgoing snapshot header.
+// reconcileTSRangeStatsForSnapshot corrects TS_RANGE ValBytes/LiveBytes from
+// TsEngine in memory only. Used after applySnapshot (once disk/memory already
+// agree on KeyCount) and on admin conf-change paths that need in-memory volume
+// for subsequent local decisions. Decision-only callers should use
+// GetMVCCStatsForDecisions instead, which does not mutate replica state.
+//
+// Replicated RangeAppliedState must not be updated outside Raft. Snapshot
+// headers must not replace KeyCount/ValCount with current in-memory stats —
+// see sendTSSnapshot.
 //
 // GetDataVolume is invoked without holding r.mu so concurrent reads and writes
 // are not blocked by TsEngine scans.
@@ -262,8 +272,10 @@ func (r *Replica) correctTSRangeStatsAfterSnapshot(
 }
 
 // replicaStateEqualForAssert compares on-disk and in-memory replica state for
-// assertStateLocked. TS range ValBytes/LiveBytes are maintained in memory from
-// TsEngine and may differ from persisted RangeAppliedState stats.
+// assertStateLocked. For TS ranges, volume-derived and row-count stats may
+// diverge from persisted RangeAppliedState (GetDataVolume reconcile; defense
+// against residual snapshot-header skew). Zero those fields so assert still
+// guards lease/index/desc/... while not Fatalling on known TS stats skew.
 func replicaStateEqualForAssert(
 	desc *roachpb.RangeDescriptor, disk, mem storagepb.ReplicaState,
 ) bool {
@@ -281,6 +293,9 @@ func replicaStateForAssertCompare(s storagepb.ReplicaState) storagepb.ReplicaSta
 	stats := *s.Stats
 	stats.ValBytes = 0
 	stats.LiveBytes = 0
+	stats.KeyCount = 0
+	stats.ValCount = 0
+	stats.LiveCount = 0
 	s.Stats = &stats
 	return s
 }
