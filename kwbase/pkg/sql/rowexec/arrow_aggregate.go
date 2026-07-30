@@ -11,6 +11,7 @@ import (
 	"hash/maphash"
 	"math"
 	"math/big"
+	"bytes"
 
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
@@ -1277,6 +1278,9 @@ func arrowGroupHashIdx(rec arrow.Record, idxs []int, row int, h *maphash.Hash) u
 			binary.BigEndian.PutUint64(b[0:8], uint64(num.HighBits()))
 			binary.BigEndian.PutUint64(b[8:16], num.LowBits())
 			h.Write(b[:])
+		case arrow.FIXED_SIZE_BINARY:
+			h.Write([]byte{'u'})
+			h.Write(col.(*array.FixedSizeBinary).Value(row))
 		default:
 			// Degenerate grouping column (non-comparable type): make every row
 			// its own group, matching the row-indexed string-key fallback above.
@@ -1332,6 +1336,10 @@ func arrowGroupRowEqualIdx(rec arrow.Record, idxs []int, i, j int) bool {
 			if col.(*array.Decimal128).Value(i) != col.(*array.Decimal128).Value(j) {
 				return false
 			}
+		case arrow.FIXED_SIZE_BINARY:
+			if !bytes.Equal(col.(*array.FixedSizeBinary).Value(i), col.(*array.FixedSizeBinary).Value(j)) {
+				return false
+			}
 		default:
 			return i == j
 		}
@@ -1377,6 +1385,10 @@ func arrowGroupKeyEqual(rec arrow.Record, idxs []int, row int, key arrow.Record)
 			}
 		case arrow.DECIMAL128:
 			if col.(*array.Decimal128).Value(row) != key.Column(c).(*array.Decimal128).Value(0) {
+				return false
+			}
+		case arrow.FIXED_SIZE_BINARY:
+			if !bytes.Equal(col.(*array.FixedSizeBinary).Value(row), key.Column(c).(*array.FixedSizeBinary).Value(0)) {
 				return false
 			}
 		default:

@@ -5,6 +5,7 @@
 package rowexec
 
 import (
+	"bytes"
 	"context"
 	"math"
 	"math/big"
@@ -15,6 +16,11 @@ import (
 	"github.com/apache/arrow/go/v17/arrow/decimal128"
 	"github.com/apache/arrow/go/v17/arrow/memory"
 	"github.com/apache/arrow/go/v17/arrow/scalar"
+
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
+	jsonutil "gitee.com/kwbasedb/kwbase/pkg/util/json"
+	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 )
 
 // int64Column builds an Int64 arrow column. A value at index i is null when
@@ -731,5 +737,162 @@ func TestArrowHashAggregatorTimestamp(t *testing.T) {
 	}
 	if got := int64(maxCol.Value(1)); got != 2000 {
 		t.Errorf("group ts=2000 max = %d, want 2000", got)
+	}
+}
+
+// uuidColumn builds an Arrow FixedSizeBinary(16) column from raw 16-byte UUIDs.
+func uuidColumn(alloc memory.Allocator, vals [][]byte, nulls []bool) arrow.Array {
+	b := array.NewFixedSizeBinaryBuilder(alloc, arrowUUIDType)
+	for i, v := range vals {
+		if nulls != nil && nulls[i] {
+			b.AppendNull()
+		} else {
+			b.Append(v)
+		}
+	}
+	arr := b.NewArray()
+	b.Release()
+	return arr
+}
+
+// jsonColumn builds an Arrow String column from JSON text inputs.
+func jsonColumn(alloc memory.Allocator, vals []string, nulls []bool) arrow.Array {
+	b := array.NewStringBuilder(alloc)
+	for i, v := range vals {
+		if nulls != nil && nulls[i] {
+			b.AppendNull()
+		} else {
+			b.Append(v)
+		}
+	}
+	arr := b.NewArray()
+	b.Release()
+	return arr
+}
+
+// TestArrowHashAggregatorUUIDJSON exercises grouped aggregation keyed by a UUID
+// (Arrow FixedSizeBinary(16)) and a JSON (Arrow String holding canonical text)
+// column. It verifies key hashing/equality inside the kernel and the round-trip
+// back to tree.DUuid / tree.DJSON on output via the consumer decode path.
+func TestArrowHashAggregatorUUIDJSON(t *testing.T) {
+	alloc := memory.DefaultAllocator
+	ctx := context.Background()
+
+	mustUUID := func(b [16]byte) uuid.UUID {
+		u, err := uuid.FromBytes(b[:])
+		if err != nil {
+			t.Fatal(err)
+		}
+		return u
+	}
+	u1 := mustUUID([16]byte{0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22})
+	u2 := mustUUID([16]byte{0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44})
+
+	// UUID group key: u1, u1, u2, u2 ; value a: 10, 20, 5, 30
+	uCol := uuidColumn(alloc, [][]byte{u1.GetBytes(), u1.GetBytes(), u2.GetBytes(), u2.GetBytes()}, nil)
+	aCol := int64Column(alloc, []int64{10, 20, 5, 30}, nil)
+	rec := buildRecord(alloc, []string{"u", "a"}, []arrow.Array{uCol, aCol}, 4)
+	defer rec.Release()
+	defer uCol.Release()
+	defer aCol.Release()
+
+	aggs := []ArrowAggExpr{{Func: "sum", Input: "a"}, {Func: "count", Input: "a"}}
+	ha := newArrowHashAggregator(alloc, []string{"u"}, aggs)
+	if err := ha.Consume(ctx, rec); err != nil {
+		t.Fatal(err)
+	}
+	out, err := ha.Finalize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer out.Release()
+
+	if out.NumRows() != 2 {
+		t.Fatalf("expected 2 uuid groups, got %d", out.NumRows())
+	}
+	uOut := out.Column(0).(*array.FixedSizeBinary)
+	sumCol := out.Column(1).(*array.Int64)
+	countCol := out.Column(2).(*array.Int64)
+
+	// first-seen order: u1 then u2
+	if got := uOut.Value(0); !bytes.Equal(got, u1.GetBytes()) {
+		t.Errorf("uuid group key[0] = %x, want %x", got, u1.GetBytes())
+	}
+	if got := sumCol.Value(0); got != 30 {
+		t.Errorf("uuid group u1 sum = %d, want 30", got)
+	}
+	if got := countCol.Value(0); got != 2 {
+		t.Errorf("uuid group u1 count = %d, want 2", got)
+	}
+	if got := uOut.Value(1); !bytes.Equal(got, u2.GetBytes()) {
+		t.Errorf("uuid group key[1] = %x, want %x", got, u2.GetBytes())
+	}
+	if got := sumCol.Value(1); got != 35 {
+		t.Errorf("uuid group u2 sum = %d, want 35", got)
+	}
+
+	// Round-trip the UUID group keys back to tree.Datum via the consumer path.
+	rows, err := arrowRecordToEncDatumRows([]types.T{*types.Uuid, *types.Int, *types.Int}, out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []uuid.UUID{u1, u2} {
+		du, ok := rows[i][0].Datum.(*tree.DUuid)
+		if !ok {
+			t.Fatalf("row %d: expected *tree.DUuid, got %T", i, rows[i][0].Datum)
+		}
+		if du.UUID != want {
+			t.Errorf("row %d: uuid = %v, want %v", i, du.UUID, want)
+		}
+	}
+
+	// JSON group key: j1, j1, j2, j2 ; value a: 10, 20, 5, 30
+	j1 := `{"a":1}`
+	j2 := `{"b":2}`
+	jCol := jsonColumn(alloc, []string{j1, j1, j2, j2}, nil)
+	aCol2 := int64Column(alloc, []int64{10, 20, 5, 30}, nil)
+	rec2 := buildRecord(alloc, []string{"j", "a"}, []arrow.Array{jCol, aCol2}, 4)
+	defer rec2.Release()
+	defer jCol.Release()
+	defer aCol2.Release()
+
+	ha2 := newArrowHashAggregator(alloc, []string{"j"}, aggs)
+	if err := ha2.Consume(ctx, rec2); err != nil {
+		t.Fatal(err)
+	}
+	out2, err := ha2.Finalize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer out2.Release()
+
+	if out2.NumRows() != 2 {
+		t.Fatalf("expected 2 json groups, got %d", out2.NumRows())
+	}
+	jOut := out2.Column(0).(*array.String)
+	if got := jOut.Value(0); got != j1 {
+		t.Errorf("json group key[0] = %q, want %q", got, j1)
+	}
+	if got := jOut.Value(1); got != j2 {
+		t.Errorf("json group key[1] = %q, want %q", got, j2)
+	}
+
+	// Round-trip the JSON group keys back to tree.Datum via the consumer path.
+	rows2, err := arrowRecordToEncDatumRows([]types.T{*types.Jsonb, *types.Int, *types.Int}, out2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []string{j1, j2} {
+		dj, ok := rows2[i][0].Datum.(*tree.DJSON)
+		if !ok {
+			t.Fatalf("row %d: expected *tree.DJSON, got %T", i, rows2[i][0].Datum)
+		}
+		wantJSON, err := jsonutil.ParseJSON(want)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if dj.JSON.String() != wantJSON.String() {
+			t.Errorf("row %d: json = %s, want %s", i, dj.JSON.String(), wantJSON.String())
+		}
 	}
 }

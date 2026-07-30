@@ -99,7 +99,7 @@ SQL
 |------|------|-----------|----------|
 | 投影 | `sql.arrow_projection.enabled` | 多列输出、常量操作数、`UMinus`、透传列（copy）；算术 add/sub/mul/div | 仅算术/比较；更多内置待扩 |
 | 过滤 | `sql.arrow_filter.enabled` | 比较 EQ/LT/GT/LE/GE/NE + 逻辑 And/Or/Not + 嵌套二元算术；`LIKE`/`NOT LIKE`/`ILIKE`/`NOT ILIKE`（Go kernel，常量 pattern）；`CAST(col AS STRING/INT/FLOAT)` 类型转换（Go cast kernel，可作比较/like 的操作数）；单表扫描过滤（折进 TableReader 的 post.Filter）拦截 | 字符串函数（substring/length 等，Arrow 无字符串 kernel）、ILIKE 之外的字符串匹配、非字符串左操作数的 LIKE 待扩；`sql.arrow_filter.enabled` 全局开启会波及系统表扫描（见坑 10） |
-| 聚合 | `sql.arrow_aggregator.enabled` | **全局 + 分组** `SUM/MIN/MAX/COUNT/COUNT(*)/AVG`，输入列支持 INT/FLOAT/**DECIMAL**/**TIMESTAMP/TIMESTAMPTZ**；分组键支持 INT/FLOAT/BOOL/STRING/DECIMAL/**TIMESTAMP/TIMESTAMPTZ**；全 NULL 组→NULL；null 语义对齐 SQL | `SUM/AVG` 仅数值（timestamp 只走 MIN/MAX/COUNT）；UUID/JSON 待补 |
+| 聚合 | `sql.arrow_aggregator.enabled` | **全局 + 分组** `SUM/MIN/MAX/COUNT/COUNT(*)/AVG`，输入列支持 INT/FLOAT/**DECIMAL**/**TIMESTAMP/TIMESTAMPTZ**/**UUID**/**JSON**；分组键支持 INT/FLOAT/BOOL/STRING/DECIMAL/**TIMESTAMP/TIMESTAMPTZ**/**UUID**/**JSON**；全 NULL 组→NULL；null 语义对齐 SQL | `SUM/AVG` 仅数值（timestamp/json 只走 MIN/MAX/COUNT）；UUID/JSON 分组键已支持（§9.8） |
 | 连接 | `sql.arrow_join.enabled` | inner / left / right / full outer 等值连接；NULL 键不参与匹配；未命中侧发 NULL；**inner 连接支持非等值 `onExpr`（post-filter，§7.4）** | left/right/full 连接的非等值 `onExpr` 待扩（post-filter 语义不等价，仍走标准引擎） |
 
 ### 3.1 聚合 DECIMAL 支持细节（最近一步）
@@ -395,12 +395,29 @@ SQL
 - **改动文件**：`arrow_aggregate.go`（singleInt 特化 + allocGroup）、`physicalplan/physical_plan.go`（LIKE 闸门放宽 + cast 插入 + `arrowFilterStringCastable`）、`rowexec/arrow_filter_test.go`（新增测试）。
 - **状态**：**待入库**（kwdb-exec/arrow-unify）。
 
-#### 下一波（④⑤⑦，已探明接入点，留待后续）
-- **④ UUID/JSON 分组键**——**adapter 缺口已定位**：`rowexec/arrow_adapter.go` 的 `arrowTypeForKWType` 对 UUID/JSON 走 `default: return Int64`（错误映射）；`buildArrowColumns` 对未知 family 走 `default: return error`（UUID/JSON 目前在 scan→arrow 阶段**直接报错**，无静默错乱）。完整支持需：
-  1. `arrowTypeForKWType`：UUID→`arrow.FixedSizeBinaryTypes.FixedSizeBinary`（width 16），JSON→`arrow.BinaryTypes.String`；
-  2. `buildArrowColumns` 增加 `types.UuidFamily`（解码 `tree.DUuid` 16 字节写入 FixedSizeBinary）与 `types.JsonFamily`（解码 `tree.DJSON` 写入 String）分支；
-  3. `arrowSupportedCompareType` 增加 `UuidFamily/JsonFamily`；
-  4. 确认 `arrowScalarAt`/`appendScalar`/`arrowScalarEqual` 处理 FixedSizeBinary（String 已支持；FixedSizeBinary 需核对 scalar 分支）。
-  - 风险：adapter 改动影响**所有** arrow scan，需端到端（集群）验证；切勿只放开 `arrowSupportedCompareType` 而不修 adapter（会卡在 scan 报错）。
+#### 第九章第八章 §9.8 —— ④ UUID/JSON 分组键（已完成，2026-07-30）
+- **完成**：UUID/JSON 分组键支持，把 NEXT 第 4 项的 adapter 缺口全部补齐，并由单测 `TestArrowHashAggregatorUUIDJSON` 验证分组哈希/相等 + 输出回解为 `tree.DUuid`/`tree.DJSON`。
+- **改动清单**（`pkg/sql/rowexec/`）：
+  1. `arrow_adapter.go`
+     - 新增包级 `arrowUUIDType = &arrow.FixedSizeBinaryType{ByteWidth: 16}`；
+     - `arrowTypeForKWType`：`UuidFamily → arrowUUIDType`（FixedSizeBinary(16)）、`JsonFamily → arrow.BinaryTypes.String`；
+     - `buildArrowColumns`：新增 `UuidFamily`（解码 `tree.DUuid.GetBytes()` 16 字节写入 FixedSizeBinary）/ `JsonFamily`（解码 `tree.DJSON` 的 canonical text 写入 String）分支；
+     - `newArrowBuilder`：同上两类 builder；
+     - `appendEncDatum`（逐行 scan 路径）：同上两类，null 走 `AppendNull`，非 `*DUuid`/`*DJSON` 报错而非静默错乱。
+  2. `arrow_unification.go`
+     - `arrowSupportedCompareType`：放行 `UuidFamily` / `JsonFamily`（否则 `canArrowAggregate` 仍把 UUID/JSON 分组键挡在 colexec）。
+  3. `arrow_aggregate.go`
+     - `arrowGroupHashIdx` / `arrowGroupRowEqualIdx` / `arrowGroupKeyEqual` 三处均新增 `arrow.FIXED_SIZE_BINARY` 分支（写 `'u'` 字节前缀 + `bytes.Equal` 比对 16 字节；JSON 走既有 `STRING` 分支）；
+     - `import` 增加 `bytes`。
+  4. `arrow_aggregator.go`
+     - `arrayScalarAt`：新增 `arrow.FIXED_SIZE_BINARY → scalar.NewFixedSizeBinaryScalar(memory.NewBufferBytes(...), typ)`；
+     - `appendScalar`：新增 `arrow.FIXED_SIZE_BINARY → FixedSizeBinaryBuilder.Append(s.(*scalar.FixedSizeBinary).Value.Bytes())`（`Finalize` 重建分组列据此序列化）。
+  5. `arrow_projection_processor.go`（消费端 `arrowRecordToEncDatumRows`）
+     - 新增 `*array.FixedSizeBinary → tree.NewDUuid(tree.DUuid{UUID: uuid.FromBytes(...)})`；
+     - `*array.String` 分支按 `t.Family()` 分流：`JsonFamily` 走 `jsonutil.ParseJSON` → `tree.NewDJSON`，其余仍是 `tree.DString`。
+- **设计要点**：UUID 以 16 字节原始八位组在 Arrow 中按 `FixedSizeBinary` 比较/哈希，与 `tree.DUuid` 的字节序完全一致；JSON 以 canonical text 存 String，分组比较按文本（语义上等价 incoming 文本相同即同组，非 JSON 语义相等——与字符串分组一致，符合预期）。
+- **验证**：`go test -run TestArrowHashAggregatorUUIDJSON ./pkg/sql/rowexec/` 通过（含分组聚合正确性 + 输出 `tree.Datum` 回解）。**端到端集群级 UUID/JSON 分组 SQL 仍建议补一轮（adapter 改动影响所有 arrow scan）。**
+
+#### 下一波（⑤⑦，已探明接入点，留待后续）
 - **⑤ 字符串函数 kernel**——在 `arrow_projection.go` 的 `buildArrowProjectionExpr`/`eval` 扩展 `length`/`lower`/`upper`/`concat`/`substring` 等，调用 `compute.CallFunction("length", ...)` 等内核；并在 `canArrowProjectionExpr` 闸门放行。投影目前仅支持算术（`a+b`）。
 - **⑦ 分布式两阶段 AVG merge（解除 `specUsesMean` 排除）**——给 `arrowHashAggregator` 增「merge 模式」：两阶段 partial 阶段产出 `(sum, count)` 部分聚合，最终 merge 阶段消费这些部分并合并（sum of sums、count of counts）。`arrow_unification.go` 的 `specUsesMean` 当前排除 AVG；`distsql_physical_planner.go` 的 `addTwiceAggregators`/`setupMultiAggFinalState` 在确认 merge 能力后放开。注意：sum/count/min/max 的 merge==聚合，已可走两阶段；唯 AVG 因 partial 语义需此 merge 能力。

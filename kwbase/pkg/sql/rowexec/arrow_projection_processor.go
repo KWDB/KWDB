@@ -31,6 +31,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
+	jsonutil "gitee.com/kwbasedb/kwbase/pkg/util/json"
+	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 )
 
 // arrowProjectionPlan is the JSON-serialized plan carried in
@@ -471,8 +473,33 @@ func arrowRecordToEncDatumRows(
 					rows[i][ci] = sqlbase.EncDatum{Datum: tree.DNull}
 					continue
 				}
-				v := tree.DString(arr.Value(i))
-				rows[i][ci] = sqlbase.EncDatum{Datum: &v}
+				switch t.Family() {
+				case types.JsonFamily:
+					// JSON is materialized as its canonical text in a String
+					// column; parse it back into a tree.DJSON for the consumer.
+					j, err := jsonutil.ParseJSON(arr.Value(i))
+					if err != nil {
+						return nil, err
+					}
+					v := tree.NewDJSON(j)
+					rows[i][ci] = sqlbase.EncDatum{Datum: v}
+				default:
+					v := tree.DString(arr.Value(i))
+					rows[i][ci] = sqlbase.EncDatum{Datum: &v}
+				}
+			}
+		case *array.FixedSizeBinary:
+			for i := 0; i < n; i++ {
+				if arr.IsNull(i) {
+					rows[i][ci] = sqlbase.EncDatum{Datum: tree.DNull}
+					continue
+				}
+				u, err := uuid.FromBytes(arr.Value(i))
+				if err != nil {
+					return nil, err
+				}
+				v := tree.NewDUuid(tree.DUuid{UUID: u})
+				rows[i][ci] = sqlbase.EncDatum{Datum: v}
 			}
 		case *array.Binary:
 			for i := 0; i < n; i++ {

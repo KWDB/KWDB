@@ -142,6 +142,8 @@ func arrayScalarAt(arr arrow.Array, idx int) scalar.Scalar {
 		return scalar.NewDecimal128Scalar(arr.(*array.Decimal128).Value(idx), arr.DataType())
 	case arrow.TIMESTAMP:
 		return scalar.NewTimestampScalar(arr.(*array.Timestamp).Value(idx), arr.DataType())
+	case arrow.FIXED_SIZE_BINARY:
+		return scalar.NewFixedSizeBinaryScalar(memory.NewBufferBytes(arr.(*array.FixedSizeBinary).Value(idx)), arr.DataType())
 	default:
 		return scalar.MakeNullScalar(arr.DataType())
 	}
@@ -165,6 +167,8 @@ func appendScalar(b array.Builder, s scalar.Scalar, dt arrow.DataType) {
 		b.(*array.Decimal128Builder).Append(s.(*scalar.Decimal128).Value)
 	case arrow.TIMESTAMP:
 		b.(*array.TimestampBuilder).Append(s.(*scalar.Timestamp).Value)
+	case arrow.FIXED_SIZE_BINARY:
+		b.(*array.FixedSizeBinaryBuilder).Append(s.(*scalar.FixedSizeBinary).Value.Bytes())
 	default:
 		b.AppendNull()
 	}

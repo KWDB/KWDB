@@ -46,7 +46,7 @@ type arrowAggExprJS struct {
 // can handle the given type.
 func arrowSupportedCompareType(t types.T) bool {
 	switch t.Family() {
-	case types.IntFamily, types.FloatFamily, types.BoolFamily, types.StringFamily, types.BytesFamily, types.DecimalFamily, types.TimestampTZFamily, types.TimestampFamily:
+	case types.IntFamily, types.FloatFamily, types.BoolFamily, types.StringFamily, types.BytesFamily, types.DecimalFamily, types.TimestampTZFamily, types.TimestampFamily, types.UuidFamily, types.JsonFamily:
 		return true
 	}
 	return false

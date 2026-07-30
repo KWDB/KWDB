@@ -18,6 +18,10 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 )
 
+// arrowUUIDType maps a KWDB UUID column onto an Arrow FixedSizeBinary(16) so
+// the grouping/hashing kernels can treat the 16 canonical octets as raw bytes.
+var arrowUUIDType = &arrow.FixedSizeBinaryType{ByteWidth: 16}
+
 // UnifiedProcessor is the unified execution interface described in
 // docs/arrow-unification-architecture.md. Both rowexec and colexec operators
 // can be adapted to expose columnar Arrow Records, so the planner can mix
@@ -131,6 +135,14 @@ func arrowTypeForKWType(t *types.T) arrow.DataType {
 		return &arrow.Decimal128Type{Precision: 38, Scale: t.Scale()}
 	case types.TimestampTZFamily, types.TimestampFamily:
 		return arrow.FixedWidthTypes.Timestamp_us
+	case types.UuidFamily:
+		// 16-byte canonical UUID octets -> FixedSizeBinary(16) so the Arrow
+		// grouping machinery can hash/compare them by raw bytes.
+		return arrowUUIDType
+	case types.JsonFamily:
+		// JSON is stored as its canonical text form in a String column; the
+		// value bytes are compared/hashed directly (see arrowGroupHash/Equal).
+		return arrow.BinaryTypes.String
 	default:
 		return arrow.PrimitiveTypes.Int64
 	}
@@ -275,11 +287,51 @@ func buildArrowColumns(alloc memory.Allocator, typs []*types.T, rows sqlbase.Enc
 					b.Release()
 					return nil, fmt.Errorf("col %d: expected timestamp, got %T", ci, ed.Datum)
 				}
-				b.Append(arrow.Timestamp(micros))
+			b.Append(arrow.Timestamp(micros))
+		}
+		cols[ci] = b.NewArray()
+	case types.UuidFamily:
+		b := array.NewFixedSizeBinaryBuilder(alloc, arrowUUIDType)
+		for ri := 0; ri < n; ri++ {
+			ed := &rows[ri][ci]
+			if err := ed.EnsureDecoded(t, da); err != nil {
+				b.Release()
+				return nil, err
 			}
-			cols[ci] = b.NewArray()
-		default:
-			return nil, fmt.Errorf("unsupported type family %s for arrow unification", t.Family())
+			if ed.Datum == tree.DNull {
+				b.AppendNull()
+				continue
+			}
+			du, ok := ed.Datum.(*tree.DUuid)
+			if !ok {
+				b.Release()
+				return nil, fmt.Errorf("col %d: expected uuid, got %T", ci, ed.Datum)
+			}
+			b.Append(du.UUID.GetBytes())
+		}
+		cols[ci] = b.NewArray()
+	case types.JsonFamily:
+		b := array.NewStringBuilder(alloc)
+		for ri := 0; ri < n; ri++ {
+			ed := &rows[ri][ci]
+			if err := ed.EnsureDecoded(t, da); err != nil {
+				b.Release()
+				return nil, err
+			}
+			if ed.Datum == tree.DNull {
+				b.AppendNull()
+				continue
+			}
+			dj, ok := ed.Datum.(*tree.DJSON)
+			if !ok {
+				b.Release()
+				return nil, fmt.Errorf("col %d: expected json, got %T", ci, ed.Datum)
+			}
+			b.Append(dj.JSON.String())
+		}
+		cols[ci] = b.NewArray()
+	default:
+		return nil, fmt.Errorf("unsupported type family %s for arrow unification", t.Family())
 		}
 	}
 	return cols, nil
@@ -395,6 +447,10 @@ func newArrowBuilder(alloc memory.Allocator, t *types.T) array.Builder {
 		return array.NewDecimal128Builder(alloc, &arrow.Decimal128Type{Precision: 38, Scale: t.Scale()})
 	case types.TimestampTZFamily, types.TimestampFamily:
 		return array.NewTimestampBuilder(alloc, arrow.FixedWidthTypes.Timestamp_us.(*arrow.TimestampType))
+	case types.UuidFamily:
+		return array.NewFixedSizeBinaryBuilder(alloc, arrowUUIDType)
+	case types.JsonFamily:
+		return array.NewStringBuilder(alloc)
 	default:
 		return array.NewInt64Builder(alloc)
 	}
@@ -487,6 +543,32 @@ func appendEncDatum(b array.Builder, t *types.T, ed *sqlbase.EncDatum, da *sqlba
 			return fmt.Errorf("expected timestamp, got %T", ed.Datum)
 		}
 		b.(*array.TimestampBuilder).Append(arrow.Timestamp(micros))
+	case types.UuidFamily:
+		if err := ed.EnsureDecoded(t, da); err != nil {
+			return err
+		}
+		if ed.Datum == tree.DNull {
+			b.AppendNull()
+			return nil
+		}
+		du, ok := ed.Datum.(*tree.DUuid)
+		if !ok {
+			return fmt.Errorf("expected uuid, got %T", ed.Datum)
+		}
+		b.(*array.FixedSizeBinaryBuilder).Append(du.UUID.GetBytes())
+	case types.JsonFamily:
+		if err := ed.EnsureDecoded(t, da); err != nil {
+			return err
+		}
+		if ed.Datum == tree.DNull {
+			b.AppendNull()
+			return nil
+		}
+		dj, ok := ed.Datum.(*tree.DJSON)
+		if !ok {
+			return fmt.Errorf("expected json, got %T", ed.Datum)
+		}
+		b.(*array.StringBuilder).Append(dj.JSON.String())
 	default:
 		return fmt.Errorf("unsupported type family %s for arrow scan", t.Family())
 	}
