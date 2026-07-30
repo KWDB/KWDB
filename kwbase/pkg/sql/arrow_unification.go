@@ -69,13 +69,13 @@ func canArrowAggregate(
 			return false
 		}
 		switch a.Func {
-		case execinfrapb.AggregatorSpec_SUM, execinfrapb.AggregatorSpec_MIN, execinfrapb.AggregatorSpec_MAX, execinfrapb.AggregatorSpec_AVG:
+		case execinfrapb.AggregatorSpec_SUM, execinfrapb.AggregatorSpec_MIN, execinfrapb.AggregatorSpec_MAX, execinfrapb.AggregatorSpec_AVG, execinfrapb.AggregatorSpec_SUM_INT:
 			if len(a.ColIdx) != 1 || int(a.ColIdx[0]) >= len(inTypes) {
 				return false
 			}
 			f := inTypes[a.ColIdx[0]].Family()
 			switch a.Func {
-			case execinfrapb.AggregatorSpec_SUM, execinfrapb.AggregatorSpec_AVG:
+			case execinfrapb.AggregatorSpec_SUM, execinfrapb.AggregatorSpec_AVG, execinfrapb.AggregatorSpec_SUM_INT:
 				// SUM/AVG are only meaningful for numeric inputs.
 				if f != types.IntFamily && f != types.FloatFamily && f != types.DecimalFamily {
 					return false
@@ -113,21 +113,6 @@ func canArrowAggregate(
 	return true
 }
 
-// specUsesMean reports whether the aggregator spec contains an AVG/MEAN
-// aggregation. MEAN must not be routed through the Arrow kernel in a two-stage
-// (distributed, partial→merge) plan: the Arrow aggregator is a single-pass
-// accumulator and cannot merge (sum,count) partials, so summing partial means
-// does not equal the true mean. MEAN is only safe in a single-pass plan, so the
-// merge stages (local partial + final merge) must exclude it.
-func specUsesMean(spec execinfrapb.AggregatorSpec) bool {
-	for _, a := range spec.Aggregations {
-		if a.Func == execinfrapb.AggregatorSpec_AVG {
-			return true
-		}
-	}
-	return false
-}
-
 func buildArrowAggPlan(spec execinfrapb.AggregatorSpec) arrowAggPlan {
 	groupCols := make([]int, len(spec.GroupCols))
 	for i, g := range spec.GroupCols {
@@ -140,7 +125,7 @@ func buildArrowAggPlan(spec execinfrapb.AggregatorSpec) arrowAggPlan {
 			// Grouping-column pass-through is emitted by the executor as the
 			// materialized group-key column; skip it in the Arrow plan.
 			continue
-		case execinfrapb.AggregatorSpec_SUM:
+		case execinfrapb.AggregatorSpec_SUM, execinfrapb.AggregatorSpec_SUM_INT:
 			aggs = append(aggs, arrowAggExprJS{Func: "sum", Input: int(a.ColIdx[0])})
 		case execinfrapb.AggregatorSpec_MIN:
 			aggs = append(aggs, arrowAggExprJS{Func: "min", Input: int(a.ColIdx[0])})

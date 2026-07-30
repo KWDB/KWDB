@@ -3904,10 +3904,11 @@ func (dsp *DistSQLPlanner) addTwiceAggregators(
 	// aggregator, so the downstream final (merge) stage is unchanged.
 	localCore := execinfrapb.ProcessorCoreUnion{Aggregator: &localAggsSpec}
 	if physicalplan.ArrowAggregatorEnabled(planCtx.EvalContext()) &&
-		canArrowAggregate(localAggsSpec, p.ResultTypes, n.engine) && !specUsesMean(localAggsSpec) {
+		canArrowAggregate(localAggsSpec, p.ResultTypes, n.engine) {
 		// Route the local (partial) stage through the Arrow kernel; on any
-		// unexpected build error, fall back to the colexec core. MEAN is excluded
-		// above because the Arrow kernel cannot merge (sum,count) partials.
+		// unexpected build error, fall back to the colexec core. The final
+		// merge stage of a two-stage AVG emits SUM/SUM_INT partials (never a
+		// MEAN), which the Arrow kernel merges correctly.
 		if ac, err := arrowAggCoreFor(localAggsSpec); err == nil {
 			localCore = ac
 		}
@@ -4559,7 +4560,7 @@ func (dsp *DistSQLPlanner) setupMultiAggFinalState(
 	// post (renders / projections, e.g. avg = sum/count) is applied by the
 	// Arrow processor's own post-processing, just like the colexec aggregator.
 	useArrow := physicalplan.ArrowAggregatorEnabled(planCtx.EvalContext()) &&
-		canArrowAggregate(finalAggsSpec, p.ResultTypes, engine) && !specUsesMean(finalAggsSpec)
+		canArrowAggregate(finalAggsSpec, p.ResultTypes, engine)
 	if err := addRelationalFinalAggStateSpec(planCtx, p, finalAggsSpec, finalAggsPost, p.NewStageID(), useArrow); err != nil {
 		if !useArrow {
 			return err

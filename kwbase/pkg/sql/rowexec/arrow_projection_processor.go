@@ -435,22 +435,71 @@ func arrowConstDatum(a arrowArg, _ memory.Allocator) compute.Datum {
 }
 
 // arrowRecordToEncDatumRows decodes an Arrow record produced by the projection
-// back into EncDatumRows. The i-th column of the record corresponds to the i-th
-// output type.
+// arrowDataTypeToKWType maps an Arrow DataType to the corresponding KWDB
+// types.T. It is used when an aggregator's arrow record carries a different
+// column arity than the post-processed output schema (e.g. an aggregation
+// stage that emits one column per aggregate and lets a downstream render
+// collapse them, such as AVG = sum/count). The per-column KWDB type cannot be
+// taken from the post schema in that case, so it is derived from the Arrow type.
+func arrowDataTypeToKWType(dt arrow.DataType) types.T {
+	switch 	dt.ID() {
+	case arrow.INT8, arrow.INT16, arrow.INT32, arrow.INT64,
+		arrow.UINT8, arrow.UINT16, arrow.UINT32, arrow.UINT64:
+		return *types.Int
+	case arrow.FLOAT16, arrow.FLOAT32, arrow.FLOAT64:
+		return *types.Float
+	case arrow.BOOL:
+		return *types.Bool
+	case arrow.STRING:
+		return *types.String
+	case arrow.BINARY:
+		return *types.Bytes
+	case arrow.FIXED_SIZE_BINARY:
+		if fsb, ok := dt.(*arrow.FixedSizeBinaryType); ok && fsb.ByteWidth == 16 {
+			return *types.Uuid
+		}
+		return *types.Bytes
+	case arrow.DECIMAL128, arrow.DECIMAL256:
+		return *types.Decimal
+	case arrow.DATE32, arrow.DATE64:
+		return *types.Date
+	case arrow.TIME32, arrow.TIME64:
+		return *types.Time
+	case arrow.TIMESTAMP:
+		return *types.Timestamp
+	default:
+		return *types.String
+	}
+}
+
+// arrowRecordToEncDatumRows converts the columns of an Arrow record back into
+// EncDatumRows. The i-th column of the record corresponds to the i-th output
+// type.
 func arrowRecordToEncDatumRows(
 	typs []types.T, rec arrow.Record,
 ) (sqlbase.EncDatumRows, error) {
 	n := int(rec.NumRows())
 	cols := rec.Columns()
+	width := len(cols)
 	// §7.7: consolidate the per-row slice headers into a single flat buffer so
 	// the bridge performs one allocation instead of n (one per row).
-	flat := make([]sqlbase.EncDatum, n*len(typs))
+	flat := make([]sqlbase.EncDatum, n*width)
 	rows := make(sqlbase.EncDatumRows, n)
 	for i := 0; i < n; i++ {
-		rows[i] = flat[i*len(typs) : (i+1)*len(typs)]
+		rows[i] = flat[i*width : (i+1)*width]
 	}
 	for ci, col := range cols {
-		t := typs[ci]
+		// The post-processed output schema (typs) usually matches the arrow
+		// record arity. An aggregator, however, may emit one column per
+		// aggregate and rely on a downstream render to collapse them (e.g.
+		// AVG = sum/count): there the record is wider than typs. In that case
+		// derive each column's KWDB type from its Arrow DataType.
+		var t types.T
+		if len(typs) == width {
+			t = typs[ci]
+		} else {
+			t = arrowDataTypeToKWType(col.DataType())
+		}
 		switch arr := col.(type) {
 		case *array.Int64:
 			// §7.7: batch the per-value Datum allocations into one slice per

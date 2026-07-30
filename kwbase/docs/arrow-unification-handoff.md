@@ -435,5 +435,30 @@ SQL
 - **改动文件**：`physicalplan/physical_plan.go`、`rowexec/arrow_projection.go`、`rowexec/arrow_projection_processor.go`、`rowexec/arrow_projection_kernel_test.go`、`rowexec/arrowpilot/e2e_test.go`。
 - **状态**：**待入库**（kwdb-exec/arrow-unify）。
 
-#### 下一波（⑦，已探明接入点，留待后续）
-- **⑦ 分布式两阶段 AVG merge（解除 `specUsesMean` 排除）**——给 `arrowHashAggregator` 增「merge 模式」：两阶段 partial 阶段产出 `(sum, count)` 部分聚合，最终 merge 阶段消费这些部分并合并（sum of sums、count of counts）。`arrow_unification.go` 的 `specUsesMean` 当前排除 AVG；`distsql_physical_planner.go` 的 `addTwiceAggregators`/`setupMultiAggFinalState` 在确认 merge 能力后放开。注意：sum/count/min/max 的 merge==聚合，已可走两阶段；唯 AVG 因 partial 语义需此 merge 能力。
+#### 第九章第八章 §9.10 —— ⑦ 分布式两阶段 AVG merge（已完成，2026-07-30）
+- **完成**：解除 `specUsesMean` 排除，让分布式两阶段 AVG 的最终 merge 阶段路由纯 Arrow 引擎。
+- **关键发现（根因澄清）**：AVG 在 `DistAggregationTable` 中已被分解为 `LocalStage=[SUM, COUNT]`、`FinalStage=[SUM, SUM_INT]`、`FinalRendering: GetAvgRender`（avg=sum/count）。也就是说**最终 AVG spec 里从不含 `AVG`**——它实际是 `[SUM, SUM_INT]`。因此 `specUsesMean`（检查 `AggregatorSpec_AVG`）此前本就是**空操作（no-op）**，删除它对既有单遍路径无影响。真正挡住两阶段 AVG 走 Arrow 的有两处：
+  1. `canArrowAggregate` / `buildArrowAggPlan` **未接受 `SUM_INT`**——最终 merge 阶段的 count 聚合是 `SUM_INT`，被 `canArrowAggregate` 判为不支持，整条 useArrow 链断掉。
+  2. 执行器 `arrowRecordToEncDatumRows` 在「聚合器输出列数 > post 输出 schema 列数」时会 panic——最终 AVG merge 阶段输出 `group + sum + count`(3 列)，post render 折叠成单个 `avg`(1 列)，`rows` 按 `len(typs)` 定宽、`typs[ci]` 越界 `index out of range [1] with length 1`。
+- **planner 侧**（`pkg/sql/arrow_unification.go`、`distsql_physical_planner.go`）：
+  - `canArrowAggregate`：聚合函数 switch 增加 `AggregatorSpec_SUM_INT`；内层数值守卫 `case SUM, AVG, SUM_INT`（SUM/SUM_INT 仅接受 numeric 输入）。
+  - `buildArrowAggPlan`：`case SUM, SUM_INT` 都映射为 `arrowAggExprJS{Func: "sum", ...}`（SUM_INT→"sum" kernel）。
+  - **删除 `specUsesMean` 函数**（早已 no-op）；并从 `addTwiceAggregators`、`setupMultiAggFinalState` 移除 `&& !specUsesMean(...)` 闸门。
+- **执行器侧**（`pkg/sql/rowexec/arrow_projection_processor.go`）：
+  - 新增 `arrowDataTypeToKWType(dt arrow.DataType) types.T` 反查映射（INT*/UINT*→Int、FLOAT*→Float、BOOL→Bool、STRING→String、BINARY→Bytes、FIXED_SIZE_BINARY(ByteWidth==16)→Uuid、DECIMAL128/256→Decimal、DATE/TIME/TIMESTAMP、default→String；注意 `types.Int` 等是指针需解引用为 `*types.Int`）。
+  - `arrowRecordToEncDatumRows`：宽度改为 `width := len(cols)`，`rows` 按 `width` 定宽；每列 KWDB 类型 `t` 在 `len(typs)==width` 时取 `typs[ci]`，否则由 `arrowDataTypeToKWType(col.DataType())` 推导（arity 不匹配时不再越界）。`newArrowProjectionProcessor` 已在 ⑤ 用 `post.OutputTypes` 覆盖 `p.Out.OutputTypes`，此处宽度修复与之协同。
+- **验证**：
+  - 单节点 AVG 仍是单遍 `mean`（两阶段触发需 previous stage 跨多节点，`checkIsMultiState` 在单节点测试服务器上不满足），故 e2e 无法触发两阶段——已移除最初误加的 `TestArrowUnifyAggregatorAVGTwostage`（单节点只跑出 1 个 arrow agg，断言 ≥2 失败），改用确定性单元测试代替。
+  - 新增 `pkg/sql/rowexec/arrow_aggregate_merge_test.go`（内部 `package rowexec`）：
+    - `TestArrowAggregatorMergeSumCount`：两批 `(sum,count)` 部分聚合喂入 `NewArrowAggregator`（`spec={GroupCols:["col0"], Aggs:[{sum,col1},{sum,col2}]}`），断言合并后 sum `{10:15, 20:14}`、count `{10:5, 20:9}`——**PASS**。用 `memory.NewGoAllocator`（聚合器常驻输入 record，CheckedAllocator 会误报 size 不匹配，非本改动缺陷）。
+    - `TestArrowRecordToEncDatumRowsWidthMismatch`：喂 3 列 record（`typs` 长 1），断言 `rows` 宽度 3 且三列均按 Arrow Int64 正确解 `DInt`——**PASS**。
+  - 回归：`TestArrowUnifyDecimalAgg`（含 `AVG(d)` 单遍 mean 路径）PASS，确认无回归。
+- **既有失败（与 ⑦ 无关，已对照基准确认）**：`arrowpilot/e2e_test.go` 的 `TestArrowUnifyFilterAggJoin`（`SELECT a FROM t WHERE a*2>b` 报 `less (utf8, int64)` 无 kernel）与 `TestArrowUnifyTimestampAgg`（`min(ts)::STRING` 报 `invalid datum type given: timestamp(9), expected string`）在 **stash 掉 ⑦ 改动后基准上同样失败**，属既有问题（疑似与 ⑤ 字符串函数闸门/CAST 路径或 timestamp 聚合回解相关），不在 ⑦ 范围，留待后续排查。
+- **改动文件**：`pkg/sql/arrow_unification.go`、`pkg/sql/distsql_physical_planner.go`、`pkg/sql/rowexec/arrow_projection_processor.go`、`pkg/sql/rowexec/arrow_aggregate_merge_test.go`（新增）。
+- **状态**：**待入库**（kwdb-exec/arrow-unify）。
+
+#### 下一波（⑧，已探明接入点，留待后续）
+- **⑧ 修 arrowpilot 两处既有 e2e 失败（与 ⑦ 无关，已在基准确认）**：
+  1. `TestArrowUnifyFilterAggJoin`（`e2e_test.go:449`）：`SELECT a FROM t WHERE a * 2 > b` 报 `not implemented: function 'less' has no kernel matching input types (utf8, int64)`——疑似 ⑤ 字符串函数闸门让 `a` 走了 arrow 投影字符串路径（utf8），但比较 `>` 的另一侧 `b`（int64）未对齐类型，arrow `less` kernel 无 `(utf8,int64)` 重载。需确认 arrow 投影/比较是否应对齐操作数类型（与 colexec 一致做隐式类型提升，或让 planner 不把该列误判为字符串）。
+  2. `TestArrowUnifyTimestampAgg`：`SELECT min(ts)::STRING FROM tt WHERE a <= 4 GROUP BY ts ORDER BY ts` 报 `invalid datum type given: timestamp(9), expected string`——`min(ts)` 聚合后 `::STRING` CAST 在 arrow 回解路径找不到 timestamp→string 的 Datum 编码（或 `arrowRecordToEncDatumRows` 对 timestamp 列的回解未接 `::STRING` 渲染）。需在 `arrow_projection_processor.go` 的回解/CAST 路径补齐 timestamp→string。
+  - 这两处会阻断 arrowpilot e2e 全绿，建议 ⑧ 优先收敛（影响面：投影类型对齐 + timestamp 聚合回解/CAST）。
