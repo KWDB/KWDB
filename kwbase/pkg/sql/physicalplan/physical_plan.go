@@ -1531,6 +1531,9 @@ func (p *PhysicalPlan) arrowOperandArg(
 	case *tree.DFloat:
 		v := float64(*c)
 		return arrowArg{Col: -1, ConstFloat: &v}, e.ResolvedType(), true
+	case *tree.DString:
+		v := string(*c)
+		return arrowArg{Col: -1, ConstStr: &v}, e.ResolvedType(), true
 	}
 	return arrowArg{}, nil, false
 }
@@ -1542,14 +1545,19 @@ func (p *PhysicalPlan) arrowOperandArg(
 // no merge ordering to preserve (both conditions hold for a simple
 // `SELECT a+b FROM t`).
 // hasArrowComputeExpr reports whether at least one render expression is a real
-// Arrow compute operation (binary/unary). It is used to avoid routing a purely
-// passthrough render (e.g. `SELECT a FROM t`) through the Arrow stage, which
-// would add a processor for zero benefit.
+// Arrow compute operation (binary/unary, or an Arrow-supported string function
+// such as LOWER/UPPER/LENGTH/CONCAT/SUBSTRING). It is used to avoid routing a
+// purely passthrough render (e.g. `SELECT a FROM t`) through the Arrow stage,
+// which would add a processor for zero benefit.
 func hasArrowComputeExpr(exprs []tree.TypedExpr) bool {
 	for _, e := range exprs {
-		switch e.(type) {
+		switch ex := e.(type) {
 		case *tree.BinaryExpr, *tree.UnaryExpr:
 			return true
+		case *tree.FuncExpr:
+			if _, ok := arrowStringFuncName(ex.Func.FunctionReference.FunctionName()); ok {
+				return true
+			}
 		}
 	}
 	return false
@@ -1602,6 +1610,61 @@ func (p *PhysicalPlan) canArrowRender(exprs []tree.TypedExpr, indexVarMap []int)
 			if !arrowSupportedComputeType(ty) || !arrowSupportedComputeType(ex.ResolvedType()) {
 				return false
 			}
+		case *tree.FuncExpr:
+			// String-function kernels (length/lower/upper/concat/substring) are
+			// evaluated by a dedicated Go kernel inside the Arrow projection
+			// executor (arrow/compute has no string kernels in this vendored
+			// version). Gate on the operand shapes below.
+			rawName := ex.Func.FunctionReference.FunctionName()
+			funcName, ok := arrowStringFuncName(rawName)
+			if !ok {
+				return false
+			}
+			args, ok := p.arrowStringFuncArgs(ex.Exprs, indexVarMap)
+			if !ok {
+				return false
+			}
+			hasCol := false
+			for _, a := range args {
+				if a.col >= 0 {
+					hasCol = true
+				}
+			}
+			if !hasCol {
+				// Need at least one input column to reference.
+				return false
+			}
+			switch funcName {
+			case "length", "octet_length", "lower", "upper":
+				if len(args) != 1 {
+					return false
+				}
+				return args[0].ty.Family() == types.StringFamily && arrowSupportedComputeType(args[0].ty)
+			case "concat":
+				if len(args) < 2 {
+					return false
+				}
+				for _, a := range args {
+					if a.ty.Family() != types.StringFamily {
+						return false
+					}
+				}
+				return true
+			case "substring":
+				if len(args) < 2 || len(args) > 3 {
+					return false
+				}
+				if args[0].ty.Family() != types.StringFamily {
+					return false
+				}
+				for _, a := range args[1:] {
+					if a.ty.Family() != types.IntFamily {
+						return false
+					}
+				}
+				return true
+			}
+			return false
 		default:
 			// Plain column reference: allowed as a passthrough (identity copy).
 			if _, ok := exprColumn(e, indexVarMap); !ok {
@@ -1624,6 +1687,71 @@ func arrowSupportedComputeType(t *types.T) bool {
 		return true
 	}
 	return false
+}
+
+// arrowStringFuncName normalizes a SQL string-function name to the internal
+// projection Func name handled by the Arrow projection executor. Returns ok=
+// false for anything outside the supported set (length/lower/upper/concat/
+// substring).
+func arrowStringFuncName(name string) (string, bool) {
+	switch strings.ToLower(name) {
+	case "length":
+		return "length", true
+	case "octet_length":
+		return "octet_length", true
+	case "lower":
+		return "lower", true
+	case "upper":
+		return "upper", true
+	case "concat":
+		return "concat", true
+	case "substring", "substr":
+		return "substring", true
+	}
+	return "", false
+}
+
+// arrowArgWithType pairs an operand's arrow arg with its SQL type; used only
+// inside the planner gate to validate string-function operand shapes.
+type arrowArgWithType struct {
+	col int
+	ty  *types.T
+}
+
+// arrowStringFuncArgs resolves the argument expressions of a string function
+// to (col, type) pairs, returning ok=false if any operand is not arrow-eligible.
+func (p *PhysicalPlan) arrowStringFuncArgs(exprs tree.Exprs, indexVarMap []int) ([]arrowArgWithType, bool) {
+	out := make([]arrowArgWithType, 0, len(exprs))
+	for _, e := range exprs {
+		te, ok := e.(tree.TypedExpr)
+		if !ok {
+			return nil, false
+		}
+		a, t, ok := p.arrowOperandArg(te, indexVarMap)
+		if !ok {
+			return nil, false
+		}
+		out = append(out, arrowArgWithType{col: a.Col, ty: t})
+	}
+	return out, true
+}
+
+// arrowArgsFor resolves function arguments to plain arrowArgs for serialization
+// into the projection plan.
+func (p *PhysicalPlan) arrowArgsFor(exprs tree.Exprs, indexVarMap []int) ([]arrowArg, bool) {
+	out := make([]arrowArg, 0, len(exprs))
+	for _, e := range exprs {
+		te, ok := e.(tree.TypedExpr)
+		if !ok {
+			return nil, false
+		}
+		a, _, ok := p.arrowOperandArg(te, indexVarMap)
+		if !ok {
+			return nil, false
+		}
+		out = append(out, a)
+	}
+	return out, true
 }
 
 // addArrowRendering builds a dedicated arrow projection stage that evaluates
@@ -1663,6 +1791,21 @@ func (p *PhysicalPlan) addArrowRendering(
 				Kind:   "compute",
 				Func:   "negate",
 				Inputs: []arrowArg{a},
+			})
+			outT = append(outT, *ex.ResolvedType())
+		case *tree.FuncExpr:
+			funcName, ok := arrowStringFuncName(ex.Func.FunctionReference.FunctionName())
+			if !ok {
+				return errors.Errorf("arrow projection: unsupported function %s", ex.Func.FunctionReference.FunctionName())
+			}
+			inputs, ok := p.arrowArgsFor(ex.Exprs, indexVarMap)
+			if !ok {
+				return errors.Errorf("arrow projection: unsupported argument to %s", funcName)
+			}
+			plan.Cols = append(plan.Cols, arrowProjectionCol{
+				Kind:   "compute",
+				Func:   funcName,
+				Inputs: inputs,
 			})
 			outT = append(outT, *ex.ResolvedType())
 		default:

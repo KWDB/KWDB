@@ -97,7 +97,7 @@ SQL
 
 | 算子 | 开关 | 已验证能力 | 已知限制 |
 |------|------|-----------|----------|
-| 投影 | `sql.arrow_projection.enabled` | 多列输出、常量操作数、`UMinus`、透传列（copy）；算术 add/sub/mul/div | 仅算术/比较；更多内置待扩 |
+| 投影 | `sql.arrow_projection.enabled` | 多列输出、常量操作数、`UMinus`、透传列（copy）；算术 add/sub/mul/div；字符串函数 `length`/`octet_length`/`lower`/`upper`/`concat`/`substring`（Go kernel，多输出已修 OutputTypes 传播） | 仅算术/比较/上述字符串函数；更多内置待扩 |
 | 过滤 | `sql.arrow_filter.enabled` | 比较 EQ/LT/GT/LE/GE/NE + 逻辑 And/Or/Not + 嵌套二元算术；`LIKE`/`NOT LIKE`/`ILIKE`/`NOT ILIKE`（Go kernel，常量 pattern）；`CAST(col AS STRING/INT/FLOAT)` 类型转换（Go cast kernel，可作比较/like 的操作数）；单表扫描过滤（折进 TableReader 的 post.Filter）拦截 | 字符串函数（substring/length 等，Arrow 无字符串 kernel）、ILIKE 之外的字符串匹配、非字符串左操作数的 LIKE 待扩；`sql.arrow_filter.enabled` 全局开启会波及系统表扫描（见坑 10） |
 | 聚合 | `sql.arrow_aggregator.enabled` | **全局 + 分组** `SUM/MIN/MAX/COUNT/COUNT(*)/AVG`，输入列支持 INT/FLOAT/**DECIMAL**/**TIMESTAMP/TIMESTAMPTZ**/**UUID**/**JSON**；分组键支持 INT/FLOAT/BOOL/STRING/DECIMAL/**TIMESTAMP/TIMESTAMPTZ**/**UUID**/**JSON**；全 NULL 组→NULL；null 语义对齐 SQL | `SUM/AVG` 仅数值（timestamp/json 只走 MIN/MAX/COUNT）；UUID/JSON 分组键已支持（§9.8） |
 | 连接 | `sql.arrow_join.enabled` | inner / left / right / full outer 等值连接；NULL 键不参与匹配；未命中侧发 NULL；**inner 连接支持非等值 `onExpr`（post-filter，§7.4）** | left/right/full 连接的非等值 `onExpr` 待扩（post-filter 语义不等价，仍走标准引擎） |
@@ -418,6 +418,22 @@ SQL
 - **设计要点**：UUID 以 16 字节原始八位组在 Arrow 中按 `FixedSizeBinary` 比较/哈希，与 `tree.DUuid` 的字节序完全一致；JSON 以 canonical text 存 String，分组比较按文本（语义上等价 incoming 文本相同即同组，非 JSON 语义相等——与字符串分组一致，符合预期）。
 - **验证**：`go test -run TestArrowHashAggregatorUUIDJSON ./pkg/sql/rowexec/` 通过（含分组聚合正确性 + 输出 `tree.Datum` 回解）。**端到端集群级 UUID/JSON 分组 SQL 仍建议补一轮（adapter 改动影响所有 arrow scan）。**
 
-#### 下一波（⑤⑦，已探明接入点，留待后续）
-- **⑤ 字符串函数 kernel**——在 `arrow_projection.go` 的 `buildArrowProjectionExpr`/`eval` 扩展 `length`/`lower`/`upper`/`concat`/`substring` 等，调用 `compute.CallFunction("length", ...)` 等内核；并在 `canArrowProjectionExpr` 闸门放行。投影目前仅支持算术（`a+b`）。
+#### 第九章第八章 §9.9 —— ⑤ 字符串函数 kernel（已完成，2026-07-30）
+- **完成**：投影路径支持字符串函数 `length`/`octet_length`/`lower`/`upper`/`concat`/`substring`/`substr`，由原生 Go 向量化 kernel 求值（arrow/compute v17 无字符串 kernel，故不走 `compute.CallFunction`，改用 `evalArrowStringFunc` 的 `StringBuilder`/`Int64Builder` 批量循环；多字节输入按 rune 处理：`utf8.RuneCountInString` 取长度、`[]rune(s)[start:start+len]` 取子串）。
+- **planner 闸门**（`physicalplan/physical_plan.go`）
+  - 新增 `arrowStringFuncName(name)`：`length`/`octet_length`/`lower`/`upper`/`concat`/`substring`/`substr` → 内部 kernel 名；
+  - `arrowOperandArg`：允许 `ConstStr` 作为 `types.StringFamily` 常量操作数；
+  - `canArrowRender`：新增 `*tree.FuncExpr` 分支 → `arrowStringFuncName` + `arrowStringFuncArgs`（要求至少一列输入）；
+  - `hasArrowComputeExpr`：经 `arrowStringFuncName` 识别字符串 FuncExpr，否则 FuncExpr 整条被跳过导致 arrow 分支不可达；
+  - `addArrowRendering`：新增 `*tree.FuncExpr` case（用 `arrowArgsFor` 产出列/常量参数 JSON）。
+- **执行器**（`rowexec/arrow_projection.go`）
+  - 新增 `evalArrowStringFunc(ctx, in, spec)`：`length`/`octet_length`→Int64Builder、`lower`/`upper`→`strings.ToLower/ToUpper`、`concat`→NULL-aware 拼接、`substring`→rune-aware 切片；
+  - 新增 `resolveStrArg`/`resolvedStrArg{isCol,col,constStr,constNull}` 解析字符串参数（列或常量）；
+  - `resolveIntArg` 修正：原 `a.Scalar.ToScalar()` 改为断言 `*compute.ScalarDatum` 后取 `.Value`；`n := int(in.NumRows())`（原 int64）。
+- **多输出 arrow 投影 OutputTypes 传播修复（关键）**：原先 `SELECT LENGTH(name), LOWER(name) FROM ps` / `SELECT a+1,a+2 FROM ps` 等多输出投影会 panic `index out of range [1] with length 1`。根因：`ProcOutputHelper.Init`（`execinfra/processorsbase.go`）在 `post` 无 render/projection 时，将 `OutputTypes` 派生自 **input schema**（`input.OutputTypes()`），而 arrow 投影的输出列数可多于输入（多列计算输出），导致 `p.Out.OutputTypes` 被截成输入列数。**修复**：在 `newArrowProjectionProcessor` 的 `Init` 之后，用 planner 声明的 `post.OutputTypes`（= `outT`，正确列数）覆盖 `p.Out.OutputTypes`（`append([]types.T(nil), post.OutputTypes...)`，防 `Reset` 串改）。该修复对单输出无副作用（长度一致），并一并修好了二进制表达式多输出的既有缺陷。
+- **验证**：`TestArrowProjectionStringKernels`（`arrow_projection_kernel_test.go`，含 NULL 传播 + `Émily`/`naïve` 多字节 rune 切片）+ `TestArrowUnifyProjectionStringFuncs`（`arrowpilot/e2e_test.go`，断言 arrow 路径被使用且 LENGTH/LOWER/UPPER/CONCAT/SUBSTRING + 多输出 `SELECT LENGTH(name), LOWER(name)` 结果正确）全 PASS。
+- **改动文件**：`physicalplan/physical_plan.go`、`rowexec/arrow_projection.go`、`rowexec/arrow_projection_processor.go`、`rowexec/arrow_projection_kernel_test.go`、`rowexec/arrowpilot/e2e_test.go`。
+- **状态**：**待入库**（kwdb-exec/arrow-unify）。
+
+#### 下一波（⑦，已探明接入点，留待后续）
 - **⑦ 分布式两阶段 AVG merge（解除 `specUsesMean` 排除）**——给 `arrowHashAggregator` 增「merge 模式」：两阶段 partial 阶段产出 `(sum, count)` 部分聚合，最终 merge 阶段消费这些部分并合并（sum of sums、count of counts）。`arrow_unification.go` 的 `specUsesMean` 当前排除 AVG；`distsql_physical_planner.go` 的 `addTwiceAggregators`/`setupMultiAggFinalState` 在确认 merge 能力后放开。注意：sum/count/min/max 的 merge==聚合，已可走两阶段；唯 AVG 因 partial 语义需此 merge 能力。

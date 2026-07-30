@@ -804,3 +804,83 @@ func assertStr(t *testing.T, db *sql.DB, q string, want [][]string) {
 	t.Helper()
 	assertStringRows(t, queryStringRows(t, db, q), want)
 }
+
+// TestArrowUnifyProjectionStringFuncs verifies that string-function renders
+// (LENGTH / LOWER / UPPER / CONCAT / SUBSTRING) are routed through the Arrow
+// projection processor and produce results identical to the standard engine.
+// The string kernels are evaluated by a native Go vectorized loop inside the
+// executor because arrow/compute v17 ships no string kernels.
+func TestArrowUnifyProjectionStringFuncs(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	s, db, _ := serverutils.StartServer(t, base.TestServerArgs{})
+	ctx := context.Background()
+	defer s.Stopper().Stop(ctx)
+	if _, err := db.Exec("SET CLUSTER SETTING sql.arrow_projection.enabled = true"); err != nil {
+		t.Fatalf("set projection enabled: %v", err)
+	}
+
+	execStmt(t, db, "CREATE TABLE ps (a INT, name STRING, suffix STRING)")
+	defer func() {
+		_, _ = db.Exec("SET CLUSTER SETTING sql.arrow_projection.enabled = false")
+		execStmt(t, db, "DROP TABLE IF EXISTS ps")
+	}()
+	// Distinct character lengths across rows so the result-ordering (sorted by
+	// the leading result column in queryStringRows) stays deterministic.
+	rows := []struct {
+		a    int
+		name string
+		suffix  string
+	}{
+		{1, "a", "x"},
+		{2, "bb", "yy"},
+		{3, "ccc", "zzz"},
+		{4, "dddd", "wwww"},
+		{5, "eeeee", "vvvvv"},
+	}
+	for _, r := range rows {
+		execStmt(t, db, fmt.Sprintf("INSERT INTO ps VALUES (%d, '%s', '%s')", r.a, r.name, r.suffix))
+	}
+
+	// Confirm the Arrow projection path is actually exercised for these renders.
+	base := rowexec.ArrowProjectionRunCount()
+	// Warm up so the cluster setting is observed.
+	_ = queryStringRows(t, db, "SELECT LOWER(name) FROM ps")
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if rowexec.ArrowProjectionRunCount() > base {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("arrow projection was not used for string functions (run count did not increase)")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// LENGTH (int output): sorted by the leading int column.
+	assertIntRows(t, queryIntRows(t, db, "SELECT LENGTH(name) FROM ps"),
+		[][]int64{{1}, {2}, {3}, {4}, {5}})
+
+	// LOWER: names are already lower, so output equals input.
+	assertStr(t, db, "SELECT LOWER(name) FROM ps",
+		[][]string{{"a"}, {"bb"}, {"ccc"}, {"dddd"}, {"eeeee"}})
+
+	// UPPER.
+	assertStr(t, db, "SELECT UPPER(name) FROM ps",
+		[][]string{{"A"}, {"BB"}, {"CCC"}, {"DDDD"}, {"EEEEE"}})
+
+	// CONCAT with a string literal.
+	assertStr(t, db, "SELECT CONCAT(name, '-') FROM ps",
+		[][]string{{"a-"}, {"bb-"}, {"ccc-"}, {"dddd-"}, {"eeeee-"}})
+
+	// CONCAT of two columns.
+	assertStr(t, db, "SELECT CONCAT(name, suffix) FROM ps",
+		[][]string{{"ax"}, {"bbyy"}, {"ccczzz"}, {"ddddwwww"}, {"eeeeevvvvv"}})
+
+	// SUBSTRING: first two characters of each name.
+	assertStr(t, db, "SELECT SUBSTRING(name, 1, 2) FROM ps",
+		[][]string{{"a"}, {"bb"}, {"cc"}, {"dd"}, {"ee"}})
+
+	// Multi-output render: LENGTH then LOWER, sorted by the leading length.
+	assertStr(t, db, "SELECT LENGTH(name), LOWER(name) FROM ps",
+		[][]string{{"1", "a"}, {"2", "bb"}, {"3", "ccc"}, {"4", "dddd"}, {"5", "eeeee"}})
+}

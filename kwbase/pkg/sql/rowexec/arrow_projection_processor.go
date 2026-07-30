@@ -52,6 +52,8 @@ type arrowArg struct {
 	// Constant literal values; exactly one is set when Col == -1.
 	ConstInt   *int64   `json:"cint,omitempty"`
 	ConstFloat *float64 `json:"cfloat,omitempty"`
+	ConstBool  *bool    `json:"cbool,omitempty"`
+	ConstStr   *string  `json:"cstr,omitempty"`
 }
 
 // arrowProjectionCol describes how to compute one output column of the
@@ -118,6 +120,14 @@ func newArrowProjectionProcessor(
 		execinfra.ProcStateOpts{InputsToDrain: []execinfra.RowSource{p.input}},
 	); err != nil {
 		return nil, err
+	}
+	// The arrow projection computes its own outputs, whose arity can differ
+	// from the input columns (e.g. multiple computed outputs). ProcOutputHelper
+	// derives its OutputTypes from the input schema when post has no
+	// render/projection, which would be wrong here; the authoritative output
+	// schema is the planner-declared post.OutputTypes.
+	if len(post.OutputTypes) > 0 {
+		p.Out.OutputTypes = append([]types.T(nil), post.OutputTypes...)
 	}
 	return p, nil
 }
@@ -412,7 +422,16 @@ func arrowConstDatum(a arrowArg, _ memory.Allocator) compute.Datum {
 	if a.ConstInt != nil {
 		return compute.NewDatum(int64(*a.ConstInt))
 	}
-	return compute.NewDatum(float64(*a.ConstFloat))
+	if a.ConstFloat != nil {
+		return compute.NewDatum(float64(*a.ConstFloat))
+	}
+	if a.ConstBool != nil {
+		return compute.NewDatum(bool(*a.ConstBool))
+	}
+	if a.ConstStr != nil {
+		return compute.NewDatum(*a.ConstStr)
+	}
+	return compute.NewDatum(nil)
 }
 
 // arrowRecordToEncDatumRows decodes an Arrow record produced by the projection

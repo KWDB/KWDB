@@ -7,11 +7,14 @@ package rowexec
 import (
 	"context"
 	"fmt"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
 	"github.com/apache/arrow/go/v17/arrow/compute"
 	"github.com/apache/arrow/go/v17/arrow/memory"
+	"github.com/apache/arrow/go/v17/arrow/scalar"
 )
 
 // ArrowArg is a single argument to an Arrow compute function. It is either an
@@ -122,6 +125,13 @@ func (p *arrowProjection) eval(ctx context.Context, in arrow.Record, spec ArrowP
 		col := in.Column(idx[0])
 		return array.NewSlice(col, 0, int64(col.Len())), nil
 	}
+	// String-function kernels: the vendored arrow/compute module does not ship
+	// string kernels, so we evaluate them as native vectorized Go loops over the
+	// Arrow string arrays. This keeps string projection on the same Arrow path.
+	switch spec.Func {
+	case "length", "octet_length", "lower", "upper", "concat", "substring":
+		return p.evalArrowStringFunc(ctx, in, spec)
+	}
 	args := make([]compute.Datum, len(spec.Args))
 	for i, a := range spec.Args {
 		if a.Scalar != nil {
@@ -143,4 +153,272 @@ func (p *arrowProjection) eval(ctx context.Context, in arrow.Record, spec ArrowP
 		return nil, fmt.Errorf("expected array result from %q, got %T", spec.Func, res)
 	}
 	return ad.MakeArray(), nil
+}
+
+// resolvedStrArg is a string operand resolved to either a column or a constant.
+type resolvedStrArg struct {
+	col       *array.String
+	constStr  string
+	constNull bool
+	isCol     bool
+}
+
+// resolvedIntArg is an int operand resolved to either a column or a constant.
+type resolvedIntArg struct {
+	col       *array.Int64
+	constVal  int64
+	constNull bool
+	isCol     bool
+}
+
+// resolveStrArg resolves a string projection operand to a column or constant.
+func (p *arrowProjection) resolveStrArg(in arrow.Record, a ArrowArg) (resolvedStrArg, error) {
+	if a.Scalar != nil {
+		sd, ok := a.Scalar.(*compute.ScalarDatum)
+		if !ok {
+			return resolvedStrArg{}, fmt.Errorf("expected scalar datum for string arg, got %T", a.Scalar)
+		}
+		sc := sd.Value
+		if !sc.IsValid() {
+			return resolvedStrArg{constNull: true}, nil
+		}
+		s, ok := sc.(*scalar.String)
+		if !ok {
+			return resolvedStrArg{}, fmt.Errorf("expected string constant, got %s", sc.DataType())
+		}
+		return resolvedStrArg{constStr: s.String()}, nil
+	}
+	idxs := in.Schema().FieldIndices(a.ColName)
+	if len(idxs) == 0 {
+		return resolvedStrArg{}, fmt.Errorf("projection input column %q not found", a.ColName)
+	}
+	c, ok := in.Column(idxs[0]).(*array.String)
+	if !ok {
+		return resolvedStrArg{}, fmt.Errorf("column %q is not a string array (%T)", a.ColName, in.Column(idxs[0]))
+	}
+	return resolvedStrArg{col: c, isCol: true}, nil
+}
+
+// resolveIntArg resolves an int projection operand to a column or constant.
+func (p *arrowProjection) resolveIntArg(in arrow.Record, a ArrowArg) (resolvedIntArg, error) {
+	if a.Scalar != nil {
+		sd, ok := a.Scalar.(*compute.ScalarDatum)
+		if !ok {
+			return resolvedIntArg{}, fmt.Errorf("expected scalar datum for int arg, got %T", a.Scalar)
+		}
+		sc := sd.Value
+		if !sc.IsValid() {
+			return resolvedIntArg{constNull: true}, nil
+		}
+		v, ok := sc.(*scalar.Int64)
+		if !ok {
+			return resolvedIntArg{}, fmt.Errorf("expected int constant, got %s", sc.DataType())
+		}
+		return resolvedIntArg{constVal: v.Value}, nil
+	}
+	idxs := in.Schema().FieldIndices(a.ColName)
+	if len(idxs) == 0 {
+		return resolvedIntArg{}, fmt.Errorf("projection input column %q not found", a.ColName)
+	}
+	c, ok := in.Column(idxs[0]).(*array.Int64)
+	if !ok {
+		return resolvedIntArg{}, fmt.Errorf("column %q is not an int array (%T)", a.ColName, in.Column(idxs[0]))
+	}
+	return resolvedIntArg{col: c, isCol: true}, nil
+}
+
+// strValue returns the string for row i of a resolved string arg.
+func strValue(a resolvedStrArg, i int) string {
+	if a.isCol {
+		return a.col.Value(i)
+	}
+	return a.constStr
+}
+
+// strIsNull reports whether row i of a resolved string arg is NULL.
+func strIsNull(a resolvedStrArg, i int) bool {
+	if a.isCol {
+		return a.col.IsNull(i)
+	}
+	return a.constNull
+}
+
+// intArgValue returns the int for row i of a resolved int arg.
+func intArgValue(a resolvedIntArg, i int) int64 {
+	if a.isCol {
+		return a.col.Value(i)
+	}
+	return a.constVal
+}
+
+// intIsNull reports whether row i of a resolved int arg is NULL.
+func intIsNull(a resolvedIntArg, i int) bool {
+	if a.isCol {
+		return a.col.IsNull(i)
+	}
+	return a.constNull
+}
+
+// stringLen returns the character length (or byte length for octet mode) of s.
+func stringLen(s string, octet bool) int64 {
+	if octet {
+		return int64(len(s))
+	}
+	return int64(utf8.RuneCountInString(s))
+}
+
+// sqlSubstring implements the SQL SUBSTRING(string, start[, length]) semantics
+// on runes: start is 1-based and inclusive; a negative length yields the empty
+// string.
+func sqlSubstring(s string, start, length int64) string {
+	runes := []rune(s)
+	n := int64(len(runes))
+	if start < 1 {
+		start = 1
+	}
+	if start > n {
+		return ""
+	}
+	if length < 0 {
+		return ""
+	}
+	rs := int(start) - 1
+	re := int(n)
+	if length >= 0 {
+		re = rs + int(length)
+		if re > int(n) {
+			re = int(n)
+		}
+	}
+	if re < rs {
+		return ""
+	}
+	return string(runes[rs:re])
+}
+
+// evalArrowStringFunc evaluates the string-function projection kernels (length/
+// lower/upper/concat/substring) as native vectorized loops. arrow/compute in
+// this vendored version does not ship string kernels.
+func (p *arrowProjection) evalArrowStringFunc(ctx context.Context, in arrow.Record, spec ArrowProjectionSpec) (arrow.Array, error) {
+	n := int(in.NumRows())
+	switch spec.Func {
+	case "length", "octet_length":
+		arg, err := p.resolveStrArg(in, spec.Args[0])
+		if err != nil {
+			return nil, err
+		}
+		b := array.NewInt64Builder(p.alloc)
+		defer b.Release()
+		if arg.isCol {
+			for i := 0; i < n; i++ {
+				if arg.col.IsNull(i) {
+					b.AppendNull()
+					continue
+				}
+				b.Append(stringLen(arg.col.Value(i), spec.Func == "octet_length"))
+			}
+		} else if arg.constNull {
+			b.AppendNull()
+		} else {
+			b.Append(stringLen(arg.constStr, spec.Func == "octet_length"))
+		}
+		return b.NewArray(), nil
+	case "lower", "upper":
+		arg, err := p.resolveStrArg(in, spec.Args[0])
+		if err != nil {
+			return nil, err
+		}
+		f := strings.ToLower
+		if spec.Func == "upper" {
+			f = strings.ToUpper
+		}
+		b := array.NewStringBuilder(p.alloc)
+		defer b.Release()
+		if arg.isCol {
+			for i := 0; i < n; i++ {
+				if arg.col.IsNull(i) {
+					b.AppendNull()
+					continue
+				}
+				b.Append(f(arg.col.Value(i)))
+			}
+		} else if arg.constNull {
+			b.AppendNull()
+		} else {
+			b.Append(f(arg.constStr))
+		}
+		return b.NewArray(), nil
+	case "concat":
+		args := make([]resolvedStrArg, len(spec.Args))
+		for i, a := range spec.Args {
+			r, err := p.resolveStrArg(in, a)
+			if err != nil {
+				return nil, err
+			}
+			args[i] = r
+		}
+		b := array.NewStringBuilder(p.alloc)
+		defer b.Release()
+		for i := 0; i < n; i++ {
+			null := false
+			var sb strings.Builder
+			for _, a := range args {
+				if a.isCol {
+					if a.col.IsNull(i) {
+						null = true
+						break
+					}
+					sb.WriteString(a.col.Value(i))
+				} else if a.constNull {
+					null = true
+					break
+				} else {
+					sb.WriteString(a.constStr)
+				}
+			}
+			if null {
+				b.AppendNull()
+			} else {
+				b.Append(sb.String())
+			}
+		}
+		return b.NewArray(), nil
+	case "substring":
+		strArg, err := p.resolveStrArg(in, spec.Args[0])
+		if err != nil {
+			return nil, err
+		}
+		startArg, err := p.resolveIntArg(in, spec.Args[1])
+		if err != nil {
+			return nil, err
+		}
+		var lenArg *resolvedIntArg
+		if len(spec.Args) == 3 {
+			l, err := p.resolveIntArg(in, spec.Args[2])
+			if err != nil {
+				return nil, err
+			}
+			lenArg = &l
+		}
+		b := array.NewStringBuilder(p.alloc)
+		defer b.Release()
+		for i := 0; i < n; i++ {
+			if strIsNull(strArg, i) || intIsNull(startArg, i) {
+				b.AppendNull()
+				continue
+			}
+			start := intArgValue(startArg, i)
+			length := int64(-1)
+			if lenArg != nil {
+				if intIsNull(*lenArg, i) {
+					b.AppendNull()
+					continue
+				}
+				length = intArgValue(*lenArg, i)
+			}
+			b.Append(sqlSubstring(strValue(strArg, i), start, length))
+		}
+		return b.NewArray(), nil
+	}
+	return nil, fmt.Errorf("unsupported string projection function %q", spec.Func)
 }
