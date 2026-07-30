@@ -494,11 +494,25 @@ func arrowRecordToEncDatumRows(
 		// aggregate and rely on a downstream render to collapse them (e.g.
 		// AVG = sum/count): there the record is wider than typs. In that case
 		// derive each column's KWDB type from its Arrow DataType.
+		//
+		// Even when arities match, prefer the planner-declared type only when it
+		// is type-compatible (same family) with the actual arrow column. A cast
+		// target such as STRING for `min(ts)::STRING` has a different family than
+		// the arrow timestamp column; using it would wrap a timestamp datum in a
+		// STRING-typed EncDatum and break the downstream render. In that case we
+		// fall back to the arrow column's real type so the render can re-encode
+		// it correctly. Keeping the planner type when families match also
+		// preserves decimal precision/scale metadata.
 		var t types.T
+		kwType := arrowDataTypeToKWType(col.DataType())
 		if len(typs) == width {
-			t = typs[ci]
+			if (&typs[ci]).Family() == (&kwType).Family() {
+				t = typs[ci]
+			} else {
+				t = kwType
+			}
 		} else {
-			t = arrowDataTypeToKWType(col.DataType())
+			t = kwType
 		}
 		switch arr := col.(type) {
 		case *array.Int64:

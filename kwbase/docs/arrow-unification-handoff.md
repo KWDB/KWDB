@@ -457,8 +457,16 @@ SQL
 - **改动文件**：`pkg/sql/arrow_unification.go`、`pkg/sql/distsql_physical_planner.go`、`pkg/sql/rowexec/arrow_projection_processor.go`、`pkg/sql/rowexec/arrow_aggregate_merge_test.go`（新增）。
 - **状态**：**待入库**（kwdb-exec/arrow-unify）。
 
-#### 下一波（⑧，已探明接入点，留待后续）
-- **⑧ 修 arrowpilot 两处既有 e2e 失败（与 ⑦ 无关，已在基准确认）**：
-  1. `TestArrowUnifyFilterAggJoin`（`e2e_test.go:449`）：`SELECT a FROM t WHERE a * 2 > b` 报 `not implemented: function 'less' has no kernel matching input types (utf8, int64)`——疑似 ⑤ 字符串函数闸门让 `a` 走了 arrow 投影字符串路径（utf8），但比较 `>` 的另一侧 `b`（int64）未对齐类型，arrow `less` kernel 无 `(utf8,int64)` 重载。需确认 arrow 投影/比较是否应对齐操作数类型（与 colexec 一致做隐式类型提升，或让 planner 不把该列误判为字符串）。
-  2. `TestArrowUnifyTimestampAgg`：`SELECT min(ts)::STRING FROM tt WHERE a <= 4 GROUP BY ts ORDER BY ts` 报 `invalid datum type given: timestamp(9), expected string`——`min(ts)` 聚合后 `::STRING` CAST 在 arrow 回解路径找不到 timestamp→string 的 Datum 编码（或 `arrowRecordToEncDatumRows` 对 timestamp 列的回解未接 `::STRING` 渲染）。需在 `arrow_projection_processor.go` 的回解/CAST 路径补齐 timestamp→string。
-  - 这两处会阻断 arrowpilot e2e 全绿，建议 ⑧ 优先收敛（影响面：投影类型对齐 + timestamp 聚合回解/CAST）。
+#### 第九章第八章 §9.11 —— ⑧ arrowpilot e2e 失败排查（部分完成，2026-07-30）
+- **排查结论（重要）**：本分支 `arrowpilot` 两个 e2e 失败**并非 arrow 统一化引入的回归**，且**在纯 colexec（同时禁用 arrow 聚合与 arrow 过滤）下同样失败**——属既有通用 planner/回解缺陷，超出 arrow 统一化范围。其中唯一真正属于 arrow 路径的缺陷（⑧-1）已修复。
+- **⑧-1 已修复（真正的 arrow 缺陷）**：`TestArrowUnifyFilterAggJoin` 中的 `SELECT a FROM t WHERE a * 2 > b` 报 `not implemented: function 'less' has no kernel matching input types (utf8, int64)`。
+  - **根因**：`physicalplan/physical_plan.go` 的 `buildArrowFilterNode` 对所有 `*tree.ComparisonExpr` 都套了「左操作数 CAST 到 STRING」逻辑（注释只说用于 LIKE，但代码未加运算符判断），导致 `a * 2 > b` 被翻转为 `b < a*2` 后左操作数 `b`（int）被错误 cast 成 STRING，出现 `less(utf8, int64)`。
+  - **修复**：仅对 LIKE/ILike/NotLike/NotILike 系列套 STRING cast；EQ/LT/GT 等比较保留原生操作数类型。
+  - **验证**：修复后该测试越过 `a*2>b`、`a+b>a*2`、`a*2>b AND a<5` 等全部纯过滤查询（均 PASS），聚合查询 `SUM/COUNT/MIN/MAX`、`GROUP BY b` 等也 PASS；仅在下一个既有缺陷处中止（见下）。
+- **附带健壮性修复**：`rowexec/arrow_projection_processor.go` 的 `arrowRecordToEncDatumRows` 在「planner 声明类型与 arrow 实际列类型族不兼容」时（如 `min(ts)::STRING` 的 cast 目标 STRING vs arrow timestamp 列），改用 `arrowDataTypeToKWType(col.DataType())` 取真实类型，避免 EncDatum 被错标成 STRING 包裹 timestamp；类型族兼容时仍优先用 planner 声明类型以保留 decimal 精度/标度。
+- **既有通用缺陷（⑧-b / ⑧-c，非 arrow 范围，留待后续）**：
+  - **⑧-b** `TestArrowUnifyFilterAggJoin`：`SELECT b, SUM(a) FROM t WHERE b = 7 GROUP BY b` 报 `index out of range [1] with length 1`。根因：优化器因 `b = 7` 把 group-by 省略（`AggregatorSpec.GroupCols=[]`，聚合器只输出 sum_a 的 1 列），但 `PostProcess` 的 `OutputColumns`（finalIdxMap）仍引用聚合输出列 1（即被省略的 `b`），`ProcessRowHelper` 投影 `row[1]` 越界。纯 colexec 下同样失败——属 planner 在「常量分组键 + 聚合」场景的 spec/post 不一致，需修 `addTwiceAggregators`/`getTwoStageAggCount` 等让 elided group-by 时 finalIdxMap 正确指向常量而非聚合输出列。
+  - **⑧-c** `TestArrowUnifyTimestampAgg`：`SELECT min(ts)::STRING FROM tt WHERE a <= 4 GROUP BY ts ORDER BY ts` 报 `invalid datum type given: timestamp(9), expected string`。根因：`min(ts)::STRING` 的 `::STRING` CAST 未真正生成（post 仅把结果类型标为 STRING，未产生 cast render），服务端回 timestamp 而客户端期望 string——纯 colexec 下同样失败，属既有 `::STRING`/CAST 回解或 planner 的 cast 生成缺陷（疑似与 ⑤ 字符串函数闸门/CAST 路径相关，但非 arrow 专属）。
+  - 这两处会让 `TestArrowUnifyFilterAggJoin`、`TestArrowUnifyTimestampAgg` 在 arrow 与 colexec 下均失败，建议作为独立 planner/回解任务排期，不在 arrow 统一化 ①-⑧ 内。
+- **改动清单**：`pkg/sql/physicalplan/physical_plan.go`（⑧-1 仅 LIKE 套 STRING cast）、`pkg/sql/rowexec/arrow_projection_processor.go`（record→EncDatum 类型族健壮性）。
+- **状态**：**⑧-1 待入库**（kwdb-exec/arrow-unify）；⑧-b/⑧-c 为既有通用缺陷，另案处理。

@@ -2083,11 +2083,15 @@ func (p *PhysicalPlan) buildArrowFilterNode(e tree.TypedExpr, indexVarMap []int)
 		}
 		l, lty, _ := p.arrowFilterLeafFromExpr(ex.Left.(tree.TypedExpr), indexVarMap)
 		r, _, _ := p.arrowFilterLeafFromExpr(ex.Right.(tree.TypedExpr), indexVarMap)
-		// A non-string left operand is wrapped in a CAST to STRING so the Arrow
-		// kernel can stringify it before the LIKE match (e.g. `i LIKE '1%'` on an
-		// integer column). The eval layer (evalLike + evalCast) already handles a
-		// casted left operand.
-		if lty.Family() != types.StringFamily {
+		// LIKE-style predicates stringify a non-string left operand via a CAST to
+		// STRING so the Arrow kernel can match it against the string pattern
+		// (e.g. `i LIKE '1%'` on an integer column). Regular comparisons
+		// (EQ/LT/GT/...) keep their native operand types and must never be cast;
+		// casting them would compare a string against the (untyped) right operand
+		// and break numeric/boolean filters like `a * 2 > b`.
+		if (ex.Operator == tree.Like || ex.Operator == tree.NotLike ||
+			ex.Operator == tree.ILike || ex.Operator == tree.NotILike) &&
+			lty.Family() != types.StringFamily {
 			if tag, ok := arrowCastTargetTag(types.String); ok {
 				l = &arrowFilterLeaf{Cast: &arrowFilterCast{Func: "cast", Type: tag, Arg: *l}}
 			} else {
