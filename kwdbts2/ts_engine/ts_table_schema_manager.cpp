@@ -282,8 +282,8 @@ KStatus TsTableSchemaManager::Init() {
     }
   }
 
-  auto dbid = this->GetDbID();
-  s = db_schema_mgr_->GetOrCreateDatabases(dbid, db_schema_);
+  db_id_ = metric_mgr_->GetDbID();
+  s = db_schema_mgr_->GetOrCreateDatabases(db_id_, db_schema_);
   if (s == FAIL) {
     return FAIL;
   }
@@ -328,6 +328,8 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
   sparse_table_ = meta->ts_table().sparse();
   uint64_t interval = meta->ts_table().partition_interval();
   partition_interval_ = interval;
+  assert(db_id_ == 0 || db_id == db_id_);
+  db_id_ = db_id;
   s = metric_mgr_->CreateTable(ctx, metric_schema, db_id, ts_version, meta->ts_table().life_time(),
                                interval, hash_num_, sparse_table_, err_info);
   if (s != SUCCESS) {
@@ -588,10 +590,6 @@ void TsTableSchemaManager::SetLifeTime(LifeTime life_time) const {
 void TsTableSchemaManager::SetPartitionInterval(uint64_t partition_interval) {
   partition_interval_ = partition_interval;
   metric_mgr_->SetPartitionInterval(partition_interval);
-}
-
-uint32_t TsTableSchemaManager::GetDbID() const {
-  return metric_mgr_->GetDbID();
 }
 
 KStatus TsTableSchemaManager::RemoveAll() {

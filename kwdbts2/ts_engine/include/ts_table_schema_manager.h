@@ -53,6 +53,7 @@ class SchemaVersionConv {
  * table schema manager used for organizing table schema (including tag data, tag schema, and metric schema).
  */
 class TsTableSchemaManager {
+  uint32_t db_id_{0};
   TSTableID table_id_;
   // schema path of the table
   fs::path table_path_;
@@ -184,7 +185,10 @@ class TsTableSchemaManager {
 
   void SetPartitionInterval(uint64_t partition_interval);
 
-  uint32_t GetDbID() const;
+  uint32_t GetDbID() const {
+    assert(db_id_ != 0);
+    return db_id_;
+  }
 
   KStatus RemoveAll();
 
