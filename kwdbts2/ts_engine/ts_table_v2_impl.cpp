@@ -1676,6 +1676,58 @@ KStatus TsTableImpl::GetImagrateTagBySnapshot(kwdbContext_p ctx, HashIdSpan hash
   return KStatus::SUCCESS;
 }
 
+KStatus TsTableImpl::GetReuseTagsForSnapshot(kwdbContext_p ctx, HashIdSpan hash_range,
+  std::unordered_map<std::string, std::list<std::list<EntityResultIndex>>>* entity_tags) {
+  std::vector<kwdbts::EntityResultIndex> entity_id_list;
+  if (EngineOptions::isSingleNode()) {
+    LOG_WARN("GetReuseTagsForSnapshot [%lu, %lu] only called cluster mode.", hash_range.begin, hash_range.end);
+  }
+  auto s = TrasvalAllTagPtable(ctx, [&](TagPartitionTable* entity_tag_bt, TableVersionID vec_idx) -> bool {
+    auto curr_rows = entity_tag_bt->size();
+    for (int rownum = 1; rownum <= curr_rows; rownum++) {
+      if (!EngineOptions::isSingleNode()) {
+        uint32_t tag_hash;
+        entity_tag_bt->getHashpointByRowNum(rownum, &tag_hash);
+        if (hash_range.begin > tag_hash || hash_range.end < tag_hash) {
+          continue;
+        }
+      }
+      bool filter_current = false;
+      auto op_osn = entity_tag_bt->getTagDataInfoByRowNum(rownum);
+      for (size_t i = 0; i <= op_osn->operate_idx; i++) {
+        if (op_osn->operate_type[i] == OperateType::Ignore || op_osn->operate_type[i] == OperateType::Invalid) {
+          filter_current = true;
+          break;
+        }
+      }
+      if (filter_current) {
+        continue;
+      }
+      entity_id_list.clear();
+      entity_tag_bt->getEntityIdByRownum(rownum, &entity_id_list);
+      entity_id_list[0].op_with_osn =
+        std::make_shared<OperatorInfoOfRecord>(OperatorTypeOfRecord::OP_TYPE_UNKNOWN, 0, vec_idx, rownum);
+      std::string pkey(reinterpret_cast<char*>(entity_tag_bt->record(rownum)), entity_tag_bt->primaryTagSize());
+      auto& entity_list = (*entity_tags)[pkey];
+      bool matched = false;
+      for (auto& entity_info : entity_list) {
+        if (entity_info.back().equalsWithoutMem(entity_id_list[0])) {
+          entity_info.push_back(entity_id_list[0]);
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) {
+        entity_list.push_back({entity_id_list[0]});
+      }
+    }
+    return true;
+  });
+
+  LOG_INFO("GetReuseTagsForSnapshot pkey total num[%lu].", entity_tags->size());
+  return KStatus::SUCCESS;
+}
+
 KStatus TsTableImpl::GetTagRecordInfoByOSN(kwdbContext_p ctx,
   const std::vector<HashIdSpan>* hps,
   std::vector<KwOSNSpan>& osn_span, TS_OSN scan_osn, std::unordered_map<uint64_t, EntityResultIndex>* pkeys_status) {

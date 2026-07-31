@@ -121,6 +121,7 @@ const std::vector<AttributeInfo>& data_schema, int row_num, TSPayloadRowStructTy
 }
 
 void TSRowPayloadSparseBuilder::SetTagMem() {
+  primary_key_info_.clear();
   tag_value_mem_bitmap_len_ = (tag_schema_.size() + 7) / 8;  // bitmap
   tag_value_mem_len_ = tag_value_mem_bitmap_len_;
   for (auto tag : tag_schema_) {

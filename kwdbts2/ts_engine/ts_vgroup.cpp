@@ -1111,6 +1111,7 @@ KStatus TsVGroup::FlushImmSegment(std::unique_ptr<TsLastSegmentBuilder>& lastseg
       for (const auto& partition_id : del_info.partition_ids) {
         TsEntityCountStats invalid_stat{del_info.table_id, entity_id, INT64_MAX, INT64_MIN, 0, false, ""};
         flush_infos[partition_id].emplace_back(invalid_stat);
+        version_manager_->Current()->GetPartition(partition_id)->SyncDelRangeFile();
       }
     }
   }

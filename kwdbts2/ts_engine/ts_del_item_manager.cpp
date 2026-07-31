@@ -9,7 +9,7 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-#include <assert.h>
+#include <memory>
 #include <algorithm>
 #include <string>
 #include <list>
@@ -111,32 +111,37 @@ void LSNRangeUtil::MergeRangeCross(const STScanRange& range, const STDelRange& d
   }
 }
 
-TsDelItemManager::TsDelItemManager(const std::string& path) : path_(path + "/" + DEL_FILE_NAME), mmap_alloc_(path_) {
+TsDelItemManager::TsDelItemManager(const std::string& path) : path_(path + "/" + DEL_FILE_NAME) {
   rw_lock_ = new KRWLatch(RWLATCH_ID_MMAP_DEL_ITEM_MGR_RWLOCK);
 }
 
 TsDelItemManager::~TsDelItemManager() {
-  mmap_alloc_.Close();
+  Sync();
+  mmap_alloc_->Close();
   if (rw_lock_) {
     delete rw_lock_;
   }
 }
 
 KStatus TsDelItemManager::Open() {
-  if (mmap_alloc_.Open() == KStatus::SUCCESS) {
-    if (mmap_alloc_.GetAllocSize() >= sizeof(DelItemHeader)) {
-      header_ = reinterpret_cast<DelItemHeader*>(mmap_alloc_.addr(mmap_alloc_.GetStartPos()));
+  mmap_alloc_ = std::make_shared<TsMMapAllocFile>(path_);
+  if (mmap_alloc_ == nullptr) {
+    LOG_ERROR("mmap alloc file init failed.");
+    return KStatus::FAIL;
+  }
+  if (mmap_alloc_->Open() == KStatus::SUCCESS) {
+    if (mmap_alloc_->GetAllocSize() >= sizeof(DelItemHeader)) {
+      header_ = reinterpret_cast<DelItemHeader*>(mmap_alloc_->addr(mmap_alloc_->GetStartPos()));
       if (header_->min_lsn == 0) {
         // actual osn cannot be 0.
         header_->min_lsn = UINT64_MAX;
       }
     } else {
-      auto offset = mmap_alloc_.AllocateAssigned(sizeof(DelItemHeader), 0);
-      header_ = reinterpret_cast<DelItemHeader*>(mmap_alloc_.addr(offset));
+      auto offset = mmap_alloc_->AllocateAssigned(sizeof(DelItemHeader), 0);
+      header_ = reinterpret_cast<DelItemHeader*>(mmap_alloc_->addr(offset));
       header_->min_lsn = UINT64_MAX;
-      mmap_alloc_.Sync();
     }
-    KStatus s = index_.Init(&mmap_alloc_, &(mmap_alloc_.getHeader()->index_header_offset));
+    KStatus s = index_.Init(mmap_alloc_.get(), &(mmap_alloc_->getHeader()->index_header_offset));
     if (s == KStatus::SUCCESS) {
       return s;
     }
@@ -167,7 +172,16 @@ KStatus TsDelItemManager::HasValidDelItem(const KwOSNSpan& lsn, bool& has_valid)
 KStatus TsDelItemManager::RmDeleteItems(TSEntityID entity_id, const KwOSNSpan &lsn) {
   uint64_t total_dropped = 0;
   std::list<TsEntityDelItem*> del_range;
-  auto s = GetDelItem(entity_id, del_range);
+  RW_LATCH_X_LOCK(rw_lock_);
+  Defer _([this]() {
+    RW_LATCH_UNLOCK(rw_lock_);
+  });
+  auto s = InsertPrepare();
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("BeginInsert failed. for entity Id [%lu]", entity_id);
+    return s;
+  }
+  s = GetDelItem(entity_id, del_range);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetDelRange failed. for entity Id [%lu]", entity_id);
     return s;
@@ -179,30 +193,44 @@ KStatus TsDelItemManager::RmDeleteItems(TSEntityID entity_id, const KwOSNSpan &l
     }
   }
   {
-    RW_LATCH_X_LOCK(rw_lock_);
     header_->dropped_num += total_dropped;
     header_->clear_max_lsn = std::max(header_->clear_max_lsn, lsn.end);
-    mmap_alloc_.Sync();
-    RW_LATCH_UNLOCK(rw_lock_);
+    writing_num_.fetch_add(1);
   }
   return KStatus::SUCCESS;
 }
 
 KStatus TsDelItemManager::AddDelItem(TSEntityID entity_id, const TsEntityDelItem& del_item) {
-  auto offset = mmap_alloc_.AllocateAssigned(sizeof(IndexNode), INVALID_POSITION);
-  auto new_node = reinterpret_cast<IndexNode*>(mmap_alloc_.GetAddrForOffset(offset, sizeof(IndexNode)));
+  RW_LATCH_X_LOCK(rw_lock_);
+  Defer _([this]() {
+    RW_LATCH_UNLOCK(rw_lock_);
+  });
+  auto s = InsertPrepare();
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("BeginInsert failed. for entity Id [%lu]", entity_id);
+    return s;
+  }
+  if (writeDelItem(entity_id, del_item) == nullptr) {
+    LOG_ERROR("writeDelItem failed. entity_id [%lu]", entity_id);
+    return KStatus::FAIL;
+  }
+  return KStatus::SUCCESS;
+}
+
+TsEntityDelItem* TsDelItemManager::writeDelItem(TSEntityID entity_id, const TsEntityDelItem& del_item) {
+  auto offset = mmap_alloc_->AllocateAssigned(sizeof(IndexNode), INVALID_POSITION);
+  auto new_node = reinterpret_cast<IndexNode*>(mmap_alloc_->GetAddrForOffset(offset, sizeof(IndexNode)));
   if (new_node == nullptr) {
-    return FAIL;
+    return nullptr;
   }
   new_node->del_item = del_item;
   new_node->del_item.status = DEL_ITEM_OK;
   auto node = index_.GetIndexObject(entity_id, true);
   if (node == nullptr) {
     LOG_ERROR("get node from index file failed. entity [%lu].", entity_id);
-    return KStatus::FAIL;
+    return nullptr;
   }
   {
-    RW_LATCH_X_LOCK(rw_lock_);
     if (*node != INVALID_POSITION) {
       new_node->pre_node_offset = *node;
     }
@@ -211,47 +239,33 @@ KStatus TsDelItemManager::AddDelItem(TSEntityID entity_id, const TsEntityDelItem
     header_->delitem_num += 1;
     header_->min_lsn = std::min(header_->min_lsn, del_item.range.osn_span.begin);
     header_->max_lsn = std::max(header_->max_lsn, del_item.range.osn_span.end);
-    mmap_alloc_.Sync();
-    RW_LATCH_UNLOCK(rw_lock_);
+    writing_num_.fetch_add(1);
   }
-  return KStatus::SUCCESS;
+  return &(new_node->del_item);
 }
 
+// inner function, called position lock.
 KStatus TsDelItemManager::GetDelItem(TSEntityID entity_id, std::list<TsEntityDelItem*>& del_items) {
   auto node = index_.GetIndexObject(entity_id, false);
   if (node == nullptr) {
     // this entity has no del item.
     return KStatus::SUCCESS;
   }
-  {
-    RW_LATCH_S_LOCK(rw_lock_);
-    auto cur_node_offset = *node;
-    while (cur_node_offset != INVALID_POSITION) {
-      auto cur_node = reinterpret_cast<IndexNode*>(mmap_alloc_.GetAddrForOffset(cur_node_offset, sizeof(IndexNode)));
-      if (cur_node == nullptr) {
-        LOG_ERROR("GetAddrForOffset failed. offset [%lu]", *node);
-        return KStatus::FAIL;
-      }
-      del_items.push_back(&(cur_node->del_item));
-      cur_node_offset = cur_node->pre_node_offset;
+  auto cur_node_offset = *node;
+  while (cur_node_offset != INVALID_POSITION) {
+    auto cur_node = reinterpret_cast<IndexNode*>(mmap_alloc_->GetAddrForOffset(cur_node_offset, sizeof(IndexNode)));
+    if (cur_node == nullptr) {
+      LOG_ERROR("GetAddrForOffset failed. offset [%lu]", *node);
+      return KStatus::FAIL;
     }
-    RW_LATCH_UNLOCK(rw_lock_);
+    del_items.push_back(&(cur_node->del_item));
+    cur_node_offset = cur_node->pre_node_offset;
   }
   return KStatus::SUCCESS;
 }
 
 KStatus TsDelItemManager::DropEntity(TSEntityID entity_id) {
   // todo(liangbo01) entity deleted, but delete info should be seen.
-  // auto node = index_.GetIndexObject(entity_id, false);
-  // if (node == nullptr || *node == INVALID_POSITION) {
-  //   // this entity has no del item.
-  //   return KStatus::SUCCESS;
-  // }
-  // {
-  //   RW_LATCH_X_LOCK(rw_lock_);
-  //   *node = INVALID_POSITION;
-  //   RW_LATCH_UNLOCK(rw_lock_);
-  // }
   return KStatus::SUCCESS;
 }
 
@@ -261,12 +275,20 @@ KStatus TsDelItemManager::RollBackDelItem(TSEntityID entity_id, const KwOSNSpan&
     // this entity has no del item.
     return KStatus::SUCCESS;
   }
+  RW_LATCH_X_LOCK(rw_lock_);
+  Defer _([this]() {
+    RW_LATCH_UNLOCK(rw_lock_);
+  });
+  auto s = InsertPrepare();
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("BeginInsert failed. for entity Id [%lu]", entity_id);
+    return s;
+  }
   uint64_t dropped_num = 0;
   {
-    RW_LATCH_S_LOCK(rw_lock_);
     auto cur_node_offset = *node;
     while (cur_node_offset != INVALID_POSITION) {
-      auto cur_node = reinterpret_cast<IndexNode*>(mmap_alloc_.GetAddrForOffset(cur_node_offset, sizeof(IndexNode)));
+      auto cur_node = reinterpret_cast<IndexNode*>(mmap_alloc_->GetAddrForOffset(cur_node_offset, sizeof(IndexNode)));
       if (cur_node == nullptr) {
         LOG_ERROR("GetAddrForOffset failed. offset [%lu]", *node);
         return KStatus::FAIL;
@@ -275,22 +297,23 @@ KStatus TsDelItemManager::RollBackDelItem(TSEntityID entity_id, const KwOSNSpan&
           cur_node->del_item.range.osn_span.end == lsn.end) {
         cur_node->del_item.status = DEL_ITEM_ROLLBACK;
         dropped_num++;
-        mmap_alloc_.Sync();
       }
       cur_node_offset = cur_node->pre_node_offset;
     }
-    RW_LATCH_UNLOCK(rw_lock_);
   }
   {
-    RW_LATCH_X_LOCK(rw_lock_);
     header_->dropped_num += dropped_num;
-    RW_LATCH_UNLOCK(rw_lock_);
+    writing_num_.fetch_add(1);
   }
   return KStatus::SUCCESS;
 }
 
 KStatus TsDelItemManager::GetDelRange(TSEntityID entity_id, std::list<STDelRange>& del_range) {
   std::list<TsEntityDelItem*> del_items;
+  RW_LATCH_S_LOCK(rw_lock_);
+  Defer _([this]() {
+    RW_LATCH_UNLOCK(rw_lock_);
+  });
   auto s = GetDelItem(entity_id, del_items);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetDelItem failed. entity_id [%lu]", entity_id);
@@ -305,18 +328,35 @@ KStatus TsDelItemManager::GetDelRange(TSEntityID entity_id, std::list<STDelRange
 }
 
 void TsDelItemManager::DropAll() {
+  RW_LATCH_X_LOCK(rw_lock_);
+  Defer _([this]() {
+    RW_LATCH_UNLOCK(rw_lock_);
+  });
+  writing_num_.store(0);
+  is_writing_.store(false);
   index_.Reset();
-  mmap_alloc_.DropAll();
+  mmap_alloc_->DropAll();
+  std::string cmd = "rm -rf " + path_ + "*";
+  System(cmd);
 }
 
 KStatus TsDelItemManager::Reset() {
+  RW_LATCH_X_LOCK(rw_lock_);
+  Defer _([this]() {
+    RW_LATCH_UNLOCK(rw_lock_);
+  });
   index_.Reset();
+  Sync();
   return KStatus::SUCCESS;
 }
 
 KStatus TsDelItemManager::GetDelRangeByOSN(TSEntityID entity_id, std::vector<KwOSNSpan>& osn_span,
   std::list<KwTsSpan>& del_range) {
   std::list<TsEntityDelItem*> del_items;
+  RW_LATCH_S_LOCK(rw_lock_);
+  Defer _([this]() {
+    RW_LATCH_UNLOCK(rw_lock_);
+  });
   auto s = GetDelItem(entity_id, del_items);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetDelItemByOSN failed. entity_id [%lu]", entity_id);
@@ -333,6 +373,10 @@ KStatus TsDelItemManager::GetDelRangeByOSN(TSEntityID entity_id, std::vector<KwO
 KStatus TsDelItemManager::GetDelRangeWithOSN(TSEntityID entity_id, std::vector<KwOSNSpan>& osn_span,
   std::list<STDelRange>& del_range) {
   std::list<TsEntityDelItem*> del_items;
+  RW_LATCH_S_LOCK(rw_lock_);
+  Defer _([this]() {
+    RW_LATCH_UNLOCK(rw_lock_);
+  });
   auto s = GetDelItem(entity_id, del_items);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetDelItemByOSN failed. entity_id [%lu]", entity_id);
@@ -349,6 +393,10 @@ KStatus TsDelItemManager::GetDelRangeWithOSN(TSEntityID entity_id, std::vector<K
 KStatus TsDelItemManager::GetDelMaxOSN(TSEntityID entity_id, TS_OSN& max_osn) {
   max_osn = 0;
   std::list<TsEntityDelItem*> del_items;
+  RW_LATCH_S_LOCK(rw_lock_);
+  Defer _([this]() {
+    RW_LATCH_UNLOCK(rw_lock_);
+  });
   auto s = GetDelItem(entity_id, del_items);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetDelItem failed. entity_id [%lu]", entity_id);
@@ -356,6 +404,107 @@ KStatus TsDelItemManager::GetDelMaxOSN(TSEntityID entity_id, TS_OSN& max_osn) {
   }
   for (auto& item : del_items) {
     max_osn = std::max(max_osn, item->range.osn_span.end);
+  }
+  return KStatus::SUCCESS;
+}
+
+// Inner function, called position lock xlock.
+KStatus TsDelItemManager::InsertPrepare() {
+  bool now = is_writing_.load();
+  if (!now && is_writing_.compare_exchange_strong(now, true)) {
+    auto desc_alloc = std::make_shared<TsMMapAllocFile>(path_ + "_writing");
+    auto s = mmap_alloc_->CopyTo(desc_alloc.get());
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("CopyTo failed. path [%s]", path_.c_str());
+      return s;
+    }
+    index_.RelocateFile(desc_alloc.get(), &(desc_alloc->getHeader()->index_header_offset));
+    header_ = reinterpret_cast<DelItemHeader*>(desc_alloc->addr(desc_alloc->GetStartPos()));
+    auto older_alloc = mmap_alloc_;
+    mmap_alloc_ = desc_alloc;
+    older_alloc->Close();
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsDelItemManager::Sync() {
+  if (!is_writing_.load() || writing_num_.load() == 0) {
+    return KStatus::SUCCESS;
+  }
+  {
+    RW_LATCH_X_LOCK(rw_lock_);
+    Defer _([this]() {
+      RW_LATCH_UNLOCK(rw_lock_);
+    });
+    // store to temp file.
+    auto s = mmap_alloc_->SyncToFile(path_ + "_tmp");
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("SyncToFile failed. path [%s]", path_.c_str());
+      return s;
+    }
+    // rename temp file to real file.
+    if (rename((path_ + "_tmp").c_str(), path_.c_str()) < 0) {
+      LOG_ERROR("rename failed. path [%s]", path_.c_str());
+      return KStatus::FAIL;
+    }
+    writing_num_.store(0);
+  }
+  // continue using mmap file, just backup data to real file.
+  return KStatus::SUCCESS;
+}
+
+// del_ranges is ordered by osn in ascending order. for function DeplicateTsSpans
+// operating temp _writing file. so if core dump, the real file will ok.
+KStatus TsDelItemManager::CoverDelRange(TSEntityID entity_id, const std::list<STDelRange>& del_ranges) {
+  RW_LATCH_X_LOCK(rw_lock_);
+  Defer _([this]() {
+    RW_LATCH_UNLOCK(rw_lock_);
+  });
+  auto s = InsertPrepare();
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("InsertPrepare failed. entity_id [%lu]", entity_id);
+    return s;
+  }
+  std::list<TsEntityDelItem*> del_items;
+  s = GetDelItem(entity_id, del_items);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetDelItem failed. entity_id [%lu]", entity_id);
+    return s;
+  }
+  if (del_ranges.empty()) {
+    for (auto& item : del_items) {
+      item->status = DEL_ITEM_DROPPED;
+      item->type = DEL_ITEM_TYPE_OTHER;
+    }
+    return KStatus::SUCCESS;
+  }
+  TsEntityDelItem cur_del_item(del_ranges.front().ts_span, del_ranges.front().osn_span, entity_id);
+  while (del_ranges.size() > del_items.size()) {
+    auto store_item = writeDelItem(entity_id, cur_del_item);
+    if (store_item == nullptr) {
+      LOG_ERROR("writeDelItem failed. entity_id [%lu]", entity_id);
+      return s;
+    }
+    del_items.push_front(store_item);
+  }
+  auto store_iter = del_items.begin();
+  // write using osn descending order. because del_items is ordered by osn in descending order.
+  auto cover_iter = del_ranges.rbegin();
+  while (store_iter != del_items.end()) {
+    if (cover_iter == del_ranges.rend()) {
+      // Store item number greater than cover item number, reset left del item to zero.
+      TsEntityDelItem* store_item = *store_iter;
+      store_item->status = DEL_ITEM_DROPPED;
+      store_item->type = DEL_ITEM_TYPE_OTHER;
+      store_iter++;
+    } else {
+      TsEntityDelItem* store_item = *store_iter;
+      store_item->range = *cover_iter;
+      store_item->status = DEL_ITEM_OK;
+      store_item->type = DEL_ITEM_TYPE_USER;
+      store_iter++;
+      cover_iter++;
+    }
   }
   return KStatus::SUCCESS;
 }

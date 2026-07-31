@@ -656,7 +656,7 @@ class TsMMapAllocFile : public FileWithIndex {
 
   KStatus Sync() override {
     if (!EngineOptions::force_sync_file) {
-      return SUCCESS;
+      return KStatus::SUCCESS;
     }
     RW_LATCH_X_LOCK(rw_lock_);
     KStatus s = KStatus::SUCCESS;
@@ -670,6 +670,81 @@ class TsMMapAllocFile : public FileWithIndex {
     }
     RW_LATCH_UNLOCK(rw_lock_);
     return s;
+  }
+  // only used for Copy function.
+  KStatus InitFile(uint32_t file_len, const std::vector<TSSlice>& addrs) {
+    if (Close() != KStatus::SUCCESS) {
+      LOG_ERROR("Close failed.");
+      return KStatus::FAIL;
+    }
+    bool exists = fs::exists(path_);
+    size_t file_len_now;
+    if (exists) {
+      fd_ = open(path_.c_str(), O_RDWR);
+      file_len_now = lseek(fd_, 0, SEEK_END);
+    } else {
+      fd_ = open(path_.c_str(), O_RDWR | O_CREAT, 0644);
+      if (fd_ == -1) {
+        return KStatus::FAIL;
+      }
+      file_len_now = 0;
+    }
+    if (file_len_now != file_len) {
+      if (fallocate(fd_, 0, 0, file_len) == -1) {
+        LOG_ERROR("fallocate [%s] error.", path_.c_str());
+        return KStatus::FAIL;
+      }
+    }
+    char* base = reinterpret_cast<char*>(mmap(nullptr, file_len, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0));
+    if (base == MAP_FAILED) {
+      close(fd_);
+      LOG_ERROR("mmap [%u] error %s.", file_len, MakeErrorCode(errno).message().c_str());
+      return KStatus::FAIL;
+    }
+    addrs_.push_back({base, file_len});
+    uint32_t offset = 0;
+    for (int i = 0; i < addrs.size(); i++) {
+      memcpy(base + offset, addrs[i].data, addrs[i].len);
+      offset += addrs[i].len;
+    }
+    if (rw_lock_ == nullptr) {
+      rw_lock_ = new KRWLatch(RWLATCH_ID_MMAP_DEL_ITEM_RWLOCK);
+    }
+    return KStatus::SUCCESS;
+  }
+  KStatus CopyTo(TsMMapAllocFile* dst) {
+    RW_LATCH_X_LOCK(rw_lock_);
+    auto s = dst->InitFile(getHeader()->file_len, addrs_);
+    RW_LATCH_UNLOCK(rw_lock_);
+    return s;
+  }
+  KStatus SyncToFile(const std::string& path) {
+    int oflag = O_RDWR | O_CREAT;
+    int fd = open(path.c_str(), oflag, 0644);
+    if (fd == -1) {
+      return KStatus::FAIL;
+    }
+    RW_LATCH_X_LOCK(rw_lock_);
+    Defer defer([&] {
+      RW_LATCH_UNLOCK(rw_lock_);
+      close(fd);
+    });
+    size_t file_len = lseek(fd, 0, SEEK_END);
+    auto new_file_len  = getHeader()->file_len;
+    if (file_len != new_file_len) {
+      if (fallocate(fd, 0, 0, new_file_len) == -1) {
+        LOG_ERROR("fallocate [%s] error.", path.c_str());
+        return KStatus::FAIL;
+      }
+    }
+    lseek(fd, 0, SEEK_SET);
+    for (int i = 0; i < addrs_.size(); i++) {
+      if (write(fd, addrs_[i].data, addrs_[i].len) != addrs_[i].len) {
+        LOG_ERROR("write error.");
+        return KStatus::FAIL;
+      }
+    }
+    return KStatus::SUCCESS;
   }
 };
 

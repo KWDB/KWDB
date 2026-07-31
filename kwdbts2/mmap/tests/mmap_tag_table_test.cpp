@@ -975,7 +975,6 @@ TEST_F(TestTagTable, DeleteForRedo_AlreadyDeleted_SkipsSetTagDataInfo) {
   // If the record exists, test the already_done path
   if (found) {
     partition_table->startRead();
-    auto tag_info = partition_table->getTagDataInfoByRowNum(row_info.second);
     // Manually set a Delete operation at index 0 to simulate already_done
     TagDataInfo manual_info{};
     manual_info.operate_type[0] = OperateType::Delete;

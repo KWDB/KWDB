@@ -9,6 +9,9 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+#include <list>
+#include <vector>
+#include <string>
 #include <gtest/gtest.h>
 #include <cstdint>
 #include "ts_del_item_manager.h"
@@ -58,7 +61,7 @@ TEST_F(TsDelItemMgrTest, simpleInsert) {
   mgr.Open();
   mgr.Reset();
   for (size_t i = 0; i < 10; i++) {
-    TsEntityDelItem del_item({(int64_t)(2 + i), (int64_t)(22 + i)}, {1 + i, 11 + i}, 1);
+    TsEntityDelItem del_item({static_cast<int64_t>(2 + i), static_cast<int64_t>(22 + i)}, {1 + i, 11 + i}, 1);
     KStatus s = mgr.AddDelItem(1, del_item);
     ASSERT_TRUE(s == KStatus::SUCCESS);
   }
@@ -100,7 +103,8 @@ TEST_F(TsDelItemMgrTest, InsertAndRm) {
     mgr.Open();
     for (size_t i = 1; i <= entity_num; i++) {
       for (size_t j = 0; j < del_item_pre_entity; j++) {
-        TsEntityDelItem del_item({(int64_t)(2 + i + j), (int64_t)(22 + i + j)}, {1 + i + j, 11 + i + j}, i);
+        TsEntityDelItem del_item({static_cast<int64_t>(2 + i + j), static_cast<int64_t>(22 + i + j)},
+          {1 + i + j, 11 + i + j}, i);
         KStatus s = mgr.AddDelItem(i, del_item);
         ASSERT_TRUE(s == KStatus::SUCCESS);
       }
@@ -141,13 +145,13 @@ TEST_F(TsDelItemMgrTest, simpleMultiInsert) {
   TsDelItemManager mgr(del_item_file_path);
   mgr.Open();
   mgr.Reset();
-  int thread_num = 0;  //10;
+  int thread_num = 0;  // 10;
   int entity_del_item_num = 1000000;
   std::vector<std::thread> threads;
   for (size_t i = 1; i <= thread_num; i++) {
     threads.push_back(thread([&](int index) {
       for (size_t i = 0; i < entity_del_item_num; i++) {
-        TsEntityDelItem del_item({(int64_t)(2 + i), (int64_t)(22 + i)}, {1 + i, 11 + i}, index);
+        TsEntityDelItem del_item({static_cast<int64_t>(2 + i), static_cast<int64_t>(22 + i)}, {1 + i, 11 + i}, index);
         KStatus s = mgr.AddDelItem(index, del_item);
         ASSERT_TRUE(s == KStatus::SUCCESS);
       }
@@ -172,7 +176,8 @@ TEST_F(TsDelItemMgrTest, reopen) {
     mgr.Open();
     for (size_t i = 1; i <= entity_num; i++) {
       for (size_t j = 0; j < del_item_pre_entity; j++) {
-        TsEntityDelItem del_item({(int64_t)(2 + i + j), (int64_t)(22 + i + j)}, {1 + i + j, 11 + i + j}, i);
+        TsEntityDelItem del_item({static_cast<int64_t>(2 + i + j), static_cast<int64_t>(22 + i + j)},
+          {1 + i + j, 11 + i + j}, i);
         KStatus s = mgr.AddDelItem(i, del_item);
         ASSERT_TRUE(s == KStatus::SUCCESS);
       }
@@ -213,7 +218,8 @@ TEST_F(TsDelItemMgrTest, reopenTimes) {
       mgr.Open();
       for (size_t i = 1; i <= entity_num; i++) {
         for (size_t j = 0; j < del_item_pre_entity; j++) {
-          TsEntityDelItem del_item({(int64_t)(2 + i + j), (int64_t)(22 + i + j)}, {1 + i + j, 11 + i + j}, i);
+          TsEntityDelItem del_item({static_cast<int64_t>(2 + i + j), static_cast<int64_t>(22 + i + j)},
+            {1 + i + j, 11 + i + j}, i);
           KStatus s = mgr.AddDelItem(i, del_item);
           ASSERT_TRUE(s == KStatus::SUCCESS);
         }
@@ -243,5 +249,55 @@ TEST_F(TsDelItemMgrTest, reopenTimes) {
       ASSERT_EQ(mgr.GetMinLsn(), 2);
       ASSERT_EQ(mgr.GetMaxLsn(), 11 + entity_num + del_item_pre_entity - 1);
     }
+  }
+}
+
+TEST_F(TsDelItemMgrTest, CoverDelRange) {
+  int entity_num = 5;
+  TS_OSN start_osn = 100;
+  int del_item_pre_entity = 5;
+  std::list<STDelRange> del_ranges;
+  for (int64_t m = 1; m <= 5; m++) {
+    del_ranges.push_back(STDelRange{{2 + m, 22 + m}, {0, start_osn + m}});
+  }
+  TsDelItemManager mgr(del_item_file_path);
+  auto s = mgr.Open();
+  ASSERT_TRUE(s == KStatus::SUCCESS);
+  // entity 1 has no del item rows.
+  s = mgr.CoverDelRange(1, del_ranges);
+  ASSERT_TRUE(s == KStatus::SUCCESS);
+  std::list<STDelRange> del_range_read;
+  s = mgr.GetDelRange(1, del_range_read);
+  ASSERT_TRUE(s == KStatus::SUCCESS);
+  ASSERT_EQ(del_range_read.size(), del_ranges.size());
+  auto read_it = del_range_read.rbegin();
+  auto range_it = del_ranges.begin();
+  for (size_t i = 0; i < del_range_read.size(); i++) {
+    ASSERT_EQ(read_it->ts_span.begin, range_it->ts_span.begin);
+    ASSERT_EQ(read_it->ts_span.end, range_it->ts_span.end);
+    ASSERT_EQ(read_it->osn_span.begin, range_it->osn_span.begin);
+    ASSERT_EQ(read_it->osn_span.end, range_it->osn_span.end);
+    read_it++;
+    range_it++;
+  }
+  // entity 2 has 10 del item rows.
+  for (int i = 0; i < 10; i++) {
+    mgr.AddDelItem(2, TsEntityDelItem(KwTsSpan{0, 10}, KwOSNSpan{0, 10}, 2));
+  }
+  s = mgr.CoverDelRange(2, del_ranges);
+  ASSERT_TRUE(s == KStatus::SUCCESS);
+  del_range_read.clear();
+  s = mgr.GetDelRange(2, del_range_read);
+  ASSERT_TRUE(s == KStatus::SUCCESS);
+  ASSERT_EQ(del_range_read.size(), del_ranges.size());
+  read_it = del_range_read.rbegin();
+  range_it = del_ranges.begin();
+  for (size_t i = 0; i < del_range_read.size(); i++) {
+    ASSERT_EQ(read_it->ts_span.begin, range_it->ts_span.begin);
+    ASSERT_EQ(read_it->ts_span.end, range_it->ts_span.end);
+    ASSERT_EQ(read_it->osn_span.begin, range_it->osn_span.begin);
+    ASSERT_EQ(read_it->osn_span.end, range_it->osn_span.end);
+    read_it++;
+    range_it++;
   }
 }

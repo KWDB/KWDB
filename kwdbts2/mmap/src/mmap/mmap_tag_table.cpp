@@ -386,7 +386,8 @@ void TagTable::GetEntityIdListByVGroupId(uint32_t vgroup_id, std::vector<uint32_
 
 // V3 insert tag record
 int TagTable::InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id, uint64_t osn,
-                              uint8_t operate_type, std::pair<uint64_t, uint64_t> del_row, const std::vector<uint32_t>& old_valid_columns) {
+                              uint8_t operate_type, std::pair<uint64_t, uint64_t> del_row,
+                              const std::vector<uint32_t>& old_valid_columns) {
   // 1. check version
   auto tag_version_object = m_version_mgr_->GetVersionObject(payload.GetTableVersion());
   if (nullptr == tag_version_object) {
@@ -420,10 +421,36 @@ int TagTable::InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_i
               tag_partition_table->m_tbl_sub_path_.c_str(), tag_partition_table->m_name_.c_str());
     return -1;
   }
+  // 3 ~ 6. build indexes.
+  if (ReBuildTagRecordIndex(payload, {tag_partition_version, row_no}) < 0) {
+    LOG_ERROR("rebuild tag record index failed.");
+    return -1;
+  }
+  // update max_osn
+  while (true) {
+    TS_OSN cur_max_osn = max_osn_.load();
+    if (cur_max_osn > payload.GetOSN() || max_osn_.compare_exchange_strong(cur_max_osn, payload.GetOSN())) {
+      break;
+    }
+  }
+  return 0;
+}
+
+// V3 rebuild tag record indexes.
+int TagTable::ReBuildTagRecordIndex(kwdbts::TsRawPayload &payload, std::pair<TableVersionID, TagPartitionTableRowID> row) {
+  if (row.first == INVALID_TABLE_VERSION_ID) {
+    LOG_ERROR("Invalid table version %u.", row.first);
+    return -1;
+  }
+  auto tag_partition_table = m_partition_mgr_->GetPartitionTable(row.first);
+  if (nullptr == tag_partition_table) {
+    LOG_ERROR("Tag partition table version[%u] doesn't exist.", row.first);
+    return -1;
+  }
   // 3. insert index data
-  TSSlice tmp_slice = payload.GetPrimaryTag();
-  if (m_index_->insert(tmp_slice.data, tmp_slice.len, tag_partition_version, row_no) < 0) {
-    LOG_ERROR("insert hash index data failed. table_version: %u row_no: %lu ", tag_partition_version, row_no);
+  auto pkey = payload.GetPrimaryTag();
+  if (m_index_->insert(pkey.data, pkey.len, row.first, row.second) < 0) {
+    LOG_ERROR("insert hash index data failed. table_version: %u row_no: %lu ", row.first, row.second);
     return -1;
   }
 
@@ -455,28 +482,33 @@ int TagTable::InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_i
       }
       char index_key[len];
       int num = 0;
-      for(auto r:index_cols){
+      for (auto r : index_cols) {
           memcpy(&index_key[num], r.data, r.len);
           num += r.len;
       }
-      if (ntag_index->insert(index_key, len, tag_partition_version, row_no) < 0) {
+      if (ntag_index->insert(index_key, len, row.first, row.second) < 0) {
           tag_partition_table->NtagIndexRWMutexUnLock();
-          LOG_ERROR("insert hash index data failed. table_version: %u row_no: %lu ", tag_partition_version, row_no);
+          LOG_ERROR("insert hash index data failed. table_version: %u row_no: %lu ", row.first, row.second);
           return -1;
       }
   }
   tag_partition_table->NtagIndexRWMutexUnLock();
 
+  uint32_t entity_id = 0;
+  uint32_t sub_group_id = 0;
+  tag_partition_table->getEntityIdGroupId(row.second, entity_id, sub_group_id);
+
   // 5. insert entity row index
   uint64_t joint_entity_id = (static_cast<uint64_t>(entity_id) << 32) | sub_group_id;
-  if (m_entity_row_index_->put(reinterpret_cast<const char *>(&joint_entity_id), sizeof(uint64_t), tag_partition_version, row_no) < 0) {
-      LOG_ERROR("insert entity row hash index data failed. table_version: %u row_no: %lu ", tag_partition_version, row_no);
-      return -1;
+  if (m_entity_row_index_->put(reinterpret_cast<const char *>(&joint_entity_id),
+    sizeof(uint64_t), row.first, row.second) < 0) {
+    LOG_ERROR("insert entity row hash index data failed. table_version: %u row_no: %lu ", row.first, row.second);
+    return -1;
   }
 
   // 6. set undelete mark
   tag_partition_table->startRead();
-  tag_partition_table->unsetDeleteMark(row_no);
+  tag_partition_table->unsetDeleteMark(row.second);
   if (EngineOptions::force_sync_file) {
     tag_partition_table->sync(MS_SYNC);
     if (m_index_ != nullptr) {
@@ -490,16 +522,8 @@ int TagTable::InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_i
     }
   }
   tag_partition_table->stopRead();
-  // update max_osn
-  while (true) {
-    TS_OSN cur_max_osn = max_osn_.load();
-    if (cur_max_osn > osn || max_osn_.compare_exchange_strong(cur_max_osn, osn)) {
-      break;
-    }
-  }
   return 0;
 }
-
 
 // V3 insert history tag record
 int TagTable::InsertDeletedTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id,

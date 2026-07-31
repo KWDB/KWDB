@@ -9,6 +9,7 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+#include <set>
 #include <memory>
 #include <string>
 #include <vector>
@@ -36,16 +37,8 @@ namespace kwdbts {
  * 
  * 
  */
-// to be Compatible with lower verion, this struct can add paramter at last. this using from snapshot version 2.
-struct TSSnapshotOSNInfo {
-  uint64_t magic_num;
-  uint64_t op_osn[3];
-  uint8_t  op_types[3];
-  uint8_t op_num;
-  uint8_t reserved[4];
-};
 
-TSSlice STTableRangeDelAndTagInfo::GenData(TSSlice& payload, TSSlice& osn_info, std::list<STDelRange>& dels) {
+TSSlice TsReplicaRangeMigrate::GenData(TSSlice& payload, TSSlice& osn_info, std::list<STDelRange>& dels) {
   size_t mem_len = 4 + 4 + payload.len + 4 + osn_info.len + 4 + 32 * dels.size();
   char* mem = reinterpret_cast<char*>(malloc(mem_len));
   char* offset = mem;
@@ -78,7 +71,7 @@ TSSlice STTableRangeDelAndTagInfo::GenData(TSSlice& payload, TSSlice& osn_info, 
   return TSSlice{mem, mem_len};
 }
 
-void STTableRangeDelAndTagInfo::ParseData(TSSlice data, STOSNDeleteInfoType* type, TSSlice* payload, TSSlice* pkey,
+void TsReplicaRangeMigrate::ParseData(TSSlice data, STOSNDeleteInfoType* type, TSSlice* payload, TSSlice* pkey,
   std::list<STDelRange>* dels) {
   char* offset = data.data;
   *type = (STOSNDeleteInfoType)(KUint32(offset));
@@ -99,22 +92,55 @@ void STTableRangeDelAndTagInfo::ParseData(TSSlice data, STOSNDeleteInfoType* typ
   }
 }
 
-KStatus STTableRangeDelAndTagInfo::Init() {
+TsReplicaRangeMigrate* TsReplicaRangeMigrate::CreateProducter(std::shared_ptr<TsTableImpl> table, uint64_t b, uint64_t e,
+  uint32_t v, TS_OSN osn) {
+  return new TsRangeMigrateProducter(table, b, e, v, osn);
+}
+TsReplicaRangeMigrate* TsReplicaRangeMigrate::CreateConsumer(std::shared_ptr<TsTableImpl> table, uint64_t b, uint64_t e,
+  uint32_t v, TS_OSN osn) {
+  return new TsRangeMigrateConsumer(table, b, e, v, osn);
+}
+
+KStatus TsRangeMigrateProducter::Init(TS_OSN published_max_osn) {
+  published_max_osn_ = published_max_osn;
   auto s = table_->GetImagrateTagBySnapshot(nullptr, {begin_hash_, end_hash_}, scan_osn_, &pkeys_status_);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("STTableDeleteInfo init failed at GetImagrateTagBySnapshot.");
+    LOG_ERROR("TsRangeMigrateProducter init failed at GetImagrateTagBySnapshot.");
     return s;
   }
   pkey_iter_ = pkeys_status_.begin();
   return KStatus::SUCCESS;
 }
 
-STTableRangeDelAndTagInfo::~STTableRangeDelAndTagInfo() {
-  LOG_INFO("STTableRangeDelAndTagInfo end. table[%lu], range[%lu - %lu], total[%u], valid[%u], ignore[%u]",
-    table_->GetTableId(), begin_hash_, end_hash_, total_tag_row_num_, valid_tag_row_num_, ignore_tag_row_num_);
+KStatus TsRangeMigrateConsumer::Init(TS_OSN published_max_osn) {
+  published_max_osn_ = published_max_osn;
+  std::unordered_map<std::string, std::list<std::list<EntityResultIndex>>> entity_tags;
+  auto s = table_->GetReuseTagsForSnapshot(nullptr, {begin_hash_, end_hash_}, &entity_tags);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("TsRangeMigrateConsumer init failed at GetReuseTagsForSnapshot.");
+    return s;
+  }
+  for (auto& [pkey, tags] : entity_tags) {
+    PrimaryKeyEntityInfo info;
+    for (auto& entity_tags : tags) {
+      TagDataInfo osn_info;
+      table_->GetTagOSNInfoByRowNum(nullptr, entity_tags.front(), osn_info);
+      info.entity_id_infos_origin[osn_info.osn[0]] = std::move(entity_tags);
+    }
+    pkey_entity_info_[pkey] = std::move(info);
+  }
+  return KStatus::SUCCESS;
 }
 
-KStatus STTableRangeDelAndTagInfo::GetNextDeleteInfo(kwdbContext_p ctx, TSSlice* data, bool* is_finished) {
+TsReplicaRangeMigrate::~TsReplicaRangeMigrate() {
+  LOG_INFO("TsReplicaRangeMigrate end. table[%lu], range[%lu - %lu], total[%u],"
+           " valid[%u], ignore[%u], delete range num[%u]. Optional[%s].",
+    table_->GetTableId(), begin_hash_, end_hash_, total_tag_row_num_,
+    valid_tag_row_num_, ignore_tag_row_num_, del_range_num_,
+    optional_msg_.c_str());
+}
+
+KStatus TsRangeMigrateProducter::NextMigrateData(kwdbContext_p ctx, TSSlice* data, bool* is_finished) {
   *is_finished = false;
   while (true) {
     if (pkey_iter_ == pkeys_status_.end()) {
@@ -124,20 +150,35 @@ KStatus STTableRangeDelAndTagInfo::GetNextDeleteInfo(kwdbContext_p ctx, TSSlice*
     EntityResultIndex& entity_idx = *pkey_iter_;
     auto op_osn = reinterpret_cast<OperatorInfoOfRecord*>(entity_idx.op_with_osn.get());
     assert(op_osn != nullptr);
+    auto joint_entity = GenJointEntityID(entity_idx.subGroupId, entity_idx.entityId);
+    if (entity_create_osn_.find(joint_entity) == entity_create_osn_.end()) {
+      TagDataInfo osn_info;
+      auto s = table_->GetTagOSNInfoByRowNum(ctx, entity_idx, osn_info);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("GetTagOSNInfoByRowNum failed at GenTagPayLoad.");
+        return s;
+      }
+      entity_create_osn_[joint_entity] = osn_info.osn[0];
+    }
+    if (op_osn->osn < published_max_osn_ && op_osn->type != OperatorTypeOfRecord::OP_TYPE_INSERT) {
+      pkey_iter_++;
+      continue;
+    }
     TSSlice payload{nullptr, 0};
     std::list<STDelRange> del_osns;
     if (op_osn->type == OperatorTypeOfRecord::OP_TYPE_INSERT) {
       // tage type is insert. we should return metric delete info.
       auto s = table_->GetMetricDelInfoWithOSN(ctx, entity_idx, &del_osns);
       if (s != KStatus::SUCCESS) {
-        LOG_ERROR("GetNextDeleteInfo failed at GetMetricDelInfoWithOSN.");
+        LOG_ERROR("NextMigrateData failed at GetMetricDelInfoWithOSN.");
         return s;
       }
     }
+    del_range_num_ += del_osns.size();
     // if tag is deleted, we need return tag delete info.
     auto s = GenTagPayLoad(ctx, entity_idx, &payload);
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("GetNextDeleteInfo failed at GenTagPayLoad.");
+      LOG_ERROR("NextMigrateData failed at GenTagPayLoad.");
       return s;
     }
     TsRawPayload::SetOSN(payload, op_osn->osn);
@@ -156,22 +197,19 @@ KStatus STTableRangeDelAndTagInfo::GetNextDeleteInfo(kwdbContext_p ctx, TSSlice*
       sp_osn_info.op_num = 0;
       for (size_t i = 0; i <= osn_info.operate_idx; i++) {
         // scan_osn_ is max value, so if is true forever.
-        if (osn_info.osn[i] < scan_osn_) {
+        if (osn_info.osn[i] <= scan_osn_) {
           sp_osn_info.op_osn[sp_osn_info.op_num] = osn_info.osn[i];
           sp_osn_info.op_types[sp_osn_info.op_num] = osn_info.operate_type[i];
           sp_osn_info.op_num++;
-        }
-      }
-      if (op_osn->type == OperatorTypeOfRecord::OP_TYPE_INSERT &&
-          sp_osn_info.op_num > 1) {
-        LOG_WARN("inserted tag being deleted while scaning.");
-        if (sp_osn_info.op_types[sp_osn_info.op_num - 1] == OperateType::Update) {
-          op_osn->type = OperatorTypeOfRecord::OP_TYPE_TAG_UPDATE;
         } else {
-          op_osn->type = OperatorTypeOfRecord::OP_TYPE_TAG_DELETE;
+          break;
         }
-        del_osns.clear();
       }
+      assert(sp_osn_info.op_num < 3);
+      assert(entity_create_osn_.find(joint_entity) != entity_create_osn_.end());
+      assert(op_osn->type != OperatorTypeOfRecord::OP_TYPE_INSERT || sp_osn_info.op_num == 1);
+      // using last osn loaction store create osn of entity.
+      sp_osn_info.op_osn[2] = entity_create_osn_[joint_entity];
       TSSlice sp_osn_info_slice{reinterpret_cast<char*>(&sp_osn_info), sizeof(sp_osn_info)};
       *data = GenData(payload, sp_osn_info_slice, del_osns);
       if (op_osn->type == OperatorTypeOfRecord::OP_TYPE_TAG_UPDATE) {
@@ -191,7 +229,7 @@ KStatus STTableRangeDelAndTagInfo::GetNextDeleteInfo(kwdbContext_p ctx, TSSlice*
   return KStatus::FAIL;
 }
 
-KStatus STTableRangeDelAndTagInfo::GenTagPayLoad(kwdbContext_p ctx, EntityResultIndex& entity_idx, TSSlice* payload) {
+KStatus TsRangeMigrateProducter::GenTagPayLoad(kwdbContext_p ctx, EntityResultIndex& entity_idx, TSSlice* payload) {
   std::vector<TagInfo> tags_info;
   KStatus s = table_->GetSchemaManager()->GetTagMeta(table_version_, tags_info);
   if (s != KStatus::SUCCESS) {
@@ -271,109 +309,15 @@ KStatus STTableRangeDelAndTagInfo::GenTagPayLoad(kwdbContext_p ctx, EntityResult
   return KStatus::SUCCESS;
 }
 
-KStatus STTableRangeDelAndTagInfo::WriteDeleteTagRecord(kwdbContext_p ctx, TsRawPayload& p,
-  OperateType type, std::shared_ptr<TagTable>& tag_table, std::pair<uint64_t, uint64_t>& row_info) {
-  auto pkey = p.GetPrimaryTag();
-  auto vgroup_id = GetConsistentVgroupId(pkey.data, pkey.len, EngineOptions::vgroup_max_num);
-  TsVGroup* vgroup = table_->GetVGroupByID(vgroup_id);
-  uint64_t hash_point = t1ha1_le(pkey.data, pkey.len);
-
-  uint32_t entity_id;
-  auto iter = pkey_update_idx_.find(std::string(pkey.data, pkey.len));
-  if (iter != pkey_update_idx_.end()) {
-    assert(vgroup_id == iter->second.subGroupId);
-    entity_id = iter->second.entityId;
-    pkey_update_idx_.erase(iter);
-  } else {
-    TSEntityID tmp_eid;
-    auto s = table_->GetSchemaManager()->AllocateEntityID(vgroup_id, tmp_eid);
-    if (s == FAIL) {
-      LOG_ERROR("cannot allocate entity id, table id[%lu]. Maybe table is dropped.", table_->GetTableId());
-      return s;
-    }
-    entity_id = tmp_eid;
-  }
-
-  if (tag_table->InsertDeletedTagRecord(p, vgroup_id, entity_id, p.GetOSN(), type, row_info) < 0) {
-    LOG_ERROR("Failed InsertTagRecord table id[%ld].", table_->GetTableId());
-    return KStatus::FAIL;
-  }
-  // multi delete tags. store max osn of all.
-  std::string pkey_str(pkey.data, pkey.len);
-  if (del_tag_osn_[pkey_str] < p.GetOSN()) {
-    del_tag_osn_[pkey_str] = p.GetOSN();
-  }
-
-  return KStatus::SUCCESS;
-}
-
-KStatus STTableRangeDelAndTagInfo::WriteUpdateTagRecord(kwdbContext_p ctx, TsRawPayload& p,
-  OperateType type, std::shared_ptr<TagTable>& tag_table, std::pair<uint64_t, uint64_t>& row_info) {
-  auto pkey = p.GetPrimaryTag();
-  uint32_t entity_id;
-  uint32_t vgroup_id = GetConsistentVgroupId(pkey.data, pkey.len, EngineOptions::vgroup_max_num);
-
-  assert(!tag_table->hasPrimaryKey(pkey.data, pkey.len, entity_id, vgroup_id));
-
-  auto iter = pkey_update_idx_.find(std::string(pkey.data, pkey.len));
-  if (iter == pkey_update_idx_.end()) {
-    TSEntityID tmp_eid = 0;
-    auto s = table_->GetSchemaManager()->AllocateEntityID(vgroup_id, tmp_eid);
-    if (s == FAIL) {
-      LOG_ERROR("cannot allocate entity id from table %lu, may be the table is dropped.", table_->GetTableId());
-      return FAIL;
-    }
-    entity_id = tmp_eid;
-    EntityResultIndex& cur_idx = pkey_update_idx_[std::string(pkey.data, pkey.len)];
-    cur_idx.entityId = entity_id;
-    cur_idx.subGroupId = vgroup_id;
-  } else {
-    assert(iter->second.subGroupId == vgroup_id);
-    entity_id = iter->second.entityId;
-  }
-  if (tag_table->InsertDeletedTagRecord(p, vgroup_id, entity_id, p.GetOSN(), type, row_info) < 0) {
-    LOG_ERROR("Failed InsertTagRecord table id[%ld].", table_->GetTableId());
-    return KStatus::FAIL;
-  }
-  return KStatus::SUCCESS;
-}
-
-KStatus STTableRangeDelAndTagInfo::WriteInsertTagRecord(kwdbContext_p ctx, TsRawPayload& p,
-  OperateType type, std::shared_ptr<TagTable>& tag_table) {
-  TSSlice pkey = p.GetPrimaryTag();
-  uint32_t entity_id;
-  uint32_t groupid = GetConsistentVgroupId(pkey.data, pkey.len, EngineOptions::vgroup_max_num);
-  auto iter = pkey_update_idx_.find(std::string(pkey.data, pkey.len));
-  if (iter == pkey_update_idx_.end()) {
-    TSEntityID tmp_eid = 0;  // allocate entity id
-    auto s = table_->GetSchemaManager()->AllocateEntityID(groupid, tmp_eid);
-    if (s == FAIL) {
-      LOG_ERROR("cannot allocate entity id from table %lu, may be the table is dropped.", table_->GetTableId());
-      return FAIL;
-    }
-    entity_id = tmp_eid;
-  } else {
-    assert(iter->second.subGroupId == groupid);
-    entity_id = iter->second.entityId;
-  }
-  if (tag_table->InsertTagRecord(p, groupid, entity_id, p.GetOSN(), OperateType::Insert) < 0) {
-    LOG_ERROR("InsertTagRecord failed.");
-    return KStatus::FAIL;
-  }
-  return KStatus::SUCCESS;
-}
-KStatus STTableRangeDelAndTagInfo::WriteDelAndTagInfo(kwdbContext_p ctx, TSSlice& data, TsHashRWLatch& tag_lock) {
-  STOSNDeleteInfoType type;
-  TSSlice payload;
-  TSSlice tag_status;
-  std::list<STDelRange> dels;
-  ParseData(data, &type, &payload, &tag_status, &dels);
+KStatus TsRangeMigrateConsumer::ParsePayload(kwdbContext_p ctx, const TSSlice& payload, TsRawPayload** pd) {
+  *pd = nullptr;
   auto table_version = TsRawPayload::GetTableVersionFromSlice(payload);
   auto s = table_->CheckAndAddSchemaVersion(ctx, table_->GetTableId(), table_version);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("table[%lu],CheckAndAddSchemaVersion[%u] init failed.", table_->GetTableId(), table_version);
     return s;
   }
+
   const std::vector<AttributeInfo> *metric_schema;
   s = table_->GetSchemaManager()->GetColumnsExcludeDroppedPtr(&metric_schema,
     TsRawPayload::GetTableVersionFromSlice(payload));
@@ -381,155 +325,236 @@ KStatus STTableRangeDelAndTagInfo::WriteDelAndTagInfo(kwdbContext_p ctx, TSSlice
     LOG_ERROR("Failed get GetColumnsExcludeDroppedPtr id[%ld].", table_->GetTableId());
     return s;
   }
-  TsRawPayload p(metric_schema);
-  s = p.ParsePayLoadStruct(payload);
+  *pd = new TsRawPayload(metric_schema);
+  if (*pd == nullptr) {
+    LOG_ERROR("Failed new TsRawPayload id[%ld].", table_->GetTableId());
+    return KStatus::FAIL;
+  }
+  s = (*pd)->ParsePayLoadStruct(payload);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("Failed parse payload id[%ld].", table_->GetTableId());
     return s;
   }
-  auto pkey = p.GetPrimaryTag();
-  uint32_t p_hash_point = p.GetHashPoint();
-  if (p_hash_point < begin_hash_ || p_hash_point > end_hash_) {
-    LOG_ERROR("payload hash point[%u] not in span[%lu,%lu]", p_hash_point, begin_hash_, end_hash_);
-    return KStatus::FAIL;
-  }
-  uint32_t hash_point = t1ha1_le(pkey.data, pkey.len);
-  tag_lock.WrLock(hash_point);
-  Defer defer{[&](){
-    tag_lock.Unlock(hash_point);
-  }};
+  return KStatus::SUCCESS;
+}
 
-  std::shared_ptr<TagTable> tag_table;
-  s = table_->GetSchemaManager()->GetTagSchema(ctx, &tag_table);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("Failed get table id[%ld] tag schema.", table_->GetTableId());
-    return s;
+KStatus TsRangeMigrateConsumer::RMValidPkeyRow(const TSSlice& pkey, std::shared_ptr<TagTable> tag_table) {
+  if (!tag_table->hasPrimaryKey(pkey.data, pkey.len)) {
+    return KStatus::SUCCESS;
   }
-  if (tag_table->hasPrimaryKey(pkey.data, pkey.len)) {
-    std::string pkey_str;
-    BinaryToHexStr(pkey, pkey_str);
-    LOG_INFO("snapshot find valid tag[%s], delete first.", pkey_str.c_str());
-    std::pair<uint64_t, uint64_t> row_info;
-    if (tag_table->GetPrimaryKeyRowInfo(pkey.data, pkey.len, row_info)) {
-      LOG_INFO("valid tag row info[%lu,%lu].", row_info.first, row_info.second);
-      auto p_tag = tag_table->GetTagPartitionTableManager()->GetPartitionTable(row_info.first);
-      if (p_tag != nullptr) {
-        uint32_t hash_point = 0;
-        p_tag->getHashpointByRowNum(row_info.second, &hash_point);
-        if (hash_point != p_hash_point) {
-          LOG_WARN("payload hashpoint[%u], not equal with existed tag[%lu,%lu] hashpoint[%u]",
-            p_hash_point, row_info.first, row_info.second, hash_point);
-        }
-      }
-    }
-    ErrorInfo err_info;
-    std::pair<size_t, size_t> del_row_no;
-    auto ret = tag_table->DeleteTagRecord(pkey.data, pkey.len, err_info,
-              scan_osn_, OperateType::DeleteBySnapshot, del_row_no);
-    if (ret < 0) {
-      LOG_ERROR("DeleteTagRecord failed. [%d]", ret);
-      return KStatus::FAIL;
-    }
-  }
-
-  total_tag_row_num_ += 1;
-  size_t tag_row_num = 1;
   std::pair<uint64_t, uint64_t> row_info;
-  if (type == STOSNDeleteInfoType::OSN_DELETE_TAG_RECORD) {
-    s = WriteDeleteTagRecord(ctx, p, OperateType::Delete, tag_table, row_info);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("Failed table id[%ld] insert delete_tag..", table_->GetTableId());
-      return s;
-    }
-  } else if (type == STOSNDeleteInfoType::OSN_UPDATE_TAG_RECORD) {
-    s = WriteUpdateTagRecord(ctx, p, OperateType::Update, tag_table, row_info);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("Failed get table id[%ld] update_tag..", table_->GetTableId());
-      return s;
-    }
-  } else if (type == STOSNDeleteInfoType::OSN_DELETE_METRIC_RANGE) {
-    assert(pkey.len > 0);
-    assert(payload.len > 0);
-    s = WriteInsertTagRecord(ctx, p, OperateType::Insert, tag_table);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("Failed table id[%ld] insert insert_tag..", table_->GetTableId());
-      return s;
-    }
-    std::string ptag(pkey.data, pkey.len);
-    TS_OSN last_del_tag_osn = 0;
-    if (auto iter = del_tag_osn_.find(ptag); iter != del_tag_osn_.end()) {
-      last_del_tag_osn = iter->second;
-    }
-    for (STDelRange& del : dels) {
-      // only delte info osn after
-      if (del.osn_span.end > last_del_tag_osn) {
-        pkey_del_ranges_[ptag].push_back(del);
-      }
-    }
-    if (!tag_table->GetPrimaryKeyRowInfo(pkey.data, pkey.len, row_info)) {
-      LOG_ERROR("GetPrimaryKeyRowInfo failed.");
-      return KStatus::FAIL;
-    }
-    valid_tag_row_num_ += 1;
-  } else {
-    LOG_ERROR("can not parse this STOSNDeleteInfoType [%u]", type);
+  if (!tag_table->GetPrimaryKeyRowInfo(pkey.data, pkey.len, row_info)) {
+    LOG_ERROR("Failed get primary key row info.");
     return KStatus::FAIL;
   }
-  TagDataInfo orig_info;
-  s = table_->GetTagOSNInfoByRowNum(ctx, row_info, orig_info);
+  TagDataInfo data_info;
+  auto s = table_->GetTagOSNInfoByRowNum(nullptr, row_info, data_info);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("Failed get table id[%ld] GetTagOSNInfoByRowNum[%lu,%lu].",
-      table_->GetTableId(), row_info.first, row_info.second);
-    return s;
+    LOG_ERROR("Failed get tag data info.");
+    return KStatus::FAIL;
   }
-  auto snap_osn_info = reinterpret_cast<TSSnapshotOSNInfo*>(tag_status.data);
-  if (snap_osn_info->magic_num == 0) {
-    if (type == STOSNDeleteInfoType::OSN_DELETE_METRIC_RANGE) {
-      assert(snap_osn_info->op_num == 1);
-    }
-    orig_info.operate_idx = snap_osn_info->op_num - 1;
-    for (size_t i = 0; i < snap_osn_info->op_num; i++) {
-      orig_info.osn[i] = snap_osn_info->op_osn[i];
-      orig_info.operate_type[i] = snap_osn_info->op_types[i];
-    }
-  } else {
-    orig_info.operate_idx = 0;
-    orig_info.osn[0] = TsRawPayload::GetOSN(payload);
-    switch (type) {
-    case STOSNDeleteInfoType::OSN_DELETE_TAG_RECORD:
-      orig_info.operate_type[0] = OperateType::Delete;
-      break;
-    case STOSNDeleteInfoType::OSN_UPDATE_TAG_RECORD:
-      orig_info.operate_type[0] = OperateType::Update;
-      break;
-    case STOSNDeleteInfoType::OSN_DELETE_METRIC_RANGE:
-      orig_info.operate_type[0] = OperateType::Insert;
-      break;
-    default:
-      LOG_ERROR("cannot find type [%d]", type);
-      return KStatus::FAIL;
-    }
+  std::string pkey_str;
+  BinaryToHexStr(pkey, pkey_str);
+  LOG_WARN("find valid tag[%lu,%lu], create osn [%lu], drop first, pkey[%s].",
+    row_info.first, row_info.second, data_info.osn[0], pkey_str.c_str());
+
+  ErrorInfo err_info;
+  std::pair<size_t, size_t> del_row_no;
+  auto ret = tag_table->DeleteTagRecord(pkey.data, pkey.len, err_info,
+            scan_osn_, OperateType::Ignore, del_row_no);
+  if (ret < 0) {
+    LOG_ERROR("DeleteTagRecord failed. [%d, %s]", ret, err_info.errmsg.c_str());
+    return KStatus::FAIL;
   }
-  s = table_->SetTagOSNInfoByRowNum(ctx, row_info, orig_info);
+  return KStatus::SUCCESS;
+}
+KStatus TsRangeMigrateConsumer::CoverTagDataInfo(std::pair<uint64_t, uint64_t> row_info,
+  TSSnapshotOSNInfo* snap_osn_info) {
+  TagDataInfo orig_info;
+  orig_info.operate_idx = snap_osn_info->op_num - 1;
+  for (size_t i = 0; i < snap_osn_info->op_num; i++) {
+    orig_info.osn[i] = snap_osn_info->op_osn[i];
+    orig_info.operate_type[i] = snap_osn_info->op_types[i];
+  }
+  auto s = table_->SetTagOSNInfoByRowNum(nullptr, row_info, orig_info);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("Failed get table id[%ld] SetTagOSNInfoByRowNum[%lu,%lu].",
       table_->GetTableId(), row_info.first, row_info.second);
     return s;
   }
+  return KStatus::SUCCESS;
+}
+KStatus TsRangeMigrateConsumer::WriteMigrateData(kwdbContext_p ctx, TSSlice& data, TsHashRWLatch& tag_lock) {
+  STOSNDeleteInfoType type;
+  TSSlice payload;
+  TSSlice tag_status;
+  std::list<STDelRange> dels;
+  ParseData(data, &type, &payload, &tag_status, &dels);
+  del_range_num_ += dels.size();
+  TsRawPayload* p = nullptr;
+  Defer defer{[&](){
+    delete p;
+  }};
+  auto s = ParsePayload(ctx, payload, &p);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Failed parse payload id[%lu].", table_->GetTableId());
+    return s;
+  }
+  auto pkey = p->GetPrimaryTag();
+  uint32_t p_hash_point = p->GetHashPoint();
+  if (p_hash_point < begin_hash_ || p_hash_point > end_hash_) {
+    LOG_ERROR("payload hash point[%u] not in span[%lu,%lu]", p_hash_point, begin_hash_, end_hash_);
+    return KStatus::FAIL;
+  }
 
+  std::shared_ptr<TagTable> tag_table;
+  s = table_->GetSchemaManager()->GetTagSchema(nullptr, &tag_table);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Failed get table id[%ld] tag schema.", table_->GetTableId());
+    return s;
+  }
+
+  uint32_t hash_point = t1ha1_le(pkey.data, pkey.len);
+  tag_lock.WrLock(hash_point);
+  Defer defer_1{[&](){
+    tag_lock.Unlock(hash_point);
+  }};
+  // clear valid tag row for current primary key. normal case no need clear.
+  s = RMValidPkeyRow(pkey, tag_table);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Failed table id[%ld] rm valid pkey row.", table_->GetTableId());
+    return s;
+  }
+  auto snap_osn_info = reinterpret_cast<TSSnapshotOSNInfo*>(tag_status.data);
+  TS_OSN create_osn = snap_osn_info->op_osn[2];
+  std::string pkey_str(pkey.data, pkey.len);
+  std::pair<uint64_t, uint64_t> row_info{0, 0};
+  uint64_t entity_id = 0;
+  uint32_t vgroup_id = 0;
+  EntityResultIndex entity_idx;
+  if (HasHisTagRecord(pkey_str, create_osn, snap_osn_info->op_osn[0], entity_idx)) {
+    // reuse existed tag row.
+    auto tag_data_info = reinterpret_cast<OperatorInfoOfRecord*>(entity_idx.op_with_osn.get());
+    row_info = {tag_data_info->p_tag_version, tag_data_info->row_num};
+    reused_tag_row_num_ += 1;
+    entity_id = entity_idx.entityId;
+    vgroup_id = entity_idx.subGroupId;
+  } else {
+    // need insert new tag row to save this tag record.
+    GetEntityIDVGroupID(pkey_str, create_osn, entity_id, vgroup_id);
+    if (tag_table->InsertDeletedTagRecord(*p, vgroup_id, entity_id, 0, OperateType::Invalid, row_info) < 0) {
+      LOG_ERROR("Failed InsertTagRecord table id[%ld].", table_->GetTableId());
+      return KStatus::FAIL;
+    }
+    new_tag_row_num_ += 1;
+  }
+  // cover tag status using imgrated tagdatainfo.
+  s = CoverTagDataInfo(row_info, snap_osn_info);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Failed cover tag data info.");
+    return s;
+  }
+  if (type == STOSNDeleteInfoType::OSN_DELETE_METRIC_RANGE) {
+    valid_tag_row_num_ += 1;
+    // need construct tag primary key indexs and set tag row status valid.
+    if (tag_table->ReBuildTagRecordIndex(*p, row_info) < 0) {
+      LOG_ERROR("Failed ReBuildTagRecordIndex table id[%ld].", table_->GetTableId());
+      return KStatus::FAIL;
+    }
+    // temporarily store delete range info in memory.
+    PrimaryKeyEntityInfo& cur_entity_info = pkey_entity_info_[pkey_str];
+    assert(cur_entity_info.del_ranges.empty());
+    cur_entity_info.del_ranges = std::move(dels);
+    cur_entity_info.active_entity_ = {vgroup_id, entity_id};
+  }
   return KStatus::SUCCESS;
 }
 
-KStatus STTableRangeDelAndTagInfo::CommitDeleteInfo(kwdbContext_p ctx) {
-  for (const auto& pkey : pkey_del_ranges_) {
-    std::string cur_pkey = pkey.first;
-    for (auto& [ts_span, osn_span] : pkey.second) {
-      auto s = table_->DeleteData(ctx, 1, cur_pkey, {ts_span}, nullptr, 0, osn_span.end);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("Failed DeleteData [%lu].", table_->GetTableId());
-        return s;
-      }
+void TsRangeMigrateConsumer::GetEntityIDVGroupID(std::string& pkey, TS_OSN create_osn,
+  uint64_t& entity_id, uint32_t& vgroup_id) {
+  PrimaryKeyEntityInfo& cur_entity_info = pkey_entity_info_[pkey];
+  auto osn_iter = cur_entity_info.entity_id_infos_origin.find(create_osn);
+  if (osn_iter != cur_entity_info.entity_id_infos_origin.end()) {
+    entity_id = osn_iter->second.front().entityId;
+    vgroup_id = osn_iter->second.front().subGroupId;
+  } else {
+    auto iter = cur_entity_info.new_entity_list.find(create_osn);
+    if (iter != cur_entity_info.new_entity_list.end()) {
+      vgroup_id = iter->second.first;
+      entity_id = iter->second.second;
+    } else {
+      vgroup_id = GetConsistentVgroupId(pkey.data(), pkey.length(), EngineOptions::vgroup_max_num);
+      table_->GetSchemaManager()->AllocateEntityID(vgroup_id, entity_id);
+      cur_entity_info.new_entity_list[create_osn] = std::make_pair(vgroup_id, entity_id);
+      new_entity_num_ += 1;
     }
+  }
+}
+
+bool TsRangeMigrateConsumer::HasHisTagRecord(std::string& pkey, TS_OSN create_osn, TS_OSN osn,
+  EntityResultIndex& entity_idx) {
+  auto iter = pkey_entity_info_.find(pkey);
+  if (iter == pkey_entity_info_.end()) {
+    return false;
+  }
+  PrimaryKeyEntityInfo& cur_entity_info = iter->second;
+  auto osn_iter = cur_entity_info.entity_id_infos_origin.find(create_osn);
+  if (osn_iter == cur_entity_info.entity_id_infos_origin.end()) {
+    return false;
+  }
+  TS_OSN last_osn = 0;
+  TagDataInfo data_info;
+  std::list<EntityResultIndex>& osn_tag_list = osn_iter->second;
+  for (auto& tag_idx : osn_tag_list) {
+    auto tag_data_info = reinterpret_cast<OperatorInfoOfRecord*>(tag_idx.op_with_osn.get());
+    std::pair<uint64_t, uint64_t> row_info(tag_data_info->p_tag_version, tag_data_info->row_num);
+    auto s = table_->GetTagOSNInfoByRowNum(nullptr, row_info, data_info);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("Failed get tag data info.");
+      return KStatus::FAIL;
+    }
+    last_osn = data_info.osn[0];
+    if (data_info.osn[0] == osn) {
+      entity_idx = tag_idx;
+      return true;
+    }
+  }
+  if (last_osn > osn) {
+    std::string pkey_str;
+    TSSlice p_slice{const_cast<char*>(pkey.data()), pkey.length()};
+    BinaryToHexStr(p_slice, pkey_str);
+    LOG_WARN("pkey [%s], insert osn [%lu] is not in range [%lu,%lu].", pkey_str.c_str(), osn, create_osn, last_osn);
+  }
+  return false;
+}
+
+KStatus TsRangeMigrateConsumer::CommitMigrate(kwdbContext_p ctx) {
+  auto db_id = table_->GetSchemaManager()->GetDbID();
+  auto data_type = table_->GetSchemaManager()->GetTsColDataType();
+  std::set<std::shared_ptr<const TsPartitionVersion>> partition_syncs;
+  for (const auto& pkey : pkey_entity_info_) {
+    std::string cur_pkey = pkey.first;
+    const PrimaryKeyEntityInfo& cur_entity_info = pkey.second;
+    if (cur_entity_info.del_ranges.empty()) {
+      continue;
+    }
+    std::vector<KwTsSpan> tsspans;
+    for (auto& [ts_span, osn_span] : cur_entity_info.del_ranges) {
+      tsspans.push_back(ts_span);
+    }
+    auto vgrp_obj = table_->GetVGroupByID(cur_entity_info.active_entity_.first);
+    auto partitions = vgrp_obj->CurrentVersion()->GetPartitions(db_id, tsspans, data_type);
+    for (auto& partition : partitions) {
+      auto s = partition->CoverDelRange(cur_entity_info.active_entity_.second, cur_entity_info.del_ranges);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("Failed cover del range.");
+        return KStatus::FAIL;
+      }
+      partition_syncs.insert(partition);
+    }
+  }
+  for (auto& partition : partition_syncs) {
+    partition->SyncDelRangeFile();
   }
   return KStatus::SUCCESS;
 }

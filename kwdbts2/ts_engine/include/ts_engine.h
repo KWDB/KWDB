@@ -13,6 +13,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <cstdio>
 #include <list>
 #include <map>
 #include <memory>
@@ -56,8 +57,23 @@ struct TsRangeImgrationInfo {
   std::shared_ptr<TsTable> table;
   bool batch_read_finished;
   bool del_info_read_finished;
-  std::shared_ptr<STTableRangeDelAndTagInfo> del_iter;
+  std::shared_ptr<TsReplicaRangeMigrate> del_iter;
   TS_OSN op_osn;
+  uint64_t create_time;
+  uint64_t last_op_time;
+  bool SameRangeImgrate(const TsRangeImgrationInfo& other) const {
+    return begin_hash == other.begin_hash && end_hash == other.end_hash && table_id == other.table_id &&
+           ts_span.begin == other.ts_span.begin && ts_span.end == other.ts_span.end;
+  }
+  std::string ToString() const {
+    char buff[512];
+    snprintf(buff, sizeof(buff),
+      "TsRangeImgrationInfo{id: %lu, type: %s, hash span [%lu, %lu], table_id: %lu, table_version: %u, "
+      "op_osn: %lu, create_time: %lu, last_op_time: %lu, imgrated_rows: %lu, ts_span: [%ld, %ld]}",
+             id, type == 0 ? "read" : "write", begin_hash, end_hash, table_id, table_version,
+            op_osn, create_time, last_op_time, imgrated_rows, ts_span.begin, ts_span.end);
+    return std::string(buff);
+  }
 };
 
 KStatus loadVGroupCfg(const fs::path& ts_store_path, std::map<int, std::string>& vgroup_cfg);
@@ -369,7 +385,7 @@ class TSEngineImpl : public TSEngine {
 
   KStatus putTagData(kwdbContext_p ctx, TSTableID table_id, uint32_t groupid, uint32_t entity_id, TsRawPayload& payload);
 
-  uint64_t insertToSnapshotCache(TsRangeImgrationInfo& snapshot);
+  uint64_t insertToSnapshotCache(kwdbContext_p ctx, TsRangeImgrationInfo& snapshot);
 
   // Legacy vg.mei reader; used only by migrateLegacyMaxEntityIdFile.
   KStatus readEntityIds(std::vector<uint32_t>& max_entity_id);

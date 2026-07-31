@@ -238,6 +238,14 @@ class TsPartitionVersion {
       std::list<STDelRange>& del_range) const {
     return del_info_->GetDelRangeWithOSN(e_id, osn_span, del_range);
   }
+  // cover all del range data. only used in replica range snapshot.
+  KStatus CoverDelRange(TSEntityID e_id, const std::list<STDelRange>& del_ranges) const {
+    return del_info_->CoverDelRange(e_id, del_ranges);
+  }
+  // sync del range data into disk. used only in flush and snapshot.
+  void SyncDelRangeFile() const {
+    del_info_->Sync();
+  }
 
   KStatus getFilter(const TsScanFilterParams& filter, TsBlockItemFilterParams& block_data_filter) const;
   KStatus GetBlockSpans(const TsScanFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>* ts_block_spans,

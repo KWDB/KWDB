@@ -61,6 +61,11 @@ class VectorIndexForFile {
     return KStatus::SUCCESS;
   }
 
+  void RelocateFile(FileWithIndex* file, uint64_t* offset) {
+    file_ = file;
+    start_offset_ = offset;
+  }
+
   void Reset() {
     *start_offset_ = INVALID_POSITION;
     file_->Sync();

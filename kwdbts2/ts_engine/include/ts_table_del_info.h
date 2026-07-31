@@ -10,6 +10,8 @@
 // See the Mulan PSL v2 for more details.
 #pragma once
 
+#include <cstdio>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -30,68 +32,137 @@ namespace kwdbts {
 /**
  * OSNDeleteInfo struct
  * 
-   ____________________________________________________________________________________________________________________________
-  |    4    |        4      |       n          |      4   |    n    |       4        |       8      |      8     |  8         |
-  |---------|---------------|------------------|----------|---------|----------------|--------------|------------|------------|
-  |  type   |  payload len  |  payload data    | pkey len |  pkey   | del range num  | range1 begin | range1 end | range1 osn |
+   __________________________________________________________________________________________________________________________________________________
+  |    4    |        4      |       n          |      4       |       n    |       4        |       8      |      8     |       8         |       8         |
+  |---------|---------------|------------------|--------------|------------|----------------|--------------|------------|-----------------|-----------------|
+  |  type   |  payload len  |  payload data    | OSN Info len | OSN Info   | del range num  | range1 begin | range1 end | range1 osn begin|range1 osn end   |
  * 
  * 
  * type code : 1-tag delete. 2-metric delete
  * 
+ *
  */
+// to be Compatible with lower verion, this struct can add paramter at last. this using from snapshot version 2.
+struct TSSnapshotOSNInfo {
+  uint64_t magic_num;
+  uint64_t op_osn[3];
+  uint8_t  op_types[3];
+  uint8_t op_num;
+  uint8_t reserved[4];
+};
+
 enum STOSNDeleteInfoType : uint32_t {
   OSN_DELETE_TAG_RECORD = 1,
   OSN_UPDATE_TAG_RECORD = 2,
   OSN_DELETE_METRIC_RANGE = 3,
 };
 
-
-class STTableRangeDelAndTagInfo {
- private:
+class TsReplicaRangeMigrate {
+ protected:
   std::shared_ptr<TsTableImpl> table_;
   uint64_t begin_hash_;
   uint64_t end_hash_;
   uint32_t table_version_;
   TS_OSN scan_osn_{UINT64_MAX};
-  std::list<kwdbts::EntityResultIndex> pkeys_status_;
-  std::list<kwdbts::EntityResultIndex>::iterator pkey_iter_;
-  std::unordered_map<std::string, TS_OSN> del_tag_osn_;
-  std::unordered_map<std::string, std::list<STDelRange>> pkey_del_ranges_;
-  std::unordered_map<std::string, EntityResultIndex> pkey_update_idx_;
+  uint32_t dbid_;
+  TS_OSN published_max_osn_{UINT64_MAX};
   uint32_t total_tag_row_num_ = 0;
   uint32_t valid_tag_row_num_ = 0;
   uint32_t ignore_tag_row_num_ = 0;
-  std::unordered_map<std::string, kwdbts::EntityResultIndex> pkey_last_row_;
+  uint32_t del_range_num_ = 0;
+  std::string optional_msg_;
 
  public:
-  STTableRangeDelAndTagInfo(std::shared_ptr<TsTableImpl> table, uint64_t b, uint64_t e, uint32_t v, TS_OSN osn) :
-    table_(table), begin_hash_(b), end_hash_(e), table_version_(v), scan_osn_(osn) {}
+  TsReplicaRangeMigrate(std::shared_ptr<TsTableImpl> table, uint64_t b, uint64_t e, uint32_t v, TS_OSN osn) :
+    table_(table), begin_hash_(b), end_hash_(e), table_version_(v), scan_osn_(osn),
+    dbid_(table_->GetSchemaManager()->GetDbID()) {}
 
-  ~STTableRangeDelAndTagInfo();
-
-  KStatus Init();
+  virtual ~TsReplicaRangeMigrate();
+  virtual KStatus Init(TS_OSN published_max_osn) = 0;
+  virtual KStatus NextMigrateData(kwdbContext_p ctx, TSSlice* data, bool* is_finished) = 0;
+  virtual KStatus WriteMigrateData(kwdbContext_p ctx, TSSlice& data, TsHashRWLatch& tag_lock) = 0;
+  virtual KStatus CommitMigrate(kwdbContext_p ctx) = 0;
+  static TsReplicaRangeMigrate* CreateProducter(std::shared_ptr<TsTableImpl> table, uint64_t b, uint64_t e,
+    uint32_t v, TS_OSN osn);
+  static TsReplicaRangeMigrate* CreateConsumer(std::shared_ptr<TsTableImpl> table, uint64_t b, uint64_t e,
+    uint32_t v, TS_OSN osn);
   // generate OSNDeleteInfo data.
   TSSlice GenData(TSSlice& payload, TSSlice& pkey, std::list<STDelRange>& dels);
   // parse OSNDeleteInfo data.
   void ParseData(TSSlice data, STOSNDeleteInfoType* type, TSSlice* payload, TSSlice* pkey,
     std::list<STDelRange>* dels);
-  // get next batch datas.
-  KStatus GetNextDeleteInfo(kwdbContext_p ctx, TSSlice* data, bool* is_finished);
-  // generate payload only with tag info.
-  KStatus GenTagPayLoad(kwdbContext_p ctx, EntityResultIndex& entity_idx, TSSlice* payload);
-
-  KStatus WriteDelAndTagInfo(kwdbContext_p ctx, TSSlice& data, TsHashRWLatch& tag_lock);
-
-  KStatus WriteDeleteTagRecord(kwdbContext_p ctx, TsRawPayload& p, OperateType type,
-    std::shared_ptr<TagTable>& tag_table, std::pair<uint64_t, uint64_t>& row_info);
-  KStatus WriteUpdateTagRecord(kwdbContext_p ctx, TsRawPayload& p, OperateType type,
-    std::shared_ptr<TagTable>& tag_table, std::pair<uint64_t, uint64_t>& row_info);
-  KStatus WriteInsertTagRecord(kwdbContext_p ctx, TsRawPayload& p, OperateType type, std::shared_ptr<TagTable>& tag_table);
-
-  KStatus CommitDeleteInfo(kwdbContext_p ctx);
 };
 
-    // package_id + table_id + table_version + row_num + data
+
+class TsRangeMigrateProducter : public TsReplicaRangeMigrate {
+ private:
+  std::list<kwdbts::EntityResultIndex> pkeys_status_;
+  std::list<kwdbts::EntityResultIndex>::iterator pkey_iter_;
+  std::unordered_map<uint64_t, TS_OSN> entity_create_osn_;  // uint64_t joint_entity_id
+  std::unordered_map<std::string, kwdbts::EntityResultIndex> pkey_last_row_;
+
+ public:
+  TsRangeMigrateProducter(std::shared_ptr<TsTableImpl> table, uint64_t b, uint64_t e, uint32_t v, TS_OSN osn) :
+    TsReplicaRangeMigrate(table, b, e, v, osn) {}
+  ~TsRangeMigrateProducter() override {}
+  KStatus Init(TS_OSN published_max_osn) override;
+  KStatus NextMigrateData(kwdbContext_p ctx, TSSlice* data, bool* is_finished) override;
+  KStatus WriteMigrateData(kwdbContext_p ctx, TSSlice& data, TsHashRWLatch& tag_lock) override {
+    LOG_ERROR("TsRangeMigrateProducter is not supported");
+    return KStatus::FAIL;
+  }
+  KStatus CommitMigrate(kwdbContext_p ctx) override {
+    LOG_ERROR("TsRangeMigrateProducter is not supported");
+    return KStatus::FAIL;
+  }
+
+ private:
+  // generate payload only with tag info.
+  KStatus GenTagPayLoad(kwdbContext_p ctx, EntityResultIndex& entity_idx, TSSlice* payload);
+  uint64_t GenJointEntityID(uint32_t vgroup_id, uint64_t entity_id) {
+    return (static_cast<uint64_t>(vgroup_id) << 32) | entity_id;
+  }
+};
+
+class TsRangeMigrateConsumer : public TsReplicaRangeMigrate {
+struct PrimaryKeyEntityInfo {
+  std::map<TS_OSN, std::list<EntityResultIndex>> entity_id_infos_origin;
+  std::list<STDelRange> del_ranges;
+  std::map<TS_OSN, std::pair<uint32_t, uint64_t>> new_entity_list;
+  std::pair<uint32_t, uint64_t> active_entity_{0, 0};
+};
+
+ private:
+  std::unordered_map<std::string, PrimaryKeyEntityInfo> pkey_entity_info_;
+  uint64_t reused_tag_row_num_ = 0;
+  uint64_t new_tag_row_num_ = 0;
+  uint64_t new_entity_num_ = 0;
+
+ public:
+  TsRangeMigrateConsumer(std::shared_ptr<TsTableImpl> table, uint64_t b, uint64_t e, uint32_t v, TS_OSN osn) :
+    TsReplicaRangeMigrate(table, b, e, v, osn) {}
+  ~TsRangeMigrateConsumer() override {
+    char buff[128];
+    snprintf(buff, sizeof(buff), "new allocated entity num: %lu, reused tag row num: %lu, new tag row num: %lu.",
+             new_entity_num_, reused_tag_row_num_, new_tag_row_num_);
+    optional_msg_ = std::string(buff);
+  }
+  KStatus Init(TS_OSN published_max_osn) override;
+  KStatus NextMigrateData(kwdbContext_p ctx, TSSlice* data, bool* is_finished) override {
+    LOG_ERROR("TsRangeMigrateConsumer is not supported");
+    return KStatus::FAIL;
+  }
+
+  KStatus WriteMigrateData(kwdbContext_p ctx, TSSlice& data, TsHashRWLatch& tag_lock) override;
+  KStatus CommitMigrate(kwdbContext_p ctx) override;
+
+ private:
+  KStatus RMValidPkeyRow(const TSSlice& pkey, std::shared_ptr<TagTable> tag_table);
+  bool HasHisTagRecord(std::string& pkey, TS_OSN create_osn, TS_OSN osn, EntityResultIndex& entity_idx);
+  KStatus ParsePayload(kwdbContext_p ctx, const TSSlice& payload, TsRawPayload** pd);
+  KStatus CoverTagDataInfo(std::pair<uint64_t, uint64_t> row_info, TSSnapshotOSNInfo* snap_osn_info);
+  void GetEntityIDVGroupID(std::string& pkey, TS_OSN create_osn, uint64_t& entity_id, uint32_t& vgroup_id);
+};
 
 /**
  * snapshot struct  SNAPSHOT_VERSION = 1

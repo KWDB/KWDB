@@ -107,6 +107,9 @@ class TsTableImpl : public TsTable {
   // Get all tag operation info.
   KStatus GetImagrateTagBySnapshot(kwdbContext_p ctx, HashIdSpan hash_range,
     TS_OSN scan_osn, std::list<EntityResultIndex>* pkeys_status);
+  // get all tags of current node for replica range.
+  KStatus GetReuseTagsForSnapshot(kwdbContext_p ctx, HashIdSpan hash_range,
+    std::unordered_map<std::string, std::list<std::list<EntityResultIndex>>>* entity_tags);
   KStatus GetTagRecordInfoByOSN(kwdbContext_p ctx,
     std::function<bool(TagPartitionTable* entity_tag_bt, int row_num)> in_span_func,
     std::vector<KwOSNSpan>& osn_span, TS_OSN scan_osn, std::unordered_map<uint64_t, EntityResultIndex>* pkeys_status);

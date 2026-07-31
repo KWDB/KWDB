@@ -10,6 +10,7 @@
 // See the Mulan PSL v2 for more details.
 
 #pragma once
+#include <memory>
 #include <vector>
 #include <string>
 #include <list>
@@ -78,11 +79,13 @@ class TsDelItemManager {
   };
   static_assert(sizeof(DelItemHeader) == 128, "wrong size of DelItemHeader, please check compatibility.");
   std::string path_;
-  TsMMapAllocFile mmap_alloc_;
+  std::shared_ptr<TsMMapAllocFile> mmap_alloc_;
   DelItemHeader* header_{nullptr};
   // get offset of first index node.
   VectorIndexForFile<uint64_t> index_;
   KRWLatch* rw_lock_{nullptr};
+  std::atomic<bool> is_writing_{false};
+  std::atomic<uint64_t> writing_num_{0};
 
  public:
   explicit TsDelItemManager(const std::string& path);
@@ -90,7 +93,6 @@ class TsDelItemManager {
   KStatus Open();
   KStatus AddDelItem(TSEntityID entity_id, const TsEntityDelItem& del_item);
   KStatus RollBackDelItem(TSEntityID entity_id, const KwOSNSpan& lsn);
-  KStatus GetDelItem(TSEntityID entity_id, std::list<TsEntityDelItem*>& del_items);
   KStatus GetDelRange(TSEntityID entity_id, std::list<STDelRange>& del_range);
   KStatus GetDelRangeByOSN(TSEntityID entity_id, std::vector<KwOSNSpan>& osn_span, std::list<KwTsSpan>& del_range);
   KStatus GetDelRangeWithOSN(TSEntityID entity_id, std::vector<KwOSNSpan>& osn_span,
@@ -107,6 +109,14 @@ class TsDelItemManager {
   KStatus GetDelMaxOSN(TSEntityID entity_id, uint64_t& max_osn);
   void DropAll();
   KStatus Reset();
+  KStatus CoverDelRange(TSEntityID entity_id, const std::list<STDelRange>& del_ranges);
+  KStatus Sync();
+  // inner functions.
+  KStatus InsertPrepare();
+  KStatus GetDelItem(TSEntityID entity_id, std::list<TsEntityDelItem*>& del_items);
+
+ private:
+  TsEntityDelItem* writeDelItem(TSEntityID entity_id, const TsEntityDelItem& del_item);
 };
 
 
