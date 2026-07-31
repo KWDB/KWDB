@@ -16,6 +16,7 @@
 #include <memory>
 #include <string>
 #include <type_traits>
+#include <unordered_map>
 #include <vector>
 
 #include "ts_block_span_sorted_iterator.h"
@@ -24,6 +25,7 @@
 #include "ts_common.h"
 #include "ts_compatibility.h"
 #include "ts_table.h"
+#include "ts_vgroup.h"
 #include "ts_version.h"
 
 namespace kwdbts {
@@ -528,6 +530,8 @@ class TsWriteBatchDataWorker : public TsBatchDataWorker {
   };
   std::unique_ptr<TsAppendOnlyFile> w_file_;
   KLatch w_file_latch_;
+
+  std::unordered_map<TsVGroup*, TsVGroup::LastSegBuilderMap> write_batch_builders_;
 
   static void GetTagPayload(uint32_t table_version, const TSSlice& data, std::string& tag_payload_str);
 

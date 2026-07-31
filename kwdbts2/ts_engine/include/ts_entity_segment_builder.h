@@ -271,15 +271,11 @@ class TsEntitySegmentBuilder {
   uint64_t entity_item_file_number_ = 0;
 
   std::shared_mutex mutex_;
-  bool write_batch_finished_ = false;
 
   TsEntityItem cur_entity_item_;
 
-  std::map<uint32_t, TsEntityItem> entity_items_;
-
   std::deque<std::shared_ptr<TsBlockSpan>> cached_spans_;
   size_t cached_count_ = 0;
-  std::vector<TsEntityCountStats> flush_infos_;
 
   std::vector<std::shared_ptr<TsBlockSpan>> block_spans_;
   std::vector<std::shared_ptr<TsBlockSpan>> lastsegment_block_spans_;
@@ -311,18 +307,6 @@ class TsEntitySegmentBuilder {
 
   [[nodiscard]] KStatus Compact(TsVersionUpdate* update,
                                 std::vector<std::shared_ptr<TsBlockSpan>>* residual_spans, TsSegmentWriteStats* stats);
-
-  [[nodiscard]] KStatus WriteBatch(TSTableID tbl_id, uint32_t entity_id, uint32_t table_version, uint32_t batch_version,
-                                   TSSlice data);
-
-  [[nodiscard]] KStatus WriteBatchFinish(TsVersionUpdate* update);
-
-
-  void WriteBatchCancel();
-
-  std::vector<TsEntityCountStats> FlushInfos() {
-    return flush_infos_;
-  }
 };
 
 class TsEntitySegmentVacuumer {

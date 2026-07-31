@@ -50,7 +50,7 @@ enum class PartitionStatus : uint32_t {
   None = 0,
   Vacuuming,
   Compacting,
-  BatchDataWriting,
+  BatchDataWriting,  // unused: retained to keep CalculatingAgg's numeric value stable for compatibility
   CalculatingAgg,
 };
 

@@ -121,7 +121,7 @@ std::string BuildLegacyOffsetAggData() {
   return std::string(legacy_agg.data(), legacy_agg.size());
 }
 
-std::string BuildLegacyV0BlockData(const std::vector<AttributeInfo>& metric_schema) {
+std::string BuildLegacyV0BlockData(const std::vector<AttributeInfo>& metric_schema, uint32_t block_version) {
   const auto& mgr = CompressorManager::GetInstance();
   constexpr uint32_t n_rows = 3;
   const uint32_t n_cols = metric_schema.size() + 1;
@@ -158,7 +158,15 @@ std::string BuildLegacyV0BlockData(const std::vector<AttributeInfo>& metric_sche
   std::vector<int32_t> int_values{7, 9, 11};
   TsBitmap int_bitmap(n_rows);
   TsBufferBuilder int_col;
-  int_col.append(int_bitmap.GetData());
+  // block_version >= 1 carries a tagged bitmap (CompressBitmap emits a BitmapType tag byte that
+  // DecompressBitmap reads); block_version 0 carries a raw bitmap with no tag.
+  if (block_version >= 1) {
+    TsBufferBuilder bitmap_buf;
+    mgr.CompressBitmap(&int_bitmap, &bitmap_buf);
+    int_col.append(bitmap_buf.AsSlice());
+  } else {
+    int_col.append(int_bitmap.GetData());
+  }
   TsBufferBuilder int_compressed;
   auto [int_encode, int_compress] = mgr.GetAlgorithm(DATATYPE::INT32, metric_schema[1]);
   ok = mgr.CompressData({reinterpret_cast<char*>(int_values.data()), int_values.size() * sizeof(int32_t)}, &int_bitmap,
@@ -173,7 +181,7 @@ std::string BuildLegacyV0BlockData(const std::vector<AttributeInfo>& metric_sche
 std::string BuildLegacyV0BatchFromTagPrefix(std::string tag_prefix, const std::vector<AttributeInfo>& metric_schema) {
   constexpr uint32_t n_rows = 3;
   const uint32_t n_cols = metric_schema.size() + 1;
-  std::string block_data = BuildLegacyV0BlockData(metric_schema);
+  std::string block_data = BuildLegacyV0BlockData(metric_schema, 0);
   std::string agg_data = BuildLegacyOffsetAggData();
 
   // v0: BlockSpanHeader{length(4)+min_ts...block_version}(60) = 64 bytes
@@ -206,7 +214,7 @@ std::string BuildLegacyV1BatchFromTagPrefix(std::string tag_prefix, const std::v
                                             uint32_t block_version) {
   constexpr uint32_t n_rows = 3;
   const uint32_t n_cols = metric_schema.size() + 1;
-  std::string block_data = BuildLegacyV0BlockData(metric_schema);
+  std::string block_data = BuildLegacyV0BlockData(metric_schema, block_version);
   std::string agg_data = BuildLegacyOffsetAggData();
 
   // v1: BlockSpanHeader{length(4)+min_ts...block_version}(60) = 64 bytes
@@ -586,7 +594,9 @@ TEST_F(TsBatchDataWorkerTest, CacheTagValueAcrossBlockSpansOfSameEntity) {
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   timestamp64 start_ts = 10086000;
-  auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, 1, 1000, start_ts);
+  // >kNRowPerBlock/2 rows per batch: restoring the same batch twice accumulates >4096 rows so the
+  // last-segment builder splits them into 2 blocks. The tag-cache assertions below need 2 spans.
+  auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, 1, 2049, start_ts);
   uint16_t inc_entity_cnt = 0;
   uint32_t inc_unordered_cnt = 0;
   DedupResult dedup_result{0, 0, 0, TSSlice{nullptr, 0}};
@@ -861,27 +871,9 @@ TEST_F(TsBatchDataWorkerTest, LegacyBatchVersionZeroRestoresOffsetAggAsBlockVers
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(block_spans.size(), 1UL);
   auto block_span = block_spans.front();
-  ASSERT_EQ(block_span->GetBlockVersion(), 0U);
-  ASSERT_TRUE(block_span->HasPreAgg());
-
-  uint16_t pre_count = 0;
-  ASSERT_EQ(block_span->GetPreCount(1, nullptr, pre_count), KStatus::SUCCESS);
-  EXPECT_EQ(pre_count, 3U);
-  void* pre_max = nullptr;
-  ASSERT_EQ(block_span->GetPreMax(1, nullptr, pre_max), KStatus::SUCCESS);
-  ASSERT_NE(pre_max, nullptr);
-  EXPECT_EQ(*reinterpret_cast<int32_t*>(pre_max), 11);
-  void* pre_min = nullptr;
-  ASSERT_EQ(block_span->GetPreMin(1, nullptr, pre_min), KStatus::SUCCESS);
-  ASSERT_NE(pre_min, nullptr);
-  EXPECT_EQ(*reinterpret_cast<int32_t*>(pre_min), 7);
-  void* pre_sum = nullptr;
-  bool is_overflow = true;
-  ASSERT_EQ(block_span->GetPreSum(1, nullptr, pre_sum, is_overflow), KStatus::SUCCESS);
-  ASSERT_NE(pre_sum, nullptr);
-  EXPECT_FALSE(is_overflow);
-  EXPECT_EQ(*reinterpret_cast<int64_t*>(pre_sum), 27);
-
+  // Legacy block_version and offset-layout pre-agg are discarded by the last-segment path (it
+  // recompresses into a current-format block with no agg storage); only the row data survives.
+  // Verify the decoded row values are preserved.
   char* ts_col = nullptr;
   std::unique_ptr<TsBitmapBase> bitmap;
   ASSERT_EQ(block_span->GetFixLenColAddr(0, &ts_col, &bitmap), KStatus::SUCCESS);
@@ -976,26 +968,18 @@ TEST_F(TsBatchDataWorkerTest, LegacyBatchVersionOneRestoresOffsetAggAsBlockVersi
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(block_spans.size(), 1UL);
   auto block_span = block_spans.front();
-  ASSERT_EQ(block_span->GetBlockVersion(), 1U);
-  ASSERT_TRUE(block_span->HasPreAgg());
-
-  uint16_t pre_count = 0;
-  ASSERT_EQ(block_span->GetPreCount(1, nullptr, pre_count), KStatus::SUCCESS);
-  EXPECT_EQ(pre_count, 3U);
-  void* pre_max = nullptr;
-  ASSERT_EQ(block_span->GetPreMax(1, nullptr, pre_max), KStatus::SUCCESS);
-  ASSERT_NE(pre_max, nullptr);
-  EXPECT_EQ(*reinterpret_cast<int32_t*>(pre_max), 11);
-  void* pre_min = nullptr;
-  ASSERT_EQ(block_span->GetPreMin(1, nullptr, pre_min), KStatus::SUCCESS);
-  ASSERT_NE(pre_min, nullptr);
-  EXPECT_EQ(*reinterpret_cast<int32_t*>(pre_min), 7);
-  void* pre_sum = nullptr;
-  bool is_overflow = true;
-  ASSERT_EQ(block_span->GetPreSum(1, nullptr, pre_sum, is_overflow), KStatus::SUCCESS);
-  ASSERT_NE(pre_sum, nullptr);
-  EXPECT_FALSE(is_overflow);
-  EXPECT_EQ(*reinterpret_cast<int64_t*>(pre_sum), 27);
+  // Legacy block_version and offset-layout pre-agg are discarded by the last-segment path (it
+  // recompresses into a current-format block with no agg storage); only the row data survives.
+  // Verify the decoded row values are preserved.
+  char* ts_col = nullptr;
+  std::unique_ptr<TsBitmapBase> bitmap;
+  ASSERT_EQ(block_span->GetFixLenColAddr(0, &ts_col, &bitmap), KStatus::SUCCESS);
+  ASSERT_NE(ts_col, nullptr);
+  EXPECT_EQ(*reinterpret_cast<timestamp64*>(ts_col), 1000);
+  char* int_col = nullptr;
+  ASSERT_EQ(block_span->GetFixLenColAddr(1, &int_col, &bitmap), KStatus::SUCCESS);
+  ASSERT_NE(int_col, nullptr);
+  EXPECT_EQ(*reinterpret_cast<int32_t*>(int_col + sizeof(int32_t) * 2), 11);
 }
 
 // End-to-end test: insert data, read batch with empty valid cols, then modify the
@@ -1393,7 +1377,8 @@ TEST_F(TsBatchDataWorkerTest, TestTsBatchDataWorker) {
   ASSERT_EQ(s , KStatus::SUCCESS);
   ASSERT_EQ(metric_schema->size(), metric_type.size());
   timestamp64 start_ts = 10086000;
-  auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1, 1000, start_ts);
+  // >kNRowPerBlock rows so a single restore splits into 2 last-segment blocks.
+  auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1, 5000, start_ts);
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt = 0;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
@@ -1429,11 +1414,7 @@ TEST_F(TsBatchDataWorkerTest, TestTsBatchDataWorker) {
   uint64_t write_job_id = 2;
   data.data = backup_data.data();
   data.len = backup_data.size();
-  // first write
-  s = engine_->WriteBatchData(ctx_, table_id, 1, write_job_id, &data, &n_rows, TsDataSource::Restore, is_dropped);
-  ASSERT_EQ(s, KStatus::SUCCESS);
-  ASSERT_EQ(n_rows, row_num);
-  // second write
+  // Restore the >kNRowPerBlock batch once; the last-segment builder splits it into 2 blocks.
   s = engine_->WriteBatchData(ctx_, table_id, 1, write_job_id, &data, &n_rows, TsDataSource::Restore, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(n_rows, row_num);
@@ -1441,29 +1422,27 @@ TEST_F(TsBatchDataWorkerTest, TestTsBatchDataWorker) {
   s = engine_->BatchJobFinish(ctx_, write_job_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
+  // Read restored data back via the vgroup read path (snapshot/restore data now lives in the last
+  // segment, not the entity segment). 5000 rows split into 2 blocks at kNRowPerBlock.
+  schema_mgr = nullptr;
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = engine_->GetTsTable(ctx_, table_id, ts_table, is_dropped, true, 1);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  vector<EntityResultIndex> entity_indexes;
+  s = ts_table->GetEntityIdByHashSpan(ctx_, {0, UINT32_MAX}, UINT64_MAX, entity_indexes);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(entity_indexes.size(), 1UL);
   std::list<std::shared_ptr<TsBlockSpan>> block_spans;
-  for (uint32_t vgroup_id = 1; vgroup_id <= EngineOptions::vgroup_max_num; vgroup_id++) {
-    auto vgroup = engine_->GetTsVGroup(vgroup_id);
-    auto p = vgroup->CurrentVersion()->GetPartition(1, 10086);
-    if (p == nullptr) {
-      continue;
-    }
-    auto entity_segment = p->GetEntitySegment();
-    uint32_t entity_id = entity_segment->GetEntityNum();
-    assert(entity_id == 1);
-    schema_mgr = nullptr;
-    s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
-    ASSERT_EQ(s, KStatus::SUCCESS);
-    KwTsSpan ts_span{INT64_MIN, INT64_MAX};
-    KwOSNSpan osn_span{0, UINT64_MAX};
-    STScanRange scan_range{ts_span, osn_span};
-    TsBlockItemFilterParams filter{1, table_id, vgroup_id, entity_id, {scan_range}};
-    std::shared_ptr<MMapMetricsTable> schema;
-    ASSERT_EQ(schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
-    s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, schema);
-    ASSERT_EQ(s, KStatus::SUCCESS);
-  }
+  auto vgroup = engine_->GetTsVGroup(entity_indexes[0].subGroupId);
+  auto current_version = vgroup->CurrentVersion();
+  s = vgroup->GetBlockSpans(table_id, entity_indexes[0].entityId, {INT64_MIN, INT64_MAX},
+                            DATATYPE::TIMESTAMP64, schema_mgr, 1, current_version, &block_spans);
+  ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(block_spans.size(), 2);
+  // Rows span 2 blocks contiguously; track a global index so the ts assertion accounts for the
+  // split (block 2 continues from where block 1 ended, not from start_ts again).
+  int global_idx = 0;
   while (!block_spans.empty()) {
     std::shared_ptr<TsBlockSpan> block_span = block_spans.front();
     std::unique_ptr<TsBitmapBase> bitmap;
@@ -1479,8 +1458,8 @@ TEST_F(TsBatchDataWorkerTest, TestTsBatchDataWorker) {
     uint64_t osn = *(uint64_t *) (block_span->GetOSNAddr(0));
     for (int idx = 0; idx < block_span->GetRowNum(); ++idx) {
       EXPECT_EQ(*(uint64_t *) (block_span->GetOSNAddr(idx)), osn);
-      EXPECT_EQ(block_span->GetTS(idx), 10086000 + idx * 1000);
-      EXPECT_EQ(*(timestamp64 *) (ts_col + idx * 8), 10086000 + idx * 1000);
+      EXPECT_EQ(block_span->GetTS(idx), 10086000 + global_idx * 1000);
+      EXPECT_EQ(*(timestamp64 *) (ts_col + idx * 8), 10086000 + global_idx * 1000);
       EXPECT_LE(*(int32_t *) (col_values[0] + idx * 4), 1024);
       EXPECT_LE(*(double *) (col_values[1] + idx * 8), 1024 * 1024);
       kwdbts::DataFlags flag;
@@ -1489,6 +1468,7 @@ TEST_F(TsBatchDataWorkerTest, TestTsBatchDataWorker) {
       EXPECT_EQ(s, KStatus::SUCCESS);
       string str(var_data.data, 10);
       EXPECT_EQ(str, "varstring_");
+      ++global_idx;
     }
     block_spans.pop_front();
   }
@@ -1591,27 +1571,24 @@ TEST_F(TsBatchDataWorkerTest, LoseData) {
   s = engine_->BatchJobFinish(ctx_, write_job_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
+  // Read restored data back via the vgroup read path (snapshot/restore data lives in the last
+  // segment, not the entity segment). Each entity restored 1000 rows -> 1 block.
+  schema_mgr = nullptr;
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = engine_->GetTsTable(ctx_, table_id, ts_table, is_dropped, true, 1);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  vector<EntityResultIndex> entity_indexes;
+  s = ts_table->GetEntityIdByHashSpan(ctx_, {0, UINT32_MAX}, UINT64_MAX, entity_indexes);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(entity_indexes.size(), 2UL);
   // read entity 1
   std::list<std::shared_ptr<TsBlockSpan>> block_spans;
-  for (uint32_t vgroup_id = 1; vgroup_id <= EngineOptions::vgroup_max_num; vgroup_id++) {
-    auto vgroup = engine_->GetTsVGroup(vgroup_id);
-    auto p = vgroup->CurrentVersion()->GetPartition(1, 10086);
-    if (p == nullptr) {
-      continue;
-    }
-    auto entity_segment = p->GetEntitySegment();
-    uint32_t entity_num = entity_segment->GetEntityNum();
-    assert(entity_num == 2);
-    schema_mgr = nullptr;
-    s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
-    ASSERT_EQ(s, KStatus::SUCCESS);
-    KwTsSpan ts_span{INT64_MIN, INT64_MAX};
-    KwOSNSpan osn_span{0, UINT64_MAX};
-    STScanRange scan_range{ts_span, osn_span};
-    TsBlockItemFilterParams filter{1, table_id, vgroup_id, 1, {scan_range}};
-    std::shared_ptr<MMapMetricsTable> schema;
-    ASSERT_EQ(schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
-    s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, schema);
+  {
+    auto vgroup = engine_->GetTsVGroup(entity_indexes[0].subGroupId);
+    auto current_version = vgroup->CurrentVersion();
+    s = vgroup->GetBlockSpans(table_id, entity_indexes[0].entityId, {INT64_MIN, INT64_MAX},
+                              DATATYPE::TIMESTAMP64, schema_mgr, 1, current_version, &block_spans);
     ASSERT_EQ(s, KStatus::SUCCESS);
   }
   ASSERT_EQ(block_spans.size(), 1);
@@ -1646,25 +1623,11 @@ TEST_F(TsBatchDataWorkerTest, LoseData) {
   block_spans.clear();
 
   // read entity 2
-  for (uint32_t vgroup_id = 1; vgroup_id <= EngineOptions::vgroup_max_num; vgroup_id++) {
-    auto vgroup = engine_->GetTsVGroup(vgroup_id);
-    auto p = vgroup->CurrentVersion()->GetPartition(1, 10086);
-    if (p == nullptr) {
-      continue;
-    }
-    auto entity_segment = p->GetEntitySegment();
-    uint32_t entity_num = entity_segment->GetEntityNum();
-    assert(entity_num == 2);
-    schema_mgr = nullptr;
-    s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
-    ASSERT_EQ(s, KStatus::SUCCESS);
-    KwTsSpan ts_span{INT64_MIN, INT64_MAX};
-    KwOSNSpan osn_span{0, UINT64_MAX};
-    STScanRange scan_range{ts_span, osn_span};
-    TsBlockItemFilterParams filter{1, table_id, vgroup_id, 2, {scan_range}};
-    std::shared_ptr<MMapMetricsTable> schema;
-    ASSERT_EQ(schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
-    s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, schema);
+  {
+    auto vgroup = engine_->GetTsVGroup(entity_indexes[1].subGroupId);
+    auto current_version = vgroup->CurrentVersion();
+    s = vgroup->GetBlockSpans(table_id, entity_indexes[1].entityId, {INT64_MIN, INT64_MAX},
+                              DATATYPE::TIMESTAMP64, schema_mgr, 1, current_version, &block_spans);
     ASSERT_EQ(s, KStatus::SUCCESS);
   }
   ASSERT_EQ(block_spans.size(), 1);

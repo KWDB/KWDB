@@ -19,6 +19,7 @@
 #include "ts_agg.h"
 #include "ts_bitmap.h"
 #include "ts_bufferbuilder.h"
+#include "ts_coding.h"
 #include "ts_compressor.h"
 #include "ts_entity_segment_handle.h"
 #include "ts_filename.h"
@@ -326,6 +327,85 @@ TsEntityBlock::TsEntityBlock(uint32_t table_id, TsEntitySegmentBlockItem* block_
   column_blocks_.resize(n_cols_);
 }
 
+KStatus TsEntityBlock::CreateFromCompressedSpan(uint32_t table_id, TSEntityID entity_id, uint32_t table_version,
+                                                const TsEntityBlockSpanMeta& meta, size_t block_data_header_size,
+                                                TSSlice block_span_data,
+                                                const std::vector<AttributeInfo>* metric_schema,
+                                                std::shared_ptr<TsEntityBlock>& out) {
+  if (block_span_data.data == nullptr || block_span_data.len < block_data_header_size) {
+    LOG_ERROR("CreateFromCompressedSpan invalid block span data, len=%lu", block_span_data.len);
+    return KStatus::FAIL;
+  }
+  uint32_t n_cols = meta.n_cols;
+  uint32_t n_rows = meta.n_rows;
+  if (n_cols < 2 || n_rows == 0) {
+    // n_cols must cover at least OSN + timestamp; a zero-row span has nothing to decode.
+    LOG_ERROR("CreateFromCompressedSpan invalid n_cols[%u] or n_rows[%u]", n_cols, n_rows);
+    return KStatus::FAIL;
+  }
+  // n_cols counts OSN + timestamp + metrics; metric_schema holds timestamp + metrics, so the block
+  // must carry exactly metric_schema->size() + 1 columns. A mismatch would make LoadColData index
+  // metric_schema out of bounds, so reject early instead of decoding garbage.
+  if (n_cols != metric_schema->size() + 1) {
+    LOG_ERROR("CreateFromCompressedSpan n_cols[%u] mismatches schema size[%zu]+1", n_cols,
+              metric_schema->size());
+    return KStatus::FAIL;
+  }
+  // col_offset header: n_cols little-endian uint32, located right after the BlockSpanHeader.
+  // Column compressed bytes follow immediately after the offset header (mirrors
+  // TsSegmentFile::GetColumnBlock's offset math: block_offset=0, col data at +n_cols*4).
+  size_t col_offsets_len = sizeof(uint32_t) * n_cols;
+  if (block_span_data.len < block_data_header_size + col_offsets_len) {
+    LOG_ERROR("CreateFromCompressedSpan truncated block span, len=%lu, header=%zu, offsets=%zu",
+             block_span_data.len, block_data_header_size, col_offsets_len);
+    return KStatus::FAIL;
+  }
+  const char* offsets_ptr = block_span_data.data + block_data_header_size;
+  const char* col_data_base = offsets_ptr + col_offsets_len;
+
+  TsEntitySegmentBlockItem item{};
+  item.entity_id = entity_id;
+  item.table_id = table_id;
+  item.table_version = table_version;
+  item.n_rows = n_rows;
+  item.n_cols = n_cols;
+  item.min_ts = meta.min_ts;
+  item.max_ts = meta.max_ts;
+  item.first_osn = meta.first_osn;
+  item.last_osn = meta.last_osn;
+  item.min_osn = meta.min_osn;
+  item.max_osn = meta.max_osn;
+  item.block_version = meta.block_version;
+  item.block_offset = 0;
+  std::shared_ptr<TsSegmentBlockContainer> null_container;
+  auto block = std::make_shared<TsEntityBlock>(table_id, &item, null_container);
+
+  // Pre-load every column reusing LoadColData (block_version-aware decompression). Column index
+  // convention matches the read path: -1 = OSN, 0 = timestamp, 1..n_cols-2 = metrics. OSN occupies
+  // [0, offsets[0]); column i occupies [offsets[i], offsets[i+1]).
+  for (int32_t col_idx = -1; col_idx <= static_cast<int32_t>(n_cols) - 2; ++col_idx) {
+    uint32_t start = (col_idx == -1) ? 0 : DecodeFixed32(offsets_ptr + col_idx * sizeof(uint32_t));
+    uint32_t end = DecodeFixed32(offsets_ptr + (col_idx + 1) * sizeof(uint32_t));
+    if (start > end) {
+      LOG_ERROR("CreateFromCompressedSpan invalid col offset, col_idx=%d, start=%u, end=%u", col_idx, start, end);
+      return KStatus::FAIL;
+    }
+    if (block_span_data.len < block_data_header_size + col_offsets_len + end) {
+      LOG_ERROR("CreateFromCompressedSpan col data out of range, col_idx=%d, end=%u", col_idx, end);
+      return KStatus::FAIL;
+    }
+    TSSlice col_slice{const_cast<char*>(col_data_base) + start, end - start};
+    TsSliceGuard guard(col_slice);
+    KStatus s = block->LoadColData(col_idx, metric_schema, std::move(guard));
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("CreateFromCompressedSpan LoadColData failed, col_idx=%d", col_idx);
+      return s;
+    }
+  }
+  out = std::move(block);
+  return KStatus::SUCCESS;
+}
+
 char* TsEntityBlock::GetMetricColAddr(uint32_t col_idx) {
   assert(col_idx < column_blocks_.size() - 1);
   return column_blocks_[col_idx + 1]->buffer.data();
@@ -410,8 +490,12 @@ KStatus TsEntityBlock::LoadColData(int32_t col_idx, const std::vector<AttributeI
     TsBitmapBase* bitmap = is_not_null ? nullptr : column_blocks_[col_idx + 1]->bitmap.get();
     bool ok = mgr.DecompressData(std::move(data), bitmap, n_rows_, &plain);
     if (!ok) {
-      LOG_ERROR("block segment column[%u] data decompress failed, entity segment is [%s], handle info %s", col_idx + 1,
-                GetEntitySegmentPath().c_str(), GetHandleInfoStr().c_str());
+      if (segment_block_container_) {
+        LOG_ERROR("block segment column[%u] data decompress failed, entity segment is [%s], handle info %s", col_idx + 1,
+                  GetEntitySegmentPath().c_str(), GetHandleInfoStr().c_str());
+      } else {
+        LOG_ERROR("block segment column[%u] data decompress failed", col_idx + 1);
+      }
       return KStatus::FAIL;
     }
     // save decompressed col block data

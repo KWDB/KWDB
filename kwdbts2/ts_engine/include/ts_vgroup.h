@@ -75,8 +75,6 @@ class TsVGroup {
   std::unique_ptr<TsVersionManager> version_manager_ = nullptr;
   std::unique_ptr<TsMemSegmentManager> mem_segment_mgr_ = nullptr;
 
-  std::map<PartitionIdentifier, std::shared_ptr<TsEntitySegmentBuilder>> write_batch_segment_builders_;
-
   // compact thread flag
   bool enable_compact_thread_{true};
   // Id of the compact thread
@@ -284,15 +282,25 @@ class TsVGroup {
   KStatus redoDeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& primary_tag, TS_OSN log_lsn,
   const std::vector<KwTsSpan>& ts_spans);
 
-  KStatus GetEntitySegmentBuilder(std::shared_ptr<const TsPartitionVersion>& partition, TsDataSource source,
-                                  std::shared_ptr<TsEntitySegmentBuilder>& builder);
+  struct LastSegBuilderEntry {
+    std::unique_ptr<TsLastSegmentBuilder> builder;
+    std::vector<TsEntityCountStats> flush_infos;
+  };
+  using LastSegBuilderMap = std::map<PartitionIdentifier, LastSegBuilderEntry>;
+
+  KStatus GetLastSegmentBuilder(std::shared_ptr<const TsPartitionVersion>& partition,
+                                TsLastSegmentBuilder*& builder, LastSegBuilderMap& builders);
+
+  KStatus WriteBatchToLastSegment(std::shared_ptr<const TsPartitionVersion>& partition, TSTableID tbl_id,
+                                  uint32_t table_version, TSEntityID entity_id, uint32_t database_id,
+                                  TSSlice data, LastSegBuilderMap& builders);
 
   KStatus WriteBatchData(TSTableID tbl_id, uint32_t table_version, TSEntityID entity_id, timestamp64 p_time,
-                         uint32_t batch_version, TSSlice data, TsDataSource source);
+                         uint32_t batch_version, TSSlice data, TsDataSource source, LastSegBuilderMap& builders);
 
-  KStatus FinishWriteBatchData();
+  KStatus FinishWriteBatchData(LastSegBuilderMap& builders);
 
-  KStatus CancelWriteBatchData();
+  KStatus CancelWriteBatchData(LastSegBuilderMap& builders);
 
   TsEngineSchemaManager* GetSchemaMgr() const;
 

@@ -159,7 +159,6 @@ KStatus TsLastSegmentBuilder::Finalize(TsSegmentWriteStats* stats) {
     return FAIL;
   }
 
-  last_segment_file_.reset();
   return SUCCESS;
 }
 

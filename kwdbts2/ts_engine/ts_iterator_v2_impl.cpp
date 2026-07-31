@@ -3675,7 +3675,6 @@ KStatus TsRawDataIteratorImplByOSN::Init() {
     return s;
   }
   attrs_ = *scan_schema_->getSchemaInfoExcludeDroppedPtr();
-  ts_spans_.push_back({INT64_MIN, INT64_MAX});
   table_id_ = table_schema_mgr_->GetTableId();
   db_id_ = scan_schema_->metaData()->db_id;
   ts_col_type_ = scan_schema_->GetTsColDataType();

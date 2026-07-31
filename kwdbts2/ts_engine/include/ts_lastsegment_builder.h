@@ -107,6 +107,12 @@ class TsLastSegmentBuilder {
   [[nodiscard]] KStatus PutBlockSpan(std::shared_ptr<TsBlockSpan> span);
   [[nodiscard]] KStatus Finalize(TsSegmentWriteStats* stats);
   uint64_t GetFileNumber() const { return file_number_; }
+
+  void MarkDelete() {
+    if (last_segment_file_) {
+      last_segment_file_->MarkDelete();
+    }
+  }
   uint64_t GetMaxOSN() const;
   void Reset(std::unique_ptr<TsAppendOnlyFile>&& last_segment, uint64_t file_number) {
     last_segment_file_ = std::move(last_segment);

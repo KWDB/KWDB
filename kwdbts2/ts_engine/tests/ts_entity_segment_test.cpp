@@ -14,10 +14,13 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include <atomic>
 #include <cstdint>
 #include <list>
 #include <memory>
 #include <numeric>
+#include <string>
+#include <thread>
 
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
@@ -25,13 +28,17 @@
 #include "settings.h"
 #include "sys_utils.h"
 #include "test_util.h"
+#include "ts_batch_data_worker.h"
 #include "ts_block.h"
+#include "ts_bufferbuilder.h"
+#include "ts_coding.h"
 #include "ts_db_schema_manager.h"
 #include "ts_entity_segment_builder.h"
 #include "ts_entity_segment_data.h"
 #include "ts_filename.h"
 #include "ts_io.h"
 #include "ts_mem_segment_mgr.h"
+#include "ts_table_schema_manager.h"
 #include "ts_version.h"
 #include "ts_vgroup.h"
 #include "ts_lru_block_cache.h"
@@ -309,6 +316,373 @@ void TsEntitySegmentTest::SimpleInsert() {
     EXPECT_EQ(last_total_row_num, total_insert_row_num - entity_row_num);
     ASSERT_EQ(TsLRUBlockCache::GetInstance().VerifyCacheMemorySize(), true);
   }
+}
+
+// Verifies TsEntityBlock::CreateFromCompressedSpan reconstructs a block whose rows are identical to
+// the on-disk entity block it was encoded from. This is the decode step used by the snapshot write
+// path to route small-row batches into the last segment. The factory consumes the batch wire
+// format (BlockSpanHeader + entity-format compressed block); it only reads past the header, so the
+// header region is zero-filled and header fields are supplied via TsEntityBlockSpanMeta. Exercises
+// the block_version-aware decompression (LoadColData) for fixed- and var-length columns.
+TEST_F(TsEntitySegmentTest, CreateFromCompressedSpanRoundTrip) {
+  EngineOptions::min_rows_per_block = 100;
+  EngineOptions::max_rows_per_block = 1000;
+
+  TSTableID table_id = 123;
+  std::vector<DataType> metric_types{DataType::TIMESTAMP, DataType::INT, DataType::DOUBLE,
+                                     DataType::BIGINT, DataType::VARCHAR};
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  std::vector<TagInfo> tag_schema;
+  std::shared_ptr<TsTableSchemaManager> schema_mgr;
+  CreateTable(table_id, metric_types, &metric_schema, &tag_schema, schema_mgr);
+
+  // Insert one entity with enough rows to form an entity segment block (>= min_rows_per_block).
+  TSEntityID dev_id = 7;
+  auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, dev_id, 100, 100, 1);
+  TsRawPayload p{metric_schema};
+  p.ParsePayLoadStruct(payload);
+  auto ptag = p.GetPrimaryTag();
+  ASSERT_EQ(vgroup->PutData(&ctx, schema_mgr, 0, &ptag, dev_id, p, false), KStatus::SUCCESS);
+  free(payload.data);
+  ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
+
+  std::shared_ptr<MMapMetricsTable> scan_schema;
+  ASSERT_EQ(schema_mgr->GetMetricSchema(1, &scan_schema), KStatus::SUCCESS);
+  const std::vector<AttributeInfo>* metric_attrs = scan_schema->getSchemaInfoExcludeDroppedPtr();
+
+  // Read the flushed entity block back as a span.
+  auto current = vgroup->CurrentVersion();
+  auto partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
+  ASSERT_EQ(partitions.size(), 1u);
+  auto entity_segment = partitions[0]->GetEntitySegment();
+  ASSERT_NE(entity_segment, nullptr);
+  std::vector<STScanRange> spans{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
+  TsBlockItemFilterParams filter{0, table_id, vgroup->GetVGroupID(), dev_id, spans};
+  std::list<shared_ptr<TsBlockSpan>> block_spans;
+  ASSERT_EQ(entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, scan_schema), KStatus::SUCCESS);
+  ASSERT_EQ(block_spans.size(), 1u);
+  auto orig_span = block_spans.front();
+  int n_rows = orig_span->GetRowNum();
+  ASSERT_GT(n_rows, 0);
+
+  // Snapshot the original column values for later comparison.
+  std::vector<timestamp64> orig_ts(n_rows);
+  std::vector<int32_t> orig_int(n_rows);
+  std::vector<double> orig_double(n_rows);
+  std::vector<int64_t> orig_bigint(n_rows);
+  std::vector<std::string> orig_varchar(n_rows);
+  for (int idx = 0; idx < n_rows; ++idx) {
+    std::unique_ptr<TsBitmapBase> bitmap;
+    char* col = nullptr;
+    ASSERT_EQ(orig_span->GetFixLenColAddr(0, &col, &bitmap), KStatus::SUCCESS);
+    orig_ts[idx] = *reinterpret_cast<timestamp64*>(col + idx * sizeof(timestamp64));
+    ASSERT_EQ(orig_span->GetFixLenColAddr(1, &col, &bitmap), KStatus::SUCCESS);
+    orig_int[idx] = *reinterpret_cast<int32_t*>(col + idx * sizeof(int32_t));
+    ASSERT_EQ(orig_span->GetFixLenColAddr(2, &col, &bitmap), KStatus::SUCCESS);
+    orig_double[idx] = *reinterpret_cast<double*>(col + idx * sizeof(double));
+    ASSERT_EQ(orig_span->GetFixLenColAddr(3, &col, &bitmap), KStatus::SUCCESS);
+    orig_bigint[idx] = *reinterpret_cast<int64_t*>(col + idx * sizeof(int64_t));
+    DataFlags flag;
+    TSSlice data;
+    ASSERT_EQ(orig_span->GetVarLenTypeColAddr(idx, 4, flag, data), KStatus::SUCCESS);
+    orig_varchar[idx] = std::string(data.data, data.len);
+  }
+
+  // Build the batch wire-format payload: BlockSpanHeader (unread by the factory) + the entity
+  // compressed block bytes produced by the read path (exactly what TsBatchData carries).
+  TsBufferBuilder compressed;
+  ASSERT_EQ(orig_span->GetCompressData(&compressed), KStatus::SUCCESS);
+  size_t header_size = TsBatchData::block_span_data_header_size_;
+  std::string blob;
+  blob.assign(header_size, '\0');
+  TSSlice comp = compressed.AsSlice();
+  blob.append(comp.data, comp.len);
+
+  TsEntityBlockSpanMeta meta;
+  meta.n_cols = metric_attrs->size() + 1;
+  meta.n_rows = n_rows;
+  meta.block_version = orig_span->GetBlockVersion();
+  meta.min_ts = orig_span->GetFirstTS();
+  meta.max_ts = orig_span->GetLastTS();
+  meta.first_osn = orig_span->GetFirstOSN();
+  meta.last_osn = orig_span->GetLastOSN();
+  orig_span->GetMinAndMaxOSN(meta.min_osn, meta.max_osn);
+
+  std::shared_ptr<TsEntityBlock> decoded;
+  TSSlice block_span_data{blob.data(), blob.size()};
+  ASSERT_EQ(TsEntityBlock::CreateFromCompressedSpan(table_id, dev_id, orig_span->GetTableVersion(), meta,
+                                                     header_size, block_span_data, metric_attrs, decoded),
+            KStatus::SUCCESS);
+  ASSERT_NE(decoded, nullptr);
+
+  // Wrap in a span (scan version == block table version -> no conversion) and compare every column.
+  std::shared_ptr<TsBlockSpan> decoded_span;
+  ASSERT_EQ(TsBlockSpan::MakeNewBlockSpan(nullptr, vgroup->GetVGroupID(), dev_id, decoded, 0, n_rows, scan_schema,
+                                           schema_mgr, decoded_span),
+            KStatus::SUCCESS);
+  ASSERT_EQ(decoded_span->GetRowNum(), n_rows);
+  for (int idx = 0; idx < n_rows; ++idx) {
+    EXPECT_EQ(decoded_span->GetTS(idx), orig_ts[idx]);
+    std::unique_ptr<TsBitmapBase> bitmap;
+    char* col = nullptr;
+    EXPECT_EQ(decoded_span->GetFixLenColAddr(0, &col, &bitmap), KStatus::SUCCESS);
+    EXPECT_EQ(*reinterpret_cast<timestamp64*>(col + idx * sizeof(timestamp64)), orig_ts[idx]);
+    EXPECT_EQ(decoded_span->GetFixLenColAddr(1, &col, &bitmap), KStatus::SUCCESS);
+    EXPECT_EQ(*reinterpret_cast<int32_t*>(col + idx * sizeof(int32_t)), orig_int[idx]);
+    EXPECT_EQ(decoded_span->GetFixLenColAddr(2, &col, &bitmap), KStatus::SUCCESS);
+    EXPECT_EQ(*reinterpret_cast<double*>(col + idx * sizeof(double)), orig_double[idx]);
+    EXPECT_EQ(decoded_span->GetFixLenColAddr(3, &col, &bitmap), KStatus::SUCCESS);
+    EXPECT_EQ(*reinterpret_cast<int64_t*>(col + idx * sizeof(int64_t)), orig_bigint[idx]);
+    DataFlags flag;
+    TSSlice data;
+    EXPECT_EQ(decoded_span->GetVarLenTypeColAddr(idx, 4, flag, data), KStatus::SUCCESS);
+    EXPECT_EQ(std::string(data.data, data.len), orig_varchar[idx]);
+  }
+}
+
+// Verifies the snapshot write routing: a snapshot batch is committed to a new last segment (and
+// remains readable) instead of becoming an entity segment block. Exercises
+// TsVGroup::WriteBatchData -> WriteBatchToLastSegment -> GetLastSegmentBuilder -> PutBlockSpan, and
+// FinishWriteBatchData's last-segment finalize + version registration.
+TEST_F(TsEntitySegmentTest, WriteBatchRoutesToLastSegment) {
+  // Phase 1: build an entity block (min=1 so the 50 rows form one entity block) and capture its
+  // compressed bytes + header metadata.
+  EngineOptions::min_rows_per_block = 1;
+  EngineOptions::max_rows_per_block = 1000;
+
+  TSTableID table_id = 456;
+  std::vector<DataType> metric_types{DataType::TIMESTAMP, DataType::INT, DataType::DOUBLE,
+                                     DataType::BIGINT, DataType::VARCHAR};
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  std::vector<TagInfo> tag_schema;
+  std::shared_ptr<TsTableSchemaManager> schema_mgr;
+  CreateTable(table_id, metric_types, &metric_schema, &tag_schema, schema_mgr);
+
+  TSEntityID dev_id = 9;
+  auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, dev_id, 50, 200, 1);
+  TsRawPayload p{metric_schema};
+  p.ParsePayLoadStruct(payload);
+  auto ptag = p.GetPrimaryTag();
+  ASSERT_EQ(vgroup->PutData(&ctx, schema_mgr, 0, &ptag, dev_id, p, false), KStatus::SUCCESS);
+  free(payload.data);
+  ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
+
+  std::shared_ptr<MMapMetricsTable> scan_schema;
+  ASSERT_EQ(schema_mgr->GetMetricSchema(1, &scan_schema), KStatus::SUCCESS);
+  const std::vector<AttributeInfo>* metric_attrs = scan_schema->getSchemaInfoExcludeDroppedPtr();
+
+  auto current = vgroup->CurrentVersion();
+  auto partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
+  ASSERT_EQ(partitions.size(), 1u);
+  // 50 rows with min_rows_per_block=1 all land in the entity segment; no last segment yet.
+  ASSERT_TRUE(partitions[0]->GetAllLastSegments().empty());
+  auto entity_segment = partitions[0]->GetEntitySegment();
+  ASSERT_NE(entity_segment, nullptr);
+  std::vector<STScanRange> spans{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
+  TsBlockItemFilterParams filter{0, table_id, vgroup->GetVGroupID(), dev_id, spans};
+  std::list<shared_ptr<TsBlockSpan>> block_spans;
+  ASSERT_EQ(entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, scan_schema), KStatus::SUCCESS);
+  ASSERT_EQ(block_spans.size(), 1u);
+  auto orig_span = block_spans.front();
+  int n_rows = orig_span->GetRowNum();
+
+  TsBufferBuilder compressed;
+  ASSERT_EQ(orig_span->GetCompressData(&compressed), KStatus::SUCCESS);
+  TsEntityBlockSpanMeta meta;
+  meta.n_cols = metric_attrs->size() + 1;
+  meta.n_rows = n_rows;
+  meta.block_version = orig_span->GetBlockVersion();
+  meta.min_ts = orig_span->GetFirstTS();
+  meta.max_ts = orig_span->GetLastTS();
+  meta.first_osn = orig_span->GetFirstOSN();
+  meta.last_osn = orig_span->GetLastOSN();
+  orig_span->GetMinAndMaxOSN(meta.min_osn, meta.max_osn);
+
+  // Phase 2: feed the compressed bytes back as a snapshot batch via the public batch-write
+  // entrypoint. WriteBatchData routes every non-empty snapshot/restore batch to the last segment.
+  size_t header_size = TsBatchData::block_span_data_header_size_;
+  std::string blob;
+  blob.assign(header_size, '\0');
+  EncodeFixedTimestamp64(blob.data() + TsBatchData::min_ts_offset_in_span_data_, meta.min_ts);
+  EncodeFixedTimestamp64(blob.data() + TsBatchData::max_ts_offset_in_span_data_, meta.max_ts);
+  EncodeFixed64(blob.data() + TsBatchData::min_osn_offset_in_span_data_, meta.min_osn);
+  EncodeFixed64(blob.data() + TsBatchData::max_osn_offset_in_span_data_, meta.max_osn);
+  EncodeFixed64(blob.data() + TsBatchData::first_osn_offset_in_span_data_, meta.first_osn);
+  EncodeFixed64(blob.data() + TsBatchData::last_osn_offset_in_span_data_, meta.last_osn);
+  EncodeFixed32(blob.data() + TsBatchData::n_cols_offset_in_span_data_, meta.n_cols);
+  EncodeFixed32(blob.data() + TsBatchData::n_rows_offset_in_span_data_, meta.n_rows);
+  EncodeFixed32(blob.data() + TsBatchData::block_version_offset_in_span_data_, meta.block_version);
+  TSSlice comp = compressed.AsSlice();
+  blob.append(comp.data, comp.len);
+
+  timestamp64 p_time = convertTsToPTime(meta.min_ts, static_cast<DATATYPE>((*metric_attrs)[0].type));
+  TSSlice data{blob.data(), blob.size()};
+  TsVGroup::LastSegBuilderMap builders;
+  ASSERT_EQ(vgroup->WriteBatchData(table_id, 1, dev_id, p_time, 2, data, TsDataSource::Snapshot, builders),
+            KStatus::SUCCESS);
+  ASSERT_EQ(vgroup->FinishWriteBatchData(builders), KStatus::SUCCESS);
+
+  // A new last segment must be committed (registered in the version) and contain the routed rows.
+  current = vgroup->CurrentVersion();
+  partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
+  ASSERT_EQ(partitions.size(), 1u);
+  auto lastsegs = partitions[0]->GetAllLastSegments();
+  ASSERT_EQ(lastsegs.size(), 1u);
+  std::list<shared_ptr<TsBlockSpan>> last_spans;
+  ASSERT_EQ(lastsegs[0]->GetBlockSpans(last_spans, mgr.get()), KStatus::SUCCESS);
+  int last_rows = 0;
+  for (auto& bs : last_spans) {
+    last_rows += bs->GetRowNum();
+  }
+  EXPECT_EQ(last_rows, n_rows);
+}
+
+// Regression test for the removal of EnsurePartitionBusyForBatch: a batch write (which only
+// appends a new last-segment file) must be safe to run concurrently with compaction. Previously
+// the partition was marked BatchDataWriting so PartitionCompact skipped it; that exclusion is
+// gone, and this test exercises the real overlap - Compact() compacts existing last segments
+// while WriteBatchData builds a new one - asserting no deadlock/crash and no row loss.
+TEST_F(TsEntitySegmentTest, BatchWriteConcurrentWithCompact) {
+  EngineOptions::min_rows_per_block = 1;
+  EngineOptions::max_rows_per_block = 1000;
+
+  TSTableID table_id = 789;
+  std::vector<DataType> metric_types{DataType::TIMESTAMP, DataType::INT, DataType::DOUBLE,
+                                     DataType::BIGINT, DataType::VARCHAR};
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  std::vector<TagInfo> tag_schema;
+  std::shared_ptr<TsTableSchemaManager> schema_mgr;
+  CreateTable(table_id, metric_types, &metric_schema, &tag_schema, schema_mgr);
+
+  // Insert one entity and flush, leaving its rows in the entity segment.
+  auto insert_flush = [&](TSEntityID dev_id, int n_rows, timestamp64 start_ts) -> KStatus {
+    auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, dev_id, n_rows, start_ts, 1);
+    TsRawPayload p{metric_schema};
+    p.ParsePayLoadStruct(payload);
+    auto ptag = p.GetPrimaryTag();
+    auto s = vgroup->PutData(&ctx, schema_mgr, 0, &ptag, dev_id, p, false);
+    free(payload.data);
+    if (s != KStatus::SUCCESS) return s;
+    return vgroup->Flush();
+  };
+
+  // Snapshot an entity's flushed entity-segment block into a snapshot batch blob (the same wire
+  // format WriteBatchData consumes). Returns the block row count, or -1 on failure.
+  auto build_batch_blob = [&](TSEntityID dev_id, std::string& blob, timestamp64& p_time_out) -> int {
+    std::shared_ptr<MMapMetricsTable> scan_schema;
+    if (schema_mgr->GetMetricSchema(1, &scan_schema) != KStatus::SUCCESS) return -1;
+    const std::vector<AttributeInfo>* metric_attrs = scan_schema->getSchemaInfoExcludeDroppedPtr();
+    auto current = vgroup->CurrentVersion();
+    auto partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
+    if (partitions.size() != 1u) return -1;
+    auto entity_segment = partitions[0]->GetEntitySegment();
+    if (entity_segment == nullptr) return -1;
+    std::vector<STScanRange> spans{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
+    TsBlockItemFilterParams filter{0, table_id, vgroup->GetVGroupID(), dev_id, spans};
+    std::list<shared_ptr<TsBlockSpan>> block_spans;
+    if (entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, scan_schema) != KStatus::SUCCESS) {
+      return -1;
+    }
+    if (block_spans.empty()) return -1;
+    auto orig_span = block_spans.front();
+    int n_rows = orig_span->GetRowNum();
+    TsBufferBuilder compressed;
+    if (orig_span->GetCompressData(&compressed) != KStatus::SUCCESS) return -1;
+    TsEntityBlockSpanMeta meta;
+    meta.n_cols = metric_attrs->size() + 1;
+    meta.n_rows = n_rows;
+    meta.block_version = orig_span->GetBlockVersion();
+    meta.min_ts = orig_span->GetFirstTS();
+    meta.max_ts = orig_span->GetLastTS();
+    meta.first_osn = orig_span->GetFirstOSN();
+    meta.last_osn = orig_span->GetLastOSN();
+    orig_span->GetMinAndMaxOSN(meta.min_osn, meta.max_osn);
+    size_t header_size = TsBatchData::block_span_data_header_size_;
+    blob.assign(header_size, '\0');
+    EncodeFixedTimestamp64(blob.data() + TsBatchData::min_ts_offset_in_span_data_, meta.min_ts);
+    EncodeFixedTimestamp64(blob.data() + TsBatchData::max_ts_offset_in_span_data_, meta.max_ts);
+    EncodeFixed64(blob.data() + TsBatchData::min_osn_offset_in_span_data_, meta.min_osn);
+    EncodeFixed64(blob.data() + TsBatchData::max_osn_offset_in_span_data_, meta.max_osn);
+    EncodeFixed64(blob.data() + TsBatchData::first_osn_offset_in_span_data_, meta.first_osn);
+    EncodeFixed64(blob.data() + TsBatchData::last_osn_offset_in_span_data_, meta.last_osn);
+    EncodeFixed32(blob.data() + TsBatchData::n_cols_offset_in_span_data_, meta.n_cols);
+    EncodeFixed32(blob.data() + TsBatchData::n_rows_offset_in_span_data_, meta.n_rows);
+    EncodeFixed32(blob.data() + TsBatchData::block_version_offset_in_span_data_, meta.block_version);
+    TSSlice comp = compressed.AsSlice();
+    blob.append(comp.data, comp.len);
+    p_time_out = convertTsToPTime(meta.min_ts, static_cast<DATATYPE>((*metric_attrs)[0].type));
+    return n_rows;
+  };
+
+  // Setup: batch-write dev_id=9 so a level-0 last segment exists for the concurrent Compact()
+  // to actually compact (otherwise Compact skips for lack of last segments).
+  ASSERT_EQ(insert_flush(9, 50, 1000), KStatus::SUCCESS);
+  std::string setup_blob;
+  timestamp64 setup_ptime = 0;
+  int setup_rows = build_batch_blob(9, setup_blob, setup_ptime);
+  ASSERT_GT(setup_rows, 0);
+  {
+    TSSlice data{setup_blob.data(), setup_blob.size()};
+    TsVGroup::LastSegBuilderMap setup_builders;
+    ASSERT_EQ(vgroup->WriteBatchData(table_id, 1, 9, setup_ptime, 2, data, TsDataSource::Snapshot,
+                                     setup_builders),
+              KStatus::SUCCESS);
+    ASSERT_EQ(vgroup->FinishWriteBatchData(setup_builders), KStatus::SUCCESS);
+  }
+
+  // Concurrent batch target: snapshot dev_id=10 for the batch that will race with Compact().
+  ASSERT_EQ(insert_flush(10, 50, 2000), KStatus::SUCCESS);
+  std::string batch_blob;
+  timestamp64 batch_ptime = 0;
+  int batch_rows = build_batch_blob(10, batch_blob, batch_ptime);
+  ASSERT_GT(batch_rows, 0);
+
+  // Concurrent phase: WriteBatchData opens a last-segment builder (no Finish yet) while
+  // Compact() compacts the existing last segments. A barrier starts both threads together.
+  KStatus batch_status = KStatus::FAIL;
+  KStatus compact_status = KStatus::FAIL;
+  TsVGroup::LastSegBuilderMap batch_builders;
+  std::atomic<int> ready{0};
+  std::thread batch_thread([&]() {
+    ready.fetch_add(1, std::memory_order_seq_cst);
+    while (ready.load(std::memory_order_seq_cst) < 2) {
+      // Spin-wait until both threads reach the barrier so the operations overlap.
+    }
+    TSSlice data{batch_blob.data(), batch_blob.size()};
+    batch_status = vgroup->WriteBatchData(table_id, 1, 10, batch_ptime, 2, data, TsDataSource::Snapshot,
+                                          batch_builders);
+  });
+  std::thread compact_thread([&]() {
+    ready.fetch_add(1, std::memory_order_seq_cst);
+    while (ready.load(std::memory_order_seq_cst) < 2) {
+      // Spin-wait until both threads reach the barrier so the operations overlap.
+    }
+    compact_status = vgroup->Compact();
+  });
+  batch_thread.join();
+  compact_thread.join();
+
+  // Both must finish without deadlock/crash. Compact() returns SUCCESS whether it compacted or
+  // skipped; the point is it must not skip *because of* a concurrent batch write any more.
+  EXPECT_EQ(batch_status, KStatus::SUCCESS);
+  EXPECT_EQ(compact_status, KStatus::SUCCESS);
+
+  ASSERT_EQ(vgroup->FinishWriteBatchData(batch_builders), KStatus::SUCCESS);
+
+  // Verify no rows were lost: the setup last segment (setup_rows) and the concurrent batch
+  // (batch_rows) must both still be readable across the (possibly compacted) last segments.
+  auto current = vgroup->CurrentVersion();
+  auto partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
+  ASSERT_EQ(partitions.size(), 1u);
+  int total_last_rows = 0;
+  for (auto& ls : partitions[0]->GetAllLastSegments()) {
+    std::list<shared_ptr<TsBlockSpan>> spans;
+    ASSERT_EQ(ls->GetBlockSpans(spans, mgr.get()), KStatus::SUCCESS);
+    for (auto& bs : spans) {
+      total_last_rows += bs->GetRowNum();
+    }
+  }
+  EXPECT_GE(total_last_rows, setup_rows + batch_rows);
 }
 
 TEST_F(TsEntitySegmentTest, simpleInsertNoBlockCache) {

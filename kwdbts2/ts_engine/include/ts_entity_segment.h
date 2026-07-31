@@ -242,6 +242,18 @@ struct TsEntitySegmentColumnBlock {
 
 class TsSegmentBlockContainer;
 
+struct TsEntityBlockSpanMeta {
+  uint32_t n_cols = 0;
+  uint32_t n_rows = 0;
+  uint32_t block_version = 0;
+  timestamp64 min_ts = 0;
+  timestamp64 max_ts = 0;
+  uint64_t min_osn = 0;
+  uint64_t max_osn = 0;
+  uint64_t first_osn = 0;
+  uint64_t last_osn = 0;
+};
+
 class TsEntityBlock : public TsBlock {
  public:
   // pre and next are used to support TsBlockCache.
@@ -342,6 +354,12 @@ class TsEntityBlock : public TsBlock {
                             const std::vector<AttributeInfo>* schema, TSSlice& value);
 
   KStatus LoadColData(int32_t col_idx, const std::vector<AttributeInfo>* metric_schema, TsSliceGuard&& buffer);
+
+  static KStatus CreateFromCompressedSpan(uint32_t table_id, TSEntityID entity_id, uint32_t table_version,
+                                          const TsEntityBlockSpanMeta& meta, size_t block_data_header_size,
+                                          TSSlice block_span_data,
+                                          const std::vector<AttributeInfo>* metric_schema,
+                                          std::shared_ptr<TsEntityBlock>& out);
 
   KStatus StoreAggData(int32_t col_idx, TsSliceGuard&& buffer);
 

@@ -34,8 +34,10 @@
 #include "lg_api.h"
 #include "libkwdbts2.h"
 #include "settings.h"
+#include "ts_batch_data_worker.h"
 #include "ts_block.h"
 #include "ts_bufferbuilder.h"
+#include "ts_coding.h"
 #include "ts_common.h"
 #include "ts_compatibility.h"
 #include "ts_entity_segment.h"
@@ -1715,36 +1717,45 @@ const std::vector<KwTsSpan>& ts_spans, bool user_del) {
   return deleteData(ctx, tbl_id, e_id, {0, osn}, ts_spans, user_del);
 }
 
-KStatus TsVGroup::GetEntitySegmentBuilder(std::shared_ptr<const TsPartitionVersion>& partition, TsDataSource source,
-                                          std::shared_ptr<TsEntitySegmentBuilder>& builder) {
-  TsIOEnv* env = &TsIOEnv::GetInstance();
+KStatus TsVGroup::GetLastSegmentBuilder(std::shared_ptr<const TsPartitionVersion>& partition,
+                                        TsLastSegmentBuilder*& builder, LastSegBuilderMap& builders) {
   PartitionIdentifier partition_id = partition->GetPartitionIdentifier();
-  auto it = write_batch_segment_builders_.find(partition_id);
-  if (it == write_batch_segment_builders_.end()) {
-    while (!partition->TrySetBusy(PartitionStatus::BatchDataWriting)) {
-      std::this_thread::sleep_for(std::chrono::seconds(1));
-    }
-    partition = version_manager_->Current()->GetPartition(partition_id);
-    auto entity_segment = partition->GetEntitySegment();
-
-    auto root_path = this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier());
-    builder = std::make_shared<TsEntitySegmentBuilder>(env, root_path.string(), schema_mgr_, version_manager_.get(),
-                                                       partition_id, entity_segment, source);
-    KStatus s = builder->Open();
-    if (s != KStatus::SUCCESS) {
-      partition->ResetStatus();
-      LOG_ERROR("Open entity segment builder failed.");
-      return s;
-    }
-    write_batch_segment_builders_[partition_id] = builder;
-  } else {
-    builder = it->second;
+  auto it = builders.find(partition_id);
+  if (it != builders.end()) {
+    builder = it->second.builder.get();
+    return KStatus::SUCCESS;
   }
+  TsIOEnv* env = &TsIOEnv::GetInstance();
+  uint64_t file_number = version_manager_->NewFileNumber();
+  fs::path filepath = partition->GetPartitionPath() / LastSegmentFileName(file_number);
+  // The partition directory may not yet exist on disk for a freshly added partition that has only
+  // received small batches; NewAppendOnlyFile does not create parent directories.
+  std::error_code ec;
+  fs::create_directories(filepath.parent_path(), ec);
+  if (ec) {
+    LOG_ERROR("GetLastSegmentBuilder create_directories failed, path=%s, err=%s",
+              filepath.parent_path().string().c_str(), ec.message().c_str());
+    return KStatus::FAIL;
+  }
+  std::unique_ptr<TsAppendOnlyFile> lastseg_file;
+  KStatus s = env->NewAppendOnlyFile(filepath, &lastseg_file);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetLastSegmentBuilder NewAppendOnlyFile failed, path=%s", filepath.string().c_str());
+    return s;
+  }
+  auto new_builder = std::make_unique<TsLastSegmentBuilder>(schema_mgr_, std::move(lastseg_file), file_number);
+  builder = new_builder.get();
+  builders[partition_id] = LastSegBuilderEntry{std::move(new_builder), {}};
   return KStatus::SUCCESS;
 }
 
 KStatus TsVGroup::WriteBatchData(TSTableID tbl_id, uint32_t table_version, TSEntityID entity_id, timestamp64 p_time,
-                                 uint32_t batch_version, TSSlice data, TsDataSource source) {
+                                 [[maybe_unused]] uint32_t batch_version, TSSlice data,
+                                 [[maybe_unused]] TsDataSource source, LastSegBuilderMap& builders) {
+  if (data.data == nullptr || data.len < TsBatchData::block_span_data_header_size_) {
+    LOG_ERROR("WriteBatchData invalid data, len=%lu", data.len);
+    return KStatus::FAIL;
+  }
   auto current = version_manager_->Current();
   uint32_t database_id = schema_mgr_->GetDBIDByTableID(tbl_id);
   if (database_id == 0) {
@@ -1765,61 +1776,128 @@ KStatus TsVGroup::WriteBatchData(TSTableID tbl_id, uint32_t table_version, TSEnt
     }
   }
 
-  std::shared_ptr<TsEntitySegmentBuilder> builder;
-  KStatus s = GetEntitySegmentBuilder(partition, source, builder);
+  if (DecodeFixed32(data.data + TsBatchData::n_rows_offset_in_span_data_) == 0) {
+    return KStatus::SUCCESS;
+  }
+  return WriteBatchToLastSegment(partition, tbl_id, table_version, entity_id, database_id, data, builders);
+}
+
+KStatus TsVGroup::WriteBatchToLastSegment(std::shared_ptr<const TsPartitionVersion>& partition, TSTableID tbl_id,
+                                          uint32_t table_version, TSEntityID entity_id, uint32_t database_id,
+                                          TSSlice data, LastSegBuilderMap& builders) {
+  std::shared_ptr<TsTableSchemaManager> tb_schema_mgr;
+  KStatus s = schema_mgr_->GetTableSchemaMgr(tbl_id, tb_schema_mgr);
+  if (s != KStatus::SUCCESS || tb_schema_mgr == nullptr) {
+    LOG_ERROR("WriteBatchToLastSegment GetTableSchemaMgr failed, table_id[%lu]", tbl_id);
+    return KStatus::FAIL;
+  }
+  std::shared_ptr<MMapMetricsTable> metric_schema;
+  s = tb_schema_mgr->GetMetricSchema(table_version, &metric_schema);
+  if (s != KStatus::SUCCESS || metric_schema == nullptr) {
+    LOG_ERROR("WriteBatchToLastSegment GetMetricSchema failed, table_id[%lu] version[%u]", tbl_id, table_version);
+    return KStatus::FAIL;
+  }
+  const std::vector<AttributeInfo>* metric_attrs = metric_schema->getSchemaInfoExcludeDroppedPtr();
+
+  // Parse the BlockSpanHeader prefixing the entity-format compressed block carried in the batch.
+  TsEntityBlockSpanMeta meta;
+  meta.n_cols = DecodeFixed32(data.data + TsBatchData::n_cols_offset_in_span_data_);
+  meta.n_rows = DecodeFixed32(data.data + TsBatchData::n_rows_offset_in_span_data_);
+  meta.block_version = DecodeFixed32(data.data + TsBatchData::block_version_offset_in_span_data_);
+  meta.min_ts = DecodeFixedTimestamp64(data.data + TsBatchData::min_ts_offset_in_span_data_);
+  meta.max_ts = DecodeFixedTimestamp64(data.data + TsBatchData::max_ts_offset_in_span_data_);
+  meta.min_osn = DecodeFixed64(data.data + TsBatchData::min_osn_offset_in_span_data_);
+  meta.max_osn = DecodeFixed64(data.data + TsBatchData::max_osn_offset_in_span_data_);
+  meta.first_osn = DecodeFixed64(data.data + TsBatchData::first_osn_offset_in_span_data_);
+  meta.last_osn = DecodeFixed64(data.data + TsBatchData::last_osn_offset_in_span_data_);
+
+  // Reconstruct an entity block from the in-memory compressed span, reusing LoadColData so the
+  // block_version-aware decompression is identical to the on-disk read path.
+  std::shared_ptr<TsEntityBlock> block;
+  s = TsEntityBlock::CreateFromCompressedSpan(tbl_id, entity_id, table_version, meta,
+                                              TsBatchData::block_span_data_header_size_, data, metric_attrs, block);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("GetEntitySegmentBuilder failed.");
+    LOG_ERROR("WriteBatchToLastSegment CreateFromCompressedSpan failed, table_id[%lu] entity_id[%lu]",
+             tbl_id, entity_id);
     return s;
   }
-  s = builder->WriteBatch(tbl_id, entity_id, table_version, batch_version, data);
+
+  // Wrap the reconstructed block in a span. Scan version equals the block's table version, so no
+  // schema conversion is needed (convert_ stays null). The builder accumulates per-entity rows up
+  // to kNRowPerBlock before flushing a last segment block.
+  TsLastSegmentBuilder* lastseg_builder = nullptr;
+  s = GetLastSegmentBuilder(partition, lastseg_builder, builders);
+  if (s != KStatus::SUCCESS || lastseg_builder == nullptr) {
+    LOG_ERROR("WriteBatchToLastSegment GetLastSegmentBuilder failed, table_id[%lu]", tbl_id);
+    return KStatus::FAIL;
+  }
+  std::shared_ptr<TsBlockSpan> span;
+  s = TsBlockSpan::MakeNewBlockSpan(nullptr, 0, entity_id, block, 0, meta.n_rows, metric_schema, tb_schema_mgr, span);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("WriteBatch failed.");
+    LOG_ERROR("WriteBatchToLastSegment MakeNewBlockSpan failed, entity_id[%lu]", entity_id);
     return s;
   }
+  s = lastseg_builder->PutBlockSpan(span);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("WriteBatchToLastSegment PutBlockSpan failed, entity_id[%lu]", entity_id);
+    return s;
+  }
+
+  TsEntityCountStats flush_info{};
+  flush_info.table_id = tbl_id;
+  flush_info.entity_id = entity_id;
+  flush_info.min_ts = meta.min_ts;
+  flush_info.max_ts = meta.max_ts;
+  flush_info.valid_count = meta.n_rows;
+  flush_info.is_count_valid = true;
+  builders[partition->GetPartitionIdentifier()].flush_infos.push_back(flush_info);
 
   ResetEntityLatestRow(database_id, entity_id, INT64_MAX);
   ResetEntityMaxTs(tbl_id, INT64_MAX, entity_id);
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroup::FinishWriteBatchData() {
+KStatus TsVGroup::FinishWriteBatchData(LastSegBuilderMap& builders) {
   TsVersionUpdate update;
-  std::set<PartitionIdentifier> partition_ids;
   bool success = true;
-  for (auto& kv : write_batch_segment_builders_) {
-    partition_ids.insert(kv.first);
+  // Finalize last segment builders. file_number was allocated when the builder was created
+  // (GetLastSegmentBuilder), so reuse it rather than allocating anew.
+  for (auto& kv : builders) {
     update.PartitionDirCreated(kv.first);
-    KStatus s = kv.second->WriteBatchFinish(&update);
+    TsSegmentWriteStats stats;
+    KStatus s = kv.second.builder->Finalize(&stats);
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("Finish entity segment builder failed");
+      LOG_ERROR("Finish last segment builder failed");
       success = false;
+    } else {
+      update.AddLastSegment(kv.first, LastSegmentMetaInfo{kv.second.builder->GetFileNumber(), 0, 0});
+      update.AddCountFile(kv.first, {version_manager_->NewFileNumber(), std::move(kv.second.flush_infos)});
     }
-    uint64_t file_number = version_manager_->NewFileNumber();
-    update.AddCountFile(kv.first, {file_number, kv.second->FlushInfos()});
   }
-  write_batch_segment_builders_.clear();
   if (success) {
     update.SetCountStatsType(CountStatsStatus::FlushImmOrWriteBatch);
-    version_manager_->ApplyUpdate(&update);
+    KStatus s = version_manager_->ApplyUpdate(&update);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("FinishWriteBatchData ApplyUpdate failed");
+      success = false;
+    }
   }
-  for (auto& k : partition_ids) {
-    auto partition = version_manager_->Current()->GetPartition(k);
-    partition->ResetStatus();
+  // Clean up all builder files if any step failed, including orphaned files from successful Finalize
+  // that weren't registered via ApplyUpdate.
+  if (!success) {
+    for (auto& kv : builders) {
+      kv.second.builder->MarkDelete();
+    }
   }
-  return KStatus::SUCCESS;
+  builders.clear();
+  return success ? KStatus::SUCCESS : KStatus::FAIL;
 }
 
-KStatus TsVGroup::CancelWriteBatchData() {
-  std::set<PartitionIdentifier> partition_ids;
-  for (auto& kv : write_batch_segment_builders_) {
-    partition_ids.insert(kv.first);
-    kv.second->WriteBatchCancel();
+KStatus TsVGroup::CancelWriteBatchData(LastSegBuilderMap& builders) {
+  for (auto& kv : builders) {
+    kv.second.builder->MarkDelete();
   }
-  write_batch_segment_builders_.clear();
-  for (auto p_id : partition_ids) {
-    auto partition = version_manager_->Current()->GetPartition(p_id);
-    partition->ResetStatus();
-  }
+  builders.clear();
   return KStatus::SUCCESS;
 }
 

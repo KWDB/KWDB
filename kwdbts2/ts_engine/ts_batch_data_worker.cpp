@@ -9,6 +9,7 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstring>
@@ -218,21 +219,6 @@ KStatus ParseBatchDataLayout(const TSSlice& data, TSTableID table_id, ParsedBatc
 }
 
 }  // namespace
-
-enum class WriteBatchStatus : uint8_t {
-  None = 0,
-  Writing,
-};
-std::atomic<WriteBatchStatus> write_batch_status{WriteBatchStatus::None};
-
-bool TrySetWriteBusy() {
-  WriteBatchStatus expected = WriteBatchStatus::None;
-  return write_batch_status.compare_exchange_strong(expected, WriteBatchStatus::Writing);
-}
-
-void ResetWriteStatus() {
-  write_batch_status.store(WriteBatchStatus::None);
-}
 
 TsReadBatchDataWorker::TsReadBatchDataWorker(TSEngineImpl* ts_engine, TSTableID table_id,
                                              uint64_t table_version, KwTsSpan ts_span, uint64_t job_id,
@@ -608,27 +594,21 @@ TsWriteBatchDataWorker::~TsWriteBatchDataWorker() {
   }
 
   KStatus s = KStatus::SUCCESS;
-  while (!TrySetWriteBusy()) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  }
-
   Defer defer([&]() {
     if (s != KStatus::SUCCESS) {
-      auto vgroups = ts_engine_->GetTsVGroups();
-      for (const auto& vgroup : *vgroups) {
-        vgroup->CancelWriteBatchData();
+      for (auto& [vg, builders] : write_batch_builders_) {
+        vg->CancelWriteBatchData(builders);
       }
     }
-    ResetWriteStatus();
   });
 
-  // write batch data to entity segment
+  // write batch data to last segment
   {
     BatchDataHeader header{};
     const size_t batch_header_size = sizeof(BatchDataHeader);
     std::unique_ptr<TsSequentialReadFile> r_file;
 
-    auto s = w_file_->Sync();
+    s = w_file_->Sync();
     if (s == FAIL) {
       auto path = w_file_->GetFilePath();
       LOG_WARN("sync file failed, job_id[%lu], file_path=%s", job_id_, path.c_str());
@@ -642,12 +622,23 @@ TsWriteBatchDataWorker::~TsWriteBatchDataWorker() {
 
     uint64_t left = 0;
     const uint64_t file_size = w_file_->GetFileSize();
+
+    struct BatchIndex {
+      uint32_t vgroup_id;
+      TSEntityID entity_id;
+      uint64_t header_offset;
+      uint64_t data_length;
+    };
+    std::vector<BatchIndex> batch_index;
+
+    // Pass 1: sequential scan to collect per-batch (vgroup_id, entity_id, header_offset, data_length).
     while (left < file_size) {
       if (file_size - left < batch_header_size) {
         s = KStatus::FAIL;
         LOG_ERROR("Invalid batch header length, job_id[%lu], left[%lu], file_size[%lu]", job_id_, left, file_size);
         return;
       }
+      uint64_t header_offset = r_file->Tell();
       TsSliceGuard batch_header;
       s = r_file->Read(batch_header_size, &batch_header);
       if (s != KStatus::SUCCESS) {
@@ -661,32 +652,57 @@ TsWriteBatchDataWorker::~TsWriteBatchDataWorker() {
                   job_id_, header.data_length, left, file_size);
         return;
       }
+      // Skip the compressed payload here; it is re-read (and validated) in Pass 2. Avoiding the read
+      // keeps Pass 1 a header-only scan so the temp file is read in full only once (in Pass 2).
+      r_file->Skip(header.data_length);
+      batch_index.push_back({header.vgroup_id, header.entity_id, header_offset, header.data_length});
+      left += batch_header_size + header.data_length;
+    }
+
+    // Stable sort preserves arrival order within a single (vgroup, entity), so an entity's batches
+    // are dispatched in the order they arrived (keeping OSN/time monotonicity within an entity).
+    std::stable_sort(batch_index.begin(), batch_index.end(),
+                     [](const BatchIndex& a, const BatchIndex& b) {
+                       if (a.vgroup_id != b.vgroup_id) {
+                         return a.vgroup_id < b.vgroup_id;
+                       }
+                       return a.entity_id < b.entity_id;
+                     });
+
+    // Pass 2: dispatch in sorted order. TsSequentialReadFile::Read is backed by pread (FIO) or an
+    // mmap base+offset, so Seek + Read correctly jumps to each recorded header_offset.
+    for (const auto& entry : batch_index) {
+      r_file->Seek(entry.header_offset);
+      TsSliceGuard batch_header;
+      s = r_file->Read(batch_header_size, &batch_header);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("Read batch header failed, job_id[%lu]", job_id_);
+        return;
+      }
+      memcpy(&header, batch_header.data(), sizeof(header));
       TsSliceGuard block_data;
-      s = r_file->Read(header.data_length, &block_data);
+      s = r_file->Read(entry.data_length, &block_data);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("Read batch data failed, job_id[%lu]", job_id_);
         return;
       }
       TSSlice data = block_data.AsSlice();
-      s = ts_engine_->GetTsVGroup(header.vgroup_id)
-              ->WriteBatchData(header.table_id, header.table_version, header.entity_id, header.p_time,
-                               header.batch_version, data, source_);
+      auto vgroup = ts_engine_->GetTsVGroup(header.vgroup_id);
+      auto& builders = write_batch_builders_[vgroup.get()];
+      s = vgroup->WriteBatchData(header.table_id, header.table_version, header.entity_id, header.p_time,
+                                 header.batch_version, data, source_, builders);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("WriteBatchData failed, table_id[%lu], entity_id[%lu]", header.table_id, header.entity_id);
         return;
       }
-      left += batch_header_size + header.data_length;
     }
   }
-  // write batch finish
-  {
-    auto vgroups = ts_engine_->GetTsVGroups();
-    for (const auto& vgroup : *vgroups) {
-      s = vgroup->FinishWriteBatchData();
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("FinishWriteBatchData failed, job_id[%lu]", job_id_);
-        return;
-      }
+  // write batch finish: finalize only the vgroups this session touched
+  for (auto& [vg, builders] : write_batch_builders_) {
+    s = vg->FinishWriteBatchData(builders);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("FinishWriteBatchData failed, job_id[%lu]", job_id_);
+      return;
     }
   }
 }
