@@ -6382,3 +6382,127 @@ func (c *CallbackValueGenerator) Values() Datums {
 
 // Close is part of the ValueGenerator interface.
 func (c *CallbackValueGenerator) Close() {}
+
+// check column type can convert to overload type
+func getOverloadListByType(overloads []overloadImpl, typ *types.T, idx int) []overloadImpl {
+	resOps := make([]overloadImpl, 0)
+	for _, overload := range overloads {
+		if overload.params().GetAt(idx).Equivalent(typ) {
+			resOps = append(resOps, overload)
+		}
+	}
+	return resOps
+}
+
+// select matching overloads based on the implicit cast type list
+func getConvertOverloadListByType(overloads []overloadImpl, typ *types.T, idx int) []overloadImpl {
+	resOps := getOverloadListByType(overloads, typ, idx)
+	if familys, ok := types.TypeConvertMap[typ.Family()]; ok {
+		for _, family := range familys {
+			for _, overload := range overloads {
+				opTyp := overload.params().GetAt(idx)
+				if family == opTyp.Family() {
+					resOps = append(resOps, overload)
+				}
+			}
+		}
+	}
+	return resOps
+}
+
+// pick the best overload from overloads with const
+// eg: string can convert int, but "a" can not convert int
+func getDesiredOverloadWithConst(
+	overloads []overloadImpl, idx int, exprs []TypedExpr,
+) overloadImpl {
+	for i, expr := range exprs {
+		if i == idx {
+			continue
+		}
+		if !isConstant(expr) {
+			continue
+		}
+		newOps := make([]overloadImpl, 0)
+		for _, overload := range overloads {
+			if canConstantBecome(expr.(Constant), overload.params().GetAt(idx)) {
+				newOps = append(newOps, overload)
+			}
+		}
+		overloads = newOps
+	}
+	if len(overloads) == 0 {
+		return nil
+	}
+	return overloads[0]
+}
+
+// pick the best overload from overloads
+func getDesiredOverload(overloads []overloadImpl, idx int, exprs []TypedExpr) overloadImpl {
+	for i, expr := range exprs {
+		if i == idx {
+			continue
+		}
+		overloads = getConvertOverloadListByType(overloads, expr.ResolvedType(), i)
+	}
+	if len(overloads) == 1 {
+		return overloads[0]
+	} else if len(overloads) == 0 {
+		return nil
+	}
+	return getDesiredOverloadWithConst(overloads, idx, exprs)
+}
+
+// add cast expr with desired type
+func addCastWithDesiredType(
+	ctx *SemaContext, overload overloadImpl, typExprs []TypedExpr,
+) ([]TypedExpr, []overloadImpl, error) {
+	resOps := []overloadImpl{overload}
+	var err error
+	for i, expr := range typExprs {
+		desiredType := overload.params().GetAt(i)
+		if !expr.ResolvedType().Equivalent(desiredType) {
+			expr = &CastExpr{Expr: expr, Type: desiredType}
+			typExprs[i], err = expr.TypeCheck(ctx, desiredType)
+			if err != nil {
+				return []TypedExpr{}, []overloadImpl{}, err
+			}
+		}
+	}
+	return typExprs, resOps, nil
+}
+
+// TryConvertOverloadedExprs Checks whether the type of the input expr can be cast to the overload type.
+// if cast conversion is allowed, wraps the input expr with a Cast operator.
+func tryConvertOverloadedExprs(
+	ctx *SemaContext, overloads []overloadImpl, exprs []TypedExpr,
+) ([]TypedExpr, []overloadImpl) {
+	// match one parameter type exactly,
+	// perform implicit type conversion on other parameter types.
+	for i, typedExpr := range exprs {
+		tmpOps := getOverloadListByType(overloads, typedExpr.ResolvedType(), i)
+		if len(tmpOps) == 0 {
+			continue
+		}
+		desiredOp := getDesiredOverload(tmpOps, i, exprs)
+		if desiredOp == nil {
+			continue
+		}
+		resExprs, resOps, resErr := addCastWithDesiredType(ctx, desiredOp, exprs)
+		if resErr != nil {
+			return []TypedExpr{}, []overloadImpl{}
+		}
+		return resExprs, resOps
+	}
+
+	// No parameter types match the overload exactly.
+	// Attempt to adapt the overload by applying implicit type casts to all parameters.
+	desiredOp := getDesiredOverload(overloads, -1, exprs)
+	if desiredOp == nil {
+		return []TypedExpr{}, []overloadImpl{}
+	}
+	resExprs, resOps, resErr := addCastWithDesiredType(ctx, desiredOp, exprs)
+	if resErr != nil {
+		return []TypedExpr{}, []overloadImpl{}
+	}
+	return resExprs, resOps
+}

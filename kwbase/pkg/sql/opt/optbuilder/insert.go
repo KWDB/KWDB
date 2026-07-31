@@ -882,6 +882,8 @@ func (mb *mutationBuilder) buildInputForInsert(inScope *scope, inputRows *tree.S
 		inCol := &mb.outScope.cols[i]
 		ord := mb.tabID.ColumnOrdinal(mb.targetColList[i])
 
+		mb.addCastTypeForInsert(mb.outScope, mb.tab.Column(ord), inCol, mb.tab.GetTableType())
+
 		tableType := tree.RelationalTable
 		if ord == 0 && i == 0 {
 			// we need to handle column of ts specially if table is TimeseriesTable

@@ -129,17 +129,17 @@ INSERT INTO kv4 (int, bool) VALUES (3, 'a')
 statement ok
 INSERT INTO kv4 (int, bool) VALUES (3, true)
 
-statement error value type int doesn't match type char of column "char"
+statement ok
 INSERT INTO kv4 (int, char) VALUES (4, 1)
 
 statement ok
-INSERT INTO kv4 (int, char) VALUES (4, 'a')
-
-statement error value type int doesn't match type float of column "float"
-INSERT INTO kv4 (int, float) VALUES (5, 1::INT8)
+INSERT INTO kv4 (int, char) VALUES (5, 'a')
 
 statement ok
-INSERT INTO kv4 (int, float) VALUES (5, 2.3)
+INSERT INTO kv4 (int, float) VALUES (6, 1::INT8)
+
+statement ok
+INSERT INTO kv4 (int, float) VALUES (7, 2.3)
 
 query ITBTR rowsort
 SELECT * from kv4
@@ -147,8 +147,13 @@ SELECT * from kv4
 1  NULL  NULL  NULL  NULL
 2  1     NULL  NULL  NULL
 3  NULL  true  NULL  NULL
-4  NULL  NULL  a     NULL
-5  NULL  NULL  NULL  2.3
+4  NULL  NULL  1     NULL
+5  NULL  NULL  a     NULL
+6  NULL  NULL  NULL  1
+7  NULL  NULL  NULL  2.3
+
+
+
 
 statement ok
 CREATE TABLE kv5 (
@@ -533,7 +538,7 @@ subtest regression_26742
 statement ok
 CREATE TABLE ct(x INT8, derived INT8 AS (x+1) STORED)
 
-statement error value type varchar doesn't match type int of column "x"
+statement error pq: could not parse "c" as type int: strconv.ParseInt: parsing "c": invalid syntax
 INSERT INTO ct(x) SELECT c FROM sw
 
 subtest contraint_check_validation_ordering

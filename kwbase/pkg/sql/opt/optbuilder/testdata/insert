@@ -733,7 +733,24 @@ insert abcde
 build
 INSERT INTO xyz (x) VALUES (10)
 ----
-error (42804): value type int doesn't match type string of column "x"
+insert xyz
+ ├── columns: <none>
+ ├── insert-mapping:
+ │    ├── column1:5 => x:1
+ │    ├── column6:6 => y:2
+ │    └── column7:7 => z:3
+ └── project
+      ├── columns: column6:6 column7:7 column1:5!null
+      ├── project
+      │    ├── columns: column1:5!null
+      │    ├── values
+      │    │    ├── columns: column1:4!null
+      │    │    └── (10,)
+      │    └── projections
+      │         └── column1:4::STRING [as=column1:5]
+      └── projections
+           ├── NULL::INT8 [as=column6:6]
+           └── NULL::FLOAT8 [as=column7:7]
 
 # Try to insert into computed column.
 build

@@ -887,8 +887,10 @@ SELECT ARRAY['a','b','c'] || 'd'::text
 ----
 {a,b,c,d}
 
-query error unsupported binary operator
+query T
 SELECT ARRAY['a','b','c'] || 'd'
+----
+{a,b,c,d}
 
 query T
 SELECT ARRAY[1,2,3] || 4

@@ -1,0 +1,102 @@
+> create database test;
+CREATE DATABASE
+> use test;
+SET
+> create table test1(col1 smallint primary key, col2 int, col3 bigint, col4 float, col5 varchar);
+CREATE TABLE
+> insert into test1 values(1,100,1000,1000.101, '111'), (2,200,2000,2000.202, '222');
+INSERT 2
+> select col1 || 1 from test1;
+  ?column?
+------------
+  11
+  21
+(2 rows)
+> select col1 || 'test_const' from test1;
+   ?column?
+---------------
+  1test_const
+  2test_const
+(2 rows)
+> select col5 || 1 from test1;
+  ?column?
+------------
+  1111
+  2221
+(2 rows)
+> select col1 || col2 from test1;
+  ?column?
+------------
+  1100
+  2200
+(2 rows)
+> select col1 || col3 from test1;
+  ?column?
+------------
+  11000
+  22000
+(2 rows)
+> select col1 || col4 from test1;
+  ?column?
+-------------
+  11000.101
+  22000.202
+(2 rows)
+> select col1 || col5 from test1;
+  ?column?
+------------
+  1111
+  2222
+(2 rows)
+> select col2 || col3 from test1;
+  ?column?
+------------
+  1001000
+  2002000
+(2 rows)
+> select col2 || col4 from test1;
+   ?column?
+---------------
+  1001000.101
+  2002000.202
+(2 rows)
+> select col2 || col5 from test1;
+  ?column?
+------------
+  100111
+  200222
+(2 rows)
+> select col3 || col4 from test1;
+    ?column?
+----------------
+  10001000.101
+  20002000.202
+(2 rows)
+> select col3 || col5 from test1;
+  ?column?
+------------
+  1000111
+  2000222
+(2 rows)
+> select col4 || col5 from test1;
+   ?column?
+---------------
+  1000.101111
+  2000.202222
+(2 rows)
+> create table test2(col1 bigint, col2 float, col3 varchar);
+CREATE TABLE
+> insert into test2 select col4, col4, col5 from test1;
+ERROR: value type float doesn't match type int of column "col1"
+SQLSTATE: 42804
+> insert into test2 select col1, 'test', col5 from test1;
+ERROR: could not parse "test" as type float: strconv.ParseFloat: parsing "test": invalid syntax
+SQLSTATE: 22P02
+> insert into test2 select col5, col3, col4 from test1;
+INSERT 2
+> insert into test2 select col5, col5, col4 from test1;
+INSERT 2
+> use defaultdb;
+SET
+> drop database test cascade;
+DROP DATABASE

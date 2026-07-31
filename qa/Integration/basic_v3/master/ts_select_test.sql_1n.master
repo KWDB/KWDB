@@ -146,7 +146,7 @@ INSERT 2
 -----+-----
 (0 rows)
 > select e1, e3 from test_ts.ts_table where e2||e1 = 1 group by e1, e3 having e1||e3 = 0;
-ERROR: unsupported binary operator: <int4> || <int2>
+ERROR: unsupported comparison operator: <string> = <int>
 SQLSTATE: 22023
 > select e1 from test_ts.ts_table where e2<<1 = 1 group by e1 having e1>>1 = 2;
   e1
@@ -1547,7 +1547,7 @@ SQLSTATE: 22003
 -------+------+------+------+------+-------
 (0 rows)
 > select * from test.test1 where col1 in (select e1 from test_ts.ts_table where e1||10 = false order by e3 desc limit 1 offset 1) order by col2;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select * from test.test1 where col1 in (select e1 from test_ts.ts_table where e1<<1 = 1 order by e3 desc limit 1 offset 1) order by col2;
   col1 | col2 | col3 | col4 | col5 | col6
@@ -1768,7 +1768,7 @@ SQLSTATE: 22023
 -------+------+------+------+------+-------
 (0 rows)
 > select * from test.test1 as t1 where col1 in (select e1 from test_ts.ts_table where e1||1 = true and t1.col2<<1 = 1 order by e3 desc limit 1 offset 1) order by col2;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(col4), length(col6) from test.test1 as t1 where col1 in (select e1 from test_ts.ts_table where substr(e6, 1, 3)='tes' and t1.col2 > 2000000 order by e3 desc limit 1 offset 1) order by col4, col6;
   sin | length
@@ -1827,7 +1827,7 @@ SQLSTATE: 22023
 --------
 (0 rows)
 > select col4  from test.test1 as t1 where col1 in (select e1 from test_ts.ts_table where e1<1000 and t1.col2 > 2000000) and col1||1 = false and col2<<1=1 group by col4, col6 having col4 > 2000000.101 and col6 like '%tes' order by col4;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(col4), length(col6) from test.test1 as t1 where col1 in (select e1 from test_ts.ts_table where e1<1000 and t1.col2 > 2000000) and substr(col6, 1, 3)='tes' group by col4, col6 having col4 > 2000000.101 and col6 like '%tes' order by col4, col6;
   sin | length
@@ -1882,7 +1882,7 @@ SQLSTATE: 22023
 -------+-------
 (0 rows)
 > select col4, col6 from test.test1 as t1 where col1 in (select e1 from test_ts.ts_table where e1<1000 and t1.col2 > 2000000) and col1||1 = false and col2<<1=1 order by col3 desc limit 1 offset 1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select col4, col6 from test.test1 as t1 where col1 in (select e1 from test_ts.ts_table where e1<1000 and t1.col2 > 2000000) and col1 order by col3 desc limit 1 offset 1;
 ERROR: incompatible AND argument type: int2
@@ -1969,7 +1969,7 @@ SQLSTATE: 42804
 -------+------+------+------+------+-------
 (0 rows)
 > select * from test.test1 where col1 in (select m.e1 from test_ts.ts_table as m join test.test1 as n on m.e3=n.col3 where e1||1=false and e2<<1=1 group by e1 having e1 < 2000) order by col2;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(col4), length(col6) from test.test1 where col1 in (select m.e1 from test_ts.ts_table as m join test.test1 as n on m.e3=n.col3 where substr(e6, 1, 3)='tes' group by e1 having e1 < 2000);
           sin          | length
@@ -2031,7 +2031,7 @@ SQLSTATE: 22023
 -------+------+------+------+------+-------
 (0 rows)
 > select * from test.test1 where col1 in (select m.e1 from test_ts.ts_table as m join test.test1 as n on m.e3=n.col3 where e1||1=false and e2<<1=1 order by e3 desc limit 1 offset 1) order by col2;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(col4), length(col6) from test.test1 where col1 in (select m.e1 from test_ts.ts_table as m join test.test1 as n on m.e3=n.col3 where substr(e6, 1, 3)='tes' order by e3 desc limit 1 offset 1);
           sin          | length
@@ -2090,7 +2090,7 @@ SQLSTATE: 22023
 -------+-------
 (0 rows)
 > select col4, col6 from test.test1 where col1 in (select m.e1 from test_ts.ts_table as m join test.test1 as n on m.e3=n.col3) and col2||1=true and col3<<1=1 group by col4, col6 having col4 > 3000000 and col6 like '%te' order by col4, col6;
-ERROR: unsupported binary operator: <int4> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(col4), length(col6) from test.test1 where col1 in (select m.e1 from test_ts.ts_table as m join test.test1 as n on m.e3=n.col3) and substr(col6, 1, 3)='tes' group by col4, col6 having col4 > 3000000 and col6 like '%te';
   sin | length
@@ -2147,7 +2147,7 @@ SQLSTATE: 22023
 -------+-------
 (0 rows)
 > select col4, col6 from test.test1 where col1 in (select m.e1 from test_ts.ts_table as m join test.test1 as n on m.e3=n.col3) and col2||1=true and col3<<1=1 order by col4 desc limit 1 offset 1;
-ERROR: unsupported binary operator: <int4> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(col4), length(col6) from test.test1 where col1 in (select m.e1 from test_ts.ts_table as m join test.test1 as n on m.e3=n.col3) and substr(col6, 1, 3)='tes' order by col4 desc limit 1 offset 1;
           sin          | length
@@ -2238,7 +2238,7 @@ SQLSTATE: 22023
    false
 (2 rows)
 > select e1 in ( select col1 from test.test1 where col1||1=false and col1<<1=1 group by col1 having col1 < 4000) from test_ts.ts_table order by e1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select e1 in ( select col1 from test.test1 where sin(col4)=1 and length(col6)=1 group by col1 having col1 < 4000) from test_ts.ts_table order by e1;
   ?column?
@@ -2295,7 +2295,7 @@ SQLSTATE: 22023
    false
 (2 rows)
 > select e1 in ( select col1 from test.test1 where col1||1=false and col1<<1=1 order by col3 desc limit 10 offset 1) from test_ts.ts_table order by e1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select e1 in ( select col1 from test.test1 where sin(col4)=1 and length(col6)=1 order by col3 desc limit 10 offset 1) from test_ts.ts_table order by e1;
   ?column?
@@ -2389,7 +2389,7 @@ SQLSTATE: 22023
    false
 (2 rows)
 > select col1 in ( select e1 from test_ts.ts_table where e1||1=false and e2<<1=1 group by e1 having e1 < 4000 order by e1) from test.test1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select col1 in ( select e1 from test_ts.ts_table where sin(e4)=1 and length(e6)=1 group by e1 having e1 < 4000 order by e1) from test.test1;
   ?column?
@@ -2446,7 +2446,7 @@ SQLSTATE: 22023
    false
 (2 rows)
 > select col1 in ( select e1 from test_ts.ts_table where e1||1=false and e2<<1=1 order by e1 desc limit 10 offset 1) from test.test1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select col1 in ( select e1 from test_ts.ts_table where sin(e4)=1 and length(e6)=1 order by e1 desc limit 10 offset 1) from test.test1;
   ?column?
@@ -2525,7 +2525,7 @@ SQLSTATE: 22023
 -----+-----
 (0 rows)
 > select e4, e6 from test_ts.ts_table as t1 where exists (select col1 from test.test1 as t2 where t1.e1=t2.col1 and t1.e1||1=false and t2.col1<<1=1 group by col1 having col1 < 2000) order by e4, e6;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(e4), length(e6) from test_ts.ts_table as t1 where exists (select col1 from test.test1 as t2 where t1.e1=t2.col1 and substr(e6, 1, 3)='tes' group by col1 having col1 < 2000) order by e4, e6;
           sin          | length
@@ -2576,7 +2576,7 @@ SQLSTATE: 22023
 -----+-----
 (0 rows)
 > select e4, e6 from test_ts.ts_table as t1 where exists (select col1 from test.test1 as t2 where t1.e1=t2.col1 and t1.e1||1=false and t2.col1<<1=1 order by col3 desc limit 10 offset 1) order by e4, e6;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(e4), length(e6) from test_ts.ts_table as t1 where exists (select col1 from test.test1 as t2 where t1.e1=t2.col1 and substr(e6, 1, 3)='tes' order by col3 desc limit 10 offset 1) order by e4, e6;
   sin | length
@@ -2623,7 +2623,7 @@ SQLSTATE: 22023
 -----+-----
 (0 rows)
 > select e4, e6 from test_ts.ts_table as t1 where exists (select col1 from test.test1 as t2 where t1.e1=t2.col1) and e1||1=true and e2<<1=1 group by e4, e6 having e4 < 2000000.01 and e6 like '%te' order by e4, e6;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(e4), length(e6) from test_ts.ts_table as t1 where exists (select col1 from test.test1 as t2 where t1.e1=t2.col1) and substr(e6, 1, 3)='tes' group by e4, e6 having e4 < 2000000.01 and e6 like '%te' order by e4, e6;
   sin | length
@@ -2670,7 +2670,7 @@ SQLSTATE: 22023
 -----+-----
 (0 rows)
 > select e4, e6 from test_ts.ts_table as t1 where exists (select col1 from test.test1 as t2 where t1.e1=t2.col1) and e1||1=true and e2<<1=1 group by e4, e6 having e4 < 2000000.01 and e6 like '%te' order by e4 desc limit 10 offset 1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(e4), length(e6) from test_ts.ts_table as t1 where exists (select col1 from test.test1 as t2 where t1.e1=t2.col1) and substr(e6, 1, 3)='tes' group by e4, e6 having e4 < 2000000.01 and e6 like '%te' order by e4 desc limit 10 offset 1;
   sin | length
@@ -2773,7 +2773,7 @@ SQLSTATE: 22023
 -------+----+----+----+----+----+----+-------+-------+-------+-------+-------+--------
 (0 rows)
 > select * from test_ts.ts_table as m where e1 in (select e1 from (select col1 as e1 from test.test1 where m.e1 < 10000) as n where m.e1=n.e1 and e1||1=true and e2<<1=1 group by e1 having e1 < 2000) order by e4, e6;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(e4), length(e6) from test_ts.ts_table as m where e1 in (select e1 from (select col1 as e1 from test.test1 where m.e1 < 10000) as n where m.e1=n.e1 group by e1 having e1 < 2000) order by e4, e6;
           sin          | length
@@ -2826,7 +2826,7 @@ SQLSTATE: 22023
 -------+----+----+----+----+----+----+-------+-------+-------+-------+-------+--------
 (0 rows)
 > select * from test_ts.ts_table as m where e1 in (select e1 from (select col1 as e1 from test.test1 where m.e1 < 10000) as n where m.e1=n.e1 and e1||1=true and e2<<1=1 order by e3 desc limit 10 offset 1) order by e4, e6;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(e4), length(e6) from test_ts.ts_table as m where e1 in (select e1 from (select col1 as e1 from test.test1 where m.e1 < 10000) as n where m.e1=n.e1 order by e3 desc limit 10 offset 1) order by e4, e6;
   sin | length
@@ -2877,7 +2877,7 @@ SQLSTATE: 22023
 -----+-----
 (0 rows)
 > select e4, e6 from test_ts.ts_table as m where e1 in (select e1 from (select col1 as e1 from test.test1 where m.e1 < 10000) as n where m.e1=n.e1) and e1||1=true and e2<<1=1 group by e4, e6 having e4 < 2000000.01 and e6 like '%te' order by e4, e6;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(e4), length(e6) from test_ts.ts_table as m where e1 in (select e1 from (select col1 as e1 from test.test1 where m.e1 < 10000) as n where m.e1=n.e1) and substring(e6, 1, 3)='tes' group by e4, e6 having e4 < 2000000.01 and e6 like '%te' order by e4, e6;
   sin | length
@@ -2928,7 +2928,7 @@ SQLSTATE: 22023
 -----+-----
 (0 rows)
 > select e4, e6 from test_ts.ts_table as m where e1 in (select e1 from (select col1 as e1 from test.test1 where m.e1 < 10000) as n where m.e1=n.e1) and e1||1=true and e2<<1=1 group by e4, e6 having e4 < 2000000.01 and e6 like '%te' order by e4 desc limit 10 offset 1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(e4), length(e6) from test_ts.ts_table as m where e1 in (select e1 from (select col1 as e1 from test.test1 where m.e1 < 10000) as n where m.e1=n.e1) and substring(e6, 1, 3)='tes' group by e4, e6 having e4 < 2000000.01 and e6 like '%te' order by e4 desc limit 10 offset 1;
   sin | length
@@ -2968,25 +2968,25 @@ SQLSTATE: 22023
 ------------
 (0 rows)
 > select e1 in (select col1 from test.test1 as t1 where t1.col1=t2.e1), e2 from test_ts.ts_table as t2 where e1||1=true and e2<<1=1 order by e3 desc limit 10 offset 1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select e1 in (select col1 from test.test1 as t1 where t1.col1=t2.e1), sin(e4), length(e6) from test_ts.ts_table as t2 where e1||1=true and e2<<1=1 order by e3 desc limit 10 offset 1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select e1 in (select col1 from test.test1 as t1 where t1.col1=t2.e1), cos(e4), concat(e6, 'test') from test_ts.ts_table as t2 where e1||1=true and e2<<1=1 order by e3 desc limit 10 offset 1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select e1 in (select col1 from test.test1 as t1 where t1.col1=t2.e1), ceil(e4), left(e6, 1) from test_ts.ts_table as t2 where e1||1=true and e2<<1=1 order by e3 desc limit 10 offset 1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select e1 in (select col1 from test.test1 as t1 where t1.col1=t2.e1), floor(e4), lower(e6) from test_ts.ts_table as t2 where e1||1=true and e2<<1=1 order by e3 desc limit 10 offset 1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select e1 in (select col1 from test.test1 as t1 where t1.col1=t2.e1), power(e4, 2), lpad(e6, 1) from test_ts.ts_table as t2 where e1||1=true and e2<<1=1 order by e3 desc limit 10 offset 1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select e1 in (select col1 from test.test1 as t1 where t1.col1=t2.e1), round(e4), ltrim(e6) from test_ts.ts_table as t2 where e1||1=true and e2<<1=1 order by e3 desc limit 10 offset 1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select e1 from (select e1 from test_ts.ts_table);
    e1
@@ -3026,7 +3026,7 @@ SQLSTATE: 22023
 -----+-----------
 (0 rows)
 > select e4, 46 from (select * from test_ts.ts_table) where e1||1=1 and e2<<1=1 group by e4, e6 having e4 < 2000000.01 and e6 like '%tes';
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <int>
 SQLSTATE: 22023
 > select sin(e4), length(e6) from (select * from test_ts.ts_table) where substring(e6, 1, 3)='tes' group by e4, e6 having e4 < 2000000.01 and e6 like '%tes' order by e4, e6;
   sin | length
@@ -3069,7 +3069,7 @@ SQLSTATE: 22023
 -----+-----------
 (0 rows)
 > select e4, 46 from (select * from test_ts.ts_table) where e1||1=1 and e2<<1=1 group by e4, e6 having e4 < 2000000.01 and e6 like '%tes' order by e4 desc limit 10 offset 1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <int>
 SQLSTATE: 22023
 > select sin(e4), length(e6) from (select * from test_ts.ts_table) where substring(e6, 1, 3)='tes' group by e4, e6 having e4 < 2000000.01 and e6 like '%tes' order by e4 desc limit 10 offset 1;
   sin | length
@@ -3212,7 +3212,7 @@ SQLSTATE: 22023
 -----+-----
 (0 rows)
 > select e4, e6 from test_ts.ts_table as t1 join test.test1 as t2 on t1.e1=t2.col1 where e1||1=true and e2<<1=1 group by e4, e6 having e4 > 1000000.01 and e6 like '%te' order by e4, e6;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(e4), length(e6) from test_ts.ts_table as t1 join test.test1 as t2 on t1.e1=t2.col1 where  substr(e6, 1, 3)='tes' group by e4, e6 having e4 > 1000000.01 and e6 like '%te' order by e4, e6;
   sin | length
@@ -3254,7 +3254,7 @@ SQLSTATE: 42804
 -----+-----
 (0 rows)
 > select e4, e6 from test_ts.ts_table as t1 join test.test1 as t2 on t1.e1=t2.col1 where e1||1=true and e2<<1=1 group by e4, e6 having e4 > 1000000.01 and e6 like '%te' order by e4 desc limit 10 offset 1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(e4), length(e6) from test_ts.ts_table as t1 join test.test1 as t2 on t1.e1=t2.col1 where  substr(e6, 1, 3)='tes' group by e4, e6 having e4 > 1000000.01 and e6 like '%te' order by e4 desc limit 10 offset 1;
   sin | length
@@ -3349,7 +3349,7 @@ SQLSTATE: 42804
 ------
 (0 rows)
 > select e1 from test_ts.ts_table as t1, test.test1 as t2 where t1.e1=t2.col1 and e1||1=true and col1<<1=1 order by e1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select cos(e4), concat(e6, 'test') from test_ts.ts_table as t1, test.test1 as t2 where t1.e1=t2.col1 and substring(e6, 1, 3)='tes' order by e4, e6;
           cos         |    concat
@@ -4060,7 +4060,7 @@ SQLSTATE: 22003
 -------+----+----+----+----+----+----+-------+-------+-------+-------+-------+--------
 (0 rows)
 > select * from test_ts.ts_table2 where e1 in (select e1 from test_ts.ts_table where e1||10 = false order by e3 desc limit 1 offset 1) order by e2;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select * from test_ts.ts_table2 where e1 in (select e1 from test_ts.ts_table where e1<<1 = 1 order by e3 desc limit 1 offset 1) order by e2;
   time | e1 | e2 | e3 | e4 | e5 | e6 | attr1 | attr2 | attr3 | attr4 | attr5 | attr6
@@ -4341,7 +4341,7 @@ SQLSTATE: 22023
 -------+----+----+----+----+----+----+-------+-------+-------+-------+-------+--------
 (0 rows)
 > select * from test_ts.ts_table2 as t1 where e1 in (select e1 from test_ts.ts_table where e1||1 = true and t1.e2<<1 = 1 order by e3 desc limit 1 offset 1) order by e2;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(e4), length(e6) from test_ts.ts_table2 as t1 where e1 in (select e1 from test_ts.ts_table where substr(e6, 1, 3)='tes' and t1.e2 > 2000000 order by e3 desc limit 1 offset 1) order by e4, e6;
   sin | length
@@ -4400,7 +4400,7 @@ SQLSTATE: 22023
 -----+-----
 (0 rows)
 > select e4, e6 from test_ts.ts_table2 as t1 where e1 in (select e1 from test_ts.ts_table where e1<1000 and t1.e2 > 2000000) and e1||1 = false and e2<<1=1 group by e4, e6 having e4 > 2000000.101 and e6 like '%tes' order by e4, e6;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(e4), length(e6) from test_ts.ts_table2 as t1 where e1 in (select e1 from test_ts.ts_table where e1<1000 and t1.e2 > 2000000) and substr(e6, 1, 3)='tes' group by e4, e6 having e4 > 2000000.101 and e6 like '%tes' order by e4, e6;
   sin | length
@@ -4455,7 +4455,7 @@ SQLSTATE: 22023
 -----+-----
 (0 rows)
 > select e4, e6 from test_ts.ts_table2 as t1 where e1 in (select e1 from test_ts.ts_table where e1<1000 and t1.e2 > 2000000) and e1||1 = false and e2<<1=1 order by e3 desc limit 1 offset 1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select e4, e6 from test_ts.ts_table2 as t1 where e1 in (select e1 from test_ts.ts_table where e1<1000 and t1.e2 > 2000000) and e1 order by e3 desc limit 1 offset 1;
 ERROR: incompatible AND argument type: int2
@@ -4548,7 +4548,7 @@ SQLSTATE: 42804
 -------+----+----+----+----+----+----+-------+-------+-------+-------+-------+--------
 (0 rows)
 > select * from test_ts.ts_table2 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table2 as n on m.e3=n.e3 where m.e1||1=false and m.e2<<1=1 group by m.e1 having m.e1 < 2000) order by e4, e6;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(e4), length(e6) from test_ts.ts_table2 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table2 as n on m.e3=n.e3 where substr(m.e6, 1, 3)='tes' group by m.e1 having m.e1 < 2000) order by e4, e6;
           sin          | length
@@ -4610,7 +4610,7 @@ SQLSTATE: 22023
 -------+----+----+----+----+----+----+-------+-------+-------+-------+-------+--------
 (0 rows)
 > select * from test_ts.ts_table2 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table2 as n on m.e3=n.e3 where m.e1||1=false and m.e2<<1=1 order by m.e3 desc limit 1 offset 1) order by e4, e6;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(e4), length(e6) from test_ts.ts_table2 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table2 as n on m.e3=n.e3 where substr(m.e6, 1, 3)='tes' order by m.e3 desc limit 1 offset 1) order by e4, e6;
           sin          | length
@@ -4669,7 +4669,7 @@ SQLSTATE: 22023
 -----+-----
 (0 rows)
 > select e4, e6 from test_ts.ts_table2 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table2 as n on m.e3=n.e3) and e2||1=true and e3<<1=1 group by e4, e6 having e4 > 3000000 and e6 like '%te' order by e4, e6;
-ERROR: unsupported binary operator: <int4> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(e4), length(e6) from test_ts.ts_table2 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table2 as n on m.e3=n.e3) and substr(e6, 1, 3)='tes' group by e4, e6 having e4 > 3000000 and e6 like '%te' order by e4, e6;
   sin | length
@@ -4726,7 +4726,7 @@ SQLSTATE: 22023
 -----+-----
 (0 rows)
 > select e4, e6 from test_ts.ts_table2 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table2 as n on m.e3=n.e3) and e2||1=true and e3<<1=1 order by e4 desc limit 1 offset 1;
-ERROR: unsupported binary operator: <int4> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(e4), length(e6) from test_ts.ts_table2 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table2 as n on m.e3=n.e3) and substr(e6, 1, 3)='tes' order by e4 desc limit 1 offset 1;
           sin          | length
@@ -4819,7 +4819,7 @@ SQLSTATE: 22023
    false
 (2 rows)
 > select e1 in ( select e1 from test_ts.ts_table2 where e1||1=false and e1<<1=1 group by e1 having e1 < 4000) from test_ts.ts_table;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select e1 in ( select e1 from test_ts.ts_table2 where sin(e4)=1 and length(e6)=1 group by e1 having e1 < 4000) from test_ts.ts_table;
   ?column?
@@ -4876,7 +4876,7 @@ SQLSTATE: 22023
    false
 (2 rows)
 > select e1 in ( select e1 from test_ts.ts_table2 where e1||1=false and e1<<1=1 order by e3 desc limit 10 offset 1) from test_ts.ts_table;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select e1 in ( select e1 from test_ts.ts_table2 where sin(e4)=1 and length(e6)=1 order by e3 desc limit 10 offset 1) from test_ts.ts_table;
   ?column?
@@ -4966,7 +4966,7 @@ SQLSTATE: 22023
    false
 (2 rows)
 > select e1 in ( select e1 from test_ts.ts_table where e1||1=false and e2<<1=1 group by e1 having e1 < 4000) from test_ts.ts_table2;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select e1 in ( select e1 from test_ts.ts_table where sin(e4)=1 and length(e6)=1 group by e1 having e1 < 4000) from test_ts.ts_table2;
   ?column?
@@ -5023,7 +5023,7 @@ SQLSTATE: 22023
    false
 (2 rows)
 > select e1 in ( select e1 from test_ts.ts_table where e1||1=false and e2<<1=1 order by e1 desc limit 10 offset 1) from test_ts.ts_table2;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select e1 in ( select e1 from test_ts.ts_table where sin(e4)=1 and length(e6)=1 order by e1 desc limit 10 offset 1) from test_ts.ts_table2;
   ?column?
@@ -5102,7 +5102,7 @@ SQLSTATE: 22023
 -----+-----
 (0 rows)
 > select e4, e6 from test_ts.ts_table as t1 where exists (select e1 from test_ts.ts_table2 as t2 where t1.e1=t2.e1 and t1.e1||1=false and t2.e1<<1=1 group by e1 having e1 < 2000) order by e4, e6;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(e4), length(e6) from test_ts.ts_table as t1 where exists (select e1 from test_ts.ts_table2 as t2 where t1.e1=t2.e1 and substr(e6, 1, 3)='tes' group by e1 having e1 < 2000) order by e4, e6;
           sin          | length
@@ -5153,7 +5153,7 @@ SQLSTATE: 22023
 -----+-----
 (0 rows)
 > select e4, e6 from test_ts.ts_table as t1 where exists (select e1 from test_ts.ts_table2 as t2 where t1.e1=t2.e1 and t1.e1||1=false and t2.e1<<1=1 order by e3 desc limit 10 offset 1) order by e4, e6;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(e4), length(e6) from test_ts.ts_table as t1 where exists (select e1 from test_ts.ts_table2 as t2 where t1.e1=t2.e1 and substr(e6, 1, 3)='tes' order by e3 desc limit 10 offset 1) order by e4, e6;
   sin | length
@@ -5200,7 +5200,7 @@ SQLSTATE: 22023
 -----+-----
 (0 rows)
 > select e4, e6 from test_ts.ts_table as t1 where exists (select e1 from test_ts.ts_table2 as t2 where t1.e1=t2.e1) and e1||1=true and e2<<1=1 group by e4, e6 having e4 < 2000000.01 and e6 like '%te' order by e4, e6;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(e4), length(e6) from test_ts.ts_table as t1 where exists (select e1 from test_ts.ts_table2 as t2 where t1.e1=t2.e1) and substr(e6, 1, 3)='tes' group by e4, e6 having e4 < 2000000.01 and e6 like '%te' order by e4, e6;
   sin | length
@@ -5247,7 +5247,7 @@ SQLSTATE: 22023
 -----+-----
 (0 rows)
 > select e4, e6 from test_ts.ts_table as t1 where exists (select e1 from test_ts.ts_table2 as t2 where t1.e1=t2.e1) and e1||1=true and e2<<1=1 group by e4, e6 having e4 < 2000000.01 and e6 like '%te' order by e4 desc limit 10 offset 1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(e4), length(e6) from test_ts.ts_table as t1 where exists (select e1 from test_ts.ts_table2 as t2 where t1.e1=t2.e1) and substr(e6, 1, 3)='tes' group by e4, e6 having e4 < 2000000.01 and e6 like '%te' order by e4 desc limit 10 offset 1;
   sin | length
@@ -5350,7 +5350,7 @@ SQLSTATE: 22023
 -------+----+----+----+----+----+----+-------+-------+-------+-------+-------+--------
 (0 rows)
 > select * from test_ts.ts_table as m where e1 in (select e1 from (select e1 as e1 from test_ts.ts_table2 where m.e1 < 10000) as n where m.e1=n.e1 and e1||1=true and e2<<1=1 group by e1 having e1 < 2000) order by e4, e6;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(e4), length(e6) from test_ts.ts_table as m where e1 in (select e1 from (select e1 as e1 from test_ts.ts_table2 where m.e1 < 10000) as n where m.e1=n.e1 group by e1 having e1 < 2000) order by e4, e6;
           sin          | length
@@ -5403,7 +5403,7 @@ SQLSTATE: 22023
 -------+----+----+----+----+----+----+-------+-------+-------+-------+-------+--------
 (0 rows)
 > select * from test_ts.ts_table as m where e1 in (select e1 from (select e1 as e1 from test_ts.ts_table2 where m.e1 < 10000) as n where m.e1=n.e1 and e1||1=true and e2<<1=1 order by e3 desc limit 10 offset 1) order by e4, e6;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(e4), length(e6) from test_ts.ts_table as m where e1 in (select e1 from (select e1 as e1 from test_ts.ts_table2 where m.e1 < 10000) as n where m.e1=n.e1 order by e3 desc limit 10 offset 1) order by e4, e6;
   sin | length
@@ -5454,7 +5454,7 @@ SQLSTATE: 22023
 -----+-----
 (0 rows)
 > select e4, e6 from test_ts.ts_table as m where e1 in (select e1 from (select e1 as e1 from test_ts.ts_table2 where m.e1 < 10000) as n where m.e1=n.e1) and e1||1=true and e2<<1=1 group by e4, e6 having e4 < 2000000.01 and e6 like '%te' order by e4, e6;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(e4), length(e6) from test_ts.ts_table as m where e1 in (select e1 from (select e1 as e1 from test_ts.ts_table2 where m.e1 < 10000) as n where m.e1=n.e1) and substring(e6, 1, 3)='tes' group by e4, e6 having e4 < 2000000.01 and e6 like '%te' order by e4, e6;
   sin | length
@@ -5505,7 +5505,7 @@ SQLSTATE: 22023
 -----+-----
 (0 rows)
 > select e4, e6 from test_ts.ts_table as m where e1 in (select e1 from (select e1 as e1 from test_ts.ts_table2 where m.e1 < 10000) as n where m.e1=n.e1) and e1||1=true and e2<<1=1 group by e4, e6 having e4 < 2000000.01 and e6 like '%te' order by e4 desc limit 10 offset 1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(e4), length(e6) from test_ts.ts_table as m where e1 in (select e1 from (select e1 as e1 from test_ts.ts_table2 where m.e1 < 10000) as n where m.e1=n.e1) and substring(e6, 1, 3)='tes' group by e4, e6 having e4 < 2000000.01 and e6 like '%te' order by e4 desc limit 10 offset 1;
   sin | length
@@ -5573,25 +5573,25 @@ SQLSTATE: 22023
 -----------+-----
 (0 rows)
 > select e1 in (select e1 from test_ts.ts_table2 as t1 where t1.e1=t2.e1), e2 from test_ts.ts_table as t2 where e1||1=true and e2<<1=1 order by e3 desc limit 10 offset 1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select e1 in (select e1 from test_ts.ts_table2 as t1 where t1.e1=t2.e1), sin(e4), length(e6) from test_ts.ts_table as t2 where e1||1=true and e2<<1=1 order by e3 desc limit 10 offset 1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select e1 in (select e1 from test_ts.ts_table2 as t1 where t1.e1=t2.e1), cos(e4), concat(e6, 'test') from test_ts.ts_table as t2 where e1||1=true and e2<<1=1 order by e3 desc limit 10 offset 1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select e1 in (select e1 from test_ts.ts_table2 as t1 where t1.e1=t2.e1), ceil(e4), left(e6, 1) from test_ts.ts_table as t2 where e1||1=true and e2<<1=1 order by e3 desc limit 10 offset 1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select e1 in (select e1 from test_ts.ts_table2 as t1 where t1.e1=t2.e1), floor(e4), lower(e6) from test_ts.ts_table as t2 where e1||1=true and e2<<1=1 order by e3 desc limit 10 offset 1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select e1 in (select e1 from test_ts.ts_table2 as t1 where t1.e1=t2.e1), power(e4, 2), lpad(e6, 1) from test_ts.ts_table as t2 where e1||1=true and e2<<1=1 order by e3 desc limit 10 offset 1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select e1 in (select e1 from test_ts.ts_table2 as t1 where t1.e1=t2.e1), round(e4), ltrim(e6) from test_ts.ts_table as t2 where e1||1=true and e2<<1=1 order by e3 desc limit 10 offset 1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select e1 in (select max(e1) from test_ts.ts_table2 as t1 where t1.e1=t2.e1)from test_ts.ts_table as t2 order by e3 desc limit 10 offset 1;
   ?column?
@@ -5632,25 +5632,25 @@ SQLSTATE: 22023
 -----------+-----
 (0 rows)
 > select e1 in (select e1 from test_ts.ts_table as t1 where t1.e1=t2.e1), e2 from test_ts.ts_table2 as t2 where e1||1=true and e2<<1=1 order by e3 desc limit 10 offset 1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select e1 in (select e1 from test_ts.ts_table as t1 where t1.e1=t2.e1), sin(e4), length(e6) from test_ts.ts_table2 as t2 where e1||1=true and e2<<1=1 order by e3 desc limit 10 offset 1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select e1 in (select e1 from test_ts.ts_table as t1 where t1.e1=t2.e1), cos(e4), concat(e6, 'test') from test_ts.ts_table2 as t2 where e1||1=true and e2<<1=1 order by e3 desc limit 10 offset 1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select e1 in (select e1 from test_ts.ts_table as t1 where t1.e1=t2.e1), ceil(e4), left(e6, 1) from test_ts.ts_table2 as t2 where e1||1=true and e2<<1=1 order by e3 desc limit 10 offset 1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select e1 in (select e1 from test_ts.ts_table as t1 where t1.e1=t2.e1), floor(e4), lower(e6) from test_ts.ts_table2 as t2 where e1||1=true and e2<<1=1 order by e3 desc limit 10 offset 1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select e1 in (select e1 from test_ts.ts_table as t1 where t1.e1=t2.e1), power(e4, 2), lpad(e6, 1) from test_ts.ts_table2 as t2 where e1||1=true and e2<<1=1 order by e3 desc limit 10 offset 1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select e1 in (select e1 from test_ts.ts_table as t1 where t1.e1=t2.e1), round(e4), ltrim(e6) from test_ts.ts_table2 as t2 where e1||1=true and e2<<1=1 order by e3 desc limit 10 offset 1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select e1 in (select max(e1) from test_ts.ts_table as t1 where t1.e1=t2.e1)from test_ts.ts_table2 as t2 order by e3 desc limit 10 offset 1;
   ?column?
@@ -5700,7 +5700,7 @@ SQLSTATE: 22023
 -----+-----------
 (0 rows)
 > select e4, 46 from (select * from test_ts.ts_table) where e1||1=1 and e2<<1=1 group by e4, e6 having e4 < 2000000.01 and e6 like '%tes';
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <int>
 SQLSTATE: 22023
 > select sin(e4), length(e6) from (select * from test_ts.ts_table) where substring(e6, 1, 3)='tes' group by e4, e6 having e4 < 2000000.01 and e6 like '%tes' order by e4, e6;
   sin | length
@@ -5743,7 +5743,7 @@ SQLSTATE: 22023
 -----+-----------
 (0 rows)
 > select e4, 46 from (select * from test_ts.ts_table) where e1||1=1 and e2<<1=1 group by e4, e6 having e4 < 2000000.01 and e6 like '%tes' order by e4 desc limit 10 offset 1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <int>
 SQLSTATE: 22023
 > select sin(e4), length(e6) from (select * from test_ts.ts_table) where substring(e6, 1, 3)='tes' group by e4, e6 having e4 < 2000000.01 and e6 like '%tes' order by e4 desc limit 10 offset 1;
   sin | length
@@ -5866,7 +5866,7 @@ SQLSTATE: 22023
 -----+-----
 (0 rows)
 > select t1.e4, t1.e6 from test_ts.ts_table as t1 join test_ts.ts_table2 as t2 on t1.e1=t2.e1 where t1.e1||1=true and t1.e2<<1=1 group by t1.e4, t1.e6 having t1.e4 > 1000000.01 and t1.e6 like '%te' order by t1.e4, t1.e6;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(t1.e4), length(t1.e6) from test_ts.ts_table as t1 join test_ts.ts_table2 as t2 on t1.e1=t2.e1 where  substr(t1.e6, 1, 3)='tes' group by t1.e4, t1.e6 having t1.e4 > 1000000.01 and t1.e6 like '%te' order by t1.e4, t1.e6;
   sin | length
@@ -5908,7 +5908,7 @@ SQLSTATE: 42804
 -----+-----
 (0 rows)
 > select t1.e4, t1.e6 from test_ts.ts_table as t1 join test_ts.ts_table2 as t2 on t1.e1=t2.e1 where t1.e1||1=true and t1.e2<<1=1 group by t1.e4, t1.e6 having t1.e4 > 1000000.01 and t1.e6 like '%te' order by t1.e4 desc limit 10 offset 1;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(t1.e4), length(t1.e6) from test_ts.ts_table as t1 join test_ts.ts_table2 as t2 on t1.e1=t2.e1 where  substr(t1.e6, 1, 3)='tes' group by t1.e4, t1.e6 having t1.e4 > 1000000.01 and t1.e6 like '%te' order by t1.e4 desc limit 10 offset 1;
   sin | length
@@ -5998,7 +5998,7 @@ SQLSTATE: 42P01
 -----+-----
 (0 rows)
 > select t1.e4, t1.e6 from test_ts.ts_table as t1, test_ts.ts_table2 as t2 where t1.e1=t2.e1 and t1.e1||1=true and t1.e1<<1=1 order by t1.e4, t1.e6;
-ERROR: unsupported binary operator: <int2> || <int>
+ERROR: unsupported comparison operator: <string> = <bool>
 SQLSTATE: 22023
 > select sin(t1.e4), length(t1.e6) from test_ts.ts_table as t1, test_ts.ts_table2 as t2 where t1.e1=t2.e1 and substr(t1.e6, 1, 3)='tes' order by t1.e4, t1.e6;
           sin          | length
