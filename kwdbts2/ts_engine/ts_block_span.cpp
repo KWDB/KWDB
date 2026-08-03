@@ -10,13 +10,16 @@
 // See the Mulan PSL v2 for more details.
 
 #include <memory>
-#include <vector>
-#include <utility>
+#include <numeric>
 #include <string>
+#include <type_traits>
+#include <utility>
+#include <vector>
+
 #include "ts_agg.h"
 #include "ts_bitmap.h"
-#include "ts_block.h"
 #include "ts_blkspan_type_convert.h"
+#include "ts_block.h"
 #include "ts_bufferbuilder.h"
 #include "ts_compressor.h"
 #include "ts_mem_segment_mgr.h"
@@ -616,6 +619,81 @@ KStatus TsBlockSpan::GetCount(uint32_t scan_idx, TsScanStats* ts_scan_stats, uin
   return KStatus::SUCCESS;
 }
 
+template <class, class = void>
+struct SumTypeHelper;
+
+template <class T>
+struct SumTypeHelper<T, std::enable_if_t<std::is_integral_v<T>>> {
+  using type = __int128;
+};
+
+template <class T>
+struct SumTypeHelper<T, std::enable_if_t<std::is_floating_point_v<T>>> {
+  using type = double;
+};
+
+template <class T>
+using sumtype_t = typename SumTypeHelper<T>::type;
+
+template <DATATYPE type>
+auto TypeMapping() {
+  if constexpr (type == DATATYPE::INT8) return int8_t{0};
+  if constexpr (type == DATATYPE::INT16) return int16_t{0};
+  if constexpr (type == DATATYPE::INT32) return int32_t{0};
+  if constexpr (type == DATATYPE::INT64) return int64_t{0};
+  if constexpr (type == DATATYPE::FLOAT) return float{0};
+  if constexpr (type == DATATYPE::DOUBLE) return double{0};
+}
+
+template <DATATYPE type>
+using dtype_t = decltype(TypeMapping<type>());
+
+template <DATATYPE type>
+static void GetSumFastPathImpl(const char* rawdata, int64_t count, bool& is_overflow, int64_t& sum_i64,
+                               double& sum_f64) {
+  auto data = reinterpret_cast<const dtype_t<type>*>(rawdata);
+  auto sum = std::accumulate(data, data + count, sumtype_t<dtype_t<type>>{0});
+  if constexpr (std::is_floating_point_v<dtype_t<type>>) {
+    sum_f64 = sum;
+    return;
+  }
+  if (sum > std::numeric_limits<int64_t>::max() || sum < std::numeric_limits<int64_t>::min()) {
+    is_overflow = true;
+    sum_f64 = sum;
+    return;
+  }
+  sum_i64 = sum;
+}
+
+static KStatus GetSumFastPath(DATATYPE type, const char* value, int64_t row_num, bool& is_overflow, int64_t& sum_i64,
+                              double& sum_f64) {
+  switch (type) {
+    case DATATYPE::INT8:
+      GetSumFastPathImpl<DATATYPE::INT8>(value, row_num, is_overflow, sum_i64, sum_f64);
+      break;
+    case DATATYPE::INT16:
+      GetSumFastPathImpl<DATATYPE::INT16>(value, row_num, is_overflow, sum_i64, sum_f64);
+      break;
+    case DATATYPE::INT32:
+      GetSumFastPathImpl<DATATYPE::INT32>(value, row_num, is_overflow, sum_i64, sum_f64);
+      break;
+    case DATATYPE::INT64:
+      GetSumFastPathImpl<DATATYPE::INT64>(value, row_num, is_overflow, sum_i64, sum_f64);
+      break;
+    case DATATYPE::FLOAT:
+      GetSumFastPathImpl<DATATYPE::FLOAT>(value, row_num, is_overflow, sum_i64, sum_f64);
+      break;
+    case DATATYPE::DOUBLE:
+      GetSumFastPathImpl<DATATYPE::DOUBLE>(value, row_num, is_overflow, sum_i64, sum_f64);
+      break;
+    default:
+      LOG_ERROR("Not supported for sum, datatype: %d", type);
+      return KStatus::FAIL;
+  }
+
+  return SUCCESS;
+}
+
 KStatus TsBlockSpan::GetSum(uint32_t scan_idx, TsScanStats* ts_scan_stats, bool can_use_pre_agg,
                             int64_t& sum_i64, double& sum_f64, bool& has_sum_result, bool& is_overflow) {
   KStatus ret;
@@ -640,6 +718,10 @@ KStatus TsBlockSpan::GetSum(uint32_t scan_idx, TsScanStats* ts_scan_stats, bool 
     return KStatus::SUCCESS;
   }
 
+  if (ts_scan_stats) {
+    ++ts_scan_stats->block_pre_agg_miss_count;
+  }
+
   TsBitmapBase *pbitmap = nullptr;
   std::unique_ptr<TsBitmapBase> bitmap;
 
@@ -654,6 +736,10 @@ KStatus TsBlockSpan::GetSum(uint32_t scan_idx, TsScanStats* ts_scan_stats, bool 
   int32_t size = GetColSize(scan_idx);
   bool all_valid = pbitmap->IsAllValid();
   bool col_not_null = IsColNotNull(scan_idx);
+  if (all_valid) {
+    has_sum_result = true;
+    return GetSumFastPath(static_cast<DATATYPE>(type), value, row_num, is_overflow, sum_i64, sum_f64);
+  }
 
   for (int row_idx = 0; row_idx < row_num; ++row_idx) {
     if (!col_not_null && !all_valid && pbitmap->At(row_idx) != DataFlags::kValid) {
@@ -715,9 +801,6 @@ KStatus TsBlockSpan::GetSum(uint32_t scan_idx, TsScanStats* ts_scan_stats, bool 
         return KStatus::FAIL;
         break;
     }
-  }
-  if (ts_scan_stats) {
-    ++ts_scan_stats->block_pre_agg_miss_count;
   }
   return KStatus::SUCCESS;
 }
