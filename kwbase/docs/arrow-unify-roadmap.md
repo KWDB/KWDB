@@ -87,9 +87,11 @@
 - [ ] 逐步收敛 arrow_adapter.go 的 `default:` 回退分支
 
 ### 阶段 3 — 统一调度层
-- [ ] planner 引入 `buildUnifiedStage`：以 UnifiedProcessor 契约统一编排，取代各算子散落 `useArrow`
-- [ ] 统一 Arrow core 构造入口（proj/filter/agg/join/sort/distinct/window 共用 `canArrowX` 判定）
-- [ ] colexec 经 `arrow_bridge` 纳入统一 DAG
+- [x] 统一 Arrow plan 序列化与降级约定：新增 `marshalArrowPlan(plan) (*Expression, bool)`（`arrow_unification.go`），取代 planner 中散落的 8 处裸 `arrowUnificationMarshal` 调用（sorter / distinct / window / 2× agg / 2× setop / filter-Intercept），把「序列化失败即降级行式」语义收口到一处。join 两处保留原始 `return err` 控制流（更保守，未动）。
+- [x] 清理 `arrow_unification.go` 末尾的 `var _ = physicalplan.ArrowAggregatorEnabled` 包循环占位 hack，移除该文件对 `physicalplan` 包的冗余导入。
+- [x] `UnifiedProcessor` 契约（Next() (arrow.Record, bool, error)）已就位，rowexec 各 `ArrowXxxProcessor` 均实现之；planner 经 `ProcessorCoreUnion.ArrowXxx` 字段只选 core、不关心内部，已是「统一调度」形态。
+- [ ] planner 引入 `buildUnifiedStage`：以 UnifiedProcessor 契约为中心把 `ArrowXxxEnabled && canArrowX && build && marshal && AddXXXStage || fallback` 收成单一编排入口。**待 CI 验证后做**：各算子 `AddXXXStage` 类型不同（NoGrouping/Noop/SingleGroup）且 return/continue 语义各异，强行泛型化风险高、本环境无法 `go test`，留待带 `libkwdbts2` 的 CI 环境批量替换并回归。
+- [ ] colexec 经 `arrow_bridge` 纳入统一 DAG（跨引擎统一路由，独立于上述收口）
 
 ### 阶段 4 — 剩余算子补齐
 - [ ] Top-N（Limit + Ordered 合并 Arrow 阶段）

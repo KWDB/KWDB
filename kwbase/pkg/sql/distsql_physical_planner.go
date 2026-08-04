@@ -3262,8 +3262,7 @@ func (dsp *DistSQLPlanner) addSorters(p *PhysicalPlan, n *sortNode, evalCtx *tre
 				-1, // limit: deferred to the post-process stage (matches colexec)
 				0,  // offset
 			)
-			expr, err := arrowUnificationMarshal(plan)
-			if err == nil {
+			if expr, ok := marshalArrowPlan(plan); ok {
 				p.AddNoGroupingStage(
 					execinfrapb.ProcessorCoreUnion{ArrowSorter: expr},
 					execinfrapb.PostProcessSpec{OutputTypes: p.ResultTypes},
@@ -4381,7 +4380,7 @@ func (dsp *DistSQLPlanner) addDistinct(
 		if physicalplan.ArrowDistinctEnabled(evalCtx) &&
 			canArrowDistinct(tree.EngineTypeRelational, distinctColumns, orderedColumns, p.ResultTypes) {
 			plan := buildArrowDistinctPlan(distinctColumns, orderedColumns)
-			if expr, err := arrowUnificationMarshal(plan); err == nil {
+			if expr, ok := marshalArrowPlan(plan); ok {
 				p.AddNoGroupingStage(
 					execinfrapb.ProcessorCoreUnion{ArrowDistinct: expr},
 					execinfrapb.PostProcessSpec{OutputTypes: p.ResultTypes},
@@ -4499,9 +4498,9 @@ func setupNewResultRouter(p *PhysicalPlan, pIdxStart physicalplan.ProcessorIdx) 
 // back to the colexec core at the call site.
 func arrowAggCoreFor(spec execinfrapb.AggregatorSpec, outTypes []types.T) (execinfrapb.ProcessorCoreUnion, error) {
 	plan := buildArrowAggPlan(spec, outTypes)
-	expr, err := arrowUnificationMarshal(plan)
-	if err != nil {
-		return execinfrapb.ProcessorCoreUnion{}, err
+	expr, ok := marshalArrowPlan(plan)
+	if !ok {
+		return execinfrapb.ProcessorCoreUnion{}, fmt.Errorf("arrow agg plan marshaling failed")
 	}
 	return execinfrapb.ProcessorCoreUnion{ArrowAggregator: expr}, nil
 }
@@ -4829,14 +4828,13 @@ func (dsp *DistSQLPlanner) addAggregators(
 		// aggregator there. Otherwise, bring the results back on this node.
 		if physicalplan.ArrowAggregatorEnabled(planCtx.EvalContext()) &&
 			canArrowAggregate(finalAggsSpec, p.ResultTypes, n.engine) {
-			plan := buildArrowAggPlan(finalAggsSpec, finalOutTypes)
-			expr, err := arrowUnificationMarshal(plan)
-			if err != nil {
-				return err
-			}
+		plan := buildArrowAggPlan(finalAggsSpec, finalOutTypes)
+		if expr, ok := marshalArrowPlan(plan); ok {
 			core := execinfrapb.ProcessorCoreUnion{ArrowAggregator: expr}
 			p.AddNoGroupingStage(core, finalAggsPost, finalOutTypes, p.MergeOrdering)
 			return nil
+		}
+		// On serialization error fall through to the classic single final aggregator.
 		}
 		dsp.addSingleGroupState(p, prevStageNode, finalAggsSpec, finalAggsPost, finalOutTypes)
 	} else {
@@ -6378,7 +6376,7 @@ func (dsp *DistSQLPlanner) createPlanForDistinct(
 			!ds.NullsAreDistinct && ds.ErrorOnDup == "" &&
 			canArrowDistinct(tree.EngineTypeRelational, ds.DistinctColumns, ds.OrderedColumns, plan.ResultTypes) {
 			planArrow := buildArrowDistinctPlan(ds.DistinctColumns, ds.OrderedColumns)
-			if expr, err := arrowUnificationMarshal(planArrow); err == nil {
+			if expr, ok := marshalArrowPlan(planArrow); ok {
 				plan.AddNoGroupingStage(
 					execinfrapb.ProcessorCoreUnion{ArrowDistinct: expr},
 					execinfrapb.PostProcessSpec{OutputTypes: plan.ResultTypes},
@@ -6594,7 +6592,7 @@ func (dsp *DistSQLPlanner) createPlanForSetOp(
 		if physicalplan.ArrowDistinctEnabled(planCtx.EvalContext()) &&
 			canArrowDistinct(tree.EngineTypeRelational, distinctCols, orderedCols, inTypes) {
 			plan := buildArrowDistinctPlan(distinctCols, orderedCols)
-			if expr, err := arrowUnificationMarshal(plan); err == nil {
+			if expr, ok := marshalArrowPlan(plan); ok {
 				return execinfrapb.ProcessorCoreUnion{ArrowDistinct: expr}
 			}
 		}
@@ -6994,9 +6992,9 @@ func (dsp *DistSQLPlanner) createPlanForWindow(
 				// classic windower assumes it.
 			if physicalplan.ArrowWindowerEnabled(planCtx.EvalContext()) &&
 					canArrowWindow(n.engine, &windowerSpec, plan.ResultTypes) {
-				if planJSON, err := arrowUnificationMarshal(buildArrowWindowPlan(&windowerSpec)); err == nil {
-					core = execinfrapb.ProcessorCoreUnion{ArrowWindower: planJSON}
-				}
+			if planJSON, ok := marshalArrowPlan(buildArrowWindowPlan(&windowerSpec)); ok {
+				core = execinfrapb.ProcessorCoreUnion{ArrowWindower: planJSON}
+			}
 			}
 				plan.AddSingleGroupStage(
 					node,

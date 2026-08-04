@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
-	"gitee.com/kwbasedb/kwbase/pkg/sql/physicalplan"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
@@ -685,4 +684,15 @@ func arrowUnificationMarshal(plan interface{}) (*execinfrapb.Expression, error) 
 	return &execinfrapb.Expression{Expr: string(b)}, nil
 }
 
-var _ = physicalplan.ArrowAggregatorEnabled
+// marshalArrowPlan 统一 Arrow plan 的序列化与降级约定。所有算子在构造
+// Arrow core 前都走它：序列化成功返回 (expr, true)，失败返回 (nil, false)，
+// 由调用方降级到行式 core。这取代 planner 中散落的
+// `arrowUnificationMarshal(plan)` 调用，把「序列化失败即降级」的语义收口到
+// 一处，消除 sort/distinct/window/filter/setop 各处不一致的出错处理。
+func marshalArrowPlan(plan interface{}) (*execinfrapb.Expression, bool) {
+	expr, err := arrowUnificationMarshal(plan)
+	if err != nil {
+		return nil, false
+	}
+	return expr, true
+}
