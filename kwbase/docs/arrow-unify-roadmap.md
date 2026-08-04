@@ -81,10 +81,14 @@
 - [x] 过滤 `LIKE`/`ILIKE`（含非字符串左操作数 CAST 到 string）—— 既有
 - [x] 过滤 `CAST`（int/float/bool/string）—— 既有
 - [x] 投影字符串 trim/ltrim/rtrim/btrim/replace、数值标量 abs/sqrt/ln/sign/power —— P1 既有
-- [x] 投影侧 **CAST（安全子集）**：`canArrowRender` 与 `arrowOperandArg` 新增 `CastExpr` 分支，`arrowArg` JSON 加 `Cast` 字段；运行时经 `castArrowArray`（与过滤侧共用 kernel）在 compute 前对操作数做类型转换。首轮仅启用 arrowCastTargetTag 覆盖的类型对：numeric→string（`CAST(i AS CHAR)`/`CAST(f AS STRING)`）、numeric 互转（int↔float）。string→numeric 因解析/溢出语义留待。
+- [x] 投影侧 **CAST（安全子集）**：`canArrowRender` 与 `arrowOperandArg` 新增 `CastExpr` 分支，`arrowArg` JSON 加 `Cast` 字段；运行时经 `castArrowArray`（与过滤侧共用 kernel）在 compute 前对操作数做类型转换。首轮启用 arrowCastTargetTag 覆盖的类型对（目标 STRING/INT/FLOAT），且各 cast kernel 已实现下列源：
+  - `→STRING`：int / float / **bool** / string / **decimal128**（decimal128→string 复用 `decimal128ToApd`，按列 scale 还原小数位）
+  - `→INT`：string / float / int / **bool**（true→1, false→0）
+  - `→FLOAT`：string / int / float / **bool**
+  - 即投影 CAST 已覆盖 `int/float/bool/decimal→string`、`string/int/float/bool` 互转的常见组合。
 
 **待做**：
-- [ ] 投影/过滤 CAST 扩展：`decimal128↔string`、`bool→string`、`string→numeric` 等。arrow/compute v17 对 decimal128↔string 支持需确认（vendored 版本可能缺），且本环境无法 `go test` 验证 cast 语义，故上述类型对留待带 `libkwdbts2` 的 CI 环境回归。
+- [ ] `string→decimal` / `int→decimal` / `float→decimal`（即 `CAST(x AS DECIMAL)` 目标）：需新增 `castToDecimal` kernel 与 `arrowCastTargetTag` 的 `DecimalFamily→"DECIMAL"` tag，并处理目标 scale 约定；arrow/compute v17 对 decimal128 构造支持需确认，且本环境无法 `go test` 验证 cast 语义，故留待带 `libkwdbts2` 的 CI 环境回归。
 - [ ] 逐步收敛 arrow_adapter.go 的 `default:` 回退分支
 
 ### 阶段 3 — 统一调度层

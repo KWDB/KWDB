@@ -567,6 +567,16 @@ func castToString(alloc memory.Allocator, arr arrow.Array) (arrow.Array, error) 
 			}
 			b.Append(a.Value(i))
 		}
+	case *array.Decimal128:
+		scale := a.DataType().(*arrow.Decimal128Type).Scale
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			d := decimal128ToApd(a.Value(i), scale)
+			b.Append(d.String())
+		}
 	default:
 		return nil, fmt.Errorf("arrow cast to STRING: unsupported source %T", arr)
 	}
@@ -605,6 +615,18 @@ func castToInt64(alloc memory.Allocator, arr arrow.Array) (arrow.Array, error) {
 			}
 			b.Append(a.Value(i))
 		}
+	case *array.Boolean:
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			if a.Value(i) {
+				b.Append(1)
+			} else {
+				b.Append(0)
+			}
+		}
 	default:
 		return nil, fmt.Errorf("arrow cast to INT: unsupported source %T", arr)
 	}
@@ -642,6 +664,18 @@ func castToFloat64(alloc memory.Allocator, arr arrow.Array) (arrow.Array, error)
 				continue
 			}
 			b.Append(a.Value(i))
+		}
+	case *array.Boolean:
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			if a.Value(i) {
+				b.Append(1)
+			} else {
+				b.Append(0)
+			}
 		}
 	default:
 		return nil, fmt.Errorf("arrow cast to FLOAT: unsupported source %T", arr)
