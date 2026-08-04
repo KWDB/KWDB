@@ -55,8 +55,10 @@ type arrowArg struct {
 	ConstBool  *bool    `json:"cbool,omitempty"`
 	ConstStr   *string  `json:"cstr,omitempty"`
 	// Cast, when non-nil, marks a CAST applied to the operand. The value is the
-	// target type tag produced by the planner ("STRING"/"INT"/"FLOAT").
+	// target type tag produced by the planner ("STRING"/"INT"/"FLOAT"/"DECIMAL").
 	Cast *string `json:"cast,omitempty"`
+	// CastScale carries the target scale for a DECIMAL cast target; ignored otherwise.
+	CastScale *int32 `json:"cscale,omitempty"`
 }
 
 // arrowProjectionCol describes how to compute one output column of the
@@ -349,7 +351,8 @@ func (p *arrowProjectionProcessor) computeInt(ctx context.Context, inTypes []typ
 // arrowCastTargetTag) to the corresponding Arrow data type. Only the tags the
 // planner emits are handled; an unknown tag falls back to STRING which the
 // projection cast kernel will reject with a clear error rather than panic.
-func arrowCastTagToType(tag string) arrow.DataType {
+// scale is only used for the "DECIMAL" tag (the target type's resolved width).
+func arrowCastTagToType(tag string, scale int32) arrow.DataType {
 	switch tag {
 	case "INT":
 		return arrow.PrimitiveTypes.Int64
@@ -359,6 +362,14 @@ func arrowCastTagToType(tag string) arrow.DataType {
 		return arrow.BinaryTypes.String
 	case "Bytes":
 		return arrow.BinaryTypes.Binary
+	case "DECIMAL":
+		// decimal128 supports precision 1..38. When the planner did not pin a
+		// precision (0), fall back to the maximum supported by the storage type.
+		precision := int32(38)
+		if scale < 0 {
+			scale = 0
+		}
+		return &arrow.Decimal128Type{Precision: precision, Scale: scale}
 	default:
 		return arrow.BinaryTypes.String
 	}
@@ -386,7 +397,11 @@ func (p *arrowProjectionProcessor) buildProjectionSpecs() []ArrowProjectionSpec 
 			// Render-side CAST: attach the target type so the projection kernel
 			// casts the operand before feeding it to the compute function.
 			if in.Cast != nil {
-				args[j].Cast = &ArrowArgCast{Type: arrowCastTagToType(*in.Cast)}
+				scale := int32(0)
+				if in.CastScale != nil {
+					scale = *in.CastScale
+				}
+				args[j].Cast = &ArrowArgCast{Type: arrowCastTagToType(*in.Cast, scale)}
 			}
 		}
 		specs[i] = ArrowProjectionSpec{

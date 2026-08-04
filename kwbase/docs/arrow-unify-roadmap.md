@@ -85,10 +85,11 @@
   - `→STRING`：int / float / **bool** / string / **decimal128**（decimal128→string 复用 `decimal128ToApd`，按列 scale 还原小数位）
   - `→INT`：string / float / int / **bool**（true→1, false→0）
   - `→FLOAT`：string / int / float / **bool**
-  - 即投影 CAST 已覆盖 `int/float/bool/decimal→string`、`string/int/float/bool` 互转的常见组合。
+  - **`→DECIMAL`**（目标 `CAST(x AS DECIMAL(p,s))`，2026-08-04 落地）：新增 `castToDecimal` kernel（源 Int64/Float64/String），经 `apdToDecimal128` 按目标 scale 半进位舍入；planner `arrowCastTargetTag` 加 `DecimalFamily→"DECIMAL"`，`arrowArg`/`arrowCastTagToType` 传目标 scale（取 `ResolvedType().Scale()`，precision 默认 38）。
+  - 即投影 CAST 已覆盖 `int/float/bool/decimal→string`、`string/int/float/bool` 互转、以及 `int/float/string→decimal` 的常见组合。
 
 **待做**：
-- [ ] `string→decimal` / `int→decimal` / `float→decimal`（即 `CAST(x AS DECIMAL)` 目标）：需新增 `castToDecimal` kernel 与 `arrowCastTargetTag` 的 `DecimalFamily→"DECIMAL"` tag，并处理目标 scale 约定；arrow/compute v17 对 decimal128 构造支持需确认，且本环境无法 `go test` 验证 cast 语义，故留待带 `libkwdbts2` 的 CI 环境回归。
+- [ ] 投影/过滤 CAST 更罕见目标：`date/timestamp→string`、`interval→string`、`numeric→bool` 等。按需按源类型扩充各 `castToXxx` kernel；受 arrow/compute v17 能力与本地 `go test` 限制，留待带 `libkwdbts2` 的 CI 环境回归。
 - [ ] 逐步收敛 arrow_adapter.go 的 `default:` 回退分支
 
 ### 阶段 3 — 统一调度层

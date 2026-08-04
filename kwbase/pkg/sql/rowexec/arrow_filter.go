@@ -15,6 +15,7 @@ import (
 	"github.com/apache/arrow/go/v17/arrow/compute"
 	"github.com/apache/arrow/go/v17/arrow/memory"
 	"github.com/apache/arrow/go/v17/arrow/scalar"
+	"github.com/cockroachdb/apd"
 )
 
 // ArrowFilterSpec is the unified (compute) description of a boolean filter.
@@ -527,6 +528,8 @@ func castArrowArray(alloc memory.Allocator, arr arrow.Array, to arrow.DataType) 
 		return castToInt64(alloc, arr)
 	case arrow.FLOAT64:
 		return castToFloat64(alloc, arr)
+	case arrow.DECIMAL128:
+		return castToDecimal(alloc, arr, to.(*arrow.Decimal128Type))
 	}
 	return nil, fmt.Errorf("arrow cast: unsupported target type %s", to)
 }
@@ -679,6 +682,65 @@ func castToFloat64(alloc memory.Allocator, arr arrow.Array) (arrow.Array, error)
 		}
 	default:
 		return nil, fmt.Errorf("arrow cast to FLOAT: unsupported source %T", arr)
+	}
+	return b.NewArray(), nil
+}
+
+// castToDecimal converts a numeric/text column into a fixed-scale decimal128
+// column. The target scale is taken from the Decimal128Type; source values are
+// rounded half-away-from-zero to that scale via apdToDecimal128 (shared with the
+// aggregator path). Supported sources: Int64, Float64, String.
+func castToDecimal(alloc memory.Allocator, arr arrow.Array, dt *arrow.Decimal128Type) (arrow.Array, error) {
+	b := array.NewDecimal128Builder(alloc, dt)
+	defer b.Release()
+	switch a := arr.(type) {
+	case *array.Int64:
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			d := apd.New(a.Value(i), 0)
+			num, err := apdToDecimal128(d, dt.Scale)
+			if err != nil {
+				return nil, fmt.Errorf("arrow cast INT->DECIMAL: %v", err)
+			}
+			b.Append(num)
+		}
+	case *array.Float64:
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			d, _, err := apd.NewFromString(strconv.FormatFloat(a.Value(i), 'g', -1, 64))
+			if err != nil {
+				return nil, fmt.Errorf("arrow cast FLOAT->DECIMAL: %v", err)
+			}
+			num, err := apdToDecimal128(d, dt.Scale)
+			if err != nil {
+				return nil, fmt.Errorf("arrow cast FLOAT->DECIMAL: %v", err)
+			}
+			b.Append(num)
+		}
+	case *array.String:
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			d, _, err := apd.NewFromString(strings.TrimSpace(a.Value(i)))
+			if err != nil {
+				return nil, fmt.Errorf("arrow cast STRING->DECIMAL: %v", err)
+			}
+			num, err := apdToDecimal128(d, dt.Scale)
+			if err != nil {
+				return nil, fmt.Errorf("arrow cast STRING->DECIMAL: %v", err)
+			}
+			b.Append(num)
+		}
+	default:
+		return nil, fmt.Errorf("arrow cast to DECIMAL: unsupported source %T", arr)
 	}
 	return b.NewArray(), nil
 }

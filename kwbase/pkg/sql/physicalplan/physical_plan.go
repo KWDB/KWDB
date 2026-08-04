@@ -1564,8 +1564,11 @@ type arrowArg struct {
 	ConstBool  *bool    `json:"cbool,omitempty"`
 	ConstStr   *string  `json:"cstr,omitempty"`
 	// Cast, when non-nil, marks a CAST applied to the operand. The value is the
-	// target type tag produced by arrowCastTargetTag ("STRING"/"INT"/"FLOAT").
+	// target type tag produced by arrowCastTargetTag ("STRING"/"INT"/"FLOAT"/"DECIMAL").
 	Cast *string `json:"cast,omitempty"`
+	// CastScale carries the target scale for a DECIMAL cast target (ignored for
+	// other targets). It is the resolved width of the DECIMAL type.
+	CastScale *int32 `json:"cscale,omitempty"`
 }
 
 type arrowProjectionCol struct {
@@ -1616,6 +1619,10 @@ func (p *PhysicalPlan) arrowOperandArg(
 			return arrowArg{}, nil, false
 		}
 		inner.Cast = &tag
+		if c.ResolvedType().Family() == types.DecimalFamily {
+			scale := c.ResolvedType().Scale()
+			inner.CastScale = &scale
+		}
 		return inner, c.ResolvedType(), true
 	}
 	return arrowArg{}, nil, false
@@ -2231,6 +2238,8 @@ func arrowCastTargetTag(t *types.T) (string, bool) {
 		return "INT", true
 	case types.FloatFamily:
 		return "FLOAT", true
+	case types.DecimalFamily:
+		return "DECIMAL", true
 	}
 	return "", false
 }
