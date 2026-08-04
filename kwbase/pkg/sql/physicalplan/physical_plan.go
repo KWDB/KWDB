@@ -1563,6 +1563,9 @@ type arrowArg struct {
 	ConstFloat *float64 `json:"cfloat,omitempty"`
 	ConstBool  *bool    `json:"cbool,omitempty"`
 	ConstStr   *string  `json:"cstr,omitempty"`
+	// Cast, when non-nil, marks a CAST applied to the operand. The value is the
+	// target type tag produced by arrowCastTargetTag ("STRING"/"INT"/"FLOAT").
+	Cast *string `json:"cast,omitempty"`
 }
 
 type arrowProjectionCol struct {
@@ -1595,6 +1598,25 @@ func (p *PhysicalPlan) arrowOperandArg(
 	case *tree.DString:
 		v := string(*c)
 		return arrowArg{Col: -1, ConstStr: &v}, e.ResolvedType(), true
+	case *tree.CastExpr:
+		// Render-side CAST: recurse on the inner expression, then attach a cast
+		// tag for the resolved target type. Only types understood by
+		// arrowCastTargetTag are accelerated (numeric<->string so far); anything
+		// else falls back to the row engine via ok==false.
+		innerExpr, ok := c.Expr.(tree.TypedExpr)
+		if !ok {
+			return arrowArg{}, nil, false
+		}
+		inner, _, ok := p.arrowOperandArg(innerExpr, indexVarMap)
+		if !ok {
+			return arrowArg{}, nil, false
+		}
+		tag, ok := arrowCastTargetTag(c.ResolvedType())
+		if !ok {
+			return arrowArg{}, nil, false
+		}
+		inner.Cast = &tag
+		return inner, c.ResolvedType(), true
 	}
 	return arrowArg{}, nil, false
 }
@@ -1811,6 +1833,19 @@ func (p *PhysicalPlan) canArrowRender(exprs []tree.TypedExpr, indexVarMap []int)
 			return true
 		}
 			return false
+		case *tree.CastExpr:
+			// Render-side CAST is accelerated only for target types understood by
+			// arrowCastTargetTag, and only when the inner expression itself is
+			// renderable. The actual cast tag is attached in arrowOperandArg.
+			ce, _ := e.(*tree.CastExpr)
+			if _, ok := arrowCastTargetTag(ce.ResolvedType()); !ok {
+				return false
+			}
+			innerExpr, ok := ce.Expr.(tree.TypedExpr)
+			if !ok {
+				return false
+			}
+			return p.canArrowRender([]tree.TypedExpr{innerExpr}, indexVarMap)
 		default:
 			// Plain column reference: allowed as a passthrough (identity copy).
 			if _, ok := exprColumn(e, indexVarMap); !ok {

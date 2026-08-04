@@ -148,7 +148,18 @@ func (p *arrowProjection) eval(ctx context.Context, in arrow.Record, spec ArrowP
 		if len(idx) == 0 {
 			return nil, fmt.Errorf("projection input column %q not found", a.ColName)
 		}
-		args[i] = compute.NewDatum(in.Column(idx[0]))
+		col := in.Column(idx[0])
+		if a.Cast != nil {
+			// Render-side CAST: convert the operand to the target type before
+			// feeding it to the compute function. Reuses the same cast kernels
+			// as the Arrow filter path.
+			casted, err := castArrowArray(p.alloc, col, a.Cast.Type)
+			if err != nil {
+				return nil, err
+			}
+			col = casted
+		}
+		args[i] = compute.NewDatum(col)
 	}
 	res, err := compute.CallFunction(ctx, spec.Func, nil, args...)
 	if err != nil {

@@ -54,6 +54,9 @@ type arrowArg struct {
 	ConstFloat *float64 `json:"cfloat,omitempty"`
 	ConstBool  *bool    `json:"cbool,omitempty"`
 	ConstStr   *string  `json:"cstr,omitempty"`
+	// Cast, when non-nil, marks a CAST applied to the operand. The value is the
+	// target type tag produced by the planner ("STRING"/"INT"/"FLOAT").
+	Cast *string `json:"cast,omitempty"`
 }
 
 // arrowProjectionCol describes how to compute one output column of the
@@ -342,6 +345,25 @@ func (p *arrowProjectionProcessor) computeInt(ctx context.Context, inTypes []typ
 }
 
 // buildProjectionSpecs expands the planner plan into ArrowProjectionSpecs.
+// arrowCastTagToType maps the planner's cast target tag (produced by
+// arrowCastTargetTag) to the corresponding Arrow data type. Only the tags the
+// planner emits are handled; an unknown tag falls back to STRING which the
+// projection cast kernel will reject with a clear error rather than panic.
+func arrowCastTagToType(tag string) arrow.DataType {
+	switch tag {
+	case "INT":
+		return arrow.PrimitiveTypes.Int64
+	case "FLOAT":
+		return arrow.PrimitiveTypes.Float64
+	case "STRING":
+		return arrow.BinaryTypes.String
+	case "Bytes":
+		return arrow.BinaryTypes.Binary
+	default:
+		return arrow.BinaryTypes.String
+	}
+}
+
 func (p *arrowProjectionProcessor) buildProjectionSpecs() []ArrowProjectionSpec {
 	specs := make([]ArrowProjectionSpec, len(p.plan.Cols))
 	for i, c := range p.plan.Cols {
@@ -360,6 +382,11 @@ func (p *arrowProjectionProcessor) buildProjectionSpecs() []ArrowProjectionSpec 
 				args[j] = ArrowArg{ColName: fmt.Sprintf("col%d", in.Col)}
 			} else {
 				args[j] = ArrowArg{Scalar: arrowConstDatum(in, p.alloc)}
+			}
+			// Render-side CAST: attach the target type so the projection kernel
+			// casts the operand before feeding it to the compute function.
+			if in.Cast != nil {
+				args[j].Cast = &ArrowArgCast{Type: arrowCastTagToType(*in.Cast)}
 			}
 		}
 		specs[i] = ArrowProjectionSpec{
