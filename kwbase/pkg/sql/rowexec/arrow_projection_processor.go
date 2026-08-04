@@ -416,6 +416,33 @@ func ArrowProjectionResultsInt64(proj UnifiedProcessor, ctx context.Context) ([]
 	return out, nil
 }
 
+// ArrowProjectionResultFloat64 runs the projection to completion and returns
+// the float64 values of its first output column. See
+// ArrowProjectionResultInt64 for the rationale behind the package-local type
+// assertion.
+func ArrowProjectionResultFloat64(proj UnifiedProcessor, ctx context.Context) ([]float64, error) {
+	rec, done, err := proj.Next(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if done || rec == nil {
+		return nil, fmt.Errorf("arrow projection produced no record")
+	}
+	defer rec.Release()
+	if rec.NumCols() < 1 {
+		return nil, fmt.Errorf("arrow projection produced no columns")
+	}
+	arr, ok := rec.Column(0).(*array.Float64)
+	if !ok {
+		return nil, fmt.Errorf("expected Float64 column, got %T", rec.Column(0))
+	}
+	vals := make([]float64, arr.Len())
+	for i := 0; i < arr.Len(); i++ {
+		vals[i] = arr.Value(i)
+	}
+	return vals, nil
+}
+
 // arrowConstDatum wraps a constant argument into a compute scalar datum so that
 // it can be passed to an arrow/compute kernel alongside array arguments.
 func arrowConstDatum(a arrowArg, _ memory.Allocator) compute.Datum {
@@ -506,12 +533,17 @@ func arrowRecordToEncDatumRows(
 		var t types.T
 		kwType := arrowDataTypeToKWType(col.DataType())
 		if len(typs) == width {
-			if (&typs[ci]).Family() == (&kwType).Family() {
-				t = typs[ci]
-			} else {
-				t = kwType
-			}
+			// Arity matches the planner-declared schema: use the planner type.
+			// This keeps downstream type-sensitive decode paths correct for
+			// logical types whose Arrow storage differs from their KWDB family
+			// (e.g. JSON stored as STRING, UUID as FIXED_SIZE_BINARY), and
+			// preserves decimal precision/scale metadata.
+			t = typs[ci]
 		} else {
+			// The record is wider than the post schema (e.g. an aggregator that
+			// emits one column per aggregate for a downstream render to
+			// collapse, such as AVG = sum/count): derive the column type from
+			// its Arrow DataType instead.
 			t = kwType
 		}
 		switch arr := col.(type) {

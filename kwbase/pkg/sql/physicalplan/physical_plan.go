@@ -89,6 +89,24 @@ func ArrowJoinEnabled(evalCtx *tree.EvalContext) bool {
 	return arrowJoinEnabled(evalCtx)
 }
 
+// ArrowSorterEnabled reports whether sorts are routed through the Arrow compute
+// engine.
+func ArrowSorterEnabled(evalCtx *tree.EvalContext) bool {
+	return arrowSorterEnabled(evalCtx)
+}
+
+// ArrowDistinctEnabled reports whether dedup (distinct) is routed through the
+// Arrow compute engine.
+func ArrowDistinctEnabled(evalCtx *tree.EvalContext) bool {
+	return arrowDistinctEnabled(evalCtx)
+}
+
+// ArrowWindowerEnabled reports whether (the supported subset of) window
+// functions are routed through the Arrow compute engine.
+func ArrowWindowerEnabled(evalCtx *tree.EvalContext) bool {
+	return arrowWindowerEnabled(evalCtx)
+}
+
 // arrowFilterEnabledSetting routes arrow-computable boolean filter expressions
 // (e.g. `a > 1`, `a > b AND b < 5`) through the Arrow compute engine.
 var arrowFilterEnabledSetting = settings.RegisterBoolSetting(
@@ -131,6 +149,49 @@ func arrowJoinEnabled(evalCtx *tree.EvalContext) bool {
 		return false
 	}
 	return arrowJoinEnabledSetting.Get(&evalCtx.Settings.SV)
+}
+
+// arrowSorterEnabledSetting routes ORDER BY sorting through the Arrow compute
+// engine.
+var arrowSorterEnabledSetting = settings.RegisterBoolSetting(
+	"sql.arrow_sorter.enabled",
+	"if set, sorts (ORDER BY) are evaluated using the Arrow compute engine",
+	false,
+)
+
+// arrowDistinctEnabledSetting routes DISTINCT dedup through the Arrow compute
+// engine.
+var arrowDistinctEnabledSetting = settings.RegisterBoolSetting(
+	"sql.arrow_distinct.enabled",
+	"if set, DISTINCT dedup is evaluated using the Arrow compute engine",
+	false,
+)
+
+func arrowSorterEnabled(evalCtx *tree.EvalContext) bool {
+	if evalCtx == nil || evalCtx.Settings == nil {
+		return false
+	}
+	return arrowSorterEnabledSetting.Get(&evalCtx.Settings.SV)
+}
+
+func arrowDistinctEnabled(evalCtx *tree.EvalContext) bool {
+	if evalCtx == nil || evalCtx.Settings == nil {
+		return false
+	}
+	return arrowDistinctEnabledSetting.Get(&evalCtx.Settings.SV)
+}
+
+var arrowWindowerEnabledSetting = settings.RegisterBoolSetting(
+	"sql.arrow_windower.enabled",
+	"if set, the supported subset of window functions (no-frame partition aggregates) is evaluated using the Arrow compute engine",
+	false,
+)
+
+func arrowWindowerEnabled(evalCtx *tree.EvalContext) bool {
+	if evalCtx == nil || evalCtx.Settings == nil {
+		return false
+	}
+	return arrowWindowerEnabledSetting.Get(&evalCtx.Settings.SV)
 }
 
 // Processor contains the information associated with a processor in a plan.
@@ -1611,11 +1672,51 @@ func (p *PhysicalPlan) canArrowRender(exprs []tree.TypedExpr, indexVarMap []int)
 				return false
 			}
 		case *tree.FuncExpr:
+			// Numeric scalar kernels (abs/sqrt/ln/sign/power) are evaluated by
+			// the vendored arrow/compute module via compute.CallFunction. Gate
+			// on operand count and numeric types below.
+			rawName := ex.Func.FunctionReference.FunctionName()
+			if kernel, arity, ok := arrowNumericFuncName(rawName); ok {
+				args, ok := p.arrowStringFuncArgs(ex.Exprs, indexVarMap)
+				if !ok {
+					return false
+				}
+				if arity >= 0 && len(args) != arity {
+					return false
+				}
+				if !arrowNumericComputeType(ex.ResolvedType()) {
+					return false
+				}
+				hasCol := false
+				for _, a := range args {
+					if a.col >= 0 {
+						hasCol = true
+					}
+					if !arrowNumericComputeType(a.ty) {
+						return false
+					}
+				}
+				if !hasCol {
+					// Need at least one input column to reference.
+					return false
+				}
+				if len(args) > 1 {
+					// Require same-family operands (arrow/compute kernels do not
+					// implicitly promote, matching the binary-expr gate above).
+					fam := args[0].ty.Family()
+					for _, a := range args[1:] {
+						if a.ty.Family() != fam {
+							return false
+						}
+					}
+				}
+				_ = kernel
+				return true
+			}
 			// String-function kernels (length/lower/upper/concat/substring) are
 			// evaluated by a dedicated Go kernel inside the Arrow projection
 			// executor (arrow/compute has no string kernels in this vendored
 			// version). Gate on the operand shapes below.
-			rawName := ex.Func.FunctionReference.FunctionName()
 			funcName, ok := arrowStringFuncName(rawName)
 			if !ok {
 				return false
@@ -1711,6 +1812,44 @@ func arrowStringFuncName(name string) (string, bool) {
 	return "", false
 }
 
+// arrowNumericFuncName normalizes a SQL numeric scalar-function name to the
+// arrow/compute kernel name used by the Arrow projection executor, together
+// with the expected operand arity (-1 for "any", though all current kernels
+// have fixed arity). These kernels are shipped by the vendored arrow/compute
+// module, so no dedicated Go kernel is needed.
+//
+// Supported: abs/sqrt/ln/sign (1 arg), power (2 args). The executor routes
+// them through compute.CallFunction with the kernel name, reusing the same
+// binary-operator path that handles add/subtract/multiply/divide.
+func arrowNumericFuncName(name string) (kernel string, arity int, ok bool) {
+	switch strings.ToLower(name) {
+	case "abs":
+		return "abs", 1, true
+	case "sqrt":
+		return "sqrt", 1, true
+	case "ln":
+		return "ln", 1, true
+	case "sign":
+		return "sign", 1, true
+	case "power":
+		return "power", 2, true
+	}
+	return "", 0, false
+}
+
+// arrowNumericComputeType reports whether the Arrow numeric kernels we route
+// through compute.CallFunction can handle a value of the given type. We keep
+// this to plain int/float (no decimal) to avoid widening the column-building
+// surface; arrow/compute supports decimal for these kernels, but the planner
+// gate intentionally stays conservative.
+func arrowNumericComputeType(t *types.T) bool {
+	switch t.Family() {
+	case types.IntFamily, types.FloatFamily:
+		return true
+	}
+	return false
+}
+
 // arrowArgWithType pairs an operand's arrow arg with its SQL type; used only
 // inside the planner gate to validate string-function operand shapes.
 type arrowArgWithType struct {
@@ -1794,9 +1933,23 @@ func (p *PhysicalPlan) addArrowRendering(
 			})
 			outT = append(outT, *ex.ResolvedType())
 		case *tree.FuncExpr:
-			funcName, ok := arrowStringFuncName(ex.Func.FunctionReference.FunctionName())
+			rawName := ex.Func.FunctionReference.FunctionName()
+			if kernel, _, ok := arrowNumericFuncName(rawName); ok {
+				inputs, ok := p.arrowArgsFor(ex.Exprs, indexVarMap)
+				if !ok {
+					return errors.Errorf("arrow projection: unsupported argument to %s", kernel)
+				}
+				plan.Cols = append(plan.Cols, arrowProjectionCol{
+					Kind:   "compute",
+					Func:   kernel,
+					Inputs: inputs,
+				})
+				outT = append(outT, *ex.ResolvedType())
+				continue
+			}
+			funcName, ok := arrowStringFuncName(rawName)
 			if !ok {
-				return errors.Errorf("arrow projection: unsupported function %s", ex.Func.FunctionReference.FunctionName())
+				return errors.Errorf("arrow projection: unsupported function %s", rawName)
 			}
 			inputs, ok := p.arrowArgsFor(ex.Exprs, indexVarMap)
 			if !ok {

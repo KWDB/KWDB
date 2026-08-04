@@ -22,12 +22,29 @@ type ArrowAggSpec struct {
 	Aggs      []ArrowAggExpr
 }
 
-// ArrowAggExpr is a single aggregate over an input column. Func is one of
-// sum/count/min/max/mean (over a value column), count_all (COUNT(*), group
-// size) or ident (pass-through of a grouping column).
+// ArrowAggExpr is a single aggregate over one or more input columns. Func is
+// one of sum/count/min/max/mean/sqrdiff (single input), count_all (COUNT(*),
+// group size), ident (pass-through of a grouping column), or final_variance/
+// final_stddev (three inputs: [SQRDIFF, SUM, COUNT]). Inputs holds the input
+// column names; Input is retained only as a historical single-column field and
+// is ignored when Inputs is non-empty.
 type ArrowAggExpr struct {
-	Func  string
-	Input string
+	Func   string
+	Input  string
+	Inputs []string
+}
+
+// aggInputs returns the effective input column names for an aggregate,
+// preferring the multi-column Inputs slice and falling back to the legacy
+// single-column Input field.
+func aggInputs(a ArrowAggExpr) []string {
+	if len(a.Inputs) > 0 {
+		return a.Inputs
+	}
+	if a.Input == "" {
+		return nil
+	}
+	return []string{a.Input}
 }
 
 type arrowAggregatorCore struct {
@@ -107,7 +124,9 @@ func aggOutputType(fn string, in arrow.DataType) arrow.DataType {
 	switch fn {
 	case "count", "count_all":
 		return arrow.PrimitiveTypes.Int64
-	case "mean":
+	case "mean", "sqrdiff", "final_variance", "final_stddev":
+		// These widen integer/decimal inputs to DECIMAL128 and keep floats as
+		// FLOAT64, matching the colexec sqrdiff/variance/stddev output types.
 		if in != nil && (in.ID() == arrow.INT64 || in.ID() == arrow.DECIMAL128) {
 			return meanDecimalType
 		}

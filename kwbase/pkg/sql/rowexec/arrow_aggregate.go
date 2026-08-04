@@ -5,21 +5,21 @@
 package rowexec
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"fmt"
 	"hash/maphash"
 	"math"
 	"math/big"
-	"bytes"
 
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
 	"github.com/apache/arrow/go/v17/arrow/decimal128"
 	"github.com/apache/arrow/go/v17/arrow/memory"
 	"github.com/apache/arrow/go/v17/arrow/scalar"
 	"github.com/cockroachdb/apd"
-	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 )
 
 // ============================================================================
@@ -62,6 +62,8 @@ const (
 	aggOpMin
 	aggOpMax
 	aggOpMean
+	aggOpSqrdiff
+	aggOpFinalVariance
 )
 
 func parseAggOp(s string) (aggOp, error) {
@@ -78,6 +80,10 @@ func parseAggOp(s string) (aggOp, error) {
 		return aggOpMax, nil
 	case "mean":
 		return aggOpMean, nil
+	case "sqrdiff":
+		return aggOpSqrdiff, nil
+	case "final_variance", "final_stddev":
+		return aggOpFinalVariance, nil
 	}
 	return 0, fmt.Errorf("unsupported arrow aggregate op %q", s)
 }
@@ -102,6 +108,9 @@ const (
 // leaving headroom for large totals (values with more than ~28 integer digits
 // would overflow decimal128 and are out of scope for a single batch).
 var meanDecimalType = &arrow.Decimal128Type{Precision: 38, Scale: 9}
+
+// apdZero is the shared zero apd.Decimal used for count/merge comparisons.
+var apdZero = apd.New(0, 0)
 
 // apdToDecimal128 converts an arbitrary-precision apd.Decimal (the internal
 // representation of SQL DECIMAL) into a fixed-scale decimal128.Num so it can be
@@ -153,6 +162,24 @@ func decimal128ToApd(num decimal128.Num, scale int32) apd.Decimal {
 	return d
 }
 
+// scalarToApd converts an arrow scalar value (INT64 or DECIMAL128) from a value
+// column of inType into an apd.Decimal for exact decimal accumulation. INT64
+// inputs become an unscaled apd.Decimal (matching colexec's int->decimal
+// widening for SQRDIFF/SUM/AVG).
+func scalarToApd(s scalar.Scalar, inType arrow.DataType) (apd.Decimal, bool) {
+	switch v := s.(type) {
+	case *scalar.Int64:
+		return *apd.New(v.Value, 0), true
+	case *scalar.Decimal128:
+		scale := int32(0)
+		if dt, ok := inType.(*arrow.Decimal128Type); ok {
+			scale = dt.Scale
+		}
+		return decimal128ToApd(v.Value, scale), true
+	}
+	return apd.Decimal{}, false
+}
+
 type scalarAggregator interface {
 	// Consume accumulates the (non-null) values of arr, i.e. one batch or one
 	// group's value segment. When sel is non-nil it is a selection vector of
@@ -161,7 +188,12 @@ type scalarAggregator interface {
 	// aggregator feed each group's rows straight from the contiguous column
 	// buffer (exactly like colexec's selection-vector feeding) instead of doing a
 	// per-group copy.
-	Consume(arr arrow.Array, sel []int32) error
+	//
+	// arrs holds the input column(s) for this aggregator. Single-input functions
+	// read arrs[0]; multi-input functions (e.g. FINAL_VARIANCE consuming
+	// [SQRDIFF, SUM, COUNT]) read arrs[0..n). The column indices come from the
+	// aggregator's colIdx field, set by newScalarAggregator from the spec.
+	Consume(arrs []arrow.Array, sel []int32) error
 	// MergeFrom folds the state of other (same concrete type) into this one.
 	MergeFrom(other scalarAggregator) error
 	// Finalize emits the aggregate value, or a null scalar when no non-null
@@ -169,10 +201,66 @@ type scalarAggregator interface {
 	Finalize() (scalar.Scalar, error)
 }
 
+// identAgg is a pass-through aggregate (ANY_NOT_NULL semantics) used when a
+// grouping column has been elided by the planner (e.g. "WHERE b = 7 GROUP BY b"
+// makes b a constant, leaving GroupCols empty) and the column is preserved in
+// the output as an "ident" expression. It keeps the first non-null value seen
+// for the group; if the group is empty or all-null it finalizes to a null
+// scalar of the input type.
+type identAgg struct {
+	typ arrow.DataType
+	val scalar.Scalar
+	set bool
+}
+
+func (a *identAgg) Consume(arrs []arrow.Array, sel []int32) error {
+	arr := arrs[0]
+	if a.set && a.val != nil && a.val.IsValid() {
+		return nil
+	}
+	if sel == nil {
+		for i := 0; i < arr.Len(); i++ {
+			if !arr.IsNull(i) {
+				a.val = arrayScalarAt(arr, i)
+				a.set = true
+				return nil
+			}
+		}
+		return nil
+	}
+	for _, s := range sel {
+		if !arr.IsNull(int(s)) {
+			a.val = arrayScalarAt(arr, int(s))
+			a.set = true
+			return nil
+		}
+	}
+	return nil
+}
+
+func (a *identAgg) MergeFrom(other scalarAggregator) error {
+	o, ok := other.(*identAgg)
+	if !ok {
+		return nil
+	}
+	if !a.set && o.set {
+		a.val = o.val
+		a.set = true
+	}
+	return nil
+}
+
+func (a *identAgg) Finalize() (scalar.Scalar, error) {
+	if !a.set || a.val == nil {
+		return scalar.MakeNullScalar(a.typ), nil
+	}
+	return a.val, nil
+}
+
 // newScalarAggregator builds a fresh ScalarAggregator for op over an input of
 // type inType. This mirrors how C++ resolves a kernel implementation from the
 // value type (FindAccumulatorType / kernel dispatch).
-func newScalarAggregator(op aggOp, inType arrow.DataType) (scalarAggregator, error) {
+func newScalarAggregator(op aggOp, inType arrow.DataType, fn string) (scalarAggregator, error) {
 	switch op {
 	case aggOpSum:
 		out := inType
@@ -191,6 +279,10 @@ func newScalarAggregator(op aggOp, inType arrow.DataType) (scalarAggregator, err
 		return &minMaxAgg{op: op, kind: kind, inType: inType}, nil
 	case aggOpMean:
 		return &meanAgg{inType: inType}, nil
+	case aggOpSqrdiff:
+		return &sqrdiffAgg{inType: inType}, nil
+	case aggOpFinalVariance:
+		return &finalVarianceAgg{inType: inType, stddev: fn == "final_stddev"}, nil
 	case aggOpCountAll:
 		return nil, fmt.Errorf("count_all has no per-array aggregator; use a group counter")
 	}
@@ -211,7 +303,8 @@ type sumAgg struct {
 	count   int64
 }
 
-func (s *sumAgg) Consume(arr arrow.Array, sel []int32) error {
+func (s *sumAgg) Consume(arrs []arrow.Array, sel []int32) error {
+	arr := arrs[0]
 	switch a := arr.(type) {
 	case *array.Int64:
 		vals := a.Int64Values()
@@ -377,7 +470,8 @@ type countAgg struct {
 	n int64
 }
 
-func (c *countAgg) Consume(arr arrow.Array, sel []int32) error {
+func (c *countAgg) Consume(arrs []arrow.Array, sel []int32) error {
+	arr := arrs[0]
 	if arr == nil {
 		return nil
 	}
@@ -420,7 +514,8 @@ type minMaxAgg struct {
 	boolMax bool
 }
 
-func (m *minMaxAgg) Consume(arr arrow.Array, sel []int32) error {
+func (m *minMaxAgg) Consume(arrs []arrow.Array, sel []int32) error {
+	arr := arrs[0]
 	switch a := arr.(type) {
 	case *array.Int64:
 		vals := a.Int64Values()
@@ -749,7 +844,8 @@ type meanAgg struct {
 	cntF   int64
 }
 
-func (m *meanAgg) Consume(arr arrow.Array, sel []int32) error {
+func (m *meanAgg) Consume(arrs []arrow.Array, sel []int32) error {
+	arr := arrs[0]
 	switch a := arr.(type) {
 	case *array.Int64:
 		vals := a.Int64Values()
@@ -885,6 +981,425 @@ func (m *meanAgg) Finalize() (scalar.Scalar, error) {
 	return scalar.NewFloat64Scalar(m.sumF / float64(m.cntF)), nil
 }
 
+// ---------------------------------------------------------------------------
+// sqrdiffAgg mirrors C++ SqrDiffImpl / KWDB floatSqrDiff & decimalSqrDiff: the
+// local stage of VARIANCE/STDDEV. It accumulates the running sum of squared
+// differences from the running mean (Welford's online algorithm), which is the
+// exact incremental reduction KWDB's colexec sqrdiff uses, so the downstream
+// FINAL_VARIANCE merge is numerically identical. The output type is FLOAT64 for
+// float input and DECIMAL128 for int/decimal input, matching the colexec
+// floatSqrDiff/decimalSqrDiff result types.
+// ---------------------------------------------------------------------------
+type sqrdiffAgg struct {
+	inType arrow.DataType
+	// float path
+	meanF float64
+	sqF   float64
+	cntF  float64
+	// decimal path
+	meanD apd.Decimal
+	sqD   apd.Decimal
+	cntD  apd.Decimal
+}
+
+func (s *sqrdiffAgg) Consume(arrs []arrow.Array, sel []int32) error {
+	arr := arrs[0]
+	if s.inType.ID() == arrow.FLOAT64 {
+		if sel == nil {
+			for i := 0; i < arr.Len(); i++ {
+				if arr.IsNull(i) {
+					continue
+				}
+				v := arr.(*array.Float64).Value(i)
+				s.cntF++
+				d := v - s.meanF
+				s.meanF += d / s.cntF
+				s.sqF += d * (v - s.meanF)
+			}
+		} else {
+			for _, k := range sel {
+				i := int(k)
+				if arr.IsNull(i) {
+					continue
+				}
+				v := arr.(*array.Float64).Value(i)
+				s.cntF++
+				d := v - s.meanF
+				s.meanF += d / s.cntF
+				s.sqF += d * (v - s.meanF)
+			}
+		}
+		return nil
+	}
+	// decimal (int/decimal) path. The arrow scalar is converted to an apd.Decimal
+	// via scalarToApd, then Welford's online algorithm is applied with apd package
+	// functions (matching KWDB's decimalSqrDiff precisely).
+	buf := &apd.Decimal{}
+	one := apd.New(1, 0)
+	if sel == nil {
+		for i := 0; i < arr.Len(); i++ {
+			if arr.IsNull(i) {
+				continue
+			}
+			cur := arrayScalarAt(arr, i)
+			if cur == nil {
+				continue
+			}
+			v, ok := scalarToApd(cur, s.inType)
+			if !ok {
+				continue
+			}
+			tree.ExactCtx.Add(&s.cntD, &s.cntD, one)
+			tree.ExactCtx.Sub(buf, &v, &s.meanD)
+			tmp := &apd.Decimal{}
+			tree.ExactCtx.Quo(tmp, buf, &s.cntD)
+			tree.ExactCtx.Add(&s.meanD, &s.meanD, tmp)
+			tree.ExactCtx.Sub(tmp, &v, &s.meanD)
+			tree.ExactCtx.Mul(tmp, tmp, buf)
+			tree.ExactCtx.Add(&s.sqD, &s.sqD, tmp)
+		}
+	} else {
+		for _, k := range sel {
+			i := int(k)
+			if arr.IsNull(i) {
+				continue
+			}
+			cur := arrayScalarAt(arr, i)
+			if cur == nil {
+				continue
+			}
+			v, ok := scalarToApd(cur, s.inType)
+			if !ok {
+				continue
+			}
+			tree.ExactCtx.Add(&s.cntD, &s.cntD, one)
+			tree.ExactCtx.Sub(buf, &v, &s.meanD)
+			tmp := &apd.Decimal{}
+			tree.ExactCtx.Quo(tmp, buf, &s.cntD)
+			tree.ExactCtx.Add(&s.meanD, &s.meanD, tmp)
+			tree.ExactCtx.Sub(tmp, &v, &s.meanD)
+			tree.ExactCtx.Mul(tmp, tmp, buf)
+			tree.ExactCtx.Add(&s.sqD, &s.sqD, tmp)
+		}
+	}
+	return nil
+}
+
+func (s *sqrdiffAgg) Finalize() (scalar.Scalar, error) {
+	if s.inType.ID() == arrow.FLOAT64 {
+		if s.cntF == 0 {
+			return scalar.MakeNullScalar(arrow.PrimitiveTypes.Float64), nil
+		}
+		return scalar.NewFloat64Scalar(s.sqF), nil
+	}
+	if s.cntD.Cmp(apdZero) == 0 {
+		return scalar.MakeNullScalar(meanDecimalType), nil
+	}
+	sqOut, _ := apdToDecimal128(&s.sqD, 9)
+	return scalar.NewDecimal128Scalar(sqOut, meanDecimalType), nil
+}
+
+func (s *sqrdiffAgg) MergeFrom(other scalarAggregator) error {
+	o := other.(*sqrdiffAgg)
+	if s.inType.ID() == arrow.FLOAT64 {
+		// merge two running Welford states (parallel variance merge)
+		if o.cntF == 0 {
+			return nil
+		}
+		if s.cntF == 0 {
+			s.meanF, s.sqF, s.cntF = o.meanF, o.sqF, o.cntF
+			return nil
+		}
+		n := s.cntF + o.cntF
+		dmean := o.meanF - s.meanF
+		s.sqF = s.sqF + o.sqF + dmean*dmean*(s.cntF*o.cntF)/n
+		s.meanF = (s.meanF*s.cntF + o.meanF*o.cntF) / n
+		s.cntF = n
+		return nil
+	}
+	if o.cntD.Cmp(apdZero) == 0 {
+		return nil
+	}
+	if s.cntD.Cmp(apdZero) == 0 {
+		s.meanD, s.sqD, s.cntD = o.meanD, o.sqD, o.cntD
+		return nil
+	}
+	n := &apd.Decimal{}
+	tree.ExactCtx.Add(n, &s.cntD, &o.cntD)
+	meanA := &apd.Decimal{}
+	tree.ExactCtx.Quo(meanA, &s.meanD, &s.cntD)
+	meanB := &apd.Decimal{}
+	tree.ExactCtx.Quo(meanB, &o.meanD, &o.cntD)
+	deltaMean := &apd.Decimal{}
+	tree.ExactCtx.Sub(deltaMean, meanB, meanA)
+	term := &apd.Decimal{}
+	prod := &apd.Decimal{}
+	tree.ExactCtx.Mul(prod, &s.cntD, &o.cntD)
+	tree.ExactCtx.Quo(term, prod, n)
+	tree.ExactCtx.Mul(term, term, deltaMean)
+	tree.ExactCtx.Mul(term, term, deltaMean)
+	tree.ExactCtx.Add(&s.sqD, &s.sqD, &o.sqD)
+	tree.ExactCtx.Add(&s.sqD, &s.sqD, term)
+	tree.ExactCtx.Add(&s.meanD, &s.meanD, &o.meanD)
+	s.cntD = *n
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// finalVarianceAgg mirrors KWDB floatSumSqrDiffs/decimalSumSqrDiffs applied to
+// the three local-stage outputs (SQRDIFF, SUM, COUNT) at the final merge stage
+// of VARIANCE/STDDEV. It merges each partition's (sqrDiff, sum, count) with the
+// parallel-variance formula, then divides the merged sqrDiff by (count-1) for
+// the sample variance (VARIANCE/STDDEV default to SAMPLE) to produce the final
+// value. When stddev is true (FINAL_STDDEV) the square root is taken. The output
+// type matches sqrdiff: FLOAT64 for float inputs, DECIMAL128 for int/decimal.
+// ---------------------------------------------------------------------------
+type finalVarianceAgg struct {
+	inType arrow.DataType
+	stddev bool
+	// float path: [sqrDiff, sum, count]
+	sqF  float64
+	sumF float64
+	cntF float64
+	// decimal path
+	sqD  apd.Decimal
+	sumD apd.Decimal
+	cntD apd.Decimal
+}
+
+func (f *finalVarianceAgg) Consume(arrs []arrow.Array, sel []int32) error {
+	sqCol := arrs[0]
+	sumCol := arrs[1]
+	cntCol := arrs[2]
+	// count is an int64 column (the local COUNT aggregate output).
+	countAt := func(i int) float64 {
+		if cntCol.IsNull(i) {
+			return 0
+		}
+		return float64(cntCol.(*array.Int64).Value(i))
+	}
+	sumAt := func(i int) (float64, bool) {
+		if sumCol.IsNull(i) {
+			return 0, false
+		}
+		switch s := arrayScalarAt(sumCol, i).(type) {
+		case *scalar.Float64:
+			return s.Value, true
+		case *scalar.Decimal128:
+			d := decimal128ToApd(s.Value, sumCol.DataType().(*arrow.Decimal128Type).Scale)
+			fv, _ := d.Float64()
+			return fv, true
+		}
+		return 0, false
+	}
+	if f.inType.ID() == arrow.FLOAT64 {
+		merge := func(sq, sm, cn float64) {
+			if cn == 0 {
+				return
+			}
+			if f.cntF == 0 {
+				f.sqF, f.sumF, f.cntF = sq, sm, cn
+				return
+			}
+			// parallel (Chan et al.) variance merge
+			n := f.cntF + cn
+			meanA := f.sumF / f.cntF
+			meanB := sm / cn
+			deltaMean := meanB - meanA
+			f.sqF = f.sqF + sq + deltaMean*deltaMean*(f.cntF*cn)/n
+			f.sumF = f.sumF + sm
+			f.cntF = n
+		}
+		if sel == nil {
+			for i := 0; i < sqCol.Len(); i++ {
+				if sqCol.IsNull(i) {
+					continue
+				}
+				sm, ok := sumAt(i)
+				if !ok {
+					continue
+				}
+				merge(sqCol.(*array.Float64).Value(i), sm, countAt(i))
+			}
+		} else {
+			for _, k := range sel {
+				i := int(k)
+				if sqCol.IsNull(i) {
+					continue
+				}
+				sm, ok := sumAt(i)
+				if !ok {
+					continue
+				}
+				merge(sqCol.(*array.Float64).Value(i), sm, countAt(i))
+			}
+		}
+		return nil
+	}
+	// decimal path
+	countDecAt := func(i int) apd.Decimal {
+		c := &apd.Decimal{}
+		if cntCol.IsNull(i) {
+			return *c
+		}
+		c.SetInt64(cntCol.(*array.Int64).Value(i))
+		return *c
+	}
+	sumDecAt := func(i int) (apd.Decimal, bool) {
+		if sumCol.IsNull(i) {
+			return apd.Decimal{}, false
+		}
+		s, ok := arrayScalarAt(sumCol, i).(*scalar.Decimal128)
+		if !ok {
+			return apd.Decimal{}, false
+		}
+		return decimal128ToApd(s.Value, sumCol.DataType().(*arrow.Decimal128Type).Scale), true
+	}
+	mergeD := func(sq, sm, cn apd.Decimal) {
+		if cn.Cmp(apdZero) == 0 {
+			return
+		}
+		if f.cntD.Cmp(apdZero) == 0 {
+			f.sqD, f.sumD, f.cntD = sq, sm, cn
+			return
+		}
+		n := &apd.Decimal{}
+		tree.ExactCtx.Add(n, &f.cntD, &cn)
+		meanA := &apd.Decimal{}
+		tree.ExactCtx.Quo(meanA, &f.sumD, &f.cntD)
+		meanB := &apd.Decimal{}
+		tree.ExactCtx.Quo(meanB, &sm, &cn)
+		deltaMean := &apd.Decimal{}
+		tree.ExactCtx.Sub(deltaMean, meanB, meanA)
+		term := &apd.Decimal{}
+		prod := &apd.Decimal{}
+		tree.ExactCtx.Mul(prod, &f.cntD, &cn)
+		tree.ExactCtx.Quo(term, prod, n)
+		tree.ExactCtx.Mul(term, term, deltaMean)
+		tree.ExactCtx.Mul(term, term, deltaMean)
+		tree.ExactCtx.Add(&f.sqD, &f.sqD, &sq)
+		tree.ExactCtx.Add(&f.sqD, &f.sqD, term)
+		tree.ExactCtx.Add(&f.sumD, &f.sumD, &sm)
+		f.cntD = *n
+	}
+	sqDecAt := func(i int) (apd.Decimal, bool) {
+		if sqCol.IsNull(i) {
+			return apd.Decimal{}, false
+		}
+		s, ok := arrayScalarAt(sqCol, i).(*scalar.Decimal128)
+		if !ok {
+			return apd.Decimal{}, false
+		}
+		return decimal128ToApd(s.Value, sqCol.DataType().(*arrow.Decimal128Type).Scale), true
+	}
+	if sel == nil {
+		for i := 0; i < sqCol.Len(); i++ {
+			if sqCol.IsNull(i) {
+				continue
+			}
+			sm, ok := sumDecAt(i)
+			if !ok {
+				continue
+			}
+			sq, ok := sqDecAt(i)
+			if !ok {
+				continue
+			}
+			mergeD(sq, sm, countDecAt(i))
+		}
+	} else {
+		for _, k := range sel {
+			i := int(k)
+			if sqCol.IsNull(i) {
+				continue
+			}
+			sm, ok := sumDecAt(i)
+			if !ok {
+				continue
+			}
+			sq, ok := sqDecAt(i)
+			if !ok {
+				continue
+			}
+			mergeD(sq, sm, countDecAt(i))
+		}
+	}
+	return nil
+}
+
+func (f *finalVarianceAgg) Finalize() (scalar.Scalar, error) {
+	if f.inType.ID() == arrow.FLOAT64 {
+		if f.cntF <= 1 {
+			// sample variance of <2 values is NULL (matches colexec VARIANCE).
+			return scalar.MakeNullScalar(arrow.PrimitiveTypes.Float64), nil
+		}
+		v := f.sqF / (f.cntF - 1)
+		if f.stddev {
+			v = math.Sqrt(v)
+		}
+		return scalar.NewFloat64Scalar(v), nil
+	}
+	if f.cntD.Cmp(apdZero) != 0 && apd.New(1, 0).Cmp(&f.cntD) < 0 {
+		denom := &apd.Decimal{}
+		tree.ExactCtx.Sub(denom, &f.cntD, apd.New(1, 0))
+		v := &apd.Decimal{}
+		tree.ExactCtx.Quo(v, &f.sqD, denom)
+		if f.stddev {
+			tree.ExactCtx.Sqrt(v, v)
+		}
+		sqOut, _ := apdToDecimal128(v, 9)
+		return scalar.NewDecimal128Scalar(sqOut, meanDecimalType), nil
+	}
+	return scalar.MakeNullScalar(meanDecimalType), nil
+}
+
+func (f *finalVarianceAgg) MergeFrom(other scalarAggregator) error {
+	o := other.(*finalVarianceAgg)
+	if f.inType.ID() == arrow.FLOAT64 {
+		if o.cntF == 0 {
+			return nil
+		}
+		if f.cntF == 0 {
+			f.sqF, f.sumF, f.cntF = o.sqF, o.sumF, o.cntF
+			return nil
+		}
+		n := f.cntF + o.cntF
+		meanA := f.sumF / f.cntF
+		meanB := o.sumF / o.cntF
+		deltaMean := meanB - meanA
+		f.sqF = f.sqF + o.sqF + deltaMean*deltaMean*(f.cntF*o.cntF)/n
+		f.sumF = f.sumF + o.sumF
+		f.cntF = n
+		return nil
+	}
+	if o.cntD.Cmp(apdZero) == 0 {
+		return nil
+	}
+	if f.cntD.Cmp(apdZero) == 0 {
+		f.sqD, f.sumD, f.cntD = o.sqD, o.sumD, o.cntD
+		return nil
+	}
+	n := &apd.Decimal{}
+	tree.ExactCtx.Add(n, &f.cntD, &o.cntD)
+	meanA := &apd.Decimal{}
+	tree.ExactCtx.Quo(meanA, &f.sumD, &f.cntD)
+	meanB := &apd.Decimal{}
+	tree.ExactCtx.Quo(meanB, &o.sumD, &o.cntD)
+	deltaMean := &apd.Decimal{}
+	tree.ExactCtx.Sub(deltaMean, meanB, meanA)
+	term := &apd.Decimal{}
+	prod := &apd.Decimal{}
+	tree.ExactCtx.Mul(prod, &f.cntD, &o.cntD)
+	tree.ExactCtx.Quo(term, prod, n)
+	tree.ExactCtx.Mul(term, term, deltaMean)
+	tree.ExactCtx.Mul(term, term, deltaMean)
+	tree.ExactCtx.Add(&f.sqD, &f.sqD, &o.sqD)
+	tree.ExactCtx.Add(&f.sqD, &f.sqD, term)
+	tree.ExactCtx.Add(&f.sumD, &f.sumD, &o.sumD)
+	f.cntD = *n
+	return nil
+}
+
 // aggregateArray applies a single scalar aggregate kernel to arr and returns the
 // resulting scalar. It is the pure-Arrow equivalent of calling
 // arrow::compute::CallFunction("hash_sum"/"sum", ...) in C++.
@@ -896,11 +1411,11 @@ func aggregateArray(fn string, arr arrow.Array) (scalar.Scalar, error) {
 	if op == aggOpCountAll {
 		return nil, fmt.Errorf("count_all has no per-array aggregator")
 	}
-	agg, err := newScalarAggregator(op, arr.DataType())
+	agg, err := newScalarAggregator(op, arr.DataType(), fn)
 	if err != nil {
 		return nil, err
 	}
-	if err := agg.Consume(arr, nil); err != nil {
+	if err := agg.Consume([]arrow.Array{arr}, nil); err != nil {
 		return nil, err
 	}
 	return agg.Finalize()
@@ -918,14 +1433,14 @@ type arrowHashAggregator struct {
 	aggs      []ArrowAggExpr
 
 	states     [][]scalarAggregator // per dense group id, per agg (nil for count_all/ident)
-	counts     []int64               // COUNT(*) per dense group id
-	order      []int32               // dense group ids in first-seen order
-	sels       [][]int32             // row selection vector per dense group id (batched feed)
-	keyRecs    []arrow.Record   // retained group-key row per dense group id (captured at discovery)
-	groupTypes []arrow.DataType // group col arrow types, captured from first input batch
-	table      *arrowGroupTable // open-addressing group table (replaces map[string])
-	hashSeed   maphash.Hash     // reused hashing state
-	inTypes    []arrow.DataType // resolved input type per agg (for output typing)
+	counts     []int64              // COUNT(*) per dense group id
+	order      []int32              // dense group ids in first-seen order
+	sels       [][]int32            // row selection vector per dense group id (batched feed)
+	keyRecs    []arrow.Record       // retained group-key row per dense group id (captured at discovery)
+	groupTypes []arrow.DataType     // group col arrow types, captured from first input batch
+	table      *arrowGroupTable     // open-addressing group table (replaces map[string])
+	hashSeed   maphash.Hash         // reused hashing state
+	inTypes    []arrow.DataType     // resolved input type per agg (for output typing)
 
 	// singleInt fast path: when there is exactly one grouping column and it is a
 	// non-nullable-able INT64, we skip the general hash table entirely and map the
@@ -933,10 +1448,10 @@ type arrowHashAggregator struct {
 	// per-row maphash + linear-probe + value-equality cost that dominated the
 	// grouped path and is the single largest lever for closing the ~1.4x gap to
 	// colexec on the common "GROUP BY <int id>" workload.
-	singleInt   bool
-	intGroups   map[int64]int32 // group value -> dense group id (singleInt mode)
-	hasNullGrp  bool            // whether the null group key has been seen
-	nullGID     int32           // dense id for the NULL group key (singleInt mode)
+	singleInt  bool
+	intGroups  map[int64]int32 // group value -> dense group id (singleInt mode)
+	hasNullGrp bool            // whether the null group key has been seen
+	nullGID    int32           // dense id for the NULL group key (singleInt mode)
 }
 
 func newArrowHashAggregator(alloc memory.Allocator, groupCols []string, aggs []ArrowAggExpr) *arrowHashAggregator {
@@ -1087,13 +1602,25 @@ func (h *arrowHashAggregator) feedGroup(ctx context.Context, gid int32, rec arro
 		case "count_all":
 			h.counts[gid] += int64(len(idxs))
 		case "ident":
-			// pass-through: nothing to accumulate
+			// ident is a pass-through of one input column (e.g. an elided
+			// grouping column kept as ANY_NOT_NULL). Capture the first
+			// non-null value of the group as the result.
+			valCol := arrowOperandColumn(rec, aggInputs(agg)[0])
+			if err := h.states[gid][i].Consume([]arrow.Array{valCol}, idxs); err != nil {
+				return err
+			}
 		default:
 			// Feed the group's value segment straight from the contiguous
 			// column buffer via a selection vector (idxs), exactly like colexec
-			// feeds a selection vector into its accumulators.
-			valCol := arrowOperandColumn(rec, agg.Input)
-			if err := h.states[gid][i].Consume(valCol, idxs); err != nil {
+			// feeds a selection vector into its accumulators. Multi-input
+			// aggregates (e.g. final_variance consuming [SQRDIFF, SUM, COUNT])
+			// get all their input columns in arrs order.
+			ins := aggInputs(agg)
+			arrs := make([]arrow.Array, len(ins))
+			for j, in := range ins {
+				arrs[j] = arrowOperandColumn(rec, in)
+			}
+			if err := h.states[gid][i].Consume(arrs, idxs); err != nil {
 				return err
 			}
 		}
@@ -1111,20 +1638,21 @@ func (h *arrowHashAggregator) newStates(rec arrow.Record) []scalarAggregator {
 			st[i] = nil
 			h.inTypes[i] = arrow.PrimitiveTypes.Int64
 		case "ident":
-			st[i] = nil
-			h.inTypes[i] = arrowOperandColumn(rec, agg.Input).DataType()
+			inType := arrowOperandColumn(rec, aggInputs(agg)[0]).DataType()
+			st[i] = &identAgg{typ: inType}
+			h.inTypes[i] = inType
 		case "count":
 			st[i] = &countAgg{}
-			h.inTypes[i] = arrowOperandColumn(rec, agg.Input).DataType()
+			h.inTypes[i] = arrowOperandColumn(rec, aggInputs(agg)[0]).DataType()
 		default:
-			inType := arrowOperandColumn(rec, agg.Input).DataType()
+			inType := arrowOperandColumn(rec, aggInputs(agg)[0]).DataType()
 			h.inTypes[i] = inType
 			op, err := parseAggOp(agg.Func)
 			if err != nil {
 				st[i] = nil
 				continue
 			}
-			agg2, err := newScalarAggregator(op, inType)
+			agg2, err := newScalarAggregator(op, inType, agg.Func)
 			if err != nil {
 				st[i] = nil
 				continue
@@ -1554,5 +2082,3 @@ func materializeGroupKeyRow(alloc memory.Allocator, rec arrow.Record, colIdxs []
 	}
 	return out
 }
-
-

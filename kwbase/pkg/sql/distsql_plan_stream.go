@@ -380,7 +380,7 @@ func (dsp *DistSQLPlanner) addStreamAggregators(
 
 	// We can have a local stage of distinct processors if all aggregation
 	// functions are distinct.
-	dsp.addDistinct(aggregations, p, n.plan)
+	dsp.addDistinct(aggregations, p, n.plan, planCtx.EvalContext())
 
 	// Check if the previous stage is all on one node.
 	prevStageNode := getPreStageNodeID(p)

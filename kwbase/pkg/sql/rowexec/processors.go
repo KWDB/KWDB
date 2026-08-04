@@ -160,6 +160,24 @@ func NewProcessor(
 		}
 		return newArrowJoinProcessor(flowCtx, processorID, core.ArrowJoin, inputs[0], inputs[1], post, outputs[0])
 	}
+	if core.ArrowSorter != nil {
+		if err := checkNumInOut(inputs, outputs, 1, 1); err != nil {
+			return nil, err
+		}
+		return newArrowSorterProcessor(flowCtx, processorID, core.ArrowSorter, inputs[0], post, outputs[0])
+	}
+	if core.ArrowDistinct != nil {
+		if err := checkNumInOut(inputs, outputs, 1, 1); err != nil {
+			return nil, err
+		}
+		return newArrowDistinctProcessor(flowCtx, processorID, core.ArrowDistinct, inputs[0], post, outputs[0])
+	}
+	if core.ArrowWindower != nil {
+		if err := checkNumInOut(inputs, outputs, 1, 1); err != nil {
+			return nil, err
+		}
+		return newArrowWindowerProcessor(flowCtx, processorID, core.ArrowWindower, inputs[0], post, outputs[0])
+	}
 	if core.Values != nil {
 		if err := checkNumInOut(inputs, outputs, 0, 1); err != nil {
 			return nil, err

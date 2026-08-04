@@ -3236,7 +3236,7 @@ func (dsp *DistSQLPlanner) selectRenders(
 
 // addSorters adds sorters corresponding to a sortNode and updates the plan to
 // reflect the sort node.
-func (dsp *DistSQLPlanner) addSorters(p *PhysicalPlan, n *sortNode) {
+func (dsp *DistSQLPlanner) addSorters(p *PhysicalPlan, n *sortNode, evalCtx *tree.EvalContext) {
 	// Sorting is needed; we add a stage of sorting processors.
 	ordering := execinfrapb.ConvertToMappedSpecOrdering(n.ordering, p.PlanToStreamColMap)
 
@@ -3254,6 +3254,26 @@ func (dsp *DistSQLPlanner) addSorters(p *PhysicalPlan, n *sortNode) {
 			ordering,
 		)
 	} else {
+		if physicalplan.ArrowSorterEnabled(evalCtx) &&
+			canArrowSort(n.engine, execinfrapb.ConvertToColumnOrdering(ordering), int(n.alreadyOrderedPrefix), p.ResultTypes) {
+			plan := buildArrowSortPlan(
+				execinfrapb.ConvertToColumnOrdering(ordering),
+				int(n.alreadyOrderedPrefix),
+				-1, // limit: deferred to the post-process stage (matches colexec)
+				0,  // offset
+			)
+			expr, err := arrowUnificationMarshal(plan)
+			if err == nil {
+				p.AddNoGroupingStage(
+					execinfrapb.ProcessorCoreUnion{ArrowSorter: expr},
+					execinfrapb.PostProcessSpec{OutputTypes: p.ResultTypes},
+					p.ResultTypes,
+					ordering,
+				)
+				return
+			}
+			// On serialization error fall through to the standard sorter.
+		}
 		p.AddNoGroupingStage(
 			execinfrapb.ProcessorCoreUnion{
 				Sorter: &execinfrapb.SorterSpec{
@@ -3909,7 +3929,7 @@ func (dsp *DistSQLPlanner) addTwiceAggregators(
 		// unexpected build error, fall back to the colexec core. The final
 		// merge stage of a two-stage AVG emits SUM/SUM_INT partials (never a
 		// MEAN), which the Arrow kernel merges correctly.
-		if ac, err := arrowAggCoreFor(localAggsSpec); err == nil {
+		if ac, err := arrowAggCoreFor(localAggsSpec, intermediateTypes); err == nil {
 			localCore = ac
 		}
 	}
@@ -4298,7 +4318,7 @@ func getAggFuncAndType(
 
 // addDistinct add distinct
 func (dsp *DistSQLPlanner) addDistinct(
-	aggregations []execinfrapb.AggregatorSpec_Aggregation, p *PhysicalPlan, plan planNode,
+	aggregations []execinfrapb.AggregatorSpec_Aggregation, p *PhysicalPlan, plan planNode, evalCtx *tree.EvalContext,
 ) {
 	for _, e := range aggregations {
 		if !e.Distinct {
@@ -4357,10 +4377,24 @@ func (dsp *DistSQLPlanner) addDistinct(
 					false,
 				)
 			}
-		} else {
-			// Add distinct processors local to each existing current result processor.
-			p.AddNoGroupingStage(distinctSpec, execinfrapb.PostProcessSpec{}, p.ResultTypes, p.MergeOrdering)
+	} else {
+		if physicalplan.ArrowDistinctEnabled(evalCtx) &&
+			canArrowDistinct(tree.EngineTypeRelational, distinctColumns, orderedColumns, p.ResultTypes) {
+			plan := buildArrowDistinctPlan(distinctColumns, orderedColumns)
+			if expr, err := arrowUnificationMarshal(plan); err == nil {
+				p.AddNoGroupingStage(
+					execinfrapb.ProcessorCoreUnion{ArrowDistinct: expr},
+					execinfrapb.PostProcessSpec{OutputTypes: p.ResultTypes},
+					p.ResultTypes,
+					p.MergeOrdering,
+				)
+				return
+			}
+			// On serialization error fall through to the standard distinct.
 		}
+		// Add distinct processors local to each existing current result processor.
+		p.AddNoGroupingStage(distinctSpec, execinfrapb.PostProcessSpec{}, p.ResultTypes, p.MergeOrdering)
+	}
 	}
 }
 
@@ -4463,8 +4497,8 @@ func setupNewResultRouter(p *PhysicalPlan, pIdxStart physicalplan.ProcessorIdx) 
 // spec by lowering it to the Arrow JSON plan (see buildArrowAggPlan). The Arrow
 // path is an opt-in alternative to the colexec hash aggregator; any error falls
 // back to the colexec core at the call site.
-func arrowAggCoreFor(spec execinfrapb.AggregatorSpec) (execinfrapb.ProcessorCoreUnion, error) {
-	plan := buildArrowAggPlan(spec)
+func arrowAggCoreFor(spec execinfrapb.AggregatorSpec, outTypes []types.T) (execinfrapb.ProcessorCoreUnion, error) {
+	plan := buildArrowAggPlan(spec, outTypes)
 	expr, err := arrowUnificationMarshal(plan)
 	if err != nil {
 		return execinfrapb.ProcessorCoreUnion{}, err
@@ -4480,10 +4514,11 @@ func addRelationalFinalAggStateSpec(
 	finalAggsPost execinfrapb.PostProcessSpec,
 	stageID int32,
 	useArrow bool,
+	finalOutTypes []types.T,
 ) error {
 	core := execinfrapb.ProcessorCoreUnion{Aggregator: &finalAggsSpec}
 	if useArrow {
-		ac, err := arrowAggCoreFor(finalAggsSpec)
+		ac, err := arrowAggCoreFor(finalAggsSpec, finalOutTypes)
 		if err != nil {
 			return err
 		}
@@ -4561,12 +4596,12 @@ func (dsp *DistSQLPlanner) setupMultiAggFinalState(
 	// Arrow processor's own post-processing, just like the colexec aggregator.
 	useArrow := physicalplan.ArrowAggregatorEnabled(planCtx.EvalContext()) &&
 		canArrowAggregate(finalAggsSpec, p.ResultTypes, engine)
-	if err := addRelationalFinalAggStateSpec(planCtx, p, finalAggsSpec, finalAggsPost, p.NewStageID(), useArrow); err != nil {
+	if err := addRelationalFinalAggStateSpec(planCtx, p, finalAggsSpec, finalAggsPost, p.NewStageID(), useArrow, finalOutTypes); err != nil {
 		if !useArrow {
 			return err
 		}
 		// Arrow core construction unexpectedly failed; fall back to colexec.
-		if ferr := addRelationalFinalAggStateSpec(planCtx, p, finalAggsSpec, finalAggsPost, p.NewStageID(), false); ferr != nil {
+		if ferr := addRelationalFinalAggStateSpec(planCtx, p, finalAggsSpec, finalAggsPost, p.NewStageID(), false, finalOutTypes); ferr != nil {
 			return ferr
 		}
 	}
@@ -4717,7 +4752,7 @@ func (dsp *DistSQLPlanner) addAggregators(
 
 	// We can have a local stage of distinct processors if all aggregation
 	// functions are distinct.
-	dsp.addDistinct(aggregations, p, n.plan)
+	dsp.addDistinct(aggregations, p, n.plan, planCtx.EvalContext())
 
 	// add noop spec for receive data before add relation operator
 	if p.ChildIsExecInTSEngine() {
@@ -4794,7 +4829,7 @@ func (dsp *DistSQLPlanner) addAggregators(
 		// aggregator there. Otherwise, bring the results back on this node.
 		if physicalplan.ArrowAggregatorEnabled(planCtx.EvalContext()) &&
 			canArrowAggregate(finalAggsSpec, p.ResultTypes, n.engine) {
-			plan := buildArrowAggPlan(finalAggsSpec)
+			plan := buildArrowAggPlan(finalAggsSpec, finalOutTypes)
 			expr, err := arrowUnificationMarshal(plan)
 			if err != nil {
 				return err
@@ -4861,7 +4896,7 @@ func (dsp *DistSQLPlanner) addTSAggregators(
 
 	// We can have a local stage of distinct processors if all aggregation
 	// functions are distinct.
-	dsp.addDistinct(aggregations, p, n.plan)
+	dsp.addDistinct(aggregations, p, n.plan, planCtx.EvalContext())
 
 	// Check if the previous stage is all on one node.
 	prevStageNode := getPreStageNodeID(p)
@@ -5535,6 +5570,45 @@ func (dsp *DistSQLPlanner) createPlanForJoin(
 			LeftEqColumnsAreKey:  n.pred.leftEqKey,
 			RightEqColumnsAreKey: n.pred.rightEqKey,
 		}
+	} else if physicalplan.ArrowJoinEnabled(planCtx.EvalContext()) &&
+		canArrowMergeJoin(tree.EngineTypeRelational, leftEqCols, rightEqCols, joinType, leftTypes, rightTypes) {
+		// Merge-join path. The Arrow (hash) join is order-independent and
+		// supports the same equi-join + outer-join semantics, so when arrow-join
+		// is enabled and the merge-join is an Arrow-evaluable equi-join we route
+		// it through the Arrow engine. A non-equi onExpr makes arrow routing
+		// impossible for non-inner joins (the ON condition must be evaluated
+		// during merge matching), so we fall back to the standard mergeJoiner in
+		// that case.
+		mjCanArrow := true
+		mjOnFilter := ""
+		if n.pred.onCond != nil {
+			if joinType != sqlbase.InnerJoin {
+				mjCanArrow = false
+			} else {
+				idxMap := arrowJoinInputCols(len(leftTypes), len(rightTypes))
+				mjOnFilter, _ = p.BuildArrowOnExprJSON(n.pred.onCond, idxMap)
+				if mjOnFilter == "" {
+					mjCanArrow = false
+				}
+			}
+		}
+		if mjCanArrow {
+			plan := buildArrowJoinPlan(leftEqCols, rightEqCols, joinType, mjOnFilter)
+			expr, err := arrowUnificationMarshal(plan)
+			if err != nil {
+				return PhysicalPlan{}, err
+			}
+			core = execinfrapb.ProcessorCoreUnion{ArrowJoin: expr}
+		} else {
+			core.MergeJoiner = &execinfrapb.MergeJoinerSpec{
+				LeftOrdering:         leftMergeOrd,
+				RightOrdering:        rightMergeOrd,
+				OnExpr:               onExpr,
+				Type:                 joinType,
+				LeftEqColumnsAreKey:  n.pred.leftEqKey,
+				RightEqColumnsAreKey: n.pred.rightEqKey,
+			}
+		}
 	} else {
 		core.MergeJoiner = &execinfrapb.MergeJoinerSpec{
 			LeftOrdering:         leftMergeOrd,
@@ -5895,7 +5969,7 @@ func (dsp *DistSQLPlanner) createPlanForNode(
 		}
 
 		if !planCtx.isStream {
-			dsp.addSorters(&plan, n)
+			dsp.addSorters(&plan, n, planCtx.EvalContext())
 		}
 	case *unaryNode:
 		plan, err = dsp.createPlanForUnary(planCtx, n)
@@ -6299,6 +6373,20 @@ func (dsp *DistSQLPlanner) createPlanForDistinct(
 	} else {
 		// TODO(arjun): This is potentially memory inefficient if we don't have any sorted columns.
 
+		ds := distinctSpec.Distinct
+		if physicalplan.ArrowDistinctEnabled(planCtx.EvalContext()) &&
+			!ds.NullsAreDistinct && ds.ErrorOnDup == "" &&
+			canArrowDistinct(tree.EngineTypeRelational, ds.DistinctColumns, ds.OrderedColumns, plan.ResultTypes) {
+			planArrow := buildArrowDistinctPlan(ds.DistinctColumns, ds.OrderedColumns)
+			if expr, err := arrowUnificationMarshal(planArrow); err == nil {
+				plan.AddNoGroupingStage(
+					execinfrapb.ProcessorCoreUnion{ArrowDistinct: expr},
+					execinfrapb.PostProcessSpec{OutputTypes: plan.ResultTypes},
+					plan.ResultTypes, plan.MergeOrdering,
+				)
+				return plan, nil
+			}
+		}
 		// Add distinct processors local to each existing current result processor.
 		plan.AddNoGroupingStage(distinctSpec, execinfrapb.PostProcessSpec{}, plan.ResultTypes, plan.MergeOrdering)
 	}
@@ -6500,6 +6588,24 @@ func (dsp *DistSQLPlanner) createPlanForSetOp(
 
 	var distinctSpecs [2]execinfrapb.ProcessorCoreUnion
 
+	// arrowDistinctCoreFor returns an Arrow distinct core when the dedup is
+	// eligible for the Arrow compute engine, otherwise a classic Distinct core.
+	arrowDistinctCoreFor := func(distinctCols, orderedCols []uint32, inTypes []types.T) execinfrapb.ProcessorCoreUnion {
+		if physicalplan.ArrowDistinctEnabled(planCtx.EvalContext()) &&
+			canArrowDistinct(tree.EngineTypeRelational, distinctCols, orderedCols, inTypes) {
+			plan := buildArrowDistinctPlan(distinctCols, orderedCols)
+			if expr, err := arrowUnificationMarshal(plan); err == nil {
+				return execinfrapb.ProcessorCoreUnion{ArrowDistinct: expr}
+			}
+		}
+		return execinfrapb.ProcessorCoreUnion{
+			Distinct: &execinfrapb.DistinctSpec{
+				DistinctColumns: distinctCols,
+				OrderedColumns:  orderedCols,
+			},
+		}
+	}
+
 	if !n.all {
 		var distinctOrds [2]execinfrapb.Ordering
 		distinctOrds[0] = execinfrapb.ConvertToMappedSpecOrdering(
@@ -6520,16 +6626,13 @@ func (dsp *DistSQLPlanner) createPlanForSetOp(
 			for i, ord := range distinctOrds[side].Columns {
 				sortCols[i] = ord.ColIdx
 			}
-			distinctSpec := &distinctSpecs[side]
-			distinctSpec.Distinct = &execinfrapb.DistinctSpec{
-				DistinctColumns: streamCols,
-				OrderedColumns:  sortCols,
-			}
+			distinctSpec := arrowDistinctCoreFor(streamCols, sortCols, plan.ResultTypes)
+			distinctSpecs[side] = distinctSpec
 			if !dsp.isOnlyOnGateway(plan) {
 				// TODO(solon): We could skip this stage if there is a strong key on
 				// the result columns.
 				plan.AddNoGroupingStage(
-					*distinctSpec, execinfrapb.PostProcessSpec{}, plan.ResultTypes, distinctOrds[side])
+					distinctSpec, execinfrapb.PostProcessSpec{}, plan.ResultTypes, distinctOrds[side])
 				plan.AddProjection(streamCols)
 			}
 		}
@@ -6577,9 +6680,7 @@ func (dsp *DistSQLPlanner) createPlanForSetOp(
 			// TODO(abhimadan): use columns from mergeOrdering to fill in the
 			// OrderingColumns field in DistinctSpec once the unused columns
 			// are projected out.
-			distinctSpec := execinfrapb.ProcessorCoreUnion{
-				Distinct: &execinfrapb.DistinctSpec{DistinctColumns: streamCols},
-			}
+			distinctSpec := arrowDistinctCoreFor(streamCols, nil, p.ResultTypes)
 			p.AddSingleGroupStage(
 				dsp.nodeDesc.NodeID, distinctSpec, execinfrapb.PostProcessSpec{}, p.ResultTypes)
 		} else {
@@ -6885,9 +6986,21 @@ func (dsp *DistSQLPlanner) createPlanForWindow(
 				if planCtx.existTSTable {
 					plan.AddNoopToTsProcessors(dsp.nodeDesc.NodeID, planCtx.isLocal, false)
 				}
+			core := execinfrapb.ProcessorCoreUnion{Windower: &windowerSpec}
+			// Route the supported subset of window functions through the
+				// Arrow compute engine (no-frame partition aggregates over a
+				// single, already-ordered input). Everything else keeps the
+				// classic windower. Input ordering is assumed exactly as the
+				// classic windower assumes it.
+			if physicalplan.ArrowWindowerEnabled(planCtx.EvalContext()) &&
+					canArrowWindow(n.engine, &windowerSpec, plan.ResultTypes) {
+				if planJSON, err := arrowUnificationMarshal(buildArrowWindowPlan(&windowerSpec)); err == nil {
+					core = execinfrapb.ProcessorCoreUnion{ArrowWindower: planJSON}
+				}
+			}
 				plan.AddSingleGroupStage(
 					node,
-					execinfrapb.ProcessorCoreUnion{Windower: &windowerSpec},
+					core,
 					execinfrapb.PostProcessSpec{},
 					newResultTypes,
 				)

@@ -16,29 +16,40 @@ package rowexec
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"sync/atomic"
 
-	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/memory"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
+	"github.com/apache/arrow/go/v17/arrow"
+	"github.com/apache/arrow/go/v17/arrow/memory"
 )
 
 // arrowAggPlan is the JSON-serialized plan carried in
-// ProcessorCoreUnion.ArrowAggregator.Expr.
+// ProcessorCoreUnion.ArrowAggregator.Expr. Its JSON shape mirrors the struct
+// in the sql package; the JSON bytes are the only contract between planner
+// and executor.
 type arrowAggPlan struct {
 	GroupCols []int            `json:"group_cols"`
 	Aggs      []arrowAggExprJS `json:"aggs"`
+	// OutTypes is the aggregator's raw output column types, serialized via
+	// serializeArrowOutType in the planner, in the executor's emission order.
+	OutTypes []string `json:"out_types"`
 }
 
-// arrowAggExprJS is one aggregate expression. Input is -1 for COUNT(*).
+// arrowAggExprJS is one aggregate expression. Input is -1 for COUNT(*). Inputs
+// holds the (one or more) input column indices; for single-input aggregates it
+// is derived from Input, while multi-input aggregates (e.g. FINAL_VARIANCE
+// consuming [SQRDIFF, SUM, COUNT]) populate Inputs directly.
 type arrowAggExprJS struct {
-	Func  string `json:"func"`
-	Input int    `json:"input"`
+	Func   string `json:"func"`
+	Input  int    `json:"input"`
+	Inputs []int  `json:"inputs,omitempty"`
 }
 
 // arrowAggRuns counts how many times the arrow aggregator processor has run.
@@ -87,7 +98,28 @@ func newArrowAggregatorProcessor(
 		da:    &sqlbase.DatumAlloc{},
 		plan:  plan,
 	}
+	// The Arrow aggregator advertises its *raw* output types (matching the
+	// colexec/rowexec aggregator, which uses its own outputTypes). The
+	// post-process render (e.g. min(ts)::STRING) is applied downstream by
+	// ProcessRowHelper, so the planner's post.OutputTypes (render result) must
+	// not be used as the aggregator's declared output schema. When the planner
+	// did not ship OutTypes (e.g. older plans) we fall back to post.OutputTypes.
 	outTypes := post.OutputTypes
+	if len(plan.OutTypes) > 0 {
+		raw := make([]types.T, 0, len(plan.OutTypes))
+		ok := true
+		for _, s := range plan.OutTypes {
+			t, good := deserializeArrowOutType(s)
+			if !good {
+				ok = false
+				break
+			}
+			raw = append(raw, t)
+		}
+		if ok {
+			outTypes = raw
+		}
+	}
 	if len(outTypes) == 0 {
 		outTypes = input.OutputTypes()
 	}
@@ -186,6 +218,23 @@ func (p *arrowAggregatorProcessor) compute(ctx context.Context) error {
 	return nil
 }
 
+// deserializeArrowOutType reverses the planner-side serializeArrowOutType,
+// recovering the aggregator's raw output type from its JSON-safe string.
+func deserializeArrowOutType(s string) (types.T, bool) {
+	if s == "" {
+		return types.T{}, false
+	}
+	b, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		return types.T{}, false
+	}
+	var t types.T
+	if err := t.Unmarshal(b); err != nil {
+		return types.T{}, false
+	}
+	return t, true
+}
+
 func buildArrowAggSpec(plan arrowAggPlan) ArrowAggSpec {
 	groupCols := make([]string, len(plan.GroupCols))
 	for i, c := range plan.GroupCols {
@@ -193,11 +242,17 @@ func buildArrowAggSpec(plan arrowAggPlan) ArrowAggSpec {
 	}
 	aggs := make([]ArrowAggExpr, len(plan.Aggs))
 	for i, a := range plan.Aggs {
-		in := ""
-		if a.Input >= 0 {
-			in = fmt.Sprintf("col%d", a.Input)
+		inputs := make([]string, 0, len(a.Inputs)+1)
+		if len(a.Inputs) > 0 {
+			for _, c := range a.Inputs {
+				if c >= 0 {
+					inputs = append(inputs, fmt.Sprintf("col%d", c))
+				}
+			}
+		} else if a.Input >= 0 {
+			inputs = append(inputs, fmt.Sprintf("col%d", a.Input))
 		}
-		aggs[i] = ArrowAggExpr{Func: a.Func, Input: in}
+		aggs[i] = ArrowAggExpr{Func: a.Func, Inputs: inputs}
 	}
 	return ArrowAggSpec{GroupCols: groupCols, Aggs: aggs}
 }
