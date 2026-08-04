@@ -16,6 +16,7 @@ import (
 	"github.com/apache/arrow/go/v17/arrow/memory"
 	"github.com/apache/arrow/go/v17/arrow/scalar"
 	"github.com/cockroachdb/apd"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 )
 
 // ArrowFilterSpec is the unified (compute) description of a boolean filter.
@@ -579,6 +580,20 @@ func castToString(alloc memory.Allocator, arr arrow.Array) (arrow.Array, error) 
 			}
 			d := decimal128ToApd(a.Value(i), scale)
 			b.Append(d.String())
+		}
+	case *array.Timestamp:
+		// Arrow stores the timestamp as epoch units in UTC. Render it with the
+		// same layout KWDB uses for CAST(timestamp AS string)
+		// (DTimestamp.Format -> TimestampOutputFormat, UTC), so the Arrow path
+		// and the row-based path produce identical output.
+		unit := a.DataType().(*arrow.TimestampType).Unit
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			t := a.Value(i).ToTime(unit)
+			b.Append(t.Format(tree.TimestampOutputFormat))
 		}
 	default:
 		return nil, fmt.Errorf("arrow cast to STRING: unsupported source %T", arr)

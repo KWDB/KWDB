@@ -89,7 +89,9 @@
   - 即投影 CAST 已覆盖 `int/float/bool/decimal→string`、`string/int/float/bool` 互转、以及 `int/float/string→decimal` 的常见组合。
 
 **待做**：
-- [ ] 投影/过滤 CAST 更罕见目标：`date/timestamp→string`、`interval→string`、`numeric→bool` 等。按需按源类型扩充各 `castToXxx` kernel；受 arrow/compute v17 能力与本地 `go test` 限制，留待带 `libkwdbts2` 的 CI 环境回归。
+- [x] 投影/过滤 CAST 罕见目标 —— `timestamp→string`（2026-08-04 落地）：`castToString` 新增 `*array.Timestamp` case，按 KWDB `tree.TimestampOutputFormat`（`"2006-01-02 15:04:05.999999999"`，UTC）渲染，与行式 `DTimestamp.Format` 输出一致。planner 侧无需改动（`arrowCastTargetTag` 已支持 STRING 目标、`canArrowRender`/`arrowOperandArg` 的 CastExpr 分支对目标 STRING 已放行，源 Timestamp 由运行时 kernel 处理）。扫描/过滤侧 `CAST(ts_col AS string)` 现可走 Arrow 路径。
+- [ ] 投影/过滤 CAST 更罕见目标 —— `date→string` / `interval→string`：当前 Date/Interval **不是 Arrow 支持类型**（`arrowDataTypeForKWType` default 报错），Arrow 路径根本收不到这两类列，`CAST(date/interval AS string)` 会在 scan 处回退行式。需先在 `arrow_adapter.go` 把 Date（如 →Int32 天数）/Interval（如 →String/二进制）纳入 Arrow 解码，再做对应 cast kernel；属「新类型支持」范畴，单列待做。
+- [ ] 投影/过滤 CAST 更罕见目标 —— `numeric→bool`：SQL `numeric→bool` 为真值判断（非 0 为真），arrow/compute v17 无此 kernel，且 KWDB 是否支持该 CAST 待确认；暂不做。
 - [x] 收敛 arrow_adapter.go 的 `default:` 回退分支（2026-08-04 落地）：`arrowTypeForKWType` 改为 checked 版 `arrowDataTypeForKWType(t) (arrow.DataType, error)`，`default` 显式报错而非静默回退 `Int64`；`newArrowBuilder` 改为返回 `(array.Builder, error)`，`default` 同样显式报错（不再静默建 `Int64Builder`）；两处 schema 构建调用点（`NewRowToArrowConverter` 经 `initErr` 字段在 `Next` 上抛、`arrowScan.build` 经 `release()` 释放后返回）统一失败快路径。`buildArrowColumns`/`appendEncDatum` 的 `default` 本就显式报错，现三处入口语义一致：任何不支持的 family（Date/Interval/Bytes/Array/INet/Time/...）在 schema/builder 构建阶段即明确失败，杜绝「Int64 伪装 → 后续类型断言 panic」的隐藏陷阱。
 
 ### 阶段 3 — 统一调度层
