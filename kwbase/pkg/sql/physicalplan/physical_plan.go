@@ -74,37 +74,45 @@ func arrowProjectionEnabled(evalCtx *tree.EvalContext) bool {
 // ArrowFilterEnabled reports whether arrow-computable filters are routed
 // through the Arrow compute engine.
 func ArrowFilterEnabled(evalCtx *tree.EvalContext) bool {
-	return arrowFilterEnabled(evalCtx)
+	return arrowFilterEnabled(evalCtx) && ArrowScanEnabled(evalCtx)
 }
 
 // ArrowAggregatorEnabled reports whether aggregations are routed through the
 // Arrow compute engine.
 func ArrowAggregatorEnabled(evalCtx *tree.EvalContext) bool {
-	return arrowAggregatorEnabled(evalCtx)
+	return arrowAggregatorEnabled(evalCtx) && ArrowScanEnabled(evalCtx)
+}
+
+// ArrowScanEnabled reports whether the scan (table reader) side may feed the
+// Arrow compute engine. It is the master gate for the Arrow path: when it is
+// off, no Arrow operator can consume a scan, so the whole Arrow pipeline is
+// bypassed and rows flow row-by-row as before.
+func ArrowScanEnabled(evalCtx *tree.EvalContext) bool {
+	return arrowScanEnabled(evalCtx)
 }
 
 // ArrowJoinEnabled reports whether equi-joins are routed through the Arrow
 // compute engine.
 func ArrowJoinEnabled(evalCtx *tree.EvalContext) bool {
-	return arrowJoinEnabled(evalCtx)
+	return arrowJoinEnabled(evalCtx) && ArrowScanEnabled(evalCtx)
 }
 
 // ArrowSorterEnabled reports whether sorts are routed through the Arrow compute
 // engine.
 func ArrowSorterEnabled(evalCtx *tree.EvalContext) bool {
-	return arrowSorterEnabled(evalCtx)
+	return arrowSorterEnabled(evalCtx) && ArrowScanEnabled(evalCtx)
 }
 
 // ArrowDistinctEnabled reports whether dedup (distinct) is routed through the
 // Arrow compute engine.
 func ArrowDistinctEnabled(evalCtx *tree.EvalContext) bool {
-	return arrowDistinctEnabled(evalCtx)
+	return arrowDistinctEnabled(evalCtx) && ArrowScanEnabled(evalCtx)
 }
 
 // ArrowWindowerEnabled reports whether (the supported subset of) window
 // functions are routed through the Arrow compute engine.
 func ArrowWindowerEnabled(evalCtx *tree.EvalContext) bool {
-	return arrowWindowerEnabled(evalCtx)
+	return arrowWindowerEnabled(evalCtx) && ArrowScanEnabled(evalCtx)
 }
 
 // arrowFilterEnabledSetting routes arrow-computable boolean filter expressions
@@ -130,6 +138,15 @@ var arrowJoinEnabledSetting = settings.RegisterBoolSetting(
 	false,
 )
 
+// arrowScanEnabledSetting is the master gate for the Arrow path. When off, the
+// scan side does not feed the Arrow engine, so no Arrow operator can consume a
+// scan and the whole Arrow pipeline is bypassed (rows stay row-by-row).
+var arrowScanEnabledSetting = settings.RegisterBoolSetting(
+	"sql.arrow_scan.enabled",
+	"if set, table scans may feed the Arrow compute engine (master gate for the Arrow path)",
+	true,
+)
+
 func arrowFilterEnabled(evalCtx *tree.EvalContext) bool {
 	if evalCtx == nil || evalCtx.Settings == nil {
 		return false
@@ -149,6 +166,13 @@ func arrowJoinEnabled(evalCtx *tree.EvalContext) bool {
 		return false
 	}
 	return arrowJoinEnabledSetting.Get(&evalCtx.Settings.SV)
+}
+
+func arrowScanEnabled(evalCtx *tree.EvalContext) bool {
+	if evalCtx == nil || evalCtx.Settings == nil {
+		return false
+	}
+	return arrowScanEnabledSetting.Get(&evalCtx.Settings.SV)
 }
 
 // arrowSorterEnabledSetting routes ORDER BY sorting through the Arrow compute

@@ -456,6 +456,31 @@ func (s *arrowScan) Next(ctx context.Context) (arrow.Record, bool, error) {
 	return rec, false, nil
 }
 
+// ArrowOutput implements ArrowRecordEmitter, exposing the built Record so a
+// downstream Arrow operator can consume it operator-to-operator without a
+// row round-trip. It lazily builds on first access and shares s.rec with Next.
+func (s *arrowScan) ArrowOutput() arrow.Record {
+	if s.rec == nil {
+		if rec, err := s.build(); err == nil {
+			s.rec = rec
+			s.sent = true
+		}
+	}
+	return s.rec
+}
+
+// arrowScanSupported reports whether every column type can be decoded into an
+// Arrow representation, i.e. whether a table reader over typs may feed the Arrow
+// engine. Used by the planner as a type gate alongside ArrowScanEnabled.
+func arrowScanSupported(typs []*types.T) bool {
+	for _, t := range typs {
+		if _, err := arrowDataTypeForKWType(t); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
 // build reads every input row exactly once and appends each value into the
 // matching column builder, producing a single native Arrow Record.
 func (s *arrowScan) build() (arrow.Record, error) {

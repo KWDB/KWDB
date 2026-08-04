@@ -67,9 +67,9 @@
 
 **接入方案**：
 - [x] 分析：确认 `unifiedInputFrom`/`newArrowScan` 已覆盖 scan→arrow 透明转换
-- [ ] 新增 `ArrowScanEnabled` 开关（`sql.arrow_scan.enabled`，默认 true）
-- [ ] `newTableReader` 在开关下包装为 `UnifiedProcessor` 产出方（实现 `ArrowRecordEmitter`），使 scan 即起点时也能以 Arrow Record 暴露给 planner 统一编排
-- [ ] 类型门控：时序 Float/time、decimal、timestamp 经 `newArrowBuilder` 已支持，无需额外改
+- [x] 新增 `ArrowScanEnabled` 开关（`sql.arrow_scan.enabled`，默认 true，2026-08-04 落地）：作为 Arrow 路径**总闸**——`arrowFilterEnabled`/`arrowAggregatorEnabled`/`arrowJoinEnabled`/`arrowSorterEnabled`/`arrowDistinctEnabled`/`arrowWindowerEnabled` 内部均 `&& ArrowScanEnabled(evalCtx)`，开关关时所有 Arrow 算子不下发，scan 保持纯行式。照 `ArrowJoinEnabled` 模式实现（`arrowScanEnabledSetting` + `arrowScanEnabled` + `ArrowScanEnabled` 封装）。
+- [x] `newTableReader` 在开关下包装为 `UnifiedProcessor` 产出方（实现 `ArrowRecordEmitter`，2026-08-04 落地）：`arrowScan` 新增 `ArrowOutput()` 方法（实现 `ArrowRecordEmitter`，懒 build 并与 `Next` 共享 `s.rec`），使 scan 作为 Arrow 算子上游时其 Arrow Record 可被下游 `unifiedInputFrom` 直接复用（operator-to-operator，省二次拉行）。scan→arrow 的包装已由 `unifiedInputFrom → newArrowScan` 透明完成，本项补齐"产出方"语义使 scan 即起点也能以 Arrow Record 暴露给统一编排。
+- [x] 类型门控：`arrowScanSupported(typs)` 新增（所有列 `arrowDataTypeForKWType` 不报错即支持）。时序 Float/time、decimal、timestamp 经 `newArrowBuilder` 已支持；Date/Interval 已于 2026-08-04 纳入，故常规模拟类型均覆盖；真正不支持的（Bytes/Array/INet/Time/TimeTZ/Oid/...）由 `arrowDataTypeForKWType` 的 default 报错在 schema/builder 构建阶段失败快路径。
 - [ ] 该改造属接口对齐，非 fetcher 内部重写；真正的 fetcher 直出 Arrow builder（省 EncDatum 解码）列入阶段5 性能收尾
 
 ### 阶段 2 — 表达式/标量覆盖扩展【部分落地】
