@@ -56,6 +56,11 @@ type arrowFilterLeafJS struct {
 	ConstFloat *float64           `json:"cfloat,omitempty"`
 	ConstBool *bool               `json:"cbool,omitempty"`
 	ConstStr  *string             `json:"cstr,omitempty"`
+	// ConstSetInt / ConstSetStr carry the member set of an IN / NOT IN
+	// predicate (e.g. col IN (1,2,3)). Exactly one is set when the leaf is a
+	// set, and both imply Col < 0.
+	ConstSetInt []int64  `json:"csetint,omitempty"`
+	ConstSetStr []string `json:"csetstr,omitempty"`
 	Binary    *arrowFilterBinaryJS `json:"bin,omitempty"`
 	// Cast is a type conversion leaf, supporting CAST(col AS ...) in predicates.
 	Cast *arrowFilterCastJS `json:"cast,omitempty"`
@@ -269,6 +274,18 @@ func leafToArrowArg(l *arrowFilterLeafJS) *ArrowArg {
 		return &ArrowArg{Scalar: compute.NewDatum(bool(*l.ConstBool))}
 	case l.ConstStr != nil:
 		return &ArrowArg{Scalar: compute.NewDatum(string(*l.ConstStr))}
+	case len(l.ConstSetInt) > 0:
+		set := make([]compute.Datum, len(l.ConstSetInt))
+		for i, v := range l.ConstSetInt {
+			set[i] = compute.NewDatum(int64(v))
+		}
+		return &ArrowArg{ConstSet: set}
+	case len(l.ConstSetStr) > 0:
+		set := make([]compute.Datum, len(l.ConstSetStr))
+		for i, v := range l.ConstSetStr {
+			set[i] = compute.NewDatum(string(v))
+		}
+		return &ArrowArg{ConstSet: set}
 	}
 	return &ArrowArg{Scalar: compute.NewDatum(nil)}
 }

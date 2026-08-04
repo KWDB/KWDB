@@ -34,6 +34,11 @@ type ArrowArg struct {
 	// consumes it. It supports CAST(col AS ...) inside arrow-computable
 	// expressions (e.g. CAST(i AS STRING) LIKE '1%').
 	Cast *ArrowArgCast
+	// ConstSet is a set of constant values used as the right operand of an IN
+	// / NOT IN predicate (e.g. col IN (1,2,3)). Exactly one of Scalar or
+	// ConstSet is set; it is only honored by the arrow filter "in"/"not_in"
+	// kernels.
+	ConstSet []compute.Datum
 }
 
 // ArrowArgBinary is a nested arithmetic expression used as a filter operand.

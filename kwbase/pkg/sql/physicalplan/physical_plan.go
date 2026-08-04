@@ -2054,7 +2054,12 @@ type arrowFilterLeaf struct {
 	ConstFloat *float64           `json:"cfloat,omitempty"`
 	ConstBool  *bool              `json:"cbool,omitempty"`
 	ConstStr   *string            `json:"cstr,omitempty"`
-	Binary     *arrowFilterBinary `json:"bin,omitempty"`
+	// ConstSetInt / ConstSetStr carry the member set of an IN / NOT IN predicate.
+	// They serialize with the same JSON tags as the receiver-side leaf so the
+	// arrow filter processor can rebuild the ConstSet.
+	ConstSetInt []int64  `json:"csetint,omitempty"`
+	ConstSetStr []string `json:"csetstr,omitempty"`
+	Binary      *arrowFilterBinary `json:"bin,omitempty"`
 	// Cast is a type conversion applied to Arg, supporting CAST(col AS ...) inside
 	// arrow filter predicates (e.g. CAST(i AS STRING) LIKE '1%').
 	Cast *arrowFilterCast `json:"cast,omitempty"`
@@ -2226,6 +2231,43 @@ func (p *PhysicalPlan) canArrowFilterExpr(e tree.TypedExpr, indexVarMap []int) b
 				return false
 			}
 			return true
+		case tree.In, tree.NotIn:
+			// IN requires a column/computed-column left operand and a tuple of
+			// constant values all of the same supported family (int or string,
+			// the only types the arrow "in" kernel handles).
+			l, lty, ok := p.arrowFilterLeafFromExpr(ex.Left.(tree.TypedExpr), indexVarMap)
+			if !ok {
+				return false
+			}
+			if l.Col < 0 && l.Binary == nil && l.Cast == nil {
+				return false
+			}
+			tup, ok := ex.Right.(*tree.Tuple)
+			if !ok || len(tup.Exprs) == 0 {
+				return false
+			}
+			if !arrowSupportedCompareType(lty) {
+				return false
+			}
+			switch lty.Family() {
+			case types.IntFamily, types.StringFamily:
+			default:
+				return false
+			}
+			for _, e := range tup.Exprs {
+				rl, rty, ok := p.arrowFilterLeafFromExpr(e.(tree.TypedExpr), indexVarMap)
+				if !ok {
+					return false
+				}
+				if rl.Col >= 0 || rl.Binary != nil || rl.Cast != nil {
+					// IN set must be constants.
+					return false
+				}
+				if rty.Family() != lty.Family() {
+					return false
+				}
+			}
+			return true
 		}
 		return false
 	case *tree.AndExpr:
@@ -2280,9 +2322,12 @@ func (p *PhysicalPlan) buildArrowFilterNode(e tree.TypedExpr, indexVarMap []int)
 			fn = "ilike"
 		case tree.NotILike:
 			fn = "not_ilike"
+		case tree.In:
+			fn = "in"
+		case tree.NotIn:
+			fn = "not_in"
 		}
 		l, lty, _ := p.arrowFilterLeafFromExpr(ex.Left.(tree.TypedExpr), indexVarMap)
-		r, _, _ := p.arrowFilterLeafFromExpr(ex.Right.(tree.TypedExpr), indexVarMap)
 		// LIKE-style predicates stringify a non-string left operand via a CAST to
 		// STRING so the Arrow kernel can match it against the string pattern
 		// (e.g. `i LIKE '1%'` on an integer column). Regular comparisons
@@ -2297,6 +2342,41 @@ func (p *PhysicalPlan) buildArrowFilterNode(e tree.TypedExpr, indexVarMap []int)
 			} else {
 				return arrowFilterNode{}, false
 			}
+		}
+		var r *arrowFilterLeaf
+		if ex.Operator == tree.In || ex.Operator == tree.NotIn {
+			// The right operand is a tuple of constants; build a ConstSet leaf
+			// from its elements (all same family, validated by canArrowFilterExpr).
+			tup := ex.Right.(*tree.Tuple)
+			set := &arrowFilterLeaf{}
+			switch lty.Family() {
+			case types.IntFamily:
+				ints := make([]int64, 0, len(tup.Exprs))
+				for _, e := range tup.Exprs {
+					rl, _, _ := p.arrowFilterLeafFromExpr(e.(tree.TypedExpr), indexVarMap)
+					if rl.ConstInt == nil {
+						return arrowFilterNode{}, false
+					}
+					ints = append(ints, *rl.ConstInt)
+				}
+				set.ConstSetInt = ints
+			case types.StringFamily:
+				strs := make([]string, 0, len(tup.Exprs))
+				for _, e := range tup.Exprs {
+					rl, _, _ := p.arrowFilterLeafFromExpr(e.(tree.TypedExpr), indexVarMap)
+					if rl.ConstStr == nil {
+						return arrowFilterNode{}, false
+					}
+					strs = append(strs, *rl.ConstStr)
+				}
+				set.ConstSetStr = strs
+			default:
+				return arrowFilterNode{}, false
+			}
+			r = set
+		} else {
+			rb, _, _ := p.arrowFilterLeafFromExpr(ex.Right.(tree.TypedExpr), indexVarMap)
+			r = rb
 		}
 		return arrowFilterNode{
 			Func: fn,

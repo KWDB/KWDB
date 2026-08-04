@@ -23,6 +23,9 @@ import (
 // Grammar:
 //   comparison:  Func in {equal, not_equal, less, less_equal, greater,
 //                greater_equal}, Operands are leaves (columns / constants).
+//   membership:  Func in {in, not_in}, Operands[0] is a column leaf,
+//                Operands[1] is a ConstSet leaf (constant set). Evaluated by a
+//                Go kernel (arrow compute v17 has no is_in kernel exposed).
 //   logical:      Func in {and, or},   Operands are nested boolean exprs.
 //                 Func == "not",       Operands[0] is a nested boolean expr.
 type ArrowFilterSpec struct {
@@ -162,6 +165,8 @@ func (f *arrowFilterCore) evalBool(ctx context.Context, rec arrow.Record, spec A
 		switch spec.Func {
 		case "like", "not_like", "ilike", "not_ilike":
 			return f.evalLike(ctx, rec, spec)
+		case "in", "not_in":
+			return f.evalIn(ctx, rec, spec)
 		}
 		args := make([]compute.Datum, len(spec.Operands))
 		for i, op := range spec.Operands {
@@ -362,6 +367,97 @@ func likeMatch(s, pattern string, caseInsensitive bool) bool {
 		return i == len(rs)
 	}
 	return match(0, 0)
+}
+
+// evalIn implements SQL IN / NOT IN as a Go kernel over an Arrow column. The
+// left operand is a column array (int64 or string); the right operand is a
+// ConstSet leaf holding the constant member set. Arrow compute v17 does not
+// expose a usable is_in kernel for both types, so this is evaluated directly,
+// mirroring the evalLike approach. A null column value never matches (so it is
+// excluded by IN and retained by NOT IN), matching SQL three-valued logic.
+func (f *arrowFilterCore) evalIn(ctx context.Context, rec arrow.Record, spec ArrowFilterSpec) (*array.Boolean, error) {
+	if len(spec.Operands) != 2 {
+		return nil, fmt.Errorf("arrow in: expected 2 operands, got %d", len(spec.Operands))
+	}
+	left, err := f.evalLeafDatum(ctx, rec, spec.Operands[0])
+	if err != nil {
+		return nil, err
+	}
+	if _, ok := left.(*compute.ArrayDatum); !ok {
+		left.Release()
+		return nil, fmt.Errorf("arrow in: left operand must be a column, got %T", left)
+	}
+	setLeaf := spec.Operands[1].Leaf
+	if setLeaf == nil || len(setLeaf.ConstSet) == 0 {
+		left.Release()
+		return nil, fmt.Errorf("arrow in: right operand must be a non-empty ConstSet")
+	}
+	lad := left.(*compute.ArrayDatum)
+	arr := lad.MakeArray()
+	left.Release()
+	defer arr.Release()
+
+	neg := spec.Func == "not_in"
+	b := array.NewBooleanBuilder(f.alloc)
+	defer b.Release()
+
+	// Dispatch on the column's concrete array type. Only int64 and string sets
+	// are supported (the planner gates the predicate to a single family).
+	switch col := arr.(type) {
+	case *array.Int64:
+		set := make(map[int64]struct{}, len(setLeaf.ConstSet))
+		for _, d := range setLeaf.ConstSet {
+			sd, ok := d.(*compute.ScalarDatum)
+			if !ok {
+				return nil, fmt.Errorf("arrow in: set value must be scalar, got %T", d)
+			}
+			v, ok := sd.Value.(*scalar.Int64)
+			if !ok {
+				return nil, fmt.Errorf("arrow in: set value must be int64, got %T", sd.Value)
+			}
+			set[v.Value] = struct{}{}
+		}
+		for i := 0; i < col.Len(); i++ {
+			if col.IsNull(i) {
+				b.Append(neg)
+				continue
+			}
+			_, hit := set[col.Value(i)]
+			if neg {
+				b.Append(!hit)
+			} else {
+				b.Append(hit)
+			}
+		}
+	case *array.String:
+		set := make(map[string]struct{}, len(setLeaf.ConstSet))
+		for _, d := range setLeaf.ConstSet {
+			sd, ok := d.(*compute.ScalarDatum)
+			if !ok {
+				return nil, fmt.Errorf("arrow in: set value must be scalar, got %T", d)
+			}
+			v, ok := sd.Value.(*scalar.String)
+			if !ok {
+				return nil, fmt.Errorf("arrow in: set value must be string, got %T", sd.Value)
+			}
+			set[string(v.Value.Bytes())] = struct{}{}
+		}
+		for i := 0; i < col.Len(); i++ {
+			if col.IsNull(i) {
+				b.Append(neg)
+				continue
+			}
+			_, hit := set[col.Value(i)]
+			if neg {
+				b.Append(!hit)
+			} else {
+				b.Append(hit)
+			}
+		}
+	default:
+		return nil, fmt.Errorf("arrow in: unsupported column type %T (only int64/string supported)", arr)
+	}
+	return b.NewArray().(*array.Boolean), nil
 }
 
 // evalCast converts the values of a column operand (given as a compute.Datum)
