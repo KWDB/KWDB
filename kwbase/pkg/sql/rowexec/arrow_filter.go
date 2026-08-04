@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
@@ -546,6 +547,18 @@ func castToString(alloc memory.Allocator, arr arrow.Array) (arrow.Array, error) 
 				continue
 			}
 			b.Append(strconv.FormatInt(a.Value(i), 10))
+		}
+	case *array.Int32:
+		// Date columns are carried in Arrow as int32 days since the Unix epoch.
+		// Render with the same layout KWDB uses for CAST(date AS string)
+		// (DDate.Format -> pgdate "2006-01-02"), so Arrow and row-based output match.
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			t := time.Unix(int64(a.Value(i))*86400, 0).UTC()
+			b.Append(t.Format("2006-01-02"))
 		}
 	case *array.Float64:
 		for i := 0; i < a.Len(); i++ {

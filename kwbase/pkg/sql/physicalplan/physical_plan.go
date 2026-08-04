@@ -1962,7 +1962,8 @@ func arrowSupportedPassthroughType(t *types.T) bool {
 	case types.IntFamily, types.FloatFamily, types.BoolFamily,
 		types.StringFamily, types.BytesFamily, types.DecimalFamily,
 		types.TimestampFamily, types.TimestampTZFamily,
-		types.UuidFamily, types.JsonFamily:
+		types.UuidFamily, types.JsonFamily,
+		types.DateFamily, types.IntervalFamily:
 		return true
 	}
 	return false

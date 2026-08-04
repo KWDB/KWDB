@@ -7,6 +7,7 @@ package rowexec
 import (
 	"context"
 	"fmt"
+	"math"
 
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
@@ -156,6 +157,16 @@ func arrowDataTypeForKWType(t *types.T) (arrow.DataType, error) {
 		// JSON is stored as its canonical text form in a String column; the
 		// value bytes are compared/hashed directly (see arrowGroupHash/Equal).
 		return arrow.BinaryTypes.String, nil
+	case types.DateFamily:
+		// Date has no native Arrow type; store as the number of days since the
+		// Unix epoch (int32), matching KWDB's on-disk representation
+		// (DDate.Date.UnixEpochDays), so grouping/comparison stays correct.
+		return arrow.PrimitiveTypes.Int32, nil
+	case types.IntervalFamily:
+		// Interval has no native Arrow type. Store its canonical text form in a
+		// String column (same treatment as JSON) so CAST(interval AS string)
+		// reuses the value verbatim. Grouping/comparison is by text bytes.
+		return arrow.BinaryTypes.String, nil
 	default:
 		return nil, fmt.Errorf("unsupported type family %s for arrow schema", t.Family())
 	}
@@ -303,6 +314,31 @@ func buildArrowColumns(alloc memory.Allocator, typs []*types.T, rows sqlbase.Enc
 			b.Append(arrow.Timestamp(micros))
 		}
 		cols[ci] = b.NewArray()
+	case types.DateFamily:
+		b := array.NewInt32Builder(alloc)
+		for ri := 0; ri < n; ri++ {
+			ed := &rows[ri][ci]
+			if err := ed.EnsureDecoded(t, da); err != nil {
+				b.Release()
+				return nil, err
+			}
+			if ed.Datum == tree.DNull {
+				b.AppendNull()
+				continue
+			}
+			dd, ok := ed.Datum.(*tree.DDate)
+			if !ok {
+				b.Release()
+				return nil, fmt.Errorf("col %d: expected date, got %T", ci, ed.Datum)
+			}
+			// Infinite dates have no finite int32 representation; treat as NULL.
+			if !dd.Date.IsFinite() {
+				b.AppendNull()
+				continue
+			}
+			b.Append(int32(dd.Date.UnixEpochDays()))
+		}
+		cols[ci] = b.NewArray()
 	case types.UuidFamily:
 		b := array.NewFixedSizeBinaryBuilder(alloc, arrowUUIDType)
 		for ri := 0; ri < n; ri++ {
@@ -341,6 +377,27 @@ func buildArrowColumns(alloc memory.Allocator, typs []*types.T, rows sqlbase.Enc
 				return nil, fmt.Errorf("col %d: expected json, got %T", ci, ed.Datum)
 			}
 			b.Append(dj.JSON.String())
+		}
+		cols[ci] = b.NewArray()
+	case types.IntervalFamily:
+		b := array.NewStringBuilder(alloc)
+		for ri := 0; ri < n; ri++ {
+			ed := &rows[ri][ci]
+			if err := ed.EnsureDecoded(t, da); err != nil {
+				b.Release()
+				return nil, err
+			}
+			if ed.Datum == tree.DNull {
+				b.AppendNull()
+				continue
+			}
+			di, ok := ed.Datum.(*tree.DInterval)
+			if !ok {
+				b.Release()
+				return nil, fmt.Errorf("col %d: expected interval, got %T", ci, ed.Datum)
+			}
+			// Store the canonical text form; CAST(interval AS string) reuses it.
+			b.Append(di.String())
 		}
 		cols[ci] = b.NewArray()
 	default:
@@ -478,6 +535,10 @@ func newArrowBuilder(alloc memory.Allocator, t *types.T) (array.Builder, error) 
 		return array.NewFixedSizeBinaryBuilder(alloc, arrowUUIDType), nil
 	case types.JsonFamily:
 		return array.NewStringBuilder(alloc), nil
+	case types.DateFamily:
+		return array.NewInt32Builder(alloc), nil
+	case types.IntervalFamily:
+		return array.NewStringBuilder(alloc), nil
 	default:
 		return nil, fmt.Errorf("unsupported type family %s for arrow builder", t.Family())
 	}
@@ -570,6 +631,19 @@ func appendEncDatum(b array.Builder, t *types.T, ed *sqlbase.EncDatum, da *sqlba
 			return fmt.Errorf("expected timestamp, got %T", ed.Datum)
 		}
 		b.(*array.TimestampBuilder).Append(arrow.Timestamp(micros))
+	case types.DateFamily:
+		// Encoded as int64 days since the Unix epoch (see column_type_encoding).
+		// Infinite dates land on MaxInt32/MinInt32 and have no finite int32
+		// representation, so map them to NULL.
+		v, err := ed.GetInt()
+		if err != nil {
+			return err
+		}
+		if v == math.MaxInt32 || v == math.MinInt32 {
+			b.(*array.Int32Builder).AppendNull()
+			return nil
+		}
+		b.(*array.Int32Builder).Append(int32(v))
 	case types.UuidFamily:
 		if err := ed.EnsureDecoded(t, da); err != nil {
 			return err
@@ -596,6 +670,20 @@ func appendEncDatum(b array.Builder, t *types.T, ed *sqlbase.EncDatum, da *sqlba
 			return fmt.Errorf("expected json, got %T", ed.Datum)
 		}
 		b.(*array.StringBuilder).Append(dj.JSON.String())
+	case types.IntervalFamily:
+		if err := ed.EnsureDecoded(t, da); err != nil {
+			return err
+		}
+		if ed.Datum == tree.DNull {
+			b.AppendNull()
+			return nil
+		}
+		di, ok := ed.Datum.(*tree.DInterval)
+		if !ok {
+			return fmt.Errorf("expected interval, got %T", ed.Datum)
+		}
+		// Store the canonical text form; CAST(interval AS string) reuses it.
+		b.(*array.StringBuilder).Append(di.String())
 	default:
 		return fmt.Errorf("unsupported type family %s for arrow scan", t.Family())
 	}
