@@ -52,13 +52,20 @@ type rowToArrowConverter struct {
 	da     *sqlbase.DatumAlloc
 	idx    int
 	schema *arrow.Schema
+	// initErr captures a schema-build failure (e.g. unsupported type family)
+	// so it can be surfaced from Next instead of panicking on a nil schema.
+	initErr error
 }
 
 // NewRowToArrowConverter builds a converter for one batch of rows.
 func NewRowToArrowConverter(alloc memory.Allocator, typs []*types.T, rows sqlbase.EncDatumRows) *rowToArrowConverter {
 	fields := make([]arrow.Field, len(typs))
 	for i, t := range typs {
-		fields[i] = arrow.Field{Name: fmt.Sprintf("col%d", i), Type: arrowTypeForKWType(t), Nullable: true}
+		dt, err := arrowDataTypeForKWType(t)
+		if err != nil {
+			return &rowToArrowConverter{initErr: err}
+		}
+		fields[i] = arrow.Field{Name: fmt.Sprintf("col%d", i), Type: dt, Nullable: true}
 	}
 	return &rowToArrowConverter{
 		alloc:  alloc,
@@ -78,6 +85,9 @@ func (c *rowToArrowConverter) Allocator() memory.Allocator { return c.alloc }
 // Next implements UnifiedProcessor. It emits exactly one Record then reports
 // done, matching the single-batch input.
 func (c *rowToArrowConverter) Next(ctx context.Context) (arrow.Record, bool, error) {
+	if c.initErr != nil {
+		return nil, false, c.initErr
+	}
 	if c.idx > 0 {
 		return nil, true, nil
 	}
@@ -118,33 +128,36 @@ func (s *arrowRecordSource) Next(ctx context.Context) (arrow.Record, bool, error
 	return s.rec, false, nil
 }
 
-// arrowTypeForKWType maps a kwbase logical type onto the Arrow DataType used to
-// build the unified Record. Unsupported families fall back to Int64 so that
-// buildArrowColumns can return a precise error instead of a confusing crash.
-func arrowTypeForKWType(t *types.T) arrow.DataType {
+// arrowDataTypeForKWType maps a kwbase logical type onto the Arrow DataType used
+// to build the unified Record. Unsupported families are reported as an explicit
+// error rather than silently falling back to Int64 — a silent fallback would let
+// the schema claim Int64 while appendEncDatum later fails with a confusing type
+// assertion panic. The default branch is intentionally converged to error out so
+// that every unsupported family fails fast at schema-build time.
+func arrowDataTypeForKWType(t *types.T) (arrow.DataType, error) {
 	switch t.Family() {
 	case types.IntFamily:
-		return arrow.PrimitiveTypes.Int64
+		return arrow.PrimitiveTypes.Int64, nil
 	case types.FloatFamily:
-		return arrow.PrimitiveTypes.Float64
+		return arrow.PrimitiveTypes.Float64, nil
 	case types.StringFamily:
-		return arrow.BinaryTypes.String
+		return arrow.BinaryTypes.String, nil
 	case types.BoolFamily:
-		return arrow.FixedWidthTypes.Boolean
+		return arrow.FixedWidthTypes.Boolean, nil
 	case types.DecimalFamily:
-		return &arrow.Decimal128Type{Precision: 38, Scale: t.Scale()}
+		return &arrow.Decimal128Type{Precision: 38, Scale: t.Scale()}, nil
 	case types.TimestampTZFamily, types.TimestampFamily:
-		return arrow.FixedWidthTypes.Timestamp_us
+		return arrow.FixedWidthTypes.Timestamp_us, nil
 	case types.UuidFamily:
 		// 16-byte canonical UUID octets -> FixedSizeBinary(16) so the Arrow
 		// grouping machinery can hash/compare them by raw bytes.
-		return arrowUUIDType
+		return arrowUUIDType, nil
 	case types.JsonFamily:
 		// JSON is stored as its canonical text form in a String column; the
 		// value bytes are compared/hashed directly (see arrowGroupHash/Equal).
-		return arrow.BinaryTypes.String
+		return arrow.BinaryTypes.String, nil
 	default:
-		return arrow.PrimitiveTypes.Int64
+		return nil, fmt.Errorf("unsupported type family %s for arrow schema", t.Family())
 	}
 }
 
@@ -392,16 +405,26 @@ func (s *arrowScan) build() (arrow.Record, error) {
 	nIn := len(s.typs)
 	builders := make([]array.Builder, nIn)
 	fields := make([]arrow.Field, nIn)
-	for i, t := range s.typs {
-		fields[i] = arrow.Field{Name: fmt.Sprintf("col%d", i), Type: arrowTypeForKWType(t), Nullable: true}
-		builders[i] = newArrowBuilder(s.alloc, t)
-	}
 	release := func() {
 		for _, b := range builders {
 			if b != nil {
 				b.Release()
 			}
 		}
+	}
+	for i, t := range s.typs {
+		dt, err := arrowDataTypeForKWType(t)
+		if err != nil {
+			release()
+			return nil, err
+		}
+		fields[i] = arrow.Field{Name: fmt.Sprintf("col%d", i), Type: dt, Nullable: true}
+		b, err := newArrowBuilder(s.alloc, t)
+		if err != nil {
+			release()
+			return nil, err
+		}
+		builders[i] = b
 	}
 	n := 0
 	for {
@@ -433,26 +456,30 @@ func (s *arrowScan) build() (arrow.Record, error) {
 }
 
 // newArrowBuilder returns a fresh Arrow builder for the given kwbase type.
-func newArrowBuilder(alloc memory.Allocator, t *types.T) array.Builder {
+// Unsupported families are reported as an explicit error rather than silently
+// falling back to an Int64Builder (which would let appendEncDatum fail later
+// with a confusing type assertion). The default branch is converged to error
+// out so the behavior matches arrowDataTypeForKWType.
+func newArrowBuilder(alloc memory.Allocator, t *types.T) (array.Builder, error) {
 	switch t.Family() {
 	case types.IntFamily:
-		return array.NewInt64Builder(alloc)
+		return array.NewInt64Builder(alloc), nil
 	case types.FloatFamily:
-		return array.NewFloat64Builder(alloc)
+		return array.NewFloat64Builder(alloc), nil
 	case types.StringFamily:
-		return array.NewStringBuilder(alloc)
+		return array.NewStringBuilder(alloc), nil
 	case types.BoolFamily:
-		return array.NewBooleanBuilder(alloc)
+		return array.NewBooleanBuilder(alloc), nil
 	case types.DecimalFamily:
-		return array.NewDecimal128Builder(alloc, &arrow.Decimal128Type{Precision: 38, Scale: t.Scale()})
+		return array.NewDecimal128Builder(alloc, &arrow.Decimal128Type{Precision: 38, Scale: t.Scale()}), nil
 	case types.TimestampTZFamily, types.TimestampFamily:
-		return array.NewTimestampBuilder(alloc, arrow.FixedWidthTypes.Timestamp_us.(*arrow.TimestampType))
+		return array.NewTimestampBuilder(alloc, arrow.FixedWidthTypes.Timestamp_us.(*arrow.TimestampType)), nil
 	case types.UuidFamily:
-		return array.NewFixedSizeBinaryBuilder(alloc, arrowUUIDType)
+		return array.NewFixedSizeBinaryBuilder(alloc, arrowUUIDType), nil
 	case types.JsonFamily:
-		return array.NewStringBuilder(alloc)
+		return array.NewStringBuilder(alloc), nil
 	default:
-		return array.NewInt64Builder(alloc)
+		return nil, fmt.Errorf("unsupported type family %s for arrow builder", t.Family())
 	}
 }
 

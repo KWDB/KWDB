@@ -90,7 +90,7 @@
 
 **待做**：
 - [ ] 投影/过滤 CAST 更罕见目标：`date/timestamp→string`、`interval→string`、`numeric→bool` 等。按需按源类型扩充各 `castToXxx` kernel；受 arrow/compute v17 能力与本地 `go test` 限制，留待带 `libkwdbts2` 的 CI 环境回归。
-- [ ] 逐步收敛 arrow_adapter.go 的 `default:` 回退分支
+- [x] 收敛 arrow_adapter.go 的 `default:` 回退分支（2026-08-04 落地）：`arrowTypeForKWType` 改为 checked 版 `arrowDataTypeForKWType(t) (arrow.DataType, error)`，`default` 显式报错而非静默回退 `Int64`；`newArrowBuilder` 改为返回 `(array.Builder, error)`，`default` 同样显式报错（不再静默建 `Int64Builder`）；两处 schema 构建调用点（`NewRowToArrowConverter` 经 `initErr` 字段在 `Next` 上抛、`arrowScan.build` 经 `release()` 释放后返回）统一失败快路径。`buildArrowColumns`/`appendEncDatum` 的 `default` 本就显式报错，现三处入口语义一致：任何不支持的 family（Date/Interval/Bytes/Array/INet/Time/...）在 schema/builder 构建阶段即明确失败，杜绝「Int64 伪装 → 后续类型断言 panic」的隐藏陷阱。
 
 ### 阶段 3 — 统一调度层
 - [x] 统一 Arrow plan 序列化与降级约定：新增 `marshalArrowPlan(plan) (*Expression, bool)`（`arrow_unification.go`），取代 planner 中散落的 8 处裸 `arrowUnificationMarshal` 调用（sorter / distinct / window / 2× agg / 2× setop / filter-Intercept），把「序列化失败即降级行式」语义收口到一处。join 两处保留原始 `return err` 控制流（更保守，未动）。
