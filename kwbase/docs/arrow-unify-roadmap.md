@@ -75,15 +75,15 @@
 ### 阶段 2 — 表达式/标量覆盖扩展【部分落地】
 
 **已落地（2026-08-04）**：
-- [x] 过滤侧 **IN / NOT IN**：`x IN (1,2,3)` / `x NOT IN (...)`，列 IN 常量集合，native Go kernel（`evalIn`，arrow_filter.go），支持 int64 / string 两类列（同 family 常量）。改动：`ArrowArg.ConstSet`、`arrowFilterLeafJS.ConstSet{Int,Str}`、`canArrowFilterExpr`/`buildArrowFilterNode` 增加 `tree.In`/`tree.NotIn` 分支。编译 + go vet 通过。
+- [x] 过滤侧 **IN / NOT IN**：`x IN (1,2,3)` / `x NOT IN (...)`，列 IN 常量集合，native Go kernel（`evalIn`，arrow_filter.go），支持 int64 / string 两类列（同 family 常量）。
+- [x] 过滤侧 **IS NULL / IS NOT NULL**：KWDB 以 `ComparisonExpr EQ/NE DNull` 表达（无独立 `Is` 运算符）；`canArrowFilterExpr`/`buildArrowFilterNode` 识别该形态并生成 `is_null`/`is_not_null` 单操作数节点，`evalIsNull` 遍历列有效性位图（任意类型）。
+- [x] 投影侧 **overlay(str,substr,start) / split_part(str,sep,n)**：native loop（`evalArrowOverlay`/`evalArrowSplitPart`），经 `arrowStringFuncName` + `canArrowRender` 接入。并把 `replace`/`trim`/`ltrim`/`rtrim`/`btrim` 补入 `eval` switch（此前缺失会错误回退 compute kernel）。
 - [x] 过滤 `LIKE`/`ILIKE`（含非字符串左操作数 CAST 到 string）—— 既有
 - [x] 过滤 `CAST`（int/float/bool/string）—— 既有
 - [x] 投影字符串 trim/ltrim/rtrim/btrim/replace、数值标量 abs/sqrt/ln/sign/power —— P1 既有
 
 **待做**：
-- [ ] 投影：补充 `overlay` / `split_part`（native loop，与 evalArrowTrim 同模式）
-- [ ] 过滤 `IS NULL` / `IS NOT NULL`：KWDB 以 `ComparisonExpr EQ DNull`（无独立 `Is` 运算符）表达，需在 `canArrowFilterExpr`/`buildArrowFilterNode` 识别该形态并加 `is_null`/`is_valid` 分支（Arrow 有原生 kernel）
-- [ ] 投影 `CAST` 常用类型对（decimal↔string 等）Arrow 路径
+- [ ] 投影 `CAST` 常用类型对（decimal↔string 等）Arrow 路径：`canArrowRender`/`addArrowRendering` 均缺 `CastExpr` 分支，目前投影 CAST 整体回退行式。arrow/compute v17 cast kernel 对 decimal128↔string 支持需确认（vendored 版本可能缺），故暂仅规划 int/float/bool/string 互转的安全子集。
 - [ ] 逐步收敛 arrow_adapter.go 的 `default:` 回退分支
 
 ### 阶段 3 — 统一调度层

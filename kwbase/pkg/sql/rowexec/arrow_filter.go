@@ -26,6 +26,9 @@ import (
 //   membership:  Func in {in, not_in}, Operands[0] is a column leaf,
 //                Operands[1] is a ConstSet leaf (constant set). Evaluated by a
 //                Go kernel (arrow compute v17 has no is_in kernel exposed).
+//   null-test:    Func in {is_null, is_not_null}, Operands[0] is a column leaf
+//                 (no right operand). Evaluated by a Go kernel over the column's
+//                 validity bitmap.
 //   logical:      Func in {and, or},   Operands are nested boolean exprs.
 //                 Func == "not",       Operands[0] is a nested boolean expr.
 type ArrowFilterSpec struct {
@@ -167,6 +170,8 @@ func (f *arrowFilterCore) evalBool(ctx context.Context, rec arrow.Record, spec A
 			return f.evalLike(ctx, rec, spec)
 		case "in", "not_in":
 			return f.evalIn(ctx, rec, spec)
+		case "is_null", "is_not_null":
+			return f.evalIsNull(ctx, rec, spec)
 		}
 		args := make([]compute.Datum, len(spec.Operands))
 		for i, op := range spec.Operands {
@@ -456,6 +461,40 @@ func (f *arrowFilterCore) evalIn(ctx context.Context, rec arrow.Record, spec Arr
 		}
 	default:
 		return nil, fmt.Errorf("arrow in: unsupported column type %T (only int64/string supported)", arr)
+	}
+	return b.NewArray().(*array.Boolean), nil
+}
+
+// evalIsNull implements SQL IS NULL / IS NOT NULL over an Arrow column. It
+// operates purely on the array validity bitmap, so it works for any column type
+// (unlike evalIn which needs a concrete element type). IS NULL matches rows
+// whose value is null; IS NOT NULL matches the complement.
+func (f *arrowFilterCore) evalIsNull(ctx context.Context, rec arrow.Record, spec ArrowFilterSpec) (*array.Boolean, error) {
+	if len(spec.Operands) != 1 {
+		return nil, fmt.Errorf("arrow is_null: expected 1 operand, got %d", len(spec.Operands))
+	}
+	left, err := f.evalLeafDatum(ctx, rec, spec.Operands[0])
+	if err != nil {
+		return nil, err
+	}
+	lad, ok := left.(*compute.ArrayDatum)
+	if !ok {
+		left.Release()
+		return nil, fmt.Errorf("arrow is_null: operand must be a column, got %T", left)
+	}
+	arr := lad.MakeArray()
+	left.Release()
+	defer arr.Release()
+
+	neg := spec.Func == "is_not_null"
+	b := array.NewBooleanBuilder(f.alloc)
+	defer b.Release()
+	for i := 0; i < arr.Len(); i++ {
+		if arr.IsNull(i) {
+			b.Append(!neg)
+		} else {
+			b.Append(neg)
+		}
 	}
 	return b.NewArray().(*array.Boolean), nil
 }

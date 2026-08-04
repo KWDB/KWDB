@@ -1771,20 +1771,45 @@ func (p *PhysicalPlan) canArrowRender(exprs []tree.TypedExpr, indexVarMap []int)
 					}
 				}
 				return true
-			case "substring":
-				if len(args) < 2 || len(args) > 3 {
-					return false
-				}
-				if args[0].ty.Family() != types.StringFamily {
-					return false
-				}
-				for _, a := range args[1:] {
-					if a.ty.Family() != types.IntFamily {
-						return false
-					}
-				}
-				return true
+		case "substring":
+			if len(args) < 2 || len(args) > 3 {
+				return false
 			}
+			if args[0].ty.Family() != types.StringFamily {
+				return false
+			}
+			for _, a := range args[1:] {
+				if a.ty.Family() != types.IntFamily {
+					return false
+				}
+			}
+			return true
+		case "overlay":
+			// overlay(str PLACING substr FROM start): 3 args, all but the last
+			// are strings, the start position is an int.
+			if len(args) != 3 {
+				return false
+			}
+			if args[0].ty.Family() != types.StringFamily || args[1].ty.Family() != types.StringFamily {
+				return false
+			}
+			if args[2].ty.Family() != types.IntFamily {
+				return false
+			}
+			return true
+		case "split_part":
+			// split_part(str, sep, n): 3 args, str/sep are strings, n is an int.
+			if len(args) != 3 {
+				return false
+			}
+			if args[0].ty.Family() != types.StringFamily || args[1].ty.Family() != types.StringFamily {
+				return false
+			}
+			if args[2].ty.Family() != types.IntFamily {
+				return false
+			}
+			return true
+		}
 			return false
 		default:
 			// Plain column reference: allowed as a passthrough (identity copy).
@@ -1836,6 +1861,10 @@ func arrowStringFuncName(name string) (string, bool) {
 		return strings.ToLower(name), true
 	case "replace":
 		return "replace", true
+	case "overlay":
+		return "overlay", true
+	case "split_part":
+		return "split_part", true
 	}
 	return "", false
 }
@@ -2188,6 +2217,27 @@ func arrowFilterStringCastable(t *types.T) bool {
 func (p *PhysicalPlan) canArrowFilterExpr(e tree.TypedExpr, indexVarMap []int) bool {
 	switch ex := e.(type) {
 	case *tree.ComparisonExpr:
+		// IS NULL / IS NOT NULL: KWDB lowers `x IS NULL` to a ComparisonExpr with
+		// a DNull right operand (no dedicated Is/IsNot operator). Only the EQ/NE
+		// forms with a column left operand and DNull right operand are routed to
+		// the Arrow engine.
+		if ex.Right == tree.DNull {
+			switch ex.Operator {
+			case tree.EQ:
+				l, _, ok := p.arrowFilterLeafFromExpr(ex.Left.(tree.TypedExpr), indexVarMap)
+				if !ok {
+					return false
+				}
+				return l.Col >= 0 || l.Binary != nil || l.Cast != nil
+			case tree.NE:
+				l, _, ok := p.arrowFilterLeafFromExpr(ex.Left.(tree.TypedExpr), indexVarMap)
+				if !ok {
+					return false
+				}
+				return l.Col >= 0 || l.Binary != nil || l.Cast != nil
+			}
+			return false
+		}
 		switch ex.Operator {
 		case tree.EQ, tree.LT, tree.GT, tree.LE, tree.GE, tree.NE:
 			l, lty, ok1 := p.arrowFilterLeafFromExpr(ex.Left.(tree.TypedExpr), indexVarMap)
@@ -2303,7 +2353,12 @@ func (p *PhysicalPlan) buildArrowFilterNode(e tree.TypedExpr, indexVarMap []int)
 		var fn string
 		switch ex.Operator {
 		case tree.EQ:
-			fn = "equal"
+			// IS NULL: `x IS NULL` lowers to EQ with a DNull right operand.
+			if ex.Right == tree.DNull {
+				fn = "is_null"
+			} else {
+				fn = "equal"
+			}
 		case tree.LT:
 			fn = "less"
 		case tree.GT:
@@ -2313,7 +2368,12 @@ func (p *PhysicalPlan) buildArrowFilterNode(e tree.TypedExpr, indexVarMap []int)
 		case tree.GE:
 			fn = "greater_equal"
 		case tree.NE:
-			fn = "not_equal"
+			// IS NOT NULL: `x IS NOT NULL` lowers to NE with a DNull right operand.
+			if ex.Right == tree.DNull {
+				fn = "is_not_null"
+			} else {
+				fn = "not_equal"
+			}
 		case tree.Like:
 			fn = "like"
 		case tree.NotLike:
@@ -2326,6 +2386,18 @@ func (p *PhysicalPlan) buildArrowFilterNode(e tree.TypedExpr, indexVarMap []int)
 			fn = "in"
 		case tree.NotIn:
 			fn = "not_in"
+		}
+		// IS NULL / IS NOT NULL take a single (column) operand; the right DNull
+		// is dropped entirely.
+		if fn == "is_null" || fn == "is_not_null" {
+			l, _, ok := p.arrowFilterLeafFromExpr(ex.Left.(tree.TypedExpr), indexVarMap)
+			if !ok {
+				return arrowFilterNode{}, false
+			}
+			return arrowFilterNode{
+				Func:     fn,
+				Operands: []arrowFilterOperand{{Leaf: l}},
+			}, true
 		}
 		l, lty, _ := p.arrowFilterLeafFromExpr(ex.Left.(tree.TypedExpr), indexVarMap)
 		// LIKE-style predicates stringify a non-string left operand via a CAST to

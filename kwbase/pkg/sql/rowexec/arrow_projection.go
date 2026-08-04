@@ -134,7 +134,8 @@ func (p *arrowProjection) eval(ctx context.Context, in arrow.Record, spec ArrowP
 	// string kernels, so we evaluate them as native vectorized Go loops over the
 	// Arrow string arrays. This keeps string projection on the same Arrow path.
 	switch spec.Func {
-	case "length", "octet_length", "lower", "upper", "concat", "substring":
+	case "length", "octet_length", "lower", "upper", "concat", "substring",
+		"trim", "ltrim", "rtrim", "btrim", "replace", "overlay", "split_part":
 		return p.evalArrowStringFunc(ctx, in, spec)
 	}
 	args := make([]compute.Datum, len(spec.Args))
@@ -311,6 +312,10 @@ func (p *arrowProjection) evalArrowStringFunc(ctx context.Context, in arrow.Reco
 		return p.evalArrowTrim(ctx, in, spec)
 	case "replace":
 		return p.evalArrowReplace(ctx, in, spec)
+	case "overlay":
+		return p.evalArrowOverlay(ctx, in, spec)
+	case "split_part":
+		return p.evalArrowSplitPart(ctx, in, spec)
 	case "length", "octet_length":
 		arg, err := p.resolveStrArg(in, spec.Args[0])
 		if err != nil {
@@ -430,6 +435,95 @@ func (p *arrowProjection) evalArrowStringFunc(ctx context.Context, in arrow.Reco
 		return b.NewArray(), nil
 	}
 	return nil, fmt.Errorf("unsupported string projection function %q", spec.Func)
+}
+
+// evalArrowOverlay implements the SQL OVERLAY(str PLACING substr FROM start) as a
+// native vectorized loop. The arguments arrive as (str, substr, start) where
+// start is 1-based (the KWDB planner lowers the PLACING/FROM syntax into a
+// 3-argument FuncExpr). NULL in any operand yields NULL; start <= 0 is clamped
+// to 1 so the insertion point stays in range.
+func (p *arrowProjection) evalArrowOverlay(ctx context.Context, in arrow.Record, spec ArrowProjectionSpec) (arrow.Array, error) {
+	if len(spec.Args) != 3 {
+		return nil, fmt.Errorf("overlay expects 3 arguments, got %d", len(spec.Args))
+	}
+	strArg, err := p.resolveStrArg(in, spec.Args[0])
+	if err != nil {
+		return nil, err
+	}
+	subArg, err := p.resolveStrArg(in, spec.Args[1])
+	if err != nil {
+		return nil, err
+	}
+	startArg, err := p.resolveIntArg(in, spec.Args[2])
+	if err != nil {
+		return nil, err
+	}
+	b := array.NewStringBuilder(p.alloc)
+	defer b.Release()
+	n := int(in.NumRows())
+	for i := 0; i < n; i++ {
+		if strIsNull(strArg, i) || strIsNull(subArg, i) || intIsNull(startArg, i) {
+			b.AppendNull()
+			continue
+		}
+		str := strValue(strArg, i)
+		sub := strValue(subArg, i)
+		pos := intArgValue(startArg, i)
+		if pos < 1 {
+			pos = 1
+		}
+		runes := []rune(str)
+		start := int(pos - 1)
+		if start > len(runes) {
+			start = len(runes)
+		}
+		b.Append(string(runes[:start]) + sub + string(runes[start:]))
+	}
+	return b.NewArray(), nil
+}
+
+// evalArrowSplitPart implements SQL SPLIT_PART(str, sep, n) as a native
+// vectorized loop. The string is split on the separator and the n-th (1-based)
+// field is returned. n <= 0 or n beyond the field count yields NULL.
+func (p *arrowProjection) evalArrowSplitPart(ctx context.Context, in arrow.Record, spec ArrowProjectionSpec) (arrow.Array, error) {
+	if len(spec.Args) != 3 {
+		return nil, fmt.Errorf("split_part expects 3 arguments, got %d", len(spec.Args))
+	}
+	strArg, err := p.resolveStrArg(in, spec.Args[0])
+	if err != nil {
+		return nil, err
+	}
+	sepArg, err := p.resolveStrArg(in, spec.Args[1])
+	if err != nil {
+		return nil, err
+	}
+	nArg, err := p.resolveIntArg(in, spec.Args[2])
+	if err != nil {
+		return nil, err
+	}
+	b := array.NewStringBuilder(p.alloc)
+	defer b.Release()
+	n := int(in.NumRows())
+	for i := 0; i < n; i++ {
+		if strIsNull(strArg, i) || strIsNull(sepArg, i) || intIsNull(nArg, i) {
+			b.AppendNull()
+			continue
+		}
+		field := intArgValue(nArg, i)
+		if field <= 0 {
+			b.AppendNull()
+			continue
+		}
+		str := strValue(strArg, i)
+		sep := strValue(sepArg, i)
+		parts := strings.Split(str, sep)
+		if field > int64(len(parts)) {
+			b.AppendNull()
+			continue
+		}
+		b.Append(parts[field-1])
+	}
+	return b.NewArray(), nil
 }
 
 // evalArrowTrim implements the SQL TRIM family as a native vectorized loop.
