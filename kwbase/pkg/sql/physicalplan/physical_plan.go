@@ -1771,7 +1771,11 @@ func (p *PhysicalPlan) canArrowRender(exprs []tree.TypedExpr, indexVarMap []int)
 			if _, ok := exprColumn(e, indexVarMap); !ok {
 				return false
 			}
-			if !arrowSupportedComputeType(e.ResolvedType()) {
+			// Use the broader passthrough type set (which includes Decimal,
+			// Timestamp, Uuid and Json) rather than the arithmetic compute set:
+			// a copied-through column never enters an arrow/compute kernel, so
+			// any type the executor can materialize into an Arrow array is fine.
+			if !arrowSupportedPassthroughType(e.ResolvedType()) {
 				return false
 			}
 		}
@@ -1845,6 +1849,25 @@ func arrowNumericFuncName(name string) (kernel string, arity int, ok bool) {
 func arrowNumericComputeType(t *types.T) bool {
 	switch t.Family() {
 	case types.IntFamily, types.FloatFamily:
+		return true
+	}
+	return false
+}
+
+// arrowSupportedPassthroughType reports whether a bare column reference can be
+// copied through the Arrow projection executor. It mirrors the type set that
+// buildArrowColumns / appendEncDatum can materialize into an Arrow array
+// (Int/Float/Bool/String/Bytes/Decimal/Timestamp/TimestampTZ/Uuid/Json), which
+// is broader than arrowSupportedComputeType (the binary-operator compute set).
+// This is the gate used for passthrough (Kind:"copy") columns so that, e.g., a
+// DECIMAL or TIMESTAMP column alongside an arithmetic render can still take the
+// Arrow path.
+func arrowSupportedPassthroughType(t *types.T) bool {
+	switch t.Family() {
+	case types.IntFamily, types.FloatFamily, types.BoolFamily,
+		types.StringFamily, types.BytesFamily, types.DecimalFamily,
+		types.TimestampFamily, types.TimestampTZFamily,
+		types.UuidFamily, types.JsonFamily:
 		return true
 	}
 	return false

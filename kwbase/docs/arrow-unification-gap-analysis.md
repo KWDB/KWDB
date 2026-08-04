@@ -255,6 +255,8 @@ case core.ArrowDistinct != nil:
 
 **标量/字符串函数扩展（P1 续，2026-08-01）**：投影新增数值标量函数 abs / sqrt / ln / sign / power，复用 arrow/compute v17 自带 kernel（`compute.CallFunction` 路径，无新 Go 核）。planner 侧在 `physical_plan.go` 的 `canArrowRender` / `addArrowRendering` 接入 `arrowNumericFuncName`（SQL 名→kernel 名 + 固定 arity 门控），仅放行 int/float 数值类型、并要求多参同 family（与 binary-expr 门控一致）。floor/ceil/round 因 arrow kernel 为 int→float 语义与 SQL float 输入不符，暂未引入；trim/replace 等字符串函数待后续 native loop 扩展（arrow/compute 本 vendored 版本无字符串 kernel）。验证见 `arrow_unify_numeric_func_test.go`（纯单元，无集群）。
 
+**投影裸列透传类型门控修正（2026-08-04）**：`canArrowRender` 的 `default` 分支（裸列引用 → 透传 `Kind:"passthrough"` → 执行侧 `copy`）原先用 `arrowSupportedComputeType` 校验列类型，不含 Decimal/Timestamp/TimestampTZ/Uuid/Json，导致 `SELECT dec_col, a+b FROM t` 这类含 decimal/timestamp 裸列的投影被整体拒绝回退（尽管执行侧 `buildProjectionSpecs` 与 `copy` 已支持这些类型透传，纯属功能缺失而非崩溃）。新增 `arrowSupportedPassthroughType`（覆盖执行侧可 materialize 为 Arrow 的全部类型族），并将该分支的类型检查切换为它。注：`canArrowRender` / `addArrowRendering` 的 `default` 裸列分支此前已正确门控与序列化，故"裸列误判崩溃"的初步判断不成立——本次仅修正类型白名单过窄问题。
+
 ### 4.9 集合算子去重 UNION/INTERSECT/EXCEPT DISTINCT 落地（2026-08-01）
 
 **无需新增 Arrow 算子**：UNION DISTINCT / INTERSECT DISTINCT / EXCEPT DISTINCT 的去重节点本就复用 `ProcessorCoreUnion{Distinct:...}`，与 §4.3 的普通 DISTINCT 共用同一套 `canArrowDistinct` → `ArrowDistinct` 路径。只需在 set op 的三个 Distinct 构造点接入复用 helper。
