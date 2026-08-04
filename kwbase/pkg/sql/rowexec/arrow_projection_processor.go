@@ -443,6 +443,35 @@ func ArrowProjectionResultFloat64(proj UnifiedProcessor, ctx context.Context) ([
 	return vals, nil
 }
 
+// ArrowProjectionResultString runs the projection to completion and returns
+// the string values of its first output column. See ArrowProjectionResultInt64
+// for the rationale behind the package-local type assertion; NULL rows are
+// reported as the empty string (the executor never emits NULL markers via this
+// helper, matching the test-only intent of the other ArrowProjectionResult*
+// helpers).
+func ArrowProjectionResultString(proj UnifiedProcessor, ctx context.Context) ([]string, error) {
+	rec, done, err := proj.Next(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if done || rec == nil {
+		return nil, fmt.Errorf("arrow projection produced no record")
+	}
+	defer rec.Release()
+	if rec.NumCols() < 1 {
+		return nil, fmt.Errorf("arrow projection produced no columns")
+	}
+	arr, ok := rec.Column(0).(*array.String)
+	if !ok {
+		return nil, fmt.Errorf("expected String column, got %T", rec.Column(0))
+	}
+	vals := make([]string, arr.Len())
+	for i := 0; i < arr.Len(); i++ {
+		vals[i] = arr.Value(i)
+	}
+	return vals, nil
+}
+
 // arrowConstDatum wraps a constant argument into a compute scalar datum so that
 // it can be passed to an arrow/compute kernel alongside array arguments.
 func arrowConstDatum(a arrowArg, _ memory.Allocator) compute.Datum {

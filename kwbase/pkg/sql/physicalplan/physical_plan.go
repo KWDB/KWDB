@@ -1735,13 +1735,33 @@ func (p *PhysicalPlan) canArrowRender(exprs []tree.TypedExpr, indexVarMap []int)
 				// Need at least one input column to reference.
 				return false
 			}
-			switch funcName {
-			case "length", "octet_length", "lower", "upper":
-				if len(args) != 1 {
+		switch funcName {
+		case "length", "octet_length", "lower", "upper", "trim", "ltrim", "rtrim", "btrim":
+			if len(args) != 1 && len(args) != 2 {
+				return false
+			}
+			if args[0].ty.Family() != types.StringFamily || !arrowSupportedComputeType(args[0].ty) {
+				return false
+			}
+			if len(args) == 2 {
+				// The optional second argument is the trim characters set and
+				// must also be a string.
+				if args[1].ty.Family() != types.StringFamily {
 					return false
 				}
-				return args[0].ty.Family() == types.StringFamily && arrowSupportedComputeType(args[0].ty)
-			case "concat":
+			}
+			return true
+		case "replace":
+			if len(args) != 3 {
+				return false
+			}
+			for _, a := range args {
+				if a.ty.Family() != types.StringFamily {
+					return false
+				}
+			}
+			return true
+		case "concat":
 				if len(args) < 2 {
 					return false
 				}
@@ -1812,6 +1832,10 @@ func arrowStringFuncName(name string) (string, bool) {
 		return "concat", true
 	case "substring", "substr":
 		return "substring", true
+	case "trim", "btrim", "ltrim", "rtrim":
+		return strings.ToLower(name), true
+	case "replace":
+		return "replace", true
 	}
 	return "", false
 }

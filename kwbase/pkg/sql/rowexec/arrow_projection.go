@@ -302,6 +302,10 @@ func sqlSubstring(s string, start, length int64) string {
 func (p *arrowProjection) evalArrowStringFunc(ctx context.Context, in arrow.Record, spec ArrowProjectionSpec) (arrow.Array, error) {
 	n := int(in.NumRows())
 	switch spec.Func {
+	case "trim", "ltrim", "rtrim", "btrim":
+		return p.evalArrowTrim(ctx, in, spec)
+	case "replace":
+		return p.evalArrowReplace(ctx, in, spec)
 	case "length", "octet_length":
 		arg, err := p.resolveStrArg(in, spec.Args[0])
 		if err != nil {
@@ -421,4 +425,120 @@ func (p *arrowProjection) evalArrowStringFunc(ctx context.Context, in arrow.Reco
 		return b.NewArray(), nil
 	}
 	return nil, fmt.Errorf("unsupported string projection function %q", spec.Func)
+}
+
+// evalArrowTrim implements the SQL TRIM family as a native vectorized loop.
+// With a single string argument it trims leading/trailing whitespace (BOTH);
+// an optional second string argument names the set of characters to strip
+// instead of whitespace. ltrim/rtrim/btrim restrict stripping to the left,
+// right, or both sides respectively (btrim is the PostgreSQL name for BOTH).
+// All variants return NULL when the string operand is NULL.
+func (p *arrowProjection) evalArrowTrim(ctx context.Context, in arrow.Record, spec ArrowProjectionSpec) (arrow.Array, error) {
+	if len(spec.Args) < 1 || len(spec.Args) > 2 {
+		return nil, fmt.Errorf("trim expects 1 or 2 arguments, got %d", len(spec.Args))
+	}
+	strArg, err := p.resolveStrArg(in, spec.Args[0])
+	if err != nil {
+		return nil, err
+	}
+	var cutSet string
+	if len(spec.Args) == 2 {
+		c, err := p.resolveStrArg(in, spec.Args[1])
+		if err != nil {
+			return nil, err
+		}
+		cutSet = c.constStr
+		if c.isCol {
+			// The cut-set column is constant across rows for a single spec; we
+			// materialize using row 0 and stop if any later row differs (which
+			// the planner does not currently produce, since all operands are
+			// resolved to either a column or a single constant, never a mix).
+			if c.col.Len() == 0 {
+				cutSet = ""
+			} else {
+				cutSet = c.col.Value(0)
+			}
+		}
+	} else {
+		cutSet = " \t\n\v\f\r"
+	}
+	left, right := true, true
+	switch spec.Func {
+	case "ltrim":
+		right = false
+	case "rtrim":
+		left = false
+	}
+	trimOne := func(s string) string {
+		if left && right {
+			return strings.Trim(s, cutSet)
+		}
+		if left {
+			return strings.TrimLeft(s, cutSet)
+		}
+		return strings.TrimRight(s, cutSet)
+	}
+	b := array.NewStringBuilder(p.alloc)
+	defer b.Release()
+	if strArg.isCol {
+		for i := 0; i < int(in.NumRows()); i++ {
+			if strArg.col.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			b.Append(trimOne(strArg.col.Value(i)))
+		}
+	} else if strArg.constNull {
+		b.AppendNull()
+	} else {
+		b.Append(trimOne(strArg.constStr))
+	}
+	return b.NewArray(), nil
+}
+
+// evalArrowReplace implements the SQL REPLACE(str, from, to) as a native
+// vectorized loop: every non-overlapping occurrence of the `from` substring is
+// replaced with `to`. Returns NULL when the string operand is NULL; the `from`
+// and `to` operands may be constants only (the planner only routes the literal
+// variants through this path).
+func (p *arrowProjection) evalArrowReplace(ctx context.Context, in arrow.Record, spec ArrowProjectionSpec) (arrow.Array, error) {
+	if len(spec.Args) != 3 {
+		return nil, fmt.Errorf("replace expects 3 arguments, got %d", len(spec.Args))
+	}
+	strArg, err := p.resolveStrArg(in, spec.Args[0])
+	if err != nil {
+		return nil, err
+	}
+	fromArg, err := p.resolveStrArg(in, spec.Args[1])
+	if err != nil {
+		return nil, err
+	}
+	toArg, err := p.resolveStrArg(in, spec.Args[2])
+	if err != nil {
+		return nil, err
+	}
+	fromStr := fromArg.constStr
+	toStr := toArg.constStr
+	b := array.NewStringBuilder(p.alloc)
+	defer b.Release()
+	replaceOne := func(s string) string {
+		if fromStr == "" {
+			return s
+		}
+		return strings.ReplaceAll(s, fromStr, toStr)
+	}
+	if strArg.isCol {
+		for i := 0; i < int(in.NumRows()); i++ {
+			if strArg.col.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			b.Append(replaceOne(strArg.col.Value(i)))
+		}
+	} else if strArg.constNull {
+		b.AppendNull()
+	} else {
+		b.Append(replaceOne(strArg.constStr))
+	}
+	return b.NewArray(), nil
 }
