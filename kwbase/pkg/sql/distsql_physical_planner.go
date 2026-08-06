@@ -3254,25 +3254,23 @@ func (dsp *DistSQLPlanner) addSorters(p *PhysicalPlan, n *sortNode, evalCtx *tre
 			ordering,
 		)
 	} else {
-		if physicalplan.ArrowSorterEnabled(evalCtx) &&
-			canArrowSort(n.engine, execinfrapb.ConvertToColumnOrdering(ordering), int(n.alreadyOrderedPrefix), p.ResultTypes) {
-			plan := buildArrowSortPlan(
-				execinfrapb.ConvertToColumnOrdering(ordering),
-				int(n.alreadyOrderedPrefix),
-				-1, // limit: deferred to the post-process stage (matches colexec)
-				0,  // offset
+		if core, ok := arrowSorterCoreFor(
+			evalCtx,
+			n.engine,
+			execinfrapb.ConvertToColumnOrdering(ordering),
+			int(n.alreadyOrderedPrefix),
+			p.ResultTypes,
+		); ok {
+			p.AddNoGroupingStage(
+				core,
+				execinfrapb.PostProcessSpec{OutputTypes: p.ResultTypes},
+				p.ResultTypes,
+				ordering,
 			)
-			if expr, ok := marshalArrowPlan(plan); ok {
-				p.AddNoGroupingStage(
-					execinfrapb.ProcessorCoreUnion{ArrowSorter: expr},
-					execinfrapb.PostProcessSpec{OutputTypes: p.ResultTypes},
-					p.ResultTypes,
-					ordering,
-				)
-				return
-			}
-			// On serialization error fall through to the standard sorter.
+			return
 		}
+		// Fall through to the standard sorter when Arrow is unavailable or
+		// the plan marshaling fails.
 		p.AddNoGroupingStage(
 			execinfrapb.ProcessorCoreUnion{
 				Sorter: &execinfrapb.SorterSpec{
@@ -3922,15 +3920,12 @@ func (dsp *DistSQLPlanner) addTwiceAggregators(
 	// stage emits the same intermediate types as the colexec partial
 	// aggregator, so the downstream final (merge) stage is unchanged.
 	localCore := execinfrapb.ProcessorCoreUnion{Aggregator: &localAggsSpec}
-	if physicalplan.ArrowAggregatorEnabled(planCtx.EvalContext()) &&
-		canArrowAggregate(localAggsSpec, p.ResultTypes, n.engine) {
+	if core, ok := arrowAggCoreFor(planCtx.EvalContext(), n.engine, localAggsSpec, intermediateTypes); ok {
 		// Route the local (partial) stage through the Arrow kernel; on any
 		// unexpected build error, fall back to the colexec core. The final
 		// merge stage of a two-stage AVG emits SUM/SUM_INT partials (never a
 		// MEAN), which the Arrow kernel merges correctly.
-		if ac, err := arrowAggCoreFor(localAggsSpec, intermediateTypes); err == nil {
-			localCore = ac
-		}
+		localCore = core
 	}
 	p.AddNoGroupingStage(
 		localCore,
@@ -4377,19 +4372,14 @@ func (dsp *DistSQLPlanner) addDistinct(
 				)
 			}
 	} else {
-		if physicalplan.ArrowDistinctEnabled(evalCtx) &&
-			canArrowDistinct(tree.EngineTypeRelational, distinctColumns, orderedColumns, p.ResultTypes) {
-			plan := buildArrowDistinctPlan(distinctColumns, orderedColumns)
-			if expr, ok := marshalArrowPlan(plan); ok {
-				p.AddNoGroupingStage(
-					execinfrapb.ProcessorCoreUnion{ArrowDistinct: expr},
-					execinfrapb.PostProcessSpec{OutputTypes: p.ResultTypes},
-					p.ResultTypes,
-					p.MergeOrdering,
-				)
-				return
-			}
-			// On serialization error fall through to the standard distinct.
+		if core, ok := arrowDistinctCoreFor(evalCtx, tree.EngineTypeRelational, distinctColumns, orderedColumns, p.ResultTypes); ok {
+			p.AddNoGroupingStage(
+				core,
+				execinfrapb.PostProcessSpec{OutputTypes: p.ResultTypes},
+				p.ResultTypes,
+				p.MergeOrdering,
+			)
+			return
 		}
 		// Add distinct processors local to each existing current result processor.
 		p.AddNoGroupingStage(distinctSpec, execinfrapb.PostProcessSpec{}, p.ResultTypes, p.MergeOrdering)
@@ -4492,19 +4482,6 @@ func setupNewResultRouter(p *PhysicalPlan, pIdxStart physicalplan.ProcessorIdx) 
 	}
 }
 
-// arrowAggCoreFor builds the Arrow aggregator processor core for an aggregator
-// spec by lowering it to the Arrow JSON plan (see buildArrowAggPlan). The Arrow
-// path is an opt-in alternative to the colexec hash aggregator; any error falls
-// back to the colexec core at the call site.
-func arrowAggCoreFor(spec execinfrapb.AggregatorSpec, outTypes []types.T) (execinfrapb.ProcessorCoreUnion, error) {
-	plan := buildArrowAggPlan(spec, outTypes)
-	expr, ok := marshalArrowPlan(plan)
-	if !ok {
-		return execinfrapb.ProcessorCoreUnion{}, fmt.Errorf("arrow agg plan marshaling failed")
-	}
-	return execinfrapb.ProcessorCoreUnion{ArrowAggregator: expr}, nil
-}
-
 // addRelationalFinalAggStateSpec add relational final agg state spec to physical
 func addRelationalFinalAggStateSpec(
 	planCtx *PlanningCtx,
@@ -4512,16 +4489,12 @@ func addRelationalFinalAggStateSpec(
 	finalAggsSpec execinfrapb.AggregatorSpec,
 	finalAggsPost execinfrapb.PostProcessSpec,
 	stageID int32,
-	useArrow bool,
+	arrowCore *execinfrapb.ProcessorCoreUnion,
 	finalOutTypes []types.T,
 ) error {
 	core := execinfrapb.ProcessorCoreUnion{Aggregator: &finalAggsSpec}
-	if useArrow {
-		ac, err := arrowAggCoreFor(finalAggsSpec, finalOutTypes)
-		if err != nil {
-			return err
-		}
-		core = ac
+	if arrowCore != nil {
+		core = *arrowCore
 	}
 	for _, resultProc := range p.ResultRouters {
 		proc := physicalplan.Processor{
@@ -4593,16 +4566,14 @@ func (dsp *DistSQLPlanner) setupMultiAggFinalState(
 	// kernel when the feature is enabled and the spec is supported. The final
 	// post (renders / projections, e.g. avg = sum/count) is applied by the
 	// Arrow processor's own post-processing, just like the colexec aggregator.
-	useArrow := physicalplan.ArrowAggregatorEnabled(planCtx.EvalContext()) &&
-		canArrowAggregate(finalAggsSpec, p.ResultTypes, engine)
-	if err := addRelationalFinalAggStateSpec(planCtx, p, finalAggsSpec, finalAggsPost, p.NewStageID(), useArrow, finalOutTypes); err != nil {
-		if !useArrow {
-			return err
-		}
-		// Arrow core construction unexpectedly failed; fall back to colexec.
-		if ferr := addRelationalFinalAggStateSpec(planCtx, p, finalAggsSpec, finalAggsPost, p.NewStageID(), false, finalOutTypes); ferr != nil {
-			return ferr
-		}
+	// addRelationalFinalAggStateSpec takes a *core; a nil core means the
+	// colexec aggregator should be used.
+	var finalArrowCore *execinfrapb.ProcessorCoreUnion
+	if core, ok := arrowAggCoreFor(planCtx.EvalContext(), engine, finalAggsSpec, finalOutTypes); ok {
+		finalArrowCore = &core
+	}
+	if err := addRelationalFinalAggStateSpec(planCtx, p, finalAggsSpec, finalAggsPost, p.NewStageID(), finalArrowCore, finalOutTypes); err != nil {
+		return err
 	}
 
 	// Connect the streams.
@@ -4826,16 +4797,11 @@ func (dsp *DistSQLPlanner) addAggregators(
 		// No GROUP BY, or we have a single stream. Use a single final aggregator.
 		// If the previous stage was all on a single node, put the final
 		// aggregator there. Otherwise, bring the results back on this node.
-		if physicalplan.ArrowAggregatorEnabled(planCtx.EvalContext()) &&
-			canArrowAggregate(finalAggsSpec, p.ResultTypes, n.engine) {
-		plan := buildArrowAggPlan(finalAggsSpec, finalOutTypes)
-		if expr, ok := marshalArrowPlan(plan); ok {
-			core := execinfrapb.ProcessorCoreUnion{ArrowAggregator: expr}
+		if core, ok := arrowAggCoreFor(planCtx.EvalContext(), n.engine, finalAggsSpec, finalOutTypes); ok {
 			p.AddNoGroupingStage(core, finalAggsPost, finalOutTypes, p.MergeOrdering)
 			return nil
 		}
 		// On serialization error fall through to the classic single final aggregator.
-		}
 		dsp.addSingleGroupState(p, prevStageNode, finalAggsSpec, finalAggsPost, finalOutTypes)
 	} else {
 		// We distribute (by group columns) to multiple processors.
@@ -5814,6 +5780,9 @@ func (dsp *DistSQLPlanner) createPlanForNode(
 					n.engine == tree.EngineTypeTimeseries); err != nil {
 					return PhysicalPlan{}, err
 				}
+				if n.engine != tree.EngineTypeTimeseries {
+					pushLimitToArrowSorter(&plan, n.count, n.offset)
+				}
 			} else {
 				if n.count == math.MaxInt64 {
 					n.count = 0
@@ -5827,6 +5796,9 @@ func (dsp *DistSQLPlanner) createPlanForNode(
 			}
 
 			handleTSReaderPost(&plan, n.canOpt, n.pushLimitToAggScan)
+			if n.engine != tree.EngineTypeTimeseries {
+				pushLimitToArrowSorter(&plan, n.count, n.offset)
+			}
 		}
 
 	case *lookupJoinNode:
@@ -6420,13 +6392,33 @@ func (dsp *DistSQLPlanner) createPlanForOrdinality(
 			plan.MergeOrdering,
 		)
 	}
-	ordinalitySpec := execinfrapb.ProcessorCoreUnion{
-		Ordinality: &execinfrapb.OrdinalitySpec{},
-	}
 
 	plan.PlanToStreamColMap = append(plan.PlanToStreamColMap, len(plan.ResultTypes))
 	outputTypes := append(plan.ResultTypes, *types.Int)
 
+	// An ordinality column is exactly row_number() OVER () evaluated on a
+	// single, already-ordered input (no partition, no order by), which the
+	// Arrow windower already supports. Reuse it so WITH ORDINALITY rides the
+	// unified Arrow DAG instead of the classic row-by-row ordinality processor.
+	// The classic Ordinality core is kept as the fallback when the Arrow path
+	// is disabled or cannot represent the plan.
+	rowNum := execinfrapb.WindowerSpec_ROW_NUMBER
+	windowerSpec := execinfrapb.WindowerSpec{
+		WindowFns: []execinfrapb.WindowerSpec_WindowFn{{
+			Func:         execinfrapb.WindowerSpec_Func{WindowFunc: &rowNum},
+			OutputColIdx: uint32(len(plan.ResultTypes)),
+		}},
+	}
+	if arrowCore, ok := arrowWindowerCoreFor(planCtx.EvalContext(), tree.EngineTypeRelational, &windowerSpec, plan.ResultTypes); ok {
+		// WITH ORDINALITY never gets distributed so that the gateway node can
+		// always number each row in order.
+		plan.AddSingleGroupStage(dsp.nodeDesc.NodeID, arrowCore, execinfrapb.PostProcessSpec{}, outputTypes)
+		return plan, nil
+	}
+
+	ordinalitySpec := execinfrapb.ProcessorCoreUnion{
+		Ordinality: &execinfrapb.OrdinalitySpec{},
+	}
 	// WITH ORDINALITY never gets distributed so that the gateway node can
 	// always number each row in order.
 	plan.AddSingleGroupStage(dsp.nodeDesc.NodeID, ordinalitySpec, execinfrapb.PostProcessSpec{}, outputTypes)
@@ -6586,24 +6578,6 @@ func (dsp *DistSQLPlanner) createPlanForSetOp(
 
 	var distinctSpecs [2]execinfrapb.ProcessorCoreUnion
 
-	// arrowDistinctCoreFor returns an Arrow distinct core when the dedup is
-	// eligible for the Arrow compute engine, otherwise a classic Distinct core.
-	arrowDistinctCoreFor := func(distinctCols, orderedCols []uint32, inTypes []types.T) execinfrapb.ProcessorCoreUnion {
-		if physicalplan.ArrowDistinctEnabled(planCtx.EvalContext()) &&
-			canArrowDistinct(tree.EngineTypeRelational, distinctCols, orderedCols, inTypes) {
-			plan := buildArrowDistinctPlan(distinctCols, orderedCols)
-			if expr, ok := marshalArrowPlan(plan); ok {
-				return execinfrapb.ProcessorCoreUnion{ArrowDistinct: expr}
-			}
-		}
-		return execinfrapb.ProcessorCoreUnion{
-			Distinct: &execinfrapb.DistinctSpec{
-				DistinctColumns: distinctCols,
-				OrderedColumns:  orderedCols,
-			},
-		}
-	}
-
 	if !n.all {
 		var distinctOrds [2]execinfrapb.Ordering
 		distinctOrds[0] = execinfrapb.ConvertToMappedSpecOrdering(
@@ -6619,12 +6593,23 @@ func (dsp *DistSQLPlanner) createPlanForSetOp(
 		// in the UNION case, since rows are not deduplicated between left and right
 		// until the single group stage. In the worst case (total duplication), this
 		// causes double the amount of data to be streamed as necessary.
+		distinctSpecFor := func(distinctCols, orderedCols []uint32, inTypes []types.T) execinfrapb.ProcessorCoreUnion {
+			if core, ok := arrowDistinctCoreFor(planCtx.EvalContext(), tree.EngineTypeRelational, distinctCols, orderedCols, inTypes); ok {
+				return core
+			}
+			return execinfrapb.ProcessorCoreUnion{
+				Distinct: &execinfrapb.DistinctSpec{
+					DistinctColumns: distinctCols,
+					OrderedColumns:  orderedCols,
+				},
+			}
+		}
 		for side, plan := range childPhysicalPlans {
 			sortCols := make([]uint32, len(distinctOrds[side].Columns))
 			for i, ord := range distinctOrds[side].Columns {
 				sortCols[i] = ord.ColIdx
 			}
-			distinctSpec := arrowDistinctCoreFor(streamCols, sortCols, plan.ResultTypes)
+			distinctSpec := distinctSpecFor(streamCols, sortCols, plan.ResultTypes)
 			distinctSpecs[side] = distinctSpec
 			if !dsp.isOnlyOnGateway(plan) {
 				// TODO(solon): We could skip this stage if there is a strong key on
@@ -6678,7 +6663,12 @@ func (dsp *DistSQLPlanner) createPlanForSetOp(
 			// TODO(abhimadan): use columns from mergeOrdering to fill in the
 			// OrderingColumns field in DistinctSpec once the unused columns
 			// are projected out.
-			distinctSpec := arrowDistinctCoreFor(streamCols, nil, p.ResultTypes)
+			distinctSpec := execinfrapb.ProcessorCoreUnion{
+				Distinct: &execinfrapb.DistinctSpec{DistinctColumns: streamCols},
+			}
+			if core, ok := arrowDistinctCoreFor(planCtx.EvalContext(), tree.EngineTypeRelational, streamCols, nil, p.ResultTypes); ok {
+				distinctSpec = core
+			}
 			p.AddSingleGroupStage(
 				dsp.nodeDesc.NodeID, distinctSpec, execinfrapb.PostProcessSpec{}, p.ResultTypes)
 		} else {
@@ -6695,6 +6685,18 @@ func (dsp *DistSQLPlanner) createPlanForSetOp(
 			// when merging multiple streams on the same node, we force the
 			// serialization of the merge operation (otherwise, it would be
 			// possible that we have a source of unbounded parallelism, see #51548).
+			// Arrow shortcut for UNION ALL: when the engine and column types
+			// are eligible, merge the input routers into a single ArrowUnionAll
+			// operator instead of the row-based no-op merge. This keeps the
+			// upstream Arrow Records and concatenates them without a row
+			// round-trip. On a single node this collapses to one ArrowUnionAll
+			// operator and EnsureSingleStreamPerNode becomes a no-op; across
+			// nodes the per-node ArrowUnionAll operators are still merged by the
+			// classic no-op merge at the cross-node boundary.
+			if core, ok := arrowUnionAllCoreFor(planCtx.EvalContext(), tree.EngineTypeRelational, resultTypes); ok {
+				p.AddNoGroupingStage(core, execinfrapb.PostProcessSpec{}, resultTypes, p.MergeOrdering)
+			}
+
 			p.EnsureSingleStreamPerNode(true /* forceSerialization */, false, dsp.gatewayNodeID)
 
 			// UNION ALL is special: it doesn't have any required downstream
@@ -6986,22 +6988,19 @@ func (dsp *DistSQLPlanner) createPlanForWindow(
 				}
 			core := execinfrapb.ProcessorCoreUnion{Windower: &windowerSpec}
 			// Route the supported subset of window functions through the
-				// Arrow compute engine (no-frame partition aggregates over a
-				// single, already-ordered input). Everything else keeps the
-				// classic windower. Input ordering is assumed exactly as the
-				// classic windower assumes it.
-			if physicalplan.ArrowWindowerEnabled(planCtx.EvalContext()) &&
-					canArrowWindow(n.engine, &windowerSpec, plan.ResultTypes) {
-			if planJSON, ok := marshalArrowPlan(buildArrowWindowPlan(&windowerSpec)); ok {
-				core = execinfrapb.ProcessorCoreUnion{ArrowWindower: planJSON}
+			// Arrow compute engine (no-frame partition aggregates over a
+			// single, already-ordered input). Everything else keeps the
+			// classic windower. Input ordering is assumed exactly as the
+			// classic windower assumes it.
+			if arrowCore, ok := arrowWindowerCoreFor(planCtx.EvalContext(), n.engine, &windowerSpec, plan.ResultTypes); ok {
+				core = arrowCore
 			}
-			}
-				plan.AddSingleGroupStage(
-					node,
-					core,
-					execinfrapb.PostProcessSpec{},
-					newResultTypes,
-				)
+			plan.AddSingleGroupStage(
+				node,
+				core,
+				execinfrapb.PostProcessSpec{},
+				newResultTypes,
+			)
 			}
 
 		} else {
@@ -7834,4 +7833,27 @@ func getPtagPayloads(
 		}
 	}
 	return ret, nil
+}
+
+// pushLimitToArrowSorter injects the LIMIT/OFFSET into any ArrowSorter present
+// in the plan so that the Arrow sorter can perform a top-N (keep only the first
+// limit+offset rows after sorting, then drop offset). This mirrors the
+// per-sorter local limit the classic colexec sorter receives and keeps the
+// Arrow path's semantics identical to the row-based path. The PostProcess limit
+// set by plan.AddLimit is left intact; both limits carry the same value so
+// there is no double truncation.
+func pushLimitToArrowSorter(plan *PhysicalPlan, count, offset int64) {
+	// The local limit pushed to each sorter stage is count+offset (every shard
+	// may contribute up to offset rows that get discarded upstream, plus the
+	// count rows we keep).
+	localLimit := count
+	if count != math.MaxInt64 {
+		localLimit = count + offset
+	}
+	for i := range plan.Processors {
+		core := &plan.Processors[i].Spec.Core
+		if core.ArrowSorter != nil {
+			applyArrowSorterLimit(core.ArrowSorter, localLimit, offset)
+		}
+	}
 }

@@ -36,7 +36,19 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
+
+	"github.com/apache/arrow/go/v17/arrow"
 )
+
+// arrowRecordEmitter is the subset of the Arrow compute engine's unified
+// processor contract that the Columnarizer needs in order to fast-path an Arrow
+// Record straight into a colexec Batch. It is declared locally (rather than
+// importing rowexec's ArrowRecordEmitter) so that colexec does not depend on
+// rowexec and stays free of an import cycle; Go's structural typing means any
+// Arrow operator that exposes ArrowOutput() arrow.Record satisfies it.
+type arrowRecordEmitter interface {
+	ArrowOutput() arrow.Record
+}
 
 // Columnarizer turns an execinfra.RowSource input into an Operator output, by
 // reading the input in chunks of size coldata.BatchSize() and converting each
@@ -55,6 +67,16 @@ type Columnarizer struct {
 	input      execinfra.RowSource
 	da         sqlbase.DatumAlloc
 	initStatus OperatorInitStatus
+
+	// When the upstream RowSource is an Arrow operator that also exposes its
+	// output as an arrow.Record (arrowRecordEmitter), the Columnarizer skips the
+	// row round-trip and converts the Record into colexec Batches directly via
+	// RecordToBatch — this is the Arrow -> colexec zero-copy bridge. arrowInput
+	// is nil when the upstream is a regular row source, in which case the classic
+	// row-decoding path in Next is used.
+	arrowInput arrowRecordEmitter
+	arrowRec   arrow.Record
+	arrowPos   int64
 
 	buffered        sqlbase.EncDatumRows
 	batch           coldata.Batch
@@ -110,6 +132,16 @@ func (c *Columnarizer) Init() {
 		c.accumulatedMeta = make([]execinfrapb.ProducerMetadata, 0, 1)
 		c.input.Start(c.ctx)
 		c.initStatus = OperatorInitialized
+		// Fast-path probe: if the upstream is an Arrow operator that exposes its
+		// output as an arrow.Record, we can convert it into colexec Batches
+		// directly (Arrow -> colexec zero-copy bridge) without decoding rows.
+		if em, ok := c.input.(arrowRecordEmitter); ok {
+			if rec := em.ArrowOutput(); rec != nil {
+				c.arrowInput = em
+				c.arrowRec = rec
+				c.arrowPos = 0
+			}
+		}
 	}
 }
 
@@ -117,6 +149,31 @@ func (c *Columnarizer) Init() {
 func (c *Columnarizer) Next(context.Context) coldata.Batch {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	// Arrow -> colexec zero-copy bridge: if the upstream exposed an arrow.Record,
+	// slice it into per-batch colexec Batches via RecordToBatch, skipping the
+	// row-by-row decode entirely.
+	if c.arrowInput != nil {
+		if c.arrowPos >= c.arrowRec.NumRows() {
+			// Upstream is exhausted; emit an empty batch (EOF), matching the
+			// classic path's nRows == 0 behavior.
+			c.batch.ResetInternalBatch()
+			c.batch.SetLength(0)
+			return c.batch
+		}
+		n := c.arrowRec.NumRows()
+		end := c.arrowPos + int64(coldata.BatchSize())
+		if end > n {
+			end = n
+		}
+		slice := c.arrowRec.NewSlice(c.arrowPos, end)
+		b, err := RecordToBatch(slice, c.allocator)
+		if err != nil {
+			execerror.VectorizedInternalPanic(err)
+			return nil
+		}
+		c.arrowPos = end
+		return b
+	}
 	c.batch.ResetInternalBatch()
 	// Buffer up n rows.
 	nRows := 0

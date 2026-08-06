@@ -18,8 +18,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/cockroachdb/cockroach/pkg/util/leaktest"
-	"github.com/cockroachdb/cockroach/pkg/util/log"
+	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
+	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/stretchr/testify/require"
 	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/rowexec"

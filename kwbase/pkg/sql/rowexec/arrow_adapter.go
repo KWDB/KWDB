@@ -13,7 +13,6 @@ import (
 	"github.com/apache/arrow/go/v17/arrow/array"
 	"github.com/apache/arrow/go/v17/arrow/memory"
 
-	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
@@ -407,68 +406,6 @@ func buildArrowColumns(alloc memory.Allocator, typs []*types.T, rows sqlbase.Enc
 	return cols, nil
 }
 
-// arrowScan is the "native Arrow scan" (§7.9). It reads rows from an underlying
-// RowSource and builds the unified Arrow Record incrementally: each value is
-// appended straight into its per-column Arrow builder as the row arrives, so the
-// input is never materialized into an intermediate buffer (no [][]int64 / [][]bool
-// 2D slices, no full EncDatumRows drain). This removes the first-node bridge that
-// newArrowInputSource previously imposed on arrow flows — the scan now produces a
-// native Arrow Record directly.
-type arrowScan struct {
-	alloc memory.Allocator
-	input execinfra.RowSource
-	da    *sqlbase.DatumAlloc
-	typs  []*types.T
-	rec   arrow.Record
-	sent  bool
-}
-
-// newArrowScan wraps a RowSource as a UnifiedProcessor that emits a single native
-// Arrow Record built directly from the streamed rows.
-func newArrowScan(alloc memory.Allocator, input execinfra.RowSource, da *sqlbase.DatumAlloc) *arrowScan {
-	inTypes := input.OutputTypes()
-	typs := make([]*types.T, len(inTypes))
-	for i := range inTypes {
-		t := inTypes[i]
-		typs[i] = &t
-	}
-	return &arrowScan{alloc: alloc, input: input, da: da, typs: typs}
-}
-
-// Init implements UnifiedProcessor.
-func (s *arrowScan) Init(ctx context.Context) {}
-
-// Allocator implements UnifiedProcessor.
-func (s *arrowScan) Allocator() memory.Allocator { return s.alloc }
-
-// Next implements UnifiedProcessor. It drains the input once, appending each row
-// directly into per-column Arrow builders, then emits a single Record.
-func (s *arrowScan) Next(ctx context.Context) (arrow.Record, bool, error) {
-	if s.sent {
-		return nil, true, nil
-	}
-	s.sent = true
-	rec, err := s.build()
-	if err != nil {
-		return nil, false, err
-	}
-	s.rec = rec
-	return rec, false, nil
-}
-
-// ArrowOutput implements ArrowRecordEmitter, exposing the built Record so a
-// downstream Arrow operator can consume it operator-to-operator without a
-// row round-trip. It lazily builds on first access and shares s.rec with Next.
-func (s *arrowScan) ArrowOutput() arrow.Record {
-	if s.rec == nil {
-		if rec, err := s.build(); err == nil {
-			s.rec = rec
-			s.sent = true
-		}
-	}
-	return s.rec
-}
-
 // arrowScanSupported reports whether every column type can be decoded into an
 // Arrow representation, i.e. whether a table reader over typs may feed the Arrow
 // engine. Used by the planner as a type gate alongside ArrowScanEnabled.
@@ -479,62 +416,6 @@ func arrowScanSupported(typs []*types.T) bool {
 		}
 	}
 	return true
-}
-
-// build reads every input row exactly once and appends each value into the
-// matching column builder, producing a single native Arrow Record.
-func (s *arrowScan) build() (arrow.Record, error) {
-	nIn := len(s.typs)
-	builders := make([]array.Builder, nIn)
-	fields := make([]arrow.Field, nIn)
-	release := func() {
-		for _, b := range builders {
-			if b != nil {
-				b.Release()
-			}
-		}
-	}
-	for i, t := range s.typs {
-		dt, err := arrowDataTypeForKWType(t)
-		if err != nil {
-			release()
-			return nil, err
-		}
-		fields[i] = arrow.Field{Name: fmt.Sprintf("col%d", i), Type: dt, Nullable: true}
-		b, err := newArrowBuilder(s.alloc, t)
-		if err != nil {
-			release()
-			return nil, err
-		}
-		builders[i] = b
-	}
-	n := 0
-	for {
-		row, meta := s.input.Next()
-		if meta != nil {
-			if meta.Err != nil {
-				release()
-				return nil, meta.Err
-			}
-			continue
-		}
-		if row == nil {
-			break
-		}
-		for i := range row {
-			if err := appendEncDatum(builders[i], s.typs[i], &row[i], s.da); err != nil {
-				release()
-				return nil, err
-			}
-		}
-		n++
-	}
-	cols := make([]arrow.Array, nIn)
-	for i := range builders {
-		cols[i] = builders[i].NewArray()
-		builders[i].Release()
-	}
-	return array.NewRecord(arrow.NewSchema(fields, nil), cols, int64(n)), nil
 }
 
 // newArrowBuilder returns a fresh Arrow builder for the given kwbase type.

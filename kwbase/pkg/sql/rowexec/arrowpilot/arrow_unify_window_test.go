@@ -18,7 +18,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/cockroachdb/cockroach/pkg/util/leaktest"
+	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/rowexec"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
@@ -156,5 +156,71 @@ func TestArrowUnifyWindowFallback(t *testing.T) {
 			{20, 20},
 			{30, 30},
 		})
+}
+
+// TestArrowUnifyWindowOffsetFrame verifies that ROWS offset frames (e.g. ROWS
+// BETWEEN 1 PRECEDING AND 1 FOLLOWING) are routed through the Arrow windower and
+// produce the per-row sliding-window aggregate. See docs/arrow-unify-roadmap.md §3.3.
+func TestArrowUnifyWindowOffsetFrame(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	settings := []string{
+		"sql.arrow_aggregator.enabled",
+		"sql.arrow_sorter.enabled",
+		"sql.arrow_distinct.enabled",
+		"sql.arrow_filter.enabled",
+		"sql.arrow_projection.enabled",
+		"sql.arrow_windower.enabled",
+	}
+	s, db, _ := serverutils.StartServer(t, base.TestServerArgs{})
+	ctx := context.Background()
+	defer s.Stopper().Stop(ctx)
+
+	for _, setting := range settings {
+		if _, err := db.Exec("SET CLUSTER SETTING "+setting+" = true"); err != nil {
+			t.Fatalf("set %s: %v", setting, err)
+		}
+	}
+	defer func() {
+		for _, setting := range settings {
+			_, _ = db.Exec("SET CLUSTER SETTING " + setting + " = false")
+		}
+		execStmt(t, db, "DROP TABLE IF EXISTS t3")
+	}()
+
+	execStmt(t, db, "CREATE TABLE t3 (g STRING, v INT)")
+	execStmt(t, db, "INSERT INTO t3 VALUES ('a',10),('a',20),('a',30),('b',5),('b',15)")
+
+	intRows := func(q string) [][]int64 { return queryIntRows(t, db, q) }
+
+	// SUM(v) OVER (PARTITION BY g ORDER BY v ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING)
+	// sliding window of 3 rows (clamped at edges):
+	//   g=a: [10,20,30]  -> 10+20=30, 10+20+30=60, 20+30=50
+	//   g=b: [5,15]      -> 5+15=20, 5+15=20
+	assertIntRows(t, intRows(
+		"SELECT v, SUM(v) OVER (PARTITION BY g ORDER BY v ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) AS s FROM t3 ORDER BY g, v"),
+		[][]int64{
+			{5, 20},
+			{15, 20},
+			{10, 30},
+			{20, 60},
+			{30, 50},
+		})
+
+	// COUNT(v) OVER (... ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) sliding of up
+	// to 3 rows. g=a: 10->1, 20->2, 30->3 ; g=b: 5->1, 15->2.
+	assertIntRows(t, intRows(
+		"SELECT v, COUNT(v) OVER (PARTITION BY g ORDER BY v ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) AS c FROM t3 ORDER BY g, v"),
+		[][]int64{
+			{5, 1},
+			{15, 2},
+			{10, 1},
+			{20, 2},
+			{30, 3},
+		})
+
+	if !waitForArrowRuns(t, rowexec.ArrowWindowerRunCount, 1) {
+		t.Fatalf("arrow windower processor was not used for ROWS offset frame windows (runcount=%d)", rowexec.ArrowWindowerRunCount())
+	}
 }
 

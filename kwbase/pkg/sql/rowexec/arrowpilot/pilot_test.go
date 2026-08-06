@@ -52,7 +52,7 @@ func TestArrowProjectionPilot(t *testing.T) {
 	src := rowexec.NewArrowRecordSource(alloc, rec)
 	proj := rowexec.NewArrowProjection(alloc, src, []rowexec.ArrowProjectionSpec{
 		{OutputName: "c", Func: "add", Args: []rowexec.ArrowArg{{ColName: "col0"}, {ColName: "col1"}}},
-	})
+	}, nil)
 	proj.Init(ctx)
 	vals, err := rowexec.ArrowProjectionResultInt64(proj, ctx)
 	if err != nil {

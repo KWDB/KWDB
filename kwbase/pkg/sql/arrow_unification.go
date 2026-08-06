@@ -19,11 +19,132 @@ import (
 	"encoding/json"
 
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/physicalplan"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding"
 )
+
+// ---------------------------------------------------------------------------
+// Unified Arrow stage dispatcher — §阶段3 (buildUnifiedStage 收口)
+//
+// 各算子原在 distsql_physical_planner.go 中散落着相同的四步判断：
+//   ArrowXxxEnabled(evalCtx) && canArrowX(...) && buildArrowXPlan(...) && marshalArrowPlan(...)
+// 这里把它们收口到单一的 arrowXxxCoreFor 助手：返回 (core, ok)，ok==true
+// 时调用方用 core 下发改 Arrow core；ok==false 时调用方沿用既有行式/colexec
+// 降级路径（与 marshalArrowPlan 的「序列化失败即降级」语义一致）。
+//
+// 注意：join 两处刻意保留原始 `arrowUnificationMarshal` + `return err` 控制流
+// （更保守，序列化失败即中断整个 plan 而非降级），不在本收口范围内。
+// ---------------------------------------------------------------------------
+
+// arrowSorterCoreFor returns an Arrow sorter core when the sort is eligible for
+// the Arrow compute engine, otherwise (core, false) so the caller falls through
+// to the classic sorter.
+func arrowSorterCoreFor(
+	evalCtx *tree.EvalContext,
+	engine tree.EngineType,
+	ordering sqlbase.ColumnOrdering,
+	matchLen int,
+	inTypes []types.T,
+) (execinfrapb.ProcessorCoreUnion, bool) {
+	if !physicalplan.ArrowSorterEnabled(evalCtx) ||
+		!canArrowSort(engine, ordering, matchLen, inTypes) {
+		return execinfrapb.ProcessorCoreUnion{}, false
+	}
+	plan := buildArrowSortPlan(ordering, matchLen, -1, 0)
+	expr, ok := marshalArrowPlan(plan)
+	if !ok {
+		return execinfrapb.ProcessorCoreUnion{}, false
+	}
+	return execinfrapb.ProcessorCoreUnion{ArrowSorter: expr}, true
+}
+
+// applyArrowSorterLimit injects a limit/offset into an existing ArrowSorter core
+// so that the Arrow sorter can perform a top-N (keep only the first limit+offset
+// rows after sorting, then drop offset). It mirrors the per-sorter limit that
+// the classic colexec sorter receives via its SorterSpec. The PostProcess limit
+// is left untouched — both limits carry the same value (count+offset), so there
+// is no double-truncation surprise.
+//
+// A negative limit means "no limit" and is left as-is.
+func applyArrowSorterLimit(core *execinfrapb.Expression, limit, offset int64) {
+	if limit < 0 {
+		limit = -1
+	}
+	var plan arrowSortPlan
+	if err := json.Unmarshal([]byte(core.Expr), &plan); err != nil {
+		// Not an Arrow sorter plan we can patch; leave it to PostProcess.
+		return
+	}
+	plan.Limit = limit
+	plan.Offset = offset
+	if b, err := json.Marshal(plan); err == nil {
+		core.Expr = string(b)
+	}
+}
+
+// arrowDistinctCoreFor returns an Arrow distinct core when the dedup is eligible
+// for the Arrow compute engine, otherwise (core, false) for the caller to fall
+// back to the classic Distinct core.
+func arrowDistinctCoreFor(
+	evalCtx *tree.EvalContext,
+	engine tree.EngineType,
+	distinctCols, orderedCols []uint32,
+	inTypes []types.T,
+) (execinfrapb.ProcessorCoreUnion, bool) {
+	if !physicalplan.ArrowDistinctEnabled(evalCtx) ||
+		!canArrowDistinct(engine, distinctCols, orderedCols, inTypes) {
+		return execinfrapb.ProcessorCoreUnion{}, false
+	}
+	plan := buildArrowDistinctPlan(distinctCols, orderedCols)
+	expr, ok := marshalArrowPlan(plan)
+	if !ok {
+		return execinfrapb.ProcessorCoreUnion{}, false
+	}
+	return execinfrapb.ProcessorCoreUnion{ArrowDistinct: expr}, true
+}
+
+// arrowWindowerCoreFor returns an Arrow windower core when the (minimally
+// supported subset of) window plan is eligible for the Arrow compute engine,
+// otherwise (core, false) for the caller to fall back to the classic windower.
+func arrowWindowerCoreFor(
+	evalCtx *tree.EvalContext,
+	engine tree.EngineType,
+	spec *execinfrapb.WindowerSpec,
+	inTypes []types.T,
+) (execinfrapb.ProcessorCoreUnion, bool) {
+	if !physicalplan.ArrowWindowerEnabled(evalCtx) ||
+		!canArrowWindow(engine, spec, inTypes) {
+		return execinfrapb.ProcessorCoreUnion{}, false
+	}
+	expr, ok := marshalArrowPlan(buildArrowWindowPlan(spec))
+	if !ok {
+		return execinfrapb.ProcessorCoreUnion{}, false
+	}
+	return execinfrapb.ProcessorCoreUnion{ArrowWindower: expr}, true
+}
+
+// arrowAggCoreFor returns an Arrow aggregator core when the aggregator spec is
+// eligible for the Arrow compute engine, otherwise (core, false) for the caller
+// to fall back to the classic/colexec aggregator.
+func arrowAggCoreFor(
+	evalCtx *tree.EvalContext,
+	engine tree.EngineType,
+	spec execinfrapb.AggregatorSpec,
+	outTypes []types.T,
+) (execinfrapb.ProcessorCoreUnion, bool) {
+	if !physicalplan.ArrowAggregatorEnabled(evalCtx) ||
+		!canArrowAggregate(spec, outTypes, engine) {
+		return execinfrapb.ProcessorCoreUnion{}, false
+	}
+	expr, ok := marshalArrowPlan(buildArrowAggPlan(spec, outTypes))
+	if !ok {
+		return execinfrapb.ProcessorCoreUnion{}, false
+	}
+	return execinfrapb.ProcessorCoreUnion{ArrowAggregator: expr}, true
+}
 
 // noFilterColIdx marks a window function that has no filter clause.
 const noFilterColIdx = -1
@@ -149,6 +270,17 @@ func canArrowAggregate(
 			if f != types.IntFamily && f != types.FloatFamily && f != types.DecimalFamily {
 				return false
 			}
+		case execinfrapb.AggregatorSpec_VARIANCE, execinfrapb.AggregatorSpec_STDDEV:
+			// Single-stage VARIANCE/STDDEV (used for scalar, no-group
+			// aggregates). The Arrow sqrdiff kernel accumulates the Welford
+			// state and Finalize computes the sample variance / stddev.
+			if len(a.ColIdx) != 1 || int(a.ColIdx[0]) >= len(inTypes) {
+				return false
+			}
+			f := inTypes[a.ColIdx[0]].Family()
+			if f != types.IntFamily && f != types.FloatFamily && f != types.DecimalFamily {
+				return false
+			}
 		case execinfrapb.AggregatorSpec_FINAL_VARIANCE, execinfrapb.AggregatorSpec_FINAL_STDDEV:
 			// FINAL_VARIANCE / FINAL_STDDEV (final stage of VARIANCE/STDDEV)
 			// consume three inputs (SQRDIFF, SUM, COUNT) and merge partitions via
@@ -225,6 +357,10 @@ func buildArrowAggPlan(spec execinfrapb.AggregatorSpec, outTypes []types.T) arro
 			aggs = append(aggs, arrowAggExprJS{Func: "count_all", Input: -1})
 		case execinfrapb.AggregatorSpec_SQRDIFF:
 			aggs = append(aggs, arrowAggExprJS{Func: "sqrdiff", Input: int(a.ColIdx[0])})
+		case execinfrapb.AggregatorSpec_VARIANCE:
+			aggs = append(aggs, arrowAggExprJS{Func: "variance", Input: int(a.ColIdx[0])})
+		case execinfrapb.AggregatorSpec_STDDEV:
+			aggs = append(aggs, arrowAggExprJS{Func: "stddev", Input: int(a.ColIdx[0])})
 		case execinfrapb.AggregatorSpec_FINAL_VARIANCE:
 			aggs = append(aggs, arrowAggExprJS{Func: "final_variance", Inputs: colIdxInts(a.ColIdx)})
 		case execinfrapb.AggregatorSpec_FINAL_STDDEV:
@@ -547,15 +683,38 @@ type arrowWindowerPlan struct {
 }
 
 type arrowWindowFnPlan struct {
-	// Func is one of sum/count/min/max/avg/bool_and/bool_or.
+	// Func is one of sum/count/min/max/avg/bool_and/bool_or (aggregate window
+	// functions) or row_number/rank/dense_rank (ranking window functions).
 	Func string `json:"func"`
-	// Input is the (single) argument column index.
+	// Kind distinguishes aggregate window functions ("agg") from ranking
+	// window functions ("ranking"). Ranking functions take no argument column.
+	Kind string `json:"kind"`
+	// Input is the (single) argument column index. For ranking functions this
+	// is -1 (they take no argument).
 	Input int `json:"input"`
 	// Ordering lists the peer-defining order columns (may be empty, in which
 	// case the whole partition is a single peer group).
 	Ordering []int `json:"ordering"`
 	// OutputIdx is where the window function's result is appended.
 	OutputIdx int `json:"output_idx"`
+	// Frame encodes the window frame. nil means the SQL default frame for an
+	// aggregate window function (RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT
+	// ROW). For ranking functions the frame is ignored.
+	Frame *arrowWindowFramePlan `json:"frame,omitempty"`
+}
+
+// arrowWindowFramePlan encodes a supported window frame subset.
+type arrowWindowFramePlan struct {
+	// Mode is "rows" or "range".
+	Mode string `json:"mode"`
+	// Start/End are the bound types: "unbounded_preceding", "current_row",
+	// "unbounded_following", "offset_preceding", "offset_following".
+	Start string `json:"start"`
+	End   string `json:"end"`
+	// StartOffset/EndOffset carry the integer row offset for ROWS-mode offset
+	// bounds (e.g. ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING).
+	StartOffset int `json:"start_offset,omitempty"`
+	EndOffset   int `json:"end_offset,omitempty"`
 }
 
 // arrowWindowAggFunc maps an AggregatorSpec aggregate function to its Arrow
@@ -580,6 +739,73 @@ func arrowWindowAggFunc(f execinfrapb.AggregatorSpec_Func) string {
 	return ""
 }
 
+// arrowWindowRankingFunc maps a WindowerSpec ranking window function to its
+// Arrow window plan string. Returns "" for unsupported functions.
+func arrowWindowRankingFunc(f execinfrapb.WindowerSpec_WindowFunc) string {
+	switch f {
+	case execinfrapb.WindowerSpec_ROW_NUMBER:
+		return "row_number"
+	case execinfrapb.WindowerSpec_RANK:
+		return "rank"
+	case execinfrapb.WindowerSpec_DENSE_RANK:
+		return "dense_rank"
+	}
+	return ""
+}
+
+// arrowWindowFramePlanFor converts a supported WindowerSpec_Frame into its JSON
+// plan form, or returns nil when the frame is the SQL default (RANGE
+// UNBOUNDED PRECEDING TO CURRENT ROW, or nil). Returns ok=false for any frame
+// outside the supported subset.
+func arrowWindowFramePlanFor(f *execinfrapb.WindowerSpec_Frame) (*arrowWindowFramePlan, bool) {
+	if f == nil {
+		return nil, true
+	}
+	// Default RANGE frame: leave nil so the executor uses the default semantics.
+	if f.Mode == execinfrapb.WindowerSpec_Frame_RANGE &&
+		f.Bounds.Start.BoundType == execinfrapb.WindowerSpec_Frame_UNBOUNDED_PRECEDING &&
+		f.Bounds.End != nil && f.Bounds.End.BoundType == execinfrapb.WindowerSpec_Frame_CURRENT_ROW {
+		return nil, true
+	}
+	mode := ""
+	switch f.Mode {
+	case execinfrapb.WindowerSpec_Frame_ROWS:
+		mode = "rows"
+	case execinfrapb.WindowerSpec_Frame_RANGE:
+		mode = "range"
+	default:
+		return nil, false
+	}
+	start, startOff, ok := arrowWindowBoundName(f.Bounds.Start)
+	if !ok {
+		return nil, false
+	}
+	end, endOff, ok := "", 0, true
+	if f.Bounds.End != nil {
+		end, endOff, ok = arrowWindowBoundName(*f.Bounds.End)
+		if !ok {
+			return nil, false
+		}
+	}
+	return &arrowWindowFramePlan{Mode: mode, Start: start, End: end, StartOffset: startOff, EndOffset: endOff}, true
+}
+
+func arrowWindowBoundName(b execinfrapb.WindowerSpec_Frame_Bound) (string, int, bool) {
+	switch b.BoundType {
+	case execinfrapb.WindowerSpec_Frame_UNBOUNDED_PRECEDING:
+		return "unbounded_preceding", 0, true
+	case execinfrapb.WindowerSpec_Frame_CURRENT_ROW:
+		return "current_row", 0, true
+	case execinfrapb.WindowerSpec_Frame_UNBOUNDED_FOLLOWING:
+		return "unbounded_following", 0, true
+	case execinfrapb.WindowerSpec_Frame_OFFSET_PRECEDING:
+		return "offset_preceding", int(b.IntOffset), true
+	case execinfrapb.WindowerSpec_Frame_OFFSET_FOLLOWING:
+		return "offset_following", int(b.IntOffset), true
+	}
+	return "", 0, false
+}
+
 // canArrowWindow reports whether the (subset of) window functions described by
 // spec can be evaluated by the Arrow compute engine. Supported: every window
 // function is a no-frame (default RANGE frame) aggregate over a single argument
@@ -587,26 +813,40 @@ func arrowWindowAggFunc(f execinfrapb.AggregatorSpec_Func) string {
 // all referenced columns are Arrow-comparable. Everything else (explicit frames,
 // ranking functions like row_number/rank, filters, multi-arg aggregates) is
 // rejected and falls back to the classic windower.
-// isDefaultRangeFrame reports whether the frame is the SQL default window frame
-// for an aggregate window function: RANGE BETWEEN UNBOUNDED PRECEDING AND
-// CURRENT ROW, with no offset. Over such a frame, the value of the window
-// function for a row equals the running aggregate over all rows from the start
-// of the partition up to (and including) the current peer group, which is
-// exactly the semantics our minimal Arrow windower implements.
-func isDefaultRangeFrame(f *execinfrapb.WindowerSpec_Frame) bool {
+// isSupportedWindowFrame reports whether f is within the subset of window
+// frames the Arrow windower can evaluate. Supported:
+//   - nil (SQL default for aggregates: RANGE UNBOUNDED PRECEDING TO CURRENT ROW)
+//   - ROWS UNBOUNDED PRECEDING TO CURRENT ROW  (same running semantics)
+//   - ROWS/RANGE UNBOUNDED PRECEDING TO UNBOUNDED FOLLOWING (whole-partition)
+//
+// Any frame with an offset bound or the GROUPS mode is rejected.
+func isSupportedWindowFrame(f *execinfrapb.WindowerSpec_Frame) bool {
 	if f == nil {
 		return true
 	}
-	if f.Mode != execinfrapb.WindowerSpec_Frame_RANGE {
+	if f.Mode == execinfrapb.WindowerSpec_Frame_GROUPS {
 		return false
 	}
 	if f.Bounds.Start.BoundType != execinfrapb.WindowerSpec_Frame_UNBOUNDED_PRECEDING {
+		// Offset start bound is only supported for ROWS mode, where the offset
+		// is a row count and needs no ordering-value arithmetic.
+		if f.Mode != execinfrapb.WindowerSpec_Frame_ROWS ||
+			f.Bounds.Start.BoundType != execinfrapb.WindowerSpec_Frame_OFFSET_PRECEDING {
+			return false
+		}
+	}
+	if f.Bounds.End == nil {
 		return false
 	}
-	if f.Bounds.End == nil || f.Bounds.End.BoundType != execinfrapb.WindowerSpec_Frame_CURRENT_ROW {
-		return false
+	switch f.Bounds.End.BoundType {
+	case execinfrapb.WindowerSpec_Frame_CURRENT_ROW,
+		execinfrapb.WindowerSpec_Frame_UNBOUNDED_FOLLOWING:
+		return true
+	case execinfrapb.WindowerSpec_Frame_OFFSET_FOLLOWING:
+		// Offset end bound similarly only for ROWS mode.
+		return f.Mode == execinfrapb.WindowerSpec_Frame_ROWS
 	}
-	return true
+	return false
 }
 
 func canArrowWindow(
@@ -621,26 +861,34 @@ func canArrowWindow(
 		}
 	}
 	for _, fn := range spec.WindowFns {
-		if !isDefaultRangeFrame(fn.Frame) {
-			// Only the default RANGE frame (aggregate window functions) is
-			// supported in the minimal subset.
-			return false
-		}
 		if fn.FilterColIdx != noFilterColIdx {
 			return false
 		}
-		if fn.Func.AggregateFunc == nil {
-			// Non-aggregate (ranking) window functions are not supported.
-			return false
-		}
-		if arrowWindowAggFunc(*fn.Func.AggregateFunc) == "" {
-			return false
-		}
-		if len(fn.ArgsIdxs) != 1 {
-			return false
-		}
-		arg := int(fn.ArgsIdxs[0])
-		if arg >= len(inTypes) || !arrowSupportedCompareType(inTypes[arg]) {
+		switch {
+		case fn.Func.AggregateFunc != nil:
+			if !isSupportedWindowFrame(fn.Frame) {
+				return false
+			}
+			if arrowWindowAggFunc(*fn.Func.AggregateFunc) == "" {
+				return false
+			}
+			if len(fn.ArgsIdxs) != 1 {
+				return false
+			}
+			arg := int(fn.ArgsIdxs[0])
+			if arg >= len(inTypes) || !arrowSupportedCompareType(inTypes[arg]) {
+				return false
+			}
+		case fn.Func.WindowFunc != nil:
+			// Ranking functions: no argument, frame is ignored (they operate
+			// over the whole partition).
+			if arrowWindowRankingFunc(*fn.Func.WindowFunc) == "" {
+				return false
+			}
+			if len(fn.ArgsIdxs) != 0 {
+				return false
+			}
+		default:
 			return false
 		}
 		for _, o := range fn.Ordering.Columns {
@@ -664,12 +912,27 @@ func buildArrowWindowPlan(spec *execinfrapb.WindowerSpec) arrowWindowerPlan {
 		for j, o := range fn.Ordering.Columns {
 			ord[j] = int(o.ColIdx)
 		}
-		fns[i] = arrowWindowFnPlan{
-			Func:      arrowWindowAggFunc(*fn.Func.AggregateFunc),
-			Input:     int(fn.ArgsIdxs[0]),
+		fp := arrowWindowFnPlan{
 			Ordering:  ord,
 			OutputIdx: int(fn.OutputColIdx),
 		}
+		switch {
+		case fn.Func.AggregateFunc != nil:
+			fp.Kind = "agg"
+			fp.Func = arrowWindowAggFunc(*fn.Func.AggregateFunc)
+			fp.Input = int(fn.ArgsIdxs[0])
+			frame, ok := arrowWindowFramePlanFor(fn.Frame)
+			if !ok {
+				// Should not happen: canArrowWindow already validated the frame.
+				continue
+			}
+			fp.Frame = frame
+		case fn.Func.WindowFunc != nil:
+			fp.Kind = "ranking"
+			fp.Func = arrowWindowRankingFunc(*fn.Func.WindowFunc)
+			fp.Input = -1
+		}
+		fns[i] = fp
 	}
 	return arrowWindowerPlan{PartitionBy: pb, Fns: fns}
 }
@@ -695,4 +958,45 @@ func marshalArrowPlan(plan interface{}) (*execinfrapb.Expression, bool) {
 		return nil, false
 	}
 	return expr, true
+}
+
+// arrowUnionAllCoreFor returns an Arrow union-all core when the set operation
+// is a plain UNION ALL (concatenation) over Arrow-supported column types and
+// the engine is eligible. Otherwise (core, false) lets the caller fall through
+// to the classic EnsureSingleStreamPerNode no-op merge.
+//
+// The union-all merge is a pure concatenation of input records, so unlike the
+// other Arrow cores there is no per-row compute: arrowUnionAllCoreFor only
+// needs the result column types (carried in the plan) to rebuild the single
+// concatenated output Record.
+//
+// The JSON shape must match rowexec.arrowUnionAllPlan (same field names); the
+// two types live in different packages for dependency reasons but are
+// interchangeable over the wire.
+type arrowUnionAllPlan struct {
+	Types []types.T `json:"types"`
+}
+
+func arrowUnionAllCoreFor(
+	evalCtx *tree.EvalContext,
+	engine tree.EngineType,
+	inTypes []types.T,
+) (execinfrapb.ProcessorCoreUnion, bool) {
+	if !physicalplan.ArrowUnionAllEnabled(evalCtx) {
+		return execinfrapb.ProcessorCoreUnion{}, false
+	}
+	if engine == tree.EngineTypeTimeseries {
+		return execinfrapb.ProcessorCoreUnion{}, false
+	}
+	for _, t := range inTypes {
+		if !arrowSupportedCompareType(t) {
+			return execinfrapb.ProcessorCoreUnion{}, false
+		}
+	}
+	plan := arrowUnionAllPlan{Types: inTypes}
+	expr, ok := marshalArrowPlan(plan)
+	if !ok {
+		return execinfrapb.ProcessorCoreUnion{}, false
+	}
+	return execinfrapb.ProcessorCoreUnion{ArrowUnionAll: expr}, true
 }

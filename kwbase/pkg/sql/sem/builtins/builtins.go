@@ -7382,6 +7382,25 @@ func asJSONBuildObjectKey(d tree.Datum, loc *time.Location) (string, error) {
 	}
 }
 
+// ExtractTimeSpanFromTimestamp is the exported wrapper used by the Arrow
+// projection executor (rowexec) to evaluate EXTRACT(field FROM ts) while
+// reusing the canonical row-by-row semantics.
+func ExtractTimeSpanFromTimestamp(ctx *tree.EvalContext, fromTime time.Time, timeSpan string) (tree.Datum, error) {
+	return extractTimeSpanFromTimestamp(ctx, fromTime, timeSpan)
+}
+
+// ExtractTimeSpanFromTimestampTZ is the exported wrapper for TIMESTAMPTZ
+// operands of EXTRACT.
+func ExtractTimeSpanFromTimestampTZ(ctx *tree.EvalContext, fromTime time.Time, timeSpan string) (tree.Datum, error) {
+	return extractTimeSpanFromTimestampTZ(ctx, fromTime, timeSpan)
+}
+
+// TruncateTimestamp is the exported wrapper used by the Arrow projection
+// executor (rowexec) to evaluate date_trunc(field, ts).
+func TruncateTimestamp(ctx *tree.EvalContext, fromTime time.Time, timeSpan string) (tree.Datum, error) {
+	return truncateTimestamp(ctx, fromTime, timeSpan)
+}
+
 func asJSONObjectKey(d tree.Datum) (string, error) {
 	switch t := d.(type) {
 	case *tree.DString:

@@ -30,9 +30,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/apache/arrow/go/v17/arrow/memory"
+
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/flowinfra"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/physicalplan"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/rowexec"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
@@ -45,6 +48,15 @@ type rowBasedFlow struct {
 	*flowinfra.FlowBase
 
 	localStreams map[execinfrapb.StreamID]execinfra.RowReceiver
+
+	// arrowEmitters maps a QUEUE inbound stream id to an ArrowRecordEmitter that
+	// should be wired directly as the downstream operator's input, bypassing the
+	// usual RowChannel round-trip. Populated (instead of setupInboundStream's
+	// row-push wiring) when the sql.arrow_ts_scan.enabled gate is on and the TS
+	// scan's column types are Arrow-serializable (see rowexec.arrowTsReader and
+	// docs/arrow-unify-roadmap.md §6.7/§6.8 审订). The emitter is consumed exactly
+	// once by the downstream Arrow operator's unifiedInputFrom.
+	arrowEmitters map[execinfrapb.StreamID]execinfra.RowSource
 }
 
 var _ flowinfra.Flow = &rowBasedFlow{}
@@ -307,16 +319,26 @@ func (f *rowBasedFlow) setupInputSyncs(
 
 			if is.Type == execinfrapb.InputSyncSpec_UNORDERED {
 				if opt == flowinfra.FuseNormally || len(is.Streams) == 1 {
-					// Unordered synchronizer: create a RowChannel for each input.
-
-					mrc := &execinfra.RowChannel{}
-					mrc.InitWithNumSenders(is.ColumnTypes, len(is.Streams))
-					for _, s := range is.Streams {
-						if err := f.setupInboundStream(ctx, s, mrc, is.ColumnTypes, tsProcessorSpecs, spec.TsInfo); err != nil {
-							return nil, err
+					// Arrow TS scan direct wiring: a single TS input that is
+					// Arrow-serializable can be wired straight to the downstream
+					// operator as an ArrowRecordEmitter, skipping the RowChannel
+					// round-trip (docs/arrow-unify-roadmap.md §6.7/§6.8 审订).
+					if len(is.Streams) == 1 {
+						if em, ok := f.arrowTsEmitter(ctx, is.Streams[0], is.ColumnTypes, tsProcessorSpecs, spec.TsInfo); ok {
+							sync = em
 						}
 					}
-					sync = mrc
+					if sync == nil {
+						// Unordered synchronizer: create a RowChannel for each input.
+						mrc := &execinfra.RowChannel{}
+						mrc.InitWithNumSenders(is.ColumnTypes, len(is.Streams))
+						for _, s := range is.Streams {
+							if err := f.setupInboundStream(ctx, s, mrc, is.ColumnTypes, tsProcessorSpecs, spec.TsInfo); err != nil {
+								return nil, err
+							}
+						}
+						sync = mrc
+					}
 				}
 			}
 			if sync == nil {
@@ -325,19 +347,26 @@ func (f *rowBasedFlow) setupInputSyncs(
 				// RowChannel for each input for now, but the inputs might be fused with
 				// the orderedSynchronizer later (in which case the RowChannels will be
 				// dropped).
-				var useTSUnorderedSync bool
-				streams := make([]execinfra.RowSource, len(is.Streams))
-				for i, s := range is.Streams {
-					if s.Type == execinfrapb.StreamEndpointType_QUEUE {
-						useTSUnorderedSync = true
-					}
-					rowChan := &execinfra.RowChannel{}
-					rowChan.InitWithNumSenders(is.ColumnTypes, 1 /* numSenders */)
-					if err := f.setupInboundStream(ctx, s, rowChan, is.ColumnTypes, tsProcessorSpecs, spec.TsInfo); err != nil {
-						return nil, err
-					}
-					streams[i] = rowChan
+			var useTSUnorderedSync bool
+			streams := make([]execinfra.RowSource, len(is.Streams))
+			for i, s := range is.Streams {
+				if s.Type == execinfrapb.StreamEndpointType_QUEUE {
+					useTSUnorderedSync = true
 				}
+				// Arrow TS scan direct wiring: replace the RowChannel + row-push
+				// reader with an ArrowRecordEmitter feeding the downstream operator
+				// operator-to-operator (docs/arrow-unify-roadmap.md §6.7/§6.8 审订).
+				if em, ok := f.arrowTsEmitter(ctx, s, is.ColumnTypes, tsProcessorSpecs, spec.TsInfo); ok {
+					streams[i] = em
+					continue
+				}
+				rowChan := &execinfra.RowChannel{}
+				rowChan.InitWithNumSenders(is.ColumnTypes, 1 /* numSenders */)
+				if err := f.setupInboundStream(ctx, s, rowChan, is.ColumnTypes, tsProcessorSpecs, spec.TsInfo); err != nil {
+					return nil, err
+				}
+				streams[i] = rowChan
+			}
 				var err error
 				ordering := sqlbase.NoOrdering
 				if is.Type == execinfrapb.InputSyncSpec_ORDERED {
@@ -388,10 +417,31 @@ func (f *rowBasedFlow) setupInboundStream(
 		if log.V(2) {
 			log.Infof(ctx, "set up inbound stream %d", sid)
 		}
-		tsTableReader, err := rowexec.NewTsTableReader(
-			ctx, &f.FlowCtx, -1, receiver.Types(), receiver, sid, tsProcessorSpecs, tsInfo)
-		if err != nil {
-			return err
+		// Arrow TS scan direct wiring is handled in setupInputSyncs (which wires
+		// the ArrowRecordEmitter straight to the downstream operator and does NOT
+		// call setupInboundStream for that stream). Here we only handle the
+		// legacy row-push path: when the sql.arrow_ts_scan.enabled gate is on and
+		// all column types are Arrow-serializable we still instantiate the
+		// Arrow-capable reader but in arrowMode=false, so it behaves identically
+		// to the relational TsTableReader (rows pushed into the RowReceiver) while
+		// keeping the engine plumbing in one place.
+		var tsTableReader execinfra.RowSource
+		if physicalplan.ArrowTsScanEnabled(f.FlowCtx.EvalCtx) &&
+			physicalplan.ArrowTsScanSupported(receiver.Types()) {
+			arrowReader, err := rowexec.NewArrowTsReader(
+				ctx, &f.FlowCtx, -1, receiver.Types(), receiver, sid, tsProcessorSpecs, tsInfo,
+				memory.NewGoAllocator(), false /* arrowMode */)
+			if err != nil {
+				return err
+			}
+			tsTableReader = arrowReader
+		} else {
+			relationalReader, err := rowexec.NewTsTableReader(
+				ctx, &f.FlowCtx, -1, receiver.Types(), receiver, sid, tsProcessorSpecs, tsInfo)
+			if err != nil {
+				return err
+			}
+			tsTableReader = relationalReader
 		}
 		f.TsTableReaders = append(f.TsTableReaders, tsTableReader)
 
@@ -411,9 +461,50 @@ func (f *rowBasedFlow) setupInboundStream(
 	return nil
 }
 
+// arrowTsEmitter returns an ArrowRecordEmitter for a QUEUE inbound TS stream when
+// the sql.arrow_ts_scan.enabled gate is on and the stream's column types are
+// Arrow-serializable. The emitter is constructed once and cached in
+// f.arrowEmitters, keyed by stream id, so it is shared by the (single) downstream
+// consumer. On any error or when the gate is off / types unsupported, it returns
+// (nil, false) and the caller falls back to the legacy row-push wiring via
+// setupInboundStream. The emitted arrowTsReader runs in arrowMode=true: it is NOT
+// added to f.TsTableReaders (so the flow never calls RunTS on it); the downstream
+// Arrow operator drives it through unifiedInputFrom -> ArrowOutput(), and tse
+// resources are released by pullRecord on stream exhaustion (docs/arrow-unify-
+// roadmap.md §6.7/§6.8 审订).
+func (f *rowBasedFlow) arrowTsEmitter(
+	ctx context.Context,
+	s execinfrapb.StreamEndpointSpec,
+	typs []types.T,
+	tsProcessorSpecs []execinfrapb.ProcessorSpec,
+	tsInfo execinfrapb.TsInfo,
+) (execinfra.RowSource, bool) {
+	if s.Type != execinfrapb.StreamEndpointType_QUEUE {
+		return nil, false
+	}
+	if !physicalplan.ArrowTsScanEnabled(f.FlowCtx.EvalCtx) ||
+		!physicalplan.ArrowTsScanSupported(typs) {
+		return nil, false
+	}
+	if f.arrowEmitters == nil {
+		f.arrowEmitters = make(map[execinfrapb.StreamID]execinfra.RowSource)
+	}
+	if em, ok := f.arrowEmitters[s.StreamID]; ok {
+		return em, true
+	}
+	em, err := rowexec.NewArrowTsReader(
+		ctx, &f.FlowCtx, -1, typs, nil, s.StreamID, tsProcessorSpecs, tsInfo,
+		memory.NewGoAllocator(), true /* arrowMode */)
+	if err != nil {
+		log.Warning(ctx, errors.Wrap(err, "arrow ts scan wiring failed; falling back to row path"))
+		return nil, false
+	}
+	f.arrowEmitters[s.StreamID] = em
+	return em, true
+}
+
 // GetMessageQueue Get local node message queue
 func GetMessageQueue() *flowinfra.Queue {
-
 	return nil
 }
 
@@ -478,8 +569,17 @@ func (f *rowBasedFlow) Release() {
 // Cleanup is part of the flowinfra.Flow interface.
 func (f *rowBasedFlow) Cleanup(ctx context.Context) {
 	for _, processor := range f.TsTableReaders {
-		tsTableReader := processor.(*rowexec.TsTableReader)
-		tsTableReader.DropHandle(ctx)
+		if d, ok := processor.(interface{ DropHandle(context.Context) }); ok {
+			d.DropHandle(ctx)
+		}
+	}
+	// Arrow TS scan emitters are not in f.TsTableReaders (they are driven by the
+	// downstream Arrow operator, not by RunTS). Release their tse handle here as
+	// a safety net; DropHandle is idempotent so a double release is a no-op.
+	for _, em := range f.arrowEmitters {
+		if d, ok := em.(interface{ DropHandle(context.Context) }); ok {
+			d.DropHandle(ctx)
+		}
 	}
 	f.FlowBase.Cleanup(ctx)
 	f.Release()

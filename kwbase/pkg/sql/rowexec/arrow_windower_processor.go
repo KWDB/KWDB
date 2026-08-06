@@ -19,10 +19,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"sync/atomic"
 
-	"github.com/apache/arrow/go/v17/arrow/memory"
-	"github.com/cockroachdb/apd"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
@@ -30,19 +29,93 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding"
+	"github.com/apache/arrow/go/v17/arrow"
+	"github.com/apache/arrow/go/v17/arrow/array"
+	"github.com/apache/arrow/go/v17/arrow/memory"
+	"github.com/cockroachdb/apd"
 )
 
 // arrowWindowerPlan mirrors the planner-side struct in pkg/sql/arrow_unification.go.
 type arrowWindowerPlan struct {
-	PartitionBy []int                `json:"partition_by"`
+	PartitionBy []int               `json:"partition_by"`
 	Fns         []arrowWindowFnPlan `json:"fns"`
 }
 
 type arrowWindowFnPlan struct {
-	Func      string `json:"func"`
-	Input     int    `json:"input"`
-	Ordering  []int  `json:"ordering"`
-	OutputIdx int    `json:"output_idx"`
+	Func      string                `json:"func"`
+	Kind      string                `json:"kind"`
+	Input     int                   `json:"input"`
+	Ordering  []int                 `json:"ordering"`
+	OutputIdx int                   `json:"output_idx"`
+	Frame     *arrowWindowFramePlan `json:"frame,omitempty"`
+}
+
+type arrowWindowFramePlan struct {
+	Mode  string `json:"mode"`
+	Start string `json:"start"`
+	End   string `json:"end"`
+	// StartOffset / EndOffset carry the integer offset (in rows) for ROWS-mode
+	// offset bounds (e.g. ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING). They are
+	// only meaningful when Start/End is "offset_preceding" / "offset_following".
+	StartOffset int `json:"start_offset,omitempty"`
+	EndOffset   int `json:"end_offset,omitempty"`
+}
+
+// isWholePartitionFrame reports whether the frame covers the entire partition
+// (UNBOUNDED PRECEDING TO UNBOUNDED FOLLOWING), in which case every row in the
+// partition gets the aggregate computed over all rows of the partition.
+func (f *arrowWindowFramePlan) isWholePartitionFrame() bool {
+	return f != nil && f.Start == "unbounded_preceding" && f.End == "unbounded_following"
+}
+
+// hasOffset reports whether either bound is a numeric offset (ROWS mode offset
+// frame), which requires per-row window evaluation.
+func (f *arrowWindowFramePlan) hasOffset() bool {
+	if f == nil {
+		return false
+	}
+	return f.Start == "offset_preceding" || f.End == "offset_following"
+}
+
+// frameBounds returns the inclusive [start, end] row indices for the window
+// frame of row i within a partition of n rows. startEdge/endEdge distinguish
+// whether a bound is inclusive in ROWS mode vs the peer-group semantics of
+// RANGE mode.
+func (f *arrowWindowFramePlan) frameBounds(i, n int) (int, int) {
+	if f == nil {
+		// Default RANGE frame: UNBOUNDED PRECEDING TO CURRENT ROW (running over
+		// the current row's peer group, since RANGE treats equal ordering values
+		// as a unit). Callers handle the peer-group expansion separately.
+		return 0, i
+	}
+	start := 0
+	switch {
+	case f.Start == "unbounded_preceding":
+		start = 0
+	case f.Start == "current_row":
+		start = i
+	case f.Start == "offset_preceding":
+		start = i - f.StartOffset
+	}
+	if start < 0 {
+		start = 0
+	}
+	end := i
+	switch {
+	case f.End == "unbounded_following":
+		end = n - 1
+	case f.End == "current_row":
+		end = i
+	case f.End == "offset_following":
+		end = i + f.EndOffset
+	}
+	if end > n-1 {
+		end = n - 1
+	}
+	if end < start {
+		end = start
+	}
+	return start, end
 }
 
 // arrowWindowerRuns counts how many times the arrow windower processor has run.
@@ -69,6 +142,7 @@ type arrowWindowerProcessor struct {
 	inTypes    []types.T
 	outTypes   []types.T
 	outputRows sqlbase.EncDatumRows
+	outputRec  arrow.Record
 	rowIdx     int
 }
 
@@ -93,8 +167,14 @@ func newArrowWindowerProcessor(
 		}
 	}
 	for _, fn := range plan.Fns {
-		if fn.Input >= len(inTypes) {
-			return nil, fmt.Errorf("arrow windower: input column %d out of range (ncols=%d)", fn.Input, len(inTypes))
+		if fn.Kind == "ranking" {
+			if fn.Input != -1 {
+				return nil, fmt.Errorf("arrow windower: ranking function %q must not reference an input column", fn.Func)
+			}
+		} else {
+			if fn.Input >= len(inTypes) {
+				return nil, fmt.Errorf("arrow windower: input column %d out of range (ncols=%d)", fn.Input, len(inTypes))
+			}
 		}
 		for _, o := range fn.Ordering {
 			if o >= len(inTypes) {
@@ -104,9 +184,13 @@ func newArrowWindowerProcessor(
 	}
 	outTypes := make([]types.T, len(inTypes)+len(plan.Fns))
 	copy(outTypes, inTypes)
-	// The output column types are inferred from the aggregate.
+	// The output column types are inferred from the function.
 	for _, fn := range plan.Fns {
-		outTypes[fn.OutputIdx] = aggWindowOutputType(fn.Func, inTypes[fn.Input])
+		if fn.Kind == "ranking" {
+			outTypes[fn.OutputIdx] = *types.Int
+		} else {
+			outTypes[fn.OutputIdx] = aggWindowOutputType(fn.Func, inTypes[fn.Input])
+		}
 	}
 	p := &arrowWindowerProcessor{
 		input:    input,
@@ -207,7 +291,27 @@ func (p *arrowWindowerProcessor) compute(ctx context.Context) error {
 		}
 	}
 	p.outputRows = out
+	// Build the output Arrow Record so a downstream colexec operator can consume
+	// it directly via the Arrow->colexec zero-copy bridge (RecordToBatch),
+	// skipping the row round-trip used by the classic Next() path.
+	ptrTypes := make([]*types.T, len(p.outTypes))
+	for i := range p.outTypes {
+		t := p.outTypes[i]
+		ptrTypes[i] = &t
+	}
+	cols, err := buildArrowColumns(p.alloc, ptrTypes, p.outputRows, p.da)
+	if err != nil {
+		return err
+	}
+	p.outputRec = array.NewRecord(buildArrowSchema(ptrTypes), cols, int64(len(p.outputRows)))
 	return nil
+}
+
+// ArrowOutput implements the ArrowRecordEmitter contract, exposing the computed
+// output Record for a downstream Arrow or colexec operator to consume without a
+// row round-trip.
+func (p *arrowWindowerProcessor) ArrowOutput() arrow.Record {
+	return p.outputRec
 }
 
 // samePartition reports whether two rows share the same PARTITION BY key.
@@ -225,13 +329,54 @@ func samePartition(p *arrowWindowerProcessor, a, b sqlbase.EncDatumRow) bool {
 }
 
 // computePartition evaluates every window function over a single partition.
-// Each function is accumulated over its peer groups (rows with equal ORDER BY
-// values); the running aggregate is written back to every row in the peer.
 // startIdx is the absolute index of part[0] within out.
 func (p *arrowWindowerProcessor) computePartition(out, part sqlbase.EncDatumRows, startIdx int) {
+	// The upstream stream is only guaranteed to be ordered by PARTITION BY,
+	// not by the window function's ORDER BY. The classic windower sorts each
+	// partition by the window ORDER BY before evaluation; we must do the same,
+	// otherwise ranking values and running aggregates are computed over rows
+	// in arbitrary (e.g. insertion) order. All functions in a window share the
+	// same ORDER BY, so sorting by the first function's ordering suffices.
+	if len(p.plan.Fns) > 0 && len(p.plan.Fns[0].Ordering) > 0 {
+		colOrder := make(sqlbase.ColumnOrdering, len(p.plan.Fns[0].Ordering))
+		for i, c := range p.plan.Fns[0].Ordering {
+			colOrder[i] = sqlbase.ColumnOrderInfo{ColIdx: c, Direction: encoding.Ascending}
+		}
+		// Sort the *output* rows for this partition (not just the input rows),
+		// so that the ordering columns and the computed window values stay
+		// aligned. The input rows are only used to read ordering-key values.
+		outPart := out[startIdx : startIdx+len(part)]
+		sort.SliceStable(outPart, func(i, j int) bool {
+			cmp, err := outPart[i].Compare(p.outTypes, p.da, colOrder, p.EvalCtx, outPart[j])
+			if err != nil {
+				panic(err)
+			}
+			return cmp < 0
+		})
+	}
 	for _, fn := range p.plan.Fns {
-		acc := &windowAccumulator{fn: fn.Func}
+		switch fn.Kind {
+		case "ranking":
+			p.computeRanking(out, part, startIdx, fn)
+		case "agg":
+			p.computeAggregateWindow(out, part, startIdx, fn)
+		}
+	}
+}
+
+// computeRanking evaluates a ranking window function (row_number/rank/
+// dense_rank) over the partition. Ranking functions ignore the frame and
+// operate over the whole partition, ordered by the function's ORDER BY.
+func (p *arrowWindowerProcessor) computeRanking(out, part sqlbase.EncDatumRows, startIdx int, fn arrowWindowFnPlan) {
+	switch fn.Func {
+	case "row_number":
+		for i := range part {
+			out[startIdx+i][fn.OutputIdx] = sqlbase.EncDatum{Datum: tree.NewDInt(tree.DInt(i + 1))}
+		}
+	case "rank", "dense_rank":
 		peerStart := 0
+		denseGroupOrdinal := 1
+		lastPeer := -1 // index of the first row of the last peer group
 		for i := 1; i <= len(part); i++ {
 			atEnd := i == len(part)
 			newPeer := atEnd
@@ -246,24 +391,106 @@ func (p *arrowWindowerProcessor) computePartition(out, part sqlbase.EncDatumRows
 				}
 				newPeer = !bytes.Equal(k1, k2)
 			}
-			// Consume the current row into the running aggregate.
-			if err := acc.consume(p, part[i-1], fn.Input); err != nil {
+			if newPeer {
+				// rank = 1-based index of the first row of the peer group.
+				// dense_rank = 1-based peer-group ordinal.
+				rankVal := tree.NewDInt(tree.DInt(peerStart + 1))
+				dense := tree.NewDInt(tree.DInt(denseGroupOrdinal))
+				for j := peerStart; j < i; j++ {
+					if fn.Func == "rank" {
+						out[startIdx+j][fn.OutputIdx] = sqlbase.EncDatum{Datum: rankVal}
+					} else {
+						out[startIdx+j][fn.OutputIdx] = sqlbase.EncDatum{Datum: dense}
+					}
+				}
+				lastPeer = peerStart
+				peerStart = i
+				denseGroupOrdinal++
+			}
+		}
+		_ = lastPeer
+	}
+}
+
+// computeAggregateWindow evaluates an aggregate window function. For the
+// default/current-row frames it accumulates over peer groups (running value up
+// to and including the current peer); for the whole-partition frame it computes
+// the aggregate over all rows and writes it back to every row; for ROWS offset
+// frames (e.g. BETWEEN 1 PRECEDING AND 1 FOLLOWING) it computes the aggregate
+// over the per-row sliding window.
+func (p *arrowWindowerProcessor) computeAggregateWindow(out, part sqlbase.EncDatumRows, startIdx int, fn arrowWindowFnPlan) {
+	whole := fn.Frame.isWholePartitionFrame()
+	if whole {
+		acc := &windowAccumulator{fn: fn.Func}
+		for _, row := range part {
+			if err := acc.consume(p, row, fn.Input); err != nil {
 				panic(err)
 			}
-			if newPeer {
-				val, err := acc.finalize(p)
-				if err != nil {
+		}
+		val, err := acc.finalize(p)
+		if err != nil {
+			panic(err)
+		}
+		for i := range part {
+			out[startIdx+i][fn.OutputIdx] = val
+		}
+		return
+	}
+	// ROWS offset frame: each row gets the aggregate over its own [start,end]
+	// window. part is sorted by the window ORDER BY (computePartition sorts it),
+	// so the window indices map directly onto part.
+	if fn.Frame != nil && fn.Frame.Mode == "rows" && !fn.Frame.isWholePartitionFrame() && fn.Frame.hasOffset() {
+		for i := range part {
+			s, e := fn.Frame.frameBounds(i, len(part))
+			acc := &windowAccumulator{fn: fn.Func}
+			for j := s; j <= e; j++ {
+				if err := acc.consume(p, part[j], fn.Input); err != nil {
 					panic(err)
 				}
-				// Write the running aggregate (accumulated up to and including
-				// the current peer) to every row in the peer group. The
-				// accumulator itself is NOT reset: it must keep accumulating
-				// across peer groups within the same partition.
-				for j := peerStart; j < i; j++ {
-					out[startIdx+j][fn.OutputIdx] = val
-				}
-				peerStart = i
 			}
+			val, err := acc.finalize(p)
+			if err != nil {
+				panic(err)
+			}
+			out[startIdx+i][fn.OutputIdx] = val
+		}
+		return
+	}
+	// Default / ROWS UNBOUNDED PRECEDING TO CURRENT ROW (and RANGE running):
+	// running aggregate accumulated over peer groups.
+	acc := &windowAccumulator{fn: fn.Func}
+	peerStart := 0
+	for i := 1; i <= len(part); i++ {
+		atEnd := i == len(part)
+		newPeer := atEnd
+		if !atEnd {
+			k1, err := p.peerKey(part[i-1], fn.Ordering)
+			if err != nil {
+				panic(err)
+			}
+			k2, err := p.peerKey(part[i], fn.Ordering)
+			if err != nil {
+				panic(err)
+			}
+			newPeer = !bytes.Equal(k1, k2)
+		}
+		// Consume the current row into the running aggregate.
+		if err := acc.consume(p, part[i-1], fn.Input); err != nil {
+			panic(err)
+		}
+		if newPeer {
+			val, err := acc.finalize(p)
+			if err != nil {
+				panic(err)
+			}
+			// Write the running aggregate (accumulated up to and including
+			// the current peer) to every row in the peer group. The
+			// accumulator itself is NOT reset: it must keep accumulating
+			// across peer groups within the same partition.
+			for j := peerStart; j < i; j++ {
+				out[startIdx+j][fn.OutputIdx] = val
+			}
+			peerStart = i
 		}
 	}
 }
@@ -296,10 +523,10 @@ func aggWindowOutputType(fn string, in types.T) types.T {
 // windowAccumulator holds the running aggregate for one window function over a
 // peer group.
 type windowAccumulator struct {
-	fn     string
-	set    bool
-	value  tree.Datum // current accumulated value
-	count  int64      // for avg
+	fn    string
+	set   bool
+	value tree.Datum // current accumulated value
+	count int64      // for avg
 }
 
 func (a *windowAccumulator) reset() {

@@ -22,6 +22,8 @@ import (
 	"sort"
 	"sync/atomic"
 
+	"github.com/apache/arrow/go/v17/arrow"
+	"github.com/apache/arrow/go/v17/arrow/array"
 	"github.com/apache/arrow/go/v17/arrow/memory"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
@@ -60,6 +62,7 @@ type arrowDistinctProcessor struct {
 	distinctCols []int
 	orderedCols  []int
 	outputRows   sqlbase.EncDatumRows
+	outputRec    arrow.Record
 	rowIdx       int
 }
 
@@ -237,7 +240,28 @@ func (p *arrowDistinctProcessor) compute(ctx context.Context) error {
 		first = false
 	}
 	p.outputRows = out
+	// Build the output Arrow Record so a downstream colexec operator can consume
+	// it directly via the Arrow->colexec zero-copy bridge (RecordToBatch),
+	// skipping the row round-trip used by the classic Next() path.
+	outTypes := p.OutputTypes()
+	ptrTypes := make([]*types.T, len(outTypes))
+	for i := range outTypes {
+		t := outTypes[i]
+		ptrTypes[i] = &t
+	}
+	cols, err := buildArrowColumns(p.alloc, ptrTypes, p.outputRows, p.da)
+	if err != nil {
+		return err
+	}
+	p.outputRec = array.NewRecord(buildArrowSchema(ptrTypes), cols, int64(len(p.outputRows)))
 	return nil
+}
+
+// ArrowOutput implements the ArrowRecordEmitter contract, exposing the computed
+// output Record for a downstream Arrow or colexec operator to consume without a
+// row round-trip.
+func (p *arrowDistinctProcessor) ArrowOutput() arrow.Record {
+	return p.outputRec
 }
 
 // encodeCols encodes the given columns of a row into a stable key for

@@ -60,7 +60,7 @@ func TestArrowBridgeRoundTrip(t *testing.T) {
 		t.Fatalf("record shape mismatch: rows=%d cols=%d", rec.NumRows(), rec.NumCols())
 	}
 
-	b2, err := RecordToBatch(rec)
+	b2, err := RecordToBatch(rec, nil)
 	if err != nil {
 		t.Fatalf("RecordToBatch: %v", err)
 	}
@@ -119,7 +119,7 @@ func BenchmarkArrowBridgeRoundTrip(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		if _, err := RecordToBatch(rec); err != nil {
+		if _, err := RecordToBatch(rec, nil); err != nil {
 			b.Fatal(err)
 		}
 		rec.Release()

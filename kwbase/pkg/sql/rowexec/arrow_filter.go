@@ -11,13 +11,13 @@ import (
 	"strings"
 	"time"
 
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
 	"github.com/apache/arrow/go/v17/arrow/compute"
 	"github.com/apache/arrow/go/v17/arrow/memory"
 	"github.com/apache/arrow/go/v17/arrow/scalar"
 	"github.com/cockroachdb/apd"
-	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 )
 
 // ArrowFilterSpec is the unified (compute) description of a boolean filter.
@@ -213,6 +213,9 @@ func (f *arrowFilterCore) evalLeafDatum(ctx context.Context, rec arrow.Record, o
 	if op.Leaf.Binary != nil {
 		return f.evalBinary(ctx, rec, op.Leaf.Binary)
 	}
+	if op.Leaf.Computed != nil {
+		return f.evalComputed(ctx, rec, op.Leaf.Computed)
+	}
 	if op.Leaf.Scalar != nil {
 		return op.Leaf.Scalar, nil
 	}
@@ -243,6 +246,23 @@ func (f *arrowFilterCore) evalBinary(ctx context.Context, rec arrow.Record, b *A
 		return nil, err
 	}
 	return res, nil
+}
+
+// evalComputed materializes a nested string-function leaf (e.g.
+// substring(col,1,3)) into an Arrow array via the existing arrowProjection
+// string kernels, then hands the array back as a column operand so the
+// surrounding comparison / LIKE predicate can consume it. This keeps
+// "substring(col,1,3) = 'abc'" fully in the Arrow engine instead of falling
+// back to a row-by-row tree.Datum evaluation. Errors raised by the projection
+// kernels (e.g. negative substring length) propagate up as query errors,
+// matching the classic path.
+func (f *arrowFilterCore) evalComputed(ctx context.Context, rec arrow.Record, c *ArrowProjectionSpec) (compute.Datum, error) {
+	tmp := &arrowProjection{alloc: f.alloc}
+	arr, err := tmp.evalArrowStringFunc(ctx, rec, *c)
+	if err != nil {
+		return nil, err
+	}
+	return compute.NewDatum(arr), nil
 }
 
 func asBoolean(res compute.Datum) (*array.Boolean, error) {
@@ -395,6 +415,9 @@ func (f *arrowFilterCore) evalIn(ctx context.Context, rec arrow.Record, spec Arr
 		left.Release()
 		return nil, fmt.Errorf("arrow in: left operand must be a column, got %T", left)
 	}
+	// The member set is carried on the operand's Leaf.ConstSet (built by
+	// leafToArrowArg for IN/NOT IN). Float sets produced from a casted decimal
+	// column live on ConstSet as Float64 scalars.
 	setLeaf := spec.Operands[1].Leaf
 	if setLeaf == nil || len(setLeaf.ConstSet) == 0 {
 		left.Release()
@@ -462,8 +485,35 @@ func (f *arrowFilterCore) evalIn(ctx context.Context, rec arrow.Record, spec Arr
 				b.Append(hit)
 			}
 		}
+	case *array.Float64:
+		// Decimal IN / NOT IN: the planner casts the decimal column to FLOAT
+		// and emits the set as float64 (Arrow compute has no DECIMAL is_in kernel).
+		set := make(map[float64]struct{}, len(setLeaf.ConstSet))
+		for _, d := range setLeaf.ConstSet {
+			sd, ok := d.(*compute.ScalarDatum)
+			if !ok {
+				return nil, fmt.Errorf("arrow in: set value must be scalar, got %T", d)
+			}
+			v, ok := sd.Value.(*scalar.Float64)
+			if !ok {
+				return nil, fmt.Errorf("arrow in: set value must be float64, got %T", sd.Value)
+			}
+			set[v.Value] = struct{}{}
+		}
+		for i := 0; i < col.Len(); i++ {
+			if col.IsNull(i) {
+				b.Append(neg)
+				continue
+			}
+			_, hit := set[col.Value(i)]
+			if neg {
+				b.Append(!hit)
+			} else {
+				b.Append(hit)
+			}
+		}
 	default:
-		return nil, fmt.Errorf("arrow in: unsupported column type %T (only int64/string supported)", arr)
+		return nil, fmt.Errorf("arrow in: unsupported column type %T (only int64/string/float64 supported)", arr)
 	}
 	return b.NewArray().(*array.Boolean), nil
 }
@@ -696,6 +746,19 @@ func castToFloat64(alloc memory.Allocator, arr arrow.Array) (arrow.Array, error)
 			}
 			b.Append(a.Value(i))
 		}
+	case *array.Decimal128:
+		// The decimal128 value is scaled by 10^scale; recover the true float.
+		var scale int32
+		if dt, ok := a.DataType().(*arrow.Decimal128Type); ok {
+			scale = dt.Scale
+		}
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			b.Append(a.Value(i).ToFloat64(scale))
+		}
 	case *array.Boolean:
 		for i := 0; i < a.Len(); i++ {
 			if a.IsNull(i) {
@@ -774,10 +837,18 @@ func castToDecimal(alloc memory.Allocator, arr arrow.Array, dt *arrow.Decimal128
 }
 
 // arrowOperandColumn returns the input record column with the given field name.
+// The planner ships aggregate/filter operand columns as positional indices
+// encoded as "colN" (see buildArrowAggSpec). Input record schema columns are
+// named by their KWDB type name, so a name lookup usually fails; in that case
+// we fall back to parsing the trailing integer of "colN" as the positional index.
 func arrowOperandColumn(rec arrow.Record, name string) arrow.Array {
 	idx := rec.Schema().FieldIndices(name)
-	if len(idx) == 0 {
-		panic(fmt.Sprintf("arrow operand column %q not found", name))
+	if len(idx) > 0 {
+		return rec.Column(idx[0])
 	}
-	return rec.Column(idx[0])
+	var n int
+	if _, err := fmt.Sscanf(name, "col%d", &n); err == nil && n >= 0 && n < int(rec.NumCols()) {
+		return rec.Column(n)
+	}
+	panic(fmt.Sprintf("arrow operand column %q not found", name))
 }

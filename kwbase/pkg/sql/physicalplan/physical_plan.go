@@ -57,11 +57,13 @@ import (
 
 // arrowProjectionEnabledSetting, when set, routes arrow-computable projection
 // expressions (e.g. `a+b`) through the Arrow compute engine instead of the
-// scalar tree-evaluator. It is opt-in to keep default behavior unchanged.
+// scalar tree-evaluator. It is enabled by default; Arrow is the primary
+// execution path with row-by-row evaluation as the fallback for expressions
+// the Arrow engine does not cover.
 var arrowProjectionEnabledSetting = settings.RegisterBoolSetting(
 	"sql.arrow_projection.enabled",
 	"if set, arrow-computable projection expressions are evaluated using the Arrow compute engine",
-	false,
+	true,
 )
 
 func arrowProjectionEnabled(evalCtx *tree.EvalContext) bool {
@@ -120,7 +122,7 @@ func ArrowWindowerEnabled(evalCtx *tree.EvalContext) bool {
 var arrowFilterEnabledSetting = settings.RegisterBoolSetting(
 	"sql.arrow_filter.enabled",
 	"if set, arrow-computable filter expressions are evaluated using the Arrow compute engine",
-	false,
+	true,
 )
 
 // arrowAggregatorEnabledSetting routes sum/count/min/max/mean aggregations
@@ -128,14 +130,14 @@ var arrowFilterEnabledSetting = settings.RegisterBoolSetting(
 var arrowAggregatorEnabledSetting = settings.RegisterBoolSetting(
 	"sql.arrow_aggregator.enabled",
 	"if set, aggregations are evaluated using the Arrow compute engine",
-	false,
+	true,
 )
 
 // arrowJoinEnabledSetting routes equi-joins through the Arrow compute engine.
 var arrowJoinEnabledSetting = settings.RegisterBoolSetting(
 	"sql.arrow_join.enabled",
 	"if set, equi-joins are evaluated using the Arrow compute engine",
-	false,
+	true,
 )
 
 // arrowScanEnabledSetting is the master gate for the Arrow path. When off, the
@@ -175,12 +177,32 @@ func arrowScanEnabled(evalCtx *tree.EvalContext) bool {
 	return arrowScanEnabledSetting.Get(&evalCtx.Settings.SV)
 }
 
+// ArrowTsScanEnabled reports whether a time-series scan may feed the Arrow
+// compute engine (§6.7 / §6.8 审订: TS scan is only relationally coupled via its
+// buffer format, so it can be an Arrow data source). It is an independent gate
+// from ArrowScanEnabled (which governs relational KV scans).
+func ArrowTsScanEnabled(evalCtx *tree.EvalContext) bool {
+	if evalCtx == nil || evalCtx.Settings == nil {
+		return false
+	}
+	return arrowTsScanEnabledSetting.Get(&evalCtx.Settings.SV)
+}
+
+// arrowTsScanEnabledSetting gates time-series scan -> Arrow (prototype, see
+// rowexec.arrowTsReader). Off by default until the Arrow TS read path is wired
+// into the planner and validated end-to-end.
+var arrowTsScanEnabledSetting = settings.RegisterBoolSetting(
+	"sql.arrow_ts_scan.enabled",
+	"if set, time-series scans may feed the Arrow compute engine (prototype: TS read emits Arrow Records)",
+	false,
+)
+
 // arrowSorterEnabledSetting routes ORDER BY sorting through the Arrow compute
 // engine.
 var arrowSorterEnabledSetting = settings.RegisterBoolSetting(
 	"sql.arrow_sorter.enabled",
 	"if set, sorts (ORDER BY) are evaluated using the Arrow compute engine",
-	false,
+	true,
 )
 
 // arrowDistinctEnabledSetting routes DISTINCT dedup through the Arrow compute
@@ -188,7 +210,7 @@ var arrowSorterEnabledSetting = settings.RegisterBoolSetting(
 var arrowDistinctEnabledSetting = settings.RegisterBoolSetting(
 	"sql.arrow_distinct.enabled",
 	"if set, DISTINCT dedup is evaluated using the Arrow compute engine",
-	false,
+	true,
 )
 
 func arrowSorterEnabled(evalCtx *tree.EvalContext) bool {
@@ -208,7 +230,7 @@ func arrowDistinctEnabled(evalCtx *tree.EvalContext) bool {
 var arrowWindowerEnabledSetting = settings.RegisterBoolSetting(
 	"sql.arrow_windower.enabled",
 	"if set, the supported subset of window functions (no-frame partition aggregates) is evaluated using the Arrow compute engine",
-	false,
+	true,
 )
 
 func arrowWindowerEnabled(evalCtx *tree.EvalContext) bool {
@@ -216,6 +238,25 @@ func arrowWindowerEnabled(evalCtx *tree.EvalContext) bool {
 		return false
 	}
 	return arrowWindowerEnabledSetting.Get(&evalCtx.Settings.SV)
+}
+
+var arrowUnionAllEnabledSetting = settings.RegisterBoolSetting(
+	"sql.arrow_union_all.enabled",
+	"if set, UNION ALL set operations are merged using the Arrow compute engine (a zero-copy concatenation of the input records instead of the row-based no-op merge)",
+	true,
+)
+
+func arrowUnionAllEnabled(evalCtx *tree.EvalContext) bool {
+	if evalCtx == nil || evalCtx.Settings == nil {
+		return false
+	}
+	return arrowUnionAllEnabledSetting.Get(&evalCtx.Settings.SV)
+}
+
+// ArrowUnionAllEnabled reports whether UNION ALL is merged through the Arrow
+// compute engine.
+func ArrowUnionAllEnabled(evalCtx *tree.EvalContext) bool {
+	return arrowUnionAllEnabled(evalCtx) && ArrowScanEnabled(evalCtx)
 }
 
 // Processor contains the information associated with a processor in a plan.
@@ -1596,10 +1637,29 @@ type arrowArg struct {
 }
 
 type arrowProjectionCol struct {
-	Kind   string     `json:"kind"`   // "compute" or "passthrough"
+	Kind   string     `json:"kind"`   // "compute", "passthrough", or "case"
 	Func   string     `json:"func"`   // for compute: add/sub/mul/div/negate/copy
 	Inputs []arrowArg `json:"inputs"` // for compute: arguments (columns and/or constants)
 	Input  int        `json:"input"`  // for passthrough: input column index
+	// Branches are the WHEN/THEN pairs of a CASE/COALESCE projection. Only set
+	// when Kind == "case". The executor evaluates each When as a boolean mask
+	// and selects the first matching Then, falling back to Else.
+	Branches []arrowCaseBranch `json:"branches,omitempty"`
+	// Else is the fallback value of a CASE/COALESCE projection. Only set when
+	// Kind == "case".
+	Else *arrowProjectionCol `json:"else,omitempty"`
+	// TZ marks that the timestamp operand of a datetime function is a
+	// TIMESTAMPTZ, so the executor must honor the session time zone when
+	// extracting/truncating. Only set when Kind == "datetime".
+	TZ bool `json:"tz,omitempty"`
+}
+
+// arrowCaseBranch is a single WHEN/THEN pair of a CASE/COALESCE projection.
+// When is a boolean-producing spec (comparison or isnull); Then is the value
+// produced when When holds for a given row.
+type arrowCaseBranch struct {
+	When *arrowProjectionCol `json:"when"`
+	Then *arrowProjectionCol `json:"then"`
 }
 
 // arrowOperandArg classifies a projection operand as either an input column
@@ -1659,19 +1719,28 @@ func (p *PhysicalPlan) arrowOperandArg(
 // no merge ordering to preserve (both conditions hold for a simple
 // `SELECT a+b FROM t`).
 // hasArrowComputeExpr reports whether at least one render expression is a real
-// Arrow compute operation (binary/unary, or an Arrow-supported string function
-// such as LOWER/UPPER/LENGTH/CONCAT/SUBSTRING). It is used to avoid routing a
-// purely passthrough render (e.g. `SELECT a FROM t`) through the Arrow stage,
-// which would add a processor for zero benefit.
+// Arrow compute operation (binary/unary, an Arrow-supported numeric function
+// such as ABS/SQRT/FLOOR/CEIL/ROUND, or an Arrow-supported string function such
+// as LOWER/UPPER/LENGTH/CONCAT/SUBSTRING). It is used to avoid routing a purely
+// passthrough render (e.g. `SELECT a FROM t`) through the Arrow stage, which
+// would add a processor for zero benefit.
 func hasArrowComputeExpr(exprs []tree.TypedExpr) bool {
 	for _, e := range exprs {
 		switch ex := e.(type) {
 		case *tree.BinaryExpr, *tree.UnaryExpr:
 			return true
 		case *tree.FuncExpr:
-			if _, ok := arrowStringFuncName(ex.Func.FunctionReference.FunctionName()); ok {
+			if _, ok := arrowStringFuncName(arrowFuncName(ex)); ok {
 				return true
 			}
+			if _, _, ok := arrowNumericFuncName(arrowFuncName(ex)); ok {
+				return true
+			}
+			if arrowDatetimeFuncName(arrowFuncName(ex)) != "" {
+				return true
+			}
+		case *tree.CaseExpr, *tree.CoalesceExpr:
+			return true
 		}
 	}
 	return false
@@ -1724,12 +1793,19 @@ func (p *PhysicalPlan) canArrowRender(exprs []tree.TypedExpr, indexVarMap []int)
 			if !arrowSupportedComputeType(ty) || !arrowSupportedComputeType(ex.ResolvedType()) {
 				return false
 			}
-		case *tree.FuncExpr:
-			// Numeric scalar kernels (abs/sqrt/ln/sign/power) are evaluated by
-			// the vendored arrow/compute module via compute.CallFunction. Gate
-			// on operand count and numeric types below.
-			rawName := ex.Func.FunctionReference.FunctionName()
-			if kernel, arity, ok := arrowNumericFuncName(rawName); ok {
+	case *tree.FuncExpr:
+	// Numeric scalar kernels (abs/sqrt/ln/sign/power) are evaluated by
+	// the vendored arrow/compute module via compute.CallFunction. Gate
+	// on operand count and numeric types below.
+	rawName := arrowFuncName(ex)
+		// Datetime functions (extract/date_trunc) take a constant field string
+		// plus a Timestamp/TimestampTZ column and are evaluated by a dedicated
+		// Go kernel in the Arrow projection executor (arrow/compute has no
+		// datetime kernels in this vendored version).
+		if arrowDatetimeFuncName(rawName) != "" {
+			return p.canArrowDatetime(ex, indexVarMap)
+		}
+		if kernel, arity, ok := arrowNumericFuncName(rawName); ok {
 				args, ok := p.arrowStringFuncArgs(ex.Exprs, indexVarMap)
 				if !ok {
 					return false
@@ -1788,33 +1864,33 @@ func (p *PhysicalPlan) canArrowRender(exprs []tree.TypedExpr, indexVarMap []int)
 				// Need at least one input column to reference.
 				return false
 			}
-		switch funcName {
-		case "length", "octet_length", "lower", "upper", "trim", "ltrim", "rtrim", "btrim":
-			if len(args) != 1 && len(args) != 2 {
-				return false
-			}
-			if args[0].ty.Family() != types.StringFamily || !arrowSupportedComputeType(args[0].ty) {
-				return false
-			}
-			if len(args) == 2 {
-				// The optional second argument is the trim characters set and
-				// must also be a string.
-				if args[1].ty.Family() != types.StringFamily {
+			switch funcName {
+			case "length", "octet_length", "lower", "upper", "trim", "ltrim", "rtrim", "btrim":
+				if len(args) != 1 && len(args) != 2 {
 					return false
 				}
-			}
-			return true
-		case "replace":
-			if len(args) != 3 {
-				return false
-			}
-			for _, a := range args {
-				if a.ty.Family() != types.StringFamily {
+				if args[0].ty.Family() != types.StringFamily || !arrowSupportedComputeType(args[0].ty) {
 					return false
 				}
-			}
-			return true
-		case "concat":
+				if len(args) == 2 {
+					// The optional second argument is the trim characters set and
+					// must also be a string.
+					if args[1].ty.Family() != types.StringFamily {
+						return false
+					}
+				}
+				return true
+			case "replace":
+				if len(args) != 3 {
+					return false
+				}
+				for _, a := range args {
+					if a.ty.Family() != types.StringFamily {
+						return false
+					}
+				}
+				return true
+			case "concat":
 				if len(args) < 2 {
 					return false
 				}
@@ -1824,46 +1900,67 @@ func (p *PhysicalPlan) canArrowRender(exprs []tree.TypedExpr, indexVarMap []int)
 					}
 				}
 				return true
-		case "substring":
-			if len(args) < 2 || len(args) > 3 {
-				return false
-			}
-			if args[0].ty.Family() != types.StringFamily {
-				return false
-			}
-			for _, a := range args[1:] {
-				if a.ty.Family() != types.IntFamily {
+			case "substring":
+				if len(args) < 2 || len(args) > 3 {
 					return false
 				}
+				if args[0].ty.Family() != types.StringFamily {
+					return false
+				}
+				for _, a := range args[1:] {
+					if a.ty.Family() != types.IntFamily {
+						return false
+					}
+				}
+				return true
+			case "overlay":
+				// overlay(str PLACING substr FROM start): 3 args, all but the last
+				// are strings, the start position is an int.
+				if len(args) != 3 {
+					return false
+				}
+				if args[0].ty.Family() != types.StringFamily || args[1].ty.Family() != types.StringFamily {
+					return false
+				}
+				if args[2].ty.Family() != types.IntFamily {
+					return false
+				}
+				return true
+			case "split_part":
+				// split_part(str, sep, n): 3 args, str/sep are strings, n is an int.
+				if len(args) != 3 {
+					return false
+				}
+				if args[0].ty.Family() != types.StringFamily || args[1].ty.Family() != types.StringFamily {
+					return false
+				}
+				if args[2].ty.Family() != types.IntFamily {
+					return false
+				}
+				return true
 			}
-			return true
-		case "overlay":
-			// overlay(str PLACING substr FROM start): 3 args, all but the last
-			// are strings, the start position is an int.
-			if len(args) != 3 {
-				return false
-			}
-			if args[0].ty.Family() != types.StringFamily || args[1].ty.Family() != types.StringFamily {
-				return false
-			}
-			if args[2].ty.Family() != types.IntFamily {
-				return false
-			}
-			return true
-		case "split_part":
-			// split_part(str, sep, n): 3 args, str/sep are strings, n is an int.
-			if len(args) != 3 {
-				return false
-			}
-			if args[0].ty.Family() != types.StringFamily || args[1].ty.Family() != types.StringFamily {
-				return false
-			}
-			if args[2].ty.Family() != types.IntFamily {
-				return false
-			}
-			return true
-		}
 			return false
+		case *tree.ComparisonExpr:
+			// Boolean comparisons (used as CASE WHEN conditions) are evaluated by
+			// the arrow/compute comparison kernels, which return a boolean array.
+			if _, ok := arrowComparisonKernel(ex.Operator); !ok {
+				return false
+			}
+			la, lty, ok1 := p.arrowOperandArg(ex.Left.(tree.TypedExpr), indexVarMap)
+			ra, rty, ok2 := p.arrowOperandArg(ex.Right.(tree.TypedExpr), indexVarMap)
+			if !ok1 || !ok2 {
+				return false
+			}
+			if la.Col < 0 && ra.Col < 0 {
+				return false
+			}
+			if lty.Family() != rty.Family() {
+				return false
+			}
+			if !arrowSupportedComputeType(lty) {
+				return false
+			}
+			return true
 		case *tree.CastExpr:
 			// Render-side CAST is accelerated only for target types understood by
 			// arrowCastTargetTag, and only when the inner expression itself is
@@ -1877,7 +1974,41 @@ func (p *PhysicalPlan) canArrowRender(exprs []tree.TypedExpr, indexVarMap []int)
 				return false
 			}
 			return p.canArrowRender([]tree.TypedExpr{innerExpr}, indexVarMap)
+		case *tree.CoalesceExpr:
+			// COALESCE(a, b, ...) becomes a CASE where each branch's WHEN is
+			// "a IS NOT NULL"; the result type is the COALESCE's resolved type.
+			ce := e.(*tree.CoalesceExpr)
+			all := make([]tree.TypedExpr, len(ce.Exprs)+1)
+			for i, x := range ce.Exprs {
+				all[i] = x.(tree.TypedExpr)
+			}
+			all[len(ce.Exprs)] = ce.Exprs[len(ce.Exprs)-1].(tree.TypedExpr) // duplicate last arg as ELSE
+			return p.canArrowRenderCase(all, ce.ResolvedType(), indexVarMap)
+		case *tree.CaseExpr:
+			// CASE [operand] WHEN w THEN t ... ELSE e. The operand (if present)
+			// and each WHEN/THEN/ELSE must be renderable, and every branch must
+			// share the CASE's resolved result type (heterogeneous branches are
+			// cast to the result type by the caller).
+			ce := e.(*tree.CaseExpr)
+			subs := make([]tree.TypedExpr, 0, 2*len(ce.Whens)+2)
+			if ce.Expr != nil {
+				subs = append(subs, ce.Expr.(tree.TypedExpr))
+			}
+			for _, w := range ce.Whens {
+				subs = append(subs, w.Cond.(tree.TypedExpr), w.Val.(tree.TypedExpr))
+			}
+			if ce.Else != nil {
+				subs = append(subs, ce.Else.(tree.TypedExpr))
+			} else {
+				subs = append(subs, ce.Whens[len(ce.Whens)-1].Val.(tree.TypedExpr))
+			}
+			return p.canArrowRenderCase(subs, ce.ResolvedType(), indexVarMap)
 		default:
+			// Constant literals are always renderable (materialized as scalars),
+			// e.g. the THEN/ELSE values and WHEN keys of a CASE/COALESCE.
+			if _, ok := e.(tree.Datum); ok {
+				return true
+			}
 			// Plain column reference: allowed as a passthrough (identity copy).
 			if _, ok := exprColumn(e, indexVarMap); !ok {
 				return false
@@ -1894,6 +2025,35 @@ func (p *PhysicalPlan) canArrowRender(exprs []tree.TypedExpr, indexVarMap []int)
 	return true
 }
 
+// canArrowRenderCase checks whether a CASE/COALESCE expression can be rendered
+// in the Arrow projection stage. It casts every sub-expression (branches and
+// ELSE) to the CASE's resolved result type and verifies the casted expression
+// is renderable; this keeps all branches the same type so the executor's CASE
+// evaluator can build a single result array.
+func (p *PhysicalPlan) canArrowRenderCase(subs []tree.TypedExpr, resultType *types.T, indexVarMap []int) bool {
+	if _, ok := arrowCastTargetTag(resultType); !ok {
+		// Only result types the arrow engine can materialize are supported
+		// (decimal/timestamp/uuid/json would need a cast kernel we don't have).
+		return false
+	}
+	for _, s := range subs {
+		// If the sub-expression already matches the result type, use it as-is;
+		// otherwise wrap it in a CAST to the result type.
+		var e tree.TypedExpr = s
+		if !s.ResolvedType().Equivalent(resultType) {
+			ce, err := tree.NewTypedCastExpr(s, resultType)
+			if err != nil {
+				return false
+			}
+			e = ce
+		}
+		if !p.canArrowRender([]tree.TypedExpr{e}, indexVarMap) {
+			return false
+		}
+	}
+	return true
+}
+
 // arrowSupportedComputeType reports whether the Arrow compute kernels we have
 // wired up can handle a value of the given type for arithmetic (add/sub/mul/
 // div) and passthrough.
@@ -1903,6 +2063,61 @@ func arrowSupportedComputeType(t *types.T) bool {
 		return true
 	}
 	return false
+}
+
+// arrowFuncName safely extracts the lower-cased SQL function name from a
+// FuncExpr. During physical planning the function reference may still be an
+// unresolved name (e.g. EXTRACT keeps its reference cell unpopulated until
+// Normalize), so we handle both the resolved *FunctionDefinition and the
+// *UnresolvedName forms instead of dereferencing FunctionReference blindly
+// (which would panic on a nil interface).
+func arrowFuncName(ex *tree.FuncExpr) string {
+	switch ref := ex.Func.FunctionReference.(type) {
+	case *tree.FunctionDefinition:
+		return strings.ToLower(ref.Name)
+	case *tree.UnresolvedName:
+		return strings.ToLower(ref.Parts[0])
+	}
+	return ""
+}
+
+// arrowDatetimeFuncName normalizes a SQL datetime-function name to the internal
+// projection Func name handled by the Arrow projection executor. Returns "" for
+// anything outside the supported set (extract/date_trunc).
+func arrowDatetimeFuncName(name string) string {
+	switch strings.ToLower(name) {
+	case "extract":
+		return "extract"
+	case "date_trunc":
+		return "date_trunc"
+	}
+	return ""
+}
+
+// canArrowDatetime verifies that a datetime FuncExpr (extract/date_trunc) is
+// shaped so the Arrow projection executor can evaluate it: the first argument
+// must be a constant field string and the second a Timestamp/TimestampTZ column.
+func (p *PhysicalPlan) canArrowDatetime(ex *tree.FuncExpr, indexVarMap []int) bool {
+	if len(ex.Exprs) != 2 {
+		return false
+	}
+	fieldArg, ok := ex.Exprs[0].(tree.TypedExpr)
+	if !ok {
+		return false
+	}
+	if _, ok := fieldArg.(*tree.DString); !ok {
+		// The field must be a constant string literal.
+		return false
+	}
+	tsArg, ok := ex.Exprs[1].(tree.TypedExpr)
+	if !ok {
+		return false
+	}
+	tsTy := tsArg.ResolvedType()
+	if tsTy.Family() != types.TimestampFamily && tsTy.Family() != types.TimestampTZFamily {
+		return false
+	}
+	return true
 }
 
 // arrowStringFuncName normalizes a SQL string-function name to the internal
@@ -1941,9 +2156,16 @@ func arrowStringFuncName(name string) (string, bool) {
 // have fixed arity). These kernels are shipped by the vendored arrow/compute
 // module, so no dedicated Go kernel is needed.
 //
-// Supported: abs/sqrt/ln/sign (1 arg), power (2 args). The executor routes
-// them through compute.CallFunction with the kernel name, reusing the same
+// Supported numeric kernels: abs/sqrt/ln/sign (1 arg), power (2 args), and the
+// rounding kernels floor/ceil/trunc/round (1 arg). The executor routes them
+// through compute.CallFunction with the kernel name, reusing the same
 // binary-operator path that handles add/subtract/multiply/divide.
+//
+// Rounding semantics match KWDB's floatOverload1 builtins: floor/ceil/trunc
+// take a float and return float64 (DFloat), and round uses banker's rounding
+// (RoundToEven), which is exactly arrow's DefaultRoundOptions. Integer inputs
+// are cast to float by the planner (as in the classic path) so arrow's
+// int->float64 result is consistent.
 func arrowNumericFuncName(name string) (kernel string, arity int, ok bool) {
 	switch strings.ToLower(name) {
 	case "abs":
@@ -1956,6 +2178,14 @@ func arrowNumericFuncName(name string) (kernel string, arity int, ok bool) {
 		return "sign", 1, true
 	case "power":
 		return "power", 2, true
+	case "floor":
+		return "floor", 1, true
+	case "ceil", "ceiling":
+		return "ceil", 1, true
+	case "trunc":
+		return "trunc", 1, true
+	case "round":
+		return "round", 1, true
 	}
 	return "", 0, false
 }
@@ -2047,70 +2277,27 @@ func (p *PhysicalPlan) addArrowRendering(
 	outT := make([]types.T, 0, len(exprs))
 	for _, e := range exprs {
 		switch ex := e.(type) {
-		case *tree.BinaryExpr:
-			l, _, _ := p.arrowOperandArg(ex.Left.(tree.TypedExpr), indexVarMap)
-			r, _, _ := p.arrowOperandArg(ex.Right.(tree.TypedExpr), indexVarMap)
-			var fn string
-			switch ex.Operator {
-			case tree.Plus:
-				fn = "add"
-			case tree.Minus:
-				fn = "subtract"
-			case tree.Mult:
-				fn = "multiply"
-			case tree.Div:
-				fn = "divide"
+		case *tree.CoalesceExpr:
+			col, ty, err := p.arrowCoalesceCol(ex, indexVarMap)
+			if err != nil {
+				return err
 			}
-			plan.Cols = append(plan.Cols, arrowProjectionCol{
-				Kind:   "compute",
-				Func:   fn,
-				Inputs: []arrowArg{l, r},
-			})
-			outT = append(outT, *ex.ResolvedType())
-		case *tree.UnaryExpr:
-			a, _, _ := p.arrowOperandArg(ex.Expr.(tree.TypedExpr), indexVarMap)
-			plan.Cols = append(plan.Cols, arrowProjectionCol{
-				Kind:   "compute",
-				Func:   "negate",
-				Inputs: []arrowArg{a},
-			})
-			outT = append(outT, *ex.ResolvedType())
-		case *tree.FuncExpr:
-			rawName := ex.Func.FunctionReference.FunctionName()
-			if kernel, _, ok := arrowNumericFuncName(rawName); ok {
-				inputs, ok := p.arrowArgsFor(ex.Exprs, indexVarMap)
-				if !ok {
-					return errors.Errorf("arrow projection: unsupported argument to %s", kernel)
-				}
-				plan.Cols = append(plan.Cols, arrowProjectionCol{
-					Kind:   "compute",
-					Func:   kernel,
-					Inputs: inputs,
-				})
-				outT = append(outT, *ex.ResolvedType())
-				continue
+			plan.Cols = append(plan.Cols, col)
+			outT = append(outT, *ty)
+		case *tree.CaseExpr:
+			col, ty, err := p.arrowCaseCol(ex, indexVarMap)
+			if err != nil {
+				return err
 			}
-			funcName, ok := arrowStringFuncName(rawName)
-			if !ok {
-				return errors.Errorf("arrow projection: unsupported function %s", rawName)
-			}
-			inputs, ok := p.arrowArgsFor(ex.Exprs, indexVarMap)
-			if !ok {
-				return errors.Errorf("arrow projection: unsupported argument to %s", funcName)
-			}
-			plan.Cols = append(plan.Cols, arrowProjectionCol{
-				Kind:   "compute",
-				Func:   funcName,
-				Inputs: inputs,
-			})
-			outT = append(outT, *ex.ResolvedType())
+			plan.Cols = append(plan.Cols, col)
+			outT = append(outT, *ty)
 		default:
-			col, _ := exprColumn(e, indexVarMap)
-			plan.Cols = append(plan.Cols, arrowProjectionCol{
-				Kind:  "passthrough",
-				Input: col,
-			})
-			outT = append(outT, *e.ResolvedType())
+			col, ty, err := p.arrowProjectionColFor(e, indexVarMap)
+			if err != nil {
+				return err
+			}
+			plan.Cols = append(plan.Cols, col)
+			outT = append(outT, *ty)
 		}
 	}
 	planBytes, err := json.Marshal(plan)
@@ -2126,6 +2313,314 @@ func (p *PhysicalPlan) addArrowRendering(
 	return nil
 }
 
+// arrowProjectionColFor builds a single arrowProjectionCol (the JSON spec carried
+// to the executor) for one render sub-expression. It is the per-expression core
+// of addArrowRendering, also reused by the CASE/COALESCE builder.
+func (p *PhysicalPlan) arrowProjectionColFor(e tree.TypedExpr, indexVarMap []int) (arrowProjectionCol, *types.T, error) {
+	switch ex := e.(type) {
+	case *tree.BinaryExpr:
+		l, _, _ := p.arrowOperandArg(ex.Left.(tree.TypedExpr), indexVarMap)
+		r, _, _ := p.arrowOperandArg(ex.Right.(tree.TypedExpr), indexVarMap)
+		var fn string
+		switch ex.Operator {
+		case tree.Plus:
+			fn = "add"
+		case tree.Minus:
+			fn = "subtract"
+		case tree.Mult:
+			fn = "multiply"
+		case tree.Div:
+			fn = "divide"
+		}
+		return arrowProjectionCol{
+			Kind:   "compute",
+			Func:   fn,
+			Inputs: []arrowArg{l, r},
+		}, ex.ResolvedType(), nil
+	case *tree.UnaryExpr:
+		a, _, _ := p.arrowOperandArg(ex.Expr.(tree.TypedExpr), indexVarMap)
+		return arrowProjectionCol{
+			Kind:   "compute",
+			Func:   "negate",
+			Inputs: []arrowArg{a},
+		}, ex.ResolvedType(), nil
+	case *tree.FuncExpr:
+		rawName := arrowFuncName(ex)
+		if kernel, _, ok := arrowNumericFuncName(rawName); ok {
+			inputs, ok := p.arrowArgsFor(ex.Exprs, indexVarMap)
+			if !ok {
+				return arrowProjectionCol{}, nil, errors.Errorf("arrow projection: unsupported argument to %s", kernel)
+			}
+			return arrowProjectionCol{
+				Kind:   "compute",
+				Func:   kernel,
+				Inputs: inputs,
+			}, ex.ResolvedType(), nil
+		}
+		if arrowDatetimeFuncName(rawName) != "" {
+			// extract(field FROM ts) / date_trunc(field, ts): the field is a
+			// constant string (DString) passed as a scalar arg, the timestamp
+			// operand is a column. Build a "func" column of Kind "datetime".
+			if len(ex.Exprs) != 2 {
+				return arrowProjectionCol{}, nil, errors.Errorf("arrow projection: %s expects 2 arguments", rawName)
+			}
+			fieldArg, ok := ex.Exprs[0].(tree.TypedExpr)
+			if !ok {
+				return arrowProjectionCol{}, nil, errors.Errorf("arrow projection: %s field must be a constant", rawName)
+			}
+			fieldConst, ok := fieldArg.(*tree.DString)
+			if !ok {
+				return arrowProjectionCol{}, nil, errors.Errorf("arrow projection: %s field must be a constant string", rawName)
+			}
+			field := string(*fieldConst)
+			tsArg, _, ok := p.arrowOperandArg(ex.Exprs[1].(tree.TypedExpr), indexVarMap)
+			if !ok {
+				return arrowProjectionCol{}, nil, errors.Errorf("arrow projection: unsupported timestamp operand to %s", rawName)
+			}
+			tsTy := ex.Exprs[1].(tree.TypedExpr).ResolvedType()
+			if tsTy.Family() != types.TimestampFamily && tsTy.Family() != types.TimestampTZFamily {
+				return arrowProjectionCol{}, nil, errors.Errorf("arrow projection: %s expects a Timestamp operand", rawName)
+			}
+			fieldCopy := field
+			return arrowProjectionCol{
+				Kind: "datetime",
+				Func: arrowDatetimeFuncName(rawName),
+				Inputs: []arrowArg{
+					{Col: -1, ConstStr: &fieldCopy},
+					{Col: tsArg.Col},
+				},
+				TZ: tsTy.Family() == types.TimestampTZFamily,
+			}, ex.ResolvedType(), nil
+		}
+		funcName, ok := arrowStringFuncName(rawName)
+		if !ok {
+			return arrowProjectionCol{}, nil, errors.Errorf("arrow projection: unsupported function %s", rawName)
+		}
+		inputs, ok := p.arrowArgsFor(ex.Exprs, indexVarMap)
+		if !ok {
+			return arrowProjectionCol{}, nil, errors.Errorf("arrow projection: unsupported argument to %s", funcName)
+		}
+		return arrowProjectionCol{
+			Kind:   "compute",
+			Func:   funcName,
+			Inputs: inputs,
+		}, ex.ResolvedType(), nil
+	case *tree.ComparisonExpr:
+		// Boolean comparison used as a CASE WHEN condition. Maps to an arrow/compute
+		// comparison kernel that returns a boolean array.
+		fn, ok := arrowComparisonKernel(ex.Operator)
+		if !ok {
+			return arrowProjectionCol{}, nil, errors.Errorf("arrow projection: unsupported comparison %v", ex.Operator)
+		}
+		l, _, _ := p.arrowOperandArg(ex.Left.(tree.TypedExpr), indexVarMap)
+		r, _, _ := p.arrowOperandArg(ex.Right.(tree.TypedExpr), indexVarMap)
+		return arrowProjectionCol{
+			Kind:   "compute",
+			Func:   fn,
+			Inputs: []arrowArg{l, r},
+		}, ex.ResolvedType(), nil
+	case *tree.CastExpr:
+		// Render-side CAST: the inner operand becomes a single arrowArg carrying
+		// the cast target tag, fed to a "copy" compute (the executor applies the
+		// cast while materializing the array).
+		inner := ex.Expr.(tree.TypedExpr)
+		tag, ok := arrowCastTargetTag(ex.ResolvedType())
+		if !ok {
+			return arrowProjectionCol{}, nil, errors.Errorf("arrow projection: unsupported cast to %s", ex.ResolvedType())
+		}
+		scale := int32(0)
+		if s, ok := arrowCastScale(ex.ResolvedType()); ok {
+			scale = s
+		}
+		in, _, ok := p.arrowOperandArg(inner, indexVarMap)
+		if !ok {
+			return arrowProjectionCol{}, nil, errors.Errorf("arrow projection: unsupported cast operand")
+		}
+		ct := tag
+		in.Cast = &ct
+		in.CastScale = &scale
+		return arrowProjectionCol{
+			Kind:   "compute",
+			Func:   "copy",
+			Inputs: []arrowArg{in},
+		}, ex.ResolvedType(), nil
+	default:
+		// Plain column reference, or a constant literal materialized as a copy
+		// of a scalar argument (e.g. the THEN/ELSE values and WHEN keys of a
+		// CASE/COALESCE).
+		if _, ok := e.(tree.Datum); ok {
+			arg, _, ok := p.arrowOperandArg(e, indexVarMap)
+			if !ok {
+				return arrowProjectionCol{}, nil, errors.Errorf("arrow projection: unsupported constant %v", e)
+			}
+			return arrowProjectionCol{
+				Kind:   "compute",
+				Func:   "copy",
+				Inputs: []arrowArg{arg},
+			}, e.ResolvedType(), nil
+		}
+		col, _ := exprColumn(e, indexVarMap)
+		return arrowProjectionCol{
+			Kind:  "passthrough",
+			Input: col,
+		}, e.ResolvedType(), nil
+	}
+}
+
+// arrowCastScale returns the decimal scale for a cast target type, when the
+// target is a decimal. Used to attach the scale to a render-side cast.
+func arrowCastScale(t *types.T) (int32, bool) {
+	if t.Family() == types.DecimalFamily {
+		return t.Width(), true
+	}
+	return 0, false
+}
+
+// arrowCaseValueCol builds the THEN/ELSE value col for a CASE/COALESCE branch,
+// casting the sub-expression to the CASE's result type when it differs so that
+// all branches share one type (required by the executor CASE evaluator).
+func (p *PhysicalPlan) arrowCaseValueCol(e tree.TypedExpr, resultType *types.T, indexVarMap []int) (arrowProjectionCol, error) {
+	var inner tree.TypedExpr = e
+	if !e.ResolvedType().Equivalent(resultType) {
+		ce, err := tree.NewTypedCastExpr(e, resultType)
+		if err != nil {
+			return arrowProjectionCol{}, err
+		}
+		inner = ce
+	}
+	col, _, err := p.arrowProjectionColFor(inner, indexVarMap)
+	if err != nil {
+		return arrowProjectionCol{}, err
+	}
+	return col, nil
+}
+
+// arrowCaseCol builds the arrowProjectionCol for a CASE expression. Each WHEN
+// becomes a boolean-producing spec (a comparison against the CASE operand for
+// the "CASE op WHEN w" form, or the predicate directly for "CASE WHEN cond");
+// each THEN becomes a value col cast to the result type.
+func (p *PhysicalPlan) arrowCaseCol(ex *tree.CaseExpr, indexVarMap []int) (arrowProjectionCol, *types.T, error) {
+	resultType := ex.ResolvedType()
+	branches := make([]arrowCaseBranch, 0, len(ex.Whens))
+	for _, w := range ex.Whens {
+		when := ex.Expr // shared operand for "CASE op WHEN w"
+		var whenCol arrowProjectionCol
+		var err error
+		if when != nil {
+			// "CASE op WHEN w": WHEN is the equality op = w, evaluated as a
+			// boolean-producing comparison spec.
+			cmp := &tree.ComparisonExpr{
+				Operator: tree.EQ,
+				Left:     when.(tree.TypedExpr),
+				Right:    w.Cond.(tree.TypedExpr),
+			}
+			whenCol, _, err = p.arrowComparisonCol(cmp, indexVarMap)
+		} else {
+			// "CASE WHEN cond": cond is already boolean.
+			whenCol, _, err = p.arrowProjectionColFor(w.Cond.(tree.TypedExpr), indexVarMap)
+		}
+		if err != nil {
+			return arrowProjectionCol{}, nil, err
+		}
+		thenCol, err := p.arrowCaseValueCol(w.Val.(tree.TypedExpr), resultType, indexVarMap)
+		if err != nil {
+			return arrowProjectionCol{}, nil, err
+		}
+		branches = append(branches, arrowCaseBranch{When: &whenCol, Then: &thenCol})
+	}
+	elseExpr := ex.Else
+	if elseExpr == nil {
+		// ELSE defaults to the last WHEN's value.
+		elseExpr = ex.Whens[len(ex.Whens)-1].Val.(tree.TypedExpr)
+	}
+	elseCol, err := p.arrowCaseValueCol(elseExpr.(tree.TypedExpr), resultType, indexVarMap)
+	if err != nil {
+		return arrowProjectionCol{}, nil, err
+	}
+	return arrowProjectionCol{
+		Kind:     "case",
+		Branches: branches,
+		Else:     &elseCol,
+	}, resultType, nil
+}
+
+// arrowCoalesceCol builds the arrowProjectionCol for a COALESCE expression.
+// COALESCE(a, b, c) is equivalent to CASE WHEN a IS NOT NULL THEN a
+// WHEN b IS NOT NULL THEN b ELSE c; the WHEN condition is an "isnull" check on
+// each argument.
+func (p *PhysicalPlan) arrowCoalesceCol(ex *tree.CoalesceExpr, indexVarMap []int) (arrowProjectionCol, *types.T, error) {
+	resultType := ex.ResolvedType()
+	branches := make([]arrowCaseBranch, 0, len(ex.Exprs))
+	for _, e := range ex.Exprs {
+		te := e.(tree.TypedExpr)
+		// WHEN te IS NOT NULL: the COALESCE WHEN mask is "is not null".
+		whenCol := arrowProjectionCol{
+			Kind:   "isnotnull",
+			Inputs: []arrowArg{},
+		}
+		// Build the isnull arg: a passthrough column (or scalar) for te.
+		arg, _, ok := p.arrowOperandArg(te, indexVarMap)
+		if !ok {
+			return arrowProjectionCol{}, nil, errors.Errorf("arrow coalesce: unsupported argument")
+		}
+		whenCol.Inputs = []arrowArg{arg}
+		thenCol, err := p.arrowCaseValueCol(te, resultType, indexVarMap)
+		if err != nil {
+			return arrowProjectionCol{}, nil, err
+		}
+		branches = append(branches, arrowCaseBranch{When: &whenCol, Then: &thenCol})
+	}
+	// ELSE is the last argument (its value when all preceding are NULL).
+	last := ex.Exprs[len(ex.Exprs)-1].(tree.TypedExpr)
+	elseCol, err := p.arrowCaseValueCol(last, resultType, indexVarMap)
+	if err != nil {
+		return arrowProjectionCol{}, nil, err
+	}
+	return arrowProjectionCol{
+		Kind:     "case",
+		Branches: branches,
+		Else:     &elseCol,
+	}, resultType, nil
+}
+
+// arrowComparisonCol builds a boolean-producing arrowProjectionCol for a
+// comparison expression (used as a CASE WHEN condition). Only equality and the
+// other simple comparisons that map to arrow/compute kernels are supported; the
+// executor evaluates them and returns a boolean mask.
+func (p *PhysicalPlan) arrowComparisonCol(ex *tree.ComparisonExpr, indexVarMap []int) (arrowProjectionCol, *types.T, error) {
+	fn, ok := arrowComparisonKernel(ex.Operator)
+	if !ok {
+		return arrowProjectionCol{}, nil, errors.Errorf("arrow projection: unsupported comparison %v in CASE WHEN", ex.Operator)
+	}
+	l, _, _ := p.arrowOperandArg(ex.Left.(tree.TypedExpr), indexVarMap)
+	r, _, _ := p.arrowOperandArg(ex.Right.(tree.TypedExpr), indexVarMap)
+	return arrowProjectionCol{
+		Kind:   "compute",
+		Func:   fn,
+		Inputs: []arrowArg{l, r},
+	}, types.Bool, nil
+}
+
+// arrowComparisonKernel maps a tree comparison operator to an arrow/compute
+// kernel name that returns a boolean array.
+func arrowComparisonKernel(op tree.ComparisonOperator) (string, bool) {
+	switch op {
+	case tree.EQ:
+		return "equal", true
+	case tree.NE:
+		return "not_equal", true
+	case tree.LT:
+		return "less", true
+	case tree.LE:
+		return "less_equal", true
+	case tree.GT:
+		return "greater", true
+	case tree.GE:
+		return "greater_equal", true
+	}
+	return "", false
+}
+
 // arrowFilterPlan is the JSON-serialized plan carried inside
 // ProcessorCoreUnion.ArrowFilter.Expr. Its JSON shape mirrors the struct
 // defined in the rowexec package; the JSON bytes are the only contract between
@@ -2135,7 +2630,7 @@ type arrowFilterPlan struct {
 }
 
 type arrowFilterNode struct {
-	Func     string              `json:"func"`
+	Func     string               `json:"func"`
 	Operands []arrowFilterOperand `json:"ops"`
 }
 
@@ -2145,20 +2640,41 @@ type arrowFilterOperand struct {
 }
 
 type arrowFilterLeaf struct {
-	Col        int                `json:"col"`
-	ConstInt   *int64             `json:"cint,omitempty"`
-	ConstFloat *float64           `json:"cfloat,omitempty"`
-	ConstBool  *bool              `json:"cbool,omitempty"`
-	ConstStr   *string            `json:"cstr,omitempty"`
+	Col        int      `json:"col"`
+	ConstInt   *int64   `json:"cint,omitempty"`
+	ConstFloat *float64 `json:"cfloat,omitempty"`
+	ConstBool  *bool    `json:"cbool,omitempty"`
+	ConstStr   *string  `json:"cstr,omitempty"`
 	// ConstSetInt / ConstSetStr carry the member set of an IN / NOT IN predicate.
 	// They serialize with the same JSON tags as the receiver-side leaf so the
 	// arrow filter processor can rebuild the ConstSet.
 	ConstSetInt []int64  `json:"csetint,omitempty"`
 	ConstSetStr []string `json:"csetstr,omitempty"`
-	Binary      *arrowFilterBinary `json:"bin,omitempty"`
+	// ConstSetFloat carries the member set of a decimal IN / NOT IN predicate.
+	// Decimal columns are cast to FLOAT before the comparison (Arrow compute has
+	// no DECIMAL is_in kernel), so the set is emitted as float64 (see buildArrowFilterNode).
+	ConstSetFloat []float64 `json:"csetfloat,omitempty"`
+	// ConstDecimal transports a decimal literal into a float-cast IN comparison.
+	ConstDecimal *tree.DDecimal     `json:"cdec,omitempty"`
+	Binary       *arrowFilterBinary `json:"bin,omitempty"`
 	// Cast is a type conversion applied to Arg, supporting CAST(col AS ...) inside
 	// arrow filter predicates (e.g. CAST(i AS STRING) LIKE '1%').
 	Cast *arrowFilterCast `json:"cast,omitempty"`
+	// Computed lifts a string function (substring/trim/concat/replace/...) on
+	// columns into the Arrow filter path, so that "substring(col,1,3) = 'abc'"
+	// evaluates entirely in the Arrow engine instead of falling back to a
+	// row-by-row tree.Datum path. See arrow_arg.go (executor) for the
+	// corresponding receiver type.
+	Computed *arrowFilterComputed `json:"cmp,omitempty"`
+}
+
+// arrowFilterComputed wraps a projection function (its Func name plus a list of
+// leaf arguments) as a filter leaf. The executor materializes it into an Arrow
+// array via the existing arrowProjection string kernels, then uses that array
+// as the operand of the surrounding comparison / LIKE predicate.
+type arrowFilterComputed struct {
+	Func string            `json:"func"`
+	Args []arrowFilterLeaf `json:"args"`
 }
 
 // arrowFilterBinary is a nested arithmetic expression (add/sub/mul/div) that a
@@ -2204,6 +2720,9 @@ func (p *PhysicalPlan) arrowFilterLeafFromExpr(
 	case *tree.DString:
 		s := string(*c)
 		return &arrowFilterLeaf{Col: -1, ConstStr: &s}, e.ResolvedType(), true
+	case *tree.DDecimal:
+		v := *c
+		return &arrowFilterLeaf{Col: -1, ConstDecimal: &v}, e.ResolvedType(), true
 	case *tree.BinaryExpr:
 		var fn string
 		switch c.Operator {
@@ -2245,6 +2764,26 @@ func (p *PhysicalPlan) arrowFilterLeafFromExpr(
 		}
 		return &arrowFilterLeaf{
 			Cast: &arrowFilterCast{Func: "cast", Type: tag, Arg: *inner},
+		}, c.ResolvedType(), true
+	case *tree.FuncExpr:
+		// Lift supported string functions (substring/trim/concat/replace/...) on
+		// columns into the Arrow filter path as a computed leaf, so that e.g.
+		// "substring(col,1,3) = 'abc'" runs entirely in the Arrow engine instead
+		// of falling back to a row-by-row tree.Datum evaluation.
+		fn, ok := arrowStringFuncName(c.Func.String())
+		if !ok {
+			return nil, nil, false
+		}
+		args := make([]arrowFilterLeaf, len(c.Exprs))
+		for i, a := range c.Exprs {
+			al, _, ok := p.arrowFilterLeafFromExpr(a.(tree.TypedExpr), indexVarMap)
+			if !ok {
+				return nil, nil, false
+			}
+			args[i] = *al
+		}
+		return &arrowFilterLeaf{
+			Computed: &arrowFilterComputed{Func: fn, Args: args},
 		}, c.ResolvedType(), true
 	}
 	return nil, nil, false
@@ -2297,13 +2836,13 @@ func (p *PhysicalPlan) canArrowFilterExpr(e tree.TypedExpr, indexVarMap []int) b
 				if !ok {
 					return false
 				}
-				return l.Col >= 0 || l.Binary != nil || l.Cast != nil
+				return l.Col >= 0 || l.Binary != nil || l.Cast != nil || l.Computed != nil
 			case tree.NE:
 				l, _, ok := p.arrowFilterLeafFromExpr(ex.Left.(tree.TypedExpr), indexVarMap)
 				if !ok {
 					return false
 				}
-				return l.Col >= 0 || l.Binary != nil || l.Cast != nil
+				return l.Col >= 0 || l.Binary != nil || l.Cast != nil || l.Computed != nil
 			}
 			return false
 		}
@@ -2316,7 +2855,7 @@ func (p *PhysicalPlan) canArrowFilterExpr(e tree.TypedExpr, indexVarMap []int) b
 			}
 			// Require at least one column or computed-column reference so that
 			// trivially constant predicates are not accelerated.
-			if l.Col < 0 && l.Binary == nil && l.Cast == nil && r.Col < 0 && r.Binary == nil && r.Cast == nil {
+			if l.Col < 0 && l.Binary == nil && l.Cast == nil && l.Computed == nil && r.Col < 0 && r.Binary == nil && r.Cast == nil && r.Computed == nil {
 				return false
 			}
 			if lty.Family() != rty.Family() {
@@ -2343,7 +2882,7 @@ func (p *PhysicalPlan) canArrowFilterExpr(e tree.TypedExpr, indexVarMap []int) b
 				return false
 			}
 			// Left must reference a column/computed column; pattern must be a constant.
-			if l.Col < 0 && l.Binary == nil && l.Cast == nil {
+			if l.Col < 0 && l.Binary == nil && l.Cast == nil && l.Computed == nil {
 				return false
 			}
 			if r.ConstStr == nil {
@@ -2358,22 +2897,22 @@ func (p *PhysicalPlan) canArrowFilterExpr(e tree.TypedExpr, indexVarMap []int) b
 			if !ok {
 				return false
 			}
-			if l.Col < 0 && l.Binary == nil && l.Cast == nil {
+			if l.Col < 0 && l.Binary == nil && l.Cast == nil && l.Computed == nil {
 				return false
 			}
-			tup, ok := ex.Right.(*tree.Tuple)
-			if !ok || len(tup.Exprs) == 0 {
+			tup, ok := ex.Right.(*tree.DTuple)
+			if !ok || len(tup.D) == 0 {
 				return false
 			}
 			if !arrowSupportedCompareType(lty) {
 				return false
 			}
 			switch lty.Family() {
-			case types.IntFamily, types.StringFamily:
+			case types.IntFamily, types.StringFamily, types.DecimalFamily:
 			default:
 				return false
 			}
-			for _, e := range tup.Exprs {
+			for _, e := range tup.D {
 				rl, rty, ok := p.arrowFilterLeafFromExpr(e.(tree.TypedExpr), indexVarMap)
 				if !ok {
 					return false
@@ -2405,10 +2944,24 @@ func (p *PhysicalPlan) canArrowFilterExpr(e tree.TypedExpr, indexVarMap []int) b
 // handle the given type.
 func arrowSupportedCompareType(t *types.T) bool {
 	switch t.Family() {
-	case types.IntFamily, types.FloatFamily, types.BoolFamily, types.StringFamily, types.BytesFamily:
+	case types.IntFamily, types.FloatFamily, types.BoolFamily, types.StringFamily, types.BytesFamily, types.DecimalFamily:
 		return true
 	}
 	return false
+}
+
+// ArrowTsScanSupported reports whether every column type of a time-series scan
+// can be serialized into an Arrow Record (see rowexec.arrowTsReader, §6.7/§6.8
+// 审订 in docs/arrow-unify-roadmap.md). The TS read path emits the same
+// relational-format buffer (EncDatumRow) that relational scans do, and
+// buildArrowColumns / arrowDataTypeForKWType already cover these types.
+func ArrowTsScanSupported(typs []types.T) bool {
+	for i := range typs {
+		if !arrowSupportedCompareType(&typs[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 // buildArrowFilterNode translates a typed filter expression into the JSON plan
@@ -2488,12 +3041,12 @@ func (p *PhysicalPlan) buildArrowFilterNode(e tree.TypedExpr, indexVarMap []int)
 		if ex.Operator == tree.In || ex.Operator == tree.NotIn {
 			// The right operand is a tuple of constants; build a ConstSet leaf
 			// from its elements (all same family, validated by canArrowFilterExpr).
-			tup := ex.Right.(*tree.Tuple)
-			set := &arrowFilterLeaf{}
+			tup := ex.Right.(*tree.DTuple)
+			set := &arrowFilterLeaf{Col: -1}
 			switch lty.Family() {
 			case types.IntFamily:
-				ints := make([]int64, 0, len(tup.Exprs))
-				for _, e := range tup.Exprs {
+				ints := make([]int64, 0, len(tup.D))
+				for _, e := range tup.D {
 					rl, _, _ := p.arrowFilterLeafFromExpr(e.(tree.TypedExpr), indexVarMap)
 					if rl.ConstInt == nil {
 						return arrowFilterNode{}, false
@@ -2502,8 +3055,8 @@ func (p *PhysicalPlan) buildArrowFilterNode(e tree.TypedExpr, indexVarMap []int)
 				}
 				set.ConstSetInt = ints
 			case types.StringFamily:
-				strs := make([]string, 0, len(tup.Exprs))
-				for _, e := range tup.Exprs {
+				strs := make([]string, 0, len(tup.D))
+				for _, e := range tup.D {
 					rl, _, _ := p.arrowFilterLeafFromExpr(e.(tree.TypedExpr), indexVarMap)
 					if rl.ConstStr == nil {
 						return arrowFilterNode{}, false
@@ -2511,6 +3064,27 @@ func (p *PhysicalPlan) buildArrowFilterNode(e tree.TypedExpr, indexVarMap []int)
 					strs = append(strs, *rl.ConstStr)
 				}
 				set.ConstSetStr = strs
+			case types.DecimalFamily:
+				// Arrow compute has no DECIMAL is_in kernel; cast the decimal
+				// column to FLOAT and compare against float constants (matching
+				// the existing castToFloat64 path). For decimals within float64
+				// precision this is exact; very large magnitudes may lose low
+				// bits, consistent with the float cast path's precision contract.
+				if tag, ok := arrowCastTargetTag(types.Float); ok {
+					l = &arrowFilterLeaf{Cast: &arrowFilterCast{Func: "cast", Type: tag, Arg: *l}}
+				} else {
+					return arrowFilterNode{}, false
+				}
+				floats := make([]float64, 0, len(tup.D))
+				for _, e := range tup.D {
+					rl, _, _ := p.arrowFilterLeafFromExpr(e.(tree.TypedExpr), indexVarMap)
+					if rl.ConstDecimal == nil {
+						return arrowFilterNode{}, false
+					}
+					f, _ := rl.ConstDecimal.Float64()
+					floats = append(floats, f)
+				}
+				set.ConstSetFloat = floats
 			default:
 				return arrowFilterNode{}, false
 			}
@@ -2707,9 +3281,9 @@ func (p *PhysicalPlan) AddRelationalFilter(
 				ArrowFilter: &execinfrapb.Expression{Expr: string(b)},
 			}
 			p.AddNoGroupingStage(core, execinfrapb.PostProcessSpec{}, p.ResultTypes, p.MergeOrdering)
-		return nil
+			return nil
+		}
 	}
-}
 
 	if addNoop {
 		*post = execinfrapb.PostProcessSpec{OutputTypes: p.ResultTypes}

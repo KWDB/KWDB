@@ -21,12 +21,14 @@ import (
 	"sync/atomic"
 
 	"github.com/apache/arrow/go/v17/arrow"
+	"github.com/apache/arrow/go/v17/arrow/array"
 	"github.com/apache/arrow/go/v17/arrow/compute"
 	"github.com/apache/arrow/go/v17/arrow/memory"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 )
 
 // arrowFilterPlan is the JSON-serialized plan carried in
@@ -61,9 +63,16 @@ type arrowFilterLeafJS struct {
 	// set, and both imply Col < 0.
 	ConstSetInt []int64  `json:"csetint,omitempty"`
 	ConstSetStr []string `json:"csetstr,omitempty"`
+	// ConstSetFloat carries a decimal IN / NOT IN set; the decimal column is
+	// cast to FLOAT before comparison (Arrow compute has no DECIMAL is_in kernel).
+	ConstSetFloat []float64 `json:"csetfloat,omitempty"`
 	Binary    *arrowFilterBinaryJS `json:"bin,omitempty"`
 	// Cast is a type conversion leaf, supporting CAST(col AS ...) in predicates.
 	Cast *arrowFilterCastJS `json:"cast,omitempty"`
+	// Computed lifts a string function (substring/trim/concat/replace/...) on
+	// columns into the Arrow filter path as a computed leaf. Corresponds to
+	// arrowFilterComputed on the planner side.
+	Computed *arrowFilterComputedJS `json:"cmp,omitempty"`
 }
 
 // arrowFilterBinaryJS is a nested arithmetic expression leaf operand.
@@ -78,6 +87,15 @@ type arrowFilterCastJS struct {
 	Func string            `json:"func"`
 	Type string            `json:"type"`
 	Arg  arrowFilterLeafJS `json:"arg"`
+}
+
+// arrowFilterComputedJS is the JSON shape of a string-function leaf lifted into
+// the Arrow filter path (e.g. substring(col,1,3)). It mirrors arrowFilterComputed
+// on the planner side and is materialized into an Arrow array by the executor's
+// existing projection kernels.
+type arrowFilterComputedJS struct {
+	Func string              `json:"func"`
+	Args []arrowFilterLeafJS `json:"args"`
 }
 
 // arrowFilterRuns counts how many times the arrow filter processor has run.
@@ -104,6 +122,10 @@ type arrowFilterProcessor struct {
 	// outputRec is the arrow.Record produced in compute, retained for
 	// operator-to-operator buffering (§7.8). Released in ConsumerClosed.
 	outputRec arrow.Record
+	// rowSrc adapts outputRec to the RowSource interface so the classic
+	// (non-colexec) downstream path can consume it without a separate decode;
+	// the colexec path instead uses ArrowOutput() straight via RecordToBatch.
+	rowSrc execinfra.RowSource
 }
 
 var _ execinfra.RowSource = &arrowFilterProcessor{}
@@ -147,16 +169,23 @@ func (p *arrowFilterProcessor) Start(ctx context.Context) context.Context {
 
 // Next implements the RowSource interface.
 func (p *arrowFilterProcessor) Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerMetadata) {
-	// outputRows already carry the stage post-processing applied once in
-	// compute (via p.Out.ProcessRow); emit them directly to avoid applying
-	// the post twice.
+	// Emit outputRec via the Arrow->RowSource bridge so the classic (non-colexec)
+	// downstream path consumes the same Record that colexec consumes via
+	// ArrowOutput()/RecordToBatch. Post-processing is already applied once in
+	// compute (via p.Out.ProcessRow), so the bridge emits it directly.
 	for p.State == execinfra.StateRunning {
-		if p.rowIdx >= len(p.outputRows) {
-			p.MoveToDraining(nil)
-			break
+		if p.rowSrc == nil {
+			p.rowSrc = NewArrowToRowSource(p.outputRec, p.OutputTypes())
 		}
-		row := p.outputRows[p.rowIdx]
-		p.rowIdx++
+		row, meta := p.rowSrc.Next()
+		if meta != nil && meta.Err != nil {
+			p.MoveToDraining(meta.Err)
+			return nil, p.DrainHelper()
+		}
+		if row == nil {
+			p.MoveToDraining(nil)
+			return nil, p.DrainHelper()
+		}
 		return row, nil
 	}
 	return nil, p.DrainHelper()
@@ -237,6 +266,24 @@ func (p *arrowFilterProcessor) compute(ctx context.Context) error {
 		out = append(out, cp)
 	}
 	p.outputRows = out
+	// Rebuild outputRec from the post-processed (projected) rows so that both
+	// the Arrow->RowSource bridge (used by the classic downstream path) and
+	// ArrowOutput() (used by colexec) emit the final column set, not the raw
+	// input columns. Otherwise an internal evaluation column (e.g. produced by
+	// CAST inside a filter predicate) leaks through and the downstream receives
+	// more columns than its plan expects (e.g. "invalid row length 3, expected 2").
+	if rec != nil {
+		rec.Release()
+	}
+	projTypes := make([]*types.T, len(p.Out.OutputTypes))
+	for i := range p.Out.OutputTypes {
+		projTypes[i] = &p.Out.OutputTypes[i]
+	}
+	projCols, err := buildArrowColumns(p.alloc, projTypes, out, p.da)
+	if err != nil {
+		return err
+	}
+	p.outputRec = array.NewRecord(buildArrowSchema(projTypes), projCols, int64(len(out)))
 	return nil
 }
 
@@ -262,6 +309,13 @@ func leafToArrowArg(l *arrowFilterLeafJS) *ArrowArg {
 	if l.Cast != nil {
 		return &ArrowArg{Cast: &ArrowArgCast{Type: arrowCastType(l.Cast.Type), Arg: *leafToArrowArg(&l.Cast.Arg)}}
 	}
+	if l.Computed != nil {
+		args := make([]ArrowArg, len(l.Computed.Args))
+		for i, a := range l.Computed.Args {
+			args[i] = *leafToArrowArg(&a)
+		}
+		return &ArrowArg{Computed: &ArrowProjectionSpec{Func: l.Computed.Func, Args: args}}
+	}
 	if l.Col >= 0 {
 		return &ArrowArg{ColName: fmt.Sprintf("col%d", l.Col)}
 	}
@@ -284,6 +338,12 @@ func leafToArrowArg(l *arrowFilterLeafJS) *ArrowArg {
 		set := make([]compute.Datum, len(l.ConstSetStr))
 		for i, v := range l.ConstSetStr {
 			set[i] = compute.NewDatum(string(v))
+		}
+		return &ArrowArg{ConstSet: set}
+	case len(l.ConstSetFloat) > 0:
+		set := make([]compute.Datum, len(l.ConstSetFloat))
+		for i, v := range l.ConstSetFloat {
+			set[i] = compute.NewDatum(float64(v))
 		}
 		return &ArrowArg{ConstSet: set}
 	}
@@ -329,8 +389,10 @@ type ArrowRecordEmitter interface {
 // unifiedInputFrom returns a UnifiedProcessor feeding the given arrow operator.
 // When src is an ArrowRecordEmitter that produced a record, that record is
 // passed through directly (operator-to-operator buffering, no row round-trip).
-// Otherwise src is a legacy RowSource and is drained into an Arrow Record via
-// newArrowInputSource — the scan bridge / fallback path.
+// Otherwise src is a legacy RowSource (e.g. a colexec operator's row output) and
+// is wrapped by NewRowSourceToArrow — the arrow_bridge — which incrementally
+// builds a single native Arrow Record from the streamed rows, so a colexec stage
+// can sit directly upstream of an Arrow stage in the same flow.
 //
 // NewArrowRecordSource does not Retain, so the returned Record is owned by the
 // caller; the upstream operator retains its own copy and releases it on Close.
@@ -340,5 +402,5 @@ func unifiedInputFrom(alloc memory.Allocator, src execinfra.RowSource, da *sqlba
 			return NewArrowRecordSource(alloc, rec), nil
 		}
 	}
-	return newArrowScan(alloc, src, da), nil
+	return NewRowSourceToArrow(alloc, src, da), nil
 }

@@ -59,7 +59,7 @@ func TestArrowProjectionNumericFuncs(t *testing.T) {
 		src2 := rowexec.NewArrowRecordSource(alloc, rec2)
 		p := rowexec.NewArrowProjection(alloc, src2, []rowexec.ArrowProjectionSpec{
 			{OutputName: "out", Func: funcName, Args: args},
-		})
+		}, nil)
 		p.Init(ctx)
 		v, err := rowexec.ArrowProjectionResultFloat64(p, ctx)
 		if err != nil {

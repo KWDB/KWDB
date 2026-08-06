@@ -124,7 +124,7 @@ func aggOutputType(fn string, in arrow.DataType) arrow.DataType {
 	switch fn {
 	case "count", "count_all":
 		return arrow.PrimitiveTypes.Int64
-	case "mean", "sqrdiff", "final_variance", "final_stddev":
+	case "mean", "sqrdiff", "final_variance", "final_stddev", "variance", "stddev":
 		// These widen integer/decimal inputs to DECIMAL128 and keep floats as
 		// FLOAT64, matching the colexec sqrdiff/variance/stddev output types.
 		if in != nil && (in.ID() == arrow.INT64 || in.ID() == arrow.DECIMAL128) {

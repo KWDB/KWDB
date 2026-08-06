@@ -18,8 +18,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/cockroachdb/cockroach/pkg/util/leaktest"
-	"github.com/cockroachdb/cockroach/pkg/util/log"
+	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
+	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/stretchr/testify/require"
 	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/rowexec"
@@ -88,17 +88,18 @@ func TestArrowUnifyMergeJoin(t *testing.T) {
 	runJoin("SELECT ml.v, mr.w FROM ml JOIN mr ON ml.k = mr.k ORDER BY ml.v", innerWant)
 	runJoin("SELECT ml.v, mr.w FROM ml INNER JOIN mr ON ml.k = mr.k ORDER BY ml.v", innerWant)
 
-	// Left join: unmatched left key 3 -> (30, NULL); NULL mapped to 0 by
-	// queryIntRows. (1,10,100), (2,20,200), (3,30,0), (5,50,500).
-	leftWant := [][]int64{{10, 100}, {20, 200}, {30, 0}, {50, 500}}
+	// Left join: unmatched left key 3 -> (30, NULL); queryIntRows maps SQL
+	// NULL to the -9999 sentinel. (1,10,100), (2,20,200), (3,30,-9999), (5,50,500).
+	leftWant := [][]int64{{10, 100}, {20, 200}, {30, -9999}, {50, 500}}
 	runJoin("SELECT ml.v, mr.w FROM ml LEFT JOIN mr ON ml.k = mr.k ORDER BY ml.v", leftWant)
 
-	// Right join: unmatched right key 4 -> (0, 400). (1,10,100),(2,20,200),(0,400),(5,50,500).
-	rightWant := [][]int64{{0, 400}, {10, 100}, {20, 200}, {50, 500}}
+	// Right join: unmatched right key 4 -> (NULL, 400) -> (-9999, 400).
+	// (1,10,100),(2,20,200),(-9999,400),(5,50,500).
+	rightWant := [][]int64{{-9999, 400}, {10, 100}, {20, 200}, {50, 500}}
 	runJoin("SELECT ml.v, mr.w FROM ml RIGHT JOIN mr ON ml.k = mr.k ORDER BY ml.v", rightWant)
 
-	// Full outer join: both unmatched sides preserved.
-	fullWant := [][]int64{{0, 400}, {10, 100}, {20, 200}, {30, 0}, {50, 500}}
+	// Full outer join: both unmatched sides preserved (SQL NULL -> -9999).
+	fullWant := [][]int64{{-9999, 400}, {10, 100}, {20, 200}, {30, -9999}, {50, 500}}
 	runJoin("SELECT ml.v, mr.w FROM ml FULL OUTER JOIN mr ON ml.k = mr.k ORDER BY ml.v", fullWant)
 
 	// Inner join with a non-equi onExpr post-filter (only ml.v > 15 matches:

@@ -20,11 +20,6 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/array"
-	"github.com/apache/arrow/go/v17/arrow/compute"
-	"github.com/apache/arrow/go/v17/arrow/memory"
-	"github.com/cockroachdb/apd"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
@@ -33,6 +28,11 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	jsonutil "gitee.com/kwbasedb/kwbase/pkg/util/json"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
+	"github.com/apache/arrow/go/v17/arrow"
+	"github.com/apache/arrow/go/v17/arrow/array"
+	"github.com/apache/arrow/go/v17/arrow/compute"
+	"github.com/apache/arrow/go/v17/arrow/memory"
+	"github.com/cockroachdb/apd"
 )
 
 // arrowProjectionPlan is the JSON-serialized plan carried in
@@ -65,10 +65,25 @@ type arrowArg struct {
 // projection. A "compute" column applies an arrow/compute kernel (e.g. add) to
 // its arguments; a "passthrough" column copies an input column verbatim.
 type arrowProjectionCol struct {
-	Kind   string     `json:"kind"`   // "compute" or "passthrough"
+	Kind   string     `json:"kind"`   // "compute", "passthrough", or "case"
 	Func   string     `json:"func"`   // for compute: add/sub/mul/div/negate/copy
 	Inputs []arrowArg `json:"inputs"` // for compute: arguments (columns and/or constants)
 	Input  int        `json:"input"`  // for passthrough: input column index
+	// Branches are the WHEN/THEN pairs of a CASE/COALESCE projection. Only set
+	// when Kind == "case".
+	Branches []arrowCaseBranch `json:"branches,omitempty"`
+	// Else is the fallback value of a CASE/COALESCE projection. Only set when
+	// Kind == "case".
+	Else *arrowProjectionCol `json:"else,omitempty"`
+	// TZ marks that the timestamp operand of a datetime function is a
+	// TIMESTAMPTZ. Only set when Kind == "datetime".
+	TZ bool `json:"tz,omitempty"`
+}
+
+// arrowCaseBranch is a single WHEN/THEN pair of a CASE/COALESCE projection.
+type arrowCaseBranch struct {
+	When *arrowProjectionCol `json:"when"`
+	Then *arrowProjectionCol `json:"then"`
 }
 
 // arrowProjectionRuns counts how many times the arrow projection processor has
@@ -223,7 +238,7 @@ func (p *arrowProjectionProcessor) computeGeneric(ctx context.Context, inTypes [
 		return err
 	}
 
-	proj := NewArrowProjection(p.alloc, conv, p.buildProjectionSpecs())
+	proj := NewArrowProjection(p.alloc, conv, p.buildProjectionSpecs(), p.ProcessorBase.EvalCtx)
 	proj.Init(ctx)
 	rec, done, err := proj.Next(ctx)
 	if err != nil {
@@ -329,7 +344,7 @@ func (p *arrowProjectionProcessor) computeInt(ctx context.Context, inTypes []typ
 	}
 	rec := array.NewRecord(arrow.NewSchema(fields, nil), cols, int64(n))
 
-	proj := NewArrowProjection(p.alloc, NewArrowRecordSource(p.alloc, rec), p.buildProjectionSpecs())
+	proj := NewArrowProjection(p.alloc, NewArrowRecordSource(p.alloc, rec), p.buildProjectionSpecs(), nil)
 	proj.Init(ctx)
 	out, done, err := proj.Next(ctx)
 	if err != nil {
@@ -378,39 +393,64 @@ func arrowCastTagToType(tag string, scale int32) arrow.DataType {
 func (p *arrowProjectionProcessor) buildProjectionSpecs() []ArrowProjectionSpec {
 	specs := make([]ArrowProjectionSpec, len(p.plan.Cols))
 	for i, c := range p.plan.Cols {
-		outName := fmt.Sprintf("out%d", i)
-		if c.Kind == "passthrough" {
-			specs[i] = ArrowProjectionSpec{
-				OutputName: outName,
-				Func:       "copy",
-				Args:       []ArrowArg{{ColName: fmt.Sprintf("col%d", c.Input)}},
-			}
-			continue
-		}
-		args := make([]ArrowArg, len(c.Inputs))
-		for j, in := range c.Inputs {
-			if in.Col >= 0 {
-				args[j] = ArrowArg{ColName: fmt.Sprintf("col%d", in.Col)}
-			} else {
-				args[j] = ArrowArg{Scalar: arrowConstDatum(in, p.alloc)}
-			}
-			// Render-side CAST: attach the target type so the projection kernel
-			// casts the operand before feeding it to the compute function.
-			if in.Cast != nil {
-				scale := int32(0)
-				if in.CastScale != nil {
-					scale = *in.CastScale
-				}
-				args[j].Cast = &ArrowArgCast{Type: arrowCastTagToType(*in.Cast, scale)}
-			}
-		}
-		specs[i] = ArrowProjectionSpec{
-			OutputName: outName,
-			Func:       c.Func,
-			Args:       args,
-		}
+		specs[i] = p.specForCol(fmt.Sprintf("out%d", i), c)
 	}
 	return specs
+}
+
+// specForCol translates a single planner projection column into an executor
+// ArrowProjectionSpec, recursing into CASE/COALESCE branches.
+func (p *arrowProjectionProcessor) specForCol(outName string, c arrowProjectionCol) ArrowProjectionSpec {
+	if c.Kind == "passthrough" {
+		return ArrowProjectionSpec{
+			OutputName: outName,
+			Func:       "copy",
+			Args:       []ArrowArg{{ColName: fmt.Sprintf("col%d", c.Input)}},
+		}
+	}
+	if c.Kind == "case" {
+		branches := make([]ArrowProjectionBranch, len(c.Branches))
+		for i, br := range c.Branches {
+			when := p.specForCol("", *br.When)
+			then := p.specForCol("", *br.Then)
+			branches[i] = ArrowProjectionBranch{When: &when, Then: &then}
+		}
+		var els *ArrowProjectionSpec
+		if c.Else != nil {
+			e := p.specForCol("", *c.Else)
+			els = &e
+		}
+		return ArrowProjectionSpec{
+			OutputName: outName,
+			Kind:       "case",
+			Branches:   branches,
+			Else:       els,
+		}
+	}
+	args := make([]ArrowArg, len(c.Inputs))
+	for j, in := range c.Inputs {
+		if in.Col >= 0 {
+			args[j] = ArrowArg{ColName: fmt.Sprintf("col%d", in.Col)}
+		} else {
+			args[j] = ArrowArg{Scalar: arrowConstDatum(in, p.alloc)}
+		}
+		// Render-side CAST: attach the target type so the projection kernel
+		// casts the operand before feeding it to the compute function.
+		if in.Cast != nil {
+			scale := int32(0)
+			if in.CastScale != nil {
+				scale = *in.CastScale
+			}
+			args[j].Cast = &ArrowArgCast{Type: arrowCastTagToType(*in.Cast, scale)}
+		}
+	}
+	return ArrowProjectionSpec{
+		OutputName: outName,
+		Func:       c.Func,
+		Args:       args,
+		Kind:       c.Kind, // "isnull"/"isnotnull" are evaluated by evalIsNull
+		TZ:         c.TZ,   // datetime funcs need to know about TIMESTAMPTZ
+	}
 }
 
 // ArrowProjectionResultInt64 runs the projection to completion and returns the
@@ -540,7 +580,7 @@ func arrowConstDatum(a arrowArg, _ memory.Allocator) compute.Datum {
 // collapse them, such as AVG = sum/count). The per-column KWDB type cannot be
 // taken from the post schema in that case, so it is derived from the Arrow type.
 func arrowDataTypeToKWType(dt arrow.DataType) types.T {
-	switch 	dt.ID() {
+	switch dt.ID() {
 	case arrow.INT8, arrow.INT16, arrow.INT32, arrow.INT64,
 		arrow.UINT8, arrow.UINT16, arrow.UINT32, arrow.UINT64:
 		return *types.Int

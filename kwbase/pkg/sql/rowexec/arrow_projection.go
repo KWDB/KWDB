@@ -8,6 +8,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/apache/arrow/go/v17/arrow"
@@ -15,6 +17,9 @@ import (
 	"github.com/apache/arrow/go/v17/arrow/compute"
 	"github.com/apache/arrow/go/v17/arrow/memory"
 	"github.com/apache/arrow/go/v17/arrow/scalar"
+
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/builtins"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 )
 
 // ArrowArg is a single argument to an Arrow compute function. It is either an
@@ -39,6 +44,11 @@ type ArrowArg struct {
 	// ConstSet is set; it is only honored by the arrow filter "in"/"not_in"
 	// kernels.
 	ConstSet []compute.Datum
+	// Computed is a nested projection function (e.g. substring/trim/concat on a
+	// column) used as an argument inside an arrow-computable filter or
+	// projection expression. It lets "substring(col,1,3) = 'abc'" run fully in
+	// the Arrow engine without falling back to a row-by-row tree.Datum path.
+	Computed *ArrowProjectionSpec
 }
 
 // ArrowArgBinary is a nested arithmetic expression used as a filter operand.
@@ -66,6 +76,28 @@ type ArrowProjectionSpec struct {
 	Func string
 	// Args are the function arguments (columns and/or scalar constants).
 	Args []ArrowArg
+	// Kind overrides the evaluation mode. When empty (the default), the spec is
+	// a plain arrow/compute function (Func + Args). "case" selects one of the
+	// Branches' Then values by evaluating each Branch.When as a boolean mask,
+	// falling back to Else. "isnull" produces a boolean mask marking null input
+	// rows (used as a CASE/COALESCE WHEN condition).
+	Kind string `json:"kind,omitempty"`
+	// Branches are the WHEN/THEN pairs of a case spec. Only set when Kind=="case".
+	Branches []ArrowProjectionBranch `json:"branches,omitempty"`
+	// Else is the fallback value of a case spec. Only set when Kind=="case".
+	Else *ArrowProjectionSpec `json:"else,omitempty"`
+	// TZ marks that the timestamp operand of a datetime function is a
+	// TIMESTAMPTZ, so the executor must honor the session time zone. Only set
+	// when Kind == "datetime".
+	TZ bool `json:"tz,omitempty"`
+}
+
+// ArrowProjectionBranch is a single WHEN/THEN pair of a case spec. When is a
+// boolean-producing spec (comparison or "isnull"); Then is the value produced
+// when When is true for a given row.
+type ArrowProjectionBranch struct {
+	When *ArrowProjectionSpec `json:"when,omitempty"`
+	Then *ArrowProjectionSpec `json:"then,omitempty"`
 }
 
 // arrowProjection is a UnifiedProcessor that evaluates projection expressions
@@ -74,14 +106,15 @@ type ArrowProjectionSpec struct {
 // vectorized pass over Arrow arrays (zero-copy ExecSpan views inside the
 // kernel) instead of one scalar tree.Datum evaluation per row.
 type arrowProjection struct {
-	alloc memory.Allocator
-	input UnifiedProcessor
-	specs []ArrowProjectionSpec
+	alloc   memory.Allocator
+	input   UnifiedProcessor
+	specs   []ArrowProjectionSpec
+	evalCtx *tree.EvalContext
 }
 
 // NewArrowProjection builds a projection operator over the given input.
-func NewArrowProjection(alloc memory.Allocator, input UnifiedProcessor, specs []ArrowProjectionSpec) UnifiedProcessor {
-	return &arrowProjection{alloc: alloc, input: input, specs: specs}
+func NewArrowProjection(alloc memory.Allocator, input UnifiedProcessor, specs []ArrowProjectionSpec, evalCtx *tree.EvalContext) UnifiedProcessor {
+	return &arrowProjection{alloc: alloc, input: input, specs: specs, evalCtx: evalCtx}
 }
 
 // Init implements UnifiedProcessor.
@@ -120,9 +153,25 @@ func (p *arrowProjection) Next(ctx context.Context) (arrow.Record, bool, error) 
 // (a zero-copy view over the Arrow buffer) and the result is unwrapped back
 // into an Arrow array.
 func (p *arrowProjection) eval(ctx context.Context, in arrow.Record, spec ArrowProjectionSpec) (arrow.Array, error) {
+	switch spec.Kind {
+	case "case":
+		return p.evalCase(ctx, in, spec)
+	case "isnull", "isnotnull":
+		return p.evalIsNull(ctx, in, spec)
+	case "datetime":
+		return p.evalArrowDatetimeFunc(ctx, in, spec)
+	}
 	if spec.Func == "copy" {
-		// Passthrough: copy an input column directly. Use a retained slice so the
-		// result stays valid after the input record is released by the caller.
+		// Passthrough: copy an input column directly, or materialize a scalar
+		// constant into a single-value array (used for CASE/COALESCE THEN/ELSE
+		// values and WHEN keys).
+		if spec.Args[0].Scalar != nil {
+			ad, ok := spec.Args[0].Scalar.(*compute.ScalarDatum)
+			if !ok {
+				return nil, fmt.Errorf("projection copy: expected scalar datum, got %T", spec.Args[0].Scalar)
+			}
+			return scalar.MakeArrayFromScalar(ad.Value, 1, p.alloc)
+		}
 		idx := in.Schema().FieldIndices(spec.Args[0].ColName)
 		if len(idx) == 0 {
 			return nil, fmt.Errorf("projection input column %q not found", spec.Args[0].ColName)
@@ -170,6 +219,330 @@ func (p *arrowProjection) eval(ctx context.Context, in arrow.Record, spec ArrowP
 		return nil, fmt.Errorf("expected array result from %q, got %T", spec.Func, res)
 	}
 	return ad.MakeArray(), nil
+}
+
+// evalIsNull produces a boolean mask array marking the rows where the single
+// argument (a column or scalar) is NULL ("isnull") or is NOT NULL
+// ("isnotnull"). COALESCE rewrites to CASE WHEN arg IS NOT NULL THEN arg ...,
+// so the WHEN branch uses the "isnotnull" polarity.
+func (p *arrowProjection) evalIsNull(ctx context.Context, in arrow.Record, spec ArrowProjectionSpec) (arrow.Array, error) {
+	if len(spec.Args) != 1 {
+		return nil, fmt.Errorf("arrow isnull expects exactly one argument, got %d", len(spec.Args))
+	}
+	notNull := spec.Kind == "isnotnull"
+	b := array.NewBooleanBuilder(p.alloc)
+	defer b.Release()
+	if spec.Args[0].Scalar != nil {
+		sd, ok := spec.Args[0].Scalar.(*compute.ScalarDatum)
+		if !ok {
+			return nil, fmt.Errorf("arrow isnull: expected scalar datum, got %T", spec.Args[0].Scalar)
+		}
+		isNull := !sd.Value.IsValid()
+		if notNull {
+			b.Append(!isNull)
+		} else {
+			b.Append(isNull)
+		}
+		return b.NewArray(), nil
+	}
+	idx := in.Schema().FieldIndices(spec.Args[0].ColName)
+	if len(idx) == 0 {
+		return nil, fmt.Errorf("projection input column %q not found", spec.Args[0].ColName)
+	}
+	col := in.Column(idx[0])
+	for i := 0; i < col.Len(); i++ {
+		if notNull {
+			b.Append(!col.IsNull(i))
+		} else {
+			b.Append(col.IsNull(i))
+		}
+	}
+	return b.NewArray(), nil
+}
+
+// evalCase evaluates a CASE/COALESCE expression. For each row it picks the
+// first branch whose When mask is true, falling back to Else. All Then/Else
+// values are expected to share the result type (the planner casts
+// heterogeneous branches to the result type).
+func (p *arrowProjection) evalCase(ctx context.Context, in arrow.Record, spec ArrowProjectionSpec) (arrow.Array, error) {
+	if spec.Else == nil {
+		return nil, fmt.Errorf("arrow case requires an ELSE branch")
+	}
+	// n is the number of input rows; branch/else scalars are broadcast to n.
+	n := in.Column(0).Len()
+	elseArr, err := p.eval(ctx, in, *spec.Else)
+	if err != nil {
+		return nil, err
+	}
+	defer elseArr.Release()
+	elseArr = broadcastTo(p.alloc, elseArr, n)
+	type branchEval struct {
+		mask *array.Boolean
+		val  arrow.Array
+	}
+	branches := make([]branchEval, len(spec.Branches))
+	defer func() {
+		for _, b := range branches {
+			if b.mask != nil {
+				b.mask.Release()
+			}
+			if b.val != nil {
+				b.val.Release()
+			}
+		}
+	}()
+	for i, br := range spec.Branches {
+		m, err := p.eval(ctx, in, *br.When)
+		if err != nil {
+			return nil, err
+		}
+		mb, ok := m.(*array.Boolean)
+		if !ok {
+			m.Release()
+			return nil, fmt.Errorf("arrow case branch WHEN did not evaluate to a boolean array (got %T)", m)
+		}
+		v, err := p.eval(ctx, in, *br.Then)
+		if err != nil {
+			mb.Release()
+			return nil, err
+		}
+		maskArr := broadcastTo(p.alloc, mb, n)
+		boolMask, ok := maskArr.(*array.Boolean)
+		if !ok {
+			return nil, fmt.Errorf("arrow case: expected boolean mask, got %T", maskArr)
+		}
+		branches[i] = branchEval{mask: boolMask, val: broadcastTo(p.alloc, v, n)}
+	}
+	switch e := elseArr.(type) {
+	case *array.Int64:
+		b := array.NewInt64Builder(p.alloc)
+		defer b.Release()
+	for i := 0; i < n; i++ {
+		chosen := e
+		for _, br := range branches {
+			if br.mask.Value(i) {
+				chosen = br.val.(*array.Int64)
+				break
+			}
+		}
+		if chosen.IsNull(i) {
+			b.AppendNull()
+		} else {
+			b.Append(chosen.Value(i))
+		}
+	}
+	return b.NewArray(), nil
+case *array.Float64:
+		b := array.NewFloat64Builder(p.alloc)
+		defer b.Release()
+		for i := 0; i < n; i++ {
+			chosen := e
+			for _, br := range branches {
+				if br.mask.Value(i) {
+					chosen = br.val.(*array.Float64)
+					break
+				}
+			}
+			if chosen.IsNull(i) {
+				b.AppendNull()
+			} else {
+				b.Append(chosen.Value(i))
+			}
+		}
+		return b.NewArray(), nil
+	case *array.String:
+		b := array.NewStringBuilder(p.alloc)
+		defer b.Release()
+		for i := 0; i < n; i++ {
+			chosen := e
+			for _, br := range branches {
+				if br.mask.Value(i) {
+					chosen = br.val.(*array.String)
+					break
+				}
+			}
+			if chosen.IsNull(i) {
+				b.AppendNull()
+			} else {
+				b.Append(chosen.Value(i))
+			}
+		}
+		return b.NewArray(), nil
+	case *array.Boolean:
+		b := array.NewBooleanBuilder(p.alloc)
+		defer b.Release()
+		for i := 0; i < n; i++ {
+			chosen := e
+			for _, br := range branches {
+				if br.mask.Value(i) {
+					chosen = br.val.(*array.Boolean)
+					break
+				}
+			}
+			if chosen.IsNull(i) {
+				b.AppendNull()
+			} else {
+				b.Append(chosen.Value(i))
+			}
+		}
+		return b.NewArray(), nil
+	default:
+		return nil, fmt.Errorf("arrow case result type %T is not supported", elseArr)
+	}
+}
+
+// evalArrowDatetimeFunc evaluates a datetime projection function (extract /
+// date_trunc) as a native vectorized Go loop over the Arrow Timestamp column.
+// The vendored arrow/compute module has no datetime kernels, and reusing the
+// canonical builtins.ExtractTimeSpanFromTimestamp / TruncateTimestamp helpers
+// keeps the Arrow path bit-for-bit consistent with the row-by-row path.
+//
+// The timestamp operand is stored as an Arrow Timestamp_us (microseconds since
+// the epoch); we reconstruct a time.Time at the session location for TIMESTAMPTZ
+// operands (spec.TZ) or at UTC for TIMESTAMP operands, matching the row path
+// (which calls fromTS.Time / fromTSTZ.Time.In(ctx.GetLocation())).
+func (p *arrowProjection) evalArrowDatetimeFunc(ctx context.Context, in arrow.Record, spec ArrowProjectionSpec) (arrow.Array, error) {
+	if len(spec.Args) != 2 {
+		return nil, fmt.Errorf("arrow datetime func expects 2 args, got %d", len(spec.Args))
+	}
+	// First argument: the constant field string (e.g. "year").
+	fd, ok := spec.Args[0].Scalar.(*compute.ScalarDatum)
+	if !ok {
+		return nil, fmt.Errorf("arrow datetime func: field must be a scalar, got %T", spec.Args[0].Scalar)
+	}
+	fieldScalar, ok := fd.Value.(*scalar.String)
+	if !ok {
+		return nil, fmt.Errorf("arrow datetime func: field must be a string scalar, got %T", fd.Value)
+	}
+	field := strings.ToLower(string(fieldScalar.Value.Bytes()))
+	// Second argument: the timestamp column.
+	idx := in.Schema().FieldIndices(spec.Args[1].ColName)
+	if len(idx) == 0 {
+		return nil, fmt.Errorf("arrow datetime func: input column %q not found", spec.Args[1].ColName)
+	}
+	tsCol := in.Column(idx[0])
+	tsArr, ok := tsCol.(*array.Timestamp)
+	if !ok {
+		return nil, fmt.Errorf("arrow datetime func: expected Timestamp column, got %T", tsCol)
+	}
+	n := tsArr.Len()
+	loc := time.UTC
+	if spec.TZ {
+		loc = p.evalCtx.GetLocation()
+	}
+	switch spec.Func {
+	case "extract":
+		b := array.NewFloat64Builder(p.alloc)
+		defer b.Release()
+		for i := 0; i < n; i++ {
+			if tsArr.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			t := time.UnixMicro(int64(tsArr.Value(i))).In(loc)
+			var d tree.Datum
+			var err error
+			if spec.TZ {
+				d, err = builtins.ExtractTimeSpanFromTimestampTZ(p.evalCtx, t, field)
+			} else {
+				d, err = builtins.ExtractTimeSpanFromTimestamp(p.evalCtx, t, field)
+			}
+			if err != nil {
+				return nil, err
+			}
+			f, ok := d.(*tree.DFloat)
+			if !ok {
+				return nil, fmt.Errorf("arrow extract: expected float, got %T", d)
+			}
+			b.Append(float64(*f))
+		}
+		return b.NewFloat64Array(), nil
+	case "date_trunc":
+		b := array.NewTimestampBuilder(p.alloc, arrow.FixedWidthTypes.Timestamp_us.(*arrow.TimestampType))
+		defer b.Release()
+		for i := 0; i < n; i++ {
+			if tsArr.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			t := time.UnixMicro(int64(tsArr.Value(i))).In(loc)
+			d, err := builtins.TruncateTimestamp(p.evalCtx, t, field)
+			if err != nil {
+				return nil, err
+			}
+			ts, ok := d.(*tree.DTimestampTZ)
+			if !ok {
+				return nil, fmt.Errorf("arrow date_trunc: expected timestamp, got %T", d)
+			}
+			b.Append(arrow.Timestamp(ts.Time.UnixMicro()))
+		}
+		return b.NewTimestampArray(), nil
+	}
+	return nil, fmt.Errorf("arrow datetime func: unsupported func %q", spec.Func)
+}
+
+// broadcastTo returns an array of length n. If src already has length n it is
+// returned unchanged (and the caller still owns/releases it). If src is a single
+// scalar value (length 1) it is replicated into a fresh length-n array. This
+// lets CASE/COALESCE THEN/ELSE constants broadcast across every input row.
+func broadcastTo(alloc memory.Allocator, src arrow.Array, n int) arrow.Array {
+	if src.Len() == n {
+		return src
+	}
+	if src.Len() != 1 {
+		// Unexpected shape: fall back to the source as-is; the type switch in
+		// evalCase will surface a clearer error if lengths still mismatch.
+		return src
+	}
+	defer src.Release()
+	switch a := src.(type) {
+	case *array.Int64:
+		b := array.NewInt64Builder(alloc)
+		defer b.Release()
+		for i := 0; i < n; i++ {
+			if a.IsNull(0) {
+				b.AppendNull()
+			} else {
+				b.Append(a.Value(0))
+			}
+		}
+		return b.NewArray()
+	case *array.Float64:
+		b := array.NewFloat64Builder(alloc)
+		defer b.Release()
+		for i := 0; i < n; i++ {
+			if a.IsNull(0) {
+				b.AppendNull()
+			} else {
+				b.Append(a.Value(0))
+			}
+		}
+		return b.NewArray()
+	case *array.String:
+		b := array.NewStringBuilder(alloc)
+		defer b.Release()
+		for i := 0; i < n; i++ {
+			if a.IsNull(0) {
+				b.AppendNull()
+			} else {
+				b.Append(a.Value(0))
+			}
+		}
+		return b.NewArray()
+	case *array.Boolean:
+		b := array.NewBooleanBuilder(alloc)
+		defer b.Release()
+		for i := 0; i < n; i++ {
+			if a.IsNull(0) {
+				b.AppendNull()
+			} else {
+				b.Append(a.Value(0))
+			}
+		}
+		return b.NewArray()
+	default:
+		return src
+	}
 }
 
 // resolvedStrArg is a string operand resolved to either a column or a constant.
@@ -285,19 +658,21 @@ func stringLen(s string, octet bool) int64 {
 }
 
 // sqlSubstring implements the SQL SUBSTRING(string, start[, length]) semantics
-// on runes: start is 1-based and inclusive; a negative length yields the empty
-// string.
-func sqlSubstring(s string, start, length int64) string {
+// on runes: start is 1-based and inclusive. A negative length is rejected to
+// match the classic (rowexec/colexec) path, which raises
+// "negative substring length N not allowed" rather than returning the empty
+// string (PostgreSQL behavior).
+func sqlSubstring(s string, start, length int64) (string, error) {
 	runes := []rune(s)
 	n := int64(len(runes))
 	if start < 1 {
 		start = 1
 	}
 	if start > n {
-		return ""
+		return "", nil
 	}
 	if length < 0 {
-		return ""
+		return "", fmt.Errorf("negative substring length %d not allowed", length)
 	}
 	rs := int(start) - 1
 	re := int(n)
@@ -308,9 +683,9 @@ func sqlSubstring(s string, start, length int64) string {
 		}
 	}
 	if re < rs {
-		return ""
+		return "", nil
 	}
-	return string(runes[rs:re])
+	return string(runes[rs:re]), nil
 }
 
 // evalArrowStringFunc evaluates the string-function projection kernels (length/
@@ -441,7 +816,11 @@ func (p *arrowProjection) evalArrowStringFunc(ctx context.Context, in arrow.Reco
 				}
 				length = intArgValue(*lenArg, i)
 			}
-			b.Append(sqlSubstring(strValue(strArg, i), start, length))
+			res, err := sqlSubstring(strValue(strArg, i), start, length)
+			if err != nil {
+				return nil, err
+			}
+			b.Append(res)
 		}
 		return b.NewArray(), nil
 	}
@@ -451,8 +830,8 @@ func (p *arrowProjection) evalArrowStringFunc(ctx context.Context, in arrow.Reco
 // evalArrowOverlay implements the SQL OVERLAY(str PLACING substr FROM start) as a
 // native vectorized loop. The arguments arrive as (str, substr, start) where
 // start is 1-based (the KWDB planner lowers the PLACING/FROM syntax into a
-// 3-argument FuncExpr). NULL in any operand yields NULL; start <= 0 is clamped
-// to 1 so the insertion point stays in range.
+// 3-argument FuncExpr). NULL in any operand yields NULL; a start position less
+// than 1 is rejected to match the classic path ("'start' must be positive").
 func (p *arrowProjection) evalArrowOverlay(ctx context.Context, in arrow.Record, spec ArrowProjectionSpec) (arrow.Array, error) {
 	if len(spec.Args) != 3 {
 		return nil, fmt.Errorf("overlay expects 3 arguments, got %d", len(spec.Args))
@@ -481,7 +860,7 @@ func (p *arrowProjection) evalArrowOverlay(ctx context.Context, in arrow.Record,
 		sub := strValue(subArg, i)
 		pos := intArgValue(startArg, i)
 		if pos < 1 {
-			pos = 1
+			return nil, fmt.Errorf("'start' must be positive: %d", pos)
 		}
 		runes := []rune(str)
 		start := int(pos - 1)
@@ -495,7 +874,8 @@ func (p *arrowProjection) evalArrowOverlay(ctx context.Context, in arrow.Record,
 
 // evalArrowSplitPart implements SQL SPLIT_PART(str, sep, n) as a native
 // vectorized loop. The string is split on the separator and the n-th (1-based)
-// field is returned. n <= 0 or n beyond the field count yields NULL.
+// field is returned. A non-positive field position is rejected to match the
+// classic path ("field position N must be greater than zero").
 func (p *arrowProjection) evalArrowSplitPart(ctx context.Context, in arrow.Record, spec ArrowProjectionSpec) (arrow.Array, error) {
 	if len(spec.Args) != 3 {
 		return nil, fmt.Errorf("split_part expects 3 arguments, got %d", len(spec.Args))
@@ -522,8 +902,7 @@ func (p *arrowProjection) evalArrowSplitPart(ctx context.Context, in arrow.Recor
 		}
 		field := intArgValue(nArg, i)
 		if field <= 0 {
-			b.AppendNull()
-			continue
+			return nil, fmt.Errorf("field position %d must be greater than zero", field)
 		}
 		str := strValue(strArg, i)
 		sep := strValue(sepArg, i)
@@ -542,7 +921,10 @@ func (p *arrowProjection) evalArrowSplitPart(ctx context.Context, in arrow.Recor
 // an optional second string argument names the set of characters to strip
 // instead of whitespace. ltrim/rtrim/btrim restrict stripping to the left,
 // right, or both sides respectively (btrim is the PostgreSQL name for BOTH).
-// All variants return NULL when the string operand is NULL.
+// All variants return NULL when the string operand is NULL. The no-cut-set
+// whitespace variant uses unicode.IsSpace to match the classic path
+// (strings.TrimSpace / TrimLeftFunc / TrimRightFunc), which strips all Unicode
+// whitespace (e.g. U+00A0) rather than only ASCII whitespace.
 func (p *arrowProjection) evalArrowTrim(ctx context.Context, in arrow.Record, spec ArrowProjectionSpec) (arrow.Array, error) {
 	if len(spec.Args) < 1 || len(spec.Args) > 2 {
 		return nil, fmt.Errorf("trim expects 1 or 2 arguments, got %d", len(spec.Args))
@@ -552,7 +934,8 @@ func (p *arrowProjection) evalArrowTrim(ctx context.Context, in arrow.Record, sp
 		return nil, err
 	}
 	var cutSet string
-	if len(spec.Args) == 2 {
+	hasCutSet := len(spec.Args) == 2
+	if hasCutSet {
 		c, err := p.resolveStrArg(in, spec.Args[1])
 		if err != nil {
 			return nil, err
@@ -569,8 +952,6 @@ func (p *arrowProjection) evalArrowTrim(ctx context.Context, in arrow.Record, sp
 				cutSet = c.col.Value(0)
 			}
 		}
-	} else {
-		cutSet = " \t\n\v\f\r"
 	}
 	left, right := true, true
 	switch spec.Func {
@@ -580,6 +961,16 @@ func (p *arrowProjection) evalArrowTrim(ctx context.Context, in arrow.Record, sp
 		left = false
 	}
 	trimOne := func(s string) string {
+		if !hasCutSet {
+			// Unicode whitespace: align with the classic path.
+			if left && right {
+				return strings.TrimSpace(s)
+			}
+			if left {
+				return strings.TrimLeftFunc(s, unicode.IsSpace)
+			}
+			return strings.TrimRightFunc(s, unicode.IsSpace)
+		}
 		if left && right {
 			return strings.Trim(s, cutSet)
 		}
@@ -608,9 +999,12 @@ func (p *arrowProjection) evalArrowTrim(ctx context.Context, in arrow.Record, sp
 
 // evalArrowReplace implements the SQL REPLACE(str, from, to) as a native
 // vectorized loop: every non-overlapping occurrence of the `from` substring is
-// replaced with `to`. Returns NULL when the string operand is NULL; the `from`
-// and `to` operands may be constants only (the planner only routes the literal
-// variants through this path).
+// replaced with `to`. This mirrors the classic path, which calls
+// strings.Replace(str, from, to, -1); in particular an empty `from` inserts
+// `to` between every character (Go's strings.Replace behavior). Returns NULL
+// when the string operand is NULL; the `from` and `to` operands may be
+// constants only (the planner only routes the literal variants through this
+// path).
 func (p *arrowProjection) evalArrowReplace(ctx context.Context, in arrow.Record, spec ArrowProjectionSpec) (arrow.Array, error) {
 	if len(spec.Args) != 3 {
 		return nil, fmt.Errorf("replace expects 3 arguments, got %d", len(spec.Args))
@@ -632,10 +1026,7 @@ func (p *arrowProjection) evalArrowReplace(ctx context.Context, in arrow.Record,
 	b := array.NewStringBuilder(p.alloc)
 	defer b.Release()
 	replaceOne := func(s string) string {
-		if fromStr == "" {
-			return s
-		}
-		return strings.ReplaceAll(s, fromStr, toStr)
+		return strings.Replace(s, fromStr, toStr, -1)
 	}
 	if strArg.isCol {
 		for i := 0; i < int(in.NumRows()); i++ {

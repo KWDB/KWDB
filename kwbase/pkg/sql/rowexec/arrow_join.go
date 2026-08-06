@@ -350,7 +350,8 @@ func arrValEqual(a arrow.Array, i int, b arrow.Array, j int) bool {
 }
 
 // gatherColumn builds an output column by gathering the rows listed in idxs
-// from src. An idx of -1 emits a null (used for left-outer unmatched rows).
+// from src. An idx of -1 emits a null (used for outer-join unmatched rows),
+// matching the classic merge/hash joiner's NULL-fill for unmatched sides.
 func gatherColumn(alloc memory.Allocator, src arrow.Array, idxs []int32) arrow.Array {
 	b := array.NewBuilder(alloc, src.DataType())
 	for _, idx := range idxs {

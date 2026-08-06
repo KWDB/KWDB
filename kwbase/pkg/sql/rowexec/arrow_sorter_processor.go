@@ -21,11 +21,14 @@ import (
 	"sort"
 	"sync/atomic"
 
+	"github.com/apache/arrow/go/v17/arrow"
+	"github.com/apache/arrow/go/v17/arrow/array"
 	"github.com/apache/arrow/go/v17/arrow/memory"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding"
 )
 
@@ -70,6 +73,7 @@ type arrowSorterProcessor struct {
 	// matchLen is the length of an already-sorted prefix that is skipped.
 	matchLen int
 	outputRows sqlbase.EncDatumRows
+	outputRec   arrow.Record
 	rowIdx     int
 }
 
@@ -195,15 +199,11 @@ func (p *arrowSorterProcessor) compute(ctx context.Context) error {
 		})
 	}
 
-	// Apply limit/offset if the planner deferred them here (currently both are
-	// -1/0 because the post-process stage handles them; kept for completeness).
-	if p.plan.Offset > 0 {
-		if int64(len(rows)) <= p.plan.Offset {
-			rows = rows[:0]
-		} else {
-			rows = rows[p.plan.Offset:]
-		}
-	}
+	// Apply the top-N early-stop optimization: when the planner has pushed a
+	// limit into the plan (localLimit = count+offset), keep only the first
+	// limit rows. The offset (and the final count) is applied downstream by the
+	// PostProcess, so we intentionally only slice by Limit here and let
+	// PostProcess handle the precise offset/limit semantics.
 	if p.plan.Limit >= 0 && int64(len(rows)) > p.plan.Limit {
 		rows = rows[:p.plan.Limit]
 	}
@@ -221,5 +221,26 @@ func (p *arrowSorterProcessor) compute(ctx context.Context) error {
 		}
 	}
 	p.outputRows = out
+	// Build the output Arrow Record so a downstream colexec operator can consume
+	// it directly via the Arrow->colexec zero-copy bridge (RecordToBatch),
+	// skipping the row round-trip used by the classic Next() path.
+	outTypes := p.OutputTypes()
+	ptrTypes := make([]*types.T, len(outTypes))
+	for i := range outTypes {
+		t := outTypes[i]
+		ptrTypes[i] = &t
+	}
+	cols, err := buildArrowColumns(p.alloc, ptrTypes, p.outputRows, p.da)
+	if err != nil {
+		return err
+	}
+	p.outputRec = array.NewRecord(buildArrowSchema(ptrTypes), cols, int64(len(p.outputRows)))
 	return nil
+}
+
+// ArrowOutput implements the ArrowRecordEmitter contract, exposing the sorted
+// output Record for a downstream Arrow or colexec operator to consume without a
+// row round-trip.
+func (p *arrowSorterProcessor) ArrowOutput() arrow.Record {
+	return p.outputRec
 }

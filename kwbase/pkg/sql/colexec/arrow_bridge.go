@@ -96,7 +96,7 @@ func vecToArrow(vec coldata.Vec, alloc memory.Allocator) (arrow.Field, arrow.Arr
 // RecordToBatch converts an Arrow Record back into a colexec Batch. It is the
 // reverse direction, used when an Arrow-based operator feeds a vectorized
 // colexec operator so the two execution models can be mixed in one DAG.
-func RecordToBatch(rec arrow.Record) (coldata.Batch, error) {
+func RecordToBatch(rec arrow.Record, allocator *Allocator) (coldata.Batch, error) {
 	n := int(rec.NumRows())
 	colTypes := make([]coltypes.T, rec.NumCols())
 	for i := 0; i < int(rec.NumCols()); i++ {
@@ -105,7 +105,12 @@ func RecordToBatch(rec arrow.Record) (coldata.Batch, error) {
 			return nil, fmt.Errorf("unsupported arrow type %s for arrow bridge", rec.Column(i).DataType())
 		}
 	}
-	b := coldata.NewMemBatchWithSize(colTypes, n)
+	var b coldata.Batch
+	if allocator != nil {
+		b = allocator.NewMemBatchWithSize(colTypes, n)
+	} else {
+		b = coldata.NewMemBatchWithSize(colTypes, n)
+	}
 	b.SetLength(n)
 	for i := 0; i < int(rec.NumCols()); i++ {
 		if err := arrowToVec(rec.Column(i), b.ColVec(i)); err != nil {

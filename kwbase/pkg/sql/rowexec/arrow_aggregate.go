@@ -64,6 +64,8 @@ const (
 	aggOpMean
 	aggOpSqrdiff
 	aggOpFinalVariance
+	aggOpVariance
+	aggOpStddev
 )
 
 func parseAggOp(s string) (aggOp, error) {
@@ -84,6 +86,10 @@ func parseAggOp(s string) (aggOp, error) {
 		return aggOpSqrdiff, nil
 	case "final_variance", "final_stddev":
 		return aggOpFinalVariance, nil
+	case "variance":
+		return aggOpVariance, nil
+	case "stddev":
+		return aggOpStddev, nil
 	}
 	return 0, fmt.Errorf("unsupported arrow aggregate op %q", s)
 }
@@ -283,6 +289,10 @@ func newScalarAggregator(op aggOp, inType arrow.DataType, fn string) (scalarAggr
 		return &sqrdiffAgg{inType: inType}, nil
 	case aggOpFinalVariance:
 		return &finalVarianceAgg{inType: inType, stddev: fn == "final_stddev"}, nil
+	case aggOpVariance:
+		return &sqrdiffAgg{inType: inType, variance: true, stddev: false}, nil
+	case aggOpStddev:
+		return &sqrdiffAgg{inType: inType, variance: true, stddev: true}, nil
 	case aggOpCountAll:
 		return nil, fmt.Errorf("count_all has no per-array aggregator; use a group counter")
 	}
@@ -992,6 +1002,12 @@ func (m *meanAgg) Finalize() (scalar.Scalar, error) {
 // ---------------------------------------------------------------------------
 type sqrdiffAgg struct {
 	inType arrow.DataType
+	// variance/stddev mode: when set, Finalize computes the sample variance
+	// (or stddev when stddev is true) from the Welford state instead of
+	// emitting the raw SQRDIFF intermediate. This supports the single-stage
+	// VARIANCE/STDDEV plan used for scalar (no-group) aggregates.
+	variance bool
+	stddev   bool
 	// float path
 	meanF float64
 	sqF   float64
@@ -1052,7 +1068,7 @@ func (s *sqrdiffAgg) Consume(arrs []arrow.Array, sel []int32) error {
 			tree.ExactCtx.Add(&s.cntD, &s.cntD, one)
 			tree.ExactCtx.Sub(buf, &v, &s.meanD)
 			tmp := &apd.Decimal{}
-			tree.ExactCtx.Quo(tmp, buf, &s.cntD)
+			tree.DecimalCtx.Quo(tmp, buf, &s.cntD)
 			tree.ExactCtx.Add(&s.meanD, &s.meanD, tmp)
 			tree.ExactCtx.Sub(tmp, &v, &s.meanD)
 			tree.ExactCtx.Mul(tmp, tmp, buf)
@@ -1075,7 +1091,7 @@ func (s *sqrdiffAgg) Consume(arrs []arrow.Array, sel []int32) error {
 			tree.ExactCtx.Add(&s.cntD, &s.cntD, one)
 			tree.ExactCtx.Sub(buf, &v, &s.meanD)
 			tmp := &apd.Decimal{}
-			tree.ExactCtx.Quo(tmp, buf, &s.cntD)
+			tree.DecimalCtx.Quo(tmp, buf, &s.cntD)
 			tree.ExactCtx.Add(&s.meanD, &s.meanD, tmp)
 			tree.ExactCtx.Sub(tmp, &v, &s.meanD)
 			tree.ExactCtx.Mul(tmp, tmp, buf)
@@ -1090,12 +1106,38 @@ func (s *sqrdiffAgg) Finalize() (scalar.Scalar, error) {
 		if s.cntF == 0 {
 			return scalar.MakeNullScalar(arrow.PrimitiveTypes.Float64), nil
 		}
-		return scalar.NewFloat64Scalar(s.sqF), nil
+		if !s.variance {
+			return scalar.NewFloat64Scalar(s.sqF), nil
+		}
+		// single-stage sample variance / stddev
+		if s.cntF <= 1 {
+			return scalar.MakeNullScalar(arrow.PrimitiveTypes.Float64), nil
+		}
+		v := s.sqF / (s.cntF - 1)
+		if s.stddev {
+			v = math.Sqrt(v)
+		}
+		return scalar.NewFloat64Scalar(v), nil
 	}
 	if s.cntD.Cmp(apdZero) == 0 {
 		return scalar.MakeNullScalar(meanDecimalType), nil
 	}
-	sqOut, _ := apdToDecimal128(&s.sqD, 9)
+	if !s.variance {
+		sqOut, _ := apdToDecimal128(&s.sqD, 9)
+		return scalar.NewDecimal128Scalar(sqOut, meanDecimalType), nil
+	}
+	// single-stage sample variance / stddev (decimal path)
+	if s.cntD.Cmp(apd.New(1, 0)) < 0 {
+		return scalar.MakeNullScalar(meanDecimalType), nil
+	}
+	denom := &apd.Decimal{}
+	tree.ExactCtx.Sub(denom, &s.cntD, apd.New(1, 0))
+	v := &apd.Decimal{}
+	tree.DecimalCtx.Quo(v, &s.sqD, denom)
+	if s.stddev {
+		tree.ExactCtx.Sqrt(v, v)
+	}
+	sqOut, _ := apdToDecimal128(v, 9)
 	return scalar.NewDecimal128Scalar(sqOut, meanDecimalType), nil
 }
 
@@ -1340,13 +1382,13 @@ func (f *finalVarianceAgg) Finalize() (scalar.Scalar, error) {
 		return scalar.NewFloat64Scalar(v), nil
 	}
 	if f.cntD.Cmp(apdZero) != 0 && apd.New(1, 0).Cmp(&f.cntD) < 0 {
-		denom := &apd.Decimal{}
-		tree.ExactCtx.Sub(denom, &f.cntD, apd.New(1, 0))
-		v := &apd.Decimal{}
-		tree.ExactCtx.Quo(v, &f.sqD, denom)
-		if f.stddev {
-			tree.ExactCtx.Sqrt(v, v)
-		}
+	denom := &apd.Decimal{}
+	tree.ExactCtx.Sub(denom, &f.cntD, apd.New(1, 0))
+	v := &apd.Decimal{}
+	tree.DecimalCtx.Quo(v, &f.sqD, denom)
+	if f.stddev {
+		tree.ExactCtx.Sqrt(v, v)
+	}
 		sqOut, _ := apdToDecimal128(v, 9)
 		return scalar.NewDecimal128Scalar(sqOut, meanDecimalType), nil
 	}
@@ -1928,14 +1970,25 @@ func arrowGroupKeyEqual(rec arrow.Record, idxs []int, row int, key arrow.Record)
 
 // resolveColIdxs resolves grouping column names to integer indices once, so the
 // hot grouping path never pays Schema.FieldIndices (a map-backed lookup) per row.
+// The planner ships grouping columns as positional indices encoded as "colN"
+// (see buildArrowAggSpec). The input record's schema columns are named by their
+// KWDB type name (not "colN"), so a name lookup usually fails; in that case we
+// fall back to parsing the trailing integer of "colN" as the positional index.
 func resolveColIdxs(rec arrow.Record, cols []string) []int {
 	idx := make([]int, len(cols))
 	for k, gc := range cols {
 		fi := rec.Schema().FieldIndices(gc)
-		if len(fi) == 0 {
-			panic(fmt.Sprintf("arrow grouping column %q not found", gc))
+		if len(fi) > 0 {
+			idx[k] = fi[0]
+			continue
 		}
-		idx[k] = fi[0]
+		// Fallback: "colN" -> positional index N.
+		var n int
+		if _, err := fmt.Sscanf(gc, "col%d", &n); err == nil && n >= 0 && n < int(rec.NumCols()) {
+			idx[k] = n
+			continue
+		}
+		panic(fmt.Sprintf("arrow grouping column %q not found", gc))
 	}
 	return idx
 }

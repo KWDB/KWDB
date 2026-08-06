@@ -178,6 +178,15 @@ func NewProcessor(
 		}
 		return newArrowWindowerProcessor(flowCtx, processorID, core.ArrowWindower, inputs[0], post, outputs[0])
 	}
+	if core.ArrowUnionAll != nil {
+		if len(inputs) < 1 {
+			return nil, errors.Errorf("arrow union all requires at least one input, got %d", len(inputs))
+		}
+		if err := checkNumInOut(inputs, outputs, len(inputs), 1); err != nil {
+			return nil, err
+		}
+		return newArrowUnionAllProcessor(flowCtx, processorID, core.ArrowUnionAll, inputs, post, outputs[0])
+	}
 	if core.Values != nil {
 		if err := checkNumInOut(inputs, outputs, 0, 1); err != nil {
 			return nil, err

@@ -51,7 +51,7 @@ func BenchmarkArrowProjection(b *testing.B) {
 		src := rowexec.NewArrowRecordSource(alloc, rec)
 		proj := rowexec.NewArrowProjection(alloc, src, []rowexec.ArrowProjectionSpec{
 			{OutputName: "c", Func: "add", Args: []rowexec.ArrowArg{{ColName: "col0"}, {ColName: "col1"}}},
-		})
+		}, nil)
 		proj.Init(ctx)
 		out, _, err := proj.Next(ctx)
 		if err != nil {
