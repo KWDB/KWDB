@@ -156,6 +156,19 @@ message ProcessorCoreUnion {
   optional TSSynchronizerSpec tsSynchronizer = 49;
   optional TSSamplerSpec tsSampler = 50;
 
+  // Arrow (columnar) execution cores. These carry a JSON-encoded plan in an
+  // Expression payload, built by the physical planner and consumed by the
+  // rowexec Arrow processors. Field numbers 51-58 must stay in sync with the
+  // hand-maintained generated code in processors.pb.go.
+  optional Expression arrowProjection = 51;
+  optional Expression arrowFilter = 52;
+  optional Expression arrowAggregator = 53;
+  optional Expression arrowJoin = 54;
+  optional Expression arrowSorter = 55;
+  optional Expression arrowUnionAll = 56;
+  optional Expression arrowDistinct = 57;
+  optional Expression arrowWindower = 58;
+
   reserved 6, 12;
 }
 
