@@ -110,6 +110,10 @@
 - [x] 窗口 frame（ROWS/RANGE）与排名函数 row_number/rank/dense_rank：聚合支持默认 RANGE / ROWS UNBOUNDED PRECEDING-TO-CURRENT ROW 运行聚合、整 partition 帧（UNBOUNDED-TO-UNBOUNDED）、以及 **ROWS 偏移帧**（如 `ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING`，逐行滑动窗口）；RANGE 偏移帧（需排序值算术）暂不支持。`isSupportedWindowFrame` 放行 ROWS 偏移边界，`computeAggregateWindow` 经 `frameBounds` + `windowAccumulator` 逐行求值。排名函数 row_number/rank/dense_rank 已落地。
 - [x] 投影 CASE / COALESCE：新增 `arrowProjectionColFor`（抽取单表达式建列）、`arrowCaseCol`/`arrowCoalesceCol`/`arrowComparisonCol` 助手；`canArrowRender`/`addArrowRendering` 新增 `*tree.CaseExpr`/`*tree.CoalesceExpr` 分支，分支值经 `canArrowRenderCase` 统一 cast 到结果类型（仅 arrow 可物化类型：int/float/string/bool）。executor `arrowProjection` 新增 `evalCase`（原生逐行选支 + `evalIsNull` 布尔掩码），`ArrowProjectionSpec` 加 `Kind/branches/else` 字段，`buildProjectionSpecs` 递归翻译。`COALESCE(a,b,c)` 等价于 `CASE WHEN a IS NOT NULL THEN a ... ELSE c`。见 §2.6。
 - [x] 集合 ALL 变体（UNION ALL 短路）：新增 `ArrowUnionAll` 算子（多输入 stage，把所有上游 Arrow Record 经 `unifiedInputFrom` 收为 UnifiedProcessor 后拼接为单 Record），`createPlanForSetOp` 的 UNION ALL 分支在 `ArrowUnionAllEnabled` 时将合并点从行式 no-op 改为 ArrowUnionAll stage（同节点全 Arrow，跨节点边界仍由 no-op 收口）。新增 `sql.arrow_union_all.enabled` 开关。
+- [ ] **Values 算子 Arrow 化（纯常量源，无 KV/引擎依赖）**：（2026-08-07 新增排期，P1 收口）
+  - **依据**：`valuesProcessor` 无任何输入，数据为 planner 预编码的 `spec.RawBytes`+`spec.Columns`；`Next()` 仅 `StreamDecoder.GetRow` 解码 datum row + `ProcessRowHelper`（PostProcess）。计算过程零 KV、零引擎依赖，是纯形态转换。
+  - **方案**：新增 `ArrowValues` core（或复用 `ArrowRecordEmitter` 单算子形态）——启动时把 `spec.RawBytes` 一次性解码成 `[]EncDatumRow`，经 `arrowRecordToEncDatumRows` 反向 + `buildArrowColumns`/`array.NewRecord` 攒成**单个 Arrow Record**，作为 `ArrowRecordEmitter` 直接下游 operator-to-operator；PostProcess 投影/过滤经统一 DAG 的下游 Arrow 算子处理（或本算子内预应用）。**无需新 KV/引擎接入，且不依赖 C++ 时序引擎，可本地独立验证（规避 P0 测试环境缺 TS engine 的坑）**。
+  - **开关**：新增 `sql.arrow_values.enabled`（默认 false，`ArrowValuesEnabled` 门），`createPlanForValues` 经 `arrowValuesCoreFor` 助手（同 `arrowSorterCoreFor` 风格，返回 `(ProcessorCoreUnion, bool)`）切换；false 或解码/类型不支持时回退经典 `Values` core。
 - [ ] 递归 CTE / 采样（若纳入 Arrow 路线）
   - **评估结论（2026-08-05）**：两项均**未纳入** Arrow 路线，原因：
     - **递归 CTE**：KWDB 的递归 CTE 在逻辑计划层以 `recursiveCTENode`（`pkg/sql/recursive_cte.go`）实现，依赖每次迭代经 `genIterationFn` 重新生成 plan 树并 `runPlanInsidePlan` 驱动行式 `planNode`，与 DistSQL 静态 stage DAG 的 Arrow 列式调度不在同一层。Arrow 化需把"初始查询 + 递归体"编译为可循环装配的 stage 图，超出"补齐算子"范畴且迭代重编译风险高，暂不做。
@@ -141,7 +145,7 @@
 | 阶段 | 任务 | 风险 | 相对工作量 |
 |------|------|------|-----------|
 | A 开关默认化 | 9 个开关翻 `defaultEnabled=true`；助手函数恒返 Arrow core；开关退役为调试用 | 低 | ~0.5 人周（**已完成 2026-08-06**：除 master gate `sql.arrow_scan.enabled` 本就 `true` 外，8 个算子子开关 `projection/filter/aggregator/join/sorter/distinct/windower/union_all` 的 `defaultEnabled` 全部翻 `true`，Arrow 成为默认主路径；运行时 `canArrow*` 校验 + `marshalArrowPlan` 序列化失败即降级到行式/colexec 兜底） |
-| B 补齐未 Arrow 化算子 | ProjectSet / Ordinality / Values / ZigzagJoiner / InterleavedReaderJoiner / StreamAggregator / SampleAggregator | 中-高 | ~6-10 人周（**实质完成 2026-08-06**：经逐个评估，仅 Ordinality 可/应 Arrow 化且已落地；其余 6 个为专有/特例路径不纳入，见 §6.3。通用关系查询算子 7/7 + UNION ALL + Ordinality 已全部 Arrow 化） |
+| B 补齐未 Arrow 化算子 | ProjectSet / Ordinality / Values / ZigzagJoiner / InterleavedReaderJoiner / StreamAggregator / SampleAggregator | 中-高 | ~6-10 人周（**修订于 2026-08-07**：经重新评估，可/应 Arrow 化者为 Ordinality（已完成）、Values（P1 排期、纯常量源零依赖）、ZigzagJoiner / InterleavedReaderJoiner（D3 非对称、输出侧可 Arrow 化，KV 仅作输入取数方式）；不纳入为 StreamAggregator（流式专有）、ProjectSet（变长展开，D2）、SampleAggregator（采样，§1 已明确）。详见 §6.3） |
 | C 表达式全覆盖 | 字符串函数（substring/upper/lower/concat/length/like/trim/replace）、CASE/COALESCE、CAST 全类型、日期时间函数、floor/ceil/round、窗口 RANGE/ROWS frame | 高 | ~8-12 人周（CASE/COALESCE + 窗口 ROWS 偏移 frame + 投影 floor/ceil/round/trunc + 过滤 IN decimal 集合 + 投影日期时间函数 extract/date_trunc 已落地；剩字符串函数投影已存在仅过滤路径待向量化、CAST 全类型、now/age 等时间函数、窗口 RANGE 偏移 frame） |
 | D colexec 随覆盖率提升逐步收窄至可去除 | **措辞审订（2026-08-06）**：colexec 非架构硬约束，是 Arrow 覆盖率不足时的过渡性兜底层。关系型 `colbatch_scan`/`cfetcher` 可被 ArrowScan 替代；时序读可被 `ArrowTsReader` 替代（§6.7/§6.8）；Arrow 未覆盖点兜底随表达式/类型/D3 全覆盖而消失。终态 colexec 可完全去除，仅留 Arrow 主 + rowexec 永久兜底（详见 §6.8/§6.10） | 中 | ~4-6 人周（关系型扫描替代 + ArrowTsReader + D3 非对称算子；colexec 删除为覆盖率达标后的清理动作） |
 | E 退役 rowexec | 16 个经典 processor 灰度下线（保留回退安全网）；确认 Backfiller/系统表读等特例 | 中-高 | ~3-5 人周 |
@@ -426,24 +430,38 @@
 | **Ordinality** | 高 | ✅ **已落（2026-08-06）** | 复用 Arrow windower 的 `row_number`，零新算子 |
 | **StreamAggregator** | — | 不纳入 | 流式（时序/CDC）引擎专有算子，`addStreamAggregators` 仅在 `planCtx.isStream` 时走，内嵌 `cdcpb.StreamMetadata` 与 gapfill/time-bucket/interpolate 时序语义；Arrow 列式批式模型无等价物，且与通用 ArrowAgg 路径（`addAggregators`）隔离，强行替换会破坏流式语义 |
 | **ProjectSet** | 低 | 暂缓 | 表函数（`generate_series`/`unnest`）产生变长多行，Arrow 列式定长模型难处理变长展开；收益低 |
-| **Values** | 低/不必要 | 不纳入 | 纯常量行源，经 `unifiedInputFrom` 已作为 Arrow 上游输入；无需新 core |
-| **ZigzagJoiner** | 低 | 不纳入 | KV 扫描结构特例，非通用查询算子 |
-| **InterleavedReaderJoiner** | 低 | 不纳入 | 同 Zigzag，KV 交错读特例 |
+| **Values** | 高 | ✅ **可落地（2026-08-07 排期）** | 纯常量行源，无 KV/引擎依赖；启动时解码 `spec.RawBytes` 成 EncDatumRows 批，一次 `buildArrowColumns` 成单 Arrow Record 当 `ArrowRecordEmitter`。零计算语义障碍，纯形态转换，归入 P1 收口 |
+| **ZigzagJoiner** | 中 | 可 Arrow 化（D3） | KV 仅作两 side 的输入取数请求方式，**zigzag 交错比对 + join 拼接本身是 datum row 计算**；输出侧可 Arrow 化（fetcher 取数→攒/流式 Arrow Record），输入侧暂保留 KV，与 ArrowScan 同构 |
+| **InterleavedReaderJoiner** | 中 | 可 Arrow 化（D3） | 同 Zigzag：KV fetch 是输入侧、`fetcher row.Fetcher` 取行，内部 merge-join 比较是 datum row 计算；输出侧可 Arrow 化接入统一 DAG |
 | **SampleAggregator** | — | 不纳入 | 路线图 §1 已明确"采样未纳入 Arrow 路线"（统计采样非查询主路径） |
 
-**结论**：B 项清单中原列的 7 个算子，经逐个评估，**实际可/应 Arrow 化的仅 Ordinality 一个（已完成）**；其余 6 个均不纳入：
-- StreamAggregator（流式专有，本就不走通用 ArrowAgg 路径）
-- ProjectSet（变长展开，暂缓）
-- Values / ZigzagJoiner / InterleavedReaderJoiner（常量源 / KV 扫描特例）
-- SampleAggregator（采样，路线图 §1 已明确不纳入）
+**结论**：B 项清单中原列的 7 个算子，经逐个评估（2026-08-07 修订，纠正此前"KV 特例即不可 Arrow 化"的误判）：
+- **实际可/应 Arrow 化的 4 个**：
+  - Ordinality（已完成，复用 Arrow windower `row_number`）
+  - Values（高可行性，纯常量源、无 KV/引擎依赖，排期 P1 收口，零新算子）
+  - ZigzagJoiner / InterleavedReaderJoiner（D3 非对称，输出侧可 Arrow 化，KV 仅作输入取数方式）
+- **不纳入 3 个**：
+  - StreamAggregator（流式专有，本就不走通用 ArrowAgg 路径）
+  - ProjectSet（变长展开，超出现有单 Record 模型，D2 暂缓）
+  - SampleAggregator（采样，路线图 §1 已明确不纳入）
 
-至此**所有通用关系查询算子均已 Arrow 化**（原始 7/7 + UNION ALL + Ordinality），B 项目标实质达成。B 项工作量从原估 6-10 人周收敛为单算子（Ordinality，已完成），与路线图 §1「算子层 7/7 + UNION ALL 已补齐，阶段4 可落地项已清零」完全自洽。
+至此**所有通用关系查询算子均已 Arrow 化**（原始 7/7 + UNION ALL + Ordinality）；Values 作为无依赖纯形态源排期 P1 收口，Zigzag/Interleaved 并入 D3 非对称算子清单与 `ArrowLookupJoiner` 同批规划。B 项目标实质达成，工作量从原估 6-10 人周收敛为 Ordinality（已完成）+ Values（P1）+ D3 非对称骨架（与 lookup join 同批）。
+
+### 2026-08-07 — B 项误判修订：Values/Zigzag/Interleaved 可 Arrow 化
+- **修订背景**：此前（2026-08-06）§6.3 B 项把 Values / ZigzagJoiner / InterleavedReaderJoiner 笼统归为"不纳入（常量源 / KV 扫描特例）"，理由是"带 KV / 特例源"。经复核源码，该归类错误——**KV 仅是算子的输入/输出请求方式，不是计算内核**：
+  - `valuesProcessor`：无任何输入，`Next()` 仅 `StreamDecoder.GetRow` 解码 planner 预编码的 `spec.RawBytes` + PostProcess，零 KV、零引擎依赖，是纯常量行源。
+  - `zigzagJoiner` / `interleavedReaderJoiner`：KV fetch（`row.Fetcher` / 双 side 扫描）是输入侧取数；**内部 zigzag 交错比对 / merge-join 拼接是 datum row 计算**，与已 Arrow 化的 `ArrowScan`（`KV fetcher 取数→Arrow Record`）同构。
+- **修订结论（详见 §6.3 表与 §6.9）**：
+  - **Values**：高可行性，纯形态转换，无依赖，**排期 P1 收口**（见阶段 4 新增项）。方案：启动时解码 `spec.RawBytes`→`buildArrowColumns` 成单 Arrow Record 当 `ArrowRecordEmitter`，新增 `sql.arrow_values.enabled` 开关 + `arrowValuesCoreFor` 助手。且不依赖 C++ 时序引擎，可本地独立验证（规避 P0 测试环境缺 TS engine 的坑）。
+  - **ZigzagJoiner / InterleavedReaderJoiner**：D3 非对称，输出侧可 Arrow 化（fetcher 取数→Arrow Record），输入侧暂保留 KV，与 `ArrowLookupJoiner` 同批规划（需新增非对称编排算子骨架，非本质障碍）。
+  - **不纳入仍维持 3 个**：StreamAggregator（流式专有）、ProjectSet（变长展开，D2）、SampleAggregator（采样，§1 已明确）。
+- **影响**：B 项可/应 Arrow 化算子由 1 个（Ordinality）扩为 4 个；阶段 4 剩余可落地清单新增 Values；D3 非对称算子清单新增 Zigzag/Interleaved。通用关系查询算子 7/7 + UNION ALL + Ordinality 均已 Arrow 化不变；本修订仅扩展"后续可落地的 B 项算子"范围，不改变"已落地"基线。
 
 ### 2026-08-06（续）— 时序路径与 colexec 兜底分析
 - **时序与关系无语义耦合，仅经「关系格式 buffer（coldata.Batch / EncDatumRows）」交汇**：`TsReaderOp.Next`（`colexec/ts_reader.go:222`）与关系型 `colBatchScan` 产出**同构的 `coldata.Batch`**；Arrow 已有 `BatchToRecord`（colexec/arrow_bridge.go）+ `rowToArrowConverter`（arrow_adapter.go）两条现成桥，可把时序 buffer 转 Arrow Record。故时序 scan **可作为 Arrow 数据源接入**，无需改 tse 引擎。
 - **「ArrowScan 支持时序」需分层**：scan 侧（时序 buffer→Arrow）低成本可行，复用 `BatchToRecord`；算子侧需解除 7 处 `canArrowX` 的 `EngineTypeTimeseries → return false` 并补全 timestamp/decimal 类型在 `vecToArrow`/`arrowDataTypeForKWType` 的映射（当前 `vecToArrow` 仅支持 Int64/Float64/Bool/Bytes）。新增文档 §6.7。
 - **colexec 不能退役，须保留兜底（初版，已审订）**：初版三层理由——①时序读 `TsReaderOp` 独占于 colexec；②Arrow 降级网兜底目标即 colexec；③Arrow↔colexec 双向桥是运行链路。后续经审订（见 2026-08-06 续二）**推翻第①条**（时序读可 Arrow 化）、**弱化第②③条**（降级网与桥均为覆盖率不足时的过渡依赖，非架构硬约束）。阶段 6 的 D 项初版「退化为兜底残差层」已进一步修正为「**随覆盖率提升逐步收窄至可去除**」。
-- **rowexec 兜底范围精确界定（§6.9）**：纠正上一轮"D 类全不可退出"的过度简化。将 rowexec 独占算子按真实原因细分——**D1 真不可**（写/DDL/采样/校验/streamAggregator，Arrow 是只读引擎无等价）、**D2 不可**（ProjectSet 一行产多行，超出现有单 Record 模型）、**D3 可但工程未做**（lookup join 系/zigzag/interleaved/行式 mergeJoiner）。以 `joinReader` 为例：其 join 计算是 Datum Row 基础、KV 仅作输入读取，与 KV 解耦；真正未 Arrow 化的是「左流 + 按需 KV 反查」的非对称编排，需新增 `ArrowLookupJoiner` 算子骨架（类似 ArrowJoin），非本质障碍。结论：rowexec 真正不可替代范围仅 D1+D2（约半数 processor），D3 可随 Arrow 覆盖退出。
+- **rowexec 兜底范围精确界定（§6.9）**：纠正上一轮"D 类全不可退出"的过度简化。将 rowexec 独占算子按真实原因细分——**D1 真不可**（写/DDL/采样/校验/streamAggregator，Arrow 是只读引擎无等价）、**D2 不可**（ProjectSet 一行产多行，超出现有单 Record 模型）、**D3 可但工程未做**（lookup join 系/行式 mergeJoiner/**zigzag/interleaved**）。以 `joinReader` 为例：其 join 计算是 Datum Row 基础、KV 仅作输入读取，与 KV 解耦；`zigzag`/`interleaved` 同理——KV fetch 是输入侧取数方式、内部 zigzag 交错比对 / merge-join 拼接是 datum row 计算，真正未 Arrow 化的是「左流 + 按需 KV 反查 / 双 side 交错」的非对称编排，需新增 `ArrowLookupJoiner` / `ArrowZigzag` / `ArrowInterleaved` 算子骨架（类似 ArrowJoin），非本质障碍。结论：rowexec 真正不可替代范围仅 D1+D2（约半数 processor），D3 可随 Arrow 覆盖退出。
 - **重构终态基线（§6.10 初版，已审订）**：初版纠正「最终保留 rowexec 的 D1/D2、colexec 可去除」的误判，定性为三层长期并存。后续经 §6.8 审订**推翻"colexec 不可去除"**，终态修正为**两层长期并存（Arrow 主 + rowexec 永久兜底）+ colexec 临时过渡层（覆盖率达标后可去除）**。详见 2026-08-06 续二。
 
 ### 2026-08-06（续二）— colexec 兜底性质审订（推翻"不可去除"）
