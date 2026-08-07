@@ -1841,6 +1841,9 @@ func arrowGroupHashIdx(rec arrow.Record, idxs []int, row int, h *maphash.Hash) u
 		case arrow.STRING:
 			h.Write([]byte{'s'})
 			h.WriteString(col.(*array.String).Value(row))
+		case arrow.BINARY:
+			h.Write([]byte{'y'})
+			h.Write(col.(*array.Binary).Value(row))
 		case arrow.DECIMAL128:
 			h.Write([]byte{'d'})
 			num := col.(*array.Decimal128).Value(row)
@@ -1902,6 +1905,10 @@ func arrowGroupRowEqualIdx(rec arrow.Record, idxs []int, i, j int) bool {
 			if col.(*array.String).Value(i) != col.(*array.String).Value(j) {
 				return false
 			}
+		case arrow.BINARY:
+			if !bytes.Equal(col.(*array.Binary).Value(i), col.(*array.Binary).Value(j)) {
+				return false
+			}
 		case arrow.DECIMAL128:
 			if col.(*array.Decimal128).Value(i) != col.(*array.Decimal128).Value(j) {
 				return false
@@ -1951,6 +1958,10 @@ func arrowGroupKeyEqual(rec arrow.Record, idxs []int, row int, key arrow.Record)
 			}
 		case arrow.STRING:
 			if col.(*array.String).Value(row) != key.Column(c).(*array.String).Value(0) {
+				return false
+			}
+		case arrow.BINARY:
+			if !bytes.Equal(col.(*array.Binary).Value(row), key.Column(c).(*array.Binary).Value(0)) {
 				return false
 			}
 		case arrow.DECIMAL128:

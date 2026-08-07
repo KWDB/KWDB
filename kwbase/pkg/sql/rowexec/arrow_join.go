@@ -15,6 +15,7 @@
 package rowexec
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"hash/maphash"
@@ -294,6 +295,9 @@ func joinRowHash(arrs []arrow.Array, row int, seed *maphash.Hash) uint64 {
 		case arrow.STRING:
 			seed.WriteString("s")
 			seed.WriteString(a.(*array.String).Value(row))
+		case arrow.BINARY:
+			seed.WriteString("y")
+			seed.Write(a.(*array.Binary).Value(row))
 		case arrow.TIMESTAMP:
 			seed.WriteString("t")
 			v := uint64(a.(*array.Timestamp).Value(row))
@@ -339,6 +343,8 @@ func arrValEqual(a arrow.Array, i int, b arrow.Array, j int) bool {
 		return a.(*array.Boolean).Value(i) == b.(*array.Boolean).Value(j)
 	case arrow.STRING:
 		return a.(*array.String).Value(i) == b.(*array.String).Value(j)
+	case arrow.BINARY:
+		return bytes.Equal(a.(*array.Binary).Value(i), b.(*array.Binary).Value(j))
 	case arrow.TIMESTAMP:
 		return a.(*array.Timestamp).Value(i) == b.(*array.Timestamp).Value(j)
 	case arrow.DECIMAL128:
@@ -383,6 +389,8 @@ func appendValueAt(b array.Builder, src arrow.Array, idx int) {
 		b.(*array.BooleanBuilder).Append(src.(*array.Boolean).Value(idx))
 	case arrow.STRING:
 		b.(*array.StringBuilder).Append(src.(*array.String).Value(idx))
+	case arrow.BINARY:
+		b.(*array.BinaryBuilder).Append(src.(*array.Binary).Value(idx))
 	case arrow.TIMESTAMP:
 		b.(*array.TimestampBuilder).Append(src.(*array.Timestamp).Value(idx))
 	case arrow.DECIMAL128:

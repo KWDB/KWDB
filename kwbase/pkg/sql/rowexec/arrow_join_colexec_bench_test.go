@@ -183,11 +183,11 @@ func runColexecJoin(
 ) ([]string, error) {
 	ca, caClose := newColexecAlloc(ctx)
 	defer caClose()
-	leftBatch, err := colexec.RecordToBatch(left)
+	leftBatch, err := colexec.RecordToBatch(left, ca)
 	if err != nil {
 		return nil, err
 	}
-	rightBatch, err := colexec.RecordToBatch(right)
+	rightBatch, err := colexec.RecordToBatch(right, ca)
 	if err != nil {
 		return nil, err
 	}

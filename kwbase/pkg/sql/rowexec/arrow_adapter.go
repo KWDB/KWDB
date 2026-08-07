@@ -166,6 +166,8 @@ func arrowDataTypeForKWType(t *types.T) (arrow.DataType, error) {
 		// String column (same treatment as JSON) so CAST(interval AS string)
 		// reuses the value verbatim. Grouping/comparison is by text bytes.
 		return arrow.BinaryTypes.String, nil
+	case types.BytesFamily:
+		return arrow.BinaryTypes.Binary, nil
 	default:
 		return nil, fmt.Errorf("unsupported type family %s for arrow schema", t.Family())
 	}
@@ -239,10 +241,30 @@ func buildArrowColumns(alloc memory.Allocator, typs []*types.T, rows sqlbase.Enc
 					b.Release()
 					return nil, fmt.Errorf("col %d: expected string, got %T", ci, ed.Datum)
 				}
-				b.Append(string(d))
+			b.Append(string(d))
+		}
+		cols[ci] = b.NewArray()
+	case types.BytesFamily:
+		b := array.NewBinaryBuilder(alloc, arrow.BinaryTypes.Binary)
+		for ri := 0; ri < n; ri++ {
+			ed := &rows[ri][ci]
+			if err := ed.EnsureDecoded(t, da); err != nil {
+				b.Release()
+				return nil, err
 			}
-			cols[ci] = b.NewArray()
-		case types.BoolFamily:
+			if ed.Datum == tree.DNull {
+				b.AppendNull()
+				continue
+			}
+			d, ok := tree.AsDBytes(ed.Datum)
+			if !ok {
+				b.Release()
+				return nil, fmt.Errorf("col %d: expected bytes, got %T", ci, ed.Datum)
+			}
+			b.Append([]byte(d))
+		}
+		cols[ci] = b.NewArray()
+	case types.BoolFamily:
 			b := array.NewBooleanBuilder(alloc)
 			for ri := 0; ri < n; ri++ {
 				ed := &rows[ri][ci]
@@ -445,6 +467,8 @@ func newArrowBuilder(alloc memory.Allocator, t *types.T) (array.Builder, error) 
 		return array.NewInt32Builder(alloc), nil
 	case types.IntervalFamily:
 		return array.NewStringBuilder(alloc), nil
+	case types.BytesFamily:
+		return array.NewBinaryBuilder(alloc, arrow.BinaryTypes.Binary), nil
 	default:
 		return nil, fmt.Errorf("unsupported type family %s for arrow builder", t.Family())
 	}
@@ -489,6 +513,19 @@ func appendEncDatum(b array.Builder, t *types.T, ed *sqlbase.EncDatum, da *sqlba
 			return fmt.Errorf("expected string, got %T", ed.Datum)
 		}
 		b.(*array.StringBuilder).Append(string(d))
+	case types.BytesFamily:
+		if err := ed.EnsureDecoded(t, da); err != nil {
+			return err
+		}
+		if ed.Datum == tree.DNull {
+			b.AppendNull()
+			return nil
+		}
+		d, ok := tree.AsDBytes(ed.Datum)
+		if !ok {
+			return fmt.Errorf("expected bytes, got %T", ed.Datum)
+		}
+		b.(*array.BinaryBuilder).Append([]byte(d))
 	case types.BoolFamily:
 		if err := ed.EnsureDecoded(t, da); err != nil {
 			return err

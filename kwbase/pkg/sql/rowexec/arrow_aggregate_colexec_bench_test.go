@@ -158,12 +158,12 @@ func arrowColTypeToColType(dt arrow.DataType) coltypes.T {
 // the input column types, once, so the benchmark can reuse them across
 // iterations (excluding the arrow->coldata conversion cost from the algorithm
 // comparison).
-func colexecBatchAndTypes(rec arrow.Record) (coldata.Batch, []coltypes.T, error) {
+func colexecBatchAndTypes(ca *colexec.Allocator, rec arrow.Record) (coldata.Batch, []coltypes.T, error) {
 	colTypes := make([]coltypes.T, rec.NumCols())
 	for i := 0; i < int(rec.NumCols()); i++ {
 		colTypes[i] = arrowColTypeToColType(rec.Column(i).DataType())
 	}
-	batch, err := colexec.RecordToBatch(rec)
+	batch, err := colexec.RecordToBatch(rec, ca)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -234,7 +234,7 @@ func TestArrowAggMatchesColexec(t *testing.T) {
 			t.Fatalf("arrow agg: %v", err)
 		}
 		ca, cleanup := newColexecTestAllocator(ctx)
-		cbatch, ctypes, err := colexecBatchAndTypes(recColexec)
+		cbatch, ctypes, err := colexecBatchAndTypes(ca, recColexec)
 		if err != nil {
 			t.Fatalf("record->batch: %v", err)
 		}
@@ -291,7 +291,7 @@ func BenchmarkArrowVsColexecSumGrouped(b *testing.B) {
 		// Pre-convert once so the timed loop measures the aggregation algorithm,
 		// not the arrow->coldata bridge.
 		rec := buildIntRecord(alloc, groups, vals, nulls)
-		batch, colTypes, err := colexecBatchAndTypes(rec)
+		batch, colTypes, err := colexecBatchAndTypes(ca, rec)
 		rec.Release()
 		if err != nil {
 			b.Fatal(err)
@@ -490,7 +490,7 @@ func TestArrowGroupedAggMatchesColexec(t *testing.T) {
 		// --- colexec: per-group SUM multiset ---
 		recColexec := buildIntRecord(alloc, groups, vals, nulls)
 		ca, cleanup := newColexecTestAllocator(ctx)
-		cbatch, ctypes, err := colexecBatchAndTypes(recColexec)
+		cbatch, ctypes, err := colexecBatchAndTypes(ca, recColexec)
 		if err != nil {
 			t.Fatalf("record->batch: %v", err)
 		}
@@ -556,7 +556,7 @@ func BenchmarkArrowVsColexecGrouped(b *testing.B) {
 
 	b.Run("colexec", func(b *testing.B) {
 		rec := buildIntRecord(alloc, groups, vals, nulls)
-		batch, colTypes, err := colexecBatchAndTypes(rec)
+		batch, colTypes, err := colexecBatchAndTypes(ca, rec)
 		rec.Release()
 		if err != nil {
 			b.Fatal(err)
