@@ -1000,3 +1000,29 @@ func arrowUnionAllCoreFor(
 	}
 	return execinfrapb.ProcessorCoreUnion{ArrowUnionAll: expr}, true
 }
+
+// arrowValuesCoreFor reports whether the Values data source should be emitted as
+// an Arrow Values core (a single Arrow Record source) for the given result
+// types. Unlike the other Arrow cores it carries no JSON plan — it reuses the
+// ValuesCoreSpec payload (encoded constant rows + column typing) directly, so
+// the caller is expected to populate ProcessorCoreUnion.ArrowValues with the
+// concrete spec after a successful (true) return.
+func arrowValuesCoreFor(
+	evalCtx *tree.EvalContext,
+	engine tree.EngineType,
+	inTypes []types.T,
+) (execinfrapb.ProcessorCoreUnion, bool) {
+	if !physicalplan.ArrowValuesEnabled(evalCtx) {
+		return execinfrapb.ProcessorCoreUnion{}, false
+	}
+	if engine == tree.EngineTypeTimeseries {
+		return execinfrapb.ProcessorCoreUnion{}, false
+	}
+	for _, t := range inTypes {
+		if !arrowSupportedCompareType(t) {
+			return execinfrapb.ProcessorCoreUnion{}, false
+		}
+	}
+	// Placeholder; the caller fills in the concrete ValuesCoreSpec.
+	return execinfrapb.ProcessorCoreUnion{ArrowValues: &execinfrapb.ValuesCoreSpec{}}, true
+}

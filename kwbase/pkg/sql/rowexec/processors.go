@@ -187,6 +187,12 @@ func NewProcessor(
 		}
 		return newArrowUnionAllProcessor(flowCtx, processorID, core.ArrowUnionAll, inputs, post, outputs[0])
 	}
+	if core.ArrowValues != nil {
+		if err := checkNumInOut(inputs, outputs, 0, 1); err != nil {
+			return nil, err
+		}
+		return newArrowValuesProcessor(flowCtx, processorID, core.ArrowValues, post, outputs[0])
+	}
 	if core.Values != nil {
 		if err := checkNumInOut(inputs, outputs, 0, 1); err != nil {
 			return nil, err

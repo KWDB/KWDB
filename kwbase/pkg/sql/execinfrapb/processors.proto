@@ -160,6 +160,9 @@ message ProcessorCoreUnion {
   // Expression payload, built by the physical planner and consumed by the
   // rowexec Arrow processors. Field numbers 51-58 must stay in sync with the
   // hand-maintained generated code in processors.pb.go.
+  //   arrowValues (59) is special: it reuses ValuesCoreSpec (the pre-canned
+  //   constant-row payload) rather than a JSON plan, because Values is a pure
+  //   data source with no compute plan to encode.
   optional Expression arrowProjection = 51;
   optional Expression arrowFilter = 52;
   optional Expression arrowAggregator = 53;
@@ -168,6 +171,7 @@ message ProcessorCoreUnion {
   optional Expression arrowUnionAll = 56;
   optional Expression arrowDistinct = 57;
   optional Expression arrowWindower = 58;
+  optional ValuesCoreSpec arrowValues = 59;
 
   reserved 6, 12;
 }

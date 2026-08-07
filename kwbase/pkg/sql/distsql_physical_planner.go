@@ -6189,7 +6189,13 @@ func (dsp *DistSQLPlanner) wrapPlan(planCtx *PlanningCtx, n planNode) (PhysicalP
 // createValuesPlan creates a plan with a single Values processor
 // located on the gateway node and initialized with given numRows
 // and rawBytes that need to be precomputed beforehand.
+//
+// When the Arrow Values gate is open and every result column type is supported
+// by the Arrow engine, the core is emitted as an ArrowValues (a single Arrow
+// Record source) instead of the classic row-based Values — see
+// arrowValuesCoreFor and docs/arrow-unify-roadmap.md §阶段4 "Values 算子 Arrow 化".
 func (dsp *DistSQLPlanner) createValuesPlan(
+	evalCtx *tree.EvalContext, engine tree.EngineType,
 	resultTypes []types.T, numRows int, rawBytes [][]byte,
 ) (PhysicalPlan, error) {
 	numColumns := len(resultTypes)
@@ -6205,12 +6211,22 @@ func (dsp *DistSQLPlanner) createValuesPlan(
 	s.NumRows = uint64(numRows)
 	s.RawBytes = rawBytes
 
+	// Prefer the Arrow Values core when the gate is open and all column types
+	// are Arrow-supported; fall back to the classic Values core otherwise.
+	core := execinfrapb.ProcessorCoreUnion{Values: &s}
+	if arrowCore, ok := arrowValuesCoreFor(evalCtx, engine, resultTypes); ok {
+		// arrowValuesCoreFor returns a placeholder core; populate the concrete
+		// ValuesCoreSpec on the Arrow field (NOT the classic Values field).
+		arrowCore.ArrowValues = &s
+		core = arrowCore
+	}
+
 	plan := physicalplan.PhysicalPlan{
 		Processors: []physicalplan.Processor{{
 			// TODO: find a better node to place processor at
 			Node: dsp.nodeDesc.NodeID,
 			Spec: execinfrapb.ProcessorSpec{
-				Core:   execinfrapb.ProcessorCoreUnion{Values: &s},
+				Core:   core,
 				Output: []execinfrapb.OutputRouterSpec{{Type: execinfrapb.OutputRouterSpec_PASS_THROUGH}},
 			},
 		}},
@@ -6262,7 +6278,8 @@ func (dsp *DistSQLPlanner) createPlanForValues(
 		}
 		rawBytes[i] = buf
 	}
-	physicalPlan, err := dsp.createValuesPlan(colTypes, numRows, rawBytes)
+	physicalPlan, err := dsp.createValuesPlan(
+		planCtx.EvalContext(), tree.EngineTypeRelational, colTypes, numRows, rawBytes)
 
 	return physicalPlan, err
 }
@@ -6275,7 +6292,8 @@ func (dsp *DistSQLPlanner) createPlanForUnary(
 		return PhysicalPlan{}, err
 	}
 
-	physicalPlan, err := dsp.createValuesPlan(colTypes, 1 /* numRows */, nil /* rawBytes */)
+	physicalPlan, err := dsp.createValuesPlan(
+		planCtx.EvalContext(), tree.EngineTypeRelational, colTypes, 1 /* numRows */, nil /* rawBytes */)
 	return physicalPlan, err
 }
 
@@ -6287,7 +6305,8 @@ func (dsp *DistSQLPlanner) createPlanForZero(
 		return PhysicalPlan{}, err
 	}
 
-	physicalPlan, err := dsp.createValuesPlan(colTypes, 0 /* numRows */, nil /* rawBytes */)
+	physicalPlan, err := dsp.createValuesPlan(
+		planCtx.EvalContext(), tree.EngineTypeRelational, colTypes, 0 /* numRows */, nil /* rawBytes */)
 	return physicalPlan, err
 }
 
