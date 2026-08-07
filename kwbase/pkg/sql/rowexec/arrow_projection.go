@@ -49,6 +49,10 @@ type ArrowArg struct {
 	// projection expression. It lets "substring(col,1,3) = 'abc'" run fully in
 	// the Arrow engine without falling back to a row-by-row tree.Datum path.
 	Computed *ArrowProjectionSpec
+	// Case is a CASE/COALESCE value leaf inside a filter predicate. It reuses
+	// the projection CASE spec form so all value types and nested branches are
+	// supported (evaluated by the projection CASE evaluator).
+	Case *ArrowProjectionSpec
 }
 
 // ArrowArgBinary is a nested arithmetic expression used as a filter operand.

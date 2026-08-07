@@ -73,6 +73,10 @@ type arrowFilterLeafJS struct {
 	// columns into the Arrow filter path as a computed leaf. Corresponds to
 	// arrowFilterComputed on the planner side.
 	Computed *arrowFilterComputedJS `json:"cmp,omitempty"`
+	// Case is a CASE/COALESCE value leaf, reused directly from the planner
+	// projection CASE spec (arrowProjectionCol) since it is JSON-serializable
+	// on its own (no arrow.DataType inside).
+	Case *arrowProjectionCol `json:"case,omitempty"`
 }
 
 // arrowFilterBinaryJS is a nested arithmetic expression leaf operand.
@@ -230,7 +234,7 @@ func (p *arrowFilterProcessor) compute(ctx context.Context) error {
 	}
 
 	spec := buildArrowFilterSpec(p.plan.Root)
-	filt := NewArrowFilter(p.alloc, conv, spec)
+	filt := NewArrowFilter(p.alloc, conv, spec, p.EvalCtx)
 	filt.Init(ctx)
 	rec, done, err := filt.Next(ctx)
 	if err != nil {
@@ -315,6 +319,10 @@ func leafToArrowArg(l *arrowFilterLeafJS) *ArrowArg {
 			args[i] = *leafToArrowArg(&a)
 		}
 		return &ArrowArg{Computed: &ArrowProjectionSpec{Func: l.Computed.Func, Args: args}}
+	}
+	if l.Case != nil {
+		spec := arrowProjectionSpecForCol("", *l.Case)
+		return &ArrowArg{Case: &spec}
 	}
 	if l.Col >= 0 {
 		return &ArrowArg{ColName: fmt.Sprintf("col%d", l.Col)}

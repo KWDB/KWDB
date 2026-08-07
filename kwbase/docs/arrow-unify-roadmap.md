@@ -25,7 +25,7 @@
 |------|------|---------|
 | 列引用 / 常量 | ✅ | index var + 字面量 |
 | 数值标量 | ✅ | `abs/sqrt/ln/sign/power/floor/ceil/ceiling/trunc/round`（arrow/compute v17 kernel） |
-| 字符串函数 | ✅ | `length/octet_length/lower/upper/concat/substring/trim/ltrim/rtrim/btrim/replace/overlay/split_part` 投影侧全 Arrow 化；过滤侧经 Computed leaf 复用同一批 kernel（`substring/upper/trim/like` 等不再回退 `tree.Datum`） |
+| 字符串函数 | ✅ | `length/octet_length/lower/upper/concat/substring/trim/ltrim/rtrim/btrim/replace/overlay/split_part` 投影侧全 Arrow 化；过滤侧经 Computed leaf 复用同一批 kernel（`substring/upper/trim/like` 等不再回退 `tree.Datum`）；**过滤侧 CASE/COALESCE 谓词**经复用投影 CASE spec 接入 Arrow 引擎（2026-08-07 落地） |
 | 比较/逻辑/算术 | ✅ | 投影/过滤已覆盖基础算子 |
 | CAST 类型转换 | ⚠️ | 过滤侧 int/float/bool/string 已支持；投影 decimal↔string 已支持 |
 | LIKE / IN / IS NULL | ✅ | LIKE/ILIKE 已支持；IN/NOT IN 已支持（int/string/decimal 列，含 computed 左操作数如 `substring(col,1,3) IN (...)`；decimal 经 cast-FLOAT 后比对 float64 集合）；IS NULL/IS NOT NULL 已支持（`evalIsNull`，扫描侧 + 独立 ArrowFilter 阶段） |
@@ -107,7 +107,7 @@
 
 ### 阶段 4 — 剩余算子补齐
 - [x] Top-N（Limit + Ordered 合并 Arrow 阶段）：`LIMIT n ORDER BY` 走 ArrowSorter 时，planner 经 `pushLimitToArrowSorter` 把 localLimit=count+offset 注入 ArrowSorter plan，compute 用 `plan.Limit` 做 top-N 提前切片（offset 仍由 PostProcess 处理，避免双重截断）；与 colexec 行式 sorter 的 per-sorter 局部 limit 行为对齐。
-- [x] 窗口 frame（ROWS/RANGE）与排名函数 row_number/rank/dense_rank：聚合支持默认 RANGE / ROWS UNBOUNDED PRECEDING-TO-CURRENT ROW 运行聚合、整 partition 帧（UNBOUNDED-TO-UNBOUNDED）、以及 **ROWS 偏移帧**（如 `ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING`，逐行滑动窗口）；RANGE 偏移帧（需排序值算术）暂不支持。`isSupportedWindowFrame` 放行 ROWS 偏移边界，`computeAggregateWindow` 经 `frameBounds` + `windowAccumulator` 逐行求值。排名函数 row_number/rank/dense_rank 已落地。
+- [x] 窗口 frame（ROWS/RANGE）与排名函数 row_number/rank/dense_rank：聚合支持默认 RANGE / ROWS UNBOUNDED PRECEDING-TO-CURRENT ROW 运行聚合、整 partition 帧（UNBOUNDED-TO-UNBOUNDED）、以及 **ROWS 偏移帧**（如 `ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING`，逐行滑动窗口）；**RANGE 偏移帧的 value-based 求值逻辑已实现**（`rangeFrameBounds` + `offsetDatum`，按 ORDER BY 值做 ±offset 二分，覆盖 int/float/decimal/timestamp），并有单测 `rowexec/arrow_windower_range_test.go` 验证，但**端到端尚未打通**：Arrow windower 在 RANGE 偏移 frame 的执行路径（分区处理 / 排序值比较）仍有 bug（实测仅输出部分 partition、每帧退化为单行），属 windower 偏移 frame 执行层问题，与 ROWS 偏移 frame（已落地、测试通过）同源待修。当前 `isSupportedWindowFrame` 对 RANGE 偏移边界仍回退 classic 路径。`computeAggregateWindow` 经 `frameBounds` + `windowAccumulator` 逐行求值。排名函数 row_number/rank/dense_rank 已落地。
 - [x] 投影 CASE / COALESCE：新增 `arrowProjectionColFor`（抽取单表达式建列）、`arrowCaseCol`/`arrowCoalesceCol`/`arrowComparisonCol` 助手；`canArrowRender`/`addArrowRendering` 新增 `*tree.CaseExpr`/`*tree.CoalesceExpr` 分支，分支值经 `canArrowRenderCase` 统一 cast 到结果类型（仅 arrow 可物化类型：int/float/string/bool）。executor `arrowProjection` 新增 `evalCase`（原生逐行选支 + `evalIsNull` 布尔掩码），`ArrowProjectionSpec` 加 `Kind/branches/else` 字段，`buildProjectionSpecs` 递归翻译。`COALESCE(a,b,c)` 等价于 `CASE WHEN a IS NOT NULL THEN a ... ELSE c`。见 §2.6。
 - [x] 集合 ALL 变体（UNION ALL 短路）：新增 `ArrowUnionAll` 算子（多输入 stage，把所有上游 Arrow Record 经 `unifiedInputFrom` 收为 UnifiedProcessor 后拼接为单 Record），`createPlanForSetOp` 的 UNION ALL 分支在 `ArrowUnionAllEnabled` 时将合并点从行式 no-op 改为 ArrowUnionAll stage（同节点全 Arrow，跨节点边界仍由 no-op 收口）。新增 `sql.arrow_union_all.enabled` 开关。
 - [ ] **Values 算子 Arrow 化（纯常量源，无 KV/引擎依赖）**：（2026-08-07 新增排期，P1 收口）
@@ -482,3 +482,9 @@
 - 日期时间函数 `EXTRACT`/`DATE_TRUNC` 接入 Arrow 投影路径（§2.6.4，validator 见 §2.6 末）；9 个 Arrow 开关保持 `defaultEnabled=false`。
 - 集合 ALL 变体 `UNION ALL` 短路（`ArrowUnionAll` 算子）落地。
 - 字符串函数投影侧全 Arrow 化；CAST 部分类型覆盖。
+
+### 2026-08-07 — 阶段 C 表达式覆盖（过滤字符串/字节函数、CASE/COALESCE、RANGE 偏移 frame）
+- **过滤路径字节（Bytes）列支持（P1 类型补全）**：`arrow_filter.go` 的 `eval` 选择步骤对 `arrow.IsBinaryLike` 列（Binary/LargeBinary）改用 Go 路径 gather（`compute.Filter` 的 vendored `FilterBinary` kernel 对变长 offset 布局 `GetSpanOffsets` 越界 panic，已知生态 bug），其余类型仍走原生 `compute.Filter` 快路径。配合 2026-08-07 的 Bytes schema/builder + 分组/连接比较支持，含 `WHERE blob_col = x` 的 BYTES 列过滤端到端走 Arrow 且结果正确（测试 `arrowpilot/arrow_unify_filter_bytes_test.go`）。
+- **过滤路径 CASE / COALESCE（阶段 C 表达式覆盖）**：`canArrowFilterExpr`（`arrowFilterLeafFromExpr`）新增 `*tree.CaseExpr`/`*tree.CoalesceExpr` 分支，复用投影侧 `arrowCaseCol`/`arrowCoalesceCol` 生成 `Kind:"case"` 的 `arrowProjectionCol`，作为 `arrowFilterLeaf.Case` 叶子；executor `arrowFilterCore` 经新增 `evalCtx` 字段，在 `evalLeafDatum` 对 `Case` 叶子复用投影 `evalCase` 求值（所有 arrow 值类型 / 嵌套分支统一支持）。`arrowFilterLeafJS`/`ArrowArg`/`leafToArrowArg`/`specForCol`（提升为包级 `arrowProjectionSpecForCol` 供 filter 复用）同步打通序列化链。测试 `arrowpilot/arrow_unify_filter_case_test.go` 覆盖 `CASE WHEN ... THEN ... ELSE ...` 与 `COALESCE` 谓词，与 classic 路径一致。
+- **窗口 RANGE 偏移 frame（阶段 C 表达式覆盖）**：`rangeFrameBounds` + `offsetDatum` 实现 value-based RANGE 偏移帧求值（按 ORDER BY 值做 ±offset 二分，覆盖 int/float/decimal/timestamp），并有单测 `rowexec/arrow_windower_range_test.go` 验证。但**端到端暂未打通**：Arrow windower 在 RANGE 偏移 frame 的执行层（分区处理 / 排序值比较）仍有 bug（实测仅输出部分 partition、每帧退化为单行），属 windower 偏移 frame 执行问题，与已落地的 ROWS 偏移 frame 同源待修。当前 `isSupportedWindowFrame` 对 RANGE 偏移边界仍回退 classic 路径；`rangeFrameBounds`/`offsetDatum` 已就绪，待 windower 偏移执行层修复后即可启用。
+- **验证**：`go build ./pkg/sql` 通过；新增/修复 `arrowpilot` 与 `rowexec` 单测（Bytes filter、CASE/COALESCE filter、Bytes 类型、RANGE frame bounds）均 PASS。

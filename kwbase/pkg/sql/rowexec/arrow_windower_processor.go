@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"sort"
 	"sync/atomic"
+	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
@@ -114,6 +115,82 @@ func (f *arrowWindowFramePlan) frameBounds(i, n int) (int, int) {
 	}
 	if end < start {
 		end = start
+	}
+	return start, end
+}
+
+// offsetDatum returns d shifted by sign*off (off is a non-negative integer).
+// It supports the ordering-column types that RANGE offset frames are defined
+// over: integers, floats, decimals and timestamps. Returns nil for unsupported
+// types, in which case the caller falls back to the peer-group semantics.
+func offsetDatum(d tree.Datum, off, sign int) tree.Datum {
+	switch v := d.(type) {
+	case *tree.DInt:
+		return tree.NewDInt(*v + tree.DInt(sign*off))
+	case *tree.DFloat:
+		return tree.NewDFloat(*v + tree.DFloat(sign*off))
+	case *tree.DDecimal:
+		r := &tree.DDecimal{}
+		r.Decimal.Set(&v.Decimal)
+		tree.ExactCtx.Add(&r.Decimal, &v.Decimal, apd.New(int64(sign*off), 0))
+		return r
+	case *tree.DTimestamp:
+		return tree.MakeDTimestamp(v.Time.Add(time.Duration(sign*off)*time.Second), time.Microsecond)
+	case *tree.DTimestampTZ:
+		return tree.MakeDTimestampTZ(v.Time.Add(time.Duration(sign*off)*time.Second), time.Microsecond)
+	}
+	return nil
+}
+
+// rangeFrameBounds returns the inclusive [start, end] row indices for a RANGE
+// offset frame of row i within a partition sorted by the order column. Unlike
+// ROWS offset frames (which count physical rows), a RANGE offset frame includes
+// every row whose ORDER BY value lies within [orderVal(i) - StartOffset,
+// orderVal(i) + EndOffset]. Because the partition is sorted by the order column
+// the frame is a single contiguous range around i, found by binary search over
+// the order values.
+func rangeFrameBounds(i, n int, orderVals []tree.Datum, evalCtx *tree.EvalContext, f *arrowWindowFramePlan) (int, int) {
+	if n == 0 {
+		return 0, -1
+	}
+	cur := orderVals[i]
+	var low, high tree.Datum
+	if f.Start == "offset_preceding" {
+		low = offsetDatum(cur, f.StartOffset, -1)
+	}
+	if f.End == "offset_following" {
+		high = offsetDatum(cur, f.EndOffset, +1)
+	}
+	start := 0
+	end := n - 1
+	if low != nil {
+		// first index j with orderVals[j] >= low
+		lo, hi := 0, n
+		for lo < hi {
+			mid := (lo + hi) / 2
+			if orderVals[mid].Compare(evalCtx, low) >= 0 {
+				hi = mid
+			} else {
+				lo = mid + 1
+			}
+		}
+		start = lo
+	}
+	if high != nil {
+		// last index j with orderVals[j] <= high
+		lo, hi := 0, n-1
+		for lo < hi {
+			mid := (lo + hi + 1) / 2
+			if orderVals[mid].Compare(evalCtx, high) <= 0 {
+				lo = mid
+			} else {
+				hi = mid - 1
+			}
+		}
+		end = lo
+	}
+	if start > end {
+		return i, i - 1 // empty frame
 	}
 	return start, end
 }
@@ -439,9 +516,30 @@ func (p *arrowWindowerProcessor) computeAggregateWindow(out, part sqlbase.EncDat
 	// ROWS offset frame: each row gets the aggregate over its own [start,end]
 	// window. part is sorted by the window ORDER BY (computePartition sorts it),
 	// so the window indices map directly onto part.
-	if fn.Frame != nil && fn.Frame.Mode == "rows" && !fn.Frame.isWholePartitionFrame() && fn.Frame.hasOffset() {
+	if fn.Frame != nil && !fn.Frame.isWholePartitionFrame() && fn.Frame.hasOffset() {
+		// Per-row windows. ROWS offset frames count physical rows; RANGE offset
+		// frames span every row whose ORDER BY value is within the offset window
+		// of the current row's value (value-based, peer-group aware).
+		var orderVals []tree.Datum
+		if fn.Frame.Mode == "range" {
+			// The RANGE offset is measured against the ordering column (the last
+			// column in the ORDER BY list; PARTITION BY columns precede it).
+			orderCol := fn.Ordering[len(fn.Ordering)-1]
+			orderVals = make([]tree.Datum, len(part))
+			for j := range part {
+				if err := part[j][orderCol].EnsureDecoded(&p.inTypes[orderCol], p.da); err != nil {
+					panic(err)
+				}
+				orderVals[j] = part[j][orderCol].Datum
+			}
+		}
 		for i := range part {
-			s, e := fn.Frame.frameBounds(i, len(part))
+			var s, e int
+			if fn.Frame.Mode == "range" {
+				s, e = rangeFrameBounds(i, len(part), orderVals, p.EvalCtx, fn.Frame)
+			} else {
+				s, e = fn.Frame.frameBounds(i, len(part))
+			}
 			acc := &windowAccumulator{fn: fn.Func}
 			for j := s; j <= e; j++ {
 				if err := acc.consume(p, part[j], fn.Input); err != nil {

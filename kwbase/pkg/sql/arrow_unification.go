@@ -828,8 +828,12 @@ func isSupportedWindowFrame(f *execinfrapb.WindowerSpec_Frame) bool {
 		return false
 	}
 	if f.Bounds.Start.BoundType != execinfrapb.WindowerSpec_Frame_UNBOUNDED_PRECEDING {
-		// Offset start bound is only supported for ROWS mode, where the offset
-		// is a row count and needs no ordering-value arithmetic.
+		// Offset start bound is only supported for ROWS mode (row count). RANGE
+		// offset frames depend on a correctly working value-based window
+		// evaluator; rangeFrameBounds exists, but the Arrow windower's offset-
+		// frame execution (partition handling / ordering-value arithmetic) is not
+		// yet validated end-to-end for RANGE, so keep RANGE offset on the classic
+		// path until that is fixed.
 		if f.Mode != execinfrapb.WindowerSpec_Frame_ROWS ||
 			f.Bounds.Start.BoundType != execinfrapb.WindowerSpec_Frame_OFFSET_PRECEDING {
 			return false

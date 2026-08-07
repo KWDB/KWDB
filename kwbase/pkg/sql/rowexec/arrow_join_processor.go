@@ -276,6 +276,6 @@ func buildArrowJoinSpec(plan arrowJoinPlan) ArrowJoinSpec {
 // applyOnFilter evaluates the decoded non-equi onExpr (§7.4) over the merged
 // join record and returns a new record containing only the rows that satisfy it.
 func (p *arrowJoinProcessor) applyOnFilter(ctx context.Context, rec arrow.Record, plan *arrowFilterPlan) (arrow.Record, error) {
-	core := newArrowFilterCore(buildArrowFilterSpec(plan.Root), p.alloc)
+	core := newArrowFilterCore(buildArrowFilterSpec(plan.Root), p.alloc, p.EvalCtx)
 	return core.eval(ctx, rec)
 }

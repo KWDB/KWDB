@@ -2686,6 +2686,11 @@ type arrowFilterLeaf struct {
 	// row-by-row tree.Datum path. See arrow_arg.go (executor) for the
 	// corresponding receiver type.
 	Computed *arrowFilterComputed `json:"cmp,omitempty"`
+	// Case, when non-nil, is a CASE/COALESCE expression producing the leaf value.
+	// It reuses the projection CASE spec form (arrowProjectionCol) so all value
+	// types and nested branches are supported; the WHEN conditions are
+	// boolean-producing specs and the THEN/ELSE branches are value-producing specs.
+	Case *arrowProjectionCol `json:"case,omitempty"`
 }
 
 // arrowFilterComputed wraps a projection function (its Func name plus a list of
@@ -2804,6 +2809,29 @@ func (p *PhysicalPlan) arrowFilterLeafFromExpr(
 		}
 		return &arrowFilterLeaf{
 			Computed: &arrowFilterComputed{Func: fn, Args: args},
+		}, c.ResolvedType(), true
+	case *tree.CaseExpr:
+		// Route CASE/COALESCE in a filter predicate through the Arrow engine by
+		// reusing the projection CASE spec. The result is a value leaf that the
+		// surrounding comparison/IS-NULL predicate can consume. All branch values
+		// are cast to the result type by arrowCaseCol, so the executor's CASE
+		// evaluator handles every supported arrow value type uniformly.
+		col, _, err := p.arrowCaseCol(c, indexVarMap)
+		if err != nil {
+			return nil, nil, false
+		}
+		cc := col
+		return &arrowFilterLeaf{
+			Case: &cc,
+		}, c.ResolvedType(), true
+	case *tree.CoalesceExpr:
+		col, _, err := p.arrowCoalesceCol(c, indexVarMap)
+		if err != nil {
+			return nil, nil, false
+		}
+		cc := col
+		return &arrowFilterLeaf{
+			Case: &cc,
 		}, c.ResolvedType(), true
 	}
 	return nil, nil, false

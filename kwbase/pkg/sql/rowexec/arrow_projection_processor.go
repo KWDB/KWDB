@@ -393,14 +393,15 @@ func arrowCastTagToType(tag string, scale int32) arrow.DataType {
 func (p *arrowProjectionProcessor) buildProjectionSpecs() []ArrowProjectionSpec {
 	specs := make([]ArrowProjectionSpec, len(p.plan.Cols))
 	for i, c := range p.plan.Cols {
-		specs[i] = p.specForCol(fmt.Sprintf("out%d", i), c)
+		specs[i] = arrowProjectionSpecForCol(fmt.Sprintf("out%d", i), c)
 	}
 	return specs
 }
 
-// specForCol translates a single planner projection column into an executor
-// ArrowProjectionSpec, recursing into CASE/COALESCE branches.
-func (p *arrowProjectionProcessor) specForCol(outName string, c arrowProjectionCol) ArrowProjectionSpec {
+// arrowProjectionSpecForCol translates a single planner projection column into
+// an executor ArrowProjectionSpec, recursing into CASE/COALESCE branches. It is
+// package-level so the Arrow filter can reuse it for CASE/COALESCE leaves.
+func arrowProjectionSpecForCol(outName string, c arrowProjectionCol) ArrowProjectionSpec {
 	if c.Kind == "passthrough" {
 		return ArrowProjectionSpec{
 			OutputName: outName,
@@ -411,13 +412,13 @@ func (p *arrowProjectionProcessor) specForCol(outName string, c arrowProjectionC
 	if c.Kind == "case" {
 		branches := make([]ArrowProjectionBranch, len(c.Branches))
 		for i, br := range c.Branches {
-			when := p.specForCol("", *br.When)
-			then := p.specForCol("", *br.Then)
+			when := arrowProjectionSpecForCol("", *br.When)
+			then := arrowProjectionSpecForCol("", *br.Then)
 			branches[i] = ArrowProjectionBranch{When: &when, Then: &then}
 		}
 		var els *ArrowProjectionSpec
 		if c.Else != nil {
-			e := p.specForCol("", *c.Else)
+			e := arrowProjectionSpecForCol("", *c.Else)
 			els = &e
 		}
 		return ArrowProjectionSpec{
@@ -432,7 +433,7 @@ func (p *arrowProjectionProcessor) specForCol(outName string, c arrowProjectionC
 		if in.Col >= 0 {
 			args[j] = ArrowArg{ColName: fmt.Sprintf("col%d", in.Col)}
 		} else {
-			args[j] = ArrowArg{Scalar: arrowConstDatum(in, p.alloc)}
+			args[j] = ArrowArg{Scalar: arrowConstDatum(in, nil)}
 		}
 		// Render-side CAST: attach the target type so the projection kernel
 		// casts the operand before feeding it to the compute function.

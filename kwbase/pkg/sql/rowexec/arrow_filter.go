@@ -52,12 +52,13 @@ type ArrowFilterOperand struct {
 }
 
 type arrowFilterCore struct {
-	spec  ArrowFilterSpec
-	alloc memory.Allocator
+	spec    ArrowFilterSpec
+	alloc   memory.Allocator
+	evalCtx *tree.EvalContext
 }
 
-func newArrowFilterCore(spec ArrowFilterSpec, alloc memory.Allocator) arrowFilterCore {
-	return arrowFilterCore{spec: spec, alloc: alloc}
+func newArrowFilterCore(spec ArrowFilterSpec, alloc memory.Allocator, evalCtx *tree.EvalContext) arrowFilterCore {
+	return arrowFilterCore{spec: spec, alloc: alloc, evalCtx: evalCtx}
 }
 
 // arrowFilter is a UnifiedProcessor that selects the matching rows of its
@@ -68,8 +69,8 @@ type arrowFilter struct {
 }
 
 // NewArrowFilter builds a filter operator over input.
-func NewArrowFilter(alloc memory.Allocator, input UnifiedProcessor, spec ArrowFilterSpec) UnifiedProcessor {
-	return &arrowFilter{arrowFilterCore: newArrowFilterCore(spec, alloc), input: input}
+func NewArrowFilter(alloc memory.Allocator, input UnifiedProcessor, spec ArrowFilterSpec, evalCtx *tree.EvalContext) UnifiedProcessor {
+	return &arrowFilter{arrowFilterCore: newArrowFilterCore(spec, alloc, evalCtx), input: input}
 }
 
 // Allocator implements UnifiedProcessor.
@@ -106,16 +107,42 @@ func (f *arrowFilterCore) eval(ctx context.Context, rec arrow.Record) (arrow.Rec
 	}
 	defer mask.Release()
 
-	// Select the matching rows from every column via the native arrow compute
-	// Filter kernel. A null predicate bit is dropped (DefaultFilterOptions),
-	// which matches the prior "mask.IsNull(i) || !mask.Value(i)" semantics,
-	// eliminating the per-row index-gathering loop.
-	filterDatum := compute.NewDatum(mask)
-	defer filterDatum.Release()
+	// Select the matching rows from every column. We use the native arrow
+	// compute Filter kernel for all types except Binary: the vendored
+	// arrow/compute FilterBinary kernel mishandles the canonical Binary
+	// (variable-offset) span layout and panics on GetSpanOffsets. For Binary
+	// columns we gather the surviving rows explicitly with the Go path, which
+	// already handles arrow.BINARY (see gatherColumn / appendValueAt). A null
+	// predicate bit is dropped, matching "mask.IsNull(i) || !mask.Value(i)".
 	results := make([]compute.Datum, rec.NumCols())
 	cols := make([]arrow.Array, rec.NumCols())
+	var filterDatum compute.Datum
+	useComputeFilter := false
+	for ci := 0; ci < int(rec.NumCols()); ci++ {
+		if arrow.IsBinaryLike(rec.Column(ci).DataType().ID()) {
+			continue
+		}
+		useComputeFilter = true
+		break
+	}
+	if useComputeFilter {
+		filterDatum = compute.NewDatum(mask)
+		defer filterDatum.Release()
+	}
 	for ci := 0; ci < int(rec.NumCols()); ci++ {
 		col := rec.Column(ci)
+		if arrow.IsBinaryLike(col.DataType().ID()) {
+			idxs := make([]int32, 0, col.Len())
+			for i := 0; i < col.Len(); i++ {
+				if !mask.IsNull(i) && mask.Value(i) {
+					idxs = append(idxs, int32(i))
+				}
+			}
+			gathered := gatherColumn(f.alloc, col, idxs)
+			cols[ci] = gathered
+			results[ci] = nil
+			continue
+		}
 		res, err := compute.Filter(ctx, compute.NewDatum(col), filterDatum, compute.FilterOptions{})
 		if err != nil {
 			for j := 0; j < ci; j++ {
@@ -129,7 +156,9 @@ func (f *arrowFilterCore) eval(ctx context.Context, rec arrow.Record) (arrow.Rec
 	}
 	out := array.NewRecord(rec.Schema(), cols, int64(cols[0].Len()))
 	for _, r := range results {
-		r.Release()
+		if r != nil {
+			r.Release()
+		}
 	}
 	return out, nil
 }
@@ -215,6 +244,17 @@ func (f *arrowFilterCore) evalLeafDatum(ctx context.Context, rec arrow.Record, o
 	}
 	if op.Leaf.Computed != nil {
 		return f.evalComputed(ctx, rec, op.Leaf.Computed)
+	}
+	if op.Leaf.Case != nil {
+		// CASE/COALESCE value leaf: reuse the projection CASE evaluator, which
+		// supports all arrow value types and nested branches. The surrounding
+		// filter predicate then consumes the resulting array.
+		proj := &arrowProjection{alloc: f.alloc, evalCtx: f.evalCtx}
+		arr, err := proj.eval(ctx, rec, *op.Leaf.Case)
+		if err != nil {
+			return nil, err
+		}
+		return compute.NewDatum(arr), nil
 	}
 	if op.Leaf.Scalar != nil {
 		return op.Leaf.Scalar, nil
