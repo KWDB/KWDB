@@ -689,7 +689,8 @@ class TsMMapAllocFile : public FileWithIndex {
       }
       file_len_now = 0;
     }
-    if (file_len_now != file_len) {
+    // make sure file size is enough, larger than expected file_len is ok.
+    if (file_len_now < file_len) {
       if (fallocate(fd_, 0, 0, file_len) == -1) {
         close(fd_);
         LOG_ERROR("fallocate [%s] error.", path_.c_str());
@@ -704,7 +705,7 @@ class TsMMapAllocFile : public FileWithIndex {
     }
     addrs_.push_back({base, file_len});
     uint32_t offset = 0;
-    for (int i = 0; i < addrs.size(); i++) {
+    for (size_t i = 0; i < addrs.size(); i++) {
       memcpy(base + offset, addrs[i].data, addrs[i].len);
       offset += addrs[i].len;
     }
@@ -732,14 +733,15 @@ class TsMMapAllocFile : public FileWithIndex {
     });
     size_t file_len = lseek(fd, 0, SEEK_END);
     auto new_file_len  = getHeader()->file_len;
-    if (file_len != new_file_len) {
+    // make sure file size is enough, larger than expected new_file_len is ok.
+    if (file_len < new_file_len) {
       if (fallocate(fd, 0, 0, new_file_len) == -1) {
         LOG_ERROR("fallocate [%s] error.", path.c_str());
         return KStatus::FAIL;
       }
     }
     lseek(fd, 0, SEEK_SET);
-    for (int i = 0; i < addrs_.size(); i++) {
+    for (size_t i = 0; i < addrs_.size(); i++) {
       if (write(fd, addrs_[i].data, addrs_[i].len) != addrs_[i].len) {
         LOG_ERROR("write error.");
         return KStatus::FAIL;
