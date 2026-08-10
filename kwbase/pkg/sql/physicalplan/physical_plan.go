@@ -2101,9 +2101,14 @@ func arrowFuncName(ex *tree.FuncExpr) string {
 	return ""
 }
 
+// ageTxnTsSentinel marks the transaction timestamp placeholder in an age()
+// projection spec. The executor replaces it with the runtime transaction
+// timestamp (evalCtx.GetTxnTimestamp), which cannot be serialized as a literal.
+const ageTxnTsSentinel = "__TXN_TS__"
+
 // arrowDatetimeFuncName normalizes a SQL datetime-function name to the internal
 // projection Func name handled by the Arrow projection executor. Returns "" for
-// anything outside the supported set (extract/date_trunc/now).
+// anything outside the supported set (extract/date_trunc/now/age).
 func arrowDatetimeFuncName(name string) string {
 	switch strings.ToLower(name) {
 	case "extract":
@@ -2112,38 +2117,59 @@ func arrowDatetimeFuncName(name string) string {
 		return "date_trunc"
 	case "now", "current_timestamp", "transaction_timestamp":
 		return "now"
+	case "age":
+		return "age"
 	}
 	return ""
 }
 
 // canArrowDatetime verifies that a datetime FuncExpr is shaped so the Arrow
-// projection executor can evaluate it. extract/date_trunc take a constant field
-// string plus a Timestamp/TimestampTZ column; now() takes no arguments and
-// produces the current (statement) timestamp.
+// projection executor can evaluate it:
+//   - now() takes no arguments and produces the current (statement) timestamp.
+//   - extract/date_trunc take a constant field string plus a Timestamp/TimestampTZ
+//     column.
+//   - age(ts) (1 arg) or age(end, begin) (2 args) both take Timestamp/TimestampTZ
+//     column(s); the single-arg form subtracts the column from the transaction
+//     timestamp, the two-arg form subtracts begin from end.
 func (p *PhysicalPlan) canArrowDatetime(ex *tree.FuncExpr, indexVarMap []int) bool {
-	if arrowDatetimeFuncName(arrowFuncName(ex)) == "now" {
+	name := arrowDatetimeFuncName(arrowFuncName(ex))
+	switch name {
+	case "now":
 		return len(ex.Exprs) == 0
+	case "extract", "date_trunc":
+		if len(ex.Exprs) != 2 {
+			return false
+		}
+		fieldArg, ok := ex.Exprs[0].(tree.TypedExpr)
+		if !ok {
+			return false
+		}
+		if _, ok := fieldArg.(*tree.DString); !ok {
+			return false
+		}
+		tsArg, ok := ex.Exprs[1].(tree.TypedExpr)
+		if !ok {
+			return false
+		}
+		tsTy := tsArg.ResolvedType()
+		return tsTy.Family() == types.TimestampFamily || tsTy.Family() == types.TimestampTZFamily
+	case "age":
+		if len(ex.Exprs) != 1 && len(ex.Exprs) != 2 {
+			return false
+		}
+		for _, e := range ex.Exprs {
+			te, ok := e.(tree.TypedExpr)
+			if !ok {
+				return false
+			}
+			ty := te.ResolvedType()
+			if ty.Family() != types.TimestampFamily && ty.Family() != types.TimestampTZFamily {
+				return false
+			}
+		}
+		return true
 	}
-	if len(ex.Exprs) != 2 {
-		return false
-	}
-	fieldArg, ok := ex.Exprs[0].(tree.TypedExpr)
-	if !ok {
-		return false
-	}
-	if _, ok := fieldArg.(*tree.DString); !ok {
-		// The field must be a constant string literal.
-		return false
-	}
-	tsArg, ok := ex.Exprs[1].(tree.TypedExpr)
-	if !ok {
-		return false
-	}
-	tsTy := tsArg.ResolvedType()
-	if tsTy.Family() != types.TimestampFamily && tsTy.Family() != types.TimestampTZFamily {
-		return false
-	}
-	return true
+	return false
 }
 
 // arrowStringFuncName normalizes a SQL string-function name to the internal
@@ -2429,6 +2455,45 @@ func (p *PhysicalPlan) arrowProjectionColFor(e tree.TypedExpr, indexVarMap []int
 					{Col: tsArg.Col},
 				},
 				TZ: tsTy.Family() == types.TimestampTZFamily,
+			}, ex.ResolvedType(), nil
+		}
+		if arrowDatetimeFuncName(rawName) == "age" {
+			// age(ts)  =>  transaction_timestamp - ts
+			// age(end, begin)  =>  begin - end
+			// Both forms yield a DInterval. The transaction timestamp is a
+			// runtime constant (evaluated by the executor), so we mark it with
+			// the "__TXN_TS__" sentinel; actual timestamp operands are columns.
+			if len(ex.Exprs) == 1 {
+				tsArg, _, ok := p.arrowOperandArg(ex.Exprs[0].(tree.TypedExpr), indexVarMap)
+				if !ok {
+					return arrowProjectionCol{}, nil, errors.Errorf("arrow projection: unsupported operand to age()")
+				}
+				sentinel := ageTxnTsSentinel
+				return arrowProjectionCol{
+					Kind: "datetime",
+					Func: "age",
+					Inputs: []arrowArg{
+						{Col: -1, ConstStr: &sentinel},
+						{Col: tsArg.Col},
+					},
+					TZ: ex.Exprs[0].(tree.TypedExpr).ResolvedType().Family() == types.TimestampTZFamily,
+				}, ex.ResolvedType(), nil
+			}
+			beginArg, _, ok1 := p.arrowOperandArg(ex.Exprs[1].(tree.TypedExpr), indexVarMap)
+			endArg, _, ok2 := p.arrowOperandArg(ex.Exprs[0].(tree.TypedExpr), indexVarMap)
+			if !ok1 || !ok2 {
+				return arrowProjectionCol{}, nil, errors.Errorf("arrow projection: unsupported operand to age(end, begin)")
+			}
+			tz := ex.Exprs[0].(tree.TypedExpr).ResolvedType().Family() == types.TimestampTZFamily ||
+				ex.Exprs[1].(tree.TypedExpr).ResolvedType().Family() == types.TimestampTZFamily
+			return arrowProjectionCol{
+				Kind: "datetime",
+				Func: "age",
+				Inputs: []arrowArg{
+					{Col: beginArg.Col},
+					{Col: endArg.Col},
+				},
+				TZ: tz,
 			}, ex.ResolvedType(), nil
 		}
 		funcName, ok := arrowStringFuncName(rawName)

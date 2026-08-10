@@ -422,6 +422,44 @@ func (p *arrowProjection) evalArrowDatetimeFunc(ctx context.Context, in arrow.Re
 		}
 		return b.NewArray(), nil
 	}
+	if spec.Func == "age" {
+		// age(ts)        =>  transaction_timestamp - ts
+		// age(end, begin)=>  begin - end
+		// The first argument is either the "__TXN_TS__" sentinel (single-arg
+		// form, resolved against evalCtx.GetTxnTimestamp) or a timestamp column
+		// (begin). The second argument is always the timestamp column / operand.
+		beginTs, err := p.arrowDatetimeTimestampArg(ctx, in, spec.Args[0])
+		if err != nil {
+			return nil, err
+		}
+		endTs, err := p.arrowDatetimeTimestampArg(ctx, in, spec.Args[1])
+		if err != nil {
+			return nil, err
+		}
+		defer beginTs.Release()
+		defer endTs.Release()
+		n := int(in.NumRows())
+		b := array.NewStringBuilder(p.alloc)
+		defer b.Release()
+		for i := 0; i < n; i++ {
+			if beginTs.IsNull(i) || endTs.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			begin := arrowMicroToTime(beginTs.Value(i), spec.TZ, p)
+			end := arrowMicroToTime(endTs.Value(i), spec.TZ, p)
+			di, err := tree.TimestampDifference(
+				p.evalCtx,
+				&tree.DTimestampTZ{Time: begin},
+				&tree.DTimestampTZ{Time: end},
+			)
+			if err != nil {
+				return nil, err
+			}
+			b.Append(di.String())
+		}
+		return b.NewStringArray(), nil
+	}
 	if len(spec.Args) != 2 {
 		return nil, fmt.Errorf("arrow datetime func expects 2 args, got %d", len(spec.Args))
 	}
@@ -499,6 +537,73 @@ func (p *arrowProjection) evalArrowDatetimeFunc(ctx context.Context, in arrow.Re
 		return b.NewTimestampArray(), nil
 	}
 	return nil, fmt.Errorf("arrow datetime func: unsupported func %q", spec.Func)
+}
+
+// ageTxnTsSentinel matches the planner-side placeholder for the transaction
+// timestamp in a single-argument age(ts) projection.
+const ageTxnTsSentinelExecutor = "__TXN_TS__"
+
+// arrowDatetimeTimestampArg resolves one age() argument into a Timestamp array
+// of length n. A literal "__TXN_TS__" sentinel expands to the runtime
+// transaction timestamp (a constant broadcast column); an ordinary column is
+// pulled by name and broadcast if it is a single-element constant.
+func (p *arrowProjection) arrowDatetimeTimestampArg(ctx context.Context, in arrow.Record, arg ArrowArg) (*array.Timestamp, error) {
+	n := int(in.NumRows())
+	if arg.Scalar != nil {
+		if sd, ok := arg.Scalar.(*compute.ScalarDatum); ok {
+			if s, ok := sd.Value.(*scalar.String); ok {
+				if string(s.Value.Bytes()) == ageTxnTsSentinelExecutor {
+					txn := p.evalCtx.GetTxnTimestamp(time.Microsecond)
+					us := arrow.Timestamp(txn.Time.UnixMicro())
+					b := array.NewTimestampBuilder(p.alloc, &arrow.TimestampType{Unit: arrow.Microsecond, TimeZone: txn.Time.Location().String()})
+					defer b.Release()
+					for i := 0; i < n; i++ {
+						b.Append(us)
+					}
+					return b.NewTimestampArray(), nil
+				}
+			}
+		}
+	}
+	if arg.ColName == "" {
+		return nil, fmt.Errorf("arrow age: timestamp argument is neither a column nor the txn sentinel")
+	}
+	idx := in.Schema().FieldIndices(arg.ColName)
+	if len(idx) == 0 {
+		return nil, fmt.Errorf("arrow age: input column %q not found", arg.ColName)
+	}
+	tsCol := in.Column(idx[0])
+	tsArr, ok := tsCol.(*array.Timestamp)
+	if !ok {
+		return nil, fmt.Errorf("arrow age: expected Timestamp column, got %T", tsCol)
+	}
+	if tsArr.Len() == n {
+		return tsArr, nil
+	}
+	// Broadcast a single-element constant across all rows.
+	b := array.NewTimestampBuilder(p.alloc, tsArr.DataType().(*arrow.TimestampType))
+	defer b.Release()
+	if tsArr.Len() == 1 && !tsArr.IsNull(0) {
+		v := tsArr.Value(0)
+		for i := 0; i < n; i++ {
+			b.Append(v)
+		}
+	} else {
+		for i := 0; i < n; i++ {
+			b.AppendNull()
+		}
+	}
+	return b.NewTimestampArray(), nil
+}
+
+// arrowMicroToTime converts an Arrow microsecond timestamp into a time.Time in
+// the projection's timezone (UTC when spec.TZ is false).
+func arrowMicroToTime(us arrow.Timestamp, tz bool, p *arrowProjection) time.Time {
+	loc := time.UTC
+	if tz {
+		loc = p.evalCtx.GetLocation()
+	}
+	return time.UnixMicro(int64(us)).In(loc)
 }
 
 // broadcastTo returns an array of length n. If src already has length n it is
