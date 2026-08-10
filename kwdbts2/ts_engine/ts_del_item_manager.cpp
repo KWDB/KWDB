@@ -412,6 +412,7 @@ KStatus TsDelItemManager::GetDelMaxOSN(TSEntityID entity_id, TS_OSN& max_osn) {
 KStatus TsDelItemManager::InsertPrepare() {
   bool now = is_writing_.load();
   if (!now && is_writing_.compare_exchange_strong(now, true)) {
+    // _writing file is temp file, if exist, reuse it; if not exist, create it.
     auto desc_alloc = std::make_shared<TsMMapAllocFile>(path_ + "_writing");
     auto s = mmap_alloc_->CopyTo(desc_alloc.get());
     if (s != KStatus::SUCCESS) {
@@ -423,6 +424,7 @@ KStatus TsDelItemManager::InsertPrepare() {
     header_ = reinterpret_cast<DelItemHeader*>(desc_alloc->addr(desc_alloc->GetStartPos()));
     auto older_alloc = mmap_alloc_;
     mmap_alloc_ = desc_alloc;
+    // all read operation locked by rw_lock_, so it is safe to close older_alloc.
     older_alloc->Close();
   }
   return KStatus::SUCCESS;

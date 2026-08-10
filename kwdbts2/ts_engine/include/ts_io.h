@@ -693,6 +693,7 @@ class TsMMapAllocFile : public FileWithIndex {
     if (file_len_now < file_len) {
       if (fallocate(fd_, 0, 0, file_len) == -1) {
         close(fd_);
+        fd_ = -1;
         LOG_ERROR("fallocate [%s] error.", path_.c_str());
         return KStatus::FAIL;
       }
@@ -700,6 +701,7 @@ class TsMMapAllocFile : public FileWithIndex {
     char* base = reinterpret_cast<char*>(mmap(nullptr, file_len, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0));
     if (base == MAP_FAILED) {
       close(fd_);
+      fd_ = -1;
       LOG_ERROR("mmap [%u] error %s.", file_len, MakeErrorCode(errno).message().c_str());
       return KStatus::FAIL;
     }
