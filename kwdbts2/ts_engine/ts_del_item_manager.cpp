@@ -482,7 +482,9 @@ KStatus TsDelItemManager::CoverDelRange(TSEntityID entity_id, const std::list<ST
     }
     return KStatus::SUCCESS;
   }
-  TsEntityDelItem cur_del_item(del_ranges.front().ts_span, del_ranges.front().osn_span, entity_id);
+  TsEntityDelItem cur_del_item({0, 0}, {0, 0}, entity_id);
+  cur_del_item.status = DEL_ITEM_DROPPED;
+  cur_del_item.type = DEL_ITEM_TYPE_OTHER;
   while (del_ranges.size() > del_items.size()) {
     auto store_item = writeDelItem(entity_id, cur_del_item);
     if (store_item == nullptr) {

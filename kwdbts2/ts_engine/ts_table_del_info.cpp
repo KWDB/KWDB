@@ -511,7 +511,7 @@ bool TsRangeMigrateConsumer::HasHisTagRecord(std::string& pkey, TS_OSN create_os
     auto s = table_->GetTagOSNInfoByRowNum(nullptr, row_info, data_info);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("Failed get tag data info.");
-      return KStatus::FAIL;
+      return false;
     }
     last_osn = data_info.osn[0];
     if (data_info.osn[0] == osn) {
