@@ -82,7 +82,7 @@ class TsReplicaRangeMigrate {
   virtual KStatus NextMigrateData(kwdbContext_p ctx, TSSlice* data, bool* is_finished) = 0;
   virtual KStatus WriteMigrateData(kwdbContext_p ctx, TSSlice& data, TsHashRWLatch& tag_lock) = 0;
   virtual KStatus CommitMigrate(kwdbContext_p ctx) = 0;
-  static TsReplicaRangeMigrate* CreateProducter(std::shared_ptr<TsTableImpl> table, uint64_t b, uint64_t e,
+  static TsReplicaRangeMigrate* CreateProducer(std::shared_ptr<TsTableImpl> table, uint64_t b, uint64_t e,
     uint32_t v, TS_OSN osn);
   static TsReplicaRangeMigrate* CreateConsumer(std::shared_ptr<TsTableImpl> table, uint64_t b, uint64_t e,
     uint32_t v, TS_OSN osn);
@@ -94,7 +94,7 @@ class TsReplicaRangeMigrate {
 };
 
 
-class TsRangeMigrateProducter : public TsReplicaRangeMigrate {
+class TsRangeMigrateProducer : public TsReplicaRangeMigrate {
  private:
   std::list<kwdbts::EntityResultIndex> pkeys_status_;
   std::list<kwdbts::EntityResultIndex>::iterator pkey_iter_;
@@ -102,17 +102,17 @@ class TsRangeMigrateProducter : public TsReplicaRangeMigrate {
   std::unordered_map<std::string, kwdbts::EntityResultIndex> pkey_last_row_;
 
  public:
-  TsRangeMigrateProducter(std::shared_ptr<TsTableImpl> table, uint64_t b, uint64_t e, uint32_t v, TS_OSN osn) :
+  TsRangeMigrateProducer(std::shared_ptr<TsTableImpl> table, uint64_t b, uint64_t e, uint32_t v, TS_OSN osn) :
     TsReplicaRangeMigrate(table, b, e, v, osn) {}
-  ~TsRangeMigrateProducter() override {}
+  ~TsRangeMigrateProducer() override {}
   KStatus Init(TS_OSN published_max_osn) override;
   KStatus NextMigrateData(kwdbContext_p ctx, TSSlice* data, bool* is_finished) override;
   KStatus WriteMigrateData(kwdbContext_p ctx, TSSlice& data, TsHashRWLatch& tag_lock) override {
-    LOG_ERROR("TsRangeMigrateProducter is not supported");
+    LOG_ERROR("TsRangeMigrateProducer is not supported");
     return KStatus::FAIL;
   }
   KStatus CommitMigrate(kwdbContext_p ctx) override {
-    LOG_ERROR("TsRangeMigrateProducter is not supported");
+    LOG_ERROR("TsRangeMigrateProducer is not supported");
     return KStatus::FAIL;
   }
 
@@ -125,6 +125,7 @@ class TsRangeMigrateProducter : public TsReplicaRangeMigrate {
 };
 
 class TsRangeMigrateConsumer : public TsReplicaRangeMigrate {
+ private:
 struct PrimaryKeyEntityInfo {
   std::map<TS_OSN, std::list<EntityResultIndex>> entity_id_infos_origin;
   std::list<STDelRange> del_ranges;

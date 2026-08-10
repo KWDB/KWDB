@@ -92,20 +92,20 @@ void TsReplicaRangeMigrate::ParseData(TSSlice data, STOSNDeleteInfoType* type, T
   }
 }
 
-TsReplicaRangeMigrate* TsReplicaRangeMigrate::CreateProducter(std::shared_ptr<TsTableImpl> table, uint64_t b, uint64_t e,
+TsReplicaRangeMigrate* TsReplicaRangeMigrate::CreateProducer(std::shared_ptr<TsTableImpl> table, uint64_t b, uint64_t e,
   uint32_t v, TS_OSN osn) {
-  return new TsRangeMigrateProducter(table, b, e, v, osn);
+  return new TsRangeMigrateProducer(table, b, e, v, osn);
 }
 TsReplicaRangeMigrate* TsReplicaRangeMigrate::CreateConsumer(std::shared_ptr<TsTableImpl> table, uint64_t b, uint64_t e,
   uint32_t v, TS_OSN osn) {
   return new TsRangeMigrateConsumer(table, b, e, v, osn);
 }
 
-KStatus TsRangeMigrateProducter::Init(TS_OSN published_max_osn) {
+KStatus TsRangeMigrateProducer::Init(TS_OSN published_max_osn) {
   published_max_osn_ = published_max_osn;
   auto s = table_->GetImagrateTagBySnapshot(nullptr, {begin_hash_, end_hash_}, scan_osn_, &pkeys_status_);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("TsRangeMigrateProducter init failed at GetImagrateTagBySnapshot.");
+    LOG_ERROR("TsRangeMigrateProducer init failed at GetImagrateTagBySnapshot.");
     return s;
   }
   pkey_iter_ = pkeys_status_.begin();
@@ -140,7 +140,7 @@ TsReplicaRangeMigrate::~TsReplicaRangeMigrate() {
     optional_msg_.c_str());
 }
 
-KStatus TsRangeMigrateProducter::NextMigrateData(kwdbContext_p ctx, TSSlice* data, bool* is_finished) {
+KStatus TsRangeMigrateProducer::NextMigrateData(kwdbContext_p ctx, TSSlice* data, bool* is_finished) {
   *is_finished = false;
   while (true) {
     if (pkey_iter_ == pkeys_status_.end()) {
@@ -229,7 +229,7 @@ KStatus TsRangeMigrateProducter::NextMigrateData(kwdbContext_p ctx, TSSlice* dat
   return KStatus::FAIL;
 }
 
-KStatus TsRangeMigrateProducter::GenTagPayLoad(kwdbContext_p ctx, EntityResultIndex& entity_idx, TSSlice* payload) {
+KStatus TsRangeMigrateProducer::GenTagPayLoad(kwdbContext_p ctx, EntityResultIndex& entity_idx, TSSlice* payload) {
   std::vector<TagInfo> tags_info;
   KStatus s = table_->GetSchemaManager()->GetTagMeta(table_version_, tags_info);
   if (s != KStatus::SUCCESS) {

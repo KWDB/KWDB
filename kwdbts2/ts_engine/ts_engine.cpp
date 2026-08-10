@@ -2610,7 +2610,7 @@ uint64_t* snapshot_id, bool& is_dropped) {
   ts_snapshot_info.del_info_read_finished = false;
   // todo(liangbo01) maybe we need use available version.
   ts_snapshot_info.table_version = table->GetCurrentTableVersion();
-  ts_snapshot_info.del_iter.reset(TsReplicaRangeMigrate::CreateProducter(
+  ts_snapshot_info.del_iter.reset(TsReplicaRangeMigrate::CreateProducer(
       reinterpret_pointer_cast<TsTableImpl>(ts_snapshot_info.table),
       ts_snapshot_info.begin_hash, ts_snapshot_info.end_hash, ts_snapshot_info.table_version, scan_osn));
   ts_snapshot_info.op_osn = scan_osn;
