@@ -416,6 +416,7 @@ KStatus TsDelItemManager::InsertPrepare() {
     auto s = mmap_alloc_->CopyTo(desc_alloc.get());
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("CopyTo failed. path [%s]", path_.c_str());
+      is_writing_.store(false);
       return s;
     }
     index_.RelocateFile(desc_alloc.get(), &(desc_alloc->getHeader()->index_header_offset));
@@ -428,7 +429,7 @@ KStatus TsDelItemManager::InsertPrepare() {
 }
 
 KStatus TsDelItemManager::Sync() {
-  if (!is_writing_.load() || writing_num_.load() == 0) {
+  if (!is_writing_.load()) {
     return KStatus::SUCCESS;
   }
   {
@@ -436,6 +437,9 @@ KStatus TsDelItemManager::Sync() {
     Defer _([this]() {
       RW_LATCH_UNLOCK(rw_lock_);
     });
+    if (writing_num_.load() == 0) {
+      return KStatus::SUCCESS;
+    }
     // store to temp file.
     auto s = mmap_alloc_->SyncToFile(path_ + "_tmp");
     if (s != KStatus::SUCCESS) {

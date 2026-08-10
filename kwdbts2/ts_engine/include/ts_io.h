@@ -691,6 +691,7 @@ class TsMMapAllocFile : public FileWithIndex {
     }
     if (file_len_now != file_len) {
       if (fallocate(fd_, 0, 0, file_len) == -1) {
+        close(fd_);
         LOG_ERROR("fallocate [%s] error.", path_.c_str());
         return KStatus::FAIL;
       }

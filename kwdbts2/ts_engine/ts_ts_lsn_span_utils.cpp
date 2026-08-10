@@ -56,11 +56,11 @@ void MergeTsSpans(std::list<KwTsSpan>& raw_spans, std::vector<KwTsSpan>* ret_spa
 
 void DeplicateTsSpans(list<STDelRange>& raw_spans, list<STDelRange>* ret_spans) {
   raw_spans.sort([](STDelRange& a, STDelRange& b) -> bool {
-    if (a.osn_span.end < b.osn_span.end) {
-      return true;
+    if (a.osn_span.end != b.osn_span.end) {
+      return a.osn_span.end < b.osn_span.end;
     }
-    if (a.ts_span.begin < b.ts_span.begin) {
-      return true;
+    if (a.ts_span.begin != b.ts_span.begin) {
+      return a.ts_span.begin < b.ts_span.begin;
     }
     return a.ts_span.end < b.ts_span.end;
   });
