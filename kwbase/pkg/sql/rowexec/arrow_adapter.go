@@ -205,23 +205,24 @@ func buildArrowColumns(alloc memory.Allocator, typs []*types.T, rows sqlbase.Enc
 			}
 			cols[ci] = b.NewArray()
 		case types.FloatFamily:
+			// §fetcher 直出 Arrow: decode each float directly from its encoded
+			// VALUE bytes via EncDatum.GetFloat, avoiding the per-row tree.Datum
+			// heap allocation (EnsureDecoded + tree.AsDFloat) that previously
+			// dominated the row->Arrow bridge cost.
 			b := array.NewFloat64Builder(alloc)
+			b.Reserve(n)
 			for ri := 0; ri < n; ri++ {
 				ed := &rows[ri][ci]
-				if err := ed.EnsureDecoded(t, da); err != nil {
-					b.Release()
-					return nil, err
-				}
-				if ed.Datum == tree.DNull {
+				if ed.IsNull() {
 					b.AppendNull()
 					continue
 				}
-				d, ok := ed.Datum.(*tree.DFloat)
-				if !ok {
+				v, err := ed.GetFloat(t, da)
+				if err != nil {
 					b.Release()
-					return nil, fmt.Errorf("col %d: expected float, got %T", ci, ed.Datum)
+					return nil, err
 				}
-				b.Append(float64(*d))
+				b.Append(v)
 			}
 			cols[ci] = b.NewArray()
 		case types.StringFamily:
@@ -245,23 +246,22 @@ func buildArrowColumns(alloc memory.Allocator, typs []*types.T, rows sqlbase.Enc
 		}
 		cols[ci] = b.NewArray()
 	case types.BytesFamily:
+		// §fetcher 直出 Arrow: decode each bytes value directly from its
+		// encoded VALUE bytes via EncDatum.GetBytes.
 		b := array.NewBinaryBuilder(alloc, arrow.BinaryTypes.Binary)
+		b.Reserve(n)
 		for ri := 0; ri < n; ri++ {
 			ed := &rows[ri][ci]
-			if err := ed.EnsureDecoded(t, da); err != nil {
-				b.Release()
-				return nil, err
-			}
-			if ed.Datum == tree.DNull {
+			if ed.IsNull() {
 				b.AppendNull()
 				continue
 			}
-			d, ok := tree.AsDBytes(ed.Datum)
-			if !ok {
+			v, err := ed.GetBytes(t, da)
+			if err != nil {
 				b.Release()
-				return nil, fmt.Errorf("col %d: expected bytes, got %T", ci, ed.Datum)
+				return nil, err
 			}
-			b.Append([]byte(d))
+			b.Append(v)
 		}
 		cols[ci] = b.NewArray()
 	case types.BoolFamily:
@@ -286,23 +286,23 @@ func buildArrowColumns(alloc memory.Allocator, typs []*types.T, rows sqlbase.Enc
 			cols[ci] = b.NewArray()
 		case types.DecimalFamily:
 			scale := t.Scale()
+			// §fetcher 直出 Arrow: decode each decimal directly from its encoded
+			// VALUE bytes via EncDatum.GetDecimal (returns the underlying
+			// apd.Decimal), skipping EnsureDecoded + tree.DDecimal allocation.
 			b := array.NewDecimal128Builder(alloc, &arrow.Decimal128Type{Precision: 38, Scale: scale})
+			b.Reserve(n)
 			for ri := 0; ri < n; ri++ {
 				ed := &rows[ri][ci]
-				if err := ed.EnsureDecoded(t, da); err != nil {
-					b.Release()
-					return nil, err
-				}
-				if ed.Datum == tree.DNull {
+				if ed.IsNull() {
 					b.AppendNull()
 					continue
 				}
-				dd, ok := ed.Datum.(*tree.DDecimal)
-				if !ok {
+				d, err := ed.GetDecimal(t, da)
+				if err != nil {
 					b.Release()
-					return nil, fmt.Errorf("col %d: expected decimal, got %T", ci, ed.Datum)
+					return nil, err
 				}
-				num, err := apdToDecimal128(&dd.Decimal, scale)
+				num, err := apdToDecimal128(&d, scale)
 				if err != nil {
 					b.Release()
 					return nil, err
@@ -312,72 +312,69 @@ func buildArrowColumns(alloc memory.Allocator, typs []*types.T, rows sqlbase.Enc
 			cols[ci] = b.NewArray()
 		case types.TimestampTZFamily, types.TimestampFamily:
 			b := array.NewTimestampBuilder(alloc, arrow.FixedWidthTypes.Timestamp_us.(*arrow.TimestampType))
+			// §fetcher 直出 Arrow: decode each timestamp directly from its
+			// encoded VALUE bytes via EncDatum.GetTime, skipping EnsureDecoded +
+			// tree.DTimestamp(TZ) allocation.
+			b.Reserve(n)
 			for ri := 0; ri < n; ri++ {
 				ed := &rows[ri][ci]
-				if err := ed.EnsureDecoded(t, da); err != nil {
-					b.Release()
-					return nil, err
-				}
-				if ed.Datum == tree.DNull {
+				if ed.IsNull() {
 					b.AppendNull()
 					continue
 				}
-				var micros int64
-				switch d := ed.Datum.(type) {
-				case *tree.DTimestampTZ:
-					micros = d.UnixMicro()
-				case *tree.DTimestamp:
-					micros = d.UnixMicro()
-				default:
+				tm, err := ed.GetTime(t, da)
+				if err != nil {
 					b.Release()
-					return nil, fmt.Errorf("col %d: expected timestamp, got %T", ci, ed.Datum)
+					return nil, err
 				}
-			b.Append(arrow.Timestamp(micros))
-		}
-		cols[ci] = b.NewArray()
+				b.Append(arrow.Timestamp(tm.UnixMicro()))
+			}
+			cols[ci] = b.NewArray()
 	case types.DateFamily:
+		// §fetcher 直出 Arrow: decode each date directly from its encoded VALUE
+		// bytes via EncDatum.GetDate, skipping EnsureDecoded + tree.DDate
+		// allocation. Infinite dates have no finite int32 representation; treat
+		// as NULL.
 		b := array.NewInt32Builder(alloc)
+		b.Reserve(n)
 		for ri := 0; ri < n; ri++ {
 			ed := &rows[ri][ci]
-			if err := ed.EnsureDecoded(t, da); err != nil {
+			if ed.IsNull() {
+				b.AppendNull()
+				continue
+			}
+			d, err := ed.GetDate(t, da)
+			if err != nil {
 				b.Release()
 				return nil, err
 			}
-			if ed.Datum == tree.DNull {
+			// Infinite dates (sentinel encodings) decode to out-of-range epoch
+			// days; int32 Arrow columns cannot represent them, so emit NULL.
+			if d > 1<<29 || d < -(1<<29) {
 				b.AppendNull()
 				continue
 			}
-			dd, ok := ed.Datum.(*tree.DDate)
-			if !ok {
-				b.Release()
-				return nil, fmt.Errorf("col %d: expected date, got %T", ci, ed.Datum)
-			}
-			// Infinite dates have no finite int32 representation; treat as NULL.
-			if !dd.Date.IsFinite() {
-				b.AppendNull()
-				continue
-			}
-			b.Append(int32(dd.Date.UnixEpochDays()))
+			b.Append(d)
 		}
 		cols[ci] = b.NewArray()
 	case types.UuidFamily:
+		// §fetcher 直出 Arrow: decode each uuid directly from its encoded VALUE
+		// bytes via EncDatum.GetUUID, skipping EnsureDecoded + tree.DUuid
+		// allocation.
 		b := array.NewFixedSizeBinaryBuilder(alloc, arrowUUIDType)
+		b.Reserve(n)
 		for ri := 0; ri < n; ri++ {
 			ed := &rows[ri][ci]
-			if err := ed.EnsureDecoded(t, da); err != nil {
-				b.Release()
-				return nil, err
-			}
-			if ed.Datum == tree.DNull {
+			if ed.IsNull() {
 				b.AppendNull()
 				continue
 			}
-			du, ok := ed.Datum.(*tree.DUuid)
-			if !ok {
+			u, err := ed.GetUUID(t, da)
+			if err != nil {
 				b.Release()
-				return nil, fmt.Errorf("col %d: expected uuid, got %T", ci, ed.Datum)
+				return nil, err
 			}
-			b.Append(du.UUID.GetBytes())
+			b.Append(u.GetBytes())
 		}
 		cols[ci] = b.NewArray()
 	case types.JsonFamily:

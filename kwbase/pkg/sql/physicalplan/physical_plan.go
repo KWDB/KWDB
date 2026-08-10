@@ -1649,7 +1649,8 @@ type arrowArg struct {
 	ConstBool  *bool    `json:"cbool,omitempty"`
 	ConstStr   *string  `json:"cstr,omitempty"`
 	// Cast, when non-nil, marks a CAST applied to the operand. The value is the
-	// target type tag produced by arrowCastTargetTag ("STRING"/"INT"/"FLOAT"/"DECIMAL").
+	// target type tag produced by arrowCastTargetTag
+	// ("STRING"/"INT"/"FLOAT"/"DECIMAL"/"BOOL"/"DATE"/"TIMESTAMP"/"TIMESTAMPTZ").
 	Cast *string `json:"cast,omitempty"`
 	// CastScale carries the target scale for a DECIMAL cast target (ignored for
 	// other targets). It is the resolved width of the DECIMAL type.
@@ -2922,7 +2923,9 @@ func (p *PhysicalPlan) arrowFilterLeafFromExpr(
 }
 
 // arrowCastTargetTag maps a KWDB type to the compact tag used by the Arrow
-// filter cast kernel. Only numeric/string targets are supported.
+// filter cast kernel. Numeric/string/temporal/boolean targets are supported;
+// anything the executor cannot materialize (UUID, INTERVAL, JSON, TIME,
+// collated string, OID, etc.) falls back to the row engine via ok==false.
 func arrowCastTargetTag(t *types.T) (string, bool) {
 	if t == nil {
 		return "", false
@@ -2936,6 +2939,14 @@ func arrowCastTargetTag(t *types.T) (string, bool) {
 		return "FLOAT", true
 	case types.DecimalFamily:
 		return "DECIMAL", true
+	case types.BoolFamily:
+		return "BOOL", true
+	case types.DateFamily:
+		return "DATE", true
+	case types.TimestampFamily:
+		return "TIMESTAMP", true
+	case types.TimestampTZFamily:
+		return "TIMESTAMPTZ", true
 	}
 	return "", false
 }
@@ -3082,14 +3093,37 @@ func arrowSupportedCompareType(t *types.T) bool {
 	return false
 }
 
+// arrowTsScanSupportedType reports whether a time-series scan column of the
+// given type can be materialized into an Arrow Record by arrowTsReader /
+// buildArrowColumns. This is a *carriage* gate, not a comparison gate: a TS
+// scan only needs the column to be representable in Arrow, it does not require
+// Arrow comparison/key kernels. The set mirrors the types that
+// arrowDataTypeForKWType and buildArrowColumns actually support (int/float/
+// string/bool/bytes/decimal/timestamp/timestamptz/date/uuid/json/interval), so
+// TIMESTAMP/TIMESTAMPTZ time tags and DECIMAL decimal metrics are now eligible.
+func arrowTsScanSupportedType(t *types.T) bool {
+	switch t.Family() {
+	case types.IntFamily, types.FloatFamily, types.StringFamily, types.BoolFamily,
+		types.BytesFamily, types.DecimalFamily, types.TimestampTZFamily,
+		types.TimestampFamily, types.DateFamily, types.UuidFamily,
+		types.JsonFamily, types.IntervalFamily:
+		return true
+	}
+	return false
+}
+
 // ArrowTsScanSupported reports whether every column type of a time-series scan
 // can be serialized into an Arrow Record (see rowexec.arrowTsReader, §6.7/§6.8
 // 审订 in docs/arrow-unify-roadmap.md). The TS read path emits the same
 // relational-format buffer (EncDatumRow) that relational scans do, and
-// buildArrowColumns / arrowDataTypeForKWType already cover these types.
+// buildArrowColumns / arrowDataTypeForKWType already cover these types. The
+// gate is a *carriage* gate (arrowTsScanSupportedType), not the comparison
+// white-list: a TS scan only needs a column to be representable in Arrow, so
+// TIMESTAMP/TIMESTAMPTZ and DECIMAL columns (time tags / decimal metrics) are
+// now eligible, matching what the Arrow builder can actually produce.
 func ArrowTsScanSupported(typs []types.T) bool {
 	for i := range typs {
-		if !arrowSupportedCompareType(&typs[i]) {
+		if !arrowTsScanSupportedType(&typs[i]) {
 			return false
 		}
 	}

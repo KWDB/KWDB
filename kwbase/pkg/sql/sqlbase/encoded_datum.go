@@ -27,12 +27,15 @@ package sqlbase
 import (
 	"bytes"
 	"fmt"
+	"time"
 	"unsafe"
 
+	"github.com/cockroachdb/apd"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
+	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 	"github.com/cockroachdb/errors"
 )
 
@@ -408,6 +411,279 @@ func (ed *EncDatum) GetInt() (int64, error) {
 
 	default:
 		return 0, errors.Errorf("unknown encoding %s", ed.encoding)
+	}
+}
+
+// GetFloat is the float analogue of GetInt: it decodes an EncDatum known to be
+// of float type and returns the float64 value directly from the encoded bytes
+// under the VALUE encoding (the common KV-value-column encoding), avoiding the
+// EnsureDecoded tree.Datum heap allocation. For KEY encodings (index columns)
+// it falls back to EnsureDecoded, preserving existing behavior. A NULL datum is
+// reported as an error, matching GetInt; callers must check IsNull first.
+func (ed *EncDatum) GetFloat(t *types.T, da *DatumAlloc) (float64, error) {
+	if ed.Datum != nil {
+		if ed.Datum == tree.DNull {
+			return 0, errors.Errorf("NULL FLOAT value")
+		}
+		d, ok := ed.Datum.(*tree.DFloat)
+		if !ok {
+			return 0, errors.Errorf("expected float, got %T", ed.Datum)
+		}
+		return float64(*d), nil
+	}
+
+	switch ed.encoding {
+	case DatumEncoding_VALUE:
+		if _, isNull := encoding.DecodeIfNull(ed.encoded); isNull {
+			return 0, errors.Errorf("NULL FLOAT value")
+		}
+		_, dataOffset, _, _, err := encoding.DecodeValueTag(ed.encoded)
+		if err != nil {
+			return 0, err
+		}
+		_, f, err := encoding.DecodeUntaggedFloatValue(ed.encoded[dataOffset:])
+		return f, err
+
+	case DatumEncoding_ASCENDING_KEY, DatumEncoding_DESCENDING_KEY:
+		// KEY-encoded floats use a sorting-aware encoding with no untagged
+		// decode primitive; fall back to the legacy decoded path.
+		if err := ed.EnsureDecoded(t, da); err != nil {
+			return 0, err
+		}
+		d, ok := ed.Datum.(*tree.DFloat)
+		if !ok {
+			return 0, errors.Errorf("expected float, got %T", ed.Datum)
+		}
+		return float64(*d), nil
+
+	default:
+		return 0, errors.Errorf("unknown encoding %s", ed.encoding)
+	}
+}
+
+// GetBytes is the bytes analogue of GetInt: it decodes an EncDatum known to be
+// of bytes type and returns the raw byte slice directly from the encoded bytes
+// under the VALUE encoding, avoiding the EnsureDecoded tree.Datum heap
+// allocation. For KEY encodings it falls back to EnsureDecoded.
+func (ed *EncDatum) GetBytes(t *types.T, da *DatumAlloc) ([]byte, error) {
+	if ed.Datum != nil {
+		if ed.Datum == tree.DNull {
+			return nil, errors.Errorf("NULL BYTES value")
+		}
+		d, ok := ed.Datum.(*tree.DBytes)
+		if !ok {
+			return nil, errors.Errorf("expected bytes, got %T", ed.Datum)
+		}
+		return []byte(*d), nil
+	}
+
+	switch ed.encoding {
+	case DatumEncoding_VALUE:
+		if _, isNull := encoding.DecodeIfNull(ed.encoded); isNull {
+			return nil, errors.Errorf("NULL BYTES value")
+		}
+		_, dataOffset, _, _, err := encoding.DecodeValueTag(ed.encoded)
+		if err != nil {
+			return nil, err
+		}
+		_, data, err := encoding.DecodeUntaggedBytesValue(ed.encoded[dataOffset:])
+		return data, err
+
+	case DatumEncoding_ASCENDING_KEY, DatumEncoding_DESCENDING_KEY:
+		if err := ed.EnsureDecoded(t, da); err != nil {
+			return nil, err
+		}
+		d, ok := ed.Datum.(*tree.DBytes)
+		if !ok {
+			return nil, errors.Errorf("expected bytes, got %T", ed.Datum)
+		}
+		return []byte(*d), nil
+
+	default:
+		return nil, errors.Errorf("unknown encoding %s", ed.encoding)
+	}
+}
+
+// GetDecimal is the decimal analogue of GetInt: it decodes an EncDatum known to
+// be of decimal type and returns the apd.Decimal directly from the encoded
+// bytes under the VALUE encoding, avoiding the EnsureDecoded tree.Datum heap
+// allocation. For KEY encodings it falls back to EnsureDecoded.
+func (ed *EncDatum) GetDecimal(t *types.T, da *DatumAlloc) (apd.Decimal, error) {
+	if ed.Datum != nil {
+		if ed.Datum == tree.DNull {
+			return apd.Decimal{}, errors.Errorf("NULL DECIMAL value")
+		}
+		d, ok := ed.Datum.(*tree.DDecimal)
+		if !ok {
+			return apd.Decimal{}, errors.Errorf("expected decimal, got %T", ed.Datum)
+		}
+		return d.Decimal, nil
+	}
+
+	switch ed.encoding {
+	case DatumEncoding_VALUE:
+		if _, isNull := encoding.DecodeIfNull(ed.encoded); isNull {
+			return apd.Decimal{}, errors.Errorf("NULL DECIMAL value")
+		}
+		_, dataOffset, _, _, err := encoding.DecodeValueTag(ed.encoded)
+		if err != nil {
+			return apd.Decimal{}, err
+		}
+		_, d, err := encoding.DecodeUntaggedDecimalValue(ed.encoded[dataOffset:])
+		return d, err
+
+	case DatumEncoding_ASCENDING_KEY, DatumEncoding_DESCENDING_KEY:
+		if err := ed.EnsureDecoded(t, da); err != nil {
+			return apd.Decimal{}, err
+		}
+		d, ok := ed.Datum.(*tree.DDecimal)
+		if !ok {
+			return apd.Decimal{}, errors.Errorf("expected decimal, got %T", ed.Datum)
+		}
+		return d.Decimal, nil
+
+	default:
+		return apd.Decimal{}, errors.Errorf("unknown encoding %s", ed.encoding)
+	}
+}
+
+// GetTime is the timestamp analogue of GetInt: it decodes an EncDatum known to
+// be of timestamp/timestamptz type and returns the time.Time directly from the
+// encoded bytes under the VALUE encoding, avoiding the EnsureDecoded tree.Datum
+// heap allocation. For KEY encodings it falls back to EnsureDecoded.
+func (ed *EncDatum) GetTime(t *types.T, da *DatumAlloc) (time.Time, error) {
+	if ed.Datum != nil {
+		if ed.Datum == tree.DNull {
+			return time.Time{}, errors.Errorf("NULL TIMESTAMP value")
+		}
+		switch d := ed.Datum.(type) {
+		case *tree.DTimestampTZ:
+			return d.Time, nil
+		case *tree.DTimestamp:
+			return d.Time, nil
+		default:
+			return time.Time{}, errors.Errorf("expected timestamp, got %T", ed.Datum)
+		}
+	}
+
+	switch ed.encoding {
+	case DatumEncoding_VALUE:
+		if _, isNull := encoding.DecodeIfNull(ed.encoded); isNull {
+			return time.Time{}, errors.Errorf("NULL TIMESTAMP value")
+		}
+		_, dataOffset, _, _, err := encoding.DecodeValueTag(ed.encoded)
+		if err != nil {
+			return time.Time{}, err
+		}
+		_, t, err := encoding.DecodeUntaggedTimeValue(ed.encoded[dataOffset:])
+		return t, err
+
+	case DatumEncoding_ASCENDING_KEY, DatumEncoding_DESCENDING_KEY:
+		if err := ed.EnsureDecoded(t, da); err != nil {
+			return time.Time{}, err
+		}
+		switch d := ed.Datum.(type) {
+		case *tree.DTimestampTZ:
+			return d.Time, nil
+		case *tree.DTimestamp:
+			return d.Time, nil
+		default:
+			return time.Time{}, errors.Errorf("expected timestamp, got %T", ed.Datum)
+		}
+
+	default:
+		return time.Time{}, errors.Errorf("unknown encoding %s", ed.encoding)
+	}
+}
+
+// GetDate is the date analogue of GetInt: it decodes an EncDatum known to be of
+// date type and returns the number of days since the Unix epoch directly from
+// the encoded bytes under the VALUE encoding, avoiding the EnsureDecoded
+// tree.Datum heap allocation. For KEY encodings it falls back to EnsureDecoded.
+func (ed *EncDatum) GetDate(t *types.T, da *DatumAlloc) (int32, error) {
+	if ed.Datum != nil {
+		if ed.Datum == tree.DNull {
+			return 0, errors.Errorf("NULL DATE value")
+		}
+		d, ok := ed.Datum.(*tree.DDate)
+		if !ok {
+			return 0, errors.Errorf("expected date, got %T", ed.Datum)
+		}
+		return int32(d.Date.UnixEpochDays()), nil
+	}
+
+	switch ed.encoding {
+	case DatumEncoding_VALUE:
+		if _, isNull := encoding.DecodeIfNull(ed.encoded); isNull {
+			return 0, errors.Errorf("NULL DATE value")
+		}
+		_, dataOffset, _, _, err := encoding.DecodeValueTag(ed.encoded)
+		if err != nil {
+			return 0, err
+		}
+		_, t, err := encoding.DecodeUntaggedTimeValue(ed.encoded[dataOffset:])
+		if err != nil {
+			return 0, err
+		}
+		// KWDB stores DATE on-disk as a timestamp at midnight UTC; convert to
+		// Unix epoch days.
+		return int32(t.Unix() / 86400), nil
+
+	case DatumEncoding_ASCENDING_KEY, DatumEncoding_DESCENDING_KEY:
+		if err := ed.EnsureDecoded(t, da); err != nil {
+			return 0, err
+		}
+		d, ok := ed.Datum.(*tree.DDate)
+		if !ok {
+			return 0, errors.Errorf("expected date, got %T", ed.Datum)
+		}
+		return int32(d.Date.UnixEpochDays()), nil
+
+	default:
+		return 0, errors.Errorf("unknown encoding %s", ed.encoding)
+	}
+}
+
+// GetUUID is the uuid analogue of GetInt: it decodes an EncDatum known to be of
+// uuid type and returns the uuid.UUID directly from the encoded bytes under the
+// VALUE encoding, avoiding the EnsureDecoded tree.Datum heap allocation. For KEY
+// encodings it falls back to EnsureDecoded.
+func (ed *EncDatum) GetUUID(t *types.T, da *DatumAlloc) (uuid.UUID, error) {
+	if ed.Datum != nil {
+		if ed.Datum == tree.DNull {
+			return uuid.UUID{}, errors.Errorf("NULL UUID value")
+		}
+		d, ok := ed.Datum.(*tree.DUuid)
+		if !ok {
+			return uuid.UUID{}, errors.Errorf("expected uuid, got %T", ed.Datum)
+		}
+		return d.UUID, nil
+	}
+
+	switch ed.encoding {
+	case DatumEncoding_VALUE:
+		if _, isNull := encoding.DecodeIfNull(ed.encoded); isNull {
+			return uuid.UUID{}, errors.Errorf("NULL UUID value")
+		}
+		_, dataOffset, _, _, err := encoding.DecodeValueTag(ed.encoded)
+		if err != nil {
+			return uuid.UUID{}, err
+		}
+		_, u, err := encoding.DecodeUntaggedUUIDValue(ed.encoded[dataOffset:])
+		return u, err
+
+	case DatumEncoding_ASCENDING_KEY, DatumEncoding_DESCENDING_KEY:
+		if err := ed.EnsureDecoded(t, da); err != nil {
+			return uuid.UUID{}, err
+		}
+		d, ok := ed.Datum.(*tree.DUuid)
+		if !ok {
+			return uuid.UUID{}, errors.Errorf("expected uuid, got %T", ed.Datum)
+		}
+		return d.UUID, nil
+
+	default:
+		return uuid.UUID{}, errors.Errorf("unknown encoding %s", ed.encoding)
 	}
 }
 

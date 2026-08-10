@@ -181,7 +181,19 @@ func (p *arrowProjection) eval(ctx context.Context, in arrow.Record, spec ArrowP
 			return nil, fmt.Errorf("projection input column %q not found", spec.Args[0].ColName)
 		}
 		col := in.Column(idx[0])
-		return array.NewSlice(col, 0, int64(col.Len())), nil
+		out := array.NewSlice(col, 0, int64(col.Len()))
+		// Render-side CAST: apply the target type conversion when the planner
+		// attached one (e.g. SELECT CAST(col AS DATE)). This makes projection
+		// top-level CAST a full Arrow operation instead of a silent passthrough.
+		if cast := spec.Args[0].Cast; cast != nil {
+			casted, err := castArrowArray(p.alloc, out, cast.Type)
+			out.Release()
+			if err != nil {
+				return nil, err
+			}
+			return casted, nil
+		}
+		return out, nil
 	}
 	// String-function kernels: the vendored arrow/compute module does not ship
 	// string kernels, so we evaluate them as native vectorized Go loops over the

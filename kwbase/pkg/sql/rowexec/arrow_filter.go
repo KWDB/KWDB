@@ -154,6 +154,12 @@ func (f *arrowFilterCore) eval(ctx context.Context, rec arrow.Record) (arrow.Rec
 		results[ci] = res
 		cols[ci] = res.(*compute.ArrayDatum).MakeArray()
 	}
+	if len(cols) == 0 {
+		// Degenerate zero-column record: return an empty record with the
+		// original schema. (Not expected from the planner, but keeps eval
+		// robust against an out-of-range cols[0] access below.)
+		return array.NewRecord(rec.Schema(), nil, 0), nil
+	}
 	out := array.NewRecord(rec.Schema(), cols, int64(cols[0].Len()))
 	for _, r := range results {
 		if r != nil {
@@ -622,6 +628,13 @@ func castArrowArray(alloc memory.Allocator, arr arrow.Array, to arrow.DataType) 
 		return castToFloat64(alloc, arr)
 	case arrow.DECIMAL128:
 		return castToDecimal(alloc, arr, to.(*arrow.Decimal128Type))
+	case arrow.BOOL:
+		return castToBool(alloc, arr)
+	case arrow.INT32:
+		// DATE is materialized as Unix epoch days (Int32).
+		return castToDate(alloc, arr)
+	case arrow.TIMESTAMP:
+		return castToTimestamp(alloc, arr)
 	}
 	return nil, fmt.Errorf("arrow cast: unsupported target type %s", to)
 }
@@ -748,6 +761,14 @@ func castToInt64(alloc memory.Allocator, arr arrow.Array) (arrow.Array, error) {
 				b.Append(0)
 			}
 		}
+	case *array.Decimal128:
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			b.Append(a.Value(i).BigInt().Int64())
+		}
 	default:
 		return nil, fmt.Errorf("arrow cast to INT: unsupported source %T", arr)
 	}
@@ -864,14 +885,238 @@ func castToDecimal(alloc memory.Allocator, arr arrow.Array, dt *arrow.Decimal128
 			if err != nil {
 				return nil, fmt.Errorf("arrow cast STRING->DECIMAL: %v", err)
 			}
+		num, err := apdToDecimal128(d, dt.Scale)
+		if err != nil {
+			return nil, fmt.Errorf("arrow cast STRING->DECIMAL: %v", err)
+		}
+		b.Append(num)
+	}
+	case *array.Boolean:
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			var d *apd.Decimal
+			if a.Value(i) {
+				d = apd.New(1, 0)
+			} else {
+				d = apd.New(0, 0)
+			}
 			num, err := apdToDecimal128(d, dt.Scale)
 			if err != nil {
-				return nil, fmt.Errorf("arrow cast STRING->DECIMAL: %v", err)
+				return nil, fmt.Errorf("arrow cast BOOL->DECIMAL: %v", err)
 			}
 			b.Append(num)
 		}
 	default:
 		return nil, fmt.Errorf("arrow cast to DECIMAL: unsupported source %T", arr)
+	}
+	return b.NewArray(), nil
+}
+
+// castToBool converts a column into a boolean column. Supported sources:
+// String (true/t/1 -> true, false/f/0 -> false, case-insensitive), Int64,
+// Float64, Decimal128 (non-zero -> true), Boolean.
+func castToBool(alloc memory.Allocator, arr arrow.Array) (arrow.Array, error) {
+	b := array.NewBooleanBuilder(alloc)
+	defer b.Release()
+	switch a := arr.(type) {
+	case *array.String:
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			switch strings.ToLower(strings.TrimSpace(a.Value(i))) {
+			case "true", "t", "1":
+				b.Append(true)
+			case "false", "f", "0":
+				b.Append(false)
+			default:
+				return nil, fmt.Errorf("arrow cast STRING->BOOL: invalid boolean %q", a.Value(i))
+			}
+		}
+	case *array.Int64:
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			b.Append(a.Value(i) != 0)
+		}
+	case *array.Float64:
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			b.Append(a.Value(i) != 0)
+		}
+	case *array.Decimal128:
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			b.Append(a.Value(i).BigInt().Sign() != 0)
+		}
+	case *array.Boolean:
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			b.Append(a.Value(i))
+		}
+	default:
+		return nil, fmt.Errorf("arrow cast to BOOL: unsupported source %T", arr)
+	}
+	return b.NewArray(), nil
+}
+
+// castToDate converts a column into a DATE column, materialized as Unix epoch
+// days (Int32) to match arrowDataTypeForKWType. Supported sources: String
+// ("2006-01-02"), Int64/Float64 (days), Decimal128 (days), Timestamp (truncated
+// to day), Int32 (days, identity).
+func castToDate(alloc memory.Allocator, arr arrow.Array) (arrow.Array, error) {
+	b := array.NewInt32Builder(alloc)
+	defer b.Release()
+	const microsPerDay = int64(24 * 60 * 60 * 1e6)
+	switch a := arr.(type) {
+	case *array.String:
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			t, err := time.Parse("2006-01-02", strings.TrimSpace(a.Value(i)))
+			if err != nil {
+				return nil, fmt.Errorf("arrow cast STRING->DATE: %v", err)
+			}
+			b.Append(int32(t.Unix() / (24 * 60 * 60)))
+		}
+	case *array.Int64:
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			b.Append(int32(a.Value(i)))
+		}
+	case *array.Float64:
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			b.Append(int32(a.Value(i)))
+		}
+	case *array.Decimal128:
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			b.Append(int32(a.Value(i).BigInt().Int64()))
+		}
+	case *array.Int32:
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			b.Append(a.Value(i))
+		}
+	case *array.Timestamp:
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			b.Append(int32(int64(a.Value(i)) / microsPerDay))
+		}
+	default:
+		return nil, fmt.Errorf("arrow cast to DATE: unsupported source %T", arr)
+	}
+	return b.NewArray(), nil
+}
+
+// castToTimestamp converts a column into a TIMESTAMP column, materialized as
+// microseconds since the Unix epoch (Timestamp_us) to match
+// arrowDataTypeForKWType. Supported sources: String (RFC3339 / "2006-01-02
+// 15:04:05" / "2006-01-02"), Int64/Float64 (Unix seconds), Decimal128 (Unix
+// seconds), Date (Unix days), Timestamp (identity).
+func castToTimestamp(alloc memory.Allocator, arr arrow.Array) (arrow.Array, error) {
+	b := array.NewTimestampBuilder(alloc, arrow.FixedWidthTypes.Timestamp_us.(*arrow.TimestampType))
+	defer b.Release()
+	const microsPerSec = int64(1e6)
+	const microsPerDay = int64(24 * 60 * 60 * 1e6)
+	switch a := arr.(type) {
+	case *array.String:
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			s := strings.TrimSpace(a.Value(i))
+			var t time.Time
+			var err error
+			switch {
+			case strings.Contains(s, "T") || strings.Contains(s, "Z") || strings.Contains(s, "+"):
+				t, err = time.Parse(time.RFC3339Nano, s)
+			case strings.Contains(s, ":"):
+				t, err = time.Parse("2006-01-02 15:04:05.999999", s)
+			default:
+				t, err = time.Parse("2006-01-02", s)
+			}
+			if err != nil {
+				return nil, fmt.Errorf("arrow cast STRING->TIMESTAMP: %v", err)
+			}
+			b.Append(arrow.Timestamp(t.UnixMicro()))
+		}
+	case *array.Int64:
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			b.Append(arrow.Timestamp(a.Value(i) * microsPerSec))
+		}
+	case *array.Float64:
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			b.Append(arrow.Timestamp(int64(a.Value(i) * float64(microsPerSec))))
+		}
+	case *array.Decimal128:
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			b.Append(arrow.Timestamp(a.Value(i).ToFloat64(0) * float64(microsPerSec)))
+		}
+	case *array.Int32:
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			b.Append(arrow.Timestamp(int64(a.Value(i)) * microsPerDay))
+		}
+	case *array.Timestamp:
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			b.Append(a.Value(i))
+		}
+	default:
+		return nil, fmt.Errorf("arrow cast to TIMESTAMP: unsupported source %T", arr)
 	}
 	return b.NewArray(), nil
 }

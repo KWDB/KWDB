@@ -213,9 +213,6 @@ func arrowSupportedCompareType(t types.T) bool {
 func canArrowAggregate(
 	spec execinfrapb.AggregatorSpec, inTypes []types.T, engine tree.EngineType,
 ) bool {
-	if engine == tree.EngineTypeTimeseries {
-		return false
-	}
 	for _, a := range spec.Aggregations {
 		if a.Distinct {
 			return false
@@ -488,9 +485,6 @@ func canArrowMergeJoin(
 	joinType sqlbase.JoinType,
 	leftTypes, rightTypes []types.T,
 ) bool {
-	if engine == tree.EngineTypeTimeseries {
-		return false
-	}
 	if _, ok := arrowJoinType(joinType); !ok {
 		return false
 	}
@@ -522,9 +516,6 @@ func canArrowJoin(
 	joinType sqlbase.JoinType,
 	leftTypes, rightTypes []types.T,
 ) bool {
-	if engine == tree.EngineTypeTimeseries {
-		return false
-	}
 	if _, ok := arrowJoinType(joinType); !ok {
 		return false
 	}
@@ -592,9 +583,6 @@ type arrowSortCol struct {
 func canArrowSort(
 	engine tree.EngineType, ordering sqlbase.ColumnOrdering, matchLen int, inTypes []types.T,
 ) bool {
-	if engine == tree.EngineTypeTimeseries {
-		return false
-	}
 	if matchLen < 0 || matchLen > len(ordering) {
 		return false
 	}
@@ -638,9 +626,6 @@ type arrowDistinctPlan struct {
 func canArrowDistinct(
 	engine tree.EngineType, distinctCols, orderedCols []uint32, inTypes []types.T,
 ) bool {
-	if engine == tree.EngineTypeTimeseries {
-		return false
-	}
 	for _, c := range distinctCols {
 		if int(c) >= len(inTypes) || !arrowSupportedCompareType(inTypes[c]) {
 			return false
@@ -855,9 +840,6 @@ func isSupportedWindowFrame(f *execinfrapb.WindowerSpec_Frame) bool {
 func canArrowWindow(
 	engine tree.EngineType, spec *execinfrapb.WindowerSpec, inTypes []types.T,
 ) bool {
-	if engine == tree.EngineTypeTimeseries {
-		return false
-	}
 	for _, c := range spec.PartitionBy {
 		if int(c) >= len(inTypes) || !arrowSupportedCompareType(inTypes[c]) {
 			return false
@@ -988,9 +970,6 @@ func arrowUnionAllCoreFor(
 	if !physicalplan.ArrowUnionAllEnabled(evalCtx) {
 		return execinfrapb.ProcessorCoreUnion{}, false
 	}
-	if engine == tree.EngineTypeTimeseries {
-		return execinfrapb.ProcessorCoreUnion{}, false
-	}
 	for _, t := range inTypes {
 		if !arrowSupportedCompareType(t) {
 			return execinfrapb.ProcessorCoreUnion{}, false
@@ -1016,9 +995,6 @@ func arrowValuesCoreFor(
 	inTypes []types.T,
 ) (execinfrapb.ProcessorCoreUnion, bool) {
 	if !physicalplan.ArrowValuesEnabled(evalCtx) {
-		return execinfrapb.ProcessorCoreUnion{}, false
-	}
-	if engine == tree.EngineTypeTimeseries {
 		return execinfrapb.ProcessorCoreUnion{}, false
 	}
 	for _, t := range inTypes {

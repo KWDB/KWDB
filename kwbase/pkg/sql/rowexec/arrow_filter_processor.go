@@ -359,6 +359,9 @@ func leafToArrowArg(l *arrowFilterLeafJS) *ArrowArg {
 }
 
 // arrowCastType maps the planner's compact tag to the target Arrow data type.
+// DECIMAL uses a zero-scale 38-digit type (filter-path casts do not carry a
+// scale); DATE is materialized as Unix epoch days (Int32) and TIMESTAMP/TZ as
+// microseconds since epoch (Timestamp_us), matching arrowDataTypeForKWType.
 func arrowCastType(tag string) arrow.DataType {
 	switch tag {
 	case "STRING":
@@ -367,6 +370,14 @@ func arrowCastType(tag string) arrow.DataType {
 		return arrow.PrimitiveTypes.Int64
 	case "FLOAT":
 		return arrow.PrimitiveTypes.Float64
+	case "DECIMAL":
+		return &arrow.Decimal128Type{Precision: 38, Scale: 0}
+	case "BOOL":
+		return arrow.FixedWidthTypes.Boolean
+	case "DATE":
+		return arrow.PrimitiveTypes.Int32
+	case "TIMESTAMP", "TIMESTAMPTZ":
+		return arrow.FixedWidthTypes.Timestamp_us
 	}
 	return arrow.BinaryTypes.String
 }
