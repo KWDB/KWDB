@@ -17,10 +17,10 @@ import (
 // [cur-1, cur+1], NOT a fixed number of physical rows. This is the semantics
 // that distinguishes RANGE offset frames from ROWS offset frames.
 //
-// Note: this exercises the frame-bounds arithmetic directly. Wiring it into the
-// end-to-end Arrow windower is blocked by the pre-existing offset-frame output
-// plumbing bug (sqlbase/encoded_datum.go "length mismatch") that also affects
-// ROWS offset frames; see docs/arrow-unify-roadmap.md.
+// Note: this exercises the frame-bounds arithmetic directly. The end-to-end
+// path is covered by TestArrowWindowerRangeOffsetEndToEnd, which feeds rows
+// through computePartition and asserts the partition-sorted, value-based
+// RANGE frame results.
 func TestArrowWindowerRangeFrameBounds(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 

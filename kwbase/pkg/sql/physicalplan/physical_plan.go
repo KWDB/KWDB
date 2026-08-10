@@ -2103,21 +2103,27 @@ func arrowFuncName(ex *tree.FuncExpr) string {
 
 // arrowDatetimeFuncName normalizes a SQL datetime-function name to the internal
 // projection Func name handled by the Arrow projection executor. Returns "" for
-// anything outside the supported set (extract/date_trunc).
+// anything outside the supported set (extract/date_trunc/now).
 func arrowDatetimeFuncName(name string) string {
 	switch strings.ToLower(name) {
 	case "extract":
 		return "extract"
 	case "date_trunc":
 		return "date_trunc"
+	case "now", "current_timestamp", "transaction_timestamp":
+		return "now"
 	}
 	return ""
 }
 
-// canArrowDatetime verifies that a datetime FuncExpr (extract/date_trunc) is
-// shaped so the Arrow projection executor can evaluate it: the first argument
-// must be a constant field string and the second a Timestamp/TimestampTZ column.
+// canArrowDatetime verifies that a datetime FuncExpr is shaped so the Arrow
+// projection executor can evaluate it. extract/date_trunc take a constant field
+// string plus a Timestamp/TimestampTZ column; now() takes no arguments and
+// produces the current (statement) timestamp.
 func (p *PhysicalPlan) canArrowDatetime(ex *tree.FuncExpr, indexVarMap []int) bool {
+	if arrowDatetimeFuncName(arrowFuncName(ex)) == "now" {
+		return len(ex.Exprs) == 0
+	}
 	if len(ex.Exprs) != 2 {
 		return false
 	}
@@ -2378,6 +2384,19 @@ func (p *PhysicalPlan) arrowProjectionColFor(e tree.TypedExpr, indexVarMap []int
 			}, ex.ResolvedType(), nil
 		}
 		if arrowDatetimeFuncName(rawName) != "" {
+			if arrowDatetimeFuncName(rawName) == "now" {
+				// now() / current_timestamp / transaction_timestamp: no
+				// arguments; emits the current (statement) timestamp as a
+				// TimestampTZ column. Always timezone-aware.
+				if len(ex.Exprs) != 0 {
+					return arrowProjectionCol{}, nil, errors.Errorf("arrow projection: now() expects 0 arguments")
+				}
+				return arrowProjectionCol{
+					Kind: "datetime",
+					Func: "now",
+					TZ:   true,
+				}, ex.ResolvedType(), nil
+			}
 			// extract(field FROM ts) / date_trunc(field, ts): the field is a
 			// constant string (DString) passed as a scalar arg, the timestamp
 			// operand is a column. Build a "func" column of Kind "datetime".

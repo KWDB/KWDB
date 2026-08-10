@@ -406,6 +406,22 @@ case *array.Float64:
 // operands (spec.TZ) or at UTC for TIMESTAMP operands, matching the row path
 // (which calls fromTS.Time / fromTSTZ.Time.In(ctx.GetLocation())).
 func (p *arrowProjection) evalArrowDatetimeFunc(ctx context.Context, in arrow.Record, spec ArrowProjectionSpec) (arrow.Array, error) {
+	if spec.Func == "now" {
+		// now() / current_timestamp / transaction_timestamp: emits the current
+		// statement timestamp as a constant TIMESTAMPTZ column (timezone-aware).
+		// The row path resolves now() to evalCtx.GetStmtTimestamp(), so we match
+		// that rather than sampling time per row.
+		n := int(in.NumRows())
+		loc := p.evalCtx.GetLocation()
+		ts := p.evalCtx.GetStmtTimestamp().In(loc)
+		us := arrow.Timestamp(ts.UnixMicro())
+		b := array.NewTimestampBuilder(p.alloc, &arrow.TimestampType{Unit: arrow.Microsecond, TimeZone: loc.String()})
+		defer b.Release()
+		for i := 0; i < n; i++ {
+			b.Append(us)
+		}
+		return b.NewArray(), nil
+	}
 	if len(spec.Args) != 2 {
 		return nil, fmt.Errorf("arrow datetime func expects 2 args, got %d", len(spec.Args))
 	}

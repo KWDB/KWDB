@@ -406,7 +406,10 @@ func samePartition(p *arrowWindowerProcessor, a, b sqlbase.EncDatumRow) bool {
 }
 
 // computePartition evaluates every window function over a single partition.
-// startIdx is the absolute index of part[0] within out.
+// part is the slice of input rows for this partition (ordered by PARTITION BY
+// only). The function sorts the corresponding output rows in place by the
+// window ORDER BY and then evaluates every window function over that sorted
+// order.
 func (p *arrowWindowerProcessor) computePartition(out, part sqlbase.EncDatumRows, startIdx int) {
 	// The upstream stream is only guaranteed to be ordered by PARTITION BY,
 	// not by the window function's ORDER BY. The classic windower sorts each
@@ -414,15 +417,18 @@ func (p *arrowWindowerProcessor) computePartition(out, part sqlbase.EncDatumRows
 	// otherwise ranking values and running aggregates are computed over rows
 	// in arbitrary (e.g. insertion) order. All functions in a window share the
 	// same ORDER BY, so sorting by the first function's ordering suffices.
+	// outPart is a sub-slice of out pointing at this partition's output rows;
+	// because it shares the underlying array with out, every write to outPart[i]
+	// lands at out[startIdx+i]. All downstream evaluation operates on outPart
+	// (the sorted order), never on the unsorted input rows, so that ordering-
+	// sensitive values such as RANGE offset frames (which binary-search the
+	// order column) and ranking peer groups stay aligned with the output rows.
+	outPart := out[startIdx : startIdx+len(part)]
 	if len(p.plan.Fns) > 0 && len(p.plan.Fns[0].Ordering) > 0 {
 		colOrder := make(sqlbase.ColumnOrdering, len(p.plan.Fns[0].Ordering))
 		for i, c := range p.plan.Fns[0].Ordering {
 			colOrder[i] = sqlbase.ColumnOrderInfo{ColIdx: c, Direction: encoding.Ascending}
 		}
-		// Sort the *output* rows for this partition (not just the input rows),
-		// so that the ordering columns and the computed window values stay
-		// aligned. The input rows are only used to read ordering-key values.
-		outPart := out[startIdx : startIdx+len(part)]
 		sort.SliceStable(outPart, func(i, j int) bool {
 			cmp, err := outPart[i].Compare(p.outTypes, p.da, colOrder, p.EvalCtx, outPart[j])
 			if err != nil {
@@ -434,9 +440,9 @@ func (p *arrowWindowerProcessor) computePartition(out, part sqlbase.EncDatumRows
 	for _, fn := range p.plan.Fns {
 		switch fn.Kind {
 		case "ranking":
-			p.computeRanking(out, part, startIdx, fn)
+			p.computeRanking(outPart, fn)
 		case "agg":
-			p.computeAggregateWindow(out, part, startIdx, fn)
+			p.computeAggregateWindow(outPart, fn)
 		}
 	}
 }
@@ -444,25 +450,28 @@ func (p *arrowWindowerProcessor) computePartition(out, part sqlbase.EncDatumRows
 // computeRanking evaluates a ranking window function (row_number/rank/
 // dense_rank) over the partition. Ranking functions ignore the frame and
 // operate over the whole partition, ordered by the function's ORDER BY.
-func (p *arrowWindowerProcessor) computeRanking(out, part sqlbase.EncDatumRows, startIdx int, fn arrowWindowFnPlan) {
+// outPart is the partition's output-row slice, already sorted by the window
+// ORDER BY (computePartition sorts it in place) and sharing the backing array
+// with out, so writing outPart[i] updates the partition's i-th output row.
+func (p *arrowWindowerProcessor) computeRanking(outPart sqlbase.EncDatumRows, fn arrowWindowFnPlan) {
 	switch fn.Func {
 	case "row_number":
-		for i := range part {
-			out[startIdx+i][fn.OutputIdx] = sqlbase.EncDatum{Datum: tree.NewDInt(tree.DInt(i + 1))}
+		for i := range outPart {
+			outPart[i][fn.OutputIdx] = sqlbase.EncDatum{Datum: tree.NewDInt(tree.DInt(i + 1))}
 		}
 	case "rank", "dense_rank":
 		peerStart := 0
 		denseGroupOrdinal := 1
 		lastPeer := -1 // index of the first row of the last peer group
-		for i := 1; i <= len(part); i++ {
-			atEnd := i == len(part)
+		for i := 1; i <= len(outPart); i++ {
+			atEnd := i == len(outPart)
 			newPeer := atEnd
 			if !atEnd {
-				k1, err := p.peerKey(part[i-1], fn.Ordering)
+				k1, err := p.peerKey(outPart[i-1], fn.Ordering)
 				if err != nil {
 					panic(err)
 				}
-				k2, err := p.peerKey(part[i], fn.Ordering)
+				k2, err := p.peerKey(outPart[i], fn.Ordering)
 				if err != nil {
 					panic(err)
 				}
@@ -475,9 +484,9 @@ func (p *arrowWindowerProcessor) computeRanking(out, part sqlbase.EncDatumRows, 
 				dense := tree.NewDInt(tree.DInt(denseGroupOrdinal))
 				for j := peerStart; j < i; j++ {
 					if fn.Func == "rank" {
-						out[startIdx+j][fn.OutputIdx] = sqlbase.EncDatum{Datum: rankVal}
+						outPart[j][fn.OutputIdx] = sqlbase.EncDatum{Datum: rankVal}
 					} else {
-						out[startIdx+j][fn.OutputIdx] = sqlbase.EncDatum{Datum: dense}
+						outPart[j][fn.OutputIdx] = sqlbase.EncDatum{Datum: dense}
 					}
 				}
 				lastPeer = peerStart
@@ -489,17 +498,24 @@ func (p *arrowWindowerProcessor) computeRanking(out, part sqlbase.EncDatumRows, 
 	}
 }
 
-// computeAggregateWindow evaluates an aggregate window function. For the
-// default/current-row frames it accumulates over peer groups (running value up
-// to and including the current peer); for the whole-partition frame it computes
-// the aggregate over all rows and writes it back to every row; for ROWS offset
-// frames (e.g. BETWEEN 1 PRECEDING AND 1 FOLLOWING) it computes the aggregate
-// over the per-row sliding window.
-func (p *arrowWindowerProcessor) computeAggregateWindow(out, part sqlbase.EncDatumRows, startIdx int, fn arrowWindowFnPlan) {
+// computeAggregateWindow evaluates an aggregate window function over the
+// partition. outPart is the partition's output-row slice, already sorted by the
+// window ORDER BY (computePartition sorts it in place) and sharing the backing
+// array with out, so outPart[i] is both the i-th input row of the partition and
+// the slot where its aggregate result is written. Operating on outPart (rather
+// than the unsorted input rows) is what makes ordering-sensitive frames — in
+// particular RANGE offset frames, whose binary search assumes a sorted order
+// column — correct.
+//
+//	- whole-partition frame: aggregate over all rows, written to every row.
+//	- ROWS/RANGE offset frame: per-row sliding window.
+//	- default / UNBOUNDED PRECEDING TO CURRENT ROW: running aggregate over peer
+//	  groups.
+func (p *arrowWindowerProcessor) computeAggregateWindow(outPart sqlbase.EncDatumRows, fn arrowWindowFnPlan) {
 	whole := fn.Frame.isWholePartitionFrame()
 	if whole {
 		acc := &windowAccumulator{fn: fn.Func}
-		for _, row := range part {
+		for _, row := range outPart {
 			if err := acc.consume(p, row, fn.Input); err != nil {
 				panic(err)
 			}
@@ -508,14 +524,14 @@ func (p *arrowWindowerProcessor) computeAggregateWindow(out, part sqlbase.EncDat
 		if err != nil {
 			panic(err)
 		}
-		for i := range part {
-			out[startIdx+i][fn.OutputIdx] = val
+		for i := range outPart {
+			outPart[i][fn.OutputIdx] = val
 		}
 		return
 	}
-	// ROWS offset frame: each row gets the aggregate over its own [start,end]
-	// window. part is sorted by the window ORDER BY (computePartition sorts it),
-	// so the window indices map directly onto part.
+	// ROWS/RANGE offset frame: each row gets the aggregate over its own [start,end]
+	// window. outPart is sorted by the window ORDER BY, so the window indices map
+	// directly onto it and RANGE's value-based binary search is valid.
 	if fn.Frame != nil && !fn.Frame.isWholePartitionFrame() && fn.Frame.hasOffset() {
 		// Per-row windows. ROWS offset frames count physical rows; RANGE offset
 		// frames span every row whose ORDER BY value is within the offset window
@@ -525,24 +541,24 @@ func (p *arrowWindowerProcessor) computeAggregateWindow(out, part sqlbase.EncDat
 			// The RANGE offset is measured against the ordering column (the last
 			// column in the ORDER BY list; PARTITION BY columns precede it).
 			orderCol := fn.Ordering[len(fn.Ordering)-1]
-			orderVals = make([]tree.Datum, len(part))
-			for j := range part {
-				if err := part[j][orderCol].EnsureDecoded(&p.inTypes[orderCol], p.da); err != nil {
+			orderVals = make([]tree.Datum, len(outPart))
+			for j := range outPart {
+				if err := outPart[j][orderCol].EnsureDecoded(&p.inTypes[orderCol], p.da); err != nil {
 					panic(err)
 				}
-				orderVals[j] = part[j][orderCol].Datum
+				orderVals[j] = outPart[j][orderCol].Datum
 			}
 		}
-		for i := range part {
+		for i := range outPart {
 			var s, e int
 			if fn.Frame.Mode == "range" {
-				s, e = rangeFrameBounds(i, len(part), orderVals, p.EvalCtx, fn.Frame)
+				s, e = rangeFrameBounds(i, len(outPart), orderVals, p.EvalCtx, fn.Frame)
 			} else {
-				s, e = fn.Frame.frameBounds(i, len(part))
+				s, e = fn.Frame.frameBounds(i, len(outPart))
 			}
 			acc := &windowAccumulator{fn: fn.Func}
 			for j := s; j <= e; j++ {
-				if err := acc.consume(p, part[j], fn.Input); err != nil {
+				if err := acc.consume(p, outPart[j], fn.Input); err != nil {
 					panic(err)
 				}
 			}
@@ -550,7 +566,7 @@ func (p *arrowWindowerProcessor) computeAggregateWindow(out, part sqlbase.EncDat
 			if err != nil {
 				panic(err)
 			}
-			out[startIdx+i][fn.OutputIdx] = val
+			outPart[i][fn.OutputIdx] = val
 		}
 		return
 	}
@@ -558,22 +574,22 @@ func (p *arrowWindowerProcessor) computeAggregateWindow(out, part sqlbase.EncDat
 	// running aggregate accumulated over peer groups.
 	acc := &windowAccumulator{fn: fn.Func}
 	peerStart := 0
-	for i := 1; i <= len(part); i++ {
-		atEnd := i == len(part)
+	for i := 1; i <= len(outPart); i++ {
+		atEnd := i == len(outPart)
 		newPeer := atEnd
 		if !atEnd {
-			k1, err := p.peerKey(part[i-1], fn.Ordering)
+			k1, err := p.peerKey(outPart[i-1], fn.Ordering)
 			if err != nil {
 				panic(err)
 			}
-			k2, err := p.peerKey(part[i], fn.Ordering)
+			k2, err := p.peerKey(outPart[i], fn.Ordering)
 			if err != nil {
 				panic(err)
 			}
 			newPeer = !bytes.Equal(k1, k2)
 		}
 		// Consume the current row into the running aggregate.
-		if err := acc.consume(p, part[i-1], fn.Input); err != nil {
+		if err := acc.consume(p, outPart[i-1], fn.Input); err != nil {
 			panic(err)
 		}
 		if newPeer {
@@ -586,7 +602,7 @@ func (p *arrowWindowerProcessor) computeAggregateWindow(out, part sqlbase.EncDat
 			// accumulator itself is NOT reset: it must keep accumulating
 			// across peer groups within the same partition.
 			for j := peerStart; j < i; j++ {
-				out[startIdx+j][fn.OutputIdx] = val
+				outPart[j][fn.OutputIdx] = val
 			}
 			peerStart = i
 		}

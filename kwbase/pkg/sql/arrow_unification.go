@@ -818,8 +818,9 @@ func arrowWindowBoundName(b execinfrapb.WindowerSpec_Frame_Bound) (string, int, 
 //   - nil (SQL default for aggregates: RANGE UNBOUNDED PRECEDING TO CURRENT ROW)
 //   - ROWS UNBOUNDED PRECEDING TO CURRENT ROW  (same running semantics)
 //   - ROWS/RANGE UNBOUNDED PRECEDING TO UNBOUNDED FOLLOWING (whole-partition)
+//   - ROWS/RANGE OFFSET PRECEDING .. CURRENT ROW / OFFSET FOLLOWING (offset frames)
 //
-// Any frame with an offset bound or the GROUPS mode is rejected.
+// Any frame with the GROUPS mode is rejected.
 func isSupportedWindowFrame(f *execinfrapb.WindowerSpec_Frame) bool {
 	if f == nil {
 		return true
@@ -828,14 +829,11 @@ func isSupportedWindowFrame(f *execinfrapb.WindowerSpec_Frame) bool {
 		return false
 	}
 	if f.Bounds.Start.BoundType != execinfrapb.WindowerSpec_Frame_UNBOUNDED_PRECEDING {
-		// Offset start bound is only supported for ROWS mode (row count). RANGE
-		// offset frames depend on a correctly working value-based window
-		// evaluator; rangeFrameBounds exists, but the Arrow windower's offset-
-		// frame execution (partition handling / ordering-value arithmetic) is not
-		// yet validated end-to-end for RANGE, so keep RANGE offset on the classic
-		// path until that is fixed.
-		if f.Mode != execinfrapb.WindowerSpec_Frame_ROWS ||
-			f.Bounds.Start.BoundType != execinfrapb.WindowerSpec_Frame_OFFSET_PRECEDING {
+		// An offset start bound is only valid as OFFSET PRECEDING in both ROWS
+		// (row count) and RANGE (value offset) modes; the executor evaluates
+		// each against the partition sorted by the ORDER BY column, so both are
+		// supported.
+		if f.Bounds.Start.BoundType != execinfrapb.WindowerSpec_Frame_OFFSET_PRECEDING {
 			return false
 		}
 	}
@@ -847,8 +845,9 @@ func isSupportedWindowFrame(f *execinfrapb.WindowerSpec_Frame) bool {
 		execinfrapb.WindowerSpec_Frame_UNBOUNDED_FOLLOWING:
 		return true
 	case execinfrapb.WindowerSpec_Frame_OFFSET_FOLLOWING:
-		// Offset end bound similarly only for ROWS mode.
-		return f.Mode == execinfrapb.WindowerSpec_Frame_ROWS
+		// Offset end bound (OFFSET FOLLOWING) is supported for both ROWS
+		// (row count) and RANGE (value offset) modes.
+		return true
 	}
 	return false
 }
