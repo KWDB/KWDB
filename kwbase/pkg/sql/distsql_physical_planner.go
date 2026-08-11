@@ -1817,7 +1817,15 @@ func (dsp *DistSQLPlanner) createTableReaders(
 	// arrow-computable, route it to a dedicated ArrowFilter stage instead of
 	// baking it into the TableReader's PostProcess. We skip virtual catalog
 	// tables to avoid disturbing internal introspection queries.
-	if n.filter != nil && !n.desc.IsVirtualTable() && physicalplan.ArrowFilterEnabled(planCtx.EvalContext()) {
+	//
+	// Gate on the *full* scan column set (typs, including hidden OID/system
+	// columns), not just the projected p.ResultTypes: the ArrowFilter stage
+	// receives the raw table-reader output at execution time, so a hidden OID
+	// column that the planner prunes from p.ResultTypes still reaches the Arrow
+	// converter and would fail inside arrowDataType. Downgrade to the row-based
+	// filter whenever any scan column is not Arrow-serializable.
+	if n.filter != nil && !n.desc.IsVirtualTable() && physicalplan.ArrowFilterEnabled(planCtx.EvalContext()) &&
+		physicalplan.ArrowRepresentableTypes(typs) {
 		p.InterceptArrowFilterForScan(n.filter, scanNodeToTableOrdinalMap)
 	}
 

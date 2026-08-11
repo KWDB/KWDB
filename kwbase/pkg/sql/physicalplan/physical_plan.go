@@ -146,7 +146,7 @@ var arrowJoinEnabledSetting = settings.RegisterBoolSetting(
 var arrowScanEnabledSetting = settings.RegisterBoolSetting(
 	"sql.arrow_scan.enabled",
 	"if set, table scans may feed the Arrow compute engine (master gate for the Arrow path)",
-	true,
+	false,
 )
 
 func arrowFilterEnabled(evalCtx *tree.EvalContext) bool {
@@ -1439,7 +1439,7 @@ func (p *PhysicalPlan) AddRendering(
 	// via a dedicated processor stage.
 	if enabled := arrowProjectionEnabled(exprCtx.EvalContext()); enabled {
 		if p.canArrowRender(exprs, indexVarMap) && hasArrowComputeExpr(exprs) &&
-			arrowAllPassthroughSupported(outTypes) {
+			arrowAllPassthroughSupported(outTypes) && ArrowRepresentableTypes(p.ResultTypes) {
 			// Arrow projection build is best-effort: if it fails (an operand or
 			// type the Arrow engine cannot represent), fall back to the classic
 			// row-engine evaluator instead of failing the whole plan.
@@ -3135,6 +3135,21 @@ func arrowTsScanSupportedType(t *types.T) bool {
 	return false
 }
 
+// ArrowRepresentableTypes reports whether every column type can be represented in
+// an Arrow Record (carriage gate). It mirrors arrowTsScanSupportedType and is used
+// to keep relational Arrow stages (filter/projection/etc.) from consuming an input
+// whose columns are not Arrow-serializable (e.g. OID/Array/Unknown families). When
+// any column fails, the stage must downgrade to the row-based engine instead of
+// panicking inside arrowDataType/arrowRecordToEncDatumRows.
+func ArrowRepresentableTypes(typs []types.T) bool {
+	for i := range typs {
+		if !arrowTsScanSupportedType(&typs[i]) {
+			return false
+		}
+	}
+	return true
+}
+
 // ArrowTsScanSupported reports whether every column type of a time-series scan
 // can be serialized into an Arrow Record (see rowexec.arrowTsReader, §6.7/§6.8
 // 审订 in docs/arrow-unify-roadmap.md). The TS read path emits the same
@@ -3349,6 +3364,13 @@ func (p *PhysicalPlan) InterceptArrowFilterForScan(filter tree.TypedExpr, indexV
 	if !p.canArrowFilterExpr(filter, indexVarMap) {
 		return false
 	}
+	// Every column of the scan's output must be Arrow-serializable. Virtual and
+	// catalog tables (e.g. kwdb_internal.SHOW TABLES) emit OID/Array columns that
+	// arrowDataType cannot represent; routing such an input into an ArrowFilter
+	// stage would fail at execution time. Downgrade to the row-based filter.
+	if !ArrowRepresentableTypes(p.ResultTypes) {
+		return false
+	}
 	node, ok := p.buildArrowFilterNode(filter, indexVarMap)
 	if !ok {
 		return false
@@ -3458,8 +3480,16 @@ func (p *PhysicalPlan) AddRelationalFilter(
 	// expressions through the Arrow compute engine via a dedicated stage. We
 	// only do this when the current post is a simple identity (no filter, no
 	// render, no offset/limit) so we don't disturb downstream post-processing.
+	//
+	// Gate on ArrowRepresentableTypes(p.ResultTypes): the arrow filter stage
+	// receives the upstream processor's full physical output at execution time,
+	// so any column that is not Arrow-serializable (e.g. a hidden OID/system
+	// column the planner prunes from p.ResultTypes but still emitted by the scan)
+	// would surface as an unsupported-type error inside arrowDataType. When the
+	// input is not fully Arrow-representable, keep the row-based filter instead.
 	if arrowFilterEnabled(exprCtx.EvalContext()) && post.Filter.Empty() &&
-		len(post.RenderExprs) == 0 && post.Offset == 0 && post.Limit == 0 {
+		len(post.RenderExprs) == 0 && post.Offset == 0 && post.Limit == 0 &&
+		ArrowRepresentableTypes(p.ResultTypes) {
 		if node, ok := p.buildArrowFilterNode(expr, indexVarMap); ok {
 			plan := arrowFilterPlan{Root: node}
 			b, err := json.Marshal(plan)

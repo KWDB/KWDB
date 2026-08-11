@@ -137,6 +137,7 @@ func (p *arrowProjection) Next(ctx context.Context) (arrow.Record, bool, error) 
 
 	outFields := make([]arrow.Field, 0, len(p.specs))
 	outCols := make([]arrow.Array, 0, len(p.specs))
+	n := in.NumRows()
 	for _, spec := range p.specs {
 		col, err := p.eval(ctx, in, spec)
 		if err != nil {
@@ -145,11 +146,26 @@ func (p *arrowProjection) Next(ctx context.Context) (arrow.Record, bool, error) 
 			}
 			return nil, false, err
 		}
+		// Arity guard (§7.9): every projected column must carry exactly n rows.
+		// A scalar/constant column that eval emitted as a single element is
+		// broadcast to n rows; any other arity mismatch is a genuine bug and is
+		// surfaced as an error rather than a panic inside array.NewRecord.
+		if col.Len() == 1 && n != 1 {
+			broadcast := broadcastTo(p.alloc, col, int(n))
+			col.Release()
+			col = broadcast
+		} else if col.Len() != int(n) {
+			col.Release()
+			for _, c := range outCols {
+				c.Release()
+			}
+			return nil, false, fmt.Errorf("arrow projection: column %q has %d rows, expected %d", spec.OutputName, col.Len(), n)
+		}
 		outFields = append(outFields, arrow.Field{Name: spec.OutputName, Type: col.DataType(), Nullable: true})
 		outCols = append(outCols, col)
 	}
 	schema := arrow.NewSchema(outFields, nil)
-	return array.NewRecord(schema, outCols, in.NumRows()), false, nil
+	return array.NewRecord(schema, outCols, n), false, nil
 }
 
 // eval evaluates a single projection spec against the input Record by invoking
@@ -174,7 +190,11 @@ func (p *arrowProjection) eval(ctx context.Context, in arrow.Record, spec ArrowP
 			if !ok {
 				return nil, fmt.Errorf("projection copy: expected scalar datum, got %T", spec.Args[0].Scalar)
 			}
-			return scalar.MakeArrayFromScalar(ad.Value, 1, p.alloc)
+			// Broadcast the constant to the full input arity. A scalar literal
+			// appearing in a projection must repeat for every input row; emitting
+			// a single-element array would make array.NewRecord (Next) panic with
+			// a row-count mismatch against the other (per-row) output columns.
+			return scalar.MakeArrayFromScalar(ad.Value, int(in.NumRows()), p.alloc)
 		}
 		idx := in.Schema().FieldIndices(spec.Args[0].ColName)
 		if len(idx) == 0 {

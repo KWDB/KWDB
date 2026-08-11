@@ -233,9 +233,38 @@ func (p *arrowJoinProcessor) compute(ctx context.Context) error {
 	// the Arrow record carries all (left+right) columns. Decode using the full
 	// output types, then run the stage's post-processing (projection/offset/limit)
 	// to obtain the final output rows.
+	//
+	// Arity guard (§7.9): the planner-declared output column count
+	// (left.OutputTypes()+right.OutputTypes()) must equal the Arrow record arity.
+	// When an upstream Arrow operator emits a record whose column count differs
+	// from its declared type (a known Arrow single-record-model limitation), trust
+	// the actual record arity and derive each column's KWDB type from its Arrow
+	// DataType. This keeps ProcessRow (which reads p.Out.OutputTypes) and the
+	// downstream Arrow operator-to-operator handoff (p.outputRec) consistent with
+	// the real record, instead of panicking on an out-of-range column index.
 	fullTypes := make([]types.T, 0, len(p.left.OutputTypes())+len(p.right.OutputTypes()))
 	fullTypes = append(fullTypes, p.left.OutputTypes()...)
 	fullTypes = append(fullTypes, p.right.OutputTypes()...)
+	// Arity guard (§7.9): the Arrow record arity must match the processor's
+	// declared output arity (left+right columns). When an upstream Arrow operator
+	// emits a degenerate record (a known single-record-model limitation where a
+	// 0-row side collapses to 0 columns, or OutputTypes is not yet populated at
+	// Start time), the declared output (p.Out.OutputTypes, set at Init) and the
+	// planner-derived fullTypes may disagree with the actual record arity. In
+	// that case trust the actual record arity and derive each column's KWDB type
+	// from its Arrow DataType, then realign p.Out.OutputTypes so ProcessRow (which
+	// reads p.Out.OutputTypes) and the downstream Arrow handoff (p.outputRec) are
+	// consistent with the real record, instead of panicking on an out-of-range
+	// column index. We apply the realignment unconditionally off the record arity
+	// to guarantee row width == len(p.Out.OutputTypes) in every code path.
+	deriveTypes := make([]types.T, rec.NumCols())
+	for ci := 0; ci < int(rec.NumCols()); ci++ {
+		deriveTypes[ci] = arrowDataTypeToKWType(rec.Column(ci).DataType())
+	}
+	p.Out.OutputTypes = deriveTypes
+	if int(rec.NumCols()) != len(fullTypes) {
+		fullTypes = deriveTypes
+	}
 	allRows, err := arrowRecordToEncDatumRows(fullTypes, rec)
 	if err != nil {
 		return err

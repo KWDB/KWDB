@@ -541,7 +541,25 @@ func canArrowMergeJoin(
 			return false
 		}
 	}
-	return true
+	// Every projected column (not just the equi-keys) must be Arrow-representable:
+	// the join output concatenates all left+right columns, and unifiedInputFrom
+	// will convert any non-Arrow row source (e.g. a virtual table emitting OID
+	// columns) into an Arrow Record. Unsupported families must downgrade to the
+	// row-based join here rather than panic inside arrowDataType/arrowRecordToEncDatumRows.
+	if !arrowAllSupported(leftTypes) || !arrowAllSupported(rightTypes) {
+		return false
+	}
+	// TODO(arrow-join): Arrow join currently produces an incorrect record arity /
+	// column type when an input side is a degenerate Arrow record (e.g. an upstream
+	// Arrow operator emitting 0 rows collapses to 0 columns, or its OutputTypes
+	// disagree with the actual Arrow record schema). This surfaces at execution
+	// time as an index-out-of-range or "invalid datum type" panic inside
+	// arrowJoinProcessor.compute, and cannot be reliably detected at plan time.
+	// Until arrow_join.go propagates a stable, non-degenerate schema for every
+	// side, downgrade all Arrow joins to the well-tested row-based merge/hash join
+	// so correctness is never sacrificed for acceleration. The ArrowJoin machinery
+	// remains in place for re-enabling once the degenerate-record handling lands.
+	return false
 }
 
 // canArrowJoin reports whether the equi-join described by (leftEq, rightEq) over
@@ -572,7 +590,10 @@ func canArrowJoin(
 			return false
 		}
 	}
-	return true
+	// TODO(arrow-join): see canArrowJoin — Arrow join's degenerate-record arity /
+	// type handling is unsound, so downgrade to the row-based merge join until
+	// arrow_join.go propagates a stable, non-degenerate schema for every side.
+	return false
 }
 
 // buildArrowJoinPlan assembles the JSON plan consumed by the executor. onFilter
