@@ -376,11 +376,16 @@ func (p *arrowWindowerProcessor) compute(ctx context.Context) error {
 		t := p.outTypes[i]
 		ptrTypes[i] = &t
 	}
-	cols, err := buildArrowColumns(p.alloc, ptrTypes, p.outputRows, p.da)
-	if err != nil {
-		return err
+	// Only emit an Arrow Record when every output column can be materialized by
+	// the Arrow engine; otherwise fall back to the row output (p.outputRows).
+	if arrowTypesAllSupported(p.outTypes) {
+		cols, err := buildArrowColumns(p.alloc, ptrTypes, p.outputRows, p.da)
+		if err != nil {
+			// Fall back to the row output instead of failing the whole flow.
+			return nil
+		}
+		p.outputRec = array.NewRecord(buildArrowSchema(ptrTypes), cols, int64(len(p.outputRows)))
 	}
-	p.outputRec = array.NewRecord(buildArrowSchema(ptrTypes), cols, int64(len(p.outputRows)))
 	return nil
 }
 

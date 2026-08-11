@@ -183,6 +183,20 @@ func (p *arrowDistinctProcessor) compute(ctx context.Context) error {
 		return nil
 	}
 	inTypes := p.input.OutputTypes()
+	// The Arrow upstream may emit a record whose arity differs from the
+	// planner-declared output types. Derive the comparison types from the record
+	// itself so EncDatumRow.Compare's arity matches the actual rows.
+	if len(inTypes) != int(rec.NumCols()) {
+		recTypes := make([]types.T, rec.NumCols())
+		for ci := 0; ci < int(rec.NumCols()); ci++ {
+			if ci < len(inTypes) {
+				recTypes[ci] = inTypes[ci]
+			} else {
+				recTypes[ci] = arrowDataTypeToKWType(rec.Column(ci).DataType())
+			}
+		}
+		inTypes = recTypes
+	}
 	rows, err := arrowRecordToEncDatumRows(inTypes, rec)
 	if err != nil {
 		return err
@@ -249,11 +263,18 @@ func (p *arrowDistinctProcessor) compute(ctx context.Context) error {
 		t := outTypes[i]
 		ptrTypes[i] = &t
 	}
-	cols, err := buildArrowColumns(p.alloc, ptrTypes, p.outputRows, p.da)
-	if err != nil {
-		return err
+	// Only emit an Arrow Record when every output column can be materialized by
+	// the Arrow engine; otherwise fall back to the row output (p.outputRows) so a
+	// downstream operator still works (emitting an unsupported type such as
+	// Oid/Unknown would make buildArrowColumns fail).
+	if arrowTypesAllSupported(outTypes) {
+		cols, err := buildArrowColumns(p.alloc, ptrTypes, p.outputRows, p.da)
+		if err != nil {
+			// Fall back to the row output instead of failing the whole flow.
+			return nil
+		}
+		p.outputRec = array.NewRecord(buildArrowSchema(ptrTypes), cols, int64(len(p.outputRows)))
 	}
-	p.outputRec = array.NewRecord(buildArrowSchema(ptrTypes), cols, int64(len(p.outputRows)))
 	return nil
 }
 

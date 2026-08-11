@@ -504,6 +504,46 @@
 - D1/D2（不可列式化算子）由 rowexec 兜底，不退役。
 - 时序读 Arrow 化（6.11.2 P0）**已于 2026-08-10 完成**：`arrowTsReader` 接线落地 + 8 处 `EngineTypeTimeseries` 门控解除，`EngineTypeTimeseries` 不再强制回退行式，**Arrow 主路径已覆盖关系 + 时序双引擎**；时序查询的 scan/filter/agg/sort/distinct/window/unionall/values 均可走 Arrow（白名单兜底，时序专属算子仍由 rowexec 处理）。
 
+#### 6.12 arrow 依赖升级（v17）引入的外部包分析（2026-08-11）
+
+- **背景**：`arrow-unify` 分支将 `kwbase/vendor` submodule 由 master 的 `8f3b7a8c` 升级至 `26d879ca`，核心是把 `github.com/apache/arrow/go` 从旧版（module 路径 `.../go/arrow`，无版本号）整体升级到 **v17**（module 路径 `.../go/v17/arrow`）。旧版 arrow 仅依赖 `flatbuffers`/`pkg/errors`/`testify`/`go-spew`/`go-difflib`（vendor 原本就有）；升级到 v17 后，arrow 库内部改用一组新的外部依赖，**这是"只有 arrow 版本替换"预期之外、实际由 v17 强制带入的连锁依赖**。
+- **vendor diff 概览**：master→arrow 的 vendor submodule 共 1387 文件改动，其中 706 个为 arrow 本体（旧路径删除 + v17 路径新增），其余 681 个为 v17 依赖链带来的外部包刷新。
+- **新引入的 4 个外部依赖及其作用**：
+
+  | 依赖 | 体积 | 作用领域 | 被 arrow 何处 import | KWDB 主代码是否直接用 | 可裁剪性 |
+  |------|------|---------|---------------------|---------------------|---------|
+  | `github.com/klauspost/compress` | ≈480 文件（最大） | 高性能压缩；v17 仅用 `zstd` 子包，服务 **Arrow IPC 流的可选压缩**（写 IPC 时对 Record 块做 zstd 压缩减小体积） | **仅** `arrow/ipc/compression.go` 一个文件 | 否（KWDB 走内存 `array.NewRecord`，从不调用 ipc 压缩） | ✅ 唯一可干净去除：把 `ipc/compression.go` 改为"不支持压缩"stub（保留 `Compression` 类型但压缩/解压返回 error）即可把 klauspost 整体移出 vendor；代价是侵入 arrow 库源码，后续升 v17 需重打 patch |
+  | `golang.org/x/xerrors` | 小 | 增强错误处理（`Errorf`、`%w` 包装、`Is/As` 错误链）；Go 1.13 标准库 `errors` 已吸收大部分能力，但 arrow 源码仍直接 import | 散布于 `arrow`/`arrow/cdata`/`arrow/compute`/`arrow/scalar`/`internal/types`/`flight_integration` 共 8 处 | 否（仅 arrow 内部用） | ❌ 需改 arrow 源码把所有调用替换为标准库 `errors`/`fmt`（Go 1.20 下可行），但散布且侵入库代码，收益低 |
+  | `golang.org/x/sync` | 小 | 标准库 `sync` 扩展，主要为 `errgroup`（一组 goroutine 协同、任一出错即取消） | **仅** `arrow/compute` 一处（并行执行 compute kernel） | 否 | ❌ 单点，但改 arrow 源码替换 `errgroup`，收益极小；标准库无等价物 |
+  | `golang.org/x/exp`（slices/maps/constraints） | 中 | 实验性标准库扩展：泛型切片/map 操作 + 类型约束（`Ordered`/`Integer` 等） | `arrow/array`/`arrow/compute`/`compute/exec`/`compute/internal/kernels`/`arrow/scalar` 等多处泛型代码 | **是**（workload、kvserver 等主代码已用） | ❌ 必需依赖；且 Go 1.21+ 才收进标准库，当前 Go 1.20 下仍需此包，无法用标准库替代 |
+
+- **能否用 vendor 已存在的包替换？——基本不行**：klauspost 与 xerrors 在 vendor 中全新（master 完全没有），无等价旧版；x/exp 与 x/sync 在 master 已存在但被 v17 抬高版本，且 x/exp 本就是 KWDB 共用依赖，谈不上替换。
+- **能否裁剪 arrow 未使用代码减少依赖？——子包裁剪空间为零，外部依赖仅 klauspost 可去**：KWDB 实际用到了 arrow v17 几乎所有子包（`array`/`compute`/`scalar`/`ipc`/`memory`/`decimal128`/`flight` 等全在用），仅 `_examples`/`_tools` 两个非代码目录可删，我们的 Arrow 统一化方案重度依赖 compute/array 全套，无法裁子包。四个外部依赖里只有 klauspost/compress 是真正"为 KWDB 不用的 ipc 压缩功能带入的冗余项"。
+- **结论（2026-08-11 决策：不裁剪，保留原始依赖）**：维持 vendor 原样。理由：① x/exp 是 KWDB 与 arrow 共享的必需依赖，xerrors/xsync 是 arrow 核心包内部依赖、剥离需侵入库源码且收益低、违背"vendor 是上游原样"原则；② 仅 klauspost 可去，但需维护 arrow 源码 patch，当前优先级低于 e2e 验证与开关翻转；③ 若未来想根治，更优路径是升级 Go 到 1.21+（让 x/exp 的 slices/maps 进标准库），而非逐个替换。环境注意：切换分支后需 `git submodule update` 同步 vendor 到对应 commit（master `8f3b7a8c` / arrow `26d879ca`）。
+
+##### 6.12.1 四个新引入库的协议分析（2026-08-11）
+
+- **总览**：四个库均为**宽松型（permissive）开源协议**，无 copyleft（无 GPL/AGPL/LGPL），与 KWDB 既有依赖（flatbuffers BSD、Go 标准库 BSD）一致，商用友好、无传染性许可证义务。
+
+  | 库 | 协议 | 说明 |
+  |----|------|------|
+  | `golang.org/x/xerrors` | **BSD-3-Clause** | Go 官方扩展库，标准 BSD 三条款（含"name of... may not be used"），无专利附加条款 |
+  | `golang.org/x/sync` | **BSD-3-Clause** | 同上，Go 官方扩展库统一协议 |
+  | `golang.org/x/exp` | **BSD-3-Clause** | 同上 |
+  | `github.com/klauspost/compress` | **混合协议** | 主体（flate/s2/zstd 等）为 **BSD-3-Clause**（Go Authors + Klaus Post 版权）；包内不同子目录含其他协议 |
+
+- **klauspost/compress 混合协议细节（按子目录）**：
+  - 主体（flate、s2、zstd 等）：**BSD-3-Clause**
+  - `gzhttp/` 子目录：**Apache License 2.0**（含专利授权条款、NOTICE 要求）——与 BSD 系列不同的协议
+  - `zstd/internal/xxhash/`：**MIT**（Caleb Spare）
+  - `internal/snapref/`、`internal/lz4ref/`、`s2/`、`snappy/`：**BSD-3-Clause**
+
+- **与 KWDB 实际使用的关联**：
+  - 前文已确认 KWDB 只用 `klauspost/compress` 的 **`zstd` 子包**；编译进二进制的实际代码链为 `zstd` + 其依赖 `zstd/internal/xxhash`(MIT) + `internal/snapref`、`internal/lz4ref`(BSD-3)。即**实际编译代码 = BSD-3-Clause + MIT，不含 gzhttp 的 Apache-2.0**（gzhttp 未被 import，不进二进制）。
+  - 但 vendor 目录作为整体若随**源码分发/打包**，`gzhttp/` 的 Apache-2.0 文件会随包存在（即使不编译）；若仅**二进制分发**（Go 静态链接），则只涉及 BSD/MIT 的署名保留义务。
+
+- **整体依赖链协议结论**：arrow v17 整条依赖链 = **Apache-2.0（arrow 本体）+ BSD-3-Clause（x/exp、x/sync、x/xerrors、klauspost 主体）+ MIT（xxhash）**，全部宽松、可商用、无传染性 copyleft，合规风险低，无需许可证隔离措施。
+
 ### 2026-08-07 — B 项误判修订：Values/Zigzag/Interleaved 可 Arrow 化
 - **修订背景**：此前（2026-08-06）§6.3 B 项把 Values / ZigzagJoiner / InterleavedReaderJoiner 笼统归为"不纳入（常量源 / KV 扫描特例）"，理由是"带 KV / 特例源"。经复核源码，该归类错误——**KV 仅是算子的输入/输出请求方式，不是计算内核**：
   - `valuesProcessor`：无任何输入，`Next()` 仅 `StreamDecoder.GetRow` 解码 planner 预编码的 `spec.RawBytes` + PostProcess，零 KV、零引擎依赖，是纯常量行源。
@@ -545,6 +585,12 @@
 - **时序读不再构成 colexec 硬约束（审订 §6.8 第①条）**：`TsReaderOp`（`colexec/ts_reader.go`）拆为两层——tse C++ FFI（`SetupTsFlow`/`NextVectorizedTsFlow`/`CloseTsFlow`，不绑定 colexec）+ Go 侧 buffer 装配（`vec.Append` 转 `coldata.Batch`，纯适配器）。后者可被 `ArrowTsReader` 算子替代：保留 tse FFI，仅把 `vec.Append` 换成 `arrow_adapter.go` 的 `buildArrowColumns`/`array.NewRecord` 攒成 Arrow Record，使算子变为 `ArrowRecordEmitter`。故时序读可 Arrow 化。
 - **colexec 降级网/双向桥均为过渡依赖（审订 §6.8 第②③条）**：降级仅发生于 Arrow 表达式/类型盲区、marshal 失败、Arrow 未实现算子（D3/时序读，均已论证可 Arrow 化）；若 Arrow 终态全覆盖，降级网无处挂靠 colexec。双向桥的 colexec 侧（`RecordToBatch`）依赖 colexec 存在，colexec 去除后桥仅留 Arrow↔rowexec 方向。故 colexec **非架构硬约束，是覆盖率不足时的过渡性兜底层**。
 - **终态修正（§6.10）**：三层「主-备-兜底长期并存」→ **两层长期并存（Arrow 主 + rowexec 永久兜底）+ colexec 临时过渡层（可去除）**。rowexec 永久兜底范围 = D1（写/DDL/采样/校验/流式）+ D2（ProjectSet）+ 一切 Arrow 失败降级落点；D3 可随 Arrow 覆盖退出。6.2 表 D 项改为「colexec 随覆盖率提升逐步收窄至可去除」；6.3 阻塞点第 5 条撤销。
+
+### 2026-08-11 — arrow 依赖升级（v17）外部包分析与"不裁剪"决策
+- **触发**：`arrow-unify` 分支 vendor submodule 由 master `8f3b7a8c` 升至 `26d879ca`，把 `apache/arrow/go` 旧版（路径 `.../go/arrow`）升级到 **v17**（路径 `.../go/v17/arrow`）。旧版仅依赖 vendor 本有的 `flatbuffers`/`pkg/errors`/`testify`/`go-spew`/`go-difflib`；v17 强制带入 4 个新外部依赖。
+- **新引入依赖及作用**：① `klauspost/compress`（≈480 文件，最大）— 仅服务 `arrow/ipc/compression.go`（IPC 流可选 zstd 压缩），KWDB 走内存 Record 路径零使用；② `golang.org/x/xerrors` — arrow 核心包错误处理（8 处），Go 1.13 标准库已吸收大部分；③ `golang.org/x/sync` — 仅 `arrow/compute` 一处 `errgroup` 并行 compute；④ `golang.org/x/exp`（slices/maps/constraints）— arrow 泛型基础工具，且 **KWDB 主代码本就在用**（workload/kvserver），属必需依赖，Go 1.21+ 才进标准库（当前 Go 1.20 仍需）。
+- **结论**：仅 klauspost 是"为 KWDB 不用的 ipc 压缩功能带入的冗余项"（剥离需改 arrow 源码打 patch）；x/exp 是共享必需依赖、xerrors/xsync 是 arrow 核心内部依赖，无法用 vendor 旧包替换、剥离需侵入库源码且收益低。**决策：不裁剪，保留原始依赖**。若未来根治，更优路径是升级 Go 1.21+ 让 x/exp 进标准库，而非逐个替换。详见新增 §6.12。
+- **协议分析**：四个库均属**宽松型（permissive）协议、无 copyleft**，商用友好、与 KWDB 既有依赖一致。xerrors/xsync/xexp 均为 **BSD-3-Clause**；klauspost/compress 为**混合协议**——主体 BSD-3-Clause，`gzhttp/` 子目录 Apache-2.0，`zstd/internal/xxhash/` 为 MIT，snapref/lz4ref/s2/snappy 为 BSD-3-Clause。KWDB 仅用 `zstd` 子包，实际编译进二进制的是 `zstd`+`xxhash`(MIT)+`snapref/lz4ref`(BSD-3)，**不含 gzhttp 的 Apache-2.0**（未 import）；仅源码分发时需留意 gzhttp 的 Apache-2.0 NOTICE 义务，二进制分发只涉 BSD/MIT 署名保留。整条 arrow v17 依赖链 = Apache-2.0（arrow 本体）+ BSD-3-Clause + MIT，合规风险低。详见 §6.12.1。
 
 ### 2026-08-05
 - 日期时间函数 `EXTRACT`/`DATE_TRUNC` 接入 Arrow 投影路径（§2.6.4，validator 见 §2.6 末）；9 个 Arrow 开关保持 `defaultEnabled=false`。

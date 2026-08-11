@@ -50,7 +50,8 @@ func arrowSorterCoreFor(
 	inTypes []types.T,
 ) (execinfrapb.ProcessorCoreUnion, bool) {
 	if !physicalplan.ArrowSorterEnabled(evalCtx) ||
-		!canArrowSort(engine, ordering, matchLen, inTypes) {
+		!canArrowSort(engine, ordering, matchLen, inTypes) ||
+		!arrowAllSupported(inTypes) {
 		return execinfrapb.ProcessorCoreUnion{}, false
 	}
 	plan := buildArrowSortPlan(ordering, matchLen, -1, 0)
@@ -95,7 +96,8 @@ func arrowDistinctCoreFor(
 	inTypes []types.T,
 ) (execinfrapb.ProcessorCoreUnion, bool) {
 	if !physicalplan.ArrowDistinctEnabled(evalCtx) ||
-		!canArrowDistinct(engine, distinctCols, orderedCols, inTypes) {
+		!canArrowDistinct(engine, distinctCols, orderedCols, inTypes) ||
+		!arrowAllSupported(inTypes) {
 		return execinfrapb.ProcessorCoreUnion{}, false
 	}
 	plan := buildArrowDistinctPlan(distinctCols, orderedCols)
@@ -116,7 +118,8 @@ func arrowWindowerCoreFor(
 	inTypes []types.T,
 ) (execinfrapb.ProcessorCoreUnion, bool) {
 	if !physicalplan.ArrowWindowerEnabled(evalCtx) ||
-		!canArrowWindow(engine, spec, inTypes) {
+		!canArrowWindow(engine, spec, inTypes) ||
+		!arrowAllSupported(inTypes) {
 		return execinfrapb.ProcessorCoreUnion{}, false
 	}
 	expr, ok := marshalArrowPlan(buildArrowWindowPlan(spec))
@@ -136,7 +139,8 @@ func arrowAggCoreFor(
 	outTypes []types.T,
 ) (execinfrapb.ProcessorCoreUnion, bool) {
 	if !physicalplan.ArrowAggregatorEnabled(evalCtx) ||
-		!canArrowAggregate(spec, outTypes, engine) {
+		!canArrowAggregate(spec, outTypes, engine) ||
+		!arrowAllSupported(outTypes) {
 		return execinfrapb.ProcessorCoreUnion{}, false
 	}
 	expr, ok := marshalArrowPlan(buildArrowAggPlan(spec, outTypes))
@@ -204,6 +208,37 @@ func arrowSupportedCompareType(t types.T) bool {
 	return false
 }
 
+// arrowSupportedType reports whether t can be materialized into an Arrow Record
+// by arrowDataTypeForKWType / buildArrowColumns. It mirrors the executor's type
+// support (int/float/string/bool/bytes/decimal/timestamp/timestamptz/date/uuid/
+// json/interval) so that columns of unsupported families (Oid, Tuple, Unknown,
+// Time) cause a clean plan-time fallback to the row engine instead of a runtime
+// "unsupported type family ... for arrow schema" error. Unlike
+// arrowSupportedCompareType this is a *carriage* gate (a column need only be
+// representable, not necessarily comparable via an Arrow kernel).
+func arrowSupportedType(t types.T) bool {
+	switch t.Family() {
+	case types.IntFamily, types.FloatFamily, types.StringFamily, types.BoolFamily,
+		types.BytesFamily, types.DecimalFamily, types.TimestampTZFamily,
+		types.TimestampFamily, types.DateFamily, types.UuidFamily,
+		types.JsonFamily, types.IntervalFamily:
+		return true
+	}
+	return false
+}
+
+// arrowAllSupported reports whether every type in typs can be materialized into
+// an Arrow Record. It is the plan-time gate that must precede emitting any Arrow
+// core so that unsupported families (Oid/Tuple/Unknown/Time) fall back cleanly.
+func arrowAllSupported(typs []types.T) bool {
+	for i := range typs {
+		if !arrowSupportedType(typs[i]) {
+			return false
+		}
+	}
+	return true
+}
+
 // canArrowAggregate reports whether the final aggregator spec can be evaluated
 // entirely by the Arrow compute engine (sum/min/max/mean(count avg)/count over
 // int/float/decimal columns, count(*) over rows, with int/float/bool/string/
@@ -240,6 +275,11 @@ func canArrowAggregate(
 
 		case execinfrapb.AggregatorSpec_COUNT:
 			if len(a.ColIdx) != 1 || int(a.ColIdx[0]) >= len(inTypes) {
+				return false
+			}
+			// COUNT(col) needs the column to be representable in Arrow; NULL /
+			// UnknownFamily columns (e.g. COUNT(NULL)) are not.
+			if !arrowSupportedCompareType(inTypes[a.ColIdx[0]]) {
 				return false
 			}
 		case execinfrapb.AggregatorSpec_BOOL_AND, execinfrapb.AggregatorSpec_BOOL_OR:

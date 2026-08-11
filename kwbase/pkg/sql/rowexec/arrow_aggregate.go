@@ -1751,6 +1751,14 @@ func (h *arrowHashAggregator) Finalize() (arrow.Record, error) {
 	// Aggregate columns.
 	for i, agg := range h.aggs {
 		outType := aggOutputType(agg.Func, h.inTypes[i])
+		if outType == nil {
+			// An unsupported output type (e.g. an UnknownFamily input) means the
+			// Arrow engine cannot materialize this aggregate result. Skip the
+			// Arrow Record entirely and let the row output (p.outputRows) be
+			// consumed instead, so the query still returns correct results.
+			h.releaseUpTo(cols, outIdx)
+			return nil, nil
+		}
 		b := array.NewBuilder(h.alloc, outType)
 		for _, gid := range h.order {
 			var sc scalar.Scalar

@@ -178,6 +178,15 @@ func arrowDataTypeForKWType(t *types.T) (arrow.DataType, error) {
 // columnar build, replacing the row-at-a-time EncDatumRow handling with Arrow's
 // contiguous, cache-friendly buffers.
 func buildArrowColumns(alloc memory.Allocator, typs []*types.T, rows sqlbase.EncDatumRows, da *sqlbase.DatumAlloc) ([]arrow.Array, error) {
+	// Guard against an arity mismatch between the planner-declared output schema
+	// (typs) and the actual decoded rows. When these disagree (e.g. an upstream
+	// Arrow operator advertised a different column count than it emitted), the
+	// per-column type switches below would index/convert the wrong Datum and
+	// panic. Bail out so the caller can fall back to the row output instead of
+	// crashing the whole flow.
+	if len(rows) > 0 && len(typs) != len(rows[0]) {
+		return nil, fmt.Errorf("buildArrowColumns: arity mismatch (%d types, %d row cols)", len(typs), len(rows[0]))
+	}
 	n := len(rows)
 	cols := make([]arrow.Array, len(typs))
 	for ci, t := range typs {

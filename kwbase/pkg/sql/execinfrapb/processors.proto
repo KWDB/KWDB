@@ -103,7 +103,14 @@ message ProcessorSpec {
 }
 
 message ProcessorCoreUnion {
-  option (gogoproto.onlyone) = true;
+  // NOTE: (gogoproto.onlyone) was removed because the Arrow columnar cores
+  // (fields 51-59) are all declared as type Expression, and gogoproto's
+  // oneof-style SetCore generator emits a duplicate `case *Expression:` for
+  // every such field, which is a hard Go compile error. KWDB never calls
+  // ProcessorCoreUnion.GetCore/SetCore (verified: 0 references across the
+  // codebase), so dropping the oneof wrapper is safe: each core field remains
+  // an independent optional field and is set directly (e.g. core.TableReader
+  // = ...). Wire format is unchanged (field numbers are what matter).
   optional NoopCoreSpec noop = 1;
   optional TableReaderSpec tableReader = 2;
   optional JoinReaderSpec joinReader = 3;

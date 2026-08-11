@@ -1438,8 +1438,14 @@ func (p *PhysicalPlan) AddRendering(
 	// arrow-computable, evaluate the projection through the Arrow compute engine
 	// via a dedicated processor stage.
 	if enabled := arrowProjectionEnabled(exprCtx.EvalContext()); enabled {
-		if p.canArrowRender(exprs, indexVarMap) && hasArrowComputeExpr(exprs) {
-			return p.addArrowRendering(exprs, indexVarMap, outTypes)
+		if p.canArrowRender(exprs, indexVarMap) && hasArrowComputeExpr(exprs) &&
+			arrowAllPassthroughSupported(outTypes) {
+			// Arrow projection build is best-effort: if it fails (an operand or
+			// type the Arrow engine cannot represent), fall back to the classic
+			// row-engine evaluator instead of failing the whole plan.
+			if err := p.addArrowRendering(exprs, indexVarMap, outTypes); err == nil {
+				return nil
+			}
 		}
 	}
 
@@ -2025,10 +2031,13 @@ func (p *PhysicalPlan) canArrowRender(exprs []tree.TypedExpr, indexVarMap []int)
 			}
 			return p.canArrowRenderCase(subs, ce.ResolvedType(), indexVarMap)
 		default:
-			// Constant literals are always renderable (materialized as scalars),
-			// e.g. the THEN/ELSE values and WHEN keys of a CASE/COALESCE.
-			if _, ok := e.(tree.Datum); ok {
-				return true
+			// Constant literals are renderable only when their type can be
+			// materialized into an Arrow array. NULL literals (UnknownFamily)
+			// and other unsupported types must fall back to the row engine;
+			// arrowOperandArg / the Arrow executor cannot represent them and
+			// would otherwise error at plan-execution time.
+			if d, ok := e.(tree.Datum); ok {
+				return arrowSupportedPassthroughType(d.ResolvedType())
 			}
 			// Plain column reference: allowed as a passthrough (identity copy).
 			if _, ok := exprColumn(e, indexVarMap); !ok {
@@ -2274,6 +2283,20 @@ func arrowSupportedPassthroughType(t *types.T) bool {
 		return true
 	}
 	return false
+}
+
+// arrowAllPassthroughSupported reports whether every type in typs can be
+// materialized into an Arrow array (i.e. is a supported passthrough/carriage
+// type). It is used as a plan-time gate so that output columns of unsupported
+// families (Oid, Tuple, Unknown, Time) fall back to the row engine instead of
+// failing at Arrow schema-build time.
+func arrowAllPassthroughSupported(typs []types.T) bool {
+	for i := range typs {
+		if !arrowSupportedPassthroughType(&typs[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 // arrowArgWithType pairs an operand's arrow arg with its SQL type; used only

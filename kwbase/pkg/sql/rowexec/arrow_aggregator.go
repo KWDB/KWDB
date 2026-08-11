@@ -124,6 +124,9 @@ func aggOutputType(fn string, in arrow.DataType) arrow.DataType {
 	switch fn {
 	case "count", "count_all":
 		return arrow.PrimitiveTypes.Int64
+	case "bool_and", "bool_or":
+		// Boolean aggregates always produce a BOOL result regardless of input.
+		return arrow.FixedWidthTypes.Boolean
 	case "mean", "sqrdiff", "final_variance", "final_stddev", "variance", "stddev":
 		// These widen integer/decimal inputs to DECIMAL128 and keep floats as
 		// FLOAT64, matching the colexec sqrdiff/variance/stddev output types.

@@ -283,11 +283,16 @@ func (p *arrowFilterProcessor) compute(ctx context.Context) error {
 	for i := range p.Out.OutputTypes {
 		projTypes[i] = &p.Out.OutputTypes[i]
 	}
-	projCols, err := buildArrowColumns(p.alloc, projTypes, out, p.da)
-	if err != nil {
-		return err
+	// Only emit an Arrow Record when every output column can be materialized by
+	// the Arrow engine; otherwise fall back to the row output (out).
+	if arrowTypesAllSupported(p.Out.OutputTypes) {
+		projCols, err := buildArrowColumns(p.alloc, projTypes, out, p.da)
+		if err != nil {
+			// Fall back to the row output instead of failing the whole flow.
+			return nil
+		}
+		p.outputRec = array.NewRecord(buildArrowSchema(projTypes), projCols, int64(len(out)))
 	}
-	p.outputRec = array.NewRecord(buildArrowSchema(projTypes), projCols, int64(len(out)))
 	return nil
 }
 

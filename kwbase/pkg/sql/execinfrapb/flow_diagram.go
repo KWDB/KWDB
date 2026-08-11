@@ -51,6 +51,164 @@ type diagramCellType interface {
 	summary() (title string, details []string)
 }
 
+// coreValue returns the currently-set processor core field, or nil if none is
+// set. It replaces the generated ProcessorCoreUnion.GetValue() method that
+// gogoproto emits for a message marked with (gogoproto.onlyone). onlyone was
+// removed from ProcessorCoreUnion because the Arrow columnar cores (fields
+// 51-58) are all declared as type Expression, which makes gogoproto's oneof
+// SetCore generator emit a duplicate `case *Expression:` (a hard Go compile
+// error). KWDB never calls SetCore/GetCore, so this helper reproduces only the
+// GetValue behavior needed by the flow diagram. The Arrow Expression cores do
+// not implement diagramCellType, so they are transparently skipped (matching
+// the old assertion-failure path).
+func coreValue(c ProcessorCoreUnion) interface{} {
+	if c.Noop != nil {
+		return c.Noop
+	}
+	if c.TableReader != nil {
+		return c.TableReader
+	}
+	if c.JoinReader != nil {
+		return c.JoinReader
+	}
+	if c.Sorter != nil {
+		return c.Sorter
+	}
+	if c.Aggregator != nil {
+		return c.Aggregator
+	}
+	if c.Distinct != nil {
+		return c.Distinct
+	}
+	if c.MergeJoiner != nil {
+		return c.MergeJoiner
+	}
+	if c.HashJoiner != nil {
+		return c.HashJoiner
+	}
+	if c.Values != nil {
+		return c.Values
+	}
+	if c.Backfiller != nil {
+		return c.Backfiller
+	}
+	if c.ReadImport != nil {
+		return c.ReadImport
+	}
+	if c.CSVWriter != nil {
+		return c.CSVWriter
+	}
+	if c.Sampler != nil {
+		return c.Sampler
+	}
+	if c.SampleAggregator != nil {
+		return c.SampleAggregator
+	}
+	if c.InterleavedReaderJoiner != nil {
+		return c.InterleavedReaderJoiner
+	}
+	if c.MetadataTestSender != nil {
+		return c.MetadataTestSender
+	}
+	if c.MetadataTestReceiver != nil {
+		return c.MetadataTestReceiver
+	}
+	if c.ZigzagJoiner != nil {
+		return c.ZigzagJoiner
+	}
+	if c.ProjectSet != nil {
+		return c.ProjectSet
+	}
+	if c.Windower != nil {
+		return c.Windower
+	}
+	if c.LocalPlanNode != nil {
+		return c.LocalPlanNode
+	}
+	if c.ChangeAggregator != nil {
+		return c.ChangeAggregator
+	}
+	if c.ChangeFrontier != nil {
+		return c.ChangeFrontier
+	}
+	if c.Ordinality != nil {
+		return c.Ordinality
+	}
+	if c.BulkRowWriter != nil {
+		return c.BulkRowWriter
+	}
+	if c.ReplicationIngestionData != nil {
+		return c.ReplicationIngestionData
+	}
+	if c.ReplicationIngestionFrontier != nil {
+		return c.ReplicationIngestionFrontier
+	}
+	if c.ReplicationRecvData != nil {
+		return c.ReplicationRecvData
+	}
+	if c.ReplicationRecvFrontier != nil {
+		return c.ReplicationRecvFrontier
+	}
+	if c.ReplicationServiceCaller != nil {
+		return c.ReplicationServiceCaller
+	}
+	if c.RemotePlanNode != nil {
+		return c.RemotePlanNode
+	}
+	if c.TsInsert != nil {
+		return c.TsInsert
+	}
+	if c.TsCreate != nil {
+		return c.TsCreate
+	}
+	if c.TsPro != nil {
+		return c.TsPro
+	}
+	if c.TsDelete != nil {
+		return c.TsDelete
+	}
+	if c.TsAlter != nil {
+		return c.TsAlter
+	}
+	if c.TsTagUpdate != nil {
+		return c.TsTagUpdate
+	}
+	if c.TsInsertSelect != nil {
+		return c.TsInsertSelect
+	}
+	if c.BatchLookupJoiner != nil {
+		return c.BatchLookupJoiner
+	}
+	if c.TsInsertWithCDC != nil {
+		return c.TsInsertWithCDC
+	}
+	if c.StreamReader != nil {
+		return c.StreamReader
+	}
+	if c.StreamAggregator != nil {
+		return c.StreamAggregator
+	}
+	if c.TsTagReader != nil {
+		return c.TsTagReader
+	}
+	if c.TsTableReader != nil {
+		return c.TsTableReader
+	}
+	if c.TsStatisticReader != nil {
+		return c.TsStatisticReader
+	}
+	if c.TsSynchronizer != nil {
+		return c.TsSynchronizer
+	}
+	if c.TsSampler != nil {
+		return c.TsSampler
+	}
+	if c.ArrowValues != nil {
+		return c.ArrowValues
+	}
+	return nil
+}
+
 func (ord *Ordering) diagramString() string {
 	var buf bytes.Buffer
 	for i, c := range ord.Columns {
@@ -908,7 +1066,7 @@ func generateDiagramData(
 	for n := range flows {
 		for _, p := range flows[n].Processors {
 			proc := diagramProcessor{NodeIdx: n}
-			proc.Core.Title, proc.Core.Details = p.Core.GetValue().(diagramCellType).summary()
+			proc.Core.Title, proc.Core.Details = coreValue(p.Core).(diagramCellType).summary()
 			proc.Core.Title += fmt.Sprintf("/%d", p.ProcessorID)
 			if p.ExecInTSEngine() {
 				proc.Core.Title += "-TS"
@@ -1145,7 +1303,7 @@ func DisplayFlowSpec(flow FlowSpec) (string, bool) {
 		if v.Core.TableReader != nil || v.Core.TsTableReader != nil {
 			isQuery = true
 		}
-		core, ok := v.Core.GetValue().(diagramCellType)
+		core, ok := coreValue(v.Core).(diagramCellType)
 		if ok {
 			res := getSpecMessage(
 				core,

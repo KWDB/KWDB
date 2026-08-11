@@ -177,11 +177,16 @@ func (p *arrowUnionAllProcessor) compute(ctx context.Context) error {
 			buildArrowSchema(typesToPtr(valTypes)), []arrow.Array{}, 0)
 		return nil
 	}
-	cols, err := buildArrowColumns(p.alloc, typesToPtr(valTypes), merged, p.da)
-	if err != nil {
-		return err
+	// Only emit an Arrow Record when every column can be materialized; otherwise
+	// fall back to the row output so a downstream operator still works.
+	if arrowTypesAllSupported(valTypes) {
+		cols, err := buildArrowColumns(p.alloc, typesToPtr(valTypes), merged, p.da)
+		if err != nil {
+			// Fall back to the row output instead of failing the whole flow.
+			return nil
+		}
+		p.outputRec = array.NewRecord(buildArrowSchema(typesToPtr(valTypes)), cols, int64(len(merged)))
 	}
-	p.outputRec = array.NewRecord(buildArrowSchema(typesToPtr(valTypes)), cols, int64(len(merged)))
 	return nil
 }
 
