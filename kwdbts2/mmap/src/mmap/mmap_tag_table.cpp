@@ -422,7 +422,7 @@ int TagTable::InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_i
     return -1;
   }
   // 3 ~ 6. build indexes.
-  if (ReBuildTagRecordIndex(payload, {tag_partition_version, row_no}) < 0) {
+  if (RebuildTagRecordIndex(payload, {tag_partition_version, row_no}) < 0) {
     LOG_ERROR("rebuild tag record index failed.");
     return -1;
   }
@@ -437,7 +437,7 @@ int TagTable::InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_i
 }
 
 // V3 rebuild tag record indexes.
-int TagTable::ReBuildTagRecordIndex(kwdbts::TsRawPayload &payload, std::pair<TableVersionID, TagPartitionTableRowID> row) {
+int TagTable::RebuildTagRecordIndex(kwdbts::TsRawPayload &payload, std::pair<TableVersionID, TagPartitionTableRowID> row) {
   if (row.first == INVALID_TABLE_VERSION_ID) {
     LOG_ERROR("Invalid table version %u.", row.first);
     return -1;

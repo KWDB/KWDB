@@ -104,7 +104,7 @@ class TagTable {
   int InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id, uint64_t osn,
                       uint8_t operate_type, std::pair<uint64_t, uint64_t> del_row = { 0, 0 },
                       const std::vector<uint32_t>& old_valid_columns = {});
-  int ReBuildTagRecordIndex(kwdbts::TsRawPayload &payload, std::pair<TableVersionID, TagPartitionTableRowID> row);
+  int RebuildTagRecordIndex(kwdbts::TsRawPayload &payload, std::pair<TableVersionID, TagPartitionTableRowID> row);
   int InsertDeletedTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id, uint64_t osn,
                               OperateType operate_type, std::pair<uint64_t, uint64_t>& row_info);
   // update tag record

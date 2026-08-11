@@ -371,6 +371,7 @@ KStatus TsRangeMigrateConsumer::RMValidPkeyRow(const TSSlice& pkey, std::shared_
 KStatus TsRangeMigrateConsumer::CoverTagDataInfo(std::pair<uint64_t, uint64_t> row_info,
   TSSnapshotOSNInfo* snap_osn_info) {
   TagDataInfo orig_info;
+  memset(&orig_info, 0, sizeof(orig_info));
   orig_info.operate_idx = snap_osn_info->op_num - 1;
   for (size_t i = 0; i < snap_osn_info->op_num; i++) {
     orig_info.osn[i] = snap_osn_info->op_osn[i];
@@ -428,7 +429,7 @@ KStatus TsRangeMigrateConsumer::WriteMigrateData(kwdbContext_p ctx, TSSlice& dat
   auto snap_osn_info = reinterpret_cast<TSSnapshotOSNInfo*>(tag_status.data);
   TS_OSN create_osn = snap_osn_info->op_osn[2];
   std::string pkey_str(pkey.data, pkey.len);
-  std::pair<uint64_t, uint64_t> row_info{0, 0};
+  std::pair<uint64_t, uint64_t> row_info{INVALID_TABLE_VERSION_ID, 0};
   uint64_t entity_id = 0;
   uint32_t vgroup_id = 0;
   EntityResultIndex entity_idx;
@@ -457,8 +458,8 @@ KStatus TsRangeMigrateConsumer::WriteMigrateData(kwdbContext_p ctx, TSSlice& dat
   if (type == STOSNDeleteInfoType::OSN_DELETE_METRIC_RANGE) {
     valid_tag_row_num_ += 1;
     // need construct tag primary key indexs and set tag row status valid.
-    if (tag_table->ReBuildTagRecordIndex(*p, row_info) < 0) {
-      LOG_ERROR("Failed ReBuildTagRecordIndex table id[%ld].", table_->GetTableId());
+    if (tag_table->RebuildTagRecordIndex(*p, row_info) < 0) {
+      LOG_ERROR("Failed RebuildTagRecordIndex table id[%ld].", table_->GetTableId());
       return KStatus::FAIL;
     }
     // temporarily store delete range info in memory.
