@@ -57,9 +57,11 @@ import (
 
 // arrowProjectionEnabledSetting, when set, routes arrow-computable projection
 // expressions (e.g. `a+b`) through the Arrow compute engine instead of the
-// scalar tree-evaluator. It is enabled by default; Arrow is the primary
-// execution path with row-by-row evaluation as the fallback for expressions
-// the Arrow engine does not cover.
+// scalar tree-evaluator. It is enabled by default. Arrow is the unified
+// execution layer: expressions the Arrow engine does not cover are not dropped
+// to a separate execution path but bridged at the operator level (the upstream
+// row/colexec source is converted to Arrow via the unifiedInputFrom bridge),
+// keeping the whole plan inside a single Arrow DAG.
 var arrowProjectionEnabledSetting = settings.RegisterBoolSetting(
 	"sql.arrow_projection.enabled",
 	"if set, arrow-computable projection expressions are evaluated using the Arrow compute engine",
@@ -85,10 +87,12 @@ func ArrowAggregatorEnabled(evalCtx *tree.EvalContext) bool {
 	return arrowAggregatorEnabled(evalCtx) && ArrowScanEnabled(evalCtx)
 }
 
-// ArrowScanEnabled reports whether the scan (table reader) side may feed the
-// Arrow compute engine. It is the master gate for the Arrow path: when it is
-// off, no Arrow operator can consume a scan, so the whole Arrow pipeline is
-// bypassed and rows flow row-by-row as before.
+// ArrowScanEnabled reports whether the scan (table reader) side feeds the Arrow
+// compute engine. Arrow is the default execution layer, so this is on by
+// default; when off, the whole query is forced onto the legacy row-by-row path.
+// It is the master gate: every per-operator Arrow gate (ArrowFilterEnabled,
+// ArrowAggregatorEnabled, …) ANDs with it, so turning it off disables Arrow
+// entirely — but that is an escape hatch, not the normal state.
 func ArrowScanEnabled(evalCtx *tree.EvalContext) bool {
 	return arrowScanEnabled(evalCtx)
 }
@@ -140,13 +144,18 @@ var arrowJoinEnabledSetting = settings.RegisterBoolSetting(
 	true,
 )
 
-// arrowScanEnabledSetting is the master gate for the Arrow path. When off, the
-// scan side does not feed the Arrow engine, so no Arrow operator can consume a
-// scan and the whole Arrow pipeline is bypassed (rows stay row-by-row).
+// arrowScanEnabledSetting is the master gate for the Arrow execution layer.
+// Arrow is the default compute engine: when on (the default), table scans feed
+// the Arrow engine and operators are evaluated as Arrow stages. The setting is
+// intentionally on by default — Arrow unifies the legacy rowexec and colexec
+// paths behind a single Arrow DAG; rowexec/colexec survive only as per-operator
+// fallback bridges (e.g. when an operator cannot be Arrow-expressed), never as a
+// co-equal third execution path. Turning this off forces the legacy row-by-row
+// path for the whole query.
 var arrowScanEnabledSetting = settings.RegisterBoolSetting(
 	"sql.arrow_scan.enabled",
-	"if set, table scans may feed the Arrow compute engine (master gate for the Arrow path)",
-	false,
+	"master gate for the Arrow execution layer; on by default since Arrow unifies rowexec and colexec",
+	true,
 )
 
 func arrowFilterEnabled(evalCtx *tree.EvalContext) bool {

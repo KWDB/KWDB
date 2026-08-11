@@ -29,14 +29,18 @@ import (
 // ---------------------------------------------------------------------------
 // Unified Arrow stage dispatcher — §阶段3 (buildUnifiedStage 收口)
 //
-// 各算子原在 distsql_physical_planner.go 中散落着相同的四步判断：
+// Arrow 是默认且唯一的计算执行层。本文件把各算子在 distsql_physical_planner.go
+// 中散落的相同四步判断收口到单一的 arrowXxxCoreFor 助手：
 //   ArrowXxxEnabled(evalCtx) && canArrowX(...) && buildArrowXPlan(...) && marshalArrowPlan(...)
-// 这里把它们收口到单一的 arrowXxxCoreFor 助手：返回 (core, ok)，ok==true
-// 时调用方用 core 下发改 Arrow core；ok==false 时调用方沿用既有行式/colexec
-// 降级路径（与 marshalArrowPlan 的「序列化失败即降级」语义一致）。
+// 助手返回 (core, ok)：ok==true 时调用方用 core 下发改 Arrow core；ok==false
+// 时该算子仍以 Arrow 形态存在于 DAG，但其输入经 unifiedInputFrom 的
+// NewRowSourceToArrow 桥接层（把行式/colexec 上游转成 Arrow），而非整条 flow
+// 退回行式/colexec —— 即兜底发生在算子级桥接，flow 始终是 Arrow DAG。
 //
 // 注意：join 两处刻意保留原始 `arrowUnificationMarshal` + `return err` 控制流
-// （更保守，序列化失败即中断整个 plan 而非降级），不在本收口范围内。
+// （序列化失败即中断 plan 而非降级）。join 因 arrow_join.go 的 degenerate-record
+// arity 缺陷暂整体 fallback（见 canArrowJoin/canArrowMergeJoin 的 return false），
+// 属已知待修项，待 B 阶段修复后 join 也默认走 Arrow。
 // ---------------------------------------------------------------------------
 
 // arrowSorterCoreFor returns an Arrow sorter core when the sort is eligible for
@@ -557,8 +561,11 @@ func canArrowMergeJoin(
 	// arrowJoinProcessor.compute, and cannot be reliably detected at plan time.
 	// Until arrow_join.go propagates a stable, non-degenerate schema for every
 	// side, downgrade all Arrow joins to the well-tested row-based merge/hash join
-	// so correctness is never sacrificed for acceleration. The ArrowJoin machinery
-	// remains in place for re-enabling once the degenerate-record handling lands.
+	// Arrow is the default execution layer; join is temporarily held back because
+	// arrow_join.go still emits a degenerate record whose arity/type is unsound.
+	// This is a known fallback (not a design choice) tracked as step B — once the
+	// degenerate-record handling lands, canArrowMergeJoin returns true and the
+	// merge-join routes through the Arrow engine like every other operator.
 	return false
 }
 
@@ -590,9 +597,10 @@ func canArrowJoin(
 			return false
 		}
 	}
-	// TODO(arrow-join): see canArrowJoin — Arrow join's degenerate-record arity /
-	// type handling is unsound, so downgrade to the row-based merge join until
-	// arrow_join.go propagates a stable, non-degenerate schema for every side.
+	// See canArrowMergeJoin: the Arrow join emits a degenerate record whose arity
+	// / type is unsound, so we fall back to the row-based join until arrow_join.go
+	// propagates a stable, non-degenerate schema for every side. This fallback is
+	// step B work; Arrow remains the default layer for all other operators.
 	return false
 }
 
