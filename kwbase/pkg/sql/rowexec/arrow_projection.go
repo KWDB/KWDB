@@ -349,7 +349,70 @@ func (p *arrowProjection) evalCase(ctx context.Context, in arrow.Record, spec Ar
 		}
 		branches[i] = branchEval{mask: boolMask, val: broadcastTo(p.alloc, v, n)}
 	}
+	// The planner relies on tree.TypedExpr.Equivalent (width-insensitive for the
+	// IntFamily) when deciding whether a CASE branch needs a cast to the result
+	// type, so a narrow int branch (e.g. INT4 column) and a wide branch (e.g.
+	// a*100 -> INT64) can reach the executor with mismatched physical widths.
+	// Widen every Int16/Int32 branch value and the ELSE value to INT64 here so
+	// the builder switch below only has to handle one integer width. This matches
+	// Cockroach's CASE result typing (narrowest common type is INT64 for any
+	// int/int64 mix) and keeps the produced array consistent with the planner's
+	// declared output type.
+	for i := range branches {
+		if branches[i].val.DataType().ID() == arrow.INT16 || branches[i].val.DataType().ID() == arrow.INT32 {
+			widened, err := castArrowArray(p.alloc, branches[i].val, arrow.PrimitiveTypes.Int64)
+			if err != nil {
+				return nil, err
+			}
+			branches[i].val.Release()
+			branches[i].val = widened
+		}
+	}
+	if elseArr.DataType().ID() == arrow.INT16 || elseArr.DataType().ID() == arrow.INT32 {
+		widened, err := castArrowArray(p.alloc, elseArr, arrow.PrimitiveTypes.Int64)
+		if err != nil {
+			return nil, err
+		}
+		elseArr.Release()
+		elseArr = widened
+	}
 	switch e := elseArr.(type) {
+	case *array.Int16:
+		b := array.NewInt16Builder(p.alloc)
+		defer b.Release()
+		for i := 0; i < n; i++ {
+			chosen := e
+			for _, br := range branches {
+				if br.mask.Value(i) {
+					chosen = br.val.(*array.Int16)
+					break
+				}
+			}
+			if chosen.IsNull(i) {
+				b.AppendNull()
+			} else {
+				b.Append(chosen.Value(i))
+			}
+		}
+		return b.NewArray(), nil
+	case *array.Int32:
+		b := array.NewInt32Builder(p.alloc)
+		defer b.Release()
+		for i := 0; i < n; i++ {
+			chosen := e
+			for _, br := range branches {
+				if br.mask.Value(i) {
+					chosen = br.val.(*array.Int32)
+					break
+				}
+			}
+			if chosen.IsNull(i) {
+				b.AppendNull()
+			} else {
+				b.Append(chosen.Value(i))
+			}
+		}
+		return b.NewArray(), nil
 	case *array.Int64:
 		b := array.NewInt64Builder(p.alloc)
 		defer b.Release()

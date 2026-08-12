@@ -152,6 +152,10 @@ func takeResultArray(res compute.Datum) arrow.Array {
 
 func arrayScalarAt(arr arrow.Array, idx int) scalar.Scalar {
 	switch arr.DataType().ID() {
+	case arrow.INT16:
+		return scalar.NewInt16Scalar(arr.(*array.Int16).Value(idx))
+	case arrow.INT32:
+		return scalar.NewInt32Scalar(arr.(*array.Int32).Value(idx))
 	case arrow.INT64:
 		return scalar.NewInt64Scalar(arr.(*array.Int64).Value(idx))
 	case arrow.FLOAT64:
@@ -177,6 +181,10 @@ func appendScalar(b array.Builder, s scalar.Scalar, dt arrow.DataType) {
 		return
 	}
 	switch dt.ID() {
+	case arrow.INT16:
+		b.(*array.Int16Builder).Append(s.(*scalar.Int16).Value)
+	case arrow.INT32:
+		b.(*array.Int32Builder).Append(s.(*scalar.Int32).Value)
 	case arrow.INT64:
 		b.(*array.Int64Builder).Append(s.(*scalar.Int64).Value)
 	case arrow.FLOAT64:

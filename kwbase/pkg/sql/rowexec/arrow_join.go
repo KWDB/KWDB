@@ -381,6 +381,10 @@ func appendValueAt(b array.Builder, src arrow.Array, idx int) {
 		return
 	}
 	switch src.DataType().ID() {
+	case arrow.INT16:
+		b.(*array.Int16Builder).Append(src.(*array.Int16).Value(idx))
+	case arrow.INT32:
+		b.(*array.Int32Builder).Append(src.(*array.Int32).Value(idx))
 	case arrow.INT64:
 		b.(*array.Int64Builder).Append(src.(*array.Int64).Value(idx))
 	case arrow.FLOAT64:

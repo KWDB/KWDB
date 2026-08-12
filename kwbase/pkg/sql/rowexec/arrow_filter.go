@@ -769,6 +769,22 @@ func castToInt64(alloc memory.Allocator, arr arrow.Array) (arrow.Array, error) {
 			}
 			b.Append(a.Value(i).BigInt().Int64())
 		}
+	case *array.Int16:
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			b.Append(int64(a.Value(i)))
+		}
+	case *array.Int32:
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			b.Append(int64(a.Value(i)))
+		}
 	default:
 		return nil, fmt.Errorf("arrow cast to INT: unsupported source %T", arr)
 	}

@@ -38,9 +38,10 @@ import (
 // 退回行式/colexec —— 即兜底发生在算子级桥接，flow 始终是 Arrow DAG。
 //
 // 注意：join 两处刻意保留原始 `arrowUnificationMarshal` + `return err` 控制流
-// （序列化失败即中断 plan 而非降级）。join 因 arrow_join.go 的 degenerate-record
-// arity 缺陷暂整体 fallback（见 canArrowJoin/canArrowMergeJoin 的 return false），
-// 属已知待修项，待 B 阶段修复后 join 也默认走 Arrow。
+// （序列化失败即中断 plan 而非降级）。B 阶段已完成：canArrowJoin/canArrowMergeJoin
+// 已去 blanket return false，改为全列门控（arrowAllSupported）后 return true，
+// join（hash 与 merge 两条路径）现在也默认走 ArrowJoin core；其 degenerate-record
+// arity 缺陷由 arrow_join_processor.go compute 的 §7.9 arity guard 兜底，不再整体 fallback。
 // ---------------------------------------------------------------------------
 
 // arrowSorterCoreFor returns an Arrow sorter core when the sort is eligible for

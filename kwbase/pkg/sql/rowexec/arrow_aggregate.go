@@ -1821,6 +1821,18 @@ func arrowGroupHashIdx(rec arrow.Record, idxs []int, row int, h *maphash.Hash) u
 			continue
 		}
 		switch col.DataType().ID() {
+		case arrow.INT16:
+			h.Write([]byte{'i'})
+			v := uint64(int64(col.(*array.Int16).Value(row)))
+			var b [8]byte
+			binary.LittleEndian.PutUint64(b[:], v)
+			h.Write(b[:])
+		case arrow.INT32:
+			h.Write([]byte{'i'})
+			v := uint64(int64(col.(*array.Int32).Value(row)))
+			var b [8]byte
+			binary.LittleEndian.PutUint64(b[:], v)
+			h.Write(b[:])
 		case arrow.INT64:
 			h.Write([]byte{'i'})
 			v := uint64(col.(*array.Int64).Value(row))
@@ -1893,6 +1905,14 @@ func arrowGroupRowEqualIdx(rec arrow.Record, idxs []int, i, j int) bool {
 			continue
 		}
 		switch col.DataType().ID() {
+		case arrow.INT16:
+			if col.(*array.Int16).Value(i) != col.(*array.Int16).Value(j) {
+				return false
+			}
+		case arrow.INT32:
+			if col.(*array.Int32).Value(i) != col.(*array.Int32).Value(j) {
+				return false
+			}
 		case arrow.INT64:
 			if col.(*array.Int64).Value(i) != col.(*array.Int64).Value(j) {
 				return false
@@ -1948,6 +1968,14 @@ func arrowGroupKeyEqual(rec arrow.Record, idxs []int, row int, key arrow.Record)
 			continue
 		}
 		switch col.DataType().ID() {
+		case arrow.INT16:
+			if col.(*array.Int16).Value(row) != key.Column(c).(*array.Int16).Value(0) {
+				return false
+			}
+		case arrow.INT32:
+			if col.(*array.Int32).Value(row) != key.Column(c).(*array.Int32).Value(0) {
+				return false
+			}
 		case arrow.INT64:
 			if col.(*array.Int64).Value(row) != key.Column(c).(*array.Int64).Value(0) {
 				return false

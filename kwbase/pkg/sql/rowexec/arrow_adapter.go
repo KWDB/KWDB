@@ -211,7 +211,20 @@ func buildArrowColumns(alloc memory.Allocator, typs []*types.T, rows sqlbase.Enc
 			// per-row tree.Datum heap allocation (EnsureDecoded + tree.AsDInt)
 			// that previously dominated the row->Arrow bridge cost. The builder
 			// is pre-reserved so the append loop performs a single allocation.
-			b := array.NewInt64Builder(alloc)
+			// The integer width must agree with arrowDataTypeForKWType (which
+			// already chose the column's Arrow schema type by t.Width()), so the
+			// builder's concrete type is selected to match instead of always
+			// Int64; otherwise the produced array would type-mismatch the schema
+			// (e.g. int4 -> got=int64, want=int32).
+			var b array.Builder
+			switch t.Width() {
+			case 16:
+				b = array.NewInt16Builder(alloc)
+			case 32:
+				b = array.NewInt32Builder(alloc)
+			default:
+				b = array.NewInt64Builder(alloc)
+			}
 			b.Reserve(n)
 			for ri := 0; ri < n; ri++ {
 				ed := &rows[ri][ci]
@@ -224,7 +237,14 @@ func buildArrowColumns(alloc memory.Allocator, typs []*types.T, rows sqlbase.Enc
 					b.Release()
 					return nil, err
 				}
-				b.Append(v)
+				switch t.Width() {
+				case 16:
+					b.(*array.Int16Builder).Append(int16(v))
+				case 32:
+					b.(*array.Int32Builder).Append(int32(v))
+				default:
+					b.(*array.Int64Builder).Append(v)
+				}
 			}
 			cols[ci] = b.NewArray()
 		case types.FloatFamily:
@@ -468,7 +488,14 @@ func arrowScanSupported(typs []*types.T) bool {
 func newArrowBuilder(alloc memory.Allocator, t *types.T) (array.Builder, error) {
 	switch t.Family() {
 	case types.IntFamily:
-		return array.NewInt64Builder(alloc), nil
+		switch t.Width() {
+		case 16:
+			return array.NewInt16Builder(alloc), nil
+		case 32:
+			return array.NewInt32Builder(alloc), nil
+		default:
+			return array.NewInt64Builder(alloc), nil
+		}
 	case types.FloatFamily:
 		return array.NewFloat64Builder(alloc), nil
 	case types.StringFamily:
