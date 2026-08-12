@@ -216,14 +216,19 @@ func (p *arrowProjectionProcessor) InitProcessorProcedure(txn *kv.Txn) {
 func (p *arrowProjectionProcessor) compute(ctx context.Context) error {
 	atomic.AddInt64(&arrowProjectionRuns, 1)
 	inTypes := p.input.OutputTypes()
-	allInt := true
+	// §7.6 fast path only when every input is a 64-bit integer: computeInt reads
+	// the Arrow columns as *array.Int64, which matches the Int64 physical type
+	// arrowDataTypeForKWType/appendEncDatum pick for int8/int. Narrower integers
+	// (int2/int4) are materialized as Int16/Int32, so they route through the
+	// generic path (computeGeneric) whose appendEncDatum honors the planner width.
+	allInt64 := true
 	for i := range inTypes {
-		if inTypes[i].Family() != types.IntFamily {
-			allInt = false
+		if inTypes[i].Family() != types.IntFamily || (inTypes[i].Width() != 0 && inTypes[i].Width() != 64) {
+			allInt64 = false
 			break
 		}
 	}
-	if allInt {
+	if allInt64 {
 		return p.computeInt(ctx, inTypes)
 	}
 	return p.computeGeneric(ctx, inTypes)
@@ -582,7 +587,11 @@ func arrowConstDatum(a arrowArg, _ memory.Allocator) compute.Datum {
 // taken from the post schema in that case, so it is derived from the Arrow type.
 func arrowDataTypeToKWType(dt arrow.DataType) types.T {
 	switch dt.ID() {
-	case arrow.INT8, arrow.INT16, arrow.INT32, arrow.INT64,
+	case arrow.INT16:
+		return *types.Int2
+	case arrow.INT32:
+		return *types.Int4
+	case arrow.INT8, arrow.INT64,
 		arrow.UINT8, arrow.UINT16, arrow.UINT32, arrow.UINT64:
 		return *types.Int
 	case arrow.FLOAT16, arrow.FLOAT32, arrow.FLOAT64:
@@ -659,6 +668,30 @@ func arrowRecordToEncDatumRows(
 			t = kwType
 		}
 		switch arr := col.(type) {
+		case *array.Int16:
+			// §7.7: batch the per-value Datum allocations into one slice per
+			// column and reference into it, instead of one heap escape per value.
+			data := arr.Int16Values()
+			vals := make([]tree.DInt, n)
+			for i := 0; i < n; i++ {
+				if arr.IsNull(i) {
+					rows[i][ci] = sqlbase.EncDatum{Datum: tree.DNull}
+					continue
+				}
+				vals[i] = tree.DInt(data[i])
+				rows[i][ci] = sqlbase.EncDatum{Datum: &vals[i]}
+			}
+		case *array.Int32:
+			data := arr.Int32Values()
+			vals := make([]tree.DInt, n)
+			for i := 0; i < n; i++ {
+				if arr.IsNull(i) {
+					rows[i][ci] = sqlbase.EncDatum{Datum: tree.DNull}
+					continue
+				}
+				vals[i] = tree.DInt(data[i])
+				rows[i][ci] = sqlbase.EncDatum{Datum: &vals[i]}
+			}
 		case *array.Int64:
 			// §7.7: batch the per-value Datum allocations into one slice per
 			// column and reference into it, instead of one heap escape per value.

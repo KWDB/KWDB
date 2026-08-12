@@ -137,7 +137,21 @@ func (s *arrowRecordSource) Next(ctx context.Context) (arrow.Record, bool, error
 func arrowDataTypeForKWType(t *types.T) (arrow.DataType, error) {
 	switch t.Family() {
 	case types.IntFamily:
-		return arrow.PrimitiveTypes.Int64, nil
+		// Preserve the integer width. Collapsing every integer to Int64 loses
+		// the planner-declared width (int2/int4), so a downstream consumer that
+		// reads the column by its logical type (e.g. colexec selecting Int32 for
+		// an int4 column, or generate_series's int4 result) would see a width
+		// mismatch. Materializing at the true width keeps the Arrow schema and
+		// the planner schema consistent end-to-end.
+		switch t.Width() {
+		case 16:
+			return arrow.PrimitiveTypes.Int16, nil
+		case 32:
+			return arrow.PrimitiveTypes.Int32, nil
+		default:
+			// width 0/8/64 → Int64
+			return arrow.PrimitiveTypes.Int64, nil
+		}
 	case types.FloatFamily:
 		return arrow.PrimitiveTypes.Float64, nil
 	case types.StringFamily:
@@ -492,7 +506,16 @@ func appendEncDatum(b array.Builder, t *types.T, ed *sqlbase.EncDatum, da *sqlba
 		if err != nil {
 			return err
 		}
-		b.(*array.Int64Builder).Append(v)
+		// Match the width chosen by arrowDataTypeForKWType so the builder's
+		// concrete type agrees with the Arrow schema declaring this column.
+		switch t.Width() {
+		case 16:
+			b.(*array.Int16Builder).Append(int16(v))
+		case 32:
+			b.(*array.Int32Builder).Append(int32(v))
+		default:
+			b.(*array.Int64Builder).Append(v)
+		}
 	case types.FloatFamily:
 		if err := ed.EnsureDecoded(t, da); err != nil {
 			return err
