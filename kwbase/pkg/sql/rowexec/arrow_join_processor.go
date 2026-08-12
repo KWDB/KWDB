@@ -252,17 +252,20 @@ func (p *arrowJoinProcessor) compute(ctx context.Context) error {
 	// Start time), the declared output (p.Out.OutputTypes, set at Init) and the
 	// planner-derived fullTypes may disagree with the actual record arity. In
 	// that case trust the actual record arity and derive each column's KWDB type
-	// from its Arrow DataType, then realign p.Out.OutputTypes so ProcessRow (which
-	// reads p.Out.OutputTypes) and the downstream Arrow handoff (p.outputRec) are
-	// consistent with the real record, instead of panicking on an out-of-range
-	// column index. We apply the realignment unconditionally off the record arity
-	// to guarantee row width == len(p.Out.OutputTypes) in every code path.
-	deriveTypes := make([]types.T, rec.NumCols())
-	for ci := 0; ci < int(rec.NumCols()); ci++ {
-		deriveTypes[ci] = arrowDataTypeToKWType(rec.Column(ci).DataType())
-	}
-	p.Out.OutputTypes = deriveTypes
+	// from its Arrow DataType. Otherwise keep the planner-declared fullTypes:
+	// arrowDataTypeToKWType collapses logical distinctions (e.g. TimestampTZ and
+	// Timestamp both map to arrow.TIMESTAMP, but they are indistinguishable at the
+	// Arrow storage layer), so preferring the planner type preserves TZ tags and
+	// decimal precision/scale.
 	if int(rec.NumCols()) != len(fullTypes) {
+		// Degenerate record: realign both the output types and the decode types
+		// off the actual record arity so ProcessRow / downstream handoff cannot
+		// index out of range.
+		deriveTypes := make([]types.T, rec.NumCols())
+		for ci := 0; ci < int(rec.NumCols()); ci++ {
+			deriveTypes[ci] = arrowDataTypeToKWType(rec.Column(ci).DataType())
+		}
+		p.Out.OutputTypes = deriveTypes
 		fullTypes = deriveTypes
 	}
 	allRows, err := arrowRecordToEncDatumRows(fullTypes, rec)

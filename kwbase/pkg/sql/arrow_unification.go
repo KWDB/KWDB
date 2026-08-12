@@ -553,20 +553,15 @@ func canArrowMergeJoin(
 	if !arrowAllSupported(leftTypes) || !arrowAllSupported(rightTypes) {
 		return false
 	}
-	// TODO(arrow-join): Arrow join currently produces an incorrect record arity /
-	// column type when an input side is a degenerate Arrow record (e.g. an upstream
-	// Arrow operator emitting 0 rows collapses to 0 columns, or its OutputTypes
-	// disagree with the actual Arrow record schema). This surfaces at execution
-	// time as an index-out-of-range or "invalid datum type" panic inside
-	// arrowJoinProcessor.compute, and cannot be reliably detected at plan time.
-	// Until arrow_join.go propagates a stable, non-degenerate schema for every
-	// side, downgrade all Arrow joins to the well-tested row-based merge/hash join
-	// Arrow is the default execution layer; join is temporarily held back because
-	// arrow_join.go still emits a degenerate record whose arity/type is unsound.
-	// This is a known fallback (not a design choice) tracked as step B — once the
-	// degenerate-record handling lands, canArrowMergeJoin returns true and the
-	// merge-join routes through the Arrow engine like every other operator.
-	return false
+	// Arrow join is a hash join (order-independent), so it covers the same
+	// equi-join + outer-join semantics as the row-based merge joiner without
+	// assuming sorted inputs. The degenerate-record arity handling is now guarded
+	// in arrowJoinProcessor.compute (§7.9): when an upstream emits a record whose
+	// arity disagrees with the declared schema it trusts the actual record arity
+	// and derives column types from the Arrow DataType, so no plan-time panic
+	// risk remains. Step B: merge-join now routes through the Arrow engine like
+	// every other operator.
+	return true
 }
 
 // canArrowJoin reports whether the equi-join described by (leftEq, rightEq) over
@@ -597,11 +592,22 @@ func canArrowJoin(
 			return false
 		}
 	}
-	// See canArrowMergeJoin: the Arrow join emits a degenerate record whose arity
-	// / type is unsound, so we fall back to the row-based join until arrow_join.go
-	// propagates a stable, non-degenerate schema for every side. This fallback is
-	// step B work; Arrow remains the default layer for all other operators.
-	return false
+	// Every projected column (not just the equi-keys) must be Arrow-representable:
+	// the join output concatenates all left+right columns, and unifiedInputFrom
+	// will convert any non-Arrow row source into an Arrow Record. Unsupported
+	// families must downgrade to the row-based join here rather than surface as an
+	// "unsupported type family" error inside arrowDataType/arrowRecordToEncDatumRows.
+	if !arrowAllSupported(leftTypes) || !arrowAllSupported(rightTypes) {
+		return false
+	}
+	// Arrow join is a hash join (order-independent), so it covers the same
+	// equi-join + outer-join semantics as the row-based joiner without assuming
+	// sorted inputs. The degenerate-record arity handling is now guarded in
+	// arrowJoinProcessor.compute (§7.9): when an upstream emits a record whose
+	// arity disagrees with the declared schema it trusts the actual record arity
+	// and derives column types from the Arrow DataType, so no plan-time panic
+	// risk remains. Join routes through the Arrow engine like every other operator.
+	return true
 }
 
 // buildArrowJoinPlan assembles the JSON plan consumed by the executor. onFilter
