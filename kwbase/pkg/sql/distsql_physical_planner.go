@@ -6373,6 +6373,10 @@ func (dsp *DistSQLPlanner) createPlanForDistinct(
 		ds := distinctSpec.Distinct
 		if physicalplan.ArrowDistinctEnabled(planCtx.EvalContext()) &&
 			!ds.NullsAreDistinct && ds.ErrorOnDup == "" &&
+			// Carriage gate on the full result types: every output column must be
+			// Arrow-representable, not just the dedup key, so that buildArrowColumns
+			// never hits an unsupported family at runtime.
+			physicalplan.ArrowRepresentableTypes(plan.ResultTypes) &&
 			canArrowDistinct(tree.EngineTypeRelational, ds.DistinctColumns, ds.OrderedColumns, plan.ResultTypes) {
 			planArrow := buildArrowDistinctPlan(ds.DistinctColumns, ds.OrderedColumns)
 			if expr, ok := marshalArrowPlan(planArrow); ok {
