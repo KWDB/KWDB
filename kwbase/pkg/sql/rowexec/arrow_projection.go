@@ -20,6 +20,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/builtins"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 )
 
 // ArrowArg is a single argument to an Arrow compute function. It is either an
@@ -67,6 +68,12 @@ type ArrowArgBinary struct {
 type ArrowArgCast struct {
 	Type arrow.DataType
 	Arg  ArrowArg
+	// SourceType is the planner (KWDB) type of the operand before the cast. It is
+	// needed because Arrow stores both INT32 and DATE as int32, so the string
+	// conversion of a plain INT32 must print the integer value while a DATE must
+	// print the "2006-01-02" layout. Without it, CAST(int_col AS STRING) would be
+	// mistaken for a date and render as an epoch day.
+	SourceType *types.T
 }
 
 // ArrowProjectionSpec describes one projected output column computed from input
@@ -206,7 +213,7 @@ func (p *arrowProjection) eval(ctx context.Context, in arrow.Record, spec ArrowP
 		// attached one (e.g. SELECT CAST(col AS DATE)). This makes projection
 		// top-level CAST a full Arrow operation instead of a silent passthrough.
 		if cast := spec.Args[0].Cast; cast != nil {
-			casted, err := castArrowArray(p.alloc, out, cast.Type)
+			casted, err := castArrowArray(p.alloc, out, cast.Type, cast.SourceType)
 			out.Release()
 			if err != nil {
 				return nil, err
@@ -238,7 +245,7 @@ func (p *arrowProjection) eval(ctx context.Context, in arrow.Record, spec ArrowP
 			// Render-side CAST: convert the operand to the target type before
 			// feeding it to the compute function. Reuses the same cast kernels
 			// as the Arrow filter path.
-			casted, err := castArrowArray(p.alloc, col, a.Cast.Type)
+			casted, err := castArrowArray(p.alloc, col, a.Cast.Type, a.Cast.SourceType)
 			if err != nil {
 				return nil, err
 			}
@@ -360,7 +367,7 @@ func (p *arrowProjection) evalCase(ctx context.Context, in arrow.Record, spec Ar
 	// declared output type.
 	for i := range branches {
 		if branches[i].val.DataType().ID() == arrow.INT16 || branches[i].val.DataType().ID() == arrow.INT32 {
-			widened, err := castArrowArray(p.alloc, branches[i].val, arrow.PrimitiveTypes.Int64)
+			widened, err := castArrowArray(p.alloc, branches[i].val, arrow.PrimitiveTypes.Int64, nil)
 			if err != nil {
 				return nil, err
 			}
@@ -369,7 +376,7 @@ func (p *arrowProjection) evalCase(ctx context.Context, in arrow.Record, spec Ar
 		}
 	}
 	if elseArr.DataType().ID() == arrow.INT16 || elseArr.DataType().ID() == arrow.INT32 {
-		widened, err := castArrowArray(p.alloc, elseArr, arrow.PrimitiveTypes.Int64)
+		widened, err := castArrowArray(p.alloc, elseArr, arrow.PrimitiveTypes.Int64, nil)
 		if err != nil {
 			return nil, err
 		}

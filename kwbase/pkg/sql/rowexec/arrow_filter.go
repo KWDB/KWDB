@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
 	"github.com/apache/arrow/go/v17/arrow/compute"
@@ -243,7 +244,7 @@ func (f *arrowFilterCore) evalLeafDatum(ctx context.Context, rec arrow.Record, o
 		if err != nil {
 			return nil, err
 		}
-		return f.evalCast(inner, op.Leaf.Cast.Type)
+		return f.evalCast(inner, op.Leaf.Cast.Type, op.Leaf.Cast.SourceType)
 	}
 	if op.Leaf.Binary != nil {
 		return f.evalBinary(ctx, rec, op.Leaf.Binary)
@@ -602,14 +603,14 @@ func (f *arrowFilterCore) evalIsNull(ctx context.Context, rec arrow.Record, spec
 // to the target Arrow type, supporting the conversion pairs the filter engine
 // needs: numeric/boolean -> string, string -> numeric. Constant-only casts are
 // rejected by the planner, so the input is always an array.
-func (f *arrowFilterCore) evalCast(d compute.Datum, to arrow.DataType) (compute.Datum, error) {
+func (f *arrowFilterCore) evalCast(d compute.Datum, to arrow.DataType, sourceType *types.T) (compute.Datum, error) {
 	ad, ok := d.(*compute.ArrayDatum)
 	if !ok {
 		return nil, fmt.Errorf("arrow cast: expected array operand, got %T", d)
 	}
 	arr := ad.MakeArray()
 	defer arr.Release()
-	out, err := castArrowArray(f.alloc, arr, to)
+	out, err := castArrowArray(f.alloc, arr, to, sourceType)
 	if err != nil {
 		return nil, err
 	}
@@ -617,11 +618,13 @@ func (f *arrowFilterCore) evalCast(d compute.Datum, to arrow.DataType) (compute.
 }
 
 // castArrowArray converts an arrow array to the target type, returning a new
-// array owned by the caller.
-func castArrowArray(alloc memory.Allocator, arr arrow.Array, to arrow.DataType) (arrow.Array, error) {
+// array owned by the caller. sourceType is the planner (KWDB) type of arr; it
+// is only needed to disambiguate INT32 vs DATE (both stored as arrow int32) when
+// converting to STRING. Pass nil when the distinction is irrelevant.
+func castArrowArray(alloc memory.Allocator, arr arrow.Array, to arrow.DataType, sourceType *types.T) (arrow.Array, error) {
 	switch to.ID() {
 	case arrow.STRING:
-		return castToString(alloc, arr)
+		return castToString(alloc, arr, sourceType)
 	case arrow.INT64:
 		return castToInt64(alloc, arr)
 	case arrow.FLOAT64:
@@ -639,9 +642,14 @@ func castArrowArray(alloc memory.Allocator, arr arrow.Array, to arrow.DataType) 
 	return nil, fmt.Errorf("arrow cast: unsupported target type %s", to)
 }
 
-func castToString(alloc memory.Allocator, arr arrow.Array) (arrow.Array, error) {
+func castToString(alloc memory.Allocator, arr arrow.Array, sourceType *types.T) (arrow.Array, error) {
 	b := array.NewStringBuilder(alloc)
 	defer b.Release()
+	// Arrow stores both INT32 and DATE as int32. Only render the epoch-day date
+	// layout when the planner source type is actually a DATE; a plain INT32 must
+	// be printed as its integer value (otherwise CAST(int_col AS STRING) would
+	// yield "1970-01-02" for the value 1).
+	isDate := sourceType != nil && sourceType.Family() == types.DateFamily
 	switch a := arr.(type) {
 	case *array.Int64:
 		for i := 0; i < a.Len(); i++ {
@@ -652,16 +660,26 @@ func castToString(alloc memory.Allocator, arr arrow.Array) (arrow.Array, error) 
 			b.Append(strconv.FormatInt(a.Value(i), 10))
 		}
 	case *array.Int32:
-		// Date columns are carried in Arrow as int32 days since the Unix epoch.
-		// Render with the same layout KWDB uses for CAST(date AS string)
-		// (DDate.Format -> pgdate "2006-01-02"), so Arrow and row-based output match.
-		for i := 0; i < a.Len(); i++ {
-			if a.IsNull(i) {
-				b.AppendNull()
-				continue
+		if isDate {
+			// Date columns are carried in Arrow as int32 days since the Unix epoch.
+			// Render with the same layout KWDB uses for CAST(date AS string)
+			// (DDate.Format -> pgdate "2006-01-02"), so Arrow and row-based output match.
+			for i := 0; i < a.Len(); i++ {
+				if a.IsNull(i) {
+					b.AppendNull()
+					continue
+				}
+				t := time.Unix(int64(a.Value(i))*86400, 0).UTC()
+				b.Append(t.Format("2006-01-02"))
 			}
-			t := time.Unix(int64(a.Value(i))*86400, 0).UTC()
-			b.Append(t.Format("2006-01-02"))
+		} else {
+			for i := 0; i < a.Len(); i++ {
+				if a.IsNull(i) {
+					b.AppendNull()
+					continue
+				}
+				b.Append(strconv.FormatInt(int64(a.Value(i)), 10))
+			}
 		}
 	case *array.Float64:
 		for i := 0; i < a.Len(); i++ {
@@ -806,6 +824,22 @@ func castToFloat64(alloc memory.Allocator, arr arrow.Array) (arrow.Array, error)
 				return nil, fmt.Errorf("arrow cast STRING->FLOAT: %v", err)
 			}
 			b.Append(v)
+		}
+	case *array.Int16:
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			b.Append(float64(a.Value(i)))
+		}
+	case *array.Int32:
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			b.Append(float64(a.Value(i)))
 		}
 	case *array.Int64:
 		for i := 0; i < a.Len(); i++ {
@@ -952,6 +986,22 @@ func castToBool(alloc memory.Allocator, arr arrow.Array) (arrow.Array, error) {
 			default:
 				return nil, fmt.Errorf("arrow cast STRING->BOOL: invalid boolean %q", a.Value(i))
 			}
+		}
+	case *array.Int16:
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			b.Append(a.Value(i) != 0)
+		}
+	case *array.Int32:
+		for i := 0; i < a.Len(); i++ {
+			if a.IsNull(i) {
+				b.AppendNull()
+				continue
+			}
+			b.Append(a.Value(i) != 0)
 		}
 	case *array.Int64:
 		for i := 0; i < a.Len(); i++ {

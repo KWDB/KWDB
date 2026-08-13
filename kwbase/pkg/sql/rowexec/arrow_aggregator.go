@@ -128,12 +128,16 @@ func aggOutputType(fn string, in arrow.DataType) arrow.DataType {
 		// Boolean aggregates always produce a BOOL result regardless of input.
 		return arrow.FixedWidthTypes.Boolean
 	case "mean", "sqrdiff", "final_variance", "final_stddev", "variance", "stddev":
-		// These widen integer/decimal inputs to DECIMAL128 and keep floats as
-		// FLOAT64, matching the colexec sqrdiff/variance/stddev output types.
-		if in != nil && (in.ID() == arrow.INT64 || in.ID() == arrow.DECIMAL128) {
-			return meanDecimalType
+		// Floats keep FLOAT64; integer/decimal inputs widen to DECIMAL128. This
+		// must stay in lock-step with sqrdiffAgg.Finalize / meanAgg.Finalize,
+		// which emit a Decimal128Scalar for any non-float input (and a
+		// Float64Scalar for float inputs). Mismatching these two here causes a
+		// Decimal128Scalar to be appended into a Float64Builder (or vice versa),
+		// which silently yields NULL.
+		if in != nil && in.ID() == arrow.FLOAT64 {
+			return arrow.PrimitiveTypes.Float64
 		}
-		return arrow.PrimitiveTypes.Float64
+		return meanDecimalType
 	case "sum", "min", "max", "ident":
 		return in
 	default:

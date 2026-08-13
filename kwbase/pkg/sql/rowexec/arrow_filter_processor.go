@@ -86,11 +86,14 @@ type arrowFilterBinaryJS struct {
 }
 
 // arrowFilterCastJS is the JSON shape of a type conversion leaf. Type is the
-// compact tag ("STRING"/"INT"/"FLOAT") emitted by the planner.
+// compact tag ("STRING"/"INT"/"FLOAT") emitted by the planner. Source is the
+// planner (KWDB) type of the operand before the cast, used to disambiguate INT32
+// vs DATE (both stored as arrow int32) when casting to STRING.
 type arrowFilterCastJS struct {
-	Func string            `json:"func"`
-	Type string            `json:"type"`
-	Arg  arrowFilterLeafJS `json:"arg"`
+	Func   string            `json:"func"`
+	Type   string            `json:"type"`
+	Source *types.T          `json:"src,omitempty"`
+	Arg    arrowFilterLeafJS `json:"arg"`
 }
 
 // arrowFilterComputedJS is the JSON shape of a string-function leaf lifted into
@@ -316,7 +319,7 @@ func leafToArrowArg(l *arrowFilterLeafJS) *ArrowArg {
 		return &ArrowArg{Binary: binaryToArrowArg(l.Binary)}
 	}
 	if l.Cast != nil {
-		return &ArrowArg{Cast: &ArrowArgCast{Type: arrowCastType(l.Cast.Type), Arg: *leafToArrowArg(&l.Cast.Arg)}}
+		return &ArrowArg{Cast: &ArrowArgCast{Type: arrowCastType(l.Cast.Type), SourceType: l.Cast.Source, Arg: *leafToArrowArg(&l.Cast.Arg)}}
 	}
 	if l.Computed != nil {
 		args := make([]ArrowArg, len(l.Computed.Args))

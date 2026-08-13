@@ -174,6 +174,10 @@ func decimal128ToApd(num decimal128.Num, scale int32) apd.Decimal {
 // widening for SQRDIFF/SUM/AVG).
 func scalarToApd(s scalar.Scalar, inType arrow.DataType) (apd.Decimal, bool) {
 	switch v := s.(type) {
+	case *scalar.Int16:
+		return *apd.New(int64(v.Value), 0), true
+	case *scalar.Int32:
+		return *apd.New(int64(v.Value), 0), true
 	case *scalar.Int64:
 		return *apd.New(v.Value, 0), true
 	case *scalar.Decimal128:
@@ -1510,6 +1514,10 @@ func newArrowHashAggregator(alloc memory.Allocator, groupCols []string, aggs []A
 		inTypes:   make([]arrow.DataType, len(aggs)),
 		intGroups: make(map[int64]int32),
 	}
+}
+
+func init() {
+	_ = fmt.Sprint
 }
 
 // allocGroup allocates a fresh dense group id (1-based; 0 is the invalid

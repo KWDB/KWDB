@@ -2829,10 +2829,15 @@ type arrowFilterBinary struct {
 
 // arrowFilterCast is a type conversion leaf. Type encodes the target Arrow type
 // as a compact tag ("STRING"/"INT"/"FLOAT"); Arg is the inner leaf operand.
+// Source is the planner (KWDB) type of the operand before the cast; it is needed
+// to disambiguate INT32 vs DATE (both stored as arrow int32) when casting to
+// STRING, so CAST(int_col AS STRING) prints the integer while CAST(date AS STRING)
+// prints the date layout.
 type arrowFilterCast struct {
-	Func string          `json:"func"`
-	Type string          `json:"type"`
-	Arg  arrowFilterLeaf `json:"arg"`
+	Func   string          `json:"func"`
+	Type   string          `json:"type"`
+	Source *types.T        `json:"src,omitempty"`
+	Arg    arrowFilterLeaf `json:"arg"`
 }
 
 // arrowFilterLeafFromExpr classifies a filter operand expression as an
@@ -2904,8 +2909,12 @@ func (p *PhysicalPlan) arrowFilterLeafFromExpr(
 		if !ok {
 			return nil, nil, false
 		}
+		srcExpr, _ := c.Expr.(tree.TypedExpr)
+		if ce, ok := c.Expr.(*tree.CastExpr); ok {
+			srcExpr = ce.Expr.(tree.TypedExpr)
+		}
 		return &arrowFilterLeaf{
-			Cast: &arrowFilterCast{Func: "cast", Type: tag, Arg: *inner},
+			Cast: &arrowFilterCast{Func: "cast", Type: tag, Source: srcExpr.ResolvedType(), Arg: *inner},
 		}, c.ResolvedType(), true
 	case *tree.FuncExpr:
 		// Lift supported string functions (substring/trim/concat/replace/...) on

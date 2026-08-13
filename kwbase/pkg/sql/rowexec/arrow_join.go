@@ -277,6 +277,14 @@ func joinRowHash(arrs []arrow.Array, row int, seed *maphash.Hash) uint64 {
 	seed.Reset()
 	for _, a := range arrs {
 		switch a.DataType().ID() {
+		case arrow.INT16:
+			seed.WriteString("i")
+			v := uint64(uint16(a.(*array.Int16).Value(row)))
+			seed.Write((*[8]byte)(unsafe.Pointer(&v))[:])
+		case arrow.INT32:
+			seed.WriteString("i")
+			v := uint64(uint32(a.(*array.Int32).Value(row)))
+			seed.Write((*[8]byte)(unsafe.Pointer(&v))[:])
 		case arrow.INT64:
 			seed.WriteString("i")
 			v := uint64(a.(*array.Int64).Value(row))
@@ -335,6 +343,10 @@ func joinRowsEqual(left []arrow.Array, l int, right []arrow.Array, r int) bool {
 // key types. The caller must ensure neither position is NULL.
 func arrValEqual(a arrow.Array, i int, b arrow.Array, j int) bool {
 	switch a.DataType().ID() {
+	case arrow.INT16:
+		return a.(*array.Int16).Value(i) == b.(*array.Int16).Value(j)
+	case arrow.INT32:
+		return a.(*array.Int32).Value(i) == b.(*array.Int32).Value(j)
 	case arrow.INT64:
 		return a.(*array.Int64).Value(i) == b.(*array.Int64).Value(j)
 	case arrow.FLOAT64:
