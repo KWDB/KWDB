@@ -271,7 +271,7 @@ func ArrowUnionAllEnabled(evalCtx *tree.EvalContext) bool {
 var arrowValuesEnabledSetting = settings.RegisterBoolSetting(
 	"sql.arrow_values.enabled",
 	"if set, the Values data source (pre-canned constant rows) is emitted as a single Arrow Record source instead of the classic row-based Values processor",
-	false,
+	true,
 )
 
 func arrowValuesEnabled(evalCtx *tree.EvalContext) bool {
@@ -282,8 +282,8 @@ func arrowValuesEnabled(evalCtx *tree.EvalContext) bool {
 }
 
 // ArrowValuesEnabled reports whether Values is emitted through the Arrow compute
-// engine. Defaults to false (conservative; flipped to true once the Arrow Values
-// path is validated end-to-end), gated behind the master ArrowScan switch.
+// engine. Defaults to true (Arrow is the default execution layer), gated behind
+// the master ArrowScan switch.
 func ArrowValuesEnabled(evalCtx *tree.EvalContext) bool {
 	return arrowValuesEnabled(evalCtx) && ArrowScanEnabled(evalCtx)
 }

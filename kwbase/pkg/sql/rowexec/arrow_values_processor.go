@@ -27,6 +27,7 @@ package rowexec
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
@@ -44,11 +45,12 @@ import (
 type arrowValuesProcessor struct {
 	*valuesProcessor
 
-	alloc     memory.Allocator
-	outTyps   []*types.T
-	da        *sqlbase.DatumAlloc
-	outputRec arrow.Record
-	emitted   bool
+	alloc      memory.Allocator
+	da         *sqlbase.DatumAlloc
+	outputRec  arrow.Record
+	emitted    bool
+	inputRows  sqlbase.EncDatumRows
+	recordBuilt bool
 }
 
 var _ execinfra.RowSource = &arrowValuesProcessor{}
@@ -67,12 +69,6 @@ func newArrowValuesProcessor(
 	av := &arrowValuesProcessor{
 		alloc: memory.NewGoAllocator(),
 		da:    &sqlbase.DatumAlloc{},
-	}
-
-	// Resolve the output column types from the spec.
-	av.outTyps = make([]*types.T, len(spec.Columns))
-	for i := range spec.Columns {
-		av.outTyps[i] = &spec.Columns[i].Type
 	}
 
 	// Decode the pre-canned rows using the same StreamDecoder framing the
@@ -110,7 +106,13 @@ func newArrowValuesProcessor(
 		if row == nil {
 			continue
 		}
-		rows = append(rows, row)
+		// StreamDecoder.GetRow reuses rowBuf's backing array across calls, so
+		// every returned `row` aliases the same slice. Copy it so each stored
+		// EncDatumRow owns its own backing array (otherwise all rows collapse
+		// onto the last decoded value).
+		rowCopy := make(sqlbase.EncDatumRow, len(row))
+		copy(rowCopy, row)
+		rows = append(rows, rowCopy)
 	}
 	if len(spec.Columns) == 0 {
 		// Zero-column source: numRows encoded via NumEmptyRows on a single
@@ -128,27 +130,102 @@ func newArrowValuesProcessor(
 			"arrow values: decoded %d rows, expected %d", len(rows), spec.NumRows)
 	}
 
-	// Amortize the whole batch into a single Arrow Record.
-	cols, err := buildArrowColumns(av.alloc, av.outTyps, rows, av.da)
-	if err != nil {
-		return nil, err
-	}
-	fields := make([]arrow.Field, len(av.outTyps))
-	for i, t := range av.outTyps {
-		fields[i] = arrow.Field{Name: t.Name(), Type: cols[i].DataType(), Nullable: true}
-	}
-	schema := arrow.NewSchema(fields, nil)
-	av.outputRec = array.NewRecord(schema, cols, int64(len(rows)))
-
-	// Build the embedded classic valuesProcessor so the full RowSource/Processor
-	// interface is satisfied; its Next path is overridden below so it never
-	// emits datum rows (this operator is consumed only via ArrowOutput).
+	// Apply the planner's post-process (filter + projection) to the constant
+	// rows before materializing them into the Arrow Record. We reuse the embedded
+	// classic valuesProcessor's ProcOutputHelper (initialized with `post`) to
+	// apply it row-wise: rows dropped by a filter return ok==false and are
+	// skipped; projected columns are selected. This is correct for any post,
+	// including CASE/COALESCE filters that the Arrow filter kernel does not
+	// natively support, because the row-wise post-process uses the full classic
+	// expression evaluator.
 	vp, err := newValuesProcessor(flowCtx, processorID, spec, post, output)
 	if err != nil {
 		return nil, err
 	}
 	av.valuesProcessor = vp
+	// The constant rows are decoded above (rows). The planner post (filter +
+	// projection) and the Arrow Record materialization are deferred to
+	// ArrowOutput(): applying post requires the processor's context (PbCtx),
+	// which is only available after Start(). This mirrors the classic
+	// valuesProcessor.Next() path (which calls ProcessRowHelper after Start)
+	// and keeps a single StartInternal (double-Starting would feed the embedded
+	// StreamDecoder a second producer header, faulting the gRPC receiver with
+	// "received multiple headers" during server-start migrations).
+	av.inputRows = rows
 	return av, nil
+}
+
+// buildArrowRecord applies the planner post to the pre-decoded constant rows
+// and amortizes the result into a single Arrow Record. It is called lazily from
+// ArrowOutput() once the processor has been Started (so PbCtx is available for
+// the post-process expression evaluation).
+func (av *arrowValuesProcessor) buildArrowRecord() error {
+	if av.recordBuilt {
+		return nil
+	}
+	processed := make([]sqlbase.EncDatumRow, 0, len(av.inputRows))
+	for _, row := range av.inputRows {
+		// ProcessRowHelper uses the processor's own context (PbCtx); this matches
+		// the classic valuesProcessor.Next() and is required for correct
+		// evaluation of CASE/COALESCE filters. A nil outRow means the row was
+		// dropped by the post (filter or limit); skip it just like Next() does.
+		or, ok, perr := av.Out.ProcessRow(av.PbCtx(), row)
+		if perr != nil {
+			return perr
+		}
+		if ok && or != nil {
+			processed = append(processed, or)
+		}
+	}
+
+	// The post-processed rows are expressed in terms of av.Out.OutputTypes
+	// (the planner's post output typing), not the raw spec.Columns typing. Use
+	// them both for column materialization and for the Record schema. Field
+	// names follow the "col%d" convention used by every other Arrow source in
+	// the unified DAG (arrow_adapter/arrow_bridge/arrow_join/...), which is the
+	// name space the downstream Arrow operators resolve projections against.
+	// The post-processed rows are expressed in terms of av.Out.OutputTypes
+	// (the planner's post output typing), not the raw spec.Columns typing. Use
+	// them both for column materialization and for the Record schema. Field
+	// names follow the "col%d" convention used by every other Arrow source in
+	// the unified DAG (arrow_adapter/arrow_bridge/arrow_join/...), which is the
+	// name space the downstream Arrow operators resolve projections against.
+	outTyps := av.Out.OutputTypes
+	ptrTyps := make([]*types.T, len(outTyps))
+	for i := range outTyps {
+		ptrTyps[i] = &outTyps[i]
+	}
+	cols, err := buildArrowColumns(av.alloc, ptrTyps, processed, av.da)
+	if err != nil {
+		return err
+	}
+	fields := make([]arrow.Field, len(ptrTyps))
+	for i := range ptrTyps {
+		fields[i] = arrow.Field{Name: fmt.Sprintf("col%d", i), Type: cols[i].DataType(), Nullable: true}
+	}
+	schema := arrow.NewSchema(fields, nil)
+	av.outputRec = array.NewRecord(schema, cols, int64(len(processed)))
+	av.recordBuilt = true
+	return nil
+}
+
+// Start initializes the processor. It performs the base processor
+// initialization (StartInternal) and then materializes the Arrow Record from
+// the pre-decoded constant rows. The Record must be built here — after
+// StartInternal has set EvalCtx.Context (required for correct CASE/COALESCE
+// filter evaluation) — rather than in the constructor (where EvalCtx.Context
+// is still nil) or lazily in ArrowOutput (which may be pulled before Start by
+// the unified DAG). It deliberately does NOT call the embedded
+// valuesProcessor.Start(), which would feed the inherited StreamDecoder a
+// producer header; calling it here too would feed the *same* embedded
+// StreamDecoder a second header, which the downstream gRPC receiver rejects as
+// "received multiple headers" during server-start migrations.
+func (av *arrowValuesProcessor) Start(ctx context.Context) context.Context {
+	ctx = av.StartInternal(ctx, "arrow-values")
+	if err := av.buildArrowRecord(); err != nil {
+		av.MoveToDraining(err)
+	}
+	return ctx
 }
 
 // ArrowOutput returns the single pre-built Record. It is delivered once; on
