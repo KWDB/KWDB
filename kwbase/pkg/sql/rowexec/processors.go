@@ -176,8 +176,14 @@ func NewProcessor(
 		if err := checkNumInOut(inputs, outputs, 1, 1); err != nil {
 			return nil, err
 		}
-		return newArrowWindowerProcessor(flowCtx, processorID, core.ArrowWindower, inputs[0], post, outputs[0])
+	return newArrowWindowerProcessor(flowCtx, processorID, core.ArrowWindower, inputs[0], post, outputs[0])
+}
+if core.ArrowLookupJoin != nil {
+	if err := checkNumInOut(inputs, outputs, 1, 1); err != nil {
+		return nil, err
 	}
+	return newArrowLookupJoinerProcessor(flowCtx, processorID, core.ArrowLookupJoin, inputs[0], post, outputs[0])
+}
 	if core.ArrowUnionAll != nil {
 		if len(inputs) < 1 {
 			return nil, errors.Errorf("arrow union all requires at least one input, got %d", len(inputs))

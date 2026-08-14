@@ -285,8 +285,32 @@ func (p *arrowJoinProcessor) compute(ctx context.Context) error {
 		copy(cp, processed)
 		out = append(out, cp)
 	}
+	// p.outputRows must carry the *post-processed* (projected) join columns so
+	// that the row-based Next() path returns the stage's output schema (v,w),
+	// not the raw left+right join columns (k_l,v_l,k_r,w_r). ArrowOutput() uses
+	// projRec (built below from out) for operator-to-operator Arrow handoff, so
+	// it is already projected; here we point outputRows at the same projected
+	// rows so both Next() and ArrowOutput() agree on the schema.
 	p.outputRows = out
+	projRec, err := p.newPostRecord(out)
+	if err != nil {
+		rec.Release()
+		return err
+	}
+	// The raw join record is no longer needed once projected into projRec.
+	rec.Release()
+	p.outputRec = projRec
 	return nil
+}
+
+// newPostRecord rebuilds an Arrow record from the post-processed output rows so
+// that the operator-to-operator consumer (which reads columns by p.Out's
+// projected schema) sees exactly the same columns as the row-based Next() path.
+// rows come from p.Out.ProcessRow (already projected), and typs is p.Out.OutputTypes
+// (the stage's output schema, which the arity guard at §7.9 may have realigned
+// to the actual record arity).
+func (p *arrowJoinProcessor) newPostRecord(rows sqlbase.EncDatumRows) (arrow.Record, error) {
+	return newPostRecordFromRows(p.alloc, p.da, p.Out.OutputTypes, rows)
 }
 
 func buildArrowJoinSpec(plan arrowJoinPlan) ArrowJoinSpec {

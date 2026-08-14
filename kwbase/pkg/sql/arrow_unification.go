@@ -611,6 +611,58 @@ func canArrowJoin(
 	return true
 }
 
+// canArrowLookupJoin reports whether a lookup join (joinReader) that performs KV
+// point lookups against the right table can be surfaced through the Arrow engine.
+// The lookup-join compute itself (KV point lookup + matching + outer-join
+// NULL-extension) is not re-implemented as a native Arrow kernel; instead the
+// ArrowLookupJoiner processor embeds the row-based joinReader and bridges its
+// left++right output rows into Arrow Records via NewRowSourceToArrow, so the
+// operator still participates in the single Arrow DAG (per the unification
+// design: rowexec is the operator-level bridge backend for compute that cannot
+// be Arrow-ized). The gate therefore only checks that the surrounding engine is
+// Arrow and that every column is Arrow-representable.
+//
+// Gating:
+//   - ArrowJoinEnabled must be on (Arrow is the default engine).
+//   - joinType must be supported by arrowJoinType (inner/left/right/full).
+//   - lookupCols must be non-empty (an empty set denotes an index join / full
+//     table scan on the right, which ArrowLookupJoiner does not cover; the
+//     row-based joinReader is kept).
+//   - every lookup (left) key must be an Arrow-join key type.
+//   - left input types AND every projected right table column must be
+//     Arrow-representable (arrowAllSupported), so the bridge +
+//     arrowRecordToEncDatumRows never hit an "unsupported type family".
+//
+// onExpr is honored by the embedded joinReader (row-wise), so no extra gate is
+// needed for it.
+func canArrowLookupJoin(
+	evalCtx *tree.EvalContext,
+	joinType sqlbase.JoinType,
+	lookupCols []uint32,
+	leftTypes, rightTypes []types.T,
+) bool {
+	if !physicalplan.ArrowJoinEnabled(evalCtx) {
+		return false
+	}
+	if _, ok := arrowJoinType(joinType); !ok {
+		return false
+	}
+	if len(lookupCols) == 0 {
+		// Index join / full right-table scan: not covered by ArrowLookupJoiner;
+		// keep the row-based joinReader.
+		return false
+	}
+	for _, c := range lookupCols {
+		if int(c) >= len(leftTypes) || !arrowJoinKeyType(leftTypes[c]) {
+			return false
+		}
+	}
+	if !arrowAllSupported(leftTypes) || !arrowAllSupported(rightTypes) {
+		return false
+	}
+	return true
+}
+
 // buildArrowJoinPlan assembles the JSON plan consumed by the executor. onFilter
 // is the JSON-serialized non-equi onExpr filter plan (§7.4), or "" when the join
 // has none.

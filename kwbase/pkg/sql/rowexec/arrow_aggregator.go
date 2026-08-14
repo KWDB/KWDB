@@ -138,7 +138,16 @@ func aggOutputType(fn string, in arrow.DataType) arrow.DataType {
 			return arrow.PrimitiveTypes.Float64
 		}
 		return meanDecimalType
-	case "sum", "min", "max", "ident":
+	case "sum":
+		// SUM over a float input yields Float64 (see aggregate_builtins.go);
+		// over an integer/decimal input it widens to DECIMAL128. This must stay
+		// in lock-step with sumAgg.Finalize, which emits a Decimal128Scalar for
+		// any integer/decimal input and a Float64Scalar for float inputs.
+		if in != nil && in.ID() == arrow.FLOAT64 {
+			return arrow.PrimitiveTypes.Float64
+		}
+		return meanDecimalType
+	case "min", "max", "ident":
 		return in
 	default:
 		return in

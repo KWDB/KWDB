@@ -273,11 +273,7 @@ func (a *identAgg) Finalize() (scalar.Scalar, error) {
 func newScalarAggregator(op aggOp, inType arrow.DataType, fn string) (scalarAggregator, error) {
 	switch op {
 	case aggOpSum:
-		out := inType
-		if inType.ID() == arrow.BOOL {
-			// SUM over booleans counts true values, returning int64 (C++ result).
-			out = arrow.PrimitiveTypes.Int64
-		}
+		out := aggOutputType("sum", inType)
 		return &sumAgg{outType: out, inType: inType}, nil
 	case aggOpCount:
 		return &countAgg{}, nil
@@ -311,7 +307,6 @@ func newScalarAggregator(op aggOp, inType arrow.DataType, fn string) (scalarAggr
 type sumAgg struct {
 	outType arrow.DataType
 	inType  arrow.DataType
-	accI    int64
 	accF    float64
 	accD    apd.Decimal
 	count   int64
@@ -321,12 +316,19 @@ func (s *sumAgg) Consume(arrs []arrow.Array, sel []int32) error {
 	arr := arrs[0]
 	switch a := arr.(type) {
 	case *array.Int64:
-		vals := a.Int64Values()
 		hasNulls := a.NullN() > 0
+		vals := a.Int64Values()
+		step := func(i int) error {
+			v := apd.New(vals[i], 0)
+			_, err := tree.ExactCtx.Add(&s.accD, &s.accD, v)
+			return err
+		}
 		if sel == nil {
 			if !hasNulls {
 				for i := range vals {
-					s.accI += vals[i]
+					if err := step(i); err != nil {
+						return err
+					}
 				}
 				s.count += int64(len(vals))
 			} else {
@@ -334,14 +336,18 @@ func (s *sumAgg) Consume(arrs []arrow.Array, sel []int32) error {
 					if a.IsNull(i) {
 						continue
 					}
-					s.accI += vals[i]
+					if err := step(i); err != nil {
+						return err
+					}
 					s.count++
 				}
 			}
 		} else {
 			if !hasNulls {
 				for _, i := range sel {
-					s.accI += vals[i]
+					if err := step(int(i)); err != nil {
+						return err
+					}
 				}
 				s.count += int64(len(sel))
 			} else {
@@ -350,7 +356,105 @@ func (s *sumAgg) Consume(arrs []arrow.Array, sel []int32) error {
 					if a.IsNull(ii) {
 						continue
 					}
-					s.accI += vals[ii]
+					if err := step(ii); err != nil {
+						return err
+					}
+					s.count++
+				}
+			}
+		}
+	case *array.Int32:
+		hasNulls := a.NullN() > 0
+		vals := a.Int32Values()
+		step := func(i int) error {
+			v := apd.New(int64(vals[i]), 0)
+			_, err := tree.ExactCtx.Add(&s.accD, &s.accD, v)
+			return err
+		}
+		if sel == nil {
+			if !hasNulls {
+				for i := range vals {
+					if err := step(i); err != nil {
+						return err
+					}
+				}
+				s.count += int64(len(vals))
+			} else {
+				for i := range vals {
+					if a.IsNull(i) {
+						continue
+					}
+					if err := step(i); err != nil {
+						return err
+					}
+					s.count++
+				}
+			}
+		} else {
+			if !hasNulls {
+				for _, i := range sel {
+					if err := step(int(i)); err != nil {
+						return err
+					}
+				}
+				s.count += int64(len(sel))
+			} else {
+				for _, i := range sel {
+					ii := int(i)
+					if a.IsNull(ii) {
+						continue
+					}
+					if err := step(ii); err != nil {
+						return err
+					}
+					s.count++
+				}
+			}
+		}
+	case *array.Int16:
+		hasNulls := a.NullN() > 0
+		vals := a.Int16Values()
+		step := func(i int) error {
+			v := apd.New(int64(vals[i]), 0)
+			_, err := tree.ExactCtx.Add(&s.accD, &s.accD, v)
+			return err
+		}
+		if sel == nil {
+			if !hasNulls {
+				for i := range vals {
+					if err := step(i); err != nil {
+						return err
+					}
+				}
+				s.count += int64(len(vals))
+			} else {
+				for i := range vals {
+					if a.IsNull(i) {
+						continue
+					}
+					if err := step(i); err != nil {
+						return err
+					}
+					s.count++
+				}
+			}
+		} else {
+			if !hasNulls {
+				for _, i := range sel {
+					if err := step(int(i)); err != nil {
+						return err
+					}
+				}
+				s.count += int64(len(sel))
+			} else {
+				for _, i := range sel {
+					ii := int(i)
+					if a.IsNull(ii) {
+						continue
+					}
+					if err := step(ii); err != nil {
+						return err
+					}
 					s.count++
 				}
 			}
@@ -397,10 +501,12 @@ func (s *sumAgg) Consume(arrs []arrow.Array, sel []int32) error {
 				if hasNulls && a.IsNull(i) {
 					continue
 				}
-				if a.Value(i) {
-					s.accI++
+			if a.Value(i) {
+				if _, err := tree.ExactCtx.Add(&s.accD, &s.accD, apd.New(1, 0)); err != nil {
+					return err
 				}
-				s.count++
+			}
+			s.count++
 			}
 		} else {
 			for _, i := range sel {
@@ -409,7 +515,9 @@ func (s *sumAgg) Consume(arrs []arrow.Array, sel []int32) error {
 					continue
 				}
 				if a.Value(ii) {
-					s.accI++
+					if _, err := tree.ExactCtx.Add(&s.accD, &s.accD, apd.New(1, 0)); err != nil {
+						return err
+					}
 				}
 				s.count++
 			}
@@ -449,7 +557,6 @@ func (s *sumAgg) Consume(arrs []arrow.Array, sel []int32) error {
 
 func (s *sumAgg) MergeFrom(other scalarAggregator) error {
 	o := other.(*sumAgg)
-	s.accI += o.accI
 	s.accF += o.accF
 	if _, err := tree.ExactCtx.Add(&s.accD, &s.accD, &o.accD); err != nil {
 		return err
@@ -473,7 +580,14 @@ func (s *sumAgg) Finalize() (scalar.Scalar, error) {
 		}
 		return scalar.NewDecimal128Scalar(num, s.outType), nil
 	default:
-		return scalar.NewInt64Scalar(s.accI), nil
+		// Integer SUM: KWDB returns Decimal (see aggregate_builtins.go).
+		// s.accD holds the integer sum as an exact decimal.
+		dt := s.outType.(*arrow.Decimal128Type)
+		num, err := apdToDecimal128(&s.accD, dt.Scale)
+		if err != nil {
+			return nil, err
+		}
+		return scalar.NewDecimal128Scalar(num, s.outType), nil
 	}
 }
 
@@ -545,6 +659,96 @@ func (m *minMaxAgg) Consume(arrs []arrow.Array, sel []int32) error {
 			} else {
 				if v > m.accI {
 					m.accI = v
+				}
+			}
+		}
+		if sel == nil {
+			if !hasNulls {
+				for i := range vals {
+					visit(vals[i])
+				}
+			} else {
+				for i := range vals {
+					if a.IsNull(i) {
+						continue
+					}
+					visit(vals[i])
+				}
+			}
+		} else {
+			if !hasNulls {
+				for _, i := range sel {
+					visit(vals[i])
+				}
+			} else {
+				for _, i := range sel {
+					ii := int(i)
+					if a.IsNull(ii) {
+						continue
+					}
+					visit(vals[ii])
+				}
+			}
+		}
+	case *array.Int32:
+		vals := a.Int32Values()
+		hasNulls := a.NullN() > 0
+		visit := func(v int32) {
+			if !m.set {
+				m.set = true
+				m.accI = int64(v)
+			} else if m.op == aggOpMin {
+				if int64(v) < m.accI {
+					m.accI = int64(v)
+				}
+			} else {
+				if int64(v) > m.accI {
+					m.accI = int64(v)
+				}
+			}
+		}
+		if sel == nil {
+			if !hasNulls {
+				for i := range vals {
+					visit(vals[i])
+				}
+			} else {
+				for i := range vals {
+					if a.IsNull(i) {
+						continue
+					}
+					visit(vals[i])
+				}
+			}
+		} else {
+			if !hasNulls {
+				for _, i := range sel {
+					visit(vals[i])
+				}
+			} else {
+				for _, i := range sel {
+					ii := int(i)
+					if a.IsNull(ii) {
+						continue
+					}
+					visit(vals[ii])
+				}
+			}
+		}
+	case *array.Int16:
+		vals := a.Int16Values()
+		hasNulls := a.NullN() > 0
+		visit := func(v int16) {
+			if !m.set {
+				m.set = true
+				m.accI = int64(v)
+			} else if m.op == aggOpMin {
+				if int64(v) < m.accI {
+					m.accI = int64(v)
+				}
+			} else {
+				if int64(v) > m.accI {
+					m.accI = int64(v)
 				}
 			}
 		}
@@ -837,6 +1041,10 @@ func (m *minMaxAgg) Finalize() (scalar.Scalar, error) {
 		return scalar.NewDecimal128Scalar(num, m.inType), nil
 	case arrow.TIMESTAMP:
 		return scalar.NewTimestampScalar(arrow.Timestamp(m.accI), m.inType), nil
+	case arrow.INT16:
+		return scalar.NewInt16Scalar(int16(m.accI)), nil
+	case arrow.INT32:
+		return scalar.NewInt32Scalar(int32(m.accI)), nil
 	default:
 		return scalar.NewInt64Scalar(m.accI), nil
 	}
@@ -892,6 +1100,76 @@ func (m *meanAgg) Consume(arrs []arrow.Array, sel []int32) error {
 						continue
 					}
 					tree.ExactCtx.Add(&m.sumD, &m.sumD, apd.New(vals[ii], 0))
+					m.cntI++
+				}
+			}
+		}
+	case *array.Int32:
+		vals := a.Int32Values()
+		hasNulls := a.NullN() > 0
+		if sel == nil {
+			if !hasNulls {
+				for i := range vals {
+					tree.ExactCtx.Add(&m.sumD, &m.sumD, apd.New(int64(vals[i]), 0))
+					m.cntI++
+				}
+			} else {
+				for i := range vals {
+					if a.IsNull(i) {
+						continue
+					}
+					tree.ExactCtx.Add(&m.sumD, &m.sumD, apd.New(int64(vals[i]), 0))
+					m.cntI++
+				}
+			}
+		} else {
+			if !hasNulls {
+				for _, i := range sel {
+					tree.ExactCtx.Add(&m.sumD, &m.sumD, apd.New(int64(vals[i]), 0))
+					m.cntI++
+				}
+			} else {
+				for _, i := range sel {
+					ii := int(i)
+					if a.IsNull(ii) {
+						continue
+					}
+					tree.ExactCtx.Add(&m.sumD, &m.sumD, apd.New(int64(vals[ii]), 0))
+					m.cntI++
+				}
+			}
+		}
+	case *array.Int16:
+		vals := a.Int16Values()
+		hasNulls := a.NullN() > 0
+		if sel == nil {
+			if !hasNulls {
+				for i := range vals {
+					tree.ExactCtx.Add(&m.sumD, &m.sumD, apd.New(int64(vals[i]), 0))
+					m.cntI++
+				}
+			} else {
+				for i := range vals {
+					if a.IsNull(i) {
+						continue
+					}
+					tree.ExactCtx.Add(&m.sumD, &m.sumD, apd.New(int64(vals[i]), 0))
+					m.cntI++
+				}
+			}
+		} else {
+			if !hasNulls {
+				for _, i := range sel {
+					tree.ExactCtx.Add(&m.sumD, &m.sumD, apd.New(int64(vals[i]), 0))
+					m.cntI++
+				}
+			} else {
+				for _, i := range sel {
+					ii := int(i)
+					if a.IsNull(ii) {
+						continue
+					}
+					tree.ExactCtx.Add(&m.sumD, &m.sumD, apd.New(int64(vals[ii]), 0))
 					m.cntI++
 				}
 			}

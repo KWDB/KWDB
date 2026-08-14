@@ -253,6 +253,15 @@ func (p *arrowProjection) eval(ctx context.Context, in arrow.Record, spec ArrowP
 		}
 		args[i] = compute.NewDatum(col)
 	}
+	if casted, err := arrowNormalizeIntWidths(p.alloc, args); err != nil {
+		return nil, err
+	} else if casted != nil {
+		defer func() {
+			for _, c := range casted {
+				c.Release()
+			}
+		}()
+	}
 	res, err := compute.CallFunction(ctx, spec.Func, nil, args...)
 	if err != nil {
 		return nil, err

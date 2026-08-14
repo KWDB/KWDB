@@ -220,6 +220,15 @@ func (f *arrowFilterCore) evalBool(ctx context.Context, rec arrow.Record, spec A
 			}
 			args[i] = d
 		}
+		if casted, err := arrowNormalizeIntWidths(f.alloc, args); err != nil {
+			return nil, err
+		} else if casted != nil {
+			defer func() {
+				for _, c := range casted {
+					c.Release()
+				}
+			}()
+		}
 		res, err := compute.CallFunction(ctx, spec.Func, nil, args...)
 		if err != nil {
 			return nil, err
@@ -271,8 +280,53 @@ func (f *arrowFilterCore) evalLeafDatum(ctx context.Context, rec arrow.Record, o
 	return compute.NewDatum(col), nil
 }
 
+// arrowNormalizeIntWidths ensures a single integer width reaches an Arrow
+// compute kernel. Arrow kernels reject mixed-width integer operands (e.g. an
+// int32 column compared/multiplied with an int64 column or literal), so
+// whenever any int64 operand (array or scalar) is present, every narrower
+// integer array operand (int16/int32) is cast up to int64. The planner types
+// integer arithmetic such as "int4 * int" as int64 (bigint), so this also
+// matches the downstream output type and avoids a decode mismatch. It returns
+// the freshly casted arrays so the caller can Release them after the kernel
+// call.
+func arrowNormalizeIntWidths(alloc memory.Allocator, args []compute.Datum) ([]arrow.Array, error) {
+	has64 := false
+	for _, d := range args {
+		switch dd := d.(type) {
+		case *compute.ArrayDatum:
+			if dd.Value.DataType().ID() == arrow.INT64 {
+				has64 = true
+			}
+		case *compute.ScalarDatum:
+			if _, ok := dd.Value.(*scalar.Int64); ok {
+				has64 = true
+			}
+		}
+	}
+	if !has64 {
+		return nil, nil
+	}
+	var casted []arrow.Array
+	for i, d := range args {
+		ad, ok := d.(*compute.ArrayDatum)
+		if !ok {
+			continue
+		}
+		arr := array.MakeFromData(ad.Value)
+		switch arr.DataType().ID() {
+		case arrow.INT16, arrow.INT32:
+			c, err := castArrowArray(alloc, arr, arrow.PrimitiveTypes.Int64, nil)
+			if err != nil {
+				return casted, err
+			}
+			casted = append(casted, c)
+			args[i] = compute.NewDatum(c)
+		}
+	}
+	return casted, nil
+}
+
 // evalBinary evaluates a nested arithmetic expression (add/sub/mul/div) by
-// recursively evaluating its arguments and calling the Arrow compute kernel.
 func (f *arrowFilterCore) evalBinary(ctx context.Context, rec arrow.Record, b *ArrowArgBinary) (compute.Datum, error) {
 	args := make([]compute.Datum, len(b.Args))
 	for i := range b.Args {
@@ -284,6 +338,15 @@ func (f *arrowFilterCore) evalBinary(ctx context.Context, rec arrow.Record, b *A
 			return nil, err
 		}
 		args[i] = d
+	}
+	if casted, err := arrowNormalizeIntWidths(f.alloc, args); err != nil {
+		return nil, err
+	} else if casted != nil {
+		defer func() {
+			for _, c := range casted {
+				c.Release()
+			}
+		}()
 	}
 	res, err := compute.CallFunction(ctx, b.Func, nil, args...)
 	if err != nil {
@@ -501,6 +564,56 @@ func (f *arrowFilterCore) evalIn(ctx context.Context, rec arrow.Record, spec Arr
 				continue
 			}
 			_, hit := set[col.Value(i)]
+			if neg {
+				b.Append(!hit)
+			} else {
+				b.Append(hit)
+			}
+		}
+	case *array.Int32:
+		set := make(map[int64]struct{}, len(setLeaf.ConstSet))
+		for _, d := range setLeaf.ConstSet {
+			sd, ok := d.(*compute.ScalarDatum)
+			if !ok {
+				return nil, fmt.Errorf("arrow in: set value must be scalar, got %T", d)
+			}
+			v, ok := sd.Value.(*scalar.Int64)
+			if !ok {
+				return nil, fmt.Errorf("arrow in: set value must be int64, got %T", sd.Value)
+			}
+			set[v.Value] = struct{}{}
+		}
+		for i := 0; i < col.Len(); i++ {
+			if col.IsNull(i) {
+				b.Append(neg)
+				continue
+			}
+			_, hit := set[int64(col.Value(i))]
+			if neg {
+				b.Append(!hit)
+			} else {
+				b.Append(hit)
+			}
+		}
+	case *array.Int16:
+		set := make(map[int64]struct{}, len(setLeaf.ConstSet))
+		for _, d := range setLeaf.ConstSet {
+			sd, ok := d.(*compute.ScalarDatum)
+			if !ok {
+				return nil, fmt.Errorf("arrow in: set value must be scalar, got %T", d)
+			}
+			v, ok := sd.Value.(*scalar.Int64)
+			if !ok {
+				return nil, fmt.Errorf("arrow in: set value must be int64, got %T", sd.Value)
+			}
+			set[v.Value] = struct{}{}
+		}
+		for i := 0; i < col.Len(); i++ {
+			if col.IsNull(i) {
+				b.Append(neg)
+				continue
+			}
+			_, hit := set[int64(col.Value(i))]
 			if neg {
 				b.Append(!hit)
 			} else {

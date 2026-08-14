@@ -179,6 +179,12 @@ message ProcessorCoreUnion {
   optional Expression arrowDistinct = 57;
   optional Expression arrowWindower = 58;
   optional ValuesCoreSpec arrowValues = 59;
+  // arrowLookupJoin (60) is the Arrow compute-engine core for lookup joins
+  // (joinReader that performs KV point lookups against the right table). It
+  // reuses the JSON Expression payload convention of the other Arrow cores and
+  // carries an arrowLookupJoinPlan (see arrow_unification.go) describing the
+  // KV lookup (table/index/lookup columns) plus the join keys/type/on-filter.
+  optional JoinReaderSpec arrowLookupJoin = 60;
 
   reserved 6, 12;
 }

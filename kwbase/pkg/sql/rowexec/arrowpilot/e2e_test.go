@@ -448,6 +448,9 @@ func TestArrowUnifyFilterAggJoin(t *testing.T) {
 	runFilter := func(q string, want [][]int64) {
 		assertIntRows(t, queryIntRows(t, db, q), want)
 	}
+	runFilterF := func(q string, want [][]float64) {
+		assertFloatRows(t, queryFloatRows(t, db, q), want)
+	}
 
 	// --- FILTER ---
 	// These filters reference computed expressions so they are applied as
@@ -460,8 +463,9 @@ func TestArrowUnifyFilterAggJoin(t *testing.T) {
 	}
 
 	// --- AGGREGATION ---
-	runFilter("SELECT SUM(a), COUNT(*), MIN(b), MAX(b) FROM t", [][]int64{{21, 6, 1, 6}})
-	runFilter("SELECT b, SUM(a) FROM t GROUP BY b", [][]int64{
+	// KWDB SUM(int) returns DECIMAL, so SUM columns are read as float.
+	runFilterF("SELECT CAST(SUM(a) AS FLOAT), COUNT(*), MIN(b), MAX(b) FROM t", [][]float64{{21, 6, 1, 6}})
+	runFilterF("SELECT b, CAST(SUM(a) AS FLOAT) FROM t GROUP BY b", [][]float64{
 		{1, 6}, {2, 5}, {3, 4}, {4, 3}, {5, 2}, {6, 1},
 	})
 	runFilter("SELECT b, COUNT(*) FROM t GROUP BY b", [][]int64{
@@ -480,8 +484,8 @@ func TestArrowUnifyFilterAggJoin(t *testing.T) {
 	if !waitForArrowRuns(t, rowexec.ArrowAggRunCount, 1) {
 		t.Fatal("arrow aggregator processor was not used")
 	}
-	runFilter("SELECT SUM(a), COUNT(a), COUNT(*), MIN(b), MAX(b) FROM t", [][]int64{{21, 6, 7, 1, 7}})
-	runFilter("SELECT b, SUM(a) FROM t WHERE b = 7 GROUP BY b", [][]int64{{7, -9999}})
+	runFilterF("SELECT CAST(SUM(a) AS FLOAT), COUNT(a), COUNT(*), MIN(b), MAX(b) FROM t", [][]float64{{21, 6, 7, 1, 7}})
+	runFilterF("SELECT b, CAST(SUM(a) AS FLOAT) FROM t WHERE b = 7 GROUP BY b", [][]float64{{7, -9999}})
 
 	// --- AVG (decimal accumulator) ---
 	// SQL AVG over integers returns DECIMAL, so the Arrow mean kernel must emit a
@@ -493,9 +497,6 @@ func TestArrowUnifyFilterAggJoin(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := rowexec.ArrowAggRunCount()
-	runFilterF := func(q string, want [][]float64) {
-		assertFloatRows(t, queryFloatRows(t, db, q), want)
-	}
 	runFilterF("SELECT CAST(AVG(a) AS FLOAT) FROM t", [][]float64{{4}})
 	runFilterF("SELECT CAST(AVG(a) AS FLOAT) FROM t WHERE a IN (1, 2)", [][]float64{{1.5}})
 	runFilterF("SELECT b, CAST(AVG(a) AS FLOAT) FROM t WHERE b <= 3 GROUP BY b", [][]float64{
@@ -520,6 +521,62 @@ func TestArrowUnifyFilterAggJoin(t *testing.T) {
 	})
 	if !waitForArrowRuns(t, rowexec.ArrowJoinRunCount, 1) {
 		t.Fatal("arrow join processor was not used")
+	}
+}
+
+// TestArrowUnifyLookupJoin verifies that a lookup join (joinReader performing KV
+// point lookups against an indexed right table) is routed through the Arrow
+// lookup joiner processor and produces the same result as the standard engine.
+// The right table is indexed on the join key so the optimizer chooses a lookup
+// join; the ArrowLookupJoiner embeds the row-based joinReader and bridges its
+// output into the single Arrow DAG (§6.11.2).
+func TestArrowUnifyLookupJoin(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	s, db, _ := serverutils.StartServer(t, base.TestServerArgs{})
+	ctx := context.Background()
+	defer s.Stopper().Stop(ctx)
+	if _, err := db.Exec("SET CLUSTER SETTING sql.arrow_join.enabled = true"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("SET CLUSTER SETTING sql.arrow_scan.enabled = true"); err != nil {
+		t.Fatal(err)
+	}
+
+	execStmt(t, db, "CREATE TABLE lk_small (k INT PRIMARY KEY, v INT)")
+	execStmt(t, db, "CREATE TABLE lk_big (k INT PRIMARY KEY, w INT, INDEX idx_w (w))")
+	// Left is small; right is larger and indexed on k via the primary index,
+	// which the optimizer uses for the lookup join.
+	for i := 1; i <= 5; i++ {
+		execStmt(t, db, fmt.Sprintf("INSERT INTO lk_small VALUES (%d, %d)", i, i*10))
+	}
+	for i := 1; i <= 20; i++ {
+		execStmt(t, db, fmt.Sprintf("INSERT INTO lk_big VALUES (%d, %d)", i, i*100))
+	}
+
+	runFilter := func(q string, want [][]int64) {
+		assertIntRows(t, queryIntRows(t, db, q), want)
+	}
+	// Lookup-join coverage. The right table is primary-key indexed on k, so the
+	// optimizer chooses a lookup join when the left side is selective. The query
+	// results are asserted against the standard engine; the ArrowLookupJoiner
+	// executor (§6.11.2) is wired and compiled and its gate is now on, so these
+	// queries must go through the Arrow lookup-join path.
+	runFilter("SELECT s.k, s.v, b.w FROM lk_small s JOIN lk_big b ON s.k = b.k ORDER BY s.k",
+		[][]int64{{1, 10, 100}, {2, 20, 200}, {3, 30, 300}, {4, 40, 400}, {5, 50, 500}})
+	// A filter on the left side makes the optimizer choose a lookup join.
+	runFilter("SELECT b.w FROM lk_small s JOIN lk_big b ON s.k = b.k WHERE s.v = 30",
+		[][]int64{{300}})
+	// Left join: a left row with no match still emits a NULL-extended row
+	// (b.w is NULL for the unmatched s.k=99 row). queryIntRows reads b.w as a
+	// nullable int, so the unmatched row's b.w is the zero value 0 (NULL).
+	execStmt(t, db, "INSERT INTO lk_small VALUES (99, 990)")
+	runFilter("SELECT s.k, b.w FROM lk_small s LEFT JOIN lk_big b ON s.k = b.k ORDER BY s.k",
+		[][]int64{{1, 100}, {2, 200}, {3, 300}, {4, 400}, {5, 500}, {99, -9999}})
+
+	// The queries above must have been evaluated by the Arrow lookup joiner, not
+	// the row-based joinReader fallback.
+	if rowexec.ArrowLookupJoinerRunCount() == 0 {
+		t.Fatal("arrow lookup joiner was not used")
 	}
 }
 

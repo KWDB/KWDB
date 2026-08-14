@@ -71,6 +71,7 @@ type arrowAggregatorProcessor struct {
 	alloc      memory.Allocator
 	da         *sqlbase.DatumAlloc
 	plan       arrowAggPlan
+	instTypes  []types.T // aggregator's raw output schema (group+agg columns)
 	outputRows sqlbase.EncDatumRows
 	rowIdx     int
 	// outputRec is the arrow.Record produced in compute, retained for
@@ -123,6 +124,9 @@ func newArrowAggregatorProcessor(
 	if len(outTypes) == 0 {
 		outTypes = input.OutputTypes()
 	}
+	// Preserve the raw aggregator output schema (group+agg columns) so compute
+	// can decode the produced record before applying the stage's post-process.
+	p.instTypes = outTypes
 	if err := p.Init(
 		p, post, outTypes, flowCtx, processorID, output, nil,
 		execinfra.ProcStateOpts{InputsToDrain: []execinfra.RowSource{p.input}},
@@ -206,15 +210,48 @@ func (p *arrowAggregatorProcessor) compute(ctx context.Context) error {
 		p.outputRows = sqlbase.EncDatumRows{}
 		return nil
 	}
-	// Hand the record to a downstream arrow operator via operator-to-operator
-	// buffering (§7.8); released in ConsumerClosed.
-	p.outputRec = rec
-	p.outputRows, err = arrowRecordToEncDatumRows(p.Out.OutputTypes, rec)
+	// Decode the produced record using the aggregator's *raw* output schema
+	// (group+agg columns), not the stage's post-projected schema.
+	allRows, err := arrowRecordToEncDatumRows(p.instTypes, rec)
 	if err != nil {
 		return err
 	}
-	// arrowRecordToEncDatumRows counts on the record still being alive for any
-	// lazily-decoded values; release after building the rows.
+	// p.outputRows carries the *un-projected* internal columns; the row-based
+	// Next() path applies p.Out.ProcessRow itself (via ProcessRowHelper).
+	p.outputRows = allRows
+	// Apply the stage post-processing (projection/rendering) to obtain the
+	// logical output rows, then rebuild an Arrow record carrying the *projected*
+	// schema for operator-to-operator handoff. Otherwise the downstream Arrow
+	// operator reads the raw internal columns (group+agg) instead of the
+	// projected output, misaligning every downstream column index.
+	out := make(sqlbase.EncDatumRows, 0, len(allRows))
+	for _, row := range allRows {
+		processed, _, err := p.Out.ProcessRow(ctx, row)
+		if err != nil {
+			return err
+		}
+		if processed == nil {
+			continue
+		}
+		cp := make(sqlbase.EncDatumRow, len(processed))
+		copy(cp, processed)
+		out = append(out, cp)
+	}
+	// Only emit an Arrow Record when every projected column can be materialized
+	// by the Arrow engine; otherwise fall back to the row output (out).
+	if arrowTypesAllSupported(p.Out.OutputTypes) {
+		projRec, err := newPostRecordFromRows(p.alloc, p.da, p.Out.OutputTypes, out)
+		if err != nil {
+			// Fall back to the row output instead of failing the whole flow.
+			return nil
+		}
+		// The raw agg record is no longer needed once projected into projRec.
+		rec.Release()
+		p.outputRec = projRec
+		return nil
+	}
+	rec.Release()
+	p.outputRec = nil
 	return nil
 }
 

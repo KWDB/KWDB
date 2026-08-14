@@ -22,6 +22,48 @@ import (
 // the grouping/hashing kernels can treat the 16 canonical octets as raw bytes.
 var arrowUUIDType = &arrow.FixedSizeBinaryType{ByteWidth: 16}
 
+// newPostRecordFromRows rebuilds an Arrow record from post-processed output rows,
+// so that an operator-to-operator consumer (which reads columns by the stage's
+// projected output schema) sees exactly the same columns as the row-based Next()
+// path. outTypes is the stage's post-processed (projected) output schema, and
+// rows are the post-processed EncDatumRows (same arity as outTypes).
+//
+// Several Arrow processors (join, aggregator, ...) produce an internal record
+// whose columns differ from the stage's logical output (post-projection).
+// operator-to-operator handoff must expose the projected schema, not the raw
+// internal columns, otherwise every downstream column index is misaligned.
+func newPostRecordFromRows(
+	alloc memory.Allocator,
+	da *sqlbase.DatumAlloc,
+	outTypes []types.T,
+	rows sqlbase.EncDatumRows,
+) (arrow.Record, error) {
+	if len(outTypes) == 0 {
+		return nil, fmt.Errorf("newPostRecordFromRows: empty output types")
+	}
+	ptrTyps := make([]*types.T, len(outTypes))
+	for i := range outTypes {
+		t := outTypes[i]
+		ptrTyps[i] = &t
+	}
+	cols, err := buildArrowColumns(alloc, ptrTyps, rows, da)
+	if err != nil {
+		return nil, err
+	}
+	fields := make([]arrow.Field, len(ptrTyps))
+	for i, t := range ptrTyps {
+		dt, err := arrowDataTypeForKWType(t)
+		if err != nil {
+			for _, c := range cols {
+				c.Release()
+			}
+			return nil, err
+		}
+		fields[i] = arrow.Field{Name: fmt.Sprintf("col%d", i), Type: dt, Nullable: true}
+	}
+	return array.NewRecord(arrow.NewSchema(fields, nil), cols, int64(len(rows))), nil
+}
+
 // UnifiedProcessor is the unified execution interface described in
 // docs/arrow-unification-architecture.md. Both rowexec and colexec operators
 // can be adapted to expose columnar Arrow Records, so the planner can mix

@@ -5174,6 +5174,29 @@ func (dsp *DistSQLPlanner) createPlanForLookupJoin(
 	}
 
 	// Instantiate one join reader for every stream.
+	//
+	// Arrow path: when the lookup join is eligible (ArrowJoinEnabled + every
+	// column Arrow-representable), route it through the ArrowLookupJoiner core.
+	// The lookup-join compute is bridged from the row-based joinReader (which
+	// performs the KV point lookups) into Arrow Records, so the operator still
+	// lives in the single Arrow DAG. The row-based JoinReader is the fallback.
+	if canArrowLookupJoin(planCtx.EvalContext(), n.joinType, joinReaderSpec.LookupColumns,
+		plan.ResultTypes, colTypes[len(plan.ResultTypes):]) {
+		// The Arrow lookup joiner embeds the row-based joinReader (which drives
+		// the KV point lookups) and bridges its output into the single Arrow DAG.
+		// The JoinReaderSpec is carried by value (proto, reliable round-trip), and
+		// the real post-process (filter + projection) is handed to the stage as
+		// usual; the executor applies it inside the embedded joinReader and lets
+		// the ArrowLookupJoiner stage pass the rows through.
+		plan.AddNoGroupingStage(
+			execinfrapb.ProcessorCoreUnion{ArrowLookupJoin: &joinReaderSpec},
+			post,
+			colTypes,
+			dsp.convertOrdering(planReqOrdering(n), planToStreamColMap),
+		)
+		plan.PlanToStreamColMap = planToStreamColMap
+		return plan, nil
+	}
 	plan.AddNoGroupingStage(
 		execinfrapb.ProcessorCoreUnion{JoinReader: &joinReaderSpec},
 		post,
@@ -6438,6 +6461,7 @@ func (dsp *DistSQLPlanner) createPlanForOrdinality(
 		WindowFns: []execinfrapb.WindowerSpec_WindowFn{{
 			Func:         execinfrapb.WindowerSpec_Func{WindowFunc: &rowNum},
 			OutputColIdx: uint32(len(plan.ResultTypes)),
+			FilterColIdx: -1,
 		}},
 	}
 	if arrowCore, ok := arrowWindowerCoreFor(planCtx.EvalContext(), tree.EngineTypeRelational, &windowerSpec, plan.ResultTypes); ok {

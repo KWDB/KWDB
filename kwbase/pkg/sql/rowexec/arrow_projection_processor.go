@@ -798,20 +798,16 @@ func arrowRecordToEncDatumRows(
 					rows[i][ci] = sqlbase.EncDatum{Datum: tree.DNull}
 					continue
 				}
-				tm := arr.Value(i).ToTime(arrow.Microsecond)
-				// KWDB's TIMESTAMP family is TZ-aware (normalized to UTC and
-				// rendered with the +00:00 offset, like CRDB's TIMESTAMPTZ).
-				// The Arrow physical type is always timestamp[us, tz=UTC], so
-				// the planner's TimestampFamily cannot distinguish it from a
-				// naive timestamp. To match the classic engine (which emits
-				// DTimestampTZ with the UTC offset), decode Arrow timestamps as
-				// DTimestampTZ whenever the physical type carries a time zone or
-				// the planner type requests one.
-				tt, _ := col.DataType().(*arrow.TimestampType)
-				tzAware := t.Family() == types.TimestampTZFamily
-				if tt != nil && tt.TimeZone != "" {
-					tzAware = true
-				}
+			tm := arr.Value(i).ToTime(arrow.Microsecond)
+			// The Arrow physical timestamp type always carries a time zone
+			// (usually UTC) and therefore cannot distinguish KWDB's naive
+			// TIMESTAMP (family Timestamp, OID 1114) from TIMESTAMPTZ (family
+			// TimestampTZ, OID 1184). The planner's declared column type t is
+			// authoritative, so decide TZ-awareness exclusively from t: when
+			// t is TimestampTZ we emit DTimestampTZ, otherwise DTimestamp. This
+			// keeps the decoded datum consistent with the planner's output
+			// schema (e.g. MIN(ts) where ts is TIMESTAMP yields DTimestamp).
+			tzAware := t.Family() == types.TimestampTZFamily
 				if tzAware {
 					v := tree.DTimestampTZ{Time: tm}
 					rows[i][ci] = sqlbase.EncDatum{Datum: &v}
