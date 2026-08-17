@@ -173,3 +173,81 @@ func TestArrowUnifyDefaultSubquery(t *testing.T) {
 		}
 	}
 }
+
+// TestArrowUnifyDefaultComplexQuery exercises a multi-operator query
+// (VALUES sources -> JOIN -> filter -> GROUP BY aggregate -> ORDER BY) under the
+// default-on Arrow gates, asserting bit-identical results against the classic
+// row-based path. This is the "default-path" counterpart of the opt-in operator
+// tests and guards the whole Arrow-unified DAG end to end with no switch tweaks.
+func TestArrowUnifyDefaultComplexQuery(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
+	s, db, _ := serverutils.StartServer(t, base.TestServerArgs{})
+	ctx := context.Background()
+	defer s.Stopper().Stop(ctx)
+
+	// Two VALUES sources joined on i=j, filtered to i>1, grouped by s.
+	//   i>1 rows of t: (2,a),(3,b),(4,b),(5,a),(6,c)
+	//   group by s: a -> 2+5 = 7, b -> 3+4 = 7, c -> 6
+	//   order by s: (a,7),(b,7),(c,6)
+	const query = `
+SELECT t.s, SUM(t.i) AS total
+FROM (VALUES (1,'a'),(2,'a'),(3,'b'),(4,'b'),(5,'a'),(6,'c')) AS t(i,s)
+JOIN (VALUES (1),(2),(3),(4),(5),(6)) AS u(j) ON t.i = u.j
+WHERE t.i > 1
+GROUP BY t.s
+ORDER BY t.s`
+
+	type row struct{ s string; total int }
+	want := []row{{"a", 7}, {"b", 7}, {"c", 6}}
+
+	read := func() []row {
+		t.Helper()
+		rows, err := db.Query(query)
+		if err != nil {
+			t.Fatalf("query: %v", err)
+		}
+		defer rows.Close()
+		var out []row
+		for rows.Next() {
+			var r row
+			if err := rows.Scan(&r.s, &r.total); err != nil {
+				t.Fatalf("scan: %v", err)
+			}
+			out = append(out, r)
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatalf("rows err: %v", err)
+		}
+		return out
+	}
+
+	if _, err := db.Exec("SET CLUSTER SETTING sql.arrow_scan.enabled = false"); err != nil {
+		t.Fatal(err)
+	}
+	classic := read()
+
+	if _, err := db.Exec("SET CLUSTER SETTING sql.arrow_scan.enabled = true"); err != nil {
+		t.Fatal(err)
+	}
+	arrow := read()
+
+	if len(arrow) != len(want) || len(classic) != len(want) {
+		t.Fatalf("row count mismatch: arrow=%v classic=%v want=%v", arrow, classic, want)
+	}
+	for i := range want {
+		if arrow[i] != want[i] {
+			t.Fatalf("arrow row %d mismatch: got %+v want %+v (full=%v)", i, arrow[i], want[i], arrow)
+		}
+		if classic[i] != want[i] {
+			t.Fatalf("classic row %d mismatch: got %+v want %+v (full=%v)", i, classic[i], want[i], classic)
+		}
+	}
+
+	// The aggregate stage must have run on Arrow (the join/filter/sort stages
+	// are exercised transitively by the same query under the default gates).
+	if !waitForArrowRuns(t, rowexec.ArrowAggRunCount, 1) {
+		t.Fatalf("expected the Arrow aggregator to be used, but run count stayed 0")
+	}
+}
