@@ -741,19 +741,70 @@
 
 ### 7.2 算子级兜底清单（无 Arrow core）
 
-以下算子类**当前没有 Arrow 原生实现**，按性质分级：
+> 术语：下表中"**必走 rowexec**"= 该算子完全没有 Arrow 原生实现，整算子无条件降级；"**条件性**"= 存在 Arrow core 但受门控/类型/表达式约束才走行式（这些已在 §8 / §2–§6 各阶段覆盖，不计入"完全没有 Arrow 算子"）。
 
-| 算子 | 性质 | 当前如何融入 DAG | 是否计划 Arrow 化 |
-|------|------|------------------|-------------------|
-| `ProjectSet` | D2 变长展开（1 行 → N 行，函数相关） | 行式后端桥接 | 否（流式专有，难以列式化） |
-| `Ordinality` | 纯序号列追加 | **已 Arrow 化**（阶段内完成） | — |
-| `StreamAggregator` | 流式聚合（无界/有序输入） | 行式后端桥接 | 否（流式专有） |
-| `SampleAggregator` | 采样聚合（§1 已明确排除） | 行式后端桥接 | 否 |
-| `ZigzagJoiner` | D3b KV 游标状态机 | `unifiedInputFrom`→`NewRowSourceToArrow` 自动桥接 | 否（薄壳性能等价零收益） |
-| `InterleavedReaderJoiner` | D3b KV 游标状态机 | 同上 | 否（同上） |
-| `joinReader`（lookup 系：indexJoiner / batchLookupJoiner） | D3a 非对称编排（左流 + 右侧 KV 反查） | `NewArrowToRowSource`+joinReader+`unifiedInputFrom` 自动桥接 | 保留项（`ArrowLookupJoiner` gate 暂关待 CI，见 §6.11/2026-08-14） |
+#### 7.2.1 完全没有 Arrow core、整算子必走 rowexec 的全部清单
 
-> 注：`Values`（P1 已 Arrow 化、`arrow_values_processor.go`）、`Ordinality`、`UnionAll`（`ArrowUnionAll`）已脱离兜底；时序读（`ArrowTsReader`）已脱离兜底。
+经对 `rowexec/processors.go` 工厂（`newProcessor` 的 `core.*` 分支）逐一核对，**完全没有 Arrow 原生实现**的算子共如下，按用途分组：
+
+**关系型查询 / 连接类（D-类算子）**：
+
+| 算子（core） | 工厂函数 | 性质 | 融入 DAG 方式 | 计划 Arrow 化 |
+|------|------|------|------|------|
+| `ProjectSet` | `newProjectSetProcessor` | D2 变长展开（1 行 → N 行，set-returning func） | 行式后端桥接 | 否（流式/函数专有，难以列式化） |
+| `StreamAggregator` | `newStreamAggregator` | 流式聚合（无界/有序输入，group 边界不定） | 行式后端桥接 | 否（流式专有） |
+| `HashJoiner` | `newHashJoiner` | 哈希连接（build/probe 不对称） | `unifiedInputFrom`→`NewRowSourceToArrow` 桥接 | 否（阶段内未覆盖，colexec 同类仍有；后续可评估 Arrow hash join） |
+| `MergeJoiner` | `newMergeJoiner` | 有序归并连接 | 同上 | 否（归并+KV 游标，薄壳零收益） |
+| `ZigzagJoiner` | `newZigzagJoiner` | D3b KV 双向游标状态机 | 同上 | 否（薄壳零收益） |
+| `InterleavedReaderJoiner` | `newInterleavedReaderJoiner` | D3b 交织索引 KV 游标 | 同上 | 否（同上） |
+| `JoinReader`（lookup 行式核心） | `newJoinReader` | D3a 左流 + 右侧 KV 反查（行式核心；另有 `ArrowLookupJoiner` gate 待开，见 §6.11/§8） | `NewArrowToRowSource`+joinReader+`unifiedInputFrom` 桥接 | 保留项（Arrow 版 gate 待 CI） |
+| `IndexJoiner` | `newIndexJoiner` | 索引联结（行式核心） | `unifiedInputFrom` 桥接 | 否（与 JoinReader 同族，Arrow 版覆盖后移除） |
+| `BatchLookupJoiner` | `newBatchLookupJoiner` | 批量 lookup 连接（行式核心） | `unifiedInputFrom` 桥接 | 否（同 JoinReader 族） |
+
+**采样 / scrub 类**：
+
+| 算子 | 工厂函数 | 性质 | 融入 DAG | 计划 Arrow 化 |
+|------|------|------|------|------|
+| `Sampler` | `newSamplerProcessor` | 采样（§1 已明确排除） | 行式后端桥接 | 否 |
+| `SampleAggregator` | `newSampleAggregator` | 采样聚合（§1 已明确排除） | 行式后端桥接 | 否 |
+| `Noop` | `newNoopProcessor` | 透传占位（用于 locality 短路） | 行式后端桥接 | 否（纯转发，零收益） |
+
+**Schema / 导入 / 导出类（非查询算子，不在纯 Arrow 引擎范围）**：
+
+| 算子 | 工厂函数 | 性质 | 融入 DAG | 计划 Arrow 化 |
+|------|------|------|------|------|
+| `Backfiller`（Index/Column） | `newIndexBackfiller` / `newColumnBackfiller` | schema 变更回填 | 行式后端桥接 | 否（DDL 工具类） |
+| `ReadImport` | `NewReadImportDataProcessor` | IMPORT 读源 | 行式后端桥接 | 否（导入工具类） |
+| `CSVWriter` | `NewCSVWriterProcessor` | 导出 CSV | 行式后端桥接 | 否（导出工具类） |
+| `BulkRowWriter` | `newBulkRowWriterProcessor` | 批量写（IMPORT 落库） | 行式后端桥接 | 否（导入工具类） |
+
+**CDC 类（变更数据捕获，纯流式状态机）**：
+
+| 算子 | 工厂函数 | 性质 | 融入 DAG | 计划 Arrow 化 |
+|------|------|------|------|------|
+| `ChangeAggregator` | `NewChangeAggregatorProcessor` | CDC 事件聚合（KV→行变更） | 行式后端桥接 | 否（流式专有） |
+| `ChangeFrontier` | `NewChangeFrontierProcessor` | CDC 进度边界（watermark） | 行式后端桥接 | 否（流式专有） |
+
+> **时序（ts）专有算子**（`TsInserter` / `TsInsertSelect` / `TsDeleter` / `TsTagUpdate` / `TsCreate` / `TsPro` / `TsAlter` / `TsInsertWithCDC`）：属于时序引擎独立路径，不走关系型 Arrow DAG，单独由 `ArrowTsReader` 等覆盖，不计入关系型兜底清单。
+
+**合计**：关系型查询/连接类 9（含 3 个 lookup 同族）+ 采样/scrub 3 + schema/导入 4 + CDC 2 = **18 个 core 完全无 Arrow 实现**。其中 lookup 同族（JoinReader / IndexJoiner / BatchLookupJoiner）在 Arrow 版 gate 开启后会部分脱离；真正"永久落点"为 D2 流式/变长（`ProjectSet`/`StreamAggregator`）、归并/游标连接（`MergeJoiner`/`Zigzag`/`Interleaved`）、HashJoiner（未评估）、采样、schema/导入、CDC 共约 **14 类不可列式化或零收益算子**（与 §7.4 估算吻合）。
+
+#### 7.2.2 条件性兜底（有 Arrow core，但受门控降级）
+
+以下算子**已有** Arrow 原生实现，仅在类型/表达式/门控不满足时回退行式/colexec，不属"完全没有 Arrow"：
+
+| 算子 | Arrow core | 行式 fallback 工厂 | 降级触发 |
+|------|------|------|------|
+| `Sorter` | `arrowSorterProcessor` | `newSorter` | `arrowSorterEnabled` / `canArrowSorter` 不满足 |
+| `Distinct` | `arrowDistinctProcessor` | `newDistinct` | `arrowDistinctEnabled` / `canArrowDistinct` 不满足 |
+| `Aggregator` | `arrowAggregatorProcessor` | `newAggregator` | `ArrowAggEnabled` / 聚合函数集未覆盖 |
+| `Windower` | `arrowWindowerProcessor` | `newWindower` | `ArrowWindowerEnabled` / window frame 未覆盖 |
+| `Ordinality` | arrow 化完成 | — | 已脱离兜底 |
+| `ProjectSet` | — | 仅行式 | **无 Arrow core**（见 §7.2.1） |
+
+> **重要修正（2026-08-17）**：原 §7.2 仅列 6 类且误将 `Ordinality` 标为"已 Arrow 化但仍在表内"。现补全全部 18 个无 Arrow core 的 core，并区分"必走 rowexec"与"条件性降级"，避免遗漏。
+
+> 已脱离兜底的算子：`Values`（`arrow_values_processor.go`）、`UnionAll`（`arrowUnionAllProcessor`）、`Ordinality`（arrow 化）、`TableReader`（阶段 1 `arrowTableReader`）、时序读（`ArrowTsReader`）、`Projection`/`Filter`/`Join`/`Sorter`/`Distinct`/`Aggregator`/`Windower`/`LookupJoiner`（均有 `Arrow*` core）。
 
 ### 7.3 表达式 / 类型级兜底清单（算子有 Arrow core，但部分输入触发降级）
 
@@ -780,7 +831,8 @@
 
 ### 7.4 当前兜底规模估算
 
-- **算子级**：约 14 个算子类无 Arrow core（含 D3a 保留项 + D3b 桥接型 + 流式专有类），其中 `Ordinality`/`Values`/`UnionAll`/`TsReader` 已脱离，实际仍兜底约 **10 类**。
+- **算子级（完全没有 Arrow core）**：经 §7.2.1 逐一核对 `processors.go` 工厂，共 **18 个 core 无 Arrow 实现**（关系型/连接 9 + 采样/scrub 3 + schema/导入 4 + CDC 2）。其中 lookup 同族（JoinReader/IndexJoiner/BatchLookupJoiner）在 `ArrowLookupJoiner` gate 开启后部分脱离；其余约 **14 类**为不可列式化或零收益永久落点（D2 流式/变长、归并/游标连接、HashJoiner、采样、schema/导入、CDC）。
+- **算子级（条件性降级，有 Arrow core）**：`Sorter`/`Distinct`/`Aggregator`/`Windower` 4 类在门控/类型/函数不满足时回退行式，不计入"完全没有 Arrow"。
 - **表达式/类型级**：投影字符串 kernel 仅 8 个、数值标量 5 个；类型覆盖 13 类 family。白名单外任一命中即整段降级——这是端到端查询落到 rowexec/colexec 的**主要来源**，远比算子缺位频繁。
 
 ### 7.5 兜底消除优先级（终态前）
