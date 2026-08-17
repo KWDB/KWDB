@@ -29,7 +29,9 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/physicalplan"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/pkg/errors"
 )
@@ -212,7 +214,24 @@ if core.ArrowLookupJoin != nil {
 		if core.TableReader.IsCheck {
 			return newScrubTableReader(flowCtx, processorID, core.TableReader, post, outputs[0])
 		}
-		return newTableReader(flowCtx, processorID, core.TableReader, post, outputs[0])
+		// Stage-1 ArrowTableReader: when Arrow scan is enabled and every output
+		// column type is Arrow-supported, wrap the row tableReader as an
+		// ArrowRecordEmitter so the downstream Arrow operator consumes it
+		// directly (no NewRowSourceToArrow re-batch). See arrow_table_reader.go.
+		tr, err := newTableReader(flowCtx, processorID, core.TableReader, post, outputs[0])
+		if err != nil {
+			return nil, err
+		}
+		outTyps := tr.Out.OutputTypes
+		ptrTyps := make([]*types.T, len(outTyps))
+		for i := range outTyps {
+			t := outTyps[i]
+			ptrTyps[i] = &t
+		}
+		if physicalplan.ArrowScanEnabled(flowCtx.EvalCtx) && arrowScanSupported(ptrTyps) {
+			return newArrowTableReader(tr), nil
+		}
+		return tr, nil
 	}
 	if core.TsInsertSelect != nil {
 		if err := checkNumInOut(inputs, outputs, 1, 1); err != nil {

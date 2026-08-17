@@ -793,3 +793,40 @@
 ### 7.6 一句话总结
 
 当前 Arrow DAG 已覆盖 7/7 核心算子 + 关系型全量查询类型；**真正的兜底压力不在算子缺位，而在表达式/类型白名单宽度**——白名单外的标量函数或复杂类型一出现，整段 stage 回退 rowexec/colexec。终态纯 Arrow 引擎的阻塞点是 stage5 内存桥 + 字符串 kernel 路线决策（Go 自实现 vs cgo cpp wrap），而非算子骨架数量。
+
+---
+
+## 8. 阶段 1：ArrowTableReader（scan 直连 Arrow DAG）
+
+> 落地日期：2026-08-17。`ArrowTableReader` 让关系型 `tableReader` 作为 Arrow 数据源直接喂下游 Arrow 算子，**省掉 `unifiedInputFrom` 的 `NewRowSourceToArrow` 二次攒批**桥梁。这是"TableReader 直接解码成 Arrow"的最小可用形态（不碰 `row.Fetcher` 内核）。
+
+### 8.1 实现要点
+
+- **新增文件**：`rowexec/arrow_table_reader.go`
+  - `arrowTableReader` 嵌入 `*tableReader`，新增 `arrowMode bool` / `arrowAlloc memory.Allocator` / `outTyps []*types.T` / `arrowRec arrow.Record` / `arrowEmitted bool` / `started bool`。
+  - 实现 `ArrowRecordEmitter.ArrowOutput() arrow.Record`：首次调用时 `startFetcher()` 懒启动内嵌 `tableReader` 的 KV `fetcher`（经 `FlowCtx.Cfg.AmbientContext.AnnotateCtx` 构造带 tracing 的 ctx），循环 `Next()` 攒全部 `EncDatumRow`，调 `buildArrowColumns` + 自建 `col%d` schema 成单 Arrow Record，`Retain` 后交付；再次调用返回 nil（单 Record 模型）。
+  - 覆盖 `Run(ctx) execinfra.RowStats`：arrowMode 下直接返回空 stats（数据已被 `ArrowOutput()` 在下游 `Start` 阶段拉走），避免双路投递。
+  - 计数器 `ArrowTableReaderRunCount()`（atomic）供测试确认扫描走直连路径。
+- **factory 接入**（`rowexec/processors.go` `core.TableReader` 分支，非 Check）：`newTableReader` 创建后，若 `physicalplan.ArrowScanEnabled(flowCtx.EvalCtx) && arrowScanSupported(outTyps)` 则返回 `newArrowTableReader(tr)` 包装，否则返回原 `tableReader`。
+- **类型门控**：复用 `arrowScanSupported([]*types.T)`（同 `arrow_ts_reader`），保证输出列全 Arrow 可表示才走直连。
+
+### 8.2 关键架构约束（正确性基础）
+
+- **调度时序**：flow 先 `Start` 所有 startable（下游 `arrow_filter` 等在此阶段调 `unifiedInputFrom` → `ArrowOutput()` 拉数据），再 `Run` 所有 processor。因此 `arrowTableReader.Run` 在 arrowMode 下已是 no-op，数据已被提前拉走。
+- **懒启动必要性**：下游 `Start`（→`ArrowOutput`）早于 `arrowTableReader.Run`→`tableReader.Start`（fetcher.StartScan），故 `ArrowOutput()` 首次调用时必须**自行**启动 fetcher（`startFetcher` + `started` 守护防重入）。这与 `arrowTsReader.arrowMode` 安全模型一致。
+- **内存**：Arrow builder 仍用 `memory.NewGoAllocator()`（与现有 Arrow 算子同级），**未进 `MemoryMonitor`**——阶段 2 前受 `arrowScanSupported` 类型门控兜底；真正 KV 流式直写 Arrow（阶段 2）待 stage5 内存桥（§7.5 P1）后做。
+- **单 Record 模型**：一次性攒全部扫描行成单 Record，与现有 `arrow_values` / `arrow_ts_reader` 一致；大表内存放大风险与既有 Arrow 算子同级，后续阶段 2 可改为分批多 Record（需 `unifiedInputFrom` 支持多次 `ArrowOutput` 拉取，当前直连分支只调一次）。
+
+### 8.3 测试
+
+- **新增**：`arrowpilot/arrow_unify_table_reader_test.go` `TestArrowUnifyTableReader`
+  - 建普通关系表 `tr_t(i INT4, s STRING)`（无 ts 引擎依赖），插入 5 行。
+  - 查询 `SELECT s, COUNT(*) FROM tr_t WHERE i>1 GROUP BY s` 经 scan→ArrowFilter→ArrowAgg 对拍 `want={a:2,b:2}`。
+  - 断言 `rowexec.ArrowTableReaderRunCount` 自增（确认 scan 是 Arrow 直连而非行式桥接）、`ArrowFilterRunCount`/`ArrowAggRunCount` 命中。
+- **验证**：`go build ./pkg/sql` 通过；`go vet ./pkg/sql/rowexec/arrowpilot/` 通过。端到端运行需配 CGO 引擎链接（`CGO_LDFLAGS`/`LD_LIBRARY_PATH` 指向 `build/lib`），本环境由 CI 单 vendor 跑。
+
+### 8.4 阶段 2 展望（直接 KV→Arrow 解码）
+
+- 把 `arrowTableReader` 的"行攒批→buildArrowColumns"前移到 `row.Fetcher`：为 `neededColumns` 每列维护 Arrow builder，`finalizeRow` 时直写，满 batch 直接产 Record。
+- 前置：`mon.Allocator`→`arrow memory.Allocator` 内存桥（§7.5 P1），否则 builder 内存不进 `MemoryMonitor`。
+- 难点：KV key/value 列与投影列的非一一对齐、`rowDone` 才凑齐一行、NULL/未物化列落位——比 `arrow_values` 复杂，需碰 fetcher 内核。
