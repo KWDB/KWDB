@@ -82,10 +82,20 @@ func TestArrowUnifyDefaultValuesPipeline(t *testing.T) {
 	}
 	arrow := read()
 
+	// Compare the full result maps (keys + values) so a missing or extra
+	// GROUP BY group is caught, not just a wrong count on a known key.
+	if len(classic) != len(want) {
+		t.Fatalf("classic group count mismatch: got %v want %v", classic, want)
+	}
 	for k, v := range want {
 		if classic[k] != v {
 			t.Fatalf("classic s=%s mismatch: got %d want %d (full=%v)", k, classic[k], v, classic)
 		}
+	}
+	if len(arrow) != len(want) {
+		t.Fatalf("arrow group count mismatch: got %v want %v", arrow, want)
+	}
+	for k, v := range want {
 		if arrow[k] != v {
 			t.Fatalf("arrow s=%s mismatch: got %d want %d (full=%v)", k, arrow[k], v, arrow)
 		}
