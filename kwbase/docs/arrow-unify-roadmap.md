@@ -723,3 +723,73 @@
 - **测试**（`arrowpilot/e2e_test.go` `TestArrowUnifyLookupJoin`）：覆盖 inner + left lookup join（含 `WHERE` 过滤 + 外连接 NULL 扩展），与标准引擎对拍；当前 gate 关走行式 `joinReader`，结果正确。激活路径的 KV 正确性待 CI 验证。
 - **验证**：`go build ./pkg/sql` 通过；`go test ./pkg/sql/rowexec/arrowpilot/` 全量 **34 个用例 PASS**（含新增 `TestArrowUnifyLookupJoin`）。
 - **下一步**：CI 单一 vendor 跑 lookup join 回归，确认列索引对齐后把 `canArrowLookupJoin` 翻 `true`。
+
+---
+
+## 7. 兜底场景清单（rowexec / colexec 降级覆盖）
+
+> 本节汇总截至 2026-08-17，在 Arrow 默认执行层（阶段 A 已开启 `sql.arrow_scan.enabled`）背景下，**仍需要 rowexec / colexec 兜底**的全部场景。目的是给出一份可对照的"兜底清单"，用于判断终态（阶段 6 纯 Arrow 引擎）之前哪些路径不可去除、哪些只是表达式/类型门控而非算子缺位。
+
+### 7.1 兜底分类法
+
+兜底分两层，二者正交：
+
+- **算子级兜底**：该算子**没有 Arrow core**，整算子降级回 rowexec / colexec。
+- **表达式/类型级兜底**：算子本身是 Arrow 的，但**其中某表达式或某个数据类型**不在 Arrow 白名单内，导致该算子的 Arrow 路径被打断、整段降级（典型如 `canArrowRender` 返回 false → 该 stage 走行式/colexec）。
+
+注意：统一设计下，算子级兜底并非"回到旧的三路径并存"，而是**经 `unifiedInputFrom` / `NewRowSourceToArrow` / `NewArrowToRowSource` 自动桥接融入单一 Arrow DAG**——行式/colexec 算子只是 DAG 中某个节点的"算子级后端"，上下游仍是 Arrow Record 流通。因此终态移除它们时，DAG 拓扑不变，只替换节点后端。
+
+### 7.2 算子级兜底清单（无 Arrow core）
+
+以下算子类**当前没有 Arrow 原生实现**，按性质分级：
+
+| 算子 | 性质 | 当前如何融入 DAG | 是否计划 Arrow 化 |
+|------|------|------------------|-------------------|
+| `ProjectSet` | D2 变长展开（1 行 → N 行，函数相关） | 行式后端桥接 | 否（流式专有，难以列式化） |
+| `Ordinality` | 纯序号列追加 | **已 Arrow 化**（阶段内完成） | — |
+| `StreamAggregator` | 流式聚合（无界/有序输入） | 行式后端桥接 | 否（流式专有） |
+| `SampleAggregator` | 采样聚合（§1 已明确排除） | 行式后端桥接 | 否 |
+| `ZigzagJoiner` | D3b KV 游标状态机 | `unifiedInputFrom`→`NewRowSourceToArrow` 自动桥接 | 否（薄壳性能等价零收益） |
+| `InterleavedReaderJoiner` | D3b KV 游标状态机 | 同上 | 否（同上） |
+| `joinReader`（lookup 系：indexJoiner / batchLookupJoiner） | D3a 非对称编排（左流 + 右侧 KV 反查） | `NewArrowToRowSource`+joinReader+`unifiedInputFrom` 自动桥接 | 保留项（`ArrowLookupJoiner` gate 暂关待 CI，见 §6.11/2026-08-14） |
+
+> 注：`Values`（P1 已 Arrow 化、`arrow_values_processor.go`）、`Ordinality`、`UnionAll`（`ArrowUnionAll`）已脱离兜底；时序读（`ArrowTsReader`）已脱离兜底。
+
+### 7.3 表达式 / 类型级兜底清单（算子有 Arrow core，但部分输入触发降级）
+
+**表达式白名单（Arrow 投影 / 过滤可渲染）**：
+
+- 字符串函数：`length` / `lower` / `upper` / `trim` / `ltrim` / `rtrim` / `replace` / `concat`（本 vendored arrow/compute **无字符串 kernel**，均由 Go native loop / `appendEncDatum` 路径处理）。
+- 数值标量：`abs` / `sqrt` / `ln` / `sign` / `power`（复用 arrow/compute v17 自带 kernel，无新 Go 核）。
+- `floor` / `ceil` / `ceiling` / `trunc` / `round` 暂未引入（arrow kernel 为 int→float 语义与 SQL float 输入不符）。
+- `CASE` / `COALESCE`：已支持（阶段 C）。
+- `IN` / `NOT IN`：computed 左操作数已补齐（§2.4）；decimal 集合已补齐（§2.6）。
+- `CAST`：全类型（含 BOOL/DATE/TIMESTAMP/TIMESTAMPTZ 目标，阶段 C）。
+- 窗口 `ROWS` 偏移 frame / `RANGE` 偏移 frame：已支持（阶段 C）。
+
+**数据类型白名单（`arrowAllSupported` 命中即不降级）**：
+
+- 已支持：Int（全宽度 Int16/Int32/Int64，阶段 B 补宽度保真）/ Float / String / Bool / Decimal / Timestamp / TimestampTZ / Uuid / Json / Date / Interval / Bytes。
+- 未支持 → 触发该列/该算子 Arrow 降级的类型：见 `arrowAllSupported` 门控（除上列外的其余 family，如 `Tuple` / `Array` / `Oid` / `Enum` / `Geography` / `Geometry` 等复杂类型）。
+
+**降级触发规则（经验）**：
+
+- 投影含白名单外字符串函数（如 `split_part` / `substring` 未实现路径）→ `canArrowRender` 返回 false → 整 projection stage 走 colexec/行式。
+- 过滤含非 equi 比较 + 白名单外标量 → 同上。
+- 输出列含白名单外类型 → `arrowAllSupported` 返回 false → 该算子（含其下游 Arrow 链上游节点）降级。
+
+### 7.4 当前兜底规模估算
+
+- **算子级**：约 14 个算子类无 Arrow core（含 D3a 保留项 + D3b 桥接型 + 流式专有类），其中 `Ordinality`/`Values`/`UnionAll`/`TsReader` 已脱离，实际仍兜底约 **10 类**。
+- **表达式/类型级**：投影字符串 kernel 仅 8 个、数值标量 5 个；类型覆盖 13 类 family。白名单外任一命中即整段降级——这是端到端查询落到 rowexec/colexec 的**主要来源**，远比算子缺位频繁。
+
+### 7.5 兜底消除优先级（终态前）
+
+1. **P0（必做，否则无法移除旧路径）**：补齐字符串标量函数剩余高频项（如 `substring` / `split_part` / `overlay` 的 native loop 路径），扩大投影/过滤白名单——直接削减 7.4 中的主要降级来源。
+2. **P1（stage5 前置）**：`mon.Allocator` → `arrow memory.Allocator` 内存桥，使 Arrow 算子（含未来的 `ArrowTableReader`）内存进 `MemoryMonitor`，否则无法安全退役行式后端。
+3. **P2（保留项确认）**：CI 单一 vendor 验证 `ArrowLookupJoiner` 后翻 `true`，消除 D3a 唯一保留项门控。
+4. **P3（不计划）**：`ProjectSet` / `StreamAggregator` / `SampleAggregator` / `Zigzag` / `Interleaved` 维持算子级桥接兜底，终态作为"永久降级落点"（计算内核物理不可列式化，薄壳零收益）。
+
+### 7.6 一句话总结
+
+当前 Arrow DAG 已覆盖 7/7 核心算子 + 关系型全量查询类型；**真正的兜底压力不在算子缺位，而在表达式/类型白名单宽度**——白名单外的标量函数或复杂类型一出现，整段 stage 回退 rowexec/colexec。终态纯 Arrow 引擎的阻塞点是 stage5 内存桥 + 字符串 kernel 路线决策（Go 自实现 vs cgo cpp wrap），而非算子骨架数量。
