@@ -51,7 +51,7 @@ KWDB 支持用户根据需求选择二进制安装包、容器和源码安装 KW
 - **二进制安装包**：前往[KaiwuDB 官网](https://www.kaiwudb.com/download?tab=2)下载二进制安装包，支持单机和集群以及安全和非安全部署模式，更多信息见[快速部署](https://www.kaiwudb.com/docs/#/oss_dev/quickstart/deploy/quick-deploy.html)和[集群部署](https://www.kaiwudb.com/docs/#/oss_dev/deployment/cluster-deployment/script-deployment.html)。
 - **容器镜像**：KWDB 提供了多种容器镜像下载渠道，用户可以根据当前网络环境选择合适的镜像。
   - 官方仓库：`kwdb/kwdb`
-  - 国内镜像：`registry.cn-hangzhou.aliyuncs.com/kwdb/kwdb`
+  - 国内镜像：`crpi-9ix5pwqh4t79xf4r.cn-shanghai.personal.cr.aliyuncs.com/kaiwudb/kwdb`
   - Github 容器镜像：`ghcr.io/kwdb/kwdb`
 - **源码**：源码编译目前支持单节点非安全模式部署。
 
