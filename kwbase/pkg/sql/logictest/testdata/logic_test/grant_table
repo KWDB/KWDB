@@ -41,6 +41,7 @@ test           information_schema  columns                            NULL      
 test           information_schema  constraint_column_usage            NULL            public   SELECT
 test           information_schema  enabled_roles                      NULL            public   SELECT
 test           information_schema  key_column_usage                   NULL            public   SELECT
+test           information_schema  keywords                           NULL            public   SELECT
 test           information_schema  parameters                         NULL            public   SELECT
 test           information_schema  procedure_privileges               NULL            public   SELECT
 test           information_schema  referential_constraints            NULL            public   SELECT

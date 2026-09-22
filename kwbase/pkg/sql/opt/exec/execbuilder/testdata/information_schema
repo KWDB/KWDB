@@ -5,7 +5,7 @@ EXPLAIN (VERBOSE) SELECT * FROM system.information_schema.schemata
 ----
 ·              distributed  false  ·                                                                                                                  ·
 ·              vectorized   false  ·                                                                                                                  ·
-virtual table  ·            ·      (catalog_name, schema_name, catalog_id, schema_id, default_character_set_name, sql_path, engine_type, retentions)  ·
+virtual table  ·            ·      (catalog_name, schema_name, catalog_id, schema_id, default_character_set_name, sql_path, engine_type, retentions, partition_interval, schema_owner, default_character_set_catalog, default_character_set_schema)  ·
 ·              source       ·      ·                                                                                                                  ·
 
 query TTT

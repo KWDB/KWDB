@@ -245,7 +245,8 @@ const (
 	KwdbInternalKWDBProceduresTableID
 	KwdbInternalKWDBTriggersTableID
 	CrdbInternalTSTransactionRecordID
-	MinVirtualID = CrdbInternalTSTransactionRecordID
+	InformationSchemaKeywordsTableID
+	MinVirtualID = InformationSchemaKeywordsTableID
 )
 
 const (

@@ -1547,6 +1547,7 @@ objoid      classoid    objsubid  description
 4294967244  4294967219  0         columns usage by constraints
 4294967243  4294967219  0         roles for the current user
 4294967242  4294967219  0         column usage by indexes and key constraints
+4294967171  4294967219  0         SQL keywords
 4294967241  4294967219  0         built-in function parameters (empty - introspection not yet supported)
 4294967228  4294967219  0         privileges granted on procedure (incomplete; may contain excess users or roles)
 4294967240  4294967219  0         foreign key constraints
