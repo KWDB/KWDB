@@ -18,7 +18,9 @@
 #include <sys/syscall.h>
 
 #if __GLIBC__ == 2 && __GLIBC_MINOR__ < 30
+#ifndef gettid
 #define gettid() syscall(SYS_gettid)
+#endif
 #endif
 
 #endif  // OS_LINUX

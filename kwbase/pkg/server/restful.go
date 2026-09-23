@@ -773,11 +773,11 @@ func (s *restfulServer) checkUser(ctx context.Context, username string, password
 	}
 
 	if expired {
-		return fmt.Errorf("the password for user has expired.")
+		return fmt.Errorf("the password for user has expired")
 	}
 
 	if !valid {
-		return fmt.Errorf("the provided username and password did not match any credentials on the server.")
+		return fmt.Errorf("the provided username and password did not match any credentials on the server")
 	}
 	return nil
 }

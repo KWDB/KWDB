@@ -89,6 +89,8 @@ func IsObjectCannotFoundError(err error) bool {
 	return false
 }
 
+// CheckTableMetaExist checks whether the given table metadata exists.
+//
 //export CheckTableMetaExist
 func CheckTableMetaExist(id C.TSTableID) C.bool {
 	// Run the KV transaction on a regular goroutine instead of the cgo
@@ -145,6 +147,8 @@ func checkTableMetaExistImpl(tableID uint64) bool {
 	return !tb.Dropped()
 }
 
+// GetTableMetaByVersion retrieves table metadata by version.
+//
 //export GetTableMetaByVersion
 func GetTableMetaByVersion(
 	id C.TSTableID, tsVer C.TSTableID, outputLen *C.size_t, errMsg **C.char,
