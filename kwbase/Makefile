@@ -544,7 +544,11 @@ endif
 # logically WITH_ASAN_LINK and LINKFLAG depends on BIN_LD_FLAGS, move it here to make it clearer and avoid confusion
 WITH_ASAN ?=
 ifeq ($(WITH_ASAN), ON)
-  WITH_ASAN_LINK = -X gitee.com/kwbasedb/kwbase/pkg/build.typ=$(BUILDTYPE) -extldflags "$(BIN_LD_FLAGS) -lasan"
+  # CGO_LDFLAGS is reassigned (without ASAN) earlier in this Makefile, so re-add
+  # the ASAN linker flags here, otherwise cgo-compiled objects reference
+  # __asan_* symbols that the linker cannot resolve.
+  export CGO_LDFLAGS += -fsanitize=address -fno-omit-frame-pointer -fsanitize-recover=address
+  WITH_ASAN_LINK = -X gitee.com/kwbasedb/kwbase/pkg/build.typ=$(BUILDTYPE) -extldflags "$(BIN_LD_FLAGS) -fsanitize=address -fno-omit-frame-pointer -fsanitize-recover=address"
   export LD_PRELOAD = $(shell $(CC) -print-file-name=libasan.so)
   export ASAN_OPTIONS = alloc_dealloc_mismatch=0:halt_on_error=false:detect_leaks=false
 else
