@@ -333,5 +333,7 @@ static inline char *kwdbts_strptime(const char *buf, const char *fmt, struct tm 
 #include <sys/types.h>
 #include <unistd.h>
 #include <sys/syscall.h>
+#ifndef gettid
 #define gettid() ((pid_t)syscall(SYS_gettid))
+#endif
 #endif
