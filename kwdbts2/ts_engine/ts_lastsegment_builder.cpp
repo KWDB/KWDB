@@ -159,7 +159,6 @@ KStatus TsLastSegmentBuilder::Finalize(TsSegmentWriteStats* stats) {
     return FAIL;
   }
 
-  last_segment_file_.reset();
   return SUCCESS;
 }
 
@@ -200,7 +199,7 @@ KStatus TsLastSegmentBuilder::RecordAndWriteBlockToFile() {
 
   TsMetricCompressInfo compress_info;
   ok = metric_block->GetCompressedData(compressed_data_, compress_info, EngineOptions::compress_last_segment,
-                                       EngineOptions::compress_last_segment);
+                                       EngineOptions::compress_last_segment || metric_block_builder_->IsSparseTable());
   if (!ok) {
     return FAIL;
   }

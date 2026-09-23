@@ -347,3 +347,11 @@ func TestingIsReportable(s Setting) bool {
 	}
 	return true
 }
+
+// TSInsertSelectBlockMemorySetting memory of block written at a time in ts  insert select
+const TSInsertSelectBlockMemorySetting = "sql.ts_insert_select.block_memory"
+
+// TSInsertSelectBlockMemLimit is memory of block written at a time in ts insert select, units: MB
+var TSInsertSelectBlockMemLimit = RegisterPublicIntSetting(
+	TSInsertSelectBlockMemorySetting, "memory of block written at a time in ts insert select", 10,
+)

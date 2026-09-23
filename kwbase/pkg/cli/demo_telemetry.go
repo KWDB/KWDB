@@ -41,18 +41,12 @@ const (
 	nodes
 	// demoLocality represents when kwbase demo is started with user defined localities.
 	demoLocality
-	// withLoad represents when kwbase demo is used with a background workload
-	withLoad
-	// geoPartitionedReplicas is used when kwbase demo is started with the geo-partitioned-replicas topology.
-	geoPartitionedReplicas
 )
 
 var demoTelemetryMap = map[demoTelemetry]string{
-	demo:                   "demo",
-	nodes:                  "nodes",
-	demoLocality:           "demo-locality",
-	withLoad:               "withload",
-	geoPartitionedReplicas: "geo-partitioned-replicas",
+	demo:         "demo",
+	nodes:        "nodes",
+	demoLocality: "demo-locality",
 }
 
 var demoTelemetryCounters map[demoTelemetry]telemetry.Counter

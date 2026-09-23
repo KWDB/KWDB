@@ -18,6 +18,7 @@
 #include "kwdb_type.h"
 #include "lg_api.h"
 #include "sys_utils.h"
+#include "ts_db_schema_manager.h"
 #include "ts_table_schema_manager.h"
 #include "ts_go_exported.h"
 
@@ -26,8 +27,10 @@ std::mt19937 gen(seed);
 
 namespace kwdbts {
 
-TsEngineSchemaManager::TsEngineSchemaManager(const string& schema_root_path) :
-    schema_root_path_(schema_root_path), mgrs_rw_latch_(RWLATCH_ID_SCHEMA_MGRS_RWLOCK) {
+TsEngineSchemaManager::TsEngineSchemaManager(const string& schema_root_path, TsDBSchemaManager* db_schema_mgr)
+    : schema_root_path_(schema_root_path),
+      db_schema_mgr_(db_schema_mgr),
+      mgrs_rw_latch_(RWLATCH_ID_SCHEMA_MGRS_RWLOCK) {
   auto exists = IsExists(schema_root_path_);
   if (exists == false) {
     MakeDirectory(schema_root_path_);
@@ -38,8 +41,8 @@ TsEngineSchemaManager::~TsEngineSchemaManager() {
 }
 
 KStatus TsEngineSchemaManager::Init(kwdbContext_p ctx) {
-  wrLock();
-  Defer defer([&]() { unLock(); });
+  // Init runs single-threaded during engine startup, before any background
+  // thread or external caller exists, so no latch is needed.
   // init table schema manager
   std::regex num_regex("^[0-9]+$");
   try {
@@ -56,7 +59,8 @@ KStatus TsEngineSchemaManager::Init(kwdbContext_p ctx) {
         std::string dir_name = table_entry.path().filename().string();
         if (std::regex_match(dir_name, num_regex)) {
           auto table_id = atoi(dir_name.c_str());
-          auto tb_schema_mgr = std::make_unique<TsTableSchemaManager>(schema_root_path_, table_id);
+          auto tb_schema_mgr =
+              std::make_unique<TsTableSchemaManager>(schema_root_path_, table_id, db_schema_mgr_);
           KStatus s = tb_schema_mgr->Init();
           if (s != KStatus::SUCCESS) {
             if (fs::exists(tb_schema_mgr->GetMetricSchemaPath())) {
@@ -116,7 +120,7 @@ KStatus TsEngineSchemaManager::CreateTable(kwdbContext_p ctx, const uint32_t& db
   fs::path tag_schema_path = table_path / "tag";
   MakeDirectory(tag_schema_path);
 
-  auto tbl_schema_mgr = std::make_unique<TsTableSchemaManager>(schema_root_path_, table_id);
+  auto tbl_schema_mgr = std::make_unique<TsTableSchemaManager>(schema_root_path_, table_id, db_schema_mgr_);
   KStatus s = tbl_schema_mgr->CreateTable(ctx, meta, db_id, ts_version, err_info);
   if (s != KStatus::SUCCESS) {
     return s;
@@ -127,7 +131,7 @@ KStatus TsEngineSchemaManager::CreateTable(kwdbContext_p ctx, const uint32_t& db
 }
 
 bool TsEngineSchemaManager::IsTableExist(TSTableID tbl_id) {
-  auto tbl_schema_mgr = std::make_unique<TsTableSchemaManager>(schema_root_path_, tbl_id);
+  auto tbl_schema_mgr = std::make_unique<TsTableSchemaManager>(schema_root_path_, tbl_id, db_schema_mgr_);
   if (tbl_schema_mgr->IsSchemaDirsExist()) {
     return true;
   }
@@ -208,8 +212,11 @@ KStatus TsEngineSchemaManager::SetTableDropped(TSTableID tbl_id) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsEngineSchemaManager::GetVGroup(kwdbContext_p ctx, const std::shared_ptr<TsTableSchemaManager>& tb_schema,
-                                          TSSlice primary_key, uint32_t* vgroup_id, TSEntityID* entity_id, bool* new_tag) {
+KStatus TsEngineSchemaManager::GetVGroupAndUpdateValidCol(kwdbContext_p ctx,
+  const std::shared_ptr<TsTableSchemaManager>& tb_schema,
+  std::vector<uint32_t> valid_col_idx,
+  TSSlice primary_key, uint32_t* vgroup_id,
+  TSEntityID* entity_id, bool* new_tag) {
   std::shared_ptr<TagTable> tag_schema;
   tb_schema->GetTagSchema(ctx, &tag_schema);
   uint32_t entityid, groupid;
@@ -227,6 +234,20 @@ KStatus TsEngineSchemaManager::GetVGroup(kwdbContext_p ctx, const std::shared_pt
       *vgroup_id = groupid;
       *new_tag = false;
       return KStatus::SUCCESS;
+    }
+    if (valid_col_idx.size() > 0) {
+      // For existing tag on sparse table, check if valid columns need updating
+      std::shared_ptr<TagTable> tag_table;
+      auto s = tb_schema->GetTagSchema(ctx, &tag_table);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("Failed get tag schema for valid column update, table[%lu].", tb_schema->GetTableId());
+        return s;
+      }
+      if (tag_table->issparse()) {
+        if (!tag_table->CheckAndUpdateValidColumns(primary_key.data, primary_key.len, valid_col_idx)) {
+          LOG_ERROR("Failed to update valid columns for table[%lu].", tb_schema->GetTableId());
+        }
+      }
     }
   }
   // use consistent hash to allocate vgroup id

@@ -17,27 +17,22 @@ function check_substring(str, substr)
 end
 '
 END;
-CREATE FUNCTION
+ERROR: lua udf is not allowed to call functions
+SQLSTATE: 0A000
 > SELECT name FROM system.user_defined_routine where routine_type = 2;
-       name
--------------------
-  check_substring
-(1 row)
+  name
+--------
+(0 rows)
 > SHOW FUNCTIONS;
-   function_name
--------------------
-  check_substring
-(1 row)
+  function_name
+-----------------
+(0 rows)
 > SHOW FUNCTION check_substring;
-   function_name  | argument_types | return_type | function_type | language
-------------------+----------------+-------------+---------------+-----------
-  check_substring | NCHAR, NCHAR   | INT         | function      | LUA
-(1 row)
+ERROR: function check_substring does not exists or current user does not have privilege on this function
+SQLSTATE: 42704
 > select check_substring('abcdefg', 'cde');
-  check_substring
--------------------
-                3
-(1 row)
+ERROR: unknown function: check_substring()
+SQLSTATE: 42883
 > create ts database test_udf_nchar;
 CREATE TS DATABASE
 > create table test_udf_nchar.tb1(ts timestamptz not null,e1 nchar(10), e2 nchar(10))tags(tag1 int not null)primary tags(tag1);
@@ -49,19 +44,11 @@ INSERT 1
 > insert into test_udf_nchar.tb1 values('2024-01-01 13:00:00','ghi', 'h' ,3);
 INSERT 1
 > select check_substring(e1, e2) from test_udf_nchar.tb1 order by e1;
-  check_substring
--------------------
-                2
-                2
-                2
-(3 rows)
+ERROR: unknown function: check_substring()
+SQLSTATE: 42883
 > select count(e1), check_substring(e1, e2) as loc ,last_row(e1) from test_udf_nchar.tb1 group by e1, e2 having check_substring(e1, e2) >= 0 order by e1;
-  count | loc | last_row
---------+-----+-----------
-      1 |   2 | abc
-      1 |   2 | def
-      1 |   2 | ghi
-(3 rows)
+ERROR: unknown function: check_substring()
+SQLSTATE: 42883
 > drop table test_udf_nchar.tb1;
 DROP TABLE
 > drop database test_udf_nchar cascade;
@@ -77,85 +64,60 @@ INSERT 1
 > insert into  test_udf_re_nchar.r1 values('ghi', 'h');
 INSERT 1
 > select check_substring(e1, e2) from test_udf_re_nchar.r1 order by e1;
-  check_substring
--------------------
-                2
-                2
-                2
-(3 rows)
+ERROR: unknown function: check_substring()
+SQLSTATE: 42883
 > select count(e1), check_substring(e1, e2) as loc from test_udf_re_nchar.r1 group by e1, e2 having check_substring(e1, e2) >= 0 order by e1;
-  count | loc
---------+------
-      1 |   2
-      1 |   2
-      1 |   2
-(3 rows)
+ERROR: unknown function: check_substring()
+SQLSTATE: 42883
 > drop table test_udf_re_nchar.r1 ;
 DROP TABLE
 > drop database test_udf_re_nchar cascade;
 DROP DATABASE
 > select check_substring('abcdef', 'a');
-  check_substring
--------------------
-                1
-(1 row)
+ERROR: unknown function: check_substring()
+SQLSTATE: 42883
 > select check_substring('abcdef', 'f');
-  check_substring
--------------------
-                6
-(1 row)
+ERROR: unknown function: check_substring()
+SQLSTATE: 42883
 > select check_substring('abcdef', 'g');
-  check_substring
--------------------
-               -1
-(1 row)
+ERROR: unknown function: check_substring()
+SQLSTATE: 42883
 > select check_substring('abcdef', ' ');
-  check_substring
--------------------
-               -1
-(1 row)
+ERROR: unknown function: check_substring()
+SQLSTATE: 42883
 > select check_substring('abcdef', '' );
-  check_substring
--------------------
-                1
-(1 row)
+ERROR: unknown function: check_substring()
+SQLSTATE: 42883
 > select check_substring('  '    , ' ');
-  check_substring
--------------------
-                1
-(1 row)
+ERROR: unknown function: check_substring()
+SQLSTATE: 42883
 > select check_substring('  '    , '' );
-  check_substring
--------------------
-                1
-(1 row)
+ERROR: unknown function: check_substring()
+SQLSTATE: 42883
 > select check_substring(''      , '' );
-  check_substring
--------------------
-                1
-(1 row)
+ERROR: unknown function: check_substring()
+SQLSTATE: 42883
 > select check_substring(''      , ' ');
-  check_substring
--------------------
-               -1
-(1 row)
+ERROR: unknown function: check_substring()
+SQLSTATE: 42883
 > select check_substring(-1, 1);
-ERROR: unknown signature: check_substring(INT8, INT8)
+ERROR: unknown function: check_substring()
 SQLSTATE: 42883
 > select check_substring('test');
-ERROR: unknown signature: check_substring(STRING)
+ERROR: unknown function: check_substring()
 SQLSTATE: 42883
 > select check_substring(123456, 'a');
-ERROR: unknown signature: check_substring(INT8, STRING)
+ERROR: unknown function: check_substring()
 SQLSTATE: 42883
 > select check_substring(1.1, '2');
-ERROR: unknown signature: check_substring(DECIMAL, STRING)
+ERROR: unknown function: check_substring()
 SQLSTATE: 42883
 > select check_substring(false);
-ERROR: unknown signature: check_substring(BOOL)
+ERROR: unknown function: check_substring()
 SQLSTATE: 42883
 > DROP FUNCTION check_substring;
-DROP FUNCTION
+ERROR: unknown function 'check_substring' when dropping function
+SQLSTATE: 42883
 > SHOW FUNCTIONS;
   function_name
 -----------------

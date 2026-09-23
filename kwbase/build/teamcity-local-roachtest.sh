@@ -17,9 +17,9 @@ run build/builder.sh make build &> artifacts/roachtests-compile.log || (cat arti
 rm artifacts/roachtests-compile.log
 tc_end_block "Compile CockroachDB"
 
-tc_start_block "Compile roachprod/workload/roachtest"
-run build/builder.sh make bin/roachprod bin/workload bin/roachtest
-tc_end_block "Compile roachprod/workload/roachtest"
+tc_start_block "Compile roachprod/roachtest"
+run build/builder.sh make bin/roachprod bin/roachtest
+tc_end_block "Compile roachprod/roachtest"
 
 tc_start_block "Run local roachtests"
 # TODO(peter,dan): curate a suite of the tests that works locally.
@@ -34,12 +34,11 @@ build/builder.sh env \
     TC_SERVER_URL="${TC_SERVER_URL-}" \
     TC_BUILD_BRANCH="${TC_BUILD_BRANCH-}" \
   stdbuf -oL -eL \
-  ./bin/roachtest run acceptance kv/splits cdc/bank \
+  ./bin/roachtest run acceptance \
   --local \
   --parallelism=1 \
   --kwbase "kwbase" \
   --roachprod "bin/roachprod" \
-  --workload "bin/workload" \
   --artifacts artifacts \
   --teamcity
 tc_end_block "Run local roachtests"

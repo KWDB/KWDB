@@ -9,6 +9,7 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstring>
@@ -18,6 +19,7 @@
 #include "ts_batch_data_worker.h"
 #include "ee_tag_row_batch.h"
 #include "libkwdbts2.h"
+#include "ts_compatibility.h"
 #include "ts_engine.h"
 
 namespace kwdbts {
@@ -65,6 +67,7 @@ struct ParsedBatchDataLayout {
   size_t tags_data_offset = 0;
   uint32_t tags_data_size = 0;
   uint8_t row_type = DataTagFlag::TAG_ONLY;
+  size_t valid_column_part_offset = 0;
   size_t block_span_data_offset = 0;
   uint32_t block_span_data_size = 0;
 };
@@ -115,15 +118,78 @@ KStatus ParseBatchDataLayout(const TSSlice& data, TSTableID table_id, ParsedBatc
   layout.tags_data_offset = layout.p_tag_offset + layout.p_tag_size + sizeof(uint32_t);
   layout.tags_data_size = DecodeBatchField<uint32_t>(data.data + layout.tags_data_offset - sizeof(uint32_t));
   layout.row_type = DecodeBatchField<uint8_t>(data.data + TsBatchData::row_type_offset_);
-  layout.block_span_data_offset = layout.tags_data_offset + layout.tags_data_size;
+
+  // v0 layout: tags | BlockSpanHeader{length(4)+min_ts...block_version}(60)
+  // v1 layout: tags | BlockSpanHeader{length(4)+min_ts...block_version}(60)
+  // v2 layout: tags | data_part_length(4) | valid_column_part | BlockSpanHeader{min_ts...block_version}(60)
+  if (layout.batch_version <= 1) {
+    size_t bs_length_offset = layout.tags_data_offset + layout.tags_data_size;
+    // v0/v1 tag-only: no data part after tags
+    if (bs_length_offset == data.len) {
+      if (layout.row_type != DataTagFlag::TAG_ONLY) {
+        log_layout_fail("row_type expects block span payload but batch ends after tags (v0/v1)");
+        return KStatus::FAIL;
+      }
+      return KStatus::SUCCESS;
+    }
+    // v0/v1: BlockSpanHeader starts with a length(4) field before min_ts
+    if (!HasEnoughBytes(data.len, bs_length_offset, sizeof(uint32_t))) {
+      log_layout_fail("missing block span length field (v0/v1)");
+      return KStatus::FAIL;
+    }
+    uint32_t block_span_length = DecodeBatchField<uint32_t>(data.data + bs_length_offset);
+    if (block_span_length < sizeof(uint32_t)) {
+      log_layout_fail("block span length too small (v0/v1)");
+      return KStatus::FAIL;
+    }
+    // skip BlockSpanHeader.length(4) so that block_span_slice starts at min_ts
+    layout.block_span_data_offset = bs_length_offset + sizeof(uint32_t);
+    layout.block_span_data_size = block_span_length - sizeof(uint32_t);
+  } else {
+    // v2: data_part_length + valid_column_part + block_span_part
+    size_t data_part_length_offset = layout.tags_data_offset + layout.tags_data_size;
+    if (!HasEnoughBytes(data.len, data_part_length_offset, sizeof(uint32_t))) {
+      log_layout_fail("missing data part length field");
+      return KStatus::FAIL;
+    }
+    uint32_t data_part_length = DecodeBatchField<uint32_t>(data.data + data_part_length_offset);
+
+    layout.valid_column_part_offset = data_part_length_offset + sizeof(uint32_t);
+    if (!HasEnoughBytes(data.len, layout.valid_column_part_offset, sizeof(uint16_t))) {
+      log_layout_fail("missing valid column type field");
+      return KStatus::FAIL;
+    }
+    uint16_t valid_column_type = DecodeBatchField<uint16_t>(data.data + layout.valid_column_part_offset);
+    uint32_t valid_column_part_size = sizeof(uint16_t);
+    if (valid_column_type == TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_VECTOR) {
+      if (!HasEnoughBytes(data.len, layout.valid_column_part_offset + sizeof(uint16_t), sizeof(uint32_t))) {
+        log_layout_fail("missing valid column count field");
+        return KStatus::FAIL;
+      }
+      uint32_t valid_col_num = DecodeBatchField<uint32_t>(data.data + layout.valid_column_part_offset + sizeof(uint16_t));
+      if (!HasEnoughBytes(data.len, layout.valid_column_part_offset + sizeof(uint16_t) + sizeof(uint32_t),
+                          sizeof(uint32_t) * valid_col_num)) {
+        log_layout_fail("valid column list exceeds batch boundary");
+        return KStatus::FAIL;
+      }
+      valid_column_part_size += sizeof(uint32_t) + sizeof(uint32_t) * valid_col_num;
+    }
+
+    if (data_part_length < valid_column_part_size) {
+      log_layout_fail("data part length smaller than valid column part");
+      return KStatus::FAIL;
+    }
+    layout.block_span_data_offset = layout.valid_column_part_offset + valid_column_part_size;
+    layout.block_span_data_size = data_part_length - valid_column_part_size;
+  }
   if (layout.block_span_data_offset > data.len) {
     log_layout_fail("tags payload exceeds batch boundary");
     return KStatus::FAIL;
   }
 
-  if (layout.block_span_data_offset == data.len) {
+  if (layout.block_span_data_size == 0) {
     if (layout.row_type != DataTagFlag::TAG_ONLY) {
-      log_layout_fail("row_type expects block span payload but batch ends after tags");
+      log_layout_fail("row_type expects block span payload but batch ends after valid column part");
       return KStatus::FAIL;
     }
     return KStatus::SUCCESS;
@@ -132,12 +198,6 @@ KStatus ParseBatchDataLayout(const TSSlice& data, TSTableID table_id, ParsedBatc
     log_layout_fail("block span payload exists but row_type is not DATA_AND_TAG");
     return KStatus::FAIL;
   }
-  if (!HasEnoughBytes(data.len, layout.block_span_data_offset, sizeof(uint32_t))) {
-    log_layout_fail("missing block span length field");
-    return KStatus::FAIL;
-  }
-
-  layout.block_span_data_size = DecodeBatchField<uint32_t>(data.data + layout.block_span_data_offset);
   if (layout.block_span_data_size < TsBatchData::block_span_data_header_size_) {
     LOG_ERROR("ParseBatchDataLayout failed, table_id[%lu], reason[block span payload too short], "
               "payload_len=%u, min_header_len=%d, "
@@ -159,21 +219,6 @@ KStatus ParseBatchDataLayout(const TSSlice& data, TSTableID table_id, ParsedBatc
 }
 
 }  // namespace
-
-enum class WriteBatchStatus : uint8_t {
-  None = 0,
-  Writing,
-};
-std::atomic<WriteBatchStatus> write_batch_status{WriteBatchStatus::None};
-
-bool TrySetWriteBusy() {
-  WriteBatchStatus expected = WriteBatchStatus::None;
-  return write_batch_status.compare_exchange_strong(expected, WriteBatchStatus::Writing);
-}
-
-void ResetWriteStatus() {
-  write_batch_status.store(WriteBatchStatus::None);
-}
 
 TsReadBatchDataWorker::TsReadBatchDataWorker(TSEngineImpl* ts_engine, TSTableID table_id,
                                              uint64_t table_version, KwTsSpan ts_span, uint64_t job_id,
@@ -246,6 +291,7 @@ KStatus TsReadBatchDataWorker::GetTagValue(kwdbContext_p ctx) {
       tag_value_len_ += tag.m_size;
     }
   }
+  cached_valid_columns_.clear();
   cached_tags_data_.clear();
   cached_tags_data_.resize(tag_value_len_);
   assert(res.col_num_ == tags_info_.size());
@@ -286,6 +332,18 @@ KStatus TsReadBatchDataWorker::GetTagValue(kwdbContext_p ctx) {
     }
   }
 
+  std::shared_ptr<TagTable> tag_table;
+  s = ts_table_v2->GetSchemaManager()->GetTagSchema(ctx, &tag_table);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("cannot get tag table.");
+    return KStatus::FAIL;
+  }
+  if (tag_table->issparse()) {
+    uint32_t ptags_size = cur_entity_index_.p_tags_size;
+    TSSlice primary_tag = {reinterpret_cast<char *>(cur_entity_index_.mem.get()), ptags_size};
+    tag_table->GetValidColumns(&primary_tag, 1, cached_valid_columns_);
+  }
+
   is_tags_data_cached_ = true;
   tag_cache_stats_helper_.OnFill();
   cur_batch_data_.AddTags({cached_tags_data_.data(), cached_tags_data_.size()});
@@ -301,8 +359,13 @@ void TsReadBatchDataWorker::AddTsBlockSpanInfo(const std::shared_ptr<TsBlockSpan
   uint64_t last_osn = block_span->GetLastOSN();
   timestamp64 end_row_ts = block_span->GetTS(block_span->GetRowNum() - 1);
   uint32_t n_rows = block_span->GetRowNum();
-  cur_batch_data_.AddBlockSpanDataHeader(0, first_row_ts, end_row_ts, min_osn, max_osn,
-                                         first_osn, last_osn, n_cols_, n_rows, block_span->GetBlockVersion());
+  uint32_t block_version = block_span->GetBlockVersion();
+  if (EngineOptions::force_re_compress || block_span->GetRowNum() != block_span->GetTsBlock()->GetRowNum() ||
+      block_span->GetScanVersion() != block_span->GetTableVersion()) {
+    block_version = CURRENT_BLOCK_VERSION;
+  }
+  cur_batch_data_.AddBlockSpanDataHeader(first_row_ts, end_row_ts, min_osn, max_osn,
+                                         first_osn, last_osn, n_cols_, n_rows, block_version);
 }
 
 KStatus TsReadBatchDataWorker::NextBlockSpansIterator() {
@@ -426,6 +489,7 @@ KStatus TsReadBatchDataWorker::GenerateBatchData(kwdbContext_p ctx,
     LOG_ERROR("add tag failed");
     return s;
   }
+  cur_batch_data_.AddDataPartLengthAndValidCols(cached_valid_columns_);
   // add TsBlockSpan info
   if (block_span) {
     AddTsBlockSpanInfo(block_span);
@@ -437,7 +501,7 @@ KStatus TsReadBatchDataWorker::GenerateBatchData(kwdbContext_p ctx,
     }
   }
   // set ts block span data length
-  cur_batch_data_.UpdateBatchDataInfo();
+  cur_batch_data_.UpdateBatchDataInfo(cached_valid_columns_);
   return KStatus::SUCCESS;
 }
 
@@ -530,27 +594,21 @@ TsWriteBatchDataWorker::~TsWriteBatchDataWorker() {
   }
 
   KStatus s = KStatus::SUCCESS;
-  while (!TrySetWriteBusy()) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  }
-
   Defer defer([&]() {
     if (s != KStatus::SUCCESS) {
-      auto vgroups = ts_engine_->GetTsVGroups();
-      for (const auto& vgroup : *vgroups) {
-        vgroup->CancelWriteBatchData();
+      for (auto& [vg, builders] : write_batch_builders_) {
+        vg->CancelWriteBatchData(builders);
       }
     }
-    ResetWriteStatus();
   });
 
-  // write batch data to entity segment
+  // write batch data to last segment
   {
     BatchDataHeader header{};
     const size_t batch_header_size = sizeof(BatchDataHeader);
     std::unique_ptr<TsSequentialReadFile> r_file;
 
-    auto s = w_file_->Sync();
+    s = w_file_->Sync();
     if (s == FAIL) {
       auto path = w_file_->GetFilePath();
       LOG_WARN("sync file failed, job_id[%lu], file_path=%s", job_id_, path.c_str());
@@ -564,12 +622,23 @@ TsWriteBatchDataWorker::~TsWriteBatchDataWorker() {
 
     uint64_t left = 0;
     const uint64_t file_size = w_file_->GetFileSize();
+
+    struct BatchIndex {
+      uint32_t vgroup_id;
+      TSEntityID entity_id;
+      uint64_t header_offset;
+      uint64_t data_length;
+    };
+    std::vector<BatchIndex> batch_index;
+
+    // Pass 1: sequential scan to collect per-batch (vgroup_id, entity_id, header_offset, data_length).
     while (left < file_size) {
       if (file_size - left < batch_header_size) {
         s = KStatus::FAIL;
         LOG_ERROR("Invalid batch header length, job_id[%lu], left[%lu], file_size[%lu]", job_id_, left, file_size);
         return;
       }
+      uint64_t header_offset = r_file->Tell();
       TsSliceGuard batch_header;
       s = r_file->Read(batch_header_size, &batch_header);
       if (s != KStatus::SUCCESS) {
@@ -583,32 +652,57 @@ TsWriteBatchDataWorker::~TsWriteBatchDataWorker() {
                   job_id_, header.data_length, left, file_size);
         return;
       }
+      // Skip the compressed payload here; it is re-read (and validated) in Pass 2. Avoiding the read
+      // keeps Pass 1 a header-only scan so the temp file is read in full only once (in Pass 2).
+      r_file->Skip(header.data_length);
+      batch_index.push_back({header.vgroup_id, header.entity_id, header_offset, header.data_length});
+      left += batch_header_size + header.data_length;
+    }
+
+    // Stable sort preserves arrival order within a single (vgroup, entity), so an entity's batches
+    // are dispatched in the order they arrived (keeping OSN/time monotonicity within an entity).
+    std::stable_sort(batch_index.begin(), batch_index.end(),
+                     [](const BatchIndex& a, const BatchIndex& b) {
+                       if (a.vgroup_id != b.vgroup_id) {
+                         return a.vgroup_id < b.vgroup_id;
+                       }
+                       return a.entity_id < b.entity_id;
+                     });
+
+    // Pass 2: dispatch in sorted order. TsSequentialReadFile::Read is backed by pread (FIO) or an
+    // mmap base+offset, so Seek + Read correctly jumps to each recorded header_offset.
+    for (const auto& entry : batch_index) {
+      r_file->Seek(entry.header_offset);
+      TsSliceGuard batch_header;
+      s = r_file->Read(batch_header_size, &batch_header);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("Read batch header failed, job_id[%lu]", job_id_);
+        return;
+      }
+      memcpy(&header, batch_header.data(), sizeof(header));
       TsSliceGuard block_data;
-      s = r_file->Read(header.data_length, &block_data);
+      s = r_file->Read(entry.data_length, &block_data);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("Read batch data failed, job_id[%lu]", job_id_);
         return;
       }
       TSSlice data = block_data.AsSlice();
-      s = ts_engine_->GetTsVGroup(header.vgroup_id)
-              ->WriteBatchData(header.table_id, header.table_version, header.entity_id, header.p_time,
-                               header.batch_version, data, source_);
+      auto vgroup = ts_engine_->GetTsVGroup(header.vgroup_id);
+      auto& builders = write_batch_builders_[vgroup.get()];
+      s = vgroup->WriteBatchData(header.table_id, header.table_version, header.entity_id, header.p_time,
+                                 header.batch_version, data, source_, builders);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("WriteBatchData failed, table_id[%lu], entity_id[%lu]", header.table_id, header.entity_id);
         return;
       }
-      left += batch_header_size + header.data_length;
     }
   }
-  // write batch finish
-  {
-    auto vgroups = ts_engine_->GetTsVGroups();
-    for (const auto& vgroup : *vgroups) {
-      s = vgroup->FinishWriteBatchData();
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("FinishWriteBatchData failed, job_id[%lu]", job_id_);
-        return;
-      }
+  // write batch finish: finalize only the vgroups this session touched
+  for (auto& [vg, builders] : write_batch_builders_) {
+    s = vg->FinishWriteBatchData(builders);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("FinishWriteBatchData failed, job_id[%lu]", job_id_);
+      return;
     }
   }
 }
@@ -644,6 +738,9 @@ void TsWriteBatchDataWorker::GetTagPayload(uint32_t table_version, const TSSlice
   // update tag type
   uint8_t tag_type = DataTagFlag::TAG_ONLY;
   memcpy(tag_payload_str.data() + TsRawPayload::row_type_offset_, &tag_type, sizeof(tag_type));
+  // update payload version
+  uint32_t pd_version = MAX_PAYLOAD_VERSION;
+  memcpy(tag_payload_str.data() + TsRawPayload::payload_version_offset_, &pd_version, sizeof(pd_version));
 }
 
 KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uint32_t table_version,
@@ -690,7 +787,19 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uin
   uint32_t vgroup_id;
   TSEntityID entity_id;
   bool new_tag;
-  s = ts_engine_->InsertTagData(ctx, schema, 0, pay_load_struct, false,
+  const std::vector<AttributeInfo>* metric_schema_info;
+  s = schema->GetColumnsExcludeDroppedPtr(&metric_schema_info, TsRawPayload::GetTableVersionFromSlice(pay_load_struct));
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetColumnsExcludeDroppedPtr failed, table id: %lu", table_id);
+    return s;
+  }
+  TsRawPayload p(metric_schema_info);
+  s = p.ParseBatchDataStruct(pay_load_struct);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("ParsePayLoadStruct failed.");
+    return s;
+  }
+  s = ts_engine_->InsertTagData(ctx, schema, 0, p, false,
                                 vgroup_id, entity_id, new_tag);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("InsertTagData[%lu] failed", table_id);

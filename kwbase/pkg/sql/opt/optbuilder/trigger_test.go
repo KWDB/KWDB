@@ -265,6 +265,14 @@ func (t *testTriggerTableWithTriggers) GetTriggers(event tree.TriggerEvent) []ca
 // testTriggerTable 是一个用于测试的简单 cat.Table 实现
 type testTriggerTable struct{}
 
+func (t *testTriggerTable) AllColumnCount() int {
+	return 4
+}
+
+func (t *testTriggerTable) GetCDC() interface{} {
+	return nil
+}
+
 // testColumn 是一个用于测试的简单 cat.Column 实现
 type testColumn struct {
 	colID     cat.StableID
@@ -397,6 +405,10 @@ func (c *testColumn) TsColStorgeLen() uint64 {
 	return 0
 }
 
+func (c *testColumn) TsVariableLengthType() int32 {
+	return 0
+}
+
 // 实现 cat.Object 接口的方法
 func (t *testTriggerTable) ID() cat.StableID {
 	return cat.StableID(1)
@@ -514,14 +526,6 @@ func (t *testTriggerTable) Zone() cat.Zone {
 	return nil
 }
 
-func (t *testTriggerTable) IsTSTable() bool {
-	return false
-}
-
-func (t *testTriggerTable) IsInstanceTable() bool {
-	return false
-}
-
 func (t *testTriggerTable) HasPrimaryTag() bool {
 	return false
 }
@@ -571,4 +575,28 @@ func (t *testTriggerTable) SetTableName(name string) {
 
 func (t *testTriggerTable) GetTableType() tree.TableType {
 	return 0
+}
+
+func (t *testTriggerTable) IsRelationalTable() bool {
+	return true
+}
+
+func (t *testTriggerTable) IsTemplateTable() bool {
+	return false
+}
+
+func (t *testTriggerTable) IsSparseTable() bool {
+	return false
+}
+
+func (t *testTriggerTable) IsTimeseriesTable() bool {
+	return false
+}
+
+func (t *testTriggerTable) IsTSTable() bool {
+	return false
+}
+
+func (t *testTriggerTable) IsInstanceTable() bool {
+	return false
 }

@@ -275,12 +275,20 @@ KStatus TsTableSchemaManager::Init() {
   assert(metric_cur_version == tag_cur_version);
   if (metric_cur_version != 0) {
     hash_num_ = metric_mgr_->GetHashNum();
+    sparse_table_ = metric_mgr_->IsSparseTable();
   }
   if (metric_cur_version > tag_cur_version) {
     for (uint32_t i = tag_cur_version + 1; i <= metric_cur_version; i++) {
       removeTagVersion(i);
     }
   }
+
+  db_id_ = metric_mgr_->GetDbID();
+  s = db_schema_mgr_->GetOrCreateDatabases(db_id_, db_schema_);
+  if (s == FAIL) {
+    return FAIL;
+  }
+  assert(db_schema_ != nullptr);
   cur_version_ = metric_cur_version;
   LOG_INFO("Table [%lu] schema manager init success", table_id_);
   return SUCCESS;
@@ -318,10 +326,13 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
     attr.version = ts_version;
   }
   hash_num_ = meta->ts_table().hash_num();
+  sparse_table_ = meta->ts_table().sparse();
   uint64_t interval = meta->ts_table().partition_interval();
   partition_interval_ = interval;
+  assert(db_id_ == 0 || db_id == db_id_);
+  db_id_ = db_id;
   s = metric_mgr_->CreateTable(ctx, metric_schema, db_id, ts_version, meta->ts_table().life_time(),
-                               interval, hash_num_, err_info);
+                               interval, hash_num_, sparse_table_, err_info);
   if (s != SUCCESS) {
     LOG_ERROR("failed to create the metric table %lu version [%u], error: %s",
               table_id_, ts_version, err_info.errmsg.c_str());
@@ -341,7 +352,7 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
 
   if (tag_table_ == nullptr || tag_table_->GetTagTableVersionManager()->GetCurrentTableVersion() == 0) {
     tag_table_ = std::make_shared<TagTable>(table_path_.string(), tag_path_.string(), table_id_, 1);
-    if (tag_table_->create(tag_schema, ts_version, idx_info, err_info) < 0) {
+    if (tag_table_->create(tag_schema, ts_version, idx_info, err_info, sparse_table_) < 0) {
       LOG_ERROR("failed to create the tag table [%lu] %s, error: %s",
                 table_id_, tag_path_.string().c_str(), err_info.errmsg.c_str());
       return FAIL;
@@ -355,6 +366,13 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
   }
   if (ts_version > cur_version_) {
     cur_version_ = ts_version;
+  }
+  if (db_schema_ == nullptr) {
+    auto s = db_schema_mgr_->GetOrCreateDatabases(db_id, db_schema_);
+    if (s != SUCCESS) {
+      LOG_ERROR("failed to GetOrCreateDatabases, db id %u", db_id);
+      return s;
+    }
   }
   return SUCCESS;
 }
@@ -576,10 +594,6 @@ void TsTableSchemaManager::SetLifeTime(LifeTime life_time) const {
 void TsTableSchemaManager::SetPartitionInterval(uint64_t partition_interval) {
   partition_interval_ = partition_interval;
   metric_mgr_->SetPartitionInterval(partition_interval);
-}
-
-uint32_t TsTableSchemaManager::GetDbID() const {
-  return metric_mgr_->GetDbID();
 }
 
 KStatus TsTableSchemaManager::RemoveAll() {

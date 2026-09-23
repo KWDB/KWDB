@@ -489,6 +489,7 @@ func (c *sqlConn) Close() {
 
 type sqlRowsI interface {
 	driver.RowsColumnTypeScanType
+	driver.RowsColumnTypeDatabaseTypeName
 	Result() driver.Result
 	Tag() string
 
@@ -556,6 +557,14 @@ func (r *sqlRows) NextResultSet() (bool, error) {
 
 func (r *sqlRows) ColumnTypeScanType(index int) reflect.Type {
 	return r.rows.ColumnTypeScanType(index)
+}
+
+// ColumnTypeDatabaseTypeName gets the actual data type name in database by the index of column descriptions.
+func (r *sqlRows) ColumnTypeDatabaseTypeName(index int) string {
+	if ct, ok := r.rows.(driver.RowsColumnTypeDatabaseTypeName); ok {
+		return ct.ColumnTypeDatabaseTypeName(index)
+	}
+	return ""
 }
 
 func makeSQLConn(url string) *sqlConn {
@@ -873,7 +882,7 @@ func getColumnStrings(rows *sqlRows, showMoreChars bool) []string {
 	srcCols := rows.Columns()
 	cols := make([]string, len(srcCols))
 	for i, c := range srcCols {
-		cols[i] = formatVal(c, showMoreChars, showMoreChars)
+		cols[i] = formatVal(c, "", showMoreChars, showMoreChars)
 	}
 	return cols
 }
@@ -912,7 +921,8 @@ func getNextRowStrings(rows *sqlRows, showMoreChars bool) ([]string, error) {
 
 	rowStrings := make([]string, len(cols))
 	for i, v := range vals {
-		rowStrings[i] = formatVal(v, showMoreChars, showMoreChars)
+		colType := rows.ColumnTypeDatabaseTypeName(i)
+		rowStrings[i] = formatVal(v, colType, showMoreChars, showMoreChars)
 	}
 	return rowStrings, nil
 }
@@ -923,7 +933,9 @@ func isNotGraphicUnicodeOrTabOrNewline(r rune) bool {
 	return r != '\t' && r != '\n' && !unicode.IsGraphic(r)
 }
 
-func formatVal(val driver.Value, showPrintableUnicode bool, showNewLinesAndTabs bool) string {
+func formatVal(
+	val driver.Value, colType string, showPrintableUnicode bool, showNewLinesAndTabs bool,
+) string {
 	switch t := val.(type) {
 	case nil:
 		return "NULL"
@@ -964,6 +976,25 @@ func formatVal(val driver.Value, showPrintableUnicode bool, showNewLinesAndTabs 
 			sessiondata.BytesEncodeString, false /* skipHexPrefix */)
 
 	case time.Time:
+		// Use DateTimeOutputFormat for timestamp (without timezone)
+		// and TimestampOutputFormat for timestamptz (with timezone).
+		colTypeUpper := strings.ToUpper(colType)
+		if strings.Contains(colTypeUpper, "TIMESTAMPTZ") || strings.Contains(colTypeUpper, "TIMESTAMP WITH TIME ZONE") {
+			return t.Format(tree.TimestampOutputFormat)
+		}
+		if strings.Contains(colTypeUpper, "TIMESTAMP") {
+			return t.Format(tree.DateTimeOutputFormat)
+		}
+
+		if strings.Contains(colTypeUpper, "TIMETZ") || strings.Contains(colTypeUpper, "TIME WITH TIME ZONE") {
+			return t.Format(tree.TimeTZFormat)
+		}
+		if strings.Contains(colTypeUpper, "TIME") {
+			return t.Format(tree.TimeFormat)
+		}
+		if strings.Contains(colTypeUpper, "DATE") {
+			return t.Format(tree.DateFormat)
+		}
 		return t.Format(tree.TimestampOutputFormat)
 	}
 

@@ -118,10 +118,10 @@ SQLSTATE: 22023
   NULL
   1.9807040628566084e+28
   1.9807040619342712e+28
-                   20222
+      20222.000122070312
   NULL
-                 -1012.3
-                 -2024.6
+     -1012.3000144958496
+     -2024.6000289916992
 (7 rows)
 > select t2/t6 from test_select_tag9.tb order by k_timestamp;
          ?column?
@@ -152,15 +152,15 @@ SQLSTATE: 22023
 ERROR: unsupported binary operator: <int> + <bool>
 SQLSTATE: 22023
 > select t3-t5 from test_select_tag9.tb order by k_timestamp;
-   ?column?
----------------
-  6929.292297
-            0
-            0
-     3949.445
-  5939.393398
-     1010.123
-     2010.123
+       ?column?
+----------------------
+   6929.292297363281
+                   0
+                   0
+   3949.444999694824
+   5939.393398284912
+  1010.1230001449585
+  2010.1230001449585
 (7 rows)
 > select t3*t6 from test_select_tag9.tb order by k_timestamp;
          ?column?
@@ -190,13 +190,13 @@ SQLSTATE: 22023
 > select t5-t6 from test_select_tag9.tb order by k_timestamp;
          ?column?
 --------------------------
-            -629.8598645
+      -629.8598648632812
   -9.223372036854776e+18
   9.223372036854776e+18
-             -450.023578
-      -539.5168530000001
-             -110.234111
-             -510.701578
+      -450.0235776948242
+      -539.5168532849121
+     -110.23411114495849
+      -510.7015781449585
 (7 rows)
 > select t5*t10 from test_select_tag9.tb order by k_timestamp;
 ERROR: unsupported binary operator: <float4> * <nchar>
@@ -292,13 +292,13 @@ SQLSTATE: 22023
 > select t5-e4 from test_select_tag9.tb order by k_timestamp;
          ?column?
 --------------------------
-           -69929.292297
+      -69929.29229736328
   -9.223372036854817e+18
   9.223372036854715e+18
-              -49949.445
-           -59939.393398
-              -40010.123
-              -60010.123
+     -49949.444999694824
+      -59939.39339828491
+      -40010.12300014496
+      -60010.12300014496
 (7 rows)
 > select t6*e5 from test_select_tag9.tb order by k_timestamp;
          ?column?

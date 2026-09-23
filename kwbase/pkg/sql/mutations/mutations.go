@@ -35,6 +35,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/stats"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding"
 )
 
@@ -64,13 +65,6 @@ var (
 	// results (like descending primary keys). This should be used on the
 	// output of sqlbase.RandCreateTable.
 	PostgresCreateTableMutator MultiStatementMutation = postgresCreateTableMutator
-)
-
-var (
-	// These are used in pkg/compose/compare/compare/compare_test.go, but
-	// it has a build tag so it's not detected by the linter.
-	_ = IndexStoringMutator
-	_ = PostgresCreateTableMutator
 )
 
 // StatementMutator defines a func that can change a statement.
@@ -212,6 +206,12 @@ func statisticsMutator(
 			// If an index appeared before a column definition, col
 			// can be nil.
 			if col == nil {
+				return
+			}
+			// Histograms for collated strings (including CITEXT) are not safe to
+			// round-trip through JSON statistics injection, because histogram upper
+			// bounds are stored as encoded key bytes instead of original text values.
+			if col.Type.Oid() == types.T_citext {
 				return
 			}
 			n := rng.Intn(10)

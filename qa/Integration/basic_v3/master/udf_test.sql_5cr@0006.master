@@ -8,7 +8,8 @@ BEGIN
     return math.sqrt(dx * dx + dy * dy)
 end'
 END;
-CREATE FUNCTION
+ERROR: lua udf is not allowed to call functions
+SQLSTATE: 0A000
 > CREATE FUNCTION calculate_factorial(n double)
     RETURNS double
     LANGUAGE LUA
@@ -28,44 +29,31 @@ BEGIN
     return result
 end'
 END;
-CREATE FUNCTION
+ERROR: lua udf is not allowed to call functions
+SQLSTATE: 0A000
 > SELECT name FROM system.user_defined_routine where routine_type = 2;
-         name
------------------------
-  calculate_distance
-  calculate_factorial
-(2 rows)
+  name
+--------
+(0 rows)
 > SHOW FUNCTIONS;
-     function_name
------------------------
-  calculate_distance
-  calculate_factorial
-(2 rows)
+  function_name
+-----------------
+(0 rows)
 > SHOW FUNCTION calculate_distance;
-    function_name    |         argument_types         | return_type | function_type | language
----------------------+--------------------------------+-------------+---------------+-----------
-  calculate_distance | DOUBLE, DOUBLE, DOUBLE, DOUBLE | DOUBLE      | function      | LUA
-(1 row)
+ERROR: function calculate_distance does not exists or current user does not have privilege on this function
+SQLSTATE: 42704
 > SHOW FUNCTION calculate_factorial;
-     function_name    | argument_types | return_type | function_type | language
-----------------------+----------------+-------------+---------------+-----------
-  calculate_factorial | DOUBLE         | DOUBLE      | function      | LUA
-(1 row)
+ERROR: function calculate_factorial does not exists or current user does not have privilege on this function
+SQLSTATE: 42704
 > SELECT calculate_distance(0, 0, 1, 1);
-  calculate_distance
-----------------------
-  1.4142135623730951
-(1 row)
+ERROR: unknown function: calculate_distance()
+SQLSTATE: 42883
 > SELECT calculate_factorial(5);
-  calculate_factorial
------------------------
-                  120
-(1 row)
+ERROR: unknown function: calculate_factorial()
+SQLSTATE: 42883
 > SELECT calculate_factorial(5.7);
-  calculate_factorial
------------------------
-                  120
-(1 row)
+ERROR: unknown function: calculate_factorial()
+SQLSTATE: 42883
 > CREATE TS DATABASE test_udf;
 CREATE TS DATABASE
 > CREATE TABLE test_udf.tb1(ts timestamptz NOT NULL, e1 double,e2 double,e3 double, e4 double) TAGS(t1 int NOT NULL) PRIMARY TAGS(t1);
@@ -75,17 +63,11 @@ INSERT 1
 > INSERT INTO test_udf.tb1 VALUES(NOW(), 5, 5, 5, 5, 2);
 INSERT 1
 > SELECT calculate_distance(e1, e2, e3, e4) FROM test_udf.tb1 order by e1;
-  calculate_distance
-----------------------
-  1.4142135623730951
-                   0
-(2 rows)
+ERROR: unknown function: calculate_distance()
+SQLSTATE: 42883
 > SELECT calculate_factorial(e1) FROM test_udf.tb1 order by e1;
-  calculate_factorial
------------------------
-                    1
-                  120
-(2 rows)
+ERROR: unknown function: calculate_factorial()
+SQLSTATE: 42883
 > drop table test_udf.tb1;
 DROP TABLE
 > drop database test_udf cascade;
@@ -97,68 +79,48 @@ CREATE TABLE
 > INSERT INTO test_udf_re.r1 VALUES(0, 0, 1, 1);
 INSERT 1
 > SELECT calculate_distance(x1, y1, x2, y2) FROM test_udf_re.r1;
-  calculate_distance
-----------------------
-  1.4142135623730951
-(1 row)
+ERROR: unknown function: calculate_distance()
+SQLSTATE: 42883
 > SELECT calculate_factorial(x1) FROM test_udf_re.r1;
-  calculate_factorial
------------------------
-                    1
-(1 row)
+ERROR: unknown function: calculate_factorial()
+SQLSTATE: 42883
 > drop table test_udf_re.r1;
 DROP TABLE
 > drop database test_udf_re cascade;
 DROP DATABASE
 > SELECT calculate_factorial(1.79769313486231570814527423731704356798071e+308);
-  calculate_factorial
------------------------
-  +Inf
-(1 row)
+ERROR: unknown function: calculate_factorial()
+SQLSTATE: 42883
 > SELECT calculate_factorial(1.79769313486231570814527423731704356798071e+309);
-  calculate_factorial
------------------------
-  NULL
-(1 row)
+ERROR: unknown function: calculate_factorial()
+SQLSTATE: 42883
 > SELECT calculate_factorial(170);
-   calculate_factorial
---------------------------
-  7.257415615307994e+306
-(1 row)
+ERROR: unknown function: calculate_factorial()
+SQLSTATE: 42883
 > SELECT calculate_factorial(171);
-  calculate_factorial
------------------------
-  +Inf
-(1 row)
+ERROR: unknown function: calculate_factorial()
+SQLSTATE: 42883
 > SELECT calculate_factorial(null);
-  calculate_factorial
------------------------
-  NULL
-(1 row)
+ERROR: unknown function: calculate_factorial()
+SQLSTATE: 42883
 > SELECT calculate_factorial(null);
-  calculate_factorial
------------------------
-  NULL
-(1 row)
+ERROR: unknown function: calculate_factorial()
+SQLSTATE: 42883
 > SELECT calculate_factorial(null);
-  calculate_factorial
------------------------
-  NULL
-(1 row)
+ERROR: unknown function: calculate_factorial()
+SQLSTATE: 42883
 > SELECT calculate_factorial(null);
-  calculate_factorial
------------------------
-  NULL
-(1 row)
+ERROR: unknown function: calculate_factorial()
+SQLSTATE: 42883
 > SELECT calculate_factorial(-1);
-  calculate_factorial
------------------------
-  NULL
-(1 row)
+ERROR: unknown function: calculate_factorial()
+SQLSTATE: 42883
 > DROP FUNCTION calculate_distance;
-DROP FUNCTION
+ERROR: unknown function 'calculate_distance' when dropping function
+SQLSTATE: 42883
 > DROP FUNCTION calculate_factorial;
-DROP FUNCTION
+ERROR: unknown function 'calculate_factorial' when dropping function
+SQLSTATE: 42883
 > SHOW FUNCTIONS;
   function_name
 -----------------

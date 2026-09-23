@@ -55,7 +55,11 @@ class ScanRowBatch : public RowBatch {
     typ_ = RowBatchType::RowBatchTypeScan;
     stage_ = Stage::STAGE_SCAN;
     table_ = table;
-    res_.setColumnNum(table_->scan_cols_.size());
+    if (table_->has_osn_col_) {
+      res_.setColumnNum(table_->scan_cols_.size() + OSN_EXTEND_COL_NUM);
+    } else {
+      res_.setColumnNum(table_->scan_cols_.size());
+    }
   }
   virtual ~ScanRowBatch() { res_.clear(); }
   explicit ScanRowBatch(ScanRowBatch *handle) {
@@ -66,7 +70,11 @@ class ScanRowBatch : public RowBatch {
     tag_col_offset_ = handle->tag_col_offset_;
     table_ = handle->table_;
     tag_rowbatch_ = handle->tag_rowbatch_;
-    res_.setColumnNum(table_->scan_cols_.size());
+    if (table_->has_osn_col_) {
+      res_.setColumnNum(table_->scan_cols_.size() + OSN_EXTEND_COL_NUM);
+    } else {
+      res_.setColumnNum(table_->scan_cols_.size());
+    }
   }
 
   void Copy(ScanRowBatch *handle) {
@@ -77,7 +85,11 @@ class ScanRowBatch : public RowBatch {
     tag_col_offset_ = handle->tag_col_offset_;
     table_ = handle->table_;
     tag_rowbatch_ = handle->tag_rowbatch_;
-    res_.setColumnNum(table_->scan_cols_.size());
+    if (table_->has_osn_col_) {
+      res_.setColumnNum(table_->scan_cols_.size() + OSN_EXTEND_COL_NUM);
+    } else {
+      res_.setColumnNum(table_->scan_cols_.size());
+    }
   }
 
   char *GetData(k_uint32 col, k_uint32 offset,

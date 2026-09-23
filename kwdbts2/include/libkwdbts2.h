@@ -52,6 +52,11 @@ typedef struct {
     int32_t len;
 } IndexColumns;
 
+typedef struct {
+    uint32_t* valid_column;
+    int32_t len;
+} ValidColumns;
+
 // timestamp span
 typedef struct {
   int64_t begin;
@@ -170,6 +175,8 @@ typedef struct {
   int64_t block_bytes;                // scanned block_bytes
   int64_t agg_bytes;                  // scanned agg_bytes
   int64_t header_bytes;               // scannned header bytes
+  int64_t block_pre_agg_hit_count;    // block count that used block pre-aggregation
+  int64_t block_pre_agg_miss_count;   // block count that fell back to raw aggregation
   // build_time only be used for showing build time in explain analyze of hash tag scan op
   // for multiple model processing when the switch is on and the server starts with single node mode.
   int64_t build_time;  // time of build
@@ -569,6 +576,12 @@ int __attribute__((weak)) goFlushed();
 TSStatus TSGetTableBlocksDistribution(TSEngine* engine, TSTableID table_id, TSSlice* blocks_info);
 
 TSStatus TSGetDBBlocksDistribution(TSEngine* engine, uint32_t db_id, TSSlice* blocks_info);
+
+TSStatus TsGetValidColumns(TSEngine* engine, TSTableID table_id, uint32_t table_version,
+                           TSSlice* primary_tags, size_t primary_tags_num,
+                           ValidColumns* valid_columns);
+
+TSStatus TSSetPublishedMaxOSN(TSEngine* engine, TSSlice tbl_osn_vec);
 
 TSStatus TSRaftOpen(RaftStore** engine, TSSlice dir);
 

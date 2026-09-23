@@ -16,17 +16,17 @@ DETAIL: source SQL:
 select * from ts_db.metric_ts FILL(EXACT)
                               ^
 > select * from ts_db.metric_ts where device_id = 'device1' FILL(EXACT);
-ERROR: FILL clause requires the use of timestamp and pTag column conditions.
+ERROR: the conditions of FILL clause must only be ts col and pTag
 SQLSTATE: 42601
 > select * from ts_db.metric_ts where k_timestamp = '2025-12-19 10:00:02.200' FILL(EXACT);
-ERROR: FILL clause requires the use of timestamp and pTag column conditions.
+ERROR: the conditions of FILL clause must only be ts col and pTag
 SQLSTATE: 42601
 > select * from ts_db.metric_ts where device_id in ('device1') and k_timestamp = '2025-12-19 10:00:02.200' FILL(EXACT);
   k_timestamp | data1 | data2 | data3 | data4 | data5 | data6 | data7 | data8 | data9 | data10 | data11 | device_id | alias
 --------------+-------+-------+-------+-------+-------+-------+-------+-------+-------+--------+--------+-----------+--------
 (0 rows)
 > select * from ts_db.metric_ts where device_id = 'device1' and k_timestamp = '2025-12-19 10:00:02.200' and data2=22 FILL(EXACT);
-ERROR: FILL clause requires the use of timestamp and pTag column conditions.
+ERROR: the conditions of FILL clause must only be ts col and pTag
 SQLSTATE: 42601
 > select * from ts_db.metric_ts where device_id = 'device1' and k_timestamp = '2025-12-19 10:00:02.200' FILL(EXACT) group by k_timestamp;
 ERROR: at or near "group": syntax error
@@ -4302,23 +4302,23 @@ CREATE PROCEDURE
 > CREATE PROCEDURE select_fill_test.pro2(a TIMESTAMP, b VARCHAR) $$BEGIN SELECT k_timestamp,tag16,e1,e2,e3,e4,e5,e6,e7,e8,e9,e10,e11,e12,e13,e14,e15,e16,e17,e18,e19 FROM select_fill_test.t1 WHERE k_timestamp=a and tag16=b FILL(PREVIOUS) ORDER BY tag16; END $$;
 CREATE PROCEDURE
 > call select_fill_test.pro2('2026-03-06 08:00:08+00:00', 'JISCO.BOF2.出钢温度1');
-         k_timestamp        |        tag16         |            e1             |  e2  |   e3   |       e4       |  e5  |      e6      |  e7   | e8 |        e9        | e10 |       e11        |   e12    |        e13         |     e14      |        e15         |   e16    |   e17    |   e18    |   e19
-----------------------------+----------------------+---------------------------+------+--------+----------------+------+--------------+-------+----+------------------+-----+------------------+----------+--------------------+--------------+--------------------+----------+----------+----------+-----------
-  2026-03-06 08:00:08+00:00 | JISCO.BOF2.出钢温度1 | 2026-03-06 11:00:00+00:00 | -101 | -10112 | -1011213141516 | 7.89 | 7.8901234567 | false | D  | test_char64_004  | 试  | 测试NCHAR64_003  | 类型测试 | varchar64_test_004 | nvarchar数值 | nvarchar64测试_004 | \x3d3e3f | \x404142 | \x434445 | \x464748
+         k_timestamp        |        tag16         |         e1          |  e2  |   e3   |       e4       |  e5  |      e6      |  e7   | e8 |        e9        | e10 |       e11        |   e12    |        e13         |     e14      |        e15         |   e16    |   e17    |   e18    |   e19
+----------------------------+----------------------+---------------------+------+--------+----------------+------+--------------+-------+----+------------------+-----+------------------+----------+--------------------+--------------+--------------------+----------+----------+----------+-----------
+  2026-03-06 08:00:08+00:00 | JISCO.BOF2.出钢温度1 | 2026-03-06 11:00:00 | -101 | -10112 | -1011213141516 | 7.89 | 7.8901234567 | false | D  | test_char64_004  | 试  | 测试NCHAR64_003  | 类型测试 | varchar64_test_004 | nvarchar数值 | nvarchar64测试_004 | \x3d3e3f | \x404142 | \x434445 | \x464748
 (1 row)
 > CREATE PROCEDURE select_fill_test.pro3(a TIMESTAMP, b VARCHAR) $$BEGIN SELECT k_timestamp,tag16,e1,e2,e3,e4,e5,e6,e7,e8,e9,e10,e11,e12,e13,e14,e15,e16,e17,e18,e19 FROM select_fill_test.t1 WHERE k_timestamp=a and tag16=b FILL(NEXT) ORDER BY tag16; END $$;
 CREATE PROCEDURE
 > call select_fill_test.pro3('2026-03-06 08:00:08+00:00', 'JISCO.BOF2.出钢温度1');
-         k_timestamp        |        tag16         |            e1             | e2  |  e3   |      e4       |  e5  |      e6      |  e7  | e8 |        e9        | e10 |       e11        |   e12    |        e13         |     e14      |        e15         |   e16    |   e17    |   e18    |   e19
-----------------------------+----------------------+---------------------------+-----+-------+---------------+------+--------------+------+----+------------------+-----+------------------+----------+--------------------+--------------+--------------------+----------+----------+----------+-----------
-  2026-03-06 08:00:08+00:00 | JISCO.BOF2.出钢温度1 | 2026-03-06 12:00:00+00:00 | 303 | 30334 | 3033435363738 | 9.01 | 9.0123456789 | true | E  | test_char64_005  | 数  | 测试NCHAR64_005  | 布尔测试 | varchar64_test_005 | nvarchar布尔 | nvarchar64测试_005 | \x555657 | \x58595a | \x5b5c5d | \x5e5f60
+         k_timestamp        |        tag16         |         e1          | e2  |  e3   |      e4       |  e5  |      e6      |  e7  | e8 |        e9        | e10 |       e11        |   e12    |        e13         |     e14      |        e15         |   e16    |   e17    |   e18    |   e19
+----------------------------+----------------------+---------------------+-----+-------+---------------+------+--------------+------+----+------------------+-----+------------------+----------+--------------------+--------------+--------------------+----------+----------+----------+-----------
+  2026-03-06 08:00:08+00:00 | JISCO.BOF2.出钢温度1 | 2026-03-06 12:00:00 | 303 | 30334 | 3033435363738 | 9.01 | 9.0123456789 | true | E  | test_char64_005  | 数  | 测试NCHAR64_005  | 布尔测试 | varchar64_test_005 | nvarchar布尔 | nvarchar64测试_005 | \x555657 | \x58595a | \x5b5c5d | \x5e5f60
 (1 row)
 > CREATE PROCEDURE select_fill_test.pro4(a TIMESTAMP, b VARCHAR) $$BEGIN SELECT k_timestamp,tag16,e1,e2,e3,e4,e5,e6,e7,e8,e9,e10,e11,e12,e13,e14,e15,e16,e17,e18,e19 FROM select_fill_test.t1 WHERE k_timestamp=a and tag16=b FILL(CLOSER) ORDER BY tag16; END $$;
 CREATE PROCEDURE
 > call select_fill_test.pro4('2026-03-06 08:00:08+00:00', 'JISCO.BOF2.出钢温度1');
-         k_timestamp        |        tag16         |            e1             |  e2  |   e3   |       e4       |  e5  |      e6      |  e7   | e8 |        e9        | e10 |       e11        |   e12    |        e13         |     e14      |        e15         |   e16    |   e17    |   e18    |   e19
-----------------------------+----------------------+---------------------------+------+--------+----------------+------+--------------+-------+----+------------------+-----+------------------+----------+--------------------+--------------+--------------------+----------+----------+----------+-----------
-  2026-03-06 08:00:08+00:00 | JISCO.BOF2.出钢温度1 | 2026-03-06 11:00:00+00:00 | -101 | -10112 | -1011213141516 | 7.89 | 7.8901234567 | false | D  | test_char64_004  | 试  | 测试NCHAR64_005  | 布尔测试 | varchar64_test_004 | nvarchar数值 | nvarchar64测试_004 | \x3d3e3f | \x404142 | \x434445 | \x464748
+         k_timestamp        |        tag16         |         e1          |  e2  |   e3   |       e4       |  e5  |      e6      |  e7   | e8 |        e9        | e10 |       e11        |   e12    |        e13         |     e14      |        e15         |   e16    |   e17    |   e18    |   e19
+----------------------------+----------------------+---------------------+------+--------+----------------+------+--------------+-------+----+------------------+-----+------------------+----------+--------------------+--------------+--------------------+----------+----------+----------+-----------
+  2026-03-06 08:00:08+00:00 | JISCO.BOF2.出钢温度1 | 2026-03-06 11:00:00 | -101 | -10112 | -1011213141516 | 7.89 | 7.8901234567 | false | D  | test_char64_004  | 试  | 测试NCHAR64_005  | 布尔测试 | varchar64_test_004 | nvarchar数值 | nvarchar64测试_004 | \x3d3e3f | \x404142 | \x434445 | \x464748
 (1 row)
 > CREATE PROCEDURE select_fill_test.pro5(a TIMESTAMP, b VARCHAR, c INT) $$BEGIN SELECT k_timestamp,tag16,e1,e2,e3,e4,e5,e6,e7,e8,e9,e10,e11,e12,e13,e14,e15,e16,e17,e18,e19 FROM select_fill_test.t1 WHERE k_timestamp=a and tag16=b FILL(CONSTANT, c) ORDER BY tag16; END $$;
 ERROR: CONSTANT FILL: Only constant is supported: c
@@ -4326,9 +4326,9 @@ SQLSTATE: 42601
 > CREATE PROCEDURE select_fill_test.pro5(a TIMESTAMP, b VARCHAR) $$BEGIN SELECT k_timestamp,tag16,e1,e2,e3,e4,e5,e6,e7,e8,e9,e10,e11,e12,e13,e14,e15,e16,e17,e18,e19 FROM select_fill_test.t1 WHERE k_timestamp=a and tag16=b FILL(CONSTANT, 11) ORDER BY tag16; END $$;
 CREATE PROCEDURE
 > call select_fill_test.pro5('2026-03-06 08:00:08+00:00', 'JISCO.BOF2.出钢温度1');
-         k_timestamp        |        tag16         |              e1               | e2 | e3 | e4 | e5 | e6 |  e7  |  e8  | e9 | e10  | e11 | e12 | e13 | e14 | e15 |  e16   |  e17   |  e18   |  e19
-----------------------------+----------------------+-------------------------------+----+----+----+----+----+------+------+----+------+-----+-----+-----+-----+-----+--------+--------+--------+---------
-  2026-03-06 08:00:08+00:00 | JISCO.BOF2.出钢温度1 | 1970-01-01 00:00:00.011+00:00 | 11 | 11 | 11 | 11 | 11 | NULL | NULL | 11 | NULL | 11  | 11  | 11  | 11  | 11  | \x3131 | \x3131 | \x3131 | \x3131
+         k_timestamp        |        tag16         |           e1            | e2 | e3 | e4 | e5 | e6 |  e7  |  e8  | e9 | e10  | e11 | e12 | e13 | e14 | e15 |  e16   |  e17   |  e18   |  e19
+----------------------------+----------------------+-------------------------+----+----+----+----+----+------+------+----+------+-----+-----+-----+-----+-----+--------+--------+--------+---------
+  2026-03-06 08:00:08+00:00 | JISCO.BOF2.出钢温度1 | 1970-01-01 00:00:00.011 | 11 | 11 | 11 | 11 | 11 | NULL | NULL | 11 | NULL | 11  | 11  | 11  | 11  | 11  | \x3131 | \x3131 | \x3131 | \x3131
 (1 row)
 > CREATE PROCEDURE select_fill_test.pro6(a TIMESTAMP, b VARCHAR) $$BEGIN SELECT k_timestamp,tag16,e1,e2,e3,e4,e5,e6,e7,e8,e9,e10,e11,e12,e13,e14,e15,e16,e17,e18,e19 FROM select_fill_test.t1 WHERE k_timestamp=a and tag16=b FILL(LINEAR) ORDER BY tag16; END $$;
 CREATE PROCEDURE
@@ -4347,23 +4347,23 @@ PREPARE
 > prepare p2 as SELECT k_timestamp,tag16,e1,e2,e3,e4,e5,e6,e7,e8,e9,e10,e11,e12,e13,e14,e15,e16,e17,e18,e19 FROM select_fill_test.t1 WHERE k_timestamp=$1 and tag16=$2 FILL(PREVIOUS) ORDER BY tag16;
 PREPARE
 > execute p2('2026-03-06 08:00:08+00:00', 'JISCO.BOF2.出钢温度1');
-         k_timestamp        |        tag16         |            e1             |  e2  |   e3   |       e4       |  e5  |      e6      |  e7   | e8 |        e9        | e10 |       e11        |   e12    |        e13         |     e14      |        e15         |   e16    |   e17    |   e18    |   e19
-----------------------------+----------------------+---------------------------+------+--------+----------------+------+--------------+-------+----+------------------+-----+------------------+----------+--------------------+--------------+--------------------+----------+----------+----------+-----------
-  2026-03-06 08:00:08+00:00 | JISCO.BOF2.出钢温度1 | 2026-03-06 11:00:00+00:00 | -101 | -10112 | -1011213141516 | 7.89 | 7.8901234567 | false | D  | test_char64_004  | 试  | 测试NCHAR64_003  | 类型测试 | varchar64_test_004 | nvarchar数值 | nvarchar64测试_004 | \x3d3e3f | \x404142 | \x434445 | \x464748
+         k_timestamp        |        tag16         |         e1          |  e2  |   e3   |       e4       |  e5  |      e6      |  e7   | e8 |        e9        | e10 |       e11        |   e12    |        e13         |     e14      |        e15         |   e16    |   e17    |   e18    |   e19
+----------------------------+----------------------+---------------------+------+--------+----------------+------+--------------+-------+----+------------------+-----+------------------+----------+--------------------+--------------+--------------------+----------+----------+----------+-----------
+  2026-03-06 08:00:08+00:00 | JISCO.BOF2.出钢温度1 | 2026-03-06 11:00:00 | -101 | -10112 | -1011213141516 | 7.89 | 7.8901234567 | false | D  | test_char64_004  | 试  | 测试NCHAR64_003  | 类型测试 | varchar64_test_004 | nvarchar数值 | nvarchar64测试_004 | \x3d3e3f | \x404142 | \x434445 | \x464748
 (1 row)
 > prepare p3 as SELECT k_timestamp,tag16,e1,e2,e3,e4,e5,e6,e7,e8,e9,e10,e11,e12,e13,e14,e15,e16,e17,e18,e19 FROM select_fill_test.t1 WHERE k_timestamp=$1 and tag16=$2 FILL(NEXT) ORDER BY tag16;
 PREPARE
 > execute p3('2026-03-06 08:00:08+00:00', 'JISCO.BOF2.出钢温度1');
-         k_timestamp        |        tag16         |            e1             | e2  |  e3   |      e4       |  e5  |      e6      |  e7  | e8 |        e9        | e10 |       e11        |   e12    |        e13         |     e14      |        e15         |   e16    |   e17    |   e18    |   e19
-----------------------------+----------------------+---------------------------+-----+-------+---------------+------+--------------+------+----+------------------+-----+------------------+----------+--------------------+--------------+--------------------+----------+----------+----------+-----------
-  2026-03-06 08:00:08+00:00 | JISCO.BOF2.出钢温度1 | 2026-03-06 12:00:00+00:00 | 303 | 30334 | 3033435363738 | 9.01 | 9.0123456789 | true | E  | test_char64_005  | 数  | 测试NCHAR64_005  | 布尔测试 | varchar64_test_005 | nvarchar布尔 | nvarchar64测试_005 | \x555657 | \x58595a | \x5b5c5d | \x5e5f60
+         k_timestamp        |        tag16         |         e1          | e2  |  e3   |      e4       |  e5  |      e6      |  e7  | e8 |        e9        | e10 |       e11        |   e12    |        e13         |     e14      |        e15         |   e16    |   e17    |   e18    |   e19
+----------------------------+----------------------+---------------------+-----+-------+---------------+------+--------------+------+----+------------------+-----+------------------+----------+--------------------+--------------+--------------------+----------+----------+----------+-----------
+  2026-03-06 08:00:08+00:00 | JISCO.BOF2.出钢温度1 | 2026-03-06 12:00:00 | 303 | 30334 | 3033435363738 | 9.01 | 9.0123456789 | true | E  | test_char64_005  | 数  | 测试NCHAR64_005  | 布尔测试 | varchar64_test_005 | nvarchar布尔 | nvarchar64测试_005 | \x555657 | \x58595a | \x5b5c5d | \x5e5f60
 (1 row)
 > prepare p4 as SELECT k_timestamp,tag16,e1,e2,e3,e4,e5,e6,e7,e8,e9,e10,e11,e12,e13,e14,e15,e16,e17,e18,e19 FROM select_fill_test.t1 WHERE k_timestamp=$1 and tag16=$2 FILL(CLOSER) ORDER BY tag16;
 PREPARE
 > execute p4('2026-03-06 08:00:08+00:00', 'JISCO.BOF2.出钢温度1');
-         k_timestamp        |        tag16         |            e1             |  e2  |   e3   |       e4       |  e5  |      e6      |  e7   | e8 |        e9        | e10 |       e11        |   e12    |        e13         |     e14      |        e15         |   e16    |   e17    |   e18    |   e19
-----------------------------+----------------------+---------------------------+------+--------+----------------+------+--------------+-------+----+------------------+-----+------------------+----------+--------------------+--------------+--------------------+----------+----------+----------+-----------
-  2026-03-06 08:00:08+00:00 | JISCO.BOF2.出钢温度1 | 2026-03-06 11:00:00+00:00 | -101 | -10112 | -1011213141516 | 7.89 | 7.8901234567 | false | D  | test_char64_004  | 试  | 测试NCHAR64_005  | 布尔测试 | varchar64_test_004 | nvarchar数值 | nvarchar64测试_004 | \x3d3e3f | \x404142 | \x434445 | \x464748
+         k_timestamp        |        tag16         |         e1          |  e2  |   e3   |       e4       |  e5  |      e6      |  e7   | e8 |        e9        | e10 |       e11        |   e12    |        e13         |     e14      |        e15         |   e16    |   e17    |   e18    |   e19
+----------------------------+----------------------+---------------------+------+--------+----------------+------+--------------+-------+----+------------------+-----+------------------+----------+--------------------+--------------+--------------------+----------+----------+----------+-----------
+  2026-03-06 08:00:08+00:00 | JISCO.BOF2.出钢温度1 | 2026-03-06 11:00:00 | -101 | -10112 | -1011213141516 | 7.89 | 7.8901234567 | false | D  | test_char64_004  | 试  | 测试NCHAR64_005  | 布尔测试 | varchar64_test_004 | nvarchar数值 | nvarchar64测试_004 | \x3d3e3f | \x404142 | \x434445 | \x464748
 (1 row)
 > prepare p5 as SELECT k_timestamp,tag16,e1,e2,e3,e4,e5,e6,e7,e8,e9,e10,e11,e12,e13,e14,e15,e16,e17,e18,e19 FROM select_fill_test.t1 WHERE k_timestamp=$1 and tag16=$2 FILL(CONSTANT, $3) ORDER BY tag16;
 ERROR: CONSTANT FILL: Only constant is supported: $3
@@ -4371,9 +4371,9 @@ SQLSTATE: 42601
 > prepare p5 as SELECT k_timestamp,tag16,e1,e2,e3,e4,e5,e6,e7,e8,e9,e10,e11,e12,e13,e14,e15,e16,e17,e18,e19 FROM select_fill_test.t1 WHERE k_timestamp=$1 and tag16=$2 FILL(CONSTANT, 11) ORDER BY tag16;
 PREPARE
 > execute p5('2026-03-06 08:00:08+00:00', 'JISCO.BOF2.出钢温度1');
-         k_timestamp        |        tag16         |              e1               | e2 | e3 | e4 | e5 | e6 |  e7  |  e8  | e9 | e10  | e11 | e12 | e13 | e14 | e15 |  e16   |  e17   |  e18   |  e19
-----------------------------+----------------------+-------------------------------+----+----+----+----+----+------+------+----+------+-----+-----+-----+-----+-----+--------+--------+--------+---------
-  2026-03-06 08:00:08+00:00 | JISCO.BOF2.出钢温度1 | 1970-01-01 00:00:00.011+00:00 | 11 | 11 | 11 | 11 | 11 | NULL | NULL | 11 | NULL | 11  | 11  | 11  | 11  | 11  | \x3131 | \x3131 | \x3131 | \x3131
+         k_timestamp        |        tag16         |           e1            | e2 | e3 | e4 | e5 | e6 |  e7  |  e8  | e9 | e10  | e11 | e12 | e13 | e14 | e15 |  e16   |  e17   |  e18   |  e19
+----------------------------+----------------------+-------------------------+----+----+----+----+----+------+------+----+------+-----+-----+-----+-----+-----+--------+--------+--------+---------
+  2026-03-06 08:00:08+00:00 | JISCO.BOF2.出钢温度1 | 1970-01-01 00:00:00.011 | 11 | 11 | 11 | 11 | 11 | NULL | NULL | 11 | NULL | 11  | 11  | 11  | 11  | 11  | \x3131 | \x3131 | \x3131 | \x3131
 (1 row)
 > prepare p6 as SELECT k_timestamp,tag16,e1,e2,e3,e4,e5,e6,e7,e8,e9,e10,e11,e12,e13,e14,e15,e16,e17,e18,e19 FROM select_fill_test.t1 WHERE k_timestamp=$1 and tag16=$2 FILL(LINEAR) ORDER BY tag16;
 PREPARE
@@ -4381,6 +4381,26 @@ PREPARE
          k_timestamp        |        tag16         |  e1  | e2  |  e3   |      e4       |  e5  |  e6  |  e7  |  e8  |  e9  | e10  | e11  | e12  | e13  | e14  | e15  | e16  | e17  | e18  | e19
 ----------------------------+----------------------+------+-----+-------+---------------+------+------+------+------+------+------+------+------+------+------+------+------+------+------+-------
   2026-03-06 08:00:08+00:00 | JISCO.BOF2.出钢温度1 | NULL | 101 | 10111 | 1011111111111 | 8.45 | 8.45 | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL | NULL
+(1 row)
+> CREATE TABLE select_fill_test.t3 (
+    k_timestamp TIMESTAMP NOT NULL,
+    v INT8
+) TAGS (
+    id INT8 NOT NULL,
+    site INT8 NOT NULL
+) PRIMARY TAGS(id, site);
+CREATE TABLE
+> INSERT INTO select_fill_test.t3 VALUES ('2026-01-01 00:00:00', 1, 1, 10);
+INSERT 1
+> SELECT v FROM select_fill_test.t3 WHERE k_timestamp = '2026-01-01 00:00:00' AND (id, site) IN ((id, site)) FILL (EXACT);
+ERROR: the conditions of PTag must contains single column and constants in FILL clause
+SQLSTATE: 42601
+> CREATE PROCEDURE select_fill_test.bugfix1(t TIMESTAMP, a INT8, b INT8) $$BEGIN SELECT * from select_fill_test.t3 WHERE k_timestamp=t AND (id, site) IN ((a, b)) FILL (EXACT); END $$;
+CREATE PROCEDURE
+> call select_fill_test.bugfix1('2026-01-01 00:00:00', 1, 10);
+         k_timestamp        | v | id | site
+----------------------------+---+----+-------
+  2026-01-01 00:00:00+00:00 | 1 |  1 |   10
 (1 row)
 > use defaultdb;
 SET

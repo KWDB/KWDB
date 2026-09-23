@@ -13,6 +13,7 @@
 #include <regex>
 #include <limits>
 #include <thread>
+#include <unordered_map>
 #include "include/engine.h"
 #include "cm_exception.h"
 #include "cm_backtrace.h"
@@ -27,6 +28,7 @@
 #include "ts_engine.h"
 #include "ts_lru_block_cache.h"
 #include "mm_kmalloc.h"
+#include "ts_ts_lsn_span_utils.h"
 
 #ifndef KWBASE_OSS
 #include "ts_config_autonomy.h"
@@ -762,6 +764,8 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
     }
   } else if ("ts.compress.last_segment.enabled" == key) {
     EngineOptions::compress_last_segment = ("true" == value);
+  } else if ("ts.last_block_cache.max_entries" == key) {
+    EngineOptions::last_block_cache_max_entries = atoll(value.c_str());
   } else if ("ts.force_sync_file.enabled" == key) {
     EngineOptions::force_sync_file = ("true" == value);
   } else if ("ts.last_cache_size.max_limit" == key) {
@@ -790,6 +794,9 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
     } else {
       LOG_ERROR("Invalid compression algorithm: %s", value.c_str());
     }
+  } else if ("ts.txn.atomicity.enabled" == key) {
+    CLUSTER_SETTING_TS_TXN_ATOMICITY_ENABLE = "true" == value;
+    LOG_INFO("Cluster setting %s is %s.", key.c_str(), "true" == value ? "true" : "false");
   }
 #ifndef KWBASE_OSS
   else if ("ts.storage.autonomy.mode" == key) {  // NOLINT
@@ -1680,6 +1687,44 @@ TSStatus TSSyncRaftLog(RaftStore* engine) {
   return kTsSuccess;
 }
 
+TSStatus TsGetValidColumns(TSEngine* engine, TSTableID table_id, uint32_t table_version,
+                           TSSlice* primary_tags, size_t primary_tags_num,
+                           ValidColumns* valid_columns) {
+  if (valid_columns == nullptr) {
+    return ToTsStatus("TsGetValidColumns: valid_columns is nullptr!");
+  }
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  bool is_dropped = false;
+  std::vector<uint32_t> columns;
+  s = engine->GetValidColumns(ctx_p, table_id, table_version, is_dropped,
+                              primary_tags, primary_tags_num, columns);
+  if (s != KStatus::SUCCESS) {
+    if (is_dropped) {
+      valid_columns[0].valid_column = nullptr;
+      valid_columns[0].len = 0;
+      return kTsSuccess;
+    }
+    return ToTsStatus("TsGetValidColumns Error!");
+  }
+  if (!columns.empty()) {
+    valid_columns[0].valid_column = static_cast<uint32_t*>(malloc(columns.size() * sizeof(uint32_t)));
+    if (valid_columns[0].valid_column == nullptr) {
+      return ToTsStatus("TsGetValidColumns malloc failed!");
+    }
+    memcpy(valid_columns[0].valid_column, columns.data(), columns.size() * sizeof(uint32_t));
+    valid_columns[0].len = static_cast<int32_t>(columns.size());
+  } else {
+    valid_columns[0].valid_column = nullptr;
+    valid_columns[0].len = 0;
+  }
+  return kTsSuccess;
+}
+
 TSStatus TSHasRange(RaftStore* engine, uint64_t range_id) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
@@ -1691,5 +1736,21 @@ TSStatus TSHasRange(RaftStore* engine, uint64_t range_id) {
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("has no range");
   }
+  return kTsSuccess;
+}
+
+TSStatus TSSetPublishedMaxOSN(TSEngine* engine, TSSlice tbl_osn_vec) {
+  assert(tbl_osn_vec.len % 16 == 0);
+  int vec_num = tbl_osn_vec.len / 16;
+  std::unordered_map<TSTableID, TS_OSN> tbl_osn;
+  for (size_t i = 0; i < vec_num; i++) {
+    auto table_id = KUint64(tbl_osn_vec.data + i * 16);
+    auto osn = KUint64(tbl_osn_vec.data + i * 16 + 8);
+    tbl_osn[table_id] = osn;
+  }
+  engine->SetPublishedMaxOSN(tbl_osn);
+  std::string ret;
+  BinaryToHexStr(tbl_osn_vec, ret);
+  LOG_DEBUG("TSSetPublishedMaxOSN, tbl_osn info: %s.", ret.c_str());
   return kTsSuccess;
 }

@@ -80,6 +80,7 @@ message KWDBTsTable {
   optional uint32 ts_version = 13;
   // hash num
   optional uint64 hash_num = 14;
+  optional bool sparse = 15;
 }
 
 // KWDBAlterType

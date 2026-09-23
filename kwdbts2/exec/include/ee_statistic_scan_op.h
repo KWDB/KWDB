@@ -14,8 +14,8 @@
 #include <vector>
 
 #include "ee_base_op.h"
-#include "ee_statistic_scan_parser.h"
 #include "ee_scan_row_batch.h"
+#include "ee_statistic_scan_parser.h"
 #include "kwdb_consts.h"
 #include "kwdb_type.h"
 namespace kwdbts {
@@ -26,8 +26,8 @@ class TSStatisticReaderSpec;
 
 class TableStatisticScanOperator : public BaseOperator {
  public:
-  TableStatisticScanOperator(TsFetcherCollection* collection, TSStatisticReaderSpec *spec,
-                             PostProcessSpec *post, TABLE *table, int32_t processor_id);
+  TableStatisticScanOperator(TsFetcherCollection* collection, TSStatisticReaderSpec* spec, PostProcessSpec* post,
+                             TABLE* table, int32_t processor_id);
   TableStatisticScanOperator(const TableStatisticScanOperator&, int32_t processor_id);
   virtual ~TableStatisticScanOperator();
   EEIteratorErrCode Start(kwdbContext_p ctx) override;
@@ -36,13 +36,14 @@ class TableStatisticScanOperator : public BaseOperator {
   EEIteratorErrCode Close(kwdbContext_p ctx) override;
   EEIteratorErrCode Reset(kwdbContext_p ctx) override;
   BaseOperator* Clone() override;
-  enum OperatorType Type() override {return OperatorType::OPERATOR_STATISTIC_SCAN;}
-  k_int64 ProcessPTagSpanFilter(RowBatch *row_batch);
+  enum OperatorType Type() override {
+    return OperatorType::OPERATOR_STATISTIC_SCAN;
+  }
+  k_int64 ProcessPTagSpanFilter(RowBatch* row_batch);
 
  protected:
   EEIteratorErrCode InitHandler(kwdbContext_p ctx);
-  EEIteratorErrCode InitScanRowBatch(kwdbContext_p ctx,
-                                     ScanRowBatch **row_batch);
+  EEIteratorErrCode InitScanRowBatch(kwdbContext_p ctx, ScanRowBatch** row_batch);
   void ProcessScalar();
 
  protected:
@@ -50,11 +51,12 @@ class TableStatisticScanOperator : public BaseOperator {
   k_uint64 object_id_{0};
   std::vector<KwTsSpan> ts_kwspans_;
   TsStatisticScanParser param_;
-  ScanRowBatch *row_batch_{nullptr};
-  StorageHandler *handler_{nullptr};
+  ScanRowBatch* row_batch_{nullptr};
+  StorageHandler* handler_{nullptr};
   k_int32 tag_count_read_index_{-1};
   k_bool is_has_data_for_scalar_{false};
   k_bool is_scalar_{false};
   k_bool is_lastrow_optimize_{false};
+  k_bool batch_copy_{false};
 };
 }  // namespace kwdbts

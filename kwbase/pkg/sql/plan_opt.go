@@ -64,24 +64,32 @@ func (p *planner) prepareUsingOptimizer(
 ) (planFlags, error) {
 	stmt := p.stmt
 
-	opc := &p.optPlanningCtx
-	opc.reset()
+	var opc *optPlanningCtx
+	if insidePrepareOfProcFlag == optbuilder.InsidePrepareOfProcDef {
+		newOpc := optPlanningCtx{}
+		newOpc.init(p)
+		newOpc.reset()
+		opc = &newOpc
+	} else {
+		opc = &p.optPlanningCtx
+		opc.reset()
+	}
 
 	stmt.Prepared.AnonymizedStr = anonymizeStmt(stmt.AST)
 
 	switch stmt.AST.(type) {
-	case *tree.AlterIndex, *tree.AlterTable, *tree.AlterSequence, *tree.AlterSchedule,
+	case *tree.AlterIndex, *tree.AlterPipe, *tree.AlterTable, *tree.AlterSequence, *tree.AlterSchedule,
 		*tree.AlterStream,
 		*tree.BeginTransaction,
 		*tree.CommentOnColumn, *tree.CommentOnDatabase, *tree.CommentOnIndex, *tree.CommentOnTable,
 		*tree.CommentOnProcedure,
 		*tree.CommitTransaction,
 		*tree.CopyFrom, *tree.CreateDatabase, *tree.CreateFunction, *tree.CreateIndex, *tree.CreateView,
-		*tree.CreateSchedule,
+		*tree.CreateSchedule, *tree.CreatePipe,
 		*tree.CreateSequence,
 		*tree.CreateStats,
 		*tree.CreateStream,
-		*tree.Deallocate, *tree.Discard, *tree.DropDatabase, *tree.DropIndex,
+		*tree.Deallocate, *tree.Discard, *tree.DropDatabase, *tree.DropIndex, *tree.DropPipe,
 		*tree.DropStream,
 		*tree.DropTable, *tree.DropView, *tree.DropSequence,
 		*tree.Execute,
@@ -94,7 +102,8 @@ func (p *planner) prepareUsingOptimizer(
 		*tree.ReplicationControl,
 		*tree.RollbackToSavepoint, *tree.RollbackTransaction,
 		*tree.Savepoint, *tree.SetTransaction, *tree.SetTracing, *tree.SetSessionAuthorizationDefault,
-		*tree.SetSessionCharacteristics:
+		*tree.SetSessionCharacteristics,
+		*tree.CreatePublication, *tree.AlterPub, *tree.DropPublication:
 		// These statements do not have result columns and do not support placeholders
 		// so there is no need to do anything during prepare.
 		//
@@ -403,7 +412,7 @@ func (opc *optPlanningCtx) buildReusableMemo(
 	bld.KeepPlaceholders = true
 	bld.PrepareHelper.Origin = p.PrepareHelper.Origin
 	if insidePrepareOfProcFlag == optbuilder.InsidePrepareOfProcDef {
-		bld.SetProcPrepareFlags(insidePrepareOfProcFlag)
+		bld.AddInsideFlag(insidePrepareOfProcFlag)
 	}
 	// find sql of select in insert...select...
 	if err := bld.Build(); err != nil {

@@ -79,6 +79,9 @@ type Column interface {
 	// TsColStorgeLen is part of the cat.Column interface.
 	TsColStorgeLen() uint64
 
+	// TsVariableLengthType is part of the cat.Column interface.
+	TsVariableLengthType() int32
+
 	// IsPrimaryTagCol returns true if the column is a primary tag.
 	IsPrimaryTagCol() bool
 

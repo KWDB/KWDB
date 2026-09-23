@@ -102,7 +102,7 @@ func (b *Builder) buildWindow(outScope *scope, inScope *scope) {
 		}
 	}
 
-	if !isDiff && (inScope.TableType.HasStable() || inScope.TableType.HasGtable()) {
+	if !isDiff && (inScope.TableType.HasStable() || inScope.TableType.HasGtable() || inScope.TableType.HasSparsetable()) {
 		panic(pgerror.New(pgcode.Warning, "window functions are not supported in tstable and stable"))
 	}
 

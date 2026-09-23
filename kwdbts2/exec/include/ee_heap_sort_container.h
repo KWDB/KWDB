@@ -34,9 +34,9 @@ class HeapSortContainer : public DataContainer, public std::enable_shared_from_t
  public:
   HeapSortContainer(std::vector<ColumnOrderInfo>& order_info,
                     ColumnInfo* col_info, k_int32 col_num)
-      : order_info_(order_info),
-        col_info_(col_info),
+      : col_info_(col_info),
         col_num_(col_num),
+        order_info_(order_info),
         compare_(this, order_info_),
         selection_heap_(compare_) {
     row_size_ = DataChunk::ComputeRowSize(col_info, col_num);
@@ -45,12 +45,12 @@ class HeapSortContainer : public DataContainer, public std::enable_shared_from_t
 
   HeapSortContainer(std::vector<ColumnOrderInfo>& order_info,
                     ColumnInfo* col_info, k_int32 col_num, k_uint32 capacity)
-      : order_info_(order_info),
-        col_info_(col_info),
+      : col_info_(col_info),
         col_num_(col_num),
+        capacity_(capacity),
+        order_info_(order_info),
         compare_(this, order_info_),
-        selection_heap_(compare_),
-        capacity_(capacity) {
+        selection_heap_(compare_) {
     row_size_ = DataChunk::ComputeRowSize(col_info, col_num);
   }
 
@@ -103,7 +103,7 @@ class HeapSortContainer : public DataContainer, public std::enable_shared_from_t
   std::priority_queue<k_uint32, std::vector<k_uint32>, OrderColumnCompare> selection_heap_;
   k_uint32 count_{0};  // total row number
   k_int32 current_line_{-1};  // current row
-  DataChunk* input_chunk_ptr_;
+  DataChunk* input_chunk_ptr_{nullptr};
   DataChunkPtr mem_chunk_ptr_;
   k_bool disorder_{true};
 };

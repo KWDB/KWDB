@@ -265,10 +265,15 @@ func (r *Replica) computeChecksumPostApply(ctx context.Context, cc storagepb.Com
 		}()
 
 		var shouldFatal bool
-		for _, rDesc := range cc.Terminate {
-			if rDesc.StoreID == r.store.StoreID() && rDesc.ReplicaID == r.mu.replicaID {
-				shouldFatal = true
+		if !isTSRangeDescriptor(&desc) {
+			for _, rDesc := range cc.Terminate {
+				if rDesc.StoreID == r.store.StoreID() && rDesc.ReplicaID == r.mu.replicaID {
+					shouldFatal = true
+				}
 			}
+		} else if len(cc.Terminate) > 0 && isTSRangeDescriptor(&desc) {
+			log.Errorf(ctx, "%s: replica inconsistency reported for TS range; "+
+				"skipping node termination (TS stats excluded from checksum)", r)
 		}
 
 		if shouldFatal {
@@ -812,10 +817,12 @@ func (r *Replica) evaluateProposalTS(
 				ms.ValCount += int64(rowCount)
 				ms.LiveBytes += int64(rowCount) * ms.TsPerRowSize
 				ms.ValBytes += int64(rowCount) * ms.TsPerRowSize
-			} else if tsput, ok := req.Value.(*roachpb.RequestUnion_TsRowPut); ok {
-				rowCount := len(tsput.TsRowPut.Values)
-				ms.LiveBytes += int64(rowCount) * ms.TsPerRowSize
-				ms.ValBytes += int64(rowCount) * ms.TsPerRowSize
+			} else if tsRowPut, ok := req.Value.(*roachpb.RequestUnion_TsRowPut); ok {
+				rowCount := int64(len(tsRowPut.TsRowPut.Values))
+				ms.KeyCount += rowCount
+				ms.ValCount += rowCount
+				ms.LiveBytes += rowCount * ms.TsPerRowSize
+				ms.ValBytes += rowCount * ms.TsPerRowSize
 			}
 		}
 	}
@@ -1002,24 +1009,24 @@ func (r *Replica) batchRequestOsnRewrite(
 				log.VEventf(ctx, 3, "The TsRowPutRequest RangeID is : %v, osn is :%v", r.RangeID, osn)
 			}
 		case *roachpb.TsDeleteRequest:
-			originOsn := req.(*roachpb.TsDeleteRequest).OsnId
+			originOsn := req.(*roachpb.TsDeleteRequest).OsnID
 			if originOsn == 0 {
 				osn := r.TsEngine().TsIDGen.GetNextID()
-				req.(*roachpb.TsDeleteRequest).OsnId = osn
+				req.(*roachpb.TsDeleteRequest).OsnID = osn
 				log.VEventf(ctx, 3, "The TsDeleteRequest RangeID is : %v, osn is :%v", r.RangeID, osn)
 			}
 		case *roachpb.TsDeleteMultiEntitiesDataRequest:
-			originOsn := req.(*roachpb.TsDeleteMultiEntitiesDataRequest).OsnId
+			originOsn := req.(*roachpb.TsDeleteMultiEntitiesDataRequest).OsnID
 			if originOsn == 0 {
 				osn := r.TsEngine().TsIDGen.GetNextID()
-				req.(*roachpb.TsDeleteMultiEntitiesDataRequest).OsnId = osn
+				req.(*roachpb.TsDeleteMultiEntitiesDataRequest).OsnID = osn
 				log.VEventf(ctx, 3, "The TsDeleteMultiEntitiesDataRequest RangeID is : %v, osn is :%v", r.RangeID, osn)
 			}
 		case *roachpb.TsDeleteEntityRequest:
-			originOsn := req.(*roachpb.TsDeleteEntityRequest).OsnId
+			originOsn := req.(*roachpb.TsDeleteEntityRequest).OsnID
 			if originOsn == 0 {
 				osn := r.TsEngine().TsIDGen.GetNextID()
-				req.(*roachpb.TsDeleteEntityRequest).OsnId = osn
+				req.(*roachpb.TsDeleteEntityRequest).OsnID = osn
 				log.VEventf(ctx, 3, "The TsDeleteEntityRequest RangeID is : %v, osn is :%v", r.RangeID, osn)
 			}
 		case *roachpb.TsTagUpdateRequest:
@@ -1052,6 +1059,7 @@ func (r *Replica) requestToProposalTS(
 	latchSpans *spanset.SpanSet,
 ) (*ProposalData, *roachpb.Error) {
 	res, needConsensus, pErr := r.evaluateProposalTS(ctx, idKey, ba, latchSpans)
+	ba.Requests = r.batchRequestOsnRewrite(ctx, ba.Requests)
 
 	// Fill out the results even if pErr != nil; we'll return the error below.
 	proposal := &ProposalData{

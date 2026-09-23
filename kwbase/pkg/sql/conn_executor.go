@@ -760,8 +760,20 @@ func (s *Server) populateMinimalSessionData(sd *sessiondata.SessionData) {
 		sd.SequenceState = sessiondata.NewSequenceState()
 	}
 	if sd.DataConversion == (sessiondata.DataConversionConfig{}) {
+		location := time.UTC
+		if s.cfg.Settings != nil {
+			tzStr := ServerTimezoneClusterSetting.Get(&s.cfg.Settings.SV)
+			if tzStr != "" {
+				if parsedLoc, err := timeutil.TimeZoneStringToLocation(
+					tzStr,
+					timeutil.TimeZoneStringToLocationISO8601Standard,
+				); err == nil {
+					location = parsedLoc
+				}
+			}
+		}
 		sd.DataConversion = sessiondata.DataConversionConfig{
-			Location: time.UTC,
+			Location: location,
 		}
 	}
 	if len(sd.SearchPath.GetPathArray()) == 0 {
@@ -2907,10 +2919,10 @@ func (ex *connExecutor) notifyStatsRefresherOfNewTables(ctx context.Context) {
 			// Initiate a run of CREATE STATISTICS. We use a large number
 			// for rowsAffected because we want to make sure that stats always get
 			// created/refreshed here.
-			if desc.TableType == tree.TimeseriesTable {
+			if desc.IsTSTable() {
 				ex.planner.execCfg.StatsRefresher.
 					NotifyTsMutation(desc.ID, math.MaxInt32 /* rowsAffected */, math.MaxInt32 /* entitiesAffected */, math.MaxInt32 /* unorderedAffected */)
-			} else if desc.TableType == tree.RelationalTable {
+			} else if desc.IsRelationalTable() {
 				ex.planner.execCfg.StatsRefresher.
 					NotifyMutation(desc.ID, math.MaxInt32 /* rowsAffected */)
 			}
@@ -3165,30 +3177,13 @@ func (ex *connExecutor) SendDirectTsInsert(
 		res.SetError(errors.New("cannot execute ts insert in a read-only transaction"))
 		return
 	}
-	var tsInsNode planNode
+
 	var directTimes *directTimes
 	if di != nil {
 		directTimes = &di.DirectTimes
 		directTimes[CreateInsertNodeStart] = timeutil.Now()
 	}
-	// When CDCData is not empty, it signifies that the insert operation includes data that needs to be pushed.
-	// As a result, a tsInsertWithCDCNode is generated to replace the normal insert process's tsInsertNode.
-	if payloadNodeMap[int(evalCtx.NodeID)].CDCData == nil {
-		tsIns := tsInsertNodePool.Get().(*tsInsertNode)
-		for _, payloadVals := range payloadNodeMap {
-			tsIns.nodeIDs = append(tsIns.nodeIDs, payloadVals.NodeID)
-			tsIns.allNodePayloadInfos = append(tsIns.allNodePayloadInfos, payloadVals.PerNodePayloads)
-		}
-		tsInsNode = tsIns
-	} else {
-		tsIns := tsInsertWithCDCNodePool.Get().(*tsInsertWithCDCNode)
-		for _, payloadVals := range payloadNodeMap {
-			tsIns.nodeIDs = append(tsIns.nodeIDs, payloadVals.NodeID)
-			tsIns.allNodePayloadInfos = append(tsIns.allNodePayloadInfos, payloadVals.PerNodePayloads)
-		}
-		tsIns.CDCData = payloadNodeMap[int(evalCtx.NodeID)].CDCData
-		tsInsNode = tsIns
-	}
+	tsInsNode := buildInsertNode(evalCtx, payloadNodeMap)
 	if di != nil {
 		directTimes[CreateInsertNodeEnd] = timeutil.Now()
 	}
@@ -3243,4 +3238,31 @@ func (ex *connExecutor) SendDirectTsInsert(
 	dedupRows = recv.dedupRows
 	defer cleanup()
 	return
+}
+
+// buildInsertNode builds tsInsertNode or tsInsertWithCDCNode from payloadNodeMap.
+func buildInsertNode(
+	evalCtx *tree.EvalContext, payloadNodeMap map[int]*sqlbase.PayloadForDistTSInsert,
+) planNode {
+	var tsInsNode planNode
+	// When CDCData is not empty, it signifies that the insert operation includes data that needs to be pushed.
+	// As a result, a tsInsertWithCDCNode is generated to replace the normal insert process's tsInsertNode.
+	if payloadNodeMap[int(evalCtx.NodeID)].CDCData == nil {
+		tsIns := tsInsertNodePool.Get().(*tsInsertNode)
+		for _, payloadVals := range payloadNodeMap {
+			tsIns.nodeIDs = append(tsIns.nodeIDs, payloadVals.NodeID)
+			tsIns.allNodePayloadInfos = append(tsIns.allNodePayloadInfos, payloadVals.PerNodePayloads)
+		}
+		tsInsNode = tsIns
+	} else {
+		tsIns := tsInsertWithCDCNodePool.Get().(*tsInsertWithCDCNode)
+		for _, payloadVals := range payloadNodeMap {
+			tsIns.nodeIDs = append(tsIns.nodeIDs, payloadVals.NodeID)
+			tsIns.allNodePayloadInfos = append(tsIns.allNodePayloadInfos, payloadVals.PerNodePayloads)
+		}
+		tsIns.CDCData = payloadNodeMap[int(evalCtx.NodeID)].CDCData
+		tsInsNode = tsIns
+	}
+
+	return tsInsNode
 }

@@ -210,10 +210,13 @@ func (ex *connExecutor) addMemAndSavePrepared(
 	ctx context.Context, prepareResult prepare.PreparedResult, name string,
 ) error {
 	prepared := prepareResult.(*PreparedStatement)
-	if err := prepared.memAcc.Grow(ctx, int64(len(name))); err != nil {
+	newPrepared := *prepared
+	res := &newPrepared
+	defer res.memAcc.Clear(ctx)
+	if err := res.memAcc.Grow(ctx, int64(len(name))); err != nil {
 		return err
 	}
-	ex.extraTxnState.prepStmtsNamespace.prepStmts[name] = prepared
+	ex.extraTxnState.prepStmtsNamespace.prepStmts[name] = res
 	return nil
 }
 
@@ -604,7 +607,8 @@ func (ex *connExecutor) execPreparedirectBind(
 
 			// When the table has the pipe enabled, bind data needs to be converted into datums for filter.
 			if ex.server.GetCFG().CDCCoordinator != nil {
-				if ex.server.GetCFG().CDCCoordinator.IsCDCEnabled(uint64(ps.PrepareInsertDirect.Dit.TabID)) {
+				if ex.server.GetCFG().CDCCoordinator.IsCDCEnabled(uint64(ps.PrepareInsertDirect.Dit.TabID)) ||
+					len(table.CDC) > 0 {
 					di.InputValues, err = getPrepareInputValues(ptCtx, &bindCmd, ps.InferredTypes, &di)
 					if err != nil {
 						return err
@@ -613,7 +617,7 @@ func (ex *connExecutor) execPreparedirectBind(
 			}
 
 			// Calculate rowTimestamps and save the value of the timestamp column
-			_, rowTimestamps, err := TsprepareTypeCheck(ptCtx, bindCmd.Args, ps.InferredTypes, bindCmd.ArgFormatCodes, &ps.PrepareInsertDirect.Dit.ColsDesc, di)
+			_, err = TsprepareTypeCheck(ptCtx, bindCmd.Args, ps.InferredTypes, bindCmd.ArgFormatCodes, &ps.PrepareInsertDirect.Dit.ColsDesc, di)
 			if err != nil {
 				return err
 			}
@@ -621,7 +625,7 @@ func (ex *connExecutor) execPreparedirectBind(
 			di.PayloadNodeMap = make(map[int]*sqlbase.PayloadForDistTSInsert, 1)
 			if err = BuildRowBytesForPrepareTsInsert(
 				ptCtx, bindCmd.Args, ps.PrepareInsertDirect.Dit, &di, evalCtx, table,
-				cfg.NodeInfo.NodeID.Get(), rowTimestamps, ex.server.GetCFG()); err != nil {
+				cfg.NodeInfo.NodeID.Get(), ex.server.GetCFG()); err != nil {
 				return err
 			}
 

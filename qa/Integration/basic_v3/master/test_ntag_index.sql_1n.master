@@ -1,3 +1,5 @@
+> set cluster setting sql.stats.tag_automatic_collection.enabled = false;
+SET CLUSTER SETTING
 > create ts database test_ntag_hash;
 CREATE TS DATABASE
 > use test_ntag_hash;
@@ -2885,3 +2887,5 @@ SQLSTATE: 42P01
 SET
 > drop database test_ntag_hash cascade;
 DROP DATABASE
+> set cluster setting sql.stats.tag_automatic_collection.enabled = true;
+SET CLUSTER SETTING

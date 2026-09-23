@@ -77,7 +77,21 @@ CREATE TABLE information_schema.columns (
 	IS_HIDDEN                STRING NOT NULL, -- CockroachDB extension for SHOW COLUMNS / dump.
 	KWDB_SQL_TYPE            STRING NOT NULL,  -- CockroachDB extension for SHOW COLUMNS / dump.
   STORAGE_LENGTH           INT8, 
-  IS_TAG                	 STRING NOT NULL
+	IS_TAG                	 STRING NOT NULL,
+	IS_SYSTEM_TIME_PERIOD_START          STRING NOT NULL,
+	IS_SYSTEM_TIME_PERIOD_END            STRING NOT NULL,
+	SYSTEM_TIME_PERIOD_TIMESTAMP_GENERATION STRING,
+	DECLARED_DATA_TYPE                    STRING,
+	DECLARED_NUMERIC_PRECISION            INT8,
+	DECLARED_NUMERIC_SCALE                INT8
+)`
+
+// InformationSchemaKeywords describes the schema of the
+// information_schema.keywords table.
+const InformationSchemaKeywords = `
+CREATE TABLE information_schema.keywords (
+	WORD     STRING NOT NULL,
+	RESERVED INT8 NOT NULL
 )`
 
 // InformationSchemaAdministrableRoleAuthorizations describes the schema of the
@@ -142,7 +156,10 @@ CREATE TABLE information_schema.schemata (
 	SQL_PATH                   STRING,
 	ENGINE_TYPE								 STRING,
   RETENTIONS									 INT8,
-  PARTITION_INTERVAL					 INT8
+  PARTITION_INTERVAL					 INT8,
+	SCHEMA_OWNER                   STRING,
+	DEFAULT_CHARACTER_SET_CATALOG STRING,
+	DEFAULT_CHARACTER_SET_SCHEMA  STRING
 )`
 
 // InformationSchemaTables describes the schema of the
@@ -157,5 +174,16 @@ CREATE TABLE information_schema.tables (
 	TABLE_TYPE         STRING NOT NULL,
 	IS_INSERTABLE_INTO STRING NOT NULL,
 	VERSION            INT8,
-  NAMESPACE_OID      OID                                     
+	NAMESPACE_OID      OID,
+	SELF_REFERENCING_COLUMN_NAME STRING,
+	REFERENCE_GENERATION          STRING,
+	USER_DEFINED_TYPE_CATALOG     STRING,
+	USER_DEFINED_TYPE_SCHEMA      STRING,
+	USER_DEFINED_TYPE_NAME        STRING,
+	IS_TYPED                      STRING NOT NULL,
+	COMMIT_ACTION                 STRING,
+	ENGINE                        STRING,
+	ROW_FORMAT                    STRING,
+	UPDATE_TIME                   TIMESTAMP,
+	TABLE_COMMENT                 STRING
 )`

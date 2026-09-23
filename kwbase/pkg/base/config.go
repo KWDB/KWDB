@@ -129,8 +129,10 @@ const (
 var (
 	// defaultRaftElectionTimeoutTicks specifies the number of Raft Tick
 	// invocations that must pass between elections.
+	// TODO by fyx: support stateProbe too long, follower send heartbeat to new term and leader repeat
+	// bug: https://e.gitee.com/kaiwuDB/projects/507629/bugs/list?issue=IJFHGC
 	defaultRaftElectionTimeoutTicks = envutil.EnvOrDefaultInt(
-		"KWBASE_RAFT_ELECTION_TIMEOUT_TICKS", 15)
+		"KWBASE_RAFT_ELECTION_TIMEOUT_TICKS", 25)
 
 	// defaultRaftLogTruncationThreshold specifies the upper bound that a single
 	// Range's Raft log can grow to before log truncations are triggered while at

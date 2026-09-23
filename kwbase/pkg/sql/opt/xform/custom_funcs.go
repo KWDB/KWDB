@@ -3802,7 +3802,7 @@ func (c *CustomFuncs) checkAggOptApplicable(
 	case *memo.AggDistinctExpr:
 		c.checkAggOptApplicable(t.Input, optHelper)
 		tableID := c.getAggTableID(t.Input)
-		if tableID <= 0 || c.e.mem.Metadata().Table(tableID).GetTableType() == tree.TimeseriesTable {
+		if tableID <= 0 || c.e.mem.Metadata().Table(tableID).IsTSTable() {
 			return false
 		}
 	default:

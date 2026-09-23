@@ -366,7 +366,7 @@ func (a *CachedPhysicalAccessor) GetObjectDesc(
 
 		// In order not to affect the desc in the cache, when the table is a super table,
 		// a new address needs to be created to transfer the desc, as it will be modified later.
-		if table.TableType == tree.TemplateTable || table.TableType == tree.TimeseriesTable {
+		if table.IsTSTable() {
 			if err = table.TableDescriptor.CheckTSTableStateValid(); err != nil {
 				return nil, err
 			}
@@ -383,7 +383,7 @@ func (a *CachedPhysicalAccessor) GetObjectDesc(
 
 	// In order not to affect the desc in the cache, when the table is a super table,
 	// a new address needs to be created to transfer the desc, as it will be modified later.
-	if table.TableType == tree.TemplateTable || table.TableType == tree.TimeseriesTable {
+	if table.IsTSTable() {
 		if err = table.TableDescriptor.CheckTSTableStateValid(); err != nil {
 			return nil, err
 		}

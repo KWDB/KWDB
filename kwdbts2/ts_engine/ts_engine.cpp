@@ -17,6 +17,8 @@
 #include <cstdio>
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
+#include <algorithm>
 #include <map>
 #include <string>
 #include <memory>
@@ -56,6 +58,7 @@ uint8_t EngineOptions::compress_stage = 3;
 CompressLevel EngineOptions::compress_level = CompressLevel::MEDIUM;
 CompressAlgo EngineOptions::compression_algorithm = CompressAlgo::kLz4;
 bool EngineOptions::compress_last_segment = false;
+size_t EngineOptions::last_block_cache_max_entries = 20;
 #ifdef KWBASE_OSS
 bool EngineOptions::force_sync_file = false;
 #else
@@ -66,6 +69,7 @@ double EngineOptions::block_filter_sampling_ratio = 0.2;
 int EngineOptions::agg_stats_recalc_cycle = 60 * 30;
 uint32_t EngineOptions::metric_schema_cache_capacity = 100;
 bool EngineOptions::force_re_compress = false;
+bool CLUSTER_SETTING_TS_TXN_ATOMICITY_ENABLE = false;
 
 extern std::map<std::string, std::string> g_cluster_settings;
 extern std::shared_mutex g_settings_mutex;
@@ -306,9 +310,20 @@ KStatus TSEngineImpl::Init(kwdbContext_p ctx) {
   PreClearDroppedTables();
   fs::path db_path{options_.db_path};
   assert(!db_path.empty());
-  schema_mgr_ = std::make_unique<TsEngineSchemaManager>((db_path / schema_directory).string());
+  // Db-level schema state lives beside (not inside) the table schema dir so
+  // the numeric table-dir scanners never see it; the db manager is created
+  // first because every table schema manager holds a raw pointer to it.
+  db_schema_mgr_ = std::make_unique<TsDBSchemaManager>(options_.db_path);
+  schema_mgr_ = std::make_unique<TsEngineSchemaManager>((db_path / schema_directory, db_schema_mgr_.get()).string());
   KStatus s = schema_mgr_->Init(ctx);
   if (s != KStatus::SUCCESS) {
+    return s;
+  }
+  // Recover per-db entity id counters (persisted files merged with the tag
+  // table scan); must run after the table schema managers are loaded.
+  s = db_schema_mgr_->Init(schema_mgr_.get());
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("TsDBSchemaManager init failed");
     return s;
   }
 
@@ -328,12 +343,6 @@ KStatus TSEngineImpl::Init(kwdbContext_p ctx) {
     return s;
   }
 
-  std::vector<uint32_t> max_entity_id_MEI(options_.vgroup_max_num, 0);
-  if (readEntityIds(max_entity_id_MEI) == KStatus::FAIL) {
-    LOG_ERROR("Failed to read entity ids from MEI file.")
-    return KStatus::FAIL;
-  }
-
   for (int vgroup_id = 1; vgroup_id <= EngineOptions::vgroup_max_num; vgroup_id++) {
     std::unique_ptr<TsVGroup> vgroup = nullptr;
     if (vgroup_configured) {
@@ -346,17 +355,23 @@ KStatus TSEngineImpl::Init(kwdbContext_p ctx) {
     if (s != KStatus::SUCCESS) {
       return s;
     }
-    uint32_t entity_id = 0;
-    s = GetMaxEntityIdByVGroupId(ctx, vgroup_id, entity_id);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("GetMaxEntityIdByVGroupId failed, vgroup id:%d", vgroup_id);
-      return s;
-    }
-    entity_id = max(entity_id, max_entity_id_MEI[vgroup_id - 1]);
-
-    vgroup->InitEntityID(entity_id);
     vgroups_.push_back(std::move(vgroup));
   }
+
+  // Must run after vgroups are loaded (partition lists enumerate dbs whose
+  // tables were all dropped) and before WAL recovery allocates entity ids.
+  s = migrateLegacyMaxEntityIdFile(ctx);
+  if (s != KStatus::SUCCESS) {
+    return s;
+  }
+
+  // Pre-populate last-row caches with Recovering entries so the first
+  // GetEntityLastRow after restart lazily recovers the real last row from
+  // disk, matching the old InitEntityID behaviour.
+  for (auto& vgroup : vgroups_) {
+    vgroup->InitEntityLatestRowForRestart(schema_mgr_.get());
+  }
+
   LOG_INFO("TS engine WAL level is: %d", options_.wal_level);
   wal_mgr_ = std::make_unique<WALMgr>(options_.db_path, "engine", &options_);
   auto res = wal_mgr_->Init(ctx);
@@ -366,7 +381,8 @@ KStatus TSEngineImpl::Init(kwdbContext_p ctx) {
   }
 
   wal_sys_ = std::make_unique<WALMgr>(options_.db_path, "ddl", &options_);
-  tsx_manager_sys_ = std::make_unique<TSxMgr>(wal_sys_.get());
+  std::string tsx_sys_file_path = options_.db_path + "/wal/ddl/ts_trans_ids";
+  tsx_manager_sys_ = std::make_unique<TSxMgr>(wal_sys_.get(), tsx_sys_file_path);
   s = wal_sys_->Init(ctx);
   if (s == KStatus::FAIL) {
     LOG_ERROR("wal_sys_::Init fail.")
@@ -552,6 +568,14 @@ KStatus TSEngineImpl::CheckAndDropTsTable(kwdbContext_p ctx, const KTableKey& ta
     LOG_ERROR("Get table [%lu] schema manager failed", table_id);
     return s;
   }
+  auto db_schema = table_schema_mgr->GetDbSchemaMgr();
+  if (db_schema != nullptr) {
+    s = db_schema->Persist();
+    if (s == FAIL) {
+      return FAIL;
+    }
+  }
+
   schema_mgr_->SetTableDropped(table_id);
   if (tables_cache_->Exists(table_id)) {
     tables_cache_->Erase(table_id);
@@ -679,7 +703,7 @@ KStatus TSEngineImpl::CreateNormalTagIndex(kwdbContext_p ctx, const KTableKey& t
     }
 
     // Get transaction id.
-    uint64_t x_id = tsx_manager_sys_->getMtrID(transaction_id);
+    uint64_t x_id = tsx_manager_sys_->getMtrID(string{transaction_id, LogEntry::TS_TRANS_ID_LEN});
 
     // Write create index DDL into WAL, which type is Create_Normal_TagIndex.
     s = wal_sys_->WriteCreateIndexWAL(ctx, x_id, table_id, index_id, cur_version, new_version, index_schema);
@@ -703,7 +727,7 @@ KStatus TSEngineImpl::DropNormalTagIndex(kwdbContext_p ctx, const KTableKey& tab
     }
 
     // Get transaction id.
-    uint64_t x_id = tsx_manager_sys_->getMtrID(transaction_id);
+    uint64_t x_id = tsx_manager_sys_->getMtrID(string{transaction_id, LogEntry::TS_TRANS_ID_LEN});
 
     std::vector<uint32_t> tags = table->GetNTagIndexInfo(cur_version, index_id);
     if (tags.empty()) {
@@ -761,10 +785,11 @@ KStatus TSEngineImpl::putTagData(kwdbContext_p ctx, TSTableID table_id, uint32_t
 }
 
 KStatus TSEngineImpl::InsertTagData(kwdbContext_p ctx, const std::shared_ptr<TsTableSchemaManager>& tb_schema,
-                                    uint64_t mtr_id, TSSlice payload_data, bool write_wal, uint32_t& vgroup_id,
+                                    uint64_t mtr_id, TsRawPayload& p, bool write_wal, uint32_t& vgroup_id,
                                     TSEntityID& entity_id, bool& new_tag) {
-  TSSlice primary_key = TsRawPayload::GetPrimaryKeyFromSlice(payload_data);
-  KStatus s = schema_mgr_->GetVGroup(ctx, tb_schema, primary_key, &vgroup_id, &entity_id, &new_tag);
+  TSSlice primary_key = p.GetPrimaryTag();
+  KStatus s = schema_mgr_->GetVGroupAndUpdateValidCol(ctx, tb_schema, {},
+                            primary_key, &vgroup_id, &entity_id, &new_tag);
   if (s != KStatus::SUCCESS) {
     return s;
   }
@@ -776,7 +801,8 @@ KStatus TSEngineImpl::InsertTagData(kwdbContext_p ctx, const std::shared_ptr<TsT
     Defer defer{[&](){
       tag_lock_.Unlock(hash_point);
     }};
-    s = schema_mgr_->GetVGroup(ctx, tb_schema, primary_key, &vgroup_id, &entity_id, &new_tag);
+    s = schema_mgr_->GetVGroupAndUpdateValidCol(ctx, tb_schema, {},
+          primary_key, &vgroup_id, &entity_id, &new_tag);
     if (s != KStatus::SUCCESS) {
       return s;
     }
@@ -784,20 +810,26 @@ KStatus TSEngineImpl::InsertTagData(kwdbContext_p ctx, const std::shared_ptr<TsT
     if (new_tag) {
       if (EnableWAL() && write_wal) {
         wal_level_mutex_.lock_shared();
-        s = vgroup->GetWALManager()->WriteInsertWAL(ctx, mtr_id, 0, 0, payload_data, vgroup_id, tb_schema->GetTableId());
+        s = vgroup->GetWALManager()->WriteInsertWAL(ctx, mtr_id, 0, 0, p.GetPayload(), vgroup_id, tb_schema->GetTableId());
         wal_level_mutex_.unlock_shared();
         if (s == KStatus::FAIL) {
           LOG_ERROR("failed WriteInsertWAL for new tag.");
           return s;
         }
       }
-      TsRawPayload p;
-      s = p.ParsePayLoadStruct(payload_data);
+      std::vector<AttributeInfo> schema;
+      uint32_t ts_version;
+      s = tb_schema->GetColumnsExcludeDropped(schema, p.GetTableVersion());
       if (s != KStatus::SUCCESS) {
-        LOG_ERROR("ParsePayLoadStruct failed.");
+        LOG_ERROR("GetColumnsExcludeDropped failed.");
         return s;
       }
-      entity_id = vgroup->AllocateEntityID();
+      s = tb_schema->AllocateEntityID(vgroup_id, entity_id);
+      if (s == FAIL) {
+        LOG_ERROR("cannot allocate entity id for new tag. table id: %lu, maybe the table is dropped.",
+                  tb_schema->GetTableId());
+        return FAIL;
+      }
       s = putTagData(ctx, tb_schema->GetTableId(), vgroup_id, entity_id, p);
       if (s != KStatus::SUCCESS) {
         return s;
@@ -835,31 +867,64 @@ KStatus TSEngineImpl::PutData(kwdbContext_p ctx, const KTableKey& table_id, uint
       mtr_id = GetVGroupByID(ctx, 1)->GetMtrIDByTsxID(tsx_id);
     }
     std::shared_ptr<TsTableSchemaManager> tb_schema = ts_table->GetSchemaManager();
+    std::shared_ptr<MMapMetricsTable> metric_schema_tbl;
+    s = tb_schema->GetMetricSchema(TsRawPayload::GetTableVersionFromSlice(cur_pd), &metric_schema_tbl);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetMetricSchema failed.");
+      return s;
+    }
+    TsRawPayload p(metric_schema_tbl);
+    s = p.ParsePayLoadStruct(cur_pd);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("ParsePayLoadStruct failed for valid column check.");
+      return s;
+    }
+    TSSlice primary_key = TsRawPayload::GetPrimaryKeyFromSlice(cur_pd);
     if (not_new_tag) {
       bool new_tag = false;
-      TSSlice primary_key = TsRawPayload::GetPrimaryKeyFromSlice(cur_pd);
-      KStatus s = schema_mgr_->GetVGroup(ctx, tb_schema, primary_key, &vgroup_id, &entity_id, &new_tag);
+      KStatus s = schema_mgr_->GetVGroupAndUpdateValidCol(ctx, tb_schema, p.GetValidColumns(),
+                  primary_key, &vgroup_id, &entity_id, &new_tag);
       if (s != KStatus::SUCCESS) {
-        LOG_ERROR("GetVGroup failed, table id: %lu", table_id);
+        LOG_ERROR("GetVGroupAndUpdateValidCol failed, table id: %lu", table_id);
         return s;
       }
+
       if (new_tag) {
         LOG_INFO("not_create_entity, so ingore this payload. table id: %lu", table_id);
         return KStatus::SUCCESS;
       }
     }
     bool new_tag = false;
-    s = InsertTagData(ctx, tb_schema, mtr_id, cur_pd, write_wal, vgroup_id, entity_id, new_tag);
+    s = InsertTagData(ctx, tb_schema, mtr_id, p, write_wal, vgroup_id, entity_id, new_tag);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("put tag data failed. table[%lu].", table_id);
       return s;
     }
     if (new_tag) {
       created_tag_num += 1;
+    } else {
+      // For existing tag on sparse table, check if valid columns need updating
+      std::shared_ptr<TagTable> tag_table;
+      s = tb_schema->GetTagSchema(ctx, &tag_table);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("Failed get tag schema for valid column update, table[%lu].", tb_schema->GetTableId());
+        return s;
+      }
+      if (tag_table->issparse()) {
+        uint64_t hash_point = t1ha1_le(primary_key.data, primary_key.len);
+        tag_lock_.WrLock(hash_point);
+        Defer defer{[&](){
+          tag_lock_.Unlock(hash_point);
+        }};
+        if (!tag_table->CheckAndUpdateValidColumns(primary_key.data, primary_key.len, p.GetValidColumns())) {
+          LOG_ERROR("Failed to update valid columns for table[%lu].", tb_schema->GetTableId());
+          return FAIL;
+        }
+      }
     }
     auto vgroup = GetVGroupByID(ctx, vgroup_id);
-    s =  dynamic_pointer_cast<TsTableImpl>(ts_table)->PutData(ctx, vgroup, &cur_pd, 1, mtr_id, entity_id,
-            not_create_entity, dedup_result, (DedupRule)(dedup_result->dedup_rule), write_wal);
+    s =  dynamic_pointer_cast<TsTableImpl>(ts_table)->PutData(ctx, vgroup, p, entity_id, mtr_id,
+            nullptr, dedup_result, (DedupRule)(dedup_result->dedup_rule), write_wal);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("put data failed. table[%lu].", table_id);
       return s;
@@ -878,15 +943,9 @@ KStatus TSEngineImpl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, ui
   TSEntityID entity_id;
 
   for (size_t i = 0; i < payload_num; i++) {
-    TsRawPayload p;
-    auto s = p.ParsePayLoadStruct(payload_data[i]);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("ParsePayLoadStruct failed.");
-      return s;
-    }
-    TSSlice primary_key = p.GetPrimaryTag();
-    auto tbl_version = p.GetTableVersion();
-    s = GetTsTable(ctx, table_id, ts_table, is_dropped, true, tbl_version);
+    auto& cur_pd = payload_data[i];
+    auto tbl_version = TsRawPayload::GetTableVersionFromSlice(cur_pd);
+    auto s = GetTsTable(ctx, table_id, ts_table, is_dropped, true, tbl_version);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("cannot found table[%lu] with version[%u]", table_id, tbl_version);
       return s;
@@ -897,8 +956,22 @@ KStatus TSEngineImpl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, ui
     if (s != KStatus::SUCCESS) {
       return s;
     }
+    std::shared_ptr<MMapMetricsTable> metric_schema_tbl;
+    s = tb_schema_manager->GetMetricSchema(TsRawPayload::GetTableVersionFromSlice(cur_pd), &metric_schema_tbl);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetMetricSchema failed.");
+      return s;
+    }
+    TsRawPayload p(metric_schema_tbl);
+    s = p.ParsePayLoadStruct(cur_pd);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("ParsePayLoadStruct failed.");
+      return s;
+    }
+    TSSlice primary_key = p.GetPrimaryTag();
     bool new_tag;
-    s = schema_mgr_->GetVGroup(ctx, tb_schema_manager, primary_key, &vgroup_id, &entity_id, &new_tag);
+    s = schema_mgr_->GetVGroupAndUpdateValidCol(ctx, tb_schema_manager, {},
+              primary_key, &vgroup_id, &entity_id, &new_tag);
     if (s != KStatus::SUCCESS) {
       return s;
     }
@@ -913,6 +986,16 @@ KStatus TSEngineImpl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, ui
     if (!tag_table->hasPrimaryKey(primary_key.data, primary_key.len)) {
       return KStatus::SUCCESS;
     }
+
+    // add pre valid column
+    std::vector<uint32_t> old_valid_columns;
+    if (tag_table->issparse()) {
+      if (!tag_table->GetValidColumns(&primary_key, 1, old_valid_columns)) {
+        LOG_ERROR("Failed update tag, get valid columns error.")
+        return KStatus::FAIL;
+      }
+    }
+
     if (EnableWAL()) {
       // get old payload
       auto tag_pack = tag_table->GenTagPack(primary_key.data, primary_key.len);
@@ -929,7 +1012,7 @@ KStatus TSEngineImpl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, ui
       }
     }
 
-    err_info.errcode = tag_table->UpdateTagRecord(p, vgroup_id, entity_id, err_info, p.GetOSN());
+    err_info.errcode = tag_table->UpdateTagRecord(p, vgroup_id, entity_id, err_info, p.GetOSN(), old_valid_columns);
     if (err_info.errcode < 0) {
       return KStatus::FAIL;
     }
@@ -970,7 +1053,7 @@ KStatus TSEngineImpl::AddColumn(kwdbContext_p ctx, const KTableKey &table_id, ch
     return s;
   }
   // Get transaction ID.
-  uint64_t x_id = tsx_manager_sys_->getMtrID(transaction_id);
+  uint64_t x_id = tsx_manager_sys_->getMtrID(string{transaction_id, LogEntry::TS_TRANS_ID_LEN});
 
   // Write Alter DDL into WAL, which type is ADD_COLUMN.
   s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, AlterType::ADD_COLUMN, cur_version, new_version, column);
@@ -1004,7 +1087,7 @@ KStatus TSEngineImpl::DropColumn(kwdbContext_p ctx, const KTableKey &table_id, c
     return s;
   }
   // Get transaction ID.
-  uint64_t x_id = tsx_manager_sys_->getMtrID(transaction_id);
+  uint64_t x_id = tsx_manager_sys_->getMtrID(string{transaction_id, LogEntry::TS_TRANS_ID_LEN});
 
   // Write Alter DDL into WAL, which type is DROP_COLUMN.
   s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, AlterType::DROP_COLUMN, cur_version, new_version, column);
@@ -1038,7 +1121,7 @@ KStatus TSEngineImpl::AlterColumn(kwdbContext_p ctx, const KTableKey &table_id, 
     return s;
   }
   // Get transaction ID.
-  uint64_t x_id = tsx_manager_sys_->getMtrID(transaction_id);
+  uint64_t x_id = tsx_manager_sys_->getMtrID(string{transaction_id, LogEntry::TS_TRANS_ID_LEN});
 
   // Write Alter DDL into WAL
   s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, alter_type, cur_version, new_version, origin_column);
@@ -1087,12 +1170,10 @@ KStatus TSEngineImpl::TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id, u
   if (!EnableWAL()) {
     return KStatus::SUCCESS;
   }
-  if (tsx_id != nullptr) {
-    exist_explict_txn.store(true);
-  }
   // Invoke the TSxMgr interface to start the Mini-Transaction and write the BEGIN log entry
   auto vgroup = GetVGroupByID(ctx, 1);
-  return vgroup->MtrBegin(ctx, range_id, index, mtr_id, tsx_id);
+  KStatus s = vgroup->MtrBegin(ctx, range_id, index, mtr_id, tsx_id);
+  return s;
 }
 
 KStatus TSEngineImpl::TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id,
@@ -1102,7 +1183,8 @@ KStatus TSEngineImpl::TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id,
   }
   // Call the TSxMgr interface to COMMIT the Mini-Transaction and write the COMMIT log entry
   auto vgroup = GetVGroupByID(ctx, 1);
-  return vgroup->MtrCommit(ctx, mtr_id, tsx_id);
+  KStatus s = vgroup->MtrCommit(ctx, mtr_id, tsx_id);
+  return s;
 }
 
 KStatus TSEngineImpl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id,
@@ -1139,10 +1221,38 @@ KStatus TSEngineImpl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id
       delete log;
     }
   }};
+
+  // for range
+  for (const auto& vgrp : vgroups_) {
+    std::vector<LogEntry*> wal_logs;
+    Defer defer{[&]() {
+      for (auto& log : wal_logs) {
+        delete log;
+      }
+    }};
+    s = vgrp->ReadWALLogForMtr(mtr_id, wal_logs);
+    if (s == FAIL && !wal_logs.empty()) {
+      Return(s)
+    }
+    std::reverse(wal_logs.begin(), wal_logs.end());
+    for (auto wal_log : wal_logs) {
+      if (wal_log->getXID() == mtr_id) {
+        s = vgrp->rollback(ctx, wal_log);
+        if (s == FAIL) {
+          LOG_ERROR("faild to rollback mtr, mtr_id:%ld", mtr_id)
+          Return(s)
+        }
+      }
+    }
+  }
+
+  wal_mgr_->Lock();
   s = wal_mgr_->ReadWALLog(engine_wal_logs, wal_mgr_->GetFirstLSN(), wal_mgr_->FetchCurrentLSN(), ignore);
   if (s == FAIL && !engine_wal_logs.empty()) {
+    wal_mgr_->Unlock();
     Return(s)
   }
+  wal_mgr_->Unlock();
 
   for (auto log : engine_wal_logs) {
     if (log->getXID() == mtr_id) {
@@ -1165,26 +1275,6 @@ KStatus TSEngineImpl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id
     if (vgrp->rollback(ctx, log, true) == KStatus::FAIL) {
       LOG_ERROR("rollback fail, vgroup id : %lu", vgrp_id)
       return KStatus::FAIL;
-    }
-  }
-
-  // for range
-  for (const auto& vgrp : vgroups_) {
-    std::vector<LogEntry*> wal_logs;
-    Defer defer{[&]() {
-      for (auto& log : wal_logs) {
-        delete log;
-      }
-    }};
-    s = vgrp->ReadWALLogForMtr(mtr_id, wal_logs);
-    if (s == FAIL && !wal_logs.empty()) {
-      Return(s)
-    }
-    std::reverse(wal_logs.begin(), wal_logs.end());
-    for (auto wal_log : wal_logs) {
-      if (wal_log->getXID() == mtr_id && s != FAIL) {
-        s = vgrp->rollback(ctx, wal_log);
-      }
     }
   }
   Return(KStatus::SUCCESS)
@@ -1233,7 +1323,7 @@ KStatus TSEngineImpl::TSxCommit(kwdbContext_p ctx, const KTableKey& table_id, ch
   std::shared_ptr<TsTable> table;
   KStatus s;
 
-  uint64_t mtr_id = tsx_manager_sys_->getMtrID(transaction_id);
+  uint64_t mtr_id = tsx_manager_sys_->getMtrID(string{transaction_id, LogEntry::TS_TRANS_ID_LEN});
   if (mtr_id != 0) {
     if (tsx_manager_sys_->TSxCommit(ctx, transaction_id) == KStatus::FAIL) {
       LOG_ERROR("TSxCommit failed, system wal failed, table id: %lu", table_id)
@@ -1266,7 +1356,7 @@ KStatus TSEngineImpl::TSxRollback(kwdbContext_p ctx, const KTableKey& table_id, 
   std::shared_ptr<TsTable> table;
   KStatus s;
 
-  uint64_t mtr_id = tsx_manager_sys_->getMtrID(transaction_id);
+  uint64_t mtr_id = tsx_manager_sys_->getMtrID(string{transaction_id, LogEntry::TS_TRANS_ID_LEN});
   if (mtr_id == 0) {
     if (checkpoint(ctx) == KStatus::FAIL) {
       LOG_ERROR("TSxCommit failed, system wal checkpoint failed, table id: %lu", table_id)
@@ -1368,14 +1458,11 @@ KStatus TSEngineImpl::ParallelRemoveChkFiles(kwdbContext_p ctx) {
 }
 
 KStatus TSEngineImpl::CreateCheckpoint(kwdbContext_p ctx) {
+  std::lock_guard<std::mutex> lock(checkpoint_mutex_);
   LOG_INFO("WAL Checkpoint Start.")
   Defer defer_log {[&]() {
     LOG_INFO("WAL Checkpoint Complete.")
   }};
-  Defer defer_explict {[&]() {
-    exist_explict_txn.store(false);
-  }};
-  // use raft log
   if (options_.use_raft_log_as_wal) {
     goPrepareFlush();
     // trig all vgroup flush
@@ -1401,8 +1488,16 @@ KStatus TSEngineImpl::CreateCheckpoint(kwdbContext_p ctx) {
    * 8. remove vgroup wal file and old chk file
    */
   if (!EnableWAL()) {
+    // triger all vgroup flush
+    for (const auto &vgrp : vgroups_) {
+      KStatus s = vgrp->Flush();
+      if (s == KStatus::FAIL) {
+        LOG_ERROR("Failed to flush metric file.")
+        return s;
+      }
+    }
     return KStatus::SUCCESS;
-  } else if (EngineOptions::isSingleNode() || !exist_explict_txn.load()) {
+  } else if (EngineOptions::isSingleNode() || CLUSTER_SETTING_TS_TXN_ATOMICITY_ENABLE == false) {
     // 1. switch engine wal file
     KStatus s = wal_mgr_->SwitchNextFile();
     if (s == KStatus::FAIL) {
@@ -1500,6 +1595,11 @@ KStatus TSEngineImpl::CreateCheckpoint(kwdbContext_p ctx) {
   // 2.read mtr id first, only read uncommitted txn from all vgroups.
   auto vgroup_mtr = GetVGroupByID(ctx, 1);
   std::vector<uint64_t> uncommitted_xid;
+  for (auto& log : logs) {
+    if (log->getType() == WALLogType::TS_BEGIN || log->getType() == WALLogType::MTR_BEGIN) {
+      uncommitted_xid.push_back(log->getXID());
+    }
+  }
   s = vgroup_mtr->GetWALManager()->ReadUncommittedTxnID(uncommitted_xid);
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to ReadUncommittedTxnID.")
@@ -1523,6 +1623,23 @@ KStatus TSEngineImpl::CreateCheckpoint(kwdbContext_p ctx) {
     logs.insert(logs.end(), vlogs.begin(), vlogs.end());
   }
 
+  std::unordered_set<uint64_t> committed_xid;
+  for (auto& log : logs) {
+    if (log->getType() == WALLogType::MTR_COMMIT || log->getType() == WALLogType::MTR_ROLLBACK ||
+        log->getType() == WALLogType::TS_COMMIT || log->getType() == WALLogType::TS_ROLLBACK) {
+      committed_xid.insert(log->getXID());
+    }
+  }
+  if (!committed_xid.empty()) {
+    for (auto it = logs.begin(); it != logs.end();) {
+      if (committed_xid.find((*it)->getXID()) != committed_xid.end()) {
+        delete *it;
+        it = logs.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
   // 4. rewrite incomplete wal
   if (wal_mgr_->WriteIncompleteWAL(ctx, logs) == KStatus::FAIL) {
     LOG_ERROR("Failed to WriteIncompleteWAL.")
@@ -1961,6 +2078,16 @@ KStatus TSEngineImpl::readEntityIds(std::vector<uint32_t>& max_entity_ids) {
   max_entity_id_file_.seekg(0, std::ios::beg);
   size_t file_size = kwdbts::EngineOptions::vgroup_max_num * sizeof(uint32_t);
 
+  // The legacy file has one uint32 per vgroup; a size mismatch means
+  // vgroup_max_num changed across restarts, which is not supported.
+  std::error_code ec;
+  auto real_size = fs::file_size(filePath, ec);
+  if (ec || real_size != file_size) {
+    LOG_ERROR("MEI file [%s] size %lu does not match vgroup_max_num %d", filePath.c_str(),
+              ec ? 0UL : real_size, kwdbts::EngineOptions::vgroup_max_num)
+    return KStatus::FAIL;
+  }
+
   max_entity_id_file_.read(reinterpret_cast<char*>(max_entity_ids.data()), file_size);
 
   if (!max_entity_id_file_) {
@@ -1971,50 +2098,50 @@ KStatus TSEngineImpl::readEntityIds(std::vector<uint32_t>& max_entity_ids) {
   return KStatus::SUCCESS;
 }
 
-KStatus TSEngineImpl::writeEntityIdsBinary(const std::vector<uint32_t>& max_entity_ids) {
-  fs::path filePath = fs::path(options_.db_path) / "vg.mei";
-  std::lock_guard<std::mutex> lock(file_mutex_);
-  max_entity_id_file_.open(filePath, std::ios::out | std::ios::binary);
-  if (!max_entity_id_file_.is_open()) {
-    LOG_ERROR("Cannot open the MEI file.[%s]", filePath.c_str())
+// One-shot migration of the legacy vg.mei file (per-vgroup global max entity
+// ids, written by DropTsTable before entity ids became per-db). The legacy
+// max carries no db dimension, so every db that may hold pre-upgrade data
+// gets it as a per-vgroup floor, then per-db max_entity_id files are
+// persisted and vg.mei is removed. Idempotent: merging is max-based and the
+// file is removed only after all per-db files are persisted, so a crash
+// mid-migration just re-runs it on the next startup.
+KStatus TSEngineImpl::migrateLegacyMaxEntityIdFile(kwdbContext_p ctx) {
+  fs::path mei_path = fs::path(options_.db_path) / "vg.mei";
+  if (!fs::exists(mei_path)) {
+    return KStatus::SUCCESS;
+  }
+  std::vector<uint32_t> legacy_max_ids(EngineOptions::vgroup_max_num, 0);
+  if (readEntityIds(legacy_max_ids) == KStatus::FAIL) {
+    // vg.mei exists means a table was dropped before the upgrade; starting
+    // with a corrupt file could reuse entity ids of that dropped data.
+    LOG_ERROR("Failed to read legacy MEI file [%s], refuse to start", mei_path.c_str());
     return KStatus::FAIL;
   }
-  Defer defer {[&]() {
-    max_entity_id_file_.close();
-    max_entity_id_file_.clear();
-  }};
-  max_entity_id_file_.seekp(0, std::ios::beg);
-
-  size_t size = EngineOptions::vgroup_max_num * sizeof(uint32_t);
-  char* data = new char[size];
-  uint64_t offset = 0;
-  for (auto entity_id : max_entity_ids) {
-    memcpy(data + offset, &entity_id, sizeof(uint32_t));
-    offset += sizeof(uint32_t);
+  // Dbs with any partition on disk may hold pre-upgrade data, including dbs
+  // whose tables were all dropped and are thus invisible to the tag scan.
+  std::set<uint32_t> dbs_with_data;
+  for (const auto& vgroup : vgroups_) {
+    for (const auto& [par_id, par_version] : vgroup->CurrentVersion()->GetAllPartitions()) {
+      dbs_with_data.insert(std::get<0>(par_id));
+    }
   }
-  max_entity_id_file_.write(data, size);
-  max_entity_id_file_.flush();
-  delete []data;
+  KStatus s = schema_mgr_->GetDbSchemaMgr()->MigrateLegacyVgMei(legacy_max_ids, dbs_with_data);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Failed to migrate legacy MEI file [%s]", mei_path.c_str());
+    return s;
+  }
+  std::error_code ec;
+  fs::remove(mei_path, ec);
+  if (ec) {
+    // Not fatal: migration re-runs idempotently on next startup.
+    LOG_WARN("Failed to remove legacy MEI file [%s]: %s", mei_path.c_str(), ec.message().c_str());
+  } else {
+    LOG_INFO("Migrated legacy MEI file into per-db max_entity_id files");
+  }
   return KStatus::SUCCESS;
 }
 
 KStatus TSEngineImpl::DropTsTable(kwdbContext_p ctx, const KTableKey& table_id) {
-  // wirte cur max entity id to MEI file.
-  std::vector<uint32_t> max_entity_ids(kwdbts::EngineOptions::vgroup_max_num, 0);
-  for (auto vgrp_id = 1; vgrp_id <= kwdbts::EngineOptions::vgroup_max_num; ++vgrp_id) {
-    uint32_t entity_id{0};
-    if (GetMaxEntityIdByVGroupId(ctx, vgrp_id, entity_id) == KStatus::FAIL) {
-      LOG_ERROR("Failed to GetMaxEntityIdByVGroupId for vgroup[%d]", vgrp_id)
-      return KStatus::FAIL;
-    }
-    max_entity_ids[vgrp_id - 1] = entity_id;
-  }
-
-  if (writeEntityIdsBinary(max_entity_ids) == KStatus::FAIL) {
-    LOG_ERROR("Failed to writeEntityIdsBinary.")
-    return KStatus::FAIL;
-  }
-
   auto s = CheckAndDropTsTable(ctx, table_id);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("DropTsTable table[%lu] failed.", table_id);
@@ -2066,12 +2193,10 @@ KStatus TSEngineImpl::recover(kwdbts::kwdbContext_p ctx) {
     switch (wal_log->getType()) {
       case WALLogType::TS_BEGIN: {
         incomplete.insert(std::pair<TS_OSN, LogEntry*>(mtr_id, wal_log));
-        tsx_manager_sys_->insertMtrID(wal_log->getTsxID().c_str(), mtr_id);
         break;
       }
       case WALLogType::TS_COMMIT: {
         incomplete.erase(mtr_id);
-        tsx_manager_sys_->eraseMtrID(mtr_id);
         break;
       }
       case WALLogType::TS_ROLLBACK: {
@@ -2159,7 +2284,6 @@ KStatus TSEngineImpl::recover(kwdbts::kwdbContext_p ctx) {
             break;
         }
         incomplete.erase(mtr_id);
-        tsx_manager_sys_->eraseMtrID(mtr_id);
         break;
       }
       case WALLogType::DDL_ALTER_COLUMN: {
@@ -2288,10 +2412,22 @@ KStatus TSEngineImpl::Recover(kwdbContext_p ctx) {
   }
 
   // 2.read mtr id first, only read uncommitted txn .
-  auto vgroup_mtr = GetVGroupByID(ctx, 1);
   std::unordered_map<uint64_t, txnOp> txn_op;
   std::unordered_map<TS_OSN, std::pair<uint64_t, uint64_t>> incomplete;
+
+  // read engine wal.
+  wal_mgr_->Lock();
+  s = wal_mgr_->ReadAllTxnID(txn_op, nullptr, incomplete);
+  last_lsn = wal_mgr_->FetchCurrentLSN();
+  wal_mgr_->Unlock();
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to ReadWALLog.")
+  }
+
+  auto vgroup_mtr = GetVGroupByID(ctx, 1);
+  vgroup_mtr->GetWALManager()->Lock();
   s = vgroup_mtr->GetWALManager()->ReadAllTxnID(txn_op, vgroup_mtr, incomplete);
+  vgroup_mtr->GetWALManager()->Unlock();
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to ReadAllTxnID.")
     return s;
@@ -2323,16 +2459,22 @@ KStatus TSEngineImpl::Recover(kwdbContext_p ctx) {
     if (txn.second == txnOp::begin) {
       TS_OSN mtr_id = txn.first;
       auto xid_rangeID = incomplete[mtr_id];
-      if (vgroup_mtr->IsExplict(mtr_id)) {
-        break;
+      if (vgroup_mtr->IsExplicit(mtr_id)) {
+        continue;
       }
       uint64_t applied_index = GetAppliedIndex(xid_rangeID.second, range_indexes_map_);
       if (xid_rangeID.first <= applied_index) {
         auto vgroup = GetVGroupByID(ctx, 1);
         s = vgroup->MtrCommit(ctx, mtr_id);
-        if (s == FAIL) return s;
+        if (s == FAIL) {
+          LOG_ERROR("Failed to recover commit mtr_id:%ld", mtr_id)
+          return s;
+        }
       } else {
-        if (TSMtrRollback(ctx, 0, 0, mtr_id) == KStatus::FAIL) return KStatus::FAIL;
+        if (TSMtrRollback(ctx, 0, 0, mtr_id) == KStatus::FAIL) {
+          LOG_ERROR("Failed to recover rollback mtr_id:%ld", mtr_id)
+          return KStatus::FAIL;
+        }
       }
     }
   }
@@ -2374,7 +2516,7 @@ KStatus TSEngineImpl::UpdateSetting(kwdbContext_p ctx) {
 
   if (GetClusterSetting(ctx, "ts.wal.wal_level", &value) == SUCCESS) {
     if (std::stoll(value) != options_.wal_level) {
-      wal_level_mutex_.lock();
+      std::lock_guard<std::shared_mutex> lock(wal_level_mutex_);
       // wlock all vgroup rwlock
       KStatus s = CreateCheckpoint(ctx);
       if (s == KStatus::FAIL) {
@@ -2386,8 +2528,6 @@ KStatus TSEngineImpl::UpdateSetting(kwdbContext_p ctx) {
       if (!EnableWAL()) {
         UpdateAtomicLSN();
       }
-      wal_level_mutex_.unlock();
-      // unlock
     }
   }
 
@@ -2443,7 +2583,11 @@ uint64_t* snapshot_id, bool& is_dropped) {
       reinterpret_pointer_cast<TsTableImpl>(ts_snapshot_info.table),
       ts_snapshot_info.begin_hash, ts_snapshot_info.end_hash, ts_snapshot_info.table_version, scan_osn);
   ts_snapshot_info.op_osn = scan_osn;
-  s = ts_snapshot_info.del_iter->Init();
+  TS_OSN published_max_osn;
+  if (!schema_mgr_->GetTablePublishedMaxOSN(table_id, published_max_osn)) {
+    published_max_osn = UINT64_MAX;
+  }
+  s = ts_snapshot_info.del_iter->Init(published_max_osn);
   if (s == KStatus::FAIL) {
     LOG_ERROR("CreateSnapshotForRead STTableRangeDelAndTagInfo [%lu] failed.", table_id);
     return s;
@@ -2484,7 +2628,11 @@ KStatus TSEngineImpl::CreateSnapshotForWrite(kwdbContext_p ctx, const KTableKey&
       reinterpret_pointer_cast<TsTableImpl>(ts_snapshot_info.table),
       ts_snapshot_info.begin_hash, ts_snapshot_info.end_hash, ts_snapshot_info.table_version, osn);
   ts_snapshot_info.op_osn = osn;
-  s = ts_snapshot_info.del_iter->Init();
+  TS_OSN published_max_osn;
+  if (!schema_mgr_->GetTablePublishedMaxOSN(table_id, published_max_osn)) {
+    published_max_osn = UINT64_MAX;
+  }
+  s = ts_snapshot_info.del_iter->Init(published_max_osn);
   if (s == KStatus::FAIL) {
     LOG_ERROR("CreateSnapshotForRead STTableRangeDelAndTagInfo [%lu] failed.", table_id);
     return s;
@@ -2811,30 +2959,20 @@ KStatus TSEngineImpl::GetTsWaitThreadNum(kwdbContext_p ctx, void *resp) {
   return GetWaitThreadNum(ctx, resp);
 }
 
-// get max entity id
-KStatus TSEngineImpl::GetMaxEntityIdByVGroupId(kwdbContext_p ctx, uint32_t vgroup_id, uint32_t& entity_id) {
-  std::vector<std::shared_ptr<TsTableSchemaManager>> tb_schema_manager;
-  KStatus s = GetAllTableSchemaMgrs(tb_schema_manager);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("Get all schema manager failed.");
-    return s;
-  }
-  std::shared_ptr<TagTable> tag_table;
-  for (const auto& schema_mgr : tb_schema_manager) {
-    s = schema_mgr->GetTagSchema(ctx, &tag_table);
-    if (s != KStatus::SUCCESS) {
-      return s;
-    }
-    tag_table->GetMaxEntityIdByVGroupId(vgroup_id, entity_id);
-  }
-  return KStatus::SUCCESS;
-}
-
 KStatus TSEngineImpl::Vacuum(kwdbContext_p ctx, bool force, bool only_agg) {
   for (const auto& vgroup : vgroups_) {
     vgroup->Vacuum(ctx, force, only_agg);
   }
   return SUCCESS;
+}
+
+KStatus TSEngineImpl::SetPublishedMaxOSN(std::unordered_map<TSTableID, TS_OSN>& tbl_osn) {
+  LOG_INFO("SetPublishedMaxOSN table number[%lu].", tbl_osn.size());
+  for (auto& tbl_osn_pair : tbl_osn) {
+    LOG_DEBUG("SetPublishedMaxOSN table[%lu] osn[%lu].", tbl_osn_pair.first, tbl_osn_pair.second);
+  }
+  schema_mgr_->SetTablePublishedMaxOSN(tbl_osn);
+  return KStatus::SUCCESS;
 }
 
 KStatus ConstructTableBlocksDistribution(const std::shared_ptr<TsTableSchemaManager>& tb_schema_mgr,
@@ -3008,6 +3146,52 @@ KStatus TSEngineImpl::ResetAllWALMgr(kwdbts::kwdbContext_p ctx) {
       return KStatus::FAIL;
     }
   }
+  return KStatus::SUCCESS;
+}
+
+KStatus TSEngineImpl::GetValidColumns(kwdbContext_p ctx, const KTableKey& table_id, uint32_t table_version, bool& is_dropped,
+                                      TSSlice* primary_tags, size_t primary_tags_num,
+                                      std::vector<uint32_t>& valid_columns) {
+  if (primary_tags == nullptr || primary_tags_num == 0) {
+    LOG_ERROR("GetValidColumns: invalid primary tags, table id: %lu", table_id);
+    return KStatus::FAIL;
+  }
+  std::shared_ptr<TsTableSchemaManager> tb_schema_mgr;
+  KStatus s = GetTableSchemaMgr(ctx, table_id, is_dropped, tb_schema_mgr);
+  if (s != KStatus::SUCCESS) {
+    if (is_dropped) {
+      LOG_WARN("GetValidColumns: table[%lu] has been dropped", table_id);
+    } else {
+      LOG_ERROR("GetValidColumns: get table schema manager failed, table id: %lu", table_id);
+    }
+    return s;
+  }
+  auto tag_table = tb_schema_mgr->GetTagTable();
+  if (!tag_table) {
+    LOG_ERROR("GetValidColumns: tag table is null, table id: %lu", table_id);
+    return KStatus::FAIL;
+  }
+  if (!tag_table->GetValidColumns(primary_tags, primary_tags_num, valid_columns)) {
+    return KStatus::FAIL;
+  }
+  // metrics column index
+  vector<uint32_t> mertic_cols_index;
+  s = tb_schema_mgr->GetIdxForValidCols(mertic_cols_index, table_version);
+  if (s != KStatus::SUCCESS) {
+    if (is_dropped) {
+      LOG_WARN("GetValidColumns: table[%lu] has been dropped", table_id);
+    } else {
+      LOG_ERROR("GetValidColumns: get metric table valid column index failed, table id: %lu", table_id);
+    }
+    return s;
+  }
+  // filter valid_columns_index: only keep indices that exist in mertic_cols_index
+  std::unordered_set<uint32_t> mertic_set(mertic_cols_index.begin(), mertic_cols_index.end());
+  valid_columns.erase(
+    std::remove_if(valid_columns.begin(), valid_columns.end(),
+                   [&mertic_set](uint32_t idx) { return mertic_set.find(idx) == mertic_set.end(); }),
+    valid_columns.end());
+
   return KStatus::SUCCESS;
 }
 }  // namespace kwdbts

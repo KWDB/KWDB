@@ -143,6 +143,9 @@ func TestSystemTableLiterals(t *testing.T) {
 		{keys.UDRTableID, sqlbase.UDRTableSchema, sqlbase.UDRTable},
 		{keys.KWDBCDCWatermarkTableID, sqlbase.CDCWatermarkTableSchema, sqlbase.CDCWatermarkTable},
 		{keys.KWDBStreamsTableID, sqlbase.StreamsTableSchema, sqlbase.StreamsTable},
+		{keys.KWDBPipeTableID, sqlbase.PipesTableSchema, sqlbase.PipeTable},
+		{keys.KWDBUnpushID, sqlbase.UnpushTableSchema, sqlbase.UnpushTable},
+		{keys.KWDBPublicationTableID, sqlbase.PubTableSchema, sqlbase.PubTable},
 	} {
 		privs := *test.pkg.Privileges
 		gen, err := sql.CreateTestTableDescriptor(

@@ -264,7 +264,14 @@ func RandDatumWithNullChance(rng *rand.Rand, typ *types.T, nullChance int) tree.
 			}
 			buf.WriteRune(r)
 		}
-		d, err := tree.NewDCollatedString(buf.String(), typ.Locale(), &tree.CollationEnvironment{})
+		var d tree.Datum
+		var err error
+		switch typ.Oid() {
+		case types.T_citext:
+			d, err = tree.NewDCIText(buf.String(), &tree.CollationEnvironment{})
+		default:
+			d, err = tree.NewDCollatedString(buf.String(), typ.Locale(), &tree.CollationEnvironment{})
+		}
 		if err != nil {
 			panic(err)
 		}
@@ -552,6 +559,24 @@ var (
 			tree.NewDString("\x00"),
 			tree.NewDString("\u2603"), // unicode snowman
 		},
+		types.CollatedStringFamily: func() []tree.Datum {
+			var res []tree.Datum
+			for _, s := range []string{
+				"",
+				"X",
+				`"`,
+				`'`,
+				"\x00",
+				"\u2603",
+			} {
+				d, err := tree.NewDCIText(s, &tree.CollationEnvironment{})
+				if err != nil {
+					panic(err)
+				}
+				res = append(res, d)
+			}
+			return res
+		}(),
 		types.BytesFamily: {
 			tree.NewDBytes(""),
 			tree.NewDBytes("X"),
@@ -744,6 +769,9 @@ func randType(rng *rand.Rand, typs []*types.T) *types.T {
 	case types.BitFamily:
 		return types.MakeBit(int32(rng.Intn(50)))
 	case types.CollatedStringFamily:
+		if typ.Oid() == types.T_citext {
+			return types.MakeCollatedString(types.CIText, "")
+		}
 		return types.MakeCollatedString(types.String, *RandCollationLocale(rng))
 	case types.ArrayFamily:
 		if typ.ArrayContents().Family() == types.AnyFamily {

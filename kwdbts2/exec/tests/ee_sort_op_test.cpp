@@ -9,16 +9,17 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-#include "gtest/gtest.h"
 #include "ee_dml_exec.h"
-#include "ee_op_test_base.h"
 #include "ee_op_spec_utils.h"
+#include "ee_op_test_base.h"
+#include "gtest/gtest.h"
 
 namespace kwdbts {
 
 class TestSortOp : public OperatorTestBase {
  public:
-  TestSortOp() : OperatorTestBase() {}
+  TestSortOp() : OperatorTestBase() {
+  }
 
  protected:
   void SetUp() override {

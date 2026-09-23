@@ -110,7 +110,6 @@ class CountWindowHelper : public WindowHelper {
     KWThdContext *thd = current_thd;
     FieldFuncCountWindow *field =
         static_cast<FieldFuncCountWindow *>(thd->window_field_);
-    bool is_sliding = false;
     field->GetParams(&count_val_, &sliding_);
     for (auto i : field->table_->scan_cols_) {
       Field *f = field->table_->GetFieldWithColNum(i);

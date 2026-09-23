@@ -28,6 +28,7 @@
 #include "cm_kwdb_context.h"
 #include "cm_func.h"
 #include "lg_api.h"
+#include "ts_db_schema_manager.h"
 #include "ts_table_schema_manager.h"
 #include "ts_partition_interval_recorder.h"
 #include "sys_utils.h"
@@ -41,7 +42,9 @@ class TsEngineSchemaManager {
  public:
   TsEngineSchemaManager() = delete;
 
-  explicit TsEngineSchemaManager(const std::string& schema_root_path);
+  // db_schema_mgr is owned by TSEngineImpl and must outlive this manager; it
+  // is wired into every TsTableSchemaManager created here.
+  TsEngineSchemaManager(const std::string& schema_root_path, TsDBSchemaManager* db_schema_mgr);
 
   ~TsEngineSchemaManager();
 
@@ -63,8 +66,9 @@ class TsEngineSchemaManager {
   KStatus GetMeta(kwdbContext_p ctx, TSTableID table_id, uint32_t version, roachpb::CreateTsTable* meta);
 
   // Get or allocate vgroup_id and entity_id
-  KStatus GetVGroup(kwdbContext_p ctx, const std::shared_ptr<TsTableSchemaManager>& tb_schema, TSSlice primary_key,
-                        uint32_t* vgroup_id, TSEntityID* entity_id, bool* new_tag);
+  KStatus GetVGroupAndUpdateValidCol(kwdbContext_p ctx,
+    const std::shared_ptr<TsTableSchemaManager>& tb_schema, std::vector<uint32_t> valid_col_idx, TSSlice primary_key,
+    uint32_t* vgroup_id, TSEntityID* entity_id, bool* new_tag);
 
   uint32_t GetDBIDByTableID(TSTableID table_id);
 
@@ -72,6 +76,34 @@ class TsEngineSchemaManager {
                      uint32_t cur_version, uint32_t new_version, string& msg);
 
   fs::path GetSchemaPath() const {return schema_root_path_;}
+
+  bool GetTablePublishedMaxOSN(TSTableID tbl_id, TS_OSN& osn) {
+    if (!is_pubsub_init_) {   // pubsub table osn waterline not set. cannot delete any data.
+      osn = 0;
+      LOG_INFO("pubsub table osn waterline not set. storage cannot clear any data.");
+      return true;
+    }
+    bool ret = false;
+    rdLock();
+    auto it = tbl_pub_max_osn_.find(tbl_id);
+    if (it == tbl_pub_max_osn_.end()) {
+      ret = false;
+    } else {
+      ret = true;
+      osn = it->second;
+    }
+    unLock();
+    return ret;
+  }
+
+  void SetTablePublishedMaxOSN(std::unordered_map<TSTableID, TS_OSN>& tbl_osn) {
+    wrLock();
+    tbl_pub_max_osn_.swap(tbl_osn);
+    is_pubsub_init_  = true;
+    unLock();
+  }
+
+  TsDBSchemaManager* GetDbSchemaMgr() const { return db_schema_mgr_; }
 
   int rdLock();
 
@@ -84,7 +116,10 @@ class TsEngineSchemaManager {
   uint32_t vgroup_id_;
   string tbl_sub_path_;
   std::unordered_map<TSTableID, std::shared_ptr<TsTableSchemaManager>> table_schema_mgrs_;
+  TsDBSchemaManager* db_schema_mgr_;  // owned by TSEngineImpl
   KRWLatch mgrs_rw_latch_;
+  bool is_pubsub_init_{false};
+  std::unordered_map<TSTableID, TS_OSN> tbl_pub_max_osn_;  // table max data osn that has done in pub/sub module.
 };
 
 }  // namespace kwdbts

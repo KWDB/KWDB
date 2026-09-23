@@ -37,6 +37,15 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
+const (
+	// HiddenOSNColumnName is the name of hidden column OSN(Operation Sequence Number).
+	HiddenOSNColumnName = "_osn"
+	// HiddenOperationColumnName is the name of hidden column operation.
+	HiddenOperationColumnName = "_op"
+	// HiddenEventColumnName is the name of hidden column event.
+	HiddenEventColumnName = "_event"
+)
+
 // SchemaID uniquely identifies the usage of a schema within the scope of a
 // query. SchemaID 0 is reserved to mean "unknown schema". Internally, the
 // SchemaID consists of an index into the Metadata.schemas slice.
@@ -176,7 +185,7 @@ func (md *Metadata) CheckSingleTsTable() bool {
 		return false
 	}
 	for _, tbl := range allTables {
-		if tbl.Table.GetTableType() != tree.TimeseriesTable {
+		if !tbl.Table.IsTSTable() {
 			return false
 		}
 	}
@@ -284,6 +293,43 @@ func (md *Metadata) AddDependency(name MDDepName, ds cat.DataSource, priv privil
 	})
 }
 
+// CheckTableNameFn checks table name
+type CheckTableNameFn func(name cat.DataSourceName, tab cat.Table) (bool, error)
+
+// CheckHasSparseTable resolves (again) each data source on which this metadata
+// depends, that has sparse table
+func (md *Metadata) CheckHasSparseTable(checkNameFn CheckTableNameFn) (bool, error) {
+	for i := range md.deps {
+		name := &md.deps[i].name
+		if name.byID != 0 {
+			// check has SparseTable
+			for _, t := range md.tables {
+				if !t.Table.GetTableType().IsSparseTable() {
+					continue
+				}
+				if t.Table.ID() == name.byID {
+					return true, nil
+				}
+			}
+		} else {
+			for _, t := range md.tables {
+				if !t.Table.GetTableType().IsSparseTable() {
+					continue
+				}
+				equal, err := checkNameFn(name.byName, t.Table)
+				if err != nil {
+					return false, err
+				}
+				if equal {
+					return true, nil
+				}
+			}
+		}
+	}
+
+	return false, nil
+}
+
 // CheckDependencies resolves (again) each data source on which this metadata
 // depends, in order to check that all data source names resolve to the same
 // objects, and that the user still has sufficient privileges to access the
@@ -384,6 +430,12 @@ func (md *Metadata) AddTable(tab cat.Table, alias *tree.TableName) TableID {
 			primaryTagCount++
 		}
 	}
+
+	// Add hidden columns for time series tables
+	if md.tableType == int32(tree.TimeseriesTable) {
+		md.addTsHiddenColumns(tabID)
+	}
+
 	md.TableMeta(tabID).PrimaryTagCount = primaryTagCount
 	return tabID
 }
@@ -429,7 +481,7 @@ func (md *Metadata) AddColumn(alias string, typ *types.T) ColumnID {
 	// label columns based on the type of table, ColumnRel and ColumnTS
 	tsProp := ColNormal
 	switch md.tableType {
-	case int32(tree.TimeseriesTable), int32(tree.InstanceTable), int32(tree.TemplateTable):
+	case int32(tree.TimeseriesTable), int32(tree.InstanceTable), int32(tree.TemplateTable), int32(tree.SparseTable):
 		tsProp = TSColNormal
 	}
 
@@ -453,7 +505,7 @@ func (md *Metadata) AddDeclareColumn(
 // outParam: new ColumnID
 func (md *Metadata) AddTSColumn(alias string, typ *types.T, columnMetaProp int) ColumnID {
 	colID := md.AddColumn(alias, typ)
-	md.ColumnMeta(colID).TSType = AddTSProperty(md.ColumnMeta(colID).TSType, columnMetaProp)
+	AddTSProperty(&md.ColumnMeta(colID).TSType, columnMetaProp)
 	return colID
 }
 
@@ -750,4 +802,20 @@ func (md *Metadata) GetDeps(deps map[uint64]*PlanDeps) {
 			(deps)[tabID] = planDeps
 		}
 	}
+}
+
+// addTsHiddenColumns adds the special hidden columns required for time series tables.
+// These columns are used internally for time series operations and are not visible to users.
+func (md *Metadata) addTsHiddenColumns(tabID TableID) {
+	colID1 := md.AddColumn(HiddenOSNColumnName, types.Int)
+	md.ColumnMeta(colID1).Table = tabID
+	md.ColumnMeta(colID1).TSType = TSHiddenCol
+
+	colID2 := md.AddColumn(HiddenOperationColumnName, types.Bytes)
+	md.ColumnMeta(colID2).Table = tabID
+	md.ColumnMeta(colID2).TSType = TSHiddenCol
+
+	colID3 := md.AddColumn(HiddenEventColumnName, types.Bytes)
+	md.ColumnMeta(colID3).Table = tabID
+	md.ColumnMeta(colID3).TSType = TSHiddenCol
 }

@@ -174,6 +174,13 @@ func LimitValueWidth(typ *types.T, inVal tree.Datum, name *string) (outVal tree.
 			}
 			return tree.NewDInterval(in.Duration, itm), nil
 		}
+	case types.FloatFamily:
+		if typ.Width() == 32 {
+			if v, ok := inVal.(*tree.DFloat); ok {
+				d := float32(*v)
+				return tree.NewDFloat(tree.DFloat(d)), nil
+			}
+		}
 	}
 	return inVal, nil
 }

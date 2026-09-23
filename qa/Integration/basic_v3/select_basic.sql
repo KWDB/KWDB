@@ -150,5 +150,15 @@ select count(*) from test_filter where k_timestamp > '2020-11-06 08:10:23+08';
 explain select count(e1) from test_filter where k_timestamp > '2020-11-06 08:10:23+08';
 
 explain select e6 from test_filter where e6 is not null;
-
+CREATE TABLE crash_min (
+	ts TIMESTAMPTZ(3) NOT NULL,
+	col_dummy INT8 NULL
+	) TAGS (
+	tag_a INT8,
+	tag_b INT2,
+	tag_pk VARCHAR(64) NOT NULL
+) PRIMARY TAGS(tag_pk);
+INSERT INTO crash_min (ts, col_dummy, tag_a, tag_b, tag_pk) VALUES ('2026-06-01 00:00:00+00:00', 1, 100, 10, 'pk');
+SELECT t.*, CASE WHEN t.tag_a <> t.tag_a THEN t.tag_b ELSE t.col_dummy END, t.* FROM crash_min t
+WHERE ts >= now() - INTERVAL '184 days' ORDER BY ts DESC;
 drop database test_ts cascade;

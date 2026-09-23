@@ -37,7 +37,7 @@ func TestConvertTagValToString(t *testing.T) {
 	// Test timestamp
 	dTs := tree.MakeDTimestamp(time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC), time.Microsecond)
 	res = ConvertTagValToString(dTs)
-	require.Equal(t, "2023-01-01 00:00:00+00:00", res) // Might have quotes depending on format, wait
+	require.Equal(t, "2023-01-01 00:00:00", res) // Might have quotes depending on format, wait
 
 	// Test other (int)
 	dInt := tree.NewDInt(123)

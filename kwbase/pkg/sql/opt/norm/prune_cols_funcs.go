@@ -219,13 +219,13 @@ func neededMutationFetchCols(
 // needed columns from that. See the props.Relational.Rule.PruneCols comment for
 // more details.
 func (c *CustomFuncs) CanPruneCols(target memo.RelExpr, neededCols opt.ColSet) bool {
-	return !DerivePruneCols(target).SubsetOf(neededCols) && !c.f.CheckFlag(opt.NotPruneAgg)
+	return !DerivePruneCols(target).SubsetOf(neededCols) && !c.f.CheckTableCanNotPrune(target, neededCols)
 }
 
 // CanPruneAggCols returns true if one or more of the target aggregations is not
 // referenced and can be eliminated.
 func (c *CustomFuncs) CanPruneAggCols(target memo.AggregationsExpr, neededCols opt.ColSet) bool {
-	return !target.OutputCols().SubsetOf(neededCols) && !c.f.CheckFlag(opt.NotPruneAgg)
+	return !target.OutputCols().SubsetOf(neededCols) && !c.f.CheckAggCanNotPrune(target)
 }
 
 // CanPruneMutationFetchCols returns true if there are any FetchCols that are
@@ -306,7 +306,9 @@ func (c *CustomFuncs) PruneAggCols(
 			// select count(*) from (select interpolate(max), ... from ... group by ...);
 			// select e1 from (select interpolate(max), e1 ... from ... group by e1);
 			if !neededCols.Contains(item.Col) {
-				c.f.TSFlags |= opt.NotPruneAgg
+				if v, ok := item.Agg.Child(0).(*memo.VariableExpr); ok {
+					c.f.CanNotPruneTableID = int64(c.mem.Metadata().ColumnMeta(v.Col).Table)
+				}
 				return target
 			}
 		}
@@ -329,7 +331,9 @@ func (c *CustomFuncs) PruneAggCols(
 				for j := range target {
 					aggOp := target[j].Agg.Op()
 					if aggOp == opt.MaxExtendOp || aggOp == opt.MinExtendOp {
-						c.f.TSFlags |= opt.NotPruneAgg
+						if v, ok := item.Agg.Child(0).(*memo.VariableExpr); ok {
+							c.f.CanNotPruneTableID = int64(c.mem.Metadata().ColumnMeta(v.Col).Table)
+						}
 						return target
 					}
 				}

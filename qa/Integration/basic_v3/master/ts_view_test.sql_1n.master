@@ -1,0 +1,80 @@
+> drop database if exists test_ts_view_rel cascade;
+DROP DATABASE
+> drop database if exists test_ts_view cascade;
+DROP DATABASE
+> create ts database test_ts_view;
+CREATE TS DATABASE
+> use test_ts_view;
+SET
+> create table sensor_data(ts timestamp not null, temperature float8, humidity int4, status varchar(16))
+    tags (device_id varchar(16) not null, site varchar(16))
+primary tags(device_id);
+CREATE TABLE
+> insert into sensor_data values
+                            ('2024-01-01 00:00:00', 21.5, 40, 'ok', 'd1', 'north'),
+                            ('2024-01-01 00:01:00', 22.0, 42, 'ok', 'd1', 'north'),
+                            ('2024-01-01 00:02:00', 18.0, 55, 'warn', 'd2', 'south');
+INSERT 3
+> insert into sensor_data values
+                            ('2024-01-01 00:03:00', 23.5, 39, 'ok', 'd3', 'north'),
+                            ('2024-01-01 00:04:00', 24.2, 38, 'ok',  'd4', 'north');
+INSERT 2
+> alter table sensor_data add column voltage float8;
+ALTER TABLE
+> create database test_ts_view_rel;
+CREATE DATABASE
+> use test_ts_view_rel;
+SET
+> create table device_meta(device_id varchar(16) primary key, owner varchar(32), active bool);
+CREATE TABLE
+> insert into device_meta values
+                            ('d1', 'team-a', true),
+                            ('d2', 'team-b', false),
+                            ('d3', 'team-c', true),
+                            ('d4', 'team-d', true);
+INSERT 4
+> use test_ts_view;
+SET
+> select d.ts, d.temperature, d.device_id, m.owner
+from sensor_data d
+         join test_ts_view_rel.device_meta m on d.device_id = m.device_id
+where d.temperature >= 22 order by d.ts;
+             ts             | temperature | device_id | owner
+----------------------------+-------------+-----------+---------
+  2024-01-01 00:01:00+00:00 |          22 | d1        | team-a
+  2024-01-01 00:03:00+00:00 |        23.5 | d3        | team-c
+  2024-01-01 00:04:00+00:00 |        24.2 | d4        | team-d
+(3 rows)
+> select * from sensor_data where device_id='d1';
+             ts             | temperature | humidity | status | voltage | device_id | site
+----------------------------+-------------+----------+--------+---------+-----------+--------
+  2024-01-01 00:00:00+00:00 |        21.5 |       40 | ok     | NULL    | d1        | north
+  2024-01-01 00:01:00+00:00 |          22 |       42 | ok     | NULL    | d1        | north
+(2 rows)
+> select pg_sleep(2);
+  pg_sleep
+------------
+    true
+(1 row)
+> select * from sensor_data where device_id='d1';
+             ts             | temperature | humidity | status | voltage | device_id | site
+----------------------------+-------------+----------+--------+---------+-----------+--------
+  2024-01-01 00:00:00+00:00 |        21.5 |       40 | ok     | NULL    | d1        | north
+  2024-01-01 00:01:00+00:00 |          22 |       42 | ok     | NULL    | d1        | north
+(2 rows)
+> select d.ts, d.temperature, d.device_id, m.owner
+from sensor_data d
+         join test_ts_view_rel.device_meta m on d.device_id = m.device_id
+where d.temperature >= 22 order by d.ts;
+             ts             | temperature | device_id | owner
+----------------------------+-------------+-----------+---------
+  2024-01-01 00:01:00+00:00 |          22 | d1        | team-a
+  2024-01-01 00:03:00+00:00 |        23.5 | d3        | team-c
+  2024-01-01 00:04:00+00:00 |        24.2 | d4        | team-d
+(3 rows)
+> use defaultdb;
+SET
+> drop database test_ts_view_rel cascade;
+DROP DATABASE
+> drop database test_ts_view cascade;
+DROP DATABASE

@@ -45,7 +45,7 @@ $(BUILDDIR):
 	@rm -rf $@ && mkdir -p $(BUILDDIR)
 
 build: export GO111MODULE = off
-build: .ALWAYS_REBUILD | bin/.submodules-initialized
+build: .ALWAYS_REBUILD
 	$(info ========== $@ ==========)
 	@if [ -n "$(PARALLEL_FLAG)" ]; then \
 		NUMBER=$$(echo $(MAKEFLAGS) | egrep -o '(-j)[0-9]*' | sed 's/-j//'); \
@@ -138,14 +138,8 @@ install: .ALWAYS_REBUILD | build
 	$(info ========== $@ ==========)
 	$(MAKE) -C $(BUILDDIR) install
 
-.PHONY: .ALWAYS_REBUILD install clean help bin/.submodules-initialized
+.PHONY: .ALWAYS_REBUILD install clean help
 .ALWAYS_REBUILD:
-
-bin/.submodules-initialized:
-	gitdir=$$(git rev-parse --git-dir 2>/dev/null || true); \
-	if test -n "$$gitdir"; then \
-	   git submodule update --init --recursive; \
-	fi
 
 clean:
 	rm -rf build*

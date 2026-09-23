@@ -271,7 +271,7 @@ func (streamAgg *streamAggregator) accumulateRows() (
 		}
 
 		// WINDOW Function cases
-		if haveGroupWindow(streamAgg.EvalCtx) {
+		if haveGroupWindowCol(streamAgg.EvalCtx, streamAgg.groupWindowColID) {
 			if streamAgg.currentBucket.groupWindow == nil {
 				gw := newGroupWindow(
 					streamAgg.EvalCtx,

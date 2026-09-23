@@ -489,8 +489,7 @@ SET
 primary attributes (attr1);
 CREATE TABLE
 > insert into test_ts.ts_table4 select 100, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 join test.test_r as t2 on t1.e1=t2.e1;
-ERROR: first column must be timestamp when the target table is table of time series
-SQLSTATE: 42804
+INSERT 5598
 > insert into test_ts.ts_table4 select * from test_ts.ts_table UNION select * from test.test_r;
 INSERT 58
 > insert into test_ts.ts_table4 (select * from test_ts.ts_table order by time) UNION (select * from test.test_r order by e1);
@@ -1056,4 +1055,32 @@ GROUP BY tt,fcid,fctype
 ORDER BY tt,fctype;
 INSERT 0
 > drop database test CASCADE;
+DROP DATABASE
+> DROP DATABASE IF EXISTS rowexec_bh_repro CASCADE;
+DROP DATABASE
+> CREATE TS DATABASE rowexec_bh_repro;
+CREATE TS DATABASE
+> CREATE TABLE rowexec_bh_repro.src (
+  k_timestamp TIMESTAMP NOT NULL,
+  v INT
+) TAGS (
+ptag INT NOT NULL
+) PRIMARY TAGS(ptag);
+CREATE TABLE
+> CREATE TABLE rowexec_bh_repro.dst (
+  k_timestamp TIMESTAMP NOT NULL,
+  v INT
+) TAGS (
+ptag INT NOT NULL
+) PRIMARY TAGS(ptag);
+CREATE TABLE
+> INSERT INTO rowexec_bh_repro.src
+VALUES ('2024-01-01 00:00:00', 10, 1);
+INSERT 1
+> SET CLUSTER SETTING sql.ts_insert_select.block_memory = 0;
+ERROR: invalid value, sql.ts_insert_select.block_memory must be greater than 0
+> INSERT INTO rowexec_bh_repro.dst
+SELECT * FROM rowexec_bh_repro.src;
+INSERT 1
+> drop database rowexec_bh_repro CASCADE;
 DROP DATABASE

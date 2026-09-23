@@ -228,7 +228,9 @@ const (
 	// InsideTriggerDef is used in trigger.
 	InsideTriggerDef // 00000100
 	// InsidePrepareOfProcDef is used in prepare of procedure.
-	InsidePrepareOfProcDef // 00000100
+	InsidePrepareOfProcDef // 00001000
+	// InsideInsertInto is used in insert into statement.
+	InsideInsertInto // 00010000
 )
 
 // DefinitionFlags is a universal flag.
@@ -236,8 +238,13 @@ type DefinitionFlags struct {
 	flags uint8
 }
 
-// SetProcPrepareFlags set procedure prepare flag
-func (b *Builder) SetProcPrepareFlags(flags uint8) {
+// AddInsideFlag adds inside Object flag
+func (b *Builder) AddInsideFlag(flags uint8) {
+	b.insideObjectDef.SetFlags(flags)
+}
+
+// ClearInsideFlag clears inside Object flag
+func (b *Builder) ClearInsideFlag(flags uint8) {
 	b.insideObjectDef.SetFlags(flags)
 }
 

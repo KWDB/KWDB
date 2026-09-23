@@ -715,7 +715,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %token <str> CONFLICT CONSTANT CONSTRAINT CONSTRAINTS CONTAINS CONVERSION COPY COVERING CREATE CREATEROLE CREATE_TIME
 %token <str> CROSS CUBE CURRENT CURRENT_CATALOG CURRENT_DATE CURRENT_SCHEMA
 %token <str> CURRENT_ROLE CURRENT_TIME CURRENT_TIMESTAMP
-%token <str> CURRENT_USER CYCLE COLLECT_SORTED_HISTOGRAM
+%token <str> CURRENT_USER CYCLE COLLECT_SORTED_HISTOGRAM CITEXT
 
 %token <str> D DATA DATABASE DATABASES DATAS DATE DAY DDLREPLAY DEC DECLARE DECIMAL DEFAULT DELIMITER_EOF
 %token <str> DEALLOCATE DEFERRABLE DEFERRED DELETE DESC DESCRIBE DEVICE
@@ -761,9 +761,9 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %token <str> OF OFF OFFSET OID OIDS OIDVECTOR ON ONLY OPT OPTION OPTIONS OR
 %token <str> ORDER ORDINALITY OTHERS OUT INOUT OUTER OVER OVERLAPS OVERLAY OWNED OPERATOR
 
-%token <str> PARENT PARTIAL PARTITION PARTITIONS PASSWORD PAUSE PHYSICAL PLACING
+%token <str> PARENT PARTIAL PARTITION PARTITIONS PASSWORD PAUSE PHYSICAL PIPE PIPES PLACING
 %token <str> PLAN PLANS POSITION PRECEDES PRECEDING PRECISION PREPARE PRESERVE PREVIOUS PRIMARY PRIORITY
-%token <str> PROCEDURAL PUBLIC PUBLICATION PROCEDURE PROCEDURES
+%token <str> PROCEDURAL PUB PUBLIC PUBLICATION PUBLICATIONS PUBS PROCEDURE PROCEDURES
 
 %token <str> QUERIES QUERY
 
@@ -776,7 +776,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %token <str> S SAMPLE SAVEPOINT SCATTER SCHEDULE SCHEDULES SCHEMA SCHEMAS SCRUB SEARCH SECOND SECONDARY SELECT SEQUENCE SEQUENCES
 %token <str> SERIAL SERIAL2 SERIAL4 SERIAL8
 %token <str> SERIALIZABLE SERVER SERVICE SESSION SESSIONS SESSION_USER SET SETTING SETTINGS
-%token <str> SHARE SHOW SIMILAR SIMPLE SKIP SLIDING SMALLINT SMALLSERIAL SNAPSHOT SOME SPLIT SQL
+%token <str> SHARE SHOW SIMILAR SIMPLE SINK SKIP SLIDING SMALLINT SMALLSERIAL SNAPSHOT SOME SPARSE SPLIT SQL
 %token <str> STR_TO_DATE
 
 %token <str> START STARTTIME STATISTICS STATUS STDIN STREAM STREAMS STRICT STRING STORE STORED STORING SUBSTRING SUCCESS
@@ -829,6 +829,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.Statement> alter_ddl_stmt
 %type <tree.Statement> alter_table_stmt
 %type <tree.Statement> alter_index_stmt
+%type <tree.Statement> alter_pipe_stmt
 %type <tree.Statement> alter_view_stmt
 %type <tree.Statement> alter_sequence_stmt
 %type <tree.Statement> alter_database_stmt
@@ -840,6 +841,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.Statement> alter_audit_stmt
 %type <tree.Statement> alter_procedure_stmt
 %type <tree.Statement> alter_trigger_stmt
+%type <tree.Statement> alter_pub_stmt
 
 // ALTER RANGE
 %type <tree.Statement> alter_zone_range_stmt
@@ -911,6 +913,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.Statement> create_database_stmt
 %type <tree.Statement> create_ts_database_stmt
 %type <tree.Statement> create_index_stmt
+%type <tree.Statement> create_pipe_stmt
 %type <tree.Statement> create_role_stmt
 %type <tree.Statement> create_schema_stmt
 %type <tree.Statement> create_schedule_for_sql_stmt
@@ -927,6 +930,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.Statement> create_trigger_stmt
 %type <tree.Statement> create_function_stmt
 %type <tree.Statement> create_audit_stmt
+%type <tree.Statement> create_pub_stmt
 
 %type <tree.Statement> create_stats_stmt
 %type <*tree.CreateStatsOptions> opt_create_stats_options
@@ -941,6 +945,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.Statement> drop_ddl_stmt
 %type <tree.Statement> drop_database_stmt
 %type <tree.Statement> drop_index_stmt
+%type <tree.Statement> drop_pipe_stmt
 %type <tree.Statement> drop_role_stmt
 %type <tree.Statement> drop_schema_stmt
 %type <tree.Statement> drop_procedure_stmt
@@ -952,6 +957,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.Statement> drop_schedule_stmt
 %type <tree.Statement> drop_audit_stmt
 %type <tree.Statement> drop_function_stmt
+%type <tree.Statement> drop_pub_stmt
 
 %type <tree.Statement> explain_stmt
 %type <tree.Statement> prepare_stmt
@@ -1012,6 +1018,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.Statement> show_sort_histogram_stmt
 %type <tree.Statement> show_indexes_stmt
 %type <tree.Statement> show_partitions_stmt
+%type <tree.Statement> show_pipes_stmt
 %type <tree.Statement> show_jobs_stmt
 %type <tree.Statement> show_queries_stmt
 %type <tree.Statement> show_ranges_stmt
@@ -1038,6 +1045,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.Statement> show_schedule_stmt
 %type <tree.Statement> show_schedules_stmt
 %type <tree.Statement> show_audits_stmt
+%type <tree.Statement> show_pubs_stmt
 
 %type <str> session_var numeric_typename
 %type <*string> comment_text
@@ -1103,7 +1111,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <str> db_object_name_component transaction_name
 %type <*tree.UnresolvedObjectName> table_name standalone_index_name sequence_name type_name view_name db_object_name simple_db_object_name complex_db_object_name
 %type <*tree.UnresolvedObjectName> procedure_name
-%type <str> schema_name schedule_name stream_name audit_name function_name argument_name cursor_name
+%type <str> pipe_name pub_name schema_name schedule_name stream_name audit_name function_name argument_name cursor_name
 %type <[]string> schema_name_list function_name_list
 %type <*tree.UnresolvedName> table_pattern complex_table_pattern
 %type <*tree.UnresolvedName> column_path prefixed_column_path column_path_with_star last_column
@@ -1351,6 +1359,8 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 
 %type <tree.Expr> opt_alter_column_using
 
+%type <bool> opt_sparse
+
 %type <bool> opt_temp
 %type <bool> opt_temp_create_table
 %type <bool> role_or_group_or_user
@@ -1358,6 +1368,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 //%type <tree.ChildTableDef> child_table_clause
 //%type <tree.ChildTableDefs> child_table_list_clause
 
+%type <str> pub_keyword_alternatives pubs_keyword_alternatives
 %type <tree.Expr>  cron_expr opt_description sconst_or_placeholder
 
 // Precedence: lowest to highest
@@ -1467,11 +1478,13 @@ alter_stmt:
   alter_ddl_stmt      // help texts in sub-rule
 | alter_role_stmt     // EXTEND WITH HELP: ALTER ROLE
 | alter_audit_stmt    // EXTEND WITH HELP: ALTER AUDIT
+| alter_pub_stmt      // EXTEND WITH HELP: ALTER PUBLICATION
 | ALTER error         // SHOW HELP: ALTER
 
 alter_ddl_stmt:
   alter_table_stmt     // EXTEND WITH HELP: ALTER TABLE
 | alter_index_stmt     // EXTEND WITH HELP: ALTER INDEX
+| alter_pipe_stmt      // EXTEND WITH HELP: ALTER PIPE
 | alter_view_stmt      // EXTEND WITH HELP: ALTER VIEW
 | alter_sequence_stmt  // EXTEND WITH HELP: ALTER SEQUENCE
 | alter_database_stmt  // EXTEND WITH HELP: ALTER DATABASE
@@ -2317,6 +2330,51 @@ import_format:
     $$ = strings.ToUpper($1)
   }
 
+// %Help: ALTER PIPE - alter pipe
+// %Category: DDL
+// %Text:
+// ALTER PIPE <pipe_name> SET TABLE <table_name> ( <elements...> ) WHERE <expr>
+// ALTER PIPE <pipe_name> SET OPTIONS <option> [= <value>] [, ...]
+// ALTER PIPE <pipe_name> SET SINK <option> [= <value>] [, ...]
+//
+// %SeeAlso: CREATE PIPE, DROP PIPE, SHOW PIPES
+alter_pipe_stmt:
+  ALTER PIPE pipe_name SET TABLE table_name '(' name_list ')' opt_where_clause
+  {
+  	name := $6.unresolvedObjectName().ToTableName()
+    $$.val = &tree.AlterPipe {
+			PipeName:			tree.Name($3),
+			Table:   			name,
+      ColNames: 		$8.nameList(),
+      Where:				tree.NewWhere(tree.AstWhere, $10.expr()),
+    }
+  }
+| ALTER PIPE pipe_name SET TABLE table_name '(' '*' ')' opt_where_clause
+  {
+  	name := $6.unresolvedObjectName().ToTableName()
+    $$.val = &tree.AlterPipe {
+			PipeName:			tree.Name($3),
+			Table:   			name,
+      Where:				tree.NewWhere(tree.AstWhere, $10.expr()),
+      Star:					true,
+    }
+  }
+| ALTER PIPE pipe_name SET OPTIONS '(' kv_option_list ')'
+  {
+    $$.val = &tree.AlterPipe {
+			PipeName:			tree.Name($3),
+      Options: 			$7.kvOptions(),
+    }
+  }
+| ALTER PIPE pipe_name SET kv_option_list
+  {
+    $$.val = &tree.AlterPipe {
+			PipeName:			tree.Name($3),
+      Options: 			$5.kvOptions(),
+    }
+  }
+| ALTER PIPE error // SHOW HELP: ALTER PIPE
+
 // %Help: IMPORT - load data from file in a distributed manner
 // %Category: DML
 // %Text:
@@ -2715,7 +2773,7 @@ create_unsupported:
 //| CREATE OR REPLACE FUNCTION error { return unimplementedWithIssueDetail(sqllex, 17511, "create function") }
 | CREATE opt_or_replace opt_trusted opt_procedural LANGUAGE name error { return unimplementedWithIssueDetail(sqllex, 17511, "create language " + $6) }
 | CREATE OPERATOR error { return unimplemented(sqllex, "create operator") }
-| CREATE PUBLICATION error { return unimplemented(sqllex, "create publication") }
+// | CREATE PUBLICATION error { return unimplemented(sqllex, "create publication") }
 | CREATE opt_or_replace RULE error { return unimplemented(sqllex, "create rule") }
 | CREATE SERVER error { return unimplemented(sqllex, "create server") }
 | CREATE SUBSCRIPTION error { return unimplemented(sqllex, "create subscription") }
@@ -2746,7 +2804,7 @@ drop_unsupported:
 //| DROP FUNCTION error { return unimplementedWithIssueDetail(sqllex, 17511, "drop function") }
 | DROP opt_procedural LANGUAGE name error { return unimplementedWithIssueDetail(sqllex, 17511, "drop language " + $4) }
 | DROP OPERATOR error { return unimplemented(sqllex, "drop operator") }
-| DROP PUBLICATION error { return unimplemented(sqllex, "drop publication") }
+//| DROP PUBLICATION error { return unimplemented(sqllex, "drop publication") }
 | DROP RULE error { return unimplemented(sqllex, "drop rule") }
 | DROP SERVER error { return unimplemented(sqllex, "drop server") }
 | DROP SUBSCRIPTION error { return unimplemented(sqllex, "drop subscription") }
@@ -2758,6 +2816,7 @@ create_ddl_stmt:
 | create_ts_database_stmt // EXTEND WITH HELP: CREATE TS DATABASE
 | create_database_stmt // EXTEND WITH HELP: CREATE DATABASE
 | create_index_stmt    // EXTEND WITH HELP: CREATE INDEX
+| create_pipe_stmt		 // EXTEND WITH HELP: CREATE PIPE
 | create_schema_stmt   // EXTEND WITH HELP: CREATE SCHEMA
 | create_stream_stmt   // EXTEND WITH HELP: CREATE STREAM
 | create_table_stmt    // EXTEND WITH HELP: CREATE TABLE
@@ -2765,11 +2824,12 @@ create_ddl_stmt:
 | create_ts_table_stmt // EXTEND WITH HELP: CREATE TABLE
 | create_table_like_stmt // EXTEND WITH HELP: CREATE TABLE
 // Error case for both CREATE TABLE and CREATE TABLE ... AS in one
-| CREATE opt_temp_create_table TABLE error   // SHOW HELP: CREATE TABLE
+| CREATE opt_temp_create_table opt_sparse TABLE error   // SHOW HELP: CREATE TABLE
 | create_type_stmt     { /* SKIP DOC */ }
 | create_view_stmt     // EXTEND WITH HELP: CREATE VIEW
 | create_sequence_stmt // EXTEND WITH HELP: CREATE SEQUENCE
 | create_function_stmt // EXTEND WITH HELP: CREATE FUNCTION
+| create_pub_stmt		   // EXTEND WITH HELP: CREATE PUBLICATION
 | create_trigger_stmt
 
 trigger_body_stmt:
@@ -3179,6 +3239,7 @@ drop_stmt:
 drop_ddl_stmt:
   drop_database_stmt // EXTEND WITH HELP: DROP DATABASE
 | drop_index_stmt    // EXTEND WITH HELP: DROP INDEX
+| drop_pipe_stmt     // EXTEND WITH HELP: DROP PIPE
 | drop_table_stmt    // EXTEND WITH HELP: DROP TABLE
 | drop_view_stmt     // EXTEND WITH HELP: DROP VIEW
 | drop_sequence_stmt // EXTEND WITH HELP: DROP SEQUENCE
@@ -3187,6 +3248,7 @@ drop_ddl_stmt:
 | drop_function_stmt // EXTEND WITH HELP: DROP FUNCTION
 | drop_procedure_stmt // EXTEND WITH HELP: DROP PROCEDURE
 | drop_trigger_stmt  // EXTEND WITH HELP: DROP TRIGGER
+| drop_pub_stmt      // EXTEND WITH HELP: DROP PUBLICATION
 
 // %Help: DROP VIEW - remove a view
 // %Category: DDL
@@ -3275,6 +3337,27 @@ drop_index_stmt:
     }
   }
 | DROP INDEX error // SHOW HELP: DROP INDEX
+
+// %Help: DROP PIPE - remove a pipe
+// %Category: DDL
+// %Text: DROP PIPE [IF EXISTS] <pipe_name>
+// %SeeAlso: CREATE PIPE, ALTER PIPE, SHOW PIPES
+drop_pipe_stmt:
+  DROP PIPE pipe_name
+  {
+    $$.val = &tree.DropPipe{
+      PipeName: tree.Name($3),
+      IfExists: false,
+    }
+  }
+| DROP PIPE IF EXISTS pipe_name
+  {
+    $$.val = &tree.DropPipe{
+      PipeName: tree.Name($5),
+      IfExists: true,
+    }
+  }
+| DROP PIPE error // SHOW HELP: DROP PIPE
 
 // %Help: DROP DATABASE - remove a database
 // %Category: DDL
@@ -3465,6 +3548,27 @@ drop_audit_stmt:
     $$.val = &tree.DropAudit{Names: $5.nameList(), IfExists: true}
   }
 | DROP AUDIT error  // SHOW HELP: DROP AUDIT
+
+// %Help: DROP PUBLICATION - remove a publication
+// %Category: DDL
+// %Text: DROP PUBLICATION [IF EXISTS] <pub_name>
+// %SeeAlso: CREATE PUBLICATION, ALTER PUBLICATION, SHOW PUBLICATIONS
+drop_pub_stmt:
+  DROP pub_keyword_alternatives pub_name
+  {
+    $$.val = &tree.DropPublication{
+      PubName: tree.Name($3),
+      IfExists: false,
+    }
+  }
+| DROP pub_keyword_alternatives IF EXISTS pub_name
+  {
+    $$.val = &tree.DropPublication{
+      PubName: tree.Name($5),
+      IfExists: true,
+    }
+  }
+| DROP pub_keyword_alternatives error // SHOW HELP: DROP PUBLICATION
 
 // %Help: EXPLAIN - show the logical plan of a query
 // %Category: Misc
@@ -4205,6 +4309,7 @@ show_stmt:
 | show_sort_histogram_stmt
 | show_indexes_stmt         // EXTEND WITH HELP: SHOW INDEXES
 | show_partitions_stmt
+| show_pipes_stmt         	// EXTEND WITH HELP: SHOW PIPES
 | show_jobs_stmt            // EXTEND WITH HELP: SHOW JOBS
 | show_queries_stmt         // EXTEND WITH HELP: SHOW QUERIES
 | show_ranges_stmt          // EXTEND WITH HELP: SHOW RANGES
@@ -4231,6 +4336,7 @@ show_stmt:
 | show_retention_stmt       // EXTEND WITH HELP: SHOW RETENTIONS
 | show_functions_stmt       // EXTEND WITH HELP: SHOW FUNCTIONS
 | show_function_stmt        // EXTEND WITH HELP: SHOW FUNCTION
+| show_pubs_stmt            // EXTEND WITH HELP: SHOW PUBLICATIONS
 | SHOW error                // SHOW HELP: SHOW
 
 reindex_stmt:
@@ -4583,6 +4689,52 @@ show_distribution_stmt:
     $$.val = &tree.ShowDistribution{IsTable: true, Table: $5.unresolvedObjectName()}
   }
 | SHOW DISTRIBUTION error // SHOW HELP: SHOW DISTRIBUTION
+
+// %Help: SHOW PIPES - list pipes
+// %Category: DDL
+// %Text:
+// SHOW PIPES
+// SHOW PIPE <pipe_name>
+// %SeeAlso: ALTER PIPE, CREATE PIPE, DROP PIPE
+show_pipes_stmt:
+  SHOW PIPES
+  {
+    $$.val = &tree.ShowPipes{
+    	ShowAll:  true,
+    }
+  }
+| SHOW PIPE pipe_name
+  {
+		$$.val = &tree.ShowPipes{
+			ShowAll:  false,
+			PipeName: tree.Name($3),
+		}
+  }
+| SHOW PIPES error // SHOW HELP: SHOW PIPES
+
+// %Help: SHOW PUBLICATIONS - list publications
+// %Category: DDL
+// %Text:
+// SHOW PUBLICATIONS | PUBS
+// SHOW PUBLICATION | PUB <pub_name>
+// %SeeAlso: ALTER PUBLICATION, CREATE PUBLICATION, DROP PUBLICATION
+show_pubs_stmt:
+  SHOW pubs_keyword_alternatives
+  {
+    $$.val = &tree.ShowPublications{
+    	ShowAll:  true,
+    }
+  }
+| SHOW pub_keyword_alternatives pub_name
+  {
+		$$.val = &tree.ShowPublications{
+			ShowAll:  false,
+			PubName: tree.Name($3),
+		}
+  }
+| SHOW pub_keyword_alternatives error // SHOW HELP: SHOW PUBLICATIONS
+| SHOW pubs_keyword_alternatives error // SHOW HELP: SHOW PUBLICATIONS
+
 
 // %Help: SHOW DATABASES - list databases
 // %Category: DDL
@@ -5494,38 +5646,48 @@ create_schema_stmt:
 //
 // %SeeAlso: CREATE VIEW, SHOW CREATE, SHOW TABLES
 create_table_stmt:
-  CREATE opt_temp_create_table TABLE table_name '(' opt_table_elem_list ')' opt_interleave opt_partition_by opt_table_with opt_create_table_on_commit opt_comment_clause
+  CREATE opt_temp_create_table opt_sparse TABLE table_name '(' opt_table_elem_list ')' opt_interleave opt_partition_by opt_table_with opt_create_table_on_commit opt_comment_clause
   {
-    name := $4.unresolvedObjectName().ToTableName()
+    name := $5.unresolvedObjectName().ToTableName()
+    sparse := $3.bool()
+    if sparse {
+    	err := errors.New("can not create relational sparse table")
+    	return setErr(sqllex, err)
+    }
     $$.val = &tree.CreateTable{
       Table: name,
       IfNotExists: false,
-      Interleave: $8.interleave(),
-      Defs: $6.tblDefs(),
+      Interleave: $9.interleave(),
+      Defs: $7.tblDefs(),
       AsSource: nil,
-      PartitionBy: $9.partitionBy(),
+      PartitionBy: $10.partitionBy(),
       Temporary: $2.persistenceType(),
-      StorageParams: $10.storageParams(),
-      OnCommit: $11.createTableOnCommitSetting(),
+      StorageParams: $11.storageParams(),
+      OnCommit: $12.createTableOnCommitSetting(),
       TableType: tree.RelationalTable,
-      Comment: $12,
+      Comment: $13,
     }
   }
-| CREATE opt_temp_create_table TABLE IF NOT EXISTS table_name '(' opt_table_elem_list ')' opt_interleave opt_partition_by opt_table_with opt_create_table_on_commit opt_comment_clause
+| CREATE opt_temp_create_table opt_sparse TABLE IF NOT EXISTS table_name '(' opt_table_elem_list ')' opt_interleave opt_partition_by opt_table_with opt_create_table_on_commit opt_comment_clause
   {
-    name := $7.unresolvedObjectName().ToTableName()
+    name := $8.unresolvedObjectName().ToTableName()
+    sparse := $3.bool()
+    if sparse {
+    	err := errors.New("can not create relational sparse table")
+    	return setErr(sqllex, err)
+    }
     $$.val = &tree.CreateTable{
       Table: name,
       IfNotExists: true,
-      Interleave: $11.interleave(),
-      Defs: $9.tblDefs(),
+      Interleave: $12.interleave(),
+      Defs: $10.tblDefs(),
       AsSource: nil,
-      PartitionBy: $12.partitionBy(),
+      PartitionBy: $13.partitionBy(),
       Temporary: $2.persistenceType(),
-      StorageParams: $13.storageParams(),
-      OnCommit: $14.createTableOnCommitSetting(),
+      StorageParams: $14.storageParams(),
+      OnCommit: $15.createTableOnCommitSetting(),
       TableType: tree.RelationalTable,
-      Comment: $15,
+      Comment: $16,
     }
   }
 
@@ -5715,38 +5877,48 @@ table_elem_tag:
 //  }
 
 create_ts_table_stmt:
-  CREATE opt_temp_create_table TABLE IF NOT EXISTS table_name '(' opt_table_elem_list ')' attributes_tags '(' table_elem_tag_list ')' PRIMARY attributes_tags '(' name_list ')' opt_retentions_elems opt_comment_clause opt_hash_num
+  CREATE opt_temp_create_table opt_sparse TABLE IF NOT EXISTS table_name '(' opt_table_elem_list ')' attributes_tags '(' table_elem_tag_list ')' PRIMARY attributes_tags '(' name_list ')' opt_retentions_elems opt_comment_clause opt_hash_num
 	{
-    name := $7.unresolvedObjectName().ToTableName()
+    name := $8.unresolvedObjectName().ToTableName()
+    sparse := $3.bool()
+    tableType := tree.TimeseriesTable
+    if sparse {
+    	tableType = tree.SparseTable
+    }
     $$.val = &tree.CreateTable{
       Table: name,
       IfNotExists: true,
-      Defs: $9.tblDefs(),
+      Defs: $10.tblDefs(),
       Temporary: $2.persistenceType(),
       OnCommit: tree.CreateTableOnCommitUnset,
-      DownSampling: $20.downSampling(),
-      TableType: tree.TimeseriesTable,
-      Tags: $13.tags(),
-      PrimaryTagList: $18.nameList(),
-      Comment: $21,
-      HashNum: $22.int64(),
+      DownSampling: $21.downSampling(),
+      TableType: tableType,
+      Tags: $14.tags(),
+      PrimaryTagList: $19.nameList(),
+      Comment: $22,
+      HashNum: $23.int64(),
     }
 	}
-| CREATE opt_temp_create_table TABLE table_name '(' opt_table_elem_list ')' attributes_tags '(' table_elem_tag_list ')' PRIMARY attributes_tags '(' name_list ')' opt_retentions_elems opt_comment_clause opt_hash_num
+| CREATE opt_temp_create_table opt_sparse TABLE table_name '(' opt_table_elem_list ')' attributes_tags '(' table_elem_tag_list ')' PRIMARY attributes_tags '(' name_list ')' opt_retentions_elems opt_comment_clause opt_hash_num
 	{
-    name := $4.unresolvedObjectName().ToTableName()
+    name := $5.unresolvedObjectName().ToTableName()
+    sparse := $3.bool()
+    tableType := tree.TimeseriesTable
+    if sparse {
+    	tableType = tree.SparseTable
+    }
     $$.val = &tree.CreateTable{
       Table: name,
       IfNotExists: false,
-      Defs: $6.tblDefs(),
+      Defs: $7.tblDefs(),
       Temporary: $2.persistenceType(),
       OnCommit: tree.CreateTableOnCommitUnset,
-      DownSampling: $17.downSampling(),
-      TableType: tree.TimeseriesTable,
-      Tags: $10.tags(),
-      PrimaryTagList: $15.nameList(),
-      Comment: $18,
-      HashNum: $19.int64(),
+      DownSampling: $18.downSampling(),
+      TableType: tableType,
+      Tags: $11.tags(),
+      PrimaryTagList: $16.nameList(),
+      Comment: $19,
+      HashNum: $20.int64(),
     }
 	}
 
@@ -5862,64 +6034,87 @@ method:
 	}
 
 create_table_as_stmt:
-  CREATE opt_temp_create_table TABLE table_name create_as_opt_col_list opt_table_with AS select_stmt opt_create_as_data opt_create_table_on_commit opt_comment_clause
+  CREATE opt_temp_create_table opt_sparse TABLE table_name create_as_opt_col_list opt_table_with AS select_stmt opt_create_as_data opt_create_table_on_commit opt_comment_clause
   {
-    name := $4.unresolvedObjectName().ToTableName()
+    name := $5.unresolvedObjectName().ToTableName()
+    sparse := $3.bool()
+    tableType := tree.RelationalTable
+    if sparse {
+    	tableType = tree.SparseTable
+    }
     $$.val = &tree.CreateTable{
       Table: name,
       IfNotExists: false,
       Interleave: nil,
-      Defs: $5.tblDefs(),
-      AsSource: $8.slct(),
-      StorageParams: $6.storageParams(),
-      OnCommit: $10.createTableOnCommitSetting(),
+      Defs: $6.tblDefs(),
+      AsSource: $9.slct(),
+      StorageParams: $7.storageParams(),
+      OnCommit: $11.createTableOnCommitSetting(),
       Temporary: $2.persistenceType(),
-      TableType: tree.RelationalTable,
-      Comment: $11,
+      TableType: tableType,
+      Comment: $12,
     }
   }
-| CREATE opt_temp_create_table TABLE IF NOT EXISTS table_name create_as_opt_col_list opt_table_with AS select_stmt opt_create_as_data opt_create_table_on_commit opt_comment_clause
+| CREATE opt_temp_create_table opt_sparse TABLE IF NOT EXISTS table_name create_as_opt_col_list opt_table_with AS select_stmt opt_create_as_data opt_create_table_on_commit opt_comment_clause
   {
-    name := $7.unresolvedObjectName().ToTableName()
+    name := $8.unresolvedObjectName().ToTableName()
+    sparse := $3.bool()
+    tableType := tree.RelationalTable
+    if sparse {
+    	tableType = tree.SparseTable
+    }
     $$.val = &tree.CreateTable{
       Table: name,
       IfNotExists: true,
       Interleave: nil,
-      Defs: $8.tblDefs(),
-      AsSource: $11.slct(),
-      StorageParams: $9.storageParams(),
-      OnCommit: $13.createTableOnCommitSetting(),
+      Defs: $9.tblDefs(),
+      AsSource: $12.slct(),
+      StorageParams: $10.storageParams(),
+      OnCommit: $14.createTableOnCommitSetting(),
       Temporary: $2.persistenceType(),
-      TableType: tree.RelationalTable,
-      Comment: $14,
+      TableType: tableType,
+      Comment: $15,
     }
   }
 
 create_table_like_stmt:
-  CREATE opt_temp_create_table TABLE table_name LIKE table_name opt_create_table_on_commit opt_comment_clause
+  CREATE opt_temp_create_table opt_sparse TABLE table_name LIKE table_name opt_create_table_on_commit opt_comment_clause
   {
-    new_name := $4.unresolvedObjectName().ToTableName()
-    origin_name := $6.unresolvedObjectName().ToTableName()
+    new_name := $5.unresolvedObjectName().ToTableName()
+    origin_name := $7.unresolvedObjectName().ToTableName()
+    sparse := $3.bool()
+    tableType := tree.RelationalTable
+    if sparse {
+    	tableType = tree.SparseTable
+    }
     $$.val = &tree.CreateTable{
       Table:       new_name,
       IfNotExists: false,
       Temporary:   $2.persistenceType(),
-      OnCommit:    $7.createTableOnCommitSetting(),
-      Comment:     $8,
+      OnCommit:    $8.createTableOnCommitSetting(),
+      Comment:     $9,
+      TableType:   tableType,
       // The key change: Populate the new LikeTable field instead of Defs
       LikeTable:   origin_name,
       Defs: nil,
     }
   }
-| CREATE opt_temp_create_table TABLE IF NOT EXISTS table_name LIKE table_name opt_create_table_on_commit opt_comment_clause
+| CREATE opt_temp_create_table opt_sparse TABLE IF NOT EXISTS table_name LIKE table_name opt_create_table_on_commit opt_comment_clause
   {
-    new_name := $7.unresolvedObjectName().ToTableName()
-    origin_name := $9.unresolvedObjectName().ToTableName()
+    new_name := $8.unresolvedObjectName().ToTableName()
+    origin_name := $10.unresolvedObjectName().ToTableName()
+    sparse := $3.bool()
+    tableType := tree.RelationalTable
+    if sparse {
+    	tableType = tree.SparseTable
+    }
     $$.val = &tree.CreateTable{
       Table: new_name,
       IfNotExists: true,
       Temporary: $2.persistenceType(),
-      OnCommit: $10.createTableOnCommitSetting(),
+      OnCommit: $11.createTableOnCommitSetting(),
+      Comment: $12,
+      TableType: tableType,
       // The key change: Populate the new LikeTable field instead of Defs
       LikeTable: origin_name,
       Defs: nil,
@@ -5958,6 +6153,10 @@ opt_temp_create_table:
 | GLOBAL TEMPORARY  { $$.val = true }
 | GLOBAL TEMP       { $$.val = true }
 | UNLOGGED          { return unimplemented(sqllex, "create unlogged") }
+
+opt_sparse:
+	SPARSE						{ $$.val = true }
+| /*EMPTY*/         { $$.val = false }
 
 opt_table_elem_list:
   table_elem_list
@@ -7833,6 +8032,151 @@ opt_audit_operation:
   {
     $$.val = tree.NameList(nil)
   }
+
+// %Help: CREATE PIPE - create a new pipe
+// %Category: DDL
+// %Text:
+// CREATE PIPE <pipe_name> FOR TABLE <table_name> ( <elements...> ) WHERE <expr> [ WITH OPTIONS <option> [= <value>] [, ...] ]
+//
+// %SeeAlso: ALTER PIPE, DROP PIPE, SHOW PIPES
+create_pipe_stmt:
+  CREATE PIPE pipe_name FOR TABLE table_name '(' name_list ')' opt_where_clause opt_with_options
+  {
+  	name := $6.unresolvedObjectName().ToTableName()
+    $$.val = &tree.CreatePipe {
+      PipeName: 		tree.Name($3),
+      Table:        name,
+      ColNames: 		$8.nameList(),
+      Where:				tree.NewWhere(tree.AstWhere, $10.expr()),
+      Options: 			$11.kvOptions(),
+    }
+  }
+| CREATE PIPE pipe_name FOR TABLE table_name '(' '*' ')' opt_where_clause opt_with_options
+  {
+  	name := $6.unresolvedObjectName().ToTableName()
+    $$.val = &tree.CreatePipe {
+      PipeName: 		tree.Name($3),
+      Table:        name,
+      Where:				tree.NewWhere(tree.AstWhere, $10.expr()),
+      Options: 			$11.kvOptions(),
+      Star:         true,
+    }
+  }
+| CREATE PIPE pipe_name FOR TABLE table_name_list opt_with_options
+  {
+    $$.val = &tree.CreatePipe {
+      PipeName: 		tree.Name($3),
+      TableNames:   $6.tableNames(),
+      Options: 			$7.kvOptions(),
+      Star:         true,
+    }
+  }
+| CREATE PIPE pipe_name FOR DATABASE database_name opt_with_options
+  {
+    $$.val = &tree.CreatePipe {
+      PipeName: 		tree.Name($3),
+      Database:     tree.Name($6),
+      Options: 			$7.kvOptions(),
+      Star:         true,
+    }
+  }
+| CREATE PIPE error // SHOW HELP: CREATE PIPE
+
+// %Help: CREATE PUBLICATION - create a new publication
+// %Category: DDL
+// %Text:
+// CREATE PUBLICATION <pub_name> FOR TABLE <table_name> ( <elements...> ) WHERE <expr> [ WITH OPTIONS <option> [= <value>] [, ...] ]
+//
+// %SeeAlso: ALTER PUBLICATION, DROP PUBLICATION, SHOW PUBLICATIONS
+create_pub_stmt:
+  CREATE pub_keyword_alternatives pub_name FOR TABLE table_name '(' name_list ')' opt_where_clause opt_with_options
+  {
+  	name := $6.unresolvedObjectName().ToTableName()
+    $$.val = &tree.CreatePublication {
+      PubName: 		  tree.Name($3),
+      Table:        name,
+      ColNames: 		$8.nameList(),
+      Where:				tree.NewWhere(tree.AstWhere, $10.expr()),
+      Options: 			$11.kvOptions(),
+    }
+  }
+| CREATE pub_keyword_alternatives pub_name FOR TABLE table_name '(' '*' ')' opt_where_clause opt_with_options
+  {
+  	name := $6.unresolvedObjectName().ToTableName()
+    $$.val = &tree.CreatePublication {
+      PubName: 		  tree.Name($3),
+      Table:        name,
+      Where:				tree.NewWhere(tree.AstWhere, $10.expr()),
+      Options: 			$11.kvOptions(),
+      Star:         true,
+    }
+  }
+| CREATE pub_keyword_alternatives pub_name FOR TABLE table_name_list opt_with_options
+  {
+    $$.val = &tree.CreatePublication {
+      PubName: 		  tree.Name($3),
+      TableNames:   $6.tableNames(),
+      Options: 			$7.kvOptions(),
+      Star:         true,
+    }
+  }
+| CREATE pub_keyword_alternatives pub_name FOR DATABASE database_name opt_with_options
+  {
+    $$.val = &tree.CreatePublication {
+      PubName: 		  tree.Name($3),
+      Database:     tree.Name($6),
+      Options: 			$7.kvOptions(),
+      Star:         true,
+    }
+  }
+| CREATE pub_keyword_alternatives error // SHOW HELP: CREATE PUBLICATION
+
+// %Help: ALTER PUBLICATION - change the definition of a publication
+// %Category: DDL
+// %Text:
+// ALTER PUBLICATION <pub_name> SET TABLE table_name [ * ] [ ( column_name [, ... ] ) ] [ WHERE ( expression ) ] [, ... ]
+// ALTER PUBLICATION <pub_name> SET OPTIONS(key = value[, ...])
+//
+// %SeeAlso: CREATE PUBLICATION, ALTER PUBLICATION, DROP PUBLICATION, SHOW PUBLICATIONS
+alter_pub_stmt:
+  ALTER pub_keyword_alternatives pub_name SET TABLE table_name opt_where_clause
+  {
+  	name := $6.unresolvedObjectName().ToTableName()
+    $$.val = &tree.AlterPub {
+      PubName: 		  tree.Name($3),
+      Table:        name,
+      Where:				tree.NewWhere(tree.AstWhere, $7.expr()),
+      Star:         true,
+    }
+  }
+|  ALTER pub_keyword_alternatives pub_name SET TABLE table_name '(' name_list ')' opt_where_clause
+  {
+  	name := $6.unresolvedObjectName().ToTableName()
+    $$.val = &tree.AlterPub {
+      PubName: 		  tree.Name($3),
+      Table:        name,
+      ColNames: 		$8.nameList(),
+      Where:				tree.NewWhere(tree.AstWhere, $10.expr()),
+    }
+  }
+| ALTER pub_keyword_alternatives pub_name SET TABLE table_name '(' '*' ')' opt_where_clause
+  {
+  	name := $6.unresolvedObjectName().ToTableName()
+    $$.val = &tree.AlterPub {
+      PubName: 		  tree.Name($3),
+      Table:        name,
+      Where:				tree.NewWhere(tree.AstWhere, $10.expr()),
+      Star:         true,
+    }
+  }
+| ALTER pub_keyword_alternatives pub_name SET OPTIONS '(' kv_option_list ')'
+  {
+    $$.val = &tree.AlterPub {
+      PubName: 		  tree.Name($3),
+      Options: 			$7.kvOptions(),
+    }
+  }
+| ALTER pub_keyword_alternatives error // SHOW HELP: ALTER PUBLICATION
 
 // %Help: CREATE INDEX - create a new index
 // %Category: DDL
@@ -10327,6 +10671,20 @@ opt_where_clause:
     $$.val = tree.Expr(nil)
   }
 
+pub_keyword_alternatives:
+  PUBLICATION
+| PUB
+  {
+    $$ = ""
+  }
+
+pubs_keyword_alternatives:
+  PUBLICATIONS
+| PUBS
+  {
+    $$ = ""
+  }
+
 fill_clause:
   FILL '(' EXACT ')'
   {
@@ -10571,6 +10929,10 @@ const_typename:
   {
     $$.val = types.Clob
   }
+| CITEXT
+ {
+   $$.val = types.CIText
+ }
 | BYTES
   {
     $$.val = types.Bytes
@@ -13166,6 +13528,10 @@ index_name:            unrestricted_name
 
 opt_index_name:        opt_name
 
+pipe_name:             name
+
+pub_name:              name
+
 zone_name:             unrestricted_name
 
 target_name:           unrestricted_name
@@ -13479,6 +13845,7 @@ unreserved_keyword:
 | CURRENT
 | CYCLE
 | COLLECT_SORTED_HISTOGRAM
+| CITEXT
 | D
 | DATA
 | DATABASE
@@ -13638,6 +14005,8 @@ unreserved_keyword:
 | PASSWORD
 | PAUSE
 | PHYSICAL
+| PIPE
+| PIPES
 | PLAN
 | PLANS
 | PRECEDES
@@ -13648,8 +14017,11 @@ unreserved_keyword:
 | PRIORITY
 | PROCEDURE
 | PROCEDURES
+| PUB
 | PUBLIC
 | PUBLICATION
+| PUBLICATIONS
+| PUBS
 | QUERIES
 | QUERY
 | RANGE
@@ -13708,12 +14080,14 @@ unreserved_keyword:
 | SHARE
 | SHOW
 | SIMPLE
+| SINK
 | SKIP
 | SCHEDULE
 | SCHEDULES
 | SLIDING
 | SMALLSERIAL
 | SNAPSHOT
+| SPARSE
 | SPLIT
 | SQL
 | START

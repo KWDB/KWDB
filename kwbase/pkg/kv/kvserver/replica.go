@@ -513,6 +513,15 @@ type Replica struct {
 		// abort of a transaction which might have blocked the system config from
 		// being gossiped and attempting to gossip again.
 		failureToGossipSystemConfig bool
+
+		// needReplicateAnyway sets to true when the replica need be replicated anyway
+		// even though there is a split or something else.
+		needReplicateAnyway bool
+
+		// Consecutive process timeouts for snapshot/replicate queues; each failure
+		// doubles the next timeout up to 2^maxQueueTimeoutBackoffShift.
+		snapshotQueueTimeoutFailures  uint32
+		replicateQueueTimeoutFailures uint32
 	}
 
 	rangefeedMu struct {
@@ -1053,7 +1062,7 @@ func (r *Replica) assertStateLocked(ctx context.Context, reader storage.Reader) 
 	if err != nil {
 		log.Fatal(ctx, err)
 	}
-	if !diskState.Equal(r.mu.state) {
+	if !replicaStateEqualForAssert(r.mu.state.Desc, diskState, r.mu.state) {
 		// The roundabout way of printing here is to expose this information in sentry.io.
 		//
 		// TODO(dt): expose properly once #15892 is addressed.

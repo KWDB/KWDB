@@ -744,3 +744,30 @@ WHERE timest >= start_time AND timest < end_time
 GROUP BY tt,fcid,fctype 
 ORDER BY tt,fctype;
 drop database test CASCADE;
+
+-- bugfix IJVT1I
+DROP DATABASE IF EXISTS rowexec_bh_repro CASCADE;
+CREATE TS DATABASE rowexec_bh_repro;
+
+CREATE TABLE rowexec_bh_repro.src (
+  k_timestamp TIMESTAMP NOT NULL,
+  v INT
+) TAGS (
+ptag INT NOT NULL
+) PRIMARY TAGS(ptag);
+
+CREATE TABLE rowexec_bh_repro.dst (
+  k_timestamp TIMESTAMP NOT NULL,
+  v INT
+) TAGS (
+ptag INT NOT NULL
+) PRIMARY TAGS(ptag);
+
+INSERT INTO rowexec_bh_repro.src
+VALUES ('2024-01-01 00:00:00', 10, 1);
+
+SET CLUSTER SETTING sql.ts_insert_select.block_memory = 0;
+
+INSERT INTO rowexec_bh_repro.dst
+SELECT * FROM rowexec_bh_repro.src;
+drop database rowexec_bh_repro CASCADE;

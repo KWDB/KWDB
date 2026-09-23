@@ -462,7 +462,7 @@ func (s *scanner) scan(lval *sqlSymType) {
 		return
 
 	case '-':
-		if s.shortinsert.isValues && s.shortinsert.isTsTable {
+		if s.shortinsert.isValues && s.shortinsert.isTsTable && !s.shortinsert.PrepareMode {
 			s.shortinsert.symbol = true
 		}
 		switch s.peek() {

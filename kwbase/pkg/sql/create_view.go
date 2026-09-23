@@ -248,7 +248,7 @@ func makeViewTableDesc(
 		columnTableDef.Nullable.Nullability = tree.SilentNull
 		// The new types in the CREATE VIEW column specs never use
 		// SERIAL so we need not process SERIAL types here.
-		col, _, _, err := sqlbase.MakeColumnDefDescs(&columnTableDef, semaCtx, tree.RelationalTable)
+		col, _, _, err := sqlbase.MakeColumnDefDescs(&columnTableDef, semaCtx, true)
 		if err != nil {
 			return desc, err
 		}

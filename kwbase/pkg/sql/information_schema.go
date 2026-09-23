@@ -33,7 +33,9 @@ import (
 	"unicode/utf8"
 
 	"gitee.com/kwbasedb/kwbase/pkg/base"
+	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/lex"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/privilege"
@@ -98,6 +100,7 @@ var informationSchema = virtualSchema{
 		"foreign_tables",
 		"information_schema_catalog_name",
 		"key_column_usage",
+		"keywords",
 		"parameters",
 		"referential_constraints",
 		"role_column_grants",
@@ -141,6 +144,7 @@ var informationSchema = virtualSchema{
 		sqlbase.InformationSchemaConstraintColumnUsageTableID:      informationSchemaConstraintColumnUsageTable,
 		sqlbase.InformationSchemaEnabledRolesID:                    informationSchemaEnabledRoles,
 		sqlbase.InformationSchemaKeyColumnUsageTableID:             informationSchemaKeyColumnUsageTable,
+		sqlbase.InformationSchemaKeywordsTableID:                   informationSchemaKeywordsTable,
 		sqlbase.InformationSchemaParametersTableID:                 informationSchemaParametersTable,
 		sqlbase.InformationSchemaReferentialConstraintsTableID:     informationSchemaReferentialConstraintsTable,
 		sqlbase.InformationSchemaRoleTableGrantsID:                 informationSchemaRoleTableGrants,
@@ -467,6 +471,12 @@ https://www.postgresql.org/docs/9.5/infoschema-columns.html`,
 					tree.NewDString(column.Type.SQLString()),                // kwdb_sql_type
 					tree.NewDInt(tree.DInt(column.Type.InternalType.Width)), // storage_length
 					yesOrNoDatum(isTag),                                     // is_tag
+					noString,                                                // is_system_time_period_start
+					noString,                                                // is_system_time_period_end
+					tree.DNull,                                              // system_time_period_timestamp_generation
+					tree.NewDString(column.Type.SQLString()),                // declared_data_type
+					numericPrecision(&column.Type),                          // declared_numeric_precision
+					numericScale(&column.Type),                              // declared_numeric_scale
 				)
 			})
 		})
@@ -597,6 +607,26 @@ func numericScale(colType *types.T) tree.Datum {
 func datetimePrecision(colType *types.T) tree.Datum {
 	// We currently do not support a datetime precision.
 	return tree.DNull
+}
+
+var informationSchemaKeywordsTable = virtualSchemaTable{
+	comment: `SQL keywords`,
+	schema:  vtable.InformationSchemaKeywords,
+	populate: func(_ context.Context, _ *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		for _, keyword := range lex.KeywordNames {
+			reserved := tree.DInt(1)
+			if lex.KeywordsCategories[keyword] == "U" {
+				reserved = 0
+			}
+			if err := addRow(
+				tree.NewDString(keyword), // word
+				tree.NewDInt(reserved),   // reserved
+			); err != nil {
+				return err
+			}
+		}
+		return nil
+	},
 }
 
 var informationSchemaConstraintColumnUsageTable = virtualSchemaTable{
@@ -1014,6 +1044,9 @@ https://www.postgresql.org/docs/9.5/infoschema-schemata.html`,
 						tree.NewDString(engineType),
 						tree.NewDInt(tree.DInt(lifetime)),
 						tree.NewDInt(tree.DInt(partitionInterval)),
+						tree.DNull, // schema_owner
+						tree.DNull, // default_character_set_catalog
+						tree.DNull, // default_character_set_schema
 					)
 				})
 			})
@@ -1409,17 +1442,48 @@ var (
 	tableTypeView             = tree.NewDString("VIEW")
 	tableTypeTemporary        = tree.NewDString("LOCAL TEMPORARY")
 	tableTypeNormalTimeSeries = tree.NewDString("TIME SERIES TABLE")
-	tableTypeSuper            = tree.NewDString("TEMPLATE TABLE")
-	tableTypeChild            = tree.NewDString("INSTANCE TABLE")
 	tableTypeMaterializedView = tree.NewDString("MATERIALIZED VIEW")
+	tableTypeSparse           = tree.NewDString("SPARSE TIME SERIES TABLE")
 )
+
+var (
+	rowFormatRow     = tree.NewDString("ROW")
+	rowFormatColumn  = tree.NewDString("COLUMN")
+	tableCommentView = tree.NewDString("VIEW")
+)
+
+// getTableComments returns user-defined table comments keyed by table ID.
+func getTableComments(ctx context.Context, p *planner) (map[sqlbase.ID]tree.Datum, error) {
+	rows, err := p.extendedEvalCtx.ExecCfg.InternalExecutor.Query(
+		ctx,
+		"select-table-comments",
+		nil,
+		`SELECT object_id, "comment"
+		   FROM system.comments
+		  WHERE type = $1 AND sub_id = 0`,
+		keys.TableCommentType,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	comments := make(map[sqlbase.ID]tree.Datum, len(rows))
+	for _, row := range rows {
+		comments[sqlbase.ID(tree.MustBeDInt(row[0]))] = row[1]
+	}
+	return comments, nil
+}
 
 var informationSchemaTablesTable = virtualSchemaTable{
 	comment: `tables and views
-` + base.DocsURL("information-schema.html#tables") + `
-https://www.postgresql.org/docs/9.5/infoschema-tables.html`,
+` + base.DocsURL("information-schema.html#tables"),
 	schema: vtable.InformationSchemaTables,
 	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		tableComments, err := getTableComments(ctx, p)
+		if err != nil {
+			return err
+		}
+
 		return forEachTableDesc(ctx, p, dbContext, virtualMany,
 			func(db *sqlbase.DatabaseDescriptor, scName string, table *sqlbase.TableDescriptor) error {
 				if table.IsSequence() {
@@ -1447,31 +1511,39 @@ https://www.postgresql.org/docs/9.5/infoschema-tables.html`,
 				namespaceOid := h.NamespaceOid(db, scName)
 				switch table.TableType {
 				case tree.RelationalTable:
-					// do nothing
+				// do nothing
+				case tree.SparseTable:
+					tableType = tableTypeSparse
 				case tree.TimeseriesTable:
 					tableType = tableTypeNormalTimeSeries
-				case tree.TemplateTable:
-					tableType = tableTypeSuper
-					allChild, err := sqlbase.GetAllInstanceByTmplTableID(ctx, p.txn, table.ID, true, p.ExecCfg().InternalExecutor)
-					if err != nil {
-						return err
-					}
-					for _, childName := range allChild.InstTableNames {
-						childTableType := tableTypeChild
-						if err := addRow(
-							dbNameStr,                              // table_catalog
-							scNameStr,                              // table_schema
-							tree.NewDString(childName),             // table_name
-							childTableType,                         // table_type
-							insertable,                             // is_insertable_into
-							tree.NewDInt(tree.DInt(table.Version)), // version
-							namespaceOid,                           // namespace_oid
-						); err != nil {
-							return err
-						}
-					}
 				default:
-					return pgerror.Newf(pgcode.WrongObjectType, "invalid table type of %d", table.TableType)
+					return pgerror.Newf(pgcode.WrongObjectType, "invalid table type of %v", table.TableType)
+				}
+
+				engine := tree.DNull
+				rowFormat := tree.DNull
+				updateTime := tree.DNull
+				tableComment := tree.DNull
+				if table.IsView() {
+					// MySQL compatibility requires VIEW as the default comment for views.
+					tableComment = tableCommentView
+				}
+				if !table.IsVirtualTable() && !table.IsView() {
+					engine = tree.NewDString(tree.EngineName(db.EngineType))
+					switch table.TableType {
+					case tree.RelationalTable:
+						rowFormat = rowFormatRow
+					case tree.TimeseriesTable, tree.SparseTable:
+						rowFormat = rowFormatColumn
+					}
+					if !table.ModificationTime.IsEmpty() {
+						updateTime = tree.TimestampToInexactDTimestamp(table.ModificationTime)
+					}
+					if comment, ok := tableComments[table.ID]; ok {
+						tableComment = comment
+					}
+				} else if !table.IsVirtualTable() && !table.ModificationTime.IsEmpty() {
+					updateTime = tree.TimestampToInexactDTimestamp(table.ModificationTime)
 				}
 
 				if err := addRow(
@@ -1482,6 +1554,17 @@ https://www.postgresql.org/docs/9.5/infoschema-tables.html`,
 					insertable,                             // is_insertable_into
 					tree.NewDInt(tree.DInt(table.Version)), // version
 					namespaceOid,                           // namespace_oid
+					tree.DNull,                             // self_referencing_column_name
+					tree.DNull,                             // reference_generation
+					tree.DNull,                             // user_defined_type_catalog
+					tree.DNull,                             // user_defined_type_schema
+					tree.DNull,                             // user_defined_type_name
+					noString,                               // is_typed
+					tree.DNull,                             // commit_action
+					engine,                                 // engine
+					rowFormat,                              // row_format
+					updateTime,                             // update_time
+					tableComment,                           // table_comment
 				); err != nil {
 					return err
 				}
@@ -1504,7 +1587,7 @@ CREATE TABLE information_schema.views (
     VIEW_DEFINITION            STRING NOT NULL,
     CHECK_OPTION               STRING,
     IS_UPDATABLE               STRING NOT NULL,
-    IS_INSERTABLE_INTO         STRING NOT NULL,
+    INSERTABLE_INTO            STRING NOT NULL,
     IS_TRIGGER_UPDATABLE       STRING NOT NULL,
     IS_TRIGGER_DELETABLE       STRING NOT NULL,
     IS_TRIGGER_INSERTABLE_INTO STRING NOT NULL
@@ -1530,7 +1613,7 @@ CREATE TABLE information_schema.views (
 					tree.NewDString(table.ViewQuery), // view_definition
 					tree.DNull,                       // check_option
 					noString,                         // is_updatable
-					noString,                         // is_insertable_into
+					noString,                         // insertable_into
 					noString,                         // is_trigger_updatable
 					noString,                         // is_trigger_deletable
 					noString,                         // is_trigger_insertable_into

@@ -117,7 +117,6 @@ func runVersionUpgrade(ctx context.Context, t *test, c *cluster, buildVersion ve
 	}
 
 	testFeaturesStep := versionUpgradeTestFeatures.step(c.All())
-	schemaChangeStep := runSchemaChangeWorkloadStep(c.All().randNode()[0], 10 /* maxOps */, 2 /* concurrency */)
 	backupStep := func(ctx context.Context, t *test, u *versionUpgradeTest) {
 		// This check was introduced for the system.tenants table and the associated
 		// changes to full-cluster backup to include tenants. It mostly wants to
@@ -146,7 +145,6 @@ func runVersionUpgrade(ctx context.Context, t *test, c *cluster, buildVersion ve
 		//
 		// See the comment on createCheckpoints for details on fixtures.
 		uploadAndStartFromCheckpointFixture(c.All(), predecessorVersion),
-		uploadAndInitSchemaChangeWorkload(),
 		waitForUpgradeStep(c.All()),
 		testFeaturesStep,
 
@@ -163,9 +161,6 @@ func runVersionUpgrade(ctx context.Context, t *test, c *cluster, buildVersion ve
 		// Roll nodes forward.
 		binaryUpgradeStep(c.All(), ""),
 		testFeaturesStep,
-		// Run a quick schemachange workload in between each upgrade.
-		// The maxOps is 10 to keep the test runtime under 1-2 minutes.
-		schemaChangeStep,
 		backupStep,
 		// Roll back again. Note that bad things would happen if the cluster had
 		// ignored our request to not auto-upgrade. The `autoupgrade` roachtest
@@ -173,18 +168,15 @@ func runVersionUpgrade(ctx context.Context, t *test, c *cluster, buildVersion ve
 		// as they ought to.
 		binaryUpgradeStep(c.All(), predecessorVersion),
 		testFeaturesStep,
-		schemaChangeStep,
 		backupStep,
 		// Roll nodes forward, this time allowing them to upgrade, and waiting
 		// for it to happen.
 		binaryUpgradeStep(c.All(), ""),
 		allowAutoUpgradeStep(1),
 		testFeaturesStep,
-		schemaChangeStep,
 		backupStep,
 		waitForUpgradeStep(c.All()),
 		testFeaturesStep,
-		schemaChangeStep,
 		backupStep,
 	)
 

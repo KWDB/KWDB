@@ -349,17 +349,16 @@ func (r *Refresher) Start(
 							}
 
 							// Skip refresh based on cluster settings and table types
-							if !shouldRefreshStats(tableType, &r.st.SV) {
+							if !shouldRefreshStats(tabDesc, &r.st.SV) {
 								continue
 							}
 
 							// Implement different refresh ploy based on different table types
-							switch tableType {
-							case tree.RelationalTable:
-								r.maybeRefreshStats(ctx, stopper, tableID, affected.rowsAffected, r.asOfTime)
-							case tree.TimeseriesTable:
+							if tabDesc.IsTSTable() {
 								r.maybeRefreshTsStats(ctx, tableID, tabDesc, affected, r.asOfTime)
-							default:
+							} else if tabDesc.IsRelationalTable() {
+								r.maybeRefreshStats(ctx, stopper, tableID, affected.rowsAffected, r.asOfTime)
+							} else {
 								log.Errorf(ctx, "unknown table type %d for statistics refresh", tableType)
 								return
 							}
@@ -719,14 +718,14 @@ func (concurrentCreateStatisticsError) Error() string {
 var ConcurrentCreateStatsError error = concurrentCreateStatisticsError{}
 
 // shouldRefreshStats is helper function to decide if stats should be refreshed based on the table type and cluster settings
-func shouldRefreshStats(tableType tree.TableType, sv *settings.Values) bool {
-	switch tableType {
-	case tree.RelationalTable:
+func shouldRefreshStats(tabDesc *sqlbase.TableDescriptor, sv *settings.Values) bool {
+	if tabDesc.IsRelationalTable() {
 		return AutomaticStatisticsClusterMode.Get(sv)
-	case tree.TimeseriesTable:
+
+	} else if tabDesc.IsTSTable() {
 		return AutomaticTsStatisticsClusterMode.Get(sv) || AutomaticTagStatisticsClusterMode.Get(sv) ||
 			opt.TSOrderedTable.Get(sv)
-	default:
+	} else {
 		return false
 	}
 }

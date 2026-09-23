@@ -44,6 +44,7 @@ var _ Details = SchemaChangeGCDetails{}
 var _ Details = RestartDetails{}
 var _ Details = ExportDetails{}
 var _ Details = SqlScheduleDetails{}
+var _ Details = PipeWatermarkDetails{}
 var _ Details = ReplicaRebanalceDetails{}
 var _ Details = StreamDetails{}
 var _ Details = TsTxnDetails{}
@@ -60,6 +61,7 @@ var _ ProgressDetails = SchemaChangeGCProgress{}
 var _ ProgressDetails = RestartHistoryProgress{}
 var _ ProgressDetails = ExportProgress{}
 var _ ProgressDetails = SqlScheduleProgress{}
+var _ ProgressDetails = PipeWatermarkProgress{}
 var _ ProgressDetails = ReplicaRebanalceProgress{}
 var _ ProgressDetails = StreamProgress{}
 var _ ProgressDetails = TsTxnProgress{}
@@ -102,6 +104,8 @@ func DetailsType(d isPayload_Details) Type {
 		return TypeExport
 	case *Payload_SqlSchedule:
 		return TypeSqlSchedule
+	case *Payload_PipeWatermark:
+		return TypePipeWatermark
 	case *Payload_ReplicaRebalance:
 		return TypeReplicaRebanalce
 	case *Payload_Stream:
@@ -148,6 +152,8 @@ func WrapProgressDetails(details ProgressDetails) interface {
 		return &Progress_Export{Export: &d}
 	case SqlScheduleProgress:
 		return &Progress_SqlSchedule{SqlSchedule: &d}
+	case PipeWatermarkProgress:
+		return &Progress_PipeWatermark{PipeWatermark: &d}
 	case ReplicaRebanalceProgress:
 		return &Progress_ReplicaRebalance{ReplicaRebalance: &d}
 	case StreamProgress:
@@ -185,6 +191,8 @@ func (p *Payload) UnwrapDetails() Details {
 		return *d.ReplicationStream
 	case *Payload_SqlSchedule:
 		return *d.SqlSchedule
+	case *Payload_PipeWatermark:
+		return *d.PipeWatermark
 	case *Payload_ReplicaRebalance:
 		return *d.ReplicaRebalance
 	case *Payload_Stream:
@@ -262,6 +270,8 @@ func WrapPayloadDetails(details Details) interface {
 		return &Payload_Export{Export: &d}
 	case SqlScheduleDetails:
 		return &Payload_SqlSchedule{SqlSchedule: &d}
+	case PipeWatermarkDetails:
+		return &Payload_PipeWatermark{PipeWatermark: &d}
 	case ReplicaRebanalceDetails:
 		return &Payload_ReplicaRebalance{ReplicaRebalance: &d}
 	case StreamDetails:

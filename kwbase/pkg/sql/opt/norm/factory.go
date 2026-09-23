@@ -109,6 +109,9 @@ type Factory struct {
 	// TSFlags record some flags used in TS query.
 	TSFlags int
 
+	// CanNotPruneTableID record the id of table that can not prune cols.
+	CanNotPruneTableID int64
+
 	// tsPushHelper check expr can push
 	tsPushHelper memo.MetaInfoMap
 }
@@ -117,6 +120,51 @@ type Factory struct {
 // flag: flag that need to be checked
 func (f *Factory) CheckFlag(flag int) bool {
 	return f.TSFlags&flag > 0
+}
+
+// CheckTableCanNotPrune check if the table can prune cols.
+// Prune the virtual cols by default when it needn't.
+func (f *Factory) CheckTableCanNotPrune(target opt.Expr, neededCols opt.ColSet) bool {
+	if tsscan, ok := target.(*memo.TSScanExpr); ok {
+		if int64(tsscan.Table) == f.CanNotPruneTableID {
+			colSet := tsscan.Cols.Difference(neededCols)
+			colSet.ForEach(func(col opt.ColumnID) {
+				if f.Metadata().ColumnMeta(col).TSType == opt.TSHiddenCol {
+					tsscan.Cols.Remove(col)
+				}
+			})
+			return true
+		}
+	}
+	if scan, ok := target.(*memo.ScanExpr); ok {
+		if int64(scan.Table) == f.CanNotPruneTableID {
+			return true
+		}
+	}
+	for i := 0; i < target.ChildCount(); i++ {
+		if _, ok := target.Child(i).(memo.RelExpr); ok {
+			ok := f.CheckTableCanNotPrune(target.Child(i), neededCols)
+			if ok {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// CheckAggCanNotPrune checks if the agg can prune col.
+func (f *Factory) CheckAggCanNotPrune(target memo.AggregationsExpr) bool {
+	for _, aggExpr := range target {
+		if aggExpr.Agg.ChildCount() > 0 {
+			if col, ok := aggExpr.Agg.Child(0).(*memo.VariableExpr); ok {
+				if int64(f.mem.Metadata().ColumnMeta(col.Col).Table) == f.CanNotPruneTableID {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
 }
 
 // Init initializes a Factory structure with a new, blank memo structure inside.
@@ -134,6 +182,7 @@ func (f *Factory) Init(evalCtx *tree.EvalContext, catalog cat.Catalog) {
 	f.matchedRule = nil
 	f.appliedRule = nil
 	f.TSFlags = 0
+	f.CanNotPruneTableID = -1
 	f.tsPushHelper = make(memo.MetaInfoMap, 0)
 }
 

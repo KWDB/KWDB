@@ -37,28 +37,6 @@ TsTableImpl::~TsTableImpl() {
   // }
 }
 
-KStatus TsTableImpl::PutData(kwdbContext_p ctx, TsVGroup* v_group, TSSlice* payload, int payload_num,
-                          uint64_t mtr_id, TSEntityID entity_id, uint32_t* inc_unordered_cnt,
-                          DedupResult* dedup_result, const DedupRule& dedup_rule, bool write_wal) {
-  assert(payload_num == 1);
-  auto version = TsRawPayload::GetTableVersionFromSlice(*payload);
-  const std::vector<AttributeInfo>* metric_schema{nullptr};
-  table_schema_mgr_->GetColumnsExcludeDroppedPtr(&metric_schema, version);
-  uint8_t payload_data_flag = TsRawPayload::GetRowTypeFromSlice(*payload);
-  if (payload_data_flag == DataTagFlag::TAG_ONLY) {
-    LOG_DEBUG("tag only. so no need putdata.");
-    return KStatus::SUCCESS;
-  }
-  auto primary_key = TsRawPayload::GetPrimaryKeyFromSlice(*payload);
-  auto s = v_group->PutData(ctx, table_schema_mgr_, mtr_id, &primary_key, entity_id, payload, write_wal);
-  if (s != KStatus::SUCCESS) {
-    // todo(liangbo01) if failed. should we need rollback all inserted data?
-    LOG_ERROR("putdata failed. table id[%lu], group id[%u]", table_id_, v_group->GetVGroupID());
-    return s;
-  }
-  return KStatus::SUCCESS;
-}
-
 KStatus TsTableImpl::PutData(kwdbContext_p ctx, TsVGroup* v_group, TsRawPayload& p,
                   TSEntityID entity_id, uint64_t mtr_id, uint32_t* inc_unordered_cnt,
                   DedupResult* dedup_result, const DedupRule& dedup_rule, bool write_wal) {
@@ -67,9 +45,12 @@ KStatus TsTableImpl::PutData(kwdbContext_p ctx, TsVGroup* v_group, TsRawPayload&
     LOG_DEBUG("tag only. so no need putdata.");
     return KStatus::SUCCESS;
   }
+  if (p.GetRowCount() == 0) {
+    LOG_DEBUG("row count is 0. so no need putdata.");
+    return KStatus::SUCCESS;
+  }
   auto primary_key = p.GetPrimaryTag();
-  auto payload = p.GetPayload();
-  auto s = v_group->PutData(ctx, table_schema_mgr_, mtr_id, &primary_key, entity_id, &payload, write_wal);
+  auto s = v_group->PutData(ctx, table_schema_mgr_, mtr_id, &primary_key, entity_id, p, write_wal);
   if (s != KStatus::SUCCESS) {
     // todo(liangbo01) if failed. should we need rollback all inserted data?
     LOG_ERROR("putdata failed. table id[%lu], group id[%u]", table_id_, v_group->GetVGroupID());
@@ -170,11 +151,7 @@ KStatus TsTableImpl::GetTagListByRowNum(kwdbContext_p ctx, const std::vector<Ent
   const std::vector<uint32_t>& scan_tags, TS_OSN osn, ResultSet* res, uint32_t* count,
   uint32_t table_version) {
   *count = 0;
-  std::vector<TagPartitionTable*> all_tag_partition_tables;
   auto tag_bt = table_schema_mgr_->GetTagTable();
-  tag_bt->GetTagPartitionTableManager()->
-    GetAllPartitionTablesLessVersion(all_tag_partition_tables, UINT32_MAX);
-
   TagVersionObject* result_ver_obj = tag_bt->GetTagTableVersionManager()->GetVersionObject(table_version);
   if (nullptr == result_ver_obj) {
       LOG_ERROR("GetTagVersionObject failed, version id: %d", table_version);
@@ -329,12 +306,12 @@ KStatus TsTableImpl::GetNormalIterator(kwdbContext_p ctx, const IteratorParams &
   }
 
   // Update ts_span
+  int64_t acceptable_ts = INT64_MIN;
   auto life_time = metric_schema->GetLifeTime();
-  if (life_time.ts != 0) {
-    int64_t acceptable_ts = INT64_MIN;
+  if (life_time.ts != 0 && FillType::NONE == params.fill_params.fill_type) {
     auto now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
-    acceptable_ts = now.time_since_epoch().count() - life_time.ts;
-    updateTsSpan(acceptable_ts * life_time.precision, params.ts_spans);
+    acceptable_ts = (now.time_since_epoch().count() - life_time.ts) * life_time.precision;
+    updateTsSpan(acceptable_ts, params.ts_spans);
   }
 
   std::map<uint32_t, std::vector<EntityID>> vgroup_ids;
@@ -357,7 +334,7 @@ KStatus TsTableImpl::GetNormalIterator(kwdbContext_p ctx, const IteratorParams &
                             params.block_filter, params.scan_cols, ts_scan_cols, params.agg_extend_cols,
                             params.scan_agg_types, table_schema_mgr_, schema,
                             &ts_iter, vgroup, params.ts_points, params.reverse, params.sorted, params.scan_osn,
-                            params.fill_params, params.time_bucket_info);
+                            params.fill_params, params.time_bucket_info, acceptable_ts);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("cannot create iterator for vgroup[%u].", vgroup_iter.first);
       return s;
@@ -390,13 +367,15 @@ KStatus TsTableImpl::GetOffsetIterator(kwdbContext_p ctx, const IteratorParams &
     ts_scan_cols.emplace_back(actual_cols[col]);
   }
 
+
   std::unordered_map<uint32_t, std::vector<EntityID>> vgroup_ids;
   std::unordered_map<uint32_t, std::shared_ptr<TsVGroup>> vgroups;
   if (params.entity_ids.empty()) {
     k_uint32 max_vgroup_id = vgroups_.size();
     for (k_uint32 vgroup_id = 1; vgroup_id <= max_vgroup_id; ++vgroup_id) {
       std::shared_ptr<TsVGroup> vgroup = vgroups_[vgroup_id - 1];
-      std::vector<EntityID> entities(vgroup->GetMaxEntityID());
+      auto max_entity_id = table_schema_mgr_->GetMaxEntityID(vgroup_id);
+      std::vector<EntityID> entities(max_entity_id);
       if (entities.empty()) continue;
       std::iota(entities.begin(), entities.end(), 1);
       vgroup_ids[vgroup_id] = entities;
@@ -573,8 +552,6 @@ KStatus TsTableImpl::DeleteEntities(kwdbContext_p ctx,  std::vector<std::string>
     if (s != KStatus::SUCCESS) {
       LOG_WARN("DeleteEntity failed. vgrp[%u], entity_id[%u]", v_group_id, entity_id);
     }
-    GetVGroupByID(v_group_id)->ResetEntityMaxTs(table_id_, INT64_MAX, entity_id);
-    GetVGroupByID(v_group_id)->ResetEntityLatestRow(entity_id, INT64_MAX);
   }
   return KStatus::SUCCESS;
 }
@@ -1037,18 +1014,8 @@ KStatus TsTableImpl::DeleteData(kwdbContext_p ctx, uint64_t range_group_id, std:
     }
   }
   // write WAL and remove metric datas.
-  auto s = GetVGroupByID(v_group_id)->DeleteData(ctx, table_id_, primary_tag, entity_id,
-                                                ts_spans, count, mtr_id, osn, true);
-  if (s != KStatus::SUCCESS) {
-    return s;
-  }
-  timestamp64 max_ts = INT64_MIN;
-  for (auto span : ts_spans) {
-    max_ts = (max_ts < span.end) ? span.end : max_ts;
-  }
-  GetVGroupByID(v_group_id)->ResetEntityMaxTs(table_id_, max_ts, entity_id);
-  GetVGroupByID(v_group_id)->ResetEntityLatestRow(entity_id, max_ts);
-  return KStatus::SUCCESS;
+  return GetVGroupByID(v_group_id)
+      ->DeleteData(ctx, table_id_, primary_tag, entity_id, ts_spans, count, mtr_id, osn, true);
 }
 
 KStatus TsTableImpl::DeleteEntityByTag(kwdbContext_p ctx, const std::vector<uint32_t/*index_id*/> &tags_index_id,
@@ -1235,7 +1202,8 @@ KStatus TsTableImpl::GetLastRowBatch(kwdbContext_p ctx, uint32_t table_version, 
   EntityResultIndex entity_id = {0, 0, 0};
 
   for (auto& vgroup : vgroups_) {
-    if (0 == vgroup->GetMaxEntityID()) continue;
+    auto max_entity_id = table_schema_mgr_->GetMaxEntityID(vgroup->GetVGroupID());
+    if (max_entity_id == 0) continue;
     // TODO(liumengzhen) problem of multiple tables exists.
     if (!vgroup->isLastRowEntityPayloadValid(table_id_)) {
       valid = false;
@@ -1298,10 +1266,9 @@ KStatus TsTableImpl::GetLastRowBatch(kwdbContext_p ctx, uint32_t table_version, 
     return KStatus::SUCCESS;
   }
   timestamp64 cur_last_ts = INT64_MIN;
-  std::shared_ptr<TsRawPayloadRowParser> parser = nullptr;
   bool last_payload_valid = false;
   KStatus ret = vgroup->GetEntityLastRowBatch(entity_id.entityId, table_version, table_schema_mgr_,
-                                              schema, parser, {{INT64_MIN, INT64_MAX}}, scan_cols,
+                                              schema, {{INT64_MIN, INT64_MAX}}, scan_cols,
                                               cur_last_ts, last_payload_valid, res);
   if (ret != KStatus::SUCCESS) {
     res->clear();

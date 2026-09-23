@@ -123,6 +123,12 @@ var classifiers = map[types.Family]map[types.Family]classifier{
 			}
 		},
 		types.StringFamily: classifierWidth,
+		// STRING/TEXT/VARCHAR/CAHR -> CITEXT
+		types.CollatedStringFamily: classifierStringCIText,
+	},
+	// CITEXT -> STRING/TEXT/VARCHAR/CHAR
+	types.CollatedStringFamily: {
+		types.StringFamily: classifierStringCIText,
 	},
 	types.TimestampFamily: {
 		types.TimestampTZFamily: classifierTimePrecision,
@@ -250,4 +256,13 @@ func ClassifyConversion(oldType *types.T, newType *types.T) (ColumnConversionKin
 
 	return ColumnConversionImpossible,
 		pgerror.Newf(pgcode.CannotCoerce, "cannot convert %s to %s", oldType.SQLString(), newType.SQLString())
+}
+
+// classifierStringCIText classifies STRING/TEXT/VARCHAR/CHAR <-> CITEXT.
+func classifierStringCIText(oldType *types.T, newType *types.T) ColumnConversionKind {
+	if !tree.IsCITextStringMixedWithOutArray(oldType, newType) {
+		return ColumnConversionImpossible
+	}
+
+	return classifierWidth(oldType, newType)
 }

@@ -35,3 +35,67 @@ select code1 from test_select_maxandmin.t1 where (pg_catalog.array_position(cast
 SET vectorize_row_count_threshold = 1000;
 
 USE defaultdb;DROP DATABASE IF exists test_select_maxandmin cascade;
+
+--- bug IJUJDF
+USE defaultdb;DROP DATABASE IF exists test_vectorize cascade;
+CREATE TS DATABASE test_vectorize;
+CREATE TABLE test_vectorize.t1(k_timestamp TIMESTAMPTZ NOT NULL,v INT) ATTRIBUTES (tag1 INT NOT NULL) PRIMARY TAGS(tag1);
+INSERT INTO test_vectorize.t1 VALUES('2026-06-13 10:00:01',1,1),('2026-06-13 10:00:02',2,1);
+
+SET vectorize = on;
+SELECT count(*) AS on_cnt FROM test_vectorize.t1;
+SELECT * FROM test_vectorize.t1 order by k_timestamp;
+
+SET vectorize = off;
+SELECT count(*) AS off_cnt FROM test_vectorize.t1;
+SELECT * FROM test_vectorize.t1 order by k_timestamp;
+
+SET vectorize = auto;
+SELECT count(*) AS auto_cnt FROM test_vectorize.t1;
+SELECT * FROM test_vectorize.t1 order by k_timestamp;
+
+USE defaultdb;DROP DATABASE IF exists test_vectorize cascade;
+
+--- bug IJWOFI
+USE defaultdb;DROP DATABASE IF exists test_vectorize_float_cast cascade;
+CREATE DATABASE test_vectorize_float_cast;
+CREATE TABLE test_vectorize_float_cast.valid_casts(
+    id INT PRIMARY KEY,
+    i2_f8 FLOAT8,
+    i2_f4 FLOAT4,
+    i4_f8 FLOAT8,
+    i4_f4 FLOAT4,
+    i8_f8 FLOAT8,
+    i8_f4 FLOAT4
+);
+INSERT INTO test_vectorize_float_cast.valid_casts VALUES
+    (1, -32768.999, -32768.0, -2147483648.999, -1024.999, -9223372036854774784.0, -1024.999),
+    (2, -32768.0, -1.999, -2147483648.0, -1024.0, -1.999, -1.999),
+    (3, 32767.0, 1.999, 2147483647.0, 1024.0, 1.999, 1.999),
+    (4, 32767.999, 32767.0, 2147483647.999, 1024.999, 9223372036854774784.0, 1024.999);
+
+SET vectorize_row_count_threshold = 0;
+
+SET vectorize = on;
+SELECT id, i2_f8::INT2, i2_f4::INT2, i4_f8::INT4, i4_f4::INT4, i8_f8::INT8, i8_f4::INT8 FROM test_vectorize_float_cast.valid_casts ORDER BY id;
+SELECT CAST(32768::FLOAT8 AS INT2);
+SELECT CAST(-32769::FLOAT8 AS INT2);
+SELECT CAST(32768::FLOAT4 AS INT2);
+SELECT CAST(2147483648::FLOAT8 AS INT4);
+SELECT CAST(-2147483649::FLOAT8 AS INT4);
+SELECT CAST(2147483648::FLOAT4 AS INT4);
+SELECT CAST(9223372036854775296::FLOAT8 AS INT8);
+SELECT CAST(1e20::FLOAT4 AS INT8);
+SELECT CAST('NaN'::FLOAT8 AS INT2);
+SELECT CAST('Inf'::FLOAT8 AS INT2);
+
+SET vectorize = off;
+SELECT id, i2_f8::INT2, i2_f4::INT2, i4_f8::INT4, i4_f4::INT4, i8_f8::INT8, i8_f4::INT8 FROM test_vectorize_float_cast.valid_casts ORDER BY id;
+SELECT CAST(32768::FLOAT8 AS INT2);
+SELECT CAST(9223372036854775296::FLOAT8 AS INT8);
+
+SET vectorize = auto;
+SELECT id, i2_f8::INT2, i2_f4::INT2, i4_f8::INT4, i4_f4::INT4, i8_f8::INT8, i8_f4::INT8 FROM test_vectorize_float_cast.valid_casts ORDER BY id;
+
+SET vectorize_row_count_threshold = 1000;
+USE defaultdb;DROP DATABASE IF exists test_vectorize_float_cast cascade;

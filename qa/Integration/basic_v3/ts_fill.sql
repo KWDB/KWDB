@@ -1232,6 +1232,26 @@ prepare p6 as SELECT k_timestamp,tag16,e1,e2,e3,e4,e5,e6,e7,e8,e9,e10,e11,e12,e1
 
 execute p6('2026-03-06 08:00:08+00:00', 'JISCO.BOF2.出钢温度1');
 
+
+
+-- fix IJTRYV
+CREATE TABLE select_fill_test.t3 (
+    k_timestamp TIMESTAMP NOT NULL,
+    v INT8
+) TAGS (
+    id INT8 NOT NULL,
+    site INT8 NOT NULL
+) PRIMARY TAGS(id, site);
+
+INSERT INTO select_fill_test.t3 VALUES ('2026-01-01 00:00:00', 1, 1, 10);
+
+-- error
+SELECT v FROM select_fill_test.t3 WHERE k_timestamp = '2026-01-01 00:00:00' AND (id, site) IN ((id, site)) FILL (EXACT);
+
+CREATE PROCEDURE select_fill_test.bugfix1(t TIMESTAMP, a INT8, b INT8) $$BEGIN SELECT * from select_fill_test.t3 WHERE k_timestamp=t AND (id, site) IN ((a, b)) FILL (EXACT); END $$;
+call select_fill_test.bugfix1('2026-01-01 00:00:00', 1, 10);
+
 use defaultdb;
 drop database select_fill_test cascade;
 drop database ts_db cascade;
+

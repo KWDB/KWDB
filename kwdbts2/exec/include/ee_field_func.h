@@ -743,6 +743,7 @@ class FieldFuncCase : public FieldFunc {
     for (auto &elem : fields) {
       k_int32 len = elem->get_storage_length();
       if (len > storage_len_) {
+        storage_type_ = elem->get_storage_type();
         storage_len_ = len;
       }
     }

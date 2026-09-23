@@ -786,7 +786,7 @@ func (c *cliState) refreshTransactionStatus() {
 		return
 	}
 
-	txnString := formatVal(dbVal,
+	txnString := formatVal(dbVal, "",
 		false /* showPrintableUnicode */, false /* shownewLinesAndTabs */)
 
 	// Change the prompt based on the response from the server.
@@ -832,7 +832,7 @@ func (c *cliState) refreshDatabaseName() string {
 		clientEncoding = ""
 	}
 
-	clientEncoding = formatVal(d,
+	clientEncoding = formatVal(d, "",
 		false /* showPrintableUnicode */, false /* shownewLinesAndTabs */)
 	if clientEncoding == "" {
 		// Attempt to be helpful to new users.
@@ -840,14 +840,14 @@ func (c *cliState) refreshDatabaseName() string {
 	}
 
 	if clientEncoding == "gbk" || clientEncoding == "gb18030" {
-		dbName := formatVal(dbVal,
+		dbName := formatVal(dbVal, "",
 			false /* showPrintableUnicode */, false /* shownewLinesAndTabs */)
 		// Preserve the current database name in case of reconnects.
 		c.conn.dbName = dbName
 
 		return dbName
 	}
-	dbName := formatVal(dbVal.(string),
+	dbName := formatVal(dbVal.(string), "",
 		false /* showPrintableUnicode */, false /* shownewLinesAndTabs */)
 	// Preserve the current database name in case of reconnects.
 	c.conn.dbName = dbName

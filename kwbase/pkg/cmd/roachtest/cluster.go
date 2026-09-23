@@ -74,7 +74,6 @@ var (
 	encrypt          encryptValue = "false"
 	instanceType     string
 	localSSD         bool
-	workload         string
 	roachprod        string
 	createArgs       []string
 	buildTag         string
@@ -216,12 +215,6 @@ func initBinariesAndLibraries() {
 	}
 	var err error
 	kwbase, err = findBinary(kwbase, kwbaseDefault)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%+v\n", err)
-		os.Exit(1)
-	}
-
-	workload, err = findBinary(workload, "workload")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%+v\n", err)
 		os.Exit(1)

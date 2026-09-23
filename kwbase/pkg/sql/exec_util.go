@@ -246,6 +246,13 @@ var insertShortCircuitClusterMode = settings.RegisterBoolSetting(
 	true,
 )
 
+// ServerTimezoneClusterSetting controls the cluster time zone.
+var ServerTimezoneClusterSetting = settings.RegisterStringSetting(
+	"cluster.connection.timezone",
+	"cluster default timezone, supports both numeric offset (e.g., 8 for +08:00) or timezone name (e.g., Asia/Shanghai)",
+	"",
+)
+
 // VectorizeClusterSettingName is the name for the cluster setting that controls
 // the VectorizeClusterMode below.
 const VectorizeClusterSettingName = "sql.defaults.vectorize"
@@ -2048,7 +2055,7 @@ func (m *sessionDataMutator) SetUserDefinedVar(name string, v tree.Datum) error 
 	}
 	if val, ok := m.data.UserDefinedVars[name]; ok {
 		oldType := val.(tree.Datum).ResolvedType()
-		if oldType.SQLString() != v.ResolvedType().SQLString() {
+		if oldType.SQLString() != v.ResolvedType().SQLString() && !tree.IsCITextStringMixed(oldType, v.ResolvedType()) {
 			return pgerror.Newf(pgcode.DatatypeMismatch, "new value of %s (type %s) does not match previous type %s", name, v.ResolvedType().SQLString(), oldType.SQLString())
 		}
 	}

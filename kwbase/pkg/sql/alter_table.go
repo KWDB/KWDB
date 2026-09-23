@@ -136,6 +136,13 @@ func (p *planner) AlterTable(ctx context.Context, n *tree.AlterTable) (planNode,
 		return nil, err
 	}
 
+	if tableDesc.IsTSTable() {
+		// check whether this table has been published or subscribed
+		if err = checkTableRelatedPubsAndSubs(ctx, p, uint64(tableDesc.ID), tableDesc.Name, n.StatOp(), nil); err != nil {
+			return nil, err
+		}
+	}
+
 	return &alterTableNode{
 		n:         n,
 		tableDesc: tableDesc,
@@ -176,7 +183,18 @@ func (n *alterTableNode) startExec(params runParams) error {
 	origNumMutations := len(n.tableDesc.Mutations)
 	var droppedViews []string
 	tn := params.p.ResolvedName(n.n.Table)
-
+	dbName := tn.Catalog()
+	schemaName := tn.Schema()
+	tableName := tn.Table()
+	var pipeMetadatas []*PipeMetadata
+	if n.tableDesc.IsTSTable() {
+		var err error
+		if pipeMetadatas, err = params.p.checkTableRelatedPipe(
+			params.ctx, uint64(n.tableDesc.ID), uint64(n.tableDesc.ParentID),
+		); err != nil {
+			return err
+		}
+	}
 	for i, cmd := range n.n.Cmds {
 		telemetry.Inc(cmd.TelemetryCounter())
 
@@ -196,9 +214,19 @@ func (n *alterTableNode) startExec(params runParams) error {
 				if d.Nullable.Nullability == tree.NotNull {
 					return pgerror.Newf(pgcode.FeatureNotSupported, "add NOT-NULL column %s for timeseries table is not supported", d.Name)
 				}
-				if len(n.tableDesc.Columns)+1 > MaxTSDataColumns {
+				dataColNum := 0
+				for _, col := range n.tableDesc.Columns {
+					if col.IsDataCol() {
+						dataColNum++
+					}
+				}
+				if !n.tableDesc.IsSparseTable() && dataColNum+1 > MaxTSDataColumns {
 					return pgerror.Newf(pgcode.TooManyColumns,
-						"on table %s, the number of columns/tags exceeded the maximum value %d", n.tableDesc.Name, MaxTSDataColumns)
+						"on timeseries table %s, the number of columns exceeded the maximum value %d", n.tableDesc.Name, MaxTSDataColumns)
+				}
+				if n.tableDesc.IsSparseTable() && dataColNum+1 > MaxSparseTSDataColumns {
+					return pgerror.Newf(pgcode.TooManyColumns,
+						"on sparse timeseries table %s, the number of columns exceeded the maximum value %d", n.tableDesc.Name, MaxSparseTSDataColumns)
 				}
 				if err := checkTSColValidity(d); err != nil {
 					return err
@@ -259,6 +287,14 @@ func (n *alterTableNode) startExec(params runParams) error {
 					log.Info(params.ctx, err)
 				}
 				log.Infof(params.ctx, "alter ts table %s 1st txn finished, id: %d, content: %s", n.n.Table.String(), n.tableDesc.ID, n.n.Cmds)
+
+				if len(pipeMetadatas) > 0 {
+					stmt := tree.AsStringWithFQNames(n.n, params.Ann())
+					if err = sendDDLToPipe(params, dbName, schemaName, tableName, kafkaMsgKindAlterTable, stmt, pipeMetadatas, false); err != nil {
+						return err
+					}
+				}
+
 				return nil
 			}
 			if d.HasFKConstraint() {
@@ -298,7 +334,7 @@ func (n *alterTableNode) startExec(params runParams) error {
 			d = newDef
 			incTelemetryForNewColumn(d)
 
-			col, idx, expr, err := sqlbase.MakeColumnDefDescs(d, &params.p.semaCtx, tree.RelationalTable)
+			col, idx, expr, err := sqlbase.MakeColumnDefDescs(d, &params.p.semaCtx, false)
 			if err != nil {
 				return err
 			}
@@ -653,6 +689,12 @@ func (n *alterTableNode) startExec(params runParams) error {
 					log.Info(params.ctx, err)
 				}
 				log.Infof(params.ctx, "alter ts table %s 1st txn finished, id: %d, content: %s", n.n.Table.String(), n.tableDesc.ID, n.n.Cmds)
+				if len(pipeMetadatas) > 0 {
+					stmt := tree.AsStringWithFQNames(n.n, params.Ann())
+					if err = sendDDLToPipe(params, dbName, schemaName, tableName, kafkaMsgKindAlterTable, stmt, pipeMetadatas, false); err != nil {
+						return err
+					}
+				}
 				return nil
 			}
 
@@ -910,6 +952,12 @@ func (n *alterTableNode) startExec(params runParams) error {
 				return err
 			}
 			if isTSAlterColumnType && !isOnlyMetaChange {
+				if n.tableDesc.IsTSTable() && len(pipeMetadatas) > 0 {
+					stmt := tree.AsStringWithFQNames(n.n, params.Ann())
+					if err = sendDDLToPipe(params, dbName, schemaName, tableName, kafkaMsgKindAlterTable, stmt, pipeMetadatas, false); err != nil {
+						return err
+					}
+				}
 				return nil
 			}
 			descriptorChanged = true
@@ -1022,7 +1070,12 @@ func (n *alterTableNode) startExec(params runParams) error {
 				log.Info(params.ctx, err)
 			}
 			log.Infof(params.ctx, "alter ts table %s 1st txn finished, id: %d, content: %s", n.n.Table.String(), n.tableDesc.ID, n.n.Cmds)
-
+			if len(pipeMetadatas) > 0 {
+				stmt := tree.AsStringWithFQNames(n.n, params.Ann())
+				if err = sendDDLToPipe(params, dbName, schemaName, tableName, kafkaMsgKindAlterTable, stmt, pipeMetadatas, false); err != nil {
+					return err
+				}
+			}
 			return nil
 
 		case *tree.AlterTablePartitionBy:
@@ -1130,10 +1183,6 @@ func (n *alterTableNode) startExec(params runParams) error {
 				return pgerror.Newf(
 					pgcode.WrongObjectType, "can not add tag on instance table \"%s\"", n.tableDesc.Name)
 			}
-			if len(n.tableDesc.Columns)+1 > MaxTSDataColumns {
-				return pgerror.Newf(pgcode.TooManyColumns,
-					"on table %s, the number of columns/tags exceeded the maximum value %d", n.tableDesc.Name, MaxTSDataColumns)
-			}
 			log.Infof(params.ctx, "alter ts table %s 1st txn start, id: %d, content: %s", n.n.Table.String(), n.tableDesc.ID, n.n.Cmds)
 			tagNum := 0
 			for _, column := range n.tableDesc.Columns {
@@ -1187,6 +1236,7 @@ func (n *alterTableNode) startExec(params runParams) error {
 				AlterTag:   *tagCol,
 				MutationID: mutationID,
 			}
+			stmt := tree.AsStringWithFQNames(n.n, params.Ann())
 			jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n.n, params.Ann()), params.p.txn)
 			if err != nil {
 				log.Info(params.ctx, err)
@@ -1213,6 +1263,11 @@ func (n *alterTableNode) startExec(params runParams) error {
 				log.Info(params.ctx, err)
 			}
 			log.Infof(params.ctx, "alter ts table %s 1st txn finished, id: %d, content: %s", n.n.Table.String(), n.tableDesc.ID, n.n.Cmds)
+			if len(pipeMetadatas) > 0 {
+				if err = sendDDLToPipe(params, dbName, schemaName, tableName, kafkaMsgKindAlterTable, stmt, pipeMetadatas, false); err != nil {
+					return err
+				}
+			}
 			return nil
 
 		case *tree.AlterTableDropTag:
@@ -1340,6 +1395,12 @@ func (n *alterTableNode) startExec(params runParams) error {
 				log.Info(params.ctx, err)
 			}
 			log.Infof(params.ctx, "alter ts table %s 1st txn finished, id: %d, content: %s", n.n.Table.String(), n.tableDesc.ID, n.n.Cmds)
+			if len(pipeMetadatas) > 0 {
+				stmt := tree.AsStringWithFQNames(n.n, params.Ann())
+				if err = sendDDLToPipe(params, dbName, schemaName, tableName, kafkaMsgKindAlterTable, stmt, pipeMetadatas, false); err != nil {
+					return err
+				}
+			}
 			return nil
 
 		case *tree.AlterTableRenameTag:
@@ -1357,19 +1418,10 @@ func (n *alterTableNode) startExec(params runParams) error {
 			descriptorChanged = descChanged
 
 		case *tree.AlterTableSetTag:
-			if n.tableDesc.TableType == tree.RelationalTable {
+			if !n.tableDesc.IsInstanceTable() {
 				return pgerror.Newf(
-					pgcode.WrongObjectType, "can not set tag on relational table \"%s\"", n.tableDesc.Name)
+					pgcode.WrongObjectType, "can not set tag on %s \"%s\"", n.tableDesc.TypeName(), n.tableDesc.Name)
 			}
-			if n.tableDesc.TableType == tree.TemplateTable {
-				return pgerror.Newf(
-					pgcode.WrongObjectType, "can not set tag on template table \"%s\"", n.tableDesc.Name)
-			}
-			if n.tableDesc.TableType == tree.TimeseriesTable {
-				return pgerror.Newf(
-					pgcode.WrongObjectType, "can not set tag on time series table \"%s\"", n.tableDesc.Name)
-			}
-
 			// get instance table id
 			db, err := getDatabaseDescByID(params.ctx, params.p.txn, n.tableDesc.ParentID)
 			if err != nil {
@@ -1427,6 +1479,12 @@ func (n *alterTableNode) startExec(params runParams) error {
 				[]int64{jobID},
 			); err != nil {
 				log.Info(params.ctx, err)
+			}
+			if len(pipeMetadatas) > 0 {
+				stmt := tree.AsStringWithFQNames(n.n, params.Ann())
+				if err = sendDDLToPipe(params, dbName, schemaName, tableName, kafkaMsgKindAlterTable, stmt, pipeMetadatas, false); err != nil {
+					return err
+				}
 			}
 			return nil
 
@@ -1523,7 +1581,12 @@ func (n *alterTableNode) startExec(params runParams) error {
 				return err
 			}
 			log.Infof(params.ctx, "alter ts table %s 1st txn finished, id: %d, content: %s", n.n.Table.String(), n.tableDesc.ID, n.n.Cmds)
-
+			if len(pipeMetadatas) > 0 {
+				stmt := tree.AsStringWithFQNames(n.n, params.Ann())
+				if err = sendDDLToPipe(params, dbName, schemaName, tableName, kafkaMsgKindAlterTable, stmt, pipeMetadatas, false); err != nil {
+					return err
+				}
+			}
 			return nil
 		default:
 			return errors.AssertionFailedf("unsupported alter command: %T", cmd)
@@ -1562,6 +1625,13 @@ func (n *alterTableNode) startExec(params runParams) error {
 	params.p.SetAuditTarget(uint32(n.tableDesc.GetID()), n.tableDesc.GetName(), droppedViews)
 	if descriptorChanged {
 		log.Infof(params.ctx, "alter ts table %s 1st txn finished, id: %d, content: %s", n.n.Table.String(), n.tableDesc.ID, n.n.Cmds)
+	}
+	if n.tableDesc.IsTable() && len(pipeMetadatas) > 0 {
+		// until now ,the txn does not commit
+		stmt := tree.AsStringWithFQNames(n.n, params.Ann())
+		if err := sendDDLToPipe(params, dbName, schemaName, tableName, kafkaMsgKindAlterTable, stmt, pipeMetadatas, true); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -1803,7 +1873,7 @@ func applyColumnMutation(
 			}
 		}
 
-		typ = sqlbase.UpdateTimeColPrecision(typ, tableDesc.TableType)
+		typ = sqlbase.UpdateTimeColPrecision(typ, tableDesc.IsTSTable())
 		err := sqlbase.ValidateColumnDefType(typ, tableDesc.TableType)
 		if err != nil {
 			return false, err
@@ -1819,6 +1889,17 @@ func applyColumnMutation(
 		kind, err := schemachange.ClassifyConversion(&col.Type, typ)
 		if err != nil {
 			return false, err
+		}
+
+		// STRING/TEXT/VARCHAR/CHAR <-> CITEXT is only for non-indexed columns.
+		// If the column used in any index, without rebuilding indexes is unsafe.
+		if tree.IsCITextStringMixedWithOutArray(&col.Type, typ) &&
+			kind == schemachange.ColumnConversionTrivial {
+			if ok := columnUsedInIndex(tableDesc, col.ID); ok {
+				return false, pgerror.Newf(pgcode.FeatureNotSupported,
+					"alter column type from %s to %s requiring rewrite of on-disk data is currently "+
+						"not supported for columns %s that are part of an index", col.Type.SQLString(), typ.SQLString(), col.Name)
+			}
 		}
 
 		switch kind {
@@ -2223,7 +2304,7 @@ func validateAlterTSType(
 		return false, validateTextType(colName, oldType, newType, colType)
 		// timestamp type
 	case oid.T_timestamp, oid.T_timestamptz:
-		newType = sqlbase.UpdateTimeColPrecision(newType, tree.TimeseriesTable)
+		newType = sqlbase.UpdateTimeColPrecision(newType, true)
 		if newType.Precision() != oldType.Precision() {
 			return false, newTypeConvertError(colName, oldType, newType)
 		}
@@ -2400,4 +2481,30 @@ func checkIndexOnTag(n *alterTableNode, colToDrop *sqlbase.ColumnDescriptor) err
 		}
 	}
 	return nil
+}
+
+// columnUsedInIndex checks whether the given column is used by primary or secondary index.
+func columnUsedInIndex(tableDesc *sqlbase.MutableTableDescriptor, colID sqlbase.ColumnID) bool {
+	if indexDescriptorContainsColumnID(&tableDesc.PrimaryIndex, colID) {
+		return true
+	}
+
+	for i := range tableDesc.Indexes {
+		idx := &tableDesc.Indexes[i]
+		if indexDescriptorContainsColumnID(idx, colID) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// indexDescriptorContainsColumnID checks whether the index descriptor references the given column.
+func indexDescriptorContainsColumnID(idx *sqlbase.IndexDescriptor, colID sqlbase.ColumnID) bool {
+	for _, id := range idx.ColumnIDs {
+		if id == colID {
+			return true
+		}
+	}
+	return false
 }

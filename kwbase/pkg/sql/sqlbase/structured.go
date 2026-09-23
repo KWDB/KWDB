@@ -31,8 +31,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
-	"gitee.com/kwbasedb/kwbase/pkg/cdc/cdcpb"
 	"gitee.com/kwbasedb/kwbase/pkg/clusterversion"
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
@@ -773,8 +773,12 @@ func (desc *TableDescriptor) TypeName() string {
 		return "template table"
 	case tree.InstanceTable:
 		return "instance table"
-	default:
+	case tree.SparseTable:
+		return "sparse table"
+	case tree.RelationalTable:
 		return "relation"
+	default:
+		return ""
 	}
 }
 
@@ -808,11 +812,41 @@ func (desc *TableDescriptor) IsTable() bool {
 // TS Table resource.
 func (desc *TableDescriptor) IsTSTable() bool {
 	switch desc.TableType {
-	case tree.TimeseriesTable, tree.TemplateTable, tree.InstanceTable:
+	case tree.TimeseriesTable, tree.TemplateTable, tree.InstanceTable, tree.SparseTable:
 		return true
 	default:
 		return false
 	}
+}
+
+// IsSparseTable returns true if the TableDescriptor actually describes a
+// Sparse Table resource.
+func (desc *TableDescriptor) IsSparseTable() bool {
+	return desc.TableType == tree.SparseTable
+}
+
+// IsInstanceTable returns true if the TableDescriptor actually describes a
+// Instance Table resource.
+func (desc *TableDescriptor) IsInstanceTable() bool {
+	return desc.TableType == tree.InstanceTable
+}
+
+// IsTemplateTable returns true if the TableDescriptor actually describes a
+// Template Table resource.
+func (desc *TableDescriptor) IsTemplateTable() bool {
+	return desc.TableType == tree.TemplateTable
+}
+
+// IsTimeseriesTable returns true if the TableDescriptor actually describes a
+// Timeseries Table resource.
+func (desc *TableDescriptor) IsTimeseriesTable() bool {
+	return desc.TableType == tree.TimeseriesTable
+}
+
+// IsRelationalTable returns true if the TableDescriptor actually describes a
+// Relational Table resource.
+func (desc *TableDescriptor) IsRelationalTable() bool {
+	return desc.TableType == tree.RelationalTable
 }
 
 // IsView returns true if the TableDescriptor actually describes a
@@ -2583,6 +2617,11 @@ func (desc *MutableTableDescriptor) AddColumn(col *ColumnDescriptor) {
 	desc.Columns = append(desc.Columns, *col)
 }
 
+// AddCDC adds a cdc to the table.
+func (desc *MutableTableDescriptor) AddCDC(cdc CDCDescriptor) {
+	desc.CDC = append(desc.CDC, cdc)
+}
+
 // AddTriggerDesc adds a trigger to the table and reorder all triggerDesc if necessary.
 func (desc *MutableTableDescriptor) AddTriggerDesc(
 	trigDesc *TriggerDescriptor, Order *tree.TriggerOrder,
@@ -4313,6 +4352,11 @@ func (desc *ColumnDescriptor) TsColStorgeLen() uint64 {
 	return desc.TsCol.StorageLen
 }
 
+// TsVariableLengthType is part of the cat.Column interface.
+func (desc *ColumnDescriptor) TsVariableLengthType() int32 {
+	return int32(desc.TsCol.VariableLengthType)
+}
+
 // HasNullDefault checks that the column descriptor has a default of NULL.
 func (desc *ColumnDescriptor) HasNullDefault() bool {
 	if !desc.HasDefault() {
@@ -4765,7 +4809,7 @@ type CDCData struct {
 // CDCPushData stores information of CDC data.
 type CDCPushData struct {
 	TaskID   uint64
-	TaskType cdcpb.TSCDCInstanceType
+	TaskType CDCInstanceType
 	Rows     [][]byte
 	Types    []types.T
 }
@@ -4884,13 +4928,16 @@ func (desc *ProcedureDescriptor) Validate() error {
 	return desc.Privileges.Validate(desc.GetID())
 }
 
-// TSIDGenerator is used to generate a unique time-series ID.
+// TSIDDPrecision used to tree.MakeDTimestamp
+const TSIDDPrecision = time.Nanosecond
+
+// TSIDGenerator is used to generate a unique time-series ID (OSN).
 type TSIDGenerator struct {
 	mu           syncutil.Mutex
 	lastNanoTime uint64
 }
 
-// GetNextID returns a unique ID based on a timestamp.
+// GetNextID returns a unique ID based on a timestamp(OSN).
 func (u *TSIDGenerator) GetNextID() uint64 {
 	var res uint64
 
@@ -4902,4 +4949,9 @@ func (u *TSIDGenerator) GetNextID() uint64 {
 	u.lastNanoTime = res
 	u.mu.Unlock()
 	return res
+}
+
+// TSIDToTime format TsID(osn) to time.
+func TSIDToTime(id uint64) time.Time {
+	return timeutil.FromUnixNano(int64(id))
 }

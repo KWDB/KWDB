@@ -856,6 +856,7 @@ func (c *conn) handleSimpleQuery(
 	tracing.AnnotateTrace()
 
 	c.parser.IsShortcircuit = unqis.GetTsinsertdirect()
+	c.parser.SetPrepareMode(false)
 	var dit sql.DirectInsertTable
 	var di sql.DirectInsert
 	di.DirectTimes[sql.HandleSimpleStart] = timeutil.Now()
@@ -1342,6 +1343,7 @@ func (c *conn) handleParse(
 		return isTsTable
 	}
 	c.parser.SetPrepareMode(true)
+	defer c.parser.SetPrepareMode(false)
 	startParse := timeutil.Now()
 Reparse:
 	stmts, err := c.parser.ParseWithInt(query, nakedIntSize, c.sv)

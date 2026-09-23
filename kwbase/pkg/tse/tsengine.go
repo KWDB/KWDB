@@ -56,6 +56,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"runtime"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -530,16 +531,21 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 	walLevel := TsWALLevel.Get(&r.cfg.Settings.SV)
 
 	traceLevel := SQLTimeseriesTrace.Get(&r.cfg.Settings.SV)
+	logDir := []byte(r.cfg.LogCfg.Dir)
+	traceLevelBytes := []byte(traceLevel)
 	optLog := C.TsLogOptions{
-		Dir:                       goToTSSlice([]byte(r.cfg.LogCfg.Dir)),
+		Dir:                       goToTSSlice(logDir),
 		LogFileMaxSize:            C.int64_t(r.cfg.LogCfg.LogFileMaxSize),
 		LogFilesCombinedMaxSize:   C.int64_t(r.cfg.LogCfg.LogFilesCombinedMaxSize),
 		LogFileVerbosityThreshold: C.LgSeverity(r.cfg.LogCfg.LogFileVerbosityThreshold),
-		Trace_on_off_list:         goToTSSlice([]byte(traceLevel)),
+		Trace_on_off_list:         goToTSSlice(traceLevelBytes),
 	}
 
 	if len(rangeIndex) == 0 {
-		status := C.TSOpen(&r.tdb, goToTSSlice([]byte(r.cfg.Dir)),
+		dir := []byte(r.cfg.Dir)
+		brpcAddr := []byte(r.cfg.BRPCAddr)
+		clusterID := []byte(r.cfg.ClusterID)
+		status := C.TSOpen(&r.tdb, goToTSSlice(dir),
 			C.TSOptions{
 				wal_level:        C.uint8_t(walLevel),
 				extra_options:    goToTSSlice(r.cfg.ExtraOptions),
@@ -548,11 +554,17 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 				buffer_pool_size: C.uint32_t(uint32(r.cfg.BufferPoolSize)),
 				lg_opts:          optLog,
 				is_single_node:   C.bool(r.cfg.IsSingleNode),
-				brpc_addr:        goToTSSlice([]byte(r.cfg.BRPCAddr)),
-				cluster_id:       goToTSSlice([]byte(r.cfg.ClusterID)),
+				brpc_addr:        goToTSSlice(brpcAddr),
+				cluster_id:       goToTSSlice(clusterID),
 			},
 			nil,
 			C.uint64_t(0))
+		runtime.KeepAlive(dir)
+		runtime.KeepAlive(brpcAddr)
+		runtime.KeepAlive(clusterID)
+		runtime.KeepAlive(r.cfg.ExtraOptions)
+		runtime.KeepAlive(logDir)
+		runtime.KeepAlive(traceLevelBytes)
 		if err := statusToError(status); err != nil {
 			return errors.Wrap(err, "could not open tsengine instance")
 		}
@@ -565,7 +577,10 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 			}
 		}
 
-		status := C.TSOpen(&r.tdb, goToTSSlice([]byte(r.cfg.Dir)),
+		dir := []byte(r.cfg.Dir)
+		brpcAddr := []byte(r.cfg.BRPCAddr)
+		clusterID := []byte(r.cfg.ClusterID)
+		status := C.TSOpen(&r.tdb, goToTSSlice(dir),
 			C.TSOptions{
 				wal_level:        C.uint8_t(walLevel),
 				extra_options:    goToTSSlice(r.cfg.ExtraOptions),
@@ -574,11 +589,18 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 				buffer_pool_size: C.uint32_t(uint32(r.cfg.BufferPoolSize)),
 				lg_opts:          optLog,
 				is_single_node:   C.bool(r.cfg.IsSingleNode),
-				brpc_addr:        goToTSSlice([]byte(r.cfg.BRPCAddr)),
-				cluster_id:       goToTSSlice([]byte(r.cfg.ClusterID)),
+				brpc_addr:        goToTSSlice(brpcAddr),
+				cluster_id:       goToTSSlice(clusterID),
 			},
 			&appliedRangeIndex[0],
 			C.uint64_t(len(appliedRangeIndex)))
+		runtime.KeepAlive(dir)
+		runtime.KeepAlive(brpcAddr)
+		runtime.KeepAlive(clusterID)
+		runtime.KeepAlive(r.cfg.ExtraOptions)
+		runtime.KeepAlive(appliedRangeIndex)
+		runtime.KeepAlive(logDir)
+		runtime.KeepAlive(traceLevelBytes)
 		if err := statusToError(status); err != nil {
 			return errors.Wrap(err, "could not open tsengine instance")
 		}
@@ -647,6 +669,7 @@ func (r *TsEngine) CreateTsTable(
 		len:    C.int32_t(len(cRanges)),
 	}
 	status := C.TSCreateTsTable(r.tdb, C.TSTableID(tableID), goToTSSlice(meta), cRangeGroups)
+	runtime.KeepAlive(meta)
 	if err := statusToError(status); err != nil {
 		return errors.Wrap(err, "could not CreateTsTable")
 	}
@@ -755,7 +778,9 @@ func (r *TsEngine) AddTSColumn(
 ) error {
 	r.checkOrWaitForOpen()
 	status := C.TSAddColumn(
-		r.tdb, C.TSTableID(tableID), (*C.char)(unsafe.Pointer(&transactionID[0])), goToTSSlice(colMeta), C.uint32_t(currentTSVersion), C.uint32_t(newTSVersion))
+		r.tdb, C.TSTableID(tableID), goToCChar(transactionID), goToTSSlice(colMeta), C.uint32_t(currentTSVersion), C.uint32_t(newTSVersion))
+	runtime.KeepAlive(transactionID)
+	runtime.KeepAlive(colMeta)
 	if err := statusToError(status); err != nil {
 		return errors.Wrap(err, "could not AddTsColumn")
 	}
@@ -768,7 +793,9 @@ func (r *TsEngine) DropTSColumn(
 ) error {
 	r.checkOrWaitForOpen()
 	status := C.TSDropColumn(
-		r.tdb, C.TSTableID(tableID), (*C.char)(unsafe.Pointer(&transactionID[0])), goToTSSlice(colMeta), C.uint32_t(currentTSVersion), C.uint32_t(newTSVersion))
+		r.tdb, C.TSTableID(tableID), goToCChar(transactionID), goToTSSlice(colMeta), C.uint32_t(currentTSVersion), C.uint32_t(newTSVersion))
+	runtime.KeepAlive(transactionID)
+	runtime.KeepAlive(colMeta)
 	if err := statusToError(status); err != nil {
 		return errors.Wrap(err, "could not DropTsColumn")
 	}
@@ -792,7 +819,8 @@ func (r *TsEngine) CreateNormalTagIndex(
 		index_column: (*C.uint32_t)(unsafe.Pointer(&cIndexs[0])),
 		len:          C.int32_t(len(cIndexs)),
 	}
-	status := C.TSCreateNormalTagIndex(r.tdb, C.TSTableID(tableID), C.uint64_t(indexID), (*C.char)(unsafe.Pointer(&transactionID[0])), C.uint32_t(curVersion), C.uint32_t(newVersion), cIndexColumns)
+	status := C.TSCreateNormalTagIndex(r.tdb, C.TSTableID(tableID), C.uint64_t(indexID), goToCChar(transactionID), C.uint32_t(curVersion), C.uint32_t(newVersion), cIndexColumns)
+	runtime.KeepAlive(transactionID)
 	if err := statusToError(status); err != nil {
 		return errors.Wrap(err, "could not CreateNormalTagIndex")
 	}
@@ -803,7 +831,8 @@ func (r *TsEngine) CreateNormalTagIndex(
 func (r *TsEngine) DropNormalTagIndex(
 	tableID uint64, indexID uint64, curVersion, newVersion uint32, transactionID []byte,
 ) error {
-	status := C.TSDropNormalTagIndex(r.tdb, C.TSTableID(tableID), C.uint64_t(indexID), (*C.char)(unsafe.Pointer(&transactionID[0])), C.uint32_t(curVersion), C.uint32_t(newVersion))
+	status := C.TSDropNormalTagIndex(r.tdb, C.TSTableID(tableID), C.uint64_t(indexID), goToCChar(transactionID), C.uint32_t(curVersion), C.uint32_t(newVersion))
+	runtime.KeepAlive(transactionID)
 	if err := statusToError(status); err != nil {
 		return errors.Wrap(err, "could not DropNormalTagIndex")
 	}
@@ -844,7 +873,7 @@ func (r *TsEngine) AlterTSColumnType(
 	status := C.TSAlterColumn(
 		r.tdb,
 		C.TSTableID(tableID),
-		(*C.char)(unsafe.Pointer(&transactionID[0])),
+		goToCChar(transactionID),
 		goToTSSlice(colMeta),
 		goToTSSlice(originColMeta),
 		C.uint32_t(currentTSVersion),
@@ -852,6 +881,9 @@ func (r *TsEngine) AlterTSColumnType(
 		C.bool(isAlterType),
 		C.bool(isAlterCompress),
 	)
+	runtime.KeepAlive(transactionID)
+	runtime.KeepAlive(colMeta)
+	runtime.KeepAlive(originColMeta)
 	if err := statusToError(status); err != nil {
 		return err
 	}
@@ -941,11 +973,10 @@ func (r *TsEngine) PutData(
 	(*entitiesAffected) = 0
 	(*unorderedAffected) = 0
 	var status C.TSStatus
-	if transactionID != nil {
-		cstr := C.CString(string(transactionID))
-		defer C.free(unsafe.Pointer(cstr))
+	if len(transactionID) > 0 {
 		status = C.TSPutDataByRowTypeExplicit(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
-			entitiesAffected, unorderedAffected, dedupResult, C.bool(writeWAL), cstr)
+			entitiesAffected, unorderedAffected, dedupResult, C.bool(writeWAL), goToCChar(transactionID))
+		runtime.KeepAlive(transactionID)
 	} else {
 		status = C.TSPutDataByRowType(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
 			entitiesAffected, unorderedAffected, dedupResult, C.bool(writeWAL))
@@ -965,6 +996,56 @@ func (r *TsEngine) PutData(
 	return res, affect, nil
 }
 
+const (
+	tsPayloadVersionSize   = 4
+	tsPayloadDBIDSize      = 4
+	tsPayloadTableIDSize   = 8
+	tsPayloadTSVersionSize = 4
+	tsPayloadRowNumSize    = 4
+	tsPayloadRowTypeSize   = 1
+
+	tsPayloadVersionOffset   = sqlbase.RangeGroupIDOffset + sqlbase.RangeGroupIDSize
+	tsPayloadDBIDOffset      = tsPayloadVersionOffset + tsPayloadVersionSize
+	tsPayloadTableIDOffset   = tsPayloadDBIDOffset + tsPayloadDBIDSize
+	tsPayloadTSVersionOffset = tsPayloadTableIDOffset + tsPayloadTableIDSize
+	tsPayloadRowNumOffset    = tsPayloadTSVersionOffset + tsPayloadTSVersionSize
+	tsPayloadRowTypeOffset   = tsPayloadRowNumOffset + tsPayloadRowNumSize
+	tsPayloadHeadSize        = tsPayloadRowTypeOffset + tsPayloadRowTypeSize
+
+	tsPayloadPTagLenSize = 2
+	tsPayloadTagLenSize  = 4
+	tsPayloadDataLenSize = 4
+	tsPayloadVersionV2   = 2
+)
+
+func tsPayloadPrefixBaseLen(headerPrefix []byte) int {
+	if len(headerPrefix) < tsPayloadHeadSize+tsPayloadPTagLenSize {
+		return len(headerPrefix)
+	}
+	ptagLen := int(binary.LittleEndian.Uint16(headerPrefix[tsPayloadHeadSize:]))
+	tagLenOffset := tsPayloadHeadSize + tsPayloadPTagLenSize + ptagLen
+	if len(headerPrefix) < tagLenOffset+tsPayloadTagLenSize {
+		return len(headerPrefix)
+	}
+	tagLen := int(binary.LittleEndian.Uint32(headerPrefix[tagLenOffset:]))
+	baseLen := tagLenOffset + tsPayloadTagLenSize + tagLen
+	if baseLen > len(headerPrefix) {
+		return len(headerPrefix)
+	}
+	return baseLen
+}
+
+func putRowDataLayout(headerPrefix []byte) (uint32, int, int) {
+	payloadVersion := binary.LittleEndian.Uint32(
+		headerPrefix[tsPayloadVersionOffset : tsPayloadVersionOffset+tsPayloadVersionSize],
+	)
+	if payloadVersion != tsPayloadVersionV2 {
+		return payloadVersion, len(headerPrefix), 0
+	}
+	basePrefixLen := tsPayloadPrefixBaseLen(headerPrefix)
+	return payloadVersion, basePrefixLen, len(headerPrefix) - basePrefixLen
+}
+
 // PutRowData 行存tags值和时序数据写入
 func (r *TsEngine) PutRowData(
 	tableID uint64,
@@ -982,121 +1063,120 @@ func (r *TsEngine) PutRowData(
 	r.checkOrWaitForOpen()
 	sizeLimit := int32(TsPayloadSizeLimit.Get(&r.cfg.Settings.SV))
 	var cTsSlice C.TSSlice
-	// The structure of HeaderPrefix: | Header | primary_tag_len | primary_tag | tag_ten | tags | data_len |
+	// The structure of HeaderPrefix:
+	// v1: | Header | primary_tag_len | primary_tag | tag_len | tags |
+	// v2: | Header | primary_tag_len | primary_tag | tag_len | tags | data_row_type | valid_col_flag |
 	// Header: | txn(16) | group_id(2) | payload_version(4) | database_id(4) | table_id(8) | ts_version(4) | row_num(4) | flags(1) |
-	const rowNumOffset = 38 // offset of row_num, pay attention to any change of the structure of HeaderPrefix
-	const dataLen = 4       // length of data_len in HeaderPrefix. The location is at the end of HeaderPrefix
 
 	headerLen := len(headerPrefix)
-	cTsSlice.data = (*C.char)(C.malloc(C.size_t(int(size) + headerLen + dataLen)))
+	cTsSlice.data = (*C.char)(C.malloc(C.size_t(int(size) + headerLen + tsPayloadDataLenSize)))
 	if cTsSlice.data == nil {
 		return DedupResult{}, EntitiesAffect{}, errors.New("failed malloc")
 	}
 	defer C.free(unsafe.Pointer(cTsSlice.data))
 
-	C.memcpy(unsafe.Pointer(cTsSlice.data), unsafe.Pointer(&headerPrefix[0]), C.size_t(headerLen))
-	dataPtr := uintptr(unsafe.Pointer(cTsSlice.data)) + uintptr(headerLen) // pointer to the data_len
+	payloadVersion, basePrefixLen, dataHeaderLen := putRowDataLayout(headerPrefix)
+	if payloadVersion == tsPayloadVersionV2 {
+		C.memcpy(unsafe.Pointer(cTsSlice.data), unsafe.Pointer(&headerPrefix[0]), C.size_t(basePrefixLen))
+		if dataHeaderLen > 0 {
+			C.memcpy(
+				unsafe.Pointer(uintptr(unsafe.Pointer(cTsSlice.data))+uintptr(basePrefixLen+tsPayloadDataLenSize)),
+				unsafe.Pointer(&headerPrefix[basePrefixLen]),
+				C.size_t(dataHeaderLen),
+			)
+		}
+	} else {
+		C.memcpy(unsafe.Pointer(cTsSlice.data), unsafe.Pointer(&headerPrefix[0]), C.size_t(headerLen))
+	}
+	dataPtr := uintptr(unsafe.Pointer(cTsSlice.data)) + uintptr(basePrefixLen) // pointer to the data_len
 
 	// mock
 	cRangeGroup := C.RangeGroup{
 		range_group_id: C.uint64_t(1),
 		typ:            C.int8_t(0),
 	}
-	payloadPtr := dataPtr + uintptr(dataLen)
+	payloadPtr := dataPtr + uintptr(tsPayloadDataLenSize+dataHeaderLen)
 	payloadSize := 0
 	partRowCnt := 0
 	totalRowCnt := len(payload)
 	var res DedupResult
 	var affect EntitiesAffect
+	flushPayload := func(payloadSize int, partRowCnt int, captureDiscard bool) error {
+		if partRowCnt == 0 {
+			return nil
+		}
+		// fill data_len
+		*(*int32)(unsafe.Pointer(dataPtr)) = int32(payloadSize + dataHeaderLen)
+		// fill row_num
+		*(*int32)(unsafe.Pointer(uintptr(unsafe.Pointer(cTsSlice.data)) + uintptr(tsPayloadRowNumOffset))) = int32(partRowCnt)
+		// set tsSlice len
+		cTsSlice.len = C.size_t(basePrefixLen + tsPayloadDataLenSize + dataHeaderLen + payloadSize)
+		dedupResult := (*C.DedupResult)(C.malloc(C.size_t(unsafe.Sizeof(C.DedupResult{}))))
+		if dedupResult == nil {
+			return errors.New("failed malloc")
+		}
+		defer C.free(unsafe.Pointer(dedupResult))
+		C.memset(unsafe.Pointer(dedupResult), 0, C.size_t(unsafe.Sizeof(C.DedupResult{})))
+		entitiesAffected := (*C.uint16_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint16_t(0)))))
+		if entitiesAffected == nil {
+			return errors.New("failed malloc")
+		}
+		defer C.free(unsafe.Pointer(entitiesAffected))
+		unorderedAffected := (*C.uint32_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint32_t(0)))))
+		if unorderedAffected == nil {
+			return errors.New("failed malloc")
+		}
+		defer C.free(unsafe.Pointer(unorderedAffected))
+		(*entitiesAffected) = 0
+		(*unorderedAffected) = 0
+		var status C.TSStatus
+		if len(transactionID) > 0 {
+			status = C.TSPutDataByRowTypeExplicit(r.tdb, C.TSTableID(tableID), &cTsSlice, (C.size_t)(1), cRangeGroup, C.uint64_t(tsTxnID),
+				entitiesAffected, unorderedAffected, dedupResult, C.bool(writeWAL), goToCChar(transactionID))
+			runtime.KeepAlive(transactionID)
+		} else {
+			status = C.TSPutDataByRowType(r.tdb, C.TSTableID(tableID), &cTsSlice, (C.size_t)(1), cRangeGroup, C.uint64_t(tsTxnID),
+				entitiesAffected, unorderedAffected, dedupResult, C.bool(writeWAL))
+		}
+
+		if err := statusToError(status); err != nil {
+			return errors.Wrap(err, "could not PutData")
+		}
+
+		res.DedupRows += int((*dedupResult).dedup_rows)
+		if captureDiscard {
+			res.DedupRule = int((*dedupResult).dedup_rule)
+			// the DiscardBitmap is not complete if the payload is truncated due to the size limit.
+			res.DiscardBitmap = cSliceToGoBytes((*dedupResult).discard_bitmap)
+		}
+		affect.EntityCount += uint16(*entitiesAffected)
+		affect.UnorderedCount += uint32(*unorderedAffected)
+		C.free(unsafe.Pointer((*dedupResult).discard_bitmap.data))
+		return nil
+	}
 	for i := 0; i < totalRowCnt; i++ {
 		p := payload[i]
 		if len(p) == 0 {
 			continue
 		}
 		partLen := len(p)
-		// need to check whether the payload size exceeds limit, so calculate it before add the row to payload.
-		payloadSize += partLen
-		if payloadSize > int(sizeLimit) {
-			payloadSize -= partLen
-			// fill data_len
-			*(*int32)(unsafe.Pointer(dataPtr)) = int32(payloadSize)
-			// fill row_num
-			*(*int32)(unsafe.Pointer(uintptr(unsafe.Pointer(cTsSlice.data)) + rowNumOffset)) = int32(partRowCnt)
-			// set tsSlice len
-			cTsSlice.len = C.size_t(payloadSize + headerLen + dataLen)
-			var dedupResult *C.DedupResult
-			var entitiesAffected *C.uint16_t
-			var unorderedAffected *C.uint32_t
-			dedupResult = (*C.DedupResult)(C.malloc(C.size_t(unsafe.Sizeof(C.DedupResult{}))))
-			C.memset(unsafe.Pointer(dedupResult), 0, C.size_t(unsafe.Sizeof(C.DedupResult{})))
-			entitiesAffected = (*C.uint16_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint16_t(0)))))
-			unorderedAffected = (*C.uint32_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint32_t(0)))))
-			(*entitiesAffected) = 0
-			(*unorderedAffected) = 0
-			status := C.TSPutDataByRowType(r.tdb, C.TSTableID(tableID), &cTsSlice, (C.size_t)(1), cRangeGroup, C.uint64_t(tsTxnID),
-				entitiesAffected, unorderedAffected, dedupResult, C.bool(writeWAL))
-			if err := statusToError(status); err != nil {
-				C.free(unsafe.Pointer(dedupResult))
-				C.free(unsafe.Pointer(entitiesAffected))
-				C.free(unsafe.Pointer(unorderedAffected))
-				return DedupResult{}, EntitiesAffect{}, errors.Wrap(err, "could not PutData")
+		if sizeLimit > 0 && partRowCnt > 0 && payloadSize+partLen > int(sizeLimit) {
+			if err := flushPayload(payloadSize, partRowCnt, false); err != nil {
+				return DedupResult{}, EntitiesAffect{}, err
 			}
-			res.DedupRows += int((*dedupResult).dedup_rows)
-			affect.EntityCount += uint16(*entitiesAffected)
-			affect.UnorderedCount += uint32(*unorderedAffected)
-			C.free(unsafe.Pointer((*dedupResult).discard_bitmap.data))
-
-			payloadSize = partLen
-			payloadPtr = dataPtr + uintptr(dataLen)
+			payloadSize = 0
+			payloadPtr = dataPtr + uintptr(tsPayloadDataLenSize+dataHeaderLen)
 			partRowCnt = 0
-			C.free(unsafe.Pointer(dedupResult))
-			C.free(unsafe.Pointer(entitiesAffected))
-			C.free(unsafe.Pointer(unorderedAffected))
 		}
+		payloadSize += partLen
 		partRowCnt++
 		C.memcpy(unsafe.Pointer(payloadPtr), unsafe.Pointer(&p[0]), C.size_t(partLen))
 		payloadPtr += uintptr(partLen)
 	}
 
-	// fill data_len
-	*(*int32)(unsafe.Pointer(dataPtr)) = int32(payloadSize)
-	// fill row_num
-	*(*int32)(unsafe.Pointer(uintptr(unsafe.Pointer(cTsSlice.data)) + rowNumOffset)) = int32(partRowCnt)
-	// set tsSlice len
-	cTsSlice.len = C.size_t(payloadSize + headerLen + dataLen)
-	var dedupResult *C.DedupResult
-	var entitiesAffected *C.uint16_t
-	var unorderedAffected *C.uint32_t
-	dedupResult = (*C.DedupResult)(C.malloc(C.size_t(unsafe.Sizeof(C.DedupResult{}))))
-	defer C.free(unsafe.Pointer(dedupResult))
-	C.memset(unsafe.Pointer(dedupResult), 0, C.size_t(unsafe.Sizeof(C.DedupResult{})))
-	entitiesAffected = (*C.uint16_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint16_t(0)))))
-	defer C.free(unsafe.Pointer(entitiesAffected))
-	unorderedAffected = (*C.uint32_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint32_t(0)))))
-	defer C.free(unsafe.Pointer(unorderedAffected))
-	(*entitiesAffected) = 0
-	(*unorderedAffected) = 0
-	var status C.TSStatus
-	if transactionID != nil {
-		cstr := C.CString(string(transactionID))
-		defer C.free(unsafe.Pointer(cstr))
-		status = C.TSPutDataByRowTypeExplicit(r.tdb, C.TSTableID(tableID), &cTsSlice, (C.size_t)(1), cRangeGroup, C.uint64_t(tsTxnID),
-			entitiesAffected, unorderedAffected, dedupResult, C.bool(writeWAL), cstr)
-	} else {
-		status = C.TSPutDataByRowType(r.tdb, C.TSTableID(tableID), &cTsSlice, (C.size_t)(1), cRangeGroup, C.uint64_t(tsTxnID),
-			entitiesAffected, unorderedAffected, dedupResult, C.bool(writeWAL))
+	if err := flushPayload(payloadSize, partRowCnt, true); err != nil {
+		return DedupResult{}, EntitiesAffect{}, err
 	}
-	if err := statusToError(status); err != nil {
-		return DedupResult{}, EntitiesAffect{}, errors.Wrap(err, "could not PutData")
-	}
-
-	res.DedupRows += int((*dedupResult).dedup_rows)
-	res.DedupRule = int((*dedupResult).dedup_rule)
-	affect.EntityCount += uint16(*entitiesAffected)
-	affect.UnorderedCount += uint32(*unorderedAffected)
-	// the DiscardBitmap is not complete if the payload is truncated due to the size limit.
-	res.DiscardBitmap = cSliceToGoBytes((*dedupResult).discard_bitmap)
-	C.free(unsafe.Pointer((*dedupResult).discard_bitmap.data))
 
 	return res, affect, nil
 }
@@ -1184,22 +1264,24 @@ type TsFetcher struct {
 
 // TsFetcherStats collect information in explain analyse
 type TsFetcherStats struct {
-	ProcessorID        int32
-	ProcessorName      int8
-	RowNum             int64
-	StallTime          int64   // time of execute
-	BytesRead          int64   // byte of rows
-	MaxAllocatedMem    int64   // maximum number of memory
-	MaxAllocatedDisk   int64   // Maximum number of disk
-	OutputRowNum       int64   // row of aggregation
-	MemoryBlockCount   int32   // scanned memory block count
-	LastBlockCount     int32   // scanned last block count
-	EntityBlockCount   int64   // scanned entity block count
-	PartitionAggCount  int64   // partition pre-aggregation usage count
-	BlockCacheHitRatio float32 //entity block cache hit ratio
-	BlockBytes         int64   // scanned block bytes
-	AggBytes           int64   // scanned agg bytes
-	HeaderBytes        int64   // scanned header bytes
+	ProcessorID          int32
+	ProcessorName        int8
+	RowNum               int64
+	StallTime            int64   // time of execute
+	BytesRead            int64   // byte of rows
+	MaxAllocatedMem      int64   // maximum number of memory
+	MaxAllocatedDisk     int64   // Maximum number of disk
+	OutputRowNum         int64   // row of aggregation
+	MemoryBlockCount     int32   // scanned memory block count
+	LastBlockCount       int32   // scanned last block count
+	EntityBlockCount     int64   // scanned entity block count
+	PartitionAggCount    int64   // partition pre-aggregation usage count
+	BlockCacheHitRatio   float32 //entity block cache hit ratio
+	BlockBytes           int64   // scanned block bytes
+	AggBytes             int64   // scanned agg bytes
+	HeaderBytes          int64   // scanned header bytes
+	BlockPreAggHitCount  int64   // block count that used block pre-aggregation
+	BlockPreAggMissCount int64   // block count that fell back to raw aggregation
 	// BuildTime only be used for hash tag scan op for multiple model processing
 	// when the switch is on and the server starts with single node mode.
 	BuildTime int64 // hash tag build time
@@ -1696,6 +1778,48 @@ func freeTSSlice(cTsSlice []C.TSSlice) {
 	}
 }
 
+// GetValidColumns returns the union of valid columns for the given primary tags
+func (r *TsEngine) GetValidColumns(
+	tableID uint64, tableVersion uint32, primaryTags [][]byte,
+) ([]uint32, error) {
+	if len(primaryTags) == 0 {
+		return nil, errors.New("primaryTags is empty")
+	}
+
+	r.checkOrWaitForOpen()
+	cTsSlice := make([]C.TSSlice, len(primaryTags))
+	defer freeTSSlice(cTsSlice)
+	for i, p := range primaryTags {
+		if len(p) == 0 {
+			cTsSlice[i].data = nil
+			cTsSlice[i].len = 0
+		} else {
+			dataPtr := C.CBytes(p)
+			cTsSlice[i].data = (*C.char)(dataPtr)
+			cTsSlice[i].len = C.size_t(len(p))
+		}
+	}
+
+	cValidColumns := C.ValidColumns{}
+	status := C.TsGetValidColumns(r.tdb, C.TSTableID(tableID), C.uint32_t(tableVersion), &cTsSlice[0], (C.size_t)(len(cTsSlice)), &cValidColumns)
+	if err := statusToError(status); err != nil {
+		return nil, errors.Wrap(err, "could not GetValidColumns")
+	}
+	defer C.free(unsafe.Pointer(cValidColumns.valid_column))
+
+	if cValidColumns.len <= 0 || cValidColumns.valid_column == nil {
+		return nil, nil
+	}
+
+	result := make([]uint32, int(cValidColumns.len))
+	const maxArrayLen = 1<<31 - 1
+	cArr := (*[maxArrayLen]C.uint32_t)(unsafe.Pointer(cValidColumns.valid_column))[:cValidColumns.len:cValidColumns.len]
+	for i := 0; i < int(cValidColumns.len); i++ {
+		result[i] = uint32(cArr[i])
+	}
+	return result, nil
+}
+
 // DeleteEntities delete entity, containing tag data and ts data
 func (r *TsEngine) DeleteEntities(
 	tableID uint64,
@@ -2058,6 +2182,38 @@ func (r *TsEngine) CountRangeData(
 	return uint64(*RangeCnt), nil
 }
 
+// SetPublishedMaxOSN set OSN of tables to clean
+func (r *TsEngine) SetPublishedMaxOSN(ctx context.Context, mapOSN map[uint64]uint64) error {
+	if r == nil {
+		return nil
+	}
+
+	r.checkOrWaitForOpen()
+
+	n := len(mapOSN)
+	var status C.TSStatus
+	if n == 0 {
+		status = C.TSSetPublishedMaxOSN(r.tdb, C.TSSlice{})
+	} else {
+		pairs := make([]uint64, 0, n*2)
+		for key, value := range mapOSN {
+			pairs = append(pairs, key, value)
+		}
+
+		cTsSlice := C.TSSlice{
+			data: (*C.char)(unsafe.Pointer(&pairs[0])),
+			len:  C.size_t(len(pairs) * 8),
+		}
+
+		status = C.TSSetPublishedMaxOSN(r.tdb, cTsSlice)
+	}
+
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "failed to SetPublishedMaxOSN ts storage")
+	}
+	return nil
+}
+
 // Vacuum vacuum partitions
 func (r *TsEngine) Vacuum(ctx context.Context, manual bool, onlyAgg bool) error {
 	if r == nil {
@@ -2317,11 +2473,10 @@ func (r *TsEngine) MtrBegin(
 	defer C.free(unsafe.Pointer(miniTransID))
 	(*miniTransID) = 0
 	var status C.TSStatus
-	if transactionID != nil {
-		cstr := C.CString(string(transactionID))
-		defer C.free(unsafe.Pointer(cstr))
+	if len(transactionID) > 0 {
 		status = C.TSMtrBeginExplicit(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(rangeID),
-			C.uint64_t(index), miniTransID, cstr)
+			C.uint64_t(index), miniTransID, goToCChar(transactionID))
+		runtime.KeepAlive(transactionID)
 	} else {
 		status = C.TSMtrBegin(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(rangeID),
 			C.uint64_t(index), miniTransID)
@@ -2338,10 +2493,10 @@ func (r *TsEngine) MtrCommit(
 ) error {
 	r.checkOrWaitForOpen()
 	var status C.TSStatus
-	if transactionID != nil {
-		cstr := C.CString(string(transactionID))
-		defer C.free(unsafe.Pointer(cstr))
-		status = C.TSMtrCommitExplicit(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(miniTransID), cstr)
+	if len(transactionID) > 0 {
+		status = C.TSMtrCommitExplicit(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(miniTransID),
+			goToCChar(transactionID))
+		runtime.KeepAlive(transactionID)
 	} else {
 		status = C.TSMtrCommit(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(miniTransID))
 	}
@@ -2357,10 +2512,10 @@ func (r *TsEngine) MtrRollback(
 ) error {
 	r.checkOrWaitForOpen()
 	var status C.TSStatus
-	if transactionID != nil {
-		cstr := C.CString(string(transactionID))
-		defer C.free(unsafe.Pointer(cstr))
-		status = C.TSMtrRollbackExplicit(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(miniTransID), cstr)
+	if len(transactionID) > 0 {
+		status = C.TSMtrRollbackExplicit(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(miniTransID),
+			goToCChar(transactionID))
+		runtime.KeepAlive(transactionID)
 	} else {
 		status = C.TSMtrRollback(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(miniTransID))
 	}
@@ -2373,7 +2528,8 @@ func (r *TsEngine) MtrRollback(
 // TransBegin BEGIN a TS transaction
 func (r *TsEngine) TransBegin(tableID uint64, transactionID []byte) error {
 	r.checkOrWaitForOpen()
-	status := C.TSxBegin(r.tdb, C.TSTableID(tableID), (*C.char)(unsafe.Pointer(&transactionID[0])))
+	status := C.TSxBegin(r.tdb, C.TSTableID(tableID), goToCChar(transactionID))
+	runtime.KeepAlive(transactionID)
 	if err := statusToError(status); err != nil {
 		return errors.Wrap(err, "failed to BEGIN a TS mini-transaction")
 	}
@@ -2383,7 +2539,8 @@ func (r *TsEngine) TransBegin(tableID uint64, transactionID []byte) error {
 // TransCommit COMMIT a TS transaction
 func (r *TsEngine) TransCommit(tableID uint64, transactionID []byte) error {
 	r.checkOrWaitForOpen()
-	status := C.TSxCommit(r.tdb, C.TSTableID(tableID), (*C.char)(unsafe.Pointer(&transactionID[0])))
+	status := C.TSxCommit(r.tdb, C.TSTableID(tableID), goToCChar(transactionID))
+	runtime.KeepAlive(transactionID)
 	if err := statusToError(status); err != nil {
 		return errors.Wrap(err, "failed to COMMIT a TS mini-transaction")
 	}
@@ -2393,7 +2550,8 @@ func (r *TsEngine) TransCommit(tableID uint64, transactionID []byte) error {
 // TransRollback ROLLBACK a TS transaction
 func (r *TsEngine) TransRollback(tableID uint64, transactionID []byte) error {
 	r.checkOrWaitForOpen()
-	status := C.TSxRollback(r.tdb, C.TSTableID(tableID), (*C.char)(unsafe.Pointer(&transactionID[0])))
+	status := C.TSxRollback(r.tdb, C.TSTableID(tableID), goToCChar(transactionID))
+	runtime.KeepAlive(transactionID)
 	if err := statusToError(status); err != nil {
 		return errors.Wrap(err, "failed to ROLLBACK a TS mini-transaction")
 	}
@@ -2474,6 +2632,15 @@ func goToTSSlice(b []byte) C.TSSlice {
 		data: (*C.char)(unsafe.Pointer(&b[0])),
 		len:  C.size_t(len(b)),
 	}
+}
+
+// goToCChar safely returns a *C.char pointer from a byte slice.
+// Returns nil if the slice is nil or empty.
+func goToCChar(b []byte) *C.char {
+	if len(b) == 0 {
+		return nil
+	}
+	return (*C.char)(unsafe.Pointer(&b[0]))
 }
 
 func goToTSAppliedRangeIndexe(b []byte) C.TSSlice {
@@ -2575,6 +2742,12 @@ func AddStatsList(tsFetcher TsFetcher, statss []TsFetcherStats) []TsFetcherStats
 		}
 		if fetcher.header_bytes > 0 {
 			statss[i].HeaderBytes = int64(fetcher.header_bytes)
+		}
+		if fetcher.block_pre_agg_hit_count > 0 {
+			statss[i].BlockPreAggHitCount = int64(fetcher.block_pre_agg_hit_count)
+		}
+		if fetcher.block_pre_agg_miss_count > 0 {
+			statss[i].BlockPreAggMissCount = int64(fetcher.block_pre_agg_miss_count)
 		}
 		// build_time only be used for hash tag scan op for multiple model processing
 		// when the switch is on and the server starts with single node mode.

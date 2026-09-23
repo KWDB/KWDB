@@ -42,10 +42,10 @@ INSERT 1
 (2,20,40,80,44,88.88,2000,false,bit'101',bit'10','bytes2','varbytes2','blob2','string2','char2','varchar2',null,'nvarchar2','clob2','2025-01-02','00:00:02.123456','2025-01-02 00:00:02.123456','2025-01-02 00:00:02.123456','2h4m','127.0.0.2','a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12','{"key1": "value1"}',20000);
 INSERT 1
 > select * from type order by id;
-  id | eint2 | eint4 | eint8 | efloat4 | efloat8 | edecimal | ebool | ebit | evarbit |     ebytes     |      evarbytes       |    eblob     | estring | echar | evarchar | ecstring | envarchar | eclob |           edate           |              etime               |            etimestamp            |           etimestamptz           | einterval |   einet   |                euuid                 |       ejsonb       | eoid
------+-------+-------+-------+---------+---------+----------+-------+------+---------+----------------+----------------------+--------------+---------+-------+----------+----------+-----------+-------+---------------------------+----------------------------------+----------------------------------+----------------------------------+-----------+-----------+--------------------------------------+--------------------+--------
-   1 |     2 |     4 |     8 |     4.4 |     8.8 |     1000 | true  |    1 |       0 | \x6279746573   | \x7661726279746573   | \x626c6f62   | string  | char  | varchar  | NULL     | nvarchar  | clob  | 2025-01-01 00:00:00+00:00 | 0000-01-01 00:00:00.123456+00:00 | 2025-01-01 00:00:00.123456+00:00 | 2025-01-01 00:00:00.123456+00:00 | 01:02:00  | 127.0.0.1 | a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11 | {"key": "value"}   | 10000
-   2 |    20 |    40 |    80 |      44 |   88.88 |     2000 | false |    1 |       1 | \x627974657332 | \x766172627974657332 | \x626c6f6232 | string2 | char2 | varchar2 | NULL     | nvarchar2 | clob2 | 2025-01-02 00:00:00+00:00 | 0000-01-01 00:00:02.123456+00:00 | 2025-01-02 00:00:02.123456+00:00 | 2025-01-02 00:00:02.123456+00:00 | 02:04:00  | 127.0.0.2 | a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12 | {"key1": "value1"} | 20000
+  id | eint2 | eint4 | eint8 | efloat4 | efloat8 | edecimal | ebool | ebit | evarbit |     ebytes     |      evarbytes       |    eblob     | estring | echar | evarchar | ecstring | envarchar | eclob |   edate    |      etime      |         etimestamp         |           etimestamptz           | einterval |   einet   |                euuid                 |       ejsonb       | eoid
+-----+-------+-------+-------+---------+---------+----------+-------+------+---------+----------------+----------------------+--------------+---------+-------+----------+----------+-----------+-------+------------+-----------------+----------------------------+----------------------------------+-----------+-----------+--------------------------------------+--------------------+--------
+   1 |     2 |     4 |     8 |     4.4 |     8.8 |     1000 | true  |    1 |       0 | \x6279746573   | \x7661726279746573   | \x626c6f62   | string  | char  | varchar  | NULL     | nvarchar  | clob  | 2025-01-01 | 00:00:00.123456 | 2025-01-01 00:00:00.123456 | 2025-01-01 00:00:00.123456+00:00 | 01:02:00  | 127.0.0.1 | a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11 | {"key": "value"}   | 10000
+   2 |    20 |    40 |    80 |      44 |   88.88 |     2000 | false |    1 |       1 | \x627974657332 | \x766172627974657332 | \x626c6f6232 | string2 | char2 | varchar2 | NULL     | nvarchar2 | clob2 | 2025-01-02 | 00:00:02.123456 | 2025-01-02 00:00:02.123456 | 2025-01-02 00:00:02.123456+00:00 | 02:04:00  | 127.0.0.2 | a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12 | {"key1": "value1"} | 20000
 (2 rows)
 > create procedure p1() begin select 1; end;
 CREATE PROCEDURE
@@ -90,18 +90,18 @@ DROP PROCEDURE
 > create procedure p5() begin update type set estring='modified' where id=2; select * from type where id=2; update type set estring='string2' where id=2; end;
 CREATE PROCEDURE
 > call p5();
-  id | eint2 | eint4 | eint8 | efloat4 | efloat8 | edecimal | ebool | ebit | evarbit |     ebytes     |      evarbytes       |    eblob     | estring  | echar | evarchar | ecstring | envarchar | eclob |           edate           |              etime               |            etimestamp            |           etimestamptz           | einterval |   einet   |                euuid                 |       ejsonb       | eoid
------+-------+-------+-------+---------+---------+----------+-------+------+---------+----------------+----------------------+--------------+----------+-------+----------+----------+-----------+-------+---------------------------+----------------------------------+----------------------------------+----------------------------------+-----------+-----------+--------------------------------------+--------------------+--------
-   2 |    20 |    40 |    80 |      44 |   88.88 |     2000 | false |    1 |       1 | \x627974657332 | \x766172627974657332 | \x626c6f6232 | modified | char2 | varchar2 | NULL     | nvarchar2 | clob2 | 2025-01-02 00:00:00+00:00 | 0000-01-01 00:00:02.123456+00:00 | 2025-01-02 00:00:02.123456+00:00 | 2025-01-02 00:00:02.123456+00:00 | 02:04:00  | 127.0.0.2 | a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12 | {"key1": "value1"} | 20000
+  id | eint2 | eint4 | eint8 | efloat4 | efloat8 | edecimal | ebool | ebit | evarbit |     ebytes     |      evarbytes       |    eblob     | estring  | echar | evarchar | ecstring | envarchar | eclob |   edate    |      etime      |         etimestamp         |           etimestamptz           | einterval |   einet   |                euuid                 |       ejsonb       | eoid
+-----+-------+-------+-------+---------+---------+----------+-------+------+---------+----------------+----------------------+--------------+----------+-------+----------+----------+-----------+-------+------------+-----------------+----------------------------+----------------------------------+-----------+-----------+--------------------------------------+--------------------+--------
+   2 |    20 |    40 |    80 |      44 |   88.88 |     2000 | false |    1 |       1 | \x627974657332 | \x766172627974657332 | \x626c6f6232 | modified | char2 | varchar2 | NULL     | nvarchar2 | clob2 | 2025-01-02 | 00:00:02.123456 | 2025-01-02 00:00:02.123456 | 2025-01-02 00:00:02.123456+00:00 | 02:04:00  | 127.0.0.2 | a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12 | {"key1": "value1"} | 20000
 (1 row)
 > drop procedure p5;
 DROP PROCEDURE
 > create procedure p6() begin insert into type select 3,3,3,3,3.3,3.3,3,true,bit'1',bit'0','b','vb','b','s','c','vc',null,'nv','c','2025-01-03','00:00:03','2025-01-03 00:00:03','2025-01-03 00:00:03','3h','127.0.0.3','a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13','{"k": "v"}',30000; select * from type where id=3; delete from type where id=3; end;
 CREATE PROCEDURE
 > call p6();
-  id | eint2 | eint4 | eint8 | efloat4 | efloat8 | edecimal | ebool | ebit | evarbit | ebytes | evarbytes | eblob | estring | echar | evarchar | ecstring | envarchar | eclob |           edate           |           etime           |        etimestamp         |       etimestamptz        | einterval |   einet   |                euuid                 |   ejsonb   | eoid
------+-------+-------+-------+---------+---------+----------+-------+------+---------+--------+-----------+-------+---------+-------+----------+----------+-----------+-------+---------------------------+---------------------------+---------------------------+---------------------------+-----------+-----------+--------------------------------------+------------+--------
-   3 |     3 |     3 |     3 |     3.3 |     3.3 |        3 | true  |    1 |       0 | \x62   | \x7662    | \x62  | s       | c     | vc       | NULL     | nv        | c     | 2025-01-03 00:00:00+00:00 | 0000-01-01 00:00:03+00:00 | 2025-01-03 00:00:03+00:00 | 2025-01-03 00:00:03+00:00 | 03:00:00  | 127.0.0.3 | a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13 | {"k": "v"} | 30000
+  id | eint2 | eint4 | eint8 | efloat4 | efloat8 | edecimal | ebool | ebit | evarbit | ebytes | evarbytes | eblob | estring | echar | evarchar | ecstring | envarchar | eclob |   edate    |  etime   |     etimestamp      |       etimestamptz        | einterval |   einet   |                euuid                 |   ejsonb   | eoid
+-----+-------+-------+-------+---------+---------+----------+-------+------+---------+--------+-----------+-------+---------+-------+----------+----------+-----------+-------+------------+----------+---------------------+---------------------------+-----------+-----------+--------------------------------------+------------+--------
+   3 |     3 |     3 |     3 |     3.3 |     3.3 |        3 | true  |    1 |       0 | \x62   | \x7662    | \x62  | s       | c     | vc       | NULL     | nv        | c     | 2025-01-03 | 00:00:03 | 2025-01-03 00:00:03 | 2025-01-03 00:00:03+00:00 | 03:00:00  | 127.0.0.3 | a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13 | {"k": "v"} | 30000
 (1 row)
 > drop procedure p6;
 DROP PROCEDURE
@@ -126,9 +126,9 @@ DROP PROCEDURE
 > create procedure p9() begin update type set edate='2025-01-10' where id=1; select edate from type where id=1; update type set edate='2025-01-01' where id=1; end;
 CREATE PROCEDURE
 > call p9();
-            edate
------------------------------
-  2025-01-10 00:00:00+00:00
+    edate
+--------------
+  2025-01-10
 (1 row)
 > drop procedure p9;
 DROP PROCEDURE
@@ -144,9 +144,9 @@ DROP PROCEDURE
 > create procedure p11() begin insert into type values (3,3,3,3,3.3,3.3,3,true,bit'1','0','b','vb','b','s','c','vc',null,'nv','c','2025-01-03','00:00:03','2025-01-03 00:00:03','2025-01-03 00:00:03','3h','127.0.0.3','a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13','{"k": "v"}',30000); select * from type where id=3; delete from type where id=3; end;
 CREATE PROCEDURE
 > call p11();
-  id | eint2 | eint4 | eint8 | efloat4 | efloat8 | edecimal | ebool | ebit | evarbit | ebytes | evarbytes | eblob | estring | echar | evarchar | ecstring | envarchar | eclob |           edate           |           etime           |        etimestamp         |       etimestamptz        | einterval |   einet   |                euuid                 |   ejsonb   | eoid
------+-------+-------+-------+---------+---------+----------+-------+------+---------+--------+-----------+-------+---------+-------+----------+----------+-----------+-------+---------------------------+---------------------------+---------------------------+---------------------------+-----------+-----------+--------------------------------------+------------+--------
-   3 |     3 |     3 |     3 |     3.3 |     3.3 |        3 | true  |    1 |       0 | \x62   | \x7662    | \x62  | s       | c     | vc       | NULL     | nv        | c     | 2025-01-03 00:00:00+00:00 | 0000-01-01 00:00:03+00:00 | 2025-01-03 00:00:03+00:00 | 2025-01-03 00:00:03+00:00 | 03:00:00  | 127.0.0.3 | a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13 | {"k": "v"} | 30000
+  id | eint2 | eint4 | eint8 | efloat4 | efloat8 | edecimal | ebool | ebit | evarbit | ebytes | evarbytes | eblob | estring | echar | evarchar | ecstring | envarchar | eclob |   edate    |  etime   |     etimestamp      |       etimestamptz        | einterval |   einet   |                euuid                 |   ejsonb   | eoid
+-----+-------+-------+-------+---------+---------+----------+-------+------+---------+--------+-----------+-------+---------+-------+----------+----------+-----------+-------+------------+----------+---------------------+---------------------------+-----------+-----------+--------------------------------------+------------+--------
+   3 |     3 |     3 |     3 |     3.3 |     3.3 |        3 | true  |    1 |       0 | \x62   | \x7662    | \x62  | s       | c     | vc       | NULL     | nv        | c     | 2025-01-03 | 00:00:03 | 2025-01-03 00:00:03 | 2025-01-03 00:00:03+00:00 | 03:00:00  | 127.0.0.3 | a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13 | {"k": "v"} | 30000
 (1 row)
 > drop procedure p11;
 DROP PROCEDURE
@@ -171,9 +171,9 @@ DROP PROCEDURE
 > create procedure p14() begin update type set etimestamp='2025-02-01 12:00:00' where id=1; select etimestamp from type where id=1; update type set etimestamp='2025-01-01 00:00:00.123456' where id=1; end;
 CREATE PROCEDURE
 > call p14();
-         etimestamp
------------------------------
-  2025-02-01 12:00:00+00:00
+      etimestamp
+-----------------------
+  2025-02-01 12:00:00
 (1 row)
 > drop procedure p14;
 DROP PROCEDURE
@@ -234,10 +234,10 @@ DROP PROCEDURE
 > CREATE PROCEDURE p21(id INT,value FLOAT8,type INT) BEGIN DECLARE err INT DEFAULT 0;DECLARE orig_value FLOAT8;DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN SET err = 1;ROLLBACK;ENDHANDLER;START TRANSACTION;SELECT efloat8 INTO orig_value FROM type order by id limit 1;IF type = 1 THEN UPDATE type SET efloat8 = efloat8 + value WHERE id = id;ELSIF type = 2 THEN UPDATE type SET efloat8 = efloat8 * value WHERE id = id;ELSE UPDATE type SET estring = CONCAT(estring, '_TEST') WHERE id = id;ENDIF;IF type IN (1, 2) THEN UPDATE type SET efloat8 = orig_value WHERE id = id;ELSE UPDATE type SET estring = SUBSTRING(estring, 1, LENGTH(estring) - 5) WHERE id = id;ENDIF; select * from type order by id; COMMIT;END;
 CREATE PROCEDURE
 > CALL p21(2, 2.5, 2);
-  id | eint2 | eint4 | eint8 | efloat4 | efloat8 | edecimal | ebool | ebit | evarbit |     ebytes     |      evarbytes       |    eblob     | estring |    echar     | evarchar | ecstring | envarchar | eclob |           edate           |              etime               |            etimestamp            |           etimestamptz           | einterval |   einet   |                euuid                 |       ejsonb       | eoid
------+-------+-------+-------+---------+---------+----------+-------+------+---------+----------------+----------------------+--------------+---------+--------------+----------+----------+-----------+-------+---------------------------+----------------------------------+----------------------------------+----------------------------------+-----------+-----------+--------------------------------------+--------------------+--------
-   1 |     2 |     4 |     8 |     4.4 |     8.8 |     1000 | true  |    1 |       0 | \x6279746573   | \x7661726279746573   | \x626c6f62   | string  | char         | varchar  | NULL     | nvarchar  | clob  | 2025-01-01 00:00:00+00:00 | 0000-01-01 00:00:00.123456+00:00 | 2025-01-01 00:00:00.123456+00:00 | 2025-01-01 00:00:00.123456+00:00 | 01:02:00  | 127.0.0.1 | a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11 | {"key": "value"}   | 10000
-   2 |    20 |    40 |    80 |      44 |     8.8 |     2000 | false |    1 |       1 | \x627974657332 | \x766172627974657332 | \x626c6f6232 | string2 | char2        | varchar2 | NULL     | nvarchar2 | clob2 | 2025-01-02 00:00:00+00:00 | 0000-01-01 00:00:02.123456+00:00 | 2025-01-02 00:00:02.123456+00:00 | 2025-01-02 00:00:02.123456+00:00 | 02:04:00  | 127.0.0.2 | a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12 | {"key1": "value1"} | 20000
+  id | eint2 | eint4 | eint8 | efloat4 | efloat8 | edecimal | ebool | ebit | evarbit |     ebytes     |      evarbytes       |    eblob     | estring |    echar     | evarchar | ecstring | envarchar | eclob |   edate    |      etime      |         etimestamp         |           etimestamptz           | einterval |   einet   |                euuid                 |       ejsonb       | eoid
+-----+-------+-------+-------+---------+---------+----------+-------+------+---------+----------------+----------------------+--------------+---------+--------------+----------+----------+-----------+-------+------------+-----------------+----------------------------+----------------------------------+-----------+-----------+--------------------------------------+--------------------+--------
+   1 |     2 |     4 |     8 |     4.4 |     8.8 |     1000 | true  |    1 |       0 | \x6279746573   | \x7661726279746573   | \x626c6f62   | string  | char         | varchar  | NULL     | nvarchar  | clob  | 2025-01-01 | 00:00:00.123456 | 2025-01-01 00:00:00.123456 | 2025-01-01 00:00:00.123456+00:00 | 01:02:00  | 127.0.0.1 | a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11 | {"key": "value"}   | 10000
+   2 |    20 |    40 |    80 |      44 |     8.8 |     2000 | false |    1 |       1 | \x627974657332 | \x766172627974657332 | \x626c6f6232 | string2 | char2        | varchar2 | NULL     | nvarchar2 | clob2 | 2025-01-02 | 00:00:02.123456 | 2025-01-02 00:00:02.123456 | 2025-01-02 00:00:02.123456+00:00 | 02:04:00  | 127.0.0.2 | a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12 | {"key1": "value1"} | 20000
 (2 rows)
 > drop procedure p21;
 DROP PROCEDURE
@@ -963,10 +963,10 @@ DROP PROCEDURE
 > CREATE PROCEDURE p102(max_id INT) BEGIN DECLARE current_id INT DEFAULT 1; DECLARE original_value INT4; START TRANSACTION; WHILE current_id <= max_id DO SELECT eint4 INTO original_value FROM type WHERE id = current_id; IF original_value < 10 THEN UPDATE type SET eint4 = eint4 * 2 WHERE id = current_id; elsif original_value >= 10 AND original_value < 50 THEN UPDATE type SET eint4 = CAST(eint4 / 2 AS INT4) WHERE id = current_id; ELSE UPDATE type SET eint4 = eint4 + 10 WHERE id = current_id; endif; SET current_id = current_id + 1; endwhile; select * from type order by id; ROLLBACK; END;
 CREATE PROCEDURE
 > CALL p102(2);
-  id | eint2 | eint4 | eint8 | efloat4 | efloat8 | edecimal | ebool | ebit | evarbit |     ebytes     |      evarbytes       |    eblob     | estring |    echar     | evarchar | ecstring | envarchar | eclob |           edate           |              etime               |            etimestamp            |           etimestamptz           | einterval |   einet   |                euuid                 |       ejsonb       | eoid
------+-------+-------+-------+---------+---------+----------+-------+------+---------+----------------+----------------------+--------------+---------+--------------+----------+----------+-----------+-------+---------------------------+----------------------------------+----------------------------------+----------------------------------+-----------+-----------+--------------------------------------+--------------------+--------
-   1 |     2 |     8 |     8 |     4.4 |     8.8 |     1000 | true  |    1 |       0 | \x6279746573   | \x7661726279746573   | \x626c6f62   | string  | char         | varchar  | NULL     | nvarchar  | clob  | 2025-01-01 00:00:00+00:00 | 0000-01-01 00:00:00.123456+00:00 | 2025-01-01 00:00:00.123456+00:00 | 2025-01-01 00:00:00.123456+00:00 | 01:02:00  | 127.0.0.1 | a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11 | {"key": "value"}   | 10000
-   2 |    20 |    20 |    80 |      44 |     8.8 |     2000 | false |    1 |       1 | \x627974657332 | \x766172627974657332 | \x626c6f6232 | string2 | char2        | varchar2 | NULL     | nvarchar2 | clob2 | 2025-01-02 00:00:00+00:00 | 0000-01-01 00:00:02.123456+00:00 | 2025-01-02 00:00:02.123456+00:00 | 2025-01-02 00:00:02.123456+00:00 | 02:04:00  | 127.0.0.2 | a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12 | {"key1": "value1"} | 20000
+  id | eint2 | eint4 | eint8 | efloat4 | efloat8 | edecimal | ebool | ebit | evarbit |     ebytes     |      evarbytes       |    eblob     | estring |    echar     | evarchar | ecstring | envarchar | eclob |   edate    |      etime      |         etimestamp         |           etimestamptz           | einterval |   einet   |                euuid                 |       ejsonb       | eoid
+-----+-------+-------+-------+---------+---------+----------+-------+------+---------+----------------+----------------------+--------------+---------+--------------+----------+----------+-----------+-------+------------+-----------------+----------------------------+----------------------------------+-----------+-----------+--------------------------------------+--------------------+--------
+   1 |     2 |     8 |     8 |     4.4 |     8.8 |     1000 | true  |    1 |       0 | \x6279746573   | \x7661726279746573   | \x626c6f62   | string  | char         | varchar  | NULL     | nvarchar  | clob  | 2025-01-01 | 00:00:00.123456 | 2025-01-01 00:00:00.123456 | 2025-01-01 00:00:00.123456+00:00 | 01:02:00  | 127.0.0.1 | a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11 | {"key": "value"}   | 10000
+   2 |    20 |    20 |    80 |      44 |     8.8 |     2000 | false |    1 |       1 | \x627974657332 | \x766172627974657332 | \x626c6f6232 | string2 | char2        | varchar2 | NULL     | nvarchar2 | clob2 | 2025-01-02 | 00:00:02.123456 | 2025-01-02 00:00:02.123456 | 2025-01-02 00:00:02.123456+00:00 | 02:04:00  | 127.0.0.2 | a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12 | {"key1": "value1"} | 20000
 (2 rows)
 > DROP PROCEDURE p102;
 DROP PROCEDURE

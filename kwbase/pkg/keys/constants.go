@@ -425,6 +425,9 @@ const (
 	TsTxnTableID               = 59 // TsTxnTableID used for ts transaction record
 	KWDBCDCWatermarkTableID    = 60
 	KWDBStreamsTableID         = 61
+	KWDBPipeTableID            = 62
+	KWDBUnpushID               = 63
+	KWDBPublicationTableID     = 64
 	// CommentType is type for system.comments
 	DatabaseCommentType = 0
 	TableCommentType    = 1

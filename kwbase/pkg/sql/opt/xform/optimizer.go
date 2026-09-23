@@ -1459,7 +1459,7 @@ func processRemainingRelTables(mem *memo.Memo) {
 	if len(mem.MultimodelHelper.TableGroup) == 0 {
 		var component []opt.TableID
 		for _, table := range metadata.AllTables() {
-			if metadata.TableMeta(table.MetaID).Table.GetTableType() != tree.TimeseriesTable {
+			if !metadata.TableMeta(table.MetaID).Table.IsTSTable() {
 				component = append(component, table.MetaID)
 			} else {
 				mem.MultimodelHelper.TableGroup = append(mem.MultimodelHelper.TableGroup, []opt.TableID{table.MetaID})
@@ -1472,7 +1472,7 @@ func processRemainingRelTables(mem *memo.Memo) {
 	} else {
 		for _, table := range metadata.AllTables() {
 			tgIdx := mem.MultimodelHelper.GetTSTableIndexFromGroup(table.MetaID)
-			if tgIdx == -1 && metadata.TableMeta(table.MetaID).Table.GetTableType() != tree.TimeseriesTable {
+			if tgIdx == -1 && !metadata.TableMeta(table.MetaID).Table.IsTSTable() {
 				mem.MultimodelHelper.TableGroup[0] = append(mem.MultimodelHelper.TableGroup[0], table.MetaID)
 			}
 		}
@@ -1698,7 +1698,7 @@ func processGroupByOrScalarGroupByExpr(expr memo.RelExpr, mem *memo.Memo) {
 						// only if the table is a timeseries table, we can't push down the aggregation,
 						// otherwise we can consider both inside-out and outside-in
 						for tableID := range tableIDs {
-							if metaData.TableMeta(tableID).Table.GetTableType() == tree.TimeseriesTable {
+							if metaData.TableMeta(tableID).Table.IsTSTable() {
 								tgIdx := mem.MultimodelHelper.GetTSTableIndexFromGroup(tableID)
 								if tgIdx != -1 {
 									mem.MultimodelHelper.AggNotPushDown[tgIdx] = true
@@ -1805,7 +1805,7 @@ func processGroupByOrScalarGroupByExpr(expr memo.RelExpr, mem *memo.Memo) {
 			if aggColTableID == 0 {
 				continue
 			}
-			if metaData.TableMeta(aggColTableID).Table.GetTableType() == tree.TimeseriesTable {
+			if metaData.TableMeta(aggColTableID).Table.IsTSTable() {
 				mem.MultimodelHelper.AggNotPushDown[groupIndex] = true
 				continue
 			}
@@ -1829,7 +1829,7 @@ func processGroupByOrScalarGroupByExpr(expr memo.RelExpr, mem *memo.Memo) {
 			}
 		}
 
-		if metaData.TableMeta(aggColTableID).Table.GetTableType() != tree.TimeseriesTable {
+		if !metaData.TableMeta(aggColTableID).Table.IsTSTable() {
 			continue
 		}
 
@@ -2024,7 +2024,7 @@ func processJoinRelations(
 				}
 				if leftTableID != 0 {
 					leftTable := mem.Metadata().Table(leftTableID)
-					leftIsTimeSeries = leftTable.GetTableType() == tree.TimeseriesTable
+					leftIsTimeSeries = leftTable.IsTSTable()
 				}
 			}
 
@@ -2041,7 +2041,7 @@ func processJoinRelations(
 				}
 				if rightTableID != 0 {
 					rightTable := mem.Metadata().Table(rightTableID)
-					rightIsTimeSeries = rightTable.GetTableType() == tree.TimeseriesTable
+					rightIsTimeSeries = rightTable.IsTSTable()
 				}
 			}
 

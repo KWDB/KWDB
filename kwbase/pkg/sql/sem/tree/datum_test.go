@@ -111,7 +111,7 @@ func TestDatumOrdering(t *testing.T) {
 		{`'0001-01-01':::date`, `'0001-12-31 BC'`, `'0001-01-02'`, `'-infinity'`, `'infinity'`},
 		{`'4000-01-01 BC':::date`, `'4001-12-31 BC'`, `'4000-01-02 BC'`, `'-infinity'`, `'infinity'`},
 		{`'2006-01-02 03:04:05.123123':::timestamp`,
-			`'2006-01-02 03:04:05.123122+00:00'`, `'2006-01-02 03:04:05.123124+00:00'`, noMin, noMax},
+			`'2006-01-02 03:04:05.123122'`, `'2006-01-02 03:04:05.123124'`, noMin, noMax},
 
 		// Times
 		{`'00:00:00':::time`, valIsMin, `'00:00:00.000001'`,
@@ -900,7 +900,7 @@ func TestNewDefaultDatum(t *testing.T) {
 		{t: types.Decimal, expected: "0:::DECIMAL"},
 		{t: types.MakeDecimal(10, 5), expected: "0:::DECIMAL"},
 		{t: types.Date, expected: "'2000-01-01':::DATE"},
-		{t: types.Timestamp, expected: "'0001-01-01 00:00:00+00:00':::TIMESTAMP(9)"},
+		{t: types.Timestamp, expected: "'0001-01-01 00:00:00':::TIMESTAMP(9)"},
 		{t: types.Interval, expected: "'00:00:00':::INTERVAL"},
 		{t: types.String, expected: "'':::STRING"},
 		{t: types.MakeChar(3), expected: "'':::STRING"},

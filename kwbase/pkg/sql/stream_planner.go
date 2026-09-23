@@ -252,6 +252,10 @@ func (p *planner) makeStreamTableCommonInfo(
 ) (*cdcpb.CDCTableInfo, uint64, error) {
 	var tableInfo cdcpb.CDCTableInfo
 
+	if tableDesc.IsSparseTable() {
+		return nil, 0, errors.Newf("sparse table is not supported by stream")
+	}
+
 	dbDesc, err := sqlbase.GetDatabaseDescFromID(ctx, p.txn, tableDesc.ParentID)
 	if err != nil {
 		return &tableInfo, 0, err
@@ -936,18 +940,19 @@ func waitCDCStatusChanged(
 	ctx context.Context,
 	cdc execinfra.CDCCoordinator,
 	tableID, instanceID uint64,
-	instanceType cdcpb.TSCDCInstanceType,
+	instanceType sqlbase.CDCInstanceType,
 	enabled bool,
 ) {
 	opts := retry.Options{
 		InitialBackoff: 100 * time.Millisecond,
 		Multiplier:     2,
 		MaxBackoff:     500 * time.Millisecond,
-		MaxRetries:     5,
+		MaxRetries:     10,
 	}
 
 	for r := retry.StartWithCtx(ctx, opts); r.Next(); {
 		cdcEnabled := cdc.HasTask(instanceType, tableID, instanceID)
+
 		if (enabled && cdcEnabled) || (!enabled && !cdcEnabled) {
 			return
 		}

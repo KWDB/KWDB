@@ -1376,27 +1376,27 @@ ERROR: expected DEFAULT expression to have type timestamp, but '9223372036854775
 > create PROCEDURE prc_declare() begin declare a1 timestamp default '2020-01-02 10:00:00'; SELECT a1 ;end;
 CREATE PROCEDURE
 > CALL prc_declare();
-             a1
------------------------------
-  2020-01-02 10:00:00+00:00
+          a1
+-----------------------
+  2020-01-02 10:00:00
 (1 row)
 > DROP PROCEDURE prc_declare;
 DROP PROCEDURE
 > create PROCEDURE prc_declare() begin declare a1 timestamp(9) default '2020-01-02 10:00:00.123456789'; SELECT a1 ;end;
 CREATE PROCEDURE
 > CALL prc_declare();
-                  a1
----------------------------------------
-  2020-01-02 10:00:00.123456789+00:00
+               a1
+---------------------------------
+  2020-01-02 10:00:00.123456789
 (1 row)
 > DROP PROCEDURE prc_declare;
 DROP PROCEDURE
 > create PROCEDURE prc_declare() begin declare a1 timestamp(3) default '2020-01-02 10:00:00.123456789'; SELECT a1 ;end;
 CREATE PROCEDURE
 > CALL prc_declare();
-               a1
----------------------------------
-  2020-01-02 10:00:00.123+00:00
+            a1
+---------------------------
+  2020-01-02 10:00:00.123
 (1 row)
 > DROP PROCEDURE prc_declare;
 DROP PROCEDURE
@@ -1978,27 +1978,27 @@ INSERT 1
 > CREATE PROCEDURE test_procedure_dxy.pro7() BEGIN DECLARE test1 TIMESTAMP(1); DECLARE test2 TIMESTAMPtz(1); SELECT e1, e2 INTO test1, test2 FROM test_procedure_dxy.test1; SELECT test1, test2;END;
 CREATE PROCEDURE
 > CALL test_procedure_dxy.pro7();
-            test1           |           test2
-----------------------------+----------------------------
-  2024-03-02 00:00:00+00:00 | 2024-03-02 00:00:00+00:00
+         test1        |           test2
+----------------------+----------------------------
+  2024-03-02 00:00:00 | 2024-03-02 00:00:00+00:00
 (1 row)
 > DROP PROCEDURE test_procedure_dxy.pro7;
 DROP PROCEDURE
 > CREATE PROCEDURE test_procedure_dxy.pro8() BEGIN DECLARE test1 TIMESTAMP(1); DECLARE test2 TIMESTAMPtz(1); UPDATE test_procedure_dxy.test1 set k_ts = '2024-6-1 23:59:59.999' where id = 3 returning e1, e2 INTO test1, test2; SELECT test1, test2;END;
 CREATE PROCEDURE
 > CALL test_procedure_dxy.pro8();
-            test1           |           test2
-----------------------------+----------------------------
-  2024-03-02 00:00:00+00:00 | 2024-03-02 00:00:00+00:00
+         test1        |           test2
+----------------------+----------------------------
+  2024-03-02 00:00:00 | 2024-03-02 00:00:00+00:00
 (1 row)
 > DROP PROCEDURE test_procedure_dxy.pro8;
 DROP PROCEDURE
 > CREATE PROCEDURE test_procedure_dxy.pro9() BEGIN DECLARE test1 TIMESTAMP(1); DECLARE test2 TIMESTAMPtz(1); DELETE FROM test_procedure_dxy.test1 where id = 3 returning e1, e2 INTO test1, test2; SELECT test1, test2;END;
 CREATE PROCEDURE
 > CALL test_procedure_dxy.pro9();
-            test1           |           test2
-----------------------------+----------------------------
-  2024-03-02 00:00:00+00:00 | 2024-03-02 00:00:00+00:00
+         test1        |           test2
+----------------------+----------------------------
+  2024-03-02 00:00:00 | 2024-03-02 00:00:00+00:00
 (1 row)
 > DROP PROCEDURE test_procedure_dxy.pro9;
 DROP PROCEDURE

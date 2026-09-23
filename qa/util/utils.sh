@@ -110,7 +110,7 @@ function start_single_node() {
   #echo 'core.%t.%e.%p' | sudo tee /proc/sys/kernel/core_pattern
   if [ "$(uname -o)" != "Msys" ] && [ "$(uname -o)" != "Cygwin" ]; then
     ulimit -c unlimited
-    echo 'core.%t.%e.%p' | sudo tee /proc/sys/kernel/core_pattern
+    #echo 'core.%t.%e.%p' | sudo tee /proc/sys/kernel/core_pattern
   else
     echo "Skipping core_pattern setup on Windows"
   fi
@@ -197,7 +197,7 @@ function _cluster_start_() {
   rm -fr ${DEPLOY_ROOT}/extern
   mkdir -p ${DEPLOY_ROOT}/extern
   ulimit -c unlimited
-  echo 'core.%t.%e.%p' | sudo tee /proc/sys/kernel/core_pattern
+  #echo 'core.%t.%e.%p' | sudo tee /proc/sys/kernel/core_pattern
   export GOTRACEBACK=crash
   for idx in $(seq 1 ${node_count});do
     rm -fr ${DEPLOY_ROOT}/${name_prefix}${idx}

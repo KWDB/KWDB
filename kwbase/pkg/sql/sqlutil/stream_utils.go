@@ -43,6 +43,7 @@ const (
 	OptHeartbeatInterval      = "heartbeat_interval"
 	OptRecalculateDelayRounds = "recalculate_delay_rounds"
 	OptBufferSize             = "buffer_size"
+	OptLowLatency             = "low_latency"
 
 	StreamStatusEnable  = "Enable"
 	StreamStatusDisable = "Disable"
@@ -66,6 +67,7 @@ var DefaultOptions = map[string]string{
 	OptHeartbeatInterval:      "2s",
 	OptRecalculateDelayRounds: "10",
 	OptBufferSize:             "2GiB",
+	OptLowLatency:             "off",
 }
 
 // StreamParameters stores stream parameters.
@@ -93,6 +95,7 @@ type StreamOptions struct {
 	HeartbeatInterval      string `json:"heartbeat_interval,omitempty"`
 	RecalculateDelayRounds string `json:"recalculate_delay_rounds,omitempty"`
 	BufferSize             string `json:"buffer_size,omitempty"`
+	LowLatency             string `json:"low_latency,omitempty"`
 }
 
 // ParsedStreamOptions stores parsed stream options.
@@ -108,6 +111,7 @@ type ParsedStreamOptions struct {
 	HeartbeatInterval      time.Duration
 	RecalculateDelayRounds int
 	BufferSize             uint64
+	LowLatency             bool
 }
 
 // constructStreamOpts converts map to StreamOptions.
@@ -124,6 +128,7 @@ func constructStreamOpts(input map[string]string) *StreamOptions {
 		HeartbeatInterval:      input[OptHeartbeatInterval],
 		RecalculateDelayRounds: input[OptRecalculateDelayRounds],
 		BufferSize:             input[OptBufferSize],
+		LowLatency:             input[OptLowLatency],
 	}
 }
 
@@ -141,6 +146,7 @@ func ConvertStreamOptsToMap(opts *StreamOptions) map[string]string {
 		OptHeartbeatInterval:      opts.HeartbeatInterval,
 		OptRecalculateDelayRounds: opts.RecalculateDelayRounds,
 		OptBufferSize:             opts.BufferSize,
+		OptLowLatency:             opts.LowLatency,
 	}
 }
 
@@ -256,8 +262,9 @@ func CheckStreamOptions(opts *StreamOptions, isTsTable bool) error {
 		return errors.Errorf("the checkpoint interval should be larger than the heartbeat interval")
 	}
 
-	if parsedStreamOpts.SyncTime <= parsedStreamOpts.CheckpointInterval {
-		return errors.Errorf("too small sync_time: %s", opts.SyncTime)
+	// SyncTime does not work in LowLatency mode.
+	if parsedStreamOpts.SyncTime != 0 && parsedStreamOpts.SyncTime <= parsedStreamOpts.CheckpointInterval {
+		return errors.Errorf("sync_time %s must  set 0 or more than checkpoint_interval", opts.SyncTime)
 	}
 
 	if parsedStreamOpts.MaxDelay <= parsedStreamOpts.SyncTime {
@@ -275,7 +282,7 @@ func makeStreamOpt(
 	if value, ok := streamOpts[optName]; ok {
 		lowerValue := strings.ToLower(value)
 		switch optName {
-		case OptEnable, OptProcessHistory, OptIgnoreExpired, OptIgnoreUpdate:
+		case OptEnable, OptProcessHistory, OptIgnoreExpired, OptIgnoreUpdate, OptLowLatency:
 			switch lowerValue {
 			case StreamOptOn, StreamOptOff:
 			default:
@@ -317,10 +324,18 @@ func makeStreamOpt(
 				)
 			}
 
-			if val < time.Second {
+			if val < time.Second && optName != OptSyncTime {
 				return "", pgerror.Newf(
 					pgcode.InvalidParameterValue,
 					"unexpected value %q for stream option %q, the minimal value is 1 Second",
+					value, optName,
+				)
+			}
+
+			if val < 0 && optName == OptSyncTime {
+				return "", pgerror.Newf(
+					pgcode.InvalidParameterValue,
+					"unexpected value %q for stream option %q, the minimal value is 0 Second",
 					value, optName,
 				)
 			}
@@ -441,6 +456,10 @@ func ParseStreamOpts(opts *StreamOptions) (*ParsedStreamOptions, error) {
 	parsedOpts.BufferSize, err = humanize.ParseBytes(opts.BufferSize)
 	if err != nil {
 		return nil, err
+	}
+
+	if opts.LowLatency == "on" {
+		parsedOpts.LowLatency = true
 	}
 
 	return &parsedOpts, nil

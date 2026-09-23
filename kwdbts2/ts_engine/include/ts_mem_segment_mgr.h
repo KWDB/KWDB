@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <list>
 #include <memory>
+#include <set>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -37,6 +38,11 @@ enum TsMemSegmentStatus : uint8_t {
   MEM_SEGMENT_IMMUTABLE = 2,
   MEM_SEGMENT_WRITING = 3,
   MEM_SEGMENT_FLUSHING = 4,
+};
+
+struct EntityDelInfo {
+  TSTableID table_id{0};
+  std::set<PartitionIdentifier> partition_ids;
 };
 
 class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemSegment> {
@@ -71,11 +77,15 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
   std::atomic<uint32_t> written_row_num_{0};
   std::atomic<uint32_t> payload_mem_usage_{0};
   std::atomic<TsMemSegmentStatus> status_{MEM_SEGMENT_IDLE};
+  std::list<TsRawPayload*> pd_lists_;
 
   int64_t id_;
   TsMemSegIndex skiplist_;
+  std::unordered_map<TSEntityID, EntityDelInfo> entity_del_ranges_;
+  KRWLatch rw_latch_;
 
-  explicit TsMemSegment(int64_t id, int32_t max_height) : id_(id), skiplist_(max_height) {
+  explicit TsMemSegment(int64_t id, int32_t max_height) :
+    id_(id), skiplist_(max_height), rw_latch_(RWLATCH_ID_MEM_SEGMENT_DEL_RANGE_RWLOCK) {
     n_mem_segments_.fetch_add(1, std::memory_order_relaxed);
   }
 
@@ -109,6 +119,10 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
       mem_segment_bp_counter_.fetch_add(1, std::memory_order_relaxed);
     }
     global_mem_seg_cv_.notify_all();
+    for (auto& iter : pd_lists_) {
+      delete iter;
+    }
+    pd_lists_.clear();
   }
 
   int64_t GetId() const { return id_; }
@@ -126,13 +140,31 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
   uint32_t GetRowNum() { return intent_row_num_.load(std::memory_order_relaxed); }
 
   inline void AllocRowNum(uint32_t row_num) { intent_row_num_.fetch_add(row_num); }
+  inline void AppendEmptyRow(uint32_t row_num) { written_row_num_.fetch_add(row_num, std::memory_order_acq_rel); }
 
   TSMemSegRowData* AllocOneRow(uint32_t db_id, TSTableID tbl_id, uint32_t tbl_version, TSEntityID en_id,
-                               TSSlice row_data) {
-    return skiplist_.AllocateMemSegRowData(db_id, tbl_id, tbl_version, en_id, row_data);
+                               TsRawPayload* p, uint32_t row_idx) {
+    return skiplist_.AllocateMemSegRowData(db_id, tbl_id, tbl_version, en_id, p, row_idx);
+  }
+
+  char* AllocPayload(const TSSlice& payload_data) {
+    return skiplist_.AllocPayload(payload_data);
+  }
+
+  void AddPayloadObj(TsRawPayload* p) {
+    RW_LATCH_X_LOCK(&rw_latch_);
+    pd_lists_.push_back(p);
+    RW_LATCH_UNLOCK(&rw_latch_);
   }
 
   void AppendOneRow(TSMemSegRowData* row);
+
+  void DeleteData(TSTableID table_id, TSEntityID entity_id, const std::vector<PartitionIdentifier>& partition_ids);
+
+  // only mem segment is immutable, we can all this function. otherwise we need add RW_LATCH_X_LOCK(&rw_latch_);
+  std::unordered_map<TSEntityID, EntityDelInfo>* GetEntityDelRanges() {
+    return &entity_del_ranges_;
+  }
 
   // bool HasEntityRows(const TsScanFilterParams& filter);
 
@@ -158,7 +190,6 @@ class TsMemSegBlock : public TsBlock {
   std::vector<TSMemSegRowDataWithGuard> row_data_guard_;
   timestamp64 min_ts_{INVALID_TS};
   timestamp64 max_ts_{INVALID_TS};
-  std::shared_ptr<TsRawPayloadRowParser> parser_ = nullptr;
   std::unordered_map<uint32_t, char*> col_based_mems_;
   std::vector<uint64_t> col_major_osn_;
   std::unordered_map<uint32_t, std::unique_ptr<TsBitmap>> col_bitmaps_;
@@ -175,10 +206,6 @@ class TsMemSegBlock : public TsBlock {
       }
     }
     col_based_mems_.clear();
-  }
-
-  void SetParser(std::shared_ptr<TsRawPayloadRowParser>& parser) {
-    parser_ = parser;
   }
 
   uint32_t GetBlockVersion() const override { return CURRENT_BLOCK_VERSION; }
@@ -207,8 +234,6 @@ class TsMemSegBlock : public TsBlock {
   size_t GetRowNum() override { return row_data_.size(); }
   KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>* schema, TSSlice& value,
                         TsScanStats* ts_scan_stats = nullptr) override;
-  bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>* schema,
-                  TsScanStats* ts_scan_stats = nullptr) override;
 
   // if just get timestamp , this function return fast.
   timestamp64 GetTS(int row_num, TsScanStats* ts_scan_stats = nullptr) override {
@@ -292,8 +317,9 @@ class TsMemSegBlock : public TsBlock {
     memory_addr_safe_ = true;
   }
 
-  TSMemSegRowDataWithGuard& AllocateRow(uint32_t db_id, TSTableID tbl_id, uint32_t tbl_version, TSEntityID en_id) {
-    row_data_guard_.emplace_back(db_id, tbl_id, tbl_version, en_id);
+  TSMemSegRowDataWithGuard& AllocateRow(uint32_t db_id, TSTableID tbl_id, uint32_t tbl_version, TSEntityID en_id,
+    const vector<AttributeInfo>* schema) {
+    row_data_guard_.emplace_back(TSMemSegRowDataWithGuard(db_id, tbl_id, tbl_version, en_id, schema));
     return row_data_guard_.back();
   }
 
@@ -327,13 +353,13 @@ class TsMemSegmentManager {
  private:
   TsVGroup* vgroup_;
   TsVersionManager* version_manager_;
-  std::shared_ptr<TsMemSegment> cur_mem_seg_{nullptr};
+  std::shared_ptr<TsMemSegment> latest_mem_seg_{nullptr};
   mutable std::shared_mutex segment_lock_;
 
   std::shared_ptr<TsMemSegment> CurrentMemSegmentAndAllocateRow(uint32_t row_num) const {
     std::shared_lock lock(segment_lock_);
-    cur_mem_seg_->AllocRowNum(row_num);
-    return cur_mem_seg_;
+    latest_mem_seg_->AllocRowNum(row_num);
+    return latest_mem_seg_;
   }
 
  public:
@@ -341,15 +367,17 @@ class TsMemSegmentManager {
 
   std::shared_ptr<TsMemSegment> CurrentMemSegment() const {
     std::shared_lock lock(segment_lock_);
-    return cur_mem_seg_;
+    return latest_mem_seg_;
   }
 
   bool SwitchMemSegment(TsMemSegment* expected_old_mem_seg, bool flush);
 
-  KStatus PutData(const TSSlice& payload, const std::shared_ptr<TsTableSchemaManager>& tb_schema, TSEntityID entity_id);
+  KStatus PutData(TsRawPayload* p, const std::shared_ptr<TsTableSchemaManager>& tb_schema, TSEntityID entity_id);
+
+  KStatus DeleteData(TSTableID table_id, TSEntityID entity_id, const std::vector<PartitionIdentifier>& partition_ids);
 
   bool GetMetricSchemaAndMeta(const std::shared_ptr<TsTableSchemaManager>& tb_schema, uint32_t version,
-                              const std::vector<AttributeInfo>** schema, DATATYPE* ts_type, LifeTime* lifetime = nullptr);
+        std::shared_ptr<MMapMetricsTable>* schema_tbl, DATATYPE* ts_type, LifeTime* lifetime = nullptr);
 };
 
 }  // namespace kwdbts

@@ -280,7 +280,7 @@ func (rq *replicateQueue) shouldQueue(
 	}
 
 	if !rq.store.TestingKnobs().DisableReplicaRebalancing {
-		rangeUsageInfo := rangeUsageInfoForRepl(repl)
+		rangeUsageInfo := rangeUsageInfoForRepl(ctx, repl)
 		_, _, _, ok := rq.allocator.RebalanceTarget(
 			ctx, zone, repl.RaftStatus(), desc.RangeID, voterReplicas, rangeUsageInfo, storeFilterThrottled)
 		if ok {
@@ -878,7 +878,7 @@ func (rq *replicateQueue) considerRebalance(
 	// The Noop case will result if this replica was queued in order to
 	// rebalance. Attempt to find a rebalancing target.
 	if !rq.store.TestingKnobs().DisableReplicaRebalancing {
-		rangeUsageInfo := rangeUsageInfoForRepl(repl)
+		rangeUsageInfo := rangeUsageInfoForRepl(ctx, repl)
 		addTarget, removeTarget, details, ok := rq.allocator.RebalanceTarget(
 			ctx, zone, repl.RaftStatus(), desc.RangeID, existingReplicas, rangeUsageInfo,
 			storeFilterThrottled)
@@ -1067,10 +1067,13 @@ func (rq *replicateQueue) changeReplicas(
 		log.VEventf(ctx, 3, "changeReplicas return，dryRun is %+v", dryRun)
 		return nil
 	}
-	if _, err := repl.ChangeReplicas(ctx, desc, priority, reason, details, chgs); err != nil {
+	if _, err := repl.changeReplicasImpl(ctx, desc, priority, reason, details, chgs, changeReplicasOpts{
+		tsStatsReconciledForSnapshot: true,
+	}); err != nil {
 		return err
 	}
-	rangeUsageInfo := rangeUsageInfoForRepl(repl)
+
+	rangeUsageInfo := rangeUsageInfoForRepl(ctx, repl)
 	for _, chg := range chgs {
 		rq.allocator.storePool.updateLocalStoreAfterRebalance(
 			chg.Target.StoreID, rangeUsageInfo, chg.ChangeType)

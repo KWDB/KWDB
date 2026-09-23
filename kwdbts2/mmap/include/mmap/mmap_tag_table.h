@@ -74,7 +74,7 @@ class TagTable {
   virtual ~TagTable();
 
   int create(const vector<TagInfo> &schema, uint32_t table_version, const std::vector<roachpb::NTagIndexInfo>& idx_info,
-             ErrorInfo &err_info);
+             ErrorInfo &err_info, bool issparse = false);
 
   int open(std::vector<TableVersion>& invalid_versions, ErrorInfo &err_info);
 
@@ -87,21 +87,28 @@ class TagTable {
 
   bool GetPrimaryKeyRowInfo(const char* primary_tag_val, int len, std::pair<uint64_t, uint64_t>& row_info);
 
+  bool issparse() const;
+
+  bool GetValidColumns(TSSlice* primary_tags, size_t primary_tags_num,
+                       std::vector<uint32_t>& valid_columns);
+
+  bool CheckAndUpdateValidColumns(const char* primary_tag_val, int len,
+                                  const std::vector<uint32_t>& payload_valid_cols);
+
   // get max entity id
   void GetMaxEntityIdByVGroupId(uint32_t vgroup_id, uint32_t& entity_id);
   // get entity id list
   void GetEntityIdListByVGroupId(uint32_t vgroup_id, std::vector<uint32_t>& entity_id_list);
 
   // insert tag record
-  int InsertTagRecord(kwdbts::Payload &payload, int32_t sub_group_id, int32_t entity_id);
   int InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id, uint64_t osn,
-                      uint8_t operate_type, std::pair<uint64_t, uint64_t> del_row = { 0, 0 });
+                      uint8_t operate_type, std::pair<uint64_t, uint64_t> del_row = { 0, 0 },
+                      const std::vector<uint32_t>& old_valid_columns = {});
   int InsertDeletedTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id, uint64_t osn,
                               OperateType operate_type, std::pair<uint64_t, uint64_t>& row_info);
   // update tag record
-  int UpdateTagRecord(kwdbts::Payload &payload, int32_t sub_group_id, int32_t entity_id, ErrorInfo& err_info);
   int UpdateTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id, ErrorInfo& err_info,
-                      uint64_t osn);
+                      uint64_t osn, const std::vector<uint32_t>& old_valid_columns = {});
 
   /**
   * @brief Query tag through the index of the primary tag and normal tag.
@@ -175,7 +182,7 @@ class TagTable {
   int InsertForUndo(uint32_t group_id, uint32_t entity_id,
 		    const TSSlice& primary_tag, uint64_t osn = 0);
   int InsertForRedo(uint32_t group_id, uint32_t entity_id,
-		    kwdbts::Payload &payload);
+		    kwdbts::TsRawPayload &payload);
   int DeleteForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash_num,
 		    const TSSlice& primary_tag, const TSSlice& tag_pack, uint64_t osn);
 
@@ -184,7 +191,7 @@ class TagTable {
   int UpdateForRedo(uint32_t group_id, uint32_t entity_id,
                     const TSSlice& primary_tag, kwdbts::Payload &payload);
   int UpdateForRedo(uint32_t group_id, uint32_t entity_id,
-                    const TSSlice& primary_tag, kwdbts::TsRawPayload &payload);
+                    const TSSlice& primary_tag, kwdbts::TsRawPayload &payload, const TSSlice& old_tag);
   int UpdateForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash_num,
                     const TSSlice& primary_tag, const TSSlice& old_tag, uint64_t osn);
 
@@ -312,7 +319,7 @@ public:
   int Init(ErrorInfo& err_info);
 
   int CreateTagPartitionTable(const std::vector<TagInfo>& schema, uint32_t ts_version,
-                          ErrorInfo& err_info, uint32_t old_part_file_version = 0);
+                          ErrorInfo& err_info, uint32_t old_part_file_version = 0, bool issparse = false);
 
   int OpenTagPartitionTable(TableVersion table_version, ErrorInfo& err_info);
                           

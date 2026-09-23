@@ -101,6 +101,9 @@ func (n *explainVecNode) startExec(params runParams) error {
 	if flowCtx.EvalCtx.SessionData.VectorizeMode == sessiondata.VectorizeOff {
 		return errors.New("vectorize is set to 'off'")
 	}
+	if plan.IsVectorizeDisabled() {
+		return errors.New(plan.VectorizeDisabledMessage())
+	}
 
 	sortedFlows := make([]flowWithNode, 0, len(flows))
 	for nodeID, flow := range flows {

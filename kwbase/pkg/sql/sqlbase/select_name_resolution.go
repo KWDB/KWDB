@@ -32,6 +32,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
+	lua "github.com/yuin/gopher-lua"
 )
 
 // NameResolutionVisitor is a tree.Visitor implementation used to
@@ -154,4 +155,41 @@ func ResolveNamesUsingVisitor(
 
 	expr, _ = tree.WalkExpr(v, expr)
 	return expr, v.foundDependentVars, v.err
+}
+
+// NewRestrictedLuaState creates a Lua VM for UDF execution.
+//
+// Do not load the default Lua standard libraries. In particular, this prevents
+// Lua UDFs from accessing dangerous modules such as os, io, package, and debug.
+func NewRestrictedLuaState() *lua.LState {
+	L := lua.NewState(lua.Options{
+		SkipOpenLibs: true,
+	})
+
+	// Defense in depth. These globals should not exist when SkipOpenLibs is
+	// true, but explicitly clearing them protects us if safe libraries are added
+	// later.
+	for _, name := range []string{
+		"os",
+		"io",
+		"package",
+		"debug",
+		"require",
+		"load",
+		"loadfile",
+		"dofile",
+		"loadstring",
+		"collectgarbage",
+		"getfenv",
+		"setfenv",
+		"module",
+		"newproxy",
+		"print",
+		"coroutine",
+		"channel",
+	} {
+		L.SetGlobal(name, lua.LNil)
+	}
+
+	return L
 }

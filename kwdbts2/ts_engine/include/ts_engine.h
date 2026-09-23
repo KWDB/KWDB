@@ -29,6 +29,7 @@
 #include "settings.h"
 #include "ts_batch_data_worker.h"
 #include "ts_common.h"
+#include "ts_db_schema_manager.h"
 #include "ts_engine_schema_manager.h"
 #include "ts_flush_manager.h"
 #include "ts_partition_interval_recorder.h"
@@ -38,6 +39,7 @@
 #include "ts_table_del_info.h"
 
 extern bool g_go_start_service;
+extern bool CLUSTER_SETTING_TS_TXN_ATOMICITY_ENABLE;
 
 namespace kwdbts {
 
@@ -65,6 +67,9 @@ KStatus loadVGroupCfg(const fs::path& ts_store_path, std::map<int, std::string>&
  */
 class TSEngineImpl : public TSEngine {
  private:
+  // Declared before schema_mgr_: table schema managers hold a raw pointer to
+  // this, so it must outlive schema_mgr_ (members destroy in reverse order).
+  std::unique_ptr<TsDBSchemaManager> db_schema_mgr_ = nullptr;
   std::unique_ptr<TsEngineSchemaManager> schema_mgr_ = nullptr;
   std::vector<std::shared_ptr<TsVGroup>> vgroups_;
   int vgroup_max_num_{0};
@@ -79,12 +84,12 @@ class TSEngineImpl : public TSEngine {
   std::unique_ptr<TSxMgr> tsx_manager_sys_ = nullptr;
   std::fstream max_entity_id_file_;
   std::mutex file_mutex_;
+  std::mutex checkpoint_mutex_;
 
   std::unordered_map<uint64_t, std::unordered_map<std::string, std::shared_ptr<TsBatchDataWorker>>> read_batch_data_workers_;
   KRWLatch read_batch_workers_lock_;
   std::unordered_map<uint64_t, std::shared_ptr<TsBatchDataWorker>> write_batch_data_workers_;
   KRWLatch write_batch_workers_lock_;
-  std::atomic<bool> exist_explict_txn = false;
 
   TsHashRWLatch tag_lock_;
   // std::unique_ptr<TsMemSegmentManager> mem_seg_mgr_ = nullptr;
@@ -142,7 +147,7 @@ class TSEngineImpl : public TSEngine {
   }
 
   KStatus InsertTagData(kwdbContext_p ctx, const std::shared_ptr<TsTableSchemaManager>& tb_schema,
-                        uint64_t mtr_id, TSSlice payload_data, bool write_wal,
+                        uint64_t mtr_id, TsRawPayload& p, bool write_wal,
                         uint32_t& vgroup, TSEntityID& entity_id, bool& new_tag);
 
   KStatus
@@ -220,9 +225,6 @@ class TSEngineImpl : public TSEngine {
   }
 
   KStatus Recover(kwdbContext_p ctx) override;
-
-  // get max entity id
-  KStatus GetMaxEntityIdByVGroupId(kwdbContext_p ctx, uint32_t vgroup_id, uint32_t& entity_id);
 
   KStatus TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                      uint64_t range_id, uint64_t index, uint64_t& mtr_id, const char* tsx_id = nullptr) override;
@@ -320,6 +322,8 @@ class TSEngineImpl : public TSEngine {
 
   KStatus Vacuum(kwdbContext_p ctx, bool force, bool only_agg = false) override;
 
+  KStatus SetPublishedMaxOSN(std::unordered_map<TSTableID, TS_OSN>& tbl_osn) override;
+
   KStatus GetTableBlocksDistribution(TSTableID table_id, TSSlice* blocks_info) override;
 
   KStatus GetDBBlocksDistribution(uint32_t db_id, TSSlice* blocks_info) override;
@@ -353,6 +357,9 @@ class TSEngineImpl : public TSEngine {
 
   KStatus ResetAllWALMgr(kwdbContext_p ctx);
 
+  KStatus GetValidColumns(kwdbContext_p ctx, const KTableKey& table_id, uint32_t table_version, bool& is_dropped,
+                          TSSlice* primary_tags, size_t primary_tags_num,
+                          std::vector<uint32_t>& valid_columns) override;
 
  private:
   // Engine serial agg scheduler main loop.
@@ -366,9 +373,12 @@ class TSEngineImpl : public TSEngine {
 
   uint64_t insertToSnapshotCache(TsRangeImgrationInfo& snapshot);
 
-  KStatus writeEntityIdsBinary(const std::vector<uint32_t>& max_entity_id);
-
+  // Legacy vg.mei reader; used only by migrateLegacyMaxEntityIdFile.
   KStatus readEntityIds(std::vector<uint32_t>& max_entity_id);
+
+  // One-shot startup migration of the legacy vg.mei file into the per-db
+  // max_entity_id files; see the definition for the full contract.
+  KStatus migrateLegacyMaxEntityIdFile(kwdbContext_p ctx);
 };
 
 }  //  namespace kwdbts

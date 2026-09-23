@@ -1872,43 +1872,6 @@ func TestCheckNodeHealthErrorPaths(t *testing.T) {
 	}
 }
 
-func TestParsePtagValue(t *testing.T) {
-	defer leaktest.AfterTest(t)()
-
-	testCases := []struct {
-		name    string
-		typ     *types.T
-		value   string
-		offset  int
-		size    int
-		wantErr bool
-	}{
-		{name: "int2", typ: types.Int2, value: "12", offset: 0, size: 8},
-		{name: "int4", typ: types.Int4, value: "1234", offset: 0, size: 8},
-		{name: "int8", typ: types.Int, value: "123456", offset: 0, size: 16},
-		{name: "bool true", typ: types.Bool, value: "true", offset: 0, size: 1},
-		{name: "varchar", typ: types.MakeVarChar(8, types.TIMESERIES.Mask()), value: "abc", offset: 0, size: 16},
-		{name: "char", typ: types.MakeChar(4), value: "xy", offset: 0, size: 16},
-		{name: "int2 overflow", typ: types.Int2, value: "40000", offset: 0, size: 8, wantErr: true},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			payload := make([]byte, tc.size)
-			err := parsePtagValue(&payload, tc.value, tc.offset, tc.typ)
-			if tc.wantErr {
-				if err == nil {
-					t.Fatal("expected error, got nil")
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-		})
-	}
-}
-
 func TestPhysicalPlanGetLimitOffset(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
@@ -2013,7 +1976,7 @@ func TestGetPtagPayloadsInitialAndCartesianProduct(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
 	t.Run("initial payloads", func(t *testing.T) {
-		got, err := getPtagPayloads(nil, []string{"1", "2"}, 0, types.Int4, 8)
+		got, err := sqlbase.GetPtagPayloads(nil, []string{"1", "2"}, 0, types.Int4, 8)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -2032,11 +1995,11 @@ func TestGetPtagPayloadsInitialAndCartesianProduct(t *testing.T) {
 	})
 
 	t.Run("cartesian product", func(t *testing.T) {
-		base, err := getPtagPayloads(nil, []string{"1", "2"}, 0, types.Int4, 8)
+		base, err := sqlbase.GetPtagPayloads(nil, []string{"1", "2"}, 0, types.Int4, 8)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		got, err := getPtagPayloads(base, []string{"3", "4"}, 4, types.Int4, 8)
+		got, err := sqlbase.GetPtagPayloads(base, []string{"3", "4"}, 4, types.Int4, 8)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -2057,7 +2020,7 @@ func TestGetPtagPayloadsInitialAndCartesianProduct(t *testing.T) {
 	})
 
 	t.Run("bad source propagates parse error", func(t *testing.T) {
-		_, err := getPtagPayloads(nil, []string{"not-an-int"}, 0, types.Int4, 8)
+		_, err := sqlbase.GetPtagPayloads(nil, []string{"not-an-int"}, 0, types.Int4, 8)
 		if err == nil {
 			t.Fatal("expected parse error, got nil")
 		}

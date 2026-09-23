@@ -131,7 +131,7 @@ class Worker {
   struct TableSchemaCache {
     std::vector<TagInfo> tag_schema;
     std::vector<AttributeInfo> data_schema;
-    std::shared_ptr<TSRowPayloadBuilder> build = nullptr;
+    std::shared_ptr<TSRowPayloadSparseBuilder> build = nullptr;
   };
   std::string name_;
   std::vector<uint32_t> table_ids_;

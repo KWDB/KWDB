@@ -10,6 +10,9 @@
 // See the Mulan PSL v2 for more details.
 
 #include "ee_crc32.h"
+
+#include <cstring>
+
 #include "kwdb_type.h"
 namespace kwdbts {
 
@@ -44,7 +47,7 @@ k_uint32 kwdb_crc32_ieee(const char *buf, int size) {
   k_uint32 crc = 0xFFFFFFFF;
   const char *p = buf;
   while (size > 0) {
-    char ch = static_cast<char>(CRC32_TOLOWER(*p));
+    char ch = *p;
 
     crc = kwdb_crc32_comp(ch, crc);
     size--;
@@ -62,12 +65,12 @@ k_uint32 kwdb_crc32_castagnoli(const void *data, size_t len) {
     len--;
   }
 
-  k_uint32 iOffset = sizeof(k_uint64) / sizeof(k_uint32);;
-  const k_uint32 *p4 = (const k_uint32 *)p;
-
   while (len >= KWDB_CRC32_CUTOFF) {
-    k_uint32 low = *p4 ^ crc;
-    k_uint32 high = *(p4++);
+    k_uint32 low = 0;
+    k_uint32 high = 0;
+    std::memcpy(&low, p, sizeof(low));
+    std::memcpy(&high, p + sizeof(low), sizeof(high));
+    low ^= crc;
 #ifdef CRC32_WORDS_BIGENDIAN
     const k_uint8 c0 = high & 0xff;
     const k_uint8 c1 = ((high >> 8) & 0xff);
@@ -94,14 +97,13 @@ k_uint32 kwdb_crc32_castagnoli(const void *data, size_t len) {
 
     crc = kwbd_crc32c_table[0][c0] ^ kwbd_crc32c_table[1][c1] ^ kwbd_crc32c_table[2][c2] ^ kwbd_crc32c_table[3][c3] ^
           kwbd_crc32c_table[4][c4] ^ kwbd_crc32c_table[5][c5] ^ kwbd_crc32c_table[6][c6] ^ kwbd_crc32c_table[7][c7];
-    len -= (iOffset * (sizeof(k_uint32)));
-    p4++;
+    p += sizeof(k_uint64);
+    len -= sizeof(k_uint64);
   }
 
   /*
    * Handle any remaining bytes one at a time.
    */
-  p = (const unsigned char *)p4;
   while (len > 0) {
     crc = kwdb_crc32c_comp(*p++, crc);
     len--;

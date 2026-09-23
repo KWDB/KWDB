@@ -1131,7 +1131,7 @@ func (s *vectorizedFlowCreator) setupFlow(
 				err = errors.Wrapf(err, "not enough memory to setup vectorized plan")
 				return
 			}
-			metadataSourcesQueue = append(metadataSourcesQueue, result.MetadataSources...)
+			metadataSourcesQueue = result.ReconcileMetadataSources(metadataSourcesQueue)
 			toClose = append(toClose, result.ToClose...)
 
 			op := result.Op

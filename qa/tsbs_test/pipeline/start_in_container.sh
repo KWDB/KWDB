@@ -66,14 +66,19 @@ listenport=${3:-"27257"}
 httpport=${4:-"8181"}
 brpcport=${5:-"37357"}
 enable_buffer_pool=${6:-"true"}
+wal=${7:-"3"}
 workspace=/home/inspur/src/gitee.com
 data_dir=${workspace}/kwbasedb/tsbs_test
 
 wait_kwbase_exit ${ip} ${listenport} ${httpport} ${brpcport}
+pkill -9 kwbase || true
 store=${data_dir}/kwbase-data1
 rm -rf ${store}
 
 cd /home/inspur/src/gitee.com/kwbasedb/install/bin
+export KW_WAL_LEVEL="${wal}"
+export KW_ENGINE_VERSION=2
+export KW_IO_MODE=1
 echo "#### Node Start ####"
 if [[ ${replica_mode} == 3 ]]; then
     if [ ${enable_buffer_pool} == "true" ]; then

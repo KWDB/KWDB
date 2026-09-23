@@ -20,6 +20,7 @@
 #include "data_type.h"
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
+#include "ts_agg.h"
 #include "ts_bitmap.h"
 #include "ts_blkspan_type_convert.h"
 #include "ts_bufferbuilder.h"
@@ -71,8 +72,7 @@ class TsBlock {
                                std::unique_ptr<TsBitmapBase>* bitmap, TsScanStats* ts_scan_stats = nullptr) = 0;
   virtual KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>* schema,
                                 TSSlice& value, TsScanStats* ts_scan_stats = nullptr) = 0;
-  virtual bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>* schema,
-                          TsScanStats* ts_scan_stats = nullptr) = 0;
+
   // if just get timestamp , this function return fast.
   virtual timestamp64 GetTS(int row_num, TsScanStats* ts_scan_stats = nullptr) = 0;
 
@@ -100,13 +100,15 @@ class TsBlock {
   * Pre agg includes count/min/max/sum, it doesn't have pre-agg by default
   */
   virtual bool HasPreAgg(uint32_t begin_row_idx, uint32_t row_num);
-  virtual KStatus GetPreCount(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, uint16_t& count);
-  virtual KStatus GetPreSum(uint32_t blk_col_idx, int32_t size, TsScanStats* ts_scan_stats,
+  virtual KStatus GetPreCount(uint32_t blk_col_idx, const std::vector<FixedBlockAggColumnLayout>* fixed_block_agg_layout,
+                              TsScanStats* ts_scan_stats, uint16_t& count);
+  virtual KStatus GetPreSum(uint32_t blk_col_idx, const std::vector<FixedBlockAggColumnLayout>* fixed_block_agg_layout,
+                            int32_t size, TsScanStats* ts_scan_stats,
                             void* &pre_sum, bool& is_overflow);
-  virtual KStatus GetPreMax(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, void* &pre_max);
-  virtual KStatus GetPreMin(uint32_t blk_col_idx, int32_t size, TsScanStats* ts_scan_stats, void* &pre_min);
-  virtual KStatus GetVarPreMax(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, TSSlice& pre_max);
-  virtual KStatus GetVarPreMin(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, TSSlice& pre_min);
+  virtual KStatus GetPreMax(uint32_t blk_col_idx, const std::vector<FixedBlockAggColumnLayout>* fixed_block_agg_layout,
+                            TsScanStats* ts_scan_stats, void* &pre_max);
+  virtual KStatus GetPreMin(uint32_t blk_col_idx, const std::vector<FixedBlockAggColumnLayout>* fixed_block_agg_layout,
+                            int32_t size, TsScanStats* ts_scan_stats, void* &pre_min);
   KStatus UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_scan_cols,
                                                 const std::vector<AttributeInfo>* schema,
                                                 std::vector<k_uint32>& first_col_idxs,
@@ -123,6 +125,10 @@ class TsBlockSpan {
   bool has_pre_agg_{false};
   std::shared_ptr<MMapMetricsTable> scan_schema_{nullptr};
   const std::vector<AttributeInfo>* scan_attrs_ = nullptr;  // used only if block version equals scan version.
+
+  const std::vector<FixedBlockAggColumnLayout>* GetFixedBlockAggLayout() const {
+    return scan_schema_ ? scan_schema_->GetFixedBlockAggLayout() : nullptr;
+  }
 
  public:
   std::shared_ptr<TSBlkDataTypeConvert> convert_;
@@ -173,6 +179,11 @@ class TsBlockSpan {
   int GetColCount() const { return scan_attrs_->size(); }
   std::shared_ptr<TsBlock> GetTsBlock() const { return block_; }
   TsBlock* GetTsBlockRaw() const { return block_.get(); }
+  // Process-unique handle for the underlying TsBlock. Unlike GetBlockID(), which is only unique
+  // within a single segment type (mem / last / entity), this is unique across segments because it
+  // is the in-memory address of the TsBlock object. Use this to key on "same physical block" in
+  // maps/sets where cross-segment block_id collisions would corrupt results.
+  uintptr_t GetTsBlockAddr() const { return reinterpret_cast<uintptr_t>(block_.get()); }
   TSTableID GetTableID() const { return block_->GetTableId(); }
   uint64_t GetBlockID() const { return block_->GetBlockID(); }
   uint32_t GetTableVersion() const { return block_->GetTableVersion(); }
@@ -287,51 +298,49 @@ class TsBlockSpan {
   KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, TSSlice& data,
                                 TsScanStats* ts_scan_stats = nullptr) const;
 
-  KStatus GetCount(uint32_t scan_idx, uint32_t& count, TsScanStats* ts_scan_stats = nullptr);
-
   bool HasPreAgg() {
     return has_pre_agg_;
   }
   KStatus GetPreCount(uint32_t scan_idx, TsScanStats* ts_scan_stats, uint16_t& count) {
     if (!convert_) {
-      return block_->GetPreCount(scan_idx, ts_scan_stats, count);
+      return block_->GetPreCount(scan_idx, GetFixedBlockAggLayout(), ts_scan_stats, count);
     }
     return convert_->GetPreCount(this, scan_idx, ts_scan_stats, count);
   }
+  KStatus GetCount(uint32_t scan_idx, TsScanStats* ts_scan_stats, uint16_t& count);
+
   KStatus GetPreSum(uint32_t scan_idx, TsScanStats* ts_scan_stats, void* &pre_sum, bool& is_overflow) {
     if (!convert_) {
       int32_t size = (*scan_attrs_)[scan_idx].size;
-      return block_->GetPreSum(scan_idx, size, ts_scan_stats, pre_sum, is_overflow);
+      return block_->GetPreSum(scan_idx, GetFixedBlockAggLayout(), size, ts_scan_stats, pre_sum, is_overflow);
     }
-    int32_t size = (*convert_->version_conv_->blk_attrs_)[scan_idx].size;
+    auto blk_idx = convert_->version_conv_->blk_cols_extended_[scan_idx];
+    int32_t size = (*convert_->version_conv_->blk_attrs_)[blk_idx].size;
     return convert_->GetPreSum(this, scan_idx, size, ts_scan_stats, pre_sum, is_overflow);
   }
+  KStatus GetSum(uint32_t scan_idx, TsScanStats* ts_scan_stats, bool can_use_pre_agg,
+                 int64_t& sum_i64, double& sum_f64, bool& has_sum_result, bool& is_overflow);
+
   KStatus GetPreMax(uint32_t scan_idx, TsScanStats* ts_scan_stats, void* &pre_max) {
     if (!convert_) {
-      return block_->GetPreMax(scan_idx, ts_scan_stats, pre_max);
+      return block_->GetPreMax(scan_idx, GetFixedBlockAggLayout(), ts_scan_stats, pre_max);
     }
     return convert_->GetPreMax(this, scan_idx, ts_scan_stats, pre_max);
   }
+  KStatus GetMax(uint32_t scan_idx, TsScanStats* ts_scan_stats, bool can_use_pre_agg,
+                 void* &max, int32_t& max_row_idx);
+
   KStatus GetPreMin(uint32_t scan_idx, TsScanStats* ts_scan_stats, void* &pre_min) {
     if (!convert_) {
       int32_t size = (*scan_attrs_)[scan_idx].size;
-      return block_->GetPreMin(scan_idx, size, ts_scan_stats, pre_min);
+      return block_->GetPreMin(scan_idx, GetFixedBlockAggLayout(), size, ts_scan_stats, pre_min);
     }
-    int32_t size = (*convert_->version_conv_->blk_attrs_)[scan_idx].size;
+    auto blk_idx = convert_->version_conv_->blk_cols_extended_[scan_idx];
+    int32_t size = (*convert_->version_conv_->blk_attrs_)[blk_idx].size;
     return convert_->GetPreMin(this, scan_idx, size, ts_scan_stats, pre_min);
   }
-  KStatus GetVarPreMax(uint32_t scan_idx, TsScanStats* ts_scan_stats, TSSlice& pre_max) {
-    if (!convert_) {
-      return block_->GetVarPreMax(scan_idx, ts_scan_stats, pre_max);
-    }
-    return convert_->GetVarPreMax(this, scan_idx, ts_scan_stats, pre_max);
-  }
-  KStatus GetVarPreMin(uint32_t scan_idx, TsScanStats* ts_scan_stats, TSSlice& pre_min) {
-    if (!convert_) {
-      return block_->GetVarPreMin(scan_idx, ts_scan_stats, pre_min);
-    }
-    return convert_->GetVarPreMin(this, scan_idx, ts_scan_stats, pre_min);
-  }
+  KStatus GetMin(uint32_t scan_idx, TsScanStats* ts_scan_stats, bool can_use_pre_agg,
+                 void* &max, int32_t& max_row_idx);
 
   KStatus UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_scan_cols,
                                                 const std::vector<AttributeInfo>* schema,
@@ -374,6 +383,12 @@ class TsBlockSpan {
     // change current span info
     nrow_ -= row_num;
     has_pre_agg_ = false;
+  }
+
+  void ConvertToDoubleIfOverflow(bool overflow, double& sum_f64, int64_t& sum_i64) {
+    if (overflow) {
+      sum_f64 = static_cast<double>(sum_i64);
+    }
   }
 };
 }  // namespace kwdbts

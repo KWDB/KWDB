@@ -1155,9 +1155,7 @@ func (ds *DistSender) sendTsRowPutBatch(
 	br = &roachpb.BatchResponse{
 		Responses: make([]roachpb.ResponseUnion, len(ba.Requests)),
 	}
-	if log.V(1) {
-		log.Infof(ctx, "Get rangeBatches: %v+", rangeBatches)
-	}
+	log.VEventf(ctx, 3, "send ts row put batch Start, ba is %s", ba.Summary())
 	// This function builds a channel of responses for each range
 	// implicated in the span (rs) and combines them into a single
 	// BatchResponse when finished.
@@ -1897,7 +1895,7 @@ func (ds *DistSender) sendTsPartialBatch(
 	// to our caller.
 	switch tErr := pErr.GetDetail().(type) {
 	case *roachpb.DefaultReplicaReceiveTSRequestError:
-		log.Warningf(ctx, "got DefaultReplicaReceiveTSRequestError, evict and retry")
+		log.Warningf(ctx, "got DefaultReplicaReceiveTSRequestError, evict and retry, err is %s", err)
 		r.Reset()
 		// do not retry immediately
 		r.Next()

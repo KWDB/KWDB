@@ -60,14 +60,20 @@ SkipListSplice* TsMemSegIndex::AllocateSkiplistSplice() {
 }
 
 TSMemSegRowData* TsMemSegIndex::AllocateMemSegRowData(uint32_t db_id, TSTableID tbl_id, uint32_t tbl_version,
-                                                      TSEntityID en_id, TSSlice row_data) {
-  size_t malloc_size = sizeof(TSMemSegRowData) + row_data.len;
+                                                      TSEntityID en_id, TsRawPayload* p, uint32_t row_idx) {
+  size_t malloc_size = sizeof(TSMemSegRowData);
   char* buf = AllocateKeyValue(malloc_size);
   assert(buf != nullptr);
-  std::copy(row_data.data, row_data.data + row_data.len, buf + sizeof(TSMemSegRowData));
   TSMemSegRowData* data = new (buf) TSMemSegRowData(db_id, tbl_id, tbl_version, en_id);
-  data->SetRowData(TSSlice{buf + sizeof(TSMemSegRowData), row_data.len});
+  data->SetRowData(p, row_idx);
   return data;
+}
+char* TsMemSegIndex::AllocPayload(const TSSlice& payload_data) {
+  char* buf = allocator_.AllocateAligned(payload_data.len);
+  if (buf != nullptr) {
+    memcpy(buf, payload_data.data, payload_data.len);
+  }
+  return buf;
 }
 
 void TsMemSegIndex::InsertRowData(const TSMemSegRowData* row) {

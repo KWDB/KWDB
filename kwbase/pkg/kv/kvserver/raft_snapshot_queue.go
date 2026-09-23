@@ -161,7 +161,7 @@ func (rq *raftSnapshotQueue) processRaftSnapshot(
 	}
 
 	var err error
-	if desc.GetRangeType() == roachpb.TS_RANGE {
+	if isTSRangeDescriptor(desc) {
 		// The data volume of the current copy is much different from that of the leased
 		// copy, and it is necessary to quickly supplement the data by sending snapshots.
 		// In this case, needTSSnapshotData should be true.
@@ -170,7 +170,7 @@ func (rq *raftSnapshotQueue) processRaftSnapshot(
 			exist, _ = repl.store.TsEngine.TSIsTsTableExist(uint64(desc.TableId))
 		}
 		err = repl.sendTSSnapshot(ctx, repDesc, snapType, SnapshotRequest_RECOVERY, exist)
-	} else if desc.GetRangeType() == roachpb.DEFAULT_RANGE {
+	} else {
 		err = repl.sendSnapshot(ctx, repDesc, snapType, SnapshotRequest_RECOVERY)
 	}
 

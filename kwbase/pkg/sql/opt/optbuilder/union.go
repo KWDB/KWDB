@@ -25,6 +25,7 @@
 package optbuilder
 
 import (
+	"gitee.com/kwbasedb/kwbase/pkg/sql/opt"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
@@ -177,6 +178,26 @@ func (b *Builder) checkTypesMatch(
 			continue
 		}
 
+		// Support CITEXT mixed with other string-like types in UNION / INTERSECT / EXCEPT.
+		//
+		// Rules:
+		//   1. CITEXT + string constant:
+		//      Use CITEXT as the common type, so set-op equality follows
+		//      case-insensitive CITEXT semantics.
+		//
+		//   2. CITEXT + typed string column/expression:
+		//      Use the non-CITEXT string type as the common type, so set-op equality
+		//      follows normal string semantics.
+		if leftToRight, rightToLeft, ok := shouldPropagateCITextString(l, r); ok {
+			if leftToRight {
+				propagateToLeft = true
+			}
+			if rightToLeft {
+				propagateToRight = true
+			}
+			continue
+		}
+
 		panic(pgerror.Newf(
 			pgcode.DatatypeMismatch,
 			"%v types %s and %s cannot be matched", clauseTag, l.typ, r.typ,
@@ -203,6 +224,10 @@ func (b *Builder) propagateTypes(dst, src *scope) *scope {
 			// Create a new column which casts the old column to the correct type.
 			castExpr := b.factory.ConstructCast(b.factory.ConstructVariable(dstCols[i].id), srcType)
 			b.synthesizeColumn(dst, string(dstCols[i].name), srcType, nil /* expr */, castExpr)
+		} else if shouldCastCITextStringToSource(&dstCols[i], &src.cols[i]) {
+			// Create a new column which casts the old column to the resolved set-op common type.
+			castExpr := b.factory.ConstructCast(b.factory.ConstructVariable(dstCols[i].id), srcType)
+			b.synthesizeColumn(dst, string(dstCols[i].name), srcType, nil /* expr */, castExpr)
 		} else {
 			// The column is already the correct type, so add it as a passthrough
 			// column.
@@ -211,4 +236,89 @@ func (b *Builder) propagateTypes(dst, src *scope) *scope {
 	}
 	dst.expr = b.constructProject(expr, dst.cols)
 	return dst
+}
+
+// shouldPropagateCITextString decides whether a pair of set-op columns
+// should be accepted as a CITEXT/string mixed pair, and which side should be
+// cast.
+//
+// Return values:
+//
+//	leftToRight  = cast left column to right column type.
+//	rightToLeft  = cast right column to left column type.
+//	ok           = this is a supported CITEXT/string mixed pair.
+//
+// Required semantics:
+//
+//	CITEXT + string constant:
+//	  The string constant is cast to CITEXT.
+//
+//	CITEXT + typed string column/expression:
+//	  The CITEXT side is cast to the other string type.
+func shouldPropagateCITextString(l, r *scopeColumn) (leftToRight bool, rightToLeft bool, ok bool) {
+	lIsCIText := tree.IsCITextType(l.typ)
+	rIsCIText := tree.IsCITextType(r.typ)
+
+	if !lIsCIText && !rIsCIText {
+		return false, false, false
+	}
+
+	if !tree.IsStringType(l.typ) && !tree.IsStringType(r.typ) {
+		return false, false, false
+	}
+
+	// left = CITEXT, right = normal string-like type.
+	if lIsCIText {
+		if isSetOpStringConstant(r) {
+			// CITEXT + string constant => cast constant to CITEXT.
+			return false, true, true
+		}
+
+		// CITEXT + typed string column/expression => cast CITEXT to string.
+		return true, false, true
+	}
+
+	// right = CITEXT, left = normal string-like type.
+	if rIsCIText {
+		if isSetOpStringConstant(l) {
+			// string constant + CITEXT => cast constant to CITEXT.
+			return true, false, true
+		}
+
+		// typed string column/expression + CITEXT => cast CITEXT to string.
+		return false, true, true
+	}
+
+	return false, false, false
+}
+
+// shouldCastCITextStringToSource returns true when propagateTypes(dst, src)
+// should cast the dst column to the src column type for a CITEXT/string mixed
+// set-op column.
+func shouldCastCITextStringToSource(dst, src *scopeColumn) bool {
+	leftToRight, _, ok := shouldPropagateCITextString(dst, src)
+	return ok && leftToRight
+}
+
+// isSetOpStringConstant returns true if the scope column is a string constant.
+//
+// This is used to distinguish:
+//
+//	SELECT citext_col UNION SELECT 'ABC'
+//	  => 'ABC' is a constant, so CITEXT wins.
+func isSetOpStringConstant(c *scopeColumn) bool {
+	if c.expr != nil {
+		switch c.expr.(type) {
+		case *tree.CastExpr:
+			return false
+		case tree.Datum:
+			return true
+		}
+	}
+
+	if c.scalar != nil && c.scalar.Op() == opt.ConstOp {
+		return true
+	}
+
+	return false
 }

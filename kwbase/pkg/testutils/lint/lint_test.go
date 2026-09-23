@@ -384,7 +384,6 @@ func TestLint(t *testing.T) {
 					":!ccl/acceptanceccl/backup_test.go",
 					":!ccl/backupccl/backup_cloud_test.go",
 					":!storage/cloud",
-					":!ccl/workloadccl/fixture_test.go",
 					":!cmd",
 					":!nightly",
 					":!testutils/lint",
@@ -691,7 +690,6 @@ func TestLint(t *testing.T) {
 			":!util/contextutil/context.go",
 			// TODO(jordan): ban these too?
 			":!server/debug/**",
-			":!workload/**",
 			":!*_test.go",
 			":!cli/debug_synctest.go",
 			":!cmd/**",
@@ -731,7 +729,6 @@ func TestLint(t *testing.T) {
 			":!rpc/context.go",
 			":!rpc/nodedialer/nodedialer_test.go",
 			":!util/grpcutil/grpc_util_test.go",
-			":!cli/systembench/network_test_server.go",
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -1019,7 +1016,6 @@ func TestLint(t *testing.T) {
 			filter,
 			stream.GrepNot(`.*\.lock`),
 			stream.GrepNot(`^storage\/rocksdb_error_dict\.go$`),
-			stream.GrepNot(`^workload/tpcds/tpcds.go$`),
 			stream.Map(func(s string) string {
 				return filepath.Join(pkgDir, s)
 			}),

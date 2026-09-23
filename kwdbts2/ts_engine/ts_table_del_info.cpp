@@ -16,6 +16,8 @@
 #include <list>
 #include <unordered_map>
 #include "ts_table_del_info.h"
+#include "lg_api.h"
+#include "libkwdbts2.h"
 #include "ts_compatibility.h"
 #include "ts_vgroup.h"
 #include "ts_ts_lsn_span_utils.h"
@@ -97,11 +99,23 @@ void STTableRangeDelAndTagInfo::ParseData(TSSlice data, STOSNDeleteInfoType* typ
   }
 }
 
-KStatus STTableRangeDelAndTagInfo::Init() {
+KStatus STTableRangeDelAndTagInfo::Init(TS_OSN published_max_osn) {
+  published_max_osn_ = published_max_osn;
   auto s = table_->GetImagrateTagBySnapshot(nullptr, {begin_hash_, end_hash_}, scan_osn_, &pkeys_status_);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("STTableDeleteInfo init failed at GetImagrateTagBySnapshot.");
     return s;
+  }
+  pkey_iter_ = pkeys_status_.begin();
+  // only imagrating deleted tags which osn up to pubsub waterline.
+  while (pkey_iter_ != pkeys_status_.end()) {
+    auto op_osn = reinterpret_cast<OperatorInfoOfRecord*>(pkey_iter_->op_with_osn.get());
+    assert(op_osn != nullptr);
+    if (op_osn->osn < published_max_osn_ && op_osn->type != OperatorTypeOfRecord::OP_TYPE_INSERT) {
+      pkey_iter_ = pkeys_status_.erase(pkey_iter_);
+    } else {
+      pkey_iter_++;
+    }
   }
   pkey_iter_ = pkeys_status_.begin();
   return KStatus::SUCCESS;
@@ -125,11 +139,20 @@ KStatus STTableRangeDelAndTagInfo::GetNextDeleteInfo(kwdbContext_p ctx, TSSlice*
     TSSlice payload{nullptr, 0};
     std::list<STDelRange> del_osns;
     if (op_osn->type == OperatorTypeOfRecord::OP_TYPE_INSERT) {
+      std::list<STDelRange> del_osns_all;
       // tage type is insert. we should return metric delete info.
-      auto s = table_->GetMetricDelInfoWithOSN(ctx, entity_idx, &del_osns);
+      auto s = table_->GetMetricDelInfoWithOSN(ctx, entity_idx, &del_osns_all);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("GetNextDeleteInfo failed at GetMetricDelInfoWithOSN.");
         return s;
+      }
+      // only imagrating the delete info that osn up to pubsub waterline.
+      auto iter = del_osns_all.begin();
+      while (iter != del_osns_all.end()) {
+        if (iter->osn_span.end >= published_max_osn_) {
+          del_osns.push_back(*iter);
+        }
+        iter++;
       }
     }
     // if tag is deleted, we need return tag delete info.
@@ -219,7 +242,11 @@ KStatus STTableRangeDelAndTagInfo::GenTagPayLoad(kwdbContext_p ctx, EntityResult
     LOG_ERROR("GetTagData failed, count=%d", count);
     return KStatus::FAIL;
   }
-  TSRowPayloadBuilder build(tags_info, data_schema, 0);
+  TSRowPayloadSparseBuilder build;
+  if (!build.Init(tags_info, data_schema, 0, TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_TUPLE)) {
+    LOG_ERROR("TSRowPayloadSparseBuilder init failed");
+    return KStatus::FAIL;
+  }
   for (size_t i = 0; i < tags_info.size(); i++) {
     bool is_null = false;
     if (!tags_info[i].isPrimaryTag()) {
@@ -238,6 +265,26 @@ KStatus STTableRangeDelAndTagInfo::GenTagPayLoad(kwdbContext_p ctx, EntityResult
       }
     }
   }
+  if (table_->GetSchemaManager()->IsSparseTable()) {
+    OperatorInfoOfRecord* opt_osn = reinterpret_cast<OperatorInfoOfRecord*>(entity_idx.op_with_osn.get());
+    auto tag_table = table_->GetSchemaManager()->GetTagTable();
+    if (!tag_table) {
+      LOG_ERROR("GetValidColumns: tag table is null, table id: %lu", table_->GetTableId());
+      return KStatus::FAIL;
+    }
+    assert(opt_osn->row_num > 0);
+    auto entity_tag_bt = tag_table->GetTagPartitionTableManager()->GetPartitionTable(opt_osn->p_tag_version);
+    if (entity_tag_bt == nullptr) {
+      LOG_ERROR("GetPartitionTable[%lu] version[%u] failed.", table_->GetTableId(), opt_osn->p_tag_version);
+      return KStatus::FAIL;
+    }
+    entity_tag_bt->startRead();
+    std::vector<std::seed_seq::result_type> valid_columns;
+    entity_tag_bt->getValidColumns(opt_osn->row_num, valid_columns);
+    entity_tag_bt->stopRead();
+    build.SetValidCols(valid_columns);
+  }
+
   if (!build.Build(table_->GetTableId(), table_version_, payload)) {
     LOG_ERROR("TSRowPayloadBuilder build failed");
     return KStatus::FAIL;
@@ -245,15 +292,8 @@ KStatus STTableRangeDelAndTagInfo::GenTagPayLoad(kwdbContext_p ctx, EntityResult
   return KStatus::SUCCESS;
 }
 
-KStatus STTableRangeDelAndTagInfo::WriteDeleteTagRecord(kwdbContext_p ctx, TSSlice& payload,
+KStatus STTableRangeDelAndTagInfo::WriteDeleteTagRecord(kwdbContext_p ctx, TsRawPayload& p,
   OperateType type, std::shared_ptr<TagTable>& tag_table, std::pair<uint64_t, uint64_t>& row_info) {
-  assert(payload.len > 0);
-  TsRawPayload p;
-  auto s = p.ParsePayLoadStruct(payload);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("ParsePayLoadStruct failed.");
-    return s;
-  }
   auto pkey = p.GetPrimaryTag();
   auto vgroup_id = GetConsistentVgroupId(pkey.data, pkey.len, EngineOptions::vgroup_max_num);
   TsVGroup* vgroup = table_->GetVGroupByID(vgroup_id);
@@ -266,7 +306,13 @@ KStatus STTableRangeDelAndTagInfo::WriteDeleteTagRecord(kwdbContext_p ctx, TSSli
     entity_id = iter->second.entityId;
     pkey_update_idx_.erase(iter);
   } else {
-    entity_id = vgroup->AllocateEntityID();
+    TSEntityID tmp_eid;
+    auto s = table_->GetSchemaManager()->AllocateEntityID(vgroup_id, tmp_eid);
+    if (s == FAIL) {
+      LOG_ERROR("cannot allocate entity id, table id[%lu]. Maybe table is dropped.", table_->GetTableId());
+      return s;
+    }
+    entity_id = tmp_eid;
   }
 
   if (tag_table->InsertDeletedTagRecord(p, vgroup_id, entity_id, p.GetOSN(), type, row_info) < 0) {
@@ -282,15 +328,8 @@ KStatus STTableRangeDelAndTagInfo::WriteDeleteTagRecord(kwdbContext_p ctx, TSSli
   return KStatus::SUCCESS;
 }
 
-KStatus STTableRangeDelAndTagInfo::WriteUpdateTagRecord(kwdbContext_p ctx, TSSlice& payload,
+KStatus STTableRangeDelAndTagInfo::WriteUpdateTagRecord(kwdbContext_p ctx, TsRawPayload& p,
   OperateType type, std::shared_ptr<TagTable>& tag_table, std::pair<uint64_t, uint64_t>& row_info) {
-  assert(payload.len > 0);
-  TsRawPayload p;
-  auto s = p.ParsePayLoadStruct(payload);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("ParsePayLoadStruct failed.");
-    return s;
-  }
   auto pkey = p.GetPrimaryTag();
   uint32_t entity_id;
   uint32_t vgroup_id = GetConsistentVgroupId(pkey.data, pkey.len, EngineOptions::vgroup_max_num);
@@ -299,7 +338,13 @@ KStatus STTableRangeDelAndTagInfo::WriteUpdateTagRecord(kwdbContext_p ctx, TSSli
 
   auto iter = pkey_update_idx_.find(std::string(pkey.data, pkey.len));
   if (iter == pkey_update_idx_.end()) {
-    entity_id = table_->GetVGroupByID(vgroup_id)->AllocateEntityID();
+    TSEntityID tmp_eid = 0;
+    auto s = table_->GetSchemaManager()->AllocateEntityID(vgroup_id, tmp_eid);
+    if (s == FAIL) {
+      LOG_ERROR("cannot allocate entity id from table %lu, may be the table is dropped.", table_->GetTableId());
+      return FAIL;
+    }
+    entity_id = tmp_eid;
     EntityResultIndex& cur_idx = pkey_update_idx_[std::string(pkey.data, pkey.len)];
     cur_idx.entityId = entity_id;
     cur_idx.subGroupId = vgroup_id;
@@ -314,23 +359,23 @@ KStatus STTableRangeDelAndTagInfo::WriteUpdateTagRecord(kwdbContext_p ctx, TSSli
   return KStatus::SUCCESS;
 }
 
-KStatus STTableRangeDelAndTagInfo::WriteInsertTagRecord(kwdbContext_p ctx, TSSlice& payload,
+KStatus STTableRangeDelAndTagInfo::WriteInsertTagRecord(kwdbContext_p ctx, TsRawPayload& p,
   OperateType type, std::shared_ptr<TagTable>& tag_table) {
-  TSSlice pkey = TsRawPayload::GetPrimaryKeyFromSlice(payload);
+  TSSlice pkey = p.GetPrimaryTag();
   uint32_t entity_id;
   uint32_t groupid = GetConsistentVgroupId(pkey.data, pkey.len, EngineOptions::vgroup_max_num);
   auto iter = pkey_update_idx_.find(std::string(pkey.data, pkey.len));
   if (iter == pkey_update_idx_.end()) {
-    entity_id = table_->GetVGroupByID(groupid)->AllocateEntityID();
+    TSEntityID tmp_eid = 0;  // allocate entity id
+    auto s = table_->GetSchemaManager()->AllocateEntityID(groupid, tmp_eid);
+    if (s == FAIL) {
+      LOG_ERROR("cannot allocate entity id from table %lu, may be the table is dropped.", table_->GetTableId());
+      return FAIL;
+    }
+    entity_id = tmp_eid;
   } else {
     assert(iter->second.subGroupId == groupid);
     entity_id = iter->second.entityId;
-  }
-  TsRawPayload p;
-  auto s = p.ParsePayLoadStruct(payload);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("ParsePayLoadStruct failed.");
-    return s;
   }
   if (tag_table->InsertTagRecord(p, groupid, entity_id, p.GetOSN(), OperateType::Insert) < 0) {
     LOG_ERROR("InsertTagRecord failed.");
@@ -350,15 +395,29 @@ KStatus STTableRangeDelAndTagInfo::WriteDelAndTagInfo(kwdbContext_p ctx, TSSlice
     LOG_ERROR("table[%lu],CheckAndAddSchemaVersion[%u] init failed.", table_->GetTableId(), table_version);
     return s;
   }
-  auto pkey = TsRawPayload::GetPrimaryKeyFromSlice(payload);
-  uint32_t p_hash_point = TsRawPayload::GetHashPoint(payload);
+  const std::vector<AttributeInfo> *metric_schema;
+  s = table_->GetSchemaManager()->GetColumnsExcludeDroppedPtr(&metric_schema,
+    TsRawPayload::GetTableVersionFromSlice(payload));
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Failed get GetColumnsExcludeDroppedPtr id[%ld].", table_->GetTableId());
+    return s;
+  }
+  TsRawPayload p(metric_schema);
+  s = p.ParsePayLoadStruct(payload);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Failed parse payload id[%ld].", table_->GetTableId());
+    return s;
+  }
+  auto pkey = p.GetPrimaryTag();
+  uint32_t p_hash_point = p.GetHashPoint();
   if (p_hash_point < begin_hash_ || p_hash_point > end_hash_) {
     LOG_ERROR("payload hash point[%u] not in span[%lu,%lu]", p_hash_point, begin_hash_, end_hash_);
     return KStatus::FAIL;
   }
-  tag_lock.WrLock(p_hash_point);
+  uint32_t hash_point = t1ha1_le(pkey.data, pkey.len);
+  tag_lock.WrLock(hash_point);
   Defer defer{[&](){
-    tag_lock.Unlock(p_hash_point);
+    tag_lock.Unlock(hash_point);
   }};
 
   std::shared_ptr<TagTable> tag_table;
@@ -398,13 +457,13 @@ KStatus STTableRangeDelAndTagInfo::WriteDelAndTagInfo(kwdbContext_p ctx, TSSlice
   size_t tag_row_num = 1;
   std::pair<uint64_t, uint64_t> row_info;
   if (type == STOSNDeleteInfoType::OSN_DELETE_TAG_RECORD) {
-    s = WriteDeleteTagRecord(ctx, payload, OperateType::Delete, tag_table, row_info);
+    s = WriteDeleteTagRecord(ctx, p, OperateType::Delete, tag_table, row_info);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("Failed table id[%ld] insert delete_tag..", table_->GetTableId());
       return s;
     }
   } else if (type == STOSNDeleteInfoType::OSN_UPDATE_TAG_RECORD) {
-    s = WriteUpdateTagRecord(ctx, payload, OperateType::Update, tag_table, row_info);
+    s = WriteUpdateTagRecord(ctx, p, OperateType::Update, tag_table, row_info);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("Failed get table id[%ld] update_tag..", table_->GetTableId());
       return s;
@@ -412,7 +471,7 @@ KStatus STTableRangeDelAndTagInfo::WriteDelAndTagInfo(kwdbContext_p ctx, TSSlice
   } else if (type == STOSNDeleteInfoType::OSN_DELETE_METRIC_RANGE) {
     assert(pkey.len > 0);
     assert(payload.len > 0);
-    s = WriteInsertTagRecord(ctx, payload, OperateType::Insert, tag_table);
+    s = WriteInsertTagRecord(ctx, p, OperateType::Insert, tag_table);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("Failed table id[%ld] insert insert_tag..", table_->GetTableId());
       return s;

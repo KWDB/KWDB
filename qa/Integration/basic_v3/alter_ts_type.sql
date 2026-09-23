@@ -294,6 +294,9 @@ insert into test_alter.t15 values(1000000009, '3.4e+100', 3, 'c');
 insert into test_alter.t15 values(1000000010, '3.4e+38', 4, 'd');
 select * from test_alter.t15 order by ts,ptag;
 select * from test_alter.t15 where cast_check(a as float4)=false order by ts,ptag;
+set cluster setting sql.all_push_down.enabled = false;
+select * from test_alter.t15 where cast_check(a as float4)=false order by ts,ptag;
+set cluster setting sql.all_push_down.enabled = true;
 alter table test_alter.t15 alter column a type float4;
 select * from test_alter.t15 order by ts,ptag;
 

@@ -124,22 +124,25 @@ KStatus EntryBlock::readBytes(size_t& offset, char*& res, size_t length,
     LOG_ERROR("too large bytes for readBytes func, length:%ld", length)
     return FAIL;
   }
-  res = new char[length]();
+
+  // offset == data_len_ will switch next entryblock.
+  if (offset > data_len_) {
+    LOG_ERROR("Error data read failed. offset: %lu >= data_len: %u", offset, data_len_)
+    return FAIL;
+  }
 
   read_size = 0;
 
-  if (offset + (length - read_size) <= LOG_BLOCK_MAX_LOG_SIZE) {
-    memcpy(res + read_size, body_ + offset, length - read_size);
-    offset += length - read_size;
-    read_size += length;
-    return SUCCESS;
-  } else {
-    size_t left_size = LOG_BLOCK_MAX_LOG_SIZE - offset;
-    memcpy(res + read_size, body_ + offset, left_size);
-    read_size += left_size;
-    offset += left_size;
-    return SUCCESS;
-  }
+  size_t available = data_len_ - offset;
+  size_t to_read = (length < available) ? length : available;
+
+  res = new char[length]();
+
+  memcpy(res, body_ + offset, to_read);
+  offset += to_read;
+  read_size += to_read;
+
+  return SUCCESS;
 }
 
 uint16_t EntryBlock::getFirstRecOffset() const {

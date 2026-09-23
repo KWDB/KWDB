@@ -26,10 +26,12 @@
 #include "data_type.h"
 #include "iterator.h"
 #include "kwdb_type.h"
+#include "libkwdbts2.h"
 #include "st_transaction_mgr.h"
 #include "st_wal_mgr.h"
 #include "ts_engine_schema_manager.h"
 #include "ts_hash_latch.h"
+#include "ts_lastsegment_builder.h"
 #include "ts_mem_segment_mgr.h"
 #include "ts_partition_interval_recorder.h"
 #include "ts_version.h"
@@ -65,12 +67,6 @@ class TsVGroup {
   fs::path path_;
   fs::path user_defined_path_;
 
-  // max entity id of this vgroup
-  uint64_t max_entity_id_{0};
-
-  // mutex for initialize/allocate/get max_entity_id_
-  mutable std::mutex entity_id_mutex_;
-
   EngineOptions* engine_options_ = nullptr;
 
   std::shared_mutex* engine_wal_level_mutex_ = nullptr;
@@ -78,8 +74,6 @@ class TsVGroup {
 
   std::unique_ptr<TsVersionManager> version_manager_ = nullptr;
   std::unique_ptr<TsMemSegmentManager> mem_segment_mgr_ = nullptr;
-
-  std::map<PartitionIdentifier, std::shared_ptr<TsEntitySegmentBuilder>> write_batch_segment_builders_;
 
   // compact thread flag
   bool enable_compact_thread_{true};
@@ -107,7 +101,19 @@ class TsVGroup {
     TSSlice last_payload;
   };
   mutable std::shared_mutex entity_latest_row_mutex_;
-  std::unordered_map<uint32_t, TsTableLastRow> entity_latest_row_;
+  struct DBEntityKey {
+    uint32_t db_id = 0;
+    TSEntityID entity_id = 0;
+    bool operator==(const DBEntityKey& other) const {
+      return db_id == other.db_id && entity_id == other.entity_id;
+    }
+  };
+  struct DBEntityKeyHash {
+    uint64_t operator()(const DBEntityKey& key) const {
+      return (static_cast<uint64_t>(key.db_id) << 32) + key.entity_id;
+    }
+  };
+  std::unordered_map<DBEntityKey, TsTableLastRow, DBEntityKeyHash> entity_latest_row_;
   size_t cur_mem_size_ = 0;
 
 
@@ -130,19 +136,13 @@ class TsVGroup {
 
   KStatus PutData(kwdbContext_p ctx, const std::shared_ptr<TsTableSchemaManager>& tb_schema,
                   uint64_t mtr_id, TSSlice* primary_tag, TSEntityID entity_id,
-                  TSSlice* payload, bool write_wal);
+                  TsRawPayload& p, bool write_wal);
 
   fs::path GetPath() const;
 
   std::string GetFileName() const;
 
-  TSEntityID AllocateEntityID();
-
-  TSEntityID GetMaxEntityID() const;
-
   uint64_t GetMaxOSN() const { return CurrentVersion()->GetMaxOSN(); }
-
-  void InitEntityID(TSEntityID entity_id);
 
   void LockLevelMutex() {
     if (engine_wal_level_mutex_ != nullptr) {
@@ -197,27 +197,27 @@ class TsVGroup {
     }
     if (mem_segment_mgr_->SwitchMemSegment(current.get(), false)) {
       // Flush imm segment.
-      return FlushImmSegment(current);
+      std::unique_ptr<TsLastSegmentBuilder> builder;
+      return FlushImmSegment(builder, current);
     }
     return SUCCESS;
   }
 
   uint64_t GetMtrIDByTsxID(const char* ts_trans_id) {
-    return tsx_manager_->getMtrID(ts_trans_id);
+    return tsx_manager_->getMtrID(string{ts_trans_id, LogEntry::TS_TRANS_ID_LEN});
   }
 
   void SetMtrIDByTsxID(uint64_t uuid, const char* ts_trans_id) {
     return tsx_manager_->insertMtrID(ts_trans_id, uuid);
   }
 
-  bool IsExplict(uint64_t mini_trans_id) {
-    return tsx_manager_->IsExplict(mini_trans_id);
+  bool IsExplicit(uint64_t mini_trans_id) {
+    return tsx_manager_->IsExplicit(mini_trans_id);
   }
 
-  KStatus Compact(bool *compacted = nullptr);
+  KStatus Compact(bool *compacted = nullptr, bool force_compact_l0 = false);
 
-
-  KStatus FlushImmSegment(const std::shared_ptr<TsMemSegment>& segment);
+  KStatus FlushImmSegment(std::unique_ptr<TsLastSegmentBuilder>&, const std::shared_ptr<TsMemSegment>& segment);
 
   KStatus RemoveChkFile(kwdbContext_p ctx);
 
@@ -240,8 +240,8 @@ class TsVGroup {
                       const std::shared_ptr<MMapMetricsTable>& schema, TsStorageIterator** iter,
                       const std::shared_ptr<TsVGroup>& vgroup,
                       const std::vector<timestamp64>& ts_points, bool reverse, bool sorted, TS_OSN scan_osn,
-                      const FillParams& fill_params,
-                      const TimeBucketInfo time_bucket_info = {0, 0});
+                      const FillParams& fill_params, const TimeBucketInfo time_bucket_info = {0, 0},
+                      timestamp64 life_time_acceptable_ts = INT64_MIN);
 
   KStatus GetMetricIteratorByOSN(kwdbContext_p ctx, const std::shared_ptr<TsVGroup>& vgroup,
     std::vector<EntityResultIndex>& entity_ids, std::vector<k_uint32>& scan_cols, std::vector<k_uint32>& ts_scan_cols,
@@ -259,6 +259,9 @@ class TsVGroup {
                         std::list<std::shared_ptr<TsBlockSpan>>* block_spans);
 
   KStatus rollback(kwdbContext_p ctx, LogEntry* wal_log, bool from_chk = false);
+
+  KStatus getOsnRangeRollback(kwdbContext_p ctx, LogEntry* wal_log,
+    std::map<uint64_t, std::map<uint32_t, std::pair<TS_OSN, TS_OSN>>>& delete_metric_entity);
 
   KStatus ApplyWal(kwdbContext_p ctx, LogEntry* wal_log, std::unordered_map<TS_OSN, MTRBeginEntry*>& incomplete);
 
@@ -279,15 +282,25 @@ class TsVGroup {
   KStatus redoDeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& primary_tag, TS_OSN log_lsn,
   const std::vector<KwTsSpan>& ts_spans);
 
-  KStatus GetEntitySegmentBuilder(std::shared_ptr<const TsPartitionVersion>& partition, TsDataSource source,
-                                  std::shared_ptr<TsEntitySegmentBuilder>& builder);
+  struct LastSegBuilderEntry {
+    std::unique_ptr<TsLastSegmentBuilder> builder;
+    std::vector<TsEntityCountStats> flush_infos;
+  };
+  using LastSegBuilderMap = std::map<PartitionIdentifier, LastSegBuilderEntry>;
+
+  KStatus GetLastSegmentBuilder(std::shared_ptr<const TsPartitionVersion>& partition,
+                                TsLastSegmentBuilder*& builder, LastSegBuilderMap& builders);
+
+  KStatus WriteBatchToLastSegment(std::shared_ptr<const TsPartitionVersion>& partition, TSTableID tbl_id,
+                                  uint32_t table_version, TSEntityID entity_id, uint32_t database_id,
+                                  TSSlice data, LastSegBuilderMap& builders);
 
   KStatus WriteBatchData(TSTableID tbl_id, uint32_t table_version, TSEntityID entity_id, timestamp64 p_time,
-                         uint32_t batch_version, TSSlice data, TsDataSource source);
+                         uint32_t batch_version, TSSlice data, TsDataSource source, LastSegBuilderMap& builders);
 
-  KStatus FinishWriteBatchData();
+  KStatus FinishWriteBatchData(LastSegBuilderMap& builders);
 
-  KStatus CancelWriteBatchData();
+  KStatus CancelWriteBatchData(LastSegBuilderMap& builders);
 
   TsEngineSchemaManager* GetSchemaMgr() const;
 
@@ -311,7 +324,7 @@ class TsVGroup {
 
   KStatus undoPutTag(kwdbContext_p ctx, TS_OSN log_lsn, const TSSlice& payload);
 
-  KStatus redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSlice& payload);
+  KStatus redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSlice& payload, const TSSlice& old_payload);
 
   KStatus undoUpdateTag(kwdbContext_p ctx, TS_OSN log_lsn, TSSlice payload, const TSSlice& old_payload);
 
@@ -377,14 +390,15 @@ class TsVGroup {
   KStatus GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_version,
                                 const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                                 const std::shared_ptr<MMapMetricsTable>& scan_schema,
-                                std::shared_ptr<TsRawPayloadRowParser>& parser,
                                 const std::vector<KwTsSpan>& ts_spans, const std::vector<k_uint32>& scan_cols,
                                 timestamp64& entity_last_ts, bool& last_payload_valid, ResultSet* res);
 
-  bool isEntityLatestRowPayloadValid(EntityID entity_id) {
+  bool isEntityLatestRowPayloadValid(uint32_t db_id, EntityID entity_id) {
+    DBEntityKey key{db_id, entity_id};
     std::shared_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
-    if (!entity_latest_row_.count(entity_id)) return false;
-    TsTableLastRow last_row = entity_latest_row_[entity_id];
+    auto it =  entity_latest_row_.find(key);
+    if (it == entity_latest_row_.end()) return false;
+    const TsTableLastRow& last_row = it->second;
     return last_row.status != TsEntityLatestRowStatus::Recovering && last_row.is_payload_valid;
   }
 
@@ -412,10 +426,12 @@ class TsVGroup {
     LOG_INFO("recycled %lu bytes for last cache", recycled_size);
   }
 
-  void UpdateEntityLatestRow(EntityID entity_id, timestamp64 max_ts, const TSSlice& payload, uint32_t version) {
+  void UpdateEntityLatestRow(uint32_t db_id, EntityID entity_id, timestamp64 max_ts,
+    const TSSlice& payload, uint32_t tbl_version) {
+    DBEntityKey key{db_id, entity_id};
     std::unique_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
-    if (!entity_latest_row_.count(entity_id) || max_ts >= entity_latest_row_[entity_id].last_ts) {
-      TsTableLastRow& last_row = entity_latest_row_[entity_id];
+    if (!entity_latest_row_.count(key) || max_ts >= entity_latest_row_[key].last_ts) {
+      TsTableLastRow& last_row = entity_latest_row_[key];
       // update last payload
       if (EngineOptions::last_cache_max_size != 0) {
         assert(payload.len > 0);
@@ -453,7 +469,7 @@ class TsVGroup {
           payload_data = last_row.last_payload.data;
         }
         last_row.is_payload_valid = true;
-        last_row.version = version;
+        last_row.version = tbl_version;
         last_row.last_payload.len = payload.len;
         if (last_row.last_payload.data != payload_data) {
           last_row.last_payload.data = payload_data;
@@ -467,11 +483,39 @@ class TsVGroup {
     }
   }
 
-  void ResetEntityLatestRow(EntityID entity_id, timestamp64 max_ts) {
+  void ResetEntityLatestRow(uint32_t db_id, EntityID entity_id, timestamp64 max_ts) {
+    DBEntityKey key{db_id, entity_id};
     std::unique_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
-    if (entity_latest_row_.count(entity_id) && max_ts >= entity_latest_row_[entity_id].last_ts) {
-      entity_latest_row_[entity_id].status = TsEntityLatestRowStatus::Recovering;
-      entity_latest_row_[entity_id].is_payload_valid = false;
+    auto it = entity_latest_row_.find(key);
+    if (it == entity_latest_row_.end()) return;
+    auto& last_row = it->second;
+    if (max_ts >= last_row.last_ts) {
+      last_row.status = TsEntityLatestRowStatus::Recovering;
+      last_row.is_payload_valid = false;
+    }
+  }
+
+  // Pre-populate entity_latest_row_ with Recovering entries for every known
+  // entity, mirroring the old InitEntityID per-vgroup prefill but now scoped
+  // per (db, vgroup). After this, the first GetEntityLastRow for an entity
+  // that had data on disk before the restart lazily recovers the real last
+  // row from the partition scan path.
+  // Bounded by the tag-scan max instead of the counter max on purpose: ids
+  // above the tag max belong to dropped entities with no tag, which no query
+  // can reference — using the counter max would create huge dormant maps
+  // after the vg.mei migration raises every db's counters to the legacy
+  // global max.
+  void InitEntityLatestRowForRestart(TsEngineSchemaManager* schema_mgr) {
+    const auto& tag_max_map = schema_mgr->GetDbSchemaMgr()->GetTagScanMaxEntityIds();
+    std::unique_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
+    for (const auto& [db_id, vg_max_map] : tag_max_map) {
+      auto it = vg_max_map.find(vgroup_id_);
+      if (it == vg_max_map.end()) {
+        continue;
+      }
+      for (TSEntityID eid = 1; eid <= it->second; eid++) {
+        entity_latest_row_[DBEntityKey{db_id, eid}].status = TsEntityLatestRowStatus::Recovering;
+      }
     }
   }
 
@@ -488,6 +532,8 @@ class TsVGroup {
   KStatus AddRecalcEntity(PartitionIdentifier partition_id, TSTableID table_id, TSEntityID entity_id);
   // Reset count stat.
   KStatus ResetCountStat();
+  // Invalidate count stats for specific entities.
+  KStatus InvalidateCountStats(const std::map<TSTableID, std::vector<TSEntityID>>& affected_entities);
   // Recalculate count stat.
   KStatus RecalcCountStat();
 
@@ -518,14 +564,14 @@ class TsVGroup {
     const std::map<std::shared_ptr<TsTableSchemaManager>, std::vector<uint32_t>>& table_entity_map,
     std::map<std::shared_ptr<TsTableSchemaManager>, ClassifiedEntities>& cla_entities, bool* should_calc);
 
-  [[nodiscard]] KStatus PartitionCompactNoLockImpl(kwdbContext_p ctx, bool force_write_entity,
+  [[nodiscard]] KStatus PartitionCompactNoLockImpl(kwdbContext_p ctx, bool call_by_vacuum,
                                                    const std::shared_ptr<const TsPartitionVersion>& partition,
                                                    int level, int group,
                                                    const std::vector<std::shared_ptr<TsLastSegment>>& lastsegments);
 
   [[nodiscard]] KStatus PartitionCompact(kwdbContext_p ctx, std::shared_ptr<const TsPartitionVersion> partition,
                                          bool call_by_vacuum = false, bool force_vacuum = false,
-                                         bool* skipped = nullptr);
+                                         bool force_compact_l0 = false, bool* skipped = nullptr);
 
   KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, const TsBlockSpan& ts_blk_span,
                                       const vector<AttributeInfo>& attrs, ResultSet* res);

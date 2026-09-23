@@ -213,11 +213,11 @@ CREATE TABLE
 3,5,7,9.9,11.11,13.13,'c','cccccccccc','c','cccccccccc',true,b'\xcc',b'\xcc');
 INSERT 3
 > select a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a14, t1, t2,t3, t4, t5, t6, t7, t8, t9, t10, t11 from test.tb order by a1;
-  a1 | a2 | a3 | a4  |  a5   |  a6   | a7 |     a8     | a9 |    a10     |  a11  |            a14            | t1 | t2 | t3 | t4  |  t5   |  t6   | t7 |     t8     | t9 |    t10     |  t11
------+----+----+-----+-------+-------+----+------------+----+------------+-------+---------------------------+----+----+----+-----+-------+-------+----+------------+----+------------+--------
-   1 |  2 |  3 | 4.4 |   5.5 |   6.6 | a  | aaaaaaaaaa | a  | aaaaaaaaaa | true  | 2011-11-11 11:11:11+00:00 |  1 |  2 |  3 | 4.4 |   5.5 |   6.6 | a  | aaaaaaaaaa | a  | aaaaaaaaaa | true
-   2 |  4 |  6 | 8.8 |  10.1 | 12.12 | b  | bbbbbbbbbb | b  | bbbbbbbbbb | false | 2022-02-02 22:22:22+00:00 |  2 |  4 |  6 | 8.8 |  10.1 | 12.12 | b  | bbbbbbbbbb | b  | bbbbbbbbbb | false
-   3 |  5 |  7 | 9.9 | 11.11 | 13.13 | c  | cccccccccc | c  | cccccccccc | true  | 2033-03-03 23:23:32+00:00 |  3 |  5 |  7 | 9.9 | 11.11 | 13.13 | c  | cccccccccc | c  | cccccccccc | true
+  a1 | a2 | a3 | a4  |  a5   |  a6   | a7 |     a8     | a9 |    a10     |  a11  |         a14         | t1 | t2 | t3 | t4  |  t5   |  t6   | t7 |     t8     | t9 |    t10     |  t11
+-----+----+----+-----+-------+-------+----+------------+----+------------+-------+---------------------+----+----+----+-----+-------+-------+----+------------+----+------------+--------
+   1 |  2 |  3 | 4.4 |   5.5 |   6.6 | a  | aaaaaaaaaa | a  | aaaaaaaaaa | true  | 2011-11-11 11:11:11 |  1 |  2 |  3 | 4.4 |   5.5 |   6.6 | a  | aaaaaaaaaa | a  | aaaaaaaaaa | true
+   2 |  4 |  6 | 8.8 |  10.1 | 12.12 | b  | bbbbbbbbbb | b  | bbbbbbbbbb | false | 2022-02-02 22:22:22 |  2 |  4 |  6 | 8.8 |  10.1 | 12.12 | b  | bbbbbbbbbb | b  | bbbbbbbbbb | false
+   3 |  5 |  7 | 9.9 | 11.11 | 13.13 | c  | cccccccccc | c  | cccccccccc | true  | 2033-03-03 23:23:32 |  3 |  5 |  7 | 9.9 | 11.11 | 13.13 | c  | cccccccccc | c  | cccccccccc | true
 (3 rows)
 > drop database if exists test cascade;
 DROP DATABASE

@@ -123,7 +123,7 @@ class KWDBDynamicThreadPool {
   // KWDBDynamicThreadPool Default maximum number of threads.
   static const k_uint16 default_max_thread_number_ = 128;
   // KWDBDynamicThreadPool Default minimum number of threads.
-  static const k_uint16 default_min_thread_number_ = 8;
+  static const k_uint16 default_min_thread_number_ = 6;
   // The default wait time for the JoinThread() function.
   static const k_uint16 default_check_time_ms_ = 1000;  // default 1s.
   static const k_uint64 main_thread_id_ = 99;

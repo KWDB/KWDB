@@ -1,0 +1,15 @@
+CREATE TS DATABASE ts_bench2;
+CREATE TABLE ts_bench2.all_types_ts (ts TIMESTAMPTZ NOT NULL,c_int2 INT2,c_int4 INT4,c_int8 INT8,c_float4 FLOAT4,c_float8 FLOAT8,c_bool BOOL,c_varbytes VARBYTES(256),c_char CHAR(32),c_nchar NCHAR(64),c_varchar VARCHAR(256),c_nvarchar NVARCHAR(128),c_timestamp TIMESTAMP,c_geometry GEOMETRY) TAGS (t_varchar VARCHAR(64) NOT NULL,t_int2 INT2,t_int4 INT4,t_int8 INT8,t_float4 FLOAT4,t_float8 FLOAT8,t_bool BOOL,t_varbytes VARBYTES(128),t_char CHAR(16),t_nchar NCHAR(32)) PRIMARY TAGS (t_varchar);
+INSERT INTO ts_bench2.all_types_ts VALUES ('2026-06-10 08:00:00.000',1,100,10000,3.14,3.141592653589793,true,'\xDEADBEEF','char_data_01','nchar_数据_01','varchar_测试_01','nvarchar_テスト_01','2026-06-10 08:00:00.000','POINT(116.391 39.906)','primary_tag_01',10,1000,100000,1.1,10.123456789,true,'\xAABB0011','t_char_01','t_nchar_01');
+INSERT INTO ts_bench2.all_types_ts VALUES ('2026-06-10 08:05:00.000',2,200,20000,-1.5,-2.718281828,false,'\xCAFEBABE','char_02','nchar_02','varchar_row2','nvarchar_row2','2026-06-10 08:05:00.000','LINESTRING(0 0, 1 1, 2 2)','primary_tag_02',20,2000,200000,2.2,20.987654321,false,'\xBBCC2233','t_char_02','t_nchar_02');
+INSERT INTO ts_bench2.all_types_ts VALUES ('2026-06-10 08:10:00.000',-32768,-2147483648,-9223372036854775808,0.0,0.0,true,'\x00FF','A','联','hello world','こんにちは','2026-06-10 08:10:00.000','POINT(121.473 31.230)','primary_tag_03',32767,2147483647,9223372036854775807,3.4028235e+38,1.7976931348623157e+308,true,'\x','x','y');
+INSERT INTO ts_bench2.all_types_ts VALUES ('2026-06-10 08:15:00.000',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'primary_tag_04',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL);
+INSERT INTO ts_bench2.all_types_ts VALUES ('2026-06-10 08:20:00.000',0,0,0,1.0,1.0,NULL,'\xFFFFFFFF','boundary_test','边界测试','','','2026-06-10 08:20:00.000','POINT(0 0)','primary_tag_05',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL);
+set pg_extend_compress=off;
+select ts,c_timestamp from ts_bench2.all_types_ts order by ts;
+set pg_extend_compress=lz4_compress;
+select ts,c_timestamp from ts_bench2.all_types_ts  order by ts;
+set pg_extend_compress=snappy_compress;
+select ts,c_timestamp from ts_bench2.all_types_ts  order by ts;
+set pg_extend_compress=off;
+DROP DATABASE IF exists ts_bench2 cascade;

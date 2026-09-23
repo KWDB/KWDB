@@ -653,3 +653,34 @@ ALTER TABLE test.t1 DROP COLUMN e1;
 select first(e2), last(e2), first_row(e2), last_row(e2) from test.t1;
 
 drop database test cascade;
+
+
+-- BUG https://e.gitee.com/kaiwuDB/projects/507629/repos/kwdb/kwdb/issues/table?issue=IJYZR3
+create ts database bugddl;
+create table bugddl.t1 (k_timestamp timestamptz not null,e1 int not null, e2 float8) tags (code1 int2 not null) primary tags (code1);
+
+-- 插入4096条数据， 保证数据落盘在EntitySegment
+INSERT INTO bugddl.t1 (
+    k_timestamp,
+    e1,
+    e2,
+    code1
+)
+SELECT
+    '2026-03-01 12:00:00+08'::TIMESTAMPTZ + (generate_series * INTERVAL '1 second'), 
+    generate_series AS e1,
+    CASE WHEN generate_series % 2 = 0 THEN NULL ELSE generate_series::FLOAT END AS e2,
+    1::INT2 AS code1
+FROM generate_series(1, 4096);
+
+vacuum ts databases;
+
+-- select sum(e1), sum(e2) from bugddl.t1;
+
+select count(tmpe2) from (select e2 as tmpe2 from bugddl.t1 LIMIT 4095);
+
+alter table bugddl.t1 drop column e1;
+
+select count(tmpe2) from (select e2 as tmpe2 from bugddl.t1 LIMIT 4095);
+
+drop database bugddl cascade;

@@ -12,7 +12,6 @@ bin/roachtest run \
   --build-tag="${BUILD_TAG}" \
   --kwbase="${KWBASE_BINARY}" \
   --roachprod="${PWD}/bin/roachprod" \
-  --workload="${PWD}/bin/workload" \
   --teamcity=true \
   --slack-token="${SLACK_TOKEN}" \
   --cluster-id="${TC_BUILD_ID}" \

@@ -1203,6 +1203,9 @@ func (node *CreateTable) doc(p *PrettyCfg) pretty.Doc {
 	if node.Temporary {
 		title = pretty.ConcatSpace(title, pretty.Keyword("TEMPORARY"))
 	}
+	if node.TableType == SparseTable {
+		title = pretty.ConcatSpace(title, pretty.Keyword("SPARSE"))
+	}
 	title = pretty.ConcatSpace(title, pretty.Keyword("TABLE"))
 	if node.IfNotExists {
 		title = pretty.ConcatSpace(title, pretty.Keyword("IF NOT EXISTS"))

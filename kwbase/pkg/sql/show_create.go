@@ -94,6 +94,9 @@ func ShowCreateTable(
 	if desc.Temporary {
 		f.WriteString("TEMP ")
 	}
+	if desc.IsSparseTable() {
+		f.WriteString("SPARSE ")
+	}
 	f.WriteString("TABLE ")
 	f.FormatNode(tn)
 	f.WriteString(" (")
@@ -218,7 +221,7 @@ func ShowCreateTable(
 			}
 		}
 		f.WriteString(" )")
-		if desc.TableType == tree.TimeseriesTable {
+		if desc.IsTimeseriesTable() || desc.IsSparseTable() {
 			f.WriteString(" ")
 			f.WriteString("PRIMARY TAGS")
 			f.WriteString("(")

@@ -54,6 +54,7 @@ void CreateTSStatisticReaderSpec(TSStatisticReaderSpec **spec, k_uint64 objid) {
     TSStatisticReaderSpec_ParamInfo *pa = parm->add_param();
     pa->set_value(0);
     pa->set_typ(0);
+    pa->set_func_value("");
   }
 }
 

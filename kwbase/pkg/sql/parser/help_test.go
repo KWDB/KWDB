@@ -91,6 +91,8 @@ func TestContextualHelp(t *testing.T) {
 		{`ALTER USER IF ??`, `ALTER ROLE`},
 		{`ALTER USER foo WITH PASSWORD ??`, `ALTER ROLE`},
 
+		{`ALTER PIPE ??`, `ALTER PIPE`},
+
 		{`ALTER ROLE bleh ?? WITH NOCREATEROLE`, `ALTER ROLE`},
 
 		{`ALTER RANGE foo CONFIGURE ??`, `ALTER RANGE`},
@@ -134,6 +136,7 @@ func TestContextualHelp(t *testing.T) {
 		{`CREATE USER blih ??`, `CREATE ROLE`},
 		{`CREATE USER blih WITH ??`, `CREATE ROLE`},
 
+		{`CREATE PIPE ??`, `CREATE PIPE`},
 		{`CREATE ROLE bleh ??`, `CREATE ROLE`},
 		{`CREATE ROLE bleh ?? WITH CREATEROLE`, `CREATE ROLE`},
 
@@ -199,6 +202,8 @@ func TestContextualHelp(t *testing.T) {
 		{`DROP USER ??`, `DROP ROLE`},
 		{`DROP USER IF ??`, `DROP ROLE`},
 		{`DROP USER IF EXISTS bluh ??`, `DROP ROLE`},
+
+		{`DROP PIPE ??`, `DROP PIPE`},
 
 		{`DROP ROLE ??`, `DROP ROLE`},
 		{`DROP ROLE IF ??`, `DROP ROLE`},
@@ -349,6 +354,8 @@ func TestContextualHelp(t *testing.T) {
 		{`SHOW FUNCTION ??`, `SHOW FUNCTION`},
 		{`SHOW FUNCTIONS ??`, `SHOW FUNCTIONS`},
 
+		{`SHOW PIPES ??`, `SHOW PIPES`},
+
 		{`SHOW KEYS ??`, `SHOW INDEXES`},
 		{`SHOW INDEX ??`, `SHOW INDEXES`},
 		{`SHOW INDEXES FROM ??`, `SHOW INDEXES`},
@@ -470,6 +477,12 @@ func TestContextualHelp(t *testing.T) {
 		{`CREATE TRIGGER blah ??`, `CREATE TRIGGER`},
 		{`DROP TRIGGER blah ??`, `DROP TRIGGER`},
 		{`SHOW TRIGGERS ??`, `SHOW TRIGGERS`},
+
+		{`CREATE PUBLICATION ??`, `CREATE PUBLICATION`},
+		{`ALTER PUBLICATION ??`, `ALTER PUBLICATION`},
+		{`DROP PUBLICATION ??`, `DROP PUBLICATION`},
+		{`SHOW PUBLICATIONS ??`, `SHOW PUBLICATIONS`},
+
 		{`VACUUM TS DATABASES ??`, `VACUUM`},
 	}
 

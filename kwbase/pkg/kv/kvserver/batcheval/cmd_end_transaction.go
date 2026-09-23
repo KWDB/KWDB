@@ -810,15 +810,19 @@ func getTsRangeSize(rec EvalContext, desc roachpb.RangeDescriptor) (uint64, erro
 		)
 		return rangeSize, err
 	}
-	_, EndHashPoint, err := sqlbase.DecodeTsRangeKey(endKey, false, hashNum)
+	endTableID, endHashPoint, err := sqlbase.DecodeTsRangeKey(endKey, false, hashNum)
 	if err != nil {
 		return 0, err
+	}
+	// endKey is bigger than startKey, so endTableID >= startTableID
+	if endTableID > startTableID {
+		endHashPoint = hashNum
 	}
 
 	rangeSize, err := rec.TsEngine().GetDataVolume(
 		startTableID,
 		startHashPoint,
-		EndHashPoint,
+		endHashPoint,
 		math.MinInt64,
 		math.MaxInt64,
 	)

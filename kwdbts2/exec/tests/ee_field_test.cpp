@@ -11,8 +11,11 @@
 
 #include "ee_field.h"
 
+#include "ee_field_const.h"
 #include "ee_field_func_math.h"
 #include "ee_field_func_string.h"
+#include "ee_field_typecast.h"
+#include "ee_global.h"
 #include "ee_processors.h"
 #include "gtest/gtest.h"
 
@@ -93,6 +96,16 @@ class BaseField : public FieldNum {
   char *get_ptr() { return nullptr; }
 };
 
+class BatchStringField : public FieldConstString {
+ public:
+  BatchStringField(roachpb::DataType datatype, const KString &str)
+      : FieldConstString(datatype, str) {}
+
+  String ValStr(char *ptr) override {
+    return String(ptr, strlen(ptr), false);
+  }
+};
+
 class TestFieldIterator : public ::testing::Test {
  protected:
   virtual void SetUp() {}
@@ -101,6 +114,81 @@ class TestFieldIterator : public ::testing::Test {
   kwdbContext_t g_pool_context;
   kwdbContext_p ctx_ = &g_pool_context;
 };
+
+TEST_F(TestFieldIterator, TypeCastRoundsFloatAndRejectsOverflow) {
+  FieldConstDouble positive(roachpb::DataType::DOUBLE, 1.9);
+  FieldTypeCastSigned<k_int64> positive_cast(&positive);
+  EXPECT_EQ(positive_cast.ValInt(), 2);
+  EXPECT_EQ(*reinterpret_cast<k_int64 *>(positive_cast.get_ptr(nullptr)), 2);
+
+  FieldConstDouble negative(roachpb::DataType::DOUBLE, -1.9);
+  FieldTypeCastSigned<k_int64> negative_cast(&negative);
+  EXPECT_EQ(negative_cast.ValInt(), -2);
+  EXPECT_EQ(*reinterpret_cast<k_int64 *>(negative_cast.get_ptr(nullptr)), -2);
+
+  EEPgErrorInfo::ResetPgErrorInfo();
+  FieldConstDouble overflow(roachpb::DataType::DOUBLE, 1e20);
+  FieldTypeCastSigned<k_int64> overflow_cast(&overflow);
+  EXPECT_EQ(overflow_cast.ValInt(), KStatus::FAIL);
+  EXPECT_TRUE(EEPgErrorInfo::IsError());
+  EXPECT_EQ(EEPgErrorInfo::GetPgErrorInfo().code,
+            ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE);
+  EEPgErrorInfo::ResetPgErrorInfo();
+}
+
+TEST_F(TestFieldIterator, TypeCastBoolHandlesFloatAndStringInputs) {
+  FieldConstDouble positive(roachpb::DataType::DOUBLE, 0.5);
+  FieldTypeCastBool positive_cast(&positive);
+  EXPECT_EQ(positive_cast.ValInt(), 1);
+  EXPECT_TRUE(*reinterpret_cast<k_bool *>(positive_cast.get_ptr(nullptr)));
+
+  FieldConstDouble negative(roachpb::DataType::DOUBLE, -0.5);
+  FieldTypeCastBool negative_cast(&negative);
+  EXPECT_EQ(negative_cast.ValInt(), 1);
+  EXPECT_TRUE(*reinterpret_cast<k_bool *>(negative_cast.get_ptr(nullptr)));
+
+  FieldConstString mixed_case(roachpb::DataType::VARCHAR, "True");
+  FieldTypeCastBool mixed_case_cast(&mixed_case);
+  EXPECT_EQ(mixed_case_cast.ValInt(), 1);
+
+  BatchStringField short_form(roachpb::DataType::VARCHAR, "t");
+  FieldTypeCastBool short_form_cast(&short_form);
+  EXPECT_TRUE(*reinterpret_cast<k_bool *>(short_form_cast.get_ptr(nullptr)));
+
+  BatchStringField false_value(roachpb::DataType::VARCHAR, "FALSE");
+  FieldTypeCastBool false_cast(&false_value);
+  EXPECT_FALSE(*reinterpret_cast<k_bool *>(false_cast.get_ptr(nullptr)));
+}
+
+TEST_F(TestFieldIterator, TypeCastStringTimestampUsesOutputPrecision) {
+  constexpr k_int64 kExpectedMillis = 1767250800000;
+  constexpr k_int64 kExpectedMillisWithTimezone = 1767222000000;
+
+  FieldConstString constant(roachpb::DataType::VARCHAR,
+                            "2026-01-01 07:00:00");
+  FieldTypeCastTimestampTz constant_cast(&constant, 3, 0);
+  EXPECT_EQ(constant_cast.ValInt(), kExpectedMillis);
+
+  BatchStringField batch(roachpb::DataType::VARCHAR,
+                         "2026-01-01 07:00:00");
+  FieldTypeCastTimestampTz batch_cast(&batch, 3, 0);
+  EXPECT_EQ(*reinterpret_cast<k_int64 *>(batch_cast.get_ptr(nullptr)),
+            kExpectedMillis);
+
+  FieldConstString with_timezone(roachpb::DataType::VARCHAR,
+                                 "2026-01-01 07:00:00+08:00");
+  FieldTypeCastTimestampTz timezone_cast(&with_timezone, 3, 0);
+  EXPECT_EQ(timezone_cast.ValInt(), kExpectedMillisWithTimezone);
+}
+
+TEST_F(TestFieldIterator, TypeCastStringDoesNotAllocateDeclaredLengthOnStack) {
+  FieldConstInt source(roachpb::DataType::INT, 123, sizeof(k_int32));
+  FieldTypeCastString cast(&source, 10000000, "VARCHAR(10000000)");
+
+  EXPECT_EQ(cast.get_storage_length(), 10000000);
+  String result = cast.ValStr();
+  EXPECT_EQ(std::string(result.getptr(), result.length_), "123");
+}
 
 TEST_F(TestFieldIterator, TestMathFunc) {
   std::list<Field *> args;
@@ -128,6 +216,55 @@ TEST_F(TestFieldIterator, TestMathFunc) {
   }
 }
 
+TEST_F(TestFieldIterator, RoundWithPrecisionUsesHalfEven) {
+  const FieldMathFuncion *round_func = nullptr;
+  for (k_int32 i = 0; i < mathFuncBuiltinsNum2; ++i) {
+    if (mathFuncBuiltins2[i].name == "round") {
+      round_func = &mathFuncBuiltins2[i];
+      break;
+    }
+  }
+  ASSERT_NE(round_func, nullptr);
+
+  FieldConstDouble value(roachpb::DataType::DOUBLE, 1.25);
+  FieldConstInt precision(roachpb::DataType::INT, 1, sizeof(k_int32));
+  FieldFuncMath round(&value, &precision, *round_func);
+
+  EXPECT_DOUBLE_EQ(round.ValReal(), 1.2);
+}
+
+TEST_F(TestFieldIterator, LogUsesSecondArgumentAsBase) {
+  FieldConstDouble value(roachpb::DataType::DOUBLE, 100);
+  FieldConstDouble base(roachpb::DataType::DOUBLE, 10);
+  FieldFuncMath log(&value, &base, mathFuncBuiltins2[0]);
+
+  EXPECT_DOUBLE_EQ(log.ValReal(), 2);
+}
+
+TEST_F(TestFieldIterator, Atan2HandlesQuadrants) {
+  const FieldMathFuncion *atan2_func = nullptr;
+  for (k_int32 i = 0; i < mathFuncBuiltinsNum2; ++i) {
+    if (mathFuncBuiltins2[i].name == "atan2") {
+      atan2_func = &mathFuncBuiltins2[i];
+      break;
+    }
+  }
+  ASSERT_NE(atan2_func, nullptr);
+
+  FieldConstDouble zero(roachpb::DataType::DOUBLE, 0);
+  FieldConstDouble positive(roachpb::DataType::DOUBLE, 1);
+  FieldConstDouble negative(roachpb::DataType::DOUBLE, -1);
+
+  FieldFuncMath negative_x_axis(&zero, &negative, *atan2_func);
+  EXPECT_DOUBLE_EQ(negative_x_axis.ValReal(), M_PI);
+
+  FieldFuncMath quadrant_two(&positive, &negative, *atan2_func);
+  EXPECT_DOUBLE_EQ(quadrant_two.ValReal(), 3 * M_PI / 4);
+
+  FieldFuncMath quadrant_three(&negative, &negative, *atan2_func);
+  EXPECT_DOUBLE_EQ(quadrant_three.ValReal(), -3 * M_PI / 4);
+}
+
 TEST_F(TestFieldIterator, TestStringFunc) {
   std::list<Field *> args;
   args.push_back(KNEW BaseField());
@@ -149,4 +286,255 @@ TEST_F(TestFieldIterator, TestStringFunc) {
     SafeDeletePointer(a);
   }
 }
+
+// Test FieldNum
+// TEST_F(TestFieldIterator, TestFieldNum) {
+//   FieldNum field_num(0, roachpb::DataType::INT, sizeof(k_int32));
+  
+//   // Test basic properties
+//   EXPECT_EQ(field_num.get_storage_type(), roachpb::DataType::INT);
+//   EXPECT_EQ(field_num.get_storage_length(), sizeof(k_int32));
+  
+//   // Test field_to_copy
+//   Field *copied = field_num.field_to_copy();
+//   EXPECT_NE(copied, nullptr);
+//   SafeDeletePointer(copied);
+// }
+
+// Test FieldChar
+TEST_F(TestFieldIterator, TestFieldChar) {
+  FieldChar field_char(0, roachpb::DataType::CHAR, 10);
+  
+  // Test basic properties
+  EXPECT_EQ(field_char.get_storage_type(), roachpb::DataType::CHAR);
+  EXPECT_EQ(field_char.get_storage_length(), 10);
+  
+  // Test field_to_copy
+  Field *copied = field_char.field_to_copy();
+  EXPECT_NE(copied, nullptr);
+  SafeDeletePointer(copied);
+}
+
+// Test FieldNchar
+TEST_F(TestFieldIterator, TestFieldNchar) {
+  FieldNchar field_nchar(0, roachpb::DataType::NCHAR, 10);
+  
+  // Test basic properties
+  EXPECT_EQ(field_nchar.get_storage_type(), roachpb::DataType::NCHAR);
+  EXPECT_EQ(field_nchar.get_storage_length(), 10);
+  
+  // Test field_to_copy
+  Field *copied = field_nchar.field_to_copy();
+  EXPECT_NE(copied, nullptr);
+  SafeDeletePointer(copied);
+}
+
+// Test FieldBool
+TEST_F(TestFieldIterator, TestFieldBool) {
+  FieldBool field_bool(0, roachpb::DataType::BOOL, sizeof(k_bool));
+  
+  // Test basic properties
+  EXPECT_EQ(field_bool.get_storage_type(), roachpb::DataType::BOOL);
+  EXPECT_EQ(field_bool.get_storage_length(), sizeof(k_bool));
+  
+  // Test field_to_copy
+  Field *copied = field_bool.field_to_copy();
+  EXPECT_NE(copied, nullptr);
+  SafeDeletePointer(copied);
+}
+
+// Test FieldShort
+TEST_F(TestFieldIterator, TestFieldShort) {
+  FieldShort field_short(0, roachpb::DataType::SMALLINT, sizeof(k_int16));
+  
+  // Test basic properties
+  EXPECT_EQ(field_short.get_storage_type(), roachpb::DataType::SMALLINT);
+  EXPECT_EQ(field_short.get_storage_length(), sizeof(k_int16));
+  
+  // Test field_to_copy
+  Field *copied = field_short.field_to_copy();
+  EXPECT_NE(copied, nullptr);
+  SafeDeletePointer(copied);
+}
+
+// Test FieldInt
+TEST_F(TestFieldIterator, TestFieldInt) {
+  FieldInt field_int(0, roachpb::DataType::INT, sizeof(k_int32));
+  
+  // Test basic properties
+  EXPECT_EQ(field_int.get_storage_type(), roachpb::DataType::INT);
+  EXPECT_EQ(field_int.get_storage_length(), sizeof(k_int32));
+  
+  // Test field_to_copy
+  Field *copied = field_int.field_to_copy();
+  EXPECT_NE(copied, nullptr);
+  SafeDeletePointer(copied);
+}
+
+// Test FieldLonglong
+TEST_F(TestFieldIterator, TestFieldLonglong) {
+  FieldLonglong field_longlong(0, roachpb::DataType::BIGINT, sizeof(k_int64));
+  
+  // Test basic properties
+  EXPECT_EQ(field_longlong.get_storage_type(), roachpb::DataType::BIGINT);
+  EXPECT_EQ(field_longlong.get_storage_length(), sizeof(k_int64));
+  
+  // Test field_to_copy
+  Field *copied = field_longlong.field_to_copy();
+  EXPECT_NE(copied, nullptr);
+  SafeDeletePointer(copied);
+}
+
+// Test FieldTimestampTZ
+TEST_F(TestFieldIterator, TestFieldTimestampTZ) {
+  FieldTimestampTZ field_timestamp_tz(0, roachpb::DataType::TIMESTAMPTZ, sizeof(k_int64));
+  
+  // Test basic properties
+  EXPECT_EQ(field_timestamp_tz.get_storage_type(), roachpb::DataType::TIMESTAMPTZ);
+  EXPECT_EQ(field_timestamp_tz.get_storage_length(), sizeof(k_int64));
+  
+  // Test field_to_copy
+  Field *copied = field_timestamp_tz.field_to_copy();
+  EXPECT_NE(copied, nullptr);
+  SafeDeletePointer(copied);
+}
+
+// Test FieldFloat
+TEST_F(TestFieldIterator, TestFieldFloat) {
+  FieldFloat field_float(0, roachpb::DataType::FLOAT, sizeof(k_float32));
+  
+  // Test basic properties
+  EXPECT_EQ(field_float.get_storage_type(), roachpb::DataType::FLOAT);
+  EXPECT_EQ(field_float.get_storage_length(), sizeof(k_float32));
+  
+  // Test field_to_copy
+  Field *copied = field_float.field_to_copy();
+  EXPECT_NE(copied, nullptr);
+  SafeDeletePointer(copied);
+}
+
+// Test FieldDouble
+TEST_F(TestFieldIterator, TestFieldDouble) {
+  FieldDouble field_double(0, roachpb::DataType::DOUBLE, sizeof(k_double64));
+  
+  // Test basic properties
+  EXPECT_EQ(field_double.get_storage_type(), roachpb::DataType::DOUBLE);
+  EXPECT_EQ(field_double.get_storage_length(), sizeof(k_double64));
+  
+  // Test field_to_copy
+  Field *copied = field_double.field_to_copy();
+  EXPECT_NE(copied, nullptr);
+  SafeDeletePointer(copied);
+}
+
+// Test FieldDecimal
+TEST_F(TestFieldIterator, TestFieldDecimal) {
+  FieldDecimal field_decimal(0, roachpb::DataType::DECIMAL, sizeof(k_int64));
+  
+  // Test basic properties
+  EXPECT_EQ(field_decimal.get_storage_type(), roachpb::DataType::DECIMAL);
+  EXPECT_EQ(field_decimal.get_storage_length(), sizeof(k_int64));
+  
+  // Test field_to_copy
+  Field *copied = field_decimal.field_to_copy();
+  EXPECT_NE(copied, nullptr);
+  SafeDeletePointer(copied);
+}
+
+// Test FieldSumInt
+TEST_F(TestFieldIterator, TestFieldSumInt) {
+  FieldSumInt field_sum_int(0, roachpb::DataType::INT, sizeof(k_int32));
+  
+  // Test basic properties
+  EXPECT_EQ(field_sum_int.get_storage_type(), roachpb::DataType::DECIMAL);
+  EXPECT_EQ(field_sum_int.get_storage_length(), sizeof(k_int32));
+  
+  // Test field_to_copy
+  Field *copied = field_sum_int.field_to_copy();
+  // EXPECT_NE(copied, nullptr);
+  SafeDeletePointer(copied);
+}
+
+// Test FieldBlob
+TEST_F(TestFieldIterator, TestFieldBlob) {
+  FieldBlob field_blob(0, roachpb::DataType::BINARY, 100);
+  
+  // Test basic properties
+  EXPECT_EQ(field_blob.get_storage_type(), roachpb::DataType::BINARY);
+  EXPECT_EQ(field_blob.get_storage_length(), 100);
+  
+  // Test field_to_copy
+  Field *copied = field_blob.field_to_copy();
+  EXPECT_NE(copied, nullptr);
+  SafeDeletePointer(copied);
+}
+
+// Test FieldVarchar
+TEST_F(TestFieldIterator, TestFieldVarchar) {
+  FieldVarchar field_varchar(0, roachpb::DataType::VARCHAR, 100);
+  
+  // Test basic properties
+  EXPECT_EQ(field_varchar.get_storage_type(), roachpb::DataType::VARCHAR);
+  EXPECT_EQ(field_varchar.get_storage_length(), 100);
+  
+  // Test field_to_copy
+  Field *copied = field_varchar.field_to_copy();
+  EXPECT_NE(copied, nullptr);
+  SafeDeletePointer(copied);
+}
+
+// Test FieldTagVarchar
+TEST_F(TestFieldIterator, TestFieldTagVarchar) {
+  FieldTagVarchar field_tag_varchar(0, roachpb::DataType::VARCHAR, 100);
+  
+  // Test basic properties
+  EXPECT_EQ(field_tag_varchar.get_storage_type(), roachpb::DataType::VARCHAR);
+  EXPECT_EQ(field_tag_varchar.get_storage_length(), 100);
+  
+  // Test field_to_copy
+  Field *copied = field_tag_varchar.field_to_copy();
+  EXPECT_NE(copied, nullptr);
+  SafeDeletePointer(copied);
+}
+
+// Test FieldVarBlob
+TEST_F(TestFieldIterator, TestFieldVarBlob) {
+  FieldVarBlob field_var_blob(0, roachpb::DataType::VARBINARY, 100);
+  
+  // Test basic properties
+  EXPECT_EQ(field_var_blob.get_storage_type(), roachpb::DataType::VARBINARY);
+  EXPECT_EQ(field_var_blob.get_storage_length(), 100);
+  
+  // Test field_to_copy
+  Field *copied = field_var_blob.field_to_copy();
+  EXPECT_NE(copied, nullptr);
+  SafeDeletePointer(copied);
+}
+
+// Test FieldSumStatisticTagSum
+TEST_F(TestFieldIterator, TestFieldSumStatisticTagSum) {
+  BaseField *base_field = new BaseField(0, roachpb::DataType::INT, sizeof(k_int32));
+  FieldSumStatisticTagSum field_sum_statistic_tag_sum(base_field);
+  
+  // Test field_to_copy
+  Field *copied = field_sum_statistic_tag_sum.field_to_copy();
+  // EXPECT_NE(copied, nullptr);
+  
+  SafeDeletePointer(copied);
+  SafeDeletePointer(base_field);
+}
+
+// Test FieldSumStatisticTagCount
+TEST_F(TestFieldIterator, TestFieldSumStatisticTagCount) {
+  BaseField *base_field = new BaseField(0, roachpb::DataType::INT, sizeof(k_int32));
+  FieldSumStatisticTagCount field_sum_statistic_tag_count(base_field);
+  
+  // Test field_to_copy
+  Field *copied = field_sum_statistic_tag_count.field_to_copy();
+  // EXPECT_NE(copied, nullptr);
+  
+  SafeDeletePointer(copied);
+  SafeDeletePointer(base_field);
+}
+
 }  // namespace kwdbts

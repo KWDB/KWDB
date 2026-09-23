@@ -44,13 +44,14 @@ public:
       initFlag();
   }
 
-  TagTuplePack(vector<TagInfo> schema, TTPFlag flag = TTPFLAG_ALL)
+  TagTuplePack(vector<TagInfo> schema, const std::vector<uint32_t>& valid_columns = {}, TTPFlag flag = TTPFLAG_ALL)
     : schema_(schema),
       data_(nullptr),
       dataLen_(0),
       dataMaxSize_(0),
       flag_(flag),
-      isMemOwner_(true) {
+      isMemOwner_(true),
+      valid_columns_(valid_columns) {
       calcDataMaxSizeAndLens();
   }
 
@@ -82,6 +83,9 @@ public:
   uint32_t getEntityId();
   void setSubgroupId(uint32_t id);
   uint32_t getSubgroupId();
+
+  void setValidColumns(const std::vector<uint32_t>& cols);
+  std::vector<uint32_t> getValidColumns() const;
 private:
   TagTuplePack(const TagTuplePack &) = delete;
   TagTuplePack& operator=(const TagTuplePack &) = delete;
@@ -113,6 +117,7 @@ private:
   size_t curTagOffset_ = 0;
   size_t curVarOffset_ = 0;
   size_t curTag_ = 0;
+  std::vector<uint32_t> valid_columns_;
 public:
   static constexpr size_t versionOffset_ = 0;
   static constexpr size_t txnOffset_ = 4;

@@ -25,6 +25,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/mon"
 	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
+	"github.com/lib/pq/oid"
 )
 
 // streamDiskBackedRowBuffer stores the data in disk.
@@ -63,6 +64,8 @@ type streamReaderRowBuffer struct {
 
 	// ordered output row buffer
 	outputRowsBuffer *streamDiskBackedRowBuffer
+	// output row buffer of low-latency mode
+	lowLatencyBuffer chan sqlbase.EncDatumRow
 }
 
 func newStreamReaderRowBuffer(
@@ -78,6 +81,19 @@ func newStreamReaderRowBuffer(
 	buffer.streamOpts = streamOpts
 	buffer.recalculator = recalculator
 	buffer.hasAgg = hasAgg
+
+	if buffer.streamOpts.SyncTime == 0 {
+		var bufSize uint64
+		rowSize := computerRowSize(spec.TargetColTypes)
+		if rowSize == 0 || buffer.streamOpts.BufferSize < rowSize {
+			bufSize = 1
+		} else {
+			bufSize = buffer.streamOpts.BufferSize / rowSize
+		}
+
+		buffer.lowLatencyBuffer = make(chan sqlbase.EncDatumRow, bufSize)
+		log.Infof(buffer.ctx, "stream buffer size:%d, row width:%d", bufSize, rowSize)
+	}
 
 	// Limit the memory use by creating a child monitor with a hard limit.
 	// The rows in receivedRowsBuffer and outputRowsBuffer will overflow to disk if this limit is not enough.
@@ -180,12 +196,24 @@ func (s *streamReaderRowBuffer) AddRow(ctx context.Context, row sqlbase.EncDatum
 
 // AddRowOutput directly adds the row to the output buffer, skipping the sorting process.
 func (s *streamReaderRowBuffer) AddRowOutput(ctx context.Context, row sqlbase.EncDatumRow) error {
+	s.rowBufferRWMutex.Lock()
+	defer s.rowBufferRWMutex.Unlock()
 	err := s.outputRowsBuffer.rows.AddRow(ctx, row)
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+// AddRowLowLatency directly adds the row to the output buffer, skipping the sorting process.
+func (s *streamReaderRowBuffer) AddRowLowLatency(row sqlbase.EncDatumRow) {
+	s.lowLatencyBuffer <- row
+}
+
+// GetBufferLowLatency directly gets the output buffer, skipping the sorting process.
+func (s *streamReaderRowBuffer) GetBufferLowLatency() chan sqlbase.EncDatumRow {
+	return s.lowLatencyBuffer
 }
 
 // EncFirstRow returns the first row as an EncDatumRow.
@@ -413,6 +441,9 @@ func (s *streamReaderRowBuffer) Unlock() {
 
 // Close closes the buffer.
 func (s *streamReaderRowBuffer) Close() {
+	s.rowBufferRWMutex.Lock()
+	s.rowBufferRWMutex.Unlock()
+
 	s.receivedRowsBuffer.rows.Close(s.ctx)
 	s.receivedRowsBuffer.memMonitor.Stop(s.ctx)
 	s.receivedRowsBuffer.diskMonitor.Stop(s.ctx)
@@ -423,4 +454,85 @@ func (s *streamReaderRowBuffer) Close() {
 	s.outputRowsBuffer.rows.Close(s.ctx)
 	s.outputRowsBuffer.memMonitor.Stop(s.ctx)
 	s.outputRowsBuffer.diskMonitor.Stop(s.ctx)
+}
+
+// computerRowSize returns row width from row types.
+func computerRowSize(rowType []types.T) uint64 {
+	var rowSize uint64
+	for colIdx := 0; colIdx < len(rowType); colIdx++ {
+		storeLen := uint64(0)
+		fixedStoreLen := uint64(0)
+		colType := rowType[colIdx].InternalType.Oid
+		colFam := rowType[colIdx].Family()
+
+		switch colFam {
+		case types.BoolFamily:
+			storeLen = 1
+			fixedStoreLen = 1
+		case types.IntFamily:
+			switch colType {
+			case oid.T_int2:
+				storeLen = 2
+				fixedStoreLen = 2
+			case oid.T_int4:
+				storeLen = 4
+				fixedStoreLen = 4
+			case oid.T_int8:
+				storeLen = 8
+				fixedStoreLen = 8
+			}
+		case types.FloatFamily:
+			switch colType {
+			case oid.T_float4:
+				storeLen = 4
+				fixedStoreLen = 4
+			case oid.T_float8:
+				storeLen = 8
+				fixedStoreLen = 8
+			}
+		case types.DecimalFamily:
+			storeLen = 4
+			fixedStoreLen = 4
+		case types.TimeFamily, types.TimestampFamily, types.TimestampTZFamily:
+			storeLen = 8
+			fixedStoreLen = 8
+		case types.StringFamily, types.BytesFamily:
+			colWidth := uint64(rowType[colIdx].InternalType.Width)
+			if colType == oid.Oid(91002) || colType == oid.Oid(91004) {
+				colWidth *= 4
+			}
+			if colWidth == 0 {
+				switch colType {
+				case oid.T_char, oid.T_bpchar:
+					storeLen = 1
+					fixedStoreLen = 3
+				case oid.T_bytea:
+					storeLen = 3
+					fixedStoreLen = 5
+				case oid.Oid(91002):
+					storeLen = 4
+					fixedStoreLen = 6
+				case oid.T_varchar, oid.T_varbytea, oid.Oid(91004), oid.T_text:
+					storeLen = 255
+					fixedStoreLen = 257
+				}
+			} else {
+				switch colType {
+				case oid.T_char, oid.T_bpchar, oid.Oid(91002), oid.T_varchar, oid.Oid(91004), oid.T_text:
+					storeLen = colWidth + 1
+					fixedStoreLen = storeLen + 2
+				case oid.T_bytea:
+					storeLen = colWidth + 2
+					fixedStoreLen = storeLen + 2
+				case oid.T_varbytea:
+					storeLen = colWidth
+					fixedStoreLen = storeLen + 2
+				}
+			}
+		}
+
+		rowSize += fixedStoreLen
+	}
+
+	return rowSize
 }

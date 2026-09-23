@@ -349,7 +349,10 @@ func (sp *csvWriter) Run(ctx context.Context) execinfra.RowStats {
 								sp.spec.ColumnTypes[i] == types.StringFamily ||
 								sp.spec.ColumnTypes[i] == types.TimestampFamily ||
 								sp.spec.ColumnTypes[i] == types.TimeFamily ||
-								sp.spec.ColumnTypes[i] == types.TimeTZFamily {
+								sp.spec.ColumnTypes[i] == types.TimeTZFamily ||
+								sp.spec.ColumnTypes[i] == types.DateFamily ||
+								sp.spec.ColumnTypes[i] == types.UuidFamily ||
+								sp.spec.ColumnTypes[i] == types.INetFamily {
 								csvRow[i] = fieldSQLResolve(f.String())
 							} else {
 								csvRow[i] = f.String()
@@ -428,18 +431,10 @@ func (sp *csvWriter) Run(ctx context.Context) execinfra.RowStats {
 					//    write file in ChunkRows.
 					if shouldLimit {
 						// limit write memory
-						if sp.spec.ChunkRows <= sql.ExportChunkSizeDefault { // flag = sp.spec.ChunkRows < sql.ExportChunkSizeDefault
-							if (rowsCount + sendNum) >= sp.spec.ChunkRows {
-								c.completedSend = true
-								sendNum = 0
-								break
-							}
-						} else {
-							if (rowsCount + sendNum) >= sql.ExportChunkSizeDefault {
-								c.completedSend = true
-								sendNum = 0
-								break
-							}
+						if sp.spec.ChunkRows > 0 && (rowsCount+sendNum) >= sp.spec.ChunkRows {
+							c.completedSend = true
+							sendNum = 0
+							break
 						}
 						if memoryUsed >= sp.spec.Options.LimitMemory {
 							sendNum += rowsCount

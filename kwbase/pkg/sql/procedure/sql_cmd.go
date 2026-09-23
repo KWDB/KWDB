@@ -14,6 +14,7 @@ package procedure
 import (
 	"errors"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/exec"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/props/physical"
@@ -188,6 +189,7 @@ func (ins *StmtIns) executeImplement(
 		params.NewTxn()
 	} else if params.EvalContext().IsTrigger && params.GetTxn().IsOpen() {
 		// we should exec Step to flush seq of txn if trigger exec.
+		_ = params.GetTxn().ConfigureStepping(params.GetCtx(), kv.SteppingEnabled)
 		if err := params.GetTxn().Step(params.GetCtx(), false); err != nil {
 			rCtx.SetProcedureTxn(tree.ProcedureTransactionDefault)
 			return err

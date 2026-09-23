@@ -120,6 +120,12 @@ EEIteratorErrCode TimeWindowHelper::Materialize(kwdbContext_p ctx,
   thd->SetRowBatch(rowbatch);
   rowbatch->ResetLine();
   for (k_int32 i = 0; i < rowbatch->Count(); i++) {
+    if (op_->table()->has_osn_col_) {
+      if (rowbatch->IsNull(0, roachpb::KWDBKTSColumn::ColumnType::KWDBKTSColumn_ColumnType_TYPE_DATA)) {
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE, "first arg can not be null.");
+        return EEIteratorErrCode::EE_ERROR;
+      }
+    }
     KTimestampTz ts = *static_cast<
         KTimestampTz *>(static_cast<void *>(rowbatch->GetData(
         0, sizeof(KTimestampTz),

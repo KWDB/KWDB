@@ -10,10 +10,55 @@
 // See the Mulan PSL v2 for more details.
 
 #include "ee_crc32.h"
+
+#include <chrono>
+#include <iomanip>
+#include <iostream>
+#include <vector>
+
 #include "ee_string.h"
 #include "gtest/gtest.h"
 
 namespace kwdbts {
+namespace {
+
+void PrintCRC32Benchmark(const char* name, size_t size, size_t iterations,
+                         k_int64 (*fn)(const char*, int)) {
+  std::vector<char> payload(size);
+  for (size_t i = 0; i < payload.size(); ++i) {
+    payload[i] = static_cast<char>((i * 131 + 17) & 0xFF);
+  }
+
+  volatile k_int64 sink = 0;
+  auto start = std::chrono::steady_clock::now();
+  for (size_t i = 0; i < iterations; ++i) {
+    sink ^= fn(payload.data(), static_cast<int>(payload.size()));
+  }
+  auto end = std::chrono::steady_clock::now();
+  const auto elapsed_ns =
+      std::chrono::duration_cast<std::chrono::nanoseconds>(end - start)
+          .count();
+  const double avg_ns =
+      static_cast<double>(elapsed_ns) / static_cast<double>(iterations);
+  const double ns_per_byte = avg_ns / static_cast<double>(size);
+
+  std::cout << std::left << std::setw(12) << name << " size=" << std::setw(8)
+            << size << " iter=" << std::setw(8) << iterations
+            << " avg_ns=" << std::setw(12) << std::fixed
+            << std::setprecision(2) << avg_ns << " ns_per_byte="
+            << ns_per_byte << " sink=" << sink << std::endl;
+}
+
+k_int64 BenchCRC32Castagnoli(const char* buf, int size) {
+  return kwdb_crc32_castagnoli(buf, static_cast<size_t>(size));
+}
+
+k_int64 BenchCRC32IEEE(const char* buf, int size) {
+  return kwdb_crc32_ieee(buf, size);
+}
+
+}  // namespace
+
 class TestCRC32 : public testing::Test {
  protected:
   static void SetUpTestCase() {}
@@ -28,6 +73,81 @@ TEST_F(TestCRC32, TestCRC32MathFunc) {
   EXPECT_EQ(icode32, 26154185);
   icode32 = kwdbts::kwdb_crc32_ieee(crc32msg, len);
   EXPECT_EQ(icode32, 3473062748);
+}
+
+TEST_F(TestCRC32, TestCRC32EmptyString) {
+  const char* empty_str = "";
+  size_t len = 0;
+  kwdbts::k_int64 icode32 = kwdbts::kwdb_crc32_castagnoli(empty_str, len);
+  EXPECT_EQ(icode32, 0);
+  icode32 = kwdbts::kwdb_crc32_ieee(empty_str, len);
+  EXPECT_EQ(icode32, 0);
+}
+
+TEST_F(TestCRC32, TestCRC32SingleCharacter) {
+  const char* single_char = "a";
+  size_t len = 1;
+  kwdbts::k_int64 icode32 = kwdbts::kwdb_crc32_castagnoli(single_char, len);
+  EXPECT_EQ(icode32, 3251651376);
+  icode32 = kwdbts::kwdb_crc32_ieee(single_char, len);
+  EXPECT_EQ(icode32, 3904355907);
+}
+
+TEST_F(TestCRC32, TestCRC32LongString) {
+  const char* long_str = "This is a long string for CRC32 testing purposes";
+  size_t len = 45;
+  kwdbts::k_int64 icode32 = kwdbts::kwdb_crc32_castagnoli(long_str, len);
+  EXPECT_EQ(icode32, 1450911384);
+  icode32 = kwdbts::kwdb_crc32_ieee(long_str, len);
+  EXPECT_EQ(icode32, 3417220151);
+}
+
+TEST_F(TestCRC32, TestCRC32SpecialCharacters) {
+  const char* special_chars = "!@#$%^&*()_+";
+  size_t len = 12;
+  kwdbts::k_int64 icode32 = kwdbts::kwdb_crc32_castagnoli(special_chars, len);
+  EXPECT_EQ(icode32, 275335585);
+  icode32 = kwdbts::kwdb_crc32_ieee(special_chars, len);
+  EXPECT_EQ(icode32, 235097688);
+}
+
+TEST_F(TestCRC32, TestCRC32NumbersOnly) {
+  const char* numbers = "1234567890";
+  size_t len = 10;
+  kwdbts::k_int64 icode32 = kwdbts::kwdb_crc32_castagnoli(numbers, len);
+  EXPECT_EQ(icode32, 4091270398);
+  icode32 = kwdbts::kwdb_crc32_ieee(numbers, len);
+  EXPECT_EQ(icode32, 639479525);
+}
+
+TEST_F(TestCRC32, TestCRC32MixedCase) {
+  const char* mixed_case = "AbCdEfGhIjKlMnOpQrStUvWxYz";
+  size_t len = 26;
+  kwdbts::k_int64 icode32 = kwdbts::kwdb_crc32_castagnoli(mixed_case, len);
+  EXPECT_EQ(icode32, 208926813);
+  icode32 = kwdbts::kwdb_crc32_ieee(mixed_case, len);
+  EXPECT_EQ(icode32, 3025818623);
+}
+
+TEST_F(TestCRC32, TestCRC32UnicodeChars) {
+  const char* unicode_str = "Hello 世界";
+  size_t len = 9; // Note: only byte length is counted, not the number of Unicode characters
+  kwdbts::k_int64 icode32 = kwdbts::kwdb_crc32_castagnoli(unicode_str, len);
+  EXPECT_EQ(icode32, 1876064797);
+  icode32 = kwdbts::kwdb_crc32_ieee(unicode_str, len);
+  EXPECT_EQ(icode32, 144955329);
+}
+
+TEST_F(TestCRC32, DISABLED_BenchmarkCRC32Implementations) {
+  PrintCRC32Benchmark("crc32c", 8, 2000000, BenchCRC32Castagnoli);
+  PrintCRC32Benchmark("crc32c", 64, 1000000, BenchCRC32Castagnoli);
+  PrintCRC32Benchmark("crc32c", 1024, 200000, BenchCRC32Castagnoli);
+  PrintCRC32Benchmark("crc32c", 1048576, 2000, BenchCRC32Castagnoli);
+
+  PrintCRC32Benchmark("crc32", 8, 2000000, BenchCRC32IEEE);
+  PrintCRC32Benchmark("crc32", 64, 1000000, BenchCRC32IEEE);
+  PrintCRC32Benchmark("crc32", 1024, 200000, BenchCRC32IEEE);
+  PrintCRC32Benchmark("crc32", 1048576, 2000, BenchCRC32IEEE);
 }
 
 }  // namespace kwdbts

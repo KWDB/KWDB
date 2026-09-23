@@ -653,6 +653,7 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
 
     if (agg_func != nullptr) {
       if (agg.distinct()) {
+        SafeDeletePointer(agg_func);
         // the distinct operator is not supported by Agg Scan OP, report an error here.
         // should use the original HASH Agg instead.
         Return(FAIL)

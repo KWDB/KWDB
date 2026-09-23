@@ -223,13 +223,30 @@ func intToInt64(to, from string) string {
 	return fmt.Sprintf(convStr, to, from)
 }
 
+// floatToInt generates cast code from float to integer types. int64 boundaries
+// cannot be represented exactly in float64, so we use <= / >= for that case (see
+// tree.PerformCast). For narrower integers, we truncate to int64 first, then
+// check the target width (matching tree.checkIsOverflow).
 func floatToInt(intSize int, floatSize int) func(string, string) string {
 	return func(to, from string) string {
-		convStr := `
-			if math.IsNaN(float64(%[2]s)) || %[2]s <= float%[4]d(math.MinInt%[3]d) || %[2]s >= float%[4]d(math.MaxInt%[3]d) {
+		if intSize == 64 {
+			convStr := `
+			if math.IsNaN(float64(%[2]s)) || %[2]s <= float%[4]d(math.MinInt64) || %[2]s >= float%[4]d(math.MaxInt64) {
 				execerror.NonVectorizedPanic(tree.ErrIntOutOfRange)
 			}
-			%[1]s = int%[3]d(%[2]s)
+			%[1]s = int64(%[2]s)
+		`
+			return fmt.Sprintf(convStr, to, from, intSize, floatSize)
+		}
+		convStr := `
+			if math.IsNaN(float64(%[2]s)) || %[2]s <= float%[4]d(math.MinInt64) || %[2]s >= float%[4]d(math.MaxInt64) {
+				execerror.NonVectorizedPanic(tree.ErrIntOutOfRange)
+			}
+			tmp := int64(%[2]s)
+			if tmp < math.MinInt%[3]d || tmp > math.MaxInt%[3]d {
+				execerror.NonVectorizedPanic(tree.ErrIntOutOfRange)
+			}
+			%[1]s = int%[3]d(tmp)
 		`
 		return fmt.Sprintf(convStr, to, from, intSize, floatSize)
 	}

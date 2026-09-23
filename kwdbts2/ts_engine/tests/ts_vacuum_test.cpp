@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <future>
+#include <memory>
 
 #include "cm_kwdb_context.h"
 #include "data_type.h"
@@ -44,6 +45,7 @@ class VacuumTest : public testing::Test {
     opts_.db_path = "./tsdb";
   }
 
+  std::unique_ptr<TsDBSchemaManager> db_schema_mgr = nullptr;
   std::unique_ptr<TsEngineSchemaManager> schema_mgr_;
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;
   const std::vector<AttributeInfo>* metric_schema_{nullptr};
@@ -57,7 +59,10 @@ class VacuumTest : public testing::Test {
     fs::remove_all("./schema");
 
     InitKWDBContext(ctx_);
-    schema_mgr_ = std::make_unique<TsEngineSchemaManager>(opts_.db_path + "/schema");
+    db_schema_mgr = std::make_unique<TsDBSchemaManager>(opts_.db_path);
+    schema_mgr_ = std::make_unique<TsEngineSchemaManager>(opts_.db_path + "/schema", db_schema_mgr.get());
+    schema_mgr_->Init(nullptr);
+    db_schema_mgr->Init(schema_mgr_.get());
 
     ConstructRoachpbTableWithTypes(&meta, table_id, dtypes);
     std::shared_ptr<TsTable> ts_table;
@@ -83,7 +88,7 @@ TEST_F(VacuumTest, ZDP49302) {
     TsRawPayload p{metric_schema_};
     p.ParsePayLoadStruct(payload);
     auto ptag = p.GetPrimaryTag();
-    vgroup_->PutData(ctx_, table_schema_mgr_, 0, &ptag, 1, &payload, false);
+    vgroup_->PutData(ctx_, table_schema_mgr_, 0, &ptag, 1, p, false);
     free(payload.data);
   }
 
@@ -137,7 +142,7 @@ TEST_F(VacuumTest, ZDP51351) {
         TsRawPayload p{metric_schema_};
         p.ParsePayLoadStruct(payload);
         auto ptag = p.GetPrimaryTag();
-        vgroup_->PutData(ctx_, table_schema_mgr_, 0, &ptag, device_id, &payload, false);
+        vgroup_->PutData(ctx_, table_schema_mgr_, 0, &ptag, device_id, p, false);
         free(payload.data);
         EXPECT_EQ(vgroup_->Flush(), KStatus::SUCCESS);
         // EXPECT_EQ(vgroup_->Compact(), KStatus::SUCCESS);
@@ -147,7 +152,7 @@ TEST_F(VacuumTest, ZDP51351) {
       TsRawPayload p{metric_schema_};
       p.ParsePayLoadStruct(payload);
       auto ptag = p.GetPrimaryTag();
-      vgroup_->PutData(ctx_, table_schema_mgr_, 0, &ptag, 1, &payload, false);
+      vgroup_->PutData(ctx_, table_schema_mgr_, 0, &ptag, 1, p, false);
       free(payload.data);
       EXPECT_EQ(vgroup_->Flush(), KStatus::SUCCESS);
     }

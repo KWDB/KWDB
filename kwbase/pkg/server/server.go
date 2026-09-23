@@ -257,6 +257,12 @@ var (
 			return nil
 		})
 
+	tsLastBlockCacheMaxEntries = settings.RegisterPublicIntSetting(
+		"ts.last_block_cache.max_entries",
+		"the maximum number of decompressed last-segment blocks cached per query iterator; "+
+			"only takes effect when ts.compress.last_segment.enabled is on",
+		20)
+
 	tsBlockFilterSamplingRatio = settings.RegisterPublicFloatSetting(
 		"ts.block_filter.sampling_ratio",
 		"sampling ratio for block filter, valid range is (0.0, 1.0]",
@@ -915,6 +921,13 @@ func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
 		internalExecutor,
 	)
 	s.restful = newRestfulServer(s)
+	if s.restful.getInfluxDBBatchEnabled() {
+		s.restful.startBatchSystem()
+		s.stopper.AddCloser(stop.CloserFn(func() {
+			s.restful.batchCancel()
+			<-s.restful.batchDone
+		}))
+	}
 	s.authentication = newAuthenticationServer(s)
 	for _, gw := range []grpcGatewayServer{s.admin, s.status, s.authentication, &s.tsServer} {
 		gw.RegisterService(s.grpc.Server)
@@ -922,7 +935,7 @@ func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
 
 	// initialize the CDC Coordinator to handle the connection from Pipe Job.
 	s.distSQLServer.CDCCoordinator = cdc.NewCoordinator(
-		s.st, s.grpc.Server, s.stopper, s.gossip, s.internalExecutor, s.status,
+		s.st, s.grpc.Server, s.stopper, s.gossip, internalExecutor, s.status, s.jobRegistry,
 	)
 
 	// TODO(andrei): We're creating an initServer even through the inspection of
@@ -2435,6 +2448,11 @@ func (s *Server) Start(ctx context.Context) error {
 		},
 		scheduledjobs.ProdJobSchedulerEnv,
 	)
+
+	s.execCfg.CDCCoordinator.SetTsEngine(s.tsEngine)
+	if err = s.execCfg.CDCCoordinator.SetCDCTableOSN(ctx); err != nil {
+		return err
+	}
 
 	return nil
 }

@@ -153,4 +153,134 @@ TEST_F(TestDiskDataContainer, TestDiskDataContainer) {
 
   ASSERT_EQ(tempTable2->Count(), 2);
 
+  // Test NextLine(), GetData() and other interfaces
+  { 
+    tempTable2->Sort();
+    
+    // Test NextLine()
+    k_int32 line = tempTable2->NextLine();
+    ASSERT_EQ(line, 0);
+    line = tempTable2->NextLine();
+    ASSERT_EQ(line, 1);
+    line = tempTable2->NextLine();
+    ASSERT_EQ(line, -1);
+  }
+  tempTable2.reset();
+  
+  // Test sorting and merging of multi-batch data
+  {
+    DataContainerPtr tempTable3 = 
+      std::make_unique<kwdbts::DiskDataContainer>(order_info, col_info, col_num);
+    tempTable3->Init();
+    
+    // Add multiple chunks
+    for (int i = 0; i < 5; i++) {
+      DataChunkPtr chunk_i = std::make_unique<kwdbts::DataChunk>(col_info, col_num, total_sample_rows);
+      ASSERT_EQ(chunk_i->Initialize(), true);
+      chunk_i->AddCount();
+      
+      k_int64 v1_i = v1 + i;
+      k_double64 v2_i = v2 + i;
+      string v3_i = v3 + "_" + std::to_string(i);
+      bool v4_i = (i % 2 == 0);
+      
+      chunk_i->InsertData(0, 0, reinterpret_cast<char*>(&v1_i), sizeof(k_int64));
+      chunk_i->InsertData(0, 1, reinterpret_cast<char*>(&v2_i), sizeof(k_double64));
+      chunk_i->InsertDecimal(0, 2, reinterpret_cast<char*>(&v2_i), true);
+      chunk_i->InsertData(0, 3, const_cast<char*>(v3_i.c_str()), v3_i.length());
+      chunk_i->InsertData(0, 4, reinterpret_cast<char*>(&v4_i), sizeof(bool));
+      
+      tempTable3->Append(chunk_i);
+    }
+    
+    ASSERT_EQ(tempTable3->Count(), 5);
+    
+    // Sort and test
+    tempTable3->Sort();
+    
+    DataChunkPtr result_chunk = nullptr;
+    EEIteratorErrCode code = tempTable3->NextChunk(result_chunk);
+    ASSERT_EQ(code, EEIteratorErrCode::EE_OK);
+    ASSERT_NE(result_chunk, nullptr);
+    ASSERT_EQ(result_chunk->Count(), 5);
+  }
+  
+  // Test the case where read_merge_infos_->chunk_infos_.size() is not equal to 1 in NextChunk
+  {
+    DataContainerPtr tempTable4 = 
+      std::make_unique<kwdbts::DiskDataContainer>(order_info, col_info, col_num);
+    tempTable4->Init();
+    
+    // Add 10 chunks to form multiple batches
+    for (int i = 0; i < 10; i++) {
+      DataChunkPtr chunk_i = std::make_unique<kwdbts::DataChunk>(col_info, col_num, total_sample_rows);
+      ASSERT_EQ(chunk_i->Initialize(), true);
+      chunk_i->AddCount();
+      
+      k_int64 v1_i = v1 + i;
+      k_double64 v2_i = v2 + i;
+      string v3_i = v3 + "_" + std::to_string(i);
+      bool v4_i = (i % 2 == 0);
+      
+      chunk_i->InsertData(0, 0, reinterpret_cast<char*>(&v1_i), sizeof(k_int64));
+      chunk_i->InsertData(0, 1, reinterpret_cast<char*>(&v2_i), sizeof(k_double64));
+      chunk_i->InsertDecimal(0, 2, reinterpret_cast<char*>(&v2_i), true);
+      chunk_i->InsertData(0, 3, const_cast<char*>(v3_i.c_str()), v3_i.length());
+      chunk_i->InsertData(0, 4, reinterpret_cast<char*>(&v4_i), sizeof(bool));
+      
+      tempTable4->Append(chunk_i);
+    }
+    
+    ASSERT_EQ(tempTable4->Count(), 10);
+    
+    // Sort - this triggers the force_merge condition in SortAndFlushLastChunk
+    tempTable4->Sort();
+    
+    // Call NextChunk, at this point read_merge_infos_->chunk_infos_.size()=10, not equal to 1
+    DataChunkPtr result_chunk = nullptr;
+    EEIteratorErrCode code = tempTable4->NextChunk(result_chunk);
+    ASSERT_EQ(code, EEIteratorErrCode::EE_OK);
+    ASSERT_NE(result_chunk, nullptr);
+  }
+  
+  // Specifically test the second condition at line 446: (chunk_index+1) % MAX_CHUNK_BATCH_NUM == 0
+  {
+    DataContainerPtr tempTable5 = 
+      std::make_unique<kwdbts::DiskDataContainer>(order_info, col_info, col_num);
+    tempTable5->Init();
+    
+    // Add 6 chunks so that when the 7th chunk is added, the batch full condition is triggered
+    // (6+1) % 7 = 0, which enters the branch at line 446
+    for (int i = 0; i < 6; i++) {
+      DataChunkPtr chunk_i = std::make_unique<kwdbts::DataChunk>(col_info, col_num, total_sample_rows);
+      ASSERT_EQ(chunk_i->Initialize(), true);
+      chunk_i->AddCount();
+      
+      k_int64 v1_i = v1 + i;
+      k_double64 v2_i = v2 + i;
+      string v3_i = v3 + "_" + std::to_string(i);
+      bool v4_i = (i % 2 == 0);
+      
+      chunk_i->InsertData(0, 0, reinterpret_cast<char*>(&v1_i), sizeof(k_int64));
+      chunk_i->InsertData(0, 1, reinterpret_cast<char*>(&v2_i), sizeof(k_double64));
+      chunk_i->InsertDecimal(0, 2, reinterpret_cast<char*>(&v2_i), true);
+      chunk_i->InsertData(0, 3, const_cast<char*>(v3_i.c_str()), v3_i.length());
+      chunk_i->InsertData(0, 4, reinterpret_cast<char*>(&v4_i), sizeof(bool));
+      
+      tempTable5->Append(chunk_i);
+    }
+    
+    ASSERT_EQ(tempTable5->Count(), 6);
+    
+    // Sort to complete all processing
+    tempTable5->Sort();
+    
+    // Verify data correctness
+    DataChunkPtr result_chunk = nullptr;
+    EEIteratorErrCode code = tempTable5->NextChunk(result_chunk);
+    ASSERT_EQ(code, EEIteratorErrCode::EE_OK);
+    ASSERT_NE(result_chunk, nullptr);
+    ASSERT_EQ(result_chunk->Count(), 6);
+  }
+
 }

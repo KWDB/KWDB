@@ -330,9 +330,9 @@ SET
   2023-01-01
 (1 row)
 > SELECT hire_date FROM employees ORDER BY hire_date LIMIT 1;
-          hire_date
------------------------------
-  2023-01-15 00:00:00+00:00
+  hire_date
+--------------
+  2023-01-15
 (1 row)
 > SELECT hire_date::STRING INTO @init_date FROM employees ORDER BY hire_date LIMIT 1;
 SET 1
@@ -1005,23 +1005,23 @@ SET
 > PREPARE p7 AS SELECT * FROM employees WHERE salary > @min_salary;
 PREPARE
 > EXECUTE p7;
-  employee_id |  name   | salary  | department  |         hire_date
---------------+---------+---------+-------------+----------------------------
-            2 | Bob     | 6000.00 | Sales       | 2023-02-20 00:00:00+00:00
-            3 | Charlie | 6000.00 | HR          | 2023-03-05 00:00:00+00:00
-            4 | David   | 5500.00 | Sales       | 2023-01-25 00:00:00+00:00
-            5 | Eve     | 7000.00 | Engineering | 2023-04-10 00:00:00+00:00
-            7 | Grace   | 8000.00 | Engineering | 2023-03-15 00:00:00+00:00
+  employee_id |  name   | salary  | department  | hire_date
+--------------+---------+---------+-------------+-------------
+            2 | Bob     | 6000.00 | Sales       | 2023-02-20
+            3 | Charlie | 6000.00 | HR          | 2023-03-05
+            4 | David   | 5500.00 | Sales       | 2023-01-25
+            5 | Eve     | 7000.00 | Engineering | 2023-04-10
+            7 | Grace   | 8000.00 | Engineering | 2023-03-15
 (5 rows)
 > SET @avg_salary := (SELECT AVG(salary) FROM employees);
 SET
 > PREPARE P8 AS SELECT * FROM employees WHERE salary > @avg_salary;
 PREPARE
 > EXECUTE p8;
-  employee_id | name  | salary  | department  |         hire_date
---------------+-------+---------+-------------+----------------------------
-            5 | Eve   | 7000.00 | Engineering | 2023-04-10 00:00:00+00:00
-            7 | Grace | 8000.00 | Engineering | 2023-03-15 00:00:00+00:00
+  employee_id | name  | salary  | department  | hire_date
+--------------+-------+---------+-------------+-------------
+            5 | Eve   | 7000.00 | Engineering | 2023-04-10
+            7 | Grace | 8000.00 | Engineering | 2023-03-15
 (2 rows)
 > SET @low_price := 5000;
 SET

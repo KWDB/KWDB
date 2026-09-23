@@ -1895,11 +1895,11 @@ func (s *scope) AddScopeProperty(name string) {
 	// first and last agg function can only be used in ts scenarios.
 	switch name {
 	case sqlbase.FirstAgg, sqlbase.FirstRowAgg, sqlbase.FirstTSAgg, sqlbase.FirstRowTSAgg:
-		s.ScopeTSProp = opt.AddTSProperty(s.ScopeTSProp, ScopeFirstAgg)
+		opt.AddTSProperty(&s.ScopeTSProp, ScopeFirstAgg)
 	case sqlbase.LastAgg, sqlbase.LastRowAgg, sqlbase.LastTSAgg, sqlbase.LastRowTSAgg:
-		s.ScopeTSProp = opt.AddTSProperty(s.ScopeTSProp, ScopeLastAgg)
+		opt.AddTSProperty(&s.ScopeTSProp, ScopeLastAgg)
 	}
-	s.ScopeTSProp = opt.AddTSProperty(s.ScopeTSProp, ScopeTSPropIsAggExpr)
+	opt.AddTSProperty(&s.ScopeTSProp, ScopeTSPropIsAggExpr)
 }
 
 // DelScopeProperty delete flag from time series property
@@ -1907,11 +1907,11 @@ func (s *scope) AddScopeProperty(name string) {
 func (s *scope) DelScopeProperty(name string) {
 	switch name {
 	case sqlbase.FirstAgg, sqlbase.FirstRowAgg, sqlbase.FirstTSAgg, sqlbase.FirstRowTSAgg:
-		s.ScopeTSProp = opt.DelTsProperty(s.ScopeTSProp, ScopeFirstAgg)
+		opt.DelTsProperty(&s.ScopeTSProp, ScopeFirstAgg)
 	case sqlbase.LastAgg, sqlbase.LastRowAgg, sqlbase.LastTSAgg, sqlbase.LastRowTSAgg:
-		s.ScopeTSProp = opt.DelTsProperty(s.ScopeTSProp, ScopeLastAgg)
+		opt.DelTsProperty(&s.ScopeTSProp, ScopeLastAgg)
 	}
-	s.ScopeTSProp = opt.DelTsProperty(s.ScopeTSProp, ScopeTSPropIsAggExpr)
+	opt.DelTsProperty(&s.ScopeTSProp, ScopeTSPropIsAggExpr)
 }
 
 // limitLastFirst limit first() and last() can only be used in TIMESERIES scenarios.
@@ -1927,7 +1927,7 @@ func (s *scope) DelScopeProperty(name string) {
 func (s *scope) limitLastFirst(id opt.ColumnID) {
 	if (s.ScopeTSProp&ScopeLastAgg > 0 || s.ScopeTSProp&ScopeFirstAgg > 0) &&
 		s.builder.factory.Metadata().ColumnMeta(id).IsNormalCol() {
-		s.ScopeTSProp = opt.AddTSProperty(s.ScopeTSProp, ScopeLastError)
+		opt.AddTSProperty(&s.ScopeTSProp, ScopeLastError)
 	}
 }
 
@@ -1981,10 +1981,10 @@ func (s *scope) checkCol(e opt.ScalarExpr, minOrMax bool) bool {
 			return false
 		}
 
-		// tag col can not apply agg extend.
+		// tag/osn col can not apply agg extend.
 		if minOrMax {
 			s.AggExHelper.minOrMaxColID = t.Col
-			return !colMeta.IsTag()
+			return !colMeta.IsTag() && colMeta.TSType != opt.TSHiddenCol
 		}
 
 		// first agg or last agg only use timestamp col.

@@ -22,11 +22,6 @@ if [ "$require_justification" = 1 ]; then
   tc_end_block "Ensure commit message contains a release justification"
 fi
 
-tc_start_block "Ensure dependencies are up-to-date"
-run build/builder.sh go install ./vendor/github.com/golang/dep/cmd/dep ./pkg/cmd/github-pull-request-make
-run build/builder.sh env GITHUB_API_TOKEN="$GITHUB_API_TOKEN" BUILD_VCS_NUMBER="$BUILD_VCS_NUMBER" TARGET=checkdeps github-pull-request-make
-tc_end_block "Ensure dependencies are up-to-date"
-
 tc_start_block "Ensure generated code is up-to-date"
 # Buffer noisy output and only print it on failure.
 run build/builder.sh make generate build &> artifacts/generate.log || (cat artifacts/generate.log && false)

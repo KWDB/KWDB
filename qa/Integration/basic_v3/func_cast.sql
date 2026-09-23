@@ -112,7 +112,8 @@ set time zone 8;
 select kt::char, ktz::char, kt::nchar, ktz::nchar,kt::char(10), ktz::char(10), kt::nchar(10), ktz::nchar(10), kt::varchar, ktz::varchar,kt::nvarchar, ktz::nvarchar from ts_db.t3 order by t1;
 select ktu::char, ktzu::char, ktu::nchar, ktzu::nchar,ktu::char(10), ktzu::char(10), ktu::nchar(10), ktzu::nchar(10), ktu::varchar, ktzu::varchar,ktu::nvarchar, ktzu::nvarchar from ts_db.t3 order by t1;
 select ktn::char, ktzn::char, ktn::nchar, ktzn::nchar,ktn::char(10), ktzn::char(10), ktn::nchar(10), ktzn::nchar(10), kt::varchar, ktzn::varchar,ktn::nvarchar, ktzn::nvarchar from ts_db.t3 order by t1;
-
+select ktn::string from ts_db.t3 order by t1;
+select ktz::string from ts_db.t3 order by t1;
 
 drop database ts_db cascade;
 
@@ -194,3 +195,6 @@ select int64'-9223372036854775808'::timestamp;
 --- test cast to timestamptz
 select int64'9223372036854775807'::timestamptz;
 select int64'-9223372036854775808'::timestamptz;
+
+select '2026-06-01 12:00:00'::timestamp;
+select '2026-06-01 12:00:00'::timestamp::string;

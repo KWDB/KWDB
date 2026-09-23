@@ -15,7 +15,7 @@ EXPLAIN ANALYZE (DISTSQL) INSERT INTO a VALUES (1)
 statement error duplicate
 EXPLAIN ANALYZE (DISTSQL) INSERT INTO a VALUES (1)
 
-statement error value type string doesn't match type int of column "a"
+statement error pq: could not parse "a" as type int: strconv.ParseInt: parsing "a": invalid syntax
 EXPLAIN ANALYZE (DISTSQL) INSERT INTO a VALUES ('a'::string)
 
 statement ok

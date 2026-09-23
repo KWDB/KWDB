@@ -14,22 +14,27 @@ package cdc
 
 import (
 	"context"
+	gojson "encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/cdc/cdcpb"
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
-	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagepb"
+	"gitee.com/kwbasedb/kwbase/pkg/jobs"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/server/serverpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlutil"
+	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/util/ctxgroup"
 	"gitee.com/kwbasedb/kwbase/pkg/util/errorutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
@@ -40,6 +45,11 @@ import (
 	"google.golang.org/grpc"
 )
 
+const (
+	onsCleanInterval = time.Second * 15
+	onsCleanTimeout  = time.Second * 5
+)
+
 // Coordinator implements the CDCCoordinator interface
 type Coordinator struct {
 	settings                  *cluster.Settings
@@ -48,9 +58,19 @@ type Coordinator struct {
 	statusServer              serverpb.StatusServer
 	internalExecutor          *sql.InternalExecutor
 	partitionInternalExecutor sqlutil.InternalExecutor
+	jobRegistry               *jobs.Registry
+	tsEngine                  *tse.TsEngine
 
-	lock          syncutil.RWMutex
-	cdcTaskGroups map[cdcpb.TSCDCInstanceType]map[uint64]map[uint64]Task // cdcInstanceType->tableID->instanceID->Task
+	lock syncutil.RWMutex
+	// cdcTaskGroups stores the mapping cdcInstanceType->tableID->instanceID->Task.
+	// for pipe, the instanceID is the job ID.
+	cdcTaskGroups map[sqlbase.CDCInstanceType]map[uint64]map[uint64]Task
+	// cdcInstanceMap stores the mapping pipeID->instanceID
+	cdcInstanceMap map[uint64]uint64
+	// lastSetOSN is the last time that set OSN to tsEngine
+	lastSetOSN time.Time
+	// setOSNRunning ensures that OSN setting is not executed concurrently.
+	setOSNRunning chan struct{}
 }
 
 var _ execinfra.CDCCoordinator = &Coordinator{}
@@ -63,6 +83,7 @@ func NewCoordinator(
 	gossip *gossip.Gossip,
 	internalExecutor *sql.InternalExecutor,
 	statusServer serverpb.StatusServer,
+	jobRegistry *jobs.Registry,
 ) *Coordinator {
 	coordinator := &Coordinator{
 		settings:         settings,
@@ -70,10 +91,72 @@ func NewCoordinator(
 		gossip:           gossip,
 		internalExecutor: internalExecutor,
 		statusServer:     statusServer,
+		jobRegistry:      jobRegistry,
+		cdcTaskGroups:    make(map[sqlbase.CDCInstanceType]map[uint64]map[uint64]Task),
+		cdcInstanceMap:   make(map[uint64]uint64),
+		lastSetOSN:       timeutil.Now(),
+		setOSNRunning:    make(chan struct{}, 1),
 	}
-	coordinator.cdcTaskGroups = make(map[cdcpb.TSCDCInstanceType]map[uint64]map[uint64]Task)
+
 	cdcpb.RegisterCDCCoordinatorServer(grpcServer, coordinator)
+
 	return coordinator
+}
+
+// TsCDC implements the grpc CDCCoordinator server.
+// It receives request from CDC consumer.
+func (c *Coordinator) TsCDC(server cdcpb.CDCCoordinator_TsCDCServer) error {
+	var err error
+	for {
+		event, errRecv := server.Recv()
+		if errRecv != nil {
+			err = errRecv
+			break
+		}
+
+		switch t := event.GetValue().(type) {
+		case *cdcpb.TsChangeDataCaptureRequest:
+			ctx := server.Context()
+			go func() {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					_ = c.StartTsCDC(t, server)
+				}
+			}()
+			c.lock.Lock()
+			c.lastSetOSN = timeutil.FromUnixMilli(0)
+			c.lock.Unlock()
+		case *cdcpb.TsChangeDataCaptureHeartbeat:
+			c.lock.Lock()
+			now := timeutil.Now()
+			needOSN := now.Sub(c.lastSetOSN) > onsCleanInterval
+			c.lock.Unlock()
+			if needOSN {
+				if err = c.SetCDCTableOSN(context.Background()); err == nil {
+					c.lock.Lock()
+					c.lastSetOSN = now
+					c.lock.Unlock()
+				}
+			}
+
+			if err != nil {
+				return err
+			}
+		case *cdcpb.TsChangeDataCaptureValue:
+		case *cdcpb.TsChangeDataCaptureStart:
+			_ = c.enableTask(t.TableID, t.InstanceID, t.InstanceType)
+		case *cdcpb.TsChangeDataCaptureStop:
+			_, err = c.StopTsCDC(context.Background(), t)
+			break
+		case *cdcpb.TsChangeDataCaptureError:
+		}
+	}
+
+	c.SetCDCTableOSNDelay(context.Background(), onsCleanTimeout)
+
+	return err
 }
 
 // StartTsCDC implements the grpc CDCCoordinator server.
@@ -82,33 +165,117 @@ func (c *Coordinator) StartTsCDC(
 	request *cdcpb.TsChangeDataCaptureRequest, server cdcpb.CDCCoordinator_StartTsCDCServer,
 ) error {
 	ctx := context.Background()
+	var err error
 
 	switch request.InstanceType {
-	case cdcpb.TSCDCInstanceType_Stream:
+	case sqlbase.CDCInstanceType_Stream:
 		task, err := newStreamTask(ctx, request, server, int32(c.gossip.NodeID.Get()))
 		if err != nil {
 			return err
 		}
-		c.addTask(task)
-		log.Infof(ctx, "CDC instance %d(type: %s) is connected", task.getInstanceID(), task.getInstanceType())
-		err = task.Run(c.stopper)
 
-		if err != nil {
-			if sqlutil.ShouldLogError(err) {
-				log.Infof(ctx, "CDC instance %d(type: %s) failed with error %v", task.getInstanceID(), task.getInstanceType(), err)
+		return c.runTask(ctx, task)
+	case sqlbase.CDCInstanceType_Pipe:
+		ctx, cancel := context.WithCancel(ctx)
+		errCh := make(chan error)
+		heartbeatInterval := TsPipeHeartbeatInterval.Get(&c.settings.SV)
+		flushLimit := int(float64(request.PipeMetadata.BufferSize) * bufferFlushThreshold)
+		var grpcMu syncutil.Mutex
+
+		if err = c.stopper.RunAsyncTask(ctx, "pipe-processor-poller", func(ctx context.Context) {
+			g := ctxgroup.WithContext(ctx)
+			for i := range request.PipeMetadata.TableList {
+				table := request.PipeMetadata.TableList[i]
+				if c.HasTask(sqlbase.CDCInstanceType_Pipe, table.TableID, request.InstanceID) {
+					continue
+				}
+
+				g.GoCtx(func(ctx context.Context) error {
+					sink, err := CreateSink(
+						context.Background(), request.PipeMetadata.Sink,
+						int(TsPipeSinkMaxRetries.Get(&c.settings.SV)),
+						int(request.PipeMetadata.BufferSize),
+						false,
+					)
+					if err != nil {
+						return err
+					}
+
+					task := NewPipeTask(
+						ctx, request.PipeMetadata, server, int32(c.gossip.NodeID.Get()), sink,
+						heartbeatInterval, flushLimit, table.TableID, request.InstanceID, table, &grpcMu,
+					)
+
+					return c.runTask(ctx, task)
+				})
+			}
+
+			err = g.Wait()
+			errCh <- err
+			cancel()
+		}); err != nil {
+			log.Errorf(ctx, "pipe internal gRPC connections are disconnected with error: %s", err)
+			errCh <- err
+			cancel()
+		}
+
+		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case err = <-errCh:
+				return err
 			}
 		}
-		errStop := task.Stop()
-		if errStop != nil {
-			if sqlutil.ShouldLogError(errStop) {
-				log.Infof(ctx, "failed to stop CDC instance %d(type: %s) with error %v", task.getInstanceID(), task.getInstanceType(), errStop)
+	case sqlbase.CDCInstanceType_Publication:
+		// start cdc async task of publication.
+		ctx, cancel := context.WithCancel(ctx)
+		errCh := make(chan error)
+		var grpcMu syncutil.Mutex
+		// fetch ts.pipe.heartbeat.interval as the heartbeat interval between cdc tasks on different nodes.
+		heartbeatInterval := TsPipeHeartbeatInterval.Get(&c.settings.SV)
+		var params cdcpb.PubParameters
+		if err = gojson.Unmarshal(request.PubMetadata.Parameters, &params); err != nil {
+			errCh <- err
+			cancel()
+		}
+		// flushLimit is the threshold of publication cdc buffer. If data in buffer is greater than 80% of
+		// publication option buffer_size in megabyte, then flush it.
+		flushLimit := int(float64(params.PubOptions.BufferSize*1<<20) * bufferFlushThreshold)
+		if err = c.stopper.RunAsyncTask(ctx, "publication-processor-poller", func(ctx context.Context) {
+			g := ctxgroup.WithContext(ctx)
+			for i := range params.TableList {
+				table := params.TableList[i]
+				g.GoCtx(func(ctx context.Context) error {
+					// construct publication task and run it.
+					task := NewPublicationTask(
+						ctx, request, server, int32(c.gossip.NodeID.Get()),
+						&params, heartbeatInterval, flushLimit, &table, &grpcMu,
+					)
+
+					return c.runTask(ctx, task)
+				})
+			}
+
+			err = g.Wait()
+			errCh <- err
+			cancel()
+		}); err != nil {
+			log.Errorf(ctx, "pipe internal gRPC connections are disconnected with error: %s", err)
+			errCh <- err
+			cancel()
+		}
+
+		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case err = <-errCh:
+				return err
 			}
 		}
-		c.removeTask(task)
-		log.Infof(ctx, "CDC instance %d(type: %s) is disconnected", task.getInstanceID(), task.getInstanceType())
-		return err
 	default:
-		msg := fmt.Sprintf("unsuppoared CDC instance type: %s", request.InstanceType)
+		msg := fmt.Sprintf("unsupported CDC instance type: %s", request.InstanceType)
 		log.Infof(ctx, msg)
 		return errors.Errorf(msg)
 	}
@@ -125,21 +292,85 @@ func (c *Coordinator) StopTsCDC(
 
 // StopCDCByLocal stops the specified CDC instance of local node.
 func (c *Coordinator) StopCDCByLocal(
-	tableID uint64, instanceID uint64, cdcType cdcpb.TSCDCInstanceType,
+	tableID uint64, instanceID uint64, cdcType sqlbase.CDCInstanceType,
 ) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	cdcTasks, ok := c.cdcTaskGroups[cdcType][tableID]
+	task, ok := c.getCDCTask(cdcType, tableID, instanceID)
 	if ok {
-		task, ok := cdcTasks[instanceID]
-		if ok {
-			err := task.Stop()
-			if err != nil {
-				return
-			}
+		err := task.Stop()
+		if err != nil {
+			return
 		}
 	}
+
+}
+
+// SendToPipeImmediately creates a new sink with parameters from pipe, and sends data immediately.
+func (c *Coordinator) SendToPipeImmediately(
+	ctx context.Context,
+	dbName string,
+	schemaName string,
+	tableName string,
+	ddlOperation string,
+	stmt string,
+	sinkURI string,
+	sinkBufferSize int,
+	osn time.Time,
+) error {
+	sinkBufferSizeInBytes := sinkBufferSize << 20
+	maxRetries := int(TsPipeSinkMaxRetries.Get(&c.settings.SV))
+	err := sendToPipeInner(
+		ctx, dbName, schemaName, tableName, ddlOperation, stmt, sinkURI, sinkBufferSizeInBytes, maxRetries, osn,
+	)
+
+	return err
+}
+
+// sendToPipeInner creates a new sink, and sends data immediately.
+func sendToPipeInner(
+	ctx context.Context,
+	dbName string,
+	schemaName string,
+	tableName string,
+	ddlOperation string,
+	stmt string,
+	sinkURI string,
+	sinkBufferSize int,
+	maxRetries int,
+	osn time.Time,
+) error {
+	sink, err := CreateSink(ctx, sinkURI, maxRetries, sinkBufferSize, false)
+	if err != nil {
+		return err
+	}
+
+	message := MessageFormat{
+		Kind:      ddlOperation,
+		Database:  dbName,
+		Schema:    schemaName,
+		Table:     tableName,
+		Statement: stmt,
+	}
+	msg, err := gojson.Marshal(message)
+	if err != nil {
+		return err
+	}
+
+	if err = sink.Send(ctx, osn.String(), msg); err != nil {
+		return err
+	}
+
+	if err = sink.Flush(ctx); err != nil {
+		return err
+	}
+
+	if err = sink.Close(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // IsCDCEnabled returns if it has a running CDC instance based on the relation id.
@@ -157,6 +388,114 @@ func (c *Coordinator) IsCDCEnabled(tableID uint64) bool {
 	return false
 }
 
+// WaitCDCEnabled returns if it all CDC tasks are active.
+func (c *Coordinator) WaitCDCEnabled(tableID uint64, cdcDesc []sqlbase.CDCDescriptor) bool {
+	if len(cdcDesc) == 0 {
+		// stream only check task.
+		return c.IsCDCEnabled(tableID)
+	}
+
+	const maxRetry = 15
+	hasNotify := false
+	enable := false
+
+	// pipe and pub-sub need wait CDC,stream do not wait.
+	for _, cdc := range cdcDesc {
+		instanceID := cdc.ID
+		for i := 0; i < maxRetry; i++ {
+			c.lock.RLock()
+			if cdc.CdcType == sqlbase.CDCInstanceType_Pipe {
+				instanceID = c.cdcInstanceMap[cdc.ID]
+			}
+			_, ok := c.getCDCTask(cdc.CdcType, tableID, instanceID)
+			c.lock.RUnlock()
+
+			if ok {
+				enable = ok
+				break
+			}
+
+			if !c.checkInstanceEnable(&cdc) {
+				break
+			}
+
+			if !hasNotify && cdc.CdcType == sqlbase.CDCInstanceType_Pipe {
+				c.jobRegistry.TestingNudgeAdoptionQueue()
+				hasNotify = true
+			}
+
+			time.Sleep(time.Second)
+		}
+	}
+
+	return enable
+}
+
+// getCDCTask return task from cdcTaskGroups.
+func (c *Coordinator) getCDCTask(
+	instanceType sqlbase.CDCInstanceType, tableID uint64, taskID uint64,
+) (Task, bool) {
+	tables, ok := c.cdcTaskGroups[instanceType]
+	if !ok {
+		return nil, false
+	}
+
+	tasks, ok := tables[tableID]
+	if !ok {
+		return nil, false
+	}
+
+	task, ok := tasks[taskID]
+
+	return task, ok
+}
+
+// checkInstanceEnable checks the CDC instance if enabled.
+func (c *Coordinator) checkInstanceEnable(cdcDesc *sqlbase.CDCDescriptor) bool {
+	switch cdcDesc.CdcType {
+	case sqlbase.CDCInstanceType_Pipe:
+		row, err := c.internalExecutor.QueryRow(
+			context.Background(),
+			"check-pipe-job-enable",
+			nil,
+			"SELECT j.ID,j.status FROM system.kwdb_pipes p,system.jobs j WHERE p.job_id = j.ID AND p.id=$1",
+			cdcDesc.ID,
+		)
+		if err != nil {
+			log.Warningf(context.Background(), "check-pipe-job-enable failed: %v", err)
+			return false
+		}
+		if row == nil {
+			// ("job is not exist")
+			return false
+		}
+
+		status := string(tree.MustBeDString(row[1]))
+		return status == string(jobs.StatusRunning)
+	case sqlbase.CDCInstanceType_Publication:
+		query := fmt.Sprintf(
+			`SELECT application_name FROM [show queries] WHERE application_name='sub$$$%s'`,
+			string(cdcDesc.Parameters))
+		row, err := c.internalExecutor.QueryRow(
+			context.Background(),
+			"check-pub-subscribed",
+			nil,
+			query,
+		)
+		if err != nil {
+			log.Warningf(context.Background(), "check-pub-sub-enable failed: %v", err)
+			return false
+		}
+		if row == nil {
+			return false
+		}
+
+		return true
+	}
+
+	return false
+}
+
 // SendRows pushes the captured data changes (aka CDC) to CDC Task.
 func (c *Coordinator) SendRows(cdcData *execinfrapb.CDCData) {
 	c.lock.RLock()
@@ -168,18 +507,52 @@ func (c *Coordinator) SendRows(cdcData *execinfrapb.CDCData) {
 
 	for _, cdcTasks := range c.cdcTaskGroups {
 		tasks, ok := cdcTasks[cdcData.TableID]
-		if !ok || cdcData.PushData == nil {
+		if !ok {
 			continue
 		}
 
 		for _, data := range cdcData.PushData {
 			taskID := data.TaskID
 			task, ok := tasks[taskID]
-			if ok && data.Data != nil {
-				err := task.Push(cdcData.MinTimestamp, data.Data)
+			if ok && data.Data != nil && task.getStatus() && task.isOperatorSupport(cdcpb.EventInsert) {
+
+				err := task.Push(cdcData.MinTimestamp, cdcData.OSN, data.Data)
 				if err != nil {
 					log.Infof(task.getContext(), "failed to send CDC rows: %v", err)
 				}
+			}
+		}
+	}
+}
+
+// SendStatement used to send sql statement to sink.
+// It uses the same sink as SendRows, and flush is executed before sending.
+func (c *Coordinator) SendStatement(ons uint64, tableID uint64, operation string, stmt []byte) {
+	if stmt == nil || len(stmt) == 0 {
+		return
+	}
+
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+
+	for typ, cdcTasks := range c.cdcTaskGroups {
+		if typ == sqlbase.CDCInstanceType_Stream {
+			continue
+		}
+
+		tasks, ok := cdcTasks[tableID]
+		if !ok {
+			continue
+		}
+
+		for _, task := range tasks {
+			if !task.getStatus() || !task.isOperatorSupport(operation) {
+				continue
+			}
+
+			err := task.SendStatement(ons, operation, stmt)
+			if err != nil {
+				log.Warningf(task.getContext(), "failed to send CDC statement: %v", err)
 			}
 		}
 	}
@@ -234,6 +607,7 @@ func (c *Coordinator) CaptureData(
 
 	normalTagIndex := make(map[int]int)
 	pTagIndex := make([]int, 0)
+	colMap := make(map[uint32]sqlbase.ColumnDescriptor)
 	for colIdx, col := range columns {
 		if needNormalTag && col.IsTagCol() && !col.IsPrimaryTagCol() {
 			normalTagIndex[int(col.ID)] = colIdx
@@ -242,6 +616,8 @@ func (c *Coordinator) CaptureData(
 		}
 
 		colIDMap[uint32(col.ID)] = colIdx
+		colTmp := *col
+		colMap[uint32(col.ID)] = colTmp
 	}
 
 	// encode and filter input rows
@@ -268,7 +644,7 @@ func (c *Coordinator) CaptureData(
 
 			// Encode data according to the type required by the current task.
 			if pass {
-				row := task.ConstructCDCRow(columns, colInputIndex, normalTagIndex, inputDatums[i], encRows, colIDMap)
+				row := task.ConstructCDCRow(columns, colMap, colInputIndex, normalTagIndex, inputDatums[i], encRows, colIDMap)
 				filteredRows[idx] = append(filteredRows[idx], row)
 			}
 		}
@@ -377,11 +753,11 @@ func (c *Coordinator) LiveNodeIDList(ctx context.Context) ([]roachpb.NodeID, err
 	if err != nil {
 		return []roachpb.NodeID{}, err
 	}
+
 	var NodeIDList []roachpb.NodeID
-	for id, n := range nodeStatus.LivenessByNodeID {
-		switch n {
-		case storagepb.NodeLivenessStatus_LIVE:
-			NodeIDList = append(NodeIDList, id)
+	for _, n := range nodeStatus.Nodes {
+		if _, err := c.gossip.GetInfo(gossip.MakeGossipClientsKey(n.Desc.NodeID)); err == nil {
+			NodeIDList = append(NodeIDList, n.Desc.NodeID)
 		}
 	}
 
@@ -398,6 +774,26 @@ func (c *Coordinator) SetDistInternalExecutor(executor sqlutil.InternalExecutor)
 	c.partitionInternalExecutor = executor
 }
 
+// runTask run a task.
+func (c *Coordinator) runTask(ctx context.Context, task Task) error {
+	// add the task to cdcTaskGroups
+	c.addTask(task)
+	log.Infof(ctx, "%s is connected", task.string())
+	err := task.Run(c.stopper)
+	if err != nil && !strings.Contains(err.Error(), context.Canceled.Error()) {
+		log.Infof(ctx, "%s failed with error %v", task.string(), err)
+		errStop := task.SendError(err)
+		if errStop != nil && !strings.Contains(errStop.Error(), context.Canceled.Error()) {
+			log.Infof(ctx, "failed to stop %s with error %v", task.string(), errStop)
+		}
+	}
+
+	c.removeTask(task)
+	log.Infof(ctx, "%s is disconnected", task.string())
+
+	return err
+}
+
 // addTask add task to CDC cache.
 func (c *Coordinator) addTask(task Task) {
 	c.lock.Lock()
@@ -412,11 +808,33 @@ func (c *Coordinator) addTask(task Task) {
 	}
 
 	c.cdcTaskGroups[task.getInstanceType()][task.getTableID()][task.getInstanceID()] = task
+	if task.getInstanceType() == sqlbase.CDCInstanceType_Pipe {
+		c.cdcInstanceMap[task.getCDCID()] = task.getInstanceID()
+	}
+}
+
+// EnableTask enable the CDC task.
+func (c *Coordinator) enableTask(
+	tableID uint64, instanceID uint64, instanceType sqlbase.CDCInstanceType,
+) error {
+
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	task, ok := c.cdcTaskGroups[instanceType][tableID][instanceID]
+	if !ok {
+		return errors.Errorf("CDC is not setup")
+	}
+
+	task.setStatus(true)
+	log.Eventf(context.TODO(), "CDC instance %s, %d(table: %d) is start \n", task.getInstanceName(), instanceID, tableID)
+
+	return nil
 }
 
 // removeTaskWithID remove task with id from CDC cache.
 func (c *Coordinator) removeTaskWithID(
-	tableID uint64, instanceID uint64, instanceType cdcpb.TSCDCInstanceType,
+	tableID uint64, instanceID uint64, instanceType sqlbase.CDCInstanceType,
 ) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -461,8 +879,10 @@ func (c *Coordinator) constructNormalTagStmt(
 	tableName string, colDescriptors []*sqlbase.ColumnDescriptor,
 ) string {
 	var pTags []string
+	var cols []string
 	for i := range colDescriptors {
 		col := colDescriptors[i]
+		cols = append(cols, col.Name)
 		if col.IsPrimaryTagCol() {
 			pTags = append(pTags, fmt.Sprintf("%s=$%d", col.Name, len(pTags)+1))
 			continue
@@ -470,8 +890,9 @@ func (c *Coordinator) constructNormalTagStmt(
 	}
 
 	// need to add normal tag datum
+	colList := strings.Join(cols, ",")
 	where := strings.Join(pTags, " AND ")
-	tagQueryStmt := fmt.Sprintf("SELECT * FROM %s WHERE %s LIMIT 1", tableName, where)
+	tagQueryStmt := fmt.Sprintf("SELECT %s FROM %s WHERE %s LIMIT 1", colList, tableName, where)
 
 	return tagQueryStmt
 }
@@ -481,8 +902,11 @@ func (c *Coordinator) constructNormalTagStmt(
 // tableID, the table id in the instance.
 // instanceID, the id of the instance.
 func (c *Coordinator) HasTask(
-	instanceType cdcpb.TSCDCInstanceType, tableID uint64, instanceID uint64,
+	instanceType sqlbase.CDCInstanceType, tableID uint64, instanceID uint64,
 ) bool {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+
 	tableGroup, ok := c.cdcTaskGroups[instanceType]
 	if !ok {
 		return false
@@ -495,4 +919,130 @@ func (c *Coordinator) HasTask(
 
 	_, ok = pubGroup[instanceID]
 	return ok
+}
+
+// CheckPubTasksCountAndSubscribed checks whether the publication has been subscribed and will exceed the limitation.
+func (c *Coordinator) CheckPubTasksCountAndSubscribed(
+	ctx context.Context,
+	instanceType sqlbase.CDCInstanceType,
+	pubMeta *cdcpb.PubMetadata,
+	params cdcpb.PubParameters,
+) error {
+	newTasksCount := len(params.TableList)
+	// fetch publication tasks limitation from cluster setting ts.cdc.max_active_number.
+	pubLimitation := cdcpb.TsCDCMaxActiveNumber.Get(&c.settings.SV)
+	// If the count of new publication tasks exceeds the limitation, raises an error.
+	if int64(newTasksCount) > pubLimitation {
+		errMsg := fmt.Sprintf("the number of publication tasks to be run exceeds the limitation (%d)", pubLimitation)
+		log.Warningf(ctx, errMsg)
+		return pgerror.Newf(
+			pgcode.ProgramLimitExceeded, errMsg)
+	}
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	tableTasksGroup, ok := c.cdcTaskGroups[instanceType]
+	if !ok {
+		return nil
+	}
+	// If the publication has been subscribed and the subscription is still on process, it cannot be subscribed again.
+	for _, tableInfo := range params.TableList {
+		tableID := tableInfo.ID
+		if tasksOfTable, found := tableTasksGroup[tableID]; found {
+			if _, found = tasksOfTable[pubMeta.ID]; found {
+				errMsg := fmt.Sprintf("the publication %s has been subscribed, and can not be subscribed again", pubMeta.Name)
+				log.Warningf(ctx, errMsg)
+				return pgerror.Newf(
+					pgcode.ObjectInUse, errMsg)
+			}
+		}
+	}
+	// If the total count of the old and new publication tasks exceeds the limitation, raises an error.
+	tasksRunningCount := 0
+	for _, tasksOfInstance := range tableTasksGroup {
+		tasksRunningCount += len(tasksOfInstance)
+	}
+	if int64(tasksRunningCount+newTasksCount) > pubLimitation {
+		errMsg := fmt.Sprintf("the number of publication tasks running and to be run exceeds the limitation (%d)", pubLimitation)
+		log.Warningf(ctx, errMsg)
+		return pgerror.Newf(
+			pgcode.ProgramLimitExceeded, errMsg)
+	}
+
+	return nil
+}
+
+// SetTsEngine set tsEngine to Coordinator.
+func (c *Coordinator) SetTsEngine(tse *tse.TsEngine) {
+	c.tsEngine = tse
+}
+
+// SetCDCTableOSNDelay sleep for onsCleanTimeout to wait for the watermark in DDL to be updated.
+func (c *Coordinator) SetCDCTableOSNDelay(ctx context.Context, delay time.Duration) {
+	time.AfterFunc(delay, func() {
+		if err := c.SetCDCTableOSN(ctx); err != nil {
+			log.Errorf(ctx, err.Error())
+		}
+	})
+}
+
+// SetCDCTableOSN sets OSN of tables with CDC to tsEngine.
+func (c *Coordinator) SetCDCTableOSN(ctx context.Context) error {
+	if c.tsEngine == nil {
+		return nil
+	}
+
+	select {
+	case c.setOSNRunning <- struct{}{}:
+	default:
+		return nil
+	}
+
+	defer func() {
+		<-c.setOSNRunning
+	}()
+
+	rows, err := c.internalExecutor.Query(
+		ctx,
+		"get-cdc-table-watermark",
+		nil,
+		`SELECT table_id, low_watermark from (
+						SELECT table_id, low_watermark FROM system.kwdb_cdc_watermark c,system.kwdb_pipes p 
+						WHERE p.id=c.task_id AND c.task_type = $1 AND low_watermark > $3
+						UNION 
+						SELECT table_id, low_watermark FROM system.kwdb_cdc_watermark c,system.kwdb_publications p 
+						WHERE p.id=c.task_id AND c.task_type = $2 AND low_watermark > $3)
+          `,
+		sqlbase.CDCInstanceType_Pipe,
+		sqlbase.CDCInstanceType_Publication,
+		cdcpb.InvalidWatermark,
+	)
+	if err != nil {
+		return err
+	}
+
+	if len(rows) == 0 {
+		return nil
+	}
+
+	osnMap := make(map[uint64]uint64)
+	for _, row := range rows {
+		if row[0] == tree.DNull || row[1] == tree.DNull {
+			continue
+		}
+
+		tableID := uint64(tree.MustBeDInt(row[0]))
+		osn := uint64(tree.MustBeDInt(row[1]))
+		if old, exist := osnMap[(tableID)]; exist {
+			if old <= osn {
+				continue
+			}
+		}
+		osnMap[tableID] = osn
+	}
+
+	if err = c.tsEngine.SetPublishedMaxOSN(ctx, osnMap); err != nil {
+		return err
+	}
+
+	return nil
 }

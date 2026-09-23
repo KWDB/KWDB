@@ -436,8 +436,8 @@ func checkAndGetTSDetailsInTableInto(
 	//	return nil, errors.Errorf("can't import into instance table %v", importStmt.Table.Table())
 	//case sqlbase.TableType_SUPER_TABLE:
 	//	return getTemplateTableDetails(ctx, p, importStmt, files)
-	case tree.TimeseriesTable:
-		return []sqlbase.ImportTable{{Desc: tableDesc.TableDesc(), TableName: tableDesc.Name, IsNew: false, TableType: tree.TimeseriesTable, IntoCols: intoCols, AdjustColumnNumber: adjustColumnNumber, TsColNumber: tsColNumber}}, nil
+	case tree.TimeseriesTable, tree.SparseTable:
+		return []sqlbase.ImportTable{{Desc: tableDesc.TableDesc(), TableName: tableDesc.Name, IsNew: false, TableType: tableDesc.TableType, IntoCols: intoCols, AdjustColumnNumber: adjustColumnNumber, TsColNumber: tsColNumber}}, nil
 	default:
 		return nil, errors.Errorf("Unknown table type %v", tableDesc.TableType)
 	}
@@ -645,8 +645,11 @@ func getOptsParas(fileFormat string, opts map[string]string) (roachpb.IOFileForm
 		if limitMemory > maxMemory {
 			return ioFileFormat, errors.Errorf("limit_memory exceeds maximum allowed value (1PB)")
 		}
-		ioFileFormat.Csv.LimitMemory = limitMemory
 	}
+	if limitMemory == 0 {
+		limitMemory = 1024 * 1024 * 10 //10MB
+	}
+	ioFileFormat.Csv.LimitMemory = limitMemory
 	// log.Infof(context.Background(), "logColumn %d, threads %d, batchRows %d",
 	// 	ioFileFormat.Csv.LogColumn, ioFileFormat.Csv.Threads, ioFileFormat.Csv.BatchRows)
 	return ioFileFormat, nil
@@ -1020,7 +1023,7 @@ func (r *importResumer) OnFailOrCancel(ctx context.Context, phs interface{}) err
 func getURIPrefix(dbPath string, table sqlbase.ImportTable) (string, error) {
 	tsScPath := dbPath + string(os.PathSeparator) + "public" + string(os.PathSeparator)
 	switch table.TableType {
-	case tree.TimeseriesTable, tree.RelationalTable:
+	case tree.TimeseriesTable, tree.RelationalTable, tree.SparseTable:
 		return tsScPath + table.TableName + string(os.PathSeparator), nil
 	default:
 		return "", errors.Errorf("unsupported table type %v", table.TableType)
@@ -1042,7 +1045,7 @@ func getDataFilesInURI(
 	}
 	var tableFiles []string
 	switch table.TableType {
-	case tree.TimeseriesTable, tree.RelationalTable:
+	case tree.TimeseriesTable, tree.RelationalTable, tree.SparseTable:
 		store, err := p.ExecCfg().DistSQLSrv.ExternalStorageFromURI(ctx, uri)
 		if err != nil {
 			return nil, err

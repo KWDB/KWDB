@@ -137,6 +137,7 @@ type tsDeleteNode struct {
 	spans           []execinfrapb.Span
 	// if primary tag of type int out of range, we will return delete 0 directly
 	wrongPTag bool
+	cdcData   []byte
 }
 
 func (t *tsDeleteNode) startExec(params runParams) error {
@@ -182,6 +183,7 @@ type tsTagUpdateNode struct {
 	startKey  roachpb.Key
 	endKey    roachpb.Key
 	osnID     uint64
+	cdcData   []byte
 }
 
 func (t *tsTagUpdateNode) startExec(params runParams) error {

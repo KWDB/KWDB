@@ -15,10 +15,15 @@
 #include "utils/date_time_util.h"
 #include "ts_table_object.h"
 #include "ts_common.h"
+#include "ts_agg.h"
 
 class MMapMetricsTable : public TSObject, public TsTableObject {
  private:
   KRWLatch rw_latch_;
+  std::vector<FixedBlockAggColumnLayout> fixed_block_agg_layout_;
+  size_t fixed_block_agg_total_size_{0};
+
+  void InitFixedBlockAggLayout();
 
  protected:
   string name_;
@@ -56,6 +61,19 @@ class MMapMetricsTable : public TSObject, public TsTableObject {
     return &cols_info_exclude_dropped_;
   }
 
+  [[nodiscard]] const std::vector<FixedBlockAggColumnLayout>* GetFixedBlockAggLayout() const {
+    return &fixed_block_agg_layout_;
+  }
+
+  [[nodiscard]] const FixedBlockAggColumnLayout* GetFixedBlockAggColumnLayout(uint32_t col_idx) const {
+    if (col_idx >= fixed_block_agg_layout_.size()) {
+      return nullptr;
+    }
+    return &fixed_block_agg_layout_[col_idx];
+  }
+
+  [[nodiscard]] size_t GetFixedBlockAggSize() const { return fixed_block_agg_total_size_; }
+
   DATATYPE GetTsColDataType() {
     return static_cast<DATATYPE>(cols_info_exclude_dropped_[0].type);
   }
@@ -74,6 +92,8 @@ class MMapMetricsTable : public TSObject, public TsTableObject {
 
   uint64_t& hashNum() { return meta_data_->hash_num; }
 
+  bool IsSparseTable() { return meta_data_->sparse; }
+
   virtual int remove();
 
   void sync(int flags) override;
@@ -83,6 +103,9 @@ class MMapMetricsTable : public TSObject, public TsTableObject {
   void SetLifeTime(LifeTime life_time) {
     meta_data_->life_time = life_time.ts;
     meta_data_->precision = life_time.precision;
+  }
+  void SetSparseTable(bool sparse) {
+    meta_data_->sparse = sparse;
   }
 
   virtual int reserve(size_t size) {

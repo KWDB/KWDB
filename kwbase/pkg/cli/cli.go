@@ -38,18 +38,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log/logflags"
 	"gitee.com/kwbasedb/kwbase/pkg/util/randutil"
-	// intentionally not all the workloads in pkg/ccl/workloadccl/allccl
-	_ "gitee.com/kwbasedb/kwbase/pkg/workload/bank"       // registers workloads
-	_ "gitee.com/kwbasedb/kwbase/pkg/workload/bulkingest" // registers workloads
-	workloadcli "gitee.com/kwbasedb/kwbase/pkg/workload/cli"
-	_ "gitee.com/kwbasedb/kwbase/pkg/workload/examples"     // registers workloads
-	_ "gitee.com/kwbasedb/kwbase/pkg/workload/kv"           // registers workloads
-	_ "gitee.com/kwbasedb/kwbase/pkg/workload/movr"         // registers workloads
-	_ "gitee.com/kwbasedb/kwbase/pkg/workload/schemachange" // registers workloads
-	_ "gitee.com/kwbasedb/kwbase/pkg/workload/tpcc"         // registers workloads
-	_ "gitee.com/kwbasedb/kwbase/pkg/workload/tpch"         // registers workloads
-	_ "gitee.com/kwbasedb/kwbase/pkg/workload/ycsb"         // registers workloads
-	_ "github.com/benesch/cgosymbolizer"                    // calls runtime.SetCgoTraceback on import
+	_ "github.com/benesch/cgosymbolizer" // calls runtime.SetCgoTraceback on import
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
 )
@@ -233,8 +222,6 @@ func init() {
 		versionCmd,
 		DebugCmd,
 		sqlfmtCmd,
-		workloadcli.WorkloadCmd(true /* userFacing */),
-		systemBenchCmd,
 	)
 }
 

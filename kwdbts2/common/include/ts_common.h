@@ -110,6 +110,8 @@ struct TsScanStats {
   int64_t block_bytes{0};                // scanned block_bytes
   int64_t agg_bytes{0};                  // scanned agg_bytes
   int64_t header_bytes{0};               // scanned header_bytes
+  int64_t block_pre_agg_hit_count{0};    // block count that used block pre-aggregation
+  int64_t block_pre_agg_miss_count{0};   // block count that fell back to raw aggregation
   void reset() {
     memory_block_count = 0;
     last_block_count = 0;
@@ -119,6 +121,8 @@ struct TsScanStats {
     block_bytes = 0;
     agg_bytes = 0;
     header_bytes = 0;
+    block_pre_agg_hit_count = 0;
+    block_pre_agg_miss_count = 0;
   }
 };
 
@@ -314,7 +318,7 @@ struct Batch {
   // row_idx  start from 0
   virtual KStatus isNull(k_uint32 row_idx, bool* is_null) const {
     if (bitmap == nullptr) {
-      *is_null = true;
+      *is_null = (mem == nullptr);
       return KStatus::SUCCESS;
     }
     if (row_idx >= count) {
@@ -1682,4 +1686,34 @@ struct VGroupBlocksInfo {
     original_size_ += a.original_size_;
   }
 };
+
+template<class T>
+bool AddAggInteger(T& a, T b) {
+  T c;
+  if (__builtin_add_overflow(a, b, &c)) {
+    return true;
+  }
+  a = c;
+  return false;
+}
+
+template<class T1, class T2>
+bool AddAggInteger(T1& a, T2 b) {
+  T1 c;
+  if (__builtin_add_overflow(a, b, &c)) {
+    return true;
+  }
+  a = c;
+  return false;
+}
+
+template<class T1, class T2>
+void AddAggFloat(T1& a, T2 b) {
+  a = a + b;
+}
+
+template<class T>
+void SubAgg(T& a, T b) {
+  a = a - b;
+}
 }  //  namespace kwdbts

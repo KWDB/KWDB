@@ -159,7 +159,7 @@ insert "order"
  │    ├── cardinality: [1 - 1]
  │    ├── key: ()
  │    ├── fd: ()-->(9-16)
- │    └── (100, 5, 10, 50, '2019-08-26 16:50:41+00:00', 10, 1, NULL)
+ │    └── (100, 5, 10, 50, '2019-08-26 16:50:41', 10, 1, NULL)
  └── f-k-checks
       └── f-k-checks-item: order(o_w_id,o_d_id,o_c_id) -> customer(c_w_id,c_d_id,c_id)
            └── anti-join (lookup customer)
@@ -616,7 +616,7 @@ insert history
  │    ├── side-effects
  │    ├── key: ()
  │    ├── fd: ()-->(10-14,16-19)
- │    └── (1343, 5, 10, 5, 10, '2019-08-26 16:50:41+00:00', '8    Kdcgphy3', gen_random_uuid(), kwdb_internal.round_decimal_values(3860.61, 2))
+ │    └── (1343, 5, 10, 5, 10, '2019-08-26 16:50:41', '8    Kdcgphy3', gen_random_uuid(), kwdb_internal.round_decimal_values(3860.61, 2))
  └── f-k-checks
       ├── f-k-checks-item: history(h_c_w_id,h_c_d_id,h_c_id) -> customer(c_w_id,c_d_id,c_id)
       │    └── anti-join (lookup customer)
@@ -986,7 +986,7 @@ update order_line
       │    ├── key: (12,14)
       │    └── fd: ()-->(11,13), (12,14)-->(15-20)
       └── projections
-           └── '2019-08-26 16:50:41+00:00' [as=column21:21]
+           └── '2019-08-26 16:50:41' [as=column21:21]
 
 # --------------------------------------------------
 # 2.8 The Stock-Level Transaction

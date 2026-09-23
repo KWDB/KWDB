@@ -156,7 +156,7 @@ CREATE TABLE t.test (k INT);
 		t.Fatal(err)
 	}
 	colDef := alterCmd.AST.(*tree.AlterTable).Cmds[0].(*tree.AlterTableAddColumn).ColumnDef
-	col, _, _, err := sqlbase.MakeColumnDefDescs(colDef, nil, tree.RelationalTable)
+	col, _, _, err := sqlbase.MakeColumnDefDescs(colDef, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -547,6 +547,14 @@ func TestKWDBInternalTablesPopulate(t *testing.T) {
 		{
 			name:  "kwdb_streams",
 			table: kwdbInternalKWDBStreamTable,
+		},
+		{
+			name:  "kwdb_pipes",
+			table: kwdbInternalKWDBPipeTable,
+		},
+		{
+			name:  "kwdb_publications",
+			table: kwdbInternalKWDBPublicationsTable,
 		},
 		{
 			name:  "ts_transaction_record",

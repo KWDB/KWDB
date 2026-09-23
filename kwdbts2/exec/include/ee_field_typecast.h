@@ -100,7 +100,7 @@ class FieldTypeCastTimestamptz2String : public FieldTypeCast {
  public:
   explicit FieldTypeCastTimestamptz2String(Field *field, k_uint32 field_length,
                                            const KString &output_type,
-                                           k_int8 time_zone);
+                                           k_int8 time_zone, bool with_timezone = true);
   k_int64 ValInt() override;
   k_double64 ValReal() override;
   String ValStr() override;
@@ -109,6 +109,7 @@ class FieldTypeCastTimestamptz2String : public FieldTypeCast {
   Field *field_to_copy() { return new FieldTypeCastTimestamptz2String(*this); }
   k_int8 time_zone_;
   k_int64 type_scale_{1};
+  bool with_timezone_{true};
 
  protected:
   String strvalue_{""};

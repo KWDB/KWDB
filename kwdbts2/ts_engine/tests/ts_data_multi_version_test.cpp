@@ -81,6 +81,7 @@ class TestV2Iterator : public TsEngineTestBase {
     timestamp64 start_ts = 3600;
     auto pay_load = GenRowPayload(*metric_schema_, tag_schema_ ,table_id, 1, dev_id, 1, start_ts);
     TsRawPayload::SetOSN(pay_load, osn);
+    TsRawPayload::SetRowType(pay_load, DataTagFlag::TAG_ONLY);
     bool is_dropped;
     auto s = engine_->PutEntity(ctx_, table_id, 1, &pay_load, 1, 1, is_dropped);
     free(pay_load.data);

@@ -94,4 +94,51 @@ TEST_F(TestDistinctIterator, AggTest) {
   DmlExec::ExecQuery(ctx_, info, info2);
 }
 
+// Test TsDistinctParser::HandleRender method when renders_size_ > 0 branch
+TEST_F(TestDistinctIterator, TestDistinctParserHandleRenderWithRenders) {
+  TSFlowSpec flow;
+  TestDistinctSpec distinct_spec(table_id_);
+  distinct_spec.PrepareFlowSpec(flow);
+  
+  // Get the PostProcessSpec of DistinctProcessor
+  auto post = flow.mutable_processors(3)->mutable_post();
+  
+  // Add render_exprs to ensure renders_size_ > 0
+  auto* render_expr = post->add_render_exprs();
+  render_expr->set_expr("@2");
+  
+  distinct_spec.PrepareInputOutputSpec(flow);
+
+  size_t size = flow.ByteSizeLong();
+
+  auto req = make_unique<char[]>(sizeof(QueryInfo));
+  auto resp = make_unique<char[]>(sizeof(QueryInfo));
+  auto message = make_unique<char[]>(size);
+  flow.SerializeToArray(message.get(), size);
+
+  auto* info = reinterpret_cast<QueryInfo*>(req.get());
+  auto* info2 = reinterpret_cast<QueryInfo*>(resp.get());
+  info->tp = EnMqType::MQ_TYPE_DML_SETUP;
+  info->len = size;
+  info->id = 4;
+  info->unique_id = 45678;
+  info->handle = nullptr;
+  info->value = message.get();
+  info->ret = 0;
+  info->time_zone = 0;
+  info->relBatchData = nullptr;
+  info->relRowCount = 0;
+
+  KStatus status = DmlExec::ExecQuery(ctx_, info, info2);
+  ASSERT_EQ(status, KStatus::SUCCESS);
+
+  auto* result = static_cast<QueryInfo*>(static_cast<void*>(resp.get()));
+  ASSERT_EQ(result->ret, SUCCESS);
+
+  // Cleanup
+  info->handle = result->handle;
+  info->tp = EnMqType::MQ_TYPE_DML_CLOSE;
+  DmlExec::ExecQuery(ctx_, info, info2);
+}
+
 }  // namespace kwdbts

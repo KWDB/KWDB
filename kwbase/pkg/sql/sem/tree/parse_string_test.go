@@ -129,7 +129,7 @@ func TestParseAndRequireString(t *testing.T) {
 			name:     "timestamp",
 			typ:      types.Timestamp,
 			str:      `2023-01-01 12:00:00`,
-			expected: `'2023-01-01 12:00:00+00:00'`,
+			expected: `'2023-01-01 12:00:00'`,
 		},
 		{
 			name:     "timestamptz",

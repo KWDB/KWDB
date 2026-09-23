@@ -53,6 +53,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/humanizeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/retry"
+	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"github.com/cockroachdb/errors"
 )
 
@@ -89,6 +90,9 @@ func (p *planner) SetClusterSetting(
 	}
 
 	name := strings.ToLower(n.Name)
+	if name == "server.restful_service.default_request_timezone" {
+		return nil, errors.Errorf("the cluster setting '%s' has expired. Please use cluster.connection.timezone", name)
+	}
 	st := p.EvalContext().Settings
 	v, ok := settings.Lookup(name, settings.LookupForLocalAccess)
 	if !ok {
@@ -156,6 +160,38 @@ func checkTsQueryOptMode(encodedValue string) error {
 	value, err := strconv.ParseInt(encodedValue, 2, 64)
 	if err != nil || value < 0 || value > 63 {
 		return pgerror.Newf(pgcode.InvalidParameterValue, "invalid value for ts.sql.query_opt_mode")
+	}
+	return nil
+}
+
+// checkServerTimezone checks whether the time zone value set is valid
+func checkServerTimezone(encodedValue string) error {
+	// The first execution of the TimeZoneStringToLocation function
+	// is to obtain the standardized loc string
+	loc, err := timeutil.TimeZoneStringToLocation(
+		encodedValue,
+		timeutil.TimeZoneStringToLocationISO8601Standard,
+	)
+	if err != nil {
+		return pgerror.Newf(pgcode.InvalidParameterValue,
+			"invalid value, could not parse %s as time zone", encodedValue)
+	}
+	if loc == nil {
+		loc = timeutil.FixedOffsetTimeZoneToLocation(0, encodedValue)
+	}
+
+	standardLoc := loc.String()
+
+	// The second execution of the TimeZoneStringToLocation function
+	// is to check whether the standardized loc string can be parsed
+	// into time zone information
+	_, err1 := timeutil.TimeZoneStringToLocation(
+		standardLoc,
+		timeutil.TimeZoneStringToLocationISO8601Standard,
+	)
+	if err1 != nil {
+		return pgerror.Newf(pgcode.InvalidParameterValue,
+			"invalid value, could not parse %s as time zone", encodedValue)
 	}
 	return nil
 }
@@ -276,6 +312,19 @@ func checkTsReservedLastSegmentMaxLimit(encodedValue string) error {
 	return nil
 }
 
+// checkTsLastBlockCacheMaxEntries checks whether the per-iterator last-block cache
+// capacity value set is valid.
+func checkTsLastBlockCacheMaxEntries(encodedValue string) error {
+	value, err := strconv.ParseInt(encodedValue, 10, 64)
+	if err != nil {
+		return err
+	}
+	if value < 0 || value > 10000 {
+		return errors.New("invalid value, the range of ts.last_block_cache.max_entries is [0, 10000]")
+	}
+	return nil
+}
+
 func checkTsBlockFilterSamplingRatio(encodedValue string) error {
 	value, err := strconv.ParseFloat(encodedValue, 64)
 	if err != nil {
@@ -304,6 +353,7 @@ var CheckClusterSetting = map[string]CheckOperation{
 	"ts.dedup.rule":                      checkTsDedupRule,
 	"ts.rows_per_block.max_limit":        checkTsRowsPerBlockMaxLimit,
 	"ts.sql.query_opt_mode":              checkTsQueryOptMode,
+	"cluster.connection.timezone":        checkServerTimezone,
 	"ts.count.use_statistics.enabled":    checkBool,
 	"capacity.stats.period":              checkCapacityStatsPeriod,
 	"ts.table_cache.capacity":            checkTsTableCacheCapacity,
@@ -313,6 +363,7 @@ var CheckClusterSetting = map[string]CheckOperation{
 	"ts.compress.level":                  checkTsCompressLevel,
 	"ts.compress.algorithm":              checkTsCompressAlgorithm,
 	"ts.compress.last_segment.enabled":   checkTsCompressLastSegment,
+	"ts.last_block_cache.max_entries":    checkTsLastBlockCacheMaxEntries,
 	"ts.reserved_last_segment.max_limit": checkTsReservedLastSegmentMaxLimit,
 	"ts.force_sync_file.enabled":         checkBool,
 	"ts.block_filter.sampling_ratio":     checkTsBlockFilterSamplingRatio,
@@ -414,6 +465,21 @@ func (n *setClusterSettingNode) startExec(params runParams) error {
 					if !tse.TsRaftLogCombineWAL.Get(&n.st.SV) {
 						return nil
 					}
+				}
+			}
+			if n.name == "server.restful_influxdb.batch_params" {
+				batchParams := strings.Split(encoded, ";")
+				if len(batchParams) != 5 {
+					return errors.New("invalid value, server.restful_influxdb.batch_params must contain four values.eg: 'false;100;16;1000;100' ")
+				}
+			}
+			if n.name == settings.TSInsertSelectBlockMemorySetting {
+				blockMemory, blockErr := strconv.ParseInt(encoded, 10, 64)
+				if blockErr != nil {
+					return blockErr
+				}
+				if blockMemory <= 0 {
+					return errors.New("invalid value, sql.ts_insert_select.block_memory must be greater than 0")
 				}
 			}
 			if _, err = execCfg.InternalExecutor.ExecEx(

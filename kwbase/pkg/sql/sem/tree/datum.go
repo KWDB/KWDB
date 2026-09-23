@@ -84,6 +84,12 @@ var (
 	DTimeMaxTimeRegex = regexp.MustCompile(`^([0-9-]*(\s|T))?\s*24:00(:00(.0+)?)?\s*$`)
 )
 
+// FLTEpsilon represents the machine epsilon for float4 (single-precision float)
+const FLTEpsilon = 1.19209290e-7
+
+// FLTComparTolFactor is the comparison tolerance factor for float comparison
+const FLTComparTolFactor = 4
+
 // Datum represents a SQL value.
 type Datum interface {
 	TypedExpr
@@ -810,6 +816,16 @@ func ParseDFloat(s string) (*DFloat, error) {
 	return NewDFloat(DFloat(f)), nil
 }
 
+// ParseDFloat32 parses and returns the *DFloat Datum value represented by the provided
+// string, or an error if parsing is unsuccessful.
+func ParseDFloat32(s string) (*DFloat, error) {
+	f, err := strconv.ParseFloat(s, 32)
+	if err != nil {
+		return nil, makeParseError(s, types.Float, err)
+	}
+	return NewDFloat(DFloat(f)), nil
+}
+
 // ResolvedType implements the TypedExpr interface.
 func (*DFloat) ResolvedType() *types.T {
 	return types.Float
@@ -831,6 +847,22 @@ func (d *DFloat) Compare(ctx *EvalContext, other Datum) int {
 		return -t.Compare(ctx, d)
 	default:
 		panic(makeUnsupportedComparisonMessage(d, other))
+	}
+	if ctx.IsFloat32Compare {
+		if math.IsNaN(float64(*d)) {
+			if math.IsNaN(float64(v)) {
+				return 0
+			}
+			return -1
+		}
+		diff := float64(*d - v)
+		if diff > FLTComparTolFactor*FLTEpsilon {
+			return 1
+		}
+		if diff < -FLTComparTolFactor*FLTEpsilon {
+			return -1
+		}
+		return 0
 	}
 	if *d < v {
 		return -1
@@ -1380,6 +1412,24 @@ func (d *DCollatedString) Size() uintptr {
 // IsComposite implements the CompositeDatum interface.
 func (d *DCollatedString) IsComposite() bool {
 	return true
+}
+
+// IsComposite implements the CompositeDatum interface.
+func (d *DOidWrapper) IsComposite() bool {
+	if cdatum, ok := d.Wrapped.(CompositeDatum); ok {
+		return cdatum.IsComposite()
+	}
+	return false
+}
+
+// NewDCIText is a helper routine to create a *DCIText (implemented as a *DOidWrapper)
+// initialized from a string.
+func NewDCIText(contents string, env *CollationEnvironment) (Datum, error) {
+	d, err := NewDCollatedString(contents, types.CaseInsensitiveLocale, env)
+	if err != nil {
+		return nil, err
+	}
+	return wrapWithOid(d, types.T_citext), nil
 }
 
 // DBytes is the bytes Datum. The underlying type is a string because we want
@@ -2228,8 +2278,16 @@ var dMinTimestamp = &DTimestamp{}
 
 // time.Time formats.
 const (
-	// TimestampOutputFormat is used to output all timestamps.
+	// TimestampOutputFormat is used to output timestamptz (timestamps with timezone).
 	TimestampOutputFormat = "2006-01-02 15:04:05.999999999-07:00"
+	// DateTimeOutputFormat is used to output timestamp (timestamps without timezone).
+	DateTimeOutputFormat = "2006-01-02 15:04:05.999999999"
+	// TimeFormat is used to output time without time zone.
+	TimeFormat = "15:04:05.999999999"
+	// TimeTZFormat is used to output time with time zone.
+	TimeTZFormat = TimeFormat + "-07:00"
+	// DateFormat is used to output date.
+	DateFormat = "2006-01-02"
 )
 
 // ParseDTimestamp parses and returns the *DTimestamp Datum value represented by
@@ -2413,7 +2471,7 @@ func (d *DTimestamp) Format(ctx *FmtCtx) {
 	if !bareStrings {
 		ctx.WriteByte('\'')
 	}
-	ctx.WriteString(d.UTC().Format(TimestampOutputFormat))
+	ctx.WriteString(d.UTC().Format(DateTimeOutputFormat))
 	if !bareStrings {
 		ctx.WriteByte('\'')
 	}
@@ -2971,6 +3029,12 @@ func MustBeDJSON(e Expr) DJSON {
 
 // AsJSON converts a datum into our standard json representation.
 func AsJSON(d Datum, loc *time.Location) (json.JSON, error) {
+	if w, ok := d.(*DOidWrapper); ok && w.Oid == types.T_citext {
+		if ds, ok := w.Wrapped.(*DCollatedString); ok {
+			d = ds
+		}
+	}
+
 	switch t := d.(type) {
 	case *DBool:
 		return json.FromBool(bool(*t)), nil
@@ -3939,6 +4003,7 @@ func (d *DOid) Min(ctx *EvalContext) (Datum, bool) {
 //
 // Types that currently benefit from DOidWrapper are:
 // - DName => DOidWrapper(*DString, oid.T_name)
+// - DCIText => DOidWrapper(*DCollatedString, types.T_citext)
 type DOidWrapper struct {
 	Wrapped Datum
 	Oid     oid.Oid
@@ -3957,10 +4022,11 @@ func wrapWithOid(d Datum, oid oid.Oid) Datum {
 	case *DInt:
 	case *DString:
 	case *DArray:
+	case *DCollatedString:
 	case dNull, *DOidWrapper:
 		panic(errors.AssertionFailedf("cannot wrap %T with an Oid", v))
 	default:
-		// Currently only *DInt, *DString, *DArray are hooked up to work with
+		// Currently only *DInt, *DString, *DCollatedString, *DArray are hooked up to work with
 		// *DOidWrapper. To support another base Datum type, replace all type
 		// assertions to that type with calls to functions like AsDInt and
 		// MustBeDInt.

@@ -239,14 +239,14 @@ CREATE PROCEDURE
 > CREATE PROCEDURE p_sell_product(in_prod_id INT, in_quantity INT)BEGIN DECLARE v_current_stock INT; DECLARE v_new_stock INT; START TRANSACTION; SELECT stock INTO v_current_stock FROM product_inventory WHERE product_id = in_prod_id; IF v_current_stock >= in_quantity THEN SET v_new_stock = v_current_stock - in_quantity; UPDATE product_inventory SET stock = v_new_stock, last_updated = '2025-05-20 16:30:30.555' WHERE product_id = in_prod_id; INSERT INTO sales (sale_id, product_id, quantity, sale_date) VALUES (100, in_prod_id, in_quantity, '2025-05-20 16:30:30.555'); COMMIT; SELECT '销售成功' AS status, v_current_stock, v_new_stock, in_quantity; ELSE ROLLBACK; SELECT '库存不足' AS status, v_current_stock, in_quantity; ENDIF; END;
 CREATE PROCEDURE
 > CALL p_update_price_single(1, 849.99);
-  v_old_price | v_new_price |         v_updated_at
---------------+-------------+--------------------------------
-       799.99 |      849.99 | 2025-05-20 16:30:30.555+00:00
+  v_old_price | v_new_price |      v_updated_at
+--------------+-------------+--------------------------
+       799.99 |      849.99 | 2025-05-20 16:30:30.555
 (1 row)
 > CALL p_insert_product('Wireless Charger', 39.99, 'Electronics');
-  v_new_id |     in_name      | in_price |         v_created_at
------------+------------------+----------+--------------------------------
-        11 | Wireless Charger |    39.99 | 2025-05-20 16:30:30.555+00:00
+  v_new_id |     in_name      | in_price |      v_created_at
+-----------+------------------+----------+--------------------------
+        11 | Wireless Charger |    39.99 | 2025-05-20 16:30:30.555
 (1 row)
 > CALL p_delete_product(10);
   deleted_count
@@ -267,14 +267,14 @@ SQLSTATE: 22026
           100 |          95 |                 -5
 (1 row)
 > CALL p_insert_product_with_category('Bluetooth Speaker', 129.99, 1);
-  v_new_id |      in_name      | in_price | in_category_id |         v_created_at
------------+-------------------+----------+----------------+--------------------------------
-        12 | Bluetooth Speaker |   129.99 |              1 | 2025-05-20 16:30:30.555+00:00
+  v_new_id |      in_name      | in_price | in_category_id |      v_created_at
+-----------+-------------------+----------+----------------+--------------------------
+        12 | Bluetooth Speaker |   129.99 |              1 | 2025-05-20 16:30:30.555
 (1 row)
 > CALL p_delete_expired_products('2025-01-01');
-  v_deleted_count |      in_expiry_date
-------------------+----------------------------
-  NULL            | 2025-01-01 00:00:00+00:00
+  v_deleted_count |   in_expiry_date
+------------------+----------------------
+  NULL            | 2025-01-01 00:00:00
 (1 row)
 > CALL p_calculate_tax(1, 0.08);
   v_price | in_tax_rate | v_tax_amount | v_total_price
@@ -357,9 +357,9 @@ SQLSTATE: 22026
        899.99 |     989.989 |       10.0
 (1 row)
 > CALL p_insert_with_formatted_date('Expiring Product', 9.99, '2025-12-31');
-  v_new_id |     in_name      | in_price |       v_parsed_date
------------+------------------+----------+----------------------------
-        17 | Expiring Product |     9.99 | 2025-12-31 00:00:00+00:00
+  v_new_id |     in_name      | in_price |    v_parsed_date
+-----------+------------------+----------+----------------------
+        17 | Expiring Product |     9.99 | 2025-12-31 00:00:00
 (1 row)
 > CALL p_update_description(1, 'Now with improved features');
   v_old_description | v_new_description |     in_additional_text
@@ -384,9 +384,9 @@ SQLSTATE: 22026
 > INSERT INTO products (product_id, name, price, description, category, supplier_id, stock, avg_rating, rating_count, created_at, expiry_date, metadata, product_tags) VALUES (100,'Tennis Racket', 149.99, 'Professional tennis racket', 'Sports', 4, 55, 4.8, 27, '2025-04-25', '2025-04-25', '{"brand": "AthleticPro", "weight": "300g", "headsize": "100sq.in"}', '{"tennis","sports","racket"}');
 INSERT 1
 > CALL p_check_expiry(100, '2025-12-31');
-        v_expiry_date       |    v_check_date_parsed    | v_is_expired
-----------------------------+---------------------------+---------------
-  2025-04-25 00:00:00+00:00 | 2025-12-31 00:00:00+00:00 |            1
+     v_expiry_date    | v_check_date_parsed | v_is_expired
+----------------------+---------------------+---------------
+  2025-04-25 00:00:00 | 2025-12-31 00:00:00 |            1
 (1 row)
 > CALL p_format_price_as_currency(1);
   v_price | v_currency_text
@@ -409,9 +409,9 @@ INSERT 1
         19 | Tablet  |   499.99 | 已插入
 (1 row)
 > CALL p_delete_if_expired(100);
-        v_expiry_date       | v_deleted
-----------------------------+------------
-  2025-04-25 00:00:00+00:00 |         1
+     v_expiry_date    | v_deleted
+----------------------+------------
+  2025-04-25 00:00:00 |         1
 (1 row)
 > CALL p_conditional_update(1, 999.99, NULL);
   v_old_price | v_old_stock | in_price | in_stock
@@ -454,19 +454,19 @@ INSERT 1
   NULL         | NULL         |             30
 (1 row)
 > CALL p_calculate_days_on_sale(1);
-  in_prod_id |      v_created_date       | v_days_on_sale
--------------+---------------------------+-----------------
-           1 | 2025-01-15 00:00:00+00:00 |       10859430
+  in_prod_id |   v_created_date    | v_days_on_sale
+-------------+---------------------+-----------------
+           1 | 2025-01-15 00:00:00 |       10859430
 (1 row)
 > CALL p_update_seasonal_flag(1);
-  in_prod_id | v_current_month | v_is_seasonal | is_seasonal_new |        updated_at_new
--------------+-----------------+---------------+-----------------+--------------------------------
-           1 |               5 |             0 |               0 | 2025-05-20 16:30:30.555+00:00
+  in_prod_id | v_current_month | v_is_seasonal | is_seasonal_new |     updated_at_new
+-------------+-----------------+---------------+-----------------+--------------------------
+           1 |               5 |             0 |               0 | 2025-05-20 16:30:30.555
 (1 row)
 > CALL p_update_last_stock_check(1);
-  in_prod_id |      last_checked       |     last_stock_check_new
--------------+-------------------------+--------------------------------
-           1 | 2025-05-20 16:30:30.555 | 2025-05-20 16:30:30.555+00:00
+  in_prod_id |      last_checked       |  last_stock_check_new
+-------------+-------------------------+--------------------------
+           1 | 2025-05-20 16:30:30.555 | 2025-05-20 16:30:30.555
 (1 row)
 > CALL p_sell_product(1, 5);
    status  | v_current_stock | v_new_stock | in_quantity

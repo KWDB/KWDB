@@ -99,6 +99,11 @@ class TsStorageIteratorImpl : public TsStorageIterator {
 
   std::shared_ptr<TsScanFilterParams> filter_;
   std::shared_ptr<MMapMetricsTable> scan_schema_;
+
+  // Per-iterator cache of recently-accessed TsLastBlock objects.
+  // Avoids repeated decompression when the same LastSegment block is
+  // accessed across multiple entity scans within a single query.
+  LastBlockCache last_block_cache_;
 };
 
 class TsSortedRawDataIteratorImpl : public TsStorageIteratorImpl {
@@ -131,7 +136,8 @@ class TsFillRawDataIteratorImpl : public TsSortedRawDataIteratorImpl {
                             std::vector<BlockFilter>& block_filter,
                             std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
                             const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
-                            const std::shared_ptr<MMapMetricsTable>& schema, const FillParams fill_params);
+                            const std::shared_ptr<MMapMetricsTable>& schema, const FillParams fill_params,
+                            timestamp64 life_time_acceptable_ts);
   ~TsFillRawDataIteratorImpl() {}
 
   KStatus Init(bool is_reversed) override;
@@ -155,6 +161,7 @@ class TsFillRawDataIteratorImpl : public TsSortedRawDataIteratorImpl {
 
   uint32_t cur_entity_id_;
   timestamp64 fill_ts_point_;
+  timestamp64 life_time_acceptable_ts_;
   std::vector<KwTsSpan> before_ts_span_;
   std::vector<KwTsSpan> after_ts_span_;
   std::vector<k_uint32> fill_kw_scan_cols_;
@@ -197,6 +204,10 @@ class TsAggIteratorImpl : public TsStorageIteratorImpl {
   void TimeBucketReset();
   void AddAggResult(ResultSet* res);
   std::vector<shared_ptr<TsBlockSpan>> SortBlockSpans(std::list<std::shared_ptr<TsBlockSpan>>& ts_block_spans);
+  // Pure function — reads no instance state. Kept static so it can be unit-tested without
+  // standing up a full TsAggIteratorImpl (which requires a vgroup, schema manager, etc.).
+  static std::vector<shared_ptr<TsBlockSpan>> MergeBlockSpans(
+      const std::vector<std::shared_ptr<TsBlockSpan>>& ts_block_spans);
 
  protected:
   KStatus GenerateAggData();
@@ -217,16 +228,14 @@ class TsAggIteratorImpl : public TsStorageIteratorImpl {
   void InitSumValue(void* data, int32_t type);
   void UpdateTsSpans();
   void ConvertToDoubleIfOverflow(uint32_t col_idx, bool over_flow, TSSlice& agg_data);
-  KStatus AddSumNotOverflowYet(uint32_t blk_col_idx,
-                                int32_t type,
-                                void* current,
-                                TSSlice& agg_data);
-  KStatus AddSumOverflow(int32_t type,
-                          void* current,
-                          TSSlice& agg_data);
-  inline KStatus AddSumNotOverflowYetByPreSum(uint32_t col_idx, int32_t type,
-                                              void* current, TSSlice& agg_data, bool is_overflow = false);
-  inline KStatus AddSumOverflowByPreSum(int32_t type, void* current, TSSlice& agg_data, bool is_overflow = false);
+  inline KStatus AddSumNotOverflowYetByPreSum(uint32_t col_idx, int32_t type, int64_t sum_i64, double sum_f64,
+                                              TSSlice& agg_data, bool is_overflow = false);
+  inline KStatus AddSumOverflowByPreSum(int32_t type, int64_t sum_i64, double sum_f64,
+                                        TSSlice& agg_data, bool is_overflow = false);
+
+  void updateMinMaxAggData(TSSlice& agg_data, std::shared_ptr<TsBlockSpan>& block_span, Sumfunctype agg_type,
+                           uint32_t col_idx, uint32_t agg_idx, int32_t row_idx, void* cur_data);
+
   std::vector<Sumfunctype> scan_agg_types_;
   std::vector<timestamp64> last_ts_points_;
   std::vector<k_int32> agg_extend_cols_;
@@ -234,6 +243,7 @@ class TsAggIteratorImpl : public TsStorageIteratorImpl {
   std::vector<TSSlice> final_agg_data_;
   std::vector<bool> final_agg_buffer_is_new_;
   std::vector<AggCandidate> candidates_;
+  bool overflow_occurred_{false};
   std::vector<bool> is_overflow_;
   std::vector<k_uint32> first_col_idxs_;
   std::vector<int64_t> first_col_ts_;
@@ -266,8 +276,6 @@ class TsAggIteratorImpl : public TsStorageIteratorImpl {
 
   AggCandidate first_row_candidate_{INT64_MAX, 0, nullptr};
   AggCandidate last_row_candidate_{INT64_MIN, 0, nullptr};
-
-  std::shared_ptr<TsRawPayloadRowParser> parser_;
 
   TimeBucketInfo time_bucket_info_;
   int64_t time_bucket_index_;

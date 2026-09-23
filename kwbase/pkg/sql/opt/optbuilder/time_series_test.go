@@ -250,6 +250,14 @@ func TestCheckOrderedTSScan(t *testing.T) {
 // testTSTable is a mock cat.Table implementation for testing
 type testTSTable struct{}
 
+func (t *testTSTable) AllColumnCount() int {
+	return 5
+}
+
+func (t *testTSTable) GetCDC() interface{} {
+	return nil
+}
+
 func (t *testTSTable) ID() cat.StableID {
 	return cat.StableID(1)
 }
@@ -359,6 +367,30 @@ func (t *testTSTable) OutboundForeignKey(i int) cat.ForeignKeyConstraint {
 
 func (t *testTSTable) GetTableType() tree.TableType {
 	return 0
+}
+
+func (t *testTSTable) IsRelationalTable() bool {
+	return true
+}
+
+func (t *testTSTable) IsTSTable() bool {
+	return false
+}
+
+func (t *testTSTable) IsTemplateTable() bool {
+	return false
+}
+
+func (t *testTSTable) IsInstanceTable() bool {
+	return false
+}
+
+func (t *testTSTable) IsSparseTable() bool {
+	return false
+}
+
+func (t *testTSTable) IsTimeseriesTable() bool {
+	return false
 }
 
 func (t *testTSTable) GetColByName(name tree.Name) (cat.Column, bool) {
@@ -567,6 +599,10 @@ func (c *testTSColumn) IsTagCol() bool {
 }
 
 func (c *testTSColumn) TsColStorgeLen() uint64 {
+	return 0
+}
+
+func (c *testTSColumn) TsVariableLengthType() int32 {
 	return 0
 }
 

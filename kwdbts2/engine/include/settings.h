@@ -109,6 +109,7 @@ struct EngineOptions {
   static uint8_t compress_stage;
   static CompressLevel compress_level;
   static bool compress_last_segment;
+  static size_t last_block_cache_max_entries;
   static bool force_sync_file;
   static size_t last_cache_max_size;
   static double block_filter_sampling_ratio;

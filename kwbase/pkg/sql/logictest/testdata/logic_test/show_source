@@ -220,6 +220,9 @@ scheduled_jobs                   BASE TABLE
 user_defined_routine             BASE TABLE
 kwdb_cdc_watermark               BASE TABLE
 kwdb_streams                     BASE TABLE
+kwdb_pipes                       BASE TABLE
+kwdb_unpush                      BASE TABLE
+kwdb_publications                BASE TABLE
 
 query TTT
 SELECT * FROM [SHOW TABLES FROM system WITH COMMENT]
@@ -258,6 +261,9 @@ scheduled_jobs                   BASE TABLE  ·
 user_defined_routine             BASE TABLE  ·
 kwdb_cdc_watermark               BASE TABLE  ·
 kwdb_streams                     BASE TABLE  ·
+kwdb_pipes                       BASE TABLE  ·
+kwdb_unpush                      BASE TABLE  ·
+kwdb_publications                BASE TABLE  ·
 
 query ITTT colnames
 SELECT node_id, user_name, application_name, active_queries

@@ -13,6 +13,7 @@
 
 #include <memory>
 #include "ts_common.h"
+#include "ts_agg.h"
 #include "ts_bufferbuilder.h"
 #include "ts_io.h"
 
@@ -36,7 +37,8 @@ struct TsEntityPartitionAggIndex {
   TS_OSN max_osn = 0;
   uint64_t agg_offset = 0;
   uint64_t agg_len = 0;
-  char reserved[16] = {0};
+  bool agg_invalid = false;
+  char reserved[15] = {0};
 };
 static_assert(sizeof(TsEntityPartitionAggIndex) == 80, "wrong size of TsEntityAggStats, please check TsEntityAggStats");
 
@@ -74,6 +76,8 @@ class TsPartitionAggReader {
   KStatus Open();
   KStatus GetPartitionAggIndex(TsEntityPartitionAggIndex& stats);
   KStatus GetPartitionAgg(uint64_t agg_offset, uint64_t agg_len, TsSliceGuard& agg);
+  [[nodiscard]] uint64_t GetFileVersion() const { return footer_.file_version; }
+  [[nodiscard]] bool IsSparseLayout() const { return footer_.file_version >= PARTITION_AGG_SPARSE_LAYOUT_VERSION; }
   void MarkDelete() { delete_after_free_ = true; }
 
  private:

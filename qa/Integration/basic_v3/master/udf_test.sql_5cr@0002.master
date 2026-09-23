@@ -61,14 +61,11 @@ return result
 end
 '
 END;
-CREATE FUNCTION
+ERROR: lua udf is not allowed to call functions
+SQLSTATE: 0A000
 > select complex_calculation(e1) from test_udf.tb1 order by e1;
-  complex_calculation
------------------------
-                    0
-                    6
-                   15
-(3 rows)
+ERROR: unknown function: complex_calculation()
+SQLSTATE: 42883
 > select multiply(e1) from test_udf.tb1 order by e1;
   multiply
 ------------
@@ -77,11 +74,8 @@ CREATE FUNCTION
        400
 (3 rows)
 > select count(e1),min(e1),max(e1),complex_calculation(e1) as udf_cal ,last_row(e1) from test_udf.tb1 group by e1 having complex_calculation(e1) > 2 order by e1;
-  count | min | max | udf_cal | last_row
---------+-----+-----+---------+-----------
-      1 |  10 |  10 |       6 |       10
-      1 | 200 | 200 |      15 |      200
-(2 rows)
+ERROR: unknown function: complex_calculation()
+SQLSTATE: 42883
 > select count(e1),min(e1),max(e1),multiply(e1) as udf_add ,last_row(e1) from test_udf.tb1 group by e1 having multiply(e1) > 2 order by e1;
   count | min | max | udf_add | last_row
 --------+-----+-----+---------+-----------
@@ -103,12 +97,8 @@ INSERT 1
 > insert into test_udf_re.r1 values(200);
 INSERT 1
 > select complex_calculation(e1) from test_udf_re.r1 order by e1;
-  complex_calculation
------------------------
-                    0
-                    6
-                   15
-(3 rows)
+ERROR: unknown function: complex_calculation()
+SQLSTATE: 42883
 > select multiply(e1) from test_udf_re.r1 order by e1;
   multiply
 ------------
@@ -123,11 +113,8 @@ INSERT 1
       1 | 200 | 200 |     400
 (2 rows)
 > select count(e1),min(e1),max(e1) ,complex_calculation(e1) as udf_cal from test_udf_re.r1 group by e1 having complex_calculation(e1) > 2 order by e1;
-  count | min | max | udf_cal
---------+-----+-----+----------
-      1 |  10 |  10 |       6
-      1 | 200 | 200 |      15
-(2 rows)
+ERROR: unknown function: complex_calculation()
+SQLSTATE: 42883
 > drop table test_udf_re.r1 ;
 DROP TABLE
 > drop database test_udf_re cascade;
@@ -150,24 +137,20 @@ SQLSTATE: 22003
   NULL
 (1 row)
 > select complex_calculation(-32768);
-ERROR: complex_calculation(): integer out of range
-SQLSTATE: 22003
+ERROR: unknown function: complex_calculation()
+SQLSTATE: 42883
 > select complex_calculation(-32769);
-ERROR: complex_calculation(): integer out of range
-SQLSTATE: 22003
+ERROR: unknown function: complex_calculation()
+SQLSTATE: 42883
 > select complex_calculation(32767);
-  complex_calculation
------------------------
-                   31
-(1 row)
+ERROR: unknown function: complex_calculation()
+SQLSTATE: 42883
 > select complex_calculation(32768);
-ERROR: complex_calculation(): integer out of range
-SQLSTATE: 22003
+ERROR: unknown function: complex_calculation()
+SQLSTATE: 42883
 > select complex_calculation(null);
-  complex_calculation
------------------------
-  NULL
-(1 row)
+ERROR: unknown function: complex_calculation()
+SQLSTATE: 42883
 > select multiply(now());
 ERROR: multiply(): unknown signature: now() (desired <int2>)
 SQLSTATE: 42883
@@ -184,24 +167,25 @@ SQLSTATE: 42883
 ERROR: unknown signature: multiply(STRING)
 SQLSTATE: 42883
 > select complex_calculation(now());
-ERROR: complex_calculation(): unknown signature: now() (desired <int2>)
+ERROR: unknown function: complex_calculation()
 SQLSTATE: 42883
 > select complex_calculation('test');
-ERROR: unknown signature: complex_calculation(STRING)
+ERROR: unknown function: complex_calculation()
 SQLSTATE: 42883
 > select complex_calculation(1.2);
-ERROR: unknown signature: complex_calculation(DECIMAL)
+ERROR: unknown function: complex_calculation()
 SQLSTATE: 42883
 > select complex_calculation(true);
-ERROR: unknown signature: complex_calculation(BOOL)
+ERROR: unknown function: complex_calculation()
 SQLSTATE: 42883
 > select complex_calculation('2011-11-11');
-ERROR: unknown signature: complex_calculation(STRING)
+ERROR: unknown function: complex_calculation()
 SQLSTATE: 42883
 > DROP FUNCTION multiply;
 DROP FUNCTION
 > DROP FUNCTION complex_calculation;
-DROP FUNCTION
+ERROR: unknown function 'complex_calculation' when dropping function
+SQLSTATE: 42883
 > SHOW FUNCTIONS;
   function_name
 -----------------

@@ -117,6 +117,9 @@ class TsMetricBlockBuilder {
 
   KStatus PutBlockSpan(const std::shared_ptr<TsBlockSpan> &span);
   std::unique_ptr<TsMetricBlock> GetMetricBlock();
+  bool IsSparseTable() const {
+    return table_schema_manager_->IsSparseTable();
+  }
   int GetRowNum() const { return count_; }
   void Reset() {
     count_ = 0;

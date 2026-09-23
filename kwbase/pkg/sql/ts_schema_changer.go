@@ -271,6 +271,7 @@ func makeKObjectTableForTs(d jobspb.SyncMetaCacheDetails) sqlbase.CreateTsTable 
 		PartitionInterval: d.SNTable.TsTable.PartitionInterval,
 		TsVersion:         uint32(d.SNTable.TsTable.GetTsVersion()),
 		HashNum:           hashNum,
+		Sparse:            d.SNTable.IsSparseTable(),
 	}
 
 	nTagIndexInfos := make([]sqlbase.NTagIndexInfo, len(d.SNTable.Indexes))

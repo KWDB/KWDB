@@ -56,6 +56,7 @@ struct TSTableFileMetadata {
   int64_t life_time;         // life time: second type
   // has valid row
   bool has_data;
+  bool sparse;
   // entity hash range
   uint64_t hash_num;
   char user_defined[115]; ///< reserved for user-defined meta data information.

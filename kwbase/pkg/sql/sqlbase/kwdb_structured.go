@@ -24,26 +24,15 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
 	"github.com/cockroachdb/errors"
+	"github.com/lib/pq/oid"
 )
 
 const (
-	// TSInsertPayloadVersion Indicates the version of TSInsertPayload,
-	// which is used to verify compatibility during the version upgrade.
-	TSInsertPayloadVersion = 1
-	// ColumnValIsNull is a flag that the value of the insert column is NULL.
-	ColumnValIsNull = -1
-	// ColumnValNotExist is a flag that the value of the insert column is NULL.
-	ColumnValNotExist = -2
-	// BothDataAndTagColumn is the flag that the insert column contains data column and tag column.
-	BothDataAndTagColumn = 0
-	// OnlyDataColumn is the flag that the insert column only contains data column.
-	OnlyDataColumn = 1
-	// OnlyTagColumn is the flag that the insert column only contains tag column.
-	OnlyTagColumn = 2
 	// RangeGroupIDOffset offset of range_group_id in the payload header
 	RangeGroupIDOffset int = 16
 	// RangeGroupIDSize length of range_group_id in the payload header
@@ -52,6 +41,8 @@ const (
 	OsnIDOffset = 0
 	// OsnIDSize length of osn_id in the payload header (Only 8 bytes have been used).
 	OsnIDSize = 16
+	// VarColumnSize is the fixed length memory taken by var-length data type
+	VarColumnSize = 8
 )
 
 // InstNameSpace Stores the relationship between instance table names and ids
@@ -601,4 +592,264 @@ func DatumToString(d tree.Datum) string {
 		res = val.String()
 	}
 	return res
+}
+
+// ComputeTSColumnSize computes colSize and allocSize of a column according to its type.
+func ComputeTSColumnSize(
+	oidType oid.Oid, fixedLengthStr bool, storageLen int, allSize, allocSize *int,
+) bool {
+	colSize := 0
+	AllocSize := 0
+	switch oidType {
+	case oid.T_int2:
+		colSize += 2
+	case oid.T_int4, oid.T_float4:
+		colSize += 4
+	case oid.T_int8, oid.T_float8, oid.T_timestamp, oid.T_timestamptz:
+		colSize += 8
+	case oid.T_bool:
+		colSize++
+	case oid.T_char, types.T_nchar, oid.T_text, oid.T_bpchar, oid.T_bytea, types.T_geometry:
+		colSize += storageLen
+	case oid.T_varchar, types.T_nvarchar, types.T_varbytea:
+		if fixedLengthStr {
+			colSize += storageLen
+		} else {
+			// pre allocate paylaod space for var-length colums
+			// here we use some fixed-rule to preallocate more space to improve efficiency
+			// StorageLen = userWidth+1
+			// varDataLen = StorageLen+2
+			if storageLen < 68 {
+				// 100%
+				AllocSize += storageLen
+			} else if storageLen < 260 {
+				// 60%
+				AllocSize += int(storageLen/5) * 3
+			} else {
+				// 30%
+				AllocSize += int(storageLen/10) * 3
+			}
+			colSize += VarColumnSize
+		}
+	default:
+		return false
+	}
+	if allSize != nil {
+		*allSize += colSize
+	}
+
+	if allocSize != nil {
+		*allocSize += AllocSize
+	}
+
+	return true
+}
+
+// parsePtagValue parse the value of a string into the corresponding type of value and add it to the payload.
+func parsePtagValue(payload *[]byte, value string, offset int, typ *types.T) error {
+	parseInt := func(val string) (*tree.DInt, error) {
+		v, err := tree.ParseDInt(val)
+		if err != nil {
+			return nil, err
+		}
+		// Width is defined in bits.
+		width := uint(typ.Width() - 1)
+		// We're performing bounds checks inline with Go's implementation of min and max ints in Math.go.
+		shifted := *v >> width
+		if (*v >= 0 && shifted > 0) || (*v < 0 && shifted < -1) {
+			return nil, pgerror.Newf(pgcode.NumericValueOutOfRange,
+				"integer \"%d\" out of range for type %s", *v, typ.SQLString())
+		}
+		return v, nil
+	}
+	switch typ.InternalType.Oid {
+	case oid.T_int2:
+		v, err := parseInt(value)
+		if err != nil {
+			return err
+		}
+		binary.LittleEndian.PutUint16((*payload)[offset:], uint16(*v))
+	case oid.T_int4:
+		v, err := parseInt(value)
+		if err != nil {
+			return err
+		}
+		binary.LittleEndian.PutUint32((*payload)[offset:], uint32(*v))
+	case oid.T_int8:
+		v, err := parseInt(value)
+		if err != nil {
+			return err
+		}
+		binary.LittleEndian.PutUint64((*payload)[offset:], uint64(*v))
+	case oid.T_bool:
+		v, err := tree.ParseDBool(value)
+		if err != nil {
+			return err
+		}
+		if *v {
+			(*payload)[offset] = 1
+		} else {
+			(*payload)[offset] = 0
+		}
+	case types.T_nchar, oid.T_varchar, oid.T_bpchar:
+		copy((*payload)[offset:], value)
+
+	default:
+		return errors.Errorf("unsupported int oid %v", typ.InternalType.Oid)
+	}
+	return nil
+}
+
+// GetPtagPayloads construct payloads of primary tag values
+// ex: PrimaryTagValues: [1,2,3], [3,4,5] ->
+// [13,14,15,23,24,25,33,34,35]
+func GetPtagPayloads(
+	payloads [][]byte, source []string, offset int, typ *types.T, pTagSize int,
+) ([][]byte, error) {
+	if len(payloads) == 0 {
+		ret := make([][]byte, len(source))
+		for i := range ret {
+			ret[i] = make([]byte, pTagSize)
+		}
+		for k := range source {
+			err := parsePtagValue(&ret[k], source[k], offset, typ)
+			if err != nil {
+				return nil, err
+			}
+		}
+		return ret, nil
+	}
+	ret := make([][]byte, len(payloads)*len(source))
+	for i := range ret {
+		ret[i] = make([]byte, pTagSize)
+	}
+	i := 0
+	for k := range payloads {
+		for idx := range source {
+			newPayload := make([]byte, len(payloads[k]))
+			copy(newPayload, payloads[k])
+			err := parsePtagValue(&newPayload, source[idx], offset, typ)
+			if err != nil {
+				return nil, err
+			}
+			ret[i] = newPayload
+			i++
+		}
+	}
+	return ret, nil
+}
+
+// GetValidColumnsByPrimaryTagValue is used to get IDs of valid columns.
+func GetValidColumnsByPrimaryTagValue(
+	ctx context.Context,
+	txn *kv.Txn,
+	tableID uint64,
+	version uint32,
+	hashNum uint64,
+	primaryTagValues ...[]byte,
+) (map[uint32]struct{}, error) {
+	points, err := api.GetHashPointByPrimaryTag(hashNum, primaryTagValues...)
+	if err != nil {
+		return nil, err
+	}
+
+	type rangeTags struct {
+		startKey roachpb.Key
+		pTags    [][]byte
+	}
+	var rangeTagsMap = make(map[roachpb.RangeID]rangeTags)
+	for i, hashPoint := range points {
+		var descs []roachpb.RangeDescriptor
+		key := MakeTsRangeKey(ID(tableID), uint64(hashPoint), hashNum)
+
+		descs, err := getRangeDescs(ctx, txn, roachpb.Span{
+			Key:    key,
+			EndKey: key.PrefixEnd(),
+		})
+		if err != nil {
+			return nil, err
+		}
+		//it := kvcoord.NewRangeIterator(ds)
+		//for it.Seek(ctx, roachpb.RKey(key), kvcoord.Ascending); it.Valid(); it.Next(ctx) {
+		//	descs = append(descs, it.Desc())
+		//	newTableID, newHashPoint, err := DecodeTsRangeKey(it.Desc().EndKey, true, hashNum)
+		//	if err != nil {
+		//		return nil, err
+		//	}
+		//	if newHashPoint > uint64(hashPoint) || newTableID > tableID {
+		//		break
+		//	}
+		//}
+		//if len(descs) == 0 {
+		//	return nil, errors.Errorf("failed seek any range descriptor, seekKey: %v", key)
+		//}
+		desc := descs[0]
+
+		if rTags, ok := rangeTagsMap[desc.RangeID]; ok {
+			rTags.pTags = append(rTags.pTags, primaryTagValues[i])
+			rangeTagsMap[desc.RangeID] = rTags
+		} else {
+			rangeTagsMap[desc.RangeID] = rangeTags{
+				desc.StartKey.AsRawKey(),
+				[][]byte{primaryTagValues[i]},
+			}
+		}
+	}
+	var ba = txn.NewBatch()
+	for _, val := range rangeTagsMap {
+		ba.AddRawRequest(&roachpb.TsGetValidColumnsRequest{
+			RequestHeader: roachpb.RequestHeader{
+				Key: val.startKey,
+			},
+			TableId:     tableID,
+			Version:     version,
+			PrimaryTags: val.pTags,
+		})
+	}
+	if err = txn.DB().Run(ctx, ba); err != nil {
+		return nil, err
+	}
+
+	validColumnsIDs := make(map[uint32]struct{})
+	addIDs := func(ids []uint32) {
+		for _, id := range ids {
+			validColumnsIDs[id] = struct{}{}
+		}
+	}
+	for respsID := range ba.RawResponse().Responses {
+		resp := ba.RawResponse().Responses[respsID].GetInner().(*roachpb.TsGetValidColumnsResponse)
+		addIDs(resp.ValidIDs)
+	}
+	return validColumnsIDs, nil
+}
+
+// getRangeDescs returns the descs for the ranges that touch the given span.
+func getRangeDescs(
+	ctx context.Context, txn *kv.Txn, span roachpb.Span,
+) ([]roachpb.RangeDescriptor, error) {
+	metaStart := keys.RangeMetaKey(keys.MustAddr(span.Key).Next())
+	metaEnd := keys.RangeMetaKey(keys.MustAddr(span.EndKey))
+
+	var descs []roachpb.RangeDescriptor
+	kvs, err := txn.Scan(ctx, metaStart, metaEnd, 0)
+	if err != nil {
+		return nil, err
+	}
+	if len(kvs) == 0 || !kvs[len(kvs)-1].Key.Equal(metaEnd.AsRawKey()) {
+		// Normally we need to scan one more KV because the ranges are addressed by
+		// the end key.
+		extraKV, err := txn.Scan(ctx, metaEnd, keys.Meta2Prefix.PrefixEnd(), 1 /* one result */)
+		if err != nil {
+			return nil, err
+		}
+		kvs = append(kvs, extraKV[0])
+	}
+	for _, r := range kvs {
+		var desc roachpb.RangeDescriptor
+		if err := r.ValueProto(&desc); err != nil {
+			return nil, err
+		}
+		descs = append(descs, desc)
+	}
+	return descs, nil
 }

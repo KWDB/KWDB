@@ -265,7 +265,6 @@ func (t *Task) TsAckCommittedEntriesBeforeApplication(
 		}
 		return cmd.IsTrivial()
 	})
-
 	stagedIter, err := mapCmdIter(batchIter, batch.Stage)
 	if err != nil {
 		return err

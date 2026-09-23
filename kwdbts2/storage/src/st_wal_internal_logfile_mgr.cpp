@@ -160,7 +160,7 @@ KStatus WALFileMgr::initWalFileWithHeader(HeaderBlock& header, bool tmp_file) {
 
 KStatus WALFileMgr::writeHeaderBlock(HeaderBlock& hb) {
   char* data = hb.encode();
-  file_.seekg(0, std::ios::beg);
+  file_.seekp(0, std::ios::beg);
   file_.write(data, BLOCK_SIZE);
   delete[] data;
   if (file_.fail()) {
@@ -211,6 +211,7 @@ KStatus WALFileMgr::writeBlocks(std::vector<EntryBlock*>& entry_blocks, HeaderBl
     writeHeaderBlock(header);
   }
   if (opt_->wal_level == WALMode::SYNC) {
+    file_.flush();
     auto helper = [](std::filebuf *fb) -> int {
       class Helper : public std::filebuf {
        public:

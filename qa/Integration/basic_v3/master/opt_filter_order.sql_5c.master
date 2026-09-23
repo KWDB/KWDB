@@ -1321,33 +1321,33 @@ order by e1;
                 AND
                 (abs(tag1 - 100) < 5 OR tag2 IN (201, 202))
         order by e1;
-             tree             |        field        |                                                                                      description
-------------------------------+---------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-                              | distributed         | true
-                              | vectorized          | false
-  root                        |                     |
-   ├── sort                   |                     |
-   │    │                     | order               | +e1
-   │    └── filter            |                     |
-   │         │                | filter              | ((((e3 > 30) OR (e3 < 20)) AND ((e5 > abs(50.0 - @S1)) OR (e4 LIKE '4%'))) AND ((abs(tag1 - 100) < 5) OR (tag2 IN (201, 202)))) OR (((abs(e1 - 10) < 5) AND (e2 > 20)) AND (e3 < 30))
-   │         └── synchronizer |                     |
-   │              └── ts scan |                     |
-   │                          | ts-table            | t1
-   │                          | access mode         | tableTableMeta
-   └── subquery               |                     |
-        │                     | id                  | @S1
-        │                     | original sql        | (SELECT avg(e5) FROM t1)
-        │                     | exec mode           | one row
-        └── group             |                     |
-             │                | engine type         | time series
-             │                | aggregate 0         | avg(e5)
-             │                | scalar              |
-             │                | pushLocalAggToScan  | true
-             │                | addSynchronizer     | true
-             └── ts scan      |                     |
-                              | ts-table            | t1
-                              | access mode         | metaTable
-                              | use statistic       | true
+           tree          |        field        |                                                                                      description
+-------------------------+---------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                         | distributed         | true
+                         | vectorized          | false
+  root                   |                     |
+   ├── sort              |                     |
+   │    │                | engine type         | time series
+   │    │                | order               | +e1
+   │    └── synchronizer |                     |
+   │         └── ts scan |                     |
+   │                     | ts-table            | t1
+   │                     | access mode         | tableTableMeta
+   │                     | filter              | ((((e3 > 30) OR (e3 < 20)) AND ((e5 > abs(50.0 - @S1)) OR (e4 LIKE '4%'))) AND ((abs(tag1 - 100) < 5) OR (tag2 IN (201, 202)))) OR (((abs(e1 - 10) < 5) AND (e2 > 20)) AND (e3 < 30))
+   └── subquery          |                     |
+        │                | id                  | @S1
+        │                | original sql        | (SELECT avg(e5) FROM t1)
+        │                | exec mode           | one row
+        └── group        |                     |
+             │           | engine type         | time series
+             │           | aggregate 0         | avg(e5)
+             │           | scalar              |
+             │           | pushLocalAggToScan  | true
+             │           | addSynchronizer     | true
+             └── ts scan |                     |
+                         | ts-table            | t1
+                         | access mode         | metaTable
+                         | use statistic       | true
 (25 rows)
 > SELECT * FROM t1
 WHERE
@@ -1868,33 +1868,33 @@ ORDER BY e1;
                 AND
                 (tag2 IN (200, 300) OR tag3 LIKE '3%')
         ORDER BY e1;
-             tree             |        field        |                                                                                    description
-------------------------------+---------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-                              | distributed         | true
-                              | vectorized          | false
-  root                        |                     |
-   ├── sort                   |                     |
-   │    │                     | order               | +e1
-   │    └── filter            |                     |
-   │         │                | filter              | ((((e3 < 20) OR (e4 NOT LIKE '%5')) AND ((abs(e5 - 50.0) < 5.0) OR ((e5 >= 40.0) AND (e5 <= 60.0)))) AND ((tag3 LIKE '3%') OR (tag2 IN (200, 300)))) OR ((e2 < @S1) AND (e1 > 10))
-   │         └── synchronizer |                     |
-   │              └── ts scan |                     |
-   │                          | ts-table            | t1
-   │                          | access mode         | tableTableMeta
-   └── subquery               |                     |
-        │                     | id                  | @S1
-        │                     | original sql        | (SELECT max(e2) FROM t1)
-        │                     | exec mode           | one row
-        └── group             |                     |
-             │                | engine type         | time series
-             │                | aggregate 0         | max(e2)
-             │                | scalar              |
-             │                | pushLocalAggToScan  | true
-             │                | addSynchronizer     | true
-             └── ts scan      |                     |
-                              | ts-table            | t1
-                              | access mode         | metaTable
-                              | use statistic       | true
+           tree          |        field        |                                                                                    description
+-------------------------+---------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                         | distributed         | true
+                         | vectorized          | false
+  root                   |                     |
+   ├── sort              |                     |
+   │    │                | engine type         | time series
+   │    │                | order               | +e1
+   │    └── synchronizer |                     |
+   │         └── ts scan |                     |
+   │                     | ts-table            | t1
+   │                     | access mode         | tableTableMeta
+   │                     | filter              | ((((e3 < 20) OR (e4 NOT LIKE '%5')) AND ((abs(e5 - 50.0) < 5.0) OR ((e5 >= 40.0) AND (e5 <= 60.0)))) AND ((tag3 LIKE '3%') OR (tag2 IN (200, 300)))) OR ((e2 < @S1) AND (e1 > 10))
+   └── subquery          |                     |
+        │                | id                  | @S1
+        │                | original sql        | (SELECT max(e2) FROM t1)
+        │                | exec mode           | one row
+        └── group        |                     |
+             │           | engine type         | time series
+             │           | aggregate 0         | max(e2)
+             │           | scalar              |
+             │           | pushLocalAggToScan  | true
+             │           | addSynchronizer     | true
+             └── ts scan |                     |
+                         | ts-table            | t1
+                         | access mode         | metaTable
+                         | use statistic       | true
 (25 rows)
 > SELECT * FROM t1
 WHERE

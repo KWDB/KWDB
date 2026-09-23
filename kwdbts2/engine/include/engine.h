@@ -403,6 +403,18 @@ struct TSEngine {
   }
 
   /**
+  * @brief set data clear max osn, data below this osn can be deleted while vacuum.
+  *        from osn waterline of Subscribe&Publish modulue.
+  * @param[in] tbl_id
+  * @param[in] osn
+  *
+  * @return KStatus
+  */
+  virtual KStatus SetPublishedMaxOSN(std::unordered_map<TSTableID, TS_OSN>& tbl_osn) {
+    return FAIL;
+  }
+
+  /**
  * @brief  calculate pushdown
  * @param[in] req
  * @param[out]  resp
@@ -606,39 +618,12 @@ struct TSEngine {
 
   virtual KStatus GetDBBlocksDistribution(uint32_t db_id, TSSlice* blocks_info) = 0;
 
+  virtual KStatus GetValidColumns(kwdbContext_p ctx, const KTableKey& table_id, uint32_t table_version, bool& is_dropped,
+                                  TSSlice* primary_tags, size_t primary_tags_num,
+                                  std::vector<uint32_t>& valid_columns) {
+    return KStatus::FAIL;
+  }
+
  protected:
   SharedFixedUnorderedMap<KTableKey, TsTable>* tables_cache_{};
 };
-
-namespace kwdbts {
-  template<class T>
-bool AddAggInteger(T& a, T b) {
-  T c;
-  if (__builtin_add_overflow(a, b, &c)) {
-    return true;
-  }
-  a = c;
-  return false;
-}
-
-template<class T1, class T2>
-bool AddAggInteger(T1& a, T2 b) {
-  T1 c;
-  if (__builtin_add_overflow(a, b, &c)) {
-    return true;
-  }
-  a = c;
-  return false;
-}
-
-template<class T1, class T2>
-void AddAggFloat(T1& a, T2 b) {
-  a = a + b;
-}
-
-template<class T>
-void SubAgg(T& a, T b) {
-  a = a - b;
-}
-
-}  //  namespace kwdbts

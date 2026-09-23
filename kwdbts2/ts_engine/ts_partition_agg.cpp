@@ -32,6 +32,7 @@ void SerializeAggIndex(char* dst, const TsEntityPartitionAggIndex& src) {
   std::memcpy(dst + offsetof(TsEntityPartitionAggIndex, max_osn), &src.max_osn, sizeof(src.max_osn));
   std::memcpy(dst + offsetof(TsEntityPartitionAggIndex, agg_offset), &src.agg_offset, sizeof(src.agg_offset));
   std::memcpy(dst + offsetof(TsEntityPartitionAggIndex, agg_len), &src.agg_len, sizeof(src.agg_len));
+  std::memcpy(dst + offsetof(TsEntityPartitionAggIndex, agg_invalid), &src.agg_invalid, sizeof(src.agg_invalid));
 }
 
 }  // namespace
@@ -62,9 +63,20 @@ KStatus TsPartitionAggBuilder::Close() {
 }
 
 KStatus TsPartitionAggBuilder::AppendEntityAgg(const TSSlice& agg, TsEntityPartitionAggIndex& agg_index) {
-  assert(w_file_ != nullptr);
-  assert(agg.len != 0);
-  assert(agg_index.entity_id > 0 && agg_index.entity_id <= max_entity_id_);
+  if (w_file_ == nullptr) {
+    LOG_ERROR("Append partition agg data failed, file is not open, file_path='%s'", file_path_.c_str());
+    return FAIL;
+  }
+  if (agg.len == 0) {
+    LOG_ERROR("Append partition agg data failed, empty agg, file_path='%s', entity_id=%lu",
+              file_path_.c_str(), agg_index.entity_id);
+    return FAIL;
+  }
+  if (agg_index.entity_id == 0 || agg_index.entity_id > max_entity_id_) {
+    LOG_ERROR("Append partition agg data failed, entity_id=%lu out of range [1, %u], file_path='%s'",
+              agg_index.entity_id, max_entity_id_, file_path_.c_str());
+    return FAIL;
+  }
   uint64_t offset = w_file_->GetFileSize();
   auto s = w_file_->Append(agg);
   if (s != SUCCESS) {
@@ -81,6 +93,7 @@ KStatus TsPartitionAggBuilder::Finalize() {
   TsPartitionAggFooter footer{0, 0, 0, 0};
   footer.entity_agg_stats_idx_offset = w_file_->GetFileSize();
   footer.max_entity_id = max_entity_id_;
+  footer.file_version = CURRENT_PARTITION_AGG_VERSION;
   TSSlice agg_index_slice = {entity_index_buffer_.data(), entity_index_buffer_.size()};
   auto s = w_file_->Append(agg_index_slice);
   if (s != SUCCESS) {

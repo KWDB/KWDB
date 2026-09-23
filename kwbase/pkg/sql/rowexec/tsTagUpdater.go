@@ -45,6 +45,7 @@ type tsTagUpdater struct {
 	primaryTags    [][]byte
 	tags           [][]byte
 	osnID          uint64
+	cdcData        []byte
 
 	// Number of updated rows.
 	updatedRow      uint64
@@ -79,6 +80,7 @@ func newTsTagUpdater(
 		startKey:       tsTagUpdateSpec.StartKey,
 		endKey:         tsTagUpdateSpec.EndKey,
 		osnID:          tsTagUpdateSpec.OsnId,
+		cdcData:        tsTagUpdateSpec.CDCData,
 	}
 
 	if err := tu.Init(
@@ -112,6 +114,13 @@ func (tu *tsTagUpdater) Start(ctx context.Context) context.Context {
 	var err error
 	updatedRow := uint64(0)
 
+	var OsnID uint64
+	if tu.EvalCtx.StartDistributeMode {
+		OsnID = 0
+	} else {
+		OsnID = tu.osnID
+	}
+
 	ba := tu.FlowCtx.Txn.NewBatch()
 	switch tu.tsOperatorType {
 	case execinfrapb.OperatorType_TsUpdateTag:
@@ -125,7 +134,7 @@ func (tu *tsTagUpdater) Start(ctx context.Context) context.Context {
 				PrimaryTags:  tu.primaryTags[0],
 				RangeGroupId: tu.rangeGroupID,
 				Tags:         tu.tags[0],
-				OsnID:        tu.osnID,
+				OsnID:        OsnID,
 			}
 			ba.AddRawRequest(r)
 		} else {
@@ -137,7 +146,7 @@ func (tu *tsTagUpdater) Start(ctx context.Context) context.Context {
 				PrimaryTags:  tu.primaryTags[0],
 				RangeGroupId: tu.rangeGroupID,
 				Tags:         tu.tags[0],
-				OsnID:        tu.osnID,
+				OsnID:        OsnID,
 			}
 
 			ba.AddRawRequest(r)
@@ -146,6 +155,7 @@ func (tu *tsTagUpdater) Start(ctx context.Context) context.Context {
 		if err == nil {
 			if v, ok := ba.RawResponse().Responses[0].Value.(*roachpb.ResponseUnion_TsTagUpdate); ok {
 				updatedRow = uint64(v.TsTagUpdate.NumKeys)
+				OsnID = v.TsTagUpdate.OsnID
 			}
 		}
 	default:
@@ -159,6 +169,12 @@ func (tu *tsTagUpdater) Start(ctx context.Context) context.Context {
 	tu.isUpdateSuccess = true
 	// todo: need get updatedRow from batch
 	tu.updatedRow = updatedRow
+
+	// only send to cdc when deleteSuccess is true.
+	if tu.cdcData != nil && tu.updatedRow > 0 {
+		tu.FlowCtx.Cfg.CDCCoordinator.SendStatement(OsnID, tu.tableID, "update", tu.cdcData)
+	}
+
 	return ctx
 }
 

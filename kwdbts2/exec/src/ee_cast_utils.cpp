@@ -399,31 +399,6 @@ void deleteZero(double input, char *str, int32_t length) {
   }
 }
 
-#define MAX_DOUBLE_STR_LENGTH 18
-#define DEFAULT_PRECISION 16
-KStatus doubleToStr(double input, char *str, int32_t length) {
-  int d = numDigit(input);
-  if (d <= MAX_DOUBLE_STR_LENGTH - 2) {
-    int len = MAX_DOUBLE_STR_LENGTH < length? MAX_DOUBLE_STR_LENGTH : length;
-    snprintf(str, len, "%.*f", DEFAULT_PRECISION, input);
-    deleteZero(input, str, len);
-  } else {
-    int len = 0;
-    if (d > 100)
-      len = MAX_DOUBLE_STR_LENGTH - 7;  // e+100 ~ e+307
-    else if (d > 10)  // means (d > MAX_DOUBLE_STR_LENGTH - 2 && d <= 100)
-      len = MAX_DOUBLE_STR_LENGTH - 6;  // <e+99
-    else  // means d <= 10, will never enter here, since this case was handled
-          // by "if (d <= MAX_DOUBLE_STR_LENGTH - 2)"
-      len = MAX_DOUBLE_STR_LENGTH - 5;  // <- this may be meaningless
-
-    len = len < length? len : length;
-    snprintf(str, len , "%.*e", DEFAULT_PRECISION, input);
-    // return strlen(str);
-  }
-  return KStatus::SUCCESS;
-}
-
 int64_t strnatoi(char *num, int32_t len) {
   int64_t ret = 0, i, dig, base = 1;
 
@@ -599,10 +574,14 @@ KStatus parseTimeWithTz(KString timestr, k_int64 scale, k_int64 *time, char deli
     }
     if (pos!= std::string::npos) {
         std::string num_str = timestr.substr(0, pos);
-        int year = std::stoi(num_str);
-        if (year > 2970 || year < 0) {
-          EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE,
-                                        "Timestamp/TimestampTZ out of range");
+        try {
+          int year = std::stoi(num_str);
+          if (year > 2970 || year < 0) {
+            EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE, "Timestamp/TimestampTZ out of range");
+          }
+        } catch (const std::invalid_argument& e) {
+          EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_DATETIME_FORMAT,
+                                        "parsing as type timestamp: missing required date fields");
         }
     }
     return FAIL;
@@ -719,8 +698,27 @@ KStatus parseLocaltimeDst(KString timestr, k_int64 scale, k_int64 *utime, char d
       !validateTm(&tm)) {
     // if parse failed, try "%Y-%m-%d" format
     str = kwdbStrpTime(timestr.c_str(), "%Y-%m-%d", &tm);
-    if (str == NULL || (((str - timestr.data()) < len) && (*str != '.')) ||
-        !validateTm(&tm)) {
+    if (str == NULL) {
+      size_t pos = timestr.find('-');
+      if (pos == 0) {
+        pos = timestr.find('-', 1);
+      }
+      if (pos != std::string::npos) {
+        std::string num_str = timestr.substr(0, pos);
+        try {
+          int year = std::stoi(num_str);
+          if (year > 2970 || year < 0) {
+            EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE, "Timestamp/TimestampTZ out of range");
+          }
+        } catch (const std::invalid_argument& e) {
+          EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_DATETIME_FORMAT,
+                                        "parsing as type timestamp: missing required date fields");
+        }
+      }
+      return FAIL;
+    }
+
+    if ((((str - timestr.data()) < len) && (*str != '.')) || !validateTm(&tm)) {
       return FAIL;
     }
   }
@@ -736,12 +734,13 @@ KStatus parseLocaltimeDst(KString timestr, k_int64 scale, k_int64 *utime, char d
   }
   fraction /= (1000000 / scale);
 
-  if (!I64_SAFE_MUL_CHECK(seconds, scale)) {
+  const k_int64 factor = 1000 * scale;
+  if (!I64_SAFE_MUL_CHECK(seconds, factor)) {
     EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE,
                                   "Timestamp/TimestampTZ out of range");
+    return FAIL;
   }
-  // *utime = TSDB_TICK_PER_SECOND(timePrec) * seconds + fraction;
-  *utime = scale * seconds + fraction;
+  *utime = factor * seconds + fraction;
   return SUCCESS;
 }
 

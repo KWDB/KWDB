@@ -22,7 +22,9 @@ std::vector<roachpb::DataType> dtypes{DataType::TIMESTAMP, DataType::INT,    Dat
 
 class TestWALManagerV2 : public ::testing::Test {
  protected:
+  std::unique_ptr<TsDBSchemaManager> db_schema_mgr = nullptr;
   std::shared_ptr<TsEngineSchemaManager> mgr = nullptr;
+
  public:
   kwdbContext_t context_{};
   kwdbContext_p ctx_{&context_};
@@ -36,7 +38,10 @@ class TestWALManagerV2 : public ::testing::Test {
     opts_.wal_level = 1;
     opts_.wal_buffer_size = 4;
     opts_.db_path =  "./wal_log_test/";
-    mgr = std::make_unique<TsEngineSchemaManager>("./wal_log_test/schema");
+    db_schema_mgr = std::make_unique<TsDBSchemaManager>(opts_.db_path);
+    mgr = std::make_unique<TsEngineSchemaManager>("./wal_log_test/schema", db_schema_mgr.get());
+    mgr->Init(ctx_);
+    db_schema_mgr->Init(mgr.get());
 
     fs::remove_all(opts_.db_path);
     wal_ = new WALMgr("./wal_log_test/", intToString(tbl_grp_id_), &opts_);

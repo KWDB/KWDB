@@ -8,25 +8,25 @@ project
  ├── columns: catalog_name:1(string) sql_path:6(string)
  ├── prune: (1,6)
  └── left-join (cross)
-      ├── columns: catalog_name:1(string) schema_name:2(string!null) catalog_id:3(int4) schema_id:4(int4) default_character_set_name:5(string) sql_path:6(string) engine_type:7(string) retentions:8(int) partition_interval:9(int) table_catalog:10(string) table_schema:11(string) table_name:12(string) table_type:13(string) is_insertable_into:14(string) version:15(int) namespace_oid:16(oid)
+      ├── columns: catalog_name:1(string) schema_name:2(string!null) catalog_id:3(int4) schema_id:4(int4) default_character_set_name:5(string) sql_path:6(string) engine_type:7(string) retentions:8(int) partition_interval:9(int) schema_owner:10(string) default_character_set_catalog:11(string) default_character_set_schema:12(string) table_catalog:13(string) table_schema:14(string) table_name:15(string) table_type:16(string) is_insertable_into:17(string) version:18(int) namespace_oid:19(oid) self_referencing_column_name:20(string) reference_generation:21(string) user_defined_type_catalog:22(string) user_defined_type_schema:23(string) user_defined_type_name:24(string) is_typed:25(string) commit_action:26(string) engine:27(string) row_format:28(string) update_time:29(timestamp) table_comment:30(string)
       ├── fd: ()-->(2)
-      ├── reject-nulls: (10-16)
+      ├── reject-nulls: (13-30)
       ├── select
-      │    ├── columns: catalog_name:1(string) schema_name:2(string!null) catalog_id:3(int4) schema_id:4(int4) default_character_set_name:5(string) sql_path:6(string) engine_type:7(string) retentions:8(int) partition_interval:9(int)
+      │    ├── columns: catalog_name:1(string) schema_name:2(string!null) catalog_id:3(int4) schema_id:4(int4) default_character_set_name:5(string) sql_path:6(string) engine_type:7(string) retentions:8(int) partition_interval:9(int) schema_owner:10(string) default_character_set_catalog:11(string) default_character_set_schema:12(string)
       │    ├── fd: ()-->(2)
       │    ├── virtual-scan information_schema.schemata
-      │    │    └── columns: catalog_name:1(string) schema_name:2(string) catalog_id:3(int4) schema_id:4(int4) default_character_set_name:5(string) sql_path:6(string) engine_type:7(string) retentions:8(int) partition_interval:9(int)
+      │    │    └── columns: catalog_name:1(string) schema_name:2(string) catalog_id:3(int4) schema_id:4(int4) default_character_set_name:5(string) sql_path:6(string) engine_type:7(string) retentions:8(int) partition_interval:9(int) schema_owner:10(string) default_character_set_catalog:11(string) default_character_set_schema:12(string)
       │    └── filters
       │         └── eq [type=bool, outer=(2), constraints=(/2: [/'public' - /'public']; tight), fd=()-->(2)]
       │              ├── variable: schema_name:2 [type=string]
       │              └── const: 'public' [type=string]
       ├── virtual-scan information_schema.tables
-      │    └── columns: table_catalog:10(string) table_schema:11(string) table_name:12(string) table_type:13(string) is_insertable_into:14(string) version:15(int) namespace_oid:16(oid)
+      │    └── columns: table_catalog:13(string) table_schema:14(string) table_name:15(string) table_type:16(string) is_insertable_into:17(string) version:18(int) namespace_oid:19(oid) self_referencing_column_name:20(string) reference_generation:21(string) user_defined_type_catalog:22(string) user_defined_type_schema:23(string) user_defined_type_name:24(string) is_typed:25(string) commit_action:26(string) engine:27(string) row_format:28(string) update_time:29(timestamp) table_comment:30(string)
       └── filters
-           └── and [type=bool, outer=(1,2,10,11), constraints=(/1: (/NULL - ]; /2: (/NULL - ]; /10: (/NULL - ]; /11: (/NULL - ])]
+           └── and [type=bool, outer=(1,2,13,14), constraints=(/1: (/NULL - ]; /2: (/NULL - ]; /13: (/NULL - ]; /14: (/NULL - ])]
                 ├── eq [type=bool]
                 │    ├── variable: catalog_name:1 [type=string]
-                │    └── variable: table_catalog:10 [type=string]
+                │    └── variable: table_catalog:13 [type=string]
                 └── eq [type=bool]
                      ├── variable: schema_name:2 [type=string]
-                     └── variable: table_schema:11 [type=string]
+                     └── variable: table_schema:14 [type=string]

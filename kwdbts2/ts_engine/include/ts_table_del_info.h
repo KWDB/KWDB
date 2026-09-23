@@ -53,6 +53,7 @@ class STTableRangeDelAndTagInfo {
   uint64_t end_hash_;
   uint32_t table_version_;
   TS_OSN scan_osn_{UINT64_MAX};
+  TS_OSN published_max_osn_{UINT64_MAX};
   std::list<kwdbts::EntityResultIndex> pkeys_status_;
   std::list<kwdbts::EntityResultIndex>::iterator pkey_iter_;
   std::unordered_map<std::string, TS_OSN> del_tag_osn_;
@@ -69,7 +70,7 @@ class STTableRangeDelAndTagInfo {
 
   ~STTableRangeDelAndTagInfo();
 
-  KStatus Init();
+  KStatus Init(TS_OSN published_max_osn_);
   // generate OSNDeleteInfo data.
   TSSlice GenData(TSSlice& payload, TSSlice& pkey, std::list<STDelRange>& dels);
   // parse OSNDeleteInfo data.
@@ -82,11 +83,11 @@ class STTableRangeDelAndTagInfo {
 
   KStatus WriteDelAndTagInfo(kwdbContext_p ctx, TSSlice& data, TsHashRWLatch& tag_lock);
 
-  KStatus WriteDeleteTagRecord(kwdbContext_p ctx, TSSlice& payload, OperateType type,
+  KStatus WriteDeleteTagRecord(kwdbContext_p ctx, TsRawPayload& p, OperateType type,
     std::shared_ptr<TagTable>& tag_table, std::pair<uint64_t, uint64_t>& row_info);
-  KStatus WriteUpdateTagRecord(kwdbContext_p ctx, TSSlice& payload, OperateType type,
+  KStatus WriteUpdateTagRecord(kwdbContext_p ctx, TsRawPayload& p, OperateType type,
     std::shared_ptr<TagTable>& tag_table, std::pair<uint64_t, uint64_t>& row_info);
-  KStatus WriteInsertTagRecord(kwdbContext_p ctx, TSSlice& payload, OperateType type, std::shared_ptr<TagTable>& tag_table);
+  KStatus WriteInsertTagRecord(kwdbContext_p ctx, TsRawPayload& p, OperateType type, std::shared_ptr<TagTable>& tag_table);
 
   KStatus CommitDeleteInfo(kwdbContext_p ctx);
 };

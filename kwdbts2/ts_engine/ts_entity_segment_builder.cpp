@@ -23,10 +23,10 @@
 #include "kwdb_type.h"
 #include "settings.h"
 #include "ts_agg.h"
-#include "ts_batch_data_worker.h"
 #include "ts_block_span_sorted_iterator.h"
 #include "ts_bufferbuilder.h"
 #include "ts_coding.h"
+#include "ts_common.h"
 #include "ts_compatibility.h"
 #include "ts_entity_segment.h"
 #include "ts_entity_segment_data.h"
@@ -248,9 +248,6 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
   // init col data offsets to data buffer
   uint32_t block_header_size = n_cols_ * sizeof(uint32_t);
   data_buffer->resize(block_header_size);
-  // init col agg offsets to agg buffer, exclude osn col
-  uint32_t agg_header_size = (n_cols_ - 1) * sizeof(uint32_t);
-  agg_buffer->resize(agg_header_size);
   // min osn && max osn
   uint64_t min_osn = UINT64_MAX;
   uint64_t max_osn = 0;
@@ -260,6 +257,8 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
   // write column block data and column agg
   assert(n_cols_ == metric_schema_.size() + 1);
   AttributeInfo attr_info;
+  std::string sparse_agg_bitmap(GetSparseBlockAggBitmapSize(metric_schema_.size()), '\0');
+  TsBufferBuilder sparse_agg_payload;
   for (int col_idx = 0; col_idx < n_cols_; ++col_idx) {
     DATATYPE d_type = col_idx == 0 ? DATATYPE::K_INT64 : col_idx != 1 ?
                       static_cast<DATATYPE>(metric_schema_[col_idx - 1].type) : DATATYPE::TIMESTAMP64;
@@ -337,17 +336,12 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
       continue;
     }
     string col_agg;
-    Defer defer {[&]() {
-      agg_buffer->append(col_agg);
-      uint32_t offset = agg_buffer->size() - agg_header_size;
-      memcpy(agg_buffer->data() + (col_idx - 1) * sizeof(uint32_t), &offset, sizeof(uint32_t));
-    }};
-    if (!is_var_col) {
+    uint16_t count = 0;
+    if (!is_var_col && !IsBlockAggCountOnlyType(d_type)) {
       TsBitmapBase* bitmap = nullptr;
       if (has_bitmap) {
         bitmap = block.bitmap.get();
       }
-      uint16_t count = 0;
       string max, min, sum;
       int32_t col_size = metric_schema_[col_idx - 1].size;
       max.resize(col_size, '\0');
@@ -366,31 +360,39 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
         return s;
       }
       *reinterpret_cast<bool *>(sum.data()) = is_overflow;
-      if (0 == count) {
-        continue;
+      size_t agg_size = sizeof(uint16_t) + 2 * static_cast<size_t>(col_size);
+      if (isSumType(d_type)) {
+        agg_size += 9;
       }
-      col_agg.resize(sizeof(uint16_t) + 2 * col_size + 9, '\0');
+      col_agg.resize(agg_size, '\0');
       memcpy(col_agg.data(), &count, sizeof(uint16_t));
-      memcpy(col_agg.data() + sizeof(uint16_t), max.data(), col_size);
-      memcpy(col_agg.data() + sizeof(uint16_t) + col_size, min.data(), col_size);
-      memcpy(col_agg.data() + sizeof(uint16_t) + col_size * 2, sum.data(), 9);
+      if (0 != count) {
+        memcpy(col_agg.data() + sizeof(uint16_t), max.data(), col_size);
+        memcpy(col_agg.data() + sizeof(uint16_t) + col_size, min.data(), col_size);
+        if (isSumType(d_type)) {
+          memcpy(col_agg.data() + sizeof(uint16_t) + static_cast<size_t>(col_size) * 2, sum.data(), 9);
+        }
+      }
     } else {
-      VarColAggCalculatorV2 aggCalc(block.var_rows);
-      string max;
-      string min;
-      uint64_t count = 0;
-      aggCalc.CalcAggForFlush(max, min, count);
-      if (0 == count) {
-        continue;
+      if (is_var_col) {
+        count = static_cast<uint16_t>(block.var_rows.size());
+      } else if (!has_bitmap || block.bitmap == nullptr) {
+        count = static_cast<uint16_t>(n_rows_);
+      } else {
+        count = static_cast<uint16_t>(block.bitmap->GetValidCount());
       }
-      col_agg.resize(sizeof(uint16_t) + 2 * sizeof(uint32_t), '\0');
+      col_agg.resize(sizeof(uint16_t), '\0');
       memcpy(col_agg.data(), &count, sizeof(uint16_t));
-      col_agg.append(max);
-      col_agg.append(min);
-      *reinterpret_cast<uint32_t *>(col_agg.data() + sizeof(uint16_t)) = max.size();
-      *reinterpret_cast<uint32_t *>(col_agg.data() + sizeof(uint16_t) + sizeof(uint32_t)) = min.size();
+    }
+    if (count != 0) {
+      uint32_t agg_col_idx = col_idx - 1;
+      SetSparseBlockAggColumn(sparse_agg_bitmap.data(), agg_col_idx);
+      sparse_agg_payload.append(col_agg);
     }
   }
+
+  agg_buffer->append(sparse_agg_bitmap);
+  agg_buffer->append(sparse_agg_payload.AsSlice());
 
   // flush
   timestamp64 min_ts = GetTimestamp(0);
@@ -496,6 +498,8 @@ KStatus TsEntitySegmentBuilder::UpdateEntityItem(TsEntityKey& entity_key, TsEnti
   if (block_item.min_ts < cur_entity_item_.min_ts) {
     cur_entity_item_.min_ts = block_item.min_ts;
   }
+
+  cur_entity_item_.max_osn = std::max(block_item.max_osn, cur_entity_item_.max_osn);
   return s;
 }
 
@@ -598,8 +602,7 @@ KStatus TsEntitySegmentBuilder::Open() {
   return SUCCESS;
 }
 
-KStatus TsEntitySegmentBuilder::WriteCachedBlockSpan(bool call_by_vacuum, TsEntityKey& entity_key,
-                                                     TsSegmentWriteStats* stats) {
+KStatus TsEntitySegmentBuilder::WriteCachedBlockSpan(TsEntityKey& entity_key, TsSegmentWriteStats* stats) {
   KStatus s = KStatus::SUCCESS;
   while (!cached_spans_.empty()) {
     if (cached_spans_.front()->GetRowNum() == 0) {
@@ -607,7 +610,7 @@ KStatus TsEntitySegmentBuilder::WriteCachedBlockSpan(bool call_by_vacuum, TsEnti
       continue;
     }
 
-    if (!call_by_vacuum && cached_count_ < EngineOptions::min_rows_per_block) {
+    if (cached_count_ < EngineOptions::min_rows_per_block) {
       // Writes the incomplete data back to the last segment
       auto row_num = cached_spans_.front()->GetRowNum();
       lastsegment_block_spans_.push_back(std::move(cached_spans_.front()));
@@ -671,7 +674,7 @@ KStatus TsEntitySegmentBuilder::Finalize() {
   return SUCCESS;
 }
 
-KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* update,
+KStatus TsEntitySegmentBuilder::Compact(TsVersionUpdate* update,
                                         std::vector<std::shared_ptr<TsBlockSpan>>* residual_spans,
                                         TsSegmentWriteStats* stats) {
   std::unique_lock lock{mutex_};
@@ -724,7 +727,7 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
       continue;
     }
 
-    s = WriteCachedBlockSpan(call_by_vacuum, entity_key, stats);
+    s = WriteCachedBlockSpan(entity_key, stats);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsEntitySegmentBuilder::Compact failed, write cached block span failed.")
       return s;
@@ -764,7 +767,7 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
     cached_spans_.push_back(std::move(block_span));
   }
 
-  s = WriteCachedBlockSpan(call_by_vacuum, entity_key, stats);
+  s = WriteCachedBlockSpan(entity_key, stats);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBuilder::Compact failed, write cached block span failed.")
     return s;
@@ -1130,7 +1133,6 @@ auto TsMemEntitySegmentModifier::GetEntityAndBlockItems(TsEntitySegment* target)
   result.block_items = reinterpret_cast<TsEntitySegmentBlockItem*>(result.block_items_guard_.data());
   result.block_num = result.block_items_guard_.size() / sizeof(TsEntitySegmentBlockItem);
   assert(result.block_num * sizeof(TsEntitySegmentBlockItem) == result.block_items_guard_.size());
-
   return result;
 }
 
@@ -1176,6 +1178,13 @@ auto TsMemEntitySegmentModifier::Modify(TsEntitySegment* base) {
     mem_entity_meta.entity_items[i].min_ts = min_ts;
     mem_entity_meta.entity_items[i].max_ts = max_ts;
     mem_entity_meta.entity_items[i].row_written = row_written;
+
+    TS_OSN dsk_max_osn = dsk_entity_meta.entity_items[i].max_osn;
+    if (dsk_max_osn == 0) {
+      base->GetMaxOSN(mem_entity_meta.entity_items[i].entity_id, dsk_max_osn);
+    }
+    mem_entity_meta.entity_items[i].max_osn =
+        std::max(mem_entity_meta.entity_items[i].max_osn, dsk_max_osn);
     mem_entity_meta.entity_items[i].cur_block_id += dsk_block_num;
   }
 

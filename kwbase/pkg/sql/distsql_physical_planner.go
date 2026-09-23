@@ -27,7 +27,6 @@ package sql
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"fmt"
 	"math"
 	"math/rand"
@@ -47,6 +46,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/server/serverpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/colexec/typeconv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/distsql"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
@@ -62,6 +62,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
+	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding"
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
@@ -72,7 +73,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 	"github.com/cockroachdb/errors"
-	"github.com/lib/pq/oid"
 )
 
 // DistSQLPlanner is used to generate distributed plans from logical
@@ -1126,6 +1126,10 @@ func (dsp *DistSQLPlanner) partitionTSSpans(
 				var b kv.Batch
 				liReq := &roachpb.LeaseInfoRequest{}
 				liReq.Key = rangeKey
+				// for mode2, read uncommitted because write not control and maybe latch lock
+				if tse.TsRaftLogSyncPeriod.Get(&dsp.st.SV) > 0 {
+					b.Header.ReadConsistency = roachpb.READ_UNCOMMITTED
+				}
 				b.AddRawRequest(liReq)
 				b.Header.ReturnRangeInfo = true
 				if err = dsp.distSQLSrv.DB.Run(ctx, &b); err != nil {
@@ -1242,10 +1246,13 @@ func getLeaseHolderByLeaseInfoRequest(
 
 				liReq := &roachpb.LeaseInfoRequest{}
 				liReq.Key = start
-
 				var b kv.Batch
 				b.AddRawRequest(liReq)
 				b.Header.ReturnRangeInfo = true
+				// for mode2, read uncommitted because write not control and maybe latch lock
+				if tse.TsRaftLogSyncPeriod.Get(&dsp.st.SV) > 0 {
+					b.Header.ReadConsistency = roachpb.READ_UNCOMMITTED
+				}
 				if err := dsp.distSQLSrv.DB.Run(ctx, &b); err != nil {
 					errOnce.Do(func() {
 						resultErr = errors.Wrap(err, "get lease info failed")
@@ -1890,9 +1897,13 @@ func buildTSColsAndTSColMap(
 		}
 	}
 
+	// Add time series hidden columns (_osn, _op, _event)
+	tsCols, tsColMap = addTsHiddenTSColumns(n, tsCols, tsColMap)
+
 	resCols := make([]int, 0)
 	for _, resCol := range n.resultColumns {
-		if columnIDSet.Contains(opt.ColumnID(resCol.PGAttributeNum)) {
+		if columnIDSet.Contains(opt.ColumnID(resCol.PGAttributeNum)) || resCol.PGAttributeNum == sqlbase.OsnColIdx ||
+			resCol.PGAttributeNum == sqlbase.OpColIdx || resCol.PGAttributeNum == sqlbase.EventColIdx {
 			if index, ok := tsColMap[resCol.PGAttributeNum]; ok {
 				resCols = append(resCols, index.idx)
 			} else {
@@ -1903,6 +1914,50 @@ func buildTSColsAndTSColMap(
 		}
 	}
 	return tsCols, tsColMap, resCols
+}
+
+// addTsHiddenTSColumns adds the time series hidden columns (_osn, _op, _event)
+// to the TS column metadata and column index map.
+func addTsHiddenTSColumns(
+	n *tsScanNode, tsCols []sqlbase.TSCol, tsColMap map[sqlbase.ColumnID]tsColIndex,
+) ([]sqlbase.TSCol, map[sqlbase.ColumnID]tsColIndex) {
+	// Add _osn column
+	tsCol1 := sqlbase.TSCol{
+		SqlType:            sqlbase.DataType_TIMESTAMP,
+		StorageType:        sqlbase.DataType_BIGINT,
+		StorageLen:         8,
+		VariableLengthType: sqlbase.VariableLengthType_ColStorageTypeTuple,
+		ColumnType:         sqlbase.ColumnType_TYPE_DATA,
+		Nullable:           false,
+	}
+	tsCols = append(tsCols, tsCol1)
+	tsColMap[sqlbase.OsnColIdx] = tsColIndex{sqlbase.OsnColIdx, *types.Int, tsCol1.ColumnType}
+
+	// Add _op column
+	tsCol2 := sqlbase.TSCol{
+		SqlType:            sqlbase.DataType_TIMESTAMP,
+		StorageType:        sqlbase.DataType_BYTES,
+		StorageLen:         1,
+		VariableLengthType: sqlbase.VariableLengthType_ColStorageTypeTuple,
+		ColumnType:         sqlbase.ColumnType_TYPE_DATA,
+		Nullable:           false,
+	}
+	tsCols = append(tsCols, tsCol2)
+	tsColMap[sqlbase.OpColIdx] = tsColIndex{sqlbase.OpColIdx, *types.Bytes, tsCol2.ColumnType}
+
+	// Add _event column
+	tsCol3 := sqlbase.TSCol{
+		SqlType:            sqlbase.DataType_TIMESTAMP,
+		StorageType:        sqlbase.DataType_BYTES,
+		StorageLen:         16,
+		VariableLengthType: sqlbase.VariableLengthType_ColStorageTypeTuple,
+		ColumnType:         sqlbase.ColumnType_TYPE_DATA,
+		Nullable:           true,
+	}
+	tsCols = append(tsCols, tsCol3)
+	tsColMap[sqlbase.EventColIdx] = tsColIndex{sqlbase.EventColIdx, *types.Bytes, tsCol3.ColumnType}
+
+	return tsCols, tsColMap
 }
 
 // build HashtsCols and tsColMap by cols
@@ -1985,8 +2040,8 @@ func (p *PhysicalPlan) initPhyPlanForTsReaders(
 			*n.blockFilter[i].ColID = uint32(tsColIdx.idx + 1)
 		}
 	}
-	tr := execinfrapb.TSReaderSpec{TableID: uint64(n.Table.ID()), TsSpans: n.tsSpans, TableVersion: n.Table.GetTSVersion(),
-		OrderedScan: n.orderedType.UserOrderedScan(), TsTablereaderId: planCtx.tsTableReaderID, BlockFilter: n.blockFilter, TsFill: n.tsFill}
+	tr := execinfrapb.TSReaderSpec{TableID: uint64(n.Table.ID()), TsSpans: n.tsSpans, OsnSpans: n.osnSpans, TableVersion: n.Table.GetTSVersion(),
+		OrderedScan: n.orderedType.UserOrderedScan(), TsTablereaderId: planCtx.tsTableReaderID, BlockFilter: n.blockFilter, HasOsnCol: n.HasOsnCols, TsFill: n.tsFill}
 
 	if n.orderedType.NeedReverse() || n.reverse {
 		reverse := true
@@ -2230,9 +2285,11 @@ func (p *PhysicalPlan) buildPhyPlanForTagReaders(
 	var outCols []uint32
 	n.ScanSource.ForEach(func(i int) {
 		outCols = append(outCols, uint32(i-1))
-		if col, ok := tsColMap[sqlbase.ColumnID(n.Table.Column(i-1).ColID())]; ok {
-			if col.colType == sqlbase.ColumnType_TYPE_PTAG || col.colType == sqlbase.ColumnType_TYPE_TAG {
-				post.OutputColumns = append(post.OutputColumns, uint32(col.idx))
+		if i-1 < n.Table.DeletableColumnCount() {
+			if col, ok := tsColMap[sqlbase.ColumnID(n.Table.Column(i-1).ColID())]; ok {
+				if col.colType == sqlbase.ColumnType_TYPE_PTAG || col.colType == sqlbase.ColumnType_TYPE_TAG {
+					post.OutputColumns = append(post.OutputColumns, uint32(col.idx))
+				}
 			}
 		}
 	})
@@ -2856,6 +2913,10 @@ func (dsp *DistSQLPlanner) createTSDelete(
 			Spans:           n.spans,
 		}
 
+		if planCtx != nil && n.nodeIDs[i] == planCtx.EvalContext().NodeID {
+			tsDelete.CDCData = n.cdcData
+		}
+
 		proc := physicalplan.Processor{
 			Node: n.nodeIDs[i],
 			Spec: execinfrapb.ProcessorSpec{
@@ -2896,6 +2957,10 @@ func (dsp *DistSQLPlanner) createTSTagUpdate(
 		tsTagUpdate.StartKey = n.startKey
 		tsTagUpdate.EndKey = n.endKey
 		tsTagUpdate.OsnId = n.osnID
+
+		if planCtx != nil && n.nodeIDs[i] == planCtx.EvalContext().NodeID {
+			tsTagUpdate.CDCData = n.cdcData
+		}
 
 		proc := physicalplan.Processor{
 			Node: n.nodeIDs[i],
@@ -5607,6 +5672,13 @@ func (dsp *DistSQLPlanner) createPlanForNode(
 		if err := plan.AddFilter(n.filter, planCtx, plan.PlanToStreamColMap, n.engine == tree.EngineTypeTimeseries); err != nil {
 			return PhysicalPlan{}, err
 		}
+		if planCtx.cdcCtx != nil && n.filter != nil {
+			planCtx.cdcCtx.metricsFilter, err = physicalplan.MakeExpression(
+				n.filter, planCtx, plan.PlanToStreamColMap, false, false)
+			if err != nil {
+				return PhysicalPlan{}, err
+			}
+		}
 	case *synchronizerNode:
 		plan, err = dsp.createPlanForSynchronizer(planCtx, n)
 
@@ -6315,6 +6387,26 @@ func (dsp *DistSQLPlanner) isOnlyOnGateway(plan *PhysicalPlan) bool {
 	return false
 }
 
+func disableVectorizedForMismatchedUnionAllTypes(plan, leftPlan, rightPlan *PhysicalPlan) {
+	leftPhysTypes, err := typeconv.FromColumnTypes(leftPlan.ResultTypes)
+	if err != nil {
+		return
+	}
+	rightPhysTypes, err := typeconv.FromColumnTypes(rightPlan.ResultTypes)
+	if err != nil {
+		return
+	}
+	for i := range leftPhysTypes {
+		if leftPhysTypes[i] != rightPhysTypes[i] {
+			plan.DisableVectorized(
+				physicalplan.VectorizeDisableMismatchedUnionAllPhysicalTypes,
+				fmt.Sprintf("column %d: left=%s right=%s", i+1, leftPhysTypes[i], rightPhysTypes[i]),
+			)
+			return
+		}
+	}
+}
+
 // TODO(abhimadan): Refactor this function to reduce the UNION vs
 // EXCEPT/INTERSECT and DISTINCT vs ALL branching.
 //
@@ -6456,6 +6548,9 @@ func (dsp *DistSQLPlanner) createPlanForSetOp(
 	var leftRouters, rightRouters []physicalplan.ProcessorIdx
 	p.PhysicalPlan, leftRouters, rightRouters = physicalplan.MergePlans(
 		&leftPlan.PhysicalPlan, &rightPlan.PhysicalPlan)
+	if n.unionType == tree.UnionOp && n.all {
+		disableVectorizedForMismatchedUnionAllTypes(&p, &leftPlan, &rightPlan)
+	}
 
 	p.AddNoopForJoinToAgent(findJoinProcessorNodes(leftRouters, rightRouters, p.Processors),
 		leftRouters, rightRouters, dsp.nodeDesc.NodeID, &leftPlan.ResultTypes, &rightPlan.ResultTypes)
@@ -7116,15 +7211,11 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 		plan.Processors[i].Spec.ProcessorID = int32(i)
 	}
 
-	for i := len(plan.Processors) - 1; i >= 0; i-- {
-		if plan.Processors[i].ExecInTSEngine() && planCtx.EvalContext().SessionData.CommandLimit > 0 {
-			if plan.Processors[i].Spec.Core.TsSynchronizer != nil {
-				plan.Processors[i-1].Spec.Post.Limit = uint64(planCtx.EvalContext().SessionData.CommandLimit)
-			} else {
-				plan.Processors[i].Spec.Post.Limit = uint64(planCtx.EvalContext().SessionData.CommandLimit)
-			}
-			break
-		}
+	// If FetchSize or MaxRows is set,
+	// the time series query short will be unavailable
+	// and the result will be returned by ME
+	if planCtx.EvalContext().SessionData.CommandLimit > 0 {
+		plan.UseQueryShortCircuit = false
 	}
 
 	planCtx.EvalContext().SessionData.CommandLimit = 0
@@ -7307,7 +7398,7 @@ func (dsp *DistSQLPlanner) getSpans(
 		payloads := make([][]byte, 0)
 		offset := 0
 		for _, col := range ptCols {
-			payloads, err = getPtagPayloads(payloads, n.PrimaryTagValues[uint32(col.ID)], offset, col.DatumType(), pTagSize)
+			payloads, err = sqlbase.GetPtagPayloads(payloads, n.PrimaryTagValues[uint32(col.ID)], offset, col.DatumType(), pTagSize)
 			if err != nil {
 				return nil, osnID, err
 			}
@@ -7499,61 +7590,6 @@ func needsTSTwiceAggregation(n *groupNode, planCtx *PlanningCtx) (bool, error) {
 	}
 }
 
-// parsePtagValue parse the value of a string into the corresponding type of value and add it to the payload.
-func parsePtagValue(payload *[]byte, value string, offset int, typ *types.T) error {
-	parseInt := func(val string) (*tree.DInt, error) {
-		v, err := tree.ParseDInt(val)
-		if err != nil {
-			return nil, err
-		}
-		// Width is defined in bits.
-		width := uint(typ.Width() - 1)
-		// We're performing bounds checks inline with Go's implementation of min and max ints in Math.go.
-		shifted := *v >> width
-		if (*v >= 0 && shifted > 0) || (*v < 0 && shifted < -1) {
-			return nil, pgerror.Newf(pgcode.NumericValueOutOfRange,
-				"integer \"%d\" out of range for type %s", *v, typ.SQLString())
-		}
-		return v, nil
-	}
-	switch typ.InternalType.Oid {
-	case oid.T_int2:
-		v, err := parseInt(value)
-		if err != nil {
-			return err
-		}
-		binary.LittleEndian.PutUint16((*payload)[offset:], uint16(*v))
-	case oid.T_int4:
-		v, err := parseInt(value)
-		if err != nil {
-			return err
-		}
-		binary.LittleEndian.PutUint32((*payload)[offset:], uint32(*v))
-	case oid.T_int8:
-		v, err := parseInt(value)
-		if err != nil {
-			return err
-		}
-		binary.LittleEndian.PutUint64((*payload)[offset:], uint64(*v))
-	case oid.T_bool:
-		v, err := tree.ParseDBool(value)
-		if err != nil {
-			return err
-		}
-		if *v {
-			(*payload)[offset] = 1
-		} else {
-			(*payload)[offset] = 0
-		}
-	case types.T_nchar, oid.T_varchar, oid.T_bpchar:
-		copy((*payload)[offset:], value)
-
-	default:
-		return errors.Errorf("unsupported int oid %v", typ.InternalType.Oid)
-	}
-	return nil
-}
-
 // visitTableMeta visit column metadata of table
 // return parameters:
 // param1: ColumnDescriptor of primary tags, use for getting spans
@@ -7586,44 +7622,16 @@ func visitTableMeta(
 			}
 		}
 	}
-	return ptCols, typs, descColumnIDs, columnIDSet
-}
 
-// getPtagPayloads construct payloads of primary tag values
-// ex: PrimaryTagValues: [1,2,3], [3,4,5] ->
-// [13,14,15,23,24,25,33,34,35]
-func getPtagPayloads(
-	payloads [][]byte, source []string, offset int, typ *types.T, pTagSize int,
-) ([][]byte, error) {
-	if len(payloads) == 0 {
-		ret := make([][]byte, len(source))
-		for i := range ret {
-			ret[i] = make([]byte, pTagSize)
-		}
-		for k := range source {
-			err := parsePtagValue(&ret[k], source[k], offset, typ)
-			if err != nil {
-				return nil, err
-			}
-		}
-		return ret, nil
-	}
-	ret := make([][]byte, len(payloads)*len(source))
-	for i := range ret {
-		ret[i] = make([]byte, pTagSize)
-	}
-	i := 0
-	for k := range payloads {
-		for idx := range source {
-			newPayload := make([]byte, len(payloads[k]))
-			copy(newPayload, payloads[k])
-			err := parsePtagValue(&newPayload, source[idx], offset, typ)
-			if err != nil {
-				return nil, err
-			}
-			ret[i] = newPayload
-			i++
-		}
-	}
-	return ret, nil
+	// Add osn hidden columns
+	descColumnIDs = append(descColumnIDs, sqlbase.OsnColIdx)
+	typs = append(typs, *types.Int)
+
+	descColumnIDs = append(descColumnIDs, sqlbase.OpColIdx)
+	typs = append(typs, *types.Bytes)
+
+	descColumnIDs = append(descColumnIDs, sqlbase.EventColIdx)
+	typs = append(typs, *types.Bytes)
+
+	return ptCols, typs, descColumnIDs, columnIDSet
 }

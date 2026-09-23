@@ -941,7 +941,7 @@ func TestTableDescriptor_TypeName(t *testing.T) {
 		{
 			name:      "unknown table type",
 			tableType: 999, // Some unknown table type
-			expected:  "relation",
+			expected:  "",
 		},
 	}
 

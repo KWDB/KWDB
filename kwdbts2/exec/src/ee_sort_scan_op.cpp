@@ -74,10 +74,6 @@ EEIteratorErrCode SortScanOperator::Init(kwdbContext_p ctx) {
     table_->limit_ = limit_;
 
     order_field_ = param_.GetInputField(ctx, idx);
-    code = InitOutputColInfo(output_fields_);
-    if (code == EEIteratorErrCode::EE_ERROR) {
-      break;
-    }
     if (is_offset_opt_) {
       code = mallocTempField(ctx);
     } else {

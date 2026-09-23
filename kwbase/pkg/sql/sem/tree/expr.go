@@ -1545,7 +1545,8 @@ func (node *CastExpr) Format(ctx *FmtCtx) {
 		ctx.WriteString("CAST(")
 		ctx.FormatNode(node.Expr)
 		ctx.WriteString(" AS ")
-		if node.Type.Family() == types.CollatedStringFamily {
+		// If the type displays a COLLATE clause when formatted.
+		if node.Type.Family() == types.CollatedStringFamily && node.Type.Oid() != types.T_citext {
 			// Need to write closing parentheses before COLLATE clause, so create
 			// equivalent string type without the locale.
 			strTyp := types.MakeScalar(types.StringFamily, node.Type.Oid(), node.Type.Precision(), node.Type.Width(), "", 0)

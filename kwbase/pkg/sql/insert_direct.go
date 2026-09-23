@@ -44,6 +44,8 @@ type DirectInsertTable struct {
 	Tname       *tree.TableName
 	Desc        tree.NameList
 	TableType   tree.TableType
+
+	Tab *sqlbase.TableDescriptor
 }
 
 // DatumConverter is a function type for converting raw value to tree.Datum
@@ -98,6 +100,17 @@ const (
 )
 
 type directTimes [sessionNum]time.Time
+
+func directColumnDescPtrs(cols []sqlbase.ColumnDescriptor) []*sqlbase.ColumnDescriptor {
+	if len(cols) == 0 {
+		return nil
+	}
+	ptrs := make([]*sqlbase.ColumnDescriptor, len(cols))
+	for i := range cols {
+		ptrs[i] = &cols[i]
+	}
+	return ptrs
+}
 
 // getPrepareInputValues convert data format form Bind to []tree.Datums.
 func getPrepareInputValues(
@@ -198,13 +211,16 @@ func BuildRowBytesForPrepareTsInsert(
 	evalCtx tree.EvalContext,
 	table *sqlbase.ImmutableTableDescriptor,
 	nodeID roachpb.NodeID,
-	rowTimestamps []int64,
 	cfg *ExecutorConfig,
 ) error {
 	rowNum := di.RowNum / di.ColNum
+	v2Info := execbuilder.BuildPayloadV2DataInfoForTable(Dit.TableType, directColumnDescPtrs(Dit.ColsDesc), di.Dcs, di.ColIndexs)
+	di.PArgs.V2DataHeader = v2Info.DataHeader
+	di.PArgs.V2DataCols = v2Info.DataCols
+	payloadDataCols := v2Info.DataCols
 
 	// Pre-allocate all required buffers
-	rowBytes, dataOffset, independentOffset, err := preAllocateDataRowBytes(rowNum, &di.Dcs)
+	rowBytes, dataOffset, independentOffset, err := preAllocateDataRowBytes(rowNum, &payloadDataCols)
 	if err != nil {
 		return err
 	}
@@ -217,17 +233,10 @@ func BuildRowBytesForPrepareTsInsert(
 		varDataOffset := independentOffset
 
 		baseIdx := i * di.ColNum
-		for j, col := range di.PrettyCols {
+		for dataColIdx, col := range payloadDataCols {
 			colIdx := di.ColIndexs[int(col.ID)]
-
-			if col.IsTagCol() {
-				continue
-			}
-
 			argIdx := baseIdx + colIdx
-
-			dataColIdx := j - di.PArgs.PTagNum - di.PArgs.AllTagNum
-			isLastDataCol := dataColIdx == di.PArgs.DataColNum-1
+			isLastDataCol := dataColIdx == len(payloadDataCols)-1
 
 			curColLength := execbuilder.VarColumnSize
 			if int(col.TsCol.VariableLengthType) == sqlbase.StorageTuple {
@@ -301,8 +310,7 @@ func BuildRowBytesForPrepareTsInsert(
 
 	// Build primary tag value map with pre-allocated capacity
 	priTagValMap := make(map[string][]int, 10)
-	var keyBuilder strings.Builder
-	keyBuilder.Grow(64)
+	keyBuf := make([]byte, 0, 64)
 
 	colIndexes := make([]int, 0, len(di.PrimaryTagCols))
 	for _, col := range di.PrimaryTagCols {
@@ -310,19 +318,20 @@ func BuildRowBytesForPrepareTsInsert(
 	}
 
 	for i := 0; i < rowNum; i++ {
-		keyBuilder.Reset()
+		keyBuf = keyBuf[:0]
 		for _, idx := range colIndexes {
-			keyBuilder.Write(Args[i*di.ColNum+idx])
+			keyBuf = execbuilder.AppendTSPrimaryTagGroupingKeyBytes(keyBuf, Args[i*di.ColNum+idx])
 		}
-		key := keyBuilder.String()
+		key := string(keyBuf)
 		priTagValMap[key] = append(priTagValMap[key], i)
 	}
 
 	// Pre-allocate payloads slice
 	allPayloads := make([]*sqlbase.SinglePayloadInfo, 0, len(priTagValMap))
+	di.PArgs.OmitTagSection = execbuilder.ShouldOmitTagSection(di.PArgs, di.ColIndexs)
 
 	for _, priTagRowIdx := range priTagValMap {
-		payload, _, err := execbuilder.BuildPreparePayloadForTsInsert(
+		basePrefix, _, err := execbuilder.BuildPreparePayloadForTsInsert(
 			&evalCtx,
 			evalCtx.Txn,
 			nil,
@@ -340,7 +349,7 @@ func BuildRowBytesForPrepareTsInsert(
 			return err
 		}
 
-		hashPoints := sqlbase.DecodeHashPointFromPayload(payload)
+		hashPoints := sqlbase.DecodeHashPointFromPayload(basePrefix)
 		primaryTagKey := sqlbase.MakeTsPrimaryTagKey(table.ID, hashPoints)
 		if !evalCtx.StartSinglenode {
 			groupLen := len(priTagRowIdx)
@@ -354,7 +363,7 @@ func BuildRowBytesForPrepareTsInsert(
 
 			hashNum := Dit.HashNum
 			allPayloads = append(allPayloads, &sqlbase.SinglePayloadInfo{
-				Payload:       payload,
+				Payload:       execbuilder.BuildHeaderPrefixWithDataHeader(basePrefix, di.PArgs.V2DataHeader),
 				RowNum:        uint32(groupLen),
 				PrimaryTagKey: primaryTagKey,
 				RowBytes:      groupBytes,
@@ -364,29 +373,9 @@ func BuildRowBytesForPrepareTsInsert(
 				HashNum:       hashNum,
 			})
 		} else {
-			valueSize := int32(0)
-			rowNum := uint32(0)
-			for _, idx := range priTagRowIdx {
-				valueSize += int32(len(rowBytes[idx]))
-				rowNum++
-			}
-
-			payloadSize := int32(len(payload)) + valueSize + 4
-			payloadBytes := make([]byte, payloadSize)
-			copy(payloadBytes, payload)
-			offset := len(payload)
-			binary.LittleEndian.PutUint32(payloadBytes[offset:], uint32(valueSize))
-			offset += 4
-			for _, idx := range priTagRowIdx {
-				copy(payloadBytes[offset:], rowBytes[idx])
-				offset += len(rowBytes[idx])
-			}
-
-			binary.LittleEndian.PutUint32(payloadBytes[38:], uint32(rowNum))
-
 			hashNum := Dit.HashNum
 			allPayloads = append(allPayloads, &sqlbase.SinglePayloadInfo{
-				Payload:       payloadBytes,
+				Payload:       execbuilder.BuildSingleNodeTSPayload(basePrefix, di.PArgs.V2DataHeader, rowBytes, priTagRowIdx),
 				RowNum:        uint32(len(priTagRowIdx)),
 				PrimaryTagKey: primaryTagKey,
 				HashNum:       hashNum,
@@ -398,8 +387,10 @@ func BuildRowBytesForPrepareTsInsert(
 		NodeID:          nodeID,
 		PerNodePayloads: allPayloads,
 	}
+
 	di.PayloadNodeMap[int(evalCtx.NodeID)].CDCData = BuildCDCDataForDirectInsert(
-		&evalCtx, uint64(table.ID), table.Columns, di.InputValues, di.ColIndexs, cfg.CDCCoordinator)
+		&evalCtx, table.TableDescriptor, table.Columns, di.InputValues, di.ColIndexs, cfg.CDCCoordinator)
+
 	return nil
 }
 
@@ -411,30 +402,27 @@ func TsprepareTypeCheck(
 	ArgFormatCodes []pgwirebase.FormatCode,
 	cols *[]sqlbase.ColumnDescriptor,
 	di DirectInsert,
-) ([][][]byte, []int64, error) {
+) ([][][]byte, error) {
 	rowNum := di.RowNum / di.ColNum
 	rowTimestamps := make([]int64, rowNum)
 	if di.RowNum%di.ColNum != 0 {
-		return nil, nil, pgerror.Newf(
+		return nil, pgerror.Newf(
 			pgcode.Syntax,
 			"insert (row %d) has more expressions than target columns, %d expressions for %d targets",
 			rowNum, di.RowNum, di.ColNum)
 	}
-	isFirstCols := false
 	for row := 0; row < rowNum; row++ {
 		for col := 0; col < di.ColNum; col++ {
 			colPos := di.IDMap[col]
 			column := &(*cols)[colPos]
 			// Determine by column ID that it is the first column, which is the timestamp column.
-			if int(column.ID) == 1 {
-				isFirstCols = true
-			}
+			isFirstCols := int(column.ID) == 1
 			idx := di.PosMap[col] + di.ColNum*row
 			if Args[idx] == nil {
 				if column.IsNullable() {
 					continue
 				} else {
-					return nil, nil, sqlbase.NewNonNullViolationError(column.Name)
+					return nil, sqlbase.NewNonNullViolationError(column.Name)
 				}
 			}
 
@@ -447,10 +435,12 @@ func TsprepareTypeCheck(
 					err = intFormatText(Args, idx, inferTypes[idx], column)
 				case oid.T_float8, oid.T_float4:
 					err = floatFormatText(Args, idx, inferTypes[idx], column)
-				case oid.T_varchar, oid.T_bpchar, oid.T_varbytea, types.T_nchar, types.T_nvarchar:
+				case oid.T_varchar, oid.T_bpchar, oid.T_bytea, oid.T_varbytea, types.T_nchar, types.T_nvarchar:
 					err = charFormatText(ptCtx, Args, idx, column, isFirstCols, &rowTimestamps)
 				case oid.T_bool:
 					err = boolFormatText(Args, idx)
+				default:
+					err = tree.NewDatatypeMismatchError(column.Name, string(Args[idx]), column.Type.SQLString())
 				}
 			} else {
 				switch inferTypes[idx] {
@@ -462,19 +452,21 @@ func TsprepareTypeCheck(
 					err = float8FormatBinary(Args, idx, column)
 				case oid.T_float4:
 					err = float4FormatBinary(Args, idx, column)
-				case oid.T_varchar, oid.T_bpchar, oid.T_varbytea, types.T_nchar, types.T_nvarchar:
-					err = charFormatBinary(Args, idx, column, isFirstCols, &rowTimestamps)
+				case oid.T_varchar, oid.T_bpchar, oid.T_bytea, oid.T_varbytea, types.T_nchar, types.T_nvarchar:
+					err = charFormatBinary(ptCtx, Args, idx, column, isFirstCols, &rowTimestamps)
 				case oid.T_bool:
 					err = boolFormatBinary(Args, idx)
+				default:
+					err = tree.NewDatatypeMismatchError(column.Name, string(Args[idx]), column.Type.SQLString())
 				}
 			}
 			if err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 		}
 	}
 
-	return nil, rowTimestamps, nil
+	return nil, nil
 }
 
 func bigEndianToLittleEndian(bigEndian []byte) []byte {
@@ -632,6 +624,7 @@ func GetColsInfo(
 	if err != nil {
 		return err
 	}
+	di.PArgs.PayloadVersion = execbuilder.TSInsertPayloadVersionV2
 
 	di.PrettyCols = di.PArgs.PrettyCols
 	di.Dcs = dataCols
@@ -878,10 +871,6 @@ func GetRowBytesForTsInsert(
 		j += colNum
 	}
 	tp := execbuilder.NewTsPayload()
-	rowBytes, dataOffset, independentOffset, err := preAllocateDataRowBytes(rowNum, &di.Dcs)
-	if err != nil {
-		return nil, nil, nil, err
-	}
 	// partition input data based on primary tag values
 	priTagValMap := make(map[string][]int)
 	// Reuse tag key buffer to avoid per-row allocations.
@@ -895,11 +884,19 @@ func GetRowBytesForTsInsert(
 
 	// Pre-compute column execution metadata to avoid per-row map lookups and
 	// repeated length/position calculations.
-	dataInfos := make([]columnExecInfo, 0, di.PArgs.DataColNum)
+	payloadDataCols := di.PArgs.V2DataCols
+	payloadDataColIdx := make(map[int]int, len(payloadDataCols))
+	for idx, col := range payloadDataCols {
+		payloadDataColIdx[int(col.ID)] = idx
+	}
+
+	dataInfos := make([]columnExecInfo, 0, len(payloadDataCols))
 	tagInfos := make([]columnExecInfo, 0, len(di.PrettyCols)-di.PArgs.DataColNum)
-	dataIdx := 0
 	for i, column := range di.PrettyCols {
-		colIdx := di.ColIndexs[int(column.ID)]
+		colIdx, ok := di.ColIndexs[int(column.ID)]
+		if !ok {
+			colIdx = execbuilder.ColumnValIsNull
+		}
 		isData := column.IsDataCol()
 		info := columnExecInfo{
 			column:       column,
@@ -908,13 +905,16 @@ func GetRowBytesForTsInsert(
 			isPrimaryTag: i < di.PArgs.PTagNum,
 		}
 		if isData {
-			info.dataColIdx = dataIdx
-			info.isLastData = dataIdx == di.PArgs.DataColNum-1
+			dataColIdx, ok := payloadDataColIdx[int(column.ID)]
+			if !ok {
+				continue
+			}
+			info.dataColIdx = dataColIdx
+			info.isLastData = dataColIdx == len(payloadDataCols)-1
 			info.curColLength = execbuilder.VarColumnSize
 			if int(column.TsCol.VariableLengthType) == sqlbase.StorageTuple {
 				info.curColLength = int(column.TsCol.StorageLen)
 			}
-			dataIdx++
 			dataInfos = append(dataInfos, info)
 		} else {
 			tagInfos = append(tagInfos, info)
@@ -927,6 +927,14 @@ func GetRowBytesForTsInsert(
 				tagInfos[len(tagInfos)-1].converter = info.converter
 			}
 		}
+	}
+	for i := range dataInfos {
+		dataInfos[i].dataColIdx = i
+		dataInfos[i].isLastData = i == len(dataInfos)-1
+	}
+	rowBytes, dataOffset, independentOffset, err := preAllocateDataRowBytes(rowNum, &payloadDataCols)
+	if err != nil {
+		return nil, nil, nil, err
 	}
 
 	// Initialize row processing context once, reuse for all rows
@@ -1037,10 +1045,7 @@ func getSingleRowBytes(ctx *RowProcessContext, row int) (string, error) {
 		// Build primary tag key
 		if info.isPrimaryTag {
 			vString := sqlbase.DatumToString(datum)
-			// Distinguish aa + bb = a + abb
-			buf = strconv.AppendInt(buf, int64(len(vString)), 10)
-			buf = append(buf, ':')
-			buf = append(buf, vString...)
+			buf = execbuilder.AppendTSPrimaryTagGroupingKeyString(buf, vString)
 		}
 	}
 
@@ -1489,6 +1494,11 @@ func convertFloat(
 		}
 		return nil, tree.NewDatatypeMismatchError(column.Name, rawValue, column.Type.SQLString())
 	}
+	if column.Type.Oid() == oid.T_float4 &&
+		in != 0 && (math.Abs(in) < math.SmallestNonzeroFloat32 || math.Abs(in) > math.MaxFloat32) {
+		return nil, pgerror.Newf(pgcode.NumericValueOutOfRange,
+			"float \"%s\" out of range for type %s (column %s)", rawValue, column.Type.SQLString(), column.Name)
+	}
 	return tree.NewDFloat(tree.DFloat(in)), nil
 }
 
@@ -1656,12 +1666,16 @@ func GetPayloadMapForMuiltNode(
 	cfg *ExecutorConfig,
 ) error {
 	rowTimestamps := make([]int64, di.RowNum)
+	v2Info := execbuilder.BuildPayloadV2DataInfoForTable(dit.TableType, directColumnDescPtrs(table.Columns), di.Dcs, di.ColIndexs)
+	di.PArgs.V2DataHeader = v2Info.DataHeader
+	di.PArgs.V2DataCols = v2Info.DataCols
 
 	inputValues, priTagValMap, rowBytes, err := GetRowBytesForTsInsert(ctx, ptCtx, di, stmts, rowTimestamps)
 	if err != nil {
 		return err
 	}
 	di.PArgs.DataColNum, di.PArgs.DataColSize, di.PArgs.PreAllocColSize = 0, 0, 0
+	di.PArgs.OmitTagSection = execbuilder.ShouldOmitTagSection(di.PArgs, di.ColIndexs)
 
 	allPayloads := make([]*sqlbase.SinglePayloadInfo, 0, len(priTagValMap))
 
@@ -1670,8 +1684,8 @@ func GetPayloadMapForMuiltNode(
 	hashNum := dit.HashNum
 
 	for _, priTagRowIdx := range priTagValMap {
-		// Payload is the encoding of a complete line, which is the first line in a line with the same ptag
-		payload, _, err := execbuilder.BuildPayloadForTsInsert(
+		// basePrefix encodes the header and tag section for this primary-tag group.
+		basePrefix, _, err := execbuilder.BuildPayloadForTsInsert(
 			&evalCtx,
 			evalCtx.Txn,
 			inputValues,
@@ -1688,7 +1702,7 @@ func GetPayloadMapForMuiltNode(
 		}
 
 		// Make primaryTag key.
-		hashPoints := sqlbase.DecodeHashPointFromPayload(payload)
+		hashPoints := sqlbase.DecodeHashPointFromPayload(basePrefix)
 		primaryTagKey := sqlbase.MakeTsPrimaryTagKey(table.ID, hashPoints)
 		if !evalCtx.StartSinglenode {
 			rowCount := len(priTagRowIdx)
@@ -1712,7 +1726,7 @@ func GetPayloadMapForMuiltNode(
 			}
 
 			allPayloads = append(allPayloads, &sqlbase.SinglePayloadInfo{
-				Payload:       payload,
+				Payload:       execbuilder.BuildHeaderPrefixWithDataHeader(basePrefix, di.PArgs.V2DataHeader),
 				RowNum:        uint32(rowCount),
 				PrimaryTagKey: primaryTagKey,
 				RowBytes:      groupRowBytes,
@@ -1722,28 +1736,8 @@ func GetPayloadMapForMuiltNode(
 				HashNum:       hashNum,
 			})
 		} else {
-			valueSize := int32(0)
-			rowNum := uint32(0)
-			for _, idx := range priTagRowIdx {
-				valueSize += int32(len(rowBytes[idx]))
-				rowNum++
-			}
-
-			payloadSize := int32(len(payload)) + valueSize + 4
-			payloadBytes := make([]byte, payloadSize)
-			copy(payloadBytes, payload)
-			offset := len(payload)
-			binary.LittleEndian.PutUint32(payloadBytes[offset:], uint32(valueSize))
-			offset += 4
-			for _, idx := range priTagRowIdx {
-				copy(payloadBytes[offset:], rowBytes[idx])
-				offset += len(rowBytes[idx])
-			}
-
-			binary.LittleEndian.PutUint32(payloadBytes[38:], uint32(rowNum))
-
 			allPayloads = append(allPayloads, &sqlbase.SinglePayloadInfo{
-				Payload:       payloadBytes,
+				Payload:       execbuilder.BuildSingleNodeTSPayload(basePrefix, di.PArgs.V2DataHeader, rowBytes, priTagRowIdx),
 				RowNum:        uint32(len(priTagRowIdx)),
 				PrimaryTagKey: primaryTagKey,
 				HashNum:       hashNum,
@@ -1759,7 +1753,7 @@ func GetPayloadMapForMuiltNode(
 	}
 
 	di.PayloadNodeMap[int(evalCtx.NodeID)].CDCData = BuildCDCDataForDirectInsert(
-		&evalCtx, uint64(tabID), table.Columns, inputValues, di.ColIndexs, cfg.CDCCoordinator)
+		&evalCtx, table.TableDescriptor, table.Columns, inputValues, di.ColIndexs, cfg.CDCCoordinator)
 
 	return nil
 }
@@ -1817,11 +1811,9 @@ func intFormatText(Args [][]byte, idx int, infer oid.Oid, column *sqlbase.Column
 	if err != nil {
 		return err
 	}
-	byteSize, minVal, maxVal := 8, int64(math.MinInt64), int64(math.MaxInt64)
-	if infer == oid.T_int4 {
-		byteSize, minVal, maxVal = 4, math.MinInt32, math.MaxInt32
-	} else if infer == oid.T_int2 {
-		byteSize, minVal, maxVal = 2, math.MinInt16, math.MaxInt16
+	byteSize, minVal, maxVal := intStorageBounds(infer)
+	if columnByteSize, columnMinVal, columnMaxVal := intStorageBounds(column.Type.Oid()); columnByteSize != 0 {
+		byteSize, minVal, maxVal = columnByteSize, columnMinVal, columnMaxVal
 	}
 	if i < minVal || i > maxVal {
 		return pgerror.Newf(pgcode.NumericValueOutOfRange,
@@ -1839,24 +1831,27 @@ func intFormatText(Args [][]byte, idx int, infer oid.Oid, column *sqlbase.Column
 	return nil
 }
 
-func floatFormatText(
-	Args [][]byte, idx int, infer oid.Oid, column *sqlbase.ColumnDescriptor,
-) error {
-	f, err := strconv.ParseFloat(string(Args[idx]), 64)
-	if infer == oid.T_float8 {
+func floatFormatText(Args [][]byte, idx int, _ oid.Oid, column *sqlbase.ColumnDescriptor) error {
+	rawValue := string(Args[idx])
+	switch column.Type.Oid() {
+	case oid.T_float8:
+		f, err := strconv.ParseFloat(rawValue, 64)
 		if err != nil || (f != 0 && (math.Abs(f) < math.SmallestNonzeroFloat64 || math.Abs(f) > math.MaxFloat64)) {
 			return pgerror.Newf(pgcode.NumericValueOutOfRange,
 				"float \"%g\" out of range for type float (column %s)", f, column.Name)
 		}
 		Args[idx] = make([]byte, 8)
 		binary.LittleEndian.PutUint64(Args[idx], uint64(int64(math.Float64bits(f))))
-	} else {
+	case oid.T_float4:
+		f, err := strconv.ParseFloat(rawValue, 32)
 		if err != nil || (f != 0 && (math.Abs(f) < math.SmallestNonzeroFloat32 || math.Abs(f) > math.MaxFloat32)) {
 			return pgerror.Newf(pgcode.NumericValueOutOfRange,
-				"float \"%s\" out of range for type float4 (column %s)", string(Args[idx]), column.Name)
+				"float \"%s\" out of range for type float4 (column %s)", rawValue, column.Name)
 		}
 		Args[idx] = make([]byte, 4)
 		binary.LittleEndian.PutUint32(Args[idx], uint32(int32(math.Float32bits(float32(f)))))
+	default:
+		return tree.NewDatatypeMismatchError(column.Name, rawValue, column.Type.SQLString())
 	}
 	return nil
 }
@@ -1881,46 +1876,8 @@ func charFormatText(
 				return pgerror.Newf(pgcode.StringDataRightTruncation,
 					"value too long for type %s (column %q)", column.Type.SQLString(), column.Name)
 			}
-		case oid.T_timestamptz:
-			// string type
-			t, err := tree.ParseDTimestampTZ(ptCtx, string(Args[idx]), tree.TimeFamilyPrecisionToRoundDuration(column.Type.Precision()))
-			if err != nil {
-				return tree.NewDatatypeMismatchError(column.Name, string(Args[idx]), column.Type.SQLString())
-			}
-			tum := t.UnixMilli()
-			if tum < tree.TsMinTimestamp || tum > tree.TsMaxTimestamp {
-				if column.Type.Oid() == oid.T_timestamptz {
-					return pgerror.Newf(pgcode.StringDataLengthMismatch,
-						"value '%s' out of range for type %s (column %s)", t.String(), column.Type.SQLString(), column.Name)
-				}
-				return pgerror.Newf(pgcode.StringDataLengthMismatch,
-					"value '%s' out of range for type %s (column %s)", t.String(), column.Type.SQLString(), column.Name)
-			}
-			Args[idx] = make([]byte, 8)
-			binary.LittleEndian.PutUint64(Args[idx][0:], uint64(tum))
-			if isFirstCols {
-				*rowTimestamps = append(*rowTimestamps, tum)
-			}
-		case oid.T_timestamp:
-			// string type
-			t, err := tree.ParseDTimestamp(ptCtx, string(Args[idx]), tree.TimeFamilyPrecisionToRoundDuration(column.Type.Precision()))
-			if err != nil {
-				return tree.NewDatatypeMismatchError(column.Name, string(Args[idx]), column.Type.SQLString())
-			}
-			tum := t.UnixMilli()
-			if tum < tree.TsMinTimestamp || tum > tree.TsMaxTimestamp {
-				if column.Type.Oid() == oid.T_timestamptz {
-					return pgerror.Newf(pgcode.StringDataLengthMismatch,
-						"value '%s' out of range for type %s (column %s)", t.String(), column.Type.SQLString(), column.Name)
-				}
-				return pgerror.Newf(pgcode.StringDataLengthMismatch,
-					"value '%s' out of range for type %s (column %s)", t.String(), column.Type.SQLString(), column.Name)
-			}
-			Args[idx] = make([]byte, 8)
-			binary.LittleEndian.PutUint64(Args[idx][0:], uint64(tum))
-			if isFirstCols {
-				*rowTimestamps = append(*rowTimestamps, tum)
-			}
+		case oid.T_timestamptz, oid.T_timestamp:
+			return timeFormatString(ptCtx, Args, idx, column, isFirstCols, rowTimestamps)
 		case oid.T_bool:
 			davl, err := strconv.ParseBool(string(Args[idx]))
 			if err != nil {
@@ -1995,6 +1952,33 @@ func getIntSize(t oid.Oid) int {
 		return 0
 	}
 }
+
+func intStorageBounds(t oid.Oid) (byteSize int, minVal int64, maxVal int64) {
+	switch t {
+	case oid.T_int2:
+		return 2, math.MinInt16, math.MaxInt16
+	case oid.T_int4:
+		return 4, math.MinInt32, math.MaxInt32
+	case oid.T_int8:
+		return 8, math.MinInt64, math.MaxInt64
+	default:
+		return 0, 0, 0
+	}
+}
+
+func readBigEndianInt(Args [][]byte, idx int, infer oid.Oid) int64 {
+	switch infer {
+	case oid.T_int2:
+		return int64(int16(binary.BigEndian.Uint16(Args[idx])))
+	case oid.T_int4:
+		return int64(int32(binary.BigEndian.Uint32(Args[idx])))
+	case oid.T_int8:
+		return int64(binary.BigEndian.Uint64(Args[idx]))
+	default:
+		return 0
+	}
+}
+
 func getTypeName(t oid.Oid) string {
 	switch t {
 	case oid.T_int2:
@@ -2003,9 +1987,24 @@ func getTypeName(t oid.Oid) string {
 		return "int4"
 	case oid.T_int8:
 		return "int8"
+	case oid.T_timestamp:
+		return "timestamp"
+	case oid.T_timestamptz:
+		return "timestamptz"
+	case oid.T_float4:
+		return "float4"
+	case oid.T_float8:
+		return "float8"
 	default:
 		return "unknown"
 	}
+}
+
+func checkBinaryFormatLength(Args [][]byte, idx int, typ oid.Oid, size int) error {
+	if len(Args[idx]) < size {
+		return pgerror.Newf(pgcode.Syntax, "%s requires %d bytes for binary format", getTypeName(typ), size)
+	}
+	return nil
 }
 
 func intFormatBinary(
@@ -2027,46 +2026,45 @@ func intFormatBinary(
 				return pgerror.Newf(pgcode.ProtocolViolation, "error in argument for $%d %s requires %d bytes for binary format",
 					idx, typeName, srcSize)
 			}
-
-			if infer == oid.T_int2 {
-				binary.LittleEndian.PutUint16(Args[idx], binary.BigEndian.Uint16(Args[idx]))
-			} else if infer == oid.T_int4 {
-				if column.Type.Oid() == oid.T_int2 {
-					if done, err := convertInt2Value(Args, idx, column); done {
-						return err
-					}
-				}
-				binary.LittleEndian.PutUint32(Args[idx], binary.BigEndian.Uint32(Args[idx]))
-			} else {
-				if column.Type.Oid() == oid.T_int2 {
-					if done, err := convertInt2Value(Args, idx, column); done {
-						return err
-					}
-				} else if column.Type.Oid() == oid.T_int4 {
-					var int64Value int64
-					for _, b := range Args[idx] {
-						int64Value = (int64Value << 8) | int64(b)
-					}
-					if int64Value < math.MinInt32 || int64Value > math.MaxInt32 {
-						return pgerror.Newf(pgcode.NumericValueOutOfRange, "integer out of range for type %s (column %q)",
-							column.Type.SQLString(), column.Name)
-					}
-					binary.LittleEndian.PutUint32(Args[idx], uint32(int32(int64Value)))
-				}
-				binary.LittleEndian.PutUint64(Args[idx], binary.BigEndian.Uint64(Args[idx]))
+			value := readBigEndianInt(Args, idx, infer)
+			byteSize, minVal, maxVal := intStorageBounds(column.Type.Oid())
+			if value < minVal || value > maxVal {
+				return pgerror.Newf(pgcode.NumericValueOutOfRange, "integer out of range for type %s (column %q)",
+					column.Type.SQLString(), column.Name)
+			}
+			Args[idx] = make([]byte, byteSize)
+			switch byteSize {
+			case 8:
+				binary.LittleEndian.PutUint64(Args[idx], uint64(value))
+			case 4:
+				binary.LittleEndian.PutUint32(Args[idx], uint32(int32(value)))
+			case 2:
+				binary.LittleEndian.PutUint16(Args[idx], uint16(int16(value)))
 			}
 		case oid.T_timestamptz, oid.T_timestamp:
+			if err := checkBinaryFormatLength(Args, idx, column.Type.Oid(), 8); err != nil {
+				return err
+			}
 			tum := binary.BigEndian.Uint64(Args[idx])
 			binary.LittleEndian.PutUint64(Args[idx], tum)
 			if isFirstCols {
 				*rowTimestamps = append(*rowTimestamps, int64(tum))
 			}
 		case oid.T_bool:
-			Args[idx] = []byte{byte(binary.BigEndian.Uint32(Args[idx]) & 1)}
+			srcSize := getIntSize(infer)
+			if len(Args[idx]) < srcSize {
+				return pgerror.Newf(pgcode.ProtocolViolation, "error in argument for $%d %s requires %d bytes for binary format",
+					idx, getTypeName(infer), srcSize)
+			}
+			value := readBigEndianInt(Args, idx, infer)
+			Args[idx] = []byte{byte(value & 1)}
 		default:
 			return tree.NewDatatypeMismatchError(column.Name, string(Args[idx]), column.Type.SQLString())
 		}
 	case types.StringFamily:
+		if err := checkBinaryFormatLength(Args, idx, oid.T_int4, 4); err != nil {
+			return err
+		}
 		str := strconv.FormatUint(uint64(binary.BigEndian.Uint32(Args[idx])), 10)
 		Args[idx] = make([]byte, len(str))
 		copy(Args[idx][0:], str)
@@ -2076,24 +2074,12 @@ func intFormatBinary(
 	return nil
 }
 
-func convertInt2Value(Args [][]byte, idx int, column *sqlbase.ColumnDescriptor) (bool, error) {
-	var intValue int32
-	for _, b := range Args[idx] {
-		high, low := int32(b>>4), int32(b&0x0F)
-		intValue = (intValue << 8) | (high << 4) | low
-	}
-	if intValue < math.MinInt16 || intValue > math.MaxInt16 {
-		return true, pgerror.Newf(pgcode.NumericValueOutOfRange,
-			"integer out of range for type %s (column %q)",
-			column.Type.SQLString(), column.Name)
-	}
-	binary.LittleEndian.PutUint16(Args[idx], uint16(intValue))
-	return false, nil
-}
-
 func float8FormatBinary(Args [][]byte, idx int, column *sqlbase.ColumnDescriptor) error {
 	if column.Type.Family() != types.FloatFamily {
 		return tree.NewDatatypeMismatchError(column.Name, string(Args[idx]), column.Type.SQLString())
+	}
+	if err := checkBinaryFormatLength(Args, idx, oid.T_float8, 8); err != nil {
+		return err
 	}
 	f64 := math.Float64frombits(binary.BigEndian.Uint64(Args[idx]))
 	switch column.Type.Oid() {
@@ -2119,6 +2105,9 @@ func float4FormatBinary(Args [][]byte, idx int, column *sqlbase.ColumnDescriptor
 	if column.Type.Family() != types.FloatFamily {
 		return tree.NewDatatypeMismatchError(column.Name, string(Args[idx]), column.Type.SQLString())
 	}
+	if err := checkBinaryFormatLength(Args, idx, oid.T_float4, 4); err != nil {
+		return err
+	}
 	f32 := math.Float32frombits(binary.BigEndian.Uint32(Args[idx]))
 	switch column.Type.Oid() {
 	case oid.T_float4:
@@ -2140,6 +2129,7 @@ func float4FormatBinary(Args [][]byte, idx int, column *sqlbase.ColumnDescriptor
 }
 
 func charFormatBinary(
+	ptCtx tree.ParseTimeContext,
 	Args [][]byte,
 	idx int,
 	column *sqlbase.ColumnDescriptor,
@@ -2159,9 +2149,7 @@ func charFormatBinary(
 					"value too long for type %s (column %q)", column.Type.SQLString(), column.Name)
 			}
 		case oid.T_timestamptz, oid.T_timestamp:
-			if err := timeFormatBinary(Args, idx, column, isFirstCols, rowTimestamps); err != nil {
-				return err
-			}
+			return timeFormatString(ptCtx, Args, idx, column, isFirstCols, rowTimestamps)
 		case oid.T_bool:
 			davl, err := tree.ParseDBool(string(Args[idx]))
 			if err != nil {
@@ -2189,6 +2177,54 @@ func charFormatBinary(
 	return nil
 }
 
+func timeFormatString(
+	ptCtx tree.ParseTimeContext,
+	Args [][]byte,
+	idx int,
+	column *sqlbase.ColumnDescriptor,
+	isFirstCols bool,
+	rowTimestamps *[]int64,
+) error {
+	rawValue := string(Args[idx])
+	switch column.Type.Oid() {
+	case oid.T_timestamptz:
+		t, err := tree.ParseDTimestampTZ(ptCtx, rawValue, tree.TimeFamilyPrecisionToRoundDuration(column.Type.Precision()))
+		if err != nil {
+			return tree.NewDatatypeMismatchError(column.Name, rawValue, column.Type.SQLString())
+		}
+		tum := t.UnixMilli()
+		if tum < tree.TsMinTimestamp || tum > tree.TsMaxTimestamp {
+			return pgerror.Newf(pgcode.StringDataLengthMismatch, "value '%s' out of range for type %s (column %s)",
+				t.String(), column.Type.SQLString(), column.Name)
+		}
+		Args[idx] = make([]byte, 8)
+		binary.LittleEndian.PutUint64(Args[idx], uint64(tum))
+		if isFirstCols {
+			*rowTimestamps = append(*rowTimestamps, tum)
+		}
+		return nil
+
+	case oid.T_timestamp:
+		t, err := tree.ParseDTimestamp(ptCtx, rawValue, tree.TimeFamilyPrecisionToRoundDuration(column.Type.Precision()))
+		if err != nil {
+			return tree.NewDatatypeMismatchError(column.Name, rawValue, column.Type.SQLString())
+		}
+		tum := t.UnixMilli()
+		if tum < tree.TsMinTimestamp || tum > tree.TsMaxTimestamp {
+			return pgerror.Newf(pgcode.StringDataLengthMismatch, "value '%s' out of range for type %s (column %s)",
+				t.String(), column.Type.SQLString(), column.Name)
+		}
+		Args[idx] = make([]byte, 8)
+		binary.LittleEndian.PutUint64(Args[idx], uint64(tum))
+		if isFirstCols {
+			*rowTimestamps = append(*rowTimestamps, tum)
+		}
+		return nil
+	}
+
+	return tree.NewDatatypeMismatchError(column.Name, rawValue, column.Type.SQLString())
+}
+
 func boolFormatBinary(Args [][]byte, idx int) error {
 	if len(Args[idx]) > 0 && (Args[idx][0] == 0 || Args[idx][0] == 1) {
 		return nil
@@ -2199,7 +2235,7 @@ func boolFormatBinary(Args [][]byte, idx int) error {
 // BuildCDCDataForDirectInsert builds DirectInsert data for cdc.
 func BuildCDCDataForDirectInsert(
 	evalCtx *tree.EvalContext,
-	tableID uint64,
+	table sqlbase.TableDescriptor,
 	columns []sqlbase.ColumnDescriptor,
 	InputDatums []tree.Datums,
 	colIndex map[int]int,
@@ -2209,7 +2245,9 @@ func BuildCDCDataForDirectInsert(
 		return nil
 	}
 
-	if !cdcCoordinator.IsCDCEnabled(tableID) {
+	tableID := uint64(table.ID)
+
+	if !cdcCoordinator.WaitCDCEnabled(tableID, table.CDC) {
 		return nil
 	}
 

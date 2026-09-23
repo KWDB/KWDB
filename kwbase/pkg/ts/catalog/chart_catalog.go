@@ -1456,6 +1456,10 @@ var charts = []sectionDescription{
 				Metrics: []string{"raft.replica.consistent.latency"},
 			},
 			{
+				Title:   "Ts Data Volume",
+				Metrics: []string{"range.ts.stats.datavolume.failures"},
+			},
+			{
 				Title:   "Command Commit",
 				Metrics: []string{"raft.process.commandcommit.latency"},
 			},

@@ -53,6 +53,9 @@ type tsScanNode struct {
 	// time frame
 	tsSpans []execinfrapb.TsSpan
 
+	// osn time frame
+	osnSpans []execinfrapb.OsnSpan
+
 	// block filters
 	blockFilter []*execinfrapb.TSBlockFilter
 
@@ -107,6 +110,8 @@ type tsScanNode struct {
 	// set to zero.
 	estimatedRowCount uint64
 
+	// result cols contain hidden column (_osn, _op, _event).
+	HasOsnCols bool
 	// direction flags that order need reverse scan
 	reverse bool
 

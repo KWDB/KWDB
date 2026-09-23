@@ -218,7 +218,7 @@ func (mq *mergeQueue) shouldQueue(
 		}
 	}
 
-	sizeRatio := float64(repl.GetMVCCStats().Total()) / float64(repl.GetMinBytes())
+	sizeRatio := float64(repl.GetMVCCStatsForDecisions(ctx).Total()) / float64(repl.GetMinBytes())
 	if math.IsNaN(sizeRatio) || sizeRatio >= 1 {
 		// This range is above the minimum size threshold. It does not need to be
 		// merged.
@@ -268,7 +268,7 @@ func (mq *mergeQueue) process(
 		return nil
 	}
 
-	lhsStats := lhsRepl.GetMVCCStats()
+	lhsStats := lhsRepl.GetMVCCStatsForDecisions(ctx)
 	minBytes := lhsRepl.GetMinBytes()
 	if lhsStats.Total() >= minBytes && lhsRepl.Desc().GetRangeType() == roachpb.DEFAULT_RANGE {
 		log.VEventf(ctx, 2, "skipping merge: LHS meets minimum size threshold %d with %d bytes",

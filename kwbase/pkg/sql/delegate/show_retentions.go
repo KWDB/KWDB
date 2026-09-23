@@ -50,12 +50,10 @@ func (d *delegator) delegateShowRetentions(n *tree.ShowRetentions) (tree.Stateme
 	if err != nil {
 		return nil, err
 	}
-	switch desc.TableType {
-	case tree.TemplateTable, tree.TimeseriesTable, tree.InstanceTable:
+	if desc.IsTSTable() {
 		tableID = uint32(desc.ID)
-	case tree.RelationalTable:
+	} else {
 		return nil, pgerror.Newf(pgcode.WrongObjectType, "table %s does not support downsampling", resName.Table())
-
 	}
 
 	const getRetention = `

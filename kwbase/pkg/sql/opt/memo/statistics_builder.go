@@ -527,7 +527,7 @@ func (sb *statisticsBuilder) makeTableStatistics(tabID opt.TableID) *props.Stati
 	if tab.StatisticCount() == 0 {
 		// No statistics.
 		stats.Available = false
-		if tab.GetTableType() != tree.RelationalTable {
+		if tab.IsTSTable() {
 			stats.RowCount = unknownTSRowCount
 		} else {
 			stats.RowCount = unknownRowCount
@@ -541,8 +541,7 @@ func (sb *statisticsBuilder) makeTableStatistics(tabID opt.TableID) *props.Stati
 
 		// Get all primary tag columns in time series table
 		var primaryTagCols opt.ColSet
-		tableType := tab.GetTableType()
-		if tableType == tree.TimeseriesTable {
+		if tab.IsTSTable() {
 			for i := 0; i < tab.DeletableColumnCount(); i++ {
 				col := tab.Column(i)
 				if col.IsPrimaryTagCol() {
@@ -576,7 +575,7 @@ func (sb *statisticsBuilder) makeTableStatistics(tabID opt.TableID) *props.Stati
 					colStat.Histogram.Init(sb.evalCtx, col, stat.Histogram())
 				}
 
-				if tableType == tree.TimeseriesTable {
+				if tab.IsTSTable() {
 					var adjustedCols opt.ColSet
 					for _, col := range cols.Ordered() {
 						colID := sb.md.GetTagIDByColumnID(opt.ColumnID(col)) + 1

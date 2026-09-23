@@ -304,7 +304,6 @@ TEST_F(TestWALComponents, TestUpdateLogTagsEntry) {
 
 TEST_F(TestWALComponents, TestDeleteLogMetricsEntry) {
   char primary_tag[] = "delete_primary";
-  DelRowSpan row_spans[] = {{36000, 1, "1111"}, {46000, 2, "0000"}};
   
   DeleteLogMetricsEntry entry(700, WALLogType::DELETE, 7, WALTableType::DATA,
                               sizeof(primary_tag), 2, primary_tag, 1123, 350);
@@ -428,9 +427,6 @@ TEST_F(TestWALComponents, TestCheckpointEntry_Construct) {
   
   // The LSN is not set in construct, it's set by the constructor
   // We can't directly access type_ and x_id_ as they are protected members of LogEntry
-  
-  size_t len = sizeof(WALLogType) + sizeof(uint64_t) + sizeof(uint32_t) + 
-               sizeof(uint64_t) + sizeof(uint64_t) + 2 * sizeof(CheckpointPartition);
   
   delete[] entry_ptr;
 }

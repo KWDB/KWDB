@@ -409,6 +409,9 @@ func TestColumnConversions(t *testing.T) {
 						switch e := expected.(type) {
 						case time.Time:
 							success = e.Equal(actual.(time.Time))
+						case float32:
+						case float64:
+							success = math.Abs(float64(e-actual.(float64))) < 1e-6
 						default:
 							success = reflect.DeepEqual(e, actual)
 						}

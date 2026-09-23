@@ -614,6 +614,16 @@ func (b *Builder) buildSQLExpr(expr tree.Expr, typ *types.T, s *scope) tree.Type
 	if err != nil {
 		panic(err)
 	}
+
+	// If the target column type is known, allow assignment casts between CITEXT
+	// and the string family here.
+	if tree.IsCITextStringMixed(typedExpr.ResolvedType(), typ) {
+		var err error
+		typedExpr, err = tree.NewTypedCastExpr(typedExpr, typ)
+		if err != nil {
+			panic(err)
+		}
+	}
 	h := &ReplaceProcCond{}
 	// Replace the scopeColumn in the procStmt condition with IndexedVar
 	typedExpr = h.Replace(typedExpr)
