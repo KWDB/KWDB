@@ -314,7 +314,7 @@ KStatus TSEngineImpl::Init(kwdbContext_p ctx) {
   // the numeric table-dir scanners never see it; the db manager is created
   // first because every table schema manager holds a raw pointer to it.
   db_schema_mgr_ = std::make_unique<TsDBSchemaManager>(options_.db_path);
-  schema_mgr_ = std::make_unique<TsEngineSchemaManager>((db_path / schema_directory, db_schema_mgr_.get()).string());
+  schema_mgr_ = std::make_unique<TsEngineSchemaManager>((db_path / schema_directory).string(), db_schema_mgr_.get());
   KStatus s = schema_mgr_->Init(ctx);
   if (s != KStatus::SUCCESS) {
     return s;

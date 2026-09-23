@@ -637,12 +637,12 @@ using sumtype_t = typename SumTypeHelper<T>::type;
 
 template <DATATYPE type>
 auto TypeMapping() {
-  if constexpr (type == DATATYPE::INT8) return int8_t{0};
-  if constexpr (type == DATATYPE::INT16) return int16_t{0};
-  if constexpr (type == DATATYPE::INT32) return int32_t{0};
-  if constexpr (type == DATATYPE::INT64) return int64_t{0};
-  if constexpr (type == DATATYPE::FLOAT) return float{0};
-  if constexpr (type == DATATYPE::DOUBLE) return double{0};
+  if constexpr (type == DATATYPE::K_INT8) return int8_t{0};
+  if constexpr (type == DATATYPE::K_INT16) return int16_t{0};
+  if constexpr (type == DATATYPE::K_INT32) return int32_t{0};
+  if constexpr (type == DATATYPE::K_INT64) return int64_t{0};
+  if constexpr (type == DATATYPE::K_FLOAT) return float{0};
+  if constexpr (type == DATATYPE::K_DOUBLE) return double{0};
 }
 
 template <DATATYPE type>
@@ -668,23 +668,23 @@ static void GetSumFastPathImpl(const char* rawdata, int64_t count, bool& is_over
 static KStatus GetSumFastPath(DATATYPE type, const char* value, int64_t row_num, bool& is_overflow, int64_t& sum_i64,
                               double& sum_f64) {
   switch (type) {
-    case DATATYPE::INT8:
-      GetSumFastPathImpl<DATATYPE::INT8>(value, row_num, is_overflow, sum_i64, sum_f64);
+    case DATATYPE::K_INT8:
+      GetSumFastPathImpl<DATATYPE::K_INT8>(value, row_num, is_overflow, sum_i64, sum_f64);
       break;
-    case DATATYPE::INT16:
-      GetSumFastPathImpl<DATATYPE::INT16>(value, row_num, is_overflow, sum_i64, sum_f64);
+    case DATATYPE::K_INT16:
+      GetSumFastPathImpl<DATATYPE::K_INT16>(value, row_num, is_overflow, sum_i64, sum_f64);
       break;
-    case DATATYPE::INT32:
-      GetSumFastPathImpl<DATATYPE::INT32>(value, row_num, is_overflow, sum_i64, sum_f64);
+    case DATATYPE::K_INT32:
+      GetSumFastPathImpl<DATATYPE::K_INT32>(value, row_num, is_overflow, sum_i64, sum_f64);
       break;
-    case DATATYPE::INT64:
-      GetSumFastPathImpl<DATATYPE::INT64>(value, row_num, is_overflow, sum_i64, sum_f64);
+    case DATATYPE::K_INT64:
+      GetSumFastPathImpl<DATATYPE::K_INT64>(value, row_num, is_overflow, sum_i64, sum_f64);
       break;
-    case DATATYPE::FLOAT:
-      GetSumFastPathImpl<DATATYPE::FLOAT>(value, row_num, is_overflow, sum_i64, sum_f64);
+    case DATATYPE::K_FLOAT:
+      GetSumFastPathImpl<DATATYPE::K_FLOAT>(value, row_num, is_overflow, sum_i64, sum_f64);
       break;
-    case DATATYPE::DOUBLE:
-      GetSumFastPathImpl<DATATYPE::DOUBLE>(value, row_num, is_overflow, sum_i64, sum_f64);
+    case DATATYPE::K_DOUBLE:
+      GetSumFastPathImpl<DATATYPE::K_DOUBLE>(value, row_num, is_overflow, sum_i64, sum_f64);
       break;
     default:
       LOG_ERROR("Not supported for sum, datatype: %d", type);
@@ -709,7 +709,7 @@ KStatus TsBlockSpan::GetSum(uint32_t scan_idx, TsScanStats* ts_scan_stats, bool 
     }
     if (pre_sum) {
       has_sum_result = true;
-      if (DATATYPE::FLOAT == type || DATATYPE::DOUBLE == type || is_overflow) {
+      if (DATATYPE::K_FLOAT == type || DATATYPE::K_DOUBLE == type || is_overflow) {
         sum_f64 = KDouble64(pre_sum);
       } else {
         sum_i64 = KInt64(pre_sum);
@@ -748,7 +748,7 @@ KStatus TsBlockSpan::GetSum(uint32_t scan_idx, TsScanStats* ts_scan_stats, bool 
     has_sum_result = true;
     void* current = reinterpret_cast<void*>((intptr_t)(value + row_idx * size));
     switch (type) {
-      case DATATYPE::INT8: {
+      case DATATYPE::K_INT8: {
         if (!is_overflow) {
           is_overflow = AddAggInteger<int64_t, int8_t>(sum_i64, *reinterpret_cast<int8_t*>(current));
           ConvertToDoubleIfOverflow(is_overflow, sum_f64, sum_i64);
@@ -758,7 +758,7 @@ KStatus TsBlockSpan::GetSum(uint32_t scan_idx, TsScanStats* ts_scan_stats, bool 
         }
         break;
       }
-      case DATATYPE::INT16: {
+      case DATATYPE::K_INT16: {
         if (!is_overflow) {
           is_overflow = AddAggInteger<int64_t, int16_t>(sum_i64, *reinterpret_cast<int16_t*>(current));
           ConvertToDoubleIfOverflow(is_overflow, sum_f64, sum_i64);
@@ -768,7 +768,7 @@ KStatus TsBlockSpan::GetSum(uint32_t scan_idx, TsScanStats* ts_scan_stats, bool 
         }
         break;
       }
-      case DATATYPE::INT32: {
+      case DATATYPE::K_INT32: {
         if (!is_overflow) {
           is_overflow = AddAggInteger<int64_t, int32_t>(sum_i64, *reinterpret_cast<int32_t*>(current));
           ConvertToDoubleIfOverflow(is_overflow, sum_f64, sum_i64);
@@ -778,7 +778,7 @@ KStatus TsBlockSpan::GetSum(uint32_t scan_idx, TsScanStats* ts_scan_stats, bool 
         }
         break;
       }
-      case DATATYPE::INT64: {
+      case DATATYPE::K_INT64: {
         if (!is_overflow) {
           is_overflow = AddAggInteger<int64_t, int64_t>(sum_i64, *reinterpret_cast<int64_t*>(current));
           ConvertToDoubleIfOverflow(is_overflow, sum_f64, sum_i64);
@@ -788,11 +788,11 @@ KStatus TsBlockSpan::GetSum(uint32_t scan_idx, TsScanStats* ts_scan_stats, bool 
         }
         break;
       }
-      case DATATYPE::FLOAT: {
+      case DATATYPE::K_FLOAT: {
         AddAggFloat<double, float>(sum_f64, (*(static_cast<float*>(current))));
         break;
       }
-      case DATATYPE::DOUBLE: {
+      case DATATYPE::K_DOUBLE: {
         AddAggFloat<double, double>(sum_f64, (*(static_cast<double*>(current))));
         break;
       }

@@ -2795,7 +2795,7 @@ KStatus TsAggIteratorImpl::partitionAggImpl(TsScanStats* ts_scan_stats) {
       int64_t sum_i64 = 0;
       double sum_f64 = 0.0;
       if (pre_sum) {
-        if (DATATYPE::FLOAT == type || DATATYPE::DOUBLE == type || pre_sum_is_overflow) {
+        if (DATATYPE::K_FLOAT == type || DATATYPE::K_DOUBLE == type || pre_sum_is_overflow) {
           sum_f64 = KDouble64(pre_sum);
         } else {
           sum_i64 = KInt64(pre_sum);
@@ -3007,55 +3007,6 @@ inline void TsAggIteratorImpl::ConvertToDoubleIfOverflow(uint32_t col_idx, bool 
   }
 }
 
-inline KStatus TsAggIteratorImpl::AddSumNotOverflowYet(uint32_t col_idx,
-                                                          int32_t type,
-                                                          void* current,
-                                                          TSSlice& agg_data) {
-  bool over_flow = false;
-  switch (type) {
-    case DATATYPE::K_INT8:
-      over_flow = AddAggInteger<int64_t>(
-          *reinterpret_cast<int64_t*>(agg_data.data),
-          *reinterpret_cast<int8_t*>(current));
-      ConvertToDoubleIfOverflow(col_idx, over_flow, agg_data);
-      break;
-    case DATATYPE::K_INT16:
-      over_flow = AddAggInteger<int64_t>(
-          *reinterpret_cast<int64_t*>(agg_data.data),
-          *reinterpret_cast<int16_t*>(current));
-      ConvertToDoubleIfOverflow(col_idx, over_flow, agg_data);
-      break;
-    case DATATYPE::K_INT32:
-      over_flow = AddAggInteger<int64_t>(
-          *reinterpret_cast<int64_t*>(agg_data.data),
-          *reinterpret_cast<int32_t*>(current));
-      ConvertToDoubleIfOverflow(col_idx, over_flow, agg_data);
-      break;
-    case DATATYPE::K_INT64:
-      over_flow = AddAggInteger<int64_t>(
-          *reinterpret_cast<int64_t*>(agg_data.data),
-          *reinterpret_cast<int64_t*>(current));
-      ConvertToDoubleIfOverflow(col_idx, over_flow, agg_data);
-      break;
-    case DATATYPE::K_FLOAT:
-      AddAggFloat<double>(
-          *reinterpret_cast<double*>(agg_data.data),
-          *reinterpret_cast<float*>(current));
-      break;
-    case DATATYPE::K_DOUBLE:
-      AddAggFloat<double>(
-          *reinterpret_cast<double*>(agg_data.data),
-          *reinterpret_cast<double*>(current));
-      break;
-    default:
-      LOG_ERROR("Not supported for sum, datatype: %d  table_id: %lu", type, table_id_);
-      return KStatus::FAIL;
-      break;
-  }
-  return KStatus::SUCCESS;
-}
-
-
 inline KStatus TsAggIteratorImpl::AddSumNotOverflowYetByPreSum(uint32_t col_idx,
                                                                int32_t type,
                                                                int64_t sum_i64,
@@ -3091,43 +3042,6 @@ inline KStatus TsAggIteratorImpl::AddSumNotOverflowYetByPreSum(uint32_t col_idx,
     default:
       LOG_ERROR("Not supported for sum, datatype: %d  table_id: %lu", type, table_id_);
       return KStatus::FAIL;
-  }
-  return KStatus::SUCCESS;
-}
-
-inline KStatus TsAggIteratorImpl::AddSumOverflow(int32_t type,
-                                                    void* current,
-                                                    TSSlice& agg_data) {
-  switch (type) {
-    case DATATYPE::K_INT8:
-      AddAggFloat<double, int64_t>(
-          *reinterpret_cast<double*>(agg_data.data),
-          *reinterpret_cast<int8_t*>(current));
-      break;
-    case DATATYPE::K_INT16:
-      AddAggFloat<double, int64_t>(
-          *reinterpret_cast<double*>(agg_data.data),
-          *reinterpret_cast<int16_t*>(current));
-      break;
-    case DATATYPE::K_INT32:
-      AddAggFloat<double, int64_t>(
-          *reinterpret_cast<double*>(agg_data.data),
-          *reinterpret_cast<int32_t*>(current));
-      break;
-    case DATATYPE::K_INT64:
-      AddAggFloat<double, int64_t>(
-          *reinterpret_cast<double*>(agg_data.data),
-          *reinterpret_cast<int64_t*>(current));
-      break;
-    case DATATYPE::K_FLOAT:
-    case DATATYPE::K_DOUBLE:
-      LOG_ERROR("Overflow not supported for sum, datatype: %d  table_id: %lu", type, table_id_);
-      return KStatus::FAIL;
-      break;
-    default:
-      LOG_ERROR("Not supported for sum, datatype: %d  table_id: %lu", type, table_id_);
-      return KStatus::FAIL;
-      break;
   }
   return KStatus::SUCCESS;
 }

@@ -335,7 +335,7 @@ KStatus TsVersionManager::Recover(bool force_recover) {
     std::error_code ec;
     fs::directory_iterator iter{root_path_, ec};
     if (ec.value() != 0) {
-      LOG_ERROR("cannot iterate directory %s, reason: %s", root_path_.c_str(), ec.message().c_str());
+      LOG_ERROR("cannot iterate directory %s, reason: %s", root_path_.string().c_str(), ec.message().c_str());
       return FAIL;
     }
     for (auto const &dir_entry : iter) {

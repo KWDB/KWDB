@@ -1739,7 +1739,7 @@ KStatus TsVGroup::GetLastSegmentBuilder(std::shared_ptr<const TsPartitionVersion
     return KStatus::FAIL;
   }
   std::unique_ptr<TsAppendOnlyFile> lastseg_file;
-  KStatus s = env->NewAppendOnlyFile(filepath, &lastseg_file);
+  KStatus s = env->NewAppendOnlyFile(filepath.string(), &lastseg_file);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetLastSegmentBuilder NewAppendOnlyFile failed, path=%s", filepath.string().c_str());
     return s;
