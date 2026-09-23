@@ -689,7 +689,9 @@ $(LIBEDIT_DIR)/Makefile: $(C_DEPS_DIR)/libedit-rebuild $(LIBEDIT_SRC_DIR)/config
 # TODO(benesch): make it possible to build libroach without CCL code. Because
 # libroach and libroachccl are defined in the same CMake project, CMake requires
 # that the CCL code be present even if only the OSS target will be built.
-$(LIBROACH_DIR)/Makefile: $(C_DEPS_DIR)/libroach-rebuild | bin/.submodules-initialized
+# libroach's CMakeLists.txt lists protos/*.pb.cc as sources, so the C++
+# protobuf sources must be generated before CMake runs on libroach.
+$(LIBROACH_DIR)/Makefile: $(C_DEPS_DIR)/libroach-rebuild bin/.cpp_protobuf_sources | bin/.submodules-initialized
 	rm -rf $(LIBROACH_DIR)
 	mkdir -p $(LIBROACH_DIR)
 	@# NOTE: If you change the CMake flags below, bump the version in
