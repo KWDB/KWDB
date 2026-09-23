@@ -32,6 +32,7 @@ kv_store_status               SYSTEM VIEW
 kwdb_attributes               SYSTEM VIEW
 kwdb_functions                SYSTEM VIEW
 kwdb_object_create_statement  SYSTEM VIEW
+kwdb_pipes                    SYSTEM VIEW
 kwdb_procedures               SYSTEM VIEW
 kwdb_retention                SYSTEM VIEW
 kwdb_schedules                SYSTEM VIEW
@@ -49,6 +50,7 @@ node_transactions             SYSTEM VIEW
 node_txn_stats                SYSTEM VIEW
 partitions                    SYSTEM VIEW
 predefined_comments           SYSTEM VIEW
+publications                  SYSTEM VIEW
 ranges                        SYSTEM VIEW
 ranges_no_leases              SYSTEM VIEW
 schema_changes                SYSTEM VIEW

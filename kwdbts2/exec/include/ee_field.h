@@ -441,6 +441,13 @@ class FieldBlob : public FieldNum {
   Field* field_to_copy() override;
 };
 
+class FieldOSNBlob : public FieldBlob {
+ public:
+  String ValStr() override;
+  String ValStr(char *ptr) override;
+  Field *field_to_copy() override;
+};
+
 // varchar
 class FieldVarchar : public FieldNum {
  public:

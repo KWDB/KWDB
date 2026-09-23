@@ -244,6 +244,8 @@ const (
 	CrdbInternalKWDBFunctionsTableID
 	KwdbInternalKWDBProceduresTableID
 	KwdbInternalKWDBTriggersTableID
+	CrdbInternalKWDBPipeTableID
+	KwdbInternalKWDBPublicationsTableID
 	CrdbInternalTSTransactionRecordID
 	InformationSchemaKeywordsTableID
 	MinVirtualID = InformationSchemaKeywordsTableID
@@ -270,4 +272,15 @@ const (
 	MaxDopForHighData = 32
 	// DefaultDop represents the degree of parallelism without parallel requests
 	DefaultDop = 0
+)
+
+const (
+	// OsnColIdx represents _osn col idx
+	OsnColIdx = math.MaxUint32 - 1
+	// OpColIdx represents _op col idx
+	OpColIdx = math.MaxUint32 - 2
+	// EventColIdx represents _event col idx
+	EventColIdx = math.MaxUint32 - 3
+	// HashPointColIdx represents _hashpoint_ col idx
+	HashPointColIdx = math.MaxUint32 - 4
 )

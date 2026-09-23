@@ -81,6 +81,10 @@ type Table interface {
 	// WritableColumnCount.
 	DeletableColumnCount() int
 
+	// AllColumnCount returns the number of public, write-only, delete- only, and
+	// hidden columns (_osn, _op, _event) in the table.
+	AllColumnCount() int
+
 	// Column returns a Column interface to the column at the ith ordinal
 	// position within the table, where i < ColumnCount. Note that the Columns
 	// collection includes mutation columns, if present. Mutation columns are in
@@ -201,6 +205,9 @@ type Table interface {
 	// IsTimeseriesTable returns true if the table actually describes a
 	// Timeseries Table resource.
 	IsTimeseriesTable() bool
+
+	// GetCDC returns the definition of CDC
+	GetCDC() interface{}
 }
 
 // TriggerMeta stores trigger's metadata in cat.Table

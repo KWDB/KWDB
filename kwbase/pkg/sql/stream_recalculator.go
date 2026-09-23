@@ -17,7 +17,6 @@ import (
 	"strings"
 	"time"
 
-	"gitee.com/kwbasedb/kwbase/pkg/cdc/cdcpb"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
@@ -849,7 +848,7 @@ func (sr *streamRecalculator) persistHistoricalLowWaterMark(watermark int64) err
 VALUES ($1,$2,$3,$4,$5)`,
 		sr.tableID,
 		sr.instanceID,
-		cdcpb.TSCDCInstanceType_Stream,
+		sqlbase.CDCInstanceType_Stream,
 		waterMarkTypeHistorical,
 		watermark,
 	); err != nil {
@@ -869,7 +868,7 @@ func (sr *streamRecalculator) deleteHistoricalLowWaterMark() error {
 		`DELETE FROM system.kwdb_cdc_watermark WHERE table_id = $1 AND task_id = $2 AND task_type = $3 AND internal_type = $4`,
 		sr.tableID,
 		sr.instanceID,
-		cdcpb.TSCDCInstanceType_Stream,
+		sqlbase.CDCInstanceType_Stream,
 		waterMarkTypeHistorical,
 	); err != nil {
 		return err
@@ -887,7 +886,7 @@ func (sr *streamRecalculator) loadLowWaterMark(typ waterMarkType) (int64, bool, 
 		sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
 		`SELECT low_watermark FROM system.kwdb_cdc_watermark 
                      WHERE table_id = $1 AND task_id = $2 AND task_type = $3 AND internal_type = $4`,
-		sr.tableID, sr.instanceID, cdcpb.TSCDCInstanceType_Stream, typ,
+		sr.tableID, sr.instanceID, sqlbase.CDCInstanceType_Stream, typ,
 	)
 
 	if err != nil {

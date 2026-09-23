@@ -840,16 +840,22 @@ func GetBlockFilter(expr opt.Expr, tabID opt.TableID, memo *Memo) FiltersExpr {
 // check if the filter type can be converted to blockfilter
 // blockFilter only supports the following types of expr:
 // !=, >, <, =, >=, <=, between.. and... , in, not in, is null, is not null.
-func checkFilterTypeSupported(cond opt.Expr) bool {
+func checkFilterTypeSupported(cond opt.Expr, md *opt.Metadata) bool {
 	switch cond.(type) {
 	// support !=, >, <, =, >=, <=, between.. and... , in, not in, is null, is not null.
 	case *NeExpr, *GtExpr, *LtExpr, *EqExpr, *GeExpr, *LeExpr, *InExpr, *NotInExpr, *IsExpr, *IsNotExpr:
+		// osn column can not use block filter
+		if variable, ok := cond.Child(0).(*VariableExpr); ok {
+			if md.ColumnMeta(variable.Col).TSType == opt.TSHiddenCol {
+				return false
+			}
+		}
 		return true
 	default:
 		childCount := cond.ChildCount()
 		if childCount > 0 {
 			for i := 0; i < childCount; i++ {
-				childFlag := checkFilterTypeSupported(cond.Child(i))
+				childFlag := checkFilterTypeSupported(cond.Child(i), md)
 				if !childFlag {
 					return false
 				}
@@ -871,7 +877,7 @@ func shouldAddBlockFilter(filter FiltersItem, tabID opt.TableID, memo *Memo) boo
 		return false
 	}
 
-	if !checkFilterTypeSupported(filter.Condition) {
+	if !checkFilterTypeSupported(filter.Condition, memo.Metadata()) {
 		return false
 	}
 

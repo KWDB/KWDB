@@ -30,7 +30,7 @@ insert into ts1 select * from ts2
 ----
 t-s-insert-select
  └── t-s-scan ts2
-      ├── columns: k_timestamp:16 id:17 e1:18 e2:19 e3:20 e4:21 e5:22 e6:23 e7:24 e8:25 code1:26 code2:27 code3:28 code4:29 code5:30
+      ├── columns: k_timestamp:19 id:20 e1:21 e2:22 e3:23 e4:24 e5:25 e6:26 e7:27 e8:28 code1:29 code2:30 code3:31 code4:32 code5:33
       └── ts engine
 
 tsinfo
@@ -124,9 +124,9 @@ tsinfo
 SELECT sum(e1) FROM ts1 WHERE k_timestamp > '2026-01-01 00:00:00' group by code1, code2
 ----
 project
- ├── columns: sum:16
+ ├── columns: sum:19
  ├── group-by
- │    ├── columns: code1:11 code2:12 sum:16
+ │    ├── columns: code1:11 code2:12 sum:19
  │    ├── grouping columns: code1:11 code2:12
  │    ├── OptFlags: PushLocalToScan(statistic) | PruneFinal 
  │    ├── select
@@ -141,7 +141,7 @@ project
  │    │    │         └── const: '2026-01-01 00:00:00+00:00'
  │    │    └── ts engine
  │    ├── aggregations
- │    │    └── sum [as=sum:16]
+ │    │    └── sum [as=sum:19]
  │    │         └── variable: e1:3
  │    └── ts engine
  └── ts engine
@@ -150,19 +150,19 @@ tsinfo
 SELECT sum(e1+10) FROM ts1 WHERE k_timestamp > '2026-01-01 00:00:00' group by code1,code2 order by code1 limit 10 offset 2
 ----
 project
- ├── columns: sum:17  [hidden: code1:11]
+ ├── columns: sum:20  [hidden: code1:11]
  ├── offset
- │    ├── columns: code1:11 code2:12 sum:17
+ │    ├── columns: code1:11 code2:12 sum:20
  │    ├── limit
- │    │    ├── columns: code1:11 code2:12 sum:17
+ │    │    ├── columns: code1:11 code2:12 sum:20
  │    │    ├── sort
- │    │    │    ├── columns: code1:11 code2:12 sum:17
+ │    │    │    ├── columns: code1:11 code2:12 sum:20
  │    │    │    ├── group-by
- │    │    │    │    ├── columns: code1:11 code2:12 sum:17
+ │    │    │    │    ├── columns: code1:11 code2:12 sum:20
  │    │    │    │    ├── grouping columns: code1:11 code2:12
  │    │    │    │    ├── OptFlags: 
  │    │    │    │    ├── project
- │    │    │    │    │    ├── columns: "e1 + 10":16 code1:11 code2:12
+ │    │    │    │    │    ├── columns: "e1 + 10":19 code1:11 code2:12
  │    │    │    │    │    ├── select
  │    │    │    │    │    │    ├── columns: k_timestamp:1 e1:3 code1:11 code2:12
  │    │    │    │    │    │    ├── t-s-scan ts1
@@ -174,13 +174,13 @@ project
  │    │    │    │    │    │    │         └── const: '2026-01-01 00:00:00+00:00'
  │    │    │    │    │    │    └── ts engine
  │    │    │    │    │    ├── projections
- │    │    │    │    │    │    └── plus [as="e1 + 10":16]
+ │    │    │    │    │    │    └── plus [as="e1 + 10":19]
  │    │    │    │    │    │         ├── variable: e1:3
  │    │    │    │    │    │         └── const: 10
  │    │    │    │    │    └── ts engine
  │    │    │    │    ├── aggregations
- │    │    │    │    │    └── sum [as=sum:17]
- │    │    │    │    │         └── variable: "e1 + 10":16
+ │    │    │    │    │    └── sum [as=sum:20]
+ │    │    │    │    │         └── variable: "e1 + 10":19
  │    │    │    │    └── ts engine
  │    │    │    └── ts engine
  │    │    ├── const: 12
@@ -216,7 +216,7 @@ project
  └── project
       ├── columns: ts1.k_timestamp:1 ts1.e1:3
       └── inner-join (hash)
-           ├── columns: ts1.k_timestamp:1 ts1.e1:3 ts2.e1:18
+           ├── columns: ts1.k_timestamp:1 ts1.e1:3 ts2.e1:21
            ├── select
            │    ├── columns: ts1.k_timestamp:1 ts1.e1:3
            │    ├── t-s-scan ts1
@@ -228,25 +228,25 @@ project
            │    │         └── const: '2026-01-01 00:00:00+00:00'
            │    └── ts engine
            ├── distinct-on
-           │    ├── columns: ts2.e1:18
-           │    ├── grouping columns: ts2.e1:18
+           │    ├── columns: ts2.e1:21
+           │    ├── grouping columns: ts2.e1:21
            │    ├── OptFlags: 
            │    ├── t-s-scan ts2
-           │    │    ├── columns: ts2.e1:18
+           │    │    ├── columns: ts2.e1:21
            │    │    └── ts engine
            │    └── ts engine
            └── filters
                 └── eq
                      ├── variable: ts1.e1:3
-                     └── variable: ts2.e1:18
+                     └── variable: ts2.e1:21
 
 tsinfo
 SELECT e1 FROM ts1 WHERE k_timestamp > '2026-01-01 00:00:00' union  select 1 from ts2
 ----
 union
- ├── columns: e1:32
+ ├── columns: e1:38
  ├── left columns: ts1.e1:3
- ├── right columns: "?column?":31
+ ├── right columns: "?column?":37
  ├── project
  │    ├── columns: ts1.e1:3
  │    ├── select
@@ -261,18 +261,18 @@ union
  │    │    └── ts engine
  │    └── ts engine
  └── project
-      ├── columns: "?column?":31
+      ├── columns: "?column?":37
       ├── t-s-scan ts2
       │    └── ts engine
       ├── projections
-      │    └── const: 1 [as="?column?":31]
+      │    └── const: 1 [as="?column?":37]
       └── ts engine
 
 tsinfo
 SELECT max(e1) from ts1 where e1 = (select max(e1) from ts2)
 ----
 scalar-group-by
- ├── columns: max:32
+ ├── columns: max:38
  ├── OptFlags: 
  ├── select
  │    ├── columns: ts1.e1:3
@@ -284,91 +284,91 @@ scalar-group-by
  │              ├── variable: ts1.e1:3
  │              └── subquery
  │                   └── scalar-group-by
- │                        ├── columns: max:31
+ │                        ├── columns: max:37
  │                        ├── OptFlags: PushLocalToScan(statistic) 
  │                        ├── t-s-scan ts2
- │                        │    ├── columns: ts2.e1:18
+ │                        │    ├── columns: ts2.e1:21
  │                        │    ├── scanaggs
  │                        │    └── ts engine
  │                        ├── aggregations
- │                        │    └── max [as=max:31]
- │                        │         └── variable: ts2.e1:18
+ │                        │    └── max [as=max:37]
+ │                        │         └── variable: ts2.e1:21
  │                        └── ts engine
  └── aggregations
-      └── max [as=max:32]
+      └── max [as=max:38]
            └── variable: ts1.e1:3
 
 tsinfo
 with t1 as (select e1,e2 from ts1) select aa.e1 from t1 aa join ts2 ab on aa.e2=ab.e2
 ----
 project
- ├── columns: e1:16
+ ├── columns: e1:19
  └── inner-join (hash)
-      ├── columns: e1:16 e2:17 ts2.e2:21
+      ├── columns: e1:19 e2:20 ts2.e2:24
       ├── project
-      │    ├── columns: e1:16 e2:17
+      │    ├── columns: e1:19 e2:20
       │    ├── t-s-scan ts1
       │    │    ├── columns: ts1.e1:3 ts1.e2:4
       │    │    └── ts engine
       │    ├── projections
-      │    │    ├── variable: ts1.e1:3 [as=e1:16]
-      │    │    └── variable: ts1.e2:4 [as=e2:17]
+      │    │    ├── variable: ts1.e1:3 [as=e1:19]
+      │    │    └── variable: ts1.e2:4 [as=e2:20]
       │    └── ts engine
       ├── t-s-scan ts2
-      │    ├── columns: ts2.e2:21
+      │    ├── columns: ts2.e2:24
       │    └── ts engine
       └── filters
            └── eq
-                ├── variable: e2:17
-                └── variable: ts2.e2:21
+                ├── variable: e2:20
+                └── variable: ts2.e2:24
 
 tsinfo
 explain select e2 = (select e2 from ts2) from ts1
 ----
 explain
- ├── columns: tree:32 field:33 description:34
+ ├── columns: tree:38 field:39 description:40
  └── project
-      ├── columns: "?column?":31
+      ├── columns: "?column?":37
       ├── t-s-scan ts1
       │    ├── columns: ts1.e2:4
       │    └── ts engine
       └── projections
-           └── eq [as="?column?":31]
+           └── eq [as="?column?":37]
                 ├── variable: ts1.e2:4
                 └── subquery
                      └── max1-row
-                          ├── columns: ts2.e2:19
+                          ├── columns: ts2.e2:22
                           └── t-s-scan ts2
-                               ├── columns: ts2.e2:19
+                               ├── columns: ts2.e2:22
                                └── ts engine
 
 tsinfo
 SELECT max(t1.e2) FROM ts1 as t1, ts2 t2 where t1.e1 = t2.e1
 ----
 scalar-group-by
- ├── columns: max:31
+ ├── columns: max:37
  ├── OptFlags: 
  ├── inner-join (hash)
- │    ├── columns: ts1.e1:3 ts1.e2:4 ts2.e1:18
+ │    ├── columns: ts1.e1:3 ts1.e2:4 ts2.e1:21
  │    ├── t-s-scan ts1
  │    │    ├── columns: ts1.e1:3 ts1.e2:4
  │    │    └── ts engine
  │    ├── t-s-scan ts2
- │    │    ├── columns: ts2.e1:18
+ │    │    ├── columns: ts2.e1:21
  │    │    └── ts engine
  │    └── filters
  │         └── eq
  │              ├── variable: ts1.e1:3
- │              └── variable: ts2.e1:18
+ │              └── variable: ts2.e1:21
  └── aggregations
-      └── max [as=max:31]
+      └── max [as=max:37]
            └── variable: ts1.e2:4
 
 tsinfo
 SELECT e2+10 FROM ts1 WHERE k_timestamp > '2026-01-01 00:00:00'
 ----
 project
- ├── columns: "?column?":16
+ ├── columns: "?column?":19
  ├── select
  │    ├── columns: k_timestamp:1 e2:4
  │    ├── t-s-scan ts1
@@ -380,7 +380,7 @@ project
  │    │         └── const: '2026-01-01 00:00:00+00:00'
  │    └── ts engine
  ├── projections
- │    └── plus [as="?column?":16]
+ │    └── plus [as="?column?":19]
  │         ├── variable: e2:4
  │         └── const: 10
  └── ts engine
@@ -389,7 +389,7 @@ tsinfo
 SELECT sum(e2) FROM ts1 WHERE k_timestamp > '2026-01-01 00:00:00' and abs(e4 - e1) = 10.1
 ----
 scalar-group-by
- ├── columns: sum:16
+ ├── columns: sum:19
  ├── OptFlags: 
  ├── select
  │    ├── columns: k_timestamp:1 e1:3 e2:4 e4:6
@@ -408,7 +408,7 @@ scalar-group-by
  │    │         └── const: 10.1
  │    └── ts engine
  ├── aggregations
- │    └── sum [as=sum:16]
+ │    └── sum [as=sum:19]
  │         └── variable: e2:4
  └── ts engine
 
@@ -416,9 +416,9 @@ tsinfo
 SELECT sum(e2) FROM ts1 WHERE k_timestamp > '2026-01-01 00:00:00' group by code1
 ----
 project
- ├── columns: sum:16
+ ├── columns: sum:19
  ├── group-by
- │    ├── columns: code1:11 sum:16
+ │    ├── columns: code1:11 sum:19
  │    ├── grouping columns: code1:11
  │    ├── OptFlags: 
  │    ├── select
@@ -432,7 +432,7 @@ project
  │    │    │         └── const: '2026-01-01 00:00:00+00:00'
  │    │    └── ts engine
  │    ├── aggregations
- │    │    └── sum [as=sum:16]
+ │    │    └── sum [as=sum:19]
  │    │         └── variable: e2:4
  │    └── ts engine
  └── ts engine
@@ -441,9 +441,9 @@ tsinfo
 SELECT sum(e2) FROM ts1 WHERE k_timestamp > '2026-01-01 00:00:00' and abs(e4 - e1) = 10.1 group by code1
 ----
 project
- ├── columns: sum:16
+ ├── columns: sum:19
  ├── group-by
- │    ├── columns: code1:11 sum:16
+ │    ├── columns: code1:11 sum:19
  │    ├── grouping columns: code1:11
  │    ├── OptFlags: 
  │    ├── select
@@ -463,7 +463,7 @@ project
  │    │    │         └── const: 10.1
  │    │    └── ts engine
  │    ├── aggregations
- │    │    └── sum [as=sum:16]
+ │    │    └── sum [as=sum:19]
  │    │         └── variable: e2:4
  │    └── ts engine
  └── ts engine
@@ -472,9 +472,9 @@ tsinfo
 SELECT sum(e2) FROM ts1 WHERE k_timestamp > '2026-01-01 00:00:00' group by code1 order by code1
 ----
 sort
- ├── columns: sum:16  [hidden: code1:11]
+ ├── columns: sum:19  [hidden: code1:11]
  ├── group-by
- │    ├── columns: code1:11 sum:16
+ │    ├── columns: code1:11 sum:19
  │    ├── grouping columns: code1:11
  │    ├── OptFlags: 
  │    ├── select
@@ -488,7 +488,7 @@ sort
  │    │    │         └── const: '2026-01-01 00:00:00+00:00'
  │    │    └── ts engine
  │    ├── aggregations
- │    │    └── sum [as=sum:16]
+ │    │    └── sum [as=sum:19]
  │    │         └── variable: e2:4
  │    └── ts engine
  └── ts engine
@@ -497,9 +497,9 @@ tsinfo
 SELECT * FROM ts1 right join ts2 on ts1.e2 = ts2.e2 WHERE ts1.k_timestamp > '2026-01-01 00:00:00'
 ----
 inner-join (hash)
- ├── columns: k_timestamp:1 id:2 e1:3 e2:4 e3:5 e4:6 e5:7 e6:8 e7:9 e8:10 k_timestamp:16 id:17 e1:18 e2:19 e3:20 e4:21 e5:22 e6:23 e7:24 e8:25 code1:11 code2:12 code3:13 code4:14 code5:15 code1:26 code2:27 code3:28 code4:29 code5:30
+ ├── columns: k_timestamp:1 id:2 e1:3 e2:4 e3:5 e4:6 e5:7 e6:8 e7:9 e8:10 k_timestamp:19 id:20 e1:21 e2:22 e3:23 e4:24 e5:25 e6:26 e7:27 e8:28 code1:11 code2:12 code3:13 code4:14 code5:15 code1:29 code2:30 code3:31 code4:32 code5:33
  ├── t-s-scan ts2
- │    ├── columns: ts2.k_timestamp:16 ts2.id:17 ts2.e1:18 ts2.e2:19 ts2.e3:20 ts2.e4:21 ts2.e5:22 ts2.e6:23 ts2.e7:24 ts2.e8:25 ts2.code1:26 ts2.code2:27 ts2.code3:28 ts2.code4:29 ts2.code5:30
+ │    ├── columns: ts2.k_timestamp:19 ts2.id:20 ts2.e1:21 ts2.e2:22 ts2.e3:23 ts2.e4:24 ts2.e5:25 ts2.e6:26 ts2.e7:27 ts2.e8:28 ts2.code1:29 ts2.code2:30 ts2.code3:31 ts2.code4:32 ts2.code5:33
  │    └── ts engine
  ├── select
  │    ├── columns: ts1.k_timestamp:1 ts1.id:2 ts1.e1:3 ts1.e2:4 ts1.e3:5 ts1.e4:6 ts1.e5:7 ts1.e6:8 ts1.e7:9 ts1.e8:10 ts1.code1:11 ts1.code2:12 ts1.code3:13 ts1.code4:14 ts1.code5:15
@@ -514,15 +514,15 @@ inner-join (hash)
  └── filters
       └── eq
            ├── variable: ts1.e2:4
-           └── variable: ts2.e2:19
+           └── variable: ts2.e2:22
 
 tsinfo
 SELECT * FROM ts1 full join ts2 on ts1.e2 = ts2.e2  WHERE ts1.k_timestamp > '2026-01-01 00:00:00'
 ----
 right-join (hash)
- ├── columns: k_timestamp:1 id:2 e1:3 e2:4 e3:5 e4:6 e5:7 e6:8 e7:9 e8:10 k_timestamp:16 id:17 e1:18 e2:19 e3:20 e4:21 e5:22 e6:23 e7:24 e8:25 code1:11 code2:12 code3:13 code4:14 code5:15 code1:26 code2:27 code3:28 code4:29 code5:30
+ ├── columns: k_timestamp:1 id:2 e1:3 e2:4 e3:5 e4:6 e5:7 e6:8 e7:9 e8:10 k_timestamp:19 id:20 e1:21 e2:22 e3:23 e4:24 e5:25 e6:26 e7:27 e8:28 code1:11 code2:12 code3:13 code4:14 code5:15 code1:29 code2:30 code3:31 code4:32 code5:33
  ├── t-s-scan ts2
- │    ├── columns: ts2.k_timestamp:16 ts2.id:17 ts2.e1:18 ts2.e2:19 ts2.e3:20 ts2.e4:21 ts2.e5:22 ts2.e6:23 ts2.e7:24 ts2.e8:25 ts2.code1:26 ts2.code2:27 ts2.code3:28 ts2.code4:29 ts2.code5:30
+ │    ├── columns: ts2.k_timestamp:19 ts2.id:20 ts2.e1:21 ts2.e2:22 ts2.e3:23 ts2.e4:24 ts2.e5:25 ts2.e6:26 ts2.e7:27 ts2.e8:28 ts2.code1:29 ts2.code2:30 ts2.code3:31 ts2.code4:32 ts2.code5:33
  │    └── ts engine
  ├── select
  │    ├── columns: ts1.k_timestamp:1 ts1.id:2 ts1.e1:3 ts1.e2:4 ts1.e3:5 ts1.e4:6 ts1.e5:7 ts1.e6:8 ts1.e7:9 ts1.e8:10 ts1.code1:11 ts1.code2:12 ts1.code3:13 ts1.code4:14 ts1.code5:15
@@ -537,35 +537,35 @@ right-join (hash)
  └── filters
       └── eq
            ├── variable: ts1.e2:4
-           └── variable: ts2.e2:19
+           └── variable: ts2.e2:22
 
 tsinfo
 SELECT diff(e2)  OVER (PARTITION BY e1 order by e2) FROM ts1 order by e1
 ----
 sort
- ├── columns: diff:16  [hidden: e1:3]
+ ├── columns: diff:19  [hidden: e1:3]
  └── project
-      ├── columns: e1:3 diff:16
+      ├── columns: e1:3 diff:19
       └── window partition=(3) ordering=+4 opt(3)
-           ├── columns: e1:3 e2:4 diff:16
+           ├── columns: e1:3 e2:4 diff:19
            ├── t-s-scan ts1
            │    ├── columns: e1:3 e2:4
            │    └── ts engine
            └── windows
-                └── diff [as=diff:16]
+                └── diff [as=diff:19]
                      └── variable: e2:4
 
 tsinfo
 select time_bucket(k_timestamp, '2h') as bucket from ts1 where k_timestamp >= '2026-10-10 10:00:01' and k_timestamp < '2026-12-10 10:00:01' group by bucket order by bucket
 ----
 sort
- ├── columns: bucket:16
+ ├── columns: bucket:19
  ├── distinct-on
- │    ├── columns: bucket:16
- │    ├── grouping columns: bucket:16
+ │    ├── columns: bucket:19
+ │    ├── grouping columns: bucket:19
  │    ├── OptFlags: 
  │    ├── project
- │    │    ├── columns: bucket:16
+ │    │    ├── columns: bucket:19
  │    │    ├── select
  │    │    │    ├── columns: k_timestamp:1
  │    │    │    ├── t-s-scan ts1
@@ -581,7 +581,7 @@ sort
  │    │    │    │              └── const: '2026-12-10 10:00:01+00:00'
  │    │    │    └── ts engine
  │    │    ├── projections
- │    │    │    └── function: time_bucket [as=bucket:16]
+ │    │    │    └── function: time_bucket [as=bucket:19]
  │    │    │         ├── variable: k_timestamp:1
  │    │    │         └── const: '2h'
  │    │    └── ts engine
@@ -592,13 +592,13 @@ tsinfo
 select time_bucket(k_timestamp, '2h') as bucket from ts1 where k_timestamp >= '2026-10-10 10:00:01' and k_timestamp < '2026-12-10 10:00:01' and e1 = '0' group by bucket order by bucket
 ----
 sort
- ├── columns: bucket:16
+ ├── columns: bucket:19
  ├── distinct-on
- │    ├── columns: bucket:16
- │    ├── grouping columns: bucket:16
+ │    ├── columns: bucket:19
+ │    ├── grouping columns: bucket:19
  │    ├── OptFlags: 
  │    ├── project
- │    │    ├── columns: bucket:16
+ │    │    ├── columns: bucket:19
  │    │    ├── select
  │    │    │    ├── columns: k_timestamp:1 e1:3
  │    │    │    ├── t-s-scan ts1
@@ -617,7 +617,7 @@ sort
  │    │    │    │              └── const: '2026-12-10 10:00:01+00:00'
  │    │    │    └── ts engine
  │    │    ├── projections
- │    │    │    └── function: time_bucket [as=bucket:16]
+ │    │    │    └── function: time_bucket [as=bucket:19]
  │    │    │         ├── variable: k_timestamp:1
  │    │    │         └── const: '2h'
  │    │    └── ts engine
@@ -653,9 +653,9 @@ tsinfo
 select last(e5, '2026-10-10 10:10:10') from ts1 where k_timestamp >= '2026-10-10 10:00:01' and e1 = 10 group by code1, code2, e1
 ----
 project
- ├── columns: last:17
+ ├── columns: last:20
  ├── group-by
- │    ├── columns: code1:11 code2:12 last:17
+ │    ├── columns: code1:11 code2:12 last:20
  │    ├── grouping columns: code1:11 code2:12
  │    ├── OptFlags: 
  │    ├── select
@@ -672,7 +672,7 @@ project
  │    │    │         └── const: '2026-10-10 10:00:01+00:00'
  │    │    └── ts engine
  │    ├── aggregations
- │    │    └── last [as=last:17]
+ │    │    └── last [as=last:20]
  │    │         ├── variable: e5:7
  │    │         ├── variable: k_timestamp:1
  │    │         └── const: '2026-10-10 10:10:10+00:00'
@@ -683,7 +683,7 @@ tsinfo
 SELECT last(e1) AS value, code1, code2 FROM ts1 WHERE code1 = 10 GROUP BY code1, code2
 ----
 group-by
- ├── columns: value:17 code1:11 code2:12
+ ├── columns: value:20 code1:11 code2:12
  ├── grouping columns: code2:12
  ├── OptFlags: PushLocalToScan(statistic) | PruneFinal 
  ├── t-s-scan ts1
@@ -696,7 +696,7 @@ group-by
  │    │         └── const: 10
  │    └── ts engine
  ├── aggregations
- │    ├── last [as=last:17]
+ │    ├── last [as=last:20]
  │    │    ├── variable: e1:3
  │    │    ├── variable: k_timestamp:1
  │    │    └── const: '2970-01-01 00:00:00+00:00'
@@ -708,23 +708,23 @@ tsinfo
 select time_bucket(k_timestamp, '300s') bucket, last(e2) from ts1 group by bucket order by bucket
 ----
 sort
- ├── columns: bucket:18 last:17
+ ├── columns: bucket:21 last:20
  ├── group-by
- │    ├── columns: last:17 bucket:18
- │    ├── grouping columns: bucket:18
+ │    ├── columns: last:20 bucket:21
+ │    ├── grouping columns: bucket:21
  │    ├── OptFlags: PushLocalToScan(time_bucket) 
  │    ├── project
- │    │    ├── columns: bucket:18 k_timestamp:1 e2:4
+ │    │    ├── columns: bucket:21 k_timestamp:1 e2:4
  │    │    ├── t-s-scan ts1
  │    │    │    ├── columns: k_timestamp:1 e2:4
  │    │    │    └── ts engine
  │    │    ├── projections
- │    │    │    └── function: time_bucket [as=bucket:18]
+ │    │    │    └── function: time_bucket [as=bucket:21]
  │    │    │         ├── variable: k_timestamp:1
  │    │    │         └── const: '300s'
  │    │    └── ts engine
  │    ├── aggregations
- │    │    └── last [as=last:17]
+ │    │    └── last [as=last:20]
  │    │         ├── variable: e2:4
  │    │         ├── variable: k_timestamp:1
  │    │         └── const: '2970-01-01 00:00:00+00:00'
@@ -735,13 +735,13 @@ tsinfo
 select time_bucket(k_timestamp, '300s') bucket, last(e2) from ts1 where code1 = 10 and code2 =100 group by bucket order by bucket
 ----
 sort
- ├── columns: bucket:18 last:17
+ ├── columns: bucket:21 last:20
  ├── group-by
- │    ├── columns: last:17 bucket:18
- │    ├── grouping columns: bucket:18
+ │    ├── columns: last:20 bucket:21
+ │    ├── grouping columns: bucket:21
  │    ├── OptFlags: PushLocalToScan(time_bucket) | PruneLocal | PruneFinal 
  │    ├── project
- │    │    ├── columns: bucket:18 k_timestamp:1 e2:4
+ │    │    ├── columns: bucket:21 k_timestamp:1 e2:4
  │    │    ├── t-s-scan ts1
  │    │    │    ├── columns: k_timestamp:1 e2:4 code1:11 code2:12
  │    │    │    ├── readmode: tagIndex
@@ -757,12 +757,12 @@ sort
  │    │    │    │    └── 12: 100,
  │    │    │    └── ts engine
  │    │    ├── projections
- │    │    │    └── function: time_bucket [as=bucket:18]
+ │    │    │    └── function: time_bucket [as=bucket:21]
  │    │    │         ├── variable: k_timestamp:1
  │    │    │         └── const: '300s'
  │    │    └── ts engine
  │    ├── aggregations
- │    │    └── last [as=last:17]
+ │    │    └── last [as=last:20]
  │    │         ├── variable: e2:4
  │    │         ├── variable: k_timestamp:1
  │    │         └── const: '2970-01-01 00:00:00+00:00'
@@ -773,47 +773,47 @@ tsinfo
 SELECT diff(abs(e3))  OVER (PARTITION BY e1 order by k_timestamp),id, e2 FROM ts1 order by k_timestamp
 ----
 sort
- ├── columns: diff:16 id:2 e2:4  [hidden: k_timestamp:1]
+ ├── columns: diff:19 id:2 e2:4  [hidden: k_timestamp:1]
  └── project
-      ├── columns: k_timestamp:1 id:2 e2:4 diff:16
+      ├── columns: k_timestamp:1 id:2 e2:4 diff:19
       └── window partition=(3) ordering=+1 opt(3)
-           ├── columns: k_timestamp:1 id:2 e1:3 e2:4 diff:16 diff_1_arg1:17
+           ├── columns: k_timestamp:1 id:2 e1:3 e2:4 diff:19 diff_1_arg1:20
            ├── project
-           │    ├── columns: diff_1_arg1:17 k_timestamp:1 id:2 e1:3 e2:4
+           │    ├── columns: diff_1_arg1:20 k_timestamp:1 id:2 e1:3 e2:4
            │    ├── t-s-scan ts1
            │    │    ├── columns: k_timestamp:1 id:2 e1:3 e2:4 e3:5
            │    │    └── ts engine
            │    ├── projections
-           │    │    └── function: abs [as=diff_1_arg1:17]
+           │    │    └── function: abs [as=diff_1_arg1:20]
            │    │         └── variable: e3:5
            │    └── ts engine
            └── windows
-                └── diff [as=diff:16]
-                     └── variable: diff_1_arg1:17
+                └── diff [as=diff:19]
+                     └── variable: diff_1_arg1:20
 
 tsinfo
 SELECT time_bucket(k_timestamp, '60s'), max(e1) FROM ts1 GROUP BY time_bucket(k_timestamp, '60s') ORDER BY time_bucket(k_timestamp, '60s') LIMIT 5
 ----
 limit
- ├── columns: time_bucket:17 max:16
+ ├── columns: time_bucket:20 max:19
  ├── sort
- │    ├── columns: max:16 "time_bucket(k_timestamp, '60s')":17
+ │    ├── columns: max:19 "time_bucket(k_timestamp, '60s')":20
  │    ├── group-by
- │    │    ├── columns: max:16 "time_bucket(k_timestamp, '60s')":17
- │    │    ├── grouping columns: "time_bucket(k_timestamp, '60s')":17
+ │    │    ├── columns: max:19 "time_bucket(k_timestamp, '60s')":20
+ │    │    ├── grouping columns: "time_bucket(k_timestamp, '60s')":20
  │    │    ├── OptFlags: PushLocalToScan(time_bucket) 
  │    │    ├── project
- │    │    │    ├── columns: "time_bucket(k_timestamp, '60s')":17 e1:3
+ │    │    │    ├── columns: "time_bucket(k_timestamp, '60s')":20 e1:3
  │    │    │    ├── t-s-scan ts1
  │    │    │    │    ├── columns: k_timestamp:1 e1:3
  │    │    │    │    └── ts engine
  │    │    │    ├── projections
- │    │    │    │    └── function: time_bucket [as="time_bucket(k_timestamp, '60s')":17]
+ │    │    │    │    └── function: time_bucket [as="time_bucket(k_timestamp, '60s')":20]
  │    │    │    │         ├── variable: k_timestamp:1
  │    │    │    │         └── const: '60s'
  │    │    │    └── ts engine
  │    │    ├── aggregations
- │    │    │    └── max [as=max:16]
+ │    │    │    └── max [as=max:19]
  │    │    │         └── variable: e1:3
  │    │    └── ts engine
  │    └── ts engine
@@ -824,23 +824,23 @@ tsinfo
 SELECT time_bucket(k_timestamp, '60s'), max(e1) FROM ts1 GROUP BY time_bucket(k_timestamp, '60s') LIMIT 5
 ----
 limit
- ├── columns: time_bucket:17 max:16
+ ├── columns: time_bucket:20 max:19
  ├── group-by
- │    ├── columns: max:16 "time_bucket(k_timestamp, '60s')":17
- │    ├── grouping columns: "time_bucket(k_timestamp, '60s')":17
+ │    ├── columns: max:19 "time_bucket(k_timestamp, '60s')":20
+ │    ├── grouping columns: "time_bucket(k_timestamp, '60s')":20
  │    ├── OptFlags: PushLocalToScan(time_bucket) 
  │    ├── project
- │    │    ├── columns: "time_bucket(k_timestamp, '60s')":17 e1:3
+ │    │    ├── columns: "time_bucket(k_timestamp, '60s')":20 e1:3
  │    │    ├── t-s-scan ts1
  │    │    │    ├── columns: k_timestamp:1 e1:3
  │    │    │    └── ts engine
  │    │    ├── projections
- │    │    │    └── function: time_bucket [as="time_bucket(k_timestamp, '60s')":17]
+ │    │    │    └── function: time_bucket [as="time_bucket(k_timestamp, '60s')":20]
  │    │    │         ├── variable: k_timestamp:1
  │    │    │         └── const: '60s'
  │    │    └── ts engine
  │    ├── aggregations
- │    │    └── max [as=max:16]
+ │    │    └── max [as=max:19]
  │    │         └── variable: e1:3
  │    └── ts engine
  ├── const: 5
@@ -877,23 +877,23 @@ tsinfo
 SELECT e2+e3 as bt, max(e1) FROM ts1 GROUP BY bt LIMIT 5
 ----
 limit
- ├── columns: bt:17 max:16
+ ├── columns: bt:20 max:19
  ├── group-by
- │    ├── columns: max:16 bt:17
- │    ├── grouping columns: bt:17
+ │    ├── columns: max:19 bt:20
+ │    ├── grouping columns: bt:20
  │    ├── OptFlags: 
  │    ├── project
- │    │    ├── columns: bt:17 e1:3
+ │    │    ├── columns: bt:20 e1:3
  │    │    ├── t-s-scan ts1
  │    │    │    ├── columns: e1:3 e2:4 e3:5
  │    │    │    └── ts engine
  │    │    ├── projections
- │    │    │    └── plus [as=bt:17]
+ │    │    │    └── plus [as=bt:20]
  │    │    │         ├── variable: e2:4
  │    │    │         └── variable: e3:5
  │    │    └── ts engine
  │    └── aggregations
- │         └── max [as=max:16]
+ │         └── max [as=max:19]
  │              └── variable: e1:3
  └── const: 5
 
@@ -930,25 +930,25 @@ tsinfo
 select first(k_timestamp) as first ,count(k_timestamp) from ts1 group by code1, code2, count_window(12);
 ----
 project
- ├── columns: first:16 count:17
+ ├── columns: first:19 count:20
  ├── group-by
- │    ├── columns: code1:11 code2:12 first:16 count:17 "count_window(12)":18
- │    ├── grouping columns: code1:11 code2:12 "count_window(12)":18
+ │    ├── columns: code1:11 code2:12 first:19 count:20 "count_window(12)":21
+ │    ├── grouping columns: code1:11 code2:12 "count_window(12)":21
  │    ├── OptFlags: 
  │    ├── project
- │    │    ├── columns: "count_window(12)":18 k_timestamp:1 code1:11 code2:12
+ │    │    ├── columns: "count_window(12)":21 k_timestamp:1 code1:11 code2:12
  │    │    ├── t-s-scan ts1
  │    │    │    ├── columns: k_timestamp:1 code1:11 code2:12
  │    │    │    └── ts engine
  │    │    ├── projections
- │    │    │    └── function: count_window [as="count_window(12)":18]
+ │    │    │    └── function: count_window [as="count_window(12)":21]
  │    │    │         └── const: 12
  │    │    └── ts engine
  │    ├── aggregations
- │    │    ├── first [as=first:16]
+ │    │    ├── first [as=first:19]
  │    │    │    ├── variable: k_timestamp:1
  │    │    │    └── variable: k_timestamp:1
- │    │    └── count [as=count:17]
+ │    │    └── count [as=count:20]
  │    │         └── variable: k_timestamp:1
  │    └── ts engine
  └── ts engine
@@ -957,25 +957,25 @@ tsinfo
 select time_bucket(k_timestamp, '2h') as bucket,twa(k_timestamp, e1) from ts1 group by bucket order by bucket;
 ----
 sort
- ├── columns: bucket:17 twa:16
+ ├── columns: bucket:20 twa:19
  └── group-by
-      ├── columns: twa:16 bucket:17
-      ├── grouping columns: bucket:17
+      ├── columns: twa:19 bucket:20
+      ├── grouping columns: bucket:20
       ├── OptFlags: 
       ├── sort
-      │    ├── columns: k_timestamp:1 e1:3 bucket:17
+      │    ├── columns: k_timestamp:1 e1:3 bucket:20
       │    └── project
-      │         ├── columns: bucket:17 k_timestamp:1 e1:3
+      │         ├── columns: bucket:20 k_timestamp:1 e1:3
       │         ├── t-s-scan ts1
       │         │    ├── columns: k_timestamp:1 e1:3
       │         │    └── ts engine
       │         ├── projections
-      │         │    └── function: time_bucket [as=bucket:17]
+      │         │    └── function: time_bucket [as=bucket:20]
       │         │         ├── variable: k_timestamp:1
       │         │         └── const: '2h'
       │         └── ts engine
       └── aggregations
-           └── twa [as=twa:16]
+           └── twa [as=twa:19]
                 ├── variable: k_timestamp:1
                 └── variable: e1:3
 
@@ -983,13 +983,13 @@ tsinfo
 select count(k_timestamp) from ts1 group by code1,code2 having elapsed(k_timestamp,1h) > 3 or twa(k_timestamp,e1) > 3 order by code1,code2;
 ----
 sort
- ├── columns: count:16  [hidden: code1:11 code2:12]
+ ├── columns: count:19  [hidden: code1:11 code2:12]
  └── project
-      ├── columns: code1:11 code2:12 count:16
+      ├── columns: code1:11 code2:12 count:19
       └── select
-           ├── columns: code1:11 code2:12 count:16 elapsed:18 twa:19
+           ├── columns: code1:11 code2:12 count:19 elapsed:21 twa:22
            ├── group-by
-           │    ├── columns: code1:11 code2:12 count:16 elapsed:18 twa:19
+           │    ├── columns: code1:11 code2:12 count:19 elapsed:21 twa:22
            │    ├── grouping columns: code1:11 code2:12
            │    ├── OptFlags: 
            │    ├── sort
@@ -998,21 +998,21 @@ sort
            │    │         ├── columns: k_timestamp:1 e1:3 code1:11 code2:12
            │    │         └── ts engine
            │    └── aggregations
-           │         ├── count [as=count:16]
+           │         ├── count [as=count:19]
            │         │    └── variable: k_timestamp:1
-           │         ├── elapsed [as=elapsed:18]
+           │         ├── elapsed [as=elapsed:21]
            │         │    ├── variable: k_timestamp:1
            │         │    └── const: '01:00:00'
-           │         └── twa [as=twa:19]
+           │         └── twa [as=twa:22]
            │              ├── variable: k_timestamp:1
            │              └── variable: e1:3
            └── filters
                 └── or
                      ├── gt
-                     │    ├── variable: elapsed:18
+                     │    ├── variable: elapsed:21
                      │    └── const: 3.0
                      └── gt
-                          ├── variable: twa:19
+                          ├── variable: twa:22
                           └── const: 3.0
 
 tsinfo
@@ -1034,21 +1034,21 @@ sort
                 ├── gt
                 │    ├── subquery
                 │    │    └── scalar-group-by
-                │    │         ├── columns: last:32
+                │    │         ├── columns: last:38
                 │    │         ├── OptFlags: PushLocalToScan(statistic) 
                 │    │         ├── project
-                │    │         │    ├── columns: "'2970-01-01 00:00:00+00:00'::TIMESTAMPTZ(6)":31 ts1.k_timestamp:16 ts1.e2:19
+                │    │         │    ├── columns: "'2970-01-01 00:00:00+00:00'::TIMESTAMPTZ(6)":37 ts1.k_timestamp:19 ts1.e2:22
                 │    │         │    ├── t-s-scan ts1
-                │    │         │    │    ├── columns: ts1.k_timestamp:16 ts1.e2:19
+                │    │         │    │    ├── columns: ts1.k_timestamp:19 ts1.e2:22
                 │    │         │    │    ├── scanaggs
                 │    │         │    │    └── ts engine
                 │    │         │    ├── projections
-                │    │         │    │    └── const: '2970-01-01 00:00:00+00:00' [as="'2970-01-01 00:00:00+00:00'::TIMESTAMPTZ(6)":31]
+                │    │         │    │    └── const: '2970-01-01 00:00:00+00:00' [as="'2970-01-01 00:00:00+00:00'::TIMESTAMPTZ(6)":37]
                 │    │         │    └── ts engine
                 │    │         ├── aggregations
-                │    │         │    └── last [as=last:32]
-                │    │         │         ├── variable: ts1.e2:19
-                │    │         │         ├── variable: ts1.k_timestamp:16
+                │    │         │    └── last [as=last:38]
+                │    │         │         ├── variable: ts1.e2:22
+                │    │         │         ├── variable: ts1.k_timestamp:19
                 │    │         │         └── const: '2970-01-01 00:00:00+00:00'
                 │    │         └── ts engine
                 │    └── const: 20
@@ -1061,31 +1061,31 @@ sort
                      │    │    └── gt
                      │    │         ├── subquery
                      │    │         │    └── scalar-group-by
-                     │    │         │         ├── columns: last:49
+                     │    │         │         ├── columns: last:58
                      │    │         │         ├── OptFlags: 
                      │    │         │         ├── project
-                     │    │         │         │    ├── columns: "'2970-01-01 00:00:00+00:00'::TIMESTAMPTZ(6)":48 ts1.k_timestamp:33 ts1.e2:36
+                     │    │         │         │    ├── columns: "'2970-01-01 00:00:00+00:00'::TIMESTAMPTZ(6)":57 ts1.k_timestamp:39 ts1.e2:42
                      │    │         │         │    ├── select
-                     │    │         │         │    │    ├── columns: ts1.k_timestamp:33 ts1.e2:36
+                     │    │         │         │    │    ├── columns: ts1.k_timestamp:39 ts1.e2:42
                      │    │         │         │    │    ├── t-s-scan ts1
-                     │    │         │         │    │    │    ├── columns: ts1.k_timestamp:33 ts1.e2:36
+                     │    │         │         │    │    │    ├── columns: ts1.k_timestamp:39 ts1.e2:42
                      │    │         │         │    │    │    └── ts engine
                      │    │         │         │    │    ├── filters
                      │    │         │         │    │    │    └── or
                      │    │         │         │    │    │         ├── gt
-                     │    │         │         │    │    │         │    ├── variable: ts1.e2:36
+                     │    │         │         │    │    │         │    ├── variable: ts1.e2:42
                      │    │         │         │    │    │         │    └── const: 0
                      │    │         │         │    │    │         └── lt
-                     │    │         │         │    │    │              ├── variable: ts1.e2:36
+                     │    │         │         │    │    │              ├── variable: ts1.e2:42
                      │    │         │         │    │    │              └── const: -1
                      │    │         │         │    │    └── ts engine
                      │    │         │         │    ├── projections
-                     │    │         │         │    │    └── const: '2970-01-01 00:00:00+00:00' [as="'2970-01-01 00:00:00+00:00'::TIMESTAMPTZ(6)":48]
+                     │    │         │         │    │    └── const: '2970-01-01 00:00:00+00:00' [as="'2970-01-01 00:00:00+00:00'::TIMESTAMPTZ(6)":57]
                      │    │         │         │    └── ts engine
                      │    │         │         ├── aggregations
-                     │    │         │         │    └── last [as=last:49]
-                     │    │         │         │         ├── variable: ts1.e2:36
-                     │    │         │         │         ├── variable: ts1.k_timestamp:33
+                     │    │         │         │    └── last [as=last:58]
+                     │    │         │         │         ├── variable: ts1.e2:42
+                     │    │         │         │         ├── variable: ts1.k_timestamp:39
                      │    │         │         │         └── const: '2970-01-01 00:00:00+00:00'
                      │    │         │         └── ts engine
                      │    │         └── const: 0
@@ -1133,59 +1133,59 @@ tsinfo
 select time_bucket_gapfill(k_timestamp,'1s') as ts, interpolate(max(e3), 333) from ts1 group by ts order by ts
 ----
 group-by
- ├── columns: ts:17 interpolate:20  [hidden: ts:21]
- ├── grouping columns: ts:21
+ ├── columns: ts:20 interpolate:23  [hidden: ts:24]
+ ├── grouping columns: ts:24
  ├── OptFlags: 
  ├── sort
- │    ├── columns: k_timestamp:1 e3:5 "'1s'":16 "333":19 ts:21
+ │    ├── columns: k_timestamp:1 e3:5 "'1s'":19 "333":22 ts:24
  │    └── project
- │         ├── columns: "'1s'":16 "333":19 ts:21 k_timestamp:1 e3:5
+ │         ├── columns: "'1s'":19 "333":22 ts:24 k_timestamp:1 e3:5
  │         ├── t-s-scan ts1
  │         │    ├── columns: k_timestamp:1 e3:5
  │         │    └── ts engine
  │         └── projections
- │              ├── const: '1s' [as="'1s'":16]
- │              ├── const: 333 [as="333":19]
- │              └── function: time_bucket_gapfill [as=ts:21]
+ │              ├── const: '1s' [as="'1s'":19]
+ │              ├── const: 333 [as="333":22]
+ │              └── function: time_bucket_gapfill [as=ts:24]
  │                   ├── variable: k_timestamp:1
  │                   └── const: '1s'
  └── aggregations
-      ├── time-bucket-gapfill [as=time_bucket_gapfill_internal:17]
+      ├── time-bucket-gapfill [as=time_bucket_gapfill_internal:20]
       │    ├── variable: k_timestamp:1
-      │    └── variable: "'1s'":16
-      └── imputation [as=interpolate:20]
+      │    └── variable: "'1s'":19
+      └── imputation [as=interpolate:23]
            ├── variable: e3:5
-           └── variable: "333":19
+           └── variable: "333":22
 
 tsinfo
 select first(k_timestamp),k_timestamp,max(k_timestamp) FROM ts1 group by time_window(k_timestamp, '10min') ORDER BY k_timestamp desc;
 ----
 sort
- ├── columns: first:16 k_timestamp:1 max:17
+ ├── columns: first:19 k_timestamp:1 max:20
  └── project
-      ├── columns: k_timestamp:1 first:16 max:17
+      ├── columns: k_timestamp:1 first:19 max:20
       └── group-by
-           ├── columns: k_timestamp:1 first:16 max:17 "time_window(k_timestamp, '10min')":18
-           ├── grouping columns: "time_window(k_timestamp, '10min')":18
+           ├── columns: k_timestamp:1 first:19 max:20 "time_window(k_timestamp, '10min')":21
+           ├── grouping columns: "time_window(k_timestamp, '10min')":21
            ├── OptFlags: 
            ├── project
-           │    ├── columns: "time_window(k_timestamp, '10min')":18 time_window_start:19 k_timestamp:1
+           │    ├── columns: "time_window(k_timestamp, '10min')":21 time_window_start:22 k_timestamp:1
            │    ├── sort
            │    │    ├── columns: k_timestamp:1
            │    │    └── t-s-scan ts1
            │    │         ├── columns: k_timestamp:1
            │    │         └── ts engine
            │    └── projections
-           │         ├── function: time_window [as="time_window(k_timestamp, '10min')":18]
+           │         ├── function: time_window [as="time_window(k_timestamp, '10min')":21]
            │         │    ├── variable: k_timestamp:1
            │         │    └── const: '10min'
-           │         └── function: time_window_start [as=time_window_start:19]
+           │         └── function: time_window_start [as=time_window_start:22]
            │              └── variable: k_timestamp:1
            └── aggregations
-                ├── first [as=first:16]
-                │    ├── variable: time_window_start:19
+                ├── first [as=first:19]
+                │    ├── variable: time_window_start:22
                 │    └── variable: k_timestamp:1
-                ├── max [as=max:17]
+                ├── max [as=max:20]
                 │    └── variable: k_timestamp:1
                 └── max-extend [as=k_timestamp:1]
                      ├── variable: k_timestamp:1
@@ -1195,42 +1195,42 @@ tsinfo
 select last(e1), last_row(e1), lastts(e1), last_row_ts(e1), first(e1), firstts(e1), first_row(e1), first_row_ts(e1) from ts1
 ----
 scalar-group-by
- ├── columns: last:17 last_row:18 lastts:19 last_row_ts:20 first:21 firstts:22 first_row:23 first_row_ts:24
+ ├── columns: last:20 last_row:21 lastts:22 last_row_ts:23 first:24 firstts:25 first_row:26 first_row_ts:27
  ├── OptFlags: PushLocalToScan(statistic) 
  ├── project
- │    ├── columns: "'2970-01-01 00:00:00+00:00'::TIMESTAMPTZ(6)":16 k_timestamp:1 e1:3
+ │    ├── columns: "'2970-01-01 00:00:00+00:00'::TIMESTAMPTZ(6)":19 k_timestamp:1 e1:3
  │    ├── t-s-scan ts1
  │    │    ├── columns: k_timestamp:1 e1:3
  │    │    ├── scanaggs
  │    │    └── ts engine
  │    ├── projections
- │    │    └── const: '2970-01-01 00:00:00+00:00' [as="'2970-01-01 00:00:00+00:00'::TIMESTAMPTZ(6)":16]
+ │    │    └── const: '2970-01-01 00:00:00+00:00' [as="'2970-01-01 00:00:00+00:00'::TIMESTAMPTZ(6)":19]
  │    └── ts engine
  ├── aggregations
- │    ├── last [as=last:17]
+ │    ├── last [as=last:20]
  │    │    ├── variable: e1:3
  │    │    ├── variable: k_timestamp:1
  │    │    └── const: '2970-01-01 00:00:00+00:00'
- │    ├── last-row [as=last_row:18]
+ │    ├── last-row [as=last_row:21]
  │    │    ├── variable: e1:3
  │    │    └── variable: k_timestamp:1
- │    ├── last-time-stamp [as=lastts:19]
+ │    ├── last-time-stamp [as=lastts:22]
  │    │    ├── variable: e1:3
  │    │    ├── variable: k_timestamp:1
  │    │    └── const: '2970-01-01 00:00:00+00:00'
- │    ├── last-row-time-stamp [as=last_row_ts:20]
+ │    ├── last-row-time-stamp [as=last_row_ts:23]
  │    │    ├── variable: e1:3
  │    │    └── variable: k_timestamp:1
- │    ├── first [as=first:21]
+ │    ├── first [as=first:24]
  │    │    ├── variable: e1:3
  │    │    └── variable: k_timestamp:1
- │    ├── first-time-stamp [as=firstts:22]
+ │    ├── first-time-stamp [as=firstts:25]
  │    │    ├── variable: e1:3
  │    │    └── variable: k_timestamp:1
- │    ├── first-row [as=first_row:23]
+ │    ├── first-row [as=first_row:26]
  │    │    ├── variable: e1:3
  │    │    └── variable: k_timestamp:1
- │    └── first-row-time-stamp [as=first_row_ts:24]
+ │    └── first-row-time-stamp [as=first_row_ts:27]
  │         ├── variable: e1:3
  │         └── variable: k_timestamp:1
  └── ts engine

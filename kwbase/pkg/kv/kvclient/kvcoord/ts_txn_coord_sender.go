@@ -111,11 +111,12 @@ func (s *TsSender) Send(
 					Value: &roachpb.ResponseUnion_TsTagUpdate{
 						TsTagUpdate: &roachpb.TsTagUpdateResponse{
 							ResponseHeader: roachpb.ResponseHeader{NumKeys: 1},
+							OsnID:          tdr.OsnID,
 						},
 					},
 				})
 			case *roachpb.TsDeleteRequest:
-				rows, err := s.tsEngine.DeleteData(tdr.TableId, rangeGroupID, tdr.PrimaryTags, tdr.TsSpans, 0, tdr.OsnId)
+				rows, err := s.tsEngine.DeleteData(tdr.TableId, rangeGroupID, tdr.PrimaryTags, tdr.TsSpans, 0, tdr.OsnID)
 				if err != nil {
 					return nil, &roachpb.Error{Message: err.Error()}
 				}
@@ -123,11 +124,12 @@ func (s *TsSender) Send(
 					Value: &roachpb.ResponseUnion_TsDelete{
 						TsDelete: &roachpb.TsDeleteResponse{
 							ResponseHeader: roachpb.ResponseHeader{NumKeys: int64(rows)},
+							OsnID:          tdr.OsnID,
 						},
 					},
 				})
 			case *roachpb.TsDeleteEntityRequest:
-				cnt, err := s.tsEngine.DeleteEntities(tdr.TableId, rangeGroupID, tdr.PrimaryTags, false, 0, tdr.OsnId)
+				cnt, err := s.tsEngine.DeleteEntities(tdr.TableId, rangeGroupID, tdr.PrimaryTags, false, 0, tdr.OsnID)
 				if err != nil {
 					return nil, &roachpb.Error{Message: err.Error()}
 				}
@@ -135,6 +137,7 @@ func (s *TsSender) Send(
 					Value: &roachpb.ResponseUnion_TsDeleteEntity{
 						TsDeleteEntity: &roachpb.TsDeleteEntityResponse{
 							ResponseHeader: roachpb.ResponseHeader{NumKeys: int64(cnt)},
+							OsnID:          tdr.OsnID,
 						},
 					},
 				})
@@ -144,11 +147,11 @@ func (s *TsSender) Send(
 				var err error
 				switch tdr.DeleteType {
 				case roachpb.DELETE_MULTI_ENTITIES_DATA:
-					cnt, err = s.tsEngine.DeleteRangeData(tdr.TableId, rangeGroupID, 0, tdr.HashNum-1, tdr.TsSpans, 0, tdr.OsnId)
+					cnt, err = s.tsEngine.DeleteRangeData(tdr.TableId, rangeGroupID, 0, tdr.HashNum-1, tdr.TsSpans, 0, tdr.OsnID)
 				case roachpb.DELETE_MULTI_ENTITIES_DATA_BY_TAG:
-					cnt, err = s.tsEngine.TsDeleteMetricByTag(tdr.TableId, 0, tdr.HashNum-1, tdr.PartPrimaryTags, tdr.TagIDs, tdr.TsSpans, 0, tdr.OsnId)
+					cnt, err = s.tsEngine.TsDeleteMetricByTag(tdr.TableId, 0, tdr.HashNum-1, tdr.PartPrimaryTags, tdr.TagIDs, tdr.TsSpans, 0, tdr.OsnID)
 				case roachpb.DELETE_MULTI_ENTITIES_BY_TAG:
-					cnt, err = s.tsEngine.TsDeleteEntitiesByTag(tdr.TableId, 0, tdr.HashNum-1, tdr.PartPrimaryTags, tdr.TagIDs, false, 0, tdr.OsnId)
+					cnt, err = s.tsEngine.TsDeleteEntitiesByTag(tdr.TableId, 0, tdr.HashNum-1, tdr.PartPrimaryTags, tdr.TagIDs, false, 0, tdr.OsnID)
 				}
 				if err != nil {
 					return nil, &roachpb.Error{Message: err.Error()}
@@ -158,6 +161,7 @@ func (s *TsSender) Send(
 					Value: &roachpb.ResponseUnion_TsDeleteMultiEntitiesData{
 						TsDeleteMultiEntitiesData: &roachpb.TsDeleteMultiEntitiesDataResponse{
 							ResponseHeader: roachpb.ResponseHeader{NumKeys: int64(deleteRows)},
+							OsnID:          tdr.OsnID,
 						},
 					},
 				})

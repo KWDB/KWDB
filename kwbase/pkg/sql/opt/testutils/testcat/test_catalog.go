@@ -451,6 +451,11 @@ func (tc *Catalog) qualifyTableName(name *tree.TableName) {
 	name.SchemaName = tree.PublicSchemaName
 }
 
+// GetStatement returns statement of plan.
+func (tc *Catalog) GetStatement(_ context.Context) string {
+	return ""
+}
+
 // Database implements the cat.Database interface for testing purposes.
 type Database struct {
 	databaseID cat.StableID
@@ -698,6 +703,11 @@ func (tt *Table) DeletableColumnCount() int {
 	return len(tt.Columns)
 }
 
+// AllColumnCount is part of the cat.Table interface.
+func (tt *Table) AllColumnCount() int {
+	return len(tt.Columns) + 3
+}
+
 // Column is part of the cat.Table interface.
 func (tt *Table) Column(i int) cat.Column {
 	return tt.Columns[i]
@@ -864,6 +874,11 @@ func (tt *Table) GetTagMeta() []cat.TagMeta {
 
 // AddTagMetaToTable adds tag into table desc.
 func (tt *Table) AddTagMetaToTable(tagMetas []cat.TagMeta) {}
+
+// GetCDC get CDCDescriptor
+func (tt *Table) GetCDC() interface{} {
+	return nil
+}
 
 // Index implements the cat.Index interface for testing purposes.
 type Index struct {

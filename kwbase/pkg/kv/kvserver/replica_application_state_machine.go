@@ -26,6 +26,7 @@ package kvserver
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"math"
 	"time"
@@ -745,6 +746,7 @@ func (r *Replica) stageTsBatchRequest(
 								continue
 							}
 						}
+						osnID := binary.LittleEndian.Uint64(req.Value.RawBytes[:8])
 						responses[idx] = roachpb.ResponseUnion{
 							Value: &roachpb.ResponseUnion_TsPut{
 								TsPut: &roachpb.TsPutResponse{
@@ -755,6 +757,7 @@ func (r *Replica) stageTsBatchRequest(
 									DiscardBitmap:     dedupResult.DiscardBitmap,
 									EntitiesAffected:  uint32(entitiesAffect.EntityCount),
 									UnorderedAffected: entitiesAffect.UnorderedCount,
+									OsnID:             osnID,
 								},
 							},
 						}
@@ -798,6 +801,7 @@ func (r *Replica) stageTsBatchRequest(
 								continue
 							}
 						}
+						osnID := binary.LittleEndian.Uint64(req.HeaderPrefix[:8])
 						responses[idx] = roachpb.ResponseUnion{
 							Value: &roachpb.ResponseUnion_TsRowPut{
 								TsRowPut: &roachpb.TsRowPutResponse{
@@ -808,6 +812,7 @@ func (r *Replica) stageTsBatchRequest(
 									DiscardBitmap:     dedupResult.DiscardBitmap,
 									EntitiesAffected:  uint32(entitiesAffect.EntityCount),
 									UnorderedAffected: entitiesAffect.UnorderedCount,
+									OsnID:             osnID,
 								},
 							},
 						}
@@ -820,7 +825,7 @@ func (r *Replica) stageTsBatchRequest(
 				tsSpans := req.TsSpans
 				if len(tsSpans) > 0 {
 					if delCnt, err = r.store.TsEngine.DeleteData(
-						req.TableId, rangeGroupID, req.PrimaryTags, req.TsSpans, tsTxnID, req.OsnId); err != nil {
+						req.TableId, rangeGroupID, req.PrimaryTags, req.TsSpans, tsTxnID, req.OsnID); err != nil {
 						errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID, nil)
 						if errRollback != nil {
 							return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to rollback mini-transaction")
@@ -833,6 +838,7 @@ func (r *Replica) stageTsBatchRequest(
 						Value: &roachpb.ResponseUnion_TsDelete{
 							TsDelete: &roachpb.TsDeleteResponse{
 								ResponseHeader: roachpb.ResponseHeader{NumKeys: int64(delCnt)},
+								OsnID:          req.OsnID,
 							},
 						},
 					}
@@ -841,7 +847,7 @@ func (r *Replica) stageTsBatchRequest(
 		case *roachpb.TsDeleteEntityRequest:
 			{
 				var delCnt uint64
-				if delCnt, err = r.store.TsEngine.DeleteEntities(req.TableId, rangeGroupID, req.PrimaryTags, false, tsTxnID, req.OsnId); err != nil {
+				if delCnt, err = r.store.TsEngine.DeleteEntities(req.TableId, rangeGroupID, req.PrimaryTags, false, tsTxnID, req.OsnID); err != nil {
 					errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID, nil)
 					if errRollback != nil {
 						return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to rollback mini-transaction")
@@ -853,6 +859,7 @@ func (r *Replica) stageTsBatchRequest(
 						Value: &roachpb.ResponseUnion_TsDeleteEntity{
 							TsDeleteEntity: &roachpb.TsDeleteEntityResponse{
 								ResponseHeader: roachpb.ResponseHeader{NumKeys: int64(delCnt)},
+								OsnID:          req.OsnID,
 							},
 						},
 					}
@@ -875,6 +882,7 @@ func (r *Replica) stageTsBatchRequest(
 						Value: &roachpb.ResponseUnion_TsTagUpdate{
 							TsTagUpdate: &roachpb.TsTagUpdateResponse{
 								ResponseHeader: roachpb.ResponseHeader{NumKeys: 1},
+								OsnID:          req.OsnID,
 							},
 						},
 					}
@@ -909,12 +917,12 @@ func (r *Replica) stageTsBatchRequest(
 				switch req.DeleteType {
 				case roachpb.DELETE_MULTI_ENTITIES_DATA:
 					if len(tsSpans) > 0 {
-						delCnt, err = r.store.TsEngine.DeleteRangeData(req.TableId, uint64(1), beginHash, endHash, tsSpans, tsTxnID, req.OsnId)
+						delCnt, err = r.store.TsEngine.DeleteRangeData(req.TableId, uint64(1), beginHash, endHash, tsSpans, tsTxnID, req.OsnID)
 					}
 				case roachpb.DELETE_MULTI_ENTITIES_DATA_BY_TAG:
-					delCnt, err = r.store.TsEngine.TsDeleteMetricByTag(req.TableId, beginHash, endHash, req.PartPrimaryTags, req.TagIDs, tsSpans, tsTxnID, req.OsnId)
+					delCnt, err = r.store.TsEngine.TsDeleteMetricByTag(req.TableId, beginHash, endHash, req.PartPrimaryTags, req.TagIDs, tsSpans, tsTxnID, req.OsnID)
 				case roachpb.DELETE_MULTI_ENTITIES_BY_TAG:
-					delCnt, err = r.store.TsEngine.TsDeleteEntitiesByTag(req.TableId, beginHash, endHash, req.PartPrimaryTags, req.TagIDs, false, tsTxnID, req.OsnId)
+					delCnt, err = r.store.TsEngine.TsDeleteEntitiesByTag(req.TableId, beginHash, endHash, req.PartPrimaryTags, req.TagIDs, false, tsTxnID, req.OsnID)
 				}
 				if err != nil {
 					errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID, nil)
@@ -928,6 +936,7 @@ func (r *Replica) stageTsBatchRequest(
 						Value: &roachpb.ResponseUnion_TsDeleteMultiEntitiesData{
 							TsDeleteMultiEntitiesData: &roachpb.TsDeleteMultiEntitiesDataResponse{
 								ResponseHeader: roachpb.ResponseHeader{NumKeys: int64(delCnt)},
+								OsnID:          req.OsnID,
 							},
 						},
 					}

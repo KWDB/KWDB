@@ -549,6 +549,14 @@ func TestKWDBInternalTablesPopulate(t *testing.T) {
 			table: kwdbInternalKWDBStreamTable,
 		},
 		{
+			name:  "kwdb_pipes",
+			table: kwdbInternalKWDBPipeTable,
+		},
+		{
+			name:  "kwdb_publications",
+			table: kwdbInternalKWDBPublicationsTable,
+		},
+		{
 			name:  "ts_transaction_record",
 			table: kwdbInternalTSTransactionRecord,
 		},

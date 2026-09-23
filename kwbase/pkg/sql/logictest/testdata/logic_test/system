@@ -18,9 +18,12 @@ descriptor                       BASE TABLE
 eventlog                         BASE TABLE
 jobs                             BASE TABLE
 kwdb_cdc_watermark               BASE TABLE
+kwdb_pipes                       BASE TABLE
+kwdb_publications                BASE TABLE
 kwdb_replication_info            BASE TABLE
 kwdb_streams                     BASE TABLE
 kwdb_ts_table                    BASE TABLE
+kwdb_unpush                      BASE TABLE
 lease                            BASE TABLE
 locations                        BASE TABLE
 namespace                        BASE TABLE
@@ -69,6 +72,9 @@ SELECT id FROM system.descriptor
 28
 30
 61
+62
+63
+64
 75
 76
 77
@@ -256,6 +262,26 @@ system  public  kwdb_cdc_watermark               root    GRANT
 system  public  kwdb_cdc_watermark               root    INSERT
 system  public  kwdb_cdc_watermark               root    SELECT
 system  public  kwdb_cdc_watermark               root    UPDATE
+system  public  kwdb_pipes                       admin   DELETE
+system  public  kwdb_pipes                       admin   GRANT
+system  public  kwdb_pipes                       admin   INSERT
+system  public  kwdb_pipes                       admin   SELECT
+system  public  kwdb_pipes                       admin   UPDATE
+system  public  kwdb_pipes                       root    DELETE
+system  public  kwdb_pipes                       root    GRANT
+system  public  kwdb_pipes                       root    INSERT
+system  public  kwdb_pipes                       root    SELECT
+system  public  kwdb_pipes                       root    UPDATE
+system  public  kwdb_publications                admin   DELETE
+system  public  kwdb_publications                admin   GRANT
+system  public  kwdb_publications                admin   INSERT
+system  public  kwdb_publications                admin   SELECT
+system  public  kwdb_publications                admin   UPDATE
+system  public  kwdb_publications                root    DELETE
+system  public  kwdb_publications                root    GRANT
+system  public  kwdb_publications                root    INSERT
+system  public  kwdb_publications                root    SELECT
+system  public  kwdb_publications                root    UPDATE
 system  public  kwdb_replication_info            admin   DELETE
 system  public  kwdb_replication_info            admin   GRANT
 system  public  kwdb_replication_info            admin   INSERT
@@ -286,6 +312,16 @@ system  public  kwdb_ts_table                    root    GRANT
 system  public  kwdb_ts_table                    root    INSERT
 system  public  kwdb_ts_table                    root    SELECT
 system  public  kwdb_ts_table                    root    UPDATE
+system  public  kwdb_unpush                      admin   DELETE
+system  public  kwdb_unpush                      admin   GRANT
+system  public  kwdb_unpush                      admin   INSERT
+system  public  kwdb_unpush                      admin   SELECT
+system  public  kwdb_unpush                      admin   UPDATE
+system  public  kwdb_unpush                      root    DELETE
+system  public  kwdb_unpush                      root    GRANT
+system  public  kwdb_unpush                      root    INSERT
+system  public  kwdb_unpush                      root    SELECT
+system  public  kwdb_unpush                      root    UPDATE
 system  public  lease                            admin   DELETE
 system  public  lease                            admin   GRANT
 system  public  lease                            admin   INSERT

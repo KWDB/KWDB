@@ -322,6 +322,8 @@ class TSEngineImpl : public TSEngine {
 
   KStatus Vacuum(kwdbContext_p ctx, bool force, bool only_agg = false) override;
 
+  KStatus SetPublishedMaxOSN(std::unordered_map<TSTableID, TS_OSN>& tbl_osn) override;
+
   KStatus GetTableBlocksDistribution(TSTableID table_id, TSSlice* blocks_info) override;
 
   KStatus GetDBBlocksDistribution(uint32_t db_id, TSSlice* blocks_info) override;

@@ -13,6 +13,7 @@
 #include <regex>
 #include <limits>
 #include <thread>
+#include <unordered_map>
 #include "include/engine.h"
 #include "cm_exception.h"
 #include "cm_backtrace.h"
@@ -27,6 +28,7 @@
 #include "ts_engine.h"
 #include "ts_lru_block_cache.h"
 #include "mm_kmalloc.h"
+#include "ts_ts_lsn_span_utils.h"
 
 #ifndef KWBASE_OSS
 #include "ts_config_autonomy.h"
@@ -1734,5 +1736,21 @@ TSStatus TSHasRange(RaftStore* engine, uint64_t range_id) {
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("has no range");
   }
+  return kTsSuccess;
+}
+
+TSStatus TSSetPublishedMaxOSN(TSEngine* engine, TSSlice tbl_osn_vec) {
+  assert(tbl_osn_vec.len % 16 == 0);
+  int vec_num = tbl_osn_vec.len / 16;
+  std::unordered_map<TSTableID, TS_OSN> tbl_osn;
+  for (size_t i = 0; i < vec_num; i++) {
+    auto table_id = KUint64(tbl_osn_vec.data + i * 16);
+    auto osn = KUint64(tbl_osn_vec.data + i * 16 + 8);
+    tbl_osn[table_id] = osn;
+  }
+  engine->SetPublishedMaxOSN(tbl_osn);
+  std::string ret;
+  BinaryToHexStr(tbl_osn_vec, ret);
+  LOG_DEBUG("TSSetPublishedMaxOSN, tbl_osn info: %s.", ret.c_str());
   return kTsSuccess;
 }

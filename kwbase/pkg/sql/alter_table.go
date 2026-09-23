@@ -136,6 +136,13 @@ func (p *planner) AlterTable(ctx context.Context, n *tree.AlterTable) (planNode,
 		return nil, err
 	}
 
+	if tableDesc.IsTSTable() {
+		// check whether this table has been published or subscribed
+		if err = checkTableRelatedPubsAndSubs(ctx, p, uint64(tableDesc.ID), tableDesc.Name, n.StatOp(), nil); err != nil {
+			return nil, err
+		}
+	}
+
 	return &alterTableNode{
 		n:         n,
 		tableDesc: tableDesc,
@@ -176,7 +183,18 @@ func (n *alterTableNode) startExec(params runParams) error {
 	origNumMutations := len(n.tableDesc.Mutations)
 	var droppedViews []string
 	tn := params.p.ResolvedName(n.n.Table)
-
+	dbName := tn.Catalog()
+	schemaName := tn.Schema()
+	tableName := tn.Table()
+	var pipeMetadatas []*PipeMetadata
+	if n.tableDesc.IsTSTable() {
+		var err error
+		if pipeMetadatas, err = params.p.checkTableRelatedPipe(
+			params.ctx, uint64(n.tableDesc.ID), uint64(n.tableDesc.ParentID),
+		); err != nil {
+			return err
+		}
+	}
 	for i, cmd := range n.n.Cmds {
 		telemetry.Inc(cmd.TelemetryCounter())
 
@@ -269,6 +287,14 @@ func (n *alterTableNode) startExec(params runParams) error {
 					log.Info(params.ctx, err)
 				}
 				log.Infof(params.ctx, "alter ts table %s 1st txn finished, id: %d, content: %s", n.n.Table.String(), n.tableDesc.ID, n.n.Cmds)
+
+				if len(pipeMetadatas) > 0 {
+					stmt := tree.AsStringWithFQNames(n.n, params.Ann())
+					if err = sendDDLToPipe(params, dbName, schemaName, tableName, kafkaMsgKindAlterTable, stmt, pipeMetadatas, false); err != nil {
+						return err
+					}
+				}
+
 				return nil
 			}
 			if d.HasFKConstraint() {
@@ -663,6 +689,12 @@ func (n *alterTableNode) startExec(params runParams) error {
 					log.Info(params.ctx, err)
 				}
 				log.Infof(params.ctx, "alter ts table %s 1st txn finished, id: %d, content: %s", n.n.Table.String(), n.tableDesc.ID, n.n.Cmds)
+				if len(pipeMetadatas) > 0 {
+					stmt := tree.AsStringWithFQNames(n.n, params.Ann())
+					if err = sendDDLToPipe(params, dbName, schemaName, tableName, kafkaMsgKindAlterTable, stmt, pipeMetadatas, false); err != nil {
+						return err
+					}
+				}
 				return nil
 			}
 
@@ -920,6 +952,12 @@ func (n *alterTableNode) startExec(params runParams) error {
 				return err
 			}
 			if isTSAlterColumnType && !isOnlyMetaChange {
+				if n.tableDesc.IsTSTable() && len(pipeMetadatas) > 0 {
+					stmt := tree.AsStringWithFQNames(n.n, params.Ann())
+					if err = sendDDLToPipe(params, dbName, schemaName, tableName, kafkaMsgKindAlterTable, stmt, pipeMetadatas, false); err != nil {
+						return err
+					}
+				}
 				return nil
 			}
 			descriptorChanged = true
@@ -1032,7 +1070,12 @@ func (n *alterTableNode) startExec(params runParams) error {
 				log.Info(params.ctx, err)
 			}
 			log.Infof(params.ctx, "alter ts table %s 1st txn finished, id: %d, content: %s", n.n.Table.String(), n.tableDesc.ID, n.n.Cmds)
-
+			if len(pipeMetadatas) > 0 {
+				stmt := tree.AsStringWithFQNames(n.n, params.Ann())
+				if err = sendDDLToPipe(params, dbName, schemaName, tableName, kafkaMsgKindAlterTable, stmt, pipeMetadatas, false); err != nil {
+					return err
+				}
+			}
 			return nil
 
 		case *tree.AlterTablePartitionBy:
@@ -1193,6 +1236,7 @@ func (n *alterTableNode) startExec(params runParams) error {
 				AlterTag:   *tagCol,
 				MutationID: mutationID,
 			}
+			stmt := tree.AsStringWithFQNames(n.n, params.Ann())
 			jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n.n, params.Ann()), params.p.txn)
 			if err != nil {
 				log.Info(params.ctx, err)
@@ -1219,6 +1263,11 @@ func (n *alterTableNode) startExec(params runParams) error {
 				log.Info(params.ctx, err)
 			}
 			log.Infof(params.ctx, "alter ts table %s 1st txn finished, id: %d, content: %s", n.n.Table.String(), n.tableDesc.ID, n.n.Cmds)
+			if len(pipeMetadatas) > 0 {
+				if err = sendDDLToPipe(params, dbName, schemaName, tableName, kafkaMsgKindAlterTable, stmt, pipeMetadatas, false); err != nil {
+					return err
+				}
+			}
 			return nil
 
 		case *tree.AlterTableDropTag:
@@ -1346,6 +1395,12 @@ func (n *alterTableNode) startExec(params runParams) error {
 				log.Info(params.ctx, err)
 			}
 			log.Infof(params.ctx, "alter ts table %s 1st txn finished, id: %d, content: %s", n.n.Table.String(), n.tableDesc.ID, n.n.Cmds)
+			if len(pipeMetadatas) > 0 {
+				stmt := tree.AsStringWithFQNames(n.n, params.Ann())
+				if err = sendDDLToPipe(params, dbName, schemaName, tableName, kafkaMsgKindAlterTable, stmt, pipeMetadatas, false); err != nil {
+					return err
+				}
+			}
 			return nil
 
 		case *tree.AlterTableRenameTag:
@@ -1424,6 +1479,12 @@ func (n *alterTableNode) startExec(params runParams) error {
 				[]int64{jobID},
 			); err != nil {
 				log.Info(params.ctx, err)
+			}
+			if len(pipeMetadatas) > 0 {
+				stmt := tree.AsStringWithFQNames(n.n, params.Ann())
+				if err = sendDDLToPipe(params, dbName, schemaName, tableName, kafkaMsgKindAlterTable, stmt, pipeMetadatas, false); err != nil {
+					return err
+				}
 			}
 			return nil
 
@@ -1520,7 +1581,12 @@ func (n *alterTableNode) startExec(params runParams) error {
 				return err
 			}
 			log.Infof(params.ctx, "alter ts table %s 1st txn finished, id: %d, content: %s", n.n.Table.String(), n.tableDesc.ID, n.n.Cmds)
-
+			if len(pipeMetadatas) > 0 {
+				stmt := tree.AsStringWithFQNames(n.n, params.Ann())
+				if err = sendDDLToPipe(params, dbName, schemaName, tableName, kafkaMsgKindAlterTable, stmt, pipeMetadatas, false); err != nil {
+					return err
+				}
+			}
 			return nil
 		default:
 			return errors.AssertionFailedf("unsupported alter command: %T", cmd)
@@ -1559,6 +1625,13 @@ func (n *alterTableNode) startExec(params runParams) error {
 	params.p.SetAuditTarget(uint32(n.tableDesc.GetID()), n.tableDesc.GetName(), droppedViews)
 	if descriptorChanged {
 		log.Infof(params.ctx, "alter ts table %s 1st txn finished, id: %d, content: %s", n.n.Table.String(), n.tableDesc.ID, n.n.Cmds)
+	}
+	if n.tableDesc.IsTable() && len(pipeMetadatas) > 0 {
+		// until now ,the txn does not commit
+		stmt := tree.AsStringWithFQNames(n.n, params.Ann())
+		if err := sendDDLToPipe(params, dbName, schemaName, tableName, kafkaMsgKindAlterTable, stmt, pipeMetadatas, true); err != nil {
+			return err
+		}
 	}
 	return nil
 }

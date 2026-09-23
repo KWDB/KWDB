@@ -65,6 +65,15 @@ func (md *JobMetadata) CheckRunningOrReverting() error {
 	return nil
 }
 
+// CheckRunning returns an InvalidStatusError if md.Status is not
+// StatusRunning.
+func (md *JobMetadata) CheckRunning() error {
+	if md.Status != StatusRunning {
+		return &InvalidStatusError{md.ID, md.Status, "update progress on", md.Payload.Error}
+	}
+	return nil
+}
+
 // JobUpdater accumulates changes to job metadata that are to be persisted.
 type JobUpdater struct {
 	md JobMetadata

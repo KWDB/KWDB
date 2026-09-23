@@ -265,6 +265,14 @@ func (t *testTriggerTableWithTriggers) GetTriggers(event tree.TriggerEvent) []ca
 // testTriggerTable 是一个用于测试的简单 cat.Table 实现
 type testTriggerTable struct{}
 
+func (t *testTriggerTable) AllColumnCount() int {
+	return 4
+}
+
+func (t *testTriggerTable) GetCDC() interface{} {
+	return nil
+}
+
 // testColumn 是一个用于测试的简单 cat.Column 实现
 type testColumn struct {
 	colID     cat.StableID

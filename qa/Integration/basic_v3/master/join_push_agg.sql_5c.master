@@ -1590,7 +1590,7 @@ SET CLUSTER SETTING
         │                     | max                 | max
         └── hash-join         |                     |
              │                | type                | inner
-             │                | equality            | (column12) = (tag1)
+             │                | equality            | (column15) = (tag1)
              │                | right cols are key  |
              ├── render       |                     |
              │    └── scan    |                     |

@@ -92,6 +92,7 @@ class SpecBase {
     table_reader_->set_aggpushdown(agg_push_down_);
     table_reader_->set_tableversion(1);
     table_reader_->set_tstablereaderid(1);
+    table_reader_->set_hasosncol(false);
 
     table_reader_core->set_allocated_tablereader(table_reader_);
     table_reader_->set_aggpushdown(agg_push_down_);
@@ -178,6 +179,7 @@ class SpecBase {
     table_reader_->set_aggpushdown(agg_push_down_);
     table_reader_->set_tableversion(1);
     table_reader_->set_tstablereaderid(1);
+    table_reader_->set_hasosncol(false);
 
     // Add ts_spans
     auto span = table_reader_->add_ts_spans();

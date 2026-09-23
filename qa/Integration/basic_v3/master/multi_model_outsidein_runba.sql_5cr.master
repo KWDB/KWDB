@@ -1874,31 +1874,31 @@ ORDER BY timebucket ASC;
                                            | spans                 | FULL SCAN
                                            | filter                | company_id = 449600
                                            | right                 | semi-join (hash)
-                                           |                       |  ├── columns: pra.id:101(int4!null) risk_id:102(int4!null)
-                                           |                       |  ├── outer: (81)
+                                           |                       |  ├── columns: pra.id:104(int4!null) risk_id:105(int4!null)
+                                           |                       |  ├── outer: (84)
                                            |                       |  ├── scan pra
-                                           |                       |  │    └── columns: pra.id:101(int4!null) risk_id:102(int4!null)
+                                           |                       |  │    └── columns: pra.id:104(int4!null) risk_id:105(int4!null)
                                            |                       |  ├── select
-                                           |                       |  │    ├── columns: prab.id:107(int4!null) prab.company_id:108(int4!null) prab.category:112(int4!null) danger_level:119(varchar!null) risk_type:135(int4!null)
+                                           |                       |  │    ├── columns: prab.id:110(int4!null) prab.company_id:111(int4!null) prab.category:115(int4!null) danger_level:122(varchar!null) risk_type:138(int4!null)
                                            |                       |  │    ├── scan prab
-                                           |                       |  │    │    └── columns: prab.id:107(int4!null) prab.company_id:108(int4!null) prab.category:112(int4) danger_level:119(varchar!null) risk_type:135(int4)
+                                           |                       |  │    │    └── columns: prab.id:110(int4!null) prab.company_id:111(int4!null) prab.category:115(int4) danger_level:122(varchar!null) risk_type:138(int4)
                                            |                       |  │    └── filters
-                                           |                       |  │         ├── eq [type=bool, outer=(112), constraints=(/112: [/1 - /1]; tight)]
-                                           |                       |  │         │    ├── variable: prab.category:112 [type=int4]
+                                           |                       |  │         ├── eq [type=bool, outer=(115), constraints=(/115: [/1 - /1]; tight)]
+                                           |                       |  │         │    ├── variable: prab.category:115 [type=int4]
                                            |                       |  │         │    └── const: 1 [type=int]
-                                           |                       |  │         ├── eq [type=bool, outer=(119), constraints=(/119: [/e'\U000056DB\U00007EA7' - /e'\U000056DB\U00007EA7']; tight)]
-                                           |                       |  │         │    ├── variable: danger_level:119 [type=varchar]
+                                           |                       |  │         ├── eq [type=bool, outer=(122), constraints=(/122: [/e'\U000056DB\U00007EA7' - /e'\U000056DB\U00007EA7']; tight)]
+                                           |                       |  │         │    ├── variable: danger_level:122 [type=varchar]
                                            |                       |  │         │    └── const: e'\U000056DB\U00007EA7' [type=string]
-                                           |                       |  │         └── eq [type=bool, outer=(135), constraints=(/135: [/5 - /5]; tight)]
-                                           |                       |  │              ├── variable: risk_type:135 [type=int4]
+                                           |                       |  │         └── eq [type=bool, outer=(138), constraints=(/138: [/5 - /5]; tight)]
+                                           |                       |  │              ├── variable: risk_type:138 [type=int4]
                                            |                       |  │              └── const: 5 [type=int]
                                            |                       |  └── filters
-                                           |                       |       ├── eq [type=bool, outer=(81,108), constraints=(/81: (/NULL - ]; /108: (/NULL - ])]
-                                           |                       |       │    ├── variable: prab.company_id:108 [type=int4]
-                                           |                       |       │    └── variable: pd.company_id:81 [type=int4]
-                                           |                       |       └── eq [type=bool, outer=(102,107), constraints=(/102: (/NULL - ]; /107: (/NULL - ])]
-                                           |                       |            ├── variable: risk_id:102 [type=int4]
-                                           |                       |            └── variable: prab.id:107 [type=int4]
+                                           |                       |       ├── eq [type=bool, outer=(84,111), constraints=(/84: (/NULL - ]; /111: (/NULL - ])]
+                                           |                       |       │    ├── variable: prab.company_id:111 [type=int4]
+                                           |                       |       │    └── variable: pd.company_id:84 [type=int4]
+                                           |                       |       └── eq [type=bool, outer=(105,110), constraints=(/105: (/NULL - ]; /110: (/NULL - ])]
+                                           |                       |            ├── variable: risk_id:105 [type=int4]
+                                           |                       |            └── variable: prab.id:110 [type=int4]
                                            |                       |
 (48 rows)
 > SELECT time_bucket(o.time, '10s') as timebucket,

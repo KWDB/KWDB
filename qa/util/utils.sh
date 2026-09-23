@@ -107,7 +107,7 @@ function start_single_node() {
   local brpc_port=${5:-28257}
   rm -fr ${DEPLOY_ROOT}/${store}
   ulimit -c unlimited
-  echo 'core.%t.%e.%p' | sudo tee /proc/sys/kernel/core_pattern
+  #echo 'core.%t.%e.%p' | sudo tee /proc/sys/kernel/core_pattern
   export GOTRACEBACK=crash
   ${KWBIN} start-single-node --insecure --listen-addr=${host_ip}:${listenport} \
     --http-addr=${host_ip}:${http_port} \
@@ -190,7 +190,7 @@ function _cluster_start_() {
   rm -fr ${DEPLOY_ROOT}/extern
   mkdir -p ${DEPLOY_ROOT}/extern
   ulimit -c unlimited
-  echo 'core.%t.%e.%p' | sudo tee /proc/sys/kernel/core_pattern
+  #echo 'core.%t.%e.%p' | sudo tee /proc/sys/kernel/core_pattern
   export GOTRACEBACK=crash
   for idx in $(seq 1 ${node_count});do
     rm -fr ${DEPLOY_ROOT}/${name_prefix}${idx}

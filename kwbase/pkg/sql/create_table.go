@@ -368,6 +368,14 @@ func (n *createTableNode) startExec(params runParams) error {
 	if err := checkEngineType(n); err != nil {
 		return err
 	}
+
+	if tree.IsTSTableType(n.n.TableType) {
+		// check whether the parent database has been published or subscribed
+		if err := checkDatabaseRelatedPubsAndSubs(params.ctx, params.p, n.dbDesc); err != nil {
+			return err
+		}
+	}
+
 	log.Infof(params.ctx, "create table %s 1st txn start, type: %s", n.n.Table.Table(), tree.TableTypeName(n.n.TableType))
 	telemetry.Inc(sqltelemetry.SchemaChangeCreateCounter("table"))
 
@@ -682,7 +690,12 @@ func (n *createTableNode) startExec(params runParams) error {
 		}
 	}
 
+	var pipeMetadatas []*PipeMetadata
 	if desc.IsTSTable() {
+		pipeMetadatas, err = params.p.checkDatabaseUsedByCDC(params.ctx, uint64(n.dbDesc.ID))
+		if err != nil {
+			return err
+		}
 		if err = createAndExecCreateTSTableJob(params, desc, n); err != nil {
 			return err
 		}
@@ -728,6 +741,15 @@ func (n *createTableNode) startExec(params runParams) error {
 				wg.Wait()
 				log.Infof(params.ctx, "done relocate leaseholder for creating ts table ")
 			}
+		}
+	}
+	if desc.IsTSTable() && len(pipeMetadatas) > 0 {
+		dbName := n.n.Table.Catalog()
+		schemaName := n.n.Table.Schema()
+		tableName := n.n.Table.Table()
+		stmt := tree.AsStringWithFQNames(n.n, params.Ann())
+		if err = sendDDLToPipe(params, dbName, schemaName, tableName, kafkaMsgKindCreateTable, stmt, pipeMetadatas, true); err != nil {
+			return err
 		}
 	}
 
@@ -1641,6 +1663,7 @@ func buildTSTableDesc(
 	for _, pt := range n.PrimaryTagList {
 		primaryTagName[pt] = struct{}{}
 	}
+	var allColumnName []tree.Name
 	for i := range n.Tags {
 		columnType := sqlbase.ColumnType_TYPE_TAG
 		if _, ok := allTagName[n.Tags[i].TagName]; ok {
@@ -1671,6 +1694,19 @@ func buildTSTableDesc(
 		}
 		*allTagDesc = append(*allTagDesc, tagColumn)
 		allTagName[n.Tags[i].TagName] = tagColumn
+		allColumnName = append(allColumnName, n.Tags[i].TagName)
+	}
+	for _, def := range n.Defs {
+		if d, ok := def.(*tree.ColumnTableDef); ok {
+			allColumnName = append(allColumnName, d.Name)
+		}
+	}
+	for _, colName := range allColumnName {
+		if colName == opt.HiddenOSNColumnName ||
+			colName == opt.HiddenOperationColumnName ||
+			colName == opt.HiddenEventColumnName {
+			return pgerror.Newf(pgcode.InvalidName, "creating hidden %s column is not supported in the time series table", colName)
+		}
 	}
 	// Check if the primary tag meets the requirements of the primary tag
 	// 1. Cannot exceed four
@@ -3131,9 +3167,10 @@ func createInstanceTable(
 		tmplTbl.TableType,
 		false,
 		uint32(tmplTbl.TsTable.TsVersion),
-		tmplTbl.TsTable.HashNum,
+		nil,
 		nil,
 		params.ExecCfg().TsIDGen,
+		tmplTbl.TsTable.HashNum,
 	)
 	if err != nil {
 		return err

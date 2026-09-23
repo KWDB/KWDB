@@ -83,7 +83,7 @@ GROUP BY li.pipeline_name, li.pipe_start, li.pipe_end;
                          | vectorized                  | false
   batch-lookup-join      |                             |
    │                     | type                        | inner
-   │                     | equality                    | (pipeline_name, column16, column17) = (measure_tag, measure_type, measure_style)
+   │                     | equality                    | (pipeline_name, column19, column20) = (measure_tag, measure_type, measure_style)
    ├── render            |                             |
    │    └── scan         |                             |
    │                     | table                       | pipeline_info@primary

@@ -79,6 +79,12 @@ func FromUnixMilli(msec int64) time.Time {
 	return Unix(msec/1e3, (msec%1e3)*1e6)
 }
 
+// FromUnixNano returns the local Time corresponding to the given Unix time,
+// nanoseconds since January 1, 1970 UTC.
+func FromUnixNano(ts int64) time.Time {
+	return Unix(ts/1e9, ts%1e9)
+}
+
 // FromTimestamp convert timestamp and precision to time.
 func FromTimestamp(ts int64, precision int32) time.Time {
 	switch precision {
@@ -102,6 +108,14 @@ func FromTimestamp(ts int64, precision int32) time.Time {
 // location associated with t.
 func ToUnixMilli(t time.Time) int64 {
 	return t.Unix()*1e3 + int64(t.Round(time.Millisecond).Nanosecond())/1e6
+}
+
+// ToUnixNano returns t as a Unix time, the number of nanoseconds elapsed since
+// January 1, 1970 UTC. The result is undefined if the Unix time in
+// nanoseconds cannot be represented by an int64. The result does not depend on the
+// location associated with t.
+func ToUnixNano(t time.Time) int64 {
+	return t.Unix()*1e9 + int64(t.Round(time.Nanosecond).Nanosecond())
 }
 
 // SleepUntil sleeps until the given time. The current time is

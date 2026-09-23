@@ -40,6 +40,7 @@ import "sql/execinfrapb/processors_bulk_io.proto";
 import "sql/execinfrapb/processors_changefeeds.proto";
 import "sql/execinfrapb/processors_table_stats.proto";
 import "sql/execinfrapb/kwdb_struct.proto";
+import "cdc/cdcpb/cdc.proto";
 import "gogoproto/gogo.proto";
 
 // Each processor has the following components:
@@ -155,6 +156,8 @@ message ProcessorCoreUnion {
   optional TSStatisticReaderSpec tsStatisticReader = 48;
   optional TSSynchronizerSpec tsSynchronizer = 49;
   optional TSSamplerSpec tsSampler = 50;
+
+  optional cdcpb.PipeWatermarkSpec PipeWatermark = 51;
 
   reserved 6, 12;
 }

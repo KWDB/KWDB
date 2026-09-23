@@ -165,4 +165,8 @@ type Catalog interface {
 
 	// ResetTxn resets the txn of the current session.
 	ResetTxn(ctx context.Context)
+
+	// GetStatement return statement with full path table name from planner.
+	// it also formats prepared SQL to simple SQL.
+	GetStatement(ctx context.Context) string
 }

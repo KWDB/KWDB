@@ -940,18 +940,19 @@ func waitCDCStatusChanged(
 	ctx context.Context,
 	cdc execinfra.CDCCoordinator,
 	tableID, instanceID uint64,
-	instanceType cdcpb.TSCDCInstanceType,
+	instanceType sqlbase.CDCInstanceType,
 	enabled bool,
 ) {
 	opts := retry.Options{
 		InitialBackoff: 100 * time.Millisecond,
 		Multiplier:     2,
 		MaxBackoff:     500 * time.Millisecond,
-		MaxRetries:     5,
+		MaxRetries:     10,
 	}
 
 	for r := retry.StartWithCtx(ctx, opts); r.Next(); {
 		cdcEnabled := cdc.HasTask(instanceType, tableID, instanceID)
+
 		if (enabled && cdcEnabled) || (!enabled && !cdcEnabled) {
 			return
 		}

@@ -253,6 +253,30 @@ func (n *DropRoleNode) startExec(params runParams) error {
 			return err
 		}
 
+		// update pipe owner
+		_, err = params.extendedEvalCtx.ExecCfg.InternalExecutor.Exec(
+			params.ctx,
+			"reset-pipe-user",
+			params.p.txn,
+			`UPDATE system.kwdb_pipes SET create_by='' WHERE create_by=$1`,
+			normalizedUsername,
+		)
+		if err != nil {
+			return err
+		}
+
+		// update owner of publication
+		_, err = params.extendedEvalCtx.ExecCfg.InternalExecutor.Exec(
+			params.ctx,
+			"reset-publication-owner",
+			params.p.txn,
+			`UPDATE system.kwdb_publications SET create_by='' WHERE create_by=$1`,
+			normalizedUsername,
+		)
+		if err != nil {
+			return err
+		}
+
 		params.p.SetAuditTarget(0, normalizedUsername, nil)
 	}
 

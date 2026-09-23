@@ -32,8 +32,9 @@ EEIteratorErrCode TsTableScanParser::ParserScanCols(kwdbContext_p ctx) {
     table_->scan_cols_.push_back(table_->fields_[0]->get_num());
   } else {
     for (k_uint32 i = 0; i < inputcols_count_; ++i) {
-      if (input_cols_[i]->get_num() < table_->min_tag_id_)
+      if (input_cols_[i]->get_num() < table_->min_tag_id_) {
         table_->scan_cols_.push_back(input_cols_[i]->get_num());
+      }
     }
   }
 
@@ -41,6 +42,12 @@ EEIteratorErrCode TsTableScanParser::ParserScanCols(kwdbContext_p ctx) {
     k_uint32 col_id = table_->scan_cols_[i];
     Field* field = table_->GetFieldWithColNum(col_id);
     field->setColIdxInRs(i);
+  }
+  if (table_->has_osn_col_) {
+    k_uint32 count = table_->scan_cols_.size();
+    table_->GetFieldWithColNum(table_->field_num_-3)->setColIdxInRs(count);
+    table_->GetFieldWithColNum(table_->field_num_-2)->setColIdxInRs(count + 1);
+    table_->GetFieldWithColNum(table_->field_num_-1)->setColIdxInRs(count + 2);
   }
 
   Return(code);
