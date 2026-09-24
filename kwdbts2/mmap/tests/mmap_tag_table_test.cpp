@@ -54,7 +54,7 @@ class TestTagTable : public testing::Test {
     schema_.clear();
     TagInfo ptag_info;
     ptag_info.m_id = 1;
-    ptag_info.m_data_type = DATATYPE::INT64;
+    ptag_info.m_data_type = DATATYPE::K_INT64;
     ptag_info.m_length = sizeof(int64_t);
     ptag_info.m_size = sizeof(int64_t);
     ptag_info.m_tag_type = PRIMARY_TAG;
@@ -82,7 +82,7 @@ class TestTagTable : public testing::Test {
     metric_schema_.clear();
     AttributeInfo metric_attr;
     metric_attr.id = 1;
-    metric_attr.type = DATATYPE::INT64;
+    metric_attr.type = DATATYPE::K_INT64;
     metric_attr.size = sizeof(int64_t);
     metric_attr.length = sizeof(int64_t);
     metric_schema_.push_back(metric_attr);
@@ -1103,7 +1103,7 @@ class TestTagPartitionTableSetTagDataInfo : public testing::Test {
     schema_.clear();
     TagInfo ptag_info;
     ptag_info.m_id = 1;
-    ptag_info.m_data_type = DATATYPE::INT64;
+    ptag_info.m_data_type = DATATYPE::K_INT64;
     ptag_info.m_length = sizeof(uint64_t);
     ptag_info.m_size = sizeof(uint64_t);
     ptag_info.m_tag_type = PRIMARY_TAG;
@@ -1112,7 +1112,7 @@ class TestTagPartitionTableSetTagDataInfo : public testing::Test {
 
     TagInfo ntag_info;
     ntag_info.m_id = 2;
-    ntag_info.m_data_type = DATATYPE::INT64;
+    ntag_info.m_data_type = DATATYPE::K_INT64;
     ntag_info.m_length = sizeof(uint64_t);
     ntag_info.m_size = sizeof(uint64_t);
     ntag_info.m_tag_type = GENERAL_TAG;
@@ -1122,7 +1122,7 @@ class TestTagPartitionTableSetTagDataInfo : public testing::Test {
     metric_schema_.clear();
     AttributeInfo metric_attr;
     metric_attr.id = 1;
-    metric_attr.type = DATATYPE::INT64;
+    metric_attr.type = DATATYPE::K_INT64;
     metric_attr.size = sizeof(int64_t);
     metric_attr.length = sizeof(int64_t);
     metric_schema_.push_back(metric_attr);
@@ -1461,7 +1461,7 @@ class TestSparseTagTable : public testing::Test {
 
     TagInfo ntag_info;
     ntag_info.m_id = 2;
-    ntag_info.m_data_type = DATATYPE::INT32;
+    ntag_info.m_data_type = DATATYPE::K_INT32;
     ntag_info.m_length = sizeof(int32_t);
     ntag_info.m_size = sizeof(int32_t);
     ntag_info.m_tag_type = GENERAL_TAG;
@@ -1596,7 +1596,7 @@ class TestSparseTagTableWithData : public testing::Test {
 
     TagInfo ntag_info;
     ntag_info.m_id = 2;
-    ntag_info.m_data_type = DATATYPE::INT32;
+    ntag_info.m_data_type = DATATYPE::K_INT32;
     ntag_info.m_length = sizeof(int32_t);
     ntag_info.m_size = sizeof(int32_t);
     ntag_info.m_tag_type = GENERAL_TAG;
@@ -1606,7 +1606,7 @@ class TestSparseTagTableWithData : public testing::Test {
     metric_schema_.clear();
     AttributeInfo metric_attr;
     metric_attr.id = 1;
-    metric_attr.type = DATATYPE::INT32;
+    metric_attr.type = DATATYPE::K_INT32;
     metric_attr.size = sizeof(int32_t);
     metric_attr.length = sizeof(int32_t);
     metric_attr.version = 1;
@@ -1836,7 +1836,7 @@ class TestSparseTagTableWithInsert : public testing::Test {
 
     TagInfo ntag_info;
     ntag_info.m_id = 2;
-    ntag_info.m_data_type = DATATYPE::INT32;
+    ntag_info.m_data_type = DATATYPE::K_INT32;
     ntag_info.m_length = sizeof(int32_t);
     ntag_info.m_size = sizeof(int32_t);
     ntag_info.m_tag_type = GENERAL_TAG;
@@ -1846,7 +1846,7 @@ class TestSparseTagTableWithInsert : public testing::Test {
     metric_schema_.clear();
     AttributeInfo metric_attr;
     metric_attr.id = 1;
-    metric_attr.type = DATATYPE::INT32;
+    metric_attr.type = DATATYPE::K_INT32;
     metric_attr.size = sizeof(int32_t);
     metric_attr.length = sizeof(int32_t);
     metric_attr.version = 1;
@@ -2061,7 +2061,7 @@ TEST_F(TestSparseTagTableWithInsert, AddNewPartitionVersion_PreservesSparse) {
   std::vector<TagInfo> schema_v2 = tag_schema_;
   TagInfo new_tag;
   new_tag.m_id = 3;
-  new_tag.m_data_type = DATATYPE::INT64;
+  new_tag.m_data_type = DATATYPE::K_INT64;
   new_tag.m_length = sizeof(int64_t);
   new_tag.m_size = sizeof(int64_t);
   new_tag.m_tag_type = GENERAL_TAG;
@@ -2085,7 +2085,7 @@ TEST_F(TestSparseTagTableWithInsert, AddNewPartitionVersion_NormalTablePreserves
   std::vector<TagInfo> schema_v2 = tag_schema_;
   TagInfo new_tag;
   new_tag.m_id = 3;
-  new_tag.m_data_type = DATATYPE::INT64;
+  new_tag.m_data_type = DATATYPE::K_INT64;
   new_tag.m_length = sizeof(int64_t);
   new_tag.m_size = sizeof(int64_t);
   new_tag.m_tag_type = GENERAL_TAG;

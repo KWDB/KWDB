@@ -696,7 +696,7 @@ class TestSparseTagColumnTable : public testing::Test {
 
     TagInfo ntag_info1;
     ntag_info1.m_id = 2;
-    ntag_info1.m_data_type = DATATYPE::INT32;
+    ntag_info1.m_data_type = DATATYPE::K_INT32;
     ntag_info1.m_length = sizeof(int32_t);
     ntag_info1.m_size = sizeof(int32_t);
     ntag_info1.m_tag_type = GENERAL_TAG;
@@ -705,7 +705,7 @@ class TestSparseTagColumnTable : public testing::Test {
 
     TagInfo ntag_info2;
     ntag_info2.m_id = 3;
-    ntag_info2.m_data_type = DATATYPE::INT64;
+    ntag_info2.m_data_type = DATATYPE::K_INT64;
     ntag_info2.m_length = sizeof(int64_t);
     ntag_info2.m_size = sizeof(int64_t);
     ntag_info2.m_tag_type = GENERAL_TAG;
@@ -714,7 +714,7 @@ class TestSparseTagColumnTable : public testing::Test {
 
     TagInfo ntag_info3;
     ntag_info3.m_id = 4;
-    ntag_info3.m_data_type = DATATYPE::FLOAT;
+    ntag_info3.m_data_type = DATATYPE::K_FLOAT;
     ntag_info3.m_length = sizeof(float);
     ntag_info3.m_size = sizeof(float);
     ntag_info3.m_tag_type = GENERAL_TAG;
@@ -1030,7 +1030,7 @@ class TestTagTuplePackValidColumns : public testing::Test {
 
     TagInfo ntag_info;
     ntag_info.m_id = 2;
-    ntag_info.m_data_type = DATATYPE::INT32;
+    ntag_info.m_data_type = DATATYPE::K_INT32;
     ntag_info.m_length = sizeof(int32_t);
     ntag_info.m_size = sizeof(int32_t);
     ntag_info.m_tag_type = GENERAL_TAG;

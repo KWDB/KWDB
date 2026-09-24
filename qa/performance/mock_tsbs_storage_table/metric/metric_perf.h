@@ -158,16 +158,16 @@ class MetricInsertTest : public TestCommon, public ::testing::TestWithParam<Metr
     iot_interval_ = 3600;
 
     DEF_ATTR(k_timestamp, DATATYPE::TIMESTAMP64, 8, 8);
-    DEF_ATTR(usage_user, DATATYPE::INT64, 8, 8);
-    DEF_ATTR(usage_system, DATATYPE::INT64, 8, 8);
-    DEF_ATTR(usage_idle, DATATYPE::INT64, 8, 8);
-    DEF_ATTR(usage_nice, DATATYPE::INT64, 8, 8);
-    DEF_ATTR(usage_iowait, DATATYPE::INT64, 8, 8);
-    DEF_ATTR(usage_irq, DATATYPE::INT64, 8, 8);
-    DEF_ATTR(usage_softirq, DATATYPE::INT64, 8, 8);
-    DEF_ATTR(usage_steal, DATATYPE::INT64, 8, 8);
-    DEF_ATTR(usage_guest, DATATYPE::INT64, 8, 8);
-    DEF_ATTR(usage_guest_nice, DATATYPE::INT64, 8, 8);
+    DEF_ATTR(usage_user, DATATYPE::K_INT64, 8, 8);
+    DEF_ATTR(usage_system, DATATYPE::K_INT64, 8, 8);
+    DEF_ATTR(usage_idle, DATATYPE::K_INT64, 8, 8);
+    DEF_ATTR(usage_nice, DATATYPE::K_INT64, 8, 8);
+    DEF_ATTR(usage_iowait, DATATYPE::K_INT64, 8, 8);
+    DEF_ATTR(usage_irq, DATATYPE::K_INT64, 8, 8);
+    DEF_ATTR(usage_softirq, DATATYPE::K_INT64, 8, 8);
+    DEF_ATTR(usage_steal, DATATYPE::K_INT64, 8, 8);
+    DEF_ATTR(usage_guest, DATATYPE::K_INT64, 8, 8);
+    DEF_ATTR(usage_guest_nice, DATATYPE::K_INT64, 8, 8);
     metric_schema_ = {std::move(k_timestamp), std::move(usage_user), std::move(usage_system), std::move(usage_idle),
                       std::move(usage_nice), std::move(usage_iowait), std::move(usage_irq), std::move(usage_softirq),
                       std::move(usage_steal), std::move(usage_guest), std::move(usage_guest_nice)};

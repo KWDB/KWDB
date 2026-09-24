@@ -36,17 +36,17 @@ TEST(TsAgg, FixedBlockAggLayoutComputesSchemaDerivedOffsets) {
   std::vector<AttributeInfo> attrs(7);
   attrs[0].type = DATATYPE::TIMESTAMP64;
   attrs[0].size = sizeof(timestamp64);
-  attrs[1].type = DATATYPE::INT32;
+  attrs[1].type = DATATYPE::K_INT32;
   attrs[1].size = sizeof(int32_t);
   attrs[2].type = DATATYPE::VARSTRING;
   attrs[2].size = sizeof(uint32_t);
-  attrs[3].type = DATATYPE::CHAR;
+  attrs[3].type = DATATYPE::K_CHAR;
   attrs[3].size = 16;
   attrs[4].type = DATATYPE::BINARY;
   attrs[4].size = 16;
   attrs[5].type = DATATYPE::STRING;
   attrs[5].size = 16;
-  attrs[6].type = DATATYPE::DOUBLE;
+  attrs[6].type = DATATYPE::K_DOUBLE;
   attrs[6].size = sizeof(double);
 
   const size_t ts_size = sizeof(uint16_t) + sizeof(timestamp64) * 2;
@@ -73,11 +73,11 @@ TEST(TsAgg, SparseBlockAggBitmapComputesPayloadOffsets) {
   std::vector<AttributeInfo> attrs(4);
   attrs[0].type = DATATYPE::TIMESTAMP64;
   attrs[0].size = sizeof(timestamp64);
-  attrs[1].type = DATATYPE::INT32;
+  attrs[1].type = DATATYPE::K_INT32;
   attrs[1].size = sizeof(int32_t);
   attrs[2].type = DATATYPE::VARSTRING;
   attrs[2].size = sizeof(uint32_t);
-  attrs[3].type = DATATYPE::DOUBLE;
+  attrs[3].type = DATATYPE::K_DOUBLE;
   attrs[3].size = sizeof(double);
 
   auto layout = BuildFixedBlockAggLayout(attrs);
@@ -99,7 +99,7 @@ TEST(TsAgg, SparsePartitionAggExtractsFixedAndVariableColumns) {
   attrs[0].size = sizeof(timestamp64);
   attrs[1].type = DATATYPE::VARSTRING;
   attrs[1].size = sizeof(uint32_t);
-  attrs[2].type = DATATYPE::INT32;
+  attrs[2].type = DATATYPE::K_INT32;
   attrs[2].size = sizeof(int32_t);
 
   std::string bitmap(GetSparsePartitionAggBitmapSize(attrs.size()), '\0');

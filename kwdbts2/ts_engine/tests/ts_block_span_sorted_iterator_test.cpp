@@ -148,7 +148,7 @@ class TsBlockSpanSortedIteratorTest : public ::testing::Test {
       char* row = reinterpret_cast<char*>(malloc(16 + 2));
       row_datas_.push_back(row);
       KUint16(row) = TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_TUPLE;
-      KTimestamp(row + 2) = tss[i];
+      KTimestampCast(row + 2) = tss[i];
       KUint64(row + 8 + 2) = osn;
       data->SetData(tss[i], osn);
       TSSlice row_with_type{row, 16 + 2};

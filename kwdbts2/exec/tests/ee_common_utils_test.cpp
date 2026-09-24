@@ -75,31 +75,31 @@ TEST_F(CommonUtilsTest, ParsesUnicodeHexAndTypeConversions) {
   EXPECT_EQ(parseHex2String("plain"), "plain");
 
   ErrorInfo err_info;
-  EXPECT_EQ(tryAlterType("12", DATATYPE::INT16, err_info), 0);
+  EXPECT_EQ(tryAlterType("12", DATATYPE::K_INT16, err_info), 0);
   EXPECT_TRUE(err_info.isOK());
 
   err_info.clear();
-  EXPECT_EQ(tryAlterType("abc", DATATYPE::INT32, err_info), KWEPERM);
+  EXPECT_EQ(tryAlterType("abc", DATATYPE::K_INT32, err_info), KWEPERM);
   EXPECT_EQ(err_info.errcode, KWEPERM);
 
   err_info.clear();
-  EXPECT_EQ(tryAlterType("40000", DATATYPE::INT16, err_info), KWEPERM);
+  EXPECT_EQ(tryAlterType("40000", DATATYPE::K_INT16, err_info), KWEPERM);
   EXPECT_EQ(err_info.errcode, KWEPERM);
 
   err_info.clear();
-  EXPECT_EQ(tryAlterType("3.14", DATATYPE::DOUBLE, err_info), 0);
+  EXPECT_EQ(tryAlterType("3.14", DATATYPE::K_DOUBLE, err_info), 0);
   EXPECT_TRUE(err_info.isOK());
 
   err_info.clear();
-  EXPECT_EQ(tryAlterType("21", DATATYPE::INT64, err_info), 0);
+  EXPECT_EQ(tryAlterType("21", DATATYPE::K_INT64, err_info), 0);
   EXPECT_TRUE(err_info.isOK());
 
   err_info.clear();
-  EXPECT_EQ(tryAlterType("2.5", DATATYPE::FLOAT, err_info), 0);
+  EXPECT_EQ(tryAlterType("2.5", DATATYPE::K_FLOAT, err_info), 0);
   EXPECT_TRUE(err_info.isOK());
 
   err_info.clear();
-  EXPECT_EQ(tryAlterType("4.2tail", DATATYPE::FLOAT, err_info), KWEPERM);
+  EXPECT_EQ(tryAlterType("4.2tail", DATATYPE::K_FLOAT, err_info), KWEPERM);
   EXPECT_EQ(err_info.errcode, KWEPERM);
 }
 

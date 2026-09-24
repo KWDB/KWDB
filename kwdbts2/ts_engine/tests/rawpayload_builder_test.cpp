@@ -32,7 +32,7 @@ std::vector<ColDataTypes> tag_col_types({
 std::vector<ColDataTypes> metric_col_types({{DATATYPE::TIMESTAMP64, 16, TagType::UNKNOWN_TAG},
                                             {DATATYPE::VARSTRING, 1024, TagType::UNKNOWN_TAG},
                                             {DATATYPE::K_INT32, 4, TagType::UNKNOWN_TAG},
-                                            {DATATYPE::FLOAT, 4, TagType::UNKNOWN_TAG},  // none for all rows.
+                                            {DATATYPE::K_FLOAT, 4, TagType::UNKNOWN_TAG},  // none for all rows.
                                             {DATATYPE::VARBINARY, 1123, TagType::UNKNOWN_TAG},
                                             {DATATYPE::VARSTRING, 12334, TagType::UNKNOWN_TAG}});
 
