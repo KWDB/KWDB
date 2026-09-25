@@ -2320,7 +2320,10 @@ KStatus TsVGroup::Vacuum(kwdbContext_p ctx, bool force, bool only_agg) {
   for (auto& [db_id, partitions] : all_partitions) {
     const int n = force ? partitions.size() : partitions.size() - 1;
     for (int i = 0; i < n; i++) {
-      if (force && ctx->relation_ctx != 0 && isCanceledCtx(ctx->relation_ctx)) {
+      // isCanceledCtx is weak; skip cancel check when the Go bridge is absent
+      // (unit tests / partial links) instead of calling through address 0.
+      if (force && ctx->relation_ctx != 0 && isCanceledCtx != nullptr &&
+          isCanceledCtx(ctx->relation_ctx)) {
         LOG_INFO("Context has been canceled, stop vacuum.");
         return KStatus::SUCCESS;
       }

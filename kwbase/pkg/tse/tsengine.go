@@ -32,12 +32,11 @@ package tse
 // #include <string.h>
 // #include <libkwdbts2.h>
 //
-// // On Windows/MinGW, Go's //export creates symbols that conflict with
-// // the DLL's .refptr references (PE symbol type mismatch: function vs data).
-// // We work around this by exporting Go callback functions with different names
-// // and providing C bridge functions with the original weak symbol names.
-// // The C bridge functions are compiled locally and won't conflict with DLL symbols.
-// #ifdef _WIN32
+// // C bridge for libkwdbts2 weak symbols (isCanceledCtx / goGetTzOffset).
+// // Go exports the *Cb names; without this bridge the weak symbols stay
+// // undefined (address 0) and vacuum's cancel check SIGSEGVs on Linux.
+// // On Windows/MinGW, Go's //export also cannot use the original names
+// // (PE symbol type mismatch: function vs data with DLL .refptr).
 // extern bool goIsCanceledCtxCb(uint64_t goCtxPtr);
 // extern bool goGetTzOffsetCb(int64_t utc_sec, char* tz_name,
 //                             int32_t* offset_sec, char* abbrev, int abbrev_len);
@@ -48,7 +47,6 @@ package tse
 //                    int32_t* offset_sec, char* abbrev, int abbrev_len) {
 //     return goGetTzOffsetCb(utc_sec, tz_name, offset_sec, abbrev, abbrev_len);
 // }
-// #endif
 import "C"
 import (
 	"bytes"

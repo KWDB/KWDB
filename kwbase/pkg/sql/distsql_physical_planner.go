@@ -7167,7 +7167,7 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 	}
 	plan.Processors[plan.ResultRouters[0]].LogicalSequenceID = []uint64{0}
 
-	//plan.addNoopForErr()
+	plan.addNoopForErr()
 
 	// This operation is used to pass the short-circuit flag to AE.
 	// If there is a subquery, it cannot be short-circuited and
