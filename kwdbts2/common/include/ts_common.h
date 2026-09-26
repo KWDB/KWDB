@@ -11,11 +11,10 @@
 
 #pragma once
 
-#include "platform.h"
-
-#include <cstdint>
-#include <climits>
+#include <algorithm>
 #include <cfloat>
+#include <climits>
+#include <cstdint>
 #include <list>
 #include <map>
 #include <memory>
@@ -25,17 +24,18 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#include <algorithm>
+
+#include "platform.h"
 
 // Provide Windows alternatives for GCC builtins
 #if defined(_WIN32) || defined(__MINGW__)
 // Windows/MinGW doesn't have __builtin_smull_overflow, provide alternative
 // Note: On Windows, long is 32-bit, but we need 64-bit overflow check
-// Use long long for 64-bit integers
-static inline bool __builtin_smulll_overflow(long long a, long long b, long long* res) {
+// Use int64_t for 64-bit integers
+static inline bool __builtin_smulll_overflow(int64_t a, int64_t b, int64_t* res) {
 #if defined(__SIZEOF_INT128__)
     __int128 temp = (__int128)a * (__int128)b;
-    *res = (long long)temp;
+    *res = (int64_t)temp;
     return temp != *res;
 #else
     // Fallback for compilers without __int128 (e.g., MSVC on x86)
@@ -43,10 +43,10 @@ static inline bool __builtin_smulll_overflow(long long a, long long b, long long
         *res = 0;
         return false;
     }
-    if (a == LLONG_MIN || b == LLONG_MIN) {
+    if (a == INT64_MIN || b == INT64_MIN) {
         return true;
     }
-    long long result = a * b;
+    int64_t result = a * b;
     *res = result;
     return (result / a) != b;
 #endif

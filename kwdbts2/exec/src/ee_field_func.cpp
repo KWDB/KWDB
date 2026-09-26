@@ -9,10 +9,9 @@
 // NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE. See the
 // Mulan PSL v2 for more details.
 
-#include <inttypes.h>
-
 #include "ee_field_func.h"
 
+#include <inttypes.h>
 #include <time.h>
 
 #include <cmath>

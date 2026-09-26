@@ -27,9 +27,6 @@
 
 #ifdef _WIN32
 #include <windows.h>
-#else
-#include <condition_variable>
-#include <mutex>
 #endif
 
 namespace kwdbts {
@@ -38,9 +35,10 @@ class TsMemSegment;
 #ifdef _WIN32
 
 class WinMutex {
-private:
+ private:
     CRITICAL_SECTION cs_;
-public:
+
+ public:
     WinMutex() { InitializeCriticalSection(&cs_); }
     ~WinMutex() { DeleteCriticalSection(&cs_); }
     void lock() { EnterCriticalSection(&cs_); }
@@ -51,9 +49,10 @@ public:
 };
 
 class WinCondVar {
-private:
+ private:
     CONDITION_VARIABLE cv_;
-public:
+
+ public:
     WinCondVar() { InitializeConditionVariable(&cv_); }
     ~WinCondVar() {}
 
@@ -140,17 +139,17 @@ class TsFlushJobPool {
   int kMaxConcurrentJobNum = EngineOptions::vgroup_max_num * 2;
   std::vector<std::thread> workers_;
 
-  #ifdef _WIN32
-    WinMutex job_mutex_;
-    WinCondVar queue_non_empty_cv_;
-    WinCondVar queue_non_full_cv_;
-    WinCondVar stop_cv_;
-  #else
-    std::mutex job_mutex_;
-    std::condition_variable queue_non_empty_cv_;
-    std::condition_variable queue_non_full_cv_;
-    std::condition_variable stop_cv_;
-  #endif
+#ifdef _WIN32
+  WinMutex job_mutex_;
+  WinCondVar queue_non_empty_cv_;
+  WinCondVar queue_non_full_cv_;
+  WinCondVar stop_cv_;
+#else
+  std::mutex job_mutex_;
+  std::condition_variable queue_non_empty_cv_;
+  std::condition_variable queue_non_full_cv_;
+  std::condition_variable stop_cv_;
+#endif
   std::atomic_int bg_running_jobs_ = 0;
 
   std::atomic<k_bool> stop_flag_{false};

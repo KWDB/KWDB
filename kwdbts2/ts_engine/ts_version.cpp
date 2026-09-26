@@ -143,7 +143,8 @@ static KStatus TruncateFile(const fs::path& path, size_t size) {
   KStatus ret = SUCCESS;
   size_t actual_size = lseek(fd, 0, SEEK_END);
   if (actual_size > size) {
-    LOG_INFO("unexpected file size: %s, expected: %llu, actual: %llu, truncate it", path.string().c_str(), size, actual_size);
+    LOG_INFO("unexpected file size: %s, expected: %llu, actual: %llu, truncate it", path.string().c_str(), size,
+             actual_size);
     int ok = ftruncate(fd, size);
     if (ok != 0) {
       LOG_ERROR("can not truncate file: %s, reason: %s", path.string().c_str(), std::strerror(errno));
@@ -234,8 +235,8 @@ KStatus TsVersionManager::Recover(bool force_recover) {
   // construct a new logger_
   {
     std::unique_ptr<TsAppendOnlyFile> new_log_file;
-    s =
-        env_->NewAppendOnlyFile((root_path_ / VersionUpdateName(next_logfile_number)).string(), &new_log_file, true /*overwrite*/);
+    s = env_->NewAppendOnlyFile((root_path_ / VersionUpdateName(next_logfile_number)).string(), &new_log_file,
+                                true /*overwrite*/);
     if (s == FAIL) {
       LOG_ERROR("can not create new update log file");
       return FAIL;
@@ -294,7 +295,8 @@ KStatus TsVersionManager::Recover(bool force_recover) {
   // safe write to current file
   {
     std::unique_ptr<TsAppendOnlyFile> tmp_current_file;
-    s = env_->NewAppendOnlyFile((root_path_ / TempFileName(CurrentVersionName())).string(), &tmp_current_file, true /*overwrite*/);
+    s = env_->NewAppendOnlyFile((root_path_ / TempFileName(CurrentVersionName())).string(), &tmp_current_file,
+                                true /*overwrite*/);
     if (s == FAIL) {
       LOG_ERROR("can not create temp current version file");
       return FAIL;

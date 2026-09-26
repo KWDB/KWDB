@@ -12,20 +12,22 @@
 #ifdef _WIN32
 
 #include "platform.h"
-#include <windows.h>
-#include <io.h>
+
 #include <errno.h>
+#include <io.h>
+#include <sys/stat.h>
+#include <windows.h>
+
 #include <map>
 #include <mutex>
 #include <string>
-#include <sys/stat.h>
 
 // Global map to track file mappings and their alignment info
 struct MappingInfo {
-    HANDLE mapping_handle;   // CreateFileMapping handle
-    void* view_base;         // Original MapViewOfFile returned pointer
-    size_t view_size;        // Size passed to MapViewOfFile
-    size_t alignment_offset; // Offset adjustment (for alignment)
+    HANDLE mapping_handle;    // CreateFileMapping handle
+    void* view_base;          // Original MapViewOfFile returned pointer
+    size_t view_size;         // Size passed to MapViewOfFile
+    size_t alignment_offset;  // Offset adjustment (for alignment)
     std::string file_path;
     int prot;
     int flags;
@@ -128,7 +130,7 @@ void* mmap(void* addr, size_t length, int prot, int flags, int fd, off_t offset)
             if (strncmp(fname, "\\\\?\\", 4) == 0) {
                 fname += 4;
             }
-	          file_path_str = fname;
+            file_path_str = fname;
             DWORD desired_access = (prot & PROT_WRITE)
                 ? (GENERIC_READ | GENERIC_WRITE)
                 : GENERIC_READ;
@@ -139,8 +141,7 @@ void* mmap(void* addr, size_t length, int prot, int flags, int fd, off_t offset)
                 NULL,
                 OPEN_EXISTING,
                 FILE_ATTRIBUTE_NORMAL,
-                NULL
-            );
+                NULL);
         }
         // Use the FILE_SHARE_DELETE handle if available, otherwise fall back
         if (h_delete != INVALID_HANDLE_VALUE) {
@@ -163,8 +164,8 @@ void* mmap(void* addr, size_t length, int prot, int flags, int fd, off_t offset)
         return MAP_FAILED;
     }
     // Cap mapping size to file size from aligned offset
-    if ((off_t)(aligned_offset + mapping_size) > file_size.QuadPart) {
-        mapping_size = (size_t)(file_size.QuadPart - aligned_offset);
+    if (static_cast<off_t>(aligned_offset + mapping_size) > file_size.QuadPart) {
+        mapping_size = static_cast<size_t>(file_size.QuadPart - aligned_offset);
     }
 
     // CreateFileMapping size: max size of the file mapping object
@@ -175,8 +176,7 @@ void* mmap(void* addr, size_t length, int prot, int flags, int fd, off_t offset)
         protect,
         (DWORD)(file_size.QuadPart >> 32),
         (DWORD)file_size.QuadPart,
-        NULL
-    );
+        NULL);
 
     // Close the FILE_SHARE_DELETE handle now that CreateFileMapping
     // has its own reference to the file.
@@ -201,8 +201,7 @@ void* mmap(void* addr, size_t length, int prot, int flags, int fd, off_t offset)
         access,
         (DWORD)((ULONGLONG)aligned_offset >> 32),
         (DWORD)aligned_offset,
-        mapping_size
-    );
+        mapping_size);
 
     if (view_base == NULL) {
         CloseHandle(mapping);
@@ -216,7 +215,7 @@ void* mmap(void* addr, size_t length, int prot, int flags, int fd, off_t offset)
     }
 
     // Return pointer adjusted by the alignment difference
-    void* result = (char*)view_base + offset_align_diff;
+    void* result = static_cast<char*>(view_base) + offset_align_diff;
 
     // Store mapping info for cleanup
     MappingInfo info;
@@ -390,7 +389,7 @@ int mkstemp(char* template_name) {
     if (fd < 0) {
         return fd;
     }
-    strcpy(template_name, temp_file);
+    snprintf(template_name, MAX_PATH, "%s", temp_file);
     return fd;
 }
 
@@ -417,4 +416,4 @@ int kwdb_rename(const char* oldpath, const char* newpath) {
     return -1;
 }
 
-#endif // _WIN32
+#endif  // _WIN32

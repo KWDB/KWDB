@@ -16,17 +16,19 @@
 #ifndef _WIN32
 #include <sys/mman.h>
 #include <unistd.h>
-#else
-#include "platform.h"
-#include <thread>
-#include <chrono>
 #endif
 
+#include <chrono>
 #include <cstddef>
 #include <cstring>
 #include <string>
 #include <system_error>
+#include <thread>
 #include <vector>
+
+#ifdef _WIN32
+#include "platform.h"
+#endif
 
 #include "kwdb_type.h"
 #include "lg_api.h"

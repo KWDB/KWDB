@@ -65,7 +65,7 @@ struct EngineOptions {
   }
   bool wal_archive = false;
   char* wal_archive_command = nullptr;
-  TsEngineLogOption lg_opts = {"", 0, 0, static_cast<LogSeverity>(0), ""}; // DEBUG = 0
+  TsEngineLogOption lg_opts = {"", 0, 0, static_cast<LogSeverity>(0), ""};  // DEBUG = 0
   std::vector<RangeGroup> ranges;  // record engine hash value range
 
   static int32_t iot_interval;

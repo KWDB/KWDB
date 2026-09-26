@@ -11,6 +11,12 @@
 
 #pragma once
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <time.h>
+
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 // Prevent Windows 'byte' typedef from conflicting with C++17 std::byte
@@ -27,11 +33,6 @@
 #undef byte
 #include <io.h>
 #include <direct.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <time.h>
 #include <cstdint>
 
 // Windows compatibility definitions
@@ -194,10 +195,10 @@ static inline size_t get_allocation_granularity() {
 }
 
 // Windows tm doesn't have tm_gmtoff, provide helper to get GMT offset in seconds
-static inline long kwdbts_get_gmtoff_sec() {
+static inline int64_t kwdbts_get_gmtoff_sec() {
     TIME_ZONE_INFORMATION tzi;
     DWORD result = GetTimeZoneInformation(&tzi);
-    long bias = tzi.Bias + tzi.StandardBias;
+    LONG bias = tzi.Bias + tzi.StandardBias;
     if (result == TIME_ZONE_ID_DAYLIGHT) {
         bias += tzi.DaylightBias - tzi.StandardBias;
     }
@@ -217,7 +218,7 @@ static inline char *kwdbts_strptime(const char *buf, const char *fmt, struct tm 
             switch (*fmt) {
                 case 'Y': {
                     char *end;
-                    long val = strtol(buf, &end, 10);
+                    int64_t val = strtol(buf, &end, 10);
                     if (end == buf) return nullptr;
                     tm->tm_year = val - 1900;
                     buf = end;
@@ -225,7 +226,7 @@ static inline char *kwdbts_strptime(const char *buf, const char *fmt, struct tm 
                 }
                 case 'm': {
                     char *end;
-                    long val = strtol(buf, &end, 10);
+                    int64_t val = strtol(buf, &end, 10);
                     if (end == buf) return nullptr;
                     tm->tm_mon = val - 1;
                     buf = end;
@@ -233,7 +234,7 @@ static inline char *kwdbts_strptime(const char *buf, const char *fmt, struct tm 
                 }
                 case 'd': {
                     char *end;
-                    long val = strtol(buf, &end, 10);
+                    int64_t val = strtol(buf, &end, 10);
                     if (end == buf) return nullptr;
                     tm->tm_mday = val;
                     buf = end;
@@ -241,7 +242,7 @@ static inline char *kwdbts_strptime(const char *buf, const char *fmt, struct tm 
                 }
                 case 'H': {
                     char *end;
-                    long val = strtol(buf, &end, 10);
+                    int64_t val = strtol(buf, &end, 10);
                     if (end == buf) return nullptr;
                     tm->tm_hour = val;
                     buf = end;
@@ -249,7 +250,7 @@ static inline char *kwdbts_strptime(const char *buf, const char *fmt, struct tm 
                 }
                 case 'M': {
                     char *end;
-                    long val = strtol(buf, &end, 10);
+                    int64_t val = strtol(buf, &end, 10);
                     if (end == buf) return nullptr;
                     tm->tm_min = val;
                     buf = end;
@@ -257,7 +258,7 @@ static inline char *kwdbts_strptime(const char *buf, const char *fmt, struct tm 
                 }
                 case 'S': {
                     char *end;
-                    long val = strtol(buf, &end, 10);
+                    int64_t val = strtol(buf, &end, 10);
                     if (end == buf) return nullptr;
                     tm->tm_sec = val;
                     buf = end;
@@ -278,11 +279,7 @@ static inline char *kwdbts_strptime(const char *buf, const char *fmt, struct tm 
 #else
 // Linux includes
 #include <sys/mman.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <sys/stat.h>
 #include <stdio.h>
-#include <time.h>
 
 static inline size_t get_allocation_granularity() {
     return getpagesize();  // On Linux, page size == allocation granularity
@@ -325,13 +322,10 @@ static inline char *kwdbts_strptime(const char *buf, const char *fmt, struct tm 
 
 // Thread ID
 #ifdef _WIN32
-#include <windows.h>
 #ifndef gettid
 #define gettid() ((pid_t)GetCurrentThreadId())
 #endif
 #else
-#include <sys/types.h>
-#include <unistd.h>
 #include <sys/syscall.h>
 #ifndef gettid
 #define gettid() ((pid_t)syscall(SYS_gettid))

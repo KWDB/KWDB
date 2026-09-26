@@ -10,14 +10,15 @@
 // See the Mulan PSL v2 for more details.
 #include "ee_exec_pool.h"
 
-#include "ee_task.h"
-#include "er_api.h"
-#include "lg_api.h"
-#include "kwdb_type.h"
+#include <unistd.h>
+
 #include "cm_fault_injection.h"
 #include "ee_cpuinfo.h"
 #include "ee_pipeline_task_poller.h"
-#include <unistd.h>
+#include "ee_task.h"
+#include "er_api.h"
+#include "kwdb_type.h"
+#include "lg_api.h"
 
 namespace kwdbts {
 

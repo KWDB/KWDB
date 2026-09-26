@@ -154,7 +154,8 @@ KStatus TsEntitySegmentBlockItemFile::GetBlockItem(uint64_t blk_id, TsEntitySegm
 TsEntitySegmentMetaManager::TsEntitySegmentMetaManager(TsIOEnv* env, const string& dir_path, EntitySegmentMetaInfo info)
     : dir_path_(dir_path),
       entity_header_(env, (dir_path_ / EntityHeaderFileName(info.header_e_file_number)).string()),
-      block_header_(env, (dir_path_ / BlockHeaderFileName(info.header_b_info.file_number)).string(), info.header_b_info.length) {}
+      block_header_(env, (dir_path_ / BlockHeaderFileName(info.header_b_info.file_number)).string(),
+                    info.header_b_info.length) {}
 
 KStatus TsEntitySegmentMetaManager::Open() {
   // Attempt to access the directory
