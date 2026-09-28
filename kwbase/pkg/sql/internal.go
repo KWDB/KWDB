@@ -331,14 +331,17 @@ func (ie *InternalExecutor) IsTsTable(
 
 		dit.Tname = tree.NewTableName(tree.Name(dbName), tree.Name(tbName))
 
-		flags := tree.ObjectLookupFlags{}
+		flags := tree.ObjectLookupFlagsWithRequired()
 		table, err := tables.getTableVersion(ctx, txn, dit.Tname, flags)
-		if table == nil || err != nil {
-			return errors.Errorf("can not find tables")
+		if err != nil {
+			return err
+		}
+		if table == nil {
+			return sqlbase.NewUndefinedRelationError(dit.Tname)
 		}
 
 		if !table.IsTSTable() {
-			return errors.Errorf("%s is not a ts table", tbName)
+			return sqlbase.NewWrongObjectTypeError(dit.Tname, "timeseries table")
 		}
 
 		sd := &sessiondata.SessionData{User: user}

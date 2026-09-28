@@ -1343,9 +1343,13 @@ func (c *conn) handleParseEx(
 	var isTsTable bool
 	var insertErr error
 	isTsTable, dit, insertErr = server.GetCFG().InternalExecutor.IsTsTable(ctx, dbName, tableName, user)
-	if insertErr != nil || !isTsTable {
+	if insertErr != nil {
+		return c.stmtBuf.Push(ctx, sql.SendError{Err: insertErr})
+	}
+	if !isTsTable {
 		return c.stmtBuf.Push(ctx,
-			sql.SendError{Err: pgerror.Newf(pgcode.ProtocolViolation, "Extend interface only by tstable and shortcut.")})
+			sql.SendError{Err: sqlbase.NewWrongObjectTypeError(
+				tree.NewTableName(tree.Name(dbName), tree.Name(tableName)), "timeseries table")})
 	}
 
 	c.parser.SetPrepareMode(true)
