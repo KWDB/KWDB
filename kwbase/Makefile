@@ -393,6 +393,14 @@ $(call make-lazy,term-reset)
 # See: https://www.gnu.org/software/make/manual/html_node/Errors.html#Errors
 .DELETE_ON_ERROR:
 
+# Disable the built-in .y.c suffix rule. This project uses goyacc for parser
+# generation (see pkg/sql/parser/gen/sql.go.tmp), not yacc/bison. The built-in
+# rule causes make to attempt building .c files from vendored .y grammar files
+# (e.g. vendor/github.com/yuin/gopher-lua/golua-parse/parser.go.y). On Windows
+# with MinGW make, the path separators are converted to backslashes, which
+# bison interprets as escape characters, producing a "cannot open" error.
+%.c: %.y
+
 # Targets that name a real file that must be rebuilt on every Make invocation
 # should depend on .ALWAYS_REBUILD. (.PHONY should only be used on targets that
 # don't name a real file because .DELETE_ON_ERROR does not apply to .PHONY
