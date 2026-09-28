@@ -209,6 +209,8 @@ type PrepareStmt struct {
 // PrepareInsertDirect is used to save information related to short circuit preparation
 type PrepareInsertDirect struct {
 	Dit DirectInsertTable
+	// DirectTimes records phase timings for prepared direct insert stats.
+	DirectTimes directTimes
 	// Specify column names
 	Inscols        tree.NameList
 	Inscolsnum     int
@@ -799,6 +801,8 @@ type DescribeResult interface {
 	// SetPortalOutput tells the client about the results schema and formatting of
 	// a portal.
 	SetPortalOutput(context.Context, sqlbase.ResultColumns, []pgwirebase.FormatCode)
+	// SetInferredTypesEx tells the client about the inferred placeholder types and position of tag and so on.
+	SetInferredTypesEx([]oid.Oid, int16, []uint16, []uint32)
 }
 
 // ParseResult represents the result of a Parse command.
@@ -1049,7 +1053,8 @@ func (r *bufferedCommandResult) Discard() {
 }
 
 // SetInferredTypes is part of the DescribeResult interface.
-func (r *bufferedCommandResult) SetInferredTypes([]oid.Oid) {}
+func (r *bufferedCommandResult) SetInferredTypes([]oid.Oid)                              {}
+func (r *bufferedCommandResult) SetInferredTypesEx([]oid.Oid, int16, []uint16, []uint32) {}
 
 // SetNoDataRowDescription is part of the DescribeResult interface.
 func (r *bufferedCommandResult) SetNoDataRowDescription() {}
@@ -1062,3 +1067,26 @@ func (r *bufferedCommandResult) SetPortalOutput(
 	context.Context, sqlbase.ResultColumns, []pgwirebase.FormatCode,
 ) {
 }
+
+// BindAndExecStmt is the Command for creating a portal from a prepared statement.
+type BindAndExecStmt struct {
+	Name  string
+	Limit int
+	// TimeReceived is the time at which the exec message was received
+	// from the client. Used to compute the service latency.
+	TimeReceived          time.Time
+	PreparedStatementName string
+	PortalName            string
+
+	Ptags    []string
+	Payloads [][]byte
+}
+
+// command implements the Command interface.
+func (BindAndExecStmt) command() string { return "bindEx stmt" }
+
+func (b BindAndExecStmt) String() string {
+	return fmt.Sprintf("BindStmt: %q->%q", b.PreparedStatementName, b.PortalName)
+}
+
+var _ Command = BindAndExecStmt{}

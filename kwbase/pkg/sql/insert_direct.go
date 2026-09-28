@@ -45,7 +45,11 @@ type DirectInsertTable struct {
 	Desc        tree.NameList
 	TableType   tree.TableType
 
-	Tab *sqlbase.TableDescriptor
+	Tab             *sqlbase.TableDescriptor
+	IsPayloadInsert bool
+	TagIndex        int16
+	PtagIndex       []uint16
+	StorageLen      []uint32
 }
 
 // DatumConverter is a function type for converting raw value to tree.Datum
@@ -64,6 +68,8 @@ type DirectInsert struct {
 	InputValues                []tree.Datums
 	DirectTimes                directTimes
 	ColConverters              []DatumConverter // cached converters for each column
+	Ptags                      []string         // keys
+	Payloads                   [][]byte         // payload data，including header and row data
 }
 
 const (
@@ -392,6 +398,194 @@ func BuildRowBytesForPrepareTsInsert(
 		&evalCtx, table.TableDescriptor, table.Columns, di.InputValues, di.ColIndexs, cfg.CDCCoordinator)
 
 	return nil
+}
+
+// BuildRowBytesForPrepareTsInsertEx builds rows for PrepareExtendTsInsert efficiently
+func BuildRowBytesForPrepareTsInsertEx(
+	Dit DirectInsertTable,
+	di *DirectInsert,
+	evalCtx tree.EvalContext,
+	table *sqlbase.ImmutableTableDescriptor,
+	nodeID roachpb.NodeID,
+) error {
+	// Pre-allocate payloads slice
+	allPayloads := make([]*sqlbase.SinglePayloadInfo, 0, len(di.Ptags))
+	di.RowNum = 0
+
+	for i := range di.Ptags {
+		payload, _, err := execbuilder.BuildPreparePayloadHeaderForTsInsertEx(
+			di.Payloads[i],
+			di.PArgs,
+			Dit.DbID,
+			Dit.TabID,
+			Dit.HashNum,
+		)
+		if err != nil {
+			return err
+		}
+
+		hashPoints := sqlbase.DecodeHashPointFromPayload(payload)
+		primaryTagKey := sqlbase.MakeTsPrimaryTagKey(table.ID, hashPoints)
+		if !evalCtx.StartSinglenode {
+			payloadPrefix, rowBytes, valueSize, rowNum, err := splitPrepareExtendPayload(payload)
+			if err != nil {
+				return err
+			}
+			di.RowNum += int(rowNum)
+			hashNum := Dit.HashNum
+			allPayloads = append(allPayloads, &sqlbase.SinglePayloadInfo{
+				Payload:       payloadPrefix,
+				RowNum:        rowNum,
+				PrimaryTagKey: primaryTagKey,
+				RowBytes:      rowBytes,
+				StartKey:      sqlbase.MakeTsRangeKey(table.ID, uint64(hashPoints[0]), hashNum),
+				EndKey:        sqlbase.MakeTsRangeKey(table.ID, uint64(hashPoints[0])+1, hashNum),
+				ValueSize:     valueSize,
+				HashNum:       hashNum,
+			})
+		} else {
+			rowNum := binary.LittleEndian.Uint32(payload[execbuilder.RowNumOffset:])
+			di.RowNum += int(rowNum)
+			hashNum := Dit.HashNum
+			allPayloads = append(allPayloads, &sqlbase.SinglePayloadInfo{
+				Payload:       payload,
+				RowNum:        rowNum,
+				PrimaryTagKey: primaryTagKey,
+				HashNum:       hashNum,
+			})
+		}
+	}
+
+	di.PayloadNodeMap[int(evalCtx.NodeID)] = &sqlbase.PayloadForDistTSInsert{
+		NodeID:          nodeID,
+		PerNodePayloads: allPayloads,
+	}
+	return nil
+}
+
+func splitPrepareExtendPayload(
+	payload []byte,
+) (payloadPrefix []byte, rowBytes [][]byte, valueSize int32, rowNum uint32, err error) {
+	if len(payload) < execbuilder.HeadSize+execbuilder.PTagLenSize {
+		err = pgwirebase.NewProtocolViolationErrorf(
+			"invalid prepare-extend payload length %d, expected at least %d",
+			len(payload), execbuilder.HeadSize+execbuilder.PTagLenSize)
+		return nil, nil, 0, 0, err
+	}
+
+	rowNum = binary.LittleEndian.Uint32(payload[execbuilder.RowNumOffset:])
+	ptagLen := int(binary.LittleEndian.Uint16(payload[execbuilder.HeadSize:]))
+	allTagLenOffset := execbuilder.HeadSize + execbuilder.PTagLenSize + ptagLen
+	if allTagLenOffset+execbuilder.AllTagLenSize > len(payload) {
+		err = pgwirebase.NewProtocolViolationErrorf(
+			"invalid prepare-extend payload tag length: ptag length %d exceeds payload length %d",
+			ptagLen, len(payload))
+		return nil, nil, 0, 0, err
+	}
+
+	allTagLen := int(binary.LittleEndian.Uint32(payload[allTagLenOffset:]))
+	dataLenOffset := allTagLenOffset + execbuilder.AllTagLenSize + allTagLen
+	if dataLenOffset+execbuilder.DataLenSize > len(payload) {
+		err = pgwirebase.NewProtocolViolationErrorf(
+			"invalid prepare-extend payload all tag length: tag end %d exceeds payload length %d",
+			dataLenOffset, len(payload))
+		return nil, nil, 0, 0, err
+	}
+
+	dataLen := int(binary.LittleEndian.Uint32(payload[dataLenOffset:]))
+	dataStart := dataLenOffset + execbuilder.DataLenSize
+	dataEnd := dataStart + dataLen
+	if dataLen < 0 || dataEnd > len(payload) {
+		err = pgwirebase.NewProtocolViolationErrorf(
+			"invalid prepare-extend payload data length %d, data end %d exceeds payload length %d",
+			dataLen, dataEnd, len(payload))
+		return nil, nil, 0, 0, err
+	}
+	if dataEnd != len(payload) {
+		err = pgwirebase.NewProtocolViolationErrorf(
+			"invalid prepare-extend payload trailing bytes: data end %d, payload length %d",
+			dataEnd, len(payload))
+		return nil, nil, 0, 0, err
+	}
+
+	dataHeaderLen, err := prepareExtendDataHeaderLen(payload[dataStart:dataEnd])
+	if err != nil {
+		return nil, nil, 0, 0, err
+	}
+	rowStart := dataStart + dataHeaderLen
+	payloadPrefix = make([]byte, dataLenOffset+dataHeaderLen)
+	copy(payloadPrefix, payload[:dataLenOffset])
+	copy(payloadPrefix[dataLenOffset:], payload[dataStart:rowStart])
+
+	rowBytes = make([][]byte, 0, rowNum)
+	for offset := rowStart; offset < dataEnd; {
+		if offset+execbuilder.DataLenSize > dataEnd {
+			err = pgwirebase.NewProtocolViolationErrorf(
+				"invalid prepare-extend payload row length at offset %d, data end %d",
+				offset, dataEnd)
+			return nil, nil, 0, 0, err
+		}
+		rowLen := int(binary.LittleEndian.Uint32(payload[offset:]))
+		rowEnd := offset + execbuilder.DataLenSize + rowLen
+		if rowLen < 0 || rowEnd > dataEnd {
+			err = pgwirebase.NewProtocolViolationErrorf(
+				"invalid prepare-extend payload row length %d at offset %d, data end %d",
+				rowLen, offset, dataEnd)
+			return nil, nil, 0, 0, err
+		}
+		rowBytes = append(rowBytes, payload[offset:rowEnd])
+		valueSize += int32(rowEnd - offset)
+		offset = rowEnd
+	}
+	if rowNum != uint32(len(rowBytes)) {
+		err = pgwirebase.NewProtocolViolationErrorf(
+			"prepare-extend payload row count mismatch: header row count %d, decoded row count %d",
+			rowNum, len(rowBytes))
+		return nil, nil, 0, 0, err
+	}
+	return payloadPrefix, rowBytes, valueSize, rowNum, nil
+}
+
+func prepareExtendDataHeaderLen(data []byte) (int, error) {
+	if len(data) < execbuilder.DataRowTypeSize {
+		return 0, pgwirebase.NewProtocolViolationErrorf(
+			"invalid prepare-extend payload data header length %d", len(data))
+	}
+	rowType := binary.LittleEndian.Uint16(data)
+	switch rowType {
+	case execbuilder.TSInsertDataRowTypeTuple:
+		return execbuilder.DataRowTypeSize, nil
+	case execbuilder.TSInsertDataRowTypeColumnIDs:
+		if len(data) < execbuilder.DataRowTypeSize+execbuilder.ValidColNumLen {
+			return 0, pgwirebase.NewProtocolViolationErrorf(
+				"invalid prepare-extend payload column-id data header length %d", len(data))
+		}
+		colNum := int(binary.LittleEndian.Uint32(data[execbuilder.DataRowTypeSize:]))
+		headerLen := execbuilder.DataRowTypeSize + execbuilder.ValidColNumLen + colNum*execbuilder.ValidColIDLen
+		if len(data) < headerLen {
+			return 0, pgwirebase.NewProtocolViolationErrorf(
+				"invalid prepare-extend payload column-id data header length %d, expected %d",
+				len(data), headerLen)
+		}
+		return headerLen, nil
+	case execbuilder.TSInsertDataRowTypeBitmap:
+		if len(data) < execbuilder.DataRowTypeSize+execbuilder.ValidBitMapLength {
+			return 0, pgwirebase.NewProtocolViolationErrorf(
+				"invalid prepare-extend payload bitmap data header length %d", len(data))
+		}
+		colNum := int(binary.LittleEndian.Uint32(data[execbuilder.DataRowTypeSize:]))
+		bitmapLen := (colNum + 7) / 8
+		headerLen := execbuilder.DataRowTypeSize + execbuilder.ValidBitMapLength + bitmapLen
+		if len(data) < headerLen {
+			return 0, pgwirebase.NewProtocolViolationErrorf(
+				"invalid prepare-extend payload bitmap data header length %d, expected %d",
+				len(data), headerLen)
+		}
+		return headerLen, nil
+	default:
+		return 0, pgwirebase.NewProtocolViolationErrorf(
+			"unknown prepare-extend payload data row type %d", rowType)
+	}
 }
 
 // TsprepareTypeCheck performs args conversion based on input type and column type

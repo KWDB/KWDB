@@ -372,6 +372,7 @@ func (ie *InternalExecutor) IsTsTable(
 		dit.ColsDesc = tableDesc.Columns
 		dit.TableType = table.GetTableType()
 		isTsTable = true
+
 		return nil
 	})
 

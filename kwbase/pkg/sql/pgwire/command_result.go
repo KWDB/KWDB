@@ -331,6 +331,14 @@ func (r *commandResult) SetInferredTypes(types []oid.Oid) {
 	r.conn.bufferParamDesc(types)
 }
 
+func (r *commandResult) SetInferredTypesEx(
+	types []oid.Oid, tagindex int16, ptagIDs []uint16, colStorageLen []uint32,
+) {
+	r.assertNotReleased()
+	r.conn.writerState.fi.registerCmd(r.pos)
+	r.conn.bufferParamDescEx(types, tagindex, ptagIDs, colStorageLen)
+}
+
 // SetNoDataRowDescription is part of the DescribeResult interface.
 func (r *commandResult) SetNoDataRowDescription() {
 	r.assertNotReleased()

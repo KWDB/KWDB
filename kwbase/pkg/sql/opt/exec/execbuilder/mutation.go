@@ -1840,6 +1840,69 @@ func CheckDefaultVals(
 	return res, nil
 }
 
+// BuildPreparePayloadHeaderForTsInsertEx construct payload for build tsInsert.
+func BuildPreparePayloadHeaderForTsInsertEx(
+	payload []byte, pArgs PayloadArgs, dbID uint32, tableID uint32, hashNum uint64,
+) ([]byte, []byte, error) {
+	if pArgs.PrimaryTagSize < 0 {
+		return nil, nil, pgerror.Newf(
+			pgcode.ProtocolViolation,
+			"invalid primary tag size %d in payload", pArgs.PrimaryTagSize,
+		)
+	}
+	minPayloadLen := HeadSize + PTagLenSize + pArgs.PrimaryTagSize
+	if len(payload) < minPayloadLen {
+		return nil, nil, pgerror.Newf(
+			pgcode.ProtocolViolation,
+			"invalid payload length %d, expected at least %d", len(payload), minPayloadLen,
+		)
+	}
+
+	var offset int
+	// encode payload head
+	/*header part
+	_____________________________________________________________________________________________
+	|    16    |    2    |        4        |   4  |      8       |   4       |   4    |    1    |
+	|----------|---------|-----------------|------|--------------|-----------|--------|---------|
+	|  osnID   | groupID | payload version | dbID |     tbID     | tsVersion | rowNum | rowType |
+	*/
+	binary.LittleEndian.PutUint64(payload[offset:], pArgs.TsIDGen.GetNextID())
+	offset += OsnIDSize
+	groupIDOffset := offset
+	offset += RangeGroupIDSize
+	// payload version
+	binary.LittleEndian.PutUint32(payload[offset:], pArgs.PayloadVersion)
+	offset += PayloadVersionSize
+	binary.LittleEndian.PutUint32(payload[offset:], dbID)
+	offset += DBIDSize
+	binary.LittleEndian.PutUint64(payload[offset:], uint64(tableID))
+	offset += TableIDSize
+	// ts version
+	binary.LittleEndian.PutUint32(payload[offset:], pArgs.TSVersion)
+	offset += TSVersionSize
+	offset += RowNumSize
+
+	switch pArgs.RowType {
+	case BothTagAndData:
+		payload[offset] = RowType[BothTagAndData]
+	case OnlyData:
+		payload[offset] = RowType[OnlyData]
+	case OnlyTag:
+		payload[offset] = RowType[OnlyTag]
+	default:
+		payload[offset] = RowType[BothTagAndData]
+	}
+
+	// primary tag value
+	primaryTagVal := payload[HeadSize+PTagLenSize : HeadSize+PTagLenSize+pArgs.PrimaryTagSize]
+	hashPoints, err := api.GetHashPointByPrimaryTag(hashNum, primaryTagVal)
+	if err != nil {
+		return nil, nil, err
+	}
+	binary.LittleEndian.PutUint16(payload[groupIDOffset:], uint16(hashPoints[0]))
+	return payload, primaryTagVal, nil
+}
+
 // BuildPreparePayloadForTsInsert constructs the base prefix for prepare tsInsert.
 func BuildPreparePayloadForTsInsert(
 	evalCtx *tree.EvalContext,
