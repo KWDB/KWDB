@@ -27,6 +27,8 @@ keywords                           SYSTEM VIEW
 parameters                         SYSTEM VIEW
 procedure_privileges               SYSTEM VIEW
 referential_constraints            SYSTEM VIEW
+role_column_grants                 SYSTEM VIEW
+role_routine_grants                SYSTEM VIEW
 role_table_grants                  SYSTEM VIEW
 routines                           SYSTEM VIEW
 schema_privileges                  SYSTEM VIEW
@@ -138,6 +140,8 @@ keywords                           SYSTEM VIEW
 parameters                         SYSTEM VIEW
 procedure_privileges               SYSTEM VIEW
 referential_constraints            SYSTEM VIEW
+role_column_grants                 SYSTEM VIEW
+role_routine_grants                SYSTEM VIEW
 role_table_grants                  SYSTEM VIEW
 routines                           SYSTEM VIEW
 schema_privileges                  SYSTEM VIEW
@@ -263,6 +267,8 @@ information_schema  keywords
 information_schema  parameters
 information_schema  procedure_privileges
 information_schema  referential_constraints
+information_schema  role_column_grants
+information_schema  role_routine_grants
 information_schema  role_table_grants
 information_schema  routines
 information_schema  schema_privileges
@@ -446,6 +452,8 @@ keywords
 parameters
 procedure_privileges
 referential_constraints
+role_column_grants
+role_routine_grants
 role_table_grants
 routines
 schema_privileges
@@ -612,6 +620,8 @@ system         information_schema  keywords                           SYSTEM VIE
 system         information_schema  parameters                         SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
 system         information_schema  procedure_privileges               SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
 system         information_schema  referential_constraints            SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
+system         information_schema  role_column_grants                 SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
+system         information_schema  role_routine_grants                SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
 system         information_schema  role_table_grants                  SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
 system         information_schema  routines                           SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
 system         information_schema  schema_privileges                  SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
@@ -1953,469 +1963,471 @@ query TTTTTTTT colnames rowsort
 SELECT * FROM system.information_schema.table_privileges ORDER BY table_schema, table_name, table_schema, grantee, privilege_type
 ----
 grantor  grantee  table_catalog  table_schema        table_name                         privilege_type  is_grantable  with_hierarchy
-NULL     public   system         information_schema  administrable_role_authorizations  SELECT          NULL          YES
-NULL     public   system         information_schema  applicable_roles                   SELECT          NULL          YES
-NULL     public   system         information_schema  check_constraints                  SELECT          NULL          YES
-NULL     public   system         information_schema  column_privileges                  SELECT          NULL          YES
-NULL     public   system         information_schema  columns                            SELECT          NULL          YES
-NULL     public   system         information_schema  constraint_column_usage            SELECT          NULL          YES
-NULL     public   system         information_schema  enabled_roles                      SELECT          NULL          YES
-NULL     public   system         information_schema  key_column_usage                   SELECT          NULL          YES
-NULL     public   system         information_schema  keywords                           SELECT          NULL          YES
-NULL     public   system         information_schema  parameters                         SELECT          NULL          YES
-NULL     public   system         information_schema  procedure_privileges               SELECT          NULL          YES
-NULL     public   system         information_schema  referential_constraints            SELECT          NULL          YES
-NULL     public   system         information_schema  role_table_grants                  SELECT          NULL          YES
-NULL     public   system         information_schema  routines                           SELECT          NULL          YES
-NULL     public   system         information_schema  schema_privileges                  SELECT          NULL          YES
-NULL     public   system         information_schema  schemata                           SELECT          NULL          YES
-NULL     public   system         information_schema  sequences                          SELECT          NULL          YES
-NULL     public   system         information_schema  statistics                         SELECT          NULL          YES
-NULL     public   system         information_schema  table_constraints                  SELECT          NULL          YES
-NULL     public   system         information_schema  table_privileges                   SELECT          NULL          YES
-NULL     public   system         information_schema  tables                             SELECT          NULL          YES
-NULL     public   system         information_schema  user_privileges                    SELECT          NULL          YES
-NULL     public   system         information_schema  views                              SELECT          NULL          YES
-NULL     public   system         kwdb_internal       audit_policies                     SELECT          NULL          YES
-NULL     public   system         kwdb_internal       backward_dependencies              SELECT          NULL          YES
-NULL     public   system         kwdb_internal       builtin_functions                  SELECT          NULL          YES
-NULL     public   system         kwdb_internal       cluster_queries                    SELECT          NULL          YES
-NULL     public   system         kwdb_internal       cluster_sessions                   SELECT          NULL          YES
-NULL     public   system         kwdb_internal       cluster_settings                   SELECT          NULL          YES
-NULL     public   system         kwdb_internal       cluster_transactions               SELECT          NULL          YES
-NULL     public   system         kwdb_internal       create_statements                  SELECT          NULL          YES
-NULL     public   system         kwdb_internal       feature_usage                      SELECT          NULL          YES
-NULL     public   system         kwdb_internal       forward_dependencies               SELECT          NULL          YES
-NULL     public   system         kwdb_internal       gossip_alerts                      SELECT          NULL          YES
-NULL     public   system         kwdb_internal       gossip_liveness                    SELECT          NULL          YES
-NULL     public   system         kwdb_internal       gossip_network                     SELECT          NULL          YES
-NULL     public   system         kwdb_internal       gossip_nodes                       SELECT          NULL          YES
-NULL     public   system         kwdb_internal       index_columns                      SELECT          NULL          YES
-NULL     public   system         kwdb_internal       jobs                               SELECT          NULL          YES
-NULL     public   system         kwdb_internal       kv_node_status                     SELECT          NULL          YES
-NULL     public   system         kwdb_internal       kv_store_status                    SELECT          NULL          YES
-NULL     public   system         kwdb_internal       kwdb_attributes                    SELECT          NULL          YES
-NULL     public   system         kwdb_internal       kwdb_functions                     SELECT          NULL          YES
-NULL     public   system         kwdb_internal       kwdb_object_create_statement       SELECT          NULL          YES
-NULL     public   system         kwdb_internal       kwdb_pipes                         SELECT          NULL          YES
-NULL     public   system         kwdb_internal       kwdb_procedures                    SELECT          NULL          YES
-NULL     public   system         kwdb_internal       kwdb_retention                     SELECT          NULL          YES
-NULL     public   system         kwdb_internal       kwdb_schedules                     SELECT          NULL          YES
-NULL     public   system         kwdb_internal       kwdb_streams                       SELECT          NULL          YES
-NULL     public   system         kwdb_internal       kwdb_triggers                      SELECT          NULL          YES
-NULL     public   system         kwdb_internal       kwdb_tse_info                      SELECT          NULL          YES
-NULL     public   system         kwdb_internal       leases                             SELECT          NULL          YES
-NULL     public   system         kwdb_internal       node_build_info                    SELECT          NULL          YES
-NULL     public   system         kwdb_internal       node_metrics                       SELECT          NULL          YES
-NULL     public   system         kwdb_internal       node_queries                       SELECT          NULL          YES
-NULL     public   system         kwdb_internal       node_runtime_info                  SELECT          NULL          YES
-NULL     public   system         kwdb_internal       node_sessions                      SELECT          NULL          YES
-NULL     public   system         kwdb_internal       node_statement_statistics          SELECT          NULL          YES
-NULL     public   system         kwdb_internal       node_transactions                  SELECT          NULL          YES
-NULL     public   system         kwdb_internal       node_txn_stats                     SELECT          NULL          YES
-NULL     public   system         kwdb_internal       partitions                         SELECT          NULL          YES
-NULL     public   system         kwdb_internal       predefined_comments                SELECT          NULL          YES
-NULL     public   system         kwdb_internal       publications                       SELECT          NULL          YES
-NULL     public   system         kwdb_internal       ranges                             SELECT          NULL          YES
-NULL     public   system         kwdb_internal       ranges_no_leases                   SELECT          NULL          YES
-NULL     public   system         kwdb_internal       schema_changes                     SELECT          NULL          YES
-NULL     public   system         kwdb_internal       session_trace                      SELECT          NULL          YES
-NULL     public   system         kwdb_internal       session_variables                  SELECT          NULL          YES
-NULL     public   system         kwdb_internal       table_columns                      SELECT          NULL          YES
-NULL     public   system         kwdb_internal       table_indexes                      SELECT          NULL          YES
-NULL     public   system         kwdb_internal       tables                             SELECT          NULL          YES
-NULL     public   system         kwdb_internal       ts_inflight_transactions           SELECT          NULL          YES
-NULL     public   system         kwdb_internal       zones                              SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_am                              SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_attrdef                         SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_attribute                       SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_auth_members                    SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_authid                          SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_available_extensions            SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_cast                            SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_class                           SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_collation                       SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_constraint                      SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_conversion                      SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_database                        SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_default_acl                     SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_depend                          SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_description                     SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_enum                            SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_extension                       SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_foreign_data_wrapper            SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_foreign_server                  SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_foreign_table                   SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_index                           SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_indexes                         SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_inherits                        SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_language                        SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_locks                           SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_matviews                        SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_namespace                       SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_operator                        SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_prepared_statements             SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_prepared_xacts                  SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_proc                            SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_range                           SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_rewrite                         SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_roles                           SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_seclabel                        SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_seclabels                       SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_sequence                        SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_settings                        SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_shdepend                        SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_shdescription                   SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_shseclabel                      SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_stat_activity                   SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_stat_all_indexes                SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_tables                          SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_tablespace                      SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_trigger                         SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_type                            SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_user                            SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_user_mapping                    SELECT          NULL          YES
-NULL     public   system         pg_catalog          pg_views                           SELECT          NULL          YES
+NULL     public   system         information_schema  administrable_role_authorizations  SELECT          NULL          NO
+NULL     public   system         information_schema  applicable_roles                   SELECT          NULL          NO
+NULL     public   system         information_schema  check_constraints                  SELECT          NULL          NO
+NULL     public   system         information_schema  column_privileges                  SELECT          NULL          NO
+NULL     public   system         information_schema  columns                            SELECT          NULL          NO
+NULL     public   system         information_schema  constraint_column_usage            SELECT          NULL          NO
+NULL     public   system         information_schema  enabled_roles                      SELECT          NULL          NO
+NULL     public   system         information_schema  key_column_usage                   SELECT          NULL          NO
+NULL     public   system         information_schema  keywords                           SELECT          NULL          NO
+NULL     public   system         information_schema  parameters                         SELECT          NULL          NO
+NULL     public   system         information_schema  procedure_privileges               SELECT          NULL          NO
+NULL     public   system         information_schema  referential_constraints            SELECT          NULL          NO
+NULL     public   system         information_schema  role_column_grants                 SELECT          NULL          NO
+NULL     public   system         information_schema  role_routine_grants                SELECT          NULL          NO
+NULL     public   system         information_schema  role_table_grants                  SELECT          NULL          NO
+NULL     public   system         information_schema  routines                           SELECT          NULL          NO
+NULL     public   system         information_schema  schema_privileges                  SELECT          NULL          NO
+NULL     public   system         information_schema  schemata                           SELECT          NULL          NO
+NULL     public   system         information_schema  sequences                          SELECT          NULL          NO
+NULL     public   system         information_schema  statistics                         SELECT          NULL          NO
+NULL     public   system         information_schema  table_constraints                  SELECT          NULL          NO
+NULL     public   system         information_schema  table_privileges                   SELECT          NULL          NO
+NULL     public   system         information_schema  tables                             SELECT          NULL          NO
+NULL     public   system         information_schema  user_privileges                    SELECT          NULL          NO
+NULL     public   system         information_schema  views                              SELECT          NULL          NO
+NULL     public   system         kwdb_internal       audit_policies                     SELECT          NULL          NO
+NULL     public   system         kwdb_internal       backward_dependencies              SELECT          NULL          NO
+NULL     public   system         kwdb_internal       builtin_functions                  SELECT          NULL          NO
+NULL     public   system         kwdb_internal       cluster_queries                    SELECT          NULL          NO
+NULL     public   system         kwdb_internal       cluster_sessions                   SELECT          NULL          NO
+NULL     public   system         kwdb_internal       cluster_settings                   SELECT          NULL          NO
+NULL     public   system         kwdb_internal       cluster_transactions               SELECT          NULL          NO
+NULL     public   system         kwdb_internal       create_statements                  SELECT          NULL          NO
+NULL     public   system         kwdb_internal       feature_usage                      SELECT          NULL          NO
+NULL     public   system         kwdb_internal       forward_dependencies               SELECT          NULL          NO
+NULL     public   system         kwdb_internal       gossip_alerts                      SELECT          NULL          NO
+NULL     public   system         kwdb_internal       gossip_liveness                    SELECT          NULL          NO
+NULL     public   system         kwdb_internal       gossip_network                     SELECT          NULL          NO
+NULL     public   system         kwdb_internal       gossip_nodes                       SELECT          NULL          NO
+NULL     public   system         kwdb_internal       index_columns                      SELECT          NULL          NO
+NULL     public   system         kwdb_internal       jobs                               SELECT          NULL          NO
+NULL     public   system         kwdb_internal       kv_node_status                     SELECT          NULL          NO
+NULL     public   system         kwdb_internal       kv_store_status                    SELECT          NULL          NO
+NULL     public   system         kwdb_internal       kwdb_attributes                    SELECT          NULL          NO
+NULL     public   system         kwdb_internal       kwdb_functions                     SELECT          NULL          NO
+NULL     public   system         kwdb_internal       kwdb_object_create_statement       SELECT          NULL          NO
+NULL     public   system         kwdb_internal       kwdb_pipes                         SELECT          NULL          NO
+NULL     public   system         kwdb_internal       kwdb_procedures                    SELECT          NULL          NO
+NULL     public   system         kwdb_internal       kwdb_retention                     SELECT          NULL          NO
+NULL     public   system         kwdb_internal       kwdb_schedules                     SELECT          NULL          NO
+NULL     public   system         kwdb_internal       kwdb_streams                       SELECT          NULL          NO
+NULL     public   system         kwdb_internal       kwdb_triggers                      SELECT          NULL          NO
+NULL     public   system         kwdb_internal       kwdb_tse_info                      SELECT          NULL          NO
+NULL     public   system         kwdb_internal       leases                             SELECT          NULL          NO
+NULL     public   system         kwdb_internal       node_build_info                    SELECT          NULL          NO
+NULL     public   system         kwdb_internal       node_metrics                       SELECT          NULL          NO
+NULL     public   system         kwdb_internal       node_queries                       SELECT          NULL          NO
+NULL     public   system         kwdb_internal       node_runtime_info                  SELECT          NULL          NO
+NULL     public   system         kwdb_internal       node_sessions                      SELECT          NULL          NO
+NULL     public   system         kwdb_internal       node_statement_statistics          SELECT          NULL          NO
+NULL     public   system         kwdb_internal       node_transactions                  SELECT          NULL          NO
+NULL     public   system         kwdb_internal       node_txn_stats                     SELECT          NULL          NO
+NULL     public   system         kwdb_internal       partitions                         SELECT          NULL          NO
+NULL     public   system         kwdb_internal       predefined_comments                SELECT          NULL          NO
+NULL     public   system         kwdb_internal       publications                       SELECT          NULL          NO
+NULL     public   system         kwdb_internal       ranges                             SELECT          NULL          NO
+NULL     public   system         kwdb_internal       ranges_no_leases                   SELECT          NULL          NO
+NULL     public   system         kwdb_internal       schema_changes                     SELECT          NULL          NO
+NULL     public   system         kwdb_internal       session_trace                      SELECT          NULL          NO
+NULL     public   system         kwdb_internal       session_variables                  SELECT          NULL          NO
+NULL     public   system         kwdb_internal       table_columns                      SELECT          NULL          NO
+NULL     public   system         kwdb_internal       table_indexes                      SELECT          NULL          NO
+NULL     public   system         kwdb_internal       tables                             SELECT          NULL          NO
+NULL     public   system         kwdb_internal       ts_inflight_transactions           SELECT          NULL          NO
+NULL     public   system         kwdb_internal       zones                              SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_am                              SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_attrdef                         SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_attribute                       SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_auth_members                    SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_authid                          SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_available_extensions            SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_cast                            SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_class                           SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_collation                       SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_constraint                      SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_conversion                      SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_database                        SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_default_acl                     SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_depend                          SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_description                     SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_enum                            SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_extension                       SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_foreign_data_wrapper            SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_foreign_server                  SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_foreign_table                   SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_index                           SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_indexes                         SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_inherits                        SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_language                        SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_locks                           SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_matviews                        SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_namespace                       SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_operator                        SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_prepared_statements             SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_prepared_xacts                  SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_proc                            SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_range                           SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_rewrite                         SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_roles                           SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_seclabel                        SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_seclabels                       SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_sequence                        SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_settings                        SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_shdepend                        SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_shdescription                   SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_shseclabel                      SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_stat_activity                   SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_stat_all_indexes                SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_tables                          SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_tablespace                      SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_trigger                         SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_type                            SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_user                            SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_user_mapping                    SELECT          NULL          NO
+NULL     public   system         pg_catalog          pg_views                           SELECT          NULL          NO
 NULL     admin    system         public              audits                             DELETE          NULL          NO
 NULL     admin    system         public              audits                             GRANT           NULL          NO
 NULL     admin    system         public              audits                             INSERT          NULL          NO
-NULL     admin    system         public              audits                             SELECT          NULL          YES
+NULL     admin    system         public              audits                             SELECT          NULL          NO
 NULL     admin    system         public              audits                             UPDATE          NULL          NO
 NULL     root     system         public              audits                             DELETE          NULL          NO
 NULL     root     system         public              audits                             GRANT           NULL          NO
 NULL     root     system         public              audits                             INSERT          NULL          NO
-NULL     root     system         public              audits                             SELECT          NULL          YES
+NULL     root     system         public              audits                             SELECT          NULL          NO
 NULL     root     system         public              audits                             UPDATE          NULL          NO
 NULL     admin    system         public              bo_black_list                      DELETE          NULL          NO
 NULL     admin    system         public              bo_black_list                      GRANT           NULL          NO
 NULL     admin    system         public              bo_black_list                      INSERT          NULL          NO
-NULL     admin    system         public              bo_black_list                      SELECT          NULL          YES
+NULL     admin    system         public              bo_black_list                      SELECT          NULL          NO
 NULL     admin    system         public              bo_black_list                      UPDATE          NULL          NO
 NULL     root     system         public              bo_black_list                      DELETE          NULL          NO
 NULL     root     system         public              bo_black_list                      GRANT           NULL          NO
 NULL     root     system         public              bo_black_list                      INSERT          NULL          NO
-NULL     root     system         public              bo_black_list                      SELECT          NULL          YES
+NULL     root     system         public              bo_black_list                      SELECT          NULL          NO
 NULL     root     system         public              bo_black_list                      UPDATE          NULL          NO
 NULL     admin    system         public              comments                           DELETE          NULL          NO
 NULL     admin    system         public              comments                           GRANT           NULL          NO
 NULL     admin    system         public              comments                           INSERT          NULL          NO
-NULL     admin    system         public              comments                           SELECT          NULL          YES
+NULL     admin    system         public              comments                           SELECT          NULL          NO
 NULL     admin    system         public              comments                           UPDATE          NULL          NO
-NULL     public   system         public              comments                           SELECT          NULL          YES
+NULL     public   system         public              comments                           SELECT          NULL          NO
 NULL     root     system         public              comments                           DELETE          NULL          NO
 NULL     root     system         public              comments                           GRANT           NULL          NO
 NULL     root     system         public              comments                           INSERT          NULL          NO
-NULL     root     system         public              comments                           SELECT          NULL          YES
+NULL     root     system         public              comments                           SELECT          NULL          NO
 NULL     root     system         public              comments                           UPDATE          NULL          NO
 NULL     admin    system         public              descriptor                         GRANT           NULL          NO
-NULL     admin    system         public              descriptor                         SELECT          NULL          YES
+NULL     admin    system         public              descriptor                         SELECT          NULL          NO
 NULL     root     system         public              descriptor                         GRANT           NULL          NO
-NULL     root     system         public              descriptor                         SELECT          NULL          YES
+NULL     root     system         public              descriptor                         SELECT          NULL          NO
 NULL     admin    system         public              eventlog                           DELETE          NULL          NO
 NULL     admin    system         public              eventlog                           GRANT           NULL          NO
 NULL     admin    system         public              eventlog                           INSERT          NULL          NO
-NULL     admin    system         public              eventlog                           SELECT          NULL          YES
+NULL     admin    system         public              eventlog                           SELECT          NULL          NO
 NULL     admin    system         public              eventlog                           UPDATE          NULL          NO
 NULL     root     system         public              eventlog                           DELETE          NULL          NO
 NULL     root     system         public              eventlog                           GRANT           NULL          NO
 NULL     root     system         public              eventlog                           INSERT          NULL          NO
-NULL     root     system         public              eventlog                           SELECT          NULL          YES
+NULL     root     system         public              eventlog                           SELECT          NULL          NO
 NULL     root     system         public              eventlog                           UPDATE          NULL          NO
 NULL     admin    system         public              jobs                               DELETE          NULL          NO
 NULL     admin    system         public              jobs                               GRANT           NULL          NO
 NULL     admin    system         public              jobs                               INSERT          NULL          NO
-NULL     admin    system         public              jobs                               SELECT          NULL          YES
+NULL     admin    system         public              jobs                               SELECT          NULL          NO
 NULL     admin    system         public              jobs                               UPDATE          NULL          NO
 NULL     root     system         public              jobs                               DELETE          NULL          NO
 NULL     root     system         public              jobs                               GRANT           NULL          NO
 NULL     root     system         public              jobs                               INSERT          NULL          NO
-NULL     root     system         public              jobs                               SELECT          NULL          YES
+NULL     root     system         public              jobs                               SELECT          NULL          NO
 NULL     root     system         public              jobs                               UPDATE          NULL          NO
 NULL     admin    system         public              kwdb_cdc_watermark                 DELETE          NULL          NO
 NULL     admin    system         public              kwdb_cdc_watermark                 GRANT           NULL          NO
 NULL     admin    system         public              kwdb_cdc_watermark                 INSERT          NULL          NO
-NULL     admin    system         public              kwdb_cdc_watermark                 SELECT          NULL          YES
+NULL     admin    system         public              kwdb_cdc_watermark                 SELECT          NULL          NO
 NULL     admin    system         public              kwdb_cdc_watermark                 UPDATE          NULL          NO
 NULL     root     system         public              kwdb_cdc_watermark                 DELETE          NULL          NO
 NULL     root     system         public              kwdb_cdc_watermark                 GRANT           NULL          NO
 NULL     root     system         public              kwdb_cdc_watermark                 INSERT          NULL          NO
-NULL     root     system         public              kwdb_cdc_watermark                 SELECT          NULL          YES
+NULL     root     system         public              kwdb_cdc_watermark                 SELECT          NULL          NO
 NULL     root     system         public              kwdb_cdc_watermark                 UPDATE          NULL          NO
 NULL     admin    system         public              kwdb_pipes                         DELETE          NULL          NO
 NULL     admin    system         public              kwdb_pipes                         GRANT           NULL          NO
 NULL     admin    system         public              kwdb_pipes                         INSERT          NULL          NO
-NULL     admin    system         public              kwdb_pipes                         SELECT          NULL          YES
+NULL     admin    system         public              kwdb_pipes                         SELECT          NULL          NO
 NULL     admin    system         public              kwdb_pipes                         UPDATE          NULL          NO
 NULL     root     system         public              kwdb_pipes                         DELETE          NULL          NO
 NULL     root     system         public              kwdb_pipes                         GRANT           NULL          NO
 NULL     root     system         public              kwdb_pipes                         INSERT          NULL          NO
-NULL     root     system         public              kwdb_pipes                         SELECT          NULL          YES
+NULL     root     system         public              kwdb_pipes                         SELECT          NULL          NO
 NULL     root     system         public              kwdb_pipes                         UPDATE          NULL          NO
 NULL     admin    system         public              kwdb_publications                  DELETE          NULL          NO
 NULL     admin    system         public              kwdb_publications                  GRANT           NULL          NO
 NULL     admin    system         public              kwdb_publications                  INSERT          NULL          NO
-NULL     admin    system         public              kwdb_publications                  SELECT          NULL          YES
+NULL     admin    system         public              kwdb_publications                  SELECT          NULL          NO
 NULL     admin    system         public              kwdb_publications                  UPDATE          NULL          NO
 NULL     root     system         public              kwdb_publications                  DELETE          NULL          NO
 NULL     root     system         public              kwdb_publications                  GRANT           NULL          NO
 NULL     root     system         public              kwdb_publications                  INSERT          NULL          NO
-NULL     root     system         public              kwdb_publications                  SELECT          NULL          YES
+NULL     root     system         public              kwdb_publications                  SELECT          NULL          NO
 NULL     root     system         public              kwdb_publications                  UPDATE          NULL          NO
 NULL     admin    system         public              kwdb_replication_info              DELETE          NULL          NO
 NULL     admin    system         public              kwdb_replication_info              GRANT           NULL          NO
 NULL     admin    system         public              kwdb_replication_info              INSERT          NULL          NO
-NULL     admin    system         public              kwdb_replication_info              SELECT          NULL          YES
+NULL     admin    system         public              kwdb_replication_info              SELECT          NULL          NO
 NULL     admin    system         public              kwdb_replication_info              UPDATE          NULL          NO
 NULL     root     system         public              kwdb_replication_info              DELETE          NULL          NO
 NULL     root     system         public              kwdb_replication_info              GRANT           NULL          NO
 NULL     root     system         public              kwdb_replication_info              INSERT          NULL          NO
-NULL     root     system         public              kwdb_replication_info              SELECT          NULL          YES
+NULL     root     system         public              kwdb_replication_info              SELECT          NULL          NO
 NULL     root     system         public              kwdb_replication_info              UPDATE          NULL          NO
 NULL     admin    system         public              kwdb_streams                       DELETE          NULL          NO
 NULL     admin    system         public              kwdb_streams                       GRANT           NULL          NO
 NULL     admin    system         public              kwdb_streams                       INSERT          NULL          NO
-NULL     admin    system         public              kwdb_streams                       SELECT          NULL          YES
+NULL     admin    system         public              kwdb_streams                       SELECT          NULL          NO
 NULL     admin    system         public              kwdb_streams                       UPDATE          NULL          NO
 NULL     root     system         public              kwdb_streams                       DELETE          NULL          NO
 NULL     root     system         public              kwdb_streams                       GRANT           NULL          NO
 NULL     root     system         public              kwdb_streams                       INSERT          NULL          NO
-NULL     root     system         public              kwdb_streams                       SELECT          NULL          YES
+NULL     root     system         public              kwdb_streams                       SELECT          NULL          NO
 NULL     root     system         public              kwdb_streams                       UPDATE          NULL          NO
 NULL     admin    system         public              kwdb_ts_table                      DELETE          NULL          NO
 NULL     admin    system         public              kwdb_ts_table                      GRANT           NULL          NO
 NULL     admin    system         public              kwdb_ts_table                      INSERT          NULL          NO
-NULL     admin    system         public              kwdb_ts_table                      SELECT          NULL          YES
+NULL     admin    system         public              kwdb_ts_table                      SELECT          NULL          NO
 NULL     admin    system         public              kwdb_ts_table                      UPDATE          NULL          NO
 NULL     root     system         public              kwdb_ts_table                      DELETE          NULL          NO
 NULL     root     system         public              kwdb_ts_table                      GRANT           NULL          NO
 NULL     root     system         public              kwdb_ts_table                      INSERT          NULL          NO
-NULL     root     system         public              kwdb_ts_table                      SELECT          NULL          YES
+NULL     root     system         public              kwdb_ts_table                      SELECT          NULL          NO
 NULL     root     system         public              kwdb_ts_table                      UPDATE          NULL          NO
 NULL     admin    system         public              kwdb_unpush                        DELETE          NULL          NO
 NULL     admin    system         public              kwdb_unpush                        GRANT           NULL          NO
 NULL     admin    system         public              kwdb_unpush                        INSERT          NULL          NO
-NULL     admin    system         public              kwdb_unpush                        SELECT          NULL          YES
+NULL     admin    system         public              kwdb_unpush                        SELECT          NULL          NO
 NULL     admin    system         public              kwdb_unpush                        UPDATE          NULL          NO
 NULL     root     system         public              kwdb_unpush                        DELETE          NULL          NO
 NULL     root     system         public              kwdb_unpush                        GRANT           NULL          NO
 NULL     root     system         public              kwdb_unpush                        INSERT          NULL          NO
-NULL     root     system         public              kwdb_unpush                        SELECT          NULL          YES
+NULL     root     system         public              kwdb_unpush                        SELECT          NULL          NO
 NULL     root     system         public              kwdb_unpush                        UPDATE          NULL          NO
 NULL     admin    system         public              lease                              DELETE          NULL          NO
 NULL     admin    system         public              lease                              GRANT           NULL          NO
 NULL     admin    system         public              lease                              INSERT          NULL          NO
-NULL     admin    system         public              lease                              SELECT          NULL          YES
+NULL     admin    system         public              lease                              SELECT          NULL          NO
 NULL     admin    system         public              lease                              UPDATE          NULL          NO
 NULL     root     system         public              lease                              DELETE          NULL          NO
 NULL     root     system         public              lease                              GRANT           NULL          NO
 NULL     root     system         public              lease                              INSERT          NULL          NO
-NULL     root     system         public              lease                              SELECT          NULL          YES
+NULL     root     system         public              lease                              SELECT          NULL          NO
 NULL     root     system         public              lease                              UPDATE          NULL          NO
 NULL     admin    system         public              locations                          DELETE          NULL          NO
 NULL     admin    system         public              locations                          GRANT           NULL          NO
 NULL     admin    system         public              locations                          INSERT          NULL          NO
-NULL     admin    system         public              locations                          SELECT          NULL          YES
+NULL     admin    system         public              locations                          SELECT          NULL          NO
 NULL     admin    system         public              locations                          UPDATE          NULL          NO
 NULL     root     system         public              locations                          DELETE          NULL          NO
 NULL     root     system         public              locations                          GRANT           NULL          NO
 NULL     root     system         public              locations                          INSERT          NULL          NO
-NULL     root     system         public              locations                          SELECT          NULL          YES
+NULL     root     system         public              locations                          SELECT          NULL          NO
 NULL     root     system         public              locations                          UPDATE          NULL          NO
 NULL     admin    system         public              namespace                          GRANT           NULL          NO
-NULL     admin    system         public              namespace                          SELECT          NULL          YES
+NULL     admin    system         public              namespace                          SELECT          NULL          NO
 NULL     root     system         public              namespace                          GRANT           NULL          NO
-NULL     root     system         public              namespace                          SELECT          NULL          YES
+NULL     root     system         public              namespace                          SELECT          NULL          NO
 NULL     admin    system         public              namespace2                         GRANT           NULL          NO
-NULL     admin    system         public              namespace2                         SELECT          NULL          YES
+NULL     admin    system         public              namespace2                         SELECT          NULL          NO
 NULL     root     system         public              namespace2                         GRANT           NULL          NO
-NULL     root     system         public              namespace2                         SELECT          NULL          YES
+NULL     root     system         public              namespace2                         SELECT          NULL          NO
 NULL     admin    system         public              protected_ts_meta                  GRANT           NULL          NO
-NULL     admin    system         public              protected_ts_meta                  SELECT          NULL          YES
+NULL     admin    system         public              protected_ts_meta                  SELECT          NULL          NO
 NULL     root     system         public              protected_ts_meta                  GRANT           NULL          NO
-NULL     root     system         public              protected_ts_meta                  SELECT          NULL          YES
+NULL     root     system         public              protected_ts_meta                  SELECT          NULL          NO
 NULL     admin    system         public              protected_ts_records               GRANT           NULL          NO
-NULL     admin    system         public              protected_ts_records               SELECT          NULL          YES
+NULL     admin    system         public              protected_ts_records               SELECT          NULL          NO
 NULL     root     system         public              protected_ts_records               GRANT           NULL          NO
-NULL     root     system         public              protected_ts_records               SELECT          NULL          YES
+NULL     root     system         public              protected_ts_records               SELECT          NULL          NO
 NULL     admin    system         public              rangelog                           DELETE          NULL          NO
 NULL     admin    system         public              rangelog                           GRANT           NULL          NO
 NULL     admin    system         public              rangelog                           INSERT          NULL          NO
-NULL     admin    system         public              rangelog                           SELECT          NULL          YES
+NULL     admin    system         public              rangelog                           SELECT          NULL          NO
 NULL     admin    system         public              rangelog                           UPDATE          NULL          NO
 NULL     root     system         public              rangelog                           DELETE          NULL          NO
 NULL     root     system         public              rangelog                           GRANT           NULL          NO
 NULL     root     system         public              rangelog                           INSERT          NULL          NO
-NULL     root     system         public              rangelog                           SELECT          NULL          YES
+NULL     root     system         public              rangelog                           SELECT          NULL          NO
 NULL     root     system         public              rangelog                           UPDATE          NULL          NO
 NULL     admin    system         public              replication_constraint_stats       DELETE          NULL          NO
 NULL     admin    system         public              replication_constraint_stats       GRANT           NULL          NO
 NULL     admin    system         public              replication_constraint_stats       INSERT          NULL          NO
-NULL     admin    system         public              replication_constraint_stats       SELECT          NULL          YES
+NULL     admin    system         public              replication_constraint_stats       SELECT          NULL          NO
 NULL     admin    system         public              replication_constraint_stats       UPDATE          NULL          NO
 NULL     root     system         public              replication_constraint_stats       DELETE          NULL          NO
 NULL     root     system         public              replication_constraint_stats       GRANT           NULL          NO
 NULL     root     system         public              replication_constraint_stats       INSERT          NULL          NO
-NULL     root     system         public              replication_constraint_stats       SELECT          NULL          YES
+NULL     root     system         public              replication_constraint_stats       SELECT          NULL          NO
 NULL     root     system         public              replication_constraint_stats       UPDATE          NULL          NO
 NULL     admin    system         public              replication_critical_localities    DELETE          NULL          NO
 NULL     admin    system         public              replication_critical_localities    GRANT           NULL          NO
 NULL     admin    system         public              replication_critical_localities    INSERT          NULL          NO
-NULL     admin    system         public              replication_critical_localities    SELECT          NULL          YES
+NULL     admin    system         public              replication_critical_localities    SELECT          NULL          NO
 NULL     admin    system         public              replication_critical_localities    UPDATE          NULL          NO
 NULL     root     system         public              replication_critical_localities    DELETE          NULL          NO
 NULL     root     system         public              replication_critical_localities    GRANT           NULL          NO
 NULL     root     system         public              replication_critical_localities    INSERT          NULL          NO
-NULL     root     system         public              replication_critical_localities    SELECT          NULL          YES
+NULL     root     system         public              replication_critical_localities    SELECT          NULL          NO
 NULL     root     system         public              replication_critical_localities    UPDATE          NULL          NO
 NULL     admin    system         public              replication_stats                  DELETE          NULL          NO
 NULL     admin    system         public              replication_stats                  GRANT           NULL          NO
 NULL     admin    system         public              replication_stats                  INSERT          NULL          NO
-NULL     admin    system         public              replication_stats                  SELECT          NULL          YES
+NULL     admin    system         public              replication_stats                  SELECT          NULL          NO
 NULL     admin    system         public              replication_stats                  UPDATE          NULL          NO
 NULL     root     system         public              replication_stats                  DELETE          NULL          NO
 NULL     root     system         public              replication_stats                  GRANT           NULL          NO
 NULL     root     system         public              replication_stats                  INSERT          NULL          NO
-NULL     root     system         public              replication_stats                  SELECT          NULL          YES
+NULL     root     system         public              replication_stats                  SELECT          NULL          NO
 NULL     root     system         public              replication_stats                  UPDATE          NULL          NO
 NULL     admin    system         public              reports_meta                       DELETE          NULL          NO
 NULL     admin    system         public              reports_meta                       GRANT           NULL          NO
 NULL     admin    system         public              reports_meta                       INSERT          NULL          NO
-NULL     admin    system         public              reports_meta                       SELECT          NULL          YES
+NULL     admin    system         public              reports_meta                       SELECT          NULL          NO
 NULL     admin    system         public              reports_meta                       UPDATE          NULL          NO
 NULL     root     system         public              reports_meta                       DELETE          NULL          NO
 NULL     root     system         public              reports_meta                       GRANT           NULL          NO
 NULL     root     system         public              reports_meta                       INSERT          NULL          NO
-NULL     root     system         public              reports_meta                       SELECT          NULL          YES
+NULL     root     system         public              reports_meta                       SELECT          NULL          NO
 NULL     root     system         public              reports_meta                       UPDATE          NULL          NO
 NULL     admin    system         public              role_members                       DELETE          NULL          NO
 NULL     admin    system         public              role_members                       GRANT           NULL          NO
 NULL     admin    system         public              role_members                       INSERT          NULL          NO
-NULL     admin    system         public              role_members                       SELECT          NULL          YES
+NULL     admin    system         public              role_members                       SELECT          NULL          NO
 NULL     admin    system         public              role_members                       UPDATE          NULL          NO
 NULL     root     system         public              role_members                       DELETE          NULL          NO
 NULL     root     system         public              role_members                       GRANT           NULL          NO
 NULL     root     system         public              role_members                       INSERT          NULL          NO
-NULL     root     system         public              role_members                       SELECT          NULL          YES
+NULL     root     system         public              role_members                       SELECT          NULL          NO
 NULL     root     system         public              role_members                       UPDATE          NULL          NO
 NULL     admin    system         public              role_options                       DELETE          NULL          NO
 NULL     admin    system         public              role_options                       GRANT           NULL          NO
 NULL     admin    system         public              role_options                       INSERT          NULL          NO
-NULL     admin    system         public              role_options                       SELECT          NULL          YES
+NULL     admin    system         public              role_options                       SELECT          NULL          NO
 NULL     admin    system         public              role_options                       UPDATE          NULL          NO
 NULL     root     system         public              role_options                       DELETE          NULL          NO
 NULL     root     system         public              role_options                       GRANT           NULL          NO
 NULL     root     system         public              role_options                       INSERT          NULL          NO
-NULL     root     system         public              role_options                       SELECT          NULL          YES
+NULL     root     system         public              role_options                       SELECT          NULL          NO
 NULL     root     system         public              role_options                       UPDATE          NULL          NO
 NULL     admin    system         public              scheduled_jobs                     DELETE          NULL          NO
 NULL     admin    system         public              scheduled_jobs                     GRANT           NULL          NO
 NULL     admin    system         public              scheduled_jobs                     INSERT          NULL          NO
-NULL     admin    system         public              scheduled_jobs                     SELECT          NULL          YES
+NULL     admin    system         public              scheduled_jobs                     SELECT          NULL          NO
 NULL     admin    system         public              scheduled_jobs                     UPDATE          NULL          NO
 NULL     root     system         public              scheduled_jobs                     DELETE          NULL          NO
 NULL     root     system         public              scheduled_jobs                     GRANT           NULL          NO
 NULL     root     system         public              scheduled_jobs                     INSERT          NULL          NO
-NULL     root     system         public              scheduled_jobs                     SELECT          NULL          YES
+NULL     root     system         public              scheduled_jobs                     SELECT          NULL          NO
 NULL     root     system         public              scheduled_jobs                     UPDATE          NULL          NO
 NULL     admin    system         public              settings                           DELETE          NULL          NO
 NULL     admin    system         public              settings                           GRANT           NULL          NO
 NULL     admin    system         public              settings                           INSERT          NULL          NO
-NULL     admin    system         public              settings                           SELECT          NULL          YES
+NULL     admin    system         public              settings                           SELECT          NULL          NO
 NULL     admin    system         public              settings                           UPDATE          NULL          NO
 NULL     root     system         public              settings                           DELETE          NULL          NO
 NULL     root     system         public              settings                           GRANT           NULL          NO
 NULL     root     system         public              settings                           INSERT          NULL          NO
-NULL     root     system         public              settings                           SELECT          NULL          YES
+NULL     root     system         public              settings                           SELECT          NULL          NO
 NULL     root     system         public              settings                           UPDATE          NULL          NO
 NULL     admin    system         public              statement_bundle_chunks            DELETE          NULL          NO
 NULL     admin    system         public              statement_bundle_chunks            GRANT           NULL          NO
 NULL     admin    system         public              statement_bundle_chunks            INSERT          NULL          NO
-NULL     admin    system         public              statement_bundle_chunks            SELECT          NULL          YES
+NULL     admin    system         public              statement_bundle_chunks            SELECT          NULL          NO
 NULL     admin    system         public              statement_bundle_chunks            UPDATE          NULL          NO
 NULL     root     system         public              statement_bundle_chunks            DELETE          NULL          NO
 NULL     root     system         public              statement_bundle_chunks            GRANT           NULL          NO
 NULL     root     system         public              statement_bundle_chunks            INSERT          NULL          NO
-NULL     root     system         public              statement_bundle_chunks            SELECT          NULL          YES
+NULL     root     system         public              statement_bundle_chunks            SELECT          NULL          NO
 NULL     root     system         public              statement_bundle_chunks            UPDATE          NULL          NO
 NULL     admin    system         public              statement_diagnostics              DELETE          NULL          NO
 NULL     admin    system         public              statement_diagnostics              GRANT           NULL          NO
 NULL     admin    system         public              statement_diagnostics              INSERT          NULL          NO
-NULL     admin    system         public              statement_diagnostics              SELECT          NULL          YES
+NULL     admin    system         public              statement_diagnostics              SELECT          NULL          NO
 NULL     admin    system         public              statement_diagnostics              UPDATE          NULL          NO
 NULL     root     system         public              statement_diagnostics              DELETE          NULL          NO
 NULL     root     system         public              statement_diagnostics              GRANT           NULL          NO
 NULL     root     system         public              statement_diagnostics              INSERT          NULL          NO
-NULL     root     system         public              statement_diagnostics              SELECT          NULL          YES
+NULL     root     system         public              statement_diagnostics              SELECT          NULL          NO
 NULL     root     system         public              statement_diagnostics              UPDATE          NULL          NO
 NULL     admin    system         public              statement_diagnostics_requests     DELETE          NULL          NO
 NULL     admin    system         public              statement_diagnostics_requests     GRANT           NULL          NO
 NULL     admin    system         public              statement_diagnostics_requests     INSERT          NULL          NO
-NULL     admin    system         public              statement_diagnostics_requests     SELECT          NULL          YES
+NULL     admin    system         public              statement_diagnostics_requests     SELECT          NULL          NO
 NULL     admin    system         public              statement_diagnostics_requests     UPDATE          NULL          NO
 NULL     root     system         public              statement_diagnostics_requests     DELETE          NULL          NO
 NULL     root     system         public              statement_diagnostics_requests     GRANT           NULL          NO
 NULL     root     system         public              statement_diagnostics_requests     INSERT          NULL          NO
-NULL     root     system         public              statement_diagnostics_requests     SELECT          NULL          YES
+NULL     root     system         public              statement_diagnostics_requests     SELECT          NULL          NO
 NULL     root     system         public              statement_diagnostics_requests     UPDATE          NULL          NO
 NULL     admin    system         public              table_statistics                   DELETE          NULL          NO
 NULL     admin    system         public              table_statistics                   GRANT           NULL          NO
 NULL     admin    system         public              table_statistics                   INSERT          NULL          NO
-NULL     admin    system         public              table_statistics                   SELECT          NULL          YES
+NULL     admin    system         public              table_statistics                   SELECT          NULL          NO
 NULL     admin    system         public              table_statistics                   UPDATE          NULL          NO
 NULL     root     system         public              table_statistics                   DELETE          NULL          NO
 NULL     root     system         public              table_statistics                   GRANT           NULL          NO
 NULL     root     system         public              table_statistics                   INSERT          NULL          NO
-NULL     root     system         public              table_statistics                   SELECT          NULL          YES
+NULL     root     system         public              table_statistics                   SELECT          NULL          NO
 NULL     root     system         public              table_statistics                   UPDATE          NULL          NO
 NULL     admin    system         public              ui                                 DELETE          NULL          NO
 NULL     admin    system         public              ui                                 GRANT           NULL          NO
 NULL     admin    system         public              ui                                 INSERT          NULL          NO
-NULL     admin    system         public              ui                                 SELECT          NULL          YES
+NULL     admin    system         public              ui                                 SELECT          NULL          NO
 NULL     admin    system         public              ui                                 UPDATE          NULL          NO
 NULL     root     system         public              ui                                 DELETE          NULL          NO
 NULL     root     system         public              ui                                 GRANT           NULL          NO
 NULL     root     system         public              ui                                 INSERT          NULL          NO
-NULL     root     system         public              ui                                 SELECT          NULL          YES
+NULL     root     system         public              ui                                 SELECT          NULL          NO
 NULL     root     system         public              ui                                 UPDATE          NULL          NO
 NULL     admin    system         public              user_defined_routine               DELETE          NULL          NO
 NULL     admin    system         public              user_defined_routine               GRANT           NULL          NO
 NULL     admin    system         public              user_defined_routine               INSERT          NULL          NO
-NULL     admin    system         public              user_defined_routine               SELECT          NULL          YES
+NULL     admin    system         public              user_defined_routine               SELECT          NULL          NO
 NULL     admin    system         public              user_defined_routine               UPDATE          NULL          NO
 NULL     root     system         public              user_defined_routine               DELETE          NULL          NO
 NULL     root     system         public              user_defined_routine               GRANT           NULL          NO
 NULL     root     system         public              user_defined_routine               INSERT          NULL          NO
-NULL     root     system         public              user_defined_routine               SELECT          NULL          YES
+NULL     root     system         public              user_defined_routine               SELECT          NULL          NO
 NULL     root     system         public              user_defined_routine               UPDATE          NULL          NO
 NULL     admin    system         public              users                              DELETE          NULL          NO
 NULL     admin    system         public              users                              GRANT           NULL          NO
 NULL     admin    system         public              users                              INSERT          NULL          NO
-NULL     admin    system         public              users                              SELECT          NULL          YES
+NULL     admin    system         public              users                              SELECT          NULL          NO
 NULL     admin    system         public              users                              UPDATE          NULL          NO
 NULL     root     system         public              users                              DELETE          NULL          NO
 NULL     root     system         public              users                              GRANT           NULL          NO
 NULL     root     system         public              users                              INSERT          NULL          NO
-NULL     root     system         public              users                              SELECT          NULL          YES
+NULL     root     system         public              users                              SELECT          NULL          NO
 NULL     root     system         public              users                              UPDATE          NULL          NO
 NULL     admin    system         public              web_sessions                       DELETE          NULL          NO
 NULL     admin    system         public              web_sessions                       GRANT           NULL          NO
 NULL     admin    system         public              web_sessions                       INSERT          NULL          NO
-NULL     admin    system         public              web_sessions                       SELECT          NULL          YES
+NULL     admin    system         public              web_sessions                       SELECT          NULL          NO
 NULL     admin    system         public              web_sessions                       UPDATE          NULL          NO
 NULL     root     system         public              web_sessions                       DELETE          NULL          NO
 NULL     root     system         public              web_sessions                       GRANT           NULL          NO
 NULL     root     system         public              web_sessions                       INSERT          NULL          NO
-NULL     root     system         public              web_sessions                       SELECT          NULL          YES
+NULL     root     system         public              web_sessions                       SELECT          NULL          NO
 NULL     root     system         public              web_sessions                       UPDATE          NULL          NO
 NULL     admin    system         public              zones                              DELETE          NULL          NO
 NULL     admin    system         public              zones                              GRANT           NULL          NO
 NULL     admin    system         public              zones                              INSERT          NULL          NO
-NULL     admin    system         public              zones                              SELECT          NULL          YES
+NULL     admin    system         public              zones                              SELECT          NULL          NO
 NULL     admin    system         public              zones                              UPDATE          NULL          NO
 NULL     root     system         public              zones                              DELETE          NULL          NO
 NULL     root     system         public              zones                              GRANT           NULL          NO
 NULL     root     system         public              zones                              INSERT          NULL          NO
-NULL     root     system         public              zones                              SELECT          NULL          YES
+NULL     root     system         public              zones                              SELECT          NULL          NO
 NULL     root     system         public              zones                              UPDATE          NULL          NO
 
 statement ok
@@ -2430,21 +2442,17 @@ SELECT * FROM other_db.information_schema.table_privileges WHERE TABLE_SCHEMA = 
 grantor  grantee   table_catalog  table_schema  table_name  privilege_type  is_grantable  with_hierarchy
 NULL     admin     other_db       public        xyz         ALL             NULL          NO
 NULL     root      other_db       public        xyz         ALL             NULL          NO
-NULL     testuser  other_db       public        xyz         SELECT          NULL          YES
+NULL     testuser  other_db       public        xyz         SELECT          NULL          NO
 NULL     admin     other_db       public        abc         ALL             NULL          NO
 NULL     root      other_db       public        abc         ALL             NULL          NO
-NULL     testuser  other_db       public        abc         SELECT          NULL          YES
+NULL     testuser  other_db       public        abc         SELECT          NULL          NO
 
 query TTTTTTTT colnames
 SELECT * FROM other_db.information_schema.role_table_grants WHERE TABLE_SCHEMA = 'public'
 ----
 grantor  grantee   table_catalog  table_schema  table_name  privilege_type  is_grantable  with_hierarchy
 NULL     admin     other_db       public        xyz         ALL             NULL          NO
-NULL     root      other_db       public        xyz         ALL             NULL          NO
-NULL     testuser  other_db       public        xyz         SELECT          NULL          YES
 NULL     admin     other_db       public        abc         ALL             NULL          NO
-NULL     root      other_db       public        abc         ALL             NULL          NO
-NULL     testuser  other_db       public        abc         SELECT          NULL          YES
 
 statement ok
 GRANT UPDATE ON other_db.xyz TO testuser
@@ -2455,23 +2463,51 @@ SELECT * FROM other_db.information_schema.table_privileges WHERE TABLE_SCHEMA = 
 grantor  grantee   table_catalog  table_schema  table_name  privilege_type  is_grantable  with_hierarchy
 NULL     admin     other_db       public        xyz         ALL             NULL          NO
 NULL     root      other_db       public        xyz         ALL             NULL          NO
-NULL     testuser  other_db       public        xyz         SELECT          NULL          YES
+NULL     testuser  other_db       public        xyz         SELECT          NULL          NO
 NULL     testuser  other_db       public        xyz         UPDATE          NULL          NO
 NULL     admin     other_db       public        abc         ALL             NULL          NO
 NULL     root      other_db       public        abc         ALL             NULL          NO
-NULL     testuser  other_db       public        abc         SELECT          NULL          YES
+NULL     testuser  other_db       public        abc         SELECT          NULL          NO
 
 query TTTTTTTT colnames
 SELECT * FROM other_db.information_schema.role_table_grants WHERE TABLE_SCHEMA = 'public'
 ----
 grantor  grantee   table_catalog  table_schema  table_name  privilege_type  is_grantable  with_hierarchy
 NULL     admin     other_db       public        xyz         ALL             NULL          NO
-NULL     root      other_db       public        xyz         ALL             NULL          NO
-NULL     testuser  other_db       public        xyz         SELECT          NULL          YES
-NULL     testuser  other_db       public        xyz         UPDATE          NULL          NO
 NULL     admin     other_db       public        abc         ALL             NULL          NO
-NULL     root      other_db       public        abc         ALL             NULL          NO
-NULL     testuser  other_db       public        abc         SELECT          NULL          YES
+
+# A user granted the admin role follows the administrator visibility path.
+statement ok
+GRANT ALL ON DATABASE other_db TO testuser
+
+statement ok
+GRANT admin TO testuser
+
+user testuser
+
+statement ok
+SET DATABASE = other_db
+
+query T rowsort
+SELECT DISTINCT grantee
+FROM information_schema.role_table_grants
+WHERE table_schema = 'public' AND table_name = 'xyz'
+ORDER BY grantee
+----
+admin
+
+query T rowsort
+SELECT DISTINCT grantee
+FROM information_schema.role_column_grants
+WHERE table_schema = 'public' AND table_name = 'xyz'
+ORDER BY grantee
+----
+admin
+
+user root
+
+statement ok
+REVOKE admin FROM testuser
 
 # testuser can read permissions as well
 user testuser
@@ -2483,25 +2519,14 @@ query TTTTTTTT colnames
 SELECT * FROM information_schema.table_privileges WHERE TABLE_SCHEMA = 'public'
 ----
 grantor  grantee   table_catalog  table_schema  table_name  privilege_type  is_grantable  with_hierarchy
-NULL     admin     other_db       public        xyz         ALL             NULL          NO
-NULL     root      other_db       public        xyz         ALL             NULL          NO
-NULL     testuser  other_db       public        xyz         SELECT          NULL          YES
+NULL     testuser  other_db       public        xyz         SELECT          NULL          NO
 NULL     testuser  other_db       public        xyz         UPDATE          NULL          NO
-NULL     admin     other_db       public        abc         ALL             NULL          NO
-NULL     root      other_db       public        abc         ALL             NULL          NO
-NULL     testuser  other_db       public        abc         SELECT          NULL          YES
+NULL     testuser  other_db       public        abc         SELECT          NULL          NO
 
 query TTTTTTTT colnames
 SELECT * FROM information_schema.role_table_grants WHERE TABLE_SCHEMA = 'public'
 ----
 grantor  grantee   table_catalog  table_schema  table_name  privilege_type  is_grantable  with_hierarchy
-NULL     admin     other_db       public        xyz         ALL             NULL          NO
-NULL     root      other_db       public        xyz         ALL             NULL          NO
-NULL     testuser  other_db       public        xyz         SELECT          NULL          YES
-NULL     testuser  other_db       public        xyz         UPDATE          NULL          NO
-NULL     admin     other_db       public        abc         ALL             NULL          NO
-NULL     root      other_db       public        abc         ALL             NULL          NO
-NULL     testuser  other_db       public        abc         SELECT          NULL          YES
 
 statement ok
 SET DATABASE = test
@@ -2577,6 +2602,46 @@ root     test           SELECT          NULL
 root     test           UPDATE          NULL
 root     test           ZONECONFIG      NULL
 
+# user_privileges must not synthesize root/admin rows for an ordinary user.
+statement ok
+GRANT ALL ON DATABASE test TO testuser
+
+user testuser
+
+query TTTT colnames
+SELECT * FROM information_schema.user_privileges ORDER BY grantee, privilege_type
+----
+grantee  table_catalog  privilege_type  is_grantable
+
+user root
+
+# An ordinary user granted the admin role sees the admin compatibility rows.
+statement ok
+GRANT admin TO testuser
+
+user testuser
+
+query TTTT colnames,rowsort
+SELECT grantee, table_catalog, privilege_type, is_grantable
+FROM information_schema.user_privileges
+----
+grantee  table_catalog  privilege_type  is_grantable
+admin    test            ALL              NULL
+admin    test            CREATE           NULL
+admin    test            DELETE           NULL
+admin    test            DROP             NULL
+admin    test            EXECUTE         NULL
+admin    test            GRANT            NULL
+admin    test            INSERT           NULL
+admin    test            SELECT           NULL
+admin    test            UPDATE           NULL
+admin    test            ZONECONFIG       NULL
+
+user root
+
+statement ok
+REVOKE admin FROM testuser
+
 # information_schema.sequences
 
 statement ok
@@ -2631,6 +2696,65 @@ table_name      STRING     false        NULL            ·                      
 column_name     STRING     false        NULL            ·                      {}       false      false
 privilege_type  STRING     false        NULL            ·                      {}       false      false
 is_grantable    STRING     true         NULL            ·                      {}       false      false
+
+# test information_schema.role_column_grants
+query TTBTTTBB colnames
+SHOW COLUMNS FROM information_schema.role_column_grants
+----
+column_name     data_type  is_nullable  column_default  generation_expression  indices  is_hidden  is_tag
+grantor         STRING     true         NULL            ·                      {}       false      false
+grantee         STRING     false        NULL            ·                      {}       false      false
+table_catalog   STRING     false        NULL            ·                      {}       false      false
+table_schema    STRING     false        NULL            ·                      {}       false      false
+table_name      STRING     false        NULL            ·                      {}       false      false
+column_name     STRING     false        NULL            ·                      {}       false      false
+privilege_type  STRING     false        NULL            ·                      {}       false      false
+is_grantable    STRING     true         NULL            ·                      {}       false      false
+
+# role_column_grants contains column privileges granted to the current user's roles.
+statement ok
+CREATE TABLE column_privileges_test (a INT, b INT)
+
+statement ok
+CREATE ROLE column_privileges_parent_role
+
+statement ok
+CREATE ROLE column_privileges_child_role
+
+statement ok
+GRANT UPDATE ON column_privileges_test TO column_privileges_parent_role
+
+statement ok
+GRANT column_privileges_parent_role TO column_privileges_child_role
+
+statement ok
+GRANT UPDATE ON column_privileges_test TO public
+
+statement ok
+GRANT column_privileges_child_role TO testuser
+
+user testuser
+
+query TTT rowsort
+SELECT grantee, column_name, privilege_type
+  FROM information_schema.role_column_grants
+ WHERE table_schema = 'public' AND table_name = 'column_privileges_test'
+----
+public  a  UPDATE
+public  b  UPDATE
+column_privileges_parent_role  a  UPDATE
+column_privileges_parent_role  b  UPDATE
+
+user root
+
+statement ok
+DROP TABLE column_privileges_test
+
+statement ok
+DROP ROLE column_privileges_child_role
+
+statement ok
+DROP ROLE column_privileges_parent_role
 
 
 # test information_schema.routines

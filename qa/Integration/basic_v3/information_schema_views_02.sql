@@ -104,5 +104,65 @@ ORDER BY word;
 SELECT count(*) > 0 AS has_keywords
 FROM information_schema.keywords;
 
+-- QA integration scripts run as root, so cover the new role grant views from
+-- the administrator-visible scope. Detailed non-admin visibility stays in
+-- the SQL logic tests.
+CREATE ROLE is_privilege_role;
+CREATE PROCEDURE is_rel_db.is_all_routine() BEGIN SELECT 1; END;
+GRANT SELECT ON DATABASE is_rel_db TO is_privilege_role;
+GRANT ALL ON PROCEDURE is_rel_db.is_all_routine TO is_privilege_role;
+GRANT SELECT ON TABLE is_rel_db.rel_table TO is_privilege_role;
+
+SELECT grantee, table_catalog, table_schema, privilege_type
+FROM is_rel_db.information_schema.schema_privileges
+WHERE grantee = 'is_privilege_role'
+  AND table_catalog = 'is_rel_db'
+ORDER BY table_schema, privilege_type;
+
+SELECT grantee, table_schema, table_name, privilege_type
+FROM is_rel_db.information_schema.table_privileges
+WHERE grantee = 'is_privilege_role'
+  AND table_schema = 'public'
+  AND table_name = 'rel_table'
+ORDER BY privilege_type;
+
+SELECT grantee, table_name, column_name, privilege_type
+FROM is_rel_db.information_schema.column_privileges
+WHERE grantee = 'is_privilege_role'
+  AND table_schema = 'public'
+  AND table_name = 'rel_table'
+ORDER BY column_name, privilege_type;
+
+SELECT grantee, table_catalog, privilege_type
+FROM is_rel_db.information_schema.user_privileges
+WHERE table_catalog = 'is_rel_db'
+ORDER BY grantee, privilege_type;
+
+SELECT table_name
+FROM is_rel_db.information_schema.tables
+WHERE table_schema = 'information_schema'
+  AND table_name IN ('role_column_grants', 'role_routine_grants')
+ORDER BY table_name;
+
+SELECT grantee, specific_catalog, specific_schema, specific_name,
+       routine_catalog, routine_schema, routine_name, privilege_type
+FROM is_rel_db.information_schema.role_routine_grants
+WHERE grantee = 'is_privilege_role'
+  AND routine_name = 'is_all_routine';
+
+SELECT grantee, table_catalog, table_schema, table_name, privilege_type
+FROM is_rel_db.information_schema.role_table_grants
+WHERE grantee = 'is_privilege_role'
+  AND table_schema = 'public'
+  AND table_name = 'rel_table';
+
+SELECT grantee, column_name, privilege_type
+FROM is_rel_db.information_schema.role_column_grants
+WHERE grantee = 'is_privilege_role'
+  AND table_schema = 'public'
+  AND table_name = 'rel_table'
+  AND column_name = 'id';
+
 DROP DATABASE is_rel_db CASCADE;
 DROP DATABASE is_ts_db CASCADE;
+DROP ROLE is_privilege_role;

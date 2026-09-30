@@ -160,7 +160,118 @@ FROM information_schema.keywords;
 ----------------
       true
 (1 row)
+> CREATE ROLE is_privilege_role;
+CREATE ROLE
+> CREATE PROCEDURE is_rel_db.is_all_routine() BEGIN SELECT 1; END;
+CREATE PROCEDURE
+> GRANT SELECT ON DATABASE is_rel_db TO is_privilege_role;
+GRANT
+> GRANT ALL ON PROCEDURE is_rel_db.is_all_routine TO is_privilege_role;
+GRANT
+> GRANT SELECT ON TABLE is_rel_db.rel_table TO is_privilege_role;
+GRANT
+> SELECT grantee, table_catalog, table_schema, privilege_type
+FROM is_rel_db.information_schema.schema_privileges
+WHERE grantee = 'is_privilege_role'
+  AND table_catalog = 'is_rel_db'
+ORDER BY table_schema, privilege_type;
+       grantee      | table_catalog |    table_schema    | privilege_type
+--------------------+---------------+--------------------+-----------------
+  is_privilege_role | is_rel_db     | information_schema | SELECT
+  is_privilege_role | is_rel_db     | kwdb_internal      | SELECT
+  is_privilege_role | is_rel_db     | pg_catalog         | SELECT
+  is_privilege_role | is_rel_db     | public             | SELECT
+(4 rows)
+> SELECT grantee, table_schema, table_name, privilege_type
+FROM is_rel_db.information_schema.table_privileges
+WHERE grantee = 'is_privilege_role'
+  AND table_schema = 'public'
+  AND table_name = 'rel_table'
+ORDER BY privilege_type;
+       grantee      | table_schema | table_name | privilege_type
+--------------------+--------------+------------+-----------------
+  is_privilege_role | public       | rel_table  | SELECT
+(1 row)
+> SELECT grantee, table_name, column_name, privilege_type
+FROM is_rel_db.information_schema.column_privileges
+WHERE grantee = 'is_privilege_role'
+  AND table_schema = 'public'
+  AND table_name = 'rel_table'
+ORDER BY column_name, privilege_type;
+       grantee      | table_name | column_name | privilege_type
+--------------------+------------+-------------+-----------------
+  is_privilege_role | rel_table  | amount      | SELECT
+  is_privilege_role | rel_table  | id          | SELECT
+  is_privilege_role | rel_table  | name        | SELECT
+(3 rows)
+> SELECT grantee, table_catalog, privilege_type
+FROM is_rel_db.information_schema.user_privileges
+WHERE table_catalog = 'is_rel_db'
+ORDER BY grantee, privilege_type;
+  grantee | table_catalog | privilege_type
+----------+---------------+-----------------
+  admin   | is_rel_db     | ALL
+  admin   | is_rel_db     | CREATE
+  admin   | is_rel_db     | DELETE
+  admin   | is_rel_db     | DROP
+  admin   | is_rel_db     | EXECUTE
+  admin   | is_rel_db     | GRANT
+  admin   | is_rel_db     | INSERT
+  admin   | is_rel_db     | SELECT
+  admin   | is_rel_db     | UPDATE
+  admin   | is_rel_db     | ZONECONFIG
+  root    | is_rel_db     | ALL
+  root    | is_rel_db     | CREATE
+  root    | is_rel_db     | DELETE
+  root    | is_rel_db     | DROP
+  root    | is_rel_db     | EXECUTE
+  root    | is_rel_db     | GRANT
+  root    | is_rel_db     | INSERT
+  root    | is_rel_db     | SELECT
+  root    | is_rel_db     | UPDATE
+  root    | is_rel_db     | ZONECONFIG
+(20 rows)
+> SELECT table_name
+FROM is_rel_db.information_schema.tables
+WHERE table_schema = 'information_schema'
+  AND table_name IN ('role_column_grants', 'role_routine_grants')
+ORDER BY table_name;
+      table_name
+-----------------------
+  role_column_grants
+  role_routine_grants
+(2 rows)
+> SELECT grantee, specific_catalog, specific_schema, specific_name,
+       routine_catalog, routine_schema, routine_name, privilege_type
+FROM is_rel_db.information_schema.role_routine_grants
+WHERE grantee = 'is_privilege_role'
+  AND routine_name = 'is_all_routine';
+       grantee      | specific_catalog | specific_schema | specific_name  | routine_catalog | routine_schema |  routine_name  | privilege_type
+--------------------+------------------+-----------------+----------------+-----------------+----------------+----------------+-----------------
+  is_privilege_role | is_rel_db        | public          | is_all_routine | is_rel_db       | public         | is_all_routine | EXECUTE
+(1 row)
+> SELECT grantee, table_catalog, table_schema, table_name, privilege_type
+FROM is_rel_db.information_schema.role_table_grants
+WHERE grantee = 'is_privilege_role'
+  AND table_schema = 'public'
+  AND table_name = 'rel_table';
+       grantee      | table_catalog | table_schema | table_name | privilege_type
+--------------------+---------------+--------------+------------+-----------------
+  is_privilege_role | is_rel_db     | public       | rel_table  | SELECT
+(1 row)
+> SELECT grantee, column_name, privilege_type
+FROM is_rel_db.information_schema.role_column_grants
+WHERE grantee = 'is_privilege_role'
+  AND table_schema = 'public'
+  AND table_name = 'rel_table'
+  AND column_name = 'id';
+       grantee      | column_name | privilege_type
+--------------------+-------------+-----------------
+  is_privilege_role | id          | SELECT
+(1 row)
 > DROP DATABASE is_rel_db CASCADE;
 DROP DATABASE
 > DROP DATABASE is_ts_db CASCADE;
 DROP DATABASE
+> DROP ROLE is_privilege_role;
+DROP ROLE

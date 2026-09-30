@@ -45,6 +45,8 @@ test           information_schema  keywords                           NULL      
 test           information_schema  parameters                         NULL            public   SELECT
 test           information_schema  procedure_privileges               NULL            public   SELECT
 test           information_schema  referential_constraints            NULL            public   SELECT
+test           information_schema  role_column_grants                 NULL            public   SELECT
+test           information_schema  role_routine_grants                NULL            public   SELECT
 test           information_schema  role_table_grants                  NULL            public   SELECT
 test           information_schema  routines                           NULL            public   SELECT
 test           information_schema  schema_privileges                  NULL            public   SELECT

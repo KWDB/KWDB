@@ -147,6 +147,7 @@ var informationSchema = virtualSchema{
 		sqlbase.InformationSchemaKeywordsTableID:                   informationSchemaKeywordsTable,
 		sqlbase.InformationSchemaParametersTableID:                 informationSchemaParametersTable,
 		sqlbase.InformationSchemaReferentialConstraintsTableID:     informationSchemaReferentialConstraintsTable,
+		sqlbase.InformationSchemaRoleColumnGrantsID:                informationSchemaRoleColumnGrants,
 		sqlbase.InformationSchemaRoleTableGrantsID:                 informationSchemaRoleTableGrants,
 		sqlbase.InformationSchemaRoutineTableID:                    informationSchemaRoutineTable,
 		sqlbase.InformationSchemaSchemataTableID:                   informationSchemaSchemataTable,
@@ -159,6 +160,7 @@ var informationSchema = virtualSchema{
 		sqlbase.InformationSchemaViewsTableID:                      informationSchemaViewsTable,
 		sqlbase.InformationSchemaUserPrivilegesID:                  informationSchemaUserPrivileges,
 		sqlbase.InformationSchemaProcedurePrivilegesID:             informationSchemaProcedurePrivileges,
+		sqlbase.InformationSchemaRoleRoutineGrantsID:               informationSchemaRoleRoutineGrants,
 	},
 	tableValidator:             validateInformationSchemaTable,
 	validWithNoDatabaseContext: true,
@@ -358,33 +360,69 @@ https://www.postgresql.org/docs/9.5/infoschema-check-constraints.html`,
 	},
 }
 
+// hasColumnPrivilege reports whether privileges effectively grant priv at column granularity.
+// ALL is stored as an independent bit instead of setting each concrete privilege bit, so the
+// column privilege views must treat it as implicitly granting SELECT, INSERT, and UPDATE.
+func hasColumnPrivilege(privileges uint32, priv privilege.Kind) bool {
+	return privileges&priv.Mask() != 0 || privileges&privilege.ALL.Mask() != 0
+}
+
+// canUserSeePrivilegeGrantee reports whether the current user may see a direct
+// privilege record for grantee. Callers must apply object visibility separately.
+func canUserSeePrivilegeGrantee(
+	isAdmin bool, currentUser, grantee string, memberOf map[string]bool,
+) bool {
+	if isAdmin || grantee == currentUser || grantee == sqlbase.PublicRole {
+		return true
+	}
+	_, isMember := memberOf[grantee]
+	return isMember
+}
+
 var informationSchemaColumnPrivileges = virtualSchemaTable{
 	comment: `column privilege grants (incomplete)
 ` + base.DocsURL("information-schema.html#column_privileges") + `
 https://www.postgresql.org/docs/9.5/infoschema-column-privileges.html`,
 	schema: vtable.InformationSchemaColumnPrivileges,
 	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		isAdmin, err := p.HasAdminRole(ctx)
+		if err != nil {
+			return err
+		}
+
+		currentUser := p.SessionData().User
+		var memberOf map[string]bool
+		if !isAdmin {
+			memberOf, err = p.MemberOfWithAdminOption(ctx, currentUser)
+			if err != nil {
+				return err
+			}
+		}
+
 		return forEachTableDesc(ctx, p, dbContext, virtualMany, func(db *sqlbase.DatabaseDescriptor, scName string, table *sqlbase.TableDescriptor) error {
 			dbNameStr := tree.NewDString(db.Name)
 			scNameStr := tree.NewDString(scName)
 			columndata := privilege.List{privilege.SELECT, privilege.INSERT, privilege.UPDATE} // privileges for column level granularity
 			for _, u := range table.Privileges.Users {
+				if !canUserSeePrivilegeGrantee(isAdmin, currentUser, u.User, memberOf) {
+					continue
+				}
+
 				for _, priv := range columndata {
-					if priv.Mask()&u.Privileges != 0 {
-						for i := range table.Columns {
-							cd := &table.Columns[i]
-							if err := addRow(
+					if hasColumnPrivilege(u.Privileges, priv) {
+						if err := forEachVisibleColumn(table, func(column *sqlbase.ColumnDescriptor) error {
+							return addRow(
 								tree.DNull,                     // grantor
 								tree.NewDString(u.User),        // grantee
 								dbNameStr,                      // table_catalog
 								scNameStr,                      // table_schema
 								tree.NewDString(table.Name),    // table_name
-								tree.NewDString(cd.Name),       // column_name
+								tree.NewDString(column.Name),   // column_name
 								tree.NewDString(priv.String()), // privilege_type
 								tree.DNull,                     // is_grantable
-							); err != nil {
-								return err
-							}
+							)
+						}); err != nil {
+							return err
 						}
 					}
 				}
@@ -903,9 +941,9 @@ CREATE TABLE information_schema.referential_constraints (
 }
 
 // Postgres: https://www.postgresql.org/docs/9.6/static/infoschema-role-table-grants.html
-// MySQL:    missing
+// MySQL:    https://dev.mysql.com/doc/refman/8.0/en/information-schema-role-table-grants-table.html
 var informationSchemaRoleTableGrants = virtualSchemaTable{
-	comment: `privileges granted on table or views (incomplete; see also information_schema.table_privileges; may contain excess users or roles)
+	comment: `privileges granted on tables or views to roles available to the current user (incomplete; grantor information unavailable)
 ` + base.DocsURL("information-schema.html#role_table_grants") + `
 https://www.postgresql.org/docs/9.5/infoschema-role-table-grants.html`,
 	schema: `
@@ -919,10 +957,109 @@ CREATE TABLE information_schema.role_table_grants (
 	IS_GRANTABLE   STRING,
 	WITH_HIERARCHY STRING
 )`,
-	// This is the same as information_schema.table_privileges. In postgres, this virtual table does
-	// not show tables with grants provided through PUBLIC, but table_privileges does.
-	// Since we don't have the PUBLIC concept, the two virtual tables are identical.
-	populate: populateTablePrivileges,
+	populate: func(
+		ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error,
+	) error {
+		roleGrantees, err := getVisibleRoleGrantees(ctx, p)
+		if err != nil {
+			return err
+		}
+
+		return forEachTableDesc(ctx, p, dbContext, virtualMany,
+			func(db *sqlbase.DatabaseDescriptor, scName string, table *sqlbase.TableDescriptor) error {
+				dbNameStr := tree.NewDString(db.Name)
+				scNameStr := tree.NewDString(scName)
+				tbNameStr := tree.NewDString(table.Name)
+
+				for _, u := range table.Privileges.Users {
+					if _, ok := roleGrantees[u.User]; !ok {
+						continue
+					}
+
+					// Preserve Show()'s sorted output while reading the same raw
+					// privilege entries as role_column_grants. The ALL bit remains ALL.
+					privileges := privilege.ListFromBitField(u.Privileges).SortedNames()
+					for _, priv := range privileges {
+						if err := addRow(
+							tree.DNull,              // grantor
+							tree.NewDString(u.User), // grantee
+							dbNameStr,               // table_catalog
+							scNameStr,               // table_schema
+							tbNameStr,               // table_name
+							tree.NewDString(priv),   // privilege_type
+							tree.DNull,              // is_grantable
+							noString,                // with_hierarchy
+						); err != nil {
+							return err
+						}
+					}
+				}
+				return nil
+			})
+	},
+}
+
+// Postgres: https://www.postgresql.org/docs/9.6/static/infoschema-role-column-grants.html
+// MySQL:    https://dev.mysql.com/doc/refman/8.0/en/information-schema-role-column-grants-table.html
+var informationSchemaRoleColumnGrants = virtualSchemaTable{
+	comment: `column privilege grants to roles available to the current user (incomplete; grantor information unavailable)
+` + base.DocsURL("information-schema.html#role_column_grants") + `
+https://www.postgresql.org/docs/9.5/infoschema-role-column-grants.html`,
+	schema: `
+CREATE TABLE information_schema.role_column_grants (
+	GRANTOR        STRING,
+	GRANTEE        STRING NOT NULL,
+	TABLE_CATALOG  STRING NOT NULL,
+	TABLE_SCHEMA   STRING NOT NULL,
+	TABLE_NAME     STRING NOT NULL,
+	COLUMN_NAME    STRING NOT NULL,
+	PRIVILEGE_TYPE STRING NOT NULL,
+	IS_GRANTABLE   STRING
+)`,
+	populate: func(
+		ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error,
+	) error {
+		roleGrantees, err := getVisibleRoleGrantees(ctx, p)
+		if err != nil {
+			return err
+		}
+
+		return forEachTableDesc(ctx, p, dbContext, virtualMany,
+			func(db *sqlbase.DatabaseDescriptor, scName string, table *sqlbase.TableDescriptor) error {
+				dbNameStr := tree.NewDString(db.Name)
+				scNameStr := tree.NewDString(scName)
+				tbNameStr := tree.NewDString(table.Name)
+				columnPrivileges := privilege.List{privilege.SELECT, privilege.INSERT, privilege.UPDATE}
+
+				for _, u := range table.Privileges.Users {
+					if _, ok := roleGrantees[u.User]; !ok {
+						continue
+					}
+
+					for _, priv := range columnPrivileges {
+						if !hasColumnPrivilege(u.Privileges, priv) {
+							continue
+						}
+
+						if err := forEachVisibleColumn(table, func(column *sqlbase.ColumnDescriptor) error {
+							return addRow(
+								tree.DNull,                     // grantor
+								tree.NewDString(u.User),        // grantee
+								dbNameStr,                      // table_catalog
+								scNameStr,                      // table_schema
+								tbNameStr,                      // table_name
+								tree.NewDString(column.Name),   // column_name
+								tree.NewDString(priv.String()), // privilege_type
+								tree.DNull,                     // is_grantable
+							)
+						}); err != nil {
+							return err
+						}
+					}
+				}
+				return nil
+			})
+	},
 }
 
 // MySQL:    https://dev.mysql.com/doc/mysql-infoschema-excerpt/5.7/en/routines-table.html
@@ -1055,7 +1192,7 @@ https://www.postgresql.org/docs/9.5/infoschema-schemata.html`,
 
 // MySQL:    https://dev.mysql.com/doc/refman/5.7/en/schema-privileges-table.html
 var informationSchemaSchemataTablePrivileges = virtualSchemaTable{
-	comment: `schema privileges (incomplete; may contain excess users or roles)
+	comment: `schema privileges for the current user, public, or available roles; administrators can view all grantees (incomplete; grant option information unavailable)
 ` + base.DocsURL("information-schema.html#schema_privileges"),
 	schema: `
 CREATE TABLE information_schema.schema_privileges (
@@ -1066,11 +1203,28 @@ CREATE TABLE information_schema.schema_privileges (
 	IS_GRANTABLE    STRING
 )`,
 	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		isAdmin, err := p.HasAdminRole(ctx)
+		if err != nil {
+			return err
+		}
+		currentUser := p.SessionData().User
+		var memberOf map[string]bool
+		if !isAdmin {
+			memberOf, err = p.MemberOfWithAdminOption(ctx, currentUser)
+			if err != nil {
+				return err
+			}
+		}
+
+		// Database enumeration must include users who only have privileges on a child schema.
 		return forEachDatabaseDesc(ctx, p, dbContext, false, /* requiresPrivileges */
 			func(db *sqlbase.DatabaseDescriptor) error {
-				return forEachSchemaName(ctx, p, db, false, func(sc sqlbase.ResolvedSchema) error {
+				return forEachSchemaName(ctx, p, db, true, func(sc sqlbase.ResolvedSchema) error {
 					var privs []sqlbase.UserPrivilegeString
 					if sc.Kind == sqlbase.SchemaUserDefined {
+						if sc.Desc == nil || sc.Desc.GetPrivileges() == nil {
+							return nil
+						}
 						// User defined schemas have their own privileges.
 						privs = sc.Desc.GetPrivileges().Show()
 					} else {
@@ -1081,6 +1235,9 @@ CREATE TABLE information_schema.schema_privileges (
 					scNameStr := tree.NewDString(sc.Name)
 
 					for _, u := range privs {
+						if !canUserSeePrivilegeGrantee(isAdmin, currentUser, u.User, memberOf) {
+							continue
+						}
 						userNameStr := tree.NewDString(u.User)
 						for _, priv := range u.Privileges {
 							if err := addRow(
@@ -1356,20 +1513,41 @@ CREATE TABLE information_schema.table_constraints (
 // Postgres: not provided
 // MySQL:    https://dev.mysql.com/doc/refman/5.7/en/user-privileges-table.html
 // TODO(knz): this introspection facility is of dubious utility.
+// KWDB does not support MySQL-style global grants such as GRANT ... ON *.*.
+// Until a persistent global privilege source exists, expose only the
+// compatibility rows for the current root user and admin role membership.
 var informationSchemaUserPrivileges = virtualSchemaTable{
-	comment: `grantable privileges (incomplete)`,
+	comment: `global privilege compatibility rows for root and admin role membership; non-admin users see no rows`,
 	schema: `
 CREATE TABLE information_schema.user_privileges (
 	GRANTEE        STRING NOT NULL,
 	TABLE_CATALOG  STRING NOT NULL,
 	PRIVILEGE_TYPE STRING NOT NULL,
 	IS_GRANTABLE   STRING
-)`,
+	)`,
 	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		grantees := make(map[string]struct{}, 2)
+		if p.User() == security.RootUser {
+			grantees[security.RootUser] = struct{}{}
+		}
+		if p.User() == sqlbase.AdminRole {
+			grantees[sqlbase.AdminRole] = struct{}{}
+		}
+		roles, err := p.MemberOfWithAdminOption(ctx, p.User())
+		if err != nil {
+			return err
+		}
+		if _, ok := roles[sqlbase.AdminRole]; ok {
+			grantees[sqlbase.AdminRole] = struct{}{}
+		}
+
 		return forEachDatabaseDesc(ctx, p, dbContext, true, /* requiresPrivileges */
 			func(dbDesc *DatabaseDescriptor) error {
 				dbNameStr := tree.NewDString(dbDesc.Name)
 				for _, u := range []string{security.RootUser, sqlbase.AdminRole} {
+					if _, ok := grantees[u]; !ok {
+						continue
+					}
 					grantee := tree.NewDString(u)
 					for _, p := range privilege.List(privilege.ByValue[:]).SortedNames() {
 						if err := addRow(
@@ -1389,7 +1567,7 @@ CREATE TABLE information_schema.user_privileges (
 
 // MySQL:    https://dev.mysql.com/doc/refman/5.7/en/table-privileges-table.html
 var informationSchemaTablePrivileges = virtualSchemaTable{
-	comment: `privileges granted on table or views (incomplete; may contain excess users or roles)
+	comment: `privileges on visible tables or views for the current user, public, or available roles; administrators can view all grantees (incomplete; grantor and grant option information unavailable)
 ` + base.DocsURL("information-schema.html#table_privileges") + `
 https://www.postgresql.org/docs/9.5/infoschema-table-privileges.html`,
 	schema: `
@@ -1403,37 +1581,52 @@ CREATE TABLE information_schema.table_privileges (
 	IS_GRANTABLE   STRING,
 	WITH_HIERARCHY STRING NOT NULL
 )`,
-	populate: populateTablePrivileges,
-}
+	populate: func(
+		ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error,
+	) error {
+		isAdmin, err := p.HasAdminRole(ctx)
+		if err != nil {
+			return err
+		}
 
-// populateTablePrivileges is used to populate both table_privileges and role_table_grants.
-func populateTablePrivileges(
-	ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error,
-) error {
-	return forEachTableDesc(ctx, p, dbContext, virtualMany,
-		func(db *sqlbase.DatabaseDescriptor, scName string, table *sqlbase.TableDescriptor) error {
-			dbNameStr := tree.NewDString(db.Name)
-			scNameStr := tree.NewDString(scName)
-			tbNameStr := tree.NewDString(table.Name)
+		currentUser := p.SessionData().User
+		var memberOf map[string]bool
+		if !isAdmin {
+			memberOf, err = p.MemberOfWithAdminOption(ctx, currentUser)
+			if err != nil {
+				return err
+			}
+		}
 
-			for _, u := range table.Privileges.Show() {
-				for _, priv := range u.Privileges {
-					if err := addRow(
-						tree.DNull,                     // grantor
-						tree.NewDString(u.User),        // grantee
-						dbNameStr,                      // table_catalog
-						scNameStr,                      // table_schema
-						tbNameStr,                      // table_name
-						tree.NewDString(priv),          // privilege_type
-						tree.DNull,                     // is_grantable
-						yesOrNoDatum(priv == "SELECT"), // with_hierarchy
-					); err != nil {
-						return err
+		return forEachTableDesc(ctx, p, dbContext, virtualMany,
+			func(db *sqlbase.DatabaseDescriptor, scName string, table *sqlbase.TableDescriptor) error {
+				dbNameStr := tree.NewDString(db.Name)
+				scNameStr := tree.NewDString(scName)
+				tbNameStr := tree.NewDString(table.Name)
+
+				for _, u := range table.Privileges.Show() {
+					if !canUserSeePrivilegeGrantee(isAdmin, currentUser, u.User, memberOf) {
+						continue
+					}
+
+					for _, priv := range u.Privileges {
+						if err := addRow(
+							tree.DNull,              // grantor
+							tree.NewDString(u.User), // grantee
+							dbNameStr,               // table_catalog
+							scNameStr,               // table_schema
+							tbNameStr,               // table_name
+							tree.NewDString(priv),   // privilege_type
+							tree.DNull,              // is_grantable
+							noString,                // with_hierarchy
+						); err != nil {
+							return err
+						}
 					}
 				}
-			}
-			return nil
-		})
+				return nil
+			})
+	},
 }
 
 var (
@@ -1970,6 +2163,18 @@ func forEachColumnInTable(
 	return nil
 }
 
+// forEachVisibleColumn visits non-hidden columns in descriptor order.
+func forEachVisibleColumn(
+	table *sqlbase.TableDescriptor, fn func(*sqlbase.ColumnDescriptor) error,
+) error {
+	return forEachColumnInTable(table, func(column *sqlbase.ColumnDescriptor) error {
+		if column.Hidden {
+			return nil
+		}
+		return fn(column)
+	})
+}
+
 func forEachColumnInIndex(
 	table *sqlbase.TableDescriptor,
 	index *sqlbase.IndexDescriptor,
@@ -2032,6 +2237,46 @@ FROM
 	}
 
 	return nil
+}
+
+// getVisibleRoleGrantees returns role names visible in role grant views. Admins
+// can inspect every role grant, while other users can inspect only their roles.
+func getVisibleRoleGrantees(ctx context.Context, p *planner) (map[string]struct{}, error) {
+	roleGrantees := make(map[string]struct{})
+	if err := forEachRole(ctx, p, func(username string, isRole bool, noLogin bool) error {
+		if isRole {
+			roleGrantees[username] = struct{}{}
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	// PUBLIC is an implicit role and is not stored in system.users.
+	roleGrantees[sqlbase.PublicRole] = struct{}{}
+
+	allGrantees, err := p.HasAdminRole(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if allGrantees {
+		return roleGrantees, nil
+	}
+
+	memberOf, err := p.MemberOfWithAdminOption(ctx, p.SessionData().User)
+	if err != nil {
+		return nil, err
+	}
+	for grantee := range roleGrantees {
+		if grantee == sqlbase.PublicRole {
+			continue
+		}
+		// Map membership identifies inherited roles; the boolean value only
+		// indicates whether the user has ADMIN OPTION for that role.
+		if _, ok := memberOf[grantee]; !ok {
+			delete(roleGrantees, grantee)
+		}
+	}
+	return roleGrantees, nil
 }
 
 func forEachRoleMembership(
@@ -2112,6 +2357,132 @@ CREATE TABLE information_schema.procedure_privileges (
 	PRIVILEGE_TYPE     STRING NOT NULL
 )`,
 	populate: populateProcedurePrivileges,
+}
+
+var informationSchemaRoleRoutineGrants = virtualSchemaTable{
+	comment: `privileges granted on procedures and Lua user-defined functions`,
+	schema: `
+CREATE TABLE information_schema.role_routine_grants (
+	GRANTOR          STRING NULL,
+	GRANTEE          STRING NOT NULL,
+	SPECIFIC_CATALOG STRING NULL,
+	SPECIFIC_SCHEMA  STRING NULL,
+	SPECIFIC_NAME    STRING NULL,
+	ROUTINE_CATALOG  STRING NULL,
+	ROUTINE_SCHEMA   STRING NULL,
+	ROUTINE_NAME     STRING NULL,
+	PRIVILEGE_TYPE   STRING NOT NULL,
+	IS_GRANTABLE     STRING NULL
+)`,
+	populate: populateRoleRoutineGrants,
+}
+
+type luaUDFRoutine struct {
+	name   string
+	dbName string
+}
+
+func getAllLuaUDFs(ctx context.Context, p *planner) ([]luaUDFRoutine, error) {
+	query := `SELECT name, descriptor FROM system.user_defined_routine WHERE routine_type = 2`
+	rows, err := p.ExtendedEvalContext().ExecCfg.InternalExecutor.Query(
+		ctx, "read-lua-udfs", p.txn, query,
+	)
+	if err != nil {
+		return nil, err
+	}
+	udfs := make([]luaUDFRoutine, 0, len(rows))
+	for _, row := range rows {
+		var desc sqlbase.FunctionDescriptor
+		val := tree.MustBeDBytes(row[1])
+		if err := protoutil.Unmarshal([]byte(val), &desc); err != nil {
+			return nil, errors.NewAssertionErrorWithWrappedErrf(err,
+				"failed to parse Lua UDF descriptor for %q", val)
+		}
+		if desc.Language != "LUA" {
+			continue
+		}
+		udfs = append(udfs, luaUDFRoutine{
+			name:   string(tree.MustBeDString(row[0])),
+			dbName: desc.DbName,
+		})
+	}
+	return udfs, nil
+}
+
+func populateRoleRoutineGrants(
+	ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error,
+) error {
+	roleGrantees, err := getVisibleRoleGrantees(ctx, p)
+	if err != nil {
+		return err
+	}
+
+	// Stored procedures use their persisted privilege descriptors. The view
+	// exposes only EXECUTE grants, matching the routine privilege semantics.
+	procs, err := getAllProcedures(ctx, p)
+	if err != nil {
+		return err
+	}
+	for _, proc := range procs {
+		db, err := getDatabaseDescByID(ctx, p.txn, proc.DbID)
+		if err != nil {
+			return err
+		}
+		sc, err := getSchemaDescByID(ctx, p.txn, proc.SchemaID)
+		if err != nil {
+			return err
+		}
+		for _, u := range proc.Privileges.Show() {
+			if _, ok := roleGrantees[u.User]; !ok {
+				continue
+			}
+			for _, priv := range u.Privileges {
+				// ALL is stored as its own privilege bit, but the ISO routine
+				// privilege exposed by this view is always EXECUTE.
+				if priv == privilege.EXECUTE.String() || priv == privilege.ALL.String() {
+					if err := addRow(
+						tree.DNull,                                  // grantor
+						tree.NewDString(u.User),                     // grantee
+						tree.NewDString(db.Name),                    // specific_catalog
+						tree.NewDString(sc.Name),                    // specific_schema
+						tree.NewDString(proc.Name),                  // specific_name
+						tree.NewDString(db.Name),                    // routine_catalog
+						tree.NewDString(sc.Name),                    // routine_schema
+						tree.NewDString(proc.Name),                  // routine_name
+						tree.NewDString(privilege.EXECUTE.String()), // privilege_type
+						tree.DNull,                                  // is_grantable
+					); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
+
+	// Lua UDFs are public in KWDB: expose EXECUTE for every visible role.
+	udfs, err := getAllLuaUDFs(ctx, p)
+	if err != nil {
+		return err
+	}
+	for _, udf := range udfs {
+		for grantee := range roleGrantees {
+			if err := addRow(
+				tree.DNull,                                  // grantor
+				tree.NewDString(grantee),                    // grantee
+				tree.NewDString(udf.dbName),                 // specific_catalog
+				tree.DNull,                                  // specific_schema
+				tree.NewDString(udf.name),                   // specific_name
+				tree.NewDString(udf.dbName),                 // routine_catalog
+				tree.DNull,                                  // routine_schema
+				tree.NewDString(udf.name),                   // routine_name
+				tree.NewDString(privilege.EXECUTE.String()), // privilege_type
+				tree.DNull,                                  // is_grantable
+			); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // populateProcedurePrivileges is used to populate both procedure_privileges and role_procedure_grants.

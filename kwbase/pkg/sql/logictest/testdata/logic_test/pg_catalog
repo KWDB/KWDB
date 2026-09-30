@@ -1563,16 +1563,18 @@ objoid      classoid    objsubid  description
 4294967241  4294967219  0         built-in function parameters (empty - introspection not yet supported)
 4294967228  4294967219  0         privileges granted on procedure (incomplete; may contain excess users or roles)
 4294967240  4294967219  0         foreign key constraints
-4294967239  4294967219  0         privileges granted on table or views (incomplete; see also information_schema.table_privileges; may contain excess users or roles)
+4294967168  4294967219  0         column privilege grants to roles available to the current user (incomplete; grantor information unavailable)
+4294967167  4294967219  0         privileges granted on procedures and Lua user-defined functions
+4294967239  4294967219  0         privileges granted on tables or views to roles available to the current user (incomplete; grantor information unavailable)
 4294967238  4294967219  0         built-in functions (empty - introspection not yet supported)
-4294967236  4294967219  0         schema privileges (incomplete; may contain excess users or roles)
+4294967236  4294967219  0         schema privileges for the current user, public, or available roles; administrators can view all grantees (incomplete; grant option information unavailable)
 4294967237  4294967219  0         database schemas (may contain schemata without permission)
 4294967235  4294967219  0         sequences
 4294967234  4294967219  0         index metadata and statistics (incomplete)
 4294967233  4294967219  0         table constraints
-4294967232  4294967219  0         privileges granted on table or views (incomplete; may contain excess users or roles)
+4294967232  4294967219  0         privileges on visible tables or views for the current user, public, or available roles; administrators can view all grantees (incomplete; grantor and grant option information unavailable)
 4294967231  4294967219  0         tables and views
-4294967229  4294967219  0         grantable privileges (incomplete)
+4294967229  4294967219  0         global privilege compatibility rows for root and admin role membership; non-admin users see no rows
 4294967230  4294967219  0         views (incomplete)
 4294967256  4294967219  0         audit policies
 4294967294  4294967219  0         backward inter-descriptor dependencies starting from tables accessible by current user in current database (KV scan)
