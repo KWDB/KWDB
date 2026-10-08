@@ -55,12 +55,11 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/server/serverpb"
 	"gitee.com/kwbasedb/kwbase/pkg/server/status/statuspb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/telemetry"
+	"gitee.com/kwbasedb/kwbase/pkg/telemetry/catalog"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/sqlutils"
-	"gitee.com/kwbasedb/kwbase/pkg/ts"
-	"gitee.com/kwbasedb/kwbase/pkg/ts/catalog"
 	"gitee.com/kwbasedb/kwbase/pkg/util/httputil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -289,11 +288,6 @@ func TestStatusEngineStatsJson(t *testing.T) {
 	}
 	if len(engineStats.Stats) != 1 {
 		t.Fatal(errors.Errorf("expected one engine stats, got: %v", engineStats))
-	}
-
-	if engineStats.Stats[0].EngineType == enginepb.EngineTypePebble {
-		// Pebble does not have RocksDB style TickersAnd Histogram.
-		return
 	}
 
 	tickers := engineStats.Stats[0].TickersAndHistograms.Tickers
@@ -699,7 +693,7 @@ func TestMetricsRecording(t *testing.T) {
 			"cr.store.livebytes.1",
 			"cr.node.sys.go.allocbytes.1",
 		} {
-			key := ts.MakeDataKey(keyName, "", ts.Resolution10s, now)
+			key := telemetry.MakeDataKey(keyName, "", telemetry.Resolution10s, now)
 			if err := kvDB.GetProto(ctx, key, &data); err != nil {
 				return err
 			}
@@ -777,7 +771,7 @@ func TestChartCatalogGen(t *testing.T) {
 	}
 }
 
-// findUndefinedMetrics finds metrics listed in pkg/ts/catalog/chart_catalog.go
+// findUndefinedMetrics finds metrics listed in pkg/telemetry/catalog/chart_catalog.go
 // that are not defined. This is most likely caused by a metric being removed.
 func findUndefinedMetrics(c *catalog.ChartSection, metadata map[string]metric.Metadata) []string {
 	var undefinedMetrics []string
@@ -848,7 +842,7 @@ func TestChartCatalogMetrics(t *testing.T) {
 
 	if len(undefinedMetrics) > 0 {
 		t.Fatalf(`The following metrics need are no longer present and need to be removed
-			from the chart catalog (pkg/ts/catalog/chart_catalog.go):%v`, undefinedMetrics)
+			from the chart catalog (pkg/telemetry/catalog/chart_catalog.go):%v`, undefinedMetrics)
 	}
 
 	// Each metric in metricsMetadata should have at least one entry in
@@ -864,7 +858,7 @@ func TestChartCatalogMetrics(t *testing.T) {
 		}
 		sort.Strings(metricNames)
 		t.Fatalf(`The following metrics need to be added to the chart catalog
-		    (pkg/ts/catalog/chart_catalog.go): %v`, metricNames)
+		    (pkg/telemetry/catalog/chart_catalog.go): %v`, metricNames)
 	}
 }
 

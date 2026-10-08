@@ -35,8 +35,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/concurrency/lock"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagebase"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"github.com/stretchr/testify/require"
@@ -576,7 +576,7 @@ func TestEvaluateBatch(t *testing.T) {
 	for _, tc := range tcs {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
-			eng := storage.NewDefaultInMem()
+			eng := relational.NewDefaultInMem()
 			defer eng.Close()
 
 			d := &data{
@@ -609,7 +609,7 @@ type data struct {
 	batcheval.MockEvalCtx
 	ba       roachpb.BatchRequest
 	idKey    storagebase.CmdIDKey
-	eng      storage.Engine
+	eng      relational.Engine
 	ms       enginepb.MVCCStats
 	readOnly bool
 }
@@ -633,7 +633,7 @@ func writeABCDEF(t *testing.T, d *data) {
 
 func writeABCDEFIntents(t *testing.T, d *data, txn *roachpb.Transaction) {
 	for _, k := range []string{"a", "b", "c", "d", "e", "f"} {
-		require.NoError(t, storage.MVCCPut(
+		require.NoError(t, relational.MVCCPut(
 			context.Background(), d.eng, nil /* ms */, roachpb.Key(k), d.ba.Timestamp,
 			roachpb.MakeValueFromString("value-"+k), txn))
 	}

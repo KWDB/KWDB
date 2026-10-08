@@ -33,7 +33,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/spanset"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/txnwait"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/pkg/errors"
@@ -119,7 +119,7 @@ func declareKeysPushTransaction(
 // records for which the transaction coordinator must have found out via
 // its heartbeats that the transaction has failed.
 func PushTxn(
-	ctx context.Context, readWriter storage.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
+	ctx context.Context, readWriter relational.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
 	args := cArgs.Args.(*roachpb.PushTxnRequest)
 	h := cArgs.Header
@@ -152,7 +152,7 @@ func PushTxn(
 
 	// Fetch existing transaction; if missing, we're allowed to abort.
 	var existTxn roachpb.Transaction
-	ok, err := storage.MVCCGetProto(ctx, readWriter, key, hlc.Timestamp{}, &existTxn, storage.MVCCGetOptions{})
+	ok, err := relational.MVCCGetProto(ctx, readWriter, key, hlc.Timestamp{}, &existTxn, relational.MVCCGetOptions{})
 	if err != nil {
 		return result.Result{}, err
 	} else if !ok {
@@ -313,7 +313,7 @@ func PushTxn(
 	// in the timestamp cache.
 	if ok {
 		txnRecord := reply.PusheeTxn.AsRecord()
-		if err := storage.MVCCPutProto(ctx, readWriter, cArgs.Stats, key, hlc.Timestamp{}, nil, &txnRecord); err != nil {
+		if err := relational.MVCCPutProto(ctx, readWriter, cArgs.Stats, key, hlc.Timestamp{}, nil, &txnRecord); err != nil {
 			return result.Result{}, err
 		}
 	}

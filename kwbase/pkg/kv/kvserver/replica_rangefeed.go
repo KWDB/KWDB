@@ -39,8 +39,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagepb"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/interval"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -140,7 +140,7 @@ func (tp *rangefeedTxnPusher) CleanupTxnIntentsAsync(
 }
 
 type iteratorWithCloser struct {
-	storage.SimpleIterator
+	relational.SimpleIterator
 	close func()
 }
 
@@ -226,9 +226,9 @@ func (r *Replica) RangeFeed(
 	}
 
 	// Register the stream with a catch-up iterator.
-	var catchUpIter storage.SimpleIterator
+	var catchUpIter relational.SimpleIterator
 	if usingCatchupIter {
-		innerIter := r.Engine().NewIterator(storage.IterOptions{
+		innerIter := r.Engine().NewIterator(relational.IterOptions{
 			UpperBound: args.Span.EndKey,
 			// RangeFeed originally intended to use the time-bound iterator
 			// performance optimization. However, they've had correctness issues in
@@ -329,7 +329,7 @@ func (r *Replica) registerWithRangefeedRaftMuLocked(
 	ctx context.Context,
 	span roachpb.RSpan,
 	startTS hlc.Timestamp,
-	catchupIter storage.SimpleIterator,
+	catchupIter relational.SimpleIterator,
 	withDiff bool,
 	stream rangefeed.Stream,
 	errC chan<- *roachpb.Error,
@@ -392,7 +392,7 @@ func (r *Replica) registerWithRangefeedRaftMuLocked(
 	p = rangefeed.NewProcessor(cfg)
 
 	// Start it with an iterator to initialize the resolved timestamp.
-	rtsIter := r.Engine().NewIterator(storage.IterOptions{
+	rtsIter := r.Engine().NewIterator(relational.IterOptions{
 		UpperBound: desc.EndKey.AsRawKey(),
 		// TODO(nvanbenschoten): To facilitate fast restarts of rangefeed
 		// we should periodically persist the resolved timestamp so that we
@@ -639,7 +639,7 @@ func (r *Replica) numRangefeedRegistrations() int {
 // the state of the Replica before the operations in the logical op log are
 // applied. No-op if a rangefeed is not active. Requires raftMu to be locked.
 func (r *Replica) populatePrevValsInLogicalOpLogRaftMuLocked(
-	ctx context.Context, ops *storagepb.LogicalOpLog, prevReader storage.Reader,
+	ctx context.Context, ops *storagepb.LogicalOpLog, prevReader relational.Reader,
 ) {
 	p, filter := r.getRangefeedProcessorAndFilter()
 	if p == nil {
@@ -681,8 +681,8 @@ func (r *Replica) populatePrevValsInLogicalOpLogRaftMuLocked(
 
 		// Read the previous value from the prev Reader. Unlike the new value
 		// (see handleLogicalOpLogRaftMuLocked), this one may be missing.
-		prevVal, _, err := storage.MVCCGet(
-			ctx, prevReader, key, ts, storage.MVCCGetOptions{Tombstones: true, Inconsistent: true},
+		prevVal, _, err := relational.MVCCGet(
+			ctx, prevReader, key, ts, relational.MVCCGetOptions{Tombstones: true, Inconsistent: true},
 		)
 		if err != nil {
 			r.disconnectRangefeedWithErr(p, roachpb.NewErrorf(
@@ -700,7 +700,7 @@ func (r *Replica) populatePrevValsInLogicalOpLogRaftMuLocked(
 
 // WriteValue Read the value directly from the Reader
 func WriteValue(
-	ctx context.Context, ops *storagepb.LogicalOpLog, r *Replica, reader storage.Reader,
+	ctx context.Context, ops *storagepb.LogicalOpLog, r *Replica, reader relational.Reader,
 ) {
 	for _, op := range ops.Ops {
 		var key []byte
@@ -726,7 +726,7 @@ func WriteValue(
 		// Read the value directly from the Reader. This is performed in the
 		// same raftMu critical section that the logical op's corresponding
 		// WriteBatch is applied, so the value should exist.
-		val, _, err := storage.MVCCGet(ctx, reader, key, ts, storage.MVCCGetOptions{Tombstones: true})
+		val, _, err := relational.MVCCGet(ctx, reader, key, ts, relational.MVCCGetOptions{Tombstones: true})
 		if val == nil && err == nil {
 			err = errors.New("value missing in reader")
 		}
@@ -794,7 +794,7 @@ func (r *Replica) sendRightRangeFeedEvent(ctx context.Context) {
 // them to the rangefeed processor. No-op if a rangefeed is not active. Requires
 // raftMu to be locked.
 func (r *Replica) handleLogicalOpLogRaftMuLocked(
-	ctx context.Context, ops *storagepb.LogicalOpLog, reader storage.Reader,
+	ctx context.Context, ops *storagepb.LogicalOpLog, reader relational.Reader,
 ) {
 	if ops == nil {
 		// Rangefeeds can't be turned on unless RangefeedEnabled is set to true,
@@ -902,7 +902,7 @@ func (r *Replica) handleLogicalOpLogRaftMuLocked(
 		// Read the value directly from the Reader. This is performed in the
 		// same raftMu critical section that the logical op's corresponding
 		// WriteBatch is applied, so the value should exist.
-		val, _, err := storage.MVCCGet(ctx, reader, key, ts, storage.MVCCGetOptions{Tombstones: true})
+		val, _, err := relational.MVCCGet(ctx, reader, key, ts, relational.MVCCGetOptions{Tombstones: true})
 		if val == nil && err == nil {
 			err = errors.New("value missing in reader")
 		}

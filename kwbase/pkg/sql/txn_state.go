@@ -32,7 +32,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/contextutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"

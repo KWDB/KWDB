@@ -46,13 +46,13 @@ func (p *planner) AlterPrimaryKey(
 	alterPKNode *tree.AlterTableAlterPrimaryKey,
 ) error {
 	// Make sure that all nodes in the cluster are able to perform primary key changes before proceeding.
-	if !p.ExecCfg().Settings.Version.IsActive(ctx, clusterversion.VersionPrimaryKeyChanges) {
+	if !p.ExecCfg().Settings.Version.IsActive(ctx, clusterversion.VersionMinSupported) {
 		return pgerror.Newf(pgcode.FeatureNotSupported,
 			"all nodes are not the correct version for primary key changes")
 	}
 
 	if alterPKNode.Sharded != nil {
-		if !p.ExecCfg().Settings.Version.IsActive(ctx, clusterversion.VersionHashShardedIndexes) {
+		if !p.ExecCfg().Settings.Version.IsActive(ctx, clusterversion.VersionMinSupported) {
 			return invalidClusterForShardedIndexError
 		}
 		if !p.EvalContext().SessionData.HashShardedIndexesEnabled {

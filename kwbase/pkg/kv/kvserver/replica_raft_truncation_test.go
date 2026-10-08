@@ -33,7 +33,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/stateloader"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"github.com/cockroachdb/datadriven"
@@ -58,7 +58,7 @@ func TestHandleTruncatedStateBelowRaft(t *testing.T) {
 	datadriven.Walk(t, "testdata/truncated_state_migration", func(t *testing.T, path string) {
 		const rangeID = 12
 		loader := stateloader.Make(rangeID)
-		eng := storage.NewDefaultInMem()
+		eng := relational.NewDefaultInMem()
 		defer eng.Close()
 
 		datadriven.RunTest(t, path, func(t *testing.T, d *datadriven.TestData) string {
@@ -111,7 +111,7 @@ func TestHandleTruncatedStateBelowRaft(t *testing.T) {
 					keys.RaftTruncatedStateKey(rangeID),
 				} {
 					var truncatedState roachpb.RaftTruncatedState
-					ok, err := storage.MVCCGetProto(ctx, eng, key, hlc.Timestamp{}, &truncatedState, storage.MVCCGetOptions{})
+					ok, err := relational.MVCCGetProto(ctx, eng, key, hlc.Timestamp{}, &truncatedState, relational.MVCCGetOptions{})
 					if err != nil {
 						t.Fatal(err)
 					}

@@ -33,7 +33,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"golang.org/x/time/rate"
@@ -86,7 +86,7 @@ func writeFileSyncing(
 	ctx context.Context,
 	filename string,
 	data []byte,
-	eng storage.Engine,
+	eng relational.Engine,
 	perm os.FileMode,
 	settings *cluster.Settings,
 	limiter *rate.Limiter,

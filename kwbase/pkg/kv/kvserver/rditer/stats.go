@@ -26,17 +26,17 @@ package rditer
 
 import (
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 )
 
 // ComputeStatsForRange computes the stats for a given range by
 // iterating over all key ranges for the given range that should
 // be accounted for in its stats.
 func ComputeStatsForRange(
-	d *roachpb.RangeDescriptor, reader storage.Reader, nowNanos int64,
+	d *roachpb.RangeDescriptor, reader relational.Reader, nowNanos int64,
 ) (enginepb.MVCCStats, error) {
-	iter := reader.NewIterator(storage.IterOptions{UpperBound: d.EndKey.AsRawKey()})
+	iter := reader.NewIterator(relational.IterOptions{UpperBound: d.EndKey.AsRawKey()})
 	defer iter.Close()
 
 	ms := enginepb.MVCCStats{}

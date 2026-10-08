@@ -28,8 +28,8 @@ import (
 	"context"
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
 	"github.com/pkg/errors"
@@ -49,11 +49,11 @@ type stickyInMemEngine struct {
 	closed bool
 
 	// Engine extends the Engine interface.
-	storage.Engine
+	relational.Engine
 }
 
 // stickyInMemEngine implements Engine.
-var _ storage.Engine = &stickyInMemEngine{}
+var _ relational.Engine = &stickyInMemEngine{}
 
 // Close overwrites the default Engine interface to not close the underlying
 // engine if called. We mark the state as closed to reflect a correct result
@@ -91,7 +91,7 @@ func getOrCreateStickyInMemEngine(
 	engineType enginepb.EngineType,
 	attrs roachpb.Attributes,
 	cacheSize int64,
-) (storage.Engine, error) {
+) (relational.Engine, error) {
 	stickyInMemEnginesRegistry.mu.Lock()
 	defer stickyInMemEnginesRegistry.mu.Unlock()
 
@@ -109,7 +109,7 @@ func getOrCreateStickyInMemEngine(
 	engine := &stickyInMemEngine{
 		id:     id,
 		closed: false,
-		Engine: storage.NewInMem(ctx, engineType, attrs, cacheSize),
+		Engine: relational.NewInMem(ctx, engineType, attrs, cacheSize),
 	}
 	stickyInMemEnginesRegistry.entries[id] = engine
 	return engine, nil

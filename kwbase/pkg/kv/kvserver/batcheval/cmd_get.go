@@ -29,7 +29,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/batcheval/result"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 )
 
@@ -39,7 +39,7 @@ func init() {
 
 // Get returns the value for a specified key.
 func Get(
-	ctx context.Context, reader storage.Reader, cArgs CommandArgs, resp roachpb.Response,
+	ctx context.Context, reader relational.Reader, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
 	args := cArgs.Args.(*roachpb.GetRequest)
 	h := cArgs.Header
@@ -47,7 +47,7 @@ func Get(
 	if h.Txn != nil && h.Txn.UnConsistency {
 		h.ReadConsistency = roachpb.READ_UNCOMMITTED
 	}
-	val, intent, err := storage.MVCCGet(ctx, reader, args.Key, h.Timestamp, storage.MVCCGetOptions{
+	val, intent, err := relational.MVCCGet(ctx, reader, args.Key, h.Timestamp, relational.MVCCGetOptions{
 		Inconsistent: h.ReadConsistency != roachpb.CONSISTENT,
 		Txn:          h.Txn,
 	})

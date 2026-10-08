@@ -39,8 +39,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/gc"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagebase"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/humanizeutil"
@@ -229,14 +229,14 @@ func (cws *cachedWriteSimulator) value(size int) roachpb.Value {
 func (cws *cachedWriteSimulator) multiKey(
 	numOps int, size int, txn *roachpb.Transaction, ms *enginepb.MVCCStats,
 ) {
-	eng := storage.NewDefaultInMem()
+	eng := relational.NewDefaultInMem()
 	defer eng.Close()
 	t, ctx := cws.t, context.Background()
 
 	ts := hlc.Timestamp{}.Add(ms.LastUpdateNanos, 0)
 	key, value := []byte("multikey"), cws.value(size)
 	var eachMS enginepb.MVCCStats
-	if err := storage.MVCCPut(ctx, eng, &eachMS, key, ts, value, txn); err != nil {
+	if err := relational.MVCCPut(ctx, eng, &eachMS, key, ts, value, txn); err != nil {
 		t.Fatal(err)
 	}
 	for i := 1; i < numOps; i++ {
@@ -247,7 +247,7 @@ func (cws *cachedWriteSimulator) multiKey(
 func (cws *cachedWriteSimulator) singleKeySteady(
 	qps int, duration time.Duration, size int, ms *enginepb.MVCCStats,
 ) {
-	eng := storage.NewDefaultInMem()
+	eng := relational.NewDefaultInMem()
 	defer eng.Close()
 	t, ctx := cws.t, context.Background()
 	cacheKey := fmt.Sprintf("%d-%s-%s", qps, duration, humanizeutil.IBytes(int64(size)))
@@ -265,7 +265,7 @@ func (cws *cachedWriteSimulator) singleKeySteady(
 		for i := 0; i < qps; i++ {
 			now := initialNow.Add(elapsed.Nanoseconds(), int32(i))
 
-			if err := storage.MVCCPut(ctx, eng, ms, key, now, value, nil /* txn */); err != nil {
+			if err := relational.MVCCPut(ctx, eng, ms, key, now, value, nil /* txn */); err != nil {
 				t.Fatal(err)
 			}
 			if len(firstSl) < cacheFirstLen {
@@ -620,7 +620,7 @@ func TestGCQueueProcess(t *testing.T) {
 	// However, because the GC processing pushes transactions and
 	// resolves intents asynchronously, we use a SucceedsSoon loop.
 	testutils.SucceedsSoon(t, func() error {
-		kvs, err := storage.Scan(tc.store.Engine(), key1, keys.MaxKey, 0)
+		kvs, err := relational.Scan(tc.store.Engine(), key1, keys.MaxKey, 0)
 		if err != nil {
 			return err
 		}
@@ -803,7 +803,7 @@ func TestGCQueueTransactionTable(t *testing.T) {
 		txns[strKey] = *txn
 		for _, addrKey := range []roachpb.Key{baseKey, outsideKey} {
 			key := keys.TransactionKey(addrKey, txn.ID)
-			if err := storage.MVCCPutProto(ctx, tc.engine, nil, key, hlc.Timestamp{}, nil, txn); err != nil {
+			if err := relational.MVCCPutProto(ctx, tc.engine, nil, key, hlc.Timestamp{}, nil, txn); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -830,8 +830,8 @@ func TestGCQueueTransactionTable(t *testing.T) {
 			txnKey := keys.TransactionKey(roachpb.Key(strKey), txns[strKey].ID)
 			txnTombstoneTSCacheKey := transactionTombstoneMarker(
 				roachpb.Key(strKey), txns[strKey].ID)
-			ok, err := storage.MVCCGetProto(ctx, tc.engine, txnKey, hlc.Timestamp{}, txn,
-				storage.MVCCGetOptions{})
+			ok, err := relational.MVCCGetProto(ctx, tc.engine, txnKey, hlc.Timestamp{}, txn,
+				relational.MVCCGetOptions{})
 			if err != nil {
 				return err
 			}
@@ -882,8 +882,8 @@ func TestGCQueueTransactionTable(t *testing.T) {
 	outsideTxnPrefix := keys.TransactionKey(outsideKey, uuid.UUID{})
 	outsideTxnPrefixEnd := keys.TransactionKey(outsideKey.Next(), uuid.UUID{})
 	var count int
-	if _, err := storage.MVCCIterate(ctx, tc.store.Engine(), outsideTxnPrefix, outsideTxnPrefixEnd, hlc.Timestamp{},
-		storage.MVCCScanOptions{}, func(roachpb.KeyValue) (bool, error) {
+	if _, err := relational.MVCCIterate(ctx, tc.store.Engine(), outsideTxnPrefix, outsideTxnPrefixEnd, hlc.Timestamp{},
+		relational.MVCCScanOptions{}, func(roachpb.KeyValue) (bool, error) {
 			count++
 			return false, nil
 		}); err != nil {
@@ -961,7 +961,7 @@ func TestGCQueueIntentResolution(t *testing.T) {
 	testutils.SucceedsSoon(t, func() error {
 		meta := &enginepb.MVCCMetadata{}
 		return tc.store.Engine().Iterate(roachpb.KeyMin, roachpb.KeyMax,
-			func(kv storage.MVCCKeyValue) (bool, error) {
+			func(kv relational.MVCCKeyValue) (bool, error) {
 				if !kv.Key.IsValue() {
 					if err := protoutil.Unmarshal(kv.Value, meta); err != nil {
 						return false, err
@@ -998,7 +998,7 @@ func TestGCQueueLastProcessedTimestamps(t *testing.T) {
 
 	ts := tc.Clock().Now()
 	for _, lpv := range lastProcessedVals {
-		if err := storage.MVCCPutProto(ctx, tc.engine, nil, lpv.key, hlc.Timestamp{}, nil, &ts); err != nil {
+		if err := relational.MVCCPutProto(ctx, tc.engine, nil, lpv.key, hlc.Timestamp{}, nil, &ts); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -1017,8 +1017,8 @@ func TestGCQueueLastProcessedTimestamps(t *testing.T) {
 	// Verify GC.
 	testutils.SucceedsSoon(t, func() error {
 		for _, lpv := range lastProcessedVals {
-			ok, err := storage.MVCCGetProto(ctx, tc.engine, lpv.key, hlc.Timestamp{}, &ts,
-				storage.MVCCGetOptions{})
+			ok, err := relational.MVCCGetProto(ctx, tc.engine, lpv.key, hlc.Timestamp{}, &ts,
+				relational.MVCCGetOptions{})
 			if err != nil {
 				return err
 			}

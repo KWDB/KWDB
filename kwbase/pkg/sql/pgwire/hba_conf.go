@@ -159,10 +159,10 @@ func checkHBASyntaxBeforeUpdatingSetting(values *settings.Values, s string) erro
 		case hba.ConnLocal:
 		case hba.ConnHostSSL, hba.ConnHostNoSSL:
 			if vh != nil &&
-				!vh.IsActive(context.TODO(), clusterversion.VersionAuthLocalAndTrustRejectMethods) {
+				!vh.IsActive(context.TODO(), clusterversion.VersionMinSupported) {
 				return pgerror.Newf(pgcode.ObjectNotInPrerequisiteState,
 					`authentication rule type 'local' requires all nodes to be upgraded to %s`,
-					clusterversion.VersionByKey(clusterversion.VersionAuthLocalAndTrustRejectMethods),
+					clusterversion.VersionByKey(clusterversion.VersionMinSupported),
 				)
 			}
 		default:

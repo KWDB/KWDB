@@ -232,7 +232,7 @@ var storageParamExpectedTypes = map[string]storageParamType{
 // minimumTypeUsageVersions defines the minimum version needed for a new
 // data type.
 var minimumTypeUsageVersions = map[types.Family]clusterversion.VersionKey{
-	types.TimeTZFamily: clusterversion.VersionTimeTZType,
+	types.TimeTZFamily: clusterversion.VersionMinSupported,
 }
 
 // isTypeSupportedInVersion returns whether a given type is supported in the given version.
@@ -245,7 +245,7 @@ func isTypeSupportedInVersion(v clusterversion.ClusterVersion, t *types.T) (bool
 
 	switch t.Family() {
 	case types.TimeFamily, types.TimestampFamily, types.TimestampTZFamily, types.TimeTZFamily:
-		if t.Precision() != 6 && !v.IsActive(clusterversion.VersionTimePrecision) {
+		if t.Precision() != 6 && !v.IsActive(clusterversion.VersionMinSupported) {
 			return false, nil
 		}
 	case types.IntervalFamily:
@@ -254,7 +254,7 @@ func isTypeSupportedInVersion(v clusterversion.ClusterVersion, t *types.T) (bool
 			return false, err
 		}
 		if (t.Precision() != 6 || itm.DurationField != types.IntervalDurationField{}) &&
-			!v.IsActive(clusterversion.VersionTimePrecision) {
+			!v.IsActive(clusterversion.VersionMinSupported) {
 			return false, nil
 		}
 	}
@@ -1788,7 +1788,7 @@ func checkColumnDef(
 			return invalidClusterForShardedIndexError
 		}
 		if version == (clusterversion.ClusterVersion{}) ||
-			!version.IsActive(clusterversion.VersionHashShardedIndexes) {
+			!version.IsActive(clusterversion.VersionMinSupported) {
 			return invalidClusterForShardedIndexError
 		}
 
@@ -2051,7 +2051,7 @@ func checkColFamily(
 	ctx context.Context, st *cluster.Settings, desc *sqlbase.MutableTableDescriptor,
 ) error {
 	if version := st.Version.ActiveVersionOrEmpty(ctx); version != (clusterversion.ClusterVersion{}) &&
-		!version.IsActive(clusterversion.VersionPrimaryKeyColumnsOutOfFamilyZero) {
+		!version.IsActive(clusterversion.VersionMinSupported) {
 		var colsInFamZero util.FastIntSet
 		for _, colID := range desc.Families[0].ColumnIDs {
 			colsInFamZero.Add(int(colID))
@@ -2159,7 +2159,7 @@ func MakeTableDesc(
 	// server setup before the cluster version has been initialized.
 	version := st.Version.ActiveVersionOrEmpty(ctx)
 	if version != (clusterversion.ClusterVersion{}) &&
-		version.IsActive(clusterversion.VersionSecondaryIndexColumnFamilies) {
+		version.IsActive(clusterversion.VersionMinSupported) {
 		indexEncodingVersion = sqlbase.SecondaryIndexFamilyFormatVersion
 	}
 

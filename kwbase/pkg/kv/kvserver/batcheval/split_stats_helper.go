@@ -24,7 +24,7 @@
 
 package batcheval
 
-import "gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+import "gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 
 // splitStatsHelper codifies and explains the stats computations related to a
 // split. The quantities known during a split (i.e. while the split trigger

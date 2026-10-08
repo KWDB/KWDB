@@ -49,9 +49,9 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlutil"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/stats"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/cloud"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/fs"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/localexternal"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/mon"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
@@ -159,7 +159,7 @@ type ServerConfig struct {
 	TempFS fs.FS
 
 	// TsEngine is a ts engine
-	TsEngine *tse.TsEngine
+	TsEngine *timeseries.TsEngine
 
 	// TsIDGen is a TSIDGenerator
 	TsIDGen *sqlbase.TSIDGenerator
@@ -207,8 +207,8 @@ type ServerConfig struct {
 	// required, so that users of ServerConfig don't have to care about them.
 	SessionBoundInternalExecutorFactory sqlutil.SessionBoundInternalExecutorFactory
 
-	ExternalStorage        cloud.ExternalStorageFactory
-	ExternalStorageFromURI cloud.ExternalStorageFromURIFactory
+	ExternalStorage        localexternal.ExternalStorageFactory
+	ExternalStorageFromURI localexternal.ExternalStorageFromURIFactory
 
 	// ProtectedTimestampProvider maintains the state of the protected timestamp
 	// subsystem. It is queried during the GC process and in the handling of
@@ -350,7 +350,7 @@ type CDCCoordinator interface {
 	// SetDistInternalExecutor set InternalExecutor to Coordinator.
 	SetDistInternalExecutor(executor sqlutil.InternalExecutor)
 	// SetTsEngine set tsEngine to Coordinator.
-	SetTsEngine(tse *tse.TsEngine)
+	SetTsEngine(tse *timeseries.TsEngine)
 	// SendToPipeImmediately finds the specified CDC instance, and sends data immediately.
 	SendToPipeImmediately(
 		ctx context.Context,

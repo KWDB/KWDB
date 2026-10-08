@@ -27,7 +27,7 @@ package gc
 import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/rditer"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/bufalloc"
 )
 
@@ -40,7 +40,7 @@ type gcIterator struct {
 	buf  gcIteratorRingBuf
 }
 
-func makeGCIterator(desc *roachpb.RangeDescriptor, snap storage.Reader) gcIterator {
+func makeGCIterator(desc *roachpb.RangeDescriptor, snap relational.Reader) gcIterator {
 	return gcIterator{
 		it: rditer.NewReplicaDataIterator(desc, snap,
 			true /* replicatedOnly */, true /* seekEnd */),
@@ -48,7 +48,7 @@ func makeGCIterator(desc *roachpb.RangeDescriptor, snap storage.Reader) gcIterat
 }
 
 type gcIteratorState struct {
-	cur, next, afterNext *storage.MVCCKeyValue
+	cur, next, afterNext *relational.MVCCKeyValue
 }
 
 // curIsNewest returns true if the current MVCCKeyValue in the gcIteratorState
@@ -112,7 +112,7 @@ func (it *gcIterator) step() {
 	it.buf.removeFront()
 }
 
-func (it *gcIterator) peekAt(i int) (*storage.MVCCKeyValue, bool) {
+func (it *gcIterator) peekAt(i int) (*relational.MVCCKeyValue, bool) {
 	if it.buf.len <= i {
 		if !it.fillTo(i + 1) {
 			return nil, false
@@ -144,12 +144,12 @@ const gcIteratorRingBufSize = 3
 
 type gcIteratorRingBuf struct {
 	allocs [gcIteratorRingBufSize]bufalloc.ByteAllocator
-	buf    [gcIteratorRingBufSize]storage.MVCCKeyValue
+	buf    [gcIteratorRingBufSize]relational.MVCCKeyValue
 	len    int
 	head   int
 }
 
-func (b *gcIteratorRingBuf) at(i int) *storage.MVCCKeyValue {
+func (b *gcIteratorRingBuf) at(i int) *relational.MVCCKeyValue {
 	if i >= b.len {
 		panic("index out of range")
 	}
@@ -160,13 +160,13 @@ func (b *gcIteratorRingBuf) removeFront() {
 	if b.len == 0 {
 		panic("cannot remove from empty gcIteratorRingBuf")
 	}
-	b.buf[b.head] = storage.MVCCKeyValue{}
+	b.buf[b.head] = relational.MVCCKeyValue{}
 	b.head = (b.head + 1) % gcIteratorRingBufSize
 	b.len--
 }
 
 type iterator interface {
-	UnsafeKey() storage.MVCCKey
+	UnsafeKey() relational.MVCCKey
 	UnsafeValue() []byte
 }
 
@@ -180,7 +180,7 @@ func (b *gcIteratorRingBuf) pushBack(it iterator) {
 	v := it.UnsafeValue()
 	b.allocs[i], k.Key = b.allocs[i].Copy(k.Key, len(v))
 	b.allocs[i], v = b.allocs[i].Copy(v, 0)
-	b.buf[i] = storage.MVCCKeyValue{
+	b.buf[i] = relational.MVCCKeyValue{
 		Key:   k,
 		Value: v,
 	}

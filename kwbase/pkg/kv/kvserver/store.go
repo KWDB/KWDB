@@ -65,11 +65,10 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlutil"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/cloud"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
-	// "gitee.com/kwbasedb/kwbase/pkg/tscoord"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/localexternal"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util/contextutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
@@ -412,9 +411,9 @@ type Store struct {
 	Ident                 *roachpb.StoreIdent // pointer to catch access before Start() is called
 	cfg                   StoreConfig
 	db                    *kv.DB
-	engine                storage.Engine // The underlying key-value store
-	TsEngine              *tse.TsEngine
-	TsRaftLogEngine       *tse.TsRaftLogEngine
+	engine                relational.Engine // The underlying key-value store
+	TsEngine              *timeseries.TsEngine
+	TsRaftLogEngine       *timeseries.TsRaftLogEngine
 	tsForceCheckpointGate tsForceCheckpointGate
 	compactor             *compactor.Compactor // Schedules compaction of the engine
 	tsCache               tscache.Cache        // Most recent timestamps for keys / key ranges
@@ -655,7 +654,7 @@ type StoreConfig struct {
 	Settings                *cluster.Settings
 	Clock                   *hlc.Clock
 	DB                      *kv.DB
-	TsEngine                *tse.TsEngine
+	TsEngine                *timeseries.TsEngine
 	Gossip                  *gossip.Gossip
 	NodeLiveness            *NodeLiveness
 	StorePool               *StorePool
@@ -745,8 +744,8 @@ type StoreConfig struct {
 	GossipWhenCapacityDeltaExceedsFraction float64
 
 	// ExternalStorage creates ExternalStorage objects which allows access to external files
-	ExternalStorage        cloud.ExternalStorageFactory
-	ExternalStorageFromURI cloud.ExternalStorageFromURIFactory
+	ExternalStorage        localexternal.ExternalStorageFactory
+	ExternalStorageFromURI localexternal.ExternalStorageFromURIFactory
 
 	// ProtectedTimestampCache maintains the state of the protected timestamp
 	// subsystem. It is queried during the GC process and in the handling of
@@ -820,7 +819,7 @@ func (sc *StoreConfig) LeaseExpiration() int64 {
 
 // NewStore returns a new instance of a store.
 func NewStore(
-	ctx context.Context, cfg StoreConfig, eng storage.Engine, nodeDesc *roachpb.NodeDescriptor,
+	ctx context.Context, cfg StoreConfig, eng relational.Engine, nodeDesc *roachpb.NodeDescriptor,
 ) *Store {
 	// TODO(tschottdorf): find better place to set these defaults.
 	cfg.SetDefaults()
@@ -1260,20 +1259,20 @@ func (s *Store) IsStarted() bool {
 // Iteration stops on the first error (and will pass through that error).
 func IterateIDPrefixKeys(
 	ctx context.Context,
-	reader storage.Reader,
+	reader relational.Reader,
 	keyFn func(roachpb.RangeID) roachpb.Key,
 	msg protoutil.Message,
 	f func(_ roachpb.RangeID) (more bool, _ error),
 ) error {
 	rangeID := roachpb.RangeID(1)
-	iter := reader.NewIterator(storage.IterOptions{
+	iter := reader.NewIterator(relational.IterOptions{
 		UpperBound: keys.LocalRangeIDPrefix.PrefixEnd().AsRawKey(),
 	})
 	defer iter.Close()
 
 	for {
 		bumped := false
-		mvccKey := storage.MakeMVCCMetadataKey(keyFn(rangeID))
+		mvccKey := relational.MakeMVCCMetadataKey(keyFn(rangeID))
 		iter.SeekGE(mvccKey)
 
 		if ok, err := iter.Valid(); !ok {
@@ -1298,7 +1297,7 @@ func IterateIDPrefixKeys(
 				rangeID = curRangeID
 				bumped = true
 			}
-			mvccKey = storage.MakeMVCCMetadataKey(keyFn(rangeID))
+			mvccKey = relational.MakeMVCCMetadataKey(keyFn(rangeID))
 		}
 
 		if !unsafeKey.Key.Equal(mvccKey.Key) {
@@ -1311,8 +1310,8 @@ func IterateIDPrefixKeys(
 			continue
 		}
 
-		ok, err := storage.MVCCGetProto(
-			ctx, reader, unsafeKey.Key, hlc.Timestamp{}, msg, storage.MVCCGetOptions{})
+		ok, err := relational.MVCCGetProto(
+			ctx, reader, unsafeKey.Key, hlc.Timestamp{}, msg, relational.MVCCGetOptions{})
 		if err != nil {
 			return err
 		}
@@ -1333,7 +1332,7 @@ func IterateIDPrefixKeys(
 // semantics similar to engine.MVCCIterate.
 func IterateRangeDescriptors(
 	ctx context.Context,
-	reader storage.Reader,
+	reader relational.Reader,
 	fn func(desc roachpb.RangeDescriptor) (done bool, err error),
 ) error {
 	log.Event(ctx, "beginning range descriptor iteration")
@@ -1363,8 +1362,8 @@ func IterateRangeDescriptors(
 		return fn(desc)
 	}
 
-	_, err := storage.MVCCIterate(ctx, reader, start, end, hlc.MaxTimestamp,
-		storage.MVCCScanOptions{Inconsistent: true}, kvToDesc)
+	_, err := relational.MVCCIterate(ctx, reader, start, end, hlc.MaxTimestamp,
+		relational.MVCCScanOptions{Inconsistent: true}, kvToDesc)
 	log.Eventf(ctx, "iterated over %d keys to find %d range descriptors (by suffix: %v)",
 		allCount, matchCount, bySuffix)
 	return err
@@ -1373,10 +1372,10 @@ func IterateRangeDescriptors(
 // ReadStoreIdent reads the StoreIdent from the store.
 // It returns *NotBootstrappedError if the ident is missing (meaning that the
 // store needs to be bootstrapped).
-func ReadStoreIdent(ctx context.Context, eng storage.Engine) (roachpb.StoreIdent, error) {
+func ReadStoreIdent(ctx context.Context, eng relational.Engine) (roachpb.StoreIdent, error) {
 	var ident roachpb.StoreIdent
-	ok, err := storage.MVCCGetProto(
-		ctx, eng, keys.StoreIdentKey(), hlc.Timestamp{}, &ident, storage.MVCCGetOptions{})
+	ok, err := relational.MVCCGetProto(
+		ctx, eng, keys.StoreIdentKey(), hlc.Timestamp{}, &ident, relational.MVCCGetOptions{})
 	if err != nil {
 		return roachpb.StoreIdent{}, err
 	} else if !ok {
@@ -1389,7 +1388,7 @@ func ReadStoreIdent(ctx context.Context, eng storage.Engine) (roachpb.StoreIdent
 func (s *Store) Start(
 	ctx context.Context,
 	stopper *stop.Stopper,
-	setTse func() (*tse.TsEngine, *tse.TsRaftLogEngine, error),
+	setTse func() (*timeseries.TsEngine, *timeseries.TsRaftLogEngine, error),
 ) error {
 	s.stopper = stopper
 
@@ -2015,7 +2014,7 @@ func (s *Store) VisitReplicas(visitor func(*Replica) bool) {
 // determine the approximate time that it stopped.
 func (s *Store) WriteLastUpTimestamp(ctx context.Context, time hlc.Timestamp) error {
 	ctx = s.AnnotateCtx(ctx)
-	return storage.MVCCPutProto(
+	return relational.MVCCPutProto(
 		ctx,
 		s.engine,
 		nil,
@@ -2033,8 +2032,8 @@ func (s *Store) WriteLastUpTimestamp(ctx context.Context, time hlc.Timestamp) er
 // timestamp is returned instead.
 func (s *Store) ReadLastUpTimestamp(ctx context.Context) (hlc.Timestamp, error) {
 	var timestamp hlc.Timestamp
-	ok, err := storage.MVCCGetProto(ctx, s.Engine(), keys.StoreLastUpKey(), hlc.Timestamp{},
-		&timestamp, storage.MVCCGetOptions{})
+	ok, err := relational.MVCCGetProto(ctx, s.Engine(), keys.StoreLastUpKey(), hlc.Timestamp{},
+		&timestamp, relational.MVCCGetOptions{})
 	if err != nil {
 		return hlc.Timestamp{}, err
 	} else if !ok {
@@ -2050,7 +2049,7 @@ func (s *Store) WriteHLCUpperBound(ctx context.Context, time int64) error {
 	batch := s.Engine().NewBatch()
 	// Write has to sync to disk to ensure HLC monotonicity across restarts
 	defer batch.Close()
-	if err := storage.MVCCPutProto(
+	if err := relational.MVCCPutProto(
 		ctx,
 		batch,
 		nil,
@@ -2062,7 +2061,7 @@ func (s *Store) WriteHLCUpperBound(ctx context.Context, time int64) error {
 		return err
 	}
 
-	if err := batch.Commit(true /* sync */, storage.NormalCommitType); err != nil {
+	if err := batch.Commit(true /* sync */, relational.NormalCommitType); err != nil {
 		return err
 	}
 	return nil
@@ -2070,10 +2069,10 @@ func (s *Store) WriteHLCUpperBound(ctx context.Context, time int64) error {
 
 // ReadHLCUpperBound returns the upper bound to the wall time of the HLC
 // If this value does not exist 0 is returned
-func ReadHLCUpperBound(ctx context.Context, e storage.Engine) (int64, error) {
+func ReadHLCUpperBound(ctx context.Context, e relational.Engine) (int64, error) {
 	var timestamp hlc.Timestamp
-	ok, err := storage.MVCCGetProto(ctx, e, keys.StoreHLCUpperBoundKey(), hlc.Timestamp{},
-		&timestamp, storage.MVCCGetOptions{})
+	ok, err := relational.MVCCGetProto(ctx, e, keys.StoreHLCUpperBoundKey(), hlc.Timestamp{},
+		&timestamp, relational.MVCCGetOptions{})
 	if err != nil {
 		return 0, err
 	} else if !ok {
@@ -2087,7 +2086,7 @@ func ReadHLCUpperBound(ctx context.Context, e storage.Engine) (int64, error) {
 // it is guaranteed to be higher than any wall time used by the HLC. If this
 // value is persisted, HLC wall clock monotonicity is guaranteed across server
 // restarts
-func ReadMaxHLCUpperBound(ctx context.Context, engines []storage.Engine) (int64, error) {
+func ReadMaxHLCUpperBound(ctx context.Context, engines []relational.Engine) (int64, error) {
 	var hlcUpperBound int64
 	for _, e := range engines {
 		engineHLCUpperBound, err := ReadHLCUpperBound(ctx, e)
@@ -2101,8 +2100,8 @@ func ReadMaxHLCUpperBound(ctx context.Context, engines []storage.Engine) (int64,
 	return hlcUpperBound, nil
 }
 
-func checkEngineEmpty(ctx context.Context, eng storage.Engine) error {
-	kvs, err := storage.Scan(eng, roachpb.KeyMin, roachpb.KeyMax, 10)
+func checkEngineEmpty(ctx context.Context, eng relational.Engine) error {
+	kvs, err := relational.Scan(eng, roachpb.KeyMin, roachpb.KeyMax, 10)
 	if err != nil {
 		return err
 	}
@@ -2205,7 +2204,7 @@ func (s *Store) StoreID() roachpb.StoreID { return s.Ident.StoreID }
 func (s *Store) Clock() *hlc.Clock { return s.cfg.Clock }
 
 // Engine accessor.
-func (s *Store) Engine() storage.Engine { return s.engine }
+func (s *Store) Engine() relational.Engine { return s.engine }
 
 // DB accessor.
 func (s *Store) DB() *kv.DB { return s.cfg.DB }
@@ -2689,18 +2688,18 @@ func (s *Store) GetClusterVersion(ctx context.Context) (clusterversion.ClusterVe
 
 // WriteClusterVersion writes the given cluster version to the store-local cluster version key.
 func WriteClusterVersion(
-	ctx context.Context, writer storage.ReadWriter, cv clusterversion.ClusterVersion,
+	ctx context.Context, writer relational.ReadWriter, cv clusterversion.ClusterVersion,
 ) error {
-	return storage.MVCCPutProto(ctx, writer, nil, keys.StoreClusterVersionKey(), hlc.Timestamp{}, nil, &cv)
+	return relational.MVCCPutProto(ctx, writer, nil, keys.StoreClusterVersionKey(), hlc.Timestamp{}, nil, &cv)
 }
 
 // ReadClusterVersion reads the the cluster version from the store-local version key.
 func ReadClusterVersion(
-	ctx context.Context, reader storage.Reader,
+	ctx context.Context, reader relational.Reader,
 ) (clusterversion.ClusterVersion, error) {
 	var cv clusterversion.ClusterVersion
-	_, err := storage.MVCCGetProto(ctx, reader, keys.StoreClusterVersionKey(), hlc.Timestamp{},
-		&cv, storage.MVCCGetOptions{})
+	_, err := relational.MVCCGetProto(ctx, reader, keys.StoreClusterVersionKey(), hlc.Timestamp{},
+		&cv, relational.MVCCGetOptions{})
 	return cv, err
 }
 

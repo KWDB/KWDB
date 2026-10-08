@@ -38,8 +38,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/humanizeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -96,7 +96,7 @@ type snapshotStrategy interface {
 
 	// SendTS streams SnapshotRequests created from the OutgoingSnapshot in to the
 	// provided stream. On nil error, the number of bytes sent is returned.
-	SendTS(context.Context, *tse.TsEngine, *tse.TsRaftLogEngine, outgoingSnapshotStream, SnapshotRequest_Header, *OutgoingSnapshot) (int64, error)
+	SendTS(context.Context, *timeseries.TsEngine, *timeseries.TsRaftLogEngine, outgoingSnapshotStream, SnapshotRequest_Header, *OutgoingSnapshot) (int64, error)
 
 	// Status provides a status report on the work performed during the
 	// snapshot. Only valid if the strategy succeeded.
@@ -126,7 +126,7 @@ type kvBatchSnapshotStrategy struct {
 	// Limiter for sending KV batches. Only used on the sender side.
 	limiter *rate.Limiter
 	// Only used on the sender side.
-	newBatch func() storage.Batch
+	newBatch func() relational.Batch
 	// bytesSent is updated in sendBatch and returned from Send(). It does not
 	// reflect the log entries sent (which are never sent in newer versions of
 	// KWDB, as of VersionUnreplicatedTruncatedState).
@@ -144,7 +144,7 @@ type kvBatchSnapshotStrategy struct {
 // disk.
 type multiSSTWriter struct {
 	scratch   *SSTSnapshotStorageScratch
-	currSST   storage.SSTWriter
+	currSST   relational.SSTWriter
 	keyRanges []rditer.KeyRange
 	currRange int
 	// The approximate size of the SST chunk to buffer in memory on the receiver
@@ -174,7 +174,7 @@ func (msstw *multiSSTWriter) initSST(ctx context.Context) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to create new sst file")
 	}
-	newSST := storage.MakeIngestionSSTWriter(newSSTFile)
+	newSST := relational.MakeIngestionSSTWriter(newSSTFile)
 	msstw.currSST = newSST
 	if err := msstw.currSST.ClearRange(msstw.keyRanges[msstw.currRange].Start, msstw.keyRanges[msstw.currRange].End); err != nil {
 		msstw.currSST.Close()
@@ -193,7 +193,7 @@ func (msstw *multiSSTWriter) finalizeSST(ctx context.Context) error {
 	return nil
 }
 
-func (msstw *multiSSTWriter) Put(ctx context.Context, key storage.MVCCKey, value []byte) error {
+func (msstw *multiSSTWriter) Put(ctx context.Context, key relational.MVCCKey, value []byte) error {
 	for msstw.keyRanges[msstw.currRange].End.Key.Compare(key.Key) <= 0 {
 		// Finish the current SST, write to the file, and move to the next key
 		// range.
@@ -289,14 +289,14 @@ func (kvSS *kvBatchSnapshotStrategy) ReceiveTS(
 		}
 
 		if req.KVBatch != nil {
-			batchReader, err := storage.NewRocksDBBatchReader(req.KVBatch)
+			batchReader, err := relational.NewRocksDBBatchReader(req.KVBatch)
 			if err != nil {
 				return noSnap, errors.Wrap(err, "failed to decode batch")
 			}
 
 			for batchReader.Next() {
-				if batchReader.BatchType() != storage.BatchTypeValue {
-					return noSnap, kwdberrors.AssertionFailedf("expected type %d, found type %d", storage.BatchTypeValue, batchReader.BatchType())
+				if batchReader.BatchType() != relational.BatchTypeValue {
+					return noSnap, kwdberrors.AssertionFailedf("expected type %d, found type %d", relational.BatchTypeValue, batchReader.BatchType())
 				}
 				key, err := batchReader.MVCCKey()
 				if err != nil {
@@ -417,14 +417,14 @@ func (kvSS *kvBatchSnapshotStrategy) Receive(
 		}
 
 		if req.KVBatch != nil {
-			batchReader, err := storage.NewRocksDBBatchReader(req.KVBatch)
+			batchReader, err := relational.NewRocksDBBatchReader(req.KVBatch)
 			if err != nil {
 				return noSnap, errors.Wrap(err, "failed to decode batch")
 			}
 			// All operations in the batch are guaranteed to be puts.
 			for batchReader.Next() {
-				if batchReader.BatchType() != storage.BatchTypeValue {
-					return noSnap, kwdberrors.AssertionFailedf("expected type %d, found type %d", storage.BatchTypeValue, batchReader.BatchType())
+				if batchReader.BatchType() != relational.BatchTypeValue {
+					return noSnap, kwdberrors.AssertionFailedf("expected type %d, found type %d", relational.BatchTypeValue, batchReader.BatchType())
 				}
 				key, err := batchReader.MVCCKey()
 				if err != nil {
@@ -487,8 +487,8 @@ var errMalformedSnapshot = errors.New("malformed snapshot generated")
 // SendTS implements the snapshotStrategy interface.
 func (kvSS *kvBatchSnapshotStrategy) SendTS(
 	ctx context.Context,
-	TsEngine *tse.TsEngine,
-	RaftLogEngine *tse.TsRaftLogEngine,
+	TsEngine *timeseries.TsEngine,
+	RaftLogEngine *timeseries.TsRaftLogEngine,
 	stream outgoingSnapshotStream,
 	header SnapshotRequest_Header,
 	snap *OutgoingSnapshot,
@@ -675,7 +675,7 @@ func (kvSS *kvBatchSnapshotStrategy) Send(
 	// Iterate over all keys using the provided iterator and stream out batches
 	// of key-values.
 	n := 0
-	var b storage.Batch
+	var b relational.Batch
 	for iter := snap.Iter; ; iter.Next() {
 		if ok, err := iter.Valid(); err != nil {
 			return 0, err
@@ -824,7 +824,7 @@ func (kvSS *kvBatchSnapshotStrategy) Send(
 }
 
 func (kvSS *kvBatchSnapshotStrategy) sendBatch(
-	ctx context.Context, stream outgoingSnapshotStream, batch storage.Batch,
+	ctx context.Context, stream outgoingSnapshotStream, batch relational.Batch,
 ) error {
 	if err := kvSS.limiter.WaitN(ctx, 1); err != nil {
 		return err
@@ -1303,14 +1303,14 @@ func (e *errMustRetrySnapshotDueToTruncation) Error() string {
 func sendTSSnapshot(
 	ctx context.Context,
 	raftCfg *base.RaftConfig,
-	TsEngine *tse.TsEngine,
-	RaftLogEngine *tse.TsRaftLogEngine,
+	TsEngine *timeseries.TsEngine,
+	RaftLogEngine *timeseries.TsRaftLogEngine,
 	st *cluster.Settings,
 	stream outgoingSnapshotStream,
 	storePool SnapshotStorePool,
 	header SnapshotRequest_Header,
 	snap *OutgoingSnapshot,
-	newBatch func() storage.Batch,
+	newBatch func() relational.Batch,
 	sent func(),
 ) error {
 	start := timeutil.Now()
@@ -1429,7 +1429,7 @@ func sendSnapshot(
 	storePool SnapshotStorePool,
 	header SnapshotRequest_Header,
 	snap *OutgoingSnapshot,
-	newBatch func() storage.Batch,
+	newBatch func() relational.Batch,
 	sent func(),
 ) error {
 	start := timeutil.Now()

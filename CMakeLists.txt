@@ -211,9 +211,7 @@ elseif (BUILD_KWBASE)
     message(STATUS "BUILD_KWBASE is ON, setting WITH_TESTS OFF")
 endif()
 
-add_subdirectory(common ${CMAKE_BINARY_DIR}/common)
-# compile kwdbts2
-add_subdirectory(kwdbts2 ${CMAKE_BINARY_DIR}/kwdbts2)
+add_subdirectory(kwbase/engine ${CMAKE_BINARY_DIR}/engine)
 
 # compile kwbase
 if (BUILD_KWBASE)
@@ -261,12 +259,12 @@ if (WITH_TESTS)
 endif()
 # install script
 file(GLOB_RECURSE UTIL_SCRIPTS
-        common/util/script/query_status.sh
-        common/util/script/query_kwbase_status.sh
-        common/util/script/setup_cert_file.sh
-        common/util/script/err_inject.sh
-        common/util/script/df.sh
-        common/util/script/utils.sh
+        kwbase/engine/common/util/script/query_status.sh
+        kwbase/engine/common/util/script/query_kwbase_status.sh
+        kwbase/engine/common/util/script/setup_cert_file.sh
+        kwbase/engine/common/util/script/err_inject.sh
+        kwbase/engine/common/util/script/df.sh
+        kwbase/engine/common/util/script/utils.sh
         )
 INSTALL(FILES ${UTIL_SCRIPTS}
         DESTINATION ${CMAKE_INSTALL_PREFIX}/bin

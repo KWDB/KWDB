@@ -11,7 +11,7 @@
 
 package sql
 
-// #cgo CPPFLAGS: -I../../../kwdbts2/include
+// #cgo CPPFLAGS: -I../../engine/ts_engine/include
 // #cgo LDFLAGS: -lkwdbts2 -lcommon  -lstdc++
 // #cgo LDFLAGS: -lprotobuf
 // #cgo linux LDFLAGS: -lrt -lpthread
@@ -30,7 +30,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
 	"github.com/cockroachdb/errors"
@@ -41,11 +41,11 @@ var handler = getTableHandler{}
 // getTableHandler is used to get desc from storage.
 type getTableHandler struct {
 	db  *kv.DB
-	tse *tse.TsEngine
+	tse *timeseries.TsEngine
 }
 
 // Init initialize the handler and init the db.
-func Init(db *kv.DB, tse *tse.TsEngine) {
+func Init(db *kv.DB, tse *timeseries.TsEngine) {
 	handler.db = db
 	handler.tse = tse
 }

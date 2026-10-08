@@ -30,8 +30,8 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/batcheval/result"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/rangefeed"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/metric"
 	"go.etcd.io/etcd/raft/raftpb"
@@ -1513,7 +1513,7 @@ func (sm *StoreMetrics) subtractMVCCStats(delta enginepb.MVCCStats) {
 	sm.incMVCCGauges(neg)
 }
 
-func (sm *StoreMetrics) updateRocksDBStats(stats storage.Stats) {
+func (sm *StoreMetrics) updateRocksDBStats(stats relational.Stats) {
 	// We do not grab a lock here, because it's not possible to get a point-in-
 	// time snapshot of RocksDB stats. Retrieving RocksDB stats doesn't grab any
 	// locks, and there's no way to retrieve multiple stats in a single operation.
@@ -1533,7 +1533,7 @@ func (sm *StoreMetrics) updateRocksDBStats(stats storage.Stats) {
 	sm.RdbTableReadersMemEstimate.Update(stats.TableReadersMemEstimate)
 }
 
-func (sm *StoreMetrics) updateEnvStats(stats storage.EnvStats) {
+func (sm *StoreMetrics) updateEnvStats(stats relational.EnvStats) {
 	sm.EncryptionAlgorithm.Update(int64(stats.EncryptionType))
 }
 

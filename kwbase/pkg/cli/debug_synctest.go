@@ -37,7 +37,7 @@ import (
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
 	"github.com/pkg/errors"
@@ -147,7 +147,7 @@ func runSyncer(
 		return encoding.EncodeUvarintAscending(buf[:0:0], uint64(seq))
 	}
 
-	check := func(kv storage.MVCCKeyValue) (bool, error) {
+	check := func(kv relational.MVCCKeyValue) (bool, error) {
 		expKey := key()
 		if !bytes.Equal(kv.Key.Key, expKey) {
 			return false, errors.Errorf(
@@ -198,7 +198,7 @@ func runSyncer(
 			}
 		}()
 
-		k, v := storage.MakeMVCCMetadataKey(key()), []byte("payload")
+		k, v := relational.MakeMVCCMetadataKey(key()), []byte("payload")
 		switch seq % 2 {
 		case 0:
 			if err := db.Put(k, v); err != nil {
@@ -215,7 +215,7 @@ func runSyncer(
 				seq--
 				return seq, err
 			}
-			if err := b.Commit(true /* sync */, storage.NormalCommitType); err != nil {
+			if err := b.Commit(true /* sync */, relational.NormalCommitType); err != nil {
 				seq--
 				return seq, err
 			}

@@ -24,8 +24,8 @@
 
 package server
 
-import "gitee.com/kwbasedb/kwbase/pkg/storage"
+import "gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 
 func setOpenFileLimitInner(physicalStoreCount int) (uint64, error) {
-	return storage.RecommendedMaxOpenFiles, nil
+	return relational.RecommendedMaxOpenFiles, nil
 }

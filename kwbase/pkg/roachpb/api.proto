@@ -30,8 +30,8 @@ import "kv/kvserver/concurrency/lock/locking.proto";
 import "roachpb/data.proto";
 import "roachpb/errors.proto";
 import "roachpb/metadata.proto";
-import "storage/enginepb/mvcc.proto";
-import "storage/enginepb/mvcc3.proto";
+import "storage/relational/enginepb/mvcc.proto";
+import "storage/relational/enginepb/mvcc3.proto";
 import "util/hlc/timestamp.proto";
 import "util/tracing/recorded_span.proto";
 import "gogoproto/gogo.proto";
@@ -78,7 +78,7 @@ message RequestHeader {
   bytes end_key = 4 [(gogoproto.casttype) = "Key"];
   // A zero-indexed transactional sequence number.
   int32 sequence = 5 [
-    (gogoproto.casttype) = "gitee.com/kwbasedb/kwbase/pkg/storage/enginepb.TxnSeq"];
+    (gogoproto.casttype) = "gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb.TxnSeq"];
 }
 
 // ResponseHeader is returned with every storage node response.

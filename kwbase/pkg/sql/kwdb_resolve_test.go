@@ -19,8 +19,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"github.com/cockroachdb/errors"
 )
@@ -31,7 +31,7 @@ func TestInit(t *testing.T) {
 
 	// Create mock dependencies
 	mockDB := &kv.DB{}
-	mockTSE := &tse.TsEngine{}
+	mockTSE := &timeseries.TsEngine{}
 
 	// Call Init
 	Init(mockDB, mockTSE)

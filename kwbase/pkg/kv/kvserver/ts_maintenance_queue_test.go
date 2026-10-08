@@ -39,11 +39,11 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/server"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/telemetry"
+	"gitee.com/kwbasedb/kwbase/pkg/telemetry/tspb"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
-	"gitee.com/kwbasedb/kwbase/pkg/ts"
-	"gitee.com/kwbasedb/kwbase/pkg/ts/tspb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"gitee.com/kwbasedb/kwbase/pkg/util/mon"
@@ -77,7 +77,7 @@ func (m *modelTimeSeriesDataStore) ContainsTimeSeries(start, end roachpb.RKey) b
 
 func (m *modelTimeSeriesDataStore) MaintainTimeSeries(
 	ctx context.Context,
-	snapshot storage.Reader,
+	snapshot relational.Reader,
 	start, end roachpb.RKey,
 	db *kv.DB,
 	_ *mon.BytesMonitor,
@@ -248,9 +248,9 @@ func TestTimeSeriesMaintenanceQueueServer(t *testing.T) {
 	seriesName := "test.metric"
 	sourceName := "source1"
 	now := tsrv.Clock().PhysicalNow()
-	nearPast := now - (tsdb.PruneThreshold(ts.Resolution10s) * 2)
-	farPast := now - (tsdb.PruneThreshold(ts.Resolution10s) * 4)
-	sampleDuration := ts.Resolution10s.SampleDuration()
+	nearPast := now - (tsdb.PruneThreshold(telemetry.Resolution10s) * 2)
+	farPast := now - (tsdb.PruneThreshold(telemetry.Resolution10s) * 4)
+	sampleDuration := telemetry.Resolution10s.SampleDuration()
 	datapoints := []tspb.TimeSeriesDatapoint{
 		{
 			TimestampNanos: farPast - farPast%sampleDuration,
@@ -265,7 +265,7 @@ func TestTimeSeriesMaintenanceQueueServer(t *testing.T) {
 			Value:          300.0,
 		},
 	}
-	if err := tsdb.StoreData(context.TODO(), ts.Resolution10s, []tspb.TimeSeriesData{
+	if err := tsdb.StoreData(context.TODO(), telemetry.Resolution10s, []tspb.TimeSeriesData{
 		{
 			Name:       seriesName,
 			Source:     sourceName,
@@ -276,8 +276,8 @@ func TestTimeSeriesMaintenanceQueueServer(t *testing.T) {
 	}
 
 	// Generate a split key at a timestamp halfway between near past and far past.
-	splitKey := ts.MakeDataKey(
-		seriesName, sourceName, ts.Resolution10s, farPast+(nearPast-farPast)/2,
+	splitKey := telemetry.MakeDataKey(
+		seriesName, sourceName, telemetry.Resolution10s, farPast+(nearPast-farPast)/2,
 	)
 
 	// Force a range split in between near past and far past. This guarantees
@@ -297,10 +297,10 @@ func TestTimeSeriesMaintenanceQueueServer(t *testing.T) {
 	)
 	memMon.Start(context.TODO(), nil /* pool */, mon.MakeStandaloneBudget(math.MaxInt64))
 	defer memMon.Stop(context.TODO())
-	memContext := ts.MakeQueryMemoryContext(
+	memContext := telemetry.MakeQueryMemoryContext(
 		&memMon,
 		&memMon,
-		ts.QueryMemoryOptions{
+		telemetry.QueryMemoryOptions{
 			BudgetBytes:             math.MaxInt64 / 8,
 			EstimatedSources:        1,
 			InterpolationLimitNanos: 0,
@@ -314,11 +314,11 @@ func TestTimeSeriesMaintenanceQueueServer(t *testing.T) {
 		dps, _, err := tsdb.Query(
 			context.TODO(),
 			tspb.Query{Name: seriesName},
-			ts.Resolution10s,
-			ts.QueryTimespan{
-				SampleDurationNanos: ts.Resolution10s.SampleDuration(),
+			telemetry.Resolution10s,
+			telemetry.QueryTimespan{
+				SampleDurationNanos: telemetry.Resolution10s.SampleDuration(),
 				StartNanos:          0,
-				EndNanos:            now + ts.Resolution10s.SlabDuration(),
+				EndNanos:            now + telemetry.Resolution10s.SlabDuration(),
 				NowNanos:            now + (10 * time.Hour).Nanoseconds(),
 			},
 			memContext,

@@ -31,8 +31,8 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/retry"
@@ -160,8 +160,8 @@ func (s *Store) tryGetOrCreateReplica(
 	// work when we know the Replica should not be created ahead of time.
 	tombstoneKey := keys.RangeTombstoneKey(rangeID)
 	var tombstone roachpb.RangeTombstone
-	if ok, err := storage.MVCCGetProto(
-		ctx, s.Engine(), tombstoneKey, hlc.Timestamp{}, &tombstone, storage.MVCCGetOptions{},
+	if ok, err := relational.MVCCGetProto(
+		ctx, s.Engine(), tombstoneKey, hlc.Timestamp{}, &tombstone, relational.MVCCGetOptions{},
 	); err != nil {
 		return nil, false, err
 	} else if ok && replicaID != 0 && replicaID < tombstone.NextReplicaID {
@@ -224,8 +224,8 @@ func (s *Store) tryGetOrCreateReplica(
 		// tombstone check and the Range map linearization point. By checking
 		// again now, we make sure to synchronize with any goroutine that wrote
 		// a tombstone and then removed an old replica from the Range map.
-		if ok, err := storage.MVCCGetProto(
-			ctx, s.Engine(), tombstoneKey, hlc.Timestamp{}, &tombstone, storage.MVCCGetOptions{},
+		if ok, err := relational.MVCCGetProto(
+			ctx, s.Engine(), tombstoneKey, hlc.Timestamp{}, &tombstone, relational.MVCCGetOptions{},
 		); err != nil {
 			return err
 		} else if ok && replicaID < tombstone.NextReplicaID {
@@ -334,7 +334,7 @@ func (s *Store) addReplicaToRangeMapLocked(repl *Replica) error {
 	}
 	// if node is starting, the cluster setting may not be refreshed, so the
 	// TsRaftLogCombineWAL is not always trustable, need also check repl.mu.tsFlushedIndex.
-	if repl.isTsLocked() && (tse.TsRaftLogCombineWAL.Get(&s.ClusterSettings().SV) || repl.mu.tsFlushedIndex > 0) {
+	if repl.isTsLocked() && (timeseries.TsRaftLogCombineWAL.Get(&s.ClusterSettings().SV) || repl.mu.tsFlushedIndex > 0) {
 		AddReplicaOnNode(repl)
 	}
 	// Check whether the replica is unquiesced but not in the map. This

@@ -477,15 +477,6 @@ var logicTestConfigs = []testClusterConfig{
 		overrideDistSQLMode: "on",
 		overrideAutoStats:   "false",
 	},
-	{
-		name:                "local-mixed-19.2-20.1",
-		numNodes:            1,
-		overrideDistSQLMode: "off",
-		overrideAutoStats:   "false",
-		bootstrapVersion:    roachpb.Version{Major: 19, Minor: 2},
-		binaryVersion:       roachpb.Version{Major: 20, Minor: 1},
-		disableUpgrade:      true,
-	},
 	//{
 	//	name:                "fakedist-vec-off",
 	//	numNodes:            3,

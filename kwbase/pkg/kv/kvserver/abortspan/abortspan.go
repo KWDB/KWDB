@@ -30,8 +30,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagebase"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
@@ -89,8 +89,8 @@ func (sc *AbortSpan) max() roachpb.Key {
 }
 
 // ClearData removes all persisted items stored in the cache.
-func (sc *AbortSpan) ClearData(e storage.Engine) error {
-	iter := e.NewIterator(storage.IterOptions{UpperBound: sc.max()})
+func (sc *AbortSpan) ClearData(e relational.Engine) error {
+	iter := e.NewIterator(relational.IterOptions{UpperBound: sc.max()})
 	defer iter.Close()
 	b := e.NewWriteOnlyBatch()
 	defer b.Close()
@@ -98,26 +98,26 @@ func (sc *AbortSpan) ClearData(e storage.Engine) error {
 	if err != nil {
 		return err
 	}
-	return b.Commit(false /* sync */, storage.NormalCommitType)
+	return b.Commit(false /* sync */, relational.NormalCommitType)
 }
 
 // Get looks up an AbortSpan entry recorded for this transaction ID.
 // Returns whether an abort record was found and any error.
 func (sc *AbortSpan) Get(
-	ctx context.Context, reader storage.Reader, txnID uuid.UUID, entry *roachpb.AbortSpanEntry,
+	ctx context.Context, reader relational.Reader, txnID uuid.UUID, entry *roachpb.AbortSpanEntry,
 ) (bool, error) {
 	// Pull response from disk and read into reply if available.
 	key := keys.AbortSpanKey(sc.rangeID, txnID)
-	ok, err := storage.MVCCGetProto(ctx, reader, key, hlc.Timestamp{}, entry, storage.MVCCGetOptions{})
+	ok, err := relational.MVCCGetProto(ctx, reader, key, hlc.Timestamp{}, entry, relational.MVCCGetOptions{})
 	return ok, err
 }
 
 // Iterate walks through the AbortSpan, invoking the given callback for
 // each unmarshaled entry with the MVCC key and the decoded entry.
 func (sc *AbortSpan) Iterate(
-	ctx context.Context, reader storage.Reader, f func(roachpb.Key, roachpb.AbortSpanEntry) error,
+	ctx context.Context, reader relational.Reader, f func(roachpb.Key, roachpb.AbortSpanEntry) error,
 ) error {
-	_, err := storage.MVCCIterate(ctx, reader, sc.min(), sc.max(), hlc.Timestamp{}, storage.MVCCScanOptions{},
+	_, err := relational.MVCCIterate(ctx, reader, sc.min(), sc.max(), hlc.Timestamp{}, relational.MVCCScanOptions{},
 		func(kv roachpb.KeyValue) (bool, error) {
 			var entry roachpb.AbortSpanEntry
 			if _, err := keys.DecodeAbortSpanKey(kv.Key, nil); err != nil {
@@ -133,22 +133,22 @@ func (sc *AbortSpan) Iterate(
 
 // Del removes all AbortSpan entries for the given transaction.
 func (sc *AbortSpan) Del(
-	ctx context.Context, reader storage.ReadWriter, ms *enginepb.MVCCStats, txnID uuid.UUID,
+	ctx context.Context, reader relational.ReadWriter, ms *enginepb.MVCCStats, txnID uuid.UUID,
 ) error {
 	key := keys.AbortSpanKey(sc.rangeID, txnID)
-	return storage.MVCCDelete(ctx, reader, ms, key, hlc.Timestamp{}, nil /* txn */)
+	return relational.MVCCDelete(ctx, reader, ms, key, hlc.Timestamp{}, nil /* txn */)
 }
 
 // Put writes an entry for the specified transaction ID.
 func (sc *AbortSpan) Put(
 	ctx context.Context,
-	readWriter storage.ReadWriter,
+	readWriter relational.ReadWriter,
 	ms *enginepb.MVCCStats,
 	txnID uuid.UUID,
 	entry *roachpb.AbortSpanEntry,
 ) error {
 	key := keys.AbortSpanKey(sc.rangeID, txnID)
-	return storage.MVCCPutProto(ctx, readWriter, ms, key, hlc.Timestamp{}, nil /* txn */, entry)
+	return relational.MVCCPutProto(ctx, readWriter, ms, key, hlc.Timestamp{}, nil /* txn */, entry)
 }
 
 // CopyTo copies the abort span entries to the abort span for the range
@@ -161,8 +161,8 @@ func (sc *AbortSpan) Put(
 // impossible, which is pretty bad (see #25233).
 func (sc *AbortSpan) CopyTo(
 	ctx context.Context,
-	r storage.Reader,
-	w storage.ReadWriter,
+	r relational.Reader,
+	w relational.ReadWriter,
 	ms *enginepb.MVCCStats,
 	ts hlc.Timestamp,
 	newRangeID roachpb.RangeID,
@@ -191,7 +191,7 @@ func (sc *AbortSpan) CopyTo(
 		if err != nil {
 			return err
 		}
-		return storage.MVCCPutProto(ctx, w, ms,
+		return relational.MVCCPutProto(ctx, w, ms,
 			keys.AbortSpanKey(newRangeID, txnID),
 			hlc.Timestamp{}, nil, &entry,
 		)

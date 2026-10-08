@@ -325,7 +325,7 @@ func (p *planner) dropIndexByName(
 	// If we aren't at the cluster version where we have removed explicit foreign key IDs
 	// from the foreign key descriptors, fall back to the existing drop index logic.
 	// That means we pretend that we can never find replacements for any indexes.
-	if !p.ExecCfg().Settings.Version.IsActive(ctx, clusterversion.VersionNoExplicitForeignKeyIndexIDs) {
+	if !p.ExecCfg().Settings.Version.IsActive(ctx, clusterversion.VersionMinSupported) {
 		indexHasReplacementCandidate = func(func(*sqlbase.IndexDescriptor) bool) bool {
 			return false
 		}

@@ -28,8 +28,8 @@ option go_package = "roachpb";
 
 import "kv/kvserver/concurrency/lock/locking.proto";
 import "roachpb/metadata.proto";
-import "storage/enginepb/mvcc.proto";
-import "storage/enginepb/mvcc3.proto";
+import "storage/relational/enginepb/mvcc.proto";
+import "storage/relational/enginepb/mvcc3.proto";
 import "util/hlc/timestamp.proto";
 import "gogoproto/gogo.proto";
 
@@ -648,7 +648,7 @@ message SequencedWrite {
   bytes key = 1 [(gogoproto.casttype) = "Key"];
   // The sequence number of the request that created the write.
   int32 sequence = 2 [
-    (gogoproto.casttype) = "gitee.com/kwbasedb/kwbase/pkg/storage/enginepb.TxnSeq"];
+    (gogoproto.casttype) = "gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb.TxnSeq"];
 }
 
 // Lease contains information about range leases including the
@@ -695,7 +695,7 @@ message Lease {
   // will have different sequence numbers.
   int64 sequence = 7 [(gogoproto.casttype) = "LeaseSequence"];
 
-  // check lease flag. if true not transfer lease
+  // not used it. check lease flag. if true not transfer lease.
   bool check_lease_flag = 8;
 }
 
@@ -716,7 +716,7 @@ message AbortSpanEntry {
   util.hlc.Timestamp timestamp = 2 [(gogoproto.nullable) = false];
   // The priority of the transaction.
   int32 priority = 3 [
-    (gogoproto.casttype) = "gitee.com/kwbasedb/kwbase/pkg/storage/enginepb.TxnPriority"];
+    (gogoproto.casttype) = "gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb.TxnPriority"];
 }
 
 // LeafTxnInputState is the state from a transaction coordinator
@@ -746,7 +746,7 @@ message LeafTxnInputState {
   // regardless of the current seqnum generated for writes. This is
   // updated via the (client.TxnSender).Step() operation.
   int32 read_seq_num = 10 [
-    (gogoproto.casttype) = "gitee.com/kwbasedb/kwbase/pkg/storage/enginepb.TxnSeq"];
+    (gogoproto.casttype) = "gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb.TxnSeq"];
 }
 
 // LeafTxnFinalState is the state from a leaf transaction coordinator

@@ -54,10 +54,10 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/rpc"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
@@ -239,7 +239,7 @@ func createTestStoreWithoutStart(
 	// and merge queues separately to cover event-driven splits and merges.
 	cfg.TestingKnobs.DisableSplitQueue = true
 	cfg.TestingKnobs.DisableMergeQueue = true
-	eng := storage.NewDefaultInMem()
+	eng := relational.NewDefaultInMem()
 	stopper.AddCloser(eng)
 	cfg.Transport = NewDummyRaftTransport(cfg.Settings)
 	factory := &testSenderFactory{}
@@ -310,7 +310,7 @@ func TestIterateIDPrefixKeys(t *testing.T) {
 	stopper := stop.NewStopper()
 	defer stopper.Stop(ctx)
 
-	eng := storage.NewDefaultInMem()
+	eng := relational.NewDefaultInMem()
 	stopper.AddCloser(eng)
 
 	seed := randutil.NewPseudoSeed()
@@ -344,7 +344,7 @@ func TestIterateIDPrefixKeys(t *testing.T) {
 		for _, opIdx := range rng.Perm(len(ops))[:rng.Intn(1+len(ops))] {
 			key := ops[opIdx](rangeID)
 			t.Logf("writing op=%d rangeID=%d", opIdx, rangeID)
-			if err := storage.MVCCPut(
+			if err := relational.MVCCPut(
 				ctx,
 				eng,
 				nil, /* ms */
@@ -382,7 +382,7 @@ func TestIterateIDPrefixKeys(t *testing.T) {
 			wanted = append(wanted, seenT{rangeID: rangeID, tombstone: tombstone})
 
 			t.Logf("writing tombstone at rangeID=%d", rangeID)
-			if err := storage.MVCCPutProto(
+			if err := relational.MVCCPutProto(
 				ctx, eng, nil /* ms */, keys.RangeTombstoneKey(rangeID), hlc.Timestamp{}, nil /* txn */, &tombstone,
 			); err != nil {
 				t.Fatal(err)
@@ -439,7 +439,7 @@ func TestStoreInitAndBootstrap(t *testing.T) {
 	stopper := stop.NewStopper()
 	ctx := context.TODO()
 	defer stopper.Stop(ctx)
-	eng := storage.NewDefaultInMem()
+	eng := relational.NewDefaultInMem()
 	stopper.AddCloser(eng)
 	cfg.Transport = NewDummyRaftTransport(cfg.Settings)
 	factory := &testSenderFactory{}
@@ -512,11 +512,11 @@ func TestBootstrapOfNonEmptyStore(t *testing.T) {
 	stopper := stop.NewStopper()
 	ctx := context.TODO()
 	defer stopper.Stop(ctx)
-	eng := storage.NewDefaultInMem()
+	eng := relational.NewDefaultInMem()
 	stopper.AddCloser(eng)
 
 	// Put some random garbage into the engine.
-	if err := eng.Put(storage.MakeMVCCMetadataKey(roachpb.Key("foo")), []byte("bar")); err != nil {
+	if err := eng.Put(relational.MakeMVCCMetadataKey(roachpb.Key("foo")), []byte("bar")); err != nil {
 		t.Errorf("failure putting key foo into engine: %+v", err)
 	}
 	cfg := TestStoreConfig(nil)
@@ -1568,8 +1568,8 @@ func TestStoreResolveWriteIntent(t *testing.T) {
 			}
 			txnKey := keys.TransactionKey(pushee.Key, pushee.ID)
 			var txn roachpb.Transaction
-			if ok, err := storage.MVCCGetProto(
-				context.Background(), store.Engine(), txnKey, hlc.Timestamp{}, &txn, storage.MVCCGetOptions{},
+			if ok, err := relational.MVCCGetProto(
+				context.Background(), store.Engine(), txnKey, hlc.Timestamp{}, &txn, relational.MVCCGetOptions{},
 			); err != nil {
 				t.Fatal(err)
 			} else if ok {
@@ -1873,8 +1873,8 @@ func TestStoreResolveWriteIntentNoTxn(t *testing.T) {
 	// Read pushee's txn.
 	txnKey := keys.TransactionKey(pushee.Key, pushee.ID)
 	var txn roachpb.Transaction
-	if ok, err := storage.MVCCGetProto(
-		context.Background(), store.Engine(), txnKey, hlc.Timestamp{}, &txn, storage.MVCCGetOptions{},
+	if ok, err := relational.MVCCGetProto(
+		context.Background(), store.Engine(), txnKey, hlc.Timestamp{}, &txn, relational.MVCCGetOptions{},
 	); !ok || err != nil {
 		t.Fatalf("not found or err: %+v", err)
 	}
@@ -2922,7 +2922,7 @@ func (sp *fakeStorePool) throttle(reason throttleReason, why string, toStoreID r
 // various exceptional conditions and new capacity estimates.
 func TestSendSnapshotThrottling(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	e := storage.NewDefaultInMem()
+	e := relational.NewDefaultInMem()
 	defer e.Close()
 
 	ctx := context.Background()
@@ -3260,14 +3260,14 @@ func TestPreemptiveSnapshotsAreRemoved(t *testing.T) {
 			const colID = 1
 			prefix := tablePrefix[0:len(tablePrefix):len(tablePrefix)]
 			k := roachpb.Key(encoding.EncodeIntValue(prefix, colID, int64(i)))
-			require.NoError(t, storage.MVCCBlindPutProto(ctx, b, state.Stats,
+			require.NoError(t, relational.MVCCBlindPutProto(ctx, b, state.Stats,
 				k, s.Clock().Now(), desc, nil))
 		}
-		require.NoError(t, storage.MVCCBlindPutProto(ctx, b, state.Stats,
+		require.NoError(t, relational.MVCCBlindPutProto(ctx, b, state.Stats,
 			keys.RangeDescriptorKey(desc.StartKey), hlc.Timestamp{}, desc, nil))
 		_, err := stl.Save(ctx, b, state, stateloader.TruncatedStateUnreplicated)
 		require.NoError(t, err)
-		require.NoError(t, b.Commit(true /* sync */, storage.NormalCommitType))
+		require.NoError(t, b.Commit(true /* sync */, relational.NormalCommitType))
 	}()
 
 	// Start the store.
@@ -3288,7 +3288,7 @@ func TestPreemptiveSnapshotsAreRemoved(t *testing.T) {
 			break
 		}
 		// There should not be any data other than the tombstone key.
-		if k := it.UnsafeKey(); k.Equal(storage.MVCCKey{Key: tombstoneKey}) {
+		if k := it.UnsafeKey(); k.Equal(relational.MVCCKey{Key: tombstoneKey}) {
 			foundTombstoneKey = true
 		} else {
 			t.Fatalf("found data in the range which should have been removed: %v", k)
@@ -3337,9 +3337,9 @@ func TestUpdateNodeReplicas(t *testing.T) {
 			r.mu.state.Desc.RangeType = &tsRange
 		}
 		if c.combineEnabled {
-			tse.TsRaftLogCombineWAL.Override(&s.ClusterSettings().SV, true)
+			timeseries.TsRaftLogCombineWAL.Override(&s.ClusterSettings().SV, true)
 		} else {
-			tse.TsRaftLogCombineWAL.Override(&s.ClusterSettings().SV, false)
+			timeseries.TsRaftLogCombineWAL.Override(&s.ClusterSettings().SV, false)
 		}
 		if c.hasTsFlushedIndex {
 			r.mu.tsFlushedIndex = 15

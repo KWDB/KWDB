@@ -28,8 +28,8 @@ import (
 	"context"
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
@@ -60,10 +60,10 @@ type runnable interface {
 //	been recorded, the TimeBoundIterator cannot have any lower bound.
 type initResolvedTSScan struct {
 	p  *Processor
-	it storage.SimpleIterator
+	it relational.SimpleIterator
 }
 
-func newInitResolvedTSScan(p *Processor, it storage.SimpleIterator) runnable {
+func newInitResolvedTSScan(p *Processor, it relational.SimpleIterator) runnable {
 	return &initResolvedTSScan{p: p, it: it}
 }
 
@@ -80,8 +80,8 @@ func (s *initResolvedTSScan) Run(ctx context.Context) {
 }
 
 func (s *initResolvedTSScan) iterateAndConsume(ctx context.Context) error {
-	startKey := storage.MakeMVCCMetadataKey(s.p.Span.Key.AsRawKey())
-	endKey := storage.MakeMVCCMetadataKey(s.p.Span.EndKey.AsRawKey())
+	startKey := relational.MakeMVCCMetadataKey(s.p.Span.Key.AsRawKey())
+	endKey := relational.MakeMVCCMetadataKey(s.p.Span.EndKey.AsRawKey())
 
 	// Iterate through all keys using NextKey. This will look at the first MVCC
 	// version for each key. We're only looking for MVCCMetadata versions, which

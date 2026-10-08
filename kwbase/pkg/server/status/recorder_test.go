@@ -40,7 +40,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/server/status/statuspb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
-	"gitee.com/kwbasedb/kwbase/pkg/ts/tspb"
+	"gitee.com/kwbasedb/kwbase/pkg/telemetry/tspb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"gitee.com/kwbasedb/kwbase/pkg/util/metric"

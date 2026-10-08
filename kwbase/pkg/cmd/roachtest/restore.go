@@ -36,7 +36,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"gitee.com/kwbasedb/kwbase/pkg/ts/tspb"
+	"gitee.com/kwbasedb/kwbase/pkg/telemetry/tspb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/httputil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/humanizeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"

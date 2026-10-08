@@ -31,7 +31,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/batcheval/result"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/spanset"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 )
 
@@ -60,7 +60,7 @@ func init() {
 // ex-) lease holder which must have dropped all of its lease holder powers
 // before proposing.
 func TransferLease(
-	ctx context.Context, readWriter storage.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
+	ctx context.Context, readWriter relational.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
 	// When returning an error from this method, must always return
 	// a newFailedLeaseTrigger() to satisfy stats.

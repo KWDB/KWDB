@@ -47,10 +47,10 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/server/debug"
 	"gitee.com/kwbasedb/kwbase/pkg/server/serverpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
+	"gitee.com/kwbasedb/kwbase/pkg/telemetry"
+	"gitee.com/kwbasedb/kwbase/pkg/telemetry/tspb"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
-	"gitee.com/kwbasedb/kwbase/pkg/ts"
-	"gitee.com/kwbasedb/kwbase/pkg/ts/tspb"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/httputil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
@@ -150,12 +150,12 @@ func TestSSLEnforcement(t *testing.T) {
 		{statusPrefix + "nodes", noCertsContext, http.StatusOK},
 		{statusPrefix + "nodes", insecureContext, http.StatusTemporaryRedirect},
 
-		// /ts/: ts.Server: no auth.
-		{ts.URLPrefix, rootCertsContext, http.StatusNotFound},
-		{ts.URLPrefix, nodeCertsContext, http.StatusNotFound},
-		{ts.URLPrefix, testCertsContext, http.StatusNotFound},
-		{ts.URLPrefix, noCertsContext, http.StatusNotFound},
-		{ts.URLPrefix, insecureContext, http.StatusTemporaryRedirect},
+		// /ts/: telemetry.Server: no auth.
+		{telemetry.URLPrefix, rootCertsContext, http.StatusNotFound},
+		{telemetry.URLPrefix, nodeCertsContext, http.StatusNotFound},
+		{telemetry.URLPrefix, testCertsContext, http.StatusNotFound},
+		{telemetry.URLPrefix, noCertsContext, http.StatusNotFound},
+		{telemetry.URLPrefix, insecureContext, http.StatusTemporaryRedirect},
 	} {
 		t.Run("", func(t *testing.T) {
 			client, err := tc.ctx.GetHTTPClient()
@@ -686,7 +686,7 @@ func TestAuthenticationMux(t *testing.T) {
 	}{
 		{"GET", adminPrefix + "users", nil},
 		{"GET", statusPrefix + "sessions", nil},
-		{"POST", ts.URLPrefix + "query", tsReqBuffer.Bytes()},
+		{"POST", telemetry.URLPrefix + "query", tsReqBuffer.Bytes()},
 	} {
 		t.Run("path="+tc.path, func(t *testing.T) {
 			// Verify normal client returns 401 Unauthorized.

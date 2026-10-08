@@ -16,24 +16,24 @@ endif ()
 set(ZDP ${CMAKE_CURRENT_SOURCE_DIR}/../../../)
 set(LINK_DIR ${CMAKE_CURRENT_BINARY_DIR}/lib)
 
-# build common kwdbts2
-add_subdirectory(${ZDP}/common common)
-add_subdirectory(${ZDP}/kwdbts2 kwdbts2)
+# build common + ts_engine
+add_subdirectory(${ZDP}/kwbase/engine/common common)
+add_subdirectory(${ZDP}/kwbase/engine/ts_engine kwdbts2)
 
 set(INCLUDE
-    ${ZDP}/common/src/h
-    ${ZDP}/common/src/include
-    ${ZDP}/kwdbts2/third_party/gtest-1.8.1/fused-src
-    ${ZDP}/kwdbts2/third_party/phmap
-    ${ZDP}/kwdbts2/include
-    ${ZDP}/kwdbts2/roachpb
-    ${ZDP}/kwdbts2/engine/include
-    ${ZDP}/kwdbts2/common/include
-    ${ZDP}/kwdbts2/storage/include
-    ${ZDP}/kwdbts2/mmap/include
-    ${ZDP}/kwdbts2/exec/include
-    ${ZDP}/kwdbts2/statistic/include
-    ${ZDP}/kwdbts2/brpc/include
+    ${ZDP}/kwbase/engine/common/src/h
+    ${ZDP}/kwbase/engine/common/src/include
+    ${ZDP}/kwbase/engine/ts_engine/third_party/gtest-1.8.1/fused-src
+    ${ZDP}/kwbase/engine/ts_engine/third_party/phmap
+    ${ZDP}/kwbase/engine/ts_engine/include
+    ${ZDP}/kwbase/engine/ts_engine/roachpb
+    ${ZDP}/kwbase/engine/ts_engine/engine/include
+    ${ZDP}/kwbase/engine/ts_engine/common/include
+    ${ZDP}/kwbase/engine/ts_engine/storage/include
+    ${ZDP}/kwbase/engine/ts_engine/mmap/include
+    ${ZDP}/kwbase/engine/ts_engine/exec/include
+    ${ZDP}/kwbase/engine/ts_engine/statistic/include
+    ${ZDP}/kwbase/engine/ts_engine/brpc/include
     ${CMAKE_CURRENT_SOURCE_DIR}/
     ${CMAKE_CURRENT_SOURCE_DIR}/tag
     ${CMAKE_CURRENT_SOURCE_DIR}/metric

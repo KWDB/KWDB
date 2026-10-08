@@ -33,7 +33,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/rditer"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 	"github.com/stretchr/testify/require"
@@ -158,8 +158,8 @@ func TestMultiSSTWriterInitSST(t *testing.T) {
 	var expectedSSTs [][]byte
 	for _, r := range keyRanges {
 		func() {
-			sstFile := &storage.MemFile{}
-			sst := storage.MakeIngestionSSTWriter(sstFile)
+			sstFile := &relational.MemFile{}
+			sst := relational.MakeIngestionSSTWriter(sstFile)
 			defer sst.Close()
 			err := sst.ClearRange(r.Start, r.End)
 			require.NoError(t, err)

@@ -31,8 +31,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/stateloader"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagepb"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
@@ -145,9 +145,9 @@ func TestLoadRaftMuLockedReplicaMuLocked(t *testing.T) {
 		r.mu.replicaID = 1
 		r.mu.stateLoader = stateloader.Make(roachpb.RangeID(i + 10))
 		if c.enabledRaftLogCombineWal {
-			tse.TsRaftLogCombineWAL.Override(&tc.store.ClusterSettings().SV, true)
+			timeseries.TsRaftLogCombineWAL.Override(&tc.store.ClusterSettings().SV, true)
 		} else {
-			tse.TsRaftLogCombineWAL.Override(&tc.store.ClusterSettings().SV, false)
+			timeseries.TsRaftLogCombineWAL.Override(&tc.store.ClusterSettings().SV, false)
 		}
 		if c.hasState {
 			if _, err := r.mu.stateLoader.Save(ctx, r.Engine(), state, stateloader.TruncatedStateUnreplicated); err != nil {

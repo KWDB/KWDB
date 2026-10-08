@@ -31,7 +31,7 @@ import (
 	"context"
 	"fmt"
 
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/pkg/errors"
 )
@@ -44,15 +44,15 @@ type rlimit struct {
 }
 
 func setOpenFileLimitInner(physicalStoreCount int) (uint64, error) {
-	minimumOpenFileLimit := uint64(physicalStoreCount*storage.MinimumMaxOpenFiles + minimumNetworkFileDescriptors)
-	networkConstrainedFileLimit := uint64(physicalStoreCount*storage.RecommendedMaxOpenFiles + minimumNetworkFileDescriptors)
-	recommendedOpenFileLimit := uint64(physicalStoreCount*storage.RecommendedMaxOpenFiles + recommendedNetworkFileDescriptors)
+	minimumOpenFileLimit := uint64(physicalStoreCount*relational.MinimumMaxOpenFiles + minimumNetworkFileDescriptors)
+	networkConstrainedFileLimit := uint64(physicalStoreCount*relational.RecommendedMaxOpenFiles + minimumNetworkFileDescriptors)
+	recommendedOpenFileLimit := uint64(physicalStoreCount*relational.RecommendedMaxOpenFiles + recommendedNetworkFileDescriptors)
 	var rLimit rlimit
 	if err := getRlimitNoFile(&rLimit); err != nil {
 		if log.V(1) {
-			log.Infof(context.TODO(), "could not get rlimit; setting maxOpenFiles to the recommended value %d - %s", storage.RecommendedMaxOpenFiles, err)
+			log.Infof(context.TODO(), "could not get rlimit; setting maxOpenFiles to the recommended value %d - %s", relational.RecommendedMaxOpenFiles, err)
 		}
-		return storage.RecommendedMaxOpenFiles, nil
+		return relational.RecommendedMaxOpenFiles, nil
 	}
 
 	// The max open file descriptor limit is too low.
@@ -146,7 +146,7 @@ func setOpenFileLimitInner(physicalStoreCount int) (uint64, error) {
 	// for each store, than only constrain the network ones by giving the stores
 	// their full recommended number.
 	if rLimit.Cur >= networkConstrainedFileLimit {
-		return storage.RecommendedMaxOpenFiles, nil
+		return relational.RecommendedMaxOpenFiles, nil
 	}
 
 	// Always sacrifice all but the minimum needed network descriptors to be

@@ -30,8 +30,8 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
@@ -67,7 +67,7 @@ func TestRefreshRangeTimeBoundIterator(t *testing.T) {
 	ts3 := hlc.Timestamp{WallTime: 3}
 	ts4 := hlc.Timestamp{WallTime: 4}
 
-	db := storage.NewDefaultInMem()
+	db := relational.NewDefaultInMem()
 	defer db.Close()
 
 	// Create an sstable containing an unresolved intent.
@@ -80,10 +80,10 @@ func TestRefreshRangeTimeBoundIterator(t *testing.T) {
 		},
 		ReadTimestamp: ts1,
 	}
-	if err := storage.MVCCPut(ctx, db, nil, k, txn.ReadTimestamp, v, txn); err != nil {
+	if err := relational.MVCCPut(ctx, db, nil, k, txn.ReadTimestamp, v, txn); err != nil {
 		t.Fatal(err)
 	}
-	if err := storage.MVCCPut(ctx, db, nil, roachpb.Key("unused1"), ts4, v, nil); err != nil {
+	if err := relational.MVCCPut(ctx, db, nil, roachpb.Key("unused1"), ts4, v, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Flush(); err != nil {
@@ -99,10 +99,10 @@ func TestRefreshRangeTimeBoundIterator(t *testing.T) {
 	// would not have any timestamp bounds and would be selected for every read.
 	intent := roachpb.MakeLockUpdate(txn, roachpb.Span{Key: k})
 	intent.Status = roachpb.COMMITTED
-	if _, err := storage.MVCCResolveWriteIntent(ctx, db, nil, intent); err != nil {
+	if _, err := relational.MVCCResolveWriteIntent(ctx, db, nil, intent); err != nil {
 		t.Fatal(err)
 	}
-	if err := storage.MVCCPut(ctx, db, nil, roachpb.Key("unused2"), ts1, v, nil); err != nil {
+	if err := relational.MVCCPut(ctx, db, nil, roachpb.Key("unused2"), ts1, v, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Flush(); err != nil {
@@ -110,7 +110,7 @@ func TestRefreshRangeTimeBoundIterator(t *testing.T) {
 	}
 
 	// TODO(peter): Make this work for Pebble as well.
-	if rocksDB, ok := db.(*storage.RocksDB); ok {
+	if rocksDB, ok := db.(*relational.RocksDB); ok {
 		// Double-check that we've created the SSTs we intended to.
 		userProps, err := rocksDB.GetUserProperties()
 		if err != nil {
@@ -128,7 +128,7 @@ func TestRefreshRangeTimeBoundIterator(t *testing.T) {
 	// have previously performed a consistent read at the lower time-bound to
 	// prove that there are no intents present that would be missed by the time-
 	// bound iterator.
-	if val, intent, err := storage.MVCCGet(ctx, db, k, ts1, storage.MVCCGetOptions{}); err != nil {
+	if val, intent, err := relational.MVCCGet(ctx, db, k, ts1, relational.MVCCGetOptions{}); err != nil {
 		t.Fatal(err)
 	} else if intent != nil {
 		t.Fatalf("got unexpected intent: %v", intent)

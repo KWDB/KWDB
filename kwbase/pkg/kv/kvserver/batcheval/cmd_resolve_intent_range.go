@@ -30,7 +30,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/batcheval/result"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/spanset"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 )
 
 func init() {
@@ -49,7 +49,7 @@ func declareKeysResolveIntentRange(
 // ResolveIntentRange resolves write intents in the specified
 // key range according to the status of the transaction which created it.
 func ResolveIntentRange(
-	ctx context.Context, readWriter storage.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
+	ctx context.Context, readWriter relational.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
 	args := cArgs.Args.(*roachpb.ResolveIntentRangeRequest)
 	h := cArgs.Header
@@ -61,10 +61,10 @@ func ResolveIntentRange(
 
 	update := args.AsLockUpdate()
 
-	iterAndBuf := storage.GetIterAndBuf(readWriter, storage.IterOptions{UpperBound: args.EndKey})
+	iterAndBuf := relational.GetIterAndBuf(readWriter, relational.IterOptions{UpperBound: args.EndKey})
 	defer iterAndBuf.Cleanup()
 
-	numKeys, resumeSpan, err := storage.MVCCResolveWriteIntentRangeUsingIter(
+	numKeys, resumeSpan, err := relational.MVCCResolveWriteIntentRangeUsingIter(
 		ctx, readWriter, iterAndBuf, ms, update, h.MaxSpanRequestKeys,
 	)
 	if err != nil {

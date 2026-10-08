@@ -530,6 +530,7 @@ CGO_PKGS := \
 	pkg/cli \
 	pkg/server/status \
 	pkg/storage \
+	pkg/storage/relational \
 	vendor/github.com/knz/go-libedit/unix
 vendor/github.com/knz/go-libedit/unix-package := libedit_unix
 CGO_UNSUFFIXED_FLAGS_FILES := $(addprefix ./,$(addsuffix /zcgo_flags.go,$(CGO_PKGS)))
@@ -1122,7 +1123,7 @@ PROTO_MAPPINGS := $(PROTO_MAPPINGS)Mgoogle/protobuf/timestamp.proto=github.com/g
 PROTO_MAPPINGS := $(PROTO_MAPPINGS)Mgoogle/protobuf/any.proto=github.com/gogo/protobuf/types,
 
 GW_SERVER_PROTOS := ./pkg/server/serverpb/admin.proto ./pkg/server/serverpb/status.proto ./pkg/server/serverpb/authentication.proto
-GW_TS_PROTOS := ./pkg/ts/tspb/timeseries.proto
+GW_TS_PROTOS := ./pkg/telemetry/tspb/timeseries.proto
 
 GW_PROTOS  := $(GW_SERVER_PROTOS) $(GW_TS_PROTOS)
 GW_SOURCES := $(GW_PROTOS:%.proto=%.pb.gw.go)

@@ -46,8 +46,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagepb"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/rpc"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -264,7 +264,7 @@ func NewTestStorePool(cfg StoreConfig) *StorePool {
 	)
 }
 
-func (r *Replica) AssertState(ctx context.Context, reader storage.Reader) {
+func (r *Replica) AssertState(ctx context.Context, reader relational.Reader) {
 	r.raftMu.Lock()
 	defer r.raftMu.Unlock()
 	r.mu.Lock()
@@ -410,16 +410,16 @@ func (r *Replica) SideloadedRaftMuLocked() SideloadStorage {
 	return r.raftMu.sideloaded
 }
 
-func MakeSSTable(key, value string, ts hlc.Timestamp) ([]byte, storage.MVCCKeyValue) {
-	sstFile := &storage.MemFile{}
-	sst := storage.MakeIngestionSSTWriter(sstFile)
+func MakeSSTable(key, value string, ts hlc.Timestamp) ([]byte, relational.MVCCKeyValue) {
+	sstFile := &relational.MemFile{}
+	sst := relational.MakeIngestionSSTWriter(sstFile)
 	defer sst.Close()
 
 	v := roachpb.MakeValueFromBytes([]byte(value))
 	v.InitChecksum([]byte(key))
 
-	kv := storage.MVCCKeyValue{
-		Key: storage.MVCCKey{
+	kv := relational.MVCCKeyValue{
+		Key: relational.MVCCKey{
 			Key:       []byte(key),
 			Timestamp: ts,
 		},
@@ -458,7 +458,7 @@ func SetMockAddSSTable() (undo func()) {
 	// TODO(tschottdorf): this already does nontrivial work. Worth open-sourcing the relevant
 	// subparts of the real evalAddSSTable to make this test less likely to rot.
 	evalAddSSTable := func(
-		ctx context.Context, _ storage.ReadWriter, cArgs batcheval.CommandArgs, _ roachpb.Response,
+		ctx context.Context, _ relational.ReadWriter, cArgs batcheval.CommandArgs, _ roachpb.Response,
 	) (result.Result, error) {
 		log.Event(ctx, "evaluated testing-only AddSSTable mock")
 		args := cArgs.Args.(*roachpb.AddSSTableRequest)

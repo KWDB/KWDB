@@ -30,7 +30,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/spanset"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 )
 
 // DefaultDeclareKeys is the default implementation of Command.DeclareKeys.

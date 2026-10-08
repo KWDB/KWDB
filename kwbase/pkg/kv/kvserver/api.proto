@@ -27,8 +27,8 @@ package kwbase.kv.kvserver;
 option go_package = "kvserver";
 
 import "roachpb/internal_raft.proto";
-import "storage/enginepb/mvcc.proto";
-import "storage/enginepb/mvcc3.proto";
+import "storage/relational/enginepb/mvcc.proto";
+import "storage/relational/enginepb/mvcc3.proto";
 import "roachpb/api.proto";
 import "gogoproto/gogo.proto";
 

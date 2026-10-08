@@ -47,7 +47,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqltelemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/stats"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util/humanizeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/retry"
@@ -438,7 +438,7 @@ func (n *setClusterSettingNode) startExec(params runParams) error {
 			}
 			if n.name == "ts.raftlog_combine_wal.enabled" {
 				if encoded == "true" {
-					if tse.TsRaftLogCombineWAL.Get(&n.st.SV) {
+					if timeseries.TsRaftLogCombineWAL.Get(&n.st.SV) {
 						return nil
 					}
 					if params.ExecCfg().StartMode != StartMultiReplica {
@@ -447,12 +447,12 @@ func (n *setClusterSettingNode) startExec(params runParams) error {
 					if sqlbase.CheckWhetherHasTsTable(params.ctx, txn) {
 						return errors.New("cluster has time-series table, cannot set ts.raftlog_combine_wal.enabled to true")
 					}
-					deRule := tse.DeDuplicateRule.Get(&n.st.SV)
+					deRule := timeseries.DeDuplicateRule.Get(&n.st.SV)
 					if deRule != "merge" && deRule != "override" {
 						return errors.New("should set ts.dedup.rule to merge or override before set ts.raftlog_combine_wal.enabled to true")
 					}
 				} else {
-					if !tse.TsRaftLogCombineWAL.Get(&n.st.SV) {
+					if !timeseries.TsRaftLogCombineWAL.Get(&n.st.SV) {
 						return nil
 					}
 				}
@@ -529,8 +529,8 @@ func (n *setClusterSettingNode) startExec(params runParams) error {
 			}
 			telemetry.Inc(sqltelemetry.VecModeCounter(validatedExecMode.String()))
 		case kvcoord.TsTxnAtomicityClusterSettingName:
-			tsWalLevel := tse.TsWALLevel.Get(&n.st.SV)
-			combineWal := tse.TsRaftLogCombineWAL.Get(&n.st.SV)
+			tsWalLevel := timeseries.TsWALLevel.Get(&n.st.SV)
+			combineWal := timeseries.TsRaftLogCombineWAL.Get(&n.st.SV)
 			if expectedEncodedValue == "true" && ((tsWalLevel != 1 && tsWalLevel != 2) || combineWal) {
 				return pgerror.Newf(pgcode.InvalidParameterValue,
 					"cannot enable ts.txn.atomicity_enabled=true when ts.wal.wal.level is %v; atomicity requires WAL level 1, 2 and ts.raftlog_combine_wal.enabled is false", tsWalLevel)
@@ -540,7 +540,7 @@ func (n *setClusterSettingNode) startExec(params runParams) error {
 				return pgerror.Newf(pgcode.InvalidParameterValue,
 					"ts.raftlog_combine_wal.enabled cannot be set to %v when ts.txn.atomicity.enabled is true", expectedEncodedValue)
 			}
-		case tse.TsWALLevelClusterSettingName:
+		case timeseries.TsWALLevelClusterSettingName:
 			if kvcoord.TsTxnAtomicityEnabled.Get(&n.st.SV) && (expectedEncodedValue == "0" || expectedEncodedValue == "3") {
 				return pgerror.Newf(pgcode.InvalidParameterValue,
 					"ts.wal.wal_level cannot be set to %v when ts.txn.atomicity.enabled is true", expectedEncodedValue)

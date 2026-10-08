@@ -29,7 +29,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/batcheval/result"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 )
 
 func init() {
@@ -44,7 +44,7 @@ func init() {
 // lease, all duties required of the range lease holder are commenced, including
 // releasing all latches and clearing the timestamp cache.
 func RequestLease(
-	ctx context.Context, readWriter storage.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
+	ctx context.Context, readWriter relational.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
 	// When returning an error from this method, must always return a
 	// newFailedLeaseTrigger() to satisfy stats.

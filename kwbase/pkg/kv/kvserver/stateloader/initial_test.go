@@ -30,7 +30,7 @@ import (
 	"testing"
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
@@ -41,7 +41,7 @@ func TestSynthesizeHardState(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	stopper := stop.NewStopper()
 	defer stopper.Stop(context.TODO())
-	eng := storage.NewDefaultInMem()
+	eng := relational.NewDefaultInMem()
 	stopper.AddCloser(eng)
 
 	tHS := raftpb.HardState{Term: 2, Vote: 3, Commit: 4}

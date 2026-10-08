@@ -38,7 +38,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagebase"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/rpc"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
@@ -199,7 +199,7 @@ func (r *Replica) loadRaftMuLockedReplicaMuLocked(
 	if isTs {
 		// if we use the mode that raft log combines with WAL to guarantee the data integrity,
 		// we need to adjust applied index with ts flushed index.
-		hasTsFlushedIndex := tse.TsRaftLogCombineWAL.Get(&r.store.ClusterSettings().SV)
+		hasTsFlushedIndex := timeseries.TsRaftLogCombineWAL.Get(&r.store.ClusterSettings().SV)
 		r.mu.tsFlushedIndex, err = r.mu.stateLoader.LoadTsFlushedIndex(ctx, r.Engine())
 		if err != nil {
 			return err
@@ -258,7 +258,7 @@ func (r *Replica) loadRaftMuLockedReplicaMuLocked(
 			}
 			hs.Term = r.mu.state.TruncatedState.Term
 			if r.store.TsRaftLogEngine != nil {
-				tsBatch := tse.NewTsRaftLogBatch(r.store.TsRaftLogEngine)
+				tsBatch := timeseries.NewTsRaftLogBatch(r.store.TsRaftLogEngine)
 				if err = r.SetTsHardState(ctx, hs, tsBatch); err == nil {
 					err = tsBatch.Commit()
 				}

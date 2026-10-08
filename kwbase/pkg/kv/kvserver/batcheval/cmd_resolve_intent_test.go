@@ -33,8 +33,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/abortspan"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/spanset"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
@@ -87,7 +87,7 @@ func TestDeclareKeysResolveIntent(t *testing.T) {
 		},
 	}
 	ctx := context.Background()
-	engine := storage.NewDefaultInMem()
+	engine := relational.NewDefaultInMem()
 	defer engine.Close()
 	testutils.RunTrueAndFalse(t, "ranged", func(t *testing.T, ranged bool) {
 		for _, test := range tests {
@@ -164,7 +164,7 @@ func TestResolveIntentAfterPartialRollback(t *testing.T) {
 	}
 
 	testutils.RunTrueAndFalse(t, "ranged", func(t *testing.T, ranged bool) {
-		db := storage.NewDefaultInMem()
+		db := relational.NewDefaultInMem()
 		defer db.Close()
 		batch := db.NewBatch()
 		defer batch.Close()
@@ -173,16 +173,16 @@ func TestResolveIntentAfterPartialRollback(t *testing.T) {
 		// Write a first value at key.
 		v.SetString("a")
 		txn.Sequence = 0
-		if err := storage.MVCCPut(ctx, batch, nil, k, ts, v, &txn); err != nil {
+		if err := relational.MVCCPut(ctx, batch, nil, k, ts, v, &txn); err != nil {
 			t.Fatal(err)
 		}
 		// Write another value.
 		v.SetString("b")
 		txn.Sequence = 1
-		if err := storage.MVCCPut(ctx, batch, nil, k, ts, v, &txn); err != nil {
+		if err := relational.MVCCPut(ctx, batch, nil, k, ts, v, &txn); err != nil {
 			t.Fatal(err)
 		}
-		if err := batch.Commit(true, storage.NormalCommitType); err != nil {
+		if err := batch.Commit(true, relational.NormalCommitType); err != nil {
 			t.Fatal(err)
 		}
 
@@ -245,7 +245,7 @@ func TestResolveIntentAfterPartialRollback(t *testing.T) {
 			}
 		}
 
-		if err := rbatch.Commit(true, storage.NormalCommitType); err != nil {
+		if err := rbatch.Commit(true, relational.NormalCommitType); err != nil {
 			t.Fatal(err)
 		}
 
@@ -254,7 +254,7 @@ func TestResolveIntentAfterPartialRollback(t *testing.T) {
 
 		// The second write has been rolled back; verify that the remaining
 		// value is from the first write.
-		res, i, err := storage.MVCCGet(ctx, batch, k, ts2, storage.MVCCGetOptions{})
+		res, i, err := relational.MVCCGet(ctx, batch, k, ts2, relational.MVCCGetOptions{})
 		if err != nil {
 			t.Fatal(err)
 		}

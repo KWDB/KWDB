@@ -28,7 +28,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/cloud"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/localexternal"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding/csv"
 	"github.com/cockroachdb/errors"
@@ -135,7 +135,7 @@ func (ex *connExecutor) dispatchExportDB(
 			return nil
 		}
 		var buf bytes.Buffer
-		conf, err := cloud.ExternalStorageConfFromURI(uri)
+		conf, err := localexternal.ExternalStorageConfFromURI(uri)
 		if err != nil {
 			return err
 		}
@@ -597,7 +597,7 @@ func (ex *connExecutor) dispatchExportTSDB(
 		// make storage
 		var buf bytes.Buffer
 		writer := csv.NewWriter(&buf)
-		conf, err := cloud.ExternalStorageConfFromURI(dbPath)
+		conf, err := localexternal.ExternalStorageConfFromURI(dbPath)
 		if err != nil {
 			res.SetError(err)
 			return nil

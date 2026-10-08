@@ -49,8 +49,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/growstack"
 	"gitee.com/kwbasedb/kwbase/pkg/util/grpcutil"
@@ -172,7 +172,7 @@ type Node struct {
 	auditServer *server.AuditServer
 
 	stores      *kvserver.Stores // Access to node-local stores
-	tsEngine    *tse.TsEngine
+	tsEngine    *timeseries.TsEngine
 	metrics     nodeMetrics
 	recorder    *status.MetricsRecorder
 	startedAt   int64
@@ -224,7 +224,7 @@ func GetBootstrapSchema(
 // engines are initialized with their StoreIdent.
 func bootstrapCluster(
 	ctx context.Context,
-	engines []storage.Engine,
+	engines []relational.Engine,
 	bootstrapVersion clusterversion.ClusterVersion,
 	defaultZoneConfig *zonepb.ZoneConfig,
 	defaultSystemZoneConfig *zonepb.ZoneConfig,
@@ -330,7 +330,7 @@ func (n *Node) AnnotateCtxWithSpan(
 
 func (n *Node) bootstrapCluster(
 	ctx context.Context,
-	engines []storage.Engine,
+	engines []relational.Engine,
 	bootstrapVersion clusterversion.ClusterVersion,
 	defaultZoneConfig *zonepb.ZoneConfig,
 	defaultSystemZoneConfig *zonepb.ZoneConfig,
@@ -363,7 +363,7 @@ func (n *Node) onClusterVersionChange(ctx context.Context, cv clusterversion.Clu
 func (n *Node) start(
 	ctx context.Context,
 	addr, sqlAddr, brpcAddr net.Addr,
-	initializedEngines, emptyEngines []storage.Engine,
+	initializedEngines, emptyEngines []relational.Engine,
 	clusterName string,
 	attrs roachpb.Attributes,
 	locality *roachpb.Locality,
@@ -371,7 +371,7 @@ func (n *Node) start(
 	localityAddress []roachpb.LocalityAddress,
 	nodeDescriptorCallback func(descriptor roachpb.NodeDescriptor),
 	startMode string,
-	setTse func() (*tse.TsEngine, *tse.TsRaftLogEngine, error),
+	setTse func() (*timeseries.TsEngine, *timeseries.TsRaftLogEngine, error),
 ) error {
 	if err := clusterversion.Initialize(ctx, cv.Version, &n.storeCfg.Settings.SV); err != nil {
 		return err
@@ -542,7 +542,7 @@ func (n *Node) start(
 	// bumped immediately, which would be possible if gossip got started earlier).
 	n.startGossip(ctx, n.stopper)
 
-	allEngines := append([]storage.Engine(nil), initializedEngines...)
+	allEngines := append([]relational.Engine(nil), initializedEngines...)
 	allEngines = append(allEngines, emptyEngines...)
 	log.Infof(ctx, "%s: started with %v engine(s) and attributes %v", n, allEngines, attrs.Attrs)
 	return nil
@@ -613,9 +613,9 @@ func (n *Node) validateStores(ctx context.Context) error {
 // node. The new stores are added to n.stores.
 func (n *Node) bootstrapStores(
 	ctx context.Context,
-	emptyEngines []storage.Engine,
+	emptyEngines []relational.Engine,
 	stopper *stop.Stopper,
-	setTse func() (*tse.TsEngine, *tse.TsRaftLogEngine, error),
+	setTse func() (*timeseries.TsEngine, *timeseries.TsRaftLogEngine, error),
 ) error {
 	if n.clusterID.Get() == uuid.Nil {
 		return errors.New("ClusterID missing during store bootstrap of auxiliary store")

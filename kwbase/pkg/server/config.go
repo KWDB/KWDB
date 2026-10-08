@@ -29,7 +29,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -43,17 +42,16 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/server/status"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
-	"gitee.com/kwbasedb/kwbase/pkg/ts"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
+	"gitee.com/kwbasedb/kwbase/pkg/telemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/humanizeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/retry"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
-	"github.com/cockroachdb/pebble"
 	"github.com/elastic/gosigar"
 	"github.com/pkg/errors"
 )
@@ -155,7 +153,7 @@ type Config struct {
 	// TsStores is specified to enable durable key-value storage.
 	TsStores base.StoreSpecList
 
-	// StorageEngine specifies the engine type (eg. rocksdb, pebble) to use to
+	// StorageEngine specifies the engine type (rocksdb) to use to create stores.
 	// instantiate stores.
 	StorageEngine enginepb.EngineType
 
@@ -190,7 +188,7 @@ type Config struct {
 
 	// TimeSeriesServerConfig contains configuration specific to the time series
 	// server.
-	TimeSeriesServerConfig ts.ServerConfig
+	TimeSeriesServerConfig telemetry.ServerConfig
 
 	// SQLMemoryPoolSize is the amount of memory in bytes that can be
 	// used by SQL clients to store row data in server RAM.
@@ -451,7 +449,7 @@ func MakeConfig(ctx context.Context, st *cluster.Settings) Config {
 		Stores: base.StoreSpecList{
 			Specs: []base.StoreSpec{storeSpec},
 		},
-		StorageEngine: storage.DefaultStorageEngine,
+		StorageEngine: relational.DefaultStorageEngine,
 		TempStorageConfig: base.TempStorageConfigFromEnv(
 			ctx, st, storeSpec, "" /* parentDir */, base.DefaultTempStorageMaxSizeBytes, 0),
 		ProcedureCacheSize: defaultProcedureCacheSize,
@@ -497,7 +495,7 @@ func (cfg *Config) Report(ctx context.Context) {
 }
 
 // Engines is a container of engines, allowing convenient closing.
-type Engines []storage.Engine
+type Engines []relational.Engine
 
 // Close closes all the Engines.
 // This method has a pointer receiver so that the following pattern works:
@@ -531,19 +529,10 @@ func (cfg *Config) CreateEngines(ctx context.Context) (Engines, error) {
 
 	var details []string
 
-	var cache storage.RocksDBCache
-	var pebbleCache *pebble.Cache
-	if cfg.StorageEngine == enginepb.EngineTypePebble || cfg.StorageEngine == enginepb.EngineTypeTeePebbleRocksDB {
-		details = append(details, fmt.Sprintf("Pebble cache size: %s", humanizeutil.IBytes(cfg.CacheSize)))
-		pebbleCache = pebble.NewCache(cfg.CacheSize)
-		defer pebbleCache.Unref()
-	}
-	if cfg.StorageEngine == enginepb.EngineTypeDefault ||
-		cfg.StorageEngine == enginepb.EngineTypeRocksDB || cfg.StorageEngine == enginepb.EngineTypeTeePebbleRocksDB {
-		details = append(details, fmt.Sprintf("RocksDB cache size: %s", humanizeutil.IBytes(cfg.CacheSize)))
-		cache = storage.NewRocksDBCache(cfg.CacheSize)
-		defer cache.Release()
-	}
+	var cache relational.RocksDBCache
+	details = append(details, fmt.Sprintf("RocksDB cache size: %s", humanizeutil.IBytes(cfg.CacheSize)))
+	cache = relational.NewRocksDBCache(cfg.CacheSize)
+	defer cache.Release()
 
 	var physicalStores int
 	for _, spec := range cfg.Stores.Specs {
@@ -586,7 +575,7 @@ func (cfg *Config) CreateEngines(ctx context.Context) (Engines, error) {
 				}
 				engines = append(engines, e)
 			} else {
-				engines = append(engines, storage.NewInMem(ctx, cfg.StorageEngine, spec.Attributes, sizeInBytes))
+				engines = append(engines, relational.NewInMem(ctx, cfg.StorageEngine, spec.Attributes, sizeInBytes))
 			}
 		} else {
 			if spec.Size.Percent > 0 {
@@ -604,7 +593,7 @@ func (cfg *Config) CreateEngines(ctx context.Context) (Engines, error) {
 			details = append(details, fmt.Sprintf("store %d: RocksDB, max size %s, max open file limit %d",
 				i, humanizeutil.IBytes(sizeInBytes), openFileLimitPerStore))
 
-			var eng storage.Engine
+			var eng relational.Engine
 			var err error
 			storageConfig := base.StorageConfig{
 				Attrs:           spec.Attributes,
@@ -615,53 +604,17 @@ func (cfg *Config) CreateEngines(ctx context.Context) (Engines, error) {
 				UseFileRegistry: spec.UseFileRegistry,
 				ExtraOptions:    spec.ExtraOptions,
 			}
-			if cfg.StorageEngine == enginepb.EngineTypePebble {
-				// TODO(itsbilal): Tune these options, and allow them to be overridden
-				// in the spec (similar to the existing spec.RocksDBOptions and others).
-				pebbleConfig := storage.PebbleConfig{
-					StorageConfig: storageConfig,
-					Opts:          storage.DefaultPebbleOptions(),
-				}
-				pebbleConfig.Opts.Cache = pebbleCache
-				pebbleConfig.Opts.MaxOpenFiles = int(openFileLimitPerStore)
-				eng, err = storage.NewPebble(ctx, pebbleConfig)
-			} else if cfg.StorageEngine == enginepb.EngineTypeRocksDB || cfg.StorageEngine == enginepb.EngineTypeDefault {
-				rocksDBConfig := storage.RocksDBConfig{
+			switch cfg.StorageEngine {
+			case enginepb.EngineTypeDefault, enginepb.EngineTypeRocksDB:
+				rocksDBConfig := relational.RocksDBConfig{
 					StorageConfig:           storageConfig,
 					MaxOpenFiles:            openFileLimitPerStore,
 					WarnLargeBatchThreshold: 500 * time.Millisecond,
 					RocksDBOptions:          spec.RocksDBOptions,
 				}
-
-				eng, err = storage.NewRocksDB(rocksDBConfig, cache)
-			} else {
-				// cfg.StorageEngine == enginepb.EngineTypeTeePebbleRocksDB
-				pebbleConfig := storage.PebbleConfig{
-					StorageConfig: storageConfig,
-					Opts:          storage.DefaultPebbleOptions(),
-				}
-				pebbleConfig.Dir = filepath.Join(pebbleConfig.Dir, "pebble")
-				pebbleConfig.Opts.Cache = pebbleCache
-				pebbleConfig.Opts.MaxOpenFiles = int(openFileLimitPerStore)
-				pebbleEng, err := storage.NewPebble(ctx, pebbleConfig)
-				if err != nil {
-					return nil, err
-				}
-
-				rocksDBConfig := storage.RocksDBConfig{
-					StorageConfig:           storageConfig,
-					MaxOpenFiles:            openFileLimitPerStore,
-					WarnLargeBatchThreshold: 500 * time.Millisecond,
-					RocksDBOptions:          spec.RocksDBOptions,
-				}
-				rocksDBConfig.Dir = filepath.Join(rocksDBConfig.Dir, "rocksdb")
-
-				rocksdbEng, err := storage.NewRocksDB(rocksDBConfig, cache)
-				if err != nil {
-					return nil, err
-				}
-
-				eng = storage.NewTee(ctx, rocksdbEng, pebbleEng)
+				eng, err = relational.NewRocksDB(rocksDBConfig, cache)
+			default:
+				return Engines{}, relational.ErrRemovedStorageEngine(cfg.StorageEngine)
 			}
 			if err != nil {
 				return Engines{}, err
@@ -683,7 +636,7 @@ func (cfg *Config) CreateEngines(ctx context.Context) (Engines, error) {
 // CreateTsEngine create ts engine
 func (cfg *Config) CreateTsEngine(
 	ctx context.Context, stopper *stop.Stopper, clusterID string, tsIDGen *sqlbase.TSIDGenerator,
-) (*tse.TsEngine, error) {
+) (*timeseries.TsEngine, error) {
 
 	threadPoolSize, err := strconv.Atoi(cfg.ThreadPoolSize)
 	if err != nil {
@@ -701,7 +654,7 @@ func (cfg *Config) CreateTsEngine(
 	}
 
 	//TODO Use the rocksdb store directory +tsdb suffix
-	tsConfig := tse.TsEngineConfig{
+	tsConfig := timeseries.TsEngineConfig{
 		Dir:            cfg.TsStores.Specs[0].Path,
 		Settings:       cfg.Settings,
 		ThreadPoolSize: threadPoolSize,
@@ -713,7 +666,7 @@ func (cfg *Config) CreateTsEngine(
 		ClusterID:      clusterID,
 		TsIDGen:        tsIDGen,
 	}
-	tsDB, err := tse.NewTsEngine(ctx, tsConfig, stopper)
+	tsDB, err := timeseries.NewTsEngine(ctx, tsConfig, stopper)
 	if err != nil {
 		return nil, err
 	}

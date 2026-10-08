@@ -33,18 +33,18 @@ import (
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 )
 
-func hashRange(t *testing.T, reader storage.Reader, start, end roachpb.Key) []byte {
+func hashRange(t *testing.T, reader relational.Reader, start, end roachpb.Key) []byte {
 	t.Helper()
 	h := sha256.New()
 	if err := reader.Iterate(start, end,
-		func(kv storage.MVCCKeyValue) (bool, error) {
+		func(kv relational.MVCCKeyValue) (bool, error) {
 			h.Write(kv.Key.Key)
 			h.Write(kv.Value)
 			return false, nil
@@ -55,11 +55,11 @@ func hashRange(t *testing.T, reader storage.Reader, start, end roachpb.Key) []by
 	return h.Sum(nil)
 }
 
-func getStats(t *testing.T, reader storage.Reader) enginepb.MVCCStats {
+func getStats(t *testing.T, reader relational.Reader) enginepb.MVCCStats {
 	t.Helper()
-	iter := reader.NewIterator(storage.IterOptions{UpperBound: roachpb.KeyMax})
+	iter := reader.NewIterator(relational.IterOptions{UpperBound: roachpb.KeyMax})
 	defer iter.Close()
-	s, err := storage.ComputeStatsGo(iter, roachpb.KeyMin, roachpb.KeyMax, 1100)
+	s, err := relational.ComputeStatsGo(iter, roachpb.KeyMin, roachpb.KeyMax, 1100)
 	if err != nil {
 		t.Fatalf("%+v", err)
 	}
@@ -68,21 +68,15 @@ func getStats(t *testing.T, reader storage.Reader) enginepb.MVCCStats {
 
 // createTestRocksDBEngine returns a new in-memory RocksDB engine with 1MB of
 // storage capacity.
-func createTestRocksDBEngine(ctx context.Context) storage.Engine {
-	return storage.NewInMem(ctx, enginepb.EngineTypeRocksDB, roachpb.Attributes{}, 1<<20)
-}
-
-// createTestPebbleEngine returns a new in-memory Pebble storage engine.
-func createTestPebbleEngine(ctx context.Context) storage.Engine {
-	return storage.NewInMem(ctx, enginepb.EngineTypePebble, roachpb.Attributes{}, 1<<20)
+func createTestRocksDBEngine(ctx context.Context) relational.Engine {
+	return relational.NewInMem(ctx, enginepb.EngineTypeRocksDB, roachpb.Attributes{}, 1<<20)
 }
 
 var engineImpls = []struct {
 	name   string
-	create func(context.Context) storage.Engine
+	create func(context.Context) relational.Engine
 }{
 	{"rocksdb", createTestRocksDBEngine},
-	{"pebble", createTestPebbleEngine},
 }
 
 func TestCmdRevertRange(t *testing.T) {
@@ -94,7 +88,7 @@ func TestCmdRevertRange(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Run this test on both RocksDB and Pebble. Regression test for:
+	// Run this test on RocksDB. Regression test for:
 	// https://gitee.com/kwbasedb/kwbase/pull/42386
 	for _, engineImpl := range engineImpls {
 		t.Run(engineImpl.name, func(t *testing.T) {
@@ -109,7 +103,7 @@ func TestCmdRevertRange(t *testing.T) {
 				key := roachpb.Key(fmt.Sprintf("%04d", i))
 				var value roachpb.Value
 				value.SetString(fmt.Sprintf("%d", i))
-				if err := storage.MVCCPut(ctx, eng, &stats, key, baseTime.Add(int64(i%10), 0), value, nil); err != nil {
+				if err := relational.MVCCPut(ctx, eng, &stats, key, baseTime.Add(int64(i%10), 0), value, nil); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -123,7 +117,7 @@ func TestCmdRevertRange(t *testing.T) {
 				key := roachpb.Key(fmt.Sprintf("%04d", i))
 				var value roachpb.Value
 				value.SetString(fmt.Sprintf("%d-rev-a", i))
-				if err := storage.MVCCPut(ctx, eng, &stats, key, tsA.Add(int64(i%5), 1), value, nil); err != nil {
+				if err := relational.MVCCPut(ctx, eng, &stats, key, tsA.Add(int64(i%5), 1), value, nil); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -136,7 +130,7 @@ func TestCmdRevertRange(t *testing.T) {
 				key := roachpb.Key(fmt.Sprintf("%04d", i))
 				var value roachpb.Value
 				value.SetString(fmt.Sprintf("%d-rev-b", i))
-				if err := storage.MVCCPut(ctx, eng, &stats, key, tsB.Add(1, int32(i%5)), value, nil); err != nil {
+				if err := relational.MVCCPut(ctx, eng, &stats, key, tsB.Add(1, int32(i%5)), value, nil); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -214,7 +208,7 @@ func TestCmdRevertRange(t *testing.T) {
 			})
 
 			txn := roachpb.MakeTransaction("test", nil, roachpb.NormalUserPriority, tsC, 1)
-			if err := storage.MVCCPut(
+			if err := relational.MVCCPut(
 				ctx, eng, &stats, []byte("0012"), tsC, roachpb.MakeValueFromBytes([]byte("i")), &txn,
 			); err != nil {
 				t.Fatal(err)
@@ -226,7 +220,7 @@ func TestCmdRevertRange(t *testing.T) {
 				key := roachpb.Key(fmt.Sprintf("%04d", i))
 				var value roachpb.Value
 				value.SetString(fmt.Sprintf("%d-rev-b", i))
-				if err := storage.MVCCPut(ctx, eng, &stats, key, tsC.Add(10, int32(i%5)), value, nil); err != nil {
+				if err := relational.MVCCPut(ctx, eng, &stats, key, tsC.Add(10, int32(i%5)), value, nil); err != nil {
 					t.Fatalf("writing key %s: %+v", key, err)
 				}
 			}

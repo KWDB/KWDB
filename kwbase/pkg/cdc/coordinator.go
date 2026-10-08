@@ -33,7 +33,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlutil"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util/ctxgroup"
 	"gitee.com/kwbasedb/kwbase/pkg/util/errorutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -59,7 +59,7 @@ type Coordinator struct {
 	internalExecutor          *sql.InternalExecutor
 	partitionInternalExecutor sqlutil.InternalExecutor
 	jobRegistry               *jobs.Registry
-	tsEngine                  *tse.TsEngine
+	tsEngine                  *timeseries.TsEngine
 
 	lock syncutil.RWMutex
 	// cdcTaskGroups stores the mapping cdcInstanceType->tableID->instanceID->Task.
@@ -972,7 +972,7 @@ func (c *Coordinator) CheckPubTasksCountAndSubscribed(
 }
 
 // SetTsEngine set tsEngine to Coordinator.
-func (c *Coordinator) SetTsEngine(tse *tse.TsEngine) {
+func (c *Coordinator) SetTsEngine(tse *timeseries.TsEngine) {
 	c.tsEngine = tse
 }
 

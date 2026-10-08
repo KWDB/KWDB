@@ -37,7 +37,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/humanizeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"

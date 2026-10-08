@@ -50,8 +50,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/server"
 	"gitee.com/kwbasedb/kwbase/pkg/server/status"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/errorutil/unimplemented"
 	"gitee.com/kwbasedb/kwbase/pkg/util/grpcutil"
@@ -66,7 +66,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/tracing"
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
@@ -203,7 +202,7 @@ func initTempStorageConfig(
 	// the temporary directory record file before creating any new
 	// temporary directories in case the disk is completely full.
 	if recordPath != "" {
-		if err = storage.CleanupTempDirs(recordPath); err != nil {
+		if err = relational.CleanupTempDirs(recordPath); err != nil {
 			return base.TempStorageConfig{}, errors.Wrap(err, "could not cleanup temporary directories from record file")
 		}
 	}
@@ -260,14 +259,14 @@ func initTempStorageConfig(
 		tempDir = firstStore.Path
 	}
 	// Create the temporary subdirectory for the temp engine.
-	if tempStorageConfig.Path, err = storage.CreateTempDir(tempDir, server.TempDirPrefix, stopper); err != nil {
+	if tempStorageConfig.Path, err = relational.CreateTempDir(tempDir, server.TempDirPrefix, stopper); err != nil {
 		return base.TempStorageConfig{}, errors.Wrap(err, "could not create temporary directory for temp storage")
 	}
 
 	// We record the new temporary directory in the record file (if it
 	// exists) for cleanup in case the node crashes.
 	if recordPath != "" {
-		if err = storage.RecordTempDir(recordPath, tempStorageConfig.Path); err != nil {
+		if err = relational.RecordTempDir(recordPath, tempStorageConfig.Path); err != nil {
 			return base.TempStorageConfig{}, errors.Wrapf(
 				err,
 				"could not record temporary directory path to record file: %s",
@@ -286,28 +285,7 @@ func resolveStorageEngineType(
 	ctx context.Context, engineType enginepb.EngineType, cfg base.StorageConfig,
 ) enginepb.EngineType {
 	if engineType == enginepb.EngineTypeDefault {
-		engineType = enginepb.EngineTypeRocksDB
-		pebbleCfg := &storage.PebbleConfig{
-			StorageConfig: cfg,
-			Opts:          storage.DefaultPebbleOptions(),
-		}
-		pebbleCfg.Opts.EnsureDefaults()
-		pebbleCfg.Opts.ReadOnly = true
-		// Resolve encrypted env options in pebbleCfg and populate pebbleCfg.Opts.FS
-		// if necessary (eg. encrypted-at-rest is enabled).
-		_, _, err := storage.ResolveEncryptedEnvOptions(pebbleCfg)
-		if err != nil {
-			log.Infof(ctx, "unable to setup encrypted env to resolve past engine type: %s", err)
-			return engineType
-		}
-
-		// Check if this storage directory was last written to by pebble. In that
-		// case, default to opening a Pebble engine.
-		if version, err := pebble.GetVersion(cfg.Dir, pebbleCfg.Opts.FS); err == nil {
-			if version != "" && !strings.HasPrefix(version, "rocksdb") {
-				engineType = enginepb.EngineTypePebble
-			}
-		}
+		return enginepb.EngineTypeRocksDB
 	}
 	return engineType
 }
@@ -443,9 +421,7 @@ func runStart(cmd *cobra.Command, args []string, disableReplication bool) error 
 		UseFileRegistry: firstSpec.UseFileRegistry,
 		ExtraOptions:    firstSpec.ExtraOptions,
 	}
-	// If the storage engine is set to "default", check the engine type used in
-	// this store directory in a past run. If this check fails for any reason,
-	// use Pebble as the default engine type.
+	// If the storage engine is set to "default", use rocksdb.
 	serverCfg.StorageEngine = resolveStorageEngineType(ctx, serverCfg.StorageEngine, firstStoreConfig)
 
 	// determine whether startups ME and/or AE
@@ -1177,8 +1153,7 @@ func setupAndInitializeLoggingAndProfiling(
 				// When the function complete successfully, start the loggers
 				// for the storage engines. We need to do this at the end
 				// because we need to register the loggers.
-				stopper.AddCloser(storage.InitPebbleLogger(ctx))
-				stopper.AddCloser(storage.InitRocksDBLogger(ctx))
+				stopper.AddCloser(relational.InitRocksDBLogger(ctx))
 			}
 		}()
 	}

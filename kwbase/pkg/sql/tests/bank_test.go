@@ -30,7 +30,6 @@ import (
 	"math/rand"
 	"testing"
 
-	"gitee.com/kwbasedb/kwbase/pkg/bench"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/sqlutils"
 )
 
@@ -83,14 +82,4 @@ UPDATE bench.bank
 		}
 	})
 	b.StopTimer()
-}
-
-func BenchmarkBank(b *testing.B) {
-	bench.ForEachDB(b, func(b *testing.B, db *sqlutils.SQLRunner) {
-		for _, numAccounts := range []int{2, 4, 8, 32, 64} {
-			b.Run(fmt.Sprintf("numAccounts=%d", numAccounts), func(b *testing.B) {
-				runBenchmarkBank(b, db, numAccounts)
-			})
-		}
-	})
 }

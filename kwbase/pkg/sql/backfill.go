@@ -780,7 +780,7 @@ func (sc *SchemaChanger) distBackfill(
 	targetSpans []roachpb.Span,
 ) error {
 	inMemoryStatusEnabled := sc.execCfg.Settings.Version.IsActive(
-		ctx, clusterversion.VersionAtomicChangeReplicasTrigger)
+		ctx, clusterversion.VersionMinSupported)
 	duration := checkpointInterval
 	if sc.testingKnobs.WriteCheckpointInterval > 0 {
 		duration = sc.testingKnobs.WriteCheckpointInterval

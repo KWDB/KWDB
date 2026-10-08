@@ -49,7 +49,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/server/serverpb"
 	"gitee.com/kwbasedb/kwbase/pkg/server/status/statuspb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
@@ -679,9 +679,9 @@ func TestListenerFileCreation(t *testing.T) {
 func TestClusterIDMismatch(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
-	engines := make([]storage.Engine, 2)
+	engines := make([]relational.Engine, 2)
 	for i := range engines {
-		e := storage.NewDefaultInMem()
+		e := relational.NewDefaultInMem()
 		defer e.Close()
 
 		sIdent := roachpb.StoreIdent{
@@ -689,7 +689,7 @@ func TestClusterIDMismatch(t *testing.T) {
 			NodeID:    roachpb.NodeID(i),
 			StoreID:   roachpb.StoreID(i),
 		}
-		if err := storage.MVCCPutProto(
+		if err := relational.MVCCPutProto(
 			context.Background(), e, nil, keys.StoreIdentKey(), hlc.Timestamp{}, nil, &sIdent); err != nil {
 
 			t.Fatal(err)

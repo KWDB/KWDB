@@ -34,7 +34,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/clusterversion"
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
@@ -137,7 +137,7 @@ func TestStoresGetReplicaForRangeID(t *testing.T) {
 		rangeID := roachpb.RangeID(i)
 		replicaID := roachpb.ReplicaID(1)
 
-		memEngine := storage.NewDefaultInMem()
+		memEngine := relational.NewDefaultInMem()
 		stopper.AddCloser(memEngine)
 
 		cfg := TestStoreConfig(clock)
@@ -232,7 +232,7 @@ func createStores(count int, t *testing.T) (*hlc.ManualClock, []*Store, *Stores,
 	stores := []*Store{}
 	for i := 0; i < count; i++ {
 		cfg.Transport = NewDummyRaftTransport(cfg.Settings)
-		eng := storage.NewDefaultInMem()
+		eng := relational.NewDefaultInMem()
 		stopper.AddCloser(eng)
 		s := NewStore(context.TODO(), cfg, eng, &roachpb.NodeDescriptor{NodeID: 1})
 		storeIDAlloc++

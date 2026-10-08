@@ -32,7 +32,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/batcheval/result"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/spanset"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 )
 
@@ -53,7 +53,7 @@ func declareKeysHeartbeatTransaction(
 // timestamp after receiving transaction heartbeat messages from
 // coordinator. Returns the updated transaction.
 func HeartbeatTxn(
-	ctx context.Context, readWriter storage.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
+	ctx context.Context, readWriter relational.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
 	args := cArgs.Args.(*roachpb.HeartbeatTxnRequest)
 	h := cArgs.Header
@@ -70,8 +70,8 @@ func HeartbeatTxn(
 	key := keys.TransactionKey(h.Txn.Key, h.Txn.ID)
 
 	var txn roachpb.Transaction
-	if ok, err := storage.MVCCGetProto(
-		ctx, readWriter, key, hlc.Timestamp{}, &txn, storage.MVCCGetOptions{},
+	if ok, err := relational.MVCCGetProto(
+		ctx, readWriter, key, hlc.Timestamp{}, &txn, relational.MVCCGetOptions{},
 	); err != nil {
 		return result.Result{}, err
 	} else if !ok {
@@ -91,7 +91,7 @@ func HeartbeatTxn(
 		// is up for debate.
 		txn.LastHeartbeat.Forward(args.Now)
 		txnRecord := txn.AsRecord()
-		if err := storage.MVCCPutProto(ctx, readWriter, cArgs.Stats, key, hlc.Timestamp{}, nil, &txnRecord); err != nil {
+		if err := relational.MVCCPutProto(ctx, readWriter, cArgs.Stats, key, hlc.Timestamp{}, nil, &txnRecord); err != nil {
 			return result.Result{}, err
 		}
 	}

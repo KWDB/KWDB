@@ -29,7 +29,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/batcheval/result"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 )
 
 func init() {
@@ -38,7 +38,7 @@ func init() {
 
 // RangeStats returns the MVCC statistics for a range.
 func RangeStats(
-	ctx context.Context, _ storage.Reader, cArgs CommandArgs, resp roachpb.Response,
+	_ context.Context, _ relational.Reader, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
 	reply := resp.(*roachpb.RangeStatsResponse)
 	// RangeStats is a high-frequency read-only RPC; return in-memory incremental

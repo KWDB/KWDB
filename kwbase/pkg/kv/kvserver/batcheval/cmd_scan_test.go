@@ -30,7 +30,7 @@ import (
 	"testing"
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
@@ -70,12 +70,12 @@ func testScanReverseScanInner(
 	k1, k2 := roachpb.Key("a"), roachpb.Key("b")
 	ts := hlc.Timestamp{WallTime: 1}
 
-	eng := storage.NewDefaultInMem()
+	eng := relational.NewDefaultInMem()
 	defer eng.Close()
 
 	// Write to k1 and k2.
 	for _, k := range []roachpb.Key{k1, k2} {
-		err := storage.MVCCPut(ctx, eng, nil, k, ts, roachpb.MakeValueFromString("value-"+string(k)), nil)
+		err := relational.MVCCPut(ctx, eng, nil, k, ts, roachpb.MakeValueFromString("value-"+string(k)), nil)
 		require.NoError(t, err)
 	}
 

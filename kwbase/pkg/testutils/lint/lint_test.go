@@ -1225,7 +1225,7 @@ func TestLint(t *testing.T) {
 			stream.GrepNot(`kwbase/pkg/testutils/lint: log$`),
 			stream.GrepNot(`kwbase/pkg/util/sysutil: syscall$`),
 			stream.GrepNot(`kwbase/pkg/(base|security|util/(log|randutil|stop)): log$`),
-			stream.GrepNot(`kwbase/pkg/(server/serverpb|ts/tspb): github\.com/golang/protobuf/proto$`),
+			stream.GrepNot(`kwbase/pkg/(server/serverpb|telemetry/tspb): github\.com/golang/protobuf/proto$`),
 
 			stream.GrepNot(`kwbase/pkg/util/uuid: github\.com/satori/go\.uuid$`),
 		), func(s string) {

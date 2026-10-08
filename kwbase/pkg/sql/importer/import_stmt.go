@@ -22,7 +22,6 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"gitee.com/kwbasedb/kwbase/pkg/clusterversion"
 	"gitee.com/kwbasedb/kwbase/pkg/jobs"
 	"gitee.com/kwbasedb/kwbase/pkg/jobs/jobspb"
 	"gitee.com/kwbasedb/kwbase/pkg/jobs/jobsprotectedts"
@@ -41,7 +40,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqltelemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/cloud"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/localexternal"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/errorutil/unimplemented"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
@@ -124,10 +123,6 @@ func importPlanHook(
 		return nil, nil, nil, false, nil
 	}
 	telemetry.Inc(sqltelemetry.ImportCounter("total.attempted"))
-	if !p.ExecCfg().Settings.Version.IsActive(ctx, clusterversion.VersionPartitionedBackup) {
-		return nil, nil, nil, false, errors.Errorf("IMPORT requires a cluster which has the version >= 19.2")
-	}
-
 	filesFn, err := p.TypeAsStringArray(importStmt.Files, "IMPORT FILES")
 	if err != nil {
 		return nil, nil, nil, false, err
@@ -661,7 +656,7 @@ func importJobDescription(
 	stmt := *orig
 	stmt.Files = nil
 	for _, file := range files {
-		clean, err := cloud.SanitizeExternalStorageURI(file, nil /* extraParams */)
+		clean, err := localexternal.SanitizeExternalStorageURI(file, nil /* extraParams */)
 		if err != nil {
 			return "", err
 		}

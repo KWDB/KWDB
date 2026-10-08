@@ -33,24 +33,24 @@ import (
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 )
 
 type wrappedBatch struct {
-	storage.Batch
+	relational.Batch
 	clearCount      int
 	clearRangeCount int
 }
 
-func (wb *wrappedBatch) Clear(key storage.MVCCKey) error {
+func (wb *wrappedBatch) Clear(key relational.MVCCKey) error {
 	wb.clearCount++
 	return wb.Batch.Clear(key)
 }
 
-func (wb *wrappedBatch) ClearRange(start, end storage.MVCCKey) error {
+func (wb *wrappedBatch) ClearRange(start, end relational.MVCCKey) error {
 	wb.clearRangeCount++
 	return wb.Batch.ClearRange(start, end)
 }
@@ -100,13 +100,13 @@ func TestCmdClearRangeBytesThreshold(t *testing.T) {
 	for _, test := range tests {
 		t.Run("", func(t *testing.T) {
 			ctx := context.Background()
-			eng := storage.NewDefaultInMem()
+			eng := relational.NewDefaultInMem()
 			defer eng.Close()
 
 			var stats enginepb.MVCCStats
 			for i := 0; i < test.keyCount; i++ {
 				key := roachpb.Key(fmt.Sprintf("%04d", i))
-				if err := storage.MVCCPut(ctx, eng, &stats, key, hlc.Timestamp{WallTime: int64(i % 2)}, value, nil); err != nil {
+				if err := relational.MVCCPut(ctx, eng, &stats, key, hlc.Timestamp{WallTime: int64(i % 2)}, value, nil); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -150,11 +150,11 @@ func TestCmdClearRangeBytesThreshold(t *testing.T) {
 			}
 
 			// Now ensure that the data is gone, whether it was a ClearRange or individual calls to clear.
-			if err := batch.Commit(true /* commit */, storage.NormalCommitType); err != nil {
+			if err := batch.Commit(true /* commit */, relational.NormalCommitType); err != nil {
 				t.Fatal(err)
 			}
 			if err := eng.Iterate(startKey, endKey,
-				func(kv storage.MVCCKeyValue) (bool, error) {
+				func(kv relational.MVCCKeyValue) (bool, error) {
 					return true, errors.New("expected no data in underlying engine")
 				},
 			); err != nil {

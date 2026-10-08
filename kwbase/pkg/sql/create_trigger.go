@@ -14,7 +14,6 @@ package sql
 import (
 	"context"
 
-	"gitee.com/kwbasedb/kwbase/pkg/clusterversion"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
@@ -26,12 +25,6 @@ type createTriggerNode struct {
 }
 
 func (n *createTriggerNode) startExec(params runParams) error {
-	// Ensure all nodes are the correct version.
-	if !params.ExecCfg().Settings.Version.IsActive(params.ctx, clusterversion.VersionTrigger) {
-		return pgerror.New(pgcode.FeatureNotSupported,
-			"not all nodes are at the correct version to use TRIGGER")
-	}
-
 	// resolve trigger bounded table
 	tableDesc, err := params.p.ResolveMutableTableDescriptor(
 		params.ctx, &n.n.TableName, true, ResolveRequireTableDesc,

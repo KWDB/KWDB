@@ -37,7 +37,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/server/debug/pprofui"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
@@ -175,7 +175,7 @@ func NewServer(st *cluster.Settings, hbaConfDebugFn http.HandlerFunc) *Server {
 
 	mux.HandleFunc("/debug/threads", func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Add("Content-type", "text/plain")
-		fmt.Fprint(w, storage.ThreadStacks())
+		fmt.Fprint(w, relational.ThreadStacks())
 	})
 
 	return &Server{

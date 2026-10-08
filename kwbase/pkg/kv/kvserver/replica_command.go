@@ -46,7 +46,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/causer"
 	"gitee.com/kwbasedb/kwbase/pkg/util/contextutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/ctxgroup"
@@ -454,7 +454,7 @@ func (r *Replica) adminSplitWithDescriptor(
 			// Find a key to split by size.
 			var err error
 			targetSize := r.GetMaxBytes() / 2
-			foundSplitKey, err = storage.MVCCFindSplitKey(
+			foundSplitKey, err = relational.MVCCFindSplitKey(
 				ctx, r.store.engine, desc.StartKey, desc.EndKey, targetSize)
 			if err != nil {
 				return reply, errors.Errorf("unable to determine split key: %s", err)
@@ -485,7 +485,7 @@ func (r *Replica) adminSplitWithDescriptor(
 		if !splitKey.Equal(foundSplitKey) {
 			return reply, errors.Errorf("cannot split range at range-local key %s", splitKey)
 		}
-		if !storage.IsValidSplitKey(foundSplitKey) {
+		if !relational.IsValidSplitKey(foundSplitKey) {
 			return reply, errors.Errorf("cannot split range at key %s", splitKey)
 		}
 	}
@@ -549,7 +549,9 @@ func (r *Replica) adminSplitWithDescriptor(
 				args.IsCreateTsTable,
 			)
 		})
-		log.Warningf(ctx, "split retry, err is %+v", rt.CurrentAttempts(), err)
+		if err != nil {
+			log.Warningf(ctx, "split retry count is %d , err is %+v", rt.CurrentAttempts(), err)
+		}
 		if err == ErrorTableStateAdd {
 			continue
 		}
@@ -1133,7 +1135,7 @@ func (r *Replica) ChangeReplicas(
 	// We execute the change serially if we're not allowed to run atomic
 	// replication changes or if that was explicitly disabled.
 	st := r.ClusterSettings()
-	unroll := !st.Version.IsActive(ctx, clusterversion.VersionAtomicChangeReplicas) ||
+	unroll := !st.Version.IsActive(ctx, clusterversion.VersionMinSupported) ||
 		!UseAtomicReplicationChanges.Get(&st.SV)
 
 	if unroll {
@@ -1531,7 +1533,7 @@ func (r *Replica) atomicReplicationChange(
 		}
 	}
 
-	canUseDemotion := r.store.ClusterSettings().Version.IsActive(ctx, clusterversion.VersionChangeReplicasDemotion)
+	canUseDemotion := r.store.ClusterSettings().Version.IsActive(ctx, clusterversion.VersionMinSupported)
 	for _, target := range chgs.Removals() {
 		typ := internalChangeTypeRemove
 		if rDesc, ok := desc.GetReplicaDescriptor(target.StoreID); ok && rDesc.GetType() == roachpb.VOTER_FULL && canUseDemotion {
@@ -1760,7 +1762,7 @@ func prepareChangeReplicasTrigger(
 
 	var crt *roachpb.ChangeReplicasTrigger
 	if !store.ClusterSettings().Version.IsActive(
-		ctx, clusterversion.VersionAtomicChangeReplicasTrigger,
+		ctx, clusterversion.VersionMinSupported,
 	) {
 		var deprecatedChangeType roachpb.ReplicaChangeType
 		var deprecatedRepDesc roachpb.ReplicaDescriptor
@@ -2122,8 +2124,8 @@ func (r *Replica) sendTSSnapshot(
 		return &benignError{errors.New("raft status not initialized")}
 	}
 
-	usesReplicatedTruncatedState, err := storage.MVCCGetProto(
-		ctx, snap.EngineSnap, keys.RaftTruncatedStateLegacyKey(r.RangeID), hlc.Timestamp{}, nil, storage.MVCCGetOptions{},
+	usesReplicatedTruncatedState, err := relational.MVCCGetProto(
+		ctx, snap.EngineSnap, keys.RaftTruncatedStateLegacyKey(r.RangeID), hlc.Timestamp{}, nil, relational.MVCCGetOptions{},
 	)
 	if err != nil {
 		return errors.Wrap(err, "loading legacy truncated state")
@@ -2336,8 +2338,8 @@ func (r *Replica) sendSnapshot(
 		return &benignError{errors.New("raft status not initialized")}
 	}
 
-	usesReplicatedTruncatedState, err := storage.MVCCGetProto(
-		ctx, snap.EngineSnap, keys.RaftTruncatedStateLegacyKey(r.RangeID), hlc.Timestamp{}, nil, storage.MVCCGetOptions{},
+	usesReplicatedTruncatedState, err := relational.MVCCGetProto(
+		ctx, snap.EngineSnap, keys.RaftTruncatedStateLegacyKey(r.RangeID), hlc.Timestamp{}, nil, relational.MVCCGetOptions{},
 	)
 	if err != nil {
 		return errors.Wrap(err, "loading legacy truncated state")

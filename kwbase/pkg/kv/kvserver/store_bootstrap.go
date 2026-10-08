@@ -32,8 +32,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/rditer"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/stateloader"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/gogo/protobuf/proto"
@@ -47,7 +47,7 @@ import (
 // non-empty engine.
 func InitEngine(
 	ctx context.Context,
-	eng storage.Engine,
+	eng relational.Engine,
 	ident roachpb.StoreIdent,
 	cv clusterversion.ClusterVersion,
 ) error {
@@ -64,7 +64,7 @@ func InitEngine(
 	}
 
 	batch := eng.NewBatch()
-	if err := storage.MVCCPutProto(
+	if err := relational.MVCCPutProto(
 		ctx,
 		batch,
 		nil,
@@ -80,7 +80,7 @@ func InitEngine(
 		batch.Close()
 		return errors.Wrap(err, "cannot write cluster version")
 	}
-	if err := batch.Commit(true /* sync */, storage.NormalCommitType); err != nil {
+	if err := batch.Commit(true /* sync */, relational.NormalCommitType); err != nil {
 		return errors.Wrap(err, "persisting bootstrap data")
 	}
 
@@ -105,7 +105,7 @@ func InitEngine(
 // nowNanos: the timestamp at which to write the initial engine data.
 func WriteInitialClusterData(
 	ctx context.Context,
-	eng storage.Engine,
+	eng relational.Engine,
 	initialValues []roachpb.KeyValue,
 	bootstrapVersion roachpb.Version,
 	numStores int,
@@ -199,7 +199,7 @@ func WriteInitialClusterData(
 		// we write everything and then compute the stats over the whole range.
 
 		// Range descriptor.
-		if err := storage.MVCCPutProto(
+		if err := relational.MVCCPutProto(
 			ctx, batch, nil /* ms */, keys.RangeDescriptorKey(desc.StartKey),
 			now, nil /* txn */, desc,
 		); err != nil {
@@ -207,7 +207,7 @@ func WriteInitialClusterData(
 		}
 
 		// Replica GC timestamp.
-		if err := storage.MVCCPutProto(
+		if err := relational.MVCCPutProto(
 			ctx, batch, nil /* ms */, keys.RangeLastReplicaGCTimestampKey(desc.RangeID),
 			hlc.Timestamp{}, nil /* txn */, &now,
 		); err != nil {
@@ -215,7 +215,7 @@ func WriteInitialClusterData(
 		}
 		// Range addressing for meta2.
 		meta2Key := keys.RangeMetaKey(endKey)
-		if err := storage.MVCCPutProto(ctx, batch, firstRangeMS, meta2Key.AsRawKey(),
+		if err := relational.MVCCPutProto(ctx, batch, firstRangeMS, meta2Key.AsRawKey(),
 			now, nil /* txn */, desc,
 		); err != nil {
 			return err
@@ -225,7 +225,7 @@ func WriteInitialClusterData(
 		if startKey.Equal(roachpb.RKeyMin) {
 			// Range addressing for meta1.
 			meta1Key := keys.RangeMetaKey(keys.RangeMetaKey(roachpb.RKeyMax))
-			if err := storage.MVCCPutProto(
+			if err := relational.MVCCPutProto(
 				ctx, batch, nil /* ms */, meta1Key.AsRawKey(), now, nil /* txn */, desc,
 			); err != nil {
 				return err
@@ -236,7 +236,7 @@ func WriteInitialClusterData(
 		for _, kv := range rangeInitialValues {
 			// Initialize the checksums.
 			kv.Value.InitChecksum(kv.Key)
-			if err := storage.MVCCPut(
+			if err := relational.MVCCPut(
 				ctx, batch, nil /* ms */, kv.Key, now, kv.Value, nil, /* txn */
 			); err != nil {
 				return err
@@ -267,7 +267,7 @@ func WriteInitialClusterData(
 			return err
 		}
 
-		if err := batch.Commit(true /* sync */, storage.NormalCommitType); err != nil {
+		if err := batch.Commit(true /* sync */, relational.NormalCommitType); err != nil {
 			return err
 		}
 	}

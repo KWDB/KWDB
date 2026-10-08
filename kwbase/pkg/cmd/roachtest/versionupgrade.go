@@ -507,8 +507,8 @@ func makeVersionFixtureAndFatal(
 			name := checkpointName(u.binaryVersion(ctx, t, 1).String())
 			u.c.Stop(ctx, c.All())
 
-			c.Run(ctx, c.All(), kwbase, "debug", "pebble", "db", "checkpoint",
-				"{store-dir}", "{store-dir}/"+name)
+			c.Run(ctx, c.All(), kwbase, "debug", "rocksdb", "--db={store-dir}", "checkpoint",
+				"{store-dir}/"+name)
 			// The `cluster-bootstrapped` marker can already be found within
 			// store-dir, but the rocksdb checkpoint step above does not pick it
 			// up as it isn't recognized by RocksDB. We copy the marker

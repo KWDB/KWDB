@@ -1,4 +1,6 @@
 #gitignore
+docs
+.agents
 .vscode
 .idea
 .bash

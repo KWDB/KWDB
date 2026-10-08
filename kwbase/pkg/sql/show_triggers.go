@@ -15,9 +15,6 @@ import (
 	"context"
 	"fmt"
 
-	"gitee.com/kwbasedb/kwbase/pkg/clusterversion"
-	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
-	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
@@ -35,11 +32,7 @@ var showTriggersColumns = sqlbase.ResultColumns{
 // ShowTriggers returns a SHOW TRIGGERS statement. The user must have any
 // privilege on the table.
 func (p *planner) ShowTriggers(ctx context.Context, n *tree.ShowTriggers) (planNode, error) {
-	// Ensure all nodes are the correct version.
-	if !p.ExecCfg().Settings.Version.IsActive(ctx, clusterversion.VersionTrigger) {
-		return nil, pgerror.New(pgcode.FeatureNotSupported,
-			"not all nodes are at the correct version to use Triggers")
-	}
+
 	tblName := n.Table.ToTableName()
 	tableDesc, err := p.ResolveMutableTableDescriptor(
 		ctx, &tblName, true, ResolveRequireTableDesc,
