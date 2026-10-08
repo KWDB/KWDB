@@ -1,0 +1,47 @@
+> USE defaultdb;
+SET
+> DROP DATABASE IF EXISTS is_parent_it CASCADE;
+DROP DATABASE
+> DROP DATABASE IF EXISTS is_child_it CASCADE;
+DROP DATABASE
+> CREATE DATABASE is_parent_it;
+CREATE DATABASE
+> SET DATABASE = is_parent_it;
+SET
+> CREATE SCHEMA parent_s;
+CREATE SCHEMA
+> CREATE TABLE parent_s.parent (
+    id INT PRIMARY KEY,
+    code INT,
+    CONSTRAINT parent_code_uq UNIQUE (code)
+);
+CREATE TABLE
+> CREATE DATABASE is_child_it;
+CREATE DATABASE
+> SET DATABASE = is_child_it;
+SET
+> CREATE SCHEMA child_s;
+CREATE SCHEMA
+> CREATE TABLE child_s.child (
+    parent_id INT,
+    CONSTRAINT child_parent_fk FOREIGN KEY (parent_id)
+        REFERENCES is_parent_it.parent_s.parent(id)
+);
+CREATE TABLE
+> SET DATABASE = is_child_it;
+SET
+> SELECT constraint_catalog, constraint_schema, constraint_name,
+       unique_constraint_catalog, unique_constraint_schema,
+       unique_constraint_name, table_name, referenced_table_name
+FROM information_schema.referential_constraints
+WHERE constraint_name = 'child_parent_fk';
+  constraint_catalog | constraint_schema | constraint_name | unique_constraint_catalog | unique_constraint_schema | unique_constraint_name | table_name | referenced_table_name
+---------------------+-------------------+-----------------+---------------------------+--------------------------+------------------------+------------+------------------------
+  is_child_it        | child_s           | child_parent_fk | is_parent_it              | parent_s                 | primary                | child      | parent
+(1 row)
+> USE defaultdb;
+SET
+> DROP DATABASE is_child_it CASCADE;
+DROP DATABASE
+> DROP DATABASE is_parent_it CASCADE;
+DROP DATABASE

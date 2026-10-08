@@ -1,0 +1,55 @@
+> USE defaultdb;
+SET
+> DROP DATABASE IF EXISTS is_statistics_it CASCADE;
+DROP DATABASE
+> CREATE DATABASE is_statistics_it;
+CREATE DATABASE
+> SET DATABASE = is_statistics_it;
+SET
+> CREATE SCHEMA app;
+CREATE SCHEMA
+> CREATE TABLE app.index_table (
+    id INT PRIMARY KEY,
+    nullable_col INT,
+    not_null_col INT NOT NULL,
+    payload JSONB,
+    INDEX normal_idx (nullable_col),
+    UNIQUE INDEX unique_idx (not_null_col),
+    INVERTED INDEX inverted_idx (payload)
+);
+CREATE TABLE
+> COMMENT ON INDEX app.index_table@normal_idx IS 'normal index comment';
+COMMENT ON INDEX
+> SELECT table_schema, table_name, non_unique, index_name, seq_in_index,
+       column_name, storing, implicit, nullable, index_type, index_comment,
+       is_visible, expression
+FROM information_schema.statistics
+WHERE table_schema = 'app' AND table_name = 'index_table'
+ORDER BY index_name, seq_in_index;
+  table_schema | table_name  | non_unique |  index_name  | seq_in_index | column_name  | storing | implicit | nullable | index_type |    index_comment     | is_visible | expression
+---------------+-------------+------------+--------------+--------------+--------------+---------+----------+----------+------------+----------------------+------------+-------------
+  app          | index_table |          1 | inverted_idx |            1 | payload      | NO      | NO       | YES      | INVERTED   | NULL                 | NULL       | NULL
+  app          | index_table |          1 | inverted_idx |            2 | id           | NO      | YES      | NO       | INVERTED   | NULL                 | NULL       | NULL
+  app          | index_table |          1 | normal_idx   |            1 | nullable_col | NO      | NO       | YES      | FORWARD    | normal index comment | NULL       | NULL
+  app          | index_table |          1 | normal_idx   |            2 | id           | NO      | YES      | NO       | FORWARD    | normal index comment | NULL       | NULL
+  app          | index_table |          0 | primary      |            1 | id           | NO      | NO       | NO       | FORWARD    | NULL                 | NULL       | NULL
+  app          | index_table |          0 | unique_idx   |            1 | not_null_col | NO      | NO       | NO       | FORWARD    | NULL                 | NULL       | NULL
+  app          | index_table |          0 | unique_idx   |            2 | id           | NO      | YES      | NO       | FORWARD    | NULL                 | NULL       | NULL
+(7 rows)
+> COMMENT ON INDEX app.index_table@normal_idx IS NULL;
+COMMENT ON INDEX
+> SELECT index_name, index_comment
+FROM information_schema.statistics
+WHERE table_schema = 'app'
+  AND table_name = 'index_table'
+  AND index_name = 'normal_idx'
+ORDER BY seq_in_index;
+  index_name | index_comment
+-------------+----------------
+  normal_idx | NULL
+  normal_idx | NULL
+(2 rows)
+> USE defaultdb;
+SET
+> DROP DATABASE is_statistics_it CASCADE;
+DROP DATABASE

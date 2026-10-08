@@ -192,6 +192,34 @@ func yesOrNoDatum(b bool) tree.Datum {
 	return noString
 }
 
+// getIndexComments returns all index comments in the database. An index
+// comment is represented by its table ID, index ID, and comment datum.
+func getIndexComments(
+	ctx context.Context, p *planner,
+) (map[sqlbase.ID]map[sqlbase.IndexID]tree.Datum, error) {
+	rows, err := p.extendedEvalCtx.ExecCfg.InternalExecutor.Query(
+		ctx,
+		"select-index-comments",
+		p.Txn(),
+		`SELECT object_id, sub_id, "comment" FROM system.comments WHERE type = $1`,
+		keys.IndexCommentType,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	comments := make(map[sqlbase.ID]map[sqlbase.IndexID]tree.Datum)
+	for _, row := range rows {
+		tableID := sqlbase.ID(tree.MustBeDInt(row[0]))
+		indexID := sqlbase.IndexID(tree.MustBeDInt(row[1]))
+		if comments[tableID] == nil {
+			comments[tableID] = make(map[sqlbase.IndexID]tree.Datum)
+		}
+		comments[tableID][indexID] = row[2]
+	}
+	return comments, nil
+}
+
 func dNameOrNull(s string) tree.Datum {
 	if s == "" {
 		return tree.DNull
@@ -896,6 +924,11 @@ CREATE TABLE information_schema.referential_constraints (
 	REFERENCED_TABLE_NAME     STRING NOT NULL
 )`,
 	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		// Referenced tables can belong to another database, so resolve all schema names.
+		schemaNames, err := getSchemaNames(ctx, p, nil /* all databases */)
+		if err != nil {
+			return err
+		}
 		return forEachTableDescWithTableLookup(ctx, p, dbContext, hideVirtual /* no constraints in virtual tables */, func(
 			db *sqlbase.DatabaseDescriptor,
 			scName string,
@@ -911,6 +944,14 @@ CREATE TABLE information_schema.referential_constraints (
 				if err != nil {
 					return err
 				}
+				refDB, err := tableLookup.getDatabaseByID(refTable.GetParentID())
+				if err != nil {
+					return err
+				}
+				refSchemaName, ok := schemaNames[refTable.GetParentSchemaID()]
+				if !ok {
+					return errors.AssertionFailedf("schema id %d not found", refTable.GetParentSchemaID())
+				}
 				var matchType = tree.DNull
 				if r, ok := matchOptionMap[fk.Match]; ok {
 					matchType = r
@@ -923,8 +964,8 @@ CREATE TABLE information_schema.referential_constraints (
 					dbNameStr,                           // constraint_catalog
 					scNameStr,                           // constraint_schema
 					tree.NewDString(fk.Name),            // constraint_name
-					dbNameStr,                           // unique_constraint_catalog
-					scNameStr,                           // unique_constraint_schema
+					tree.NewDString(refDB.Name),         // unique_constraint_catalog
+					tree.NewDString(refSchemaName),      // unique_constraint_schema
 					tree.NewDString(referencedIdx.Name), // unique_constraint_name
 					matchType,                           // match_option
 					dStringForFKAction(fk.OnUpdate),     // update_rule
@@ -1326,7 +1367,7 @@ CREATE TABLE information_schema.statistics (
 	TABLE_CATALOG STRING NOT NULL,
 	TABLE_SCHEMA  STRING NOT NULL,
 	TABLE_NAME    STRING NOT NULL,
-	NON_UNIQUE    STRING NOT NULL,
+	NON_UNIQUE    INT8 NOT NULL,
 	INDEX_SCHEMA  STRING NOT NULL,
 	INDEX_NAME    STRING NOT NULL,
 	SEQ_IN_INDEX  INT8 NOT NULL,
@@ -1335,9 +1376,22 @@ CREATE TABLE information_schema.statistics (
 	CARDINALITY   INT8,
 	DIRECTION     STRING NOT NULL,
 	STORING       STRING NOT NULL,
-	IMPLICIT      STRING NOT NULL
+	IMPLICIT      STRING NOT NULL,
+	SUB_PART      INT8,
+	PACKED        STRING,
+	NULLABLE      STRING NOT NULL,
+	INDEX_TYPE    STRING NOT NULL,
+	"COMMENT"    STRING,
+	INDEX_COMMENT STRING,
+	IS_VISIBLE    STRING,
+	EXPRESSION    STRING
 )`,
 	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		indexComments, err := getIndexComments(ctx, p)
+		if err != nil {
+			return err
+		}
+
 		return forEachTableDesc(ctx, p, dbContext, hideVirtual, /* virtual tables have no indexes */
 			func(db *sqlbase.DatabaseDescriptor, scName string, table *sqlbase.TableDescriptor) error {
 				dbNameStr := tree.NewDString(db.GetName())
@@ -1347,20 +1401,42 @@ CREATE TABLE information_schema.statistics (
 				appendRow := func(index *sqlbase.IndexDescriptor, colName string, sequence int,
 					direction tree.Datum, isStored, isImplicit bool,
 				) error {
+					column, err := table.FindActiveColumnByName(colName)
+					if err != nil {
+						return err
+					}
+					nonUnique := tree.NewDInt(0)
+					if !index.Unique {
+						nonUnique = tree.NewDInt(1)
+					}
+					indexComment := tree.DNull
+					if commentsByIndex := indexComments[table.ID]; commentsByIndex != nil {
+						if comment, ok := commentsByIndex[index.ID]; ok {
+							indexComment = comment
+						}
+					}
 					return addRow(
-						dbNameStr,                         // table_catalog
-						scNameStr,                         // table_schema
-						tbNameStr,                         // table_name
-						yesOrNoDatum(!index.Unique),       // non_unique
-						scNameStr,                         // index_schema
-						tree.NewDString(index.Name),       // index_name
-						tree.NewDInt(tree.DInt(sequence)), // seq_in_index
-						tree.NewDString(colName),          // column_name
-						tree.DNull,                        // collation
-						tree.DNull,                        // cardinality
-						direction,                         // direction
-						yesOrNoDatum(isStored),            // storing
-						yesOrNoDatum(isImplicit),          // implicit
+						dbNameStr,                            // table_catalog
+						scNameStr,                            // table_schema
+						tbNameStr,                            // table_name
+						nonUnique,                            // non_unique
+						scNameStr,                            // index_schema
+						tree.NewDString(index.Name),          // index_name
+						tree.NewDInt(tree.DInt(sequence)),    // seq_in_index
+						tree.NewDString(colName),             // column_name
+						tree.DNull,                           // collation
+						tree.DNull,                           // cardinality
+						direction,                            // direction
+						yesOrNoDatum(isStored),               // storing
+						yesOrNoDatum(isImplicit),             // implicit
+						tree.DNull,                           // sub_part
+						tree.DNull,                           // packed
+						yesOrNoDatum(column.Nullable),        // nullable
+						tree.NewDString(index.Type.String()), // index_type
+						tree.DNull,                           // comment
+						indexComment,                         // index_comment
+						tree.DNull,                           // is_visible
+						tree.DNull,                           // expression
 					)
 				}
 
@@ -1442,7 +1518,9 @@ CREATE TABLE information_schema.table_constraints (
 	TABLE_NAME         STRING NOT NULL,
 	CONSTRAINT_TYPE    STRING NOT NULL,
 	IS_DEFERRABLE      STRING NOT NULL,
-	INITIALLY_DEFERRED STRING NOT NULL
+	INITIALLY_DEFERRED STRING NOT NULL,
+	ENFORCED           STRING NOT NULL,
+	NULLS_DISTINCT     STRING
 )`,
 	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		h := makeOidHasher()
@@ -1463,6 +1541,10 @@ CREATE TABLE information_schema.table_constraints (
 				tbNameStr := tree.NewDString(table.Name)
 
 				for conName, c := range conInfo {
+					var nullsDistinct tree.Datum = tree.DNull
+					if c.Kind == sqlbase.ConstraintTypeUnique {
+						nullsDistinct = yesString
+					}
 					if err := addRow(
 						dbNameStr,                       // constraint_catalog
 						scNameStr,                       // constraint_schema
@@ -1473,6 +1555,8 @@ CREATE TABLE information_schema.table_constraints (
 						tree.NewDString(string(c.Kind)), // constraint_type
 						yesOrNoDatum(false),             // is_deferrable
 						yesOrNoDatum(false),             // initially_deferred
+						yesString,                       // enforced
+						nullsDistinct,                   // nulls_distinct
 					); err != nil {
 						return err
 					}
@@ -1500,6 +1584,8 @@ CREATE TABLE information_schema.table_constraints (
 							tree.NewDString("CHECK"), // constraint_type
 							yesOrNoDatum(false),      // is_deferrable
 							yesOrNoDatum(false),      // initially_deferred
+							yesString,                // enforced
+							tree.DNull,               // nulls_distinct
 						); err != nil {
 							return err
 						}

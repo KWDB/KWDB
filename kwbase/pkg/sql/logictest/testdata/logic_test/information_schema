@@ -791,7 +791,9 @@ SET DATABASE = test
 ## information_schema.constraint_column_usage
 
 query TTTTTTTTT colnames
-SELECT *
+SELECT constraint_catalog, constraint_schema, constraint_name, table_catalog,
+       table_schema, table_name, constraint_type, is_deferrable,
+       initially_deferred
 FROM system.information_schema.table_constraints
 ORDER BY TABLE_NAME, CONSTRAINT_TYPE, CONSTRAINT_NAME
 ----
@@ -1021,6 +1023,17 @@ system              public             630200280_19_7_not_null   system         
 system              public             primary                   system         public        web_sessions                     PRIMARY KEY      NO             NO
 system              public             630200280_5_1_not_null    system         public        zones                            CHECK            NO             NO
 system              public             primary                   system         public        zones                            PRIMARY KEY      NO             NO
+
+# Cover the added fields across the existing physical-table result set.
+query I colnames
+SELECT count(*) AS invalid_constraint_metadata
+FROM system.information_schema.table_constraints
+WHERE enforced != 'YES'
+   OR (constraint_type = 'UNIQUE' AND nulls_distinct != 'YES')
+   OR (constraint_type != 'UNIQUE' AND nulls_distinct IS NOT NULL)
+----
+invalid_constraint_metadata
+0
 
 query TTTT colnames
 SELECT *
@@ -1310,19 +1323,35 @@ CREATE TABLE constraint_db.t2 (
 statement ok
 SET DATABASE = constraint_db
 
-query TTTTTTTTT colnames
+query TTTTTTTTTTT colnames
 SELECT *
 FROM information_schema.table_constraints
 ORDER BY TABLE_NAME, CONSTRAINT_TYPE, CONSTRAINT_NAME
 ----
-constraint_catalog  constraint_schema  constraint_name          table_catalog  table_schema  table_name  constraint_type  is_deferrable  initially_deferred
-constraint_db       public             585526086_84_1_not_null  constraint_db  public        t1          CHECK            NO             NO
-constraint_db       public             c2                       constraint_db  public        t1          CHECK            NO             NO
-constraint_db       public             check_a                  constraint_db  public        t1          CHECK            NO             NO
-constraint_db       public             primary                  constraint_db  public        t1          PRIMARY KEY      NO             NO
-constraint_db       public             t1_a_key                 constraint_db  public        t1          UNIQUE           NO             NO
-constraint_db       public             585526086_85_2_not_null  constraint_db  public        t2          CHECK            NO             NO
-constraint_db       public             fk                       constraint_db  public        t2          FOREIGN KEY      NO             NO
+constraint_catalog  constraint_schema  constraint_name          table_catalog  table_schema  table_name  constraint_type  is_deferrable  initially_deferred  enforced  nulls_distinct
+constraint_db       public             585526086_84_1_not_null  constraint_db  public        t1          CHECK            NO             NO                   YES       NULL
+constraint_db       public             c2                       constraint_db  public        t1          CHECK            NO             NO                   YES       NULL
+constraint_db       public             check_a                  constraint_db  public        t1          CHECK            NO             NO                   YES       NULL
+constraint_db       public             primary                  constraint_db  public        t1          PRIMARY KEY      NO             NO                   YES       NULL
+constraint_db       public             t1_a_key                 constraint_db  public        t1          UNIQUE           NO             NO                   YES       YES
+constraint_db       public             585526086_85_2_not_null  constraint_db  public        t2          CHECK            NO             NO                   YES       NULL
+constraint_db       public             fk                       constraint_db  public        t2          FOREIGN KEY      NO             NO                   YES       NULL
+
+# Verify all constraint kinds on user-created physical tables.
+query TTTT colnames
+SELECT table_name, constraint_type, enforced, nulls_distinct
+FROM information_schema.table_constraints
+WHERE table_name IN ('t1', 't2')
+ORDER BY table_name, constraint_type, constraint_name
+----
+table_name  constraint_type  enforced  nulls_distinct
+t1          CHECK            YES       NULL
+t1          CHECK            YES       NULL
+t1          CHECK            YES       NULL
+t1          PRIMARY KEY      YES       NULL
+t1          UNIQUE           YES       YES
+t2          CHECK            YES       NULL
+t2          FOREIGN KEY      YES       NULL
 
 query TTTT colnames
 SELECT *
@@ -1360,6 +1389,25 @@ table_schema  table_name  constraint_name          check_clause
 public        t1          585526086_84_1_not_null  p IS NOT NULL
 public        t1          c2                       ((a < 99))
 public        t1          check_a                  ((a > 4))
+
+statement ok
+CREATE TABLE check_hidden (
+    value INT NOT NULL,
+    CONSTRAINT check_hidden_value CHECK (value > 0)
+)
+
+# The implicit rowid is hidden and must not be exposed as a NOT NULL check.
+query T colnames
+SELECT cc.check_clause
+FROM information_schema.table_constraints AS tc
+JOIN information_schema.check_constraints AS cc
+USING (constraint_catalog, constraint_schema, constraint_name)
+WHERE tc.table_name = 'check_hidden'
+ORDER BY cc.check_clause
+----
+check_clause
+((value > 0))
+value IS NOT NULL
 
 statement ok
 DROP DATABASE constraint_db CASCADE
@@ -1917,6 +1965,48 @@ constraint_column   public             fk2              constraint_column       
 
 statement ok
 DROP DATABASE constraint_column CASCADE
+
+statement ok
+CREATE DATABASE constraint_parent
+
+statement ok
+SET DATABASE = constraint_parent
+
+statement ok
+CREATE SCHEMA parent_s
+
+statement ok
+CREATE TABLE parent_s.parent (id INT PRIMARY KEY)
+
+statement ok
+CREATE DATABASE constraint_child
+
+statement ok
+SET DATABASE = constraint_child
+
+statement ok
+CREATE SCHEMA child_s
+
+statement ok
+CREATE TABLE child_s.child (
+    parent_id INT,
+    CONSTRAINT fk_cross_db FOREIGN KEY (parent_id) REFERENCES constraint_parent.parent_s.parent(id)
+)
+
+query TTTTT colnames
+SELECT constraint_catalog, constraint_schema, unique_constraint_catalog,
+       unique_constraint_schema, unique_constraint_name
+FROM information_schema.referential_constraints
+WHERE constraint_name = 'fk_cross_db'
+----
+constraint_catalog  constraint_schema  unique_constraint_catalog  unique_constraint_schema  unique_constraint_name
+constraint_child    child_s            constraint_parent          parent_s                  primary
+
+statement ok
+DROP DATABASE constraint_child CASCADE
+
+statement ok
+DROP DATABASE constraint_parent CASCADE
 
 ## information_schema.schema_privileges
 
@@ -2536,18 +2626,31 @@ user root
 ## information_schema.statistics
 
 statement ok
-CREATE TABLE other_db.teststatics(id INT PRIMARY KEY, c INT, d INT, e STRING, INDEX idx_c(c), UNIQUE INDEX idx_cd(c,d))
+CREATE TABLE other_db.teststatics(
+    id INT PRIMARY KEY,
+    c INT,
+    d INT,
+    j JSONB,
+    INDEX idx_c(c),
+    UNIQUE INDEX idx_cd(c,d),
+    INVERTED INDEX idx_j(j)
+)
 
-query TTTTTTITIITTT colnames
+statement ok
+COMMENT ON INDEX other_db.teststatics@idx_c IS 'index comment'
+
+query TTTITTITTITTTITTTTTTT colnames
 SELECT * FROM other_db.information_schema.statistics WHERE table_schema='public' AND table_name='teststatics' ORDER BY INDEX_SCHEMA,INDEX_NAME,SEQ_IN_INDEX
 ----
-table_catalog  table_schema  table_name   non_unique  index_schema  index_name  seq_in_index  column_name  COLLATION  cardinality  direction  storing  implicit
-other_db       public        teststatics  YES         public        idx_c       1             c            NULL       NULL         ASC        NO       NO
-other_db       public        teststatics  YES         public        idx_c       2             id           NULL       NULL         ASC        NO       YES
-other_db       public        teststatics  NO          public        idx_cd      1             c            NULL       NULL         ASC        NO       NO
-other_db       public        teststatics  NO          public        idx_cd      2             d            NULL       NULL         ASC        NO       NO
-other_db       public        teststatics  NO          public        idx_cd      3             id           NULL       NULL         ASC        NO       YES
-other_db       public        teststatics  NO          public        primary     1             id           NULL       NULL         ASC        NO       NO
+table_catalog  table_schema  table_name   non_unique  index_schema  index_name  seq_in_index  column_name  COLLATION  cardinality  direction  storing  implicit  sub_part  packed  nullable  index_type  COMMENT  index_comment  is_visible  expression
+other_db       public        teststatics  1           public        idx_c       1             c            NULL       NULL         ASC        NO       NO        NULL      NULL    YES       FORWARD     NULL     index comment  NULL        NULL
+other_db       public        teststatics  1           public        idx_c       2             id           NULL       NULL         ASC        NO       YES       NULL      NULL    NO        FORWARD     NULL     index comment  NULL        NULL
+other_db       public        teststatics  0           public        idx_cd      1             c            NULL       NULL         ASC        NO       NO        NULL      NULL    YES       FORWARD     NULL     NULL           NULL        NULL
+other_db       public        teststatics  0           public        idx_cd      2             d            NULL       NULL         ASC        NO       NO        NULL      NULL    YES       FORWARD     NULL     NULL           NULL        NULL
+other_db       public        teststatics  0           public        idx_cd      3             id           NULL       NULL         ASC        NO       YES       NULL      NULL    NO        FORWARD     NULL     NULL           NULL        NULL
+other_db       public        teststatics  1           public        idx_j       1             j            NULL       NULL         ASC        NO       NO        NULL      NULL    YES       INVERTED    NULL     NULL           NULL        NULL
+other_db       public        teststatics  1           public        idx_j       2             id           NULL       NULL         ASC        NO       YES       NULL      NULL    NO        INVERTED    NULL     NULL           NULL        NULL
+other_db       public        teststatics  0           public        primary     1             id           NULL       NULL         ASC        NO       NO        NULL      NULL    NO        FORWARD     NULL     NULL           NULL        NULL
 
 # Verify information_schema.views
 statement ok
@@ -2972,6 +3075,95 @@ SET database = test
 
 statement ok
 DROP DATABASE dfk CASCADE
+
+# Verify information_schema metadata visibility follows table privileges.
+
+statement ok
+CREATE DATABASE is_privilege_it
+
+statement ok
+CREATE TABLE is_privilege_it.visible_parent (
+    id INT PRIMARY KEY,
+    code INT UNIQUE
+)
+
+statement ok
+CREATE TABLE is_privilege_it.visible_child (
+    parent_id INT,
+    CONSTRAINT visible_fk FOREIGN KEY (parent_id)
+        REFERENCES is_privilege_it.visible_parent(id),
+    INDEX visible_idx (parent_id)
+)
+
+statement ok
+CREATE TABLE is_privilege_it.hidden_parent (
+    id INT PRIMARY KEY,
+    code INT UNIQUE
+)
+
+statement ok
+CREATE TABLE is_privilege_it.hidden_child (
+    parent_id INT,
+    CONSTRAINT hidden_fk FOREIGN KEY (parent_id)
+        REFERENCES is_privilege_it.hidden_parent(id),
+    INDEX hidden_idx (parent_id)
+)
+
+statement ok
+GRANT SELECT ON TABLE is_privilege_it.visible_parent TO testuser
+
+statement ok
+GRANT SELECT ON TABLE is_privilege_it.visible_child TO testuser
+
+user testuser
+
+statement ok
+SET DATABASE = is_privilege_it
+
+query TTITT colnames
+SELECT table_name, index_name, seq_in_index, column_name, implicit
+FROM information_schema.statistics
+WHERE table_name IN ('visible_parent', 'visible_child', 'hidden_parent', 'hidden_child')
+ORDER BY table_name, index_name, seq_in_index
+----
+table_name      index_name                seq_in_index  column_name  implicit
+visible_child   primary                   1             rowid        NO
+visible_child   visible_idx               1             parent_id    NO
+visible_child   visible_idx               2             rowid        YES
+visible_parent  primary                   1             id           NO
+visible_parent  visible_parent_code_key   1             code         NO
+visible_parent  visible_parent_code_key   2             id           YES
+
+query TTI colnames
+SELECT table_name, constraint_type, count(*)
+FROM information_schema.table_constraints
+WHERE table_name IN ('visible_parent', 'visible_child', 'hidden_parent', 'hidden_child')
+GROUP BY table_name, constraint_type
+ORDER BY table_name, constraint_type
+----
+table_name      constraint_type  count
+visible_child   CHECK            1
+visible_child   FOREIGN KEY      1
+visible_parent  CHECK            1
+visible_parent  PRIMARY KEY      1
+visible_parent  UNIQUE           1
+
+query TTT colnames
+SELECT constraint_name, table_name, referenced_table_name
+FROM information_schema.referential_constraints
+WHERE table_name IN ('visible_child', 'hidden_child')
+ORDER BY constraint_name
+----
+constraint_name  table_name     referenced_table_name
+visible_fk       visible_child  visible_parent
+
+user root
+
+statement ok
+SET DATABASE = test
+
+statement ok
+DROP DATABASE is_privilege_it CASCADE
 
 # Regression test for #39787. Verify information_schema.ordinal_position
 # matches pg_attribute.attnum when a leading column is dropped.
