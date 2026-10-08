@@ -38,7 +38,9 @@ statistics                         SYSTEM VIEW
 table_constraints                  SYSTEM VIEW
 table_privileges                   SYSTEM VIEW
 tables                             SYSTEM VIEW
+triggers                           SYSTEM VIEW
 user_privileges                    SYSTEM VIEW
+view_table_usage                   SYSTEM VIEW
 views                              SYSTEM VIEW
 
 # Verify that the name is not special for databases.
@@ -151,7 +153,9 @@ statistics                         SYSTEM VIEW
 table_constraints                  SYSTEM VIEW
 table_privileges                   SYSTEM VIEW
 tables                             SYSTEM VIEW
+triggers                           SYSTEM VIEW
 user_privileges                    SYSTEM VIEW
+view_table_usage                   SYSTEM VIEW
 views                              SYSTEM VIEW
 
 query TT colnames
@@ -278,7 +282,9 @@ information_schema  statistics
 information_schema  table_constraints
 information_schema  table_privileges
 information_schema  tables
+information_schema  triggers
 information_schema  user_privileges
+information_schema  view_table_usage
 information_schema  views
 kwdb_internal       audit_policies
 kwdb_internal       backward_dependencies
@@ -463,7 +469,9 @@ statistics
 table_constraints
 table_privileges
 tables
+triggers
 user_privileges
+view_table_usage
 views
 audit_policies
 backward_dependencies
@@ -594,8 +602,10 @@ SELECT table_name FROM other_db.information_schema.tables WHERE table_name > 't'
 zones
 xyz
 views
+view_table_usage
 user_privileges
 ts_inflight_transactions
+triggers
 tables
 tables
 table_privileges
@@ -631,7 +641,9 @@ system         information_schema  statistics                         SYSTEM VIE
 system         information_schema  table_constraints                  SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
 system         information_schema  table_privileges                   SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
 system         information_schema  tables                             SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
+system         information_schema  triggers                           SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
 system         information_schema  user_privileges                    SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
+system         information_schema  view_table_usage                   SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
 system         information_schema  views                              SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
 system         kwdb_internal       audit_policies                     SYSTEM VIEW  NO                  1        1283818853  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
 system         kwdb_internal       backward_dependencies              SYSTEM VIEW  NO                  1        1283818853  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
@@ -2076,7 +2088,9 @@ NULL     public   system         information_schema  statistics                 
 NULL     public   system         information_schema  table_constraints                  SELECT          NULL          NO
 NULL     public   system         information_schema  table_privileges                   SELECT          NULL          NO
 NULL     public   system         information_schema  tables                             SELECT          NULL          NO
+NULL     public   system         information_schema  triggers                           SELECT          NULL          NO
 NULL     public   system         information_schema  user_privileges                    SELECT          NULL          NO
+NULL     public   system         information_schema  view_table_usage                   SELECT          NULL          NO
 NULL     public   system         information_schema  views                              SELECT          NULL          NO
 NULL     public   system         kwdb_internal       audit_policies                     SELECT          NULL          NO
 NULL     public   system         kwdb_internal       backward_dependencies              SELECT          NULL          NO
@@ -2652,9 +2666,29 @@ other_db       public        teststatics  1           public        idx_j       
 other_db       public        teststatics  1           public        idx_j       2             id           NULL       NULL         ASC        NO       YES       NULL      NULL    NO        INVERTED    NULL     NULL           NULL        NULL
 other_db       public        teststatics  0           public        primary     1             id           NULL       NULL         ASC        NO       NO        NULL      NULL    NO        FORWARD     NULL     NULL           NULL        NULL
 
+# Reset testuser's earlier database and table grants before testing dependency visibility.
+statement ok
+REVOKE ALL ON DATABASE other_db FROM testuser
+
+statement ok
+REVOKE ALL ON other_db.xyz FROM testuser
+
 # Verify information_schema.views
 statement ok
 CREATE VIEW other_db.v_xyz AS SELECT i FROM other_db.xyz
+
+statement ok
+CREATE VIEW other_db.v_xyz_chain AS SELECT i FROM other_db.v_xyz
+
+statement ok
+CREATE VIEW other_db.v_xyz_virtual AS SELECT table_schema FROM information_schema.columns
+
+statement ok
+SET DATABASE = other_db;
+CREATE SCHEMA view_usage_schema;
+CREATE TABLE view_usage_schema.v_xyz_schema_base (i INT);
+CREATE VIEW v_xyz_schema AS SELECT i FROM view_usage_schema.v_xyz_schema_base;
+SET DATABASE = test
 
 query TTTTT colnames
 SELECT TABLE_CATALOG, TABLE_SCHEMA, TABLE_NAME, VIEW_DEFINITION, CHECK_OPTION
@@ -2671,6 +2705,139 @@ WHERE TABLE_NAME='v_xyz'
 ----
 is_updatable  insertable_into  is_trigger_updatable  is_trigger_deletable  is_trigger_insertable_into
 NO            NO                  NO                    NO                    NO
+
+## information_schema.view_table_usage
+
+# Only direct dependencies are reported: v_xyz_chain refers to v_xyz, not xyz.
+# Virtual-table dependencies are excluded and do not cause lookup failures.
+query TTTTTT colnames,rowsort
+SELECT *
+  FROM other_db.information_schema.view_table_usage
+ WHERE view_name IN ('v_xyz', 'v_xyz_chain', 'v_xyz_schema', 'v_xyz_virtual')
+----
+view_catalog  view_schema  view_name    table_catalog  table_schema  table_name
+other_db      public       v_xyz        other_db        public        xyz
+other_db      public       v_xyz_chain  other_db        public        v_xyz
+other_db      public       v_xyz_schema  other_db        view_usage_schema  v_xyz_schema_base
+
+statement ok
+GRANT SELECT ON other_db.v_xyz_chain TO testuser
+
+user testuser
+
+# A visible view alone is insufficient when its referenced view is not visible.
+query TTTTTT colnames,rowsort
+SELECT *
+  FROM other_db.information_schema.view_table_usage
+ WHERE view_name IN ('v_xyz', 'v_xyz_chain')
+----
+view_catalog  view_schema  view_name  table_catalog  table_schema  table_name
+
+user root
+
+statement ok
+GRANT SELECT ON other_db.v_xyz TO testuser
+
+user testuser
+
+# Once both sides of v_xyz_chain -> v_xyz are visible, only that direct edge appears.
+query TTTTTT colnames,rowsort
+SELECT *
+  FROM other_db.information_schema.view_table_usage
+ WHERE view_name IN ('v_xyz', 'v_xyz_chain')
+----
+view_catalog  view_schema  view_name    table_catalog  table_schema  table_name
+other_db      public       v_xyz_chain  other_db        public        v_xyz
+
+user root
+
+statement ok
+GRANT SELECT ON other_db.xyz TO testuser
+
+user testuser
+
+# Granting the base table reveals v_xyz -> xyz as well.
+query TTTTTT colnames,rowsort
+SELECT *
+  FROM other_db.information_schema.view_table_usage
+ WHERE view_name IN ('v_xyz', 'v_xyz_chain')
+----
+view_catalog  view_schema  view_name    table_catalog  table_schema  table_name
+other_db      public       v_xyz        other_db        public        xyz
+other_db      public       v_xyz_chain  other_db        public        v_xyz
+
+user root
+
+statement ok
+REVOKE SELECT ON other_db.v_xyz_chain FROM testuser
+
+statement ok
+REVOKE SELECT ON other_db.v_xyz FROM testuser
+
+statement ok
+REVOKE SELECT ON other_db.xyz FROM testuser
+
+statement ok
+CREATE ROLE view_usage_role
+
+statement ok
+GRANT SELECT ON other_db.v_xyz_chain TO view_usage_role
+
+statement ok
+GRANT SELECT ON other_db.v_xyz TO view_usage_role
+
+statement ok
+GRANT view_usage_role TO testuser
+
+user testuser
+
+# Visibility through an inherited role still requires privileges on both ends.
+query TTTTTT colnames,rowsort
+SELECT *
+  FROM other_db.information_schema.view_table_usage
+ WHERE view_name IN ('v_xyz', 'v_xyz_chain')
+----
+view_catalog  view_schema  view_name    table_catalog  table_schema  table_name
+other_db      public       v_xyz_chain  other_db        public        v_xyz
+
+user root
+
+statement ok
+REVOKE view_usage_role FROM testuser
+
+statement ok
+REVOKE SELECT ON other_db.v_xyz_chain FROM view_usage_role
+
+statement ok
+REVOKE SELECT ON other_db.v_xyz FROM view_usage_role
+
+statement ok
+DROP ROLE view_usage_role
+
+statement ok
+GRANT SELECT ON other_db.v_xyz_chain TO public
+
+statement ok
+GRANT SELECT ON other_db.v_xyz TO public
+
+user testuser
+
+# PUBLIC grants are also accepted for both sides of the dependency edge.
+query TTTTTT colnames,rowsort
+SELECT *
+  FROM other_db.information_schema.view_table_usage
+ WHERE view_name IN ('v_xyz', 'v_xyz_chain')
+----
+view_catalog  view_schema  view_name    table_catalog  table_schema  table_name
+other_db      public       v_xyz_chain  other_db        public        v_xyz
+
+user root
+
+statement ok
+REVOKE SELECT ON other_db.v_xyz_chain FROM public
+
+statement ok
+REVOKE SELECT ON other_db.v_xyz FROM public
 
 statement ok
 SET DATABASE = 'test'
@@ -2861,6 +3028,9 @@ DROP ROLE column_privileges_parent_role
 
 
 # test information_schema.routines
+statement ok
+REVOKE ALL ON DATABASE test FROM testuser
+
 query TTBTTTBB colnames
 SHOW COLUMNS FROM information_schema.routines
 ----
@@ -2892,11 +3062,12 @@ numeric_precision_radix              INT8         true         NULL            �
 numeric_scale                        INT8         true         NULL            ·                      {}       false      false
 datetime_precision                   INT8         true         NULL            ·                      {}       false      false
 interval_type                        STRING       true         NULL            ·                      {}       false      false
-interval_precision                   STRING       true         NULL            ·                      {}       false      false
+interval_precision                   INT8         true         NULL            ·                      {}       false      false
 type_udt_catalog                     STRING       true         NULL            ·                      {}       false      false
 type_udt_schema                      STRING       true         NULL            ·                      {}       false      false
 type_udt_name                        STRING       true         NULL            ·                      {}       false      false
 scope_catalog                        STRING       true         NULL            ·                      {}       false      false
+scope_schema                         STRING       true         NULL            ·                      {}       false      false
 scope_name                           STRING       true         NULL            ·                      {}       false      false
 maximum_cardinality                  INT8         true         NULL            ·                      {}       false      false
 dtd_identifier                       STRING       true         NULL            ·                      {}       false      false
@@ -2925,17 +3096,17 @@ is_udt_dependent                     STRING       true         NULL            �
 result_cast_from_data_type           STRING       true         NULL            ·                      {}       false      false
 result_cast_as_locator               STRING       true         NULL            ·                      {}       false      false
 result_cast_char_max_length          INT8         true         NULL            ·                      {}       false      false
-result_cast_char_octet_length        STRING       true         NULL            ·                      {}       false      false
+result_cast_char_octet_length        INT8         true         NULL            ·                      {}       false      false
 result_cast_char_set_catalog         STRING       true         NULL            ·                      {}       false      false
 result_cast_char_set_schema          STRING       true         NULL            ·                      {}       false      false
-result_cast_char_set_name            STRING       true         NULL            ·                      {}       false      false
+result_cast_character_set_name       STRING       true         NULL            ·                      {}       false      false
 result_cast_collation_catalog        STRING       true         NULL            ·                      {}       false      false
 result_cast_collation_schema         STRING       true         NULL            ·                      {}       false      false
 result_cast_collation_name           STRING       true         NULL            ·                      {}       false      false
 result_cast_numeric_precision        INT8         true         NULL            ·                      {}       false      false
-result_cast_numeric_precision_radix  INT8         true         NULL            ·                      {}       false      false
+result_cast_numeric_radix            INT8         true         NULL            ·                      {}       false      false
 result_cast_numeric_scale            INT8         true         NULL            ·                      {}       false      false
-result_cast_datetime_precision       STRING       true         NULL            ·                      {}       false      false
+result_cast_datetime_precision       INT8         true         NULL            ·                      {}       false      false
 result_cast_interval_type            STRING       true         NULL            ·                      {}       false      false
 result_cast_interval_precision       INT8         true         NULL            ·                      {}       false      false
 result_cast_type_udt_catalog         STRING       true         NULL            ·                      {}       false      false
@@ -2944,13 +3115,34 @@ result_cast_type_udt_name            STRING       true         NULL            �
 result_cast_scope_catalog            STRING       true         NULL            ·                      {}       false      false
 result_cast_scope_schema             STRING       true         NULL            ·                      {}       false      false
 result_cast_scope_name               STRING       true         NULL            ·                      {}       false      false
-result_cast_maximum_cardinality      INT8         true         NULL            ·                      {}       false      false
+result_cast_max_cardinality          INT8         true         NULL            ·                      {}       false      false
 result_cast_dtd_identifier           STRING       true         NULL            ·                      {}       false      false
+declared_data_type                   STRING       true         NULL            ·                      {}       false      false
+declared_numeric_precision           INT8         true         NULL            ·                      {}       false      false
+declared_numeric_scale               INT8         true         NULL            ·                      {}       false      false
+result_cast_from_declared_data_type  STRING       true         NULL            ·                      {}       false      false
+result_cast_declared_numeric_precision INT8       true         NULL            ·                      {}       false      false
+result_cast_declared_numeric_scale   INT8         true         NULL            ·                      {}       false      false
+returns_only_pass_through            STRING       true         NULL            ·                      {}       false      false
+describe_procedure_specific_catalog STRING       true         NULL            ·                      {}       false      false
+describe_procedure_specific_schema  STRING       true         NULL            ·                      {}       false      false
+describe_procedure_specific_name    STRING       true         NULL            ·                      {}       false      false
+start_procedure_specific_catalog    STRING       true         NULL            ·                      {}       false      false
+start_procedure_specific_schema     STRING       true         NULL            ·                      {}       false      false
+start_procedure_specific_name       STRING       true         NULL            ·                      {}       false      false
+fulfill_procedure_specific_catalog  STRING       true         NULL            ·                      {}       false      false
+fulfill_procedure_specific_schema   STRING       true         NULL            ·                      {}       false      false
+fulfill_procedure_specific_name     STRING       true         NULL            ·                      {}       false      false
+finish_procedure_specific_catalog   STRING       true         NULL            ·                      {}       false      false
+finish_procedure_specific_schema    STRING       true         NULL            ·                      {}       false      false
+finish_procedure_specific_name      STRING       true         NULL            ·                      {}       false      false
+routine_comment                     STRING       true         NULL            ·                      {}       false      false
+definer                             STRING       true         NULL            ·                      {}       false      false
 
-query TTTTTTTTTTTTTTIITTTTTTIIIITTTTTTTITTTTTTTTTTTITTTTTTTTTTTTTITTTTTTTIIITTITTTTTTIT colnames
+query TTTTTTTTTTTTTTIITTTTTTIIIITITTTTTTITTTTTTTTTTTITTTTTTTTTTTTTIITTTTTTIIIITITTTTTTITTIITIITTTTTTTTTTTTTTT colnames
 SELECT * FROM information_schema.routines
 ----
-specific_catalog  specific_schema  specific_name  routine_catalog  routine_schema  routine_name  routine_type  module_catalog  module_schema  module_name  udt_catalog  udt_schema  udt_name  data_type  character_maximum_length  character_octet_length  character_set_catalog  character_set_schema  character_set_name  collation_catalog  collation_schema  collation_name  numeric_precision  numeric_precision_radix  numeric_scale  datetime_precision  interval_type  interval_precision  type_udt_catalog  type_udt_schema  type_udt_name  scope_catalog  scope_name  maximum_cardinality  dtd_identifier  routine_body  routine_definition  external_name  external_language  parameter_style  is_deterministic  sql_data_access  is_null_call  sql_path  schema_level_routine  max_dynamic_result_sets  is_user_defined_cast  is_implicitly_invocable  security_type  to_sql_specific_catalog  to_sql_specific_schema  to_sql_specific_name  as_locator  created  last_altered  new_savepoint_level  is_udt_dependent  result_cast_from_data_type  result_cast_as_locator  result_cast_char_max_length  result_cast_char_octet_length  result_cast_char_set_catalog  result_cast_char_set_schema  result_cast_char_set_name  result_cast_collation_catalog  result_cast_collation_schema  result_cast_collation_name  result_cast_numeric_precision  result_cast_numeric_precision_radix  result_cast_numeric_scale  result_cast_datetime_precision  result_cast_interval_type  result_cast_interval_precision  result_cast_type_udt_catalog  result_cast_type_udt_schema  result_cast_type_udt_name  result_cast_scope_catalog  result_cast_scope_schema  result_cast_scope_name  result_cast_maximum_cardinality  result_cast_dtd_identifier
+specific_catalog  specific_schema  specific_name  routine_catalog  routine_schema  routine_name  routine_type  module_catalog  module_schema  module_name  udt_catalog  udt_schema  udt_name  data_type  character_maximum_length  character_octet_length  character_set_catalog  character_set_schema  character_set_name  collation_catalog  collation_schema  collation_name  numeric_precision  numeric_precision_radix  numeric_scale  datetime_precision  interval_type  interval_precision  type_udt_catalog  type_udt_schema  type_udt_name  scope_catalog  scope_schema  scope_name  maximum_cardinality  dtd_identifier  routine_body  routine_definition  external_name  external_language  parameter_style  is_deterministic  sql_data_access  is_null_call  sql_path  schema_level_routine  max_dynamic_result_sets  is_user_defined_cast  is_implicitly_invocable  security_type  to_sql_specific_catalog  to_sql_specific_schema  to_sql_specific_name  as_locator  created  last_altered  new_savepoint_level  is_udt_dependent  result_cast_from_data_type  result_cast_as_locator  result_cast_char_max_length  result_cast_char_octet_length  result_cast_char_set_catalog  result_cast_char_set_schema  result_cast_character_set_name  result_cast_collation_catalog  result_cast_collation_schema  result_cast_collation_name  result_cast_numeric_precision  result_cast_numeric_radix  result_cast_numeric_scale  result_cast_datetime_precision  result_cast_interval_type  result_cast_interval_precision  result_cast_type_udt_catalog  result_cast_type_udt_schema  result_cast_type_udt_name  result_cast_scope_catalog  result_cast_scope_schema  result_cast_scope_name  result_cast_max_cardinality  result_cast_dtd_identifier  declared_data_type  declared_numeric_precision  declared_numeric_scale  result_cast_from_declared_data_type  result_cast_declared_numeric_precision  result_cast_declared_numeric_scale  returns_only_pass_through  describe_procedure_specific_catalog  describe_procedure_specific_schema  describe_procedure_specific_name  start_procedure_specific_catalog  start_procedure_specific_schema  start_procedure_specific_name  fulfill_procedure_specific_catalog  fulfill_procedure_specific_schema  fulfill_procedure_specific_name  finish_procedure_specific_catalog  finish_procedure_specific_schema  finish_procedure_specific_name  routine_comment  definer
 
 # test information_schema.parameters
 query TTBTTTBB colnames
@@ -2965,6 +3157,12 @@ parameter_mode            STRING     true         NULL            ·            
 is_result                 STRING     true         NULL            ·                      {}       false      false
 as_locator                STRING     true         NULL            ·                      {}       false      false
 parameter_name            STRING     true         NULL            ·                      {}       false      false
+from_sql_specific_catalog STRING     true         NULL            ·                      {}       false      false
+from_sql_specific_schema  STRING     true         NULL            ·                      {}       false      false
+from_sql_specific_name    STRING     true         NULL            ·                      {}       false      false
+to_sql_specific_catalog   STRING     true         NULL            ·                      {}       false      false
+to_sql_specific_schema    STRING     true         NULL            ·                      {}       false      false
+to_sql_specific_name      STRING     true         NULL            ·                      {}       false      false
 data_type                 STRING     true         NULL            ·                      {}       false      false
 character_maximum_length  INT8       true         NULL            ·                      {}       false      false
 character_octet_length    INT8       true         NULL            ·                      {}       false      false
@@ -2988,12 +3186,259 @@ scope_schema              STRING     true         NULL            ·            
 scope_name                STRING     true         NULL            ·                      {}       false      false
 maximum_cardinality       INT8       true         NULL            ·                      {}       false      false
 dtd_identifier            STRING     true         NULL            ·                      {}       false      false
+declared_data_type         STRING     true         NULL            ·                      {}       false      false
+declared_numeric_precision INT8       true         NULL            ·                      {}       false      false
+declared_numeric_scale     INT8       true         NULL            ·                      {}       false      false
 parameter_default         STRING     true         NULL            ·                      {}       false      false
+table_semantics           STRING     true         NULL            ·                      {}       false      false
+is_prunable               STRING     true         NULL            ·                      {}       false      false
+has_pass_through_columns  STRING     true         NULL            ·                      {}       false      false
+routine_type              STRING     true         NULL            ·                      {}       false      false
 
-query TTTITTTTTIITTTTTTIIIITITTTTTTITT colnames
+query TTTITTTTTTTTTTTIITTTTTTIIIITITTTTTTITTIITTTTT colnames
 SELECT * FROM information_schema.parameters
 ----
-specific_catalog  specific_schema  specific_name  ordinal_position  parameter_mode  is_result  as_locator  parameter_name  data_type  character_maximum_length  character_octet_length  character_set_catalog  character_set_schema  character_set_name  collation_catalog  collation_schema  collation_name  numeric_precision  numeric_precision_radix  numeric_scale  datetime_precision  interval_type  interval_precision  udt_catalog  udt_schema  udt_name  scope_catalog  scope_schema  scope_name  maximum_cardinality  dtd_identifier  parameter_default
+specific_catalog  specific_schema  specific_name  ordinal_position  parameter_mode  is_result  as_locator  parameter_name  from_sql_specific_catalog  from_sql_specific_schema  from_sql_specific_name  to_sql_specific_catalog  to_sql_specific_schema  to_sql_specific_name  data_type  character_maximum_length  character_octet_length  character_set_catalog  character_set_schema  character_set_name  collation_catalog  collation_schema  collation_name  numeric_precision  numeric_precision_radix  numeric_scale  datetime_precision  interval_type  interval_precision  udt_catalog  udt_schema  udt_name  scope_catalog  scope_schema  scope_name  maximum_cardinality  dtd_identifier  declared_data_type  declared_numeric_precision  declared_numeric_scale  parameter_default  table_semantics  is_prunable  has_pass_through_columns  routine_type
+
+statement ok
+CREATE PROCEDURE information_schema_parameters_proc(proc_id INT, proc_name VARCHAR(5)) BEGIN SELECT 1;END;
+
+statement ok
+CREATE FUNCTION information_schema_parameters_fn(fn_id INT, fn_name VARCHAR(5)) RETURNS VARCHAR(5) LANGUAGE LUA BEGIN 'function information_schema_parameters_fn(fn_id, fn_name) return fn_name end' END
+
+query TTTTTTTTTTIITTTTTT
+SELECT specific_catalog, specific_schema, routine_catalog, routine_schema,
+       routine_name, routine_type, udt_catalog, udt_schema, udt_name, data_type,
+       character_maximum_length, character_octet_length, dtd_identifier,
+       routine_body, external_language, declared_data_type, routine_comment, definer
+FROM information_schema.routines
+WHERE routine_name IN ('information_schema_parameters_fn', 'information_schema_parameters_proc')
+ORDER BY routine_name
+----
+test  NULL    test  NULL    information_schema_parameters_fn    FUNCTION   test  pg_catalog  varchar  character varying  5     20    VARCHAR(5)  EXTERNAL  LUA  VARCHAR(5)  NULL  root
+test  public  test  public  information_schema_parameters_proc  PROCEDURE  NULL  NULL        NULL     NULL               NULL  NULL  NULL  SQL       SQL  NULL        NULL  root
+
+query TBBBBBBBB rowsort
+SELECT routine_name, routine_definition != '', created IS NOT NULL,
+       last_altered IS NOT NULL, module_catalog IS NULL,
+       parameter_style IS NULL, result_cast_from_data_type IS NULL,
+       result_cast_from_declared_data_type IS NULL,
+       describe_procedure_specific_catalog IS NULL
+FROM information_schema.routines
+WHERE routine_name IN ('information_schema_parameters_fn', 'information_schema_parameters_proc')
+----
+information_schema_parameters_fn   true  true  true  true  true  true  true  true
+information_schema_parameters_proc true  true  true  true  true  true  true  true
+
+query TTTITTTTTTTTTTTIITTTTTTIIIITITTTTTTITTIITTTTT
+SELECT *
+FROM information_schema.parameters
+WHERE specific_name = 'information_schema_parameters_fn' AND ordinal_position IN (0, 1)
+ORDER BY ordinal_position
+----
+test  NULL  information_schema_parameters_fn  0  NULL  YES  NO  NULL  NULL  NULL  NULL  NULL  NULL  NULL  character varying  5  20  NULL  NULL  NULL  NULL  NULL  NULL  NULL  NULL  NULL  NULL  NULL  NULL  test  pg_catalog  varchar  NULL  NULL  NULL  NULL  VARCHAR(5)  VARCHAR(5)  NULL  NULL  NULL  NULL  NULL  NULL  FUNCTION
+test  NULL  information_schema_parameters_fn  1  IN  NO  NO  NULL  NULL  NULL  NULL  NULL  NULL  NULL  integer  NULL  NULL  NULL  NULL  NULL  NULL  NULL  NULL  32  2  0  NULL  NULL  NULL  test  pg_catalog  int4  NULL  NULL  NULL  NULL  INT4  INT4  32  0  NULL  NULL  NULL  NULL  FUNCTION
+
+# Exercise the procedure-specific path across all 45 columns. In particular,
+# procedures have a public schema and named parameters, unlike Lua UDFs.
+query TTTITTTTTTTTTTTIITTTTTTIIIITITTTTTTITTIITTTTT
+SELECT *
+FROM information_schema.parameters
+WHERE specific_name = 'information_schema_parameters_proc'
+ORDER BY ordinal_position
+----
+test  public  information_schema_parameters_proc  1  IN  NO  NO  proc_id    NULL  NULL  NULL  NULL  NULL  NULL  integer            NULL  NULL  NULL  NULL  NULL  NULL  NULL  NULL  32    2     0     NULL  NULL  NULL  test  pg_catalog  int4     NULL  NULL  NULL  NULL  INT4        INT4        32    0     NULL  NULL  NULL  NULL  PROCEDURE
+test  public  information_schema_parameters_proc  2  IN  NO  NO  proc_name  NULL  NULL  NULL  NULL  NULL  NULL  character varying  5     20    NULL  NULL  NULL  NULL  NULL  NULL  NULL  NULL  NULL  NULL  NULL  NULL  test  pg_catalog  varchar  NULL  NULL  NULL  NULL  VARCHAR(5)  VARCHAR(5)  NULL  NULL  NULL  NULL  NULL  NULL  PROCEDURE
+
+query TTTITTTTTTT rowsort
+SELECT specific_catalog, specific_schema, specific_name, ordinal_position,
+       parameter_mode, is_result, as_locator, parameter_name,
+       dtd_identifier, declared_data_type, routine_type
+FROM information_schema.parameters
+WHERE specific_name IN ('information_schema_parameters_fn', 'information_schema_parameters_proc')
+----
+test  NULL    information_schema_parameters_fn   0  NULL  YES  NO  NULL       VARCHAR(5)  VARCHAR(5)  FUNCTION
+test  NULL    information_schema_parameters_fn   1  IN  NO  NO  NULL       INT4        INT4        FUNCTION
+test  NULL    information_schema_parameters_fn   2  IN  NO  NO  NULL       VARCHAR(5)  VARCHAR(5)  FUNCTION
+test  public  information_schema_parameters_proc 1  IN  NO  NO  proc_id    INT4        INT4        PROCEDURE
+test  public  information_schema_parameters_proc 2  IN  NO  NO  proc_name  VARCHAR(5)  VARCHAR(5)  PROCEDURE
+
+user testuser
+
+statement ok
+SET DATABASE = test
+
+query T rowsort
+SELECT DISTINCT specific_name
+FROM information_schema.parameters
+WHERE specific_name IN ('information_schema_parameters_fn', 'information_schema_parameters_proc')
+----
+information_schema_parameters_fn
+
+query T rowsort
+SELECT DISTINCT routine_name
+FROM information_schema.routines
+WHERE routine_name IN ('information_schema_parameters_fn', 'information_schema_parameters_proc')
+----
+information_schema_parameters_fn
+
+user root
+
+statement ok
+GRANT EXECUTE ON PROCEDURE information_schema_parameters_proc TO testuser
+
+user testuser
+
+# A direct EXECUTE grant exposes the procedure in routines.
+query T rowsort
+SELECT routine_name
+FROM information_schema.routines
+WHERE routine_name = 'information_schema_parameters_proc'
+----
+information_schema_parameters_proc
+
+user root
+
+statement ok
+REVOKE EXECUTE ON PROCEDURE information_schema_parameters_proc FROM testuser
+
+statement ok
+GRANT EXECUTE ON PROCEDURE information_schema_parameters_proc TO public
+
+user testuser
+
+# PUBLIC follows the same procedure visibility rule as a direct grant.
+query T rowsort
+SELECT routine_name
+FROM information_schema.routines
+WHERE routine_name = 'information_schema_parameters_proc'
+----
+information_schema_parameters_proc
+
+user root
+
+statement ok
+REVOKE EXECUTE ON PROCEDURE information_schema_parameters_proc FROM public
+
+statement ok
+CREATE ROLE information_schema_parameters_parent
+
+statement ok
+CREATE ROLE information_schema_parameters_child
+
+statement ok
+GRANT EXECUTE ON PROCEDURE information_schema_parameters_proc TO information_schema_parameters_parent
+
+statement ok
+GRANT information_schema_parameters_parent TO information_schema_parameters_child
+
+statement ok
+GRANT information_schema_parameters_child TO testuser
+
+user testuser
+
+statement ok
+SET DATABASE = test
+
+query T rowsort
+SELECT DISTINCT specific_name
+FROM information_schema.parameters
+WHERE specific_name IN ('information_schema_parameters_fn', 'information_schema_parameters_proc')
+----
+information_schema_parameters_fn
+information_schema_parameters_proc
+
+query T rowsort
+SELECT DISTINCT routine_name
+FROM information_schema.routines
+WHERE routine_name IN ('information_schema_parameters_fn', 'information_schema_parameters_proc')
+----
+information_schema_parameters_fn
+information_schema_parameters_proc
+
+user root
+
+statement ok
+DROP FUNCTION information_schema_parameters_fn
+
+statement ok
+DROP PROCEDURE information_schema_parameters_proc
+
+statement ok
+REVOKE information_schema_parameters_child FROM testuser
+
+statement ok
+REVOKE information_schema_parameters_parent FROM information_schema_parameters_child
+
+statement ok
+DROP ROLE information_schema_parameters_child
+
+statement ok
+DROP ROLE information_schema_parameters_parent
+
+# Procedures stay in their own catalog, whereas Lua UDFs retain their creation
+# catalog while being visible from another database's information_schema.
+statement ok
+CREATE DATABASE information_schema_routine_other_db
+
+statement ok
+SET DATABASE = information_schema_routine_other_db
+
+statement ok
+CREATE PROCEDURE information_schema_parameters_other_proc(other_id INT) BEGIN SELECT 1;END;
+
+statement ok
+CREATE FUNCTION information_schema_parameters_other_fn(other_id INT) RETURNS INT LANGUAGE LUA BEGIN 'function information_schema_parameters_other_fn(other_id) return other_id end' END
+
+statement ok
+SET DATABASE = test
+
+query TTTT rowsort
+SELECT specific_catalog, routine_catalog, routine_name, routine_type
+FROM information_schema.routines
+WHERE routine_name IN ('information_schema_parameters_other_proc', 'information_schema_parameters_other_fn')
+----
+information_schema_routine_other_db  information_schema_routine_other_db  information_schema_parameters_other_fn  FUNCTION
+
+query TTT
+SELECT DISTINCT specific_catalog, specific_name, routine_type
+FROM information_schema.parameters
+WHERE specific_name IN ('information_schema_parameters_other_proc', 'information_schema_parameters_other_fn')
+----
+information_schema_routine_other_db  information_schema_parameters_other_fn    FUNCTION
+
+query TTTT rowsort
+SELECT specific_catalog, routine_catalog, routine_name, routine_type
+FROM information_schema_routine_other_db.information_schema.routines
+WHERE routine_name IN ('information_schema_parameters_other_proc', 'information_schema_parameters_other_fn')
+----
+information_schema_routine_other_db  information_schema_routine_other_db  information_schema_parameters_other_fn    FUNCTION
+information_schema_routine_other_db  information_schema_routine_other_db  information_schema_parameters_other_proc  PROCEDURE
+
+query TTT rowsort
+SELECT DISTINCT specific_catalog, specific_name, routine_type
+FROM information_schema_routine_other_db.information_schema.parameters
+WHERE specific_name IN ('information_schema_parameters_other_proc', 'information_schema_parameters_other_fn')
+----
+information_schema_routine_other_db  information_schema_parameters_other_fn    FUNCTION
+information_schema_routine_other_db  information_schema_parameters_other_proc  PROCEDURE
+
+user root
+
+statement ok
+SET DATABASE = information_schema_routine_other_db
+
+statement ok
+DROP FUNCTION information_schema_parameters_other_fn
+
+statement ok
+DROP PROCEDURE information_schema_parameters_other_proc
+
+statement ok
+SET DATABASE = test
+
+statement ok
+DROP DATABASE information_schema_routine_other_db CASCADE
 
 # information_schema.administrable_role_authorizations
 
@@ -3191,3 +3636,175 @@ WHERE
 
 statement ok
 DROP TABLE ab
+
+## information_schema.triggers
+
+query TTBTTTBB colnames
+SHOW COLUMNS FROM information_schema.triggers
+----
+column_name                 data_type    is_nullable  column_default  generation_expression  indices  is_hidden  is_tag
+trigger_catalog             STRING       false        NULL            ·                      {}       false      false
+trigger_schema              STRING       false        NULL            ·                      {}       false      false
+trigger_name                STRING       false        NULL            ·                      {}       false      false
+event_manipulation          STRING       false        NULL            ·                      {}       false      false
+event_object_catalog        STRING       false        NULL            ·                      {}       false      false
+event_object_schema         STRING       false        NULL            ·                      {}       false      false
+event_object_table          STRING       false        NULL            ·                      {}       false      false
+action_order                INT8         false        NULL            ·                      {}       false      false
+action_condition            STRING       true         NULL            ·                      {}       false      false
+action_statement            STRING       true         NULL            ·                      {}       false      false
+action_orientation          STRING       false        NULL            ·                      {}       false      false
+action_timing               STRING       false        NULL            ·                      {}       false      false
+action_reference_old_table  STRING       true         NULL            ·                      {}       false      false
+action_reference_new_table  STRING       true         NULL            ·                      {}       false      false
+action_reference_old_row    STRING       true         NULL            ·                      {}       false      false
+action_reference_new_row    STRING       true         NULL            ·                      {}       false      false
+created                     TIMESTAMPTZ  true         NULL            ·                      {}       false      false
+
+statement ok
+CREATE DATABASE trigger_info_db
+
+statement ok
+CREATE TABLE trigger_info_db.trigger_target (id INT PRIMARY KEY)
+
+statement ok
+CREATE TABLE trigger_info_db.trigger_log (id INT PRIMARY KEY)
+
+statement ok
+CREATE TABLE trigger_info_db.trigger_empty (id INT PRIMARY KEY)
+
+# A visible table with no trigger contributes no row.
+query I
+SELECT count(*)
+  FROM trigger_info_db.information_schema.triggers
+ WHERE event_object_table = 'trigger_empty'
+----
+0
+
+statement ok
+CREATE TRIGGER trigger_before_insert BEFORE INSERT ON trigger_info_db.trigger_target FOR EACH ROW INSERT INTO trigger_info_db.trigger_log VALUES (1)
+
+statement ok
+CREATE TRIGGER trigger_after_update AFTER UPDATE ON trigger_info_db.trigger_target FOR EACH ROW INSERT INTO trigger_info_db.trigger_log VALUES (2)
+
+statement ok
+CREATE TRIGGER trigger_after_delete AFTER DELETE ON trigger_info_db.trigger_target FOR EACH ROW INSERT INTO trigger_info_db.trigger_log VALUES (3)
+
+# Trigger metadata comes from TableDescriptor.Triggers. Fields that have no
+# descriptor source remain NULL, and the stored CREATE statement is exposed.
+query TTTTTTTITTT
+SELECT trigger_catalog, trigger_schema, trigger_name, event_manipulation,
+       event_object_catalog, event_object_schema, event_object_table,
+       action_order, action_condition, action_orientation, action_timing
+  FROM trigger_info_db.information_schema.triggers
+ WHERE trigger_name = 'trigger_before_insert'
+----
+trigger_info_db  public  trigger_before_insert  INSERT  trigger_info_db  public  trigger_target  1  NULL  ROW  BEFORE
+
+# All currently supported descriptor event and timing values retain their SQL spelling.
+query TT rowsort
+SELECT event_manipulation, action_timing
+  FROM trigger_info_db.information_schema.triggers
+ WHERE event_object_table = 'trigger_target'
+----
+DELETE  AFTER
+INSERT  BEFORE
+UPDATE  AFTER
+
+query BBBBB
+SELECT action_statement IS NOT NULL, action_reference_old_table IS NULL,
+       action_reference_new_table IS NULL, action_reference_old_row IS NULL,
+       action_reference_new_row IS NULL
+  FROM trigger_info_db.information_schema.triggers
+ WHERE trigger_name = 'trigger_before_insert'
+----
+true  true  true  true  true
+
+query B
+SELECT created IS NULL
+  FROM trigger_info_db.information_schema.triggers
+ WHERE trigger_name = 'trigger_before_insert'
+----
+true
+
+user testuser
+
+# No table privilege means that the trigger is not visible.
+query I
+SELECT count(*)
+  FROM trigger_info_db.information_schema.triggers
+ WHERE trigger_name = 'trigger_before_insert'
+----
+0
+
+user root
+
+statement ok
+GRANT SELECT ON trigger_info_db.trigger_target TO testuser
+
+user testuser
+
+# Keep SHOW CREATE TRIGGER's existing rule: any table privilege exposes the row
+# and its stored trigger body.
+query B
+SELECT action_statement IS NOT NULL
+  FROM trigger_info_db.information_schema.triggers
+ WHERE trigger_name = 'trigger_before_insert'
+----
+true
+
+user root
+
+statement ok
+REVOKE SELECT ON trigger_info_db.trigger_target FROM testuser
+
+statement ok
+CREATE ROLE trigger_info_role
+
+statement ok
+GRANT SELECT ON trigger_info_db.trigger_target TO trigger_info_role
+
+statement ok
+GRANT trigger_info_role TO testuser
+
+user testuser
+
+# Inherited roles use the same CheckAnyPrivilege path as direct grants.
+query B
+SELECT action_statement IS NOT NULL
+  FROM trigger_info_db.information_schema.triggers
+ WHERE trigger_name = 'trigger_before_insert'
+----
+true
+
+user root
+
+statement ok
+REVOKE trigger_info_role FROM testuser
+
+statement ok
+REVOKE SELECT ON trigger_info_db.trigger_target FROM trigger_info_role
+
+statement ok
+DROP ROLE trigger_info_role
+
+statement ok
+GRANT SELECT ON trigger_info_db.trigger_target TO public
+
+user testuser
+
+# PUBLIC privileges also make the trigger and its definition visible.
+query B
+SELECT action_statement IS NOT NULL
+  FROM trigger_info_db.information_schema.triggers
+ WHERE trigger_name = 'trigger_before_insert'
+----
+true
+
+user root
+
+statement ok
+REVOKE SELECT ON trigger_info_db.trigger_target FROM public
+
+statement ok
+DROP DATABASE trigger_info_db CASCADE

@@ -250,7 +250,9 @@ const (
 	InformationSchemaKeywordsTableID
 	InformationSchemaRoleColumnGrantsID
 	InformationSchemaRoleRoutineGrantsID
-	MinVirtualID = InformationSchemaRoleRoutineGrantsID
+	InformationSchemaViewTableUsageID
+	InformationSchemaTriggersTableID
+	MinVirtualID = InformationSchemaTriggersTableID
 )
 
 const (

@@ -1,0 +1,76 @@
+> USE defaultdb;
+SET
+> DROP DATABASE IF EXISTS is_views_03 CASCADE;
+DROP DATABASE
+> CREATE DATABASE is_views_03;
+CREATE DATABASE
+> SET DATABASE = is_views_03;
+SET
+> CREATE TABLE base_table (
+    id INT PRIMARY KEY,
+    value VARCHAR(8)
+);
+CREATE TABLE
+> CREATE TABLE trigger_log (id INT PRIMARY KEY);
+CREATE TABLE
+> CREATE VIEW direct_view AS
+SELECT id, value FROM base_table;
+CREATE VIEW
+> CREATE VIEW nested_view AS
+SELECT id FROM direct_view;
+CREATE VIEW
+> CREATE PROCEDURE is_views_03_proc(proc_id INT, proc_name VARCHAR(5)) BEGIN SELECT proc_id; END;
+CREATE PROCEDURE
+> CREATE TRIGGER is_views_03_before_insert BEFORE INSERT ON base_table FOR EACH ROW BEGIN INSERT INTO trigger_log VALUES (NEW.id); END;
+CREATE TRIGGER
+> SELECT specific_catalog, specific_schema, specific_name,
+       routine_catalog, routine_schema, routine_name, routine_type,
+       routine_body, external_language, routine_definition IS NOT NULL AS has_definition,
+       dtd_identifier, definer
+FROM information_schema.routines
+WHERE routine_name = 'is_views_03_proc';
+  specific_catalog | specific_schema |  specific_name   | routine_catalog | routine_schema |   routine_name   | routine_type | routine_body | external_language | has_definition | dtd_identifier | definer
+-------------------+-----------------+------------------+-----------------+----------------+------------------+--------------+--------------+-------------------+----------------+----------------+----------
+  is_views_03      | public          | is_views_03_proc | is_views_03     | public         | is_views_03_proc | PROCEDURE    | SQL          | SQL               |      true      | NULL           | root
+(1 row)
+> SELECT specific_catalog, specific_schema, specific_name, ordinal_position,
+       parameter_mode, is_result, parameter_name, data_type,
+       character_maximum_length, character_octet_length,
+       numeric_precision, numeric_precision_radix, numeric_scale,
+       udt_catalog, udt_schema, udt_name, dtd_identifier,
+       declared_data_type, declared_numeric_precision, declared_numeric_scale,
+       routine_type
+FROM information_schema.parameters
+WHERE specific_name = 'is_views_03_proc'
+ORDER BY ordinal_position;
+  specific_catalog | specific_schema |  specific_name   | ordinal_position | parameter_mode | is_result | parameter_name |     data_type     | character_maximum_length | character_octet_length | numeric_precision | numeric_precision_radix | numeric_scale | udt_catalog | udt_schema | udt_name | dtd_identifier | declared_data_type | declared_numeric_precision | declared_numeric_scale | routine_type
+-------------------+-----------------+------------------+------------------+----------------+-----------+----------------+-------------------+--------------------------+------------------------+-------------------+-------------------------+---------------+-------------+------------+----------+----------------+--------------------+----------------------------+------------------------+---------------
+  is_views_03      | public          | is_views_03_proc |                1 | IN             | NO        | proc_id        | integer           |                     NULL |                   NULL |                32 |                       2 |             0 | is_views_03 | pg_catalog | int4     | INT4           | INT4               |                         32 |                      0 | PROCEDURE
+  is_views_03      | public          | is_views_03_proc |                2 | IN             | NO        | proc_name      | character varying |                        5 |                     20 |              NULL |                    NULL |          NULL | is_views_03 | pg_catalog | varchar  | VARCHAR(5)     | VARCHAR(5)         |                       NULL |                   NULL | PROCEDURE
+(2 rows)
+> SELECT view_catalog, view_schema, view_name,
+       table_catalog, table_schema, table_name
+FROM information_schema.view_table_usage
+WHERE view_name IN ('direct_view', 'nested_view')
+ORDER BY view_name, table_name;
+  view_catalog | view_schema |  view_name  | table_catalog | table_schema | table_name
+---------------+-------------+-------------+---------------+--------------+--------------
+  is_views_03  | public      | direct_view | is_views_03   | public       | base_table
+  is_views_03  | public      | nested_view | is_views_03   | public       | direct_view
+(2 rows)
+> SELECT trigger_catalog, trigger_schema, trigger_name,
+       event_manipulation, event_object_catalog, event_object_schema, event_object_table,
+       action_order, action_condition, action_statement IS NOT NULL AS has_action_statement,
+       action_orientation, action_timing,
+       action_reference_old_table, action_reference_new_table,
+       action_reference_old_row, action_reference_new_row, created
+FROM information_schema.triggers
+WHERE trigger_name = 'is_views_03_before_insert';
+  trigger_catalog | trigger_schema |       trigger_name        | event_manipulation | event_object_catalog | event_object_schema | event_object_table | action_order | action_condition | has_action_statement | action_orientation | action_timing | action_reference_old_table | action_reference_new_table | action_reference_old_row | action_reference_new_row | created
+------------------+----------------+---------------------------+--------------------+----------------------+---------------------+--------------------+--------------+------------------+----------------------+--------------------+---------------+----------------------------+----------------------------+--------------------------+--------------------------+----------
+  is_views_03     | public         | is_views_03_before_insert | INSERT             | is_views_03          | public              | base_table         |            1 | NULL             |         true         | ROW                | BEFORE        | NULL                       | NULL                       | NULL                     | NULL                     | NULL
+(1 row)
+> USE defaultdb;
+SET
+> DROP DATABASE is_views_03 CASCADE;
+DROP DATABASE

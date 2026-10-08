@@ -56,7 +56,9 @@ test           information_schema  statistics                         NULL      
 test           information_schema  table_constraints                  NULL            public   SELECT
 test           information_schema  table_privileges                   NULL            public   SELECT
 test           information_schema  tables                             NULL            public   SELECT
+test           information_schema  triggers                           NULL            public   SELECT
 test           information_schema  user_privileges                    NULL            public   SELECT
+test           information_schema  view_table_usage                   NULL            public   SELECT
 test           information_schema  views                              NULL            public   SELECT
 test           kwdb_internal       NULL                               NULL            admin    ALL
 test           kwdb_internal       NULL                               NULL            root     ALL
