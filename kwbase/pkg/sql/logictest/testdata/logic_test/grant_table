@@ -37,6 +37,7 @@ test           information_schema  administrable_role_authorizations  NULL      
 test           information_schema  applicable_roles                   NULL            public   SELECT
 test           information_schema  check_constraints                  NULL            public   SELECT
 test           information_schema  column_privileges                  NULL            public   SELECT
+test           information_schema  column_statistics                  NULL            public   SELECT
 test           information_schema  columns                            NULL            public   SELECT
 test           information_schema  constraint_column_usage            NULL            public   SELECT
 test           information_schema  enabled_roles                      NULL            public   SELECT
@@ -44,6 +45,7 @@ test           information_schema  key_column_usage                   NULL      
 test           information_schema  keywords                           NULL            public   SELECT
 test           information_schema  parameters                         NULL            public   SELECT
 test           information_schema  procedure_privileges               NULL            public   SELECT
+test           information_schema  processlist                        NULL            public   SELECT
 test           information_schema  referential_constraints            NULL            public   SELECT
 test           information_schema  role_column_grants                 NULL            public   SELECT
 test           information_schema  role_routine_grants                NULL            public   SELECT
@@ -57,6 +59,7 @@ test           information_schema  table_constraints                  NULL      
 test           information_schema  table_privileges                   NULL            public   SELECT
 test           information_schema  tables                             NULL            public   SELECT
 test           information_schema  triggers                           NULL            public   SELECT
+test           information_schema  user_attributes                    NULL            public   SELECT
 test           information_schema  user_privileges                    NULL            public   SELECT
 test           information_schema  view_table_usage                   NULL            public   SELECT
 test           information_schema  views                              NULL            public   SELECT

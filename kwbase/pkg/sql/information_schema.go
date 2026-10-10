@@ -43,10 +43,13 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/stats"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/vtable"
+	"gitee.com/kwbasedb/kwbase/pkg/util/json"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
+	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"github.com/cockroachdb/errors"
 )
 
@@ -83,6 +86,7 @@ var informationSchema = virtualSchema{
 		"column_domain_usage",
 		"column_options",
 		"column_privileges",
+		"column_statistics",
 		"column_udt_usage",
 		"columns",
 		"constraint_column_usage",
@@ -103,6 +107,7 @@ var informationSchema = virtualSchema{
 		"key_column_usage",
 		"keywords",
 		"parameters",
+		"processlist",
 		"referential_constraints",
 		"role_column_grants",
 		"role_routine_grants",
@@ -128,6 +133,7 @@ var informationSchema = virtualSchema{
 		"triggers",
 		"udt_privileges",
 		"usage_privileges",
+		"user_attributes",
 		"user_defined_types",
 		"user_mapping_options",
 		"user_mappings",
@@ -141,12 +147,14 @@ var informationSchema = virtualSchema{
 		sqlbase.InformationSchemaApplicableRolesID:                 informationSchemaApplicableRoles,
 		sqlbase.InformationSchemaCheckConstraints:                  informationSchemaCheckConstraints,
 		sqlbase.InformationSchemaColumnPrivilegesID:                informationSchemaColumnPrivileges,
+		sqlbase.InformationSchemaColumnStatisticsTableID:           informationSchemaColumnStatisticsTable,
 		sqlbase.InformationSchemaColumnsTableID:                    informationSchemaColumnsTable,
 		sqlbase.InformationSchemaConstraintColumnUsageTableID:      informationSchemaConstraintColumnUsageTable,
 		sqlbase.InformationSchemaEnabledRolesID:                    informationSchemaEnabledRoles,
 		sqlbase.InformationSchemaKeyColumnUsageTableID:             informationSchemaKeyColumnUsageTable,
 		sqlbase.InformationSchemaKeywordsTableID:                   informationSchemaKeywordsTable,
 		sqlbase.InformationSchemaParametersTableID:                 informationSchemaParametersTable,
+		sqlbase.InformationSchemaProcesslistTableID:                informationSchemaProcesslistTable,
 		sqlbase.InformationSchemaReferentialConstraintsTableID:     informationSchemaReferentialConstraintsTable,
 		sqlbase.InformationSchemaRoleColumnGrantsID:                informationSchemaRoleColumnGrants,
 		sqlbase.InformationSchemaRoleTableGrantsID:                 informationSchemaRoleTableGrants,
@@ -164,6 +172,7 @@ var informationSchema = virtualSchema{
 		sqlbase.InformationSchemaUserPrivilegesID:                  informationSchemaUserPrivileges,
 		sqlbase.InformationSchemaProcedurePrivilegesID:             informationSchemaProcedurePrivileges,
 		sqlbase.InformationSchemaRoleRoutineGrantsID:               informationSchemaRoleRoutineGrants,
+		sqlbase.InformationSchemaUserAttributesTableID:             informationSchemaUserAttributes,
 	},
 	tableValidator:             validateInformationSchemaTable,
 	validWithNoDatabaseContext: true,
@@ -1029,6 +1038,82 @@ CREATE TABLE information_schema.parameters (
 			}
 			return nil
 		})
+	},
+}
+
+var informationSchemaProcesslistTable = virtualSchemaTable{
+	comment: `current SQL sessions visible to the current user`,
+	schema: `
+CREATE TABLE information_schema.processlist (
+	ID      STRING,
+	"USER"  STRING,
+	HOST    STRING,
+	DB      STRING,
+	COMMAND STRING,
+	TIME    INT8,
+	STATE   STRING,
+	INFO    STRING
+)`,
+	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		req := p.makeSessionsRequest(ctx)
+		response, err := p.extendedEvalCtx.StatusServer.ListSessions(ctx, &req)
+		if err != nil {
+			return err
+		}
+
+		// Read the session list once so every row in this statement is derived
+		// from the same response. This is not a cluster-wide atomic snapshot.
+		snapshotTime := timeutil.Now()
+		for _, session := range response.Sessions {
+			command := tree.NewDString("Sleep")
+			var elapsedTime, state, info tree.Datum = tree.DNull, tree.DNull, tree.DNull
+
+			// MySQL processlist exposes one row per connection. A KWDB session can
+			// report multiple active queries, so use the oldest one as its representative.
+			// The slice has no ordering guarantee; -1 means no active query has been seen.
+			oldestQueryIdx := -1
+			for i := range session.ActiveQueries {
+				// Keep the first query initially, then replace it whenever an earlier
+				// start time is found later in the slice.
+				if oldestQueryIdx == -1 ||
+					session.ActiveQueries[i].Start.Before(session.ActiveQueries[oldestQueryIdx].Start) {
+					oldestQueryIdx = i
+				}
+			}
+			if oldestQueryIdx >= 0 {
+				query := session.ActiveQueries[oldestQueryIdx]
+				elapsed := snapshotTime.Sub(query.Start) / time.Second
+				// Remote node clock skew can make a newly started query appear to begin
+				// after the local snapshot time; process durations must not be negative.
+				if elapsed < 0 {
+					elapsed = 0
+				}
+				command = tree.NewDString("Query")
+				elapsedTime = tree.NewDInt(tree.DInt(elapsed))
+				state = tree.NewDString(query.Phase.String())
+				info = tree.NewDString(query.Sql)
+			}
+
+			if err := addRow(
+				getSessionID(session),                  // id
+				tree.NewDString(session.Username),      // user
+				tree.NewDString(session.ClientAddress), // host
+				tree.DNull,                             // db: current database is not recorded
+				command,                                // command
+				elapsedTime,                            // time
+				state,                                  // state
+				info,                                   // info
+			); err != nil {
+				return err
+			}
+		}
+
+		// Node errors are not sessions. Preserve rows collected from healthy nodes
+		// and report failures without synthesizing processlist entries for them.
+		for _, rpcErr := range response.Errors {
+			log.Warning(ctx, rpcErr.Message)
+		}
+		return nil
 	},
 }
 
@@ -1915,6 +2000,180 @@ func dStringForIndexDirection(dir sqlbase.IndexDescriptor_Direction) tree.Datum 
 	panic("unreachable")
 }
 
+// columnStatisticsDataType maps KWDB type families to the type categories
+// required by the MySQL-compatible histogram JSON representation.
+func columnStatisticsDataType(typ *types.T) string {
+	switch typ.Family() {
+	case types.BoolFamily, types.IntFamily:
+		return "int"
+	case types.FloatFamily:
+		return "double"
+	case types.DecimalFamily:
+		return "decimal"
+	case types.DateFamily, types.TimestampFamily, types.TimestampTZFamily,
+		types.TimeFamily, types.TimeTZFamily:
+		return "datetime"
+	default:
+		return "string"
+	}
+}
+
+// makeColumnStatisticsHistogram converts a KWDB histogram to the
+// MySQL-compatible JSON representation used by column_statistics. Singleton
+// buckets contain a value and cumulative frequency; equi-height buckets also
+// contain display bounds and an estimated distinct-value count. KWDB stores
+// only upper bounds. Its first bucket has no range values, so its upper bound
+// is also the histogram lower bound; later buckets use the preceding upper
+// bound as their display lower bound.
+func makeColumnStatisticsHistogram(stat *stats.TableStatistic) (tree.Datum, error) {
+	histogram := stat.Histogram
+	if len(histogram) == 0 {
+		return nil, errors.AssertionFailedf("statistic %d has no histogram buckets", stat.StatisticID)
+	}
+
+	histogramType := "singleton"
+	for i := range histogram {
+		if histogram[i].NumRange != 0 || histogram[i].DistinctRange != 0 {
+			histogramType = "equi-height"
+			break
+		}
+	}
+
+	nonNullRows := stat.RowCount
+	if stat.NullCount < nonNullRows {
+		nonNullRows -= stat.NullCount
+	} else {
+		nonNullRows = 0
+	}
+	cumulativeRows := float64(0)
+	buckets := json.NewArrayBuilder(len(histogram))
+	var previousUpperBound json.JSON
+	for i := range histogram {
+		bucket := &histogram[i]
+		upperBound, err := tree.AsJSON(bucket.UpperBound, time.UTC)
+		if err != nil {
+			return nil, err
+		}
+
+		cumulativeRows += float64(bucket.NumRange + bucket.NumEq)
+		cumulativeFrequency := float64(0)
+		if nonNullRows > 0 {
+			cumulativeFrequency = cumulativeRows / float64(nonNullRows)
+			if cumulativeFrequency > 1 {
+				cumulativeFrequency = 1
+			}
+		}
+		frequencyJSON, err := json.FromFloat64(cumulativeFrequency)
+		if err != nil {
+			return nil, err
+		}
+
+		bucketJSON := json.NewArrayBuilder(4)
+		if histogramType == "singleton" {
+			bucketJSON.Add(upperBound)
+			bucketJSON.Add(frequencyJSON)
+		} else {
+			// KWDB stores only bucket upper bounds. Reuse the preceding boundary as
+			// the lower display bound while preserving KWDB's cumulative estimates.
+			lowerBound := upperBound
+			if previousUpperBound != nil {
+				lowerBound = previousUpperBound
+			}
+			bucketJSON.Add(lowerBound)
+			bucketJSON.Add(upperBound)
+			bucketJSON.Add(frequencyJSON)
+
+			distinctValues := bucket.DistinctRange
+			if bucket.NumEq > 0 {
+				distinctValues++
+			}
+			distinctJSON, err := json.FromFloat64(distinctValues)
+			if err != nil {
+				return nil, err
+			}
+			bucketJSON.Add(distinctJSON)
+		}
+		buckets.Add(bucketJSON.Build())
+		previousUpperBound = upperBound
+	}
+
+	nullFraction := float64(0)
+	if stat.RowCount > 0 {
+		nullFraction = float64(stat.NullCount) / float64(stat.RowCount)
+		if nullFraction > 1 {
+			nullFraction = 1
+		}
+	}
+	nullFractionJSON, err := json.FromFloat64(nullFraction)
+	if err != nil {
+		return nil, err
+	}
+
+	result := json.NewObjectBuilder(6)
+	result.Add("buckets", buckets.Build())
+	result.Add("data-type", json.FromString(columnStatisticsDataType(&stat.HistogramData.ColumnType)))
+	result.Add("histogram-type", json.FromString(histogramType))
+	result.Add("last-updated", json.FromString(stat.CreatedAt.UTC().Format("2006-01-02 15:04:05.000000")))
+	result.Add("null-values", nullFractionJSON)
+	result.Add("number-of-buckets-specified", json.FromInt(len(histogram)))
+	return tree.NewDJSON(result.Build()), nil
+}
+
+// ISO and PostgreSQL: missing.
+var informationSchemaColumnStatisticsTable = virtualSchemaTable{
+	comment: `histogram statistics for visible table columns`,
+	schema: `
+CREATE TABLE information_schema.column_statistics (
+	SCHEMA_NAME STRING NOT NULL,
+	TABLE_NAME  STRING NOT NULL,
+	COLUMN_NAME STRING NOT NULL,
+	HISTOGRAM   JSONB NOT NULL
+)`,
+	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		return forEachTableDesc(ctx, p, dbContext, hideVirtual,
+			func(_ *sqlbase.DatabaseDescriptor, scName string, table *sqlbase.TableDescriptor) error {
+				tableStats, err := p.ExtendedEvalContext().ExecCfg.TableStatsCache.GetTableStats(ctx, table.ID)
+				if err != nil {
+					return err
+				}
+
+				// GetTableStats returns newest records first. Emit at most one usable
+				// single-column histogram for each visible column.
+				emitted := make(map[sqlbase.ColumnID]struct{})
+				for _, stat := range tableStats {
+					if len(stat.ColumnIDs) != 1 || stat.HistogramData == nil || len(stat.Histogram) == 0 {
+						continue
+					}
+					columnID := stat.ColumnIDs[0]
+					if _, ok := emitted[columnID]; ok {
+						continue
+					}
+					column, err := table.FindColumnByID(columnID)
+					if err != nil {
+						return err
+					}
+					if column.Hidden {
+						continue
+					}
+					histogram, err := makeColumnStatisticsHistogram(stat)
+					if err != nil {
+						return err
+					}
+					if err := addRow(
+						tree.NewDString(scName),      // schema_name
+						tree.NewDString(table.Name),  // table_name
+						tree.NewDString(column.Name), // column_name
+						histogram,                    // histogram
+					); err != nil {
+						return err
+					}
+					emitted[columnID] = struct{}{}
+				}
+				return nil
+			})
+	},
+}
+
 var informationSchemaSequences = virtualSchemaTable{
 	comment: `sequences
 ` + base.DocsURL("information-schema.html#sequences") + `
@@ -2249,6 +2508,36 @@ CREATE TABLE information_schema.user_privileges (
 				}
 				return nil
 			})
+	},
+}
+
+var informationSchemaUserAttributes = virtualSchemaTable{
+	comment: `user account attributes`,
+	schema: `
+CREATE TABLE information_schema.user_attributes (
+	"USER"    STRING NOT NULL,
+	HOST      STRING,
+	"ATTRIBUTE" JSONB
+)`,
+	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		currentUser := p.SessionData().User
+		isAdmin, err := p.HasAdminRole(ctx)
+		if err != nil {
+			return err
+		}
+
+		return forEachRole(ctx, p, func(username string, isRole bool, _ bool) error {
+			// User attributes apply to login accounts, not SQL roles. Non-admins
+			// are restricted to their own row to avoid account enumeration.
+			if isRole || (!isAdmin && username != currentUser) {
+				return nil
+			}
+			return addRow(
+				tree.NewDString(username), // user
+				tree.DNull,                // host: KWDB has no user@host identity
+				tree.DNull,                // attribute: no account JSON attribute source
+			)
+		})
 	},
 }
 

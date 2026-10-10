@@ -19,6 +19,7 @@ administrable_role_authorizations  SYSTEM VIEW
 applicable_roles                   SYSTEM VIEW
 check_constraints                  SYSTEM VIEW
 column_privileges                  SYSTEM VIEW
+column_statistics                  SYSTEM VIEW
 columns                            SYSTEM VIEW
 constraint_column_usage            SYSTEM VIEW
 enabled_roles                      SYSTEM VIEW
@@ -26,6 +27,7 @@ key_column_usage                   SYSTEM VIEW
 keywords                           SYSTEM VIEW
 parameters                         SYSTEM VIEW
 procedure_privileges               SYSTEM VIEW
+processlist                        SYSTEM VIEW
 referential_constraints            SYSTEM VIEW
 role_column_grants                 SYSTEM VIEW
 role_routine_grants                SYSTEM VIEW
@@ -39,6 +41,7 @@ table_constraints                  SYSTEM VIEW
 table_privileges                   SYSTEM VIEW
 tables                             SYSTEM VIEW
 triggers                           SYSTEM VIEW
+user_attributes                    SYSTEM VIEW
 user_privileges                    SYSTEM VIEW
 view_table_usage                   SYSTEM VIEW
 views                              SYSTEM VIEW
@@ -134,6 +137,7 @@ administrable_role_authorizations  SYSTEM VIEW
 applicable_roles                   SYSTEM VIEW
 check_constraints                  SYSTEM VIEW
 column_privileges                  SYSTEM VIEW
+column_statistics                  SYSTEM VIEW
 columns                            SYSTEM VIEW
 constraint_column_usage            SYSTEM VIEW
 enabled_roles                      SYSTEM VIEW
@@ -141,6 +145,7 @@ key_column_usage                   SYSTEM VIEW
 keywords                           SYSTEM VIEW
 parameters                         SYSTEM VIEW
 procedure_privileges               SYSTEM VIEW
+processlist                        SYSTEM VIEW
 referential_constraints            SYSTEM VIEW
 role_column_grants                 SYSTEM VIEW
 role_routine_grants                SYSTEM VIEW
@@ -154,6 +159,7 @@ table_constraints                  SYSTEM VIEW
 table_privileges                   SYSTEM VIEW
 tables                             SYSTEM VIEW
 triggers                           SYSTEM VIEW
+user_attributes                    SYSTEM VIEW
 user_privileges                    SYSTEM VIEW
 view_table_usage                   SYSTEM VIEW
 views                              SYSTEM VIEW
@@ -263,12 +269,14 @@ information_schema  administrable_role_authorizations
 information_schema  applicable_roles
 information_schema  check_constraints
 information_schema  column_privileges
+information_schema  column_statistics
 information_schema  columns
 information_schema  constraint_column_usage
 information_schema  enabled_roles
 information_schema  key_column_usage
 information_schema  keywords
 information_schema  parameters
+information_schema  processlist
 information_schema  procedure_privileges
 information_schema  referential_constraints
 information_schema  role_column_grants
@@ -283,6 +291,7 @@ information_schema  table_constraints
 information_schema  table_privileges
 information_schema  tables
 information_schema  triggers
+information_schema  user_attributes
 information_schema  user_privileges
 information_schema  view_table_usage
 information_schema  views
@@ -450,12 +459,14 @@ administrable_role_authorizations
 applicable_roles
 check_constraints
 column_privileges
+column_statistics
 columns
 constraint_column_usage
 enabled_roles
 key_column_usage
 keywords
 parameters
+processlist
 procedure_privileges
 referential_constraints
 role_column_grants
@@ -470,6 +481,7 @@ table_constraints
 table_privileges
 tables
 triggers
+user_attributes
 user_privileges
 view_table_usage
 views
@@ -604,6 +616,7 @@ xyz
 views
 view_table_usage
 user_privileges
+user_attributes
 ts_inflight_transactions
 triggers
 tables
@@ -622,6 +635,7 @@ system         information_schema  administrable_role_authorizations  SYSTEM VIE
 system         information_schema  applicable_roles                   SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
 system         information_schema  check_constraints                  SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
 system         information_schema  column_privileges                  SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
+system         information_schema  column_statistics                  SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
 system         information_schema  columns                            SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
 system         information_schema  constraint_column_usage            SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
 system         information_schema  enabled_roles                      SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
@@ -629,6 +643,7 @@ system         information_schema  key_column_usage                   SYSTEM VIE
 system         information_schema  keywords                           SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
 system         information_schema  parameters                         SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
 system         information_schema  procedure_privileges               SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
+system         information_schema  processlist                        SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
 system         information_schema  referential_constraints            SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
 system         information_schema  role_column_grants                 SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
 system         information_schema  role_routine_grants                SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
@@ -642,6 +657,7 @@ system         information_schema  table_constraints                  SYSTEM VIE
 system         information_schema  table_privileges                   SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
 system         information_schema  tables                             SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
 system         information_schema  triggers                           SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
+system         information_schema  user_attributes                    SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
 system         information_schema  user_privileges                    SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
 system         information_schema  view_table_usage                   SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
 system         information_schema  views                              SYSTEM VIEW  NO                  1        3819883323  NULL  NULL  NULL  NULL  NULL  NO  NULL  NULL  NULL  NULL  NULL
@@ -2069,6 +2085,7 @@ NULL     public   system         information_schema  administrable_role_authoriz
 NULL     public   system         information_schema  applicable_roles                   SELECT          NULL          NO
 NULL     public   system         information_schema  check_constraints                  SELECT          NULL          NO
 NULL     public   system         information_schema  column_privileges                  SELECT          NULL          NO
+NULL     public   system         information_schema  column_statistics                  SELECT          NULL          NO
 NULL     public   system         information_schema  columns                            SELECT          NULL          NO
 NULL     public   system         information_schema  constraint_column_usage            SELECT          NULL          NO
 NULL     public   system         information_schema  enabled_roles                      SELECT          NULL          NO
@@ -2076,6 +2093,7 @@ NULL     public   system         information_schema  key_column_usage           
 NULL     public   system         information_schema  keywords                           SELECT          NULL          NO
 NULL     public   system         information_schema  parameters                         SELECT          NULL          NO
 NULL     public   system         information_schema  procedure_privileges               SELECT          NULL          NO
+NULL     public   system         information_schema  processlist                        SELECT          NULL          NO
 NULL     public   system         information_schema  referential_constraints            SELECT          NULL          NO
 NULL     public   system         information_schema  role_column_grants                 SELECT          NULL          NO
 NULL     public   system         information_schema  role_routine_grants                SELECT          NULL          NO
@@ -2089,6 +2107,7 @@ NULL     public   system         information_schema  table_constraints          
 NULL     public   system         information_schema  table_privileges                   SELECT          NULL          NO
 NULL     public   system         information_schema  tables                             SELECT          NULL          NO
 NULL     public   system         information_schema  triggers                           SELECT          NULL          NO
+NULL     public   system         information_schema  user_attributes                    SELECT          NULL          NO
 NULL     public   system         information_schema  user_privileges                    SELECT          NULL          NO
 NULL     public   system         information_schema  view_table_usage                   SELECT          NULL          NO
 NULL     public   system         information_schema  views                              SELECT          NULL          NO
@@ -3439,6 +3458,72 @@ SET DATABASE = test
 
 statement ok
 DROP DATABASE information_schema_routine_other_db CASCADE
+
+# test information_schema.processlist
+
+query TTBTTTBB colnames
+SHOW COLUMNS FROM information_schema.processlist
+----
+column_name  data_type  is_nullable  column_default  generation_expression  indices  is_hidden  is_tag
+id           STRING     true         NULL            ·                      {}       false      false
+USER         STRING     true         NULL            ·                      {}       false      false
+host         STRING     true         NULL            ·                      {}       false      false
+db           STRING     true         NULL            ·                      {}       false      false
+command      STRING     true         NULL            ·                      {}       false      false
+time         INT8       true         NULL            ·                      {}       false      false
+state        STRING     true         NULL            ·                      {}       false      false
+info         STRING     true         NULL            ·                      {}       false      false
+
+# The query itself is active while processlist takes its single session snapshot.
+query B
+SELECT count(*) > 0
+  FROM information_schema.processlist AS p
+ WHERE p."USER" = 'root'
+   AND length(p.id) = 32
+   AND p.db IS NULL
+   AND p.command = 'Query'
+   AND p."time" >= 0
+   AND p.state IN ('PREPARING', 'EXECUTING')
+   AND p.info LIKE '%information_schema.processlist%'
+----
+true
+
+user testuser
+
+# A non-admin user can see only sessions belonging to that same user.
+query I
+SELECT count(*)
+  FROM information_schema.processlist AS p
+ WHERE p."USER" <> 'testuser'
+----
+0
+
+query B
+SELECT count(*) > 0
+  FROM information_schema.processlist AS p
+ WHERE p."USER" = 'testuser'
+   AND length(p.id) = 32
+   AND p.command = 'Query'
+   AND p."time" >= 0
+   AND p.state IN ('PREPARING', 'EXECUTING')
+   AND p.info LIKE '%information_schema.processlist%'
+----
+true
+
+user root
+
+# The retained testuser connection is idle after switching back to root.
+query B
+SELECT count(*) > 0
+  FROM information_schema.processlist AS p
+ WHERE p."USER" = 'testuser'
+   AND p.command = 'Sleep'
+   AND p.db IS NULL
+   AND p."time" IS NULL
+   AND p.state IS NULL
+   AND p.info IS NULL
+----
+true
 
 # information_schema.administrable_role_authorizations
 

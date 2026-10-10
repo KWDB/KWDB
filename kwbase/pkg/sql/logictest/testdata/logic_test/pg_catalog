@@ -1556,6 +1556,7 @@ objoid      classoid    objsubid  description
 4294967248  4294967219  0         roles available to the current user
 4294967247  4294967219  0         check constraints
 4294967246  4294967219  0         column privilege grants (incomplete)
+4294967163  4294967219  0         histogram statistics for visible table columns
 4294967245  4294967219  0         table and view columns (incomplete)
 4294967244  4294967219  0         columns usage by constraints
 4294967243  4294967219  0         roles for the current user
@@ -1563,6 +1564,7 @@ objoid      classoid    objsubid  description
 4294967169  4294967219  0         SQL keywords
 4294967241  4294967219  0         user-defined function and procedure parameters
 4294967228  4294967219  0         privileges granted on procedure (incomplete; may contain excess users or roles)
+4294967162  4294967219  0         current SQL sessions visible to the current user
 4294967240  4294967219  0         foreign key constraints
 4294967168  4294967219  0         column privilege grants to roles available to the current user (incomplete; grantor information unavailable)
 4294967167  4294967219  0         privileges granted on procedures and Lua user-defined functions
@@ -1576,6 +1578,7 @@ objoid      classoid    objsubid  description
 4294967232  4294967219  0         privileges on visible tables or views for the current user, public, or available roles; administrators can view all grantees (incomplete; grantor and grant option information unavailable)
 4294967231  4294967219  0         tables and views
 4294967165  4294967219  0         triggers on tables visible to the current user
+4294967164  4294967219  0         user account attributes
 4294967229  4294967219  0         global privilege compatibility rows for root and admin role membership; non-admin users see no rows
 4294967166  4294967219  0         tables and views directly referenced by views
 4294967230  4294967219  0         views (incomplete)

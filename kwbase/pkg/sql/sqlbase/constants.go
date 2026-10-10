@@ -252,7 +252,10 @@ const (
 	InformationSchemaRoleRoutineGrantsID
 	InformationSchemaViewTableUsageID
 	InformationSchemaTriggersTableID
-	MinVirtualID = InformationSchemaTriggersTableID
+	InformationSchemaUserAttributesTableID
+	InformationSchemaColumnStatisticsTableID
+	InformationSchemaProcesslistTableID
+	MinVirtualID = InformationSchemaProcesslistTableID
 )
 
 const (

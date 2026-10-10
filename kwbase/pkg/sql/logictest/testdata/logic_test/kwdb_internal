@@ -628,3 +628,169 @@ query B
 SELECT kwdb_internal.is_admin()
 ----
 false
+
+subtest partitions_mysql_compatibility
+
+user root
+
+statement ok
+CREATE DATABASE partition_view_db
+
+statement ok
+SET DATABASE = partition_view_db
+
+query TTBTTTBB colnames
+SHOW COLUMNS FROM kwdb_internal.partitions
+----
+column_name                    data_type  is_nullable  column_default  generation_expression  indices  is_hidden  is_tag
+table_id                       INT8       false        NULL            ·                      {}       false      false
+index_id                       INT8       false        NULL            ·                      {}       false      false
+parent_name                    STRING     true         NULL            ·                      {}       false      false
+name                           STRING     false        NULL            ·                      {}       false      false
+columns                        INT8       false        NULL            ·                      {}       false      false
+column_names                   STRING     true         NULL            ·                      {}       false      false
+list_value                     STRING     true         NULL            ·                      {}       false      false
+range_value                    STRING     true         NULL            ·                      {}       false      false
+hash_value                     STRING     true         NULL            ·                      {}       false      false
+zone_id                        INT8       true         NULL            ·                      {}       false      false
+subzone_id                     INT8       true         NULL            ·                      {}       false      false
+table_catalog                  STRING     true         NULL            ·                      {}       false      false
+table_schema                   STRING     true         NULL            ·                      {}       false      false
+table_name                     STRING     true         NULL            ·                      {}       false      false
+partition_name                 STRING     true         NULL            ·                      {}       false      false
+subpartition_name              STRING     true         NULL            ·                      {}       false      false
+partition_ordinal_position     STRING     true         NULL            ·                      {}       false      false
+subpartition_ordinal_position  STRING     true         NULL            ·                      {}       false      false
+partition_method               STRING     true         NULL            ·                      {}       false      false
+subpartition_method            STRING     true         NULL            ·                      {}       false      false
+partition_expression           STRING     true         NULL            ·                      {}       false      false
+subpartition_expression        STRING     true         NULL            ·                      {}       false      false
+partition_description          STRING     true         NULL            ·                      {}       false      false
+table_rows                     INT8       true         NULL            ·                      {}       false      false
+avg_row_length                 INT8       true         NULL            ·                      {}       false      false
+data_length                    INT8       true         NULL            ·                      {}       false      false
+max_data_length                INT8       true         NULL            ·                      {}       false      false
+index_length                   INT8       true         NULL            ·                      {}       false      false
+data_free                      INT8       true         NULL            ·                      {}       false      false
+create_time                    TIMESTAMP  true         NULL            ·                      {}       false      false
+update_time                    TIMESTAMP  true         NULL            ·                      {}       false      false
+check_time                     TIMESTAMP  true         NULL            ·                      {}       false      false
+checksum                       STRING     true         NULL            ·                      {}       false      false
+partition_comment              STRING     true         NULL            ·                      {}       false      false
+nodegroup                      STRING     true         NULL            ·                      {}       false      false
+tablespace_name                STRING     true         NULL            ·                      {}       false      false
+
+statement ok
+CREATE TABLE partition_view_db.ordinary_table (id INT PRIMARY KEY)
+
+query I
+SELECT count(*)
+  FROM partition_view_db.kwdb_internal.partitions
+ WHERE table_name = 'ordinary_table'
+----
+0
+
+statement ok
+CREATE TABLE partition_view_db.partitioned_table (
+  region INT,
+  id INT,
+  PRIMARY KEY (region, id)
+) PARTITION BY LIST (region) (
+  PARTITION p_east VALUES IN (1),
+  PARTITION p_west VALUES IN (2)
+)
+
+statement ok
+CREATE TABLE partition_view_db.range_partitioned_table (
+  id INT PRIMARY KEY
+) PARTITION BY RANGE (id) (
+  PARTITION p_low VALUES FROM (1) TO (10),
+  PARTITION p_high VALUES FROM (10) TO (20)
+)
+
+statement ok
+CREATE TABLE partition_view_db.hash_partitioned_table (
+  bucket INT PRIMARY KEY
+) PARTITION BY HASH (bucket) (
+  PARTITION p_hash_0 VALUES IN (0),
+  PARTITION p_hash_1 VALUES IN (1)
+)
+
+statement ok
+CREATE TABLE partition_view_db.multi_column_partitioned_table (
+  region STRING,
+  id INT,
+  PRIMARY KEY (region, id)
+) PARTITION BY LIST (region, id) (
+  PARTITION p_pair_1 VALUES IN (('east', 1)),
+  PARTITION p_pair_2 VALUES IN (('west', 2))
+)
+
+query IBB rowsort
+SELECT columns,
+       column_names = 'region, id',
+       partition_expression = 'region, id'
+  FROM partition_view_db.kwdb_internal.partitions
+ WHERE table_name = 'multi_column_partitioned_table'
+----
+2  true  true
+2  true  true
+
+# Verify that the legacy columns remain populated while the appended columns
+# expose the same partition nodes using the MySQL-compatible representation.
+query BBTITBBTIB rowsort
+SELECT table_id > 0,
+       index_id > 0,
+       name,
+       columns,
+       column_names,
+       parent_name IS NULL,
+       list_value IS NOT NULL,
+       partition_name,
+       partition_ordinal_position::INT,
+       partition_description = list_value
+  FROM partition_view_db.kwdb_internal.partitions
+ WHERE table_name = 'partitioned_table'
+----
+true  true  p_east  1  region  true  true  p_east  1  true
+true  true  p_west  1  region  true  true  p_west  2  true
+
+query TTTTTTTTTTTBB rowsort
+SELECT table_catalog,
+       table_schema,
+       table_name,
+       partition_name,
+       subpartition_name,
+       partition_ordinal_position,
+       subpartition_ordinal_position,
+       partition_method,
+       subpartition_method,
+       partition_expression,
+       subpartition_expression,
+       table_rows IS NULL AND avg_row_length IS NULL AND data_length IS NULL AND
+         max_data_length IS NULL AND index_length IS NULL AND data_free IS NULL,
+       create_time IS NULL AND update_time IS NULL AND check_time IS NULL AND
+         checksum IS NULL AND partition_comment IS NULL AND nodegroup IS NULL AND
+         tablespace_name IS NULL
+  FROM partition_view_db.kwdb_internal.partitions
+ WHERE table_name = 'partitioned_table'
+----
+partition_view_db  public  partitioned_table  p_east  NULL  1  NULL  LIST  NULL  region  NULL  true  true
+partition_view_db  public  partitioned_table  p_west  NULL  2  NULL  LIST  NULL  region  NULL  true  true
+
+# Each supported partition method reuses its decoded legacy value as the
+# compatibility description instead of decoding the descriptor a second time.
+query TTTB rowsort
+SELECT table_name,
+       partition_name,
+       partition_method,
+       partition_description = coalesce(list_value, range_value, hash_value)
+  FROM partition_view_db.kwdb_internal.partitions
+ WHERE table_name IN ('partitioned_table', 'range_partitioned_table', 'hash_partitioned_table')
+----
+hash_partitioned_table   p_hash_0  HASH   true
+hash_partitioned_table   p_hash_1  HASH   true
+partitioned_table        p_east    LIST   true
+partitioned_table        p_west    LIST   true
+range_partitioned_table  p_high    RANGE  true
+range_partitioned_table  p_low     RANGE  true
