@@ -6,7 +6,7 @@
 	path = kwbase/c-deps
 	url = https://gitee.com/kaiwuDB/cdepswin.git
 	branch = win1
-[submodule "kwdbts2/third_party"]
-	path = kwdbts2/third_party
+[submodule "kwbase/engine/ts_engine/third_party"]
+	path = kwbase/engine/ts_engine/third_party
 	url = https://gitee.com/kwdb/kw-third_party.git
 	branch = master
