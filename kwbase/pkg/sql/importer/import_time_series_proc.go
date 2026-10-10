@@ -34,8 +34,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/cloud"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/localexternal"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util/ctxgroup"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding/csv"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -165,7 +165,7 @@ func getFileSizeAndSplitFile(
 	fileSizes := make(map[int32]int64, len(dataFiles))
 	fileSplitInfos := make(map[int32]partFileInfos, len(dataFiles))
 	for id, dataFile := range dataFiles {
-		conf, err := cloud.ExternalStorageConfFromURI(dataFile)
+		conf, err := localexternal.ExternalStorageConfFromURI(dataFile)
 		if err != nil {
 			return fileSizes, fileSplitInfos, err
 		}
@@ -443,7 +443,7 @@ func (t *timeSeriesImportInfo) saveRejectedToFile(
 	}
 
 	idx := 0
-	var rejectRecoder cloud.ExternalStorage
+	var rejectRecoder localexternal.ExternalStorage
 	// switch rejected file writer
 	reOpenRejectRecorder := func() error {
 		// rejectRecoder.Close()
@@ -451,7 +451,7 @@ func (t *timeSeriesImportInfo) saveRejectedToFile(
 		if err != nil {
 			return err
 		}
-		rejectconf, err := cloud.ExternalStorageConfFromURI(rejectFile)
+		rejectconf, err := localexternal.ExternalStorageConfFromURI(rejectFile)
 		if err != nil {
 			return err
 		}
@@ -590,7 +590,7 @@ func (t *timeSeriesImportInfo) readAndConvertTimeSeriesFile(
 	tsColNumber int32,
 ) error {
 	var count int64
-	conf, err := cloud.ExternalStorageConfFromURI(filename)
+	conf, err := localexternal.ExternalStorageConfFromURI(filename)
 	if err != nil {
 		return err
 	}
@@ -727,7 +727,7 @@ func (t *timeSeriesImportInfo) handleDedupResp(
 		resp := resp.(*roachpb.TsRowPutResponse)
 		ruleType, succeedCount, _ = resp.DedupRule, resp.Header().NumKeys, resp.DiscardBitmap
 	} else {
-		resp := resp.(tse.DedupResult)
+		resp := resp.(timeseries.DedupResult)
 		ruleType, succeedCount, _ = int64(resp.DedupRule), reqCount-int64(resp.DedupRows), resp.DiscardBitmap
 	}
 	switch ruleType {

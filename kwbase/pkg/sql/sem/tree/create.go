@@ -2071,7 +2071,7 @@ func (node *CreateFunction) Format(ctx *FmtCtx) {
 	ctx.WriteString(") ")
 	ctx.WriteString("RETURNS ")
 	ctx.WriteString(node.ReturnType.SQLString())
-	ctx.WriteString(" LUA")
+	ctx.WriteString(" LANGUAGE LUA")
 	ctx.WriteString(" BEGIN ")
 	ctx.WriteString("'")
 	ctx.WriteString(node.FuncBody)

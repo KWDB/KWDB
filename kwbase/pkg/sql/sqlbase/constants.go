@@ -248,7 +248,14 @@ const (
 	KwdbInternalKWDBPublicationsTableID
 	CrdbInternalTSTransactionRecordID
 	InformationSchemaKeywordsTableID
-	MinVirtualID = InformationSchemaKeywordsTableID
+	InformationSchemaRoleColumnGrantsID
+	InformationSchemaRoleRoutineGrantsID
+	InformationSchemaViewTableUsageID
+	InformationSchemaTriggersTableID
+	InformationSchemaUserAttributesTableID
+	InformationSchemaColumnStatisticsTableID
+	InformationSchemaProcesslistTableID
+	MinVirtualID = InformationSchemaProcesslistTableID
 )
 
 const (

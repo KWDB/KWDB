@@ -39,8 +39,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/localtestcluster"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
@@ -431,7 +431,9 @@ func getTxn(ctx context.Context, txn *kv.Txn) (*roachpb.Transaction, *roachpb.Er
 	return &br.Responses[0].GetInner().(*roachpb.QueryTxnResponse).QueriedTxn, nil
 }
 
-func verifyCleanup(key roachpb.Key, eng storage.Engine, t *testing.T, coords ...*TxnCoordSender) {
+func verifyCleanup(
+	key roachpb.Key, eng relational.Engine, t *testing.T, coords ...*TxnCoordSender,
+) {
 	testutils.SucceedsSoon(t, func() error {
 		for _, coord := range coords {
 			if coord.IsTracking() {
@@ -440,7 +442,7 @@ func verifyCleanup(key roachpb.Key, eng storage.Engine, t *testing.T, coords ...
 		}
 		meta := &enginepb.MVCCMetadata{}
 		//lint:ignore SA1019 historical usage of deprecated eng.GetProto is OK
-		ok, _, _, err := eng.GetProto(storage.MakeMVCCMetadataKey(key), meta)
+		ok, _, _, err := eng.GetProto(relational.MakeMVCCMetadataKey(key), meta)
 		if err != nil {
 			return fmt.Errorf("error getting MVCC metadata: %s", err)
 		}

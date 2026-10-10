@@ -35,8 +35,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/rditer"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
@@ -47,12 +47,12 @@ import (
 // MVCCKeyValues. The stream may indicate that a value is an intent by returning
 // a non-nil transaction. If an intent is returned it must have a higher
 // timestamp than any other version written for the key.
-type dataDistribution func() (storage.MVCCKeyValue, *roachpb.Transaction, bool)
+type dataDistribution func() (relational.MVCCKeyValue, *roachpb.Transaction, bool)
 
 // setupTest writes the data from this distribution into eng. All data should
 // be a part of the range represented by desc.
 func (ds dataDistribution) setupTest(
-	t testing.TB, eng storage.Engine, desc roachpb.RangeDescriptor,
+	t testing.TB, eng relational.Engine, desc roachpb.RangeDescriptor,
 ) enginepb.MVCCStats {
 	ctx := context.TODO()
 	var maxTs hlc.Timestamp
@@ -73,7 +73,7 @@ func (ds dataDistribution) setupTest(
 			if txn.WriteTimestamp == (hlc.Timestamp{}) {
 				txn.WriteTimestamp = ts
 			}
-			err := storage.MVCCPut(ctx, eng, &ms, kv.Key.Key, ts,
+			err := relational.MVCCPut(ctx, eng, &ms, kv.Key.Key, ts,
 				roachpb.Value{RawBytes: kv.Value}, txn)
 			require.NoError(t, err)
 		}
@@ -110,9 +110,9 @@ func newDataDistribution(
 		timestamps []hlc.Timestamp
 		haveIntent bool
 	)
-	return func() (storage.MVCCKeyValue, *roachpb.Transaction, bool) {
+	return func() (relational.MVCCKeyValue, *roachpb.Transaction, bool) {
 		if remaining == 0 {
-			return storage.MVCCKeyValue{}, nil, false
+			return relational.MVCCKeyValue{}, nil, false
 		}
 		defer func() { remaining-- }()
 		for len(timestamps) == 0 {
@@ -154,8 +154,8 @@ func newDataDistribution(
 			txn.WriteTimestamp = ts
 			txn.Key = keyDist()
 		}
-		return storage.MVCCKeyValue{
-			Key:   storage.MVCCKey{Key: key, Timestamp: ts},
+		return relational.MVCCKeyValue{
+			Key:   relational.MVCCKey{Key: key, Timestamp: ts},
 			Value: valueDist(),
 		}, txn, true
 	}

@@ -30,7 +30,7 @@ import (
 	"io"
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 )
 
@@ -73,12 +73,12 @@ func (rsds ReplicaSnapshotDiffSlice) WriteTo(w io.Writer) (int64, error) {
 		} else {
 			prettyTime = d.Timestamp.GoTime().UTC().String()
 		}
-		mvccKey := storage.MVCCKey{Key: d.Key, Timestamp: ts}
+		mvccKey := relational.MVCCKey{Key: d.Key, Timestamp: ts}
 		num, err := fmt.Fprintf(w, format,
 			prefix, ts.WallTime/1e9, ts.WallTime%1e9, ts.Logical, d.Key,
 			prefix, prettyTime,
-			prefix, SprintKeyValue(storage.MVCCKeyValue{Key: mvccKey, Value: d.Value}, false /* printKey */),
-			prefix, storage.EncodeKey(mvccKey), d.Value)
+			prefix, SprintKeyValue(relational.MVCCKeyValue{Key: mvccKey, Value: d.Value}, false /* printKey */),
+			prefix, relational.EncodeKey(mvccKey), d.Value)
 		if err != nil {
 			return 0, err
 		}

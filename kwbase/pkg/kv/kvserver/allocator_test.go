@@ -45,7 +45,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/rpc"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/gossiputil"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
@@ -5684,6 +5684,17 @@ func TestAllocatorFullDisks(t *testing.T) {
 			toAdd := alloc.randGen.Intn(3)
 			for k := 0; k < toAdd; k++ {
 				if rangesAdded < rangesToAdd {
+					// Cap the number of ranges on any single store at rangesPerNode
+					// (the count corresponding to rebalanceToMaxFractionUsedThreshold).
+					// Without this cap a store can randomly accumulate more ranges
+					// than the threshold allows, after which maxCapacityCheck rejects
+					// it as a snapshot target and it cannot shed ranges to the other
+					// equally-full stores either. Rebalancing then deadlocks and the
+					// store eventually runs out of space. Keeping every store within
+					// the rebalance threshold prevents that deadlock.
+					if int32(rangesPerNode) <= ts.Capacity.RangeCount {
+						break
+					}
 					ts.add(rangeSize)
 					rangesAdded++
 				}

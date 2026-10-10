@@ -141,13 +141,12 @@ func (n *alterRoleNode) startExec(params runParams) error {
 
 		// TODO(knz): Remove in 20.2.
 		if normalizedUsername == security.RootUser && len(hashedPassword) > 0 &&
-			!params.EvalContext().Settings.Version.IsActive(params.ctx, clusterversion.VersionRootPassword) {
+			!params.EvalContext().Settings.Version.IsActive(params.ctx, clusterversion.VersionMinSupported) {
 			return pgerror.Newf(pgcode.ObjectNotInPrerequisiteState,
 				`setting a root password requires all nodes to be upgraded to %s`,
-				clusterversion.VersionByKey(clusterversion.VersionRootPassword),
+				clusterversion.VersionByKey(clusterversion.VersionMinSupported),
 			)
 		}
-
 		if len(hashedPassword) > 0 && params.extendedEvalCtx.ExecCfg.RPCContext.Insecure {
 			// We disallow setting a non-empty password in insecure mode
 			// because insecure means an observer may have MITM'ed the change

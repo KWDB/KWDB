@@ -37,8 +37,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagepb"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
@@ -50,7 +49,7 @@ import (
 const testCompactionLatency = 1 * time.Millisecond
 
 type wrappedEngine struct {
-	storage.Engine
+	relational.Engine
 	mu struct {
 		syncutil.Mutex
 		compactions []roachpb.Span
@@ -59,15 +58,15 @@ type wrappedEngine struct {
 
 func newWrappedEngine() *wrappedEngine {
 	return &wrappedEngine{
-		Engine: storage.NewDefaultInMem(),
+		Engine: relational.NewDefaultInMem(),
 	}
 }
 
-func (we *wrappedEngine) GetSSTables() storage.SSTableInfos {
-	key := func(s string) storage.MVCCKey {
-		return storage.MakeMVCCMetadataKey([]byte(s))
+func (we *wrappedEngine) GetSSTables() relational.SSTableInfos {
+	key := func(s string) relational.MVCCKey {
+		return relational.MakeMVCCMetadataKey([]byte(s))
 	}
-	ssti := storage.SSTableInfos{
+	ssti := relational.SSTableInfos{
 		// Level 0.
 		{Level: 0, Size: 20, Start: key("a"), End: key("z")},
 		{Level: 0, Size: 15, Start: key("a"), End: key("k")},
@@ -121,15 +120,6 @@ func key(s string) roachpb.Key {
 // TestCompactorThresholds verifies the thresholding logic for the compactor.
 func TestCompactorThresholds(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-
-	// This test relies on concurrently waiting for a value to change in the
-	// underlying engine(s). Since the teeing engine does not respond well to
-	// value mismatches, whether transient or permanent, skip this test if the
-	// teeing engine is being used. See
-	// https://gitee.com/kwbasedb/kwbase/issues/42656 for more context.
-	if storage.DefaultStorageEngine == enginepb.EngineTypeTeePebbleRocksDB {
-		t.Skip("disabled on teeing engine")
-	}
 
 	fractionUsedThresh := thresholdBytesUsedFraction.Default()*float64(thresholdBytes.Default()) + 1
 	fractionAvailableThresh := thresholdBytesAvailableFraction.Default()*float64(thresholdBytes.Default()) + 1
@@ -550,7 +540,7 @@ func TestCompactorThresholds(t *testing.T) {
 
 			// Add a key so we can test that suggestions that span live data are
 			// ignored.
-			if err := we.Put(storage.MakeMVCCMetadataKey(key("5")), nil); err != nil {
+			if err := we.Put(relational.MakeMVCCMetadataKey(key("5")), nil); err != nil {
 				t.Fatal(err)
 			}
 
@@ -595,7 +585,7 @@ func TestCompactorThresholds(t *testing.T) {
 				return we.Iterate(
 					keys.LocalStoreSuggestedCompactionsMin,
 					keys.LocalStoreSuggestedCompactionsMax,
-					func(kv storage.MVCCKeyValue) (bool, error) {
+					func(kv relational.MVCCKeyValue) (bool, error) {
 						start, end, err := keys.DecodeStoreSuggestedCompactionKey(kv.Key.Key)
 						if err != nil {
 							t.Fatalf("failed to decode suggested compaction key: %+v", err)

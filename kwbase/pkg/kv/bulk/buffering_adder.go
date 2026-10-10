@@ -33,7 +33,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagebase"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/mon"
@@ -235,7 +235,7 @@ func (b *BufferingAdder) Flush(ctx context.Context) error {
 	beforeSort := timeutil.Now()
 
 	sort.Sort(&b.curBuf)
-	mvccKey := storage.MVCCKey{Timestamp: b.timestamp}
+	mvccKey := relational.MVCCKey{Timestamp: b.timestamp}
 
 	beforeFlush := timeutil.Now()
 	b.flushCounts.totalSort += beforeFlush.Sub(beforeSort)

@@ -62,7 +62,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding"
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
@@ -1127,7 +1127,7 @@ func (dsp *DistSQLPlanner) partitionTSSpans(
 				liReq := &roachpb.LeaseInfoRequest{}
 				liReq.Key = rangeKey
 				// for mode2, read uncommitted because write not control and maybe latch lock
-				if tse.TsRaftLogSyncPeriod.Get(&dsp.st.SV) > 0 {
+				if timeseries.TsRaftLogSyncPeriod.Get(&dsp.st.SV) > 0 {
 					b.Header.ReadConsistency = roachpb.READ_UNCOMMITTED
 				}
 				b.AddRawRequest(liReq)
@@ -1250,7 +1250,7 @@ func getLeaseHolderByLeaseInfoRequest(
 				b.AddRawRequest(liReq)
 				b.Header.ReturnRangeInfo = true
 				// for mode2, read uncommitted because write not control and maybe latch lock
-				if tse.TsRaftLogSyncPeriod.Get(&dsp.st.SV) > 0 {
+				if timeseries.TsRaftLogSyncPeriod.Get(&dsp.st.SV) > 0 {
 					b.Header.ReadConsistency = roachpb.READ_UNCOMMITTED
 				}
 				if err := dsp.distSQLSrv.DB.Run(ctx, &b); err != nil {

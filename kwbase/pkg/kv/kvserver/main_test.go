@@ -35,7 +35,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/security/securitytest"
 	"gitee.com/kwbasedb/kwbase/pkg/server"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/testcluster"
 	"gitee.com/kwbasedb/kwbase/pkg/util/randutil"

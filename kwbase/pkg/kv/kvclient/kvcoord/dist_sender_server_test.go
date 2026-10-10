@@ -46,7 +46,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/rpc/nodedialer"
 	"gitee.com/kwbasedb/kwbase/pkg/server"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
@@ -93,7 +93,7 @@ func TestRangeLookupWithOpenTransaction(t *testing.T) {
 	key := testutils.MakeKey(keys.Meta1Prefix, roachpb.KeyMax)
 	now := s.Clock().Now()
 	txn := roachpb.MakeTransaction("txn", roachpb.Key("foobar"), 0, now, 0)
-	if err := storage.MVCCPutProto(
+	if err := relational.MVCCPutProto(
 		context.Background(), s.(*server.TestServer).Engines()[0],
 		nil, key, now, &txn, &roachpb.RangeDescriptor{}); err != nil {
 		t.Fatal(err)

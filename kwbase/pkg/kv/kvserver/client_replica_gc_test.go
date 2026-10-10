@@ -37,7 +37,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagebase"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"github.com/pkg/errors"
@@ -56,10 +56,10 @@ func TestReplicaGCQueueDropReplicaDirect(t *testing.T) {
 	// would probably look at an empty sideloaded directory and fail.
 	tempDir, cleanup := testutils.TempDir(t)
 	defer cleanup()
-	cache := storage.NewRocksDBCache(1 << 20)
+	cache := relational.NewRocksDBCache(1 << 20)
 	defer cache.Release()
 	for i := 0; i < 3; i++ {
-		eng, err := storage.NewRocksDB(storage.RocksDBConfig{
+		eng, err := relational.NewRocksDB(relational.RocksDBConfig{
 			StorageConfig: base.StorageConfig{
 				Dir: filepath.Join(tempDir, strconv.Itoa(i)),
 			},

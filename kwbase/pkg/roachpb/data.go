@@ -41,7 +41,7 @@ import (
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/concurrency/lock"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/bitarray"
 	"gitee.com/kwbasedb/kwbase/pkg/util/duration"

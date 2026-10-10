@@ -31,7 +31,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 )
 
 type slKey struct {
@@ -58,7 +58,7 @@ func newInMemSideloadStorage(
 	rangeID roachpb.RangeID,
 	replicaID roachpb.ReplicaID,
 	baseDir string,
-	eng storage.Engine,
+	eng relational.Engine,
 ) (SideloadStorage, error) {
 	return &inMemSideloadStorage{
 		prefix: filepath.Join(baseDir, fmt.Sprintf("%d.%d", rangeID, replicaID)),

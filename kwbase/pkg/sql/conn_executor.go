@@ -49,7 +49,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/errorutil"
@@ -587,6 +587,47 @@ func (h ConnectionHandler) SendDTI(
 	h.ex.metrics.ExecutedStatementCounters.QueryCount.Inc()
 	h.ex.metrics.ExecutedStatementCounters.InsertCount.Inc()
 	return
+}
+
+func directPhaseDuration(directTimes *directTimes, start, end int) float64 {
+	if directTimes[start].IsZero() || directTimes[end].IsZero() || directTimes[end].Before(directTimes[start]) {
+		return 0
+	}
+	return directTimes[end].Sub(directTimes[start]).Seconds()
+}
+
+func (ex *connExecutor) recordPrepareDirectStatement(
+	portal PreparedPortal, rowsAffected int, directTimes *directTimes,
+) {
+	var tempStmt Statement
+	var flags planFlags
+	tempStmt.AST = portal.Stmt.AST
+	tempStmt.Insertdirectstmt.InsertFast = portal.Stmt.Insertdirectstmt.InsertFast
+	user := ex.sessionData.User
+	database := ex.sessionData.Database
+	if database == "" {
+		database = "(internal)"
+	}
+
+	// Prepared direct insert timings:
+	// - parseTime: Prepare/ParseEx parsing, from ParseStart to ParseEnd.
+	// - createInsertNodeTime: Execute builds the ts insert node, from CreateInsertNodeStart to CreateInsertNodeEnd.
+	// - planAndRunTime: Execute enters DistSQL PlanAndRun, from PlanAndRunStart to PlanAndRunEnd.
+	// - svcLat: prepared direct write service time, from Bind/BindEx receipt to PlanAndRunEnd.
+	// - otherTime: Bind/BindEx prepares payload and portal, from OtherStart to OtherEnd.
+	parseTime := directPhaseDuration(directTimes, ParseStart, ParseEnd)
+	createInsertNodeTime := directPhaseDuration(directTimes, CreateInsertNodeStart, CreateInsertNodeEnd)
+	planAndRunTime := directPhaseDuration(directTimes, PlanAndRunStart, PlanAndRunEnd)
+	svcLat := directPhaseDuration(directTimes, HandleSimpleStart, PlanAndRunEnd)
+	otherTime := directPhaseDuration(directTimes, OtherStart, OtherEnd)
+
+	ex.statsCollector.recordStatement(
+		&tempStmt, nil,
+		flags.IsSet(planFlagDistributed), flags.IsSet(planFlagImplicitTxn),
+		0, rowsAffected, nil,
+		parseTime, createInsertNodeTime, planAndRunTime, svcLat, otherTime, 0, 0,
+		user, database,
+	)
 }
 
 // GetTsinsertdirect return TsInsertShortcircuit
@@ -1909,11 +1950,11 @@ func (ex *connExecutor) execCmd(ctx context.Context) error {
 			if !portal.Stmt.PrepareInsertDirect.EvalContext.StartSinglenode {
 				ex.planner.ExtendedEvalContext().StartDistributeMode = true
 			}
-			starttime := timeutil.Now()
 			ex.metrics.StartedStatementCounters.QueryCount.Inc()
 			ex.metrics.StartedStatementCounters.InsertCount.Inc()
+			directDi := DirectInsert{DirectTimes: portal.Stmt.PrepareInsertDirect.DirectTimes}
 			ex.SendDirectTsInsert(ctx, &portal.Stmt.PrepareInsertDirect.EvalContext, portal.Stmt.PrepareInsertDirect.stmtRes,
-				portal.Stmt.PrepareInsertDirect.payloadNodeMap, portal.Stmt.PrepareInsertDirect.Queryid, nil)
+				portal.Stmt.PrepareInsertDirect.payloadNodeMap, portal.Stmt.PrepareInsertDirect.Queryid, &directDi)
 			if err = portal.Stmt.Insertdirectstmt.ErrorInfo; err != nil {
 				return err
 			}
@@ -1922,18 +1963,7 @@ func (ex *connExecutor) execCmd(ctx context.Context) error {
 			}
 			stmtRes.IncrementRowsAffected(int(portal.Stmt.Insertdirectstmt.RowsAffected))
 
-			var tempStmt Statement
-			var flags planFlags
-			tempStmt.AST = portal.Stmt.AST
-			user := ex.sessionData.User
-			database := ex.sessionData.Database
-			ex.statsCollector.recordStatement(
-				&tempStmt, nil,
-				flags.IsSet(planFlagDistributed), flags.IsSet(planFlagImplicitTxn),
-				0, int(portal.Stmt.Insertdirectstmt.RowsAffected), nil,
-				0, 0, timeutil.Since(starttime).Seconds(), 0, 0, 0, 0,
-				user, database,
-			)
+			ex.recordPrepareDirectStatement(portal, int(portal.Stmt.Insertdirectstmt.RowsAffected), &directDi.DirectTimes)
 			ex.metrics.ExecutedStatementCounters.QueryCount.Inc()
 			ex.metrics.ExecutedStatementCounters.InsertCount.Inc()
 		}
@@ -2020,6 +2050,114 @@ func (ex *connExecutor) execCmd(ctx context.Context) error {
 	case Flush:
 		// Closing the res will flush the connection's buffer.
 		res = ex.clientComm.CreateFlushResult(pos)
+	case BindAndExecStmt:
+		// bind and exec directly
+		res = ex.clientComm.CreateBindResult(pos)
+		ps, ok := ex.extraTxnState.prepStmtsNamespace.prepStmts[tcmd.PreparedStatementName]
+		if !ok {
+			err := pgerror.Newf(pgcode.InvalidSQLStatementName,
+				"unknown prepared statement %q", tcmd.PreparedStatementName,
+			)
+			ev = eventNonRetriableErr{IsCommit: fsm.False}
+			payload = eventNonRetriableErrPayload{err: err}
+			res = ex.clientComm.CreateErrorResult(pos)
+			break
+		}
+		if !ps.Statement.Insertdirectstmt.InsertFast {
+			err := pgerror.New(pgcode.ProtocolViolation, "extend pgwire only by tstable and tsinsert_direct.")
+			ev = eventNonRetriableErr{IsCommit: fsm.False}
+			payload = eventNonRetriableErrPayload{err: err}
+			res = ex.clientComm.CreateErrorResult(pos)
+			break
+		}
+		ev, payload = ex.execPreparedirectBindEx(ctx, tcmd)
+		if _, ok := ev.(eventNonRetriableErr); ok {
+			res = ex.clientComm.CreateErrorResult(pos)
+			break
+		}
+
+		portalName := tcmd.PortalName
+		portal, ok := ex.extraTxnState.prepStmtsNamespace.portals[portalName]
+		if !ok {
+			err := pgerror.Newf(pgcode.InvalidCursorName, "unknown portal %q", portalName)
+			ev = eventNonRetriableErr{IsCommit: fsm.False}
+			payload = eventNonRetriableErrPayload{err: err}
+			res = ex.clientComm.CreateErrorResult(pos)
+			break
+		}
+
+		if log.ExpensiveLogEnabled(ctx, 2) {
+			log.VEventf(ctx, 2, "portal resolved to: %s", portal.Stmt.AST.String())
+		}
+		ex.curStmt = portal.Stmt.AST
+
+		ex.phaseTimes[sessionQueryReceived] = tcmd.TimeReceived
+		// When parsing has been done earlier, via a separate parse
+		// message, it is not any more part of the statistics collected
+		// for this execution. In that case, we simply report that
+		// parsing took no time.
+		ex.phaseTimes[sessionStartParse] = time.Time{}
+		ex.phaseTimes[sessionEndParse] = time.Time{}
+
+		stmtRes := ex.clientComm.CreateStatementResult(
+			portal.Stmt.AST,
+			// The client is using the extended protocol, so no row description is
+			// needed.
+			DontNeedRowDesc,
+			pos, portal.OutFormats,
+			ex.sessionData.DataConversion,
+			tcmd.Limit,
+			portalName,
+			ex.implicitTxn(),
+		)
+		ctx, sp := tracing.EnsureChildSpan(
+			ctx, ex.server.cfg.AmbientCtx.Tracer,
+			// We print the type of command, not the String() which includes long
+			// statements.
+			cmd.command())
+		defer sp.Finish()
+
+		if portal.Stmt.Insertdirectstmt.InsertFast {
+			if !portal.Stmt.PrepareInsertDirect.EvalContext.StartSinglenode {
+				ex.planner.ExtendedEvalContext().StartDistributeMode = true
+			}
+			ex.metrics.StartedStatementCounters.QueryCount.Inc()
+			ex.metrics.StartedStatementCounters.InsertCount.Inc()
+			directDi := DirectInsert{DirectTimes: portal.Stmt.PrepareInsertDirect.DirectTimes}
+			ex.SendDirectTsInsert(ctx, &portal.Stmt.PrepareInsertDirect.EvalContext, portal.Stmt.PrepareInsertDirect.stmtRes,
+				portal.Stmt.PrepareInsertDirect.payloadNodeMap, portal.Stmt.PrepareInsertDirect.Queryid, &directDi)
+			if err = portal.Stmt.Insertdirectstmt.ErrorInfo; err != nil {
+				return err
+			}
+			if err = portal.Stmt.PrepareInsertDirect.stmtRes.Err(); err != nil {
+				return err
+			}
+			stmtRes.IncrementRowsAffected(int(portal.Stmt.Insertdirectstmt.RowsAffected))
+
+			ex.recordPrepareDirectStatement(portal, int(portal.Stmt.Insertdirectstmt.RowsAffected), &directDi.DirectTimes)
+			ex.metrics.ExecutedStatementCounters.QueryCount.Inc()
+			ex.metrics.ExecutedStatementCounters.InsertCount.Inc()
+		}
+
+		if stmtRes.IsLimit() && stmtRes.StmtType() != tree.Ack {
+			//ex.server.cfg.DistSQLPlanner.distSQLSrv.CommandLimit = tcmd.Limit
+			ex.sessionData.CommandLimit = int64(tcmd.Limit)
+		}
+		var isBinary bool
+		if portal.OutFormats != nil {
+			for _, out := range portal.OutFormats {
+				if out == pgwirebase.FormatBinary {
+					isBinary = true
+					break
+				}
+			}
+		}
+		ex.sessionData.OutFormats = isBinary
+		res = stmtRes
+		if portal.Stmt.Insertdirectstmt.InsertFast {
+			ex.sessionData.CommandLimit = 0
+			break
+		}
 	default:
 		panic(fmt.Sprintf("unsupported command type: %T", cmd))
 	}

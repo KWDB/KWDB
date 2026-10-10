@@ -23,7 +23,7 @@
 
 package settings
 
-// #cgo CPPFLAGS: -I../../../kwdbts2/include
+// #cgo CPPFLAGS: -I../../engine/ts_engine/include
 // #cgo LDFLAGS: -lkwdbts2 -lcommon -lsnappy -lm  -lstdc++
 // #cgo linux LDFLAGS: -lrt -lpthread
 //

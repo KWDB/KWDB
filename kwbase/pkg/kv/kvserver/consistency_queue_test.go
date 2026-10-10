@@ -41,8 +41,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/stateloader"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagebase"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/testcluster"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
@@ -204,13 +204,13 @@ func TestCheckConsistencyInconsistent(t *testing.T) {
 
 	dir, cleanup := testutils.TempDir(t)
 	defer cleanup()
-	cache := storage.NewRocksDBCache(1 << 20)
+	cache := relational.NewRocksDBCache(1 << 20)
 	defer cache.Release()
 
 	// Use on-disk stores because we want to take a RocksDB checkpoint and be
 	// able to find it.
 	for i := 0; i < numStores; i++ {
-		eng, err := storage.NewRocksDB(storage.RocksDBConfig{
+		eng, err := relational.NewRocksDB(relational.RocksDBConfig{
 			StorageConfig: base.StorageConfig{
 				Dir: filepath.Join(dir, fmt.Sprintf("%d", i)),
 			},
@@ -329,7 +329,7 @@ func TestCheckConsistencyInconsistent(t *testing.T) {
 	var val roachpb.Value
 	val.SetInt(42)
 	diffTimestamp = mtc.stores[1].Clock().Now()
-	if err := storage.MVCCPut(
+	if err := relational.MVCCPut(
 		context.Background(), mtc.stores[1].Engine(), nil, diffKey, diffTimestamp, val, nil,
 	); err != nil {
 		t.Fatal(err)
@@ -353,7 +353,7 @@ func TestCheckConsistencyInconsistent(t *testing.T) {
 	for i := 0; i < numStores; i++ {
 		cps := checkpoints(i)
 		assert.Len(t, cps, 1)
-		cpEng, err := storage.NewRocksDB(storage.RocksDBConfig{
+		cpEng, err := relational.NewRocksDB(relational.RocksDBConfig{
 			StorageConfig: base.StorageConfig{
 				Dir: cps[0],
 			},
@@ -361,10 +361,10 @@ func TestCheckConsistencyInconsistent(t *testing.T) {
 		assert.NoError(t, err)
 		defer cpEng.Close()
 
-		iter := cpEng.NewIterator(storage.IterOptions{UpperBound: []byte("\xff")})
+		iter := cpEng.NewIterator(relational.IterOptions{UpperBound: []byte("\xff")})
 		defer iter.Close()
 
-		ms, err := storage.ComputeStatsGo(iter, roachpb.KeyMin, roachpb.KeyMax, 0 /* nowNanos */)
+		ms, err := relational.ComputeStatsGo(iter, roachpb.KeyMin, roachpb.KeyMax, 0 /* nowNanos */)
 		assert.NoError(t, err)
 
 		assert.NotZero(t, ms.KeyBytes)
@@ -484,9 +484,9 @@ func testConsistencyQueueRecomputeStatsImpl(t *testing.T, hadEstimates bool) {
 	const sysCountGarbage = 123000
 
 	func() {
-		cache := storage.NewRocksDBCache(1 << 20)
+		cache := relational.NewRocksDBCache(1 << 20)
 		defer cache.Release()
-		eng, err := storage.NewRocksDB(storage.RocksDBConfig{
+		eng, err := relational.NewRocksDB(relational.RocksDBConfig{
 			StorageConfig: base.StorageConfig{
 				Dir:       path,
 				MustExist: true,

@@ -34,8 +34,8 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/bufalloc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/interval"
@@ -71,7 +71,7 @@ type registration struct {
 	// Input.
 	span             roachpb.Span
 	catchupTimestamp hlc.Timestamp
-	catchupIter      storage.SimpleIterator
+	catchupIter      relational.SimpleIterator
 	withDiff         bool
 	metrics          *Metrics
 
@@ -102,7 +102,7 @@ type registration struct {
 func newRegistration(
 	span roachpb.Span,
 	startTS hlc.Timestamp,
-	catchupIter storage.SimpleIterator,
+	catchupIter relational.SimpleIterator,
 	withDiff bool,
 	bufferSz int,
 	metrics *Metrics,
@@ -321,8 +321,8 @@ func (r *registration) runCatchupScan() error {
 	}()
 
 	var a bufalloc.ByteAllocator
-	startKey := storage.MakeMVCCMetadataKey(r.span.Key)
-	endKey := storage.MakeMVCCMetadataKey(r.span.EndKey)
+	startKey := relational.MakeMVCCMetadataKey(r.span.Key)
+	endKey := relational.MakeMVCCMetadataKey(r.span.EndKey)
 
 	// Iterator will encounter historical values for each key in
 	// reverse-chronological order. To output in chronological order, store
@@ -375,7 +375,7 @@ func (r *registration) runCatchupScan() error {
 				// past the corresponding provisional key-value. To do this,
 				// scan to the timestamp immediately before (i.e. the key
 				// immediately after) the provisional key.
-				r.catchupIter.SeekGE(storage.MVCCKey{
+				r.catchupIter.SeekGE(relational.MVCCKey{
 					Key:       unsafeKey.Key,
 					Timestamp: hlc.Timestamp(meta.Timestamp).Prev(),
 				})

@@ -31,7 +31,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/concurrency/lock"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uint128"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"

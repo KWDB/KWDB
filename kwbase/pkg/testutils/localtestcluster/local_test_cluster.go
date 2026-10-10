@@ -42,7 +42,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/rpc"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -67,7 +67,7 @@ type LocalTestCluster struct {
 	Manual            *hlc.ManualClock
 	Clock             *hlc.Clock
 	Gossip            *gossip.Gossip
-	Eng               storage.Engine
+	Eng               relational.Engine
 	Store             *kvserver.Store
 	StoreTestingKnobs *kvserver.StoreTestingKnobs
 	DBContext         *kv.DBContext
@@ -132,8 +132,8 @@ func (ltc *LocalTestCluster) Start(t testing.TB, baseCtx *base.Config, initFacto
 	c := &cfg.RPCContext.ClusterID
 	server := rpc.NewServer(cfg.RPCContext) // never started
 	ltc.Gossip = gossip.New(ambient, c, nc, cfg.RPCContext, server, ltc.Stopper, metric.NewRegistry(), roachpb.Locality{}, zonepb.DefaultZoneConfigRef(), "", "")
-	ltc.Eng = storage.NewInMem(ambient.AnnotateCtx(context.Background()),
-		storage.DefaultStorageEngine, roachpb.Attributes{}, 50<<20)
+	ltc.Eng = relational.NewInMem(ambient.AnnotateCtx(context.Background()),
+		relational.DefaultStorageEngine, roachpb.Attributes{}, 50<<20)
 	ltc.Stopper.AddCloser(ltc.Eng)
 
 	ltc.Stores = kvserver.NewStores(ambient, ltc.Clock, clusterversion.TestingBinaryVersion, clusterversion.TestingBinaryMinSupportedVersion)
@@ -164,7 +164,7 @@ func (ltc *LocalTestCluster) Start(t testing.TB, baseCtx *base.Config, initFacto
 		cfg.AmbientCtx,
 		cfg.Clock,
 		cfg.DB,
-		[]storage.Engine{ltc.Eng},
+		[]relational.Engine{ltc.Eng},
 		cfg.Gossip,
 		active,
 		renewal,

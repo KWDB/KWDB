@@ -32,7 +32,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/concurrency/lock"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 )
@@ -52,7 +52,7 @@ func getTableDesc(v roachpb.Value) (*sqlbase.Descriptor, error) {
 // stores the number of scan results remaining for this batch
 // (MaxInt64 for no limit).
 func Scan(
-	ctx context.Context, reader storage.Reader, cArgs CommandArgs, resp roachpb.Response,
+	ctx context.Context, reader relational.Reader, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
 	args := cArgs.Args.(*roachpb.ScanRequest)
 	h := cArgs.Header
@@ -61,10 +61,10 @@ func Scan(
 		h.ReadConsistency = roachpb.READ_UNCOMMITTED
 	}
 	var res result.Result
-	var scanRes storage.MVCCScanResult
+	var scanRes relational.MVCCScanResult
 	var err error
 
-	opts := storage.MVCCScanOptions{
+	opts := relational.MVCCScanOptions{
 		Inconsistent:     h.ReadConsistency != roachpb.CONSISTENT,
 		Txn:              h.Txn,
 		MaxKeys:          h.MaxSpanRequestKeys,
@@ -74,7 +74,7 @@ func Scan(
 	}
 	switch args.ScanFormat {
 	case roachpb.BATCH_RESPONSE:
-		scanRes, err = storage.MVCCScanToBytes(
+		scanRes, err = relational.MVCCScanToBytes(
 			ctx, reader, args.Key, args.EndKey, h.Timestamp, opts)
 		if err != nil {
 			return result.Result{}, err
@@ -82,7 +82,7 @@ func Scan(
 		reply.BatchResponses = scanRes.KVData
 	case roachpb.KEY_VALUES:
 		if args.IsScanAllMvccVerForOneTable {
-			if err := reader.Iterate(args.Key, args.EndKey, func(kv storage.MVCCKeyValue) (bool, error) {
+			if err := reader.Iterate(args.Key, args.EndKey, func(kv relational.MVCCKeyValue) (bool, error) {
 				if kv.Key.Timestamp.Equal(hlc.Timestamp{}) {
 					log.Infof(ctx, "Find write intent.")
 					return false, nil
@@ -98,7 +98,7 @@ func Scan(
 			}
 			reply.Rows = scanRes.KVs
 		} else {
-			scanRes, err = storage.MVCCScan(
+			scanRes, err = relational.MVCCScan(
 				ctx, reader, args.Key, args.EndKey, h.Timestamp, opts)
 			if err != nil {
 				return result.Result{}, err

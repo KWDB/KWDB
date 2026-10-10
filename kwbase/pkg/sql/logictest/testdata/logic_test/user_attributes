@@ -1,0 +1,56 @@
+# LogicTest: local
+
+# information_schema.user_attributes exposes account metadata without allowing
+# non-admin users to enumerate other accounts.
+statement ok
+CREATE ROLE ua_role
+
+query TTBTTTBB colnames
+SHOW COLUMNS FROM information_schema.user_attributes
+----
+column_name  data_type  is_nullable  column_default  generation_expression  indices  is_hidden  is_tag
+USER         STRING     false        NULL            ·                      {}       false      false
+host         STRING     true         NULL            ·                      {}       false      false
+ATTRIBUTE    JSONB      true         NULL            ·                      {}       false      false
+
+# Root sees all account rows but no SQL role row. HOST and ATTRIBUTE remain
+# SQL NULL because KWDB does not store MySQL user@host or JSON attributes.
+user root
+
+query TBB
+SELECT "USER", host IS NULL, "ATTRIBUTE" IS NULL
+  FROM information_schema.user_attributes
+ WHERE "USER" IN ('root', 'testuser', 'ua_role')
+ ORDER BY "USER"
+----
+root      true  true
+testuser  true  true
+
+# A normal account can inspect only its own row.
+user testuser
+
+query TBB
+SELECT "USER", host IS NULL, "ATTRIBUTE" IS NULL
+  FROM information_schema.user_attributes
+ WHERE "USER" IN ('root', 'testuser', 'ua_role')
+ ORDER BY "USER"
+----
+testuser  true  true
+
+# Membership in admin grants the same complete account view as root. Reuse the
+# existing certificate-backed test user so the logic test can switch sessions.
+user root
+
+statement ok
+GRANT admin TO testuser
+
+user testuser
+
+query TBB
+SELECT "USER", host IS NULL, "ATTRIBUTE" IS NULL
+  FROM information_schema.user_attributes
+ WHERE "USER" IN ('root', 'testuser', 'ua_role')
+ ORDER BY "USER"
+----
+root      true  true
+testuser  true  true

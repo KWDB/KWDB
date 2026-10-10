@@ -37,7 +37,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/server/serverpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
 	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
@@ -48,7 +48,7 @@ import (
 
 // TsSender is a Sender to send TS requests to TS DB
 type TsSender struct {
-	tsEngine     *tse.TsEngine
+	tsEngine     *timeseries.TsEngine
 	wrapped      kv.Sender
 	isSingleNode bool
 	rpcContext   *rpc.Context
@@ -73,7 +73,7 @@ type TsSender struct {
 type TsDBConfig struct {
 	KvDB         *kv.DB
 	Sender       kv.Sender
-	TsEngine     *tse.TsEngine
+	TsEngine     *timeseries.TsEngine
 	RPCContext   *rpc.Context
 	Gossip       *gossip.Gossip
 	Stopper      *stop.Stopper

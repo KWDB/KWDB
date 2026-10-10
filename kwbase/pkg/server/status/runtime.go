@@ -25,9 +25,9 @@
 package status
 
 /*
-#cgo CPPFLAGS: -I../../../../common/src/h
+#cgo CPPFLAGS: -I../../../engine/common/src/h
 #cgo LDFLAGS: -lcommon
-#include "../../../../common/src/h/mm_malloc_cgo.h"
+#include "mm_malloc_cgo.h"
 */
 import "C"
 

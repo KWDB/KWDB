@@ -42,7 +42,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/flowinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"github.com/stretchr/testify/require"
@@ -262,7 +262,7 @@ func TestVectorizedFlowTempDirectory(t *testing.T) {
 	// We use an on-disk engine for this test since we're testing FS interactions
 	// and want to get the same behavior as a non-testing environment.
 	tempPath, dirCleanup := testutils.TempDir(t)
-	ngn, err := storage.NewDefaultEngine(0 /* cacheSize */, base.StorageConfig{Dir: tempPath})
+	ngn, err := relational.NewDefaultEngine(0 /* cacheSize */, base.StorageConfig{Dir: tempPath})
 	require.NoError(t, err)
 	defer ngn.Close()
 	defer dirCleanup()

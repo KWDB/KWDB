@@ -29,7 +29,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/batcheval/result"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 )
 
 func init() {
@@ -40,13 +40,13 @@ func init() {
 // the expected value matches. If not, the return value contains
 // the actual value.
 func ConditionalPut(
-	ctx context.Context, readWriter storage.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
+	ctx context.Context, readWriter relational.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
 	args := cArgs.Args.(*roachpb.ConditionalPutRequest)
 	h := cArgs.Header
 
 	if h.DistinctSpans {
-		if b, ok := readWriter.(storage.Batch); ok {
+		if b, ok := readWriter.(relational.Batch); ok {
 			// Use the distinct batch for both blind and normal ops so that we don't
 			// accidentally flush mutations to make them visible to the distinct
 			// batch.
@@ -54,12 +54,12 @@ func ConditionalPut(
 			defer readWriter.Close()
 		}
 	}
-	handleMissing := storage.CPutMissingBehavior(args.AllowIfDoesNotExist)
+	handleMissing := relational.CPutMissingBehavior(args.AllowIfDoesNotExist)
 	var err error
 	if args.Blind {
-		err = storage.MVCCBlindConditionalPut(ctx, readWriter, cArgs.Stats, args.Key, h.Timestamp, args.Value, args.ExpValue, handleMissing, h.Txn)
+		err = relational.MVCCBlindConditionalPut(ctx, readWriter, cArgs.Stats, args.Key, h.Timestamp, args.Value, args.ExpValue, handleMissing, h.Txn)
 	} else {
-		err = storage.MVCCConditionalPut(ctx, readWriter, cArgs.Stats, args.Key, h.Timestamp, args.Value, args.ExpValue, handleMissing, h.Txn)
+		err = relational.MVCCConditionalPut(ctx, readWriter, cArgs.Stats, args.Key, h.Timestamp, args.Value, args.ExpValue, handleMissing, h.Txn)
 	}
 	// NB: even if MVCC returns an error, it may still have written an intent
 	// into the batch. This allows callers to consume errors like WriteTooOld

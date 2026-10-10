@@ -35,10 +35,10 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagebase"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/cloud"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/localexternal"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/limit"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
@@ -65,8 +65,8 @@ type EvalContext interface {
 	ClusterSettings() *cluster.Settings
 	EvalKnobs() storagebase.BatchEvalTestingKnobs
 
-	Engine() storage.Engine
-	TsEngine() *tse.TsEngine
+	Engine() relational.Engine
+	TsEngine() *timeseries.TsEngine
 	Clock() *hlc.Clock
 	DB() *kv.DB
 	AbortSpan() *abortspan.AbortSpan
@@ -112,8 +112,8 @@ type EvalContext interface {
 	GetLastReplicaGCTimestamp(context.Context) (hlc.Timestamp, error)
 	GetLease() (roachpb.Lease, roachpb.Lease)
 
-	GetExternalStorage(ctx context.Context, dest roachpb.ExternalStorage) (cloud.ExternalStorage, error)
-	GetExternalStorageFromURI(ctx context.Context, uri string) (cloud.ExternalStorage, error)
+	GetExternalStorage(ctx context.Context, dest roachpb.ExternalStorage) (localexternal.ExternalStorage, error)
+	GetExternalStorageFromURI(ctx context.Context, uri string) (localexternal.ExternalStorage, error)
 }
 
 // MockEvalCtx is a dummy implementation of EvalContext for testing purposes.
@@ -153,10 +153,10 @@ func (m *mockEvalCtxImpl) ClusterSettings() *cluster.Settings {
 func (m *mockEvalCtxImpl) EvalKnobs() storagebase.BatchEvalTestingKnobs {
 	return storagebase.BatchEvalTestingKnobs{}
 }
-func (m *mockEvalCtxImpl) Engine() storage.Engine {
+func (m *mockEvalCtxImpl) Engine() relational.Engine {
 	panic("unimplemented")
 }
-func (m *mockEvalCtxImpl) TsEngine() *tse.TsEngine {
+func (m *mockEvalCtxImpl) TsEngine() *timeseries.TsEngine {
 	panic("unimplemented")
 }
 func (m *mockEvalCtxImpl) Clock() *hlc.Clock {
@@ -230,12 +230,12 @@ func (m *mockEvalCtxImpl) GetLease() (roachpb.Lease, roachpb.Lease) {
 
 func (m *mockEvalCtxImpl) GetExternalStorage(
 	ctx context.Context, dest roachpb.ExternalStorage,
-) (cloud.ExternalStorage, error) {
+) (localexternal.ExternalStorage, error) {
 	panic("unimplemented")
 }
 
 func (m *mockEvalCtxImpl) GetExternalStorageFromURI(
 	ctx context.Context, uri string,
-) (cloud.ExternalStorage, error) {
+) (localexternal.ExternalStorage, error) {
 	panic("unimplemented")
 }

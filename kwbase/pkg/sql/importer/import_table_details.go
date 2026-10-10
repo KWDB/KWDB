@@ -24,7 +24,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/cloud"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/localexternal"
 	"gitee.com/kwbasedb/kwbase/pkg/util/errorutil/unimplemented"
 	"github.com/cockroachdb/errors"
 )
@@ -125,7 +125,9 @@ func checkAndGetDetailsInTableNew(
 
 // readCreateTableFromStore read meta.sql at target path and parse it to stmts.
 func readCreateTableFromStore(
-	ctx context.Context, filename string, externalStorageFromURI cloud.ExternalStorageFromURIFactory,
+	ctx context.Context,
+	filename string,
+	externalStorageFromURI localexternal.ExternalStorageFromURIFactory,
 ) (parser.Statements, error) {
 	store, err := externalStorageFromURI(ctx, filename)
 	if err != nil {

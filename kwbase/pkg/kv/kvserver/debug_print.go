@@ -34,8 +34,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagepb"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
 	"go.etcd.io/etcd/raft/raftpb"
@@ -43,24 +43,24 @@ import (
 
 // PrintKeyValue attempts to pretty-print the specified MVCCKeyValue to
 // os.Stdout, falling back to '%q' formatting.
-func PrintKeyValue(kv storage.MVCCKeyValue) {
+func PrintKeyValue(kv relational.MVCCKeyValue) {
 	fmt.Println(SprintKeyValue(kv, true /* printKey */))
 }
 
 // SprintKey pretty-prings the specified MVCCKey.
-func SprintKey(key storage.MVCCKey) string {
-	return fmt.Sprintf("%s %s (%#x): ", key.Timestamp, key.Key, storage.EncodeKey(key))
+func SprintKey(key relational.MVCCKey) string {
+	return fmt.Sprintf("%s %s (%#x): ", key.Timestamp, key.Key, relational.EncodeKey(key))
 }
 
 // SprintKeyValue is like PrintKeyValue, but returns a string. If
 // printKey is true, prints the key and the value together; otherwise,
 // prints just the value.
-func SprintKeyValue(kv storage.MVCCKeyValue, printKey bool) string {
+func SprintKeyValue(kv relational.MVCCKeyValue, printKey bool) string {
 	var sb strings.Builder
 	if printKey {
 		sb.WriteString(SprintKey(kv.Key))
 	}
-	decoders := []func(kv storage.MVCCKeyValue) (string, error){
+	decoders := []func(kv relational.MVCCKeyValue) (string, error){
 		tryRaftLogEntry,
 		tryRangeDescriptor,
 		tryMeta,
@@ -68,7 +68,7 @@ func SprintKeyValue(kv storage.MVCCKeyValue, printKey bool) string {
 		tryRangeIDKey,
 		tryTimeSeries,
 		tryIntent,
-		func(kv storage.MVCCKeyValue) (string, error) {
+		func(kv relational.MVCCKeyValue) (string, error) {
 			// No better idea, just print raw bytes and hope that folks use `less -S`.
 			return fmt.Sprintf("%q", kv.Value), nil
 		},
@@ -84,7 +84,7 @@ func SprintKeyValue(kv storage.MVCCKeyValue, printKey bool) string {
 	panic("unreachable")
 }
 
-func tryRangeDescriptor(kv storage.MVCCKeyValue) (string, error) {
+func tryRangeDescriptor(kv relational.MVCCKeyValue) (string, error) {
 	if err := IsRangeDescriptorKey(kv.Key); err != nil {
 		return "", err
 	}
@@ -95,7 +95,7 @@ func tryRangeDescriptor(kv storage.MVCCKeyValue) (string, error) {
 	return descStr(desc), nil
 }
 
-func tryIntent(kv storage.MVCCKeyValue) (string, error) {
+func tryIntent(kv relational.MVCCKeyValue) (string, error) {
 	if len(kv.Value) == 0 {
 		return "", errors.New("empty")
 	}
@@ -115,7 +115,7 @@ func decodeWriteBatch(writeBatch *storagepb.WriteBatch) (string, error) {
 		return "<nil>\n", nil
 	}
 
-	r, err := storage.NewRocksDBBatchReader(writeBatch.Data)
+	r, err := relational.NewRocksDBBatchReader(writeBatch.Data)
 	if err != nil {
 		return "", err
 	}
@@ -125,37 +125,37 @@ func decodeWriteBatch(writeBatch *storagepb.WriteBatch) (string, error) {
 	var sb strings.Builder
 	for r.Next() {
 		switch r.BatchType() {
-		case storage.BatchTypeDeletion:
+		case relational.BatchTypeDeletion:
 			mvccKey, err := r.MVCCKey()
 			if err != nil {
 				return sb.String(), err
 			}
 			sb.WriteString(fmt.Sprintf("Delete: %s\n", SprintKey(mvccKey)))
-		case storage.BatchTypeValue:
+		case relational.BatchTypeValue:
 			mvccKey, err := r.MVCCKey()
 			if err != nil {
 				return sb.String(), err
 			}
-			sb.WriteString(fmt.Sprintf("Put: %s\n", SprintKeyValue(storage.MVCCKeyValue{
+			sb.WriteString(fmt.Sprintf("Put: %s\n", SprintKeyValue(relational.MVCCKeyValue{
 				Key:   mvccKey,
 				Value: r.Value(),
 			}, true /* printKey */)))
-		case storage.BatchTypeMerge:
+		case relational.BatchTypeMerge:
 			mvccKey, err := r.MVCCKey()
 			if err != nil {
 				return sb.String(), err
 			}
-			sb.WriteString(fmt.Sprintf("Merge: %s\n", SprintKeyValue(storage.MVCCKeyValue{
+			sb.WriteString(fmt.Sprintf("Merge: %s\n", SprintKeyValue(relational.MVCCKeyValue{
 				Key:   mvccKey,
 				Value: r.Value(),
 			}, true /* printKey */)))
-		case storage.BatchTypeSingleDeletion:
+		case relational.BatchTypeSingleDeletion:
 			mvccKey, err := r.MVCCKey()
 			if err != nil {
 				return sb.String(), err
 			}
 			sb.WriteString(fmt.Sprintf("Single Delete: %s\n", SprintKey(mvccKey)))
-		case storage.BatchTypeRangeDeletion:
+		case relational.BatchTypeRangeDeletion:
 			mvccStartKey, err := r.MVCCKey()
 			if err != nil {
 				return sb.String(), err
@@ -174,7 +174,7 @@ func decodeWriteBatch(writeBatch *storagepb.WriteBatch) (string, error) {
 	return sb.String(), r.Error()
 }
 
-func tryRaftLogEntry(kv storage.MVCCKeyValue) (string, error) {
+func tryRaftLogEntry(kv relational.MVCCKeyValue) (string, error) {
 	var ent raftpb.Entry
 	if err := maybeUnmarshalInline(kv.Value, &ent); err != nil {
 		return "", err
@@ -234,7 +234,7 @@ func tryRaftLogEntry(kv storage.MVCCKeyValue) (string, error) {
 	return fmt.Sprintf("%s by %s\n%s\nwrite batch:\n%s", &ent, leaseStr, &cmd, wbStr), nil
 }
 
-func tryTxn(kv storage.MVCCKeyValue) (string, error) {
+func tryTxn(kv relational.MVCCKeyValue) (string, error) {
 	var txn roachpb.Transaction
 	if err := maybeUnmarshalInline(kv.Value, &txn); err != nil {
 		return "", err
@@ -242,7 +242,7 @@ func tryTxn(kv storage.MVCCKeyValue) (string, error) {
 	return txn.String() + "\n", nil
 }
 
-func tryRangeIDKey(kv storage.MVCCKeyValue) (string, error) {
+func tryRangeIDKey(kv relational.MVCCKeyValue) (string, error) {
 	if kv.Key.Timestamp != (hlc.Timestamp{}) {
 		return "", fmt.Errorf("range ID keys shouldn't have timestamps: %s", kv.Key)
 	}
@@ -308,7 +308,7 @@ func tryRangeIDKey(kv storage.MVCCKeyValue) (string, error) {
 	return msg.String(), nil
 }
 
-func tryMeta(kv storage.MVCCKeyValue) (string, error) {
+func tryMeta(kv relational.MVCCKeyValue) (string, error) {
 	if !bytes.HasPrefix(kv.Key.Key, keys.Meta1Prefix) && !bytes.HasPrefix(kv.Key.Key, keys.Meta2Prefix) {
 		return "", errors.New("not a meta key")
 	}
@@ -323,7 +323,7 @@ func tryMeta(kv storage.MVCCKeyValue) (string, error) {
 	return descStr(desc), nil
 }
 
-func tryTimeSeries(kv storage.MVCCKeyValue) (string, error) {
+func tryTimeSeries(kv relational.MVCCKeyValue) (string, error) {
 	if len(kv.Value) == 0 || !bytes.HasPrefix(kv.Key.Key, keys.TimeseriesPrefix) {
 		return "", errors.New("empty or not TS")
 	}
@@ -340,7 +340,7 @@ func tryTimeSeries(kv storage.MVCCKeyValue) (string, error) {
 }
 
 // IsRangeDescriptorKey returns nil if the key decodes as a RangeDescriptor.
-func IsRangeDescriptorKey(key storage.MVCCKey) error {
+func IsRangeDescriptorKey(key relational.MVCCKey) error {
 	_, suffix, _, err := keys.DecodeRangeKey(key.Key)
 	if err != nil {
 		return err

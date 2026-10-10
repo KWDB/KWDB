@@ -42,8 +42,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagebase"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/bufalloc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -183,7 +183,7 @@ type CleanupTxnIntentsAsyncFunc func(context.Context, *roachpb.Transaction, []ro
 func Run(
 	ctx context.Context,
 	desc *roachpb.RangeDescriptor,
-	snap storage.Reader,
+	snap relational.Reader,
 	now, newThreshold hlc.Timestamp,
 	intentAgeThreshold time.Duration,
 	policy zonepb.GCPolicy,
@@ -250,7 +250,7 @@ func Run(
 func processReplicatedKeyRange(
 	ctx context.Context,
 	desc *roachpb.RangeDescriptor,
-	snap storage.Reader,
+	snap relational.Reader,
 	now hlc.Timestamp,
 	threshold hlc.Timestamp,
 	intentAgeThreshold time.Duration,
@@ -262,7 +262,7 @@ func processReplicatedKeyRange(
 	var alloc bufalloc.ByteAllocator
 	// Compute intent expiration (intent age at which we attempt to resolve).
 	intentExp := now.Add(-intentAgeThreshold.Nanoseconds(), 0)
-	handleIntent := func(md *storage.MVCCKeyValue) {
+	handleIntent := func(md *relational.MVCCKeyValue) {
 		meta := &enginepb.MVCCMetadata{}
 		if err := protoutil.Unmarshal(md.Value, meta); err != nil {
 			log.Errorf(ctx, "unable to unmarshal MVCC metadata for key %q: %+v", md.Key, err)
@@ -391,7 +391,7 @@ func processReplicatedKeyRange(
 // guaranteed as described above. However if this were the only rule, then if
 // the most recent write was a delete, it would never be removed. Thus, when a
 // deleted value is the most recent before expiration, it can be deleted.
-func isGarbage(threshold hlc.Timestamp, cur, next *storage.MVCCKeyValue, isNewest bool) bool {
+func isGarbage(threshold hlc.Timestamp, cur, next *relational.MVCCKeyValue, isNewest bool) bool {
 	// If the value is not at or below the threshold then it's not garbage.
 	if belowThreshold := cur.Key.Timestamp.LessEq(threshold); !belowThreshold {
 		return false
@@ -426,7 +426,7 @@ func isGarbage(threshold hlc.Timestamp, cur, next *storage.MVCCKeyValue, isNewes
 //     this range's start key. This can happen on range merges.
 func processLocalKeyRange(
 	ctx context.Context,
-	snap storage.Reader,
+	snap relational.Reader,
 	desc *roachpb.RangeDescriptor,
 	cutoff hlc.Timestamp,
 	info *Info,
@@ -502,7 +502,7 @@ func processLocalKeyRange(
 	startKey := keys.MakeRangeKeyPrefix(desc.StartKey)
 	endKey := keys.MakeRangeKeyPrefix(desc.EndKey)
 
-	_, err := storage.MVCCIterate(ctx, snap, startKey, endKey, hlc.Timestamp{}, storage.MVCCScanOptions{},
+	_, err := relational.MVCCIterate(ctx, snap, startKey, endKey, hlc.Timestamp{}, relational.MVCCScanOptions{},
 		func(kv roachpb.KeyValue) (bool, error) {
 			return false, handleOne(kv)
 		})
@@ -516,7 +516,7 @@ func processLocalKeyRange(
 // multiple of the heartbeat timeout used by the coordinator.
 func processAbortSpan(
 	ctx context.Context,
-	snap storage.Reader,
+	snap relational.Reader,
 	rangeID roachpb.RangeID,
 	threshold hlc.Timestamp,
 	info *Info,

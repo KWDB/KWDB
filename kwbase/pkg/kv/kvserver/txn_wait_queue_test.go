@@ -38,8 +38,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagebase"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/txnwait"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
@@ -52,7 +52,7 @@ import (
 
 func writeTxnRecord(ctx context.Context, tc *testContext, txn *roachpb.Transaction) error {
 	key := keys.TransactionKey(txn.Key, txn.ID)
-	return storage.MVCCPutProto(ctx, tc.store.Engine(), nil, key, hlc.Timestamp{}, nil, txn)
+	return relational.MVCCPutProto(ctx, tc.store.Engine(), nil, key, hlc.Timestamp{}, nil, txn)
 }
 
 // createTxnForPushQueue creates a txn struct and writes a "fake"
@@ -356,14 +356,6 @@ func TestTxnWaitQueueUpdateTxn(t *testing.T) {
 // be advanced, the PushTxnRequest could get stuck forever.
 func TestTxnWaitQueueTxnSilentlyCompletes(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	// This test relies on concurrently waiting for a value to change in the
-	// underlying engine(s). Since the teeing engine does not respond well to
-	// value mismatches, whether transient or permanent, skip this test if the
-	// teeing engine is being used. See
-	// https://gitee.com/kwbasedb/kwbase/issues/42656 for more context.
-	if storage.DefaultStorageEngine == enginepb.EngineTypeTeePebbleRocksDB {
-		t.Skip("disabled on teeing engine")
-	}
 	tc := testContext{}
 	ctx := context.Background()
 	stopper := stop.NewStopper()

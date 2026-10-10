@@ -30,8 +30,8 @@ import (
 	"testing"
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
@@ -57,8 +57,8 @@ var (
 // returns a AbortSpan using the supplied Range ID.
 func createTestAbortSpan(
 	t *testing.T, rangeID roachpb.RangeID, stopper *stop.Stopper,
-) (*AbortSpan, storage.Engine) {
-	eng := storage.NewDefaultInMem()
+) (*AbortSpan, relational.Engine) {
+	eng := relational.NewDefaultInMem()
 	stopper.AddCloser(eng)
 	return New(rangeID), eng
 }

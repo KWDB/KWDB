@@ -28,7 +28,7 @@ import (
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util/humanizeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
@@ -58,7 +58,7 @@ func (s *Store) maybeForceTsCheckpoint(
 	if logSize < forceTsCheckpointSizeThreshold || s.TsEngine == nil || s.stopper == nil {
 		return
 	}
-	if !tse.TsRaftLogCombineWAL.Get(&s.ClusterSettings().SV) {
+	if !timeseries.TsRaftLogCombineWAL.Get(&s.ClusterSettings().SV) {
 		return
 	}
 

@@ -33,8 +33,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/spanset"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagebase"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/errorutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -55,7 +55,7 @@ var sentryIssue46720Limiter = rate.NewLimiter(0.1, 1) // 1 every 10s
 // the input slice, or has been shallow-copied appropriately to avoid
 // mutating the original requests).
 func optimizePuts(
-	reader storage.Reader, origReqs []roachpb.RequestUnion, distinctSpans bool,
+	reader relational.Reader, origReqs []roachpb.RequestUnion, distinctSpans bool,
 ) []roachpb.RequestUnion {
 	var minKey, maxKey roachpb.Key
 	var unique map[string]struct{}
@@ -103,7 +103,7 @@ func optimizePuts(
 	if firstUnoptimizedIndex < optimizePutThreshold { // don't bother if below this threshold
 		return origReqs
 	}
-	iter := reader.NewIterator(storage.IterOptions{
+	iter := reader.NewIterator(relational.IterOptions{
 		// We want to include maxKey in our scan. Since UpperBound is exclusive, we
 		// need to set it to the key after maxKey.
 		UpperBound: maxKey.Next(),
@@ -114,7 +114,7 @@ func optimizePuts(
 	// we can determine whether any part of the range being written
 	// is "virgin" and set the puts to write blindly.
 	// Find the first non-empty key in the run.
-	iter.SeekGE(storage.MakeMVCCMetadataKey(minKey))
+	iter.SeekGE(relational.MakeMVCCMetadataKey(minKey))
 	var iterKey roachpb.Key
 	if ok, err := iter.Valid(); err != nil {
 		// TODO(bdarnell): return an error here instead of silently
@@ -153,7 +153,7 @@ func optimizePuts(
 func evaluateTSBatch(
 	ctx context.Context,
 	idKey storagebase.CmdIDKey,
-	readWriter storage.ReadWriter,
+	readWriter relational.ReadWriter,
 	rec batcheval.EvalContext,
 	ms *enginepb.MVCCStats,
 	ba *roachpb.BatchRequest,
@@ -333,7 +333,7 @@ func evaluateTSBatch(
 func evaluateBatch(
 	ctx context.Context,
 	idKey storagebase.CmdIDKey,
-	readWriter storage.ReadWriter,
+	readWriter relational.ReadWriter,
 	rec batcheval.EvalContext,
 	ms *enginepb.MVCCStats,
 	ba *roachpb.BatchRequest,
@@ -605,7 +605,7 @@ func evaluateTSCommand(
 	ctx context.Context,
 	raftCmdID storagebase.CmdIDKey,
 	index int,
-	readWriter storage.ReadWriter,
+	readWriter relational.ReadWriter,
 	rec batcheval.EvalContext,
 	ms *enginepb.MVCCStats,
 	h roachpb.Header,
@@ -682,7 +682,7 @@ func evaluateCommand(
 	ctx context.Context,
 	raftCmdID storagebase.CmdIDKey,
 	index int,
-	readWriter storage.ReadWriter,
+	readWriter relational.ReadWriter,
 	rec batcheval.EvalContext,
 	ms *enginepb.MVCCStats,
 	h roachpb.Header,

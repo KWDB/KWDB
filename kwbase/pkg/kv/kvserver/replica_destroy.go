@@ -35,9 +35,9 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
@@ -121,14 +121,14 @@ func removePreemptiveSnapshot(
 			err = errors.Wrapf(err, "failed to remove preemptive snapshot for range %v", desc)
 		}
 	}()
-	tsBatch := tse.NewTsRaftLogBatch(s.TsRaftLogEngine)
+	tsBatch := timeseries.NewTsRaftLogBatch(s.TsRaftLogEngine)
 	if err := clearRangeData(desc, s.Engine(), batch, tsBatch, rangeIDLocalOnly, mustClearRange); err != nil {
 		return err
 	}
 	if err := writeTombstoneKey(ctx, batch, desc.RangeID, desc.NextReplicaID); err != nil {
 		return err
 	}
-	if err := batch.Commit(true, storage.NormalCommitType); err != nil {
+	if err := batch.Commit(true, relational.NormalCommitType); err != nil {
 		return err
 	}
 	if tsBatch != nil {
@@ -151,9 +151,9 @@ const mergedTombstoneReplicaID roachpb.ReplicaID = math.MaxInt32
 
 func (r *Replica) preDestroyRaftMuLocked(
 	ctx context.Context,
-	reader storage.Reader,
-	writer storage.Writer,
-	tsBatch *tse.TsRaftWriteBatch,
+	reader relational.Reader,
+	writer relational.Writer,
+	tsBatch *timeseries.TsRaftWriteBatch,
 	nextReplicaID roachpb.ReplicaID,
 	clearRangeIDLocalOnly bool,
 	mustUseClearRange bool,
@@ -213,7 +213,7 @@ func (r *Replica) destroyRaftMuLocked(ctx context.Context, nextReplicaID roachpb
 	ms := r.GetMVCCStats()
 	batch := r.Engine().NewWriteOnlyBatch()
 	defer batch.Close()
-	tsBatch := tse.NewTsRaftLogBatch(r.store.TsRaftLogEngine)
+	tsBatch := timeseries.NewTsRaftLogBatch(r.store.TsRaftLogEngine)
 	clearRangeIDLocalOnly := !r.IsInitialized()
 	if err := r.preDestroyRaftMuLocked(
 		ctx,
@@ -233,7 +233,7 @@ func (r *Replica) destroyRaftMuLocked(ctx context.Context, nextReplicaID roachpb
 	// a synchronous batch first and then delete the data alternatively, but
 	// then need to handle the case in which there is both the tombstone and
 	// leftover replica data.
-	if err := batch.Commit(true, storage.NormalCommitType); err != nil {
+	if err := batch.Commit(true, relational.NormalCommitType); err != nil {
 		return err
 	}
 	if tsBatch != nil {
@@ -324,7 +324,7 @@ func (r *Replica) disconnectReplicationRaftMuLocked(ctx context.Context) {
 // ID that it hasn't yet received a RangeDescriptor for if it receives raft
 // requests for that replica ID (as seen in #14231).
 func (r *Replica) setTombstoneKey(
-	ctx context.Context, writer storage.Writer, externalNextReplicaID roachpb.ReplicaID,
+	ctx context.Context, writer relational.Writer, externalNextReplicaID roachpb.ReplicaID,
 ) error {
 	r.mu.Lock()
 	nextReplicaID := r.mu.state.Desc.NextReplicaID
@@ -340,7 +340,7 @@ func (r *Replica) setTombstoneKey(
 
 func writeTombstoneKey(
 	ctx context.Context,
-	writer storage.Writer,
+	writer relational.Writer,
 	rangeID roachpb.RangeID,
 	nextReplicaID roachpb.ReplicaID,
 ) error {
@@ -349,6 +349,6 @@ func writeTombstoneKey(
 		NextReplicaID: nextReplicaID,
 	}
 	// "Blind" because ms == nil and timestamp == hlc.Timestamp{}.
-	return storage.MVCCBlindPutProto(ctx, writer, nil, tombstoneKey,
+	return relational.MVCCBlindPutProto(ctx, writer, nil, tombstoneKey,
 		hlc.Timestamp{}, tombstone, nil)
 }

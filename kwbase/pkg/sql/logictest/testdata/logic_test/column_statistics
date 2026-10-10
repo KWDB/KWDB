@@ -1,0 +1,122 @@
+# LogicTest: local
+
+statement ok
+CREATE DATABASE column_statistics_db
+
+statement ok
+SET DATABASE = column_statistics_db
+
+statement ok
+CREATE TABLE visible_stats (id INT PRIMARY KEY, value INT, category STRING)
+
+statement ok
+CREATE TABLE hidden_stats (id INT PRIMARY KEY, value INT)
+
+statement ok
+CREATE TABLE equi_height_stats (id INT PRIMARY KEY, value INT)
+
+statement count 5
+INSERT INTO visible_stats VALUES (1, 10, 'a'), (2, 10, 'a'), (3, 20, 'b'), (4, 30, 'c'), (5, NULL, 'c')
+
+statement count 2
+INSERT INTO hidden_stats VALUES (1, 1), (2, 2)
+
+statement count 400
+INSERT INTO equi_height_stats SELECT i, i FROM generate_series(1, 400) AS g(i)
+
+statement ok
+CREATE STATISTICS visible_value ON value FROM visible_stats
+
+statement ok
+CREATE STATISTICS hidden_value ON value FROM hidden_stats
+
+statement ok
+CREATE STATISTICS equi_height_value ON value FROM equi_height_stats
+
+query TTBTTTBB colnames
+SHOW COLUMNS FROM information_schema.column_statistics
+----
+column_name  data_type  is_nullable  column_default  generation_expression  indices  is_hidden  is_tag
+schema_name  STRING     false        NULL            ·                      {}       false      false
+table_name   STRING     false        NULL            ·                      {}       false      false
+column_name  STRING     false        NULL            ·                      {}       false      false
+histogram    JSONB      false        NULL            ·                      {}       false      false
+
+# The generated single-column histogram uses the supported MySQL JSON keys and
+# omits unavailable metadata.
+query TTTTIBB
+SELECT schema_name,
+       table_name,
+       column_name,
+       histogram->>'histogram-type',
+       (histogram->>'number-of-buckets-specified')::INT,
+       histogram ? 'sampling-rate',
+       histogram ? 'collation-id'
+  FROM information_schema.column_statistics
+ WHERE table_name = 'visible_stats'
+ ORDER BY column_name
+----
+public  visible_stats  value  singleton  3  false  false
+
+query BBT
+SELECT (histogram->>'null-values')::DECIMAL = 0.2,
+       jsonb_array_length(histogram->'buckets') > 0,
+       histogram->>'data-type'
+  FROM information_schema.column_statistics
+ WHERE table_name = 'visible_stats' AND column_name = 'value'
+----
+true  true  int
+
+# More distinct values than the histogram bucket limit produce an equi-height
+# histogram. The first bucket has equal display bounds, later buckets reuse the
+# preceding upper bound, cumulative frequencies increase, and the final one is 1.
+query TIBBBB
+SELECT histogram->>'histogram-type',
+       (histogram->>'number-of-buckets-specified')::INT,
+       histogram->'buckets'->0->>0 = histogram->'buckets'->0->>1,
+       histogram->'buckets'->0->>1 = histogram->'buckets'->1->>0,
+       (histogram->'buckets'->1->>2)::DECIMAL > (histogram->'buckets'->0->>2)::DECIMAL,
+       (histogram->'buckets'->199->>2)::DECIMAL = 1
+  FROM information_schema.column_statistics
+ WHERE table_name = 'equi_height_stats' AND column_name = 'value'
+----
+equi-height  200  true  true  true  true
+
+# A newer statistic for the same column replaces the older display row.
+statement count 1
+INSERT INTO visible_stats VALUES (6, 40, 'd')
+
+statement ok
+CREATE STATISTICS visible_value_new ON value FROM visible_stats
+
+query IB
+SELECT count(*),
+       (min((histogram->>'null-values')::DECIMAL) < 0.17 AND
+        min((histogram->>'null-values')::DECIMAL) > 0.16)
+  FROM information_schema.column_statistics
+ WHERE table_name = 'visible_stats' AND column_name = 'value'
+----
+1  true
+
+statement ok
+GRANT SELECT ON visible_stats TO testuser
+
+user testuser
+
+statement ok
+SET DATABASE = column_statistics_db
+
+# Table visibility applies before statistics are read, so a non-admin user
+# cannot discover histograms belonging to an inaccessible table.
+query TT
+SELECT table_name, column_name
+  FROM information_schema.column_statistics
+ WHERE table_name IN ('visible_stats', 'hidden_stats')
+ ORDER BY table_name, column_name
+----
+visible_stats  value
+
+user root
+
+statement ok
+DROP DATABASE column_statistics_db CASCADE

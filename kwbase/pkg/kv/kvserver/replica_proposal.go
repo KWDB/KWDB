@@ -48,8 +48,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/limit"
@@ -498,7 +498,7 @@ func (r *Replica) leasePostApply(ctx context.Context, newLease roachpb.Lease, pe
 func addSSTablePreApply(
 	ctx context.Context,
 	st *cluster.Settings,
-	eng storage.Engine,
+	eng relational.Engine,
 	sideloaded SideloadStorage,
 	term, index uint64,
 	sst storagepb.ReplicatedEvalResult_AddSSTable,
@@ -579,7 +579,7 @@ func addSSTablePreApply(
 				// going to be surfaced.
 				ingestErrMsg := ingestErr.Error()
 				isSeqNoErr := strings.Contains(ingestErrMsg, seqNoMsg) || strings.Contains(ingestErrMsg, seqNoOnReIngest)
-				if _, ok := ingestErr.(*storage.Error); !ok || !isSeqNoErr {
+				if _, ok := ingestErr.(*relational.Error); !ok || !isSeqNoErr {
 					log.Fatalf(ctx, "while ingesting %s: %s", ingestPath, ingestErr)
 				}
 			}
@@ -827,8 +827,8 @@ func (r *Replica) evaluateProposalTS(
 		}
 	}
 	res.Replicated.Delta = ms.ToStatsDelta()
-	_ = clusterversion.VersionContainsEstimatesCounter // see for info on ContainsEstimates migration
-	if r.ClusterSettings().Version.IsActive(ctx, clusterversion.VersionContainsEstimatesCounter) {
+	_ = clusterversion.VersionMinSupported // see for info on ContainsEstimates migration
+	if r.ClusterSettings().Version.IsActive(ctx, clusterversion.VersionMinSupported) {
 		// Encode that this command (and any that follow) uses regular arithmetic for ContainsEstimates
 		// by making sure ContainsEstimates is > 1.
 		// This will be interpreted during command application.
@@ -944,8 +944,8 @@ func (r *Replica) evaluateProposal(
 		res.Replicated.Timestamp = ba.Timestamp
 		res.Replicated.Delta = ms.ToStatsDelta()
 
-		_ = clusterversion.VersionContainsEstimatesCounter // see for info on ContainsEstimates migration
-		if r.ClusterSettings().Version.IsActive(ctx, clusterversion.VersionContainsEstimatesCounter) {
+		_ = clusterversion.VersionMinSupported // see for info on ContainsEstimates migration
+		if r.ClusterSettings().Version.IsActive(ctx, clusterversion.VersionMinSupported) {
 			// Encode that this command (and any that follow) uses regular arithmetic for ContainsEstimates
 			// by making sure ContainsEstimates is > 1.
 			// This will be interpreted during command application.

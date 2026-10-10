@@ -799,12 +799,11 @@ Also, if you use equal signs in the file path to a store, you must use the
 	StorageEngine = FlagInfo{
 		Name: "storage-engine",
 		Description: `
-Storage engine to use for all stores on this kwbase node. Options are default,
-rocksdb, or pebble.
+Storage engine to use for all stores on this kwbase node. Options are default or
+rocksdb.
 
-If default is specified, the storage engine last used to write to the first
-store directory is used (see --store). If the store directory is uninitialized
-and default is specified, rocksdb is used as the default storage engine.`,
+If default is specified, rocksdb is used. The pebble and pebble+rocksdb storage
+engines have been removed.`,
 	}
 
 	Size = FlagInfo{

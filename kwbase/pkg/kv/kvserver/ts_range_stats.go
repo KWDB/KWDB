@@ -33,8 +33,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/pkg/errors"
 )
@@ -44,7 +44,9 @@ import (
 var tsRangeDataVolumeHook func(desc *roachpb.RangeDescriptor) (uint64, error)
 
 // tsRangeDataVolume returns the logical data volume for a TS_RANGE from TsEngine.
-func tsRangeDataVolume(tsEngine *tse.TsEngine, desc *roachpb.RangeDescriptor) (uint64, error) {
+func tsRangeDataVolume(
+	tsEngine *timeseries.TsEngine, desc *roachpb.RangeDescriptor,
+) (uint64, error) {
 	if fn := tsRangeDataVolumeHook; fn != nil {
 		return fn(desc)
 	}
@@ -101,7 +103,7 @@ func recordTSRangeStatsDataVolumeFallback(
 func correctTSRangeMVCCStatsFromDataVolume(
 	ctx context.Context,
 	sm *StoreMetrics,
-	tsEngine *tse.TsEngine,
+	tsEngine *timeseries.TsEngine,
 	desc *roachpb.RangeDescriptor,
 	stats *enginepb.MVCCStats,
 ) bool {

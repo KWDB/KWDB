@@ -40,9 +40,9 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagepb"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
@@ -130,7 +130,7 @@ func (r *Replica) raftEntriesLocked(lo, hi, maxBytes uint64) ([]raftpb.Entry, er
 func entries(
 	ctx context.Context,
 	rsl stateloader.StateLoader,
-	reader storage.Reader,
+	reader relational.Reader,
 	rangeID roachpb.RangeID,
 	eCache *raftentry.Cache,
 	sideloaded SideloadStorage,
@@ -253,17 +253,17 @@ func entries(
 
 func iterateEntries(
 	ctx context.Context,
-	reader storage.Reader,
+	reader relational.Reader,
 	rangeID roachpb.RangeID,
 	lo, hi uint64,
 	scanFunc func(roachpb.KeyValue) (bool, error),
 ) error {
-	_, err := storage.MVCCIterate(
+	_, err := relational.MVCCIterate(
 		ctx, reader,
 		keys.RaftLogKey(rangeID, lo),
 		keys.RaftLogKey(rangeID, hi),
 		hlc.Timestamp{},
-		storage.MVCCScanOptions{},
+		relational.MVCCScanOptions{},
 		scanFunc,
 	)
 	return err
@@ -272,8 +272,8 @@ func iterateEntries(
 func tsEntries(
 	ctx context.Context,
 	rsl stateloader.StateLoader,
-	raftLogEngine *tse.TsRaftLogEngine,
-	reader storage.Reader,
+	raftLogEngine *timeseries.TsRaftLogEngine,
+	reader relational.Reader,
 	rangeID roachpb.RangeID,
 	eCache *raftentry.Cache,
 	sideloaded SideloadStorage,
@@ -330,7 +330,7 @@ func tsEntries(
 			exceededMaxBytes = true
 			if len(ents) > 0 {
 				log.Infof(ctx, "%d have exceeded max bytes %d", size, maxBytes)
-				return tse.ErrExceedMaxBytes
+				return timeseries.ErrExceedMaxBytes
 			}
 		}
 		ents = append(ents, ent)
@@ -339,7 +339,7 @@ func tsEntries(
 	}
 	var err error
 	err = raftLogEngine.GetRaftLog(uint64(rangeID), expectedIndex, hi, transfer)
-	if err != nil && err != tse.ErrExceedMaxBytes {
+	if err != nil && err != timeseries.ErrExceedMaxBytes {
 		log.Infof(ctx, "failed get raft log for index %d, err: %s", expectedIndex, err)
 		return nil, raft.ErrUnavailable
 	}
@@ -433,7 +433,7 @@ func (r *Replica) raftTermRLocked(i uint64) (uint64, error) {
 func term(
 	ctx context.Context,
 	rsl stateloader.StateLoader,
-	reader storage.Reader,
+	reader relational.Reader,
 	rangeID roachpb.RangeID,
 	eCache *raftentry.Cache,
 	i uint64,
@@ -462,8 +462,8 @@ func term(
 func tsTerm(
 	ctx context.Context,
 	rsl stateloader.StateLoader,
-	raftLogEngine *tse.TsRaftLogEngine,
-	reader storage.Reader,
+	raftLogEngine *timeseries.TsRaftLogEngine,
+	reader relational.Reader,
 	rangeID roachpb.RangeID,
 	eCache *raftentry.Cache,
 	i uint64,
@@ -531,7 +531,7 @@ func (r *Replica) raftTruncatedStateLocked(
 }
 
 // LoadTsLastIndex get the latest raftlog of the specified rangeID.
-func (r *Replica) LoadTsLastIndex(ctx context.Context, reader storage.Reader) (uint64, error) {
+func (r *Replica) LoadTsLastIndex(ctx context.Context, reader relational.Reader) (uint64, error) {
 	index, err := r.store.TsRaftLogEngine.GetLastIndex(uint64(r.RangeID))
 	if err == nil {
 		log.VEventf(ctx, 3, "get last index from ts: %d", index)
@@ -564,7 +564,7 @@ func (r *Replica) GetTsTruncateState(ctx context.Context) (roachpb.RaftTruncated
 
 // SetTsHardState set hard state.
 func (r *Replica) SetTsHardState(
-	ctx context.Context, hs raftpb.HardState, batch *tse.TsRaftWriteBatch,
+	ctx context.Context, hs raftpb.HardState, batch *timeseries.TsRaftWriteBatch,
 ) error {
 	var value roachpb.Value
 	if err := value.SetProto(&hs); err != nil {
@@ -577,7 +577,7 @@ func (r *Replica) SetTsHardState(
 
 // LoadTsHardState get the state raftlog of the specified rangeID.
 func (r *Replica) LoadTsHardState(
-	ctx context.Context, reader storage.Reader,
+	ctx context.Context, reader relational.Reader,
 ) (raftpb.HardState, error) {
 	var value roachpb.Value
 	var hs raftpb.HardState
@@ -835,7 +835,7 @@ type OutgoingSnapshot struct {
 	// The Raft snapshot message to send. Contains SnapUUID as its data.
 	RaftSnap raftpb.Snapshot
 	// The RocksDB snapshot that will be streamed from.
-	EngineSnap storage.Reader
+	EngineSnap relational.Reader
 	// The complete range iterator for the snapshot to stream.
 	Iter *rditer.ReplicaDataIterator
 	// The replica state within the snapshot.
@@ -900,7 +900,7 @@ func snapshot(
 	snapUUID uuid.UUID,
 	rsl stateloader.StateLoader,
 	snapType SnapshotRequest_Type,
-	snap storage.Reader,
+	snap relational.Reader,
 	rangeID roachpb.RangeID,
 	eCache *raftentry.Cache,
 	withSideloaded func(func(SideloadStorage) error) error,
@@ -910,8 +910,8 @@ func snapshot(
 	// We ignore intents on the range descriptor (consistent=false) because we
 	// know they cannot be committed yet; operations that modify range
 	// descriptors resolve their own intents when they commit.
-	ok, err := storage.MVCCGetProto(ctx, snap, keys.RangeDescriptorKey(startKey),
-		hlc.MaxTimestamp, &desc, storage.MVCCGetOptions{Inconsistent: true})
+	ok, err := relational.MVCCGetProto(ctx, snap, keys.RangeDescriptorKey(startKey),
+		hlc.MaxTimestamp, &desc, relational.MVCCGetOptions{Inconsistent: true})
 	if err != nil {
 		return OutgoingSnapshot{}, errors.Errorf("failed to get desc: %s", err)
 	}
@@ -969,20 +969,20 @@ func tsSnapshot(
 	tsSnapshotID uint64,
 	rsl stateloader.StateLoader,
 	snapType SnapshotRequest_Type,
-	snap storage.Reader,
-	raftLogEngine *tse.TsRaftLogEngine,
+	snap relational.Reader,
+	raftLogEngine *timeseries.TsRaftLogEngine,
 	rangeID roachpb.RangeID,
 	eCache *raftentry.Cache,
 	withSideloaded func(func(SideloadStorage) error) error,
 	startKey roachpb.RKey,
-	eng storage.Engine,
+	eng relational.Engine,
 ) (OutgoingSnapshot, error) {
 	var desc roachpb.RangeDescriptor
 	// We ignore intents on the range descriptor (consistent=false) because we
 	// know they cannot be committed yet; operations that modify range
 	// descriptors resolve their own intents when they commit.
-	ok, err := storage.MVCCGetProto(ctx, snap, keys.RangeDescriptorKey(startKey),
-		hlc.MaxTimestamp, &desc, storage.MVCCGetOptions{Inconsistent: true})
+	ok, err := relational.MVCCGetProto(ctx, snap, keys.RangeDescriptorKey(startKey),
+		hlc.MaxTimestamp, &desc, relational.MVCCGetOptions{Inconsistent: true})
 	if err != nil {
 		return OutgoingSnapshot{}, errors.Errorf("failed to get desc: %s", err)
 	}
@@ -1019,7 +1019,7 @@ func tsSnapshot(
 	defer iterator.Close()
 
 	var batchData [][]byte
-	var batch storage.Batch
+	var batch relational.Batch
 	const batchSize = 256 << 10 // 256 KB
 	for iter := iterator; ; iter.Next() {
 		if ok, err := iter.Valid(); err != nil {
@@ -1089,7 +1089,7 @@ func tsSnapshot(
 // engine.ReadWriter must be passed in.
 func (r *Replica) append(
 	ctx context.Context,
-	writer storage.Writer,
+	writer relational.Writer,
 	prevLastIndex uint64,
 	prevLastTerm uint64,
 	prevRaftLogSize int64,
@@ -1110,15 +1110,15 @@ func (r *Replica) append(
 		value.InitChecksum(key)
 		var err error
 		if ent.Index > prevLastIndex {
-			err = storage.MVCCBlindPut(ctx, writer, &diff, key, hlc.Timestamp{}, value, nil /* txn */)
+			err = relational.MVCCBlindPut(ctx, writer, &diff, key, hlc.Timestamp{}, value, nil /* txn */)
 		} else {
 			// We type assert `writer` to also be an engine.ReadWriter only in
 			// the case where we're replacing existing entries.
-			eng, ok := writer.(storage.ReadWriter)
+			eng, ok := writer.(relational.ReadWriter)
 			if !ok {
 				panic("expected writer to be a engine.ReadWriter when overwriting log entries")
 			}
-			err = storage.MVCCPut(ctx, eng, &diff, key, hlc.Timestamp{}, value, nil /* txn */)
+			err = relational.MVCCPut(ctx, eng, &diff, key, hlc.Timestamp{}, value, nil /* txn */)
 		}
 		if err != nil {
 			return 0, 0, 0, err
@@ -1131,14 +1131,14 @@ func (r *Replica) append(
 	if prevLastIndex > 0 {
 		// We type assert `writer` to also be an engine.ReadWriter only in the
 		// case where we're deleting existing entries.
-		eng, ok := writer.(storage.ReadWriter)
+		eng, ok := writer.(relational.ReadWriter)
 		if !ok {
 			panic("expected writer to be a engine.ReadWriter when deleting log entries")
 		}
 		for i := lastIndex + 1; i <= prevLastIndex; i++ {
 			// Note that the caller is in charge of deleting any sideloaded payloads
 			// (which they must only do *after* the batch has committed).
-			err := storage.MVCCDelete(ctx, eng, &diff, r.raftMu.stateLoader.RaftLogKey(i),
+			err := relational.MVCCDelete(ctx, eng, &diff, r.raftMu.stateLoader.RaftLogKey(i),
 				hlc.Timestamp{}, nil /* txn */)
 			if err != nil {
 				return 0, 0, 0, err
@@ -1155,7 +1155,7 @@ func (r *Replica) appendTs(
 	prevLastTerm uint64,
 	prevRaftLogSize int64,
 	entries []raftpb.Entry,
-	batch *tse.TsRaftWriteBatch,
+	batch *timeseries.TsRaftWriteBatch,
 ) (uint64, uint64, int64, error) {
 	if len(entries) == 0 {
 		return prevLastIndex, prevLastTerm, prevRaftLogSize, nil
@@ -1235,9 +1235,9 @@ func (r *Replica) updateRangeInfo(desc *roachpb.RangeDescriptor) error {
 // range.
 func clearRangeData(
 	desc *roachpb.RangeDescriptor,
-	reader storage.Reader,
-	writer storage.Writer,
-	tsBatch *tse.TsRaftWriteBatch,
+	reader relational.Reader,
+	writer relational.Writer,
+	tsBatch *timeseries.TsRaftWriteBatch,
 	rangeIDLocalOnly bool,
 	mustClearRange bool,
 ) error {
@@ -1247,13 +1247,13 @@ func clearRangeData(
 	} else {
 		keyRanges = rditer.MakeAllKeyRanges(desc)
 	}
-	var clearRangeFn func(storage.Reader, storage.Writer, roachpb.Key, roachpb.Key) error
+	var clearRangeFn func(relational.Reader, relational.Writer, roachpb.Key, roachpb.Key) error
 	if mustClearRange {
-		clearRangeFn = func(reader storage.Reader, writer storage.Writer, start, end roachpb.Key) error {
-			return writer.ClearRange(storage.MakeMVCCMetadataKey(start), storage.MakeMVCCMetadataKey(end))
+		clearRangeFn = func(reader relational.Reader, writer relational.Writer, start, end roachpb.Key) error {
+			return writer.ClearRange(relational.MakeMVCCMetadataKey(start), relational.MakeMVCCMetadataKey(end))
 		}
 	} else {
-		clearRangeFn = storage.ClearRangeWithHeuristic
+		clearRangeFn = relational.ClearRangeWithHeuristic
 	}
 
 	for _, keyRange := range keyRanges {
@@ -1385,22 +1385,22 @@ func (r *Replica) applySnapshot(
 			inSnap.SnapUUID.Short(), snap.Metadata.Index)
 	}(timeutil.Now())
 
-	unreplicatedSSTFile := &storage.MemFile{}
-	unreplicatedSST := storage.MakeIngestionSSTWriter(unreplicatedSSTFile)
+	unreplicatedSSTFile := &relational.MemFile{}
+	unreplicatedSST := relational.MakeIngestionSSTWriter(unreplicatedSSTFile)
 	defer unreplicatedSST.Close()
 
 	// Clearing the unreplicated state.
 	unreplicatedPrefixKey := keys.MakeRangeIDUnreplicatedPrefix(r.RangeID)
-	unreplicatedStart := storage.MakeMVCCMetadataKey(unreplicatedPrefixKey)
-	unreplicatedEnd := storage.MakeMVCCMetadataKey(unreplicatedPrefixKey.PrefixEnd())
+	unreplicatedStart := relational.MakeMVCCMetadataKey(unreplicatedPrefixKey)
+	unreplicatedEnd := relational.MakeMVCCMetadataKey(unreplicatedPrefixKey.PrefixEnd())
 	if err = unreplicatedSST.ClearRange(unreplicatedStart, unreplicatedEnd); err != nil {
 		return errors.Wrapf(err, "error clearing range of unreplicated SST writer")
 	}
 
 	// Update HardState.
-	var tsBatch *tse.TsRaftWriteBatch
+	var tsBatch *timeseries.TsRaftWriteBatch
 	if inSnap.IsTSSnapshot && r.store.TsRaftLogEngine != nil {
-		tsBatch = tse.NewTsRaftLogBatch(r.store.TsRaftLogEngine)
+		tsBatch = timeseries.NewTsRaftLogBatch(r.store.TsRaftLogEngine)
 		if err := r.SetTsHardState(ctx, hs, tsBatch); err != nil {
 			return errors.Wrapf(err, "unable to write HardState to ts raft store")
 		}
@@ -1559,7 +1559,7 @@ func (r *Replica) applySnapshot(
 		r.mu.inconsistent = false
 	}
 	// set tsFlushedIndex
-	if inSnap.IsTSSnapshot && tse.TsRaftLogCombineWAL.Get(&r.store.ClusterSettings().SV) {
+	if inSnap.IsTSSnapshot && timeseries.TsRaftLogCombineWAL.Get(&r.store.ClusterSettings().SV) {
 		if r.mu.tsFlushedIndex < s.TruncatedState.Index {
 			r.mu.tsFlushedIndex = s.TruncatedState.Index
 			if err := r.mu.stateLoader.SetTsFlushedIndex(ctx, r.store.Engine(), s.TruncatedState.Index); err != nil {
@@ -1631,11 +1631,11 @@ func (r *Replica) clearSubsumedReplicaDiskData(
 	}
 	keyRanges := getKeyRanges(desc)
 	totalKeyRanges := append([]rditer.KeyRange(nil), keyRanges[:]...)
-	tsBatch := tse.NewTsRaftLogBatch(r.store.TsRaftLogEngine)
+	tsBatch := timeseries.NewTsRaftLogBatch(r.store.TsRaftLogEngine)
 	for _, sr := range subsumedRepls {
 		// We have to create an SST for the subsumed replica's range-id local keys.
-		subsumedReplSSTFile := &storage.MemFile{}
-		subsumedReplSST := storage.MakeIngestionSSTWriter(subsumedReplSSTFile)
+		subsumedReplSSTFile := &relational.MemFile{}
+		subsumedReplSST := relational.MakeIngestionSSTWriter(subsumedReplSSTFile)
 		defer subsumedReplSST.Close()
 		// NOTE: We set mustClearRange to true because we are setting
 		// RangeTombstoneKey. Since Clears and Puts need to be done in increasing
@@ -1696,10 +1696,10 @@ func (r *Replica) clearSubsumedReplicaDiskData(
 	// subsume both r1 and r2 in S1.
 	for i := range keyRanges {
 		if totalKeyRanges[i].End.Key.Compare(keyRanges[i].End.Key) > 0 {
-			subsumedReplSSTFile := &storage.MemFile{}
-			subsumedReplSST := storage.MakeIngestionSSTWriter(subsumedReplSSTFile)
+			subsumedReplSSTFile := &relational.MemFile{}
+			subsumedReplSST := relational.MakeIngestionSSTWriter(subsumedReplSSTFile)
 			defer subsumedReplSST.Close()
-			if err := storage.ClearRangeWithHeuristic(
+			if err := relational.ClearRangeWithHeuristic(
 				r.store.Engine(),
 				&subsumedReplSST,
 				keyRanges[i].End.Key,

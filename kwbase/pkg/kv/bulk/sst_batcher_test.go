@@ -41,8 +41,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagebase"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
@@ -52,9 +52,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func makeIntTableKVs(numKeys, valueSize, maxRevisions int) []storage.MVCCKeyValue {
+func makeIntTableKVs(numKeys, valueSize, maxRevisions int) []relational.MVCCKeyValue {
 	prefix := encoding.EncodeUvarintAscending(keys.MakeTablePrefix(uint32(100)), uint64(1))
-	kvs := make([]storage.MVCCKeyValue, numKeys)
+	kvs := make([]relational.MVCCKeyValue, numKeys)
 	r, _ := randutil.NewPseudoRand()
 
 	var k int
@@ -78,8 +78,8 @@ func makeIntTableKVs(numKeys, valueSize, maxRevisions int) []storage.MVCCKeyValu
 	return kvs
 }
 
-func makeRocksSST(t testing.TB, kvs []storage.MVCCKeyValue) []byte {
-	w, err := storage.MakeRocksDBSstFileWriter()
+func makeRocksSST(t testing.TB, kvs []relational.MVCCKeyValue) []byte {
+	w, err := relational.MakeRocksDBSstFileWriter()
 	require.NoError(t, err)
 	defer w.Close()
 

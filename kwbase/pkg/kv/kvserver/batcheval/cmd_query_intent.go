@@ -30,7 +30,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/batcheval/result"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/spanset"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 )
@@ -61,7 +61,7 @@ func declareKeysQueryIntent(
 // request is special-cased to return a SERIALIZABLE retry error if a transaction
 // queries its own intent and finds it has been pushed.
 func QueryIntent(
-	ctx context.Context, reader storage.Reader, cArgs CommandArgs, resp roachpb.Response,
+	ctx context.Context, reader relational.Reader, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
 	args := cArgs.Args.(*roachpb.QueryIntentRequest)
 	h := cArgs.Header
@@ -70,7 +70,7 @@ func QueryIntent(
 	// Read at the specified key at the maximum timestamp. This ensures that we
 	// see an intent if one exists, regardless of what timestamp it is written
 	// at.
-	_, intent, err := storage.MVCCGet(ctx, reader, args.Key, hlc.MaxTimestamp, storage.MVCCGetOptions{
+	_, intent, err := relational.MVCCGet(ctx, reader, args.Key, hlc.MaxTimestamp, relational.MVCCGetOptions{
 		// Perform an inconsistent read so that intents are returned instead of
 		// causing WriteIntentErrors.
 		Inconsistent: true,

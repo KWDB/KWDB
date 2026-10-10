@@ -55,8 +55,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/rpc/nodedialer"
 	"gitee.com/kwbasedb/kwbase/pkg/server"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/skip"
@@ -144,9 +144,9 @@ func TestStoreRangeMergeTwoEmptyRanges(t *testing.T) {
 	}
 }
 
-func getEngineKeySet(t *testing.T, e storage.Engine) map[string]struct{} {
+func getEngineKeySet(t *testing.T, e relational.Engine) map[string]struct{} {
 	t.Helper()
-	kvs, err := storage.Scan(e, roachpb.KeyMin, roachpb.KeyMax, 0 /* max */)
+	kvs, err := relational.Scan(e, roachpb.KeyMin, roachpb.KeyMax, 0 /* max */)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -334,8 +334,8 @@ func mergeWithData(t *testing.T, retries int64) {
 
 	// Verify no intents remains on range descriptor keys.
 	for _, key := range []roachpb.Key{keys.RangeDescriptorKey(lhsDesc.StartKey), keys.RangeDescriptorKey(rhsDesc.StartKey)} {
-		if _, _, err := storage.MVCCGet(
-			ctx, store.Engine(), key, store.Clock().Now(), storage.MVCCGetOptions{},
+		if _, _, err := relational.MVCCGet(
+			ctx, store.Engine(), key, store.Clock().Now(), relational.MVCCGetOptions{},
 		); err != nil {
 			t.Fatal(err)
 		}
@@ -1748,11 +1748,11 @@ func TestStoreReplicaGCAfterMerge(t *testing.T) {
 	})
 
 	// Be extra paranoid and verify the exact value of the replica tombstone.
-	checkTombstone := func(eng storage.Engine) {
+	checkTombstone := func(eng relational.Engine) {
 		var rhsTombstone roachpb.RangeTombstone
 		rhsTombstoneKey := keys.RangeTombstoneKey(rhsDesc.RangeID)
-		ok, err = storage.MVCCGetProto(ctx, eng, rhsTombstoneKey, hlc.Timestamp{},
-			&rhsTombstone, storage.MVCCGetOptions{})
+		ok, err = relational.MVCCGetProto(ctx, eng, rhsTombstoneKey, hlc.Timestamp{},
+			&rhsTombstone, relational.MVCCGetOptions{})
 		if err != nil {
 			t.Fatal(err)
 		} else if !ok {
@@ -2839,7 +2839,7 @@ func TestStoreRangeMergeRaftSnapshot(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
 	// We will be testing the SSTs written on store2's engine.
-	var receivingEng, sendingEng storage.Engine
+	var receivingEng, sendingEng relational.Engine
 	ctx := context.Background()
 	storeCfg := kvserver.TestStoreConfig(nil)
 	storeCfg.TestingKnobs.DisableReplicateQueue = true
@@ -2898,8 +2898,8 @@ func TestStoreRangeMergeRaftSnapshot(t *testing.T) {
 		// Write a range deletion tombstone to each of the SSTs then put in the
 		// kv entries from the sender of the snapshot.
 		for _, r := range keyRanges {
-			sstFile := &storage.MemFile{}
-			sst := storage.MakeIngestionSSTWriter(sstFile)
+			sstFile := &relational.MemFile{}
+			sst := relational.MakeIngestionSSTWriter(sstFile)
 			if err := sst.ClearRange(r.Start, r.End); err != nil {
 				return err
 			}
@@ -2929,8 +2929,8 @@ func TestStoreRangeMergeRaftSnapshot(t *testing.T) {
 		// Construct SSTs #5 and #6: range-id local keys of subsumed replicas
 		// with RangeIDs 3 and 4.
 		for _, rangeID := range []roachpb.RangeID{roachpb.RangeID(3), roachpb.RangeID(4)} {
-			sstFile := &storage.MemFile{}
-			sst := storage.MakeIngestionSSTWriter(sstFile)
+			sstFile := &relational.MemFile{}
+			sst := relational.MakeIngestionSSTWriter(sstFile)
 			defer sst.Close()
 			r := rditer.MakeRangeIDLocalKeyRange(rangeID, false /* replicatedOnly */)
 			if err := sst.ClearRange(r.Start, r.End); err != nil {
@@ -2938,7 +2938,7 @@ func TestStoreRangeMergeRaftSnapshot(t *testing.T) {
 			}
 			tombstoneKey := keys.RangeTombstoneKey(rangeID)
 			tombstoneValue := &roachpb.RangeTombstone{NextReplicaID: math.MaxInt32}
-			if err := storage.MVCCBlindPutProto(context.TODO(), &sst, nil, tombstoneKey, hlc.Timestamp{}, tombstoneValue, nil); err != nil {
+			if err := relational.MVCCBlindPutProto(context.TODO(), &sst, nil, tombstoneKey, hlc.Timestamp{}, tombstoneValue, nil); err != nil {
 				return err
 			}
 			err := sst.Finish()
@@ -2949,15 +2949,15 @@ func TestStoreRangeMergeRaftSnapshot(t *testing.T) {
 		}
 
 		// Construct SST #7: user key range of subsumed replicas.
-		sstFile := &storage.MemFile{}
-		sst := storage.MakeIngestionSSTWriter(sstFile)
+		sstFile := &relational.MemFile{}
+		sst := relational.MakeIngestionSSTWriter(sstFile)
 		defer sst.Close()
 		desc := roachpb.RangeDescriptor{
 			StartKey: roachpb.RKey("d"),
 			EndKey:   roachpb.RKeyMax,
 		}
 		r := rditer.MakeUserKeyRange(&desc)
-		if err := storage.ClearRangeWithHeuristic(receivingEng, &sst, r.Start.Key, r.End.Key); err != nil {
+		if err := relational.ClearRangeWithHeuristic(receivingEng, &sst, r.Start.Key, r.End.Key); err != nil {
 			return err
 		}
 		err := sst.Finish()

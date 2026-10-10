@@ -167,7 +167,7 @@ func (ms MetadataSchema) GetInitialValues(
 		// need to support the deprecated namespace table. Note that we only
 		// bootstrap the initial data in code in 20.1 without 20.1 as the active
 		// version for testing.
-		if bootstrapVersion.IsActive(clusterversion.VersionNamespaceTableWithSchemas) {
+		if bootstrapVersion.IsActive(clusterversion.VersionMinSupported) {
 			if parentID != keys.RootNamespaceID {
 				ret = append(ret, roachpb.KeyValue{
 					Key:   NewPublicTableKey(parentID, desc.GetName()).Key(),
@@ -298,7 +298,7 @@ func LookupSystemTableDescriptorID(
 	}
 
 	if settings != nil &&
-		!settings.Version.IsActive(ctx, clusterversion.VersionNamespaceTableWithSchemas) &&
+		!settings.Version.IsActive(ctx, clusterversion.VersionMinSupported) &&
 		tableName == NamespaceTableName {
 		return DeprecatedNamespaceTable.ID
 	}

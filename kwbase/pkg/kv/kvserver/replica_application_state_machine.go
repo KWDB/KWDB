@@ -39,9 +39,9 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
@@ -360,7 +360,7 @@ func (sm *replicaStateMachine) NewBatch(ephemeral bool) apply.Batch {
 	b.r = r
 	b.sm = sm
 	b.batch = r.store.engine.NewBatch()
-	b.tsBatch = tse.NewTsRaftLogBatch(r.store.TsRaftLogEngine)
+	b.tsBatch = timeseries.NewTsRaftLogBatch(r.store.TsRaftLogEngine)
 	r.mu.RLock()
 	b.state = r.mu.state
 	b.state.Stats = &b.stats
@@ -382,9 +382,9 @@ type replicaAppBatch struct {
 	sm *replicaStateMachine
 
 	// batch accumulates writes implied by the raft entries in this batch.
-	batch storage.Batch
+	batch relational.Batch
 	// tsBatch write ts raft log with TsRaftLogEngine
-	tsBatch *tse.TsRaftWriteBatch
+	tsBatch *timeseries.TsRaftWriteBatch
 	// state is this batch's view of the replica's state. It is copied from
 	// under the Replica.mu when the batch is initialized and is updated in
 	// stageTrivialReplicatedEvalResult.
@@ -644,7 +644,7 @@ func (b *replicaAppBatch) stageWriteBatch(ctx context.Context, cmd *replicatedCm
 	if wb == nil {
 		return nil
 	}
-	if mutations, err := storage.RocksDBBatchCount(wb.Data); err != nil {
+	if mutations, err := relational.RocksDBBatchCount(wb.Data); err != nil {
 		log.Errorf(ctx, "unable to read header of committed WriteBatch: %+v", err)
 	} else {
 		b.mutations += mutations
@@ -710,8 +710,8 @@ func (r *Replica) stageTsBatchRequest(
 		case *roachpb.TsPutTagRequest:
 			{
 				var payload [][]byte
-				var dedupResult tse.DedupResult
-				var entitiesAffect tse.EntitiesAffect
+				var dedupResult timeseries.DedupResult
+				var entitiesAffect timeseries.EntitiesAffect
 				payload = append(payload, req.Value.RawBytes)
 				if payload != nil {
 					var tsTransactionID []byte
@@ -766,8 +766,8 @@ func (r *Replica) stageTsBatchRequest(
 			}
 		case *roachpb.TsRowPutRequest:
 			{
-				var dedupResult tse.DedupResult
-				var entitiesAffect tse.EntitiesAffect
+				var dedupResult timeseries.DedupResult
+				var entitiesAffect timeseries.EntitiesAffect
 				if req.Values != nil {
 					var tsTransactionID []byte
 					// When TsTransaction is not nil, it indicates that atomicity is enabled,
@@ -1250,7 +1250,7 @@ func (b *replicaAppBatch) stageTrivialReplicatedEvalResult(
 	// has used the old cluster version: it's when the incoming
 	// ContainsEstimates is 1. If so, we need to assume that an old node is processing
 	// the same commands (as `true + true = true`), so make sure that `1 + 1 = 1`.
-	_ = clusterversion.VersionContainsEstimatesCounter // see for info on ContainsEstimates migration
+	_ = clusterversion.VersionMinSupported // see for info on ContainsEstimates migration
 	deltaStats := res.Delta.ToStats()
 	if deltaStats.ContainsEstimates == 1 && b.state.Stats.ContainsEstimates == 1 {
 		deltaStats.ContainsEstimates = 0
@@ -1315,7 +1315,7 @@ func (b *replicaAppBatch) ApplyToStateMachine(ctx context.Context) error {
 	// before ensuring that the replica's data has been synchronously removed.
 	// See handleChangeReplicasResult().
 	sync := b.changeRemovesReplica
-	if err := b.batch.Commit(sync, storage.NormalCommitType); err != nil {
+	if err := b.batch.Commit(sync, relational.NormalCommitType); err != nil {
 		return wrapWithNonDeterministicFailure(err, "unable to commit Raft entry batch")
 	}
 	if b.tsBatch != nil {
@@ -1517,7 +1517,7 @@ func (sm *replicaStateMachine) ApplySideEffects(
 	// Note that this must happen after committing (the engine.Batch), but
 	// before notifying a potentially waiting client.
 	if cmd.replicatedResult().Split != nil {
-		log.Infof(ctx, "%v", cmd)
+		log.VEventf(ctx, 5, "cmd.replicatedResult split")
 	}
 	clearTrivialReplicatedEvalResultFields(cmd.replicatedResult())
 	if !cmd.IsTrivial() {

@@ -28,7 +28,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlutil"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util/ctxgroup"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -827,7 +827,7 @@ func (s *streamReaderProcessor) needResendLastWindow() bool {
 		return false
 	}
 
-	deRule := tse.DeDuplicateRule.Get(&s.FlowCtx.Cfg.Settings.SV)
+	deRule := timeseries.DeDuplicateRule.Get(&s.FlowCtx.Cfg.Settings.SV)
 	if deRule != "merge" && deRule != "override" {
 		return false
 	}

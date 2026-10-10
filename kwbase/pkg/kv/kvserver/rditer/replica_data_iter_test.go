@@ -33,7 +33,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/spanset"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
@@ -78,8 +78,8 @@ func uuidFromString(input string) uuid.UUID {
 // the key space. Returns a slice of the encoded keys of all created
 // data.
 func createRangeData(
-	t *testing.T, eng storage.Engine, desc roachpb.RangeDescriptor,
-) []storage.MVCCKey {
+	t *testing.T, eng relational.Engine, desc roachpb.RangeDescriptor,
+) []relational.MVCCKey {
 	testTxnID := uuidFromString("0ce61c17-5eb4-4587-8c36-dcf4062ada4c")
 	testTxnID2 := uuidFromString("9855a1ef-8eb9-4c06-a106-cab1dda78a2b")
 
@@ -117,12 +117,12 @@ func createRangeData(
 		{fakePrevKey(desc.EndKey), ts},
 	}
 
-	keys := []storage.MVCCKey{}
+	keys := []relational.MVCCKey{}
 	for _, keyTS := range keyTSs {
-		if err := storage.MVCCPut(context.Background(), eng, nil, keyTS.key, keyTS.ts, roachpb.MakeValueFromString("value"), nil); err != nil {
+		if err := relational.MVCCPut(context.Background(), eng, nil, keyTS.key, keyTS.ts, roachpb.MakeValueFromString("value"), nil); err != nil {
 			t.Fatal(err)
 		}
-		keys = append(keys, storage.MVCCKey{Key: keyTS.key, Timestamp: keyTS.ts})
+		keys = append(keys, relational.MVCCKey{Key: keyTS.key, Timestamp: keyTS.ts})
 	}
 	return keys
 }
@@ -130,9 +130,9 @@ func createRangeData(
 func verifyRDIter(
 	t *testing.T,
 	desc *roachpb.RangeDescriptor,
-	readWriter storage.ReadWriter,
+	readWriter relational.ReadWriter,
 	replicatedOnly bool,
-	expectedKeys []storage.MVCCKey,
+	expectedKeys []relational.MVCCKey,
 ) {
 	t.Helper()
 	verify := func(t *testing.T, useSpanSet, reverse bool) {
@@ -199,7 +199,7 @@ func verifyRDIter(
 func TestReplicaDataIteratorEmptyRange(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
-	eng := storage.NewDefaultInMem()
+	eng := relational.NewDefaultInMem()
 	defer eng.Close()
 
 	desc := &roachpb.RangeDescriptor{
@@ -208,7 +208,7 @@ func TestReplicaDataIteratorEmptyRange(t *testing.T) {
 		EndKey:   roachpb.RKey("z"),
 	}
 
-	verifyRDIter(t, desc, eng, false /* replicatedOnly */, []storage.MVCCKey{})
+	verifyRDIter(t, desc, eng, false /* replicatedOnly */, []relational.MVCCKey{})
 }
 
 // TestReplicaDataIterator creates three ranges {"a"-"b" (pre), "b"-"c"
@@ -220,7 +220,7 @@ func TestReplicaDataIteratorEmptyRange(t *testing.T) {
 func TestReplicaDataIterator(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
-	eng := storage.NewDefaultInMem()
+	eng := relational.NewDefaultInMem()
 	defer eng.Close()
 
 	descPre := roachpb.RangeDescriptor{
@@ -269,7 +269,7 @@ func TestReplicaDataIterator(t *testing.T) {
 	for _, test := range []struct {
 		name string
 		desc *roachpb.RangeDescriptor
-		keys []storage.MVCCKey
+		keys []relational.MVCCKey
 	}{
 		{"pre", &descPre, preKeys},
 		{"post", &descPost, postKeys},

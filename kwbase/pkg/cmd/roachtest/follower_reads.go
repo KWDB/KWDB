@@ -34,7 +34,7 @@ import (
 	"strconv"
 	"time"
 
-	"gitee.com/kwbasedb/kwbase/pkg/ts/tspb"
+	"gitee.com/kwbasedb/kwbase/pkg/telemetry/tspb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/httputil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"github.com/cockroachdb/errors"

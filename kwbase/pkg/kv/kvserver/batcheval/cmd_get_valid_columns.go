@@ -18,7 +18,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/batcheval/result"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/spanset"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 )
 
@@ -37,7 +37,7 @@ func declareKeysGetValidColumns(
 
 // GetValidColumns returns IDs of valid columns.
 func GetValidColumns(
-	ctx context.Context, reader storage.Reader, cArgs CommandArgs, resp roachpb.Response,
+	ctx context.Context, reader relational.Reader, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
 	req := cArgs.Args.(*roachpb.TsGetValidColumnsRequest)
 	tableID := req.TableId

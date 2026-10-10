@@ -87,7 +87,7 @@ func (r *runParams) creationTimeForNewTableDescriptor() (hlc.Timestamp, error) {
 	// upon reading use the MVCC timestamp to populate the values.
 	var ts hlc.Timestamp
 	if !r.ExecCfg().Settings.Version.IsActive(
-		r.ctx, clusterversion.VersionTableDescModificationTimeFromMVCC,
+		r.ctx, clusterversion.VersionMinSupported,
 	) {
 		var err error
 		ts, err = r.p.txn.CommitTimestamp()

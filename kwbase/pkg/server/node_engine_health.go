@@ -29,7 +29,7 @@ import (
 	"fmt"
 	"time"
 
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
@@ -48,7 +48,7 @@ var maxSyncDurationFatalOnExceeded = envutil.EnvOrDefaultBool("KWBASE_ENGINE_MAX
 // startAssertEngineHealth starts a goroutine that periodically verifies that
 // syncing the engines is possible within maxSyncDuration. If not,
 // the process is terminated (with an attempt at a descriptive message).
-func (n *Node) startAssertEngineHealth(ctx context.Context, engines []storage.Engine) {
+func (n *Node) startAssertEngineHealth(ctx context.Context, engines []relational.Engine) {
 	n.stopper.RunWorker(ctx, func(ctx context.Context) {
 		t := timeutil.NewTimer()
 		t.Reset(0)
@@ -72,7 +72,7 @@ func guaranteedExitFatal(ctx context.Context, msg string, args ...interface{}) {
 }
 
 func (n *Node) assertEngineHealth(
-	ctx context.Context, engines []storage.Engine, maxDuration time.Duration,
+	ctx context.Context, engines []relational.Engine, maxDuration time.Duration,
 ) {
 	logSync := log.LogSyncEnable.Get(&n.storeCfg.Settings.SV)
 	for _, eng := range engines {
@@ -90,7 +90,7 @@ func (n *Node) assertEngineHealth(
 				)
 			})
 			defer t.Stop()
-			if err := storage.WriteSyncNoop(ctx, eng); err != nil {
+			if err := relational.WriteSyncNoop(ctx, eng); err != nil {
 				if logSync {
 					log.Fatal(ctx, err)
 				} else {

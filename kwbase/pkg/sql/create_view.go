@@ -29,7 +29,6 @@ import (
 	"fmt"
 	"strings"
 
-	"gitee.com/kwbasedb/kwbase/pkg/clusterversion"
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
@@ -140,11 +139,6 @@ func (n *createViewNode) startExec(params runParams) error {
 	if n.materialized {
 		if !params.p.EvalContext().TxnImplicit {
 			return pgerror.Newf(pgcode.InvalidTransactionState, "cannot create materialized view in an explicit transaction")
-		}
-		// Ensure all nodes are the correct version.
-		if !params.ExecCfg().Settings.Version.IsActive(params.ctx, clusterversion.VersionMaterializedViews) {
-			return pgerror.New(pgcode.FeatureNotSupported,
-				"all nodes are not at the correct version to use materialized views")
 		}
 		// If the view is materialized, set up some more state on the view descriptor.
 		// In particular,

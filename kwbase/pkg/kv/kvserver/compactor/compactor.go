@@ -33,7 +33,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagepb"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/humanizeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
@@ -52,7 +52,7 @@ type doneCompactingFunc func(ctx context.Context)
 // makes requests to the engine to reclaim storage space.
 type Compactor struct {
 	st      *cluster.Settings
-	eng     storage.Engine
+	eng     relational.Engine
 	capFn   storeCapacityFunc
 	doneFn  doneCompactingFunc
 	ch      chan struct{}
@@ -61,7 +61,7 @@ type Compactor struct {
 
 // NewCompactor returns a compactor for the specified storage engine.
 func NewCompactor(
-	st *cluster.Settings, eng storage.Engine, capFn storeCapacityFunc, doneFn doneCompactingFunc,
+	st *cluster.Settings, eng relational.Engine, capFn storeCapacityFunc, doneFn doneCompactingFunc,
 ) *Compactor {
 	return &Compactor{
 		st:      st,
@@ -242,7 +242,7 @@ func (c *Compactor) processSuggestions(ctx context.Context) (bool, error) {
 	}
 
 	// Get information about SSTables in the underlying RocksDB instance.
-	ssti := storage.NewSSTableInfosByLevel(c.eng.GetSSTables())
+	ssti := relational.NewSSTableInfosByLevel(c.eng.GetSSTables())
 
 	// Update the bytes queued metric based, periodically querying the persisted
 	// suggestions so that we pick up newly added suggestions in the case where
@@ -300,7 +300,7 @@ func (c *Compactor) processSuggestions(ctx context.Context) (bool, error) {
 func (c *Compactor) fetchSuggestions(
 	ctx context.Context,
 ) (suggestions []storagepb.SuggestedCompaction, totalBytes int64, err error) {
-	dataIter := c.eng.NewIterator(storage.IterOptions{
+	dataIter := c.eng.NewIterator(relational.IterOptions{
 		UpperBound: roachpb.KeyMax, // refined before every seek
 	})
 	defer dataIter.Close()
@@ -311,7 +311,7 @@ func (c *Compactor) fetchSuggestions(
 	err = c.eng.Iterate(
 		keys.LocalStoreSuggestedCompactionsMin,
 		keys.LocalStoreSuggestedCompactionsMax,
-		func(kv storage.MVCCKeyValue) (bool, error) {
+		func(kv relational.MVCCKeyValue) (bool, error) {
 			var sc storagepb.SuggestedCompaction
 			var err error
 			sc.StartKey, sc.EndKey, err = keys.DecodeStoreSuggestedCompactionKey(kv.Key.Key)
@@ -323,10 +323,10 @@ func (c *Compactor) fetchSuggestions(
 			}
 
 			dataIter.SetUpperBound(sc.EndKey)
-			dataIter.SeekGE(storage.MakeMVCCMetadataKey(sc.StartKey))
+			dataIter.SeekGE(relational.MakeMVCCMetadataKey(sc.StartKey))
 			if ok, err := dataIter.Valid(); err != nil {
 				return false, err
-			} else if ok && dataIter.UnsafeKey().Less(storage.MakeMVCCMetadataKey(sc.EndKey)) {
+			} else if ok && dataIter.UnsafeKey().Less(relational.MakeMVCCMetadataKey(sc.EndKey)) {
 				// The suggested compaction span has live keys remaining. This is a
 				// strong indicator that compacting this range will be significantly
 				// more expensive than we expected when the compaction was suggested, as
@@ -353,7 +353,7 @@ func (c *Compactor) fetchSuggestions(
 	if err != nil {
 		return nil, 0, err
 	}
-	if err := delBatch.Commit(true, storage.NormalCommitType); err != nil {
+	if err := delBatch.Commit(true, relational.NormalCommitType); err != nil {
 		log.Warningf(ctx, "unable to delete suggested compaction records: %+v", err)
 	}
 	return suggestions, totalBytes, nil
@@ -416,12 +416,12 @@ func (c *Compactor) processCompaction(
 			c.Metrics.BytesSkipped.Inc(sc.Bytes)
 		}
 		key := keys.StoreSuggestedCompactionKey(sc.StartKey, sc.EndKey)
-		if err := delBatch.Clear(storage.MVCCKey{Key: key}); err != nil {
+		if err := delBatch.Clear(relational.MVCCKey{Key: key}); err != nil {
 			log.Fatal(ctx, err) // should never happen on a batch
 		}
 	}
 
-	if err := delBatch.Commit(true, storage.NormalCommitType); err != nil {
+	if err := delBatch.Commit(true, relational.NormalCommitType); err != nil {
 		log.Warningf(ctx, "unable to delete suggested compaction records: %+v", err)
 	}
 	delBatch.Close()
@@ -441,7 +441,7 @@ func (c *Compactor) processCompaction(
 // continue aggregating suggested compactions.
 func (c *Compactor) aggregateCompaction(
 	ctx context.Context,
-	ssti storage.SSTableInfosByLevel,
+	ssti relational.SSTableInfosByLevel,
 	aggr *aggregatedCompaction,
 	sc storagepb.SuggestedCompaction,
 ) (done bool) {
@@ -479,7 +479,7 @@ func (c *Compactor) examineQueue(ctx context.Context) (int64, error) {
 	if err := c.eng.Iterate(
 		keys.LocalStoreSuggestedCompactionsMin,
 		keys.LocalStoreSuggestedCompactionsMax,
-		func(kv storage.MVCCKeyValue) (bool, error) {
+		func(kv relational.MVCCKeyValue) (bool, error) {
 			var c storagepb.Compaction
 			if err := protoutil.Unmarshal(kv.Value, &c); err != nil {
 				return false, err
@@ -503,7 +503,7 @@ func (c *Compactor) Suggest(ctx context.Context, sc storagepb.SuggestedCompactio
 	key := keys.StoreSuggestedCompactionKey(sc.StartKey, sc.EndKey)
 	var existing storagepb.Compaction
 	//lint:ignore SA1019 historical usage of deprecated c.eng.GetProto is OK
-	ok, _, _, err := c.eng.GetProto(storage.MVCCKey{Key: key}, &existing)
+	ok, _, _, err := c.eng.GetProto(relational.MVCCKey{Key: key}, &existing)
 	if err != nil {
 		log.VErrEventf(ctx, 2, "unable to record suggested compaction: %s", err)
 		return
@@ -520,7 +520,7 @@ func (c *Compactor) Suggest(ctx context.Context, sc storagepb.SuggestedCompactio
 
 	// Store the new compaction.
 	//lint:ignore SA1019 historical usage of deprecated engine.PutProto is OK
-	if _, _, err = storage.PutProto(c.eng, storage.MVCCKey{Key: key}, &sc.Compaction); err != nil {
+	if _, _, err = relational.PutProto(c.eng, relational.MVCCKey{Key: key}, &sc.Compaction); err != nil {
 		log.Warningf(ctx, "unable to record suggested compaction: %+v", err)
 	}
 

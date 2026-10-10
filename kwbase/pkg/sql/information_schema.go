@@ -30,6 +30,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"gitee.com/kwbasedb/kwbase/pkg/base"
@@ -42,10 +43,13 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/stats"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/vtable"
+	"gitee.com/kwbasedb/kwbase/pkg/util/json"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
+	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"github.com/cockroachdb/errors"
 )
 
@@ -82,6 +86,7 @@ var informationSchema = virtualSchema{
 		"column_domain_usage",
 		"column_options",
 		"column_privileges",
+		"column_statistics",
 		"column_udt_usage",
 		"columns",
 		"constraint_column_usage",
@@ -102,6 +107,7 @@ var informationSchema = virtualSchema{
 		"key_column_usage",
 		"keywords",
 		"parameters",
+		"processlist",
 		"referential_constraints",
 		"role_column_grants",
 		"role_routine_grants",
@@ -127,6 +133,7 @@ var informationSchema = virtualSchema{
 		"triggers",
 		"udt_privileges",
 		"usage_privileges",
+		"user_attributes",
 		"user_defined_types",
 		"user_mapping_options",
 		"user_mappings",
@@ -140,13 +147,16 @@ var informationSchema = virtualSchema{
 		sqlbase.InformationSchemaApplicableRolesID:                 informationSchemaApplicableRoles,
 		sqlbase.InformationSchemaCheckConstraints:                  informationSchemaCheckConstraints,
 		sqlbase.InformationSchemaColumnPrivilegesID:                informationSchemaColumnPrivileges,
+		sqlbase.InformationSchemaColumnStatisticsTableID:           informationSchemaColumnStatisticsTable,
 		sqlbase.InformationSchemaColumnsTableID:                    informationSchemaColumnsTable,
 		sqlbase.InformationSchemaConstraintColumnUsageTableID:      informationSchemaConstraintColumnUsageTable,
 		sqlbase.InformationSchemaEnabledRolesID:                    informationSchemaEnabledRoles,
 		sqlbase.InformationSchemaKeyColumnUsageTableID:             informationSchemaKeyColumnUsageTable,
 		sqlbase.InformationSchemaKeywordsTableID:                   informationSchemaKeywordsTable,
 		sqlbase.InformationSchemaParametersTableID:                 informationSchemaParametersTable,
+		sqlbase.InformationSchemaProcesslistTableID:                informationSchemaProcesslistTable,
 		sqlbase.InformationSchemaReferentialConstraintsTableID:     informationSchemaReferentialConstraintsTable,
+		sqlbase.InformationSchemaRoleColumnGrantsID:                informationSchemaRoleColumnGrants,
 		sqlbase.InformationSchemaRoleTableGrantsID:                 informationSchemaRoleTableGrants,
 		sqlbase.InformationSchemaRoutineTableID:                    informationSchemaRoutineTable,
 		sqlbase.InformationSchemaSchemataTableID:                   informationSchemaSchemataTable,
@@ -157,8 +167,12 @@ var informationSchema = virtualSchema{
 		sqlbase.InformationSchemaTablePrivilegesID:                 informationSchemaTablePrivileges,
 		sqlbase.InformationSchemaTablesTableID:                     informationSchemaTablesTable,
 		sqlbase.InformationSchemaViewsTableID:                      informationSchemaViewsTable,
+		sqlbase.InformationSchemaViewTableUsageID:                  informationSchemaViewTableUsage,
+		sqlbase.InformationSchemaTriggersTableID:                   informationSchemaTriggersTable,
 		sqlbase.InformationSchemaUserPrivilegesID:                  informationSchemaUserPrivileges,
 		sqlbase.InformationSchemaProcedurePrivilegesID:             informationSchemaProcedurePrivileges,
+		sqlbase.InformationSchemaRoleRoutineGrantsID:               informationSchemaRoleRoutineGrants,
+		sqlbase.InformationSchemaUserAttributesTableID:             informationSchemaUserAttributes,
 	},
 	tableValidator:             validateInformationSchemaTable,
 	validWithNoDatabaseContext: true,
@@ -188,6 +202,34 @@ func yesOrNoDatum(b bool) tree.Datum {
 		return yesString
 	}
 	return noString
+}
+
+// getIndexComments returns all index comments in the database. An index
+// comment is represented by its table ID, index ID, and comment datum.
+func getIndexComments(
+	ctx context.Context, p *planner,
+) (map[sqlbase.ID]map[sqlbase.IndexID]tree.Datum, error) {
+	rows, err := p.extendedEvalCtx.ExecCfg.InternalExecutor.Query(
+		ctx,
+		"select-index-comments",
+		p.Txn(),
+		`SELECT object_id, sub_id, "comment" FROM system.comments WHERE type = $1`,
+		keys.IndexCommentType,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	comments := make(map[sqlbase.ID]map[sqlbase.IndexID]tree.Datum)
+	for _, row := range rows {
+		tableID := sqlbase.ID(tree.MustBeDInt(row[0]))
+		indexID := sqlbase.IndexID(tree.MustBeDInt(row[1]))
+		if comments[tableID] == nil {
+			comments[tableID] = make(map[sqlbase.IndexID]tree.Datum)
+		}
+		comments[tableID][indexID] = row[2]
+	}
+	return comments, nil
 }
 
 func dNameOrNull(s string) tree.Datum {
@@ -358,33 +400,69 @@ https://www.postgresql.org/docs/9.5/infoschema-check-constraints.html`,
 	},
 }
 
+// hasColumnPrivilege reports whether privileges effectively grant priv at column granularity.
+// ALL is stored as an independent bit instead of setting each concrete privilege bit, so the
+// column privilege views must treat it as implicitly granting SELECT, INSERT, and UPDATE.
+func hasColumnPrivilege(privileges uint32, priv privilege.Kind) bool {
+	return privileges&priv.Mask() != 0 || privileges&privilege.ALL.Mask() != 0
+}
+
+// canUserSeePrivilegeGrantee reports whether the current user may see a direct
+// privilege record for grantee. Callers must apply object visibility separately.
+func canUserSeePrivilegeGrantee(
+	isAdmin bool, currentUser, grantee string, memberOf map[string]bool,
+) bool {
+	if isAdmin || grantee == currentUser || grantee == sqlbase.PublicRole {
+		return true
+	}
+	_, isMember := memberOf[grantee]
+	return isMember
+}
+
 var informationSchemaColumnPrivileges = virtualSchemaTable{
 	comment: `column privilege grants (incomplete)
 ` + base.DocsURL("information-schema.html#column_privileges") + `
 https://www.postgresql.org/docs/9.5/infoschema-column-privileges.html`,
 	schema: vtable.InformationSchemaColumnPrivileges,
 	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		isAdmin, err := p.HasAdminRole(ctx)
+		if err != nil {
+			return err
+		}
+
+		currentUser := p.SessionData().User
+		var memberOf map[string]bool
+		if !isAdmin {
+			memberOf, err = p.MemberOfWithAdminOption(ctx, currentUser)
+			if err != nil {
+				return err
+			}
+		}
+
 		return forEachTableDesc(ctx, p, dbContext, virtualMany, func(db *sqlbase.DatabaseDescriptor, scName string, table *sqlbase.TableDescriptor) error {
 			dbNameStr := tree.NewDString(db.Name)
 			scNameStr := tree.NewDString(scName)
 			columndata := privilege.List{privilege.SELECT, privilege.INSERT, privilege.UPDATE} // privileges for column level granularity
 			for _, u := range table.Privileges.Users {
+				if !canUserSeePrivilegeGrantee(isAdmin, currentUser, u.User, memberOf) {
+					continue
+				}
+
 				for _, priv := range columndata {
-					if priv.Mask()&u.Privileges != 0 {
-						for i := range table.Columns {
-							cd := &table.Columns[i]
-							if err := addRow(
+					if hasColumnPrivilege(u.Privileges, priv) {
+						if err := forEachVisibleColumn(table, func(column *sqlbase.ColumnDescriptor) error {
+							return addRow(
 								tree.DNull,                     // grantor
 								tree.NewDString(u.User),        // grantee
 								dbNameStr,                      // table_catalog
 								scNameStr,                      // table_schema
 								tree.NewDString(table.Name),    // table_name
-								tree.NewDString(cd.Name),       // column_name
+								tree.NewDString(column.Name),   // column_name
 								tree.NewDString(priv.String()), // privilege_type
 								tree.DNull,                     // is_grantable
-							); err != nil {
-								return err
-							}
+							)
+						}); err != nil {
+							return err
 						}
 					}
 				}
@@ -762,7 +840,7 @@ CREATE TABLE information_schema.key_column_usage (
 // Postgres: https://www.postgresql.org/docs/9.6/static/infoschema-parameters.html
 // MySQL:    https://dev.mysql.com/doc/refman/5.7/en/parameters-table.html
 var informationSchemaParametersTable = virtualSchemaTable{
-	comment: `built-in function parameters (empty - introspection not yet supported)
+	comment: `user-defined function and procedure parameters
 https://www.postgresql.org/docs/9.5/infoschema-parameters.html`,
 	schema: `
 CREATE TABLE information_schema.parameters (
@@ -774,6 +852,12 @@ CREATE TABLE information_schema.parameters (
 	IS_RESULT STRING,
 	AS_LOCATOR STRING,
 	PARAMETER_NAME STRING,
+	FROM_SQL_SPECIFIC_CATALOG STRING,
+	FROM_SQL_SPECIFIC_SCHEMA STRING,
+	FROM_SQL_SPECIFIC_NAME STRING,
+	TO_SQL_SPECIFIC_CATALOG STRING,
+	TO_SQL_SPECIFIC_SCHEMA STRING,
+	TO_SQL_SPECIFIC_NAME STRING,
 	DATA_TYPE STRING,
 	CHARACTER_MAXIMUM_LENGTH INT8,
 	CHARACTER_OCTET_LENGTH INT8,
@@ -797,11 +881,451 @@ CREATE TABLE information_schema.parameters (
 	SCOPE_NAME STRING,
 	MAXIMUM_CARDINALITY INT8,
 	DTD_IDENTIFIER STRING,
-	PARAMETER_DEFAULT STRING
+	DECLARED_DATA_TYPE STRING,
+	DECLARED_NUMERIC_PRECISION INT8,
+	DECLARED_NUMERIC_SCALE INT8,
+	PARAMETER_DEFAULT STRING,
+	TABLE_SEMANTICS STRING,
+	IS_PRUNABLE STRING,
+	HAS_PASS_THROUGH_COLUMNS STRING,
+	ROUTINE_TYPE STRING
 )`,
 	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		return forEachRoutine(ctx, p, dbContext, func(routine informationSchemaRoutine) error {
+			var parameters []informationSchemaParameter
+			switch routine.routineType {
+			case informationSchemaRoutineTypeProcedure:
+				// Procedure descriptors retain parameter names and IN/OUT directions.
+				for i := range routine.procedure.Parameters {
+					parameter := &routine.procedure.Parameters[i]
+					mode := ""
+					switch parameter.Direction {
+					case sqlbase.ProcParam_InDirection:
+						mode = "IN"
+					case sqlbase.ProcParam_OutDirection:
+						mode = "OUT"
+					default:
+						return errors.AssertionFailedf(
+							"procedure %q parameter %d has unknown direction %d",
+							routine.name, i+1, parameter.Direction,
+						)
+					}
+					parameterName := parameter.Name
+					parameters = append(parameters, informationSchemaParameter{
+						catalog: routine.catalog, schema: routine.schema, specificName: routine.name,
+						ordinal: i + 1, mode: mode, name: &parameterName, typ: &parameter.Type,
+						routineType: routine.routineType,
+					})
+				}
+			case informationSchemaRoutineTypeFunction:
+				// Lua UDFs store encoded parameter types and widths, but no names or directions.
+				if len(routine.function.TypesLength) < len(routine.function.ArgumentTypes) {
+					return errors.AssertionFailedf(
+						"function %q has %d argument types but only %d type lengths",
+						routine.name, len(routine.function.ArgumentTypes), len(routine.function.TypesLength),
+					)
+				}
+				for i, encodedType := range routine.function.ArgumentTypes {
+					parameterType, err := decodeFunctionParameterType(encodedType, routine.function.TypesLength[i])
+					if err != nil {
+						return errors.Wrapf(err, "function %q parameter %d", routine.name, i+1)
+					}
+					parameters = append(parameters, informationSchemaParameter{
+						catalog: routine.catalog, specificName: routine.name, ordinal: i + 1,
+						mode: "IN", typ: parameterType, routineType: routine.routineType,
+					})
+				}
+				if len(routine.function.ReturnType) == 0 {
+					return errors.AssertionFailedf("function %q has no return type", routine.name)
+				}
+				if len(routine.function.TypesLength) <= len(routine.function.ArgumentTypes) {
+					return errors.AssertionFailedf(
+						"function %q has no return type length", routine.name,
+					)
+				}
+				returnType, err := decodeFunctionParameterType(
+					routine.function.ReturnType[0],
+					routine.function.TypesLength[len(routine.function.ArgumentTypes)],
+				)
+				if err != nil {
+					return errors.Wrapf(err, "function %q return type", routine.name)
+				}
+				// The function result is represented as an unnamed ordinal-zero row.
+				parameters = append(parameters, informationSchemaParameter{
+					catalog: routine.catalog, specificName: routine.name,
+					isResult: true, typ: returnType, routineType: routine.routineType,
+				})
+			}
+
+			// Normalize both descriptor types before producing the common 45-column row.
+			for _, param := range parameters {
+				catalog := tree.NewDString(param.catalog)
+				schema := tree.DNull
+				if param.schema != nil {
+					schema = tree.NewDString(*param.schema)
+				}
+				parameterName := tree.DNull
+				if param.name != nil {
+					parameterName = tree.NewDString(*param.name)
+				}
+				parameterMode := tree.DNull
+				if !param.isResult {
+					parameterMode = tree.NewDString(param.mode)
+				}
+				isResult := noString
+				if param.isResult {
+					isResult = yesString
+				}
+
+				collationCatalog := tree.DNull
+				collationSchema := tree.DNull
+				collationName := tree.DNull
+				if locale := param.typ.Locale(); locale != "" {
+					collationCatalog = catalog
+					collationSchema = pgCatalogNameDString
+					collationName = tree.NewDString(locale)
+				}
+
+				if err := addRow(
+					catalog,                                // specific_catalog
+					schema,                                 // specific_schema
+					tree.NewDString(param.specificName),    // specific_name
+					tree.NewDInt(tree.DInt(param.ordinal)), // ordinal_position
+					parameterMode,                          // parameter_mode
+					isResult,                               // is_result
+					noString,                               // as_locator
+					parameterName,                          // parameter_name
+					tree.DNull,                             // from_sql_specific_catalog
+					tree.DNull,                             // from_sql_specific_schema
+					tree.DNull,                             // from_sql_specific_name
+					tree.DNull,                             // to_sql_specific_catalog
+					tree.DNull,                             // to_sql_specific_schema
+					tree.DNull,                             // to_sql_specific_name
+					tree.NewDString(param.typ.InformationSchemaName()), // data_type
+					characterMaximumLength(param.typ),                  // character_maximum_length
+					characterOctetLength(param.typ),                    // character_octet_length
+					tree.DNull,                                         // character_set_catalog
+					tree.DNull,                                         // character_set_schema
+					tree.DNull,                                         // character_set_name
+					collationCatalog,                                   // collation_catalog
+					collationSchema,                                    // collation_schema
+					collationName,                                      // collation_name
+					numericPrecision(param.typ),                        // numeric_precision
+					numericPrecisionRadix(param.typ),                   // numeric_precision_radix
+					numericScale(param.typ),                            // numeric_scale
+					datetimePrecision(param.typ),                       // datetime_precision
+					tree.DNull,                                         // interval_type
+					tree.DNull,                                         // interval_precision
+					catalog,                                            // udt_catalog
+					pgCatalogNameDString,                               // udt_schema
+					tree.NewDString(param.typ.PGName()),                // udt_name
+					tree.DNull,                                         // scope_catalog
+					tree.DNull,                                         // scope_schema
+					tree.DNull,                                         // scope_name
+					tree.DNull,                                         // maximum_cardinality
+					tree.NewDString(param.typ.SQLString()),             // dtd_identifier
+					tree.NewDString(param.typ.SQLString()),             // declared_data_type
+					numericPrecision(param.typ),                        // declared_numeric_precision
+					numericScale(param.typ),                            // declared_numeric_scale
+					tree.DNull,                                         // parameter_default
+					tree.DNull,                                         // table_semantics
+					tree.DNull,                                         // is_prunable
+					tree.DNull,                                         // has_pass_through_columns
+					tree.NewDString(param.routineType),                 // routine_type
+				); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	},
+}
+
+var informationSchemaProcesslistTable = virtualSchemaTable{
+	comment: `current SQL sessions visible to the current user`,
+	schema: `
+CREATE TABLE information_schema.processlist (
+	ID      STRING,
+	"USER"  STRING,
+	HOST    STRING,
+	DB      STRING,
+	COMMAND STRING,
+	TIME    INT8,
+	STATE   STRING,
+	INFO    STRING
+)`,
+	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		req := p.makeSessionsRequest(ctx)
+		response, err := p.extendedEvalCtx.StatusServer.ListSessions(ctx, &req)
+		if err != nil {
+			return err
+		}
+
+		// Read the session list once so every row in this statement is derived
+		// from the same response. This is not a cluster-wide atomic snapshot.
+		snapshotTime := timeutil.Now()
+		for _, session := range response.Sessions {
+			command := tree.NewDString("Sleep")
+			var elapsedTime, state, info tree.Datum = tree.DNull, tree.DNull, tree.DNull
+
+			// MySQL processlist exposes one row per connection. A KWDB session can
+			// report multiple active queries, so use the oldest one as its representative.
+			// The slice has no ordering guarantee; -1 means no active query has been seen.
+			oldestQueryIdx := -1
+			for i := range session.ActiveQueries {
+				// Keep the first query initially, then replace it whenever an earlier
+				// start time is found later in the slice.
+				if oldestQueryIdx == -1 ||
+					session.ActiveQueries[i].Start.Before(session.ActiveQueries[oldestQueryIdx].Start) {
+					oldestQueryIdx = i
+				}
+			}
+			if oldestQueryIdx >= 0 {
+				query := session.ActiveQueries[oldestQueryIdx]
+				elapsed := snapshotTime.Sub(query.Start) / time.Second
+				// Remote node clock skew can make a newly started query appear to begin
+				// after the local snapshot time; process durations must not be negative.
+				if elapsed < 0 {
+					elapsed = 0
+				}
+				command = tree.NewDString("Query")
+				elapsedTime = tree.NewDInt(tree.DInt(elapsed))
+				state = tree.NewDString(query.Phase.String())
+				info = tree.NewDString(query.Sql)
+			}
+
+			if err := addRow(
+				getSessionID(session),                  // id
+				tree.NewDString(session.Username),      // user
+				tree.NewDString(session.ClientAddress), // host
+				tree.DNull,                             // db: current database is not recorded
+				command,                                // command
+				elapsedTime,                            // time
+				state,                                  // state
+				info,                                   // info
+			); err != nil {
+				return err
+			}
+		}
+
+		// Node errors are not sessions. Preserve rows collected from healthy nodes
+		// and report failures without synthesizing processlist entries for them.
+		for _, rpcErr := range response.Errors {
+			log.Warning(ctx, rpcErr.Message)
+		}
 		return nil
 	},
+}
+
+type informationSchemaParameter struct {
+	catalog      string
+	schema       *string
+	specificName string
+	ordinal      int
+	mode         string
+	name         *string
+	typ          *types.T
+	isResult     bool
+	routineType  string
+}
+
+const (
+	informationSchemaRoutineTypeProcedure = "PROCEDURE"
+	informationSchemaRoutineTypeFunction  = "FUNCTION"
+)
+
+type informationSchemaRoutine struct {
+	catalog     string
+	schema      *string
+	name        string
+	routineType string
+	definer     string // The creator recorded by system.user_defined_routine; exposed as DEFINER.
+	created     *tree.DTimestampTZ
+	lastAltered *tree.DTimestampTZ
+	function    *sqlbase.FunctionDescriptor
+	procedure   *sqlbase.ProcedureDescriptor
+}
+
+// forEachRoutine iterates user-defined routines visible to the current user.
+// It reads the system table, decodes descriptors, resolves catalog/schema names,
+// and applies visibility filtering; the callback performs view-specific conversion.
+// Procedures are limited to a non-nil database context, while Lua UDFs remain global.
+func forEachRoutine(
+	ctx context.Context,
+	p *planner,
+	dbContext *DatabaseDescriptor,
+	fn func(informationSchemaRoutine) error,
+) error {
+	isAdmin, err := p.HasAdminRole(ctx)
+	if err != nil {
+		return err
+	}
+
+	var memberOf map[string]bool
+	if !isAdmin {
+		// Procedure privileges can be inherited through roles; administrators need no expansion.
+		memberOf, err = p.MemberOfWithAdminOption(ctx, p.SessionData().User)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Functions and procedures share this table; routine_type determines the descriptor type.
+	query := `SELECT name, db_id, schema_id, descriptor, routine_type, create_time, modification_time, creator FROM system.user_defined_routine`
+	rows, err := p.ExtendedEvalContext().ExecCfg.InternalExecutor.Query(
+		ctx, "read-routine", p.txn, query,
+	)
+	if err != nil {
+		return err
+	}
+
+	// Reuse catalog and schema name resolutions for routines in the same namespace.
+	databaseNames := make(map[sqlbase.ID]string)
+	schemaNames := make(map[sqlbase.ID]string)
+	for _, row := range rows {
+		routineName := string(tree.MustBeDString(row[0]))
+		dbID := sqlbase.ID(tree.MustBeDInt(row[1]))
+		schemaID := sqlbase.ID(tree.MustBeDInt(row[2]))
+		if row[3] == tree.DNull {
+			return errors.AssertionFailedf("routine %q has no descriptor", routineName)
+		}
+		descriptor := []byte(tree.MustBeDBytes(row[3]))
+		routineType := sqlbase.RoutineType(tree.MustBeDInt(row[4]))
+		created := tree.MustBeDTimestamp(row[5])
+		lastAltered := tree.MustBeDTimestamp(row[6])
+		createdTZ := tree.MakeDTimestampTZ(created.Time, time.Microsecond)
+		lastAlteredTZ := tree.MakeDTimestampTZ(lastAltered.Time, time.Microsecond)
+		// user_defined_routine stores the routine owner as creator. The routines
+		// view exposes this existing metadata through its standard DEFINER column.
+		definer := string(tree.MustBeDString(row[7]))
+
+		switch routineType {
+		case sqlbase.Procedure:
+			if dbContext != nil && dbID != dbContext.ID {
+				continue
+			}
+
+			var proc sqlbase.ProcedureDescriptor
+			if err := protoutil.Unmarshal(descriptor, &proc); err != nil {
+				return errors.AssertionFailedf("failed to decode procedure %q: %v", routineName, err)
+			}
+			if proc.Privileges == nil {
+				return errors.AssertionFailedf("procedure %q has no privilege descriptor", routineName)
+			}
+
+			// A procedure is visible through a direct, PUBLIC, or inherited-role privilege.
+			visible := isAdmin || proc.Privileges.AnyPrivilege(p.SessionData().User) ||
+				proc.Privileges.AnyPrivilege(sqlbase.PublicRole)
+			if !visible {
+				for role := range memberOf {
+					if proc.Privileges.AnyPrivilege(role) {
+						visible = true
+						break
+					}
+				}
+			}
+			if !visible {
+				continue
+			}
+
+			databaseName, ok := databaseNames[dbID]
+			if !ok {
+				if dbContext != nil {
+					databaseName = dbContext.Name
+				} else {
+					db, err := getDatabaseDescByID(ctx, p.txn, dbID)
+					if err != nil {
+						return err
+					}
+					databaseName = db.Name
+				}
+				databaseNames[dbID] = databaseName
+			}
+
+			schemaName, ok := schemaNames[schemaID]
+			if !ok {
+				schema, err := getSchemaDescByID(ctx, p.txn, schemaID)
+				if err != nil {
+					return err
+				}
+				schemaName = schema.Name
+				schemaNames[schemaID] = schemaName
+			}
+
+			if err := fn(informationSchemaRoutine{
+				catalog: databaseName, schema: &schemaName, name: proc.Name,
+				routineType: informationSchemaRoutineTypeProcedure,
+				definer:     definer, created: createdTZ, lastAltered: lastAlteredTZ, procedure: &proc,
+			}); err != nil {
+				return err
+			}
+
+		case sqlbase.Function:
+			var function sqlbase.FunctionDescriptor
+			if err := protoutil.Unmarshal(descriptor, &function); err != nil {
+				return errors.AssertionFailedf("failed to decode function %q: %v", routineName, err)
+			}
+			// Lua UDFs have no reliable db_id/schema_id; DbName supplies the metadata catalog.
+			if function.DbName == "" {
+				return errors.AssertionFailedf("function %q has no database name", routineName)
+			}
+			// FunctionDescriptor has no privilege descriptor, so Lua UDFs remain visible to all users.
+			if err := fn(informationSchemaRoutine{
+				catalog: function.DbName, name: function.Name,
+				routineType: informationSchemaRoutineTypeFunction,
+				definer:     definer, created: createdTZ, lastAltered: lastAlteredTZ, function: &function,
+			}); err != nil {
+				return err
+			}
+
+		default:
+			return errors.AssertionFailedf(
+				"routine %q has unknown routine type %d", routineName, routineType,
+			)
+		}
+	}
+
+	return nil
+}
+
+// decodeFunctionParameterType restores a SQL type from a Lua UDF descriptor's encoded type and width.
+func decodeFunctionParameterType(encodedType uint32, encodedWidth uint32) (*types.T, error) {
+	const maxInt32 = uint32(1<<31 - 1)
+	if encodedWidth > maxInt32 {
+		return nil, errors.AssertionFailedf("function parameter width %d exceeds INT32", encodedWidth)
+	}
+	width := int32(encodedWidth)
+
+	switch sqlbase.DataType(encodedType) {
+	case sqlbase.DataType_TIMESTAMP:
+		return types.Timestamp, nil
+	case sqlbase.DataType_BIGINT:
+		return types.Int, nil
+	case sqlbase.DataType_SMALLINT:
+		return types.Int2, nil
+	case sqlbase.DataType_INT:
+		return types.Int4, nil
+	case sqlbase.DataType_FLOAT:
+		return types.Float4, nil
+	case sqlbase.DataType_DOUBLE:
+		return types.Float, nil
+	case sqlbase.DataType_BOOL:
+		return types.Bool, nil
+	case sqlbase.DataType_CHAR:
+		return types.MakeChar(width), nil
+	case sqlbase.DataType_NCHAR:
+		return types.MakeNChar(width), nil
+	case sqlbase.DataType_VARCHAR:
+		return types.MakeVarChar(width, 0), nil
+	case sqlbase.DataType_NVARCHAR:
+		return types.MakeNVarChar(width), nil
+	case sqlbase.DataType_TIMESTAMPTZ:
+		return types.TimestampTZ, nil
+	default:
+		return nil, pgerror.Newf(
+			pgcode.FdwInvalidDataType, "unknown udf type identifier: %d", encodedType,
+		)
+	}
 }
 
 var (
@@ -858,6 +1382,11 @@ CREATE TABLE information_schema.referential_constraints (
 	REFERENCED_TABLE_NAME     STRING NOT NULL
 )`,
 	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		// Referenced tables can belong to another database, so resolve all schema names.
+		schemaNames, err := getSchemaNames(ctx, p, nil /* all databases */)
+		if err != nil {
+			return err
+		}
 		return forEachTableDescWithTableLookup(ctx, p, dbContext, hideVirtual /* no constraints in virtual tables */, func(
 			db *sqlbase.DatabaseDescriptor,
 			scName string,
@@ -873,6 +1402,14 @@ CREATE TABLE information_schema.referential_constraints (
 				if err != nil {
 					return err
 				}
+				refDB, err := tableLookup.getDatabaseByID(refTable.GetParentID())
+				if err != nil {
+					return err
+				}
+				refSchemaName, ok := schemaNames[refTable.GetParentSchemaID()]
+				if !ok {
+					return errors.AssertionFailedf("schema id %d not found", refTable.GetParentSchemaID())
+				}
 				var matchType = tree.DNull
 				if r, ok := matchOptionMap[fk.Match]; ok {
 					matchType = r
@@ -885,8 +1422,8 @@ CREATE TABLE information_schema.referential_constraints (
 					dbNameStr,                           // constraint_catalog
 					scNameStr,                           // constraint_schema
 					tree.NewDString(fk.Name),            // constraint_name
-					dbNameStr,                           // unique_constraint_catalog
-					scNameStr,                           // unique_constraint_schema
+					tree.NewDString(refDB.Name),         // unique_constraint_catalog
+					tree.NewDString(refSchemaName),      // unique_constraint_schema
 					tree.NewDString(referencedIdx.Name), // unique_constraint_name
 					matchType,                           // match_option
 					dStringForFKAction(fk.OnUpdate),     // update_rule
@@ -903,9 +1440,9 @@ CREATE TABLE information_schema.referential_constraints (
 }
 
 // Postgres: https://www.postgresql.org/docs/9.6/static/infoschema-role-table-grants.html
-// MySQL:    missing
+// MySQL:    https://dev.mysql.com/doc/refman/8.0/en/information-schema-role-table-grants-table.html
 var informationSchemaRoleTableGrants = virtualSchemaTable{
-	comment: `privileges granted on table or views (incomplete; see also information_schema.table_privileges; may contain excess users or roles)
+	comment: `privileges granted on tables or views to roles available to the current user (incomplete; grantor information unavailable)
 ` + base.DocsURL("information-schema.html#role_table_grants") + `
 https://www.postgresql.org/docs/9.5/infoschema-role-table-grants.html`,
 	schema: `
@@ -919,15 +1456,114 @@ CREATE TABLE information_schema.role_table_grants (
 	IS_GRANTABLE   STRING,
 	WITH_HIERARCHY STRING
 )`,
-	// This is the same as information_schema.table_privileges. In postgres, this virtual table does
-	// not show tables with grants provided through PUBLIC, but table_privileges does.
-	// Since we don't have the PUBLIC concept, the two virtual tables are identical.
-	populate: populateTablePrivileges,
+	populate: func(
+		ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error,
+	) error {
+		roleGrantees, err := getVisibleRoleGrantees(ctx, p)
+		if err != nil {
+			return err
+		}
+
+		return forEachTableDesc(ctx, p, dbContext, virtualMany,
+			func(db *sqlbase.DatabaseDescriptor, scName string, table *sqlbase.TableDescriptor) error {
+				dbNameStr := tree.NewDString(db.Name)
+				scNameStr := tree.NewDString(scName)
+				tbNameStr := tree.NewDString(table.Name)
+
+				for _, u := range table.Privileges.Users {
+					if _, ok := roleGrantees[u.User]; !ok {
+						continue
+					}
+
+					// Preserve Show()'s sorted output while reading the same raw
+					// privilege entries as role_column_grants. The ALL bit remains ALL.
+					privileges := privilege.ListFromBitField(u.Privileges).SortedNames()
+					for _, priv := range privileges {
+						if err := addRow(
+							tree.DNull,              // grantor
+							tree.NewDString(u.User), // grantee
+							dbNameStr,               // table_catalog
+							scNameStr,               // table_schema
+							tbNameStr,               // table_name
+							tree.NewDString(priv),   // privilege_type
+							tree.DNull,              // is_grantable
+							noString,                // with_hierarchy
+						); err != nil {
+							return err
+						}
+					}
+				}
+				return nil
+			})
+	},
+}
+
+// Postgres: https://www.postgresql.org/docs/9.6/static/infoschema-role-column-grants.html
+// MySQL:    https://dev.mysql.com/doc/refman/8.0/en/information-schema-role-column-grants-table.html
+var informationSchemaRoleColumnGrants = virtualSchemaTable{
+	comment: `column privilege grants to roles available to the current user (incomplete; grantor information unavailable)
+` + base.DocsURL("information-schema.html#role_column_grants") + `
+https://www.postgresql.org/docs/9.5/infoschema-role-column-grants.html`,
+	schema: `
+CREATE TABLE information_schema.role_column_grants (
+	GRANTOR        STRING,
+	GRANTEE        STRING NOT NULL,
+	TABLE_CATALOG  STRING NOT NULL,
+	TABLE_SCHEMA   STRING NOT NULL,
+	TABLE_NAME     STRING NOT NULL,
+	COLUMN_NAME    STRING NOT NULL,
+	PRIVILEGE_TYPE STRING NOT NULL,
+	IS_GRANTABLE   STRING
+)`,
+	populate: func(
+		ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error,
+	) error {
+		roleGrantees, err := getVisibleRoleGrantees(ctx, p)
+		if err != nil {
+			return err
+		}
+
+		return forEachTableDesc(ctx, p, dbContext, virtualMany,
+			func(db *sqlbase.DatabaseDescriptor, scName string, table *sqlbase.TableDescriptor) error {
+				dbNameStr := tree.NewDString(db.Name)
+				scNameStr := tree.NewDString(scName)
+				tbNameStr := tree.NewDString(table.Name)
+				columnPrivileges := privilege.List{privilege.SELECT, privilege.INSERT, privilege.UPDATE}
+
+				for _, u := range table.Privileges.Users {
+					if _, ok := roleGrantees[u.User]; !ok {
+						continue
+					}
+
+					for _, priv := range columnPrivileges {
+						if !hasColumnPrivilege(u.Privileges, priv) {
+							continue
+						}
+
+						if err := forEachVisibleColumn(table, func(column *sqlbase.ColumnDescriptor) error {
+							return addRow(
+								tree.DNull,                     // grantor
+								tree.NewDString(u.User),        // grantee
+								dbNameStr,                      // table_catalog
+								scNameStr,                      // table_schema
+								tbNameStr,                      // table_name
+								tree.NewDString(column.Name),   // column_name
+								tree.NewDString(priv.String()), // privilege_type
+								tree.DNull,                     // is_grantable
+							)
+						}); err != nil {
+							return err
+						}
+					}
+				}
+				return nil
+			})
+	},
 }
 
 // MySQL:    https://dev.mysql.com/doc/mysql-infoschema-excerpt/5.7/en/routines-table.html
 var informationSchemaRoutineTable = virtualSchemaTable{
-	comment: `built-in functions (empty - introspection not yet supported)
+	comment: `user-defined functions and procedures
 https://www.postgresql.org/docs/9.5/infoschema-routines.html`,
 	schema: `
 CREATE TABLE information_schema.routines (
@@ -958,11 +1594,12 @@ CREATE TABLE information_schema.routines (
 	NUMERIC_SCALE INT8,
 	DATETIME_PRECISION INT8,
 	INTERVAL_TYPE STRING,
-	INTERVAL_PRECISION STRING,
+	INTERVAL_PRECISION INT8,
 	TYPE_UDT_CATALOG STRING,
 	TYPE_UDT_SCHEMA STRING,
 	TYPE_UDT_NAME STRING,
 	SCOPE_CATALOG STRING,
+	SCOPE_SCHEMA STRING,
 	SCOPE_NAME STRING,
 	MAXIMUM_CARDINALITY INT8,
 	DTD_IDENTIFIER STRING,
@@ -990,18 +1627,18 @@ CREATE TABLE information_schema.routines (
 	IS_UDT_DEPENDENT STRING,
 	RESULT_CAST_FROM_DATA_TYPE STRING,
 	RESULT_CAST_AS_LOCATOR STRING,
-	RESULT_CAST_CHAR_MAX_LENGTH  INT8,
-	RESULT_CAST_CHAR_OCTET_LENGTH STRING,
+	RESULT_CAST_CHAR_MAX_LENGTH INT8,
+	RESULT_CAST_CHAR_OCTET_LENGTH INT8,
 	RESULT_CAST_CHAR_SET_CATALOG STRING,
-	RESULT_CAST_CHAR_SET_SCHEMA  STRING,
-	RESULT_CAST_CHAR_SET_NAME STRING,
+	RESULT_CAST_CHAR_SET_SCHEMA STRING,
+	RESULT_CAST_CHARACTER_SET_NAME STRING,
 	RESULT_CAST_COLLATION_CATALOG STRING,
 	RESULT_CAST_COLLATION_SCHEMA STRING,
 	RESULT_CAST_COLLATION_NAME STRING,
 	RESULT_CAST_NUMERIC_PRECISION INT8,
-	RESULT_CAST_NUMERIC_PRECISION_RADIX INT8,
+	RESULT_CAST_NUMERIC_RADIX INT8,
 	RESULT_CAST_NUMERIC_SCALE INT8,
-	RESULT_CAST_DATETIME_PRECISION STRING,
+	RESULT_CAST_DATETIME_PRECISION INT8,
 	RESULT_CAST_INTERVAL_TYPE STRING,
 	RESULT_CAST_INTERVAL_PRECISION INT8,
 	RESULT_CAST_TYPE_UDT_CATALOG STRING,
@@ -1010,11 +1647,238 @@ CREATE TABLE information_schema.routines (
 	RESULT_CAST_SCOPE_CATALOG STRING,
 	RESULT_CAST_SCOPE_SCHEMA STRING,
 	RESULT_CAST_SCOPE_NAME STRING,
-	RESULT_CAST_MAXIMUM_CARDINALITY INT8,
-	RESULT_CAST_DTD_IDENTIFIER STRING
+	RESULT_CAST_MAX_CARDINALITY INT8,
+	RESULT_CAST_DTD_IDENTIFIER STRING,
+	DECLARED_DATA_TYPE STRING,
+	DECLARED_NUMERIC_PRECISION INT8,
+	DECLARED_NUMERIC_SCALE INT8,
+	RESULT_CAST_FROM_DECLARED_DATA_TYPE STRING,
+	RESULT_CAST_DECLARED_NUMERIC_PRECISION INT8,
+	RESULT_CAST_DECLARED_NUMERIC_SCALE INT8,
+	RETURNS_ONLY_PASS_THROUGH STRING,
+	DESCRIBE_PROCEDURE_SPECIFIC_CATALOG STRING,
+	DESCRIBE_PROCEDURE_SPECIFIC_SCHEMA STRING,
+	DESCRIBE_PROCEDURE_SPECIFIC_NAME STRING,
+	START_PROCEDURE_SPECIFIC_CATALOG STRING,
+	START_PROCEDURE_SPECIFIC_SCHEMA STRING,
+	START_PROCEDURE_SPECIFIC_NAME STRING,
+	FULFILL_PROCEDURE_SPECIFIC_CATALOG STRING,
+	FULFILL_PROCEDURE_SPECIFIC_SCHEMA STRING,
+	FULFILL_PROCEDURE_SPECIFIC_NAME STRING,
+	FINISH_PROCEDURE_SPECIFIC_CATALOG STRING,
+	FINISH_PROCEDURE_SPECIFIC_SCHEMA STRING,
+	FINISH_PROCEDURE_SPECIFIC_NAME STRING,
+	ROUTINE_COMMENT STRING,
+	DEFINER STRING
 )`,
 	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
-		return nil
+		return forEachRoutine(ctx, p, dbContext, func(routine informationSchemaRoutine) error {
+			// Start with the routine identity and common metadata. Type-specific
+			// result metadata is filled below, while unsupported standard fields stay NULL.
+			catalog := tree.NewDString(routine.catalog)
+			var schema tree.Datum = tree.DNull
+			if routine.schema != nil {
+				schema = tree.NewDString(*routine.schema)
+			}
+
+			var udtCatalog tree.Datum = tree.DNull
+			var udtSchema tree.Datum = tree.DNull
+			var udtName tree.Datum = tree.DNull
+			var dataType tree.Datum = tree.DNull
+			var characterMaxLength tree.Datum = tree.DNull
+			var characterOctetLengthDatum tree.Datum = tree.DNull
+			var collationCatalog tree.Datum = tree.DNull
+			var collationSchema tree.Datum = tree.DNull
+			var collationName tree.Datum = tree.DNull
+			var numericPrecisionDatum tree.Datum = tree.DNull
+			var numericPrecisionRadixDatum tree.Datum = tree.DNull
+			var numericScaleDatum tree.Datum = tree.DNull
+			var datetimePrecisionDatum tree.Datum = tree.DNull
+			var typeUDTCatalog tree.Datum = tree.DNull
+			var typeUDTSchema tree.Datum = tree.DNull
+			var typeUDTName tree.Datum = tree.DNull
+			var dtdIdentifier tree.Datum = tree.DNull
+			var declaredDataType tree.Datum = tree.DNull
+			var declaredNumericPrecision tree.Datum = tree.DNull
+			var declaredNumericScale tree.Datum = tree.DNull
+			var routineBody tree.Datum
+			var routineDefinition tree.Datum
+			var externalLanguage tree.Datum
+
+			// Functions expose their return type and Lua body; procedures expose
+			// only the metadata available from their procedure descriptor.
+			switch routine.routineType {
+			case informationSchemaRoutineTypeFunction:
+				if routine.function == nil {
+					return errors.AssertionFailedf("function %q has no descriptor", routine.name)
+				}
+				if len(routine.function.ReturnType) == 0 {
+					return errors.AssertionFailedf("function %q has no return type", routine.name)
+				}
+				if len(routine.function.TypesLength) <= len(routine.function.ArgumentTypes) {
+					return errors.AssertionFailedf(
+						"function %q has no return type length", routine.name,
+					)
+				}
+				returnType, err := decodeFunctionParameterType(
+					routine.function.ReturnType[0],
+					routine.function.TypesLength[len(routine.function.ArgumentTypes)],
+				)
+				if err != nil {
+					return errors.Wrapf(err, "function %q return type", routine.name)
+				}
+
+				udtCatalog = catalog
+				udtSchema = pgCatalogNameDString
+				udtName = tree.NewDString(returnType.PGName())
+				dataType = tree.NewDString(returnType.InformationSchemaName())
+				characterMaxLength = characterMaximumLength(returnType)
+				characterOctetLengthDatum = characterOctetLength(returnType)
+				numericPrecisionDatum = numericPrecision(returnType)
+				numericPrecisionRadixDatum = numericPrecisionRadix(returnType)
+				numericScaleDatum = numericScale(returnType)
+				datetimePrecisionDatum = datetimePrecision(returnType)
+				typeUDTCatalog = catalog
+				typeUDTSchema = pgCatalogNameDString
+				typeUDTName = tree.NewDString(returnType.PGName())
+				dtdIdentifier = tree.NewDString(returnType.SQLString())
+				declaredDataType = tree.NewDString(returnType.SQLString())
+				declaredNumericPrecision = numericPrecision(returnType)
+				declaredNumericScale = numericScale(returnType)
+				if locale := returnType.Locale(); locale != "" {
+					collationCatalog = catalog
+					collationSchema = pgCatalogNameDString
+					collationName = tree.NewDString(locale)
+				}
+				// Lua UDF bodies are executed by the Lua runtime rather than as SQL.
+				routineBody = tree.NewDString("EXTERNAL")
+				routineDefinition = tree.NewDString(routine.function.FunctionBody)
+				externalLanguage = tree.NewDString(strings.ToUpper(routine.function.Language))
+
+			case informationSchemaRoutineTypeProcedure:
+				if routine.procedure == nil {
+					return errors.AssertionFailedf("procedure %q has no descriptor", routine.name)
+				}
+				// Procedure bodies are stored and executed as SQL procedure text.
+				routineBody = tree.NewDString("SQL")
+				routineDefinition = tree.NewDString(routine.procedure.ProcBody)
+				externalLanguage = tree.NewDString(strings.ToUpper(routine.procedure.Language))
+
+			default:
+				return errors.AssertionFailedf(
+					"routine %q has unknown routine type %q", routine.name, routine.routineType,
+				)
+			}
+
+			// Keep this argument order identical to the CREATE TABLE definition above.
+			// The row combines shared routine metadata with the type-specific values
+			// prepared above; fields without a reliable KWDB source remain NULL.
+			return addRow(
+				catalog,                              // specific_catalog
+				schema,                               // specific_schema
+				tree.NewDString(routine.name),        // specific_name
+				catalog,                              // routine_catalog
+				schema,                               // routine_schema
+				tree.NewDString(routine.name),        // routine_name
+				tree.NewDString(routine.routineType), // routine_type
+				tree.DNull,                           // module_catalog
+				tree.DNull,                           // module_schema
+				tree.DNull,                           // module_name
+				udtCatalog,                           // udt_catalog
+				udtSchema,                            // udt_schema
+				udtName,                              // udt_name
+				dataType,                             // data_type
+				characterMaxLength,                   // character_maximum_length
+				characterOctetLengthDatum,            // character_octet_length
+				tree.DNull,                           // character_set_catalog
+				tree.DNull,                           // character_set_schema
+				tree.DNull,                           // character_set_name
+				collationCatalog,                     // collation_catalog
+				collationSchema,                      // collation_schema
+				collationName,                        // collation_name
+				numericPrecisionDatum,                // numeric_precision
+				numericPrecisionRadixDatum,           // numeric_precision_radix
+				numericScaleDatum,                    // numeric_scale
+				datetimePrecisionDatum,               // datetime_precision
+				tree.DNull,                           // interval_type
+				tree.DNull,                           // interval_precision
+				typeUDTCatalog,                       // type_udt_catalog
+				typeUDTSchema,                        // type_udt_schema
+				typeUDTName,                          // type_udt_name
+				tree.DNull,                           // scope_catalog
+				tree.DNull,                           // scope_schema
+				tree.DNull,                           // scope_name
+				tree.DNull,                           // maximum_cardinality
+				dtdIdentifier,                        // dtd_identifier
+				routineBody,                          // routine_body
+				routineDefinition,                    // routine_definition
+				tree.DNull,                           // external_name
+				externalLanguage,                     // external_language
+				tree.DNull,                           // parameter_style
+				tree.DNull,                           // is_deterministic
+				tree.DNull,                           // sql_data_access
+				tree.DNull,                           // is_null_call
+				tree.DNull,                           // sql_path
+				tree.DNull,                           // schema_level_routine
+				tree.DNull,                           // max_dynamic_result_sets
+				tree.DNull,                           // is_user_defined_cast
+				tree.DNull,                           // is_implicitly_invocable
+				tree.DNull,                           // security_type
+				tree.DNull,                           // to_sql_specific_catalog
+				tree.DNull,                           // to_sql_specific_schema
+				tree.DNull,                           // to_sql_specific_name
+				tree.DNull,                           // as_locator
+				routine.created,                      // created
+				routine.lastAltered,                  // last_altered
+				tree.DNull,                           // new_savepoint_level
+				tree.DNull,                           // is_udt_dependent
+				tree.DNull,                           // result_cast_from_data_type
+				tree.DNull,                           // result_cast_as_locator
+				tree.DNull,                           // result_cast_char_max_length
+				tree.DNull,                           // result_cast_char_octet_length
+				tree.DNull,                           // result_cast_char_set_catalog
+				tree.DNull,                           // result_cast_char_set_schema
+				tree.DNull,                           // result_cast_character_set_name
+				tree.DNull,                           // result_cast_collation_catalog
+				tree.DNull,                           // result_cast_collation_schema
+				tree.DNull,                           // result_cast_collation_name
+				tree.DNull,                           // result_cast_numeric_precision
+				tree.DNull,                           // result_cast_numeric_radix
+				tree.DNull,                           // result_cast_numeric_scale
+				tree.DNull,                           // result_cast_datetime_precision
+				tree.DNull,                           // result_cast_interval_type
+				tree.DNull,                           // result_cast_interval_precision
+				tree.DNull,                           // result_cast_type_udt_catalog
+				tree.DNull,                           // result_cast_type_udt_schema
+				tree.DNull,                           // result_cast_type_udt_name
+				tree.DNull,                           // result_cast_scope_catalog
+				tree.DNull,                           // result_cast_scope_schema
+				tree.DNull,                           // result_cast_scope_name
+				tree.DNull,                           // result_cast_max_cardinality
+				tree.DNull,                           // result_cast_dtd_identifier
+				declaredDataType,                     // declared_data_type
+				declaredNumericPrecision,             // declared_numeric_precision
+				declaredNumericScale,                 // declared_numeric_scale
+				tree.DNull,                           // result_cast_from_declared_data_type
+				tree.DNull,                           // result_cast_declared_numeric_precision
+				tree.DNull,                           // result_cast_declared_numeric_scale
+				tree.DNull,                           // returns_only_pass_through
+				tree.DNull,                           // describe_procedure_specific_catalog
+				tree.DNull,                           // describe_procedure_specific_schema
+				tree.DNull,                           // describe_procedure_specific_name
+				tree.DNull,                           // start_procedure_specific_catalog
+				tree.DNull,                           // start_procedure_specific_schema
+				tree.DNull,                           // start_procedure_specific_name
+				tree.DNull,                           // fulfill_procedure_specific_catalog
+				tree.DNull,                           // fulfill_procedure_specific_schema
+				tree.DNull,                           // fulfill_procedure_specific_name
+				tree.DNull,                           // finish_procedure_specific_catalog
+				tree.DNull,                           // finish_procedure_specific_schema
+				tree.DNull,                           // finish_procedure_specific_name
+				tree.DNull,                           // routine_comment
+				tree.NewDString(routine.definer),     // definer, the routine creator/owner metadata
+			)
+		})
 	},
 }
 
@@ -1055,7 +1919,7 @@ https://www.postgresql.org/docs/9.5/infoschema-schemata.html`,
 
 // MySQL:    https://dev.mysql.com/doc/refman/5.7/en/schema-privileges-table.html
 var informationSchemaSchemataTablePrivileges = virtualSchemaTable{
-	comment: `schema privileges (incomplete; may contain excess users or roles)
+	comment: `schema privileges for the current user, public, or available roles; administrators can view all grantees (incomplete; grant option information unavailable)
 ` + base.DocsURL("information-schema.html#schema_privileges"),
 	schema: `
 CREATE TABLE information_schema.schema_privileges (
@@ -1066,11 +1930,28 @@ CREATE TABLE information_schema.schema_privileges (
 	IS_GRANTABLE    STRING
 )`,
 	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		isAdmin, err := p.HasAdminRole(ctx)
+		if err != nil {
+			return err
+		}
+		currentUser := p.SessionData().User
+		var memberOf map[string]bool
+		if !isAdmin {
+			memberOf, err = p.MemberOfWithAdminOption(ctx, currentUser)
+			if err != nil {
+				return err
+			}
+		}
+
+		// Database enumeration must include users who only have privileges on a child schema.
 		return forEachDatabaseDesc(ctx, p, dbContext, false, /* requiresPrivileges */
 			func(db *sqlbase.DatabaseDescriptor) error {
-				return forEachSchemaName(ctx, p, db, false, func(sc sqlbase.ResolvedSchema) error {
+				return forEachSchemaName(ctx, p, db, true, func(sc sqlbase.ResolvedSchema) error {
 					var privs []sqlbase.UserPrivilegeString
 					if sc.Kind == sqlbase.SchemaUserDefined {
+						if sc.Desc == nil || sc.Desc.GetPrivileges() == nil {
+							return nil
+						}
 						// User defined schemas have their own privileges.
 						privs = sc.Desc.GetPrivileges().Show()
 					} else {
@@ -1081,6 +1962,9 @@ CREATE TABLE information_schema.schema_privileges (
 					scNameStr := tree.NewDString(sc.Name)
 
 					for _, u := range privs {
+						if !canUserSeePrivilegeGrantee(isAdmin, currentUser, u.User, memberOf) {
+							continue
+						}
 						userNameStr := tree.NewDString(u.User)
 						for _, priv := range u.Privileges {
 							if err := addRow(
@@ -1114,6 +1998,180 @@ func dStringForIndexDirection(dir sqlbase.IndexDescriptor_Direction) tree.Datum 
 		return indexDirectionDesc
 	}
 	panic("unreachable")
+}
+
+// columnStatisticsDataType maps KWDB type families to the type categories
+// required by the MySQL-compatible histogram JSON representation.
+func columnStatisticsDataType(typ *types.T) string {
+	switch typ.Family() {
+	case types.BoolFamily, types.IntFamily:
+		return "int"
+	case types.FloatFamily:
+		return "double"
+	case types.DecimalFamily:
+		return "decimal"
+	case types.DateFamily, types.TimestampFamily, types.TimestampTZFamily,
+		types.TimeFamily, types.TimeTZFamily:
+		return "datetime"
+	default:
+		return "string"
+	}
+}
+
+// makeColumnStatisticsHistogram converts a KWDB histogram to the
+// MySQL-compatible JSON representation used by column_statistics. Singleton
+// buckets contain a value and cumulative frequency; equi-height buckets also
+// contain display bounds and an estimated distinct-value count. KWDB stores
+// only upper bounds. Its first bucket has no range values, so its upper bound
+// is also the histogram lower bound; later buckets use the preceding upper
+// bound as their display lower bound.
+func makeColumnStatisticsHistogram(stat *stats.TableStatistic) (tree.Datum, error) {
+	histogram := stat.Histogram
+	if len(histogram) == 0 {
+		return nil, errors.AssertionFailedf("statistic %d has no histogram buckets", stat.StatisticID)
+	}
+
+	histogramType := "singleton"
+	for i := range histogram {
+		if histogram[i].NumRange != 0 || histogram[i].DistinctRange != 0 {
+			histogramType = "equi-height"
+			break
+		}
+	}
+
+	nonNullRows := stat.RowCount
+	if stat.NullCount < nonNullRows {
+		nonNullRows -= stat.NullCount
+	} else {
+		nonNullRows = 0
+	}
+	cumulativeRows := float64(0)
+	buckets := json.NewArrayBuilder(len(histogram))
+	var previousUpperBound json.JSON
+	for i := range histogram {
+		bucket := &histogram[i]
+		upperBound, err := tree.AsJSON(bucket.UpperBound, time.UTC)
+		if err != nil {
+			return nil, err
+		}
+
+		cumulativeRows += float64(bucket.NumRange + bucket.NumEq)
+		cumulativeFrequency := float64(0)
+		if nonNullRows > 0 {
+			cumulativeFrequency = cumulativeRows / float64(nonNullRows)
+			if cumulativeFrequency > 1 {
+				cumulativeFrequency = 1
+			}
+		}
+		frequencyJSON, err := json.FromFloat64(cumulativeFrequency)
+		if err != nil {
+			return nil, err
+		}
+
+		bucketJSON := json.NewArrayBuilder(4)
+		if histogramType == "singleton" {
+			bucketJSON.Add(upperBound)
+			bucketJSON.Add(frequencyJSON)
+		} else {
+			// KWDB stores only bucket upper bounds. Reuse the preceding boundary as
+			// the lower display bound while preserving KWDB's cumulative estimates.
+			lowerBound := upperBound
+			if previousUpperBound != nil {
+				lowerBound = previousUpperBound
+			}
+			bucketJSON.Add(lowerBound)
+			bucketJSON.Add(upperBound)
+			bucketJSON.Add(frequencyJSON)
+
+			distinctValues := bucket.DistinctRange
+			if bucket.NumEq > 0 {
+				distinctValues++
+			}
+			distinctJSON, err := json.FromFloat64(distinctValues)
+			if err != nil {
+				return nil, err
+			}
+			bucketJSON.Add(distinctJSON)
+		}
+		buckets.Add(bucketJSON.Build())
+		previousUpperBound = upperBound
+	}
+
+	nullFraction := float64(0)
+	if stat.RowCount > 0 {
+		nullFraction = float64(stat.NullCount) / float64(stat.RowCount)
+		if nullFraction > 1 {
+			nullFraction = 1
+		}
+	}
+	nullFractionJSON, err := json.FromFloat64(nullFraction)
+	if err != nil {
+		return nil, err
+	}
+
+	result := json.NewObjectBuilder(6)
+	result.Add("buckets", buckets.Build())
+	result.Add("data-type", json.FromString(columnStatisticsDataType(&stat.HistogramData.ColumnType)))
+	result.Add("histogram-type", json.FromString(histogramType))
+	result.Add("last-updated", json.FromString(stat.CreatedAt.UTC().Format("2006-01-02 15:04:05.000000")))
+	result.Add("null-values", nullFractionJSON)
+	result.Add("number-of-buckets-specified", json.FromInt(len(histogram)))
+	return tree.NewDJSON(result.Build()), nil
+}
+
+// ISO and PostgreSQL: missing.
+var informationSchemaColumnStatisticsTable = virtualSchemaTable{
+	comment: `histogram statistics for visible table columns`,
+	schema: `
+CREATE TABLE information_schema.column_statistics (
+	SCHEMA_NAME STRING NOT NULL,
+	TABLE_NAME  STRING NOT NULL,
+	COLUMN_NAME STRING NOT NULL,
+	HISTOGRAM   JSONB NOT NULL
+)`,
+	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		return forEachTableDesc(ctx, p, dbContext, hideVirtual,
+			func(_ *sqlbase.DatabaseDescriptor, scName string, table *sqlbase.TableDescriptor) error {
+				tableStats, err := p.ExtendedEvalContext().ExecCfg.TableStatsCache.GetTableStats(ctx, table.ID)
+				if err != nil {
+					return err
+				}
+
+				// GetTableStats returns newest records first. Emit at most one usable
+				// single-column histogram for each visible column.
+				emitted := make(map[sqlbase.ColumnID]struct{})
+				for _, stat := range tableStats {
+					if len(stat.ColumnIDs) != 1 || stat.HistogramData == nil || len(stat.Histogram) == 0 {
+						continue
+					}
+					columnID := stat.ColumnIDs[0]
+					if _, ok := emitted[columnID]; ok {
+						continue
+					}
+					column, err := table.FindColumnByID(columnID)
+					if err != nil {
+						return err
+					}
+					if column.Hidden {
+						continue
+					}
+					histogram, err := makeColumnStatisticsHistogram(stat)
+					if err != nil {
+						return err
+					}
+					if err := addRow(
+						tree.NewDString(scName),      // schema_name
+						tree.NewDString(table.Name),  // table_name
+						tree.NewDString(column.Name), // column_name
+						histogram,                    // histogram
+					); err != nil {
+						return err
+					}
+					emitted[columnID] = struct{}{}
+				}
+				return nil
+			})
+	},
 }
 
 var informationSchemaSequences = virtualSchemaTable{
@@ -1169,7 +2227,7 @@ CREATE TABLE information_schema.statistics (
 	TABLE_CATALOG STRING NOT NULL,
 	TABLE_SCHEMA  STRING NOT NULL,
 	TABLE_NAME    STRING NOT NULL,
-	NON_UNIQUE    STRING NOT NULL,
+	NON_UNIQUE    INT8 NOT NULL,
 	INDEX_SCHEMA  STRING NOT NULL,
 	INDEX_NAME    STRING NOT NULL,
 	SEQ_IN_INDEX  INT8 NOT NULL,
@@ -1178,9 +2236,22 @@ CREATE TABLE information_schema.statistics (
 	CARDINALITY   INT8,
 	DIRECTION     STRING NOT NULL,
 	STORING       STRING NOT NULL,
-	IMPLICIT      STRING NOT NULL
+	IMPLICIT      STRING NOT NULL,
+	SUB_PART      INT8,
+	PACKED        STRING,
+	NULLABLE      STRING NOT NULL,
+	INDEX_TYPE    STRING NOT NULL,
+	"COMMENT"    STRING,
+	INDEX_COMMENT STRING,
+	IS_VISIBLE    STRING,
+	EXPRESSION    STRING
 )`,
 	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		indexComments, err := getIndexComments(ctx, p)
+		if err != nil {
+			return err
+		}
+
 		return forEachTableDesc(ctx, p, dbContext, hideVirtual, /* virtual tables have no indexes */
 			func(db *sqlbase.DatabaseDescriptor, scName string, table *sqlbase.TableDescriptor) error {
 				dbNameStr := tree.NewDString(db.GetName())
@@ -1190,20 +2261,42 @@ CREATE TABLE information_schema.statistics (
 				appendRow := func(index *sqlbase.IndexDescriptor, colName string, sequence int,
 					direction tree.Datum, isStored, isImplicit bool,
 				) error {
+					column, err := table.FindActiveColumnByName(colName)
+					if err != nil {
+						return err
+					}
+					nonUnique := tree.NewDInt(0)
+					if !index.Unique {
+						nonUnique = tree.NewDInt(1)
+					}
+					indexComment := tree.DNull
+					if commentsByIndex := indexComments[table.ID]; commentsByIndex != nil {
+						if comment, ok := commentsByIndex[index.ID]; ok {
+							indexComment = comment
+						}
+					}
 					return addRow(
-						dbNameStr,                         // table_catalog
-						scNameStr,                         // table_schema
-						tbNameStr,                         // table_name
-						yesOrNoDatum(!index.Unique),       // non_unique
-						scNameStr,                         // index_schema
-						tree.NewDString(index.Name),       // index_name
-						tree.NewDInt(tree.DInt(sequence)), // seq_in_index
-						tree.NewDString(colName),          // column_name
-						tree.DNull,                        // collation
-						tree.DNull,                        // cardinality
-						direction,                         // direction
-						yesOrNoDatum(isStored),            // storing
-						yesOrNoDatum(isImplicit),          // implicit
+						dbNameStr,                            // table_catalog
+						scNameStr,                            // table_schema
+						tbNameStr,                            // table_name
+						nonUnique,                            // non_unique
+						scNameStr,                            // index_schema
+						tree.NewDString(index.Name),          // index_name
+						tree.NewDInt(tree.DInt(sequence)),    // seq_in_index
+						tree.NewDString(colName),             // column_name
+						tree.DNull,                           // collation
+						tree.DNull,                           // cardinality
+						direction,                            // direction
+						yesOrNoDatum(isStored),               // storing
+						yesOrNoDatum(isImplicit),             // implicit
+						tree.DNull,                           // sub_part
+						tree.DNull,                           // packed
+						yesOrNoDatum(column.Nullable),        // nullable
+						tree.NewDString(index.Type.String()), // index_type
+						tree.DNull,                           // comment
+						indexComment,                         // index_comment
+						tree.DNull,                           // is_visible
+						tree.DNull,                           // expression
 					)
 				}
 
@@ -1285,7 +2378,9 @@ CREATE TABLE information_schema.table_constraints (
 	TABLE_NAME         STRING NOT NULL,
 	CONSTRAINT_TYPE    STRING NOT NULL,
 	IS_DEFERRABLE      STRING NOT NULL,
-	INITIALLY_DEFERRED STRING NOT NULL
+	INITIALLY_DEFERRED STRING NOT NULL,
+	ENFORCED           STRING NOT NULL,
+	NULLS_DISTINCT     STRING
 )`,
 	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 		h := makeOidHasher()
@@ -1306,6 +2401,10 @@ CREATE TABLE information_schema.table_constraints (
 				tbNameStr := tree.NewDString(table.Name)
 
 				for conName, c := range conInfo {
+					var nullsDistinct tree.Datum = tree.DNull
+					if c.Kind == sqlbase.ConstraintTypeUnique {
+						nullsDistinct = yesString
+					}
 					if err := addRow(
 						dbNameStr,                       // constraint_catalog
 						scNameStr,                       // constraint_schema
@@ -1316,6 +2415,8 @@ CREATE TABLE information_schema.table_constraints (
 						tree.NewDString(string(c.Kind)), // constraint_type
 						yesOrNoDatum(false),             // is_deferrable
 						yesOrNoDatum(false),             // initially_deferred
+						yesString,                       // enforced
+						nullsDistinct,                   // nulls_distinct
 					); err != nil {
 						return err
 					}
@@ -1343,6 +2444,8 @@ CREATE TABLE information_schema.table_constraints (
 							tree.NewDString("CHECK"), // constraint_type
 							yesOrNoDatum(false),      // is_deferrable
 							yesOrNoDatum(false),      // initially_deferred
+							yesString,                // enforced
+							tree.DNull,               // nulls_distinct
 						); err != nil {
 							return err
 						}
@@ -1356,20 +2459,41 @@ CREATE TABLE information_schema.table_constraints (
 // Postgres: not provided
 // MySQL:    https://dev.mysql.com/doc/refman/5.7/en/user-privileges-table.html
 // TODO(knz): this introspection facility is of dubious utility.
+// KWDB does not support MySQL-style global grants such as GRANT ... ON *.*.
+// Until a persistent global privilege source exists, expose only the
+// compatibility rows for the current root user and admin role membership.
 var informationSchemaUserPrivileges = virtualSchemaTable{
-	comment: `grantable privileges (incomplete)`,
+	comment: `global privilege compatibility rows for root and admin role membership; non-admin users see no rows`,
 	schema: `
 CREATE TABLE information_schema.user_privileges (
 	GRANTEE        STRING NOT NULL,
 	TABLE_CATALOG  STRING NOT NULL,
 	PRIVILEGE_TYPE STRING NOT NULL,
 	IS_GRANTABLE   STRING
-)`,
+	)`,
 	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		grantees := make(map[string]struct{}, 2)
+		if p.User() == security.RootUser {
+			grantees[security.RootUser] = struct{}{}
+		}
+		if p.User() == sqlbase.AdminRole {
+			grantees[sqlbase.AdminRole] = struct{}{}
+		}
+		roles, err := p.MemberOfWithAdminOption(ctx, p.User())
+		if err != nil {
+			return err
+		}
+		if _, ok := roles[sqlbase.AdminRole]; ok {
+			grantees[sqlbase.AdminRole] = struct{}{}
+		}
+
 		return forEachDatabaseDesc(ctx, p, dbContext, true, /* requiresPrivileges */
 			func(dbDesc *DatabaseDescriptor) error {
 				dbNameStr := tree.NewDString(dbDesc.Name)
 				for _, u := range []string{security.RootUser, sqlbase.AdminRole} {
+					if _, ok := grantees[u]; !ok {
+						continue
+					}
 					grantee := tree.NewDString(u)
 					for _, p := range privilege.List(privilege.ByValue[:]).SortedNames() {
 						if err := addRow(
@@ -1387,9 +2511,39 @@ CREATE TABLE information_schema.user_privileges (
 	},
 }
 
+var informationSchemaUserAttributes = virtualSchemaTable{
+	comment: `user account attributes`,
+	schema: `
+CREATE TABLE information_schema.user_attributes (
+	"USER"    STRING NOT NULL,
+	HOST      STRING,
+	"ATTRIBUTE" JSONB
+)`,
+	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		currentUser := p.SessionData().User
+		isAdmin, err := p.HasAdminRole(ctx)
+		if err != nil {
+			return err
+		}
+
+		return forEachRole(ctx, p, func(username string, isRole bool, _ bool) error {
+			// User attributes apply to login accounts, not SQL roles. Non-admins
+			// are restricted to their own row to avoid account enumeration.
+			if isRole || (!isAdmin && username != currentUser) {
+				return nil
+			}
+			return addRow(
+				tree.NewDString(username), // user
+				tree.DNull,                // host: KWDB has no user@host identity
+				tree.DNull,                // attribute: no account JSON attribute source
+			)
+		})
+	},
+}
+
 // MySQL:    https://dev.mysql.com/doc/refman/5.7/en/table-privileges-table.html
 var informationSchemaTablePrivileges = virtualSchemaTable{
-	comment: `privileges granted on table or views (incomplete; may contain excess users or roles)
+	comment: `privileges on visible tables or views for the current user, public, or available roles; administrators can view all grantees (incomplete; grantor and grant option information unavailable)
 ` + base.DocsURL("information-schema.html#table_privileges") + `
 https://www.postgresql.org/docs/9.5/infoschema-table-privileges.html`,
 	schema: `
@@ -1403,37 +2557,52 @@ CREATE TABLE information_schema.table_privileges (
 	IS_GRANTABLE   STRING,
 	WITH_HIERARCHY STRING NOT NULL
 )`,
-	populate: populateTablePrivileges,
-}
+	populate: func(
+		ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error,
+	) error {
+		isAdmin, err := p.HasAdminRole(ctx)
+		if err != nil {
+			return err
+		}
 
-// populateTablePrivileges is used to populate both table_privileges and role_table_grants.
-func populateTablePrivileges(
-	ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error,
-) error {
-	return forEachTableDesc(ctx, p, dbContext, virtualMany,
-		func(db *sqlbase.DatabaseDescriptor, scName string, table *sqlbase.TableDescriptor) error {
-			dbNameStr := tree.NewDString(db.Name)
-			scNameStr := tree.NewDString(scName)
-			tbNameStr := tree.NewDString(table.Name)
+		currentUser := p.SessionData().User
+		var memberOf map[string]bool
+		if !isAdmin {
+			memberOf, err = p.MemberOfWithAdminOption(ctx, currentUser)
+			if err != nil {
+				return err
+			}
+		}
 
-			for _, u := range table.Privileges.Show() {
-				for _, priv := range u.Privileges {
-					if err := addRow(
-						tree.DNull,                     // grantor
-						tree.NewDString(u.User),        // grantee
-						dbNameStr,                      // table_catalog
-						scNameStr,                      // table_schema
-						tbNameStr,                      // table_name
-						tree.NewDString(priv),          // privilege_type
-						tree.DNull,                     // is_grantable
-						yesOrNoDatum(priv == "SELECT"), // with_hierarchy
-					); err != nil {
-						return err
+		return forEachTableDesc(ctx, p, dbContext, virtualMany,
+			func(db *sqlbase.DatabaseDescriptor, scName string, table *sqlbase.TableDescriptor) error {
+				dbNameStr := tree.NewDString(db.Name)
+				scNameStr := tree.NewDString(scName)
+				tbNameStr := tree.NewDString(table.Name)
+
+				for _, u := range table.Privileges.Show() {
+					if !canUserSeePrivilegeGrantee(isAdmin, currentUser, u.User, memberOf) {
+						continue
+					}
+
+					for _, priv := range u.Privileges {
+						if err := addRow(
+							tree.DNull,              // grantor
+							tree.NewDString(u.User), // grantee
+							dbNameStr,               // table_catalog
+							scNameStr,               // table_schema
+							tbNameStr,               // table_name
+							tree.NewDString(priv),   // privilege_type
+							tree.DNull,              // is_grantable
+							noString,                // with_hierarchy
+						); err != nil {
+							return err
+						}
 					}
 				}
-			}
-			return nil
-		})
+				return nil
+			})
+	},
 }
 
 var (
@@ -1619,6 +2788,149 @@ CREATE TABLE information_schema.views (
 					noString,                         // is_trigger_insertable_into
 				)
 			})
+	},
+}
+
+// MySQL: https://dev.mysql.com/doc/refman/8.4/en/information-schema-view-table-usage-table.html
+var informationSchemaViewTableUsage = virtualSchemaTable{
+	comment: `tables and views directly referenced by views`,
+	schema: `
+CREATE TABLE information_schema.view_table_usage (
+	VIEW_CATALOG  STRING NOT NULL,
+	VIEW_SCHEMA   STRING NOT NULL,
+	VIEW_NAME     STRING NOT NULL,
+	TABLE_CATALOG STRING NOT NULL,
+	TABLE_SCHEMA  STRING NOT NULL,
+	TABLE_NAME    STRING NOT NULL
+)`,
+	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		// A descriptor ID pair uniquely identifies one direct view dependency.
+		seen := make(map[[2]sqlbase.ID]struct{})
+		schemaNames := make(map[sqlbase.ID]string)
+		return forEachTableDescWithTableLookup(ctx, p, dbContext, hideVirtual, func(
+			db *sqlbase.DatabaseDescriptor,
+			viewSchemaName string,
+			view *sqlbase.TableDescriptor,
+			tableLookup tableLookupFn,
+		) error {
+			if !view.IsView() {
+				return nil
+			}
+			schemaNames[view.GetParentSchemaID()] = viewSchemaName
+
+			for _, dependencyID := range view.DependsOn {
+				// System virtual tables are not persisted in tableLookup and are
+				// outside VIEW_TABLE_USAGE's physical relation scope.
+				if sqlbase.IsVirtualTable(dependencyID) {
+					continue
+				}
+				dependency, err := tableLookup.getTableByID(dependencyID)
+				if err != nil {
+					return err
+				}
+				// VIEW_TABLE_USAGE includes only direct relation dependencies, not sequences or routines.
+				if !dependency.IsTable() && !dependency.IsView() {
+					continue
+				}
+				// The traversal already verifies access to the view; also require access to its dependency.
+				if !canUserSeeTable(ctx, p, dependency, false /* allowAdding */) {
+					continue
+				}
+
+				dependencyDB, err := tableLookup.getDatabaseByID(dependency.ParentID)
+				if err != nil {
+					return err
+				}
+				dependencySchemaID := dependency.GetParentSchemaID()
+				dependencySchemaName, ok := schemaNames[dependencySchemaID]
+				if !ok {
+					dependencySchema, err := getSchemaDescByID(ctx, p.txn, dependencySchemaID)
+					if err != nil {
+						return err
+					}
+					dependencySchemaName = dependencySchema.Name
+					schemaNames[dependencySchemaID] = dependencySchemaName
+				}
+
+				key := [2]sqlbase.ID{view.ID, dependency.ID}
+				if _, ok := seen[key]; ok {
+					continue
+				}
+				if err := addRow(
+					tree.NewDString(db.Name),              // view_catalog
+					tree.NewDString(viewSchemaName),       // view_schema
+					tree.NewDString(view.Name),            // view_name
+					tree.NewDString(dependencyDB.Name),    // table_catalog
+					tree.NewDString(dependencySchemaName), // table_schema
+					tree.NewDString(dependency.Name),      // table_name
+				); err != nil {
+					return err
+				}
+				seen[key] = struct{}{}
+			}
+			return nil
+		})
+	},
+}
+
+var informationSchemaTriggersTable = virtualSchemaTable{
+	comment: `triggers on tables visible to the current user`,
+	schema: `
+CREATE TABLE information_schema.triggers (
+	TRIGGER_CATALOG             STRING NOT NULL,
+	TRIGGER_SCHEMA              STRING NOT NULL,
+	TRIGGER_NAME                STRING NOT NULL,
+	EVENT_MANIPULATION          STRING NOT NULL,
+	EVENT_OBJECT_CATALOG        STRING NOT NULL,
+	EVENT_OBJECT_SCHEMA         STRING NOT NULL,
+	EVENT_OBJECT_TABLE          STRING NOT NULL,
+	ACTION_ORDER                INT8 NOT NULL,
+	ACTION_CONDITION            STRING,
+	ACTION_STATEMENT            STRING,
+	ACTION_ORIENTATION          STRING NOT NULL,
+	ACTION_TIMING               STRING NOT NULL,
+	ACTION_REFERENCE_OLD_TABLE  STRING,
+	ACTION_REFERENCE_NEW_TABLE  STRING,
+	ACTION_REFERENCE_OLD_ROW    STRING,
+	ACTION_REFERENCE_NEW_ROW    STRING,
+	CREATED                     TIMESTAMPTZ
+)`,
+	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		// forEachTableDesc filters tables through CheckAnyPrivilege, matching
+		// the visibility rule used by SHOW CREATE TRIGGER.
+		return forEachTableDesc(ctx, p, dbContext, hideVirtual, func(
+			db *sqlbase.DatabaseDescriptor, schemaName string, table *sqlbase.TableDescriptor,
+		) error {
+			for i := range table.Triggers {
+				trigger := &table.Triggers[i]
+				orientation := "STATEMENT"
+				if trigger.ForEachRow {
+					orientation = "ROW"
+				}
+				if err := addRow(
+					tree.NewDString(db.Name),                      // trigger_catalog
+					tree.NewDString(schemaName),                   // trigger_schema
+					tree.NewDString(trigger.Name),                 // trigger_name
+					tree.NewDString(trigger.Event.String()),       // event_manipulation
+					tree.NewDString(db.Name),                      // event_object_catalog
+					tree.NewDString(schemaName),                   // event_object_schema
+					tree.NewDString(table.Name),                   // event_object_table
+					tree.NewDInt(tree.DInt(trigger.TriggerOrder)), // action_order
+					tree.DNull,                                   // action_condition
+					tree.NewDString(trigger.TriggerBody),         // action_statement
+					tree.NewDString(orientation),                 // action_orientation
+					tree.NewDString(trigger.ActionTime.String()), // action_timing
+					tree.DNull, // action_reference_old_table
+					tree.DNull, // action_reference_new_table
+					tree.DNull, // action_reference_old_row
+					tree.DNull, // action_reference_new_row
+					tree.DNull, // created
+				); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
 	},
 }
 
@@ -1970,6 +3282,18 @@ func forEachColumnInTable(
 	return nil
 }
 
+// forEachVisibleColumn visits non-hidden columns in descriptor order.
+func forEachVisibleColumn(
+	table *sqlbase.TableDescriptor, fn func(*sqlbase.ColumnDescriptor) error,
+) error {
+	return forEachColumnInTable(table, func(column *sqlbase.ColumnDescriptor) error {
+		if column.Hidden {
+			return nil
+		}
+		return fn(column)
+	})
+}
+
 func forEachColumnInIndex(
 	table *sqlbase.TableDescriptor,
 	index *sqlbase.IndexDescriptor,
@@ -2032,6 +3356,46 @@ FROM
 	}
 
 	return nil
+}
+
+// getVisibleRoleGrantees returns role names visible in role grant views. Admins
+// can inspect every role grant, while other users can inspect only their roles.
+func getVisibleRoleGrantees(ctx context.Context, p *planner) (map[string]struct{}, error) {
+	roleGrantees := make(map[string]struct{})
+	if err := forEachRole(ctx, p, func(username string, isRole bool, noLogin bool) error {
+		if isRole {
+			roleGrantees[username] = struct{}{}
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	// PUBLIC is an implicit role and is not stored in system.users.
+	roleGrantees[sqlbase.PublicRole] = struct{}{}
+
+	allGrantees, err := p.HasAdminRole(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if allGrantees {
+		return roleGrantees, nil
+	}
+
+	memberOf, err := p.MemberOfWithAdminOption(ctx, p.SessionData().User)
+	if err != nil {
+		return nil, err
+	}
+	for grantee := range roleGrantees {
+		if grantee == sqlbase.PublicRole {
+			continue
+		}
+		// Map membership identifies inherited roles; the boolean value only
+		// indicates whether the user has ADMIN OPTION for that role.
+		if _, ok := memberOf[grantee]; !ok {
+			delete(roleGrantees, grantee)
+		}
+	}
+	return roleGrantees, nil
 }
 
 func forEachRoleMembership(
@@ -2112,6 +3476,132 @@ CREATE TABLE information_schema.procedure_privileges (
 	PRIVILEGE_TYPE     STRING NOT NULL
 )`,
 	populate: populateProcedurePrivileges,
+}
+
+var informationSchemaRoleRoutineGrants = virtualSchemaTable{
+	comment: `privileges granted on procedures and Lua user-defined functions`,
+	schema: `
+CREATE TABLE information_schema.role_routine_grants (
+	GRANTOR          STRING NULL,
+	GRANTEE          STRING NOT NULL,
+	SPECIFIC_CATALOG STRING NULL,
+	SPECIFIC_SCHEMA  STRING NULL,
+	SPECIFIC_NAME    STRING NULL,
+	ROUTINE_CATALOG  STRING NULL,
+	ROUTINE_SCHEMA   STRING NULL,
+	ROUTINE_NAME     STRING NULL,
+	PRIVILEGE_TYPE   STRING NOT NULL,
+	IS_GRANTABLE     STRING NULL
+)`,
+	populate: populateRoleRoutineGrants,
+}
+
+type luaUDFRoutine struct {
+	name   string
+	dbName string
+}
+
+func getAllLuaUDFs(ctx context.Context, p *planner) ([]luaUDFRoutine, error) {
+	query := `SELECT name, descriptor FROM system.user_defined_routine WHERE routine_type = 2`
+	rows, err := p.ExtendedEvalContext().ExecCfg.InternalExecutor.Query(
+		ctx, "read-lua-udfs", p.txn, query,
+	)
+	if err != nil {
+		return nil, err
+	}
+	udfs := make([]luaUDFRoutine, 0, len(rows))
+	for _, row := range rows {
+		var desc sqlbase.FunctionDescriptor
+		val := tree.MustBeDBytes(row[1])
+		if err := protoutil.Unmarshal([]byte(val), &desc); err != nil {
+			return nil, errors.NewAssertionErrorWithWrappedErrf(err,
+				"failed to parse Lua UDF descriptor for %q", val)
+		}
+		if desc.Language != "LUA" {
+			continue
+		}
+		udfs = append(udfs, luaUDFRoutine{
+			name:   string(tree.MustBeDString(row[0])),
+			dbName: desc.DbName,
+		})
+	}
+	return udfs, nil
+}
+
+func populateRoleRoutineGrants(
+	ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error,
+) error {
+	roleGrantees, err := getVisibleRoleGrantees(ctx, p)
+	if err != nil {
+		return err
+	}
+
+	// Stored procedures use their persisted privilege descriptors. The view
+	// exposes only EXECUTE grants, matching the routine privilege semantics.
+	procs, err := getAllProcedures(ctx, p)
+	if err != nil {
+		return err
+	}
+	for _, proc := range procs {
+		db, err := getDatabaseDescByID(ctx, p.txn, proc.DbID)
+		if err != nil {
+			return err
+		}
+		sc, err := getSchemaDescByID(ctx, p.txn, proc.SchemaID)
+		if err != nil {
+			return err
+		}
+		for _, u := range proc.Privileges.Show() {
+			if _, ok := roleGrantees[u.User]; !ok {
+				continue
+			}
+			for _, priv := range u.Privileges {
+				// ALL is stored as its own privilege bit, but the ISO routine
+				// privilege exposed by this view is always EXECUTE.
+				if priv == privilege.EXECUTE.String() || priv == privilege.ALL.String() {
+					if err := addRow(
+						tree.DNull,                                  // grantor
+						tree.NewDString(u.User),                     // grantee
+						tree.NewDString(db.Name),                    // specific_catalog
+						tree.NewDString(sc.Name),                    // specific_schema
+						tree.NewDString(proc.Name),                  // specific_name
+						tree.NewDString(db.Name),                    // routine_catalog
+						tree.NewDString(sc.Name),                    // routine_schema
+						tree.NewDString(proc.Name),                  // routine_name
+						tree.NewDString(privilege.EXECUTE.String()), // privilege_type
+						tree.DNull,                                  // is_grantable
+					); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
+
+	// Lua UDFs are public in KWDB: expose EXECUTE for every visible role.
+	udfs, err := getAllLuaUDFs(ctx, p)
+	if err != nil {
+		return err
+	}
+	for _, udf := range udfs {
+		for grantee := range roleGrantees {
+			if err := addRow(
+				tree.DNull,                                  // grantor
+				tree.NewDString(grantee),                    // grantee
+				tree.NewDString(udf.dbName),                 // specific_catalog
+				tree.DNull,                                  // specific_schema
+				tree.NewDString(udf.name),                   // specific_name
+				tree.NewDString(udf.dbName),                 // routine_catalog
+				tree.DNull,                                  // routine_schema
+				tree.NewDString(udf.name),                   // routine_name
+				tree.NewDString(privilege.EXECUTE.String()), // privilege_type
+				tree.DNull,                                  // is_grantable
+			); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // populateProcedurePrivileges is used to populate both procedure_privileges and role_procedure_grants.

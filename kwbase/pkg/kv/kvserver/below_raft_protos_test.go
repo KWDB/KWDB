@@ -33,8 +33,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagepb"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
 	"go.etcd.io/etcd/raft/raftpb"
@@ -133,31 +132,6 @@ var belowRaftGoldenProtos = map[reflect.Type]fixture{
 		emptySum:     5531676819244041709,
 		populatedSum: 14781226418259198098,
 	},
-}
-
-func init() {
-	if storage.DefaultStorageEngine != enginepb.EngineTypeRocksDB && storage.DefaultStorageEngine != enginepb.EngineTypeDefault {
-		// These are marshaled below Raft by the Pebble merge operator. The Pebble
-		// merge operator can be called below Raft whenever a Pebble Iterator is
-		// used. Note that we only see these protos marshaled below Raft when the
-		// engine type is not RocksDB. If the engine type is RocksDB the marshaling
-		// occurs in C++ which is invisible to the tracking mechanism.
-		belowRaftGoldenProtos[reflect.TypeOf(&roachpb.InternalTimeSeriesData{})] = fixture{
-			populatedConstructor: func(r *rand.Rand) protoutil.Message {
-				return roachpb.NewPopulatedInternalTimeSeriesData(r, false)
-			},
-			emptySum:     5531676819244041709,
-			populatedSum: 8911200268508796945,
-		}
-		belowRaftGoldenProtos[reflect.TypeOf(&enginepb.MVCCMetadataSubsetForMergeSerialization{})] =
-			fixture{
-				populatedConstructor: func(r *rand.Rand) protoutil.Message {
-					return enginepb.NewPopulatedMVCCMetadataSubsetForMergeSerialization(r, false)
-				},
-				emptySum:     14695981039346656037,
-				populatedSum: 7432412240713840291,
-			}
-	}
 }
 
 func TestBelowRaftProtos(t *testing.T) {

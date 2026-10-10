@@ -32,8 +32,8 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/spanset"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
@@ -42,18 +42,18 @@ import (
 
 func TestSpanSetBatchBoundaries(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	eng := storage.NewDefaultInMem()
+	eng := relational.NewDefaultInMem()
 	defer eng.Close()
 
 	var ss spanset.SpanSet
 	ss.AddNonMVCC(spanset.SpanReadWrite, roachpb.Span{Key: roachpb.Key("c"), EndKey: roachpb.Key("g")})
-	outsideKey := storage.MakeMVCCMetadataKey(roachpb.Key("a"))
-	outsideKey2 := storage.MakeMVCCMetadataKey(roachpb.Key("b"))
-	outsideKey3 := storage.MakeMVCCMetadataKey(roachpb.Key("g"))
-	outsideKey4 := storage.MakeMVCCMetadataKey(roachpb.Key("m"))
-	insideKey := storage.MakeMVCCMetadataKey(roachpb.Key("c"))
-	insideKey2 := storage.MakeMVCCMetadataKey(roachpb.Key("d"))
-	insideKey3 := storage.MakeMVCCMetadataKey(roachpb.Key("f"))
+	outsideKey := relational.MakeMVCCMetadataKey(roachpb.Key("a"))
+	outsideKey2 := relational.MakeMVCCMetadataKey(roachpb.Key("b"))
+	outsideKey3 := relational.MakeMVCCMetadataKey(roachpb.Key("g"))
+	outsideKey4 := relational.MakeMVCCMetadataKey(roachpb.Key("m"))
+	insideKey := relational.MakeMVCCMetadataKey(roachpb.Key("c"))
+	insideKey2 := relational.MakeMVCCMetadataKey(roachpb.Key("d"))
+	insideKey3 := relational.MakeMVCCMetadataKey(roachpb.Key("f"))
 
 	// Write values outside the range that we can try to read later.
 	if err := eng.Put(outsideKey, []byte("value")); err != nil {
@@ -90,7 +90,7 @@ func TestSpanSetBatchBoundaries(t *testing.T) {
 			t.Errorf("ClearRange: unexpected error %v", err)
 		}
 		{
-			iter := batch.NewIterator(storage.IterOptions{UpperBound: roachpb.KeyMax})
+			iter := batch.NewIterator(relational.IterOptions{UpperBound: roachpb.KeyMax})
 			err := batch.ClearIterRange(iter, outsideKey.Key, outsideKey2.Key)
 			iter.Close()
 			if !isWriteSpanErr(err) {
@@ -113,7 +113,7 @@ func TestSpanSetBatchBoundaries(t *testing.T) {
 			t.Errorf("ClearRange: unexpected error %v", err)
 		}
 		{
-			iter := batch.NewIterator(storage.IterOptions{UpperBound: roachpb.KeyMax})
+			iter := batch.NewIterator(relational.IterOptions{UpperBound: roachpb.KeyMax})
 			err := batch.ClearIterRange(iter, insideKey2.Key, outsideKey4.Key)
 			iter.Close()
 			if !isWriteSpanErr(err) {
@@ -140,7 +140,7 @@ func TestSpanSetBatchBoundaries(t *testing.T) {
 			t.Errorf("GetProto: unexpected error %v", err)
 		}
 		if err := batch.Iterate(insideKey.Key, insideKey2.Key,
-			func(v storage.MVCCKeyValue) (bool, error) {
+			func(v relational.MVCCKeyValue) (bool, error) {
 				return false, nil
 			},
 		); err != nil {
@@ -163,7 +163,7 @@ func TestSpanSetBatchBoundaries(t *testing.T) {
 			t.Errorf("GetProto: unexpected error %v", err)
 		}
 		if err := batch.Iterate(outsideKey.Key, insideKey2.Key,
-			func(v storage.MVCCKeyValue) (bool, error) {
+			func(v relational.MVCCKeyValue) (bool, error) {
 				return false, errors.Errorf("unexpected callback: %v", v)
 			},
 		); !isReadSpanErr(err) {
@@ -181,7 +181,7 @@ func TestSpanSetBatchBoundaries(t *testing.T) {
 			t.Errorf("GetProto: unexpected error %v", err)
 		}
 		if err := batch.Iterate(insideKey2.Key, outsideKey4.Key,
-			func(v storage.MVCCKeyValue) (bool, error) {
+			func(v relational.MVCCKeyValue) (bool, error) {
 				return false, errors.Errorf("unexpected callback: %v", v)
 			},
 		); !isReadSpanErr(err) {
@@ -190,7 +190,7 @@ func TestSpanSetBatchBoundaries(t *testing.T) {
 	})
 
 	t.Run("forward scans", func(t *testing.T) {
-		iter := batch.NewIterator(storage.IterOptions{UpperBound: roachpb.KeyMax})
+		iter := batch.NewIterator(relational.IterOptions{UpperBound: roachpb.KeyMax})
 		defer iter.Close()
 
 		// Iterators check boundaries on seek and next/prev
@@ -230,12 +230,12 @@ func TestSpanSetBatchBoundaries(t *testing.T) {
 	// Same test in reverse. We commit the batch and wrap an iterator on
 	// the raw engine because we don't support bidirectional iteration
 	// over a pending batch.
-	if err := batch.Commit(true, storage.NormalCommitType); err != nil {
+	if err := batch.Commit(true, relational.NormalCommitType); err != nil {
 		t.Fatal(err)
 	}
 
 	t.Run("reverse scans", func(t *testing.T) {
-		iter := spanset.NewIterator(eng.NewIterator(storage.IterOptions{UpperBound: roachpb.KeyMax}), &ss)
+		iter := spanset.NewIterator(eng.NewIterator(relational.IterOptions{UpperBound: roachpb.KeyMax}), &ss)
 		defer iter.Close()
 		iter.SeekLT(outsideKey)
 		if _, err := iter.Valid(); !isReadSpanErr(err) {
@@ -286,7 +286,7 @@ func TestSpanSetBatchBoundaries(t *testing.T) {
 
 func TestSpanSetBatchTimestamps(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	eng := storage.NewDefaultInMem()
+	eng := relational.NewDefaultInMem()
 	defer eng.Close()
 
 	var ss spanset.SpanSet
@@ -295,8 +295,8 @@ func TestSpanSetBatchTimestamps(t *testing.T) {
 	ss.AddMVCC(spanset.SpanReadWrite,
 		roachpb.Span{Key: roachpb.Key("d"), EndKey: roachpb.Key("f")}, hlc.Timestamp{WallTime: 2})
 
-	rkey := storage.MakeMVCCMetadataKey(roachpb.Key("b"))
-	wkey := storage.MakeMVCCMetadataKey(roachpb.Key("e"))
+	rkey := relational.MakeMVCCMetadataKey(roachpb.Key("b"))
+	wkey := relational.MakeMVCCMetadataKey(roachpb.Key("e"))
 
 	value := []byte("value")
 
@@ -318,13 +318,13 @@ func TestSpanSetBatchTimestamps(t *testing.T) {
 	defer batchAfter.Close()
 
 	// Writes.
-	for _, batch := range []storage.Batch{batchAfter, batchDuring} {
+	for _, batch := range []relational.Batch{batchAfter, batchDuring} {
 		if err := batch.Put(wkey, value); err != nil {
 			t.Fatalf("failed to write inside the range at same or greater ts than latch declaration: %+v", err)
 		}
 	}
 
-	for _, batch := range []storage.Batch{batchBefore, batchNonMVCC} {
+	for _, batch := range []relational.Batch{batchBefore, batchNonMVCC} {
 		if err := batch.Put(wkey, value); err == nil {
 			t.Fatalf("was able to write inside the range at ts less than latch declaration: %+v", err)
 		}
@@ -337,12 +337,12 @@ func TestSpanSetBatchTimestamps(t *testing.T) {
 		return testutils.IsError(err, "cannot write undeclared span")
 	}
 
-	for _, batch := range []storage.Batch{batchBefore, batchNonMVCC} {
+	for _, batch := range []relational.Batch{batchBefore, batchNonMVCC} {
 		if err := batch.Clear(wkey); !isWriteSpanErr(err) {
 			t.Errorf("Clear: unexpected error %v", err)
 		}
 		{
-			iter := batch.NewIterator(storage.IterOptions{UpperBound: roachpb.KeyMax})
+			iter := batch.NewIterator(relational.IterOptions{UpperBound: roachpb.KeyMax})
 			err := batch.ClearIterRange(iter, wkey.Key, wkey.Key)
 			iter.Close()
 			if !isWriteSpanErr(err) {
@@ -358,7 +358,7 @@ func TestSpanSetBatchTimestamps(t *testing.T) {
 	}
 
 	// Reads.
-	for _, batch := range []storage.Batch{batchBefore, batchDuring} {
+	for _, batch := range []relational.Batch{batchBefore, batchDuring} {
 		//lint:ignore SA1019 historical usage of deprecated batch.Get is OK
 		if res, err := batch.Get(rkey); err != nil {
 			t.Errorf("failed to read inside the range: %+v", err)
@@ -371,7 +371,7 @@ func TestSpanSetBatchTimestamps(t *testing.T) {
 		return testutils.IsError(err, "cannot read undeclared span")
 	}
 
-	for _, batch := range []storage.Batch{batchAfter, batchNonMVCC} {
+	for _, batch := range []relational.Batch{batchAfter, batchNonMVCC} {
 		//lint:ignore SA1019 historical usage of deprecated batch.Get is OK
 		if _, err := batch.Get(rkey); !isReadSpanErr(err) {
 			t.Errorf("Get: unexpected error %v", err)
@@ -382,7 +382,7 @@ func TestSpanSetBatchTimestamps(t *testing.T) {
 			t.Errorf("GetProto: unexpected error %v", err)
 		}
 		if err := batch.Iterate(rkey.Key, rkey.Key,
-			func(v storage.MVCCKeyValue) (bool, error) {
+			func(v relational.MVCCKeyValue) (bool, error) {
 				return false, errors.Errorf("unexpected callback: %v", v)
 			},
 		); !isReadSpanErr(err) {
@@ -393,7 +393,7 @@ func TestSpanSetBatchTimestamps(t *testing.T) {
 
 func TestSpanSetIteratorTimestamps(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	eng := storage.NewDefaultInMem()
+	eng := relational.NewDefaultInMem()
 	defer eng.Close()
 
 	var ss spanset.SpanSet
@@ -402,8 +402,8 @@ func TestSpanSetIteratorTimestamps(t *testing.T) {
 	ss.AddMVCC(spanset.SpanReadOnly, roachpb.Span{
 		Key: roachpb.Key("c"), EndKey: roachpb.Key("e")}, hlc.Timestamp{WallTime: 2})
 
-	k1, v1 := storage.MakeMVCCMetadataKey(roachpb.Key("b")), []byte("b-value")
-	k2, v2 := storage.MakeMVCCMetadataKey(roachpb.Key("d")), []byte("d-value")
+	k1, v1 := relational.MakeMVCCMetadataKey(roachpb.Key("b")), []byte("b-value")
+	k2, v2 := relational.MakeMVCCMetadataKey(roachpb.Key("d")), []byte("d-value")
 
 	// Write values that we can try to read later.
 	if err := eng.Put(k1, v1); err != nil {
@@ -427,7 +427,7 @@ func TestSpanSetIteratorTimestamps(t *testing.T) {
 
 	func() {
 		// When accessing at t=1, we're able to read through latches declared at t=1 and t=2.
-		iter := batchAt1.NewIterator(storage.IterOptions{UpperBound: roachpb.KeyMax})
+		iter := batchAt1.NewIterator(relational.IterOptions{UpperBound: roachpb.KeyMax})
 		defer iter.Close()
 
 		iter.SeekGE(k1)
@@ -449,7 +449,7 @@ func TestSpanSetIteratorTimestamps(t *testing.T) {
 
 	{
 		// When accessing at t=2, we're only able to read through the latch declared at t=2.
-		iter := batchAt2.NewIterator(storage.IterOptions{UpperBound: roachpb.KeyMax})
+		iter := batchAt2.NewIterator(relational.IterOptions{UpperBound: roachpb.KeyMax})
 		defer iter.Close()
 
 		iter.SeekGE(k1)
@@ -466,10 +466,10 @@ func TestSpanSetIteratorTimestamps(t *testing.T) {
 		}
 	}
 
-	for _, batch := range []storage.Batch{batchAt3, batchNonMVCC} {
+	for _, batch := range []relational.Batch{batchAt3, batchNonMVCC} {
 		// When accessing at t=3, we're unable to read through any of the declared latches.
 		// Same is true when accessing without a timestamp.
-		iter := batch.NewIterator(storage.IterOptions{UpperBound: roachpb.KeyMax})
+		iter := batch.NewIterator(relational.IterOptions{UpperBound: roachpb.KeyMax})
 		defer iter.Close()
 
 		iter.SeekGE(k1)
@@ -486,15 +486,15 @@ func TestSpanSetIteratorTimestamps(t *testing.T) {
 
 func TestSpanSetNonMVCCBatch(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	eng := storage.NewDefaultInMem()
+	eng := relational.NewDefaultInMem()
 	defer eng.Close()
 
 	var ss spanset.SpanSet
 	ss.AddNonMVCC(spanset.SpanReadOnly, roachpb.Span{Key: roachpb.Key("a"), EndKey: roachpb.Key("c")})
 	ss.AddNonMVCC(spanset.SpanReadWrite, roachpb.Span{Key: roachpb.Key("d"), EndKey: roachpb.Key("f")})
 
-	rkey := storage.MakeMVCCMetadataKey(roachpb.Key("b"))
-	wkey := storage.MakeMVCCMetadataKey(roachpb.Key("e"))
+	rkey := relational.MakeMVCCMetadataKey(roachpb.Key("b"))
+	wkey := relational.MakeMVCCMetadataKey(roachpb.Key("e"))
 
 	value := []byte("value")
 
@@ -510,14 +510,14 @@ func TestSpanSetNonMVCCBatch(t *testing.T) {
 	defer batchMVCC.Close()
 
 	// Writes.
-	for _, batch := range []storage.Batch{batchNonMVCC, batchMVCC} {
+	for _, batch := range []relational.Batch{batchNonMVCC, batchMVCC} {
 		if err := batch.Put(wkey, value); err != nil {
 			t.Fatalf("write disallowed through non-MVCC latch: %+v", err)
 		}
 	}
 
 	// Reads.
-	for _, batch := range []storage.Batch{batchNonMVCC, batchMVCC} {
+	for _, batch := range []relational.Batch{batchNonMVCC, batchMVCC} {
 		//lint:ignore SA1019 historical usage of deprecated batch.Get is OK
 		if res, err := batch.Get(rkey); err != nil {
 			t.Errorf("read disallowed through non-MVCC latch: %+v", err)
@@ -534,14 +534,14 @@ func TestSpanSetNonMVCCBatch(t *testing.T) {
 // See #20894.
 func TestSpanSetMVCCResolveWriteIntentRangeUsingIter(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	eng := storage.NewDefaultInMem()
+	eng := relational.NewDefaultInMem()
 	defer eng.Close()
 
 	ctx := context.Background()
 
 	value := roachpb.MakeValueFromString("irrelevant")
 
-	if err := storage.MVCCPut(
+	if err := relational.MVCCPut(
 		ctx,
 		eng,
 		nil, // ms
@@ -565,10 +565,10 @@ func TestSpanSetMVCCResolveWriteIntentRangeUsingIter(t *testing.T) {
 		Status: roachpb.PENDING,
 	}
 
-	iterAndBuf := storage.GetIterAndBuf(batch, storage.IterOptions{UpperBound: intent.Span.EndKey})
+	iterAndBuf := relational.GetIterAndBuf(batch, relational.IterOptions{UpperBound: intent.Span.EndKey})
 	defer iterAndBuf.Cleanup()
 
-	if _, _, err := storage.MVCCResolveWriteIntentRangeUsingIter(
+	if _, _, err := relational.MVCCResolveWriteIntentRangeUsingIter(
 		ctx, batch, iterAndBuf, nil /* ms */, intent, 0,
 	); err != nil {
 		t.Fatal(err)

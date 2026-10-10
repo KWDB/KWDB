@@ -213,35 +213,35 @@ var backwardCompatibleMigrations = []migrationDescriptor{
 		name:   "create system.comment table",
 		workFn: createCommentTable,
 		// This migration has been introduced some time before 19.2.
-		includedInBootstrap: clusterversion.VersionByKey(clusterversion.Version19_2),
+		includedInBootstrap: clusterversion.VersionByKey(clusterversion.VersionMinSupported),
 		newDescriptorIDs:    staticIDs(keys.CommentsTableID),
 	},
 	{
 		name:   "create system.replication_constraint_stats table",
 		workFn: createReplicationConstraintStatsTable,
 		// This migration has been introduced some time before 19.2.
-		includedInBootstrap: clusterversion.VersionByKey(clusterversion.Version19_2),
+		includedInBootstrap: clusterversion.VersionByKey(clusterversion.VersionMinSupported),
 		newDescriptorIDs:    staticIDs(keys.ReplicationConstraintStatsTableID),
 	},
 	{
 		name:   "create system.replication_critical_localities table",
 		workFn: createReplicationCriticalLocalitiesTable,
 		// This migration has been introduced some time before 19.2.
-		includedInBootstrap: clusterversion.VersionByKey(clusterversion.Version19_2),
+		includedInBootstrap: clusterversion.VersionByKey(clusterversion.VersionMinSupported),
 		newDescriptorIDs:    staticIDs(keys.ReplicationCriticalLocalitiesTableID),
 	},
 	{
 		name:   "create system.reports_meta table",
 		workFn: createReportsMetaTable,
 		// This migration has been introduced some time before 19.2.
-		includedInBootstrap: clusterversion.VersionByKey(clusterversion.Version19_2),
+		includedInBootstrap: clusterversion.VersionByKey(clusterversion.VersionMinSupported),
 		newDescriptorIDs:    staticIDs(keys.ReportsMetaTableID),
 	},
 	{
 		name:   "create system.replication_stats table",
 		workFn: createReplicationStatsTable,
 		// This migration has been introduced some time before 19.2.
-		includedInBootstrap: clusterversion.VersionByKey(clusterversion.Version19_2),
+		includedInBootstrap: clusterversion.VersionByKey(clusterversion.VersionMinSupported),
 		newDescriptorIDs:    staticIDs(keys.ReplicationStatsTableID),
 	},
 	{
@@ -258,14 +258,14 @@ var backwardCompatibleMigrations = []migrationDescriptor{
 	{
 		// Introduced in v19.2, baked into v20.1.
 		name:                "change reports fields from timestamp to timestamptz",
-		includedInBootstrap: clusterversion.VersionByKey(clusterversion.Version19_2),
+		includedInBootstrap: clusterversion.VersionByKey(clusterversion.VersionMinSupported),
 	},
 	{
 		// Introduced in v20.1.
 		// TODO(ajwerner): Bake this migration into v20.2.
 		name:                "create system.protected_ts_meta table",
 		workFn:              createProtectedTimestampsMetaTable,
-		includedInBootstrap: clusterversion.VersionByKey(clusterversion.VersionProtectedTimestamps),
+		includedInBootstrap: clusterversion.VersionByKey(clusterversion.VersionMinSupported),
 		newDescriptorIDs:    staticIDs(keys.ProtectedTimestampsMetaTableID),
 	},
 	{
@@ -273,7 +273,7 @@ var backwardCompatibleMigrations = []migrationDescriptor{
 		// TODO(ajwerner): Bake this migration into v20.2.
 		name:                "create system.protected_ts_records table",
 		workFn:              createProtectedTimestampsRecordsTable,
-		includedInBootstrap: clusterversion.VersionByKey(clusterversion.VersionProtectedTimestamps),
+		includedInBootstrap: clusterversion.VersionByKey(clusterversion.VersionMinSupported),
 		newDescriptorIDs:    staticIDs(keys.ProtectedTimestampsRecordsTableID),
 	},
 	{
@@ -290,7 +290,7 @@ var backwardCompatibleMigrations = []migrationDescriptor{
 		// upgraded to the 20.1 betas with the problem.
 		name:                "create new system.namespace table v2",
 		workFn:              createNewSystemNamespaceDescriptor,
-		includedInBootstrap: clusterversion.VersionByKey(clusterversion.VersionNamespaceTableWithSchemas),
+		includedInBootstrap: clusterversion.VersionByKey(clusterversion.VersionMinSupported),
 		newDescriptorIDs:    staticIDs(keys.NamespaceTableID),
 	},
 	{
@@ -303,13 +303,13 @@ var backwardCompatibleMigrations = []migrationDescriptor{
 		// StartSystemNamespaceMigration post-finalization-style migration.
 		name: "migrate system.namespace_deprecated entries into system.namespace",
 		// workFn:              migrateSystemNamespace,
-		includedInBootstrap: clusterversion.VersionByKey(clusterversion.VersionNamespaceTableWithSchemas),
+		includedInBootstrap: clusterversion.VersionByKey(clusterversion.VersionMinSupported),
 	},
 	{
 		// Introduced in v20.1.
 		name:                "create system.role_options table",
 		workFn:              createRoleOptionsTable,
-		includedInBootstrap: clusterversion.VersionByKey(clusterversion.VersionCreateRolePrivilege),
+		includedInBootstrap: clusterversion.VersionByKey(clusterversion.VersionMinSupported),
 		newDescriptorIDs:    staticIDs(keys.RoleOptionsTableID),
 	},
 	{
@@ -318,14 +318,14 @@ var backwardCompatibleMigrations = []migrationDescriptor{
 		name: "create statement_diagnostics_requests, statement_diagnostics and " +
 			"system.statement_bundle_chunks tables",
 		workFn:              createStatementInfoSystemTables,
-		includedInBootstrap: clusterversion.VersionByKey(clusterversion.VersionStatementDiagnosticsSystemTables),
+		includedInBootstrap: clusterversion.VersionByKey(clusterversion.VersionMinSupported),
 		newDescriptorIDs: staticIDs(keys.StatementBundleChunksTableID,
 			keys.StatementDiagnosticsRequestsTableID, keys.StatementDiagnosticsTableID),
 	},
 	{
 		// Introduced in v20.1.
 		name:                "remove public permissions on system.comments",
-		includedInBootstrap: clusterversion.VersionByKey(clusterversion.VersionSchemaChangeJob),
+		includedInBootstrap: clusterversion.VersionByKey(clusterversion.VersionMinSupported),
 		workFn:              depublicizeSystemComments,
 	},
 	{
@@ -340,7 +340,7 @@ var backwardCompatibleMigrations = []migrationDescriptor{
 	{
 		name:                "create new system.user_defined_routine table",
 		workFn:              createUDRTable,
-		includedInBootstrap: clusterversion.VersionByKey(clusterversion.VersionUDR),
+		includedInBootstrap: clusterversion.VersionByKey(clusterversion.VersionMinSupported),
 		newDescriptorIDs:    staticIDs(keys.UDRTableID),
 	},
 	{
@@ -724,7 +724,7 @@ func (m *Manager) StartSchemaChangeJobMigration(ctx context.Context) error {
 			Closer:         m.stopper.ShouldQuiesce(),
 		}
 		for retry := retry.StartWithCtx(ctx, waitRetryOpts); retry.Next(); {
-			if m.settings.Version.IsActive(ctx, clusterversion.VersionSchemaChangeJob) {
+			if m.settings.Version.IsActive(ctx, clusterversion.VersionMinSupported) {
 				break
 			}
 		}
@@ -799,7 +799,7 @@ var systemNamespaceMigrationEnabled = settings.RegisterBoolSetting(
 func (m *Manager) StartSystemNamespaceMigration(
 	ctx context.Context, bootstrapVersion roachpb.Version,
 ) error {
-	if !bootstrapVersion.Less(clusterversion.VersionByKey(clusterversion.VersionNamespaceTableWithSchemas)) {
+	if !bootstrapVersion.Less(clusterversion.VersionByKey(clusterversion.VersionMinSupported)) {
 		// Our bootstrap version is equal to or greater than 20.1, where no old
 		// namespace table is created: we can skip this migration.
 		return nil
@@ -818,7 +818,7 @@ func (m *Manager) StartSystemNamespaceMigration(
 			if !systemNamespaceMigrationEnabled.Get(&m.settings.SV) {
 				continue
 			}
-			if m.settings.Version.IsActive(ctx, clusterversion.VersionNamespaceTableWithSchemas) {
+			if m.settings.Version.IsActive(ctx, clusterversion.VersionMinSupported) {
 				break
 			}
 		}

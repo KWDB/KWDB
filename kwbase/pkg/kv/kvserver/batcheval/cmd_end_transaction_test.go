@@ -32,8 +32,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/abortspan"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
@@ -884,7 +884,7 @@ func TestEndTxnUpdatesTransactionRecord(t *testing.T) {
 	}
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
-			db := storage.NewDefaultInMem()
+			db := relational.NewDefaultInMem()
 			defer db.Close()
 			batch := db.NewBatch()
 			defer batch.Close()
@@ -892,7 +892,7 @@ func TestEndTxnUpdatesTransactionRecord(t *testing.T) {
 			// Write the existing transaction record, if necessary.
 			txnKey := keys.TransactionKey(txn.Key, txn.ID)
 			if c.existingTxn != nil {
-				if err := storage.MVCCPutProto(ctx, batch, nil, txnKey, hlc.Timestamp{}, nil, c.existingTxn); err != nil {
+				if err := relational.MVCCPutProto(ctx, batch, nil, txnKey, hlc.Timestamp{}, nil, c.existingTxn); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -945,8 +945,8 @@ func TestEndTxnUpdatesTransactionRecord(t *testing.T) {
 
 				// Assert that the txn record is written as expected.
 				var resTxnRecord roachpb.TransactionRecord
-				if ok, err := storage.MVCCGetProto(
-					ctx, batch, txnKey, hlc.Timestamp{}, &resTxnRecord, storage.MVCCGetOptions{},
+				if ok, err := relational.MVCCGetProto(
+					ctx, batch, txnKey, hlc.Timestamp{}, &resTxnRecord, relational.MVCCGetOptions{},
 				); err != nil {
 					t.Fatal(err)
 				} else if c.expTxn == nil {
@@ -985,7 +985,7 @@ func TestPartialRollbackOnEndTransaction(t *testing.T) {
 	defer TestingSetTxnAutoGC(false)()
 
 	testutils.RunTrueAndFalse(t, "withStoredTxnRecord", func(t *testing.T, storeTxnBeforeEndTxn bool) {
-		db := storage.NewDefaultInMem()
+		db := relational.NewDefaultInMem()
 		defer db.Close()
 		batch := db.NewBatch()
 		defer batch.Close()
@@ -995,13 +995,13 @@ func TestPartialRollbackOnEndTransaction(t *testing.T) {
 		// Write a first value at key.
 		v.SetString("a")
 		txn.Sequence = 1
-		if err := storage.MVCCPut(ctx, batch, nil, k, ts, v, &txn); err != nil {
+		if err := relational.MVCCPut(ctx, batch, nil, k, ts, v, &txn); err != nil {
 			t.Fatal(err)
 		}
 		// Write another value.
 		v.SetString("b")
 		txn.Sequence = 2
-		if err := storage.MVCCPut(ctx, batch, nil, k, ts, v, &txn); err != nil {
+		if err := relational.MVCCPut(ctx, batch, nil, k, ts, v, &txn); err != nil {
 			t.Fatal(err)
 		}
 
@@ -1014,7 +1014,7 @@ func TestPartialRollbackOnEndTransaction(t *testing.T) {
 		txnKey := keys.TransactionKey(txn.Key, txn.ID)
 		if storeTxnBeforeEndTxn {
 			txnRec := txn.AsRecord()
-			if err := storage.MVCCPutProto(ctx, batch, nil, txnKey, hlc.Timestamp{}, nil, &txnRec); err != nil {
+			if err := relational.MVCCPutProto(ctx, batch, nil, txnKey, hlc.Timestamp{}, nil, &txnRec); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -1045,7 +1045,7 @@ func TestPartialRollbackOnEndTransaction(t *testing.T) {
 
 		// The second write has been rolled back; verify that the remaining
 		// value is from the first write.
-		res, i, err := storage.MVCCGet(ctx, batch, k, ts2, storage.MVCCGetOptions{})
+		res, i, err := relational.MVCCGet(ctx, batch, k, ts2, relational.MVCCGetOptions{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1064,7 +1064,7 @@ func TestPartialRollbackOnEndTransaction(t *testing.T) {
 
 		// Also verify that the txn record contains the ignore list.
 		var txnRec roachpb.TransactionRecord
-		hasRec, err := storage.MVCCGetProto(ctx, batch, txnKey, hlc.Timestamp{}, &txnRec, storage.MVCCGetOptions{})
+		hasRec, err := relational.MVCCGetProto(ctx, batch, txnKey, hlc.Timestamp{}, &txnRec, relational.MVCCGetOptions{})
 		if err != nil {
 			t.Fatal(err)
 		}

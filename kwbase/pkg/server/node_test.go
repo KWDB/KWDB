@@ -49,7 +49,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/rpc/nodedialer"
 	"gitee.com/kwbasedb/kwbase/pkg/server/status"
 	"gitee.com/kwbasedb/kwbase/pkg/server/status/statuspb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
@@ -69,7 +69,7 @@ import (
 // of engines. The server, clock and node are returned. If gossipBS is
 // not nil, the gossip bootstrap address is set to gossipBS.
 func createTestNode(
-	addr net.Addr, engines []storage.Engine, gossipBS net.Addr, t *testing.T,
+	addr net.Addr, engines []relational.Engine, gossipBS net.Addr, t *testing.T,
 ) (*grpc.Server, net.Addr, kvserver.StoreConfig, *Node, *stop.Stopper) {
 	cfg := kvserver.TestStoreConfig(nil /* clock */)
 	st := cfg.Settings
@@ -168,7 +168,7 @@ func createTestNode(
 func createAndStartTestNode(
 	ctx context.Context,
 	addr net.Addr,
-	engines []storage.Engine,
+	engines []relational.Engine,
 	gossipBS net.Addr,
 	locality roachpb.Locality,
 	t *testing.T,
@@ -222,16 +222,16 @@ func (s keySlice) Less(i, j int) bool { return bytes.Compare(s[i], s[j]) < 0 }
 func TestBootstrapCluster(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	ctx := context.Background()
-	e := storage.NewDefaultInMem()
+	e := relational.NewDefaultInMem()
 	defer e.Close()
 	if _, err := bootstrapCluster(
-		ctx, []storage.Engine{e}, clusterversion.TestingClusterVersion, zonepb.DefaultZoneConfigRef(), zonepb.DefaultSystemZoneConfigRef(),
+		ctx, []relational.Engine{e}, clusterversion.TestingClusterVersion, zonepb.DefaultZoneConfigRef(), zonepb.DefaultSystemZoneConfigRef(),
 	); err != nil {
 		t.Fatal(err)
 	}
 
 	// Scan the complete contents of the local database directly from the engine.
-	res, err := storage.MVCCScan(ctx, e, keys.LocalMax, roachpb.KeyMax, hlc.MaxTimestamp, storage.MVCCScanOptions{})
+	res, err := relational.MVCCScan(ctx, e, keys.LocalMax, roachpb.KeyMax, hlc.MaxTimestamp, relational.MVCCScanOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,18 +278,18 @@ func TestBootstrapCluster(t *testing.T) {
 func TestBootstrapNewStore(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	ctx := context.Background()
-	e := storage.NewDefaultInMem()
+	e := relational.NewDefaultInMem()
 	if _, err := bootstrapCluster(
-		ctx, []storage.Engine{e}, clusterversion.TestingClusterVersion, zonepb.DefaultZoneConfigRef(), zonepb.DefaultSystemZoneConfigRef(),
+		ctx, []relational.Engine{e}, clusterversion.TestingClusterVersion, zonepb.DefaultZoneConfigRef(), zonepb.DefaultSystemZoneConfigRef(),
 	); err != nil {
 		t.Fatal(err)
 	}
 
 	// Start a new node with two new stores which will require bootstrapping.
-	engines := Engines([]storage.Engine{
+	engines := Engines([]relational.Engine{
 		e,
-		storage.NewDefaultInMem(),
-		storage.NewDefaultInMem(),
+		relational.NewDefaultInMem(),
+		relational.NewDefaultInMem(),
 	})
 	defer engines.Close()
 	_, _, node, stopper := createAndStartTestNode(
@@ -331,17 +331,17 @@ func TestNodeJoin(t *testing.T) {
 	ctx := context.Background()
 	engineStopper := stop.NewStopper()
 	defer engineStopper.Stop(ctx)
-	e := storage.NewDefaultInMem()
+	e := relational.NewDefaultInMem()
 	engineStopper.AddCloser(e)
 
 	if _, err := bootstrapCluster(
-		ctx, []storage.Engine{e}, clusterversion.TestingClusterVersion, zonepb.DefaultZoneConfigRef(), zonepb.DefaultSystemZoneConfigRef(),
+		ctx, []relational.Engine{e}, clusterversion.TestingClusterVersion, zonepb.DefaultZoneConfigRef(), zonepb.DefaultSystemZoneConfigRef(),
 	); err != nil {
 		t.Fatal(err)
 	}
 
 	// Start the bootstrap node.
-	engines1 := []storage.Engine{e}
+	engines1 := []relational.Engine{e}
 	_, server1Addr, node1, stopper1 := createAndStartTestNode(
 		ctx,
 		util.TestAddr,
@@ -353,9 +353,9 @@ func TestNodeJoin(t *testing.T) {
 	defer stopper1.Stop(ctx)
 
 	// Create a new node.
-	e2 := storage.NewDefaultInMem()
+	e2 := relational.NewDefaultInMem()
 	engineStopper.AddCloser(e2)
-	engines2 := []storage.Engine{e2}
+	engines2 := []relational.Engine{e2}
 	_, server2Addr, node2, stopper2 := createAndStartTestNode(
 		ctx,
 		util.TestAddr,
@@ -402,11 +402,11 @@ func TestCorruptedClusterID(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
 	ctx := context.Background()
-	e := storage.NewDefaultInMem()
+	e := relational.NewDefaultInMem()
 	defer e.Close()
 
 	if _, err := bootstrapCluster(
-		ctx, []storage.Engine{e}, clusterversion.TestingClusterVersion, zonepb.DefaultZoneConfigRef(), zonepb.DefaultSystemZoneConfigRef(),
+		ctx, []relational.Engine{e}, clusterversion.TestingClusterVersion, zonepb.DefaultZoneConfigRef(), zonepb.DefaultSystemZoneConfigRef(),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -417,13 +417,13 @@ func TestCorruptedClusterID(t *testing.T) {
 		NodeID:    1,
 		StoreID:   1,
 	}
-	if err := storage.MVCCPutProto(
+	if err := relational.MVCCPutProto(
 		ctx, e, nil /* ms */, keys.StoreIdentKey(), hlc.Timestamp{}, nil /* txn */, &sIdent,
 	); err != nil {
 		t.Fatal(err)
 	}
 
-	engines := []storage.Engine{e}
+	engines := []relational.Engine{e}
 	_, serverAddr, _, node, stopper := createTestNode(util.TestAddr, engines, nil, t)
 	defer stopper.Stop(ctx)
 	bootstrappedEngines, newEngines, cv, err := inspectEngines(
@@ -752,17 +752,17 @@ func TestStartNodeWithLocality(t *testing.T) {
 	ctx := context.Background()
 
 	testLocalityWithNewNode := func(locality roachpb.Locality) {
-		e := storage.NewDefaultInMem()
+		e := relational.NewDefaultInMem()
 		defer e.Close()
 		if _, err := bootstrapCluster(
-			ctx, []storage.Engine{e}, clusterversion.TestingClusterVersion, zonepb.DefaultZoneConfigRef(), zonepb.DefaultSystemZoneConfigRef(),
+			ctx, []relational.Engine{e}, clusterversion.TestingClusterVersion, zonepb.DefaultZoneConfigRef(), zonepb.DefaultSystemZoneConfigRef(),
 		); err != nil {
 			t.Fatal(err)
 		}
 		_, _, node, stopper := createAndStartTestNode(
 			ctx,
 			util.TestAddr,
-			[]storage.Engine{e},
+			[]relational.Engine{e},
 			util.TestAddr,
 			locality,
 			t,

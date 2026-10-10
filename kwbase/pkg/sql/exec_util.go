@@ -67,7 +67,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/stats"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util/bitarray"
 	"gitee.com/kwbasedb/kwbase/pkg/util/duration"
 	"gitee.com/kwbasedb/kwbase/pkg/util/errorutil/unimplemented"
@@ -692,7 +692,7 @@ type ExecutorConfig struct {
 	TSWhiteListMap *sqlbase.WhiteListMap
 
 	// TsEngine is a ts engine
-	TsEngine *tse.TsEngine
+	TsEngine *timeseries.TsEngine
 
 	// TsIDGen is a TSIDGenerator
 	TsIDGen *sqlbase.TSIDGenerator

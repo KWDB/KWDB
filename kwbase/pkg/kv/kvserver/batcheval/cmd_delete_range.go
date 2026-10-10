@@ -30,7 +30,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/batcheval/result"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/spanset"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 )
 
@@ -55,7 +55,7 @@ func declareKeysDeleteRange(
 // DeleteRange deletes the range of key/value pairs specified by
 // start and end keys.
 func DeleteRange(
-	ctx context.Context, readWriter storage.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
+	ctx context.Context, readWriter relational.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
 	args := cArgs.Args.(*roachpb.DeleteRangeRequest)
 	h := cArgs.Header
@@ -69,7 +69,7 @@ func DeleteRange(
 	// written if we're evaluating the DeleteRange for a transaction so that we
 	// can update the Result's AcquiredLocks field.
 	returnKeys := args.ReturnKeys || h.Txn != nil
-	deleted, resumeSpan, num, err := storage.MVCCDeleteRange(
+	deleted, resumeSpan, num, err := relational.MVCCDeleteRange(
 		ctx, readWriter, cArgs.Stats, args.Key, args.EndKey, h.MaxSpanRequestKeys, timestamp, h.Txn, returnKeys,
 	)
 	if err == nil && args.ReturnKeys {

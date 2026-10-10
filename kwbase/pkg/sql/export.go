@@ -41,7 +41,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/cloud"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/localexternal"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding/csv"
 	"github.com/pkg/errors"
@@ -388,7 +388,7 @@ func writeRelationalMeta(
 	// Write create_stmt to a file.
 	var buf bytes.Buffer
 	writer := csv.NewWriter(&buf)
-	conf, err := cloud.ExternalStorageConfFromURI(file)
+	conf, err := localexternal.ExternalStorageConfFromURI(file)
 	if err != nil {
 		return err
 	}
@@ -558,7 +558,7 @@ func getClusterSettingSQL(
 ) error {
 	var buf bytes.Buffer
 	writer := csv.NewWriter(&buf)
-	conf, err := cloud.ExternalStorageConfFromURI(file)
+	conf, err := localexternal.ExternalStorageConfFromURI(file)
 	if err != nil {
 		return err
 	}
@@ -611,7 +611,7 @@ func getClusterSettingSQL(
 func getUserSQL(ctx context.Context, p *planner, file string, res RestrictedCommandResult) error {
 	var buf bytes.Buffer
 	writer := csv.NewWriter(&buf)
-	conf, err := cloud.ExternalStorageConfFromURI(file)
+	conf, err := localexternal.ExternalStorageConfFromURI(file)
 	if err != nil {
 		return err
 	}
@@ -797,7 +797,7 @@ func writeTimeSeriesMeta(
 	// init storage
 	var buf bytes.Buffer
 	writer := csv.NewWriter(&buf)
-	conf, err := cloud.ExternalStorageConfFromURI(file)
+	conf, err := localexternal.ExternalStorageConfFromURI(file)
 	if err != nil {
 		return err
 	}

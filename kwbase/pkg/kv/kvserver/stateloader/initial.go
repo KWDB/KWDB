@@ -29,8 +29,8 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagepb"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/pkg/errors"
@@ -54,7 +54,7 @@ const (
 // are returned.
 func WriteInitialReplicaState(
 	ctx context.Context,
-	readWriter storage.ReadWriter,
+	readWriter relational.ReadWriter,
 	ms enginepb.MVCCStats,
 	desc roachpb.RangeDescriptor,
 	lease roachpb.Lease,
@@ -102,7 +102,7 @@ func WriteInitialReplicaState(
 // state itself, and the updated stats are returned.
 func WriteInitialState(
 	ctx context.Context,
-	readWriter storage.ReadWriter,
+	readWriter relational.ReadWriter,
 	ms enginepb.MVCCStats,
 	desc roachpb.RangeDescriptor,
 	lease roachpb.Lease,

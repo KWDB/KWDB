@@ -37,7 +37,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvclient/kvcoord"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
@@ -179,8 +179,8 @@ func TestUpdateRangeAddressing(t *testing.T) {
 		//   to RocksDB will be asynchronous.
 		var kvs []roachpb.KeyValue
 		testutils.SucceedsSoon(t, func() error {
-			res, err := storage.MVCCScan(ctx, store.Engine(), keys.MetaMin, keys.MetaMax,
-				hlc.MaxTimestamp, storage.MVCCScanOptions{})
+			res, err := relational.MVCCScan(ctx, store.Engine(), keys.MetaMin, keys.MetaMax,
+				hlc.MaxTimestamp, relational.MVCCScanOptions{})
 			if err != nil {
 				// Wait for the intent to be resolved.
 				if _, ok := err.(*roachpb.WriteIntentError); ok {

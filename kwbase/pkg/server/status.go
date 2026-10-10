@@ -64,7 +64,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/contextutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/httputil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -317,7 +317,7 @@ func (s *statusServer) EngineStats(
 		}
 
 		switch e := store.Engine().(type) {
-		case *storage.RocksDB:
+		case *relational.RocksDB:
 			tickersAndHistograms, err := e.GetTickersAndHistograms()
 			if err != nil {
 				return grpcstatus.Errorf(codes.Internal, "GetTickersAndHistograms error: %s", err.Error())
@@ -988,7 +988,7 @@ func (s *statusServer) Stacks(
 			return &serverpb.JSONResponse{Data: buf[:length]}, nil
 		}
 	case serverpb.StacksType_THREAD_STACKS:
-		return &serverpb.JSONResponse{Data: []byte(storage.ThreadStacks())}, nil
+		return &serverpb.JSONResponse{Data: []byte(relational.ThreadStacks())}, nil
 	default:
 		return nil, grpcstatus.Errorf(codes.InvalidArgument, "unknown stacks type: %s", req.Type)
 	}
@@ -1964,7 +1964,7 @@ func (s *statusServer) CompactStores(
 		storeDetails := serverpb.StoreDetails{
 			StoreID: store.Ident.StoreID,
 		}
-		if rb, ok := store.Engine().(*storage.RocksDB); ok {
+		if rb, ok := store.Engine().(*relational.RocksDB); ok {
 			err = rb.CompactToBottom()
 			if err != nil {
 				log.Errorf(ctx, "Compact to bottom Failed, reason:%s", err.Error())

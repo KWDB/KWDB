@@ -34,7 +34,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
@@ -253,8 +253,8 @@ func (ls *Stores) ReadBootstrapInfo(bi *gossip.BootstrapInfo) error {
 		s := (*Store)(v)
 		var storeBI gossip.BootstrapInfo
 		var ok bool
-		ok, err = storage.MVCCGetProto(ctx, s.engine, keys.StoreGossipKey(), hlc.Timestamp{}, &storeBI,
-			storage.MVCCGetOptions{})
+		ok, err = relational.MVCCGetProto(ctx, s.engine, keys.StoreGossipKey(), hlc.Timestamp{}, &storeBI,
+			relational.MVCCGetOptions{})
 		if err != nil {
 			return false
 		}
@@ -302,7 +302,7 @@ func (ls *Stores) updateBootstrapInfoLocked(bi *gossip.BootstrapInfo) error {
 	var err error
 	ls.storeMap.Range(func(k int64, v unsafe.Pointer) bool {
 		s := (*Store)(v)
-		err = storage.MVCCPutProto(ctx, s.engine, nil, keys.StoreGossipKey(), hlc.Timestamp{}, nil, bi)
+		err = relational.MVCCPutProto(ctx, s.engine, nil, keys.StoreGossipKey(), hlc.Timestamp{}, nil, bi)
 		return err == nil
 	})
 	return err
@@ -311,7 +311,7 @@ func (ls *Stores) updateBootstrapInfoLocked(bi *gossip.BootstrapInfo) error {
 // ReadVersionFromEngineOrZero reads the persisted cluster version from the
 // engine, falling back to the zero value.
 func ReadVersionFromEngineOrZero(
-	ctx context.Context, e storage.Engine,
+	ctx context.Context, e relational.Engine,
 ) (clusterversion.ClusterVersion, error) {
 	var cv clusterversion.ClusterVersion
 	cv, err := ReadClusterVersion(ctx, e)
@@ -324,7 +324,7 @@ func ReadVersionFromEngineOrZero(
 // WriteClusterVersionToEngines writes the given version to the given engines,
 // without any sanity checks.
 func WriteClusterVersionToEngines(
-	ctx context.Context, engines []storage.Engine, cv clusterversion.ClusterVersion,
+	ctx context.Context, engines []relational.Engine, cv clusterversion.ClusterVersion,
 ) error {
 	for _, eng := range engines {
 		if err := WriteClusterVersion(ctx, eng, cv); err != nil {
@@ -347,7 +347,7 @@ func WriteClusterVersionToEngines(
 //	  any engine has a higher version.
 func SynthesizeClusterVersionFromEngines(
 	ctx context.Context,
-	engines []storage.Engine,
+	engines []relational.Engine,
 	binaryVersion, binaryMinSupportedVersion roachpb.Version,
 ) (clusterversion.ClusterVersion, error) {
 	// Find the most recent bootstrap info.
@@ -442,7 +442,7 @@ func SynthesizeClusterVersionFromEngines(
 func (ls *Stores) SynthesizeClusterVersion(
 	ctx context.Context,
 ) (clusterversion.ClusterVersion, error) {
-	var engines []storage.Engine
+	var engines []relational.Engine
 	ls.storeMap.Range(func(_ int64, v unsafe.Pointer) bool {
 		engines = append(engines, (*Store)(v).engine)
 		return true // want more
@@ -469,8 +469,8 @@ func (ls *Stores) WriteClusterVersion(ctx context.Context, cv clusterversion.Clu
 	return WriteClusterVersionToEngines(ctx, engines, cv)
 }
 
-func (ls *Stores) engines() []storage.Engine {
-	var engines []storage.Engine
+func (ls *Stores) engines() []relational.Engine {
+	var engines []relational.Engine
 	ls.storeMap.Range(func(_ int64, v unsafe.Pointer) bool {
 		engines = append(engines, (*Store)(v).Engine())
 		return true // want more
@@ -491,7 +491,7 @@ func (ls *Stores) OnClusterVersionChange(
 
 	// We're going to read the cluster version from any engine - all the engines
 	// are always kept in sync so it doesn't matter which one we read from.
-	var someEngine storage.Engine
+	var someEngine relational.Engine
 	ls.storeMap.Range(func(_ int64, v unsafe.Pointer) bool {
 		someEngine = (*Store)(v).engine
 		return false // don't iterate any more

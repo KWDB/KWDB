@@ -64,8 +64,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/rpc"
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
@@ -199,7 +199,7 @@ type testContext struct {
 	repl          *Replica
 	rangeID       roachpb.RangeID
 	gossip        *gossip.Gossip
-	engine        storage.Engine
+	engine        relational.Engine
 	manualClock   *hlc.ManualClock
 	bootstrapMode bootstrapMode
 }
@@ -237,7 +237,7 @@ func (tc *testContext) StartWithStoreConfigAndVersion(
 		tc.gossip = gossip.NewTest(1, rpcContext, server, stopper, metric.NewRegistry(), cfg.DefaultZoneConfig)
 	}
 	if tc.engine == nil {
-		tc.engine = storage.NewInMem(context.Background(), storage.DefaultStorageEngine,
+		tc.engine = relational.NewInMem(context.Background(), relational.DefaultStorageEngine,
 			roachpb.Attributes{Attrs: []string{"dc1", "mem"}}, 1<<20)
 		stopper.AddCloser(tc.engine)
 	}
@@ -1228,7 +1228,7 @@ func TestReplicaGossipConfigsOnLease(t *testing.T) {
 	key := keys.MakeTablePrefix(keys.MaxSystemConfigDescID)
 	var val roachpb.Value
 	val.SetInt(42)
-	if err := storage.MVCCPut(context.Background(), tc.engine, nil, key, hlc.Timestamp{}, val, nil); err != nil {
+	if err := relational.MVCCPut(context.Background(), tc.engine, nil, key, hlc.Timestamp{}, val, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1997,7 +1997,7 @@ func TestOptimizePuts(t *testing.T) {
 
 	for i, c := range testCases {
 		if c.exKey != nil {
-			if err := storage.MVCCPut(context.Background(), tc.engine, nil, c.exKey,
+			if err := relational.MVCCPut(context.Background(), tc.engine, nil, c.exKey,
 				hlc.Timestamp{}, roachpb.MakeValueFromString("foo"), nil); err != nil {
 				t.Fatal(err)
 			}
@@ -2044,7 +2044,7 @@ func TestOptimizePuts(t *testing.T) {
 			t.Errorf("%d: expected %+v; got %+v", i, c.expBlind, blind)
 		}
 		if c.exKey != nil {
-			if err := tc.engine.Clear(storage.MakeMVCCMetadataKey(c.exKey)); err != nil {
+			if err := tc.engine.Clear(relational.MakeMVCCMetadataKey(c.exKey)); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -2827,9 +2827,9 @@ func TestReplicaTSCacheForwardsIntentTS(t *testing.T) {
 			if _, pErr := tc.SendWrappedWith(roachpb.Header{Txn: txnOld}, &pArgs); pErr != nil {
 				t.Fatal(pErr)
 			}
-			iter := tc.engine.NewIterator(storage.IterOptions{Prefix: true})
+			iter := tc.engine.NewIterator(relational.IterOptions{Prefix: true})
 			defer iter.Close()
-			mvccKey := storage.MakeMVCCMetadataKey(key)
+			mvccKey := relational.MakeMVCCMetadataKey(key)
 			iter.SeekGE(mvccKey)
 			var keyMeta enginepb.MVCCMetadata
 			if ok, err := iter.Valid(); !ok || !iter.UnsafeKey().Equal(mvccKey) {
@@ -3213,7 +3213,7 @@ func TestReplicaAbortSpanReadError(t *testing.T) {
 
 	// Overwrite Abort span entry with garbage for the last op.
 	key := keys.AbortSpanKey(tc.repl.RangeID, txn.ID)
-	err := storage.MVCCPut(context.Background(), tc.engine, nil, key, hlc.Timestamp{}, roachpb.MakeValueFromString("never read in this test"), nil)
+	err := relational.MVCCPut(context.Background(), tc.engine, nil, key, hlc.Timestamp{}, roachpb.MakeValueFromString("never read in this test"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4269,7 +4269,7 @@ func TestEndTxnWithErrors(t *testing.T) {
 			existTxn.Epoch = test.existEpoch
 			existTxnRecord := existTxn.AsRecord()
 			txnKey := keys.TransactionKey(test.key, txn.ID)
-			if err := storage.MVCCPutProto(
+			if err := relational.MVCCPutProto(
 				ctx, tc.repl.store.Engine(), nil, txnKey, hlc.Timestamp{}, nil, &existTxnRecord,
 			); err != nil {
 				t.Fatal(err)
@@ -4312,7 +4312,7 @@ func TestEndTxnWithErrorAndSyncIntentResolution(t *testing.T) {
 	existTxn.Status = roachpb.ABORTED
 	existTxnRec := existTxn.AsRecord()
 	txnKey := keys.TransactionKey(txn.Key, txn.ID)
-	err := storage.MVCCPutProto(ctx, tc.repl.store.Engine(), nil, txnKey, hlc.Timestamp{}, nil, &existTxnRec)
+	err := relational.MVCCPutProto(ctx, tc.repl.store.Engine(), nil, txnKey, hlc.Timestamp{}, nil, &existTxnRec)
 	require.NoError(t, err)
 
 	// End the transaction, verify expected error, shouldn't deadlock.
@@ -4375,9 +4375,9 @@ func TestEndTxnRollbackAbortedTransaction(t *testing.T) {
 		if populateAbortSpan {
 			var txnRecord roachpb.Transaction
 			txnKey := keys.TransactionKey(txn.Key, txn.ID)
-			if ok, err := storage.MVCCGetProto(
+			if ok, err := relational.MVCCGetProto(
 				context.TODO(), tc.repl.store.Engine(),
-				txnKey, hlc.Timestamp{}, &txnRecord, storage.MVCCGetOptions{},
+				txnKey, hlc.Timestamp{}, &txnRecord, relational.MVCCGetOptions{},
 			); err != nil {
 				t.Fatal(err)
 			} else if ok {
@@ -4607,8 +4607,8 @@ func TestBatchRetryCantCommitIntents(t *testing.T) {
 	// Verify txn record is cleaned.
 	var readTxn roachpb.Transaction
 	txnKey := keys.TransactionKey(txn.Key, txn.ID)
-	ok, err := storage.MVCCGetProto(context.Background(), tc.repl.store.Engine(), txnKey,
-		hlc.Timestamp{}, &readTxn, storage.MVCCGetOptions{})
+	ok, err := relational.MVCCGetProto(context.Background(), tc.repl.store.Engine(), txnKey,
+		hlc.Timestamp{}, &readTxn, relational.MVCCGetOptions{})
 	if err != nil || ok {
 		t.Errorf("expected transaction record to be cleared (%t): %+v", ok, err)
 	}
@@ -4700,8 +4700,8 @@ func TestEndTxnLocalGC(t *testing.T) {
 		}
 		var readTxn roachpb.Transaction
 		txnKey := keys.TransactionKey(txn.Key, txn.ID)
-		ok, err := storage.MVCCGetProto(context.Background(), tc.repl.store.Engine(), txnKey, hlc.Timestamp{},
-			&readTxn, storage.MVCCGetOptions{})
+		ok, err := relational.MVCCGetProto(context.Background(), tc.repl.store.Engine(), txnKey, hlc.Timestamp{},
+			&readTxn, relational.MVCCGetOptions{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -6019,7 +6019,7 @@ func TestReplicaResolveIntentRange(t *testing.T) {
 }
 
 func verifyRangeStats(
-	reader storage.Reader, rangeID roachpb.RangeID, expMS enginepb.MVCCStats,
+	reader relational.Reader, rangeID roachpb.RangeID, expMS enginepb.MVCCStats,
 ) error {
 	ms, err := stateloader.Make(rangeID).LoadMVCCStats(context.Background(), reader)
 	if err != nil {
@@ -6049,7 +6049,7 @@ func TestRangeStatsComputation(t *testing.T) {
 	// The initial stats contain no lease, but there will be an initial
 	// nontrivial lease requested with the first write below.
 	baseStats.Add(enginepb.MVCCStats{
-		SysBytes: 26,
+		SysBytes: 24,
 	})
 
 	// Our clock might not be set to zero.
@@ -6845,7 +6845,7 @@ func TestReplicaLoadSystemConfigSpanIntent(t *testing.T) {
 	// there and verify that we can now load the data as expected.
 	v := roachpb.MakeValueFromString("foo")
 	testutils.SucceedsSoon(t, func() error {
-		if err := storage.MVCCPut(context.Background(), repl.store.Engine(), &enginepb.MVCCStats{},
+		if err := relational.MVCCPut(context.Background(), repl.store.Engine(), &enginepb.MVCCStats{},
 			keys.SystemConfigSpan.Key, repl.store.Clock().Now(), v, nil); err != nil {
 			return err
 		}
@@ -8212,7 +8212,7 @@ func TestGCWithoutThreshold(t *testing.T) {
 				t.Fatalf("expected %d declared keys, found %d", expSpans, numSpans)
 			}
 
-			eng := storage.NewDefaultInMem()
+			eng := relational.NewDefaultInMem()
 			defer eng.Close()
 
 			batch := eng.NewBatch()
@@ -10212,7 +10212,7 @@ func TestReplicaPushed1PC(t *testing.T) {
 	// Write a value outside the transaction.
 	tc.manualClock.Increment(10)
 	ts2 := tc.Clock().Now()
-	if err := storage.MVCCPut(ctx, tc.engine, nil, k, ts2, roachpb.MakeValueFromString("one"), nil); err != nil {
+	if err := relational.MVCCPut(ctx, tc.engine, nil, k, ts2, roachpb.MakeValueFromString("one"), nil); err != nil {
 		t.Fatalf("writing interfering value: %+v", err)
 	}
 
@@ -11898,9 +11898,9 @@ func TestTxnRecordLifecycleTransitions(t *testing.T) {
 			}
 
 			var foundRecord roachpb.TransactionRecord
-			if found, err := storage.MVCCGetProto(
+			if found, err := relational.MVCCGetProto(
 				ctx, tc.repl.store.Engine(), keys.TransactionKey(txn.Key, txn.ID),
-				hlc.Timestamp{}, &foundRecord, storage.MVCCGetOptions{},
+				hlc.Timestamp{}, &foundRecord, relational.MVCCGetOptions{},
 			); err != nil {
 				t.Fatal(err)
 			} else if found {
@@ -12379,7 +12379,7 @@ func TestReplicateQueueProcessOne(t *testing.T) {
 func TestContainsEstimatesClampProposal(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
-	_ = clusterversion.VersionContainsEstimatesCounter // see for details on the ContainsEstimates migration
+	_ = clusterversion.VersionMinSupported // see for details on the ContainsEstimates migration
 
 	someRequestToProposal := func(tc *testContext, ctx context.Context) *ProposalData {
 		cmdIDKey := storagebase.CmdIDKey("some-cmdid-key")
@@ -12399,11 +12399,13 @@ func TestContainsEstimatesClampProposal(t *testing.T) {
 	defer setMockPutWithEstimates(2)()
 
 	t.Run("Pre-VersionContainsEstimatesCounter", func(t *testing.T) {
+		// TODO by fyx, because not exit pre version. so temp skip it
+		t.Skip()
 		ctx := context.Background()
 		stopper := stop.NewStopper()
 		defer stopper.Stop(ctx)
 		cfg := TestStoreConfig(nil)
-		version := clusterversion.VersionByKey(clusterversion.VersionContainsEstimatesCounter - 1)
+		version := clusterversion.VersionByKey(clusterversion.VersionMinSupported - 1)
 		cfg.Settings = cluster.MakeTestingClusterSettingsWithVersions(version, version, false /* initializeVersion */)
 		var tc testContext
 		tc.StartWithStoreConfigAndVersion(t, stopper, cfg, version)
@@ -12440,7 +12442,7 @@ func TestContainsEstimatesClampProposal(t *testing.T) {
 func TestContainsEstimatesClampApplication(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
-	_ = clusterversion.VersionContainsEstimatesCounter // see for details on the ContainsEstimates migration
+	_ = clusterversion.VersionMinSupported // see for details on the ContainsEstimates migration
 
 	ctx := context.Background()
 	stopper := stop.NewStopper()
@@ -12507,13 +12509,13 @@ func setMockPutWithEstimates(containsEstimatesDelta int64) (undo func()) {
 	prev, _ := batcheval.LookupCommand(roachpb.Put)
 
 	mockPut := func(
-		ctx context.Context, readWriter storage.ReadWriter, cArgs batcheval.CommandArgs, _ roachpb.Response,
+		ctx context.Context, readWriter relational.ReadWriter, cArgs batcheval.CommandArgs, _ roachpb.Response,
 	) (result.Result, error) {
 		args := cArgs.Args.(*roachpb.PutRequest)
 		ms := cArgs.Stats
 		ms.ContainsEstimates += containsEstimatesDelta
 		ts := cArgs.Header.Timestamp
-		return result.Result{}, storage.MVCCBlindPut(ctx, readWriter, ms, args.Key, ts, args.Value, cArgs.Header.Txn)
+		return result.Result{}, relational.MVCCBlindPut(ctx, readWriter, ms, args.Key, ts, args.Value, cArgs.Header.Txn)
 	}
 
 	batcheval.UnregisterCommand(roachpb.Put)

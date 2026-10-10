@@ -30,8 +30,8 @@ import (
 	"fmt"
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/pkg/errors"
@@ -95,7 +95,7 @@ func WriteAbortSpanOnResolve(status roachpb.TransactionStatus, poison, removedIn
 func UpdateAbortSpan(
 	ctx context.Context,
 	rec EvalContext,
-	readWriter storage.ReadWriter,
+	readWriter relational.ReadWriter,
 	ms *enginepb.MVCCStats,
 	txn enginepb.TxnMeta,
 	poison bool,

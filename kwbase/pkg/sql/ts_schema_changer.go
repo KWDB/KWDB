@@ -549,7 +549,7 @@ func (p *planner) handleDropTsDatabase(
 			}
 			return nil
 		}
-		if !p.ExecCfg().Settings.Version.IsActive(ctx, clusterversion.VersionSchemaChangeJob) {
+		if !p.ExecCfg().Settings.Version.IsActive(ctx, clusterversion.VersionMinSupported) {
 			if ctx.Value(migrationSchemaChangeRequiredHint{}) == nil {
 				return errSchemaChangeDisallowedInMixedState
 			}

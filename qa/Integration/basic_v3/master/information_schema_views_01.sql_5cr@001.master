@@ -1,0 +1,49 @@
+> USE defaultdb;
+SET
+> DROP DATABASE IF EXISTS is_constraint_it CASCADE;
+DROP DATABASE
+> CREATE DATABASE is_constraint_it;
+CREATE DATABASE
+> SET DATABASE = is_constraint_it;
+SET
+> CREATE SCHEMA app;
+CREATE SCHEMA
+> CREATE TABLE app.parent (
+    id INT PRIMARY KEY,
+    code INT,
+    CONSTRAINT parent_code_uq UNIQUE (code)
+);
+CREATE TABLE
+> CREATE TABLE app.child (
+    id INT PRIMARY KEY,
+    parent_id INT,
+    value INT NOT NULL,
+    CONSTRAINT child_value_check CHECK (value > 0),
+    CONSTRAINT child_parent_fk FOREIGN KEY (parent_id)
+        REFERENCES app.parent(id)
+);
+CREATE TABLE
+> SELECT table_name, constraint_name, constraint_type, enforced, nulls_distinct
+FROM information_schema.table_constraints
+WHERE constraint_name IN ('parent_code_uq', 'child_value_check', 'child_parent_fk', 'primary')
+ORDER BY table_name, constraint_name;
+  table_name |  constraint_name  | constraint_type | enforced | nulls_distinct
+-------------+-------------------+-----------------+----------+-----------------
+  child      | child_parent_fk   | FOREIGN KEY     | YES      | NULL
+  child      | child_value_check | CHECK           | YES      | NULL
+  child      | primary           | PRIMARY KEY     | YES      | NULL
+  parent     | parent_code_uq    | UNIQUE          | YES      | YES
+  parent     | primary           | PRIMARY KEY     | YES      | NULL
+(5 rows)
+> SELECT constraint_name, check_clause
+FROM information_schema.check_constraints
+WHERE constraint_name = 'child_value_check'
+ORDER BY constraint_name;
+   constraint_name  | check_clause
+--------------------+----------------
+  child_value_check | ((value > 0))
+(1 row)
+> USE defaultdb;
+SET
+> DROP DATABASE is_constraint_it CASCADE;
+DROP DATABASE

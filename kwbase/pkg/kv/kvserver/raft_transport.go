@@ -40,8 +40,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/rpc/nodedialer"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
 	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
@@ -682,11 +682,11 @@ func (t *RaftTransport) SendTSSnapshot(
 	ctx context.Context,
 	raftCfg *base.RaftConfig,
 	storePool *StorePool,
-	TsEngine *tse.TsEngine,
-	RaftLogEngine *tse.TsRaftLogEngine,
+	TsEngine *timeseries.TsEngine,
+	RaftLogEngine *timeseries.TsRaftLogEngine,
 	header SnapshotRequest_Header,
 	snap *OutgoingSnapshot,
-	newBatch func() storage.Batch,
+	newBatch func() relational.Batch,
 	sent func(),
 ) error {
 	var stream MultiRaft_RaftSnapshotClient
@@ -719,7 +719,7 @@ func (t *RaftTransport) SendSnapshot(
 	storePool *StorePool,
 	header SnapshotRequest_Header,
 	snap *OutgoingSnapshot,
-	newBatch func() storage.Batch,
+	newBatch func() relational.Batch,
 	sent func(),
 ) error {
 	var stream MultiRaft_RaftSnapshotClient

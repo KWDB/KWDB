@@ -30,7 +30,7 @@ import (
 	"testing"
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/concurrency/lock"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"

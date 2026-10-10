@@ -35,7 +35,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/server/status"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/humanizeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/keysutil"
@@ -143,14 +143,14 @@ func (s *statementsValue) Set(value string) error {
 	return nil
 }
 
-type mvccKey storage.MVCCKey
+type mvccKey relational.MVCCKey
 
 // Type implements the pflag.Value interface.
 func (k *mvccKey) Type() string { return "engine.MVCCKey" }
 
 // String implements the pflag.Value interface.
 func (k *mvccKey) String() string {
-	return storage.MVCCKey(*k).String()
+	return relational.MVCCKey(*k).String()
 }
 
 // Set implements the pflag.Value interface.
@@ -175,9 +175,9 @@ func (k *mvccKey) Set(value string) error {
 		if err != nil {
 			return err
 		}
-		newK, err := storage.DecodeMVCCKey(b)
+		newK, err := relational.DecodeMVCCKey(b)
 		if err != nil {
-			encoded := gohex.EncodeToString(storage.EncodeKey(storage.MakeMVCCMetadataKey(roachpb.Key(b))))
+			encoded := gohex.EncodeToString(relational.EncodeKey(relational.MakeMVCCMetadataKey(roachpb.Key(b))))
 			return errors.Wrapf(err, "perhaps this is just a hex-encoded key; you need an "+
 				"encoded MVCCKey (i.e. with a timestamp component); here's one with a zero timestamp: %s",
 				encoded)
@@ -188,20 +188,20 @@ func (k *mvccKey) Set(value string) error {
 		if err != nil {
 			return err
 		}
-		*k = mvccKey(storage.MakeMVCCMetadataKey(roachpb.Key(unquoted)))
+		*k = mvccKey(relational.MakeMVCCMetadataKey(roachpb.Key(unquoted)))
 	case human:
 		scanner := keysutil.MakePrettyScanner(nil /* tableParser */)
 		key, err := scanner.Scan(keyStr)
 		if err != nil {
 			return err
 		}
-		*k = mvccKey(storage.MakeMVCCMetadataKey(key))
+		*k = mvccKey(relational.MakeMVCCMetadataKey(key))
 	case rangeID:
 		fromID, err := parseRangeID(keyStr)
 		if err != nil {
 			return err
 		}
-		*k = mvccKey(storage.MakeMVCCMetadataKey(keys.MakeRangeIDPrefix(fromID)))
+		*k = mvccKey(relational.MakeMVCCMetadataKey(keys.MakeRangeIDPrefix(fromID)))
 	default:
 		return fmt.Errorf("unknown key type %s", typ)
 	}

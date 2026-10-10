@@ -26,7 +26,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/row"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/cloud"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/localexternal"
 	"gitee.com/kwbasedb/kwbase/pkg/util/ctxgroup"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding/csv"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -85,7 +85,7 @@ func readAndConvertFiles(
 	fileSizes := make(map[int32]int64, len(dataFiles))
 	fileSplitInfos := make(map[int32]partFileInfos, 1)
 	for id, dataFile := range dataFiles {
-		conf, err := cloud.ExternalStorageConfFromURI(dataFile)
+		conf, err := localexternal.ExternalStorageConfFromURI(dataFile)
 		if err != nil {
 			return err
 		}
@@ -119,7 +119,7 @@ func readAndConvertFiles(
 		default:
 		}
 		if err := func() error {
-			conf, err := cloud.ExternalStorageConfFromURI(dataFile)
+			conf, err := localexternal.ExternalStorageConfFromURI(dataFile)
 			if err != nil {
 				return err
 			}
@@ -232,7 +232,7 @@ func readCSVFile(
 	tsColNumber int32,
 ) error {
 	var count int64
-	conf, err := cloud.ExternalStorageConfFromURI(fileInfo.filename)
+	conf, err := localexternal.ExternalStorageConfFromURI(fileInfo.filename)
 	if err != nil {
 		return err
 	}
@@ -452,7 +452,7 @@ func splitCSVFile(
 	end := partSize
 	var pfs partFileInfos
 	for {
-		conf, err := cloud.ExternalStorageConfFromURI(dataFile)
+		conf, err := localexternal.ExternalStorageConfFromURI(dataFile)
 		if err != nil {
 			return pfs, err
 		}

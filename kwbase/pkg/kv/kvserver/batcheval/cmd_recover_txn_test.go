@@ -30,7 +30,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
@@ -54,13 +54,13 @@ func TestRecoverTxn(t *testing.T) {
 	txn.InFlightWrites = []roachpb.SequencedWrite{{Key: k2, Sequence: 0}}
 
 	testutils.RunTrueAndFalse(t, "missing write", func(t *testing.T, missingWrite bool) {
-		db := storage.NewDefaultInMem()
+		db := relational.NewDefaultInMem()
 		defer db.Close()
 
 		// Write the transaction record.
 		txnKey := keys.TransactionKey(txn.Key, txn.ID)
 		txnRecord := txn.AsRecord()
-		if err := storage.MVCCPutProto(ctx, db, nil, txnKey, hlc.Timestamp{}, nil, &txnRecord); err != nil {
+		if err := relational.MVCCPutProto(ctx, db, nil, txnKey, hlc.Timestamp{}, nil, &txnRecord); err != nil {
 			t.Fatal(err)
 		}
 
@@ -95,8 +95,8 @@ func TestRecoverTxn(t *testing.T) {
 
 		// Assert that the updated txn record was persisted correctly.
 		var resTxnRecord roachpb.Transaction
-		if _, err := storage.MVCCGetProto(
-			ctx, db, txnKey, hlc.Timestamp{}, &resTxnRecord, storage.MVCCGetOptions{},
+		if _, err := relational.MVCCGetProto(
+			ctx, db, txnKey, hlc.Timestamp{}, &resTxnRecord, relational.MVCCGetOptions{},
 		); err != nil {
 			t.Fatal(err)
 		}
@@ -205,7 +205,7 @@ func TestRecoverTxnRecordChanged(t *testing.T) {
 	}
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
-			db := storage.NewDefaultInMem()
+			db := relational.NewDefaultInMem()
 			defer db.Close()
 
 			// Write the modified transaction record, simulating a concurrent
@@ -213,7 +213,7 @@ func TestRecoverTxnRecordChanged(t *testing.T) {
 			// request is evaluated.
 			txnKey := keys.TransactionKey(txn.Key, txn.ID)
 			txnRecord := c.changedTxn.AsRecord()
-			if err := storage.MVCCPutProto(ctx, db, nil, txnKey, hlc.Timestamp{}, nil, &txnRecord); err != nil {
+			if err := relational.MVCCPutProto(ctx, db, nil, txnKey, hlc.Timestamp{}, nil, &txnRecord); err != nil {
 				t.Fatal(err)
 			}
 
@@ -246,8 +246,8 @@ func TestRecoverTxnRecordChanged(t *testing.T) {
 
 				// Assert that the txn record was not modified.
 				var resTxnRecord roachpb.Transaction
-				if _, err := storage.MVCCGetProto(
-					ctx, db, txnKey, hlc.Timestamp{}, &resTxnRecord, storage.MVCCGetOptions{},
+				if _, err := relational.MVCCGetProto(
+					ctx, db, txnKey, hlc.Timestamp{}, &resTxnRecord, relational.MVCCGetOptions{},
 				); err != nil {
 					t.Fatal(err)
 				}

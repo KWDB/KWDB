@@ -32,7 +32,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/spanset"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagepb"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/pkg/errors"
@@ -57,7 +57,7 @@ func declareKeysTruncateLog(
 // has already been truncated has no effect. If this range is not the one
 // specified within the request body, the request will also be ignored.
 func TruncateLog(
-	ctx context.Context, readWriter storage.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
+	ctx context.Context, readWriter relational.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
 	args := cArgs.Args.(*roachpb.TruncateLogRequest)
 
@@ -73,9 +73,9 @@ func TruncateLog(
 	log.Eventf(ctx, "start to truncate range %v raft log", rangeID)
 
 	var legacyTruncatedState roachpb.RaftTruncatedState
-	legacyKeyFound, err := storage.MVCCGetProto(
+	legacyKeyFound, err := relational.MVCCGetProto(
 		ctx, readWriter, keys.RaftTruncatedStateLegacyKey(cArgs.EvalCtx.GetRangeID()),
-		hlc.Timestamp{}, &legacyTruncatedState, storage.MVCCGetOptions{},
+		hlc.Timestamp{}, &legacyTruncatedState, relational.MVCCGetOptions{},
 	)
 	if err != nil {
 		return result.Result{}, err
@@ -128,7 +128,7 @@ func TruncateLog(
 	// bugs that let it diverge. It might be easier to compute the stats
 	// from scratch, stopping when 4mb (defaultRaftLogTruncationThreshold)
 	// is reached as at that point we'll truncate aggressively anyway.
-	iter := readWriter.NewIterator(storage.IterOptions{UpperBound: end})
+	iter := readWriter.NewIterator(relational.IterOptions{UpperBound: end})
 	defer iter.Close()
 	// We can pass zero as nowNanos because we're only interested in SysBytes.
 	ms, err := iter.ComputeStats(start, end, 0 /* nowNanos */)
@@ -154,7 +154,7 @@ func TruncateLog(
 		// Time to migrate by deleting the legacy key. The downstream-of-Raft
 		// code will atomically rewrite the truncated state (supplied via the
 		// side effect) into the new unreplicated key.
-		if err := storage.MVCCDelete(
+		if err := relational.MVCCDelete(
 			ctx, readWriter, cArgs.Stats, keys.RaftTruncatedStateLegacyKey(cArgs.EvalCtx.GetRangeID()),
 			hlc.Timestamp{}, nil, /* txn */
 		); err != nil {

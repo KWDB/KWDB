@@ -32,7 +32,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/spanset"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagepb"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 )
 
@@ -59,7 +59,7 @@ const (
 // a particular snapshot. The checksum is later verified through a
 // CollectChecksumRequest.
 func ComputeChecksum(
-	_ context.Context, _ storage.Reader, cArgs CommandArgs, resp roachpb.Response,
+	_ context.Context, _ relational.Reader, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
 	args := cArgs.Args.(*roachpb.ComputeChecksumRequest)
 

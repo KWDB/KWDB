@@ -51,8 +51,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/rpc/nodedialer"
 	"gitee.com/kwbasedb/kwbase/pkg/server/serverpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/sqlutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/testcluster"
@@ -102,7 +101,7 @@ func TestStoreRecoverFromEngine(t *testing.T) {
 
 	engineStopper := stop.NewStopper()
 	defer engineStopper.Stop(context.TODO())
-	eng := storage.NewDefaultInMem()
+	eng := relational.NewDefaultInMem()
 	engineStopper.AddCloser(eng)
 	var rangeID2 roachpb.RangeID
 
@@ -208,7 +207,7 @@ func TestStoreRecoverWithErrors(t *testing.T) {
 	// and trying to handle that complicates the test without providing any
 	// added benefit.
 	storeCfg.TestingKnobs.DisableSplitQueue = true
-	eng := storage.NewDefaultInMem()
+	eng := relational.NewDefaultInMem()
 	defer eng.Close()
 
 	numIncrements := 0
@@ -308,8 +307,8 @@ func TestReplicateRange(t *testing.T) {
 	// Verify no intent remains on range descriptor key.
 	key := keys.RangeDescriptorKey(repl.Desc().StartKey)
 	desc := roachpb.RangeDescriptor{}
-	if ok, err := storage.MVCCGetProto(context.Background(), mtc.stores[0].Engine(), key,
-		mtc.stores[0].Clock().Now(), &desc, storage.MVCCGetOptions{}); err != nil {
+	if ok, err := relational.MVCCGetProto(context.Background(), mtc.stores[0].Engine(), key,
+		mtc.stores[0].Clock().Now(), &desc, relational.MVCCGetOptions{}); err != nil {
 		t.Fatal(err)
 	} else if !ok {
 		t.Fatalf("range descriptor key %s was not found", key)
@@ -321,8 +320,8 @@ func TestReplicateRange(t *testing.T) {
 		meta1 := keys.RangeMetaKey(meta2)
 		for _, key := range []roachpb.RKey{meta2, meta1} {
 			metaDesc := roachpb.RangeDescriptor{}
-			if ok, err := storage.MVCCGetProto(context.Background(), mtc.stores[0].Engine(), key.AsRawKey(),
-				mtc.stores[0].Clock().Now(), &metaDesc, storage.MVCCGetOptions{}); err != nil {
+			if ok, err := relational.MVCCGetProto(context.Background(), mtc.stores[0].Engine(), key.AsRawKey(),
+				mtc.stores[0].Clock().Now(), &metaDesc, relational.MVCCGetOptions{}); err != nil {
 				return err
 			} else if !ok {
 				return errors.Errorf("failed to resolve %s", key.AsRawKey())
@@ -1093,15 +1092,6 @@ func TestFailedSnapshotFillsReservation(t *testing.T) {
 // situation occurs when two replicas need snapshots at the same time.
 func TestConcurrentRaftSnapshots(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	// This test relies on concurrently waiting for a value to change in the
-	// underlying engine(s). Since the teeing engine does not respond well to
-	// value mismatches, whether transient or permanent, skip this test if the
-	// teeing engine is being used. See
-	// https://gitee.com/kwbasedb/kwbase/issues/42656 for more context.
-	if storage.DefaultStorageEngine == enginepb.EngineTypeTeePebbleRocksDB {
-		t.Skip("disabled on teeing engine")
-	}
-
 	mtc := &multiTestContext{
 		// This test was written before the multiTestContext started creating many
 		// system ranges at startup, and hasn't been update to take that into
@@ -1731,14 +1721,6 @@ func TestChangeReplicasDescriptorInvariant(t *testing.T) {
 // with a downed node.
 func TestProgressWithDownNode(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	// This test relies on concurrently waiting for a value to change in the
-	// underlying engine(s). Since the teeing engine does not respond well to
-	// value mismatches, whether transient or permanent, skip this test if the
-	// teeing engine is being used. See
-	// https://gitee.com/kwbasedb/kwbase/issues/42656 for more context.
-	if storage.DefaultStorageEngine == enginepb.EngineTypeTeePebbleRocksDB {
-		t.Skip("disabled on teeing engine")
-	}
 	mtc := &multiTestContext{
 		// This test was written before the multiTestContext started creating many
 		// system ranges at startup, and hasn't been update to take that into
@@ -1761,8 +1743,8 @@ func TestProgressWithDownNode(t *testing.T) {
 		testutils.SucceedsSoon(t, func() error {
 			values := []int64{}
 			for _, eng := range mtc.engines {
-				val, _, err := storage.MVCCGet(context.Background(), eng, roachpb.Key("a"), mtc.clock().Now(),
-					storage.MVCCGetOptions{})
+				val, _, err := relational.MVCCGet(context.Background(), eng, roachpb.Key("a"), mtc.clock().Now(),
+					relational.MVCCGetOptions{})
 				if err != nil {
 					return err
 				}
@@ -1904,14 +1886,6 @@ func runReplicateRestartAfterTruncation(t *testing.T, removeBeforeTruncateAndReA
 }
 
 func testReplicaAddRemove(t *testing.T, addFirst bool) {
-	// This test relies on concurrently waiting for a value to change in the
-	// underlying engine(s). Since the teeing engine does not respond well to
-	// value mismatches, whether transient or permanent, skip this test if the
-	// teeing engine is being used. See
-	// https://gitee.com/kwbasedb/kwbase/issues/42656 for more context.
-	if storage.DefaultStorageEngine == enginepb.EngineTypeTeePebbleRocksDB {
-		t.Skip("disabled on teeing engine")
-	}
 	sc := kvserver.TestStoreConfig(nil)
 	// We're gonna want to validate the state of the store before and after the
 	// replica GC queue does its work, so we disable the replica gc queue here
@@ -1934,8 +1908,8 @@ func testReplicaAddRemove(t *testing.T, addFirst bool) {
 		return func() error {
 			values := make([]int64, len(mtc.engines))
 			for i, eng := range mtc.engines {
-				val, _, err := storage.MVCCGet(context.Background(), eng, key, mtc.clock().Now(),
-					storage.MVCCGetOptions{})
+				val, _, err := relational.MVCCGet(context.Background(), eng, key, mtc.clock().Now(),
+					relational.MVCCGetOptions{})
 				if err != nil {
 					return err
 				}
@@ -2724,9 +2698,9 @@ func TestRaftRemoveRace(t *testing.T) {
 		// Verify the tombstone key does not exist. See #12130.
 		tombstoneKey := keys.RangeTombstoneKey(rangeID)
 		var tombstone roachpb.RangeTombstone
-		if ok, err := storage.MVCCGetProto(
+		if ok, err := relational.MVCCGetProto(
 			context.Background(), mtc.stores[2].Engine(), tombstoneKey,
-			hlc.Timestamp{}, &tombstone, storage.MVCCGetOptions{},
+			hlc.Timestamp{}, &tombstone, relational.MVCCGetOptions{},
 		); err != nil {
 			t.Fatal(err)
 		} else if ok {
@@ -3017,15 +2991,6 @@ func TestDecommission(t *testing.T) {
 		// Five nodes is too much to reliably run under testrace with our aggressive
 		// liveness timings.
 		t.Skip("skipping under testrace: #39807 and #37811")
-	}
-
-	// This test relies on concurrently waiting for a value to change in the
-	// underlying engine(s). Since the teeing engine does not respond well to
-	// value mismatches, whether transient or permanent, skip this test if the
-	// teeing engine is being used. See
-	// https://gitee.com/kwbasedb/kwbase/issues/42656 for more context.
-	if storage.DefaultStorageEngine == enginepb.EngineTypeTeePebbleRocksDB {
-		t.Skip("disabled on teeing engine")
 	}
 
 	ctx := context.Background()
@@ -4449,15 +4414,6 @@ func (cs *disablingClientStream) SendMsg(m interface{}) error {
 // traffic on the SystemClass connection.
 func TestDefaultConnectionDisruptionDoesNotInterfereWithSystemTraffic(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	// This test relies on concurrently waiting for a value to change in the
-	// underlying engine(s). Since the teeing engine does not respond well to
-	// value mismatches, whether transient or permanent, skip this test if the
-	// teeing engine is being used. See
-	// https://gitee.com/kwbasedb/kwbase/issues/42656 for more context.
-	if storage.DefaultStorageEngine == enginepb.EngineTypeTeePebbleRocksDB {
-		t.Skip("disabled on teeing engine")
-	}
-
 	stopper := stop.NewStopper()
 	ctx := context.Background()
 	defer stopper.Stop(ctx)
@@ -4735,14 +4691,6 @@ func TestAckWriteBeforeApplication(t *testing.T) {
 // its log or receiving a ReplicaTooOldError which will lead to a tombstone.
 func TestProcessSplitAfterRightHandSideHasBeenRemoved(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	// This test relies on concurrently waiting for a value to change in the
-	// underlying engine(s). Since the teeing engine does not respond well to
-	// value mismatches, whether transient or permanent, skip this test if the
-	// teeing engine is being used. See
-	// https://gitee.com/kwbasedb/kwbase/issues/42656 for more context.
-	if storage.DefaultStorageEngine == enginepb.EngineTypeTeePebbleRocksDB {
-		t.Skip("disabled on teeing engine")
-	}
 	sc := kvserver.TestStoreConfig(nil)
 	// Newly-started stores (including the "rogue" one) should not GC
 	// their replicas. We'll turn this back on when needed.
@@ -4786,8 +4734,8 @@ func TestProcessSplitAfterRightHandSideHasBeenRemoved(t *testing.T) {
 	ensureNoTombstone := func(t *testing.T, store *kvserver.Store, rangeID roachpb.RangeID) {
 		var tombstone roachpb.RangeTombstone
 		tombstoneKey := keys.RangeTombstoneKey(rangeID)
-		ok, err := storage.MVCCGetProto(
-			ctx, store.Engine(), tombstoneKey, hlc.Timestamp{}, &tombstone, storage.MVCCGetOptions{},
+		ok, err := relational.MVCCGetProto(
+			ctx, store.Engine(), tombstoneKey, hlc.Timestamp{}, &tombstone, relational.MVCCGetOptions{},
 		)
 		require.NoError(t, err)
 		require.False(t, ok)

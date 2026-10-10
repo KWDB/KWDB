@@ -36,8 +36,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/rditer"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/stateloader"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
@@ -101,7 +101,7 @@ type replicaCheckInfo struct {
 }
 
 type checkInput struct {
-	eng  storage.Engine
+	eng  relational.Engine
 	desc *roachpb.RangeDescriptor
 	sl   stateloader.StateLoader
 }
@@ -254,8 +254,8 @@ func checkStoreRaftState(
 		return replicaInfo[rangeID]
 	}
 
-	if _, err := storage.MVCCIterate(ctx, db, start, end, hlc.MaxTimestamp,
-		storage.MVCCScanOptions{Inconsistent: true}, func(kv roachpb.KeyValue) (bool, error) {
+	if _, err := relational.MVCCIterate(ctx, db, start, end, hlc.MaxTimestamp,
+		relational.MVCCScanOptions{Inconsistent: true}, func(kv roachpb.KeyValue) (bool, error) {
 			rangeID, _, suffix, detail, err := keys.DecodeRangeIDKey(kv.Key)
 			if err != nil {
 				return false, err

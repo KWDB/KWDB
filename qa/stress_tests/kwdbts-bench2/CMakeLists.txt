@@ -80,7 +80,7 @@ if (NOT KWDB_PROJECT_DIR)
     message(STATUS  "KWDB_PROJECT_DIR=${KWDB_PROJECT_DIR}")
 endif ()
 
-set(KWDBTS_PROJ_DIR ${KWDB_PROJECT_DIR}/kwdbts2)
+set(KWDBTS_PROJ_DIR ${KWDB_PROJECT_DIR}/kwbase/engine/ts_engine)
 
 
 option(WITH_DEFINITION "Add macro definition control" K_DEBUG)
@@ -107,8 +107,8 @@ set(BRPC_INCLUDE_DIR ${NATIVE}/kwdbts2/third_party/include)
 
 # embed will use the include file
 set(embed_includes worker ${PROTOBUF_INCLUDE_DIR} src/worker
-        ${KWDB_PROJECT_DIR}/common/src/include
-        ${KWDB_PROJECT_DIR}/common/src/h
+        ${KWDB_PROJECT_DIR}/kwbase/engine/common/src/include
+        ${KWDB_PROJECT_DIR}/kwbase/engine/common/src/h
         ${KWDBTS_PROJ_DIR}/include
         ${KWDBTS_PROJ_DIR}/mmap/include
         ${KWDBTS_PROJ_DIR}/common/include
@@ -120,7 +120,7 @@ set(embed_includes worker ${PROTOBUF_INCLUDE_DIR} src/worker
         ${KWDBTS_PROJ_DIR}/brpc/include
         ${BRPC_INCLUDE_DIR}
         ${KWDBTS_PROJ_DIR}/exec/include
-        ${PROJECT_BINARY_DIR}/../../../kwdbts2/third_party/snappy_install/include
+        ${CMAKE_BINARY_DIR}/kwbase/engine/ts/ts_engine/third_party/snappy_install/include
         )
 #message("embed_includes:${embed_includes}")
 

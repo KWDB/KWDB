@@ -30,7 +30,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagepb"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 )
@@ -44,8 +44,8 @@ func TestStringifyWriteBatch(t *testing.T) {
 		t.Errorf("expected %q for stringified write batch; got %q", expStr, str)
 	}
 
-	builder := storage.RocksDBBatchBuilder{}
-	builder.Put(storage.MVCCKey{
+	builder := relational.RocksDBBatchBuilder{}
+	builder.Put(relational.MVCCKey{
 		Key:       roachpb.Key("/db1"),
 		Timestamp: hlc.Timestamp{WallTime: math.MaxInt64},
 	}, []byte("test value"))

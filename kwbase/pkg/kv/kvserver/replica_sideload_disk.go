@@ -34,7 +34,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"github.com/pkg/errors"
 	"golang.org/x/time/rate"
 )
@@ -46,7 +46,7 @@ type diskSideloadStorage struct {
 	limiter    *rate.Limiter
 	dir        string
 	dirCreated bool
-	eng        storage.Engine
+	eng        relational.Engine
 }
 
 func deprecatedSideloadedPath(
@@ -92,7 +92,7 @@ func newDiskSideloadStorage(
 	replicaID roachpb.ReplicaID,
 	baseDir string,
 	limiter *rate.Limiter,
-	eng storage.Engine,
+	eng relational.Engine,
 ) (*diskSideloadStorage, error) {
 	path := deprecatedSideloadedPath(baseDir, rangeID, replicaID)
 	newPath := sideloadedPath(baseDir, rangeID)

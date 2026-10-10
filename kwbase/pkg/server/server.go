@@ -24,7 +24,7 @@
 
 package server
 
-// #cgo CPPFLAGS: -I../../../kwdbts2/include
+// #cgo CPPFLAGS: -I../../engine/ts_engine/include
 // #cgo LDFLAGS: -lkwdbts2 -lcommon -lsnappy -lm  -lstdc++
 // #cgo LDFLAGS: -lprotobuf
 // #cgo linux LDFLAGS: -lrt -lpthread
@@ -119,11 +119,11 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/stats"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/stmtdiagnostics"
 	"gitee.com/kwbasedb/kwbase/pkg/sqlmigrations"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/cloud"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
-	"gitee.com/kwbasedb/kwbase/pkg/ts"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/localexternal"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
+	monitoringts "gitee.com/kwbasedb/kwbase/pkg/telemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
@@ -347,8 +347,8 @@ type Server struct {
 	restful          *restfulServer
 	authentication   *authenticationServer
 	initServer       *initServer
-	tsDB             *ts.DB
-	tsServer         ts.Server
+	tsDB             *monitoringts.DB
+	tsServer         monitoringts.Server
 	raftTransport    *kvserver.RaftTransport
 	stopper          *stop.Stopper
 	execCfg          *sql.ExecutorConfig
@@ -365,7 +365,7 @@ type Server struct {
 	replicationReporter    *reports.Reporter
 	temporaryObjectCleaner *sql.TemporaryObjectCleaner
 	engines                Engines
-	tsEngine               *tse.TsEngine
+	tsEngine               *timeseries.TsEngine
 	tseDB                  *kvcoord.DB
 	internalMemMetrics     sql.MemoryMetrics
 	adminMemMetrics        sql.MemoryMetrics
@@ -614,7 +614,7 @@ func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
 	// Set up the DistSQL temp engine.
 
 	useStoreSpec := cfg.Stores.Specs[s.cfg.TempStorageConfig.SpecIdx]
-	tempEngine, tempFS, err := storage.NewTempEngine(ctx, s.cfg.StorageEngine, s.cfg.TempStorageConfig, useStoreSpec)
+	tempEngine, tempFS, err := relational.NewTempEngine(ctx, s.cfg.StorageEngine, s.cfg.TempStorageConfig, useStoreSpec)
 	if err != nil {
 		return nil, errors.Wrap(err, "creating temp storage")
 	}
@@ -633,7 +633,7 @@ func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
 			// also remove the record after the temp directory is
 			// removed.
 			recordPath := filepath.Join(firstStore.Path, TempDirsRecordFilename)
-			err = storage.CleanupTempDirs(recordPath)
+			err = relational.CleanupTempDirs(recordPath)
 		}
 		if err != nil {
 			log.Errorf(context.TODO(), "could not remove temporary store directory: %v", err.Error())
@@ -644,12 +644,12 @@ func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
 	s.adminMemMetrics = sql.MakeMemMetrics("admin", cfg.HistogramWindowInterval())
 	s.registry.AddMetricStruct(s.adminMemMetrics)
 
-	s.tsDB = ts.NewDB(s.db, s.cfg.Settings)
+	s.tsDB = monitoringts.NewDB(s.db, s.cfg.Settings)
 	s.registry.AddMetricStruct(s.tsDB.Metrics())
 	nodeCountFn := func() int64 {
 		return s.nodeLiveness.Metrics().LiveNodes.Value()
 	}
-	s.tsServer = ts.MakeServer(s.cfg.AmbientCtx, s.tsDB, nodeCountFn, s.cfg.TimeSeriesServerConfig, s.stopper)
+	s.tsServer = monitoringts.MakeServer(s.cfg.AmbientCtx, s.tsDB, nodeCountFn, s.cfg.TimeSeriesServerConfig, s.stopper)
 
 	// The InternalExecutor will be further initialized later, as we create more
 	// of the server's components. There's a circular dependency - many things
@@ -665,8 +665,8 @@ func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
 	//s.replSystemTable = repltable.MakeReplicationSystemTableManager(s.db, tsPartitionInternalExecutor)
 
 	// This function defines how ExternalStorage objects are created.
-	externalStorage := func(ctx context.Context, dest roachpb.ExternalStorage) (cloud.ExternalStorage, error) {
-		return cloud.MakeExternalStorage(
+	externalStorage := func(ctx context.Context, dest roachpb.ExternalStorage) (localexternal.ExternalStorage, error) {
+		return localexternal.MakeExternalStorage(
 			ctx, dest, s.cfg.ExternalIOConfig, st,
 			blobs.NewBlobClientFactory(
 				s.nodeIDContainer.Get(),
@@ -675,8 +675,8 @@ func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
 			),
 		)
 	}
-	externalStorageFromURI := func(ctx context.Context, uri string) (cloud.ExternalStorage, error) {
-		return cloud.ExternalStorageFromURI(
+	externalStorageFromURI := func(ctx context.Context, uri string) (localexternal.ExternalStorage, error) {
+		return localexternal.ExternalStorageFromURI(
 			ctx, uri, s.cfg.ExternalIOConfig, st,
 			blobs.NewBlobClientFactory(
 				s.nodeIDContainer.Get(),
@@ -1249,12 +1249,12 @@ type ListenError struct {
 // or to set it if no engines have a version in them already.
 func inspectEngines(
 	ctx context.Context,
-	engines []storage.Engine,
+	engines []relational.Engine,
 	binaryVersion, binaryMinSupportedVersion roachpb.Version,
 	clusterIDContainer *base.ClusterIDContainer,
 ) (
-	bootstrappedEngines []storage.Engine,
-	emptyEngines []storage.Engine,
+	bootstrappedEngines []relational.Engine,
+	emptyEngines []relational.Engine,
 	_ clusterversion.ClusterVersion,
 	_ error,
 ) {
@@ -1981,8 +1981,8 @@ func (s *Server) Start(ctx context.Context) error {
 	timeThreshold := s.clock.Now().WallTime
 	s.execCfg.TsIDGen = &sqlbase.TSIDGenerator{}
 
-	setTse := func() (*tse.TsEngine, *tse.TsRaftLogEngine, error) {
-		var tsRaftLogEngine *tse.TsRaftLogEngine
+	setTse := func() (*timeseries.TsEngine, *timeseries.TsRaftLogEngine, error) {
+		var tsRaftLogEngine *timeseries.TsRaftLogEngine
 		if s.cfg.Stores.Specs != nil && s.cfg.Stores.Specs[0].Path != "" && !s.cfg.ForbidCatchCoreDump {
 			s.tsEngine, err = s.cfg.CreateTsEngine(ctx, s.stopper, s.ClusterID().String(), s.execCfg.TsIDGen)
 			if err != nil {
@@ -2015,17 +2015,17 @@ func (s *Server) Start(ctx context.Context) error {
 
 			if s.cfg.UseRaftStore {
 				log.Infof(ctx, "use raft store to save raft logs")
-				tsRaftLogEngineConfig := tse.TsRaftLogEngineConfig{
+				tsRaftLogEngineConfig := timeseries.TsRaftLogEngineConfig{
 					Dir: s.cfg.Stores.Specs[0].Path,
 				}
-				if tsRaftLogEngine, err = tse.NewTsRaftLogEngine(ctx, tsRaftLogEngineConfig, s.stopper, &s.st.SV); err != nil {
+				if tsRaftLogEngine, err = timeseries.NewTsRaftLogEngine(ctx, tsRaftLogEngineConfig, s.stopper, &s.st.SV); err != nil {
 					return nil, nil, errors.Wrap(err, "failed to create ts raft log engine")
 				}
 			}
 
 			if !GetSingleNodeModeFlag(s.cfg.ModeFlag) {
-				tse.TsRaftLogCombineWAL.SetOnChange(&s.st.SV, func() {
-					combined := tse.TsRaftLogCombineWAL.Get(&s.st.SV)
+				timeseries.TsRaftLogCombineWAL.SetOnChange(&s.st.SV, func() {
+					combined := timeseries.TsRaftLogCombineWAL.Get(&s.st.SV)
 					s.tsEngine.SetRaftLogCombinedWAL(combined)
 					if !combined {
 						if err := kvserver.ClearReplicasAndResetFlushedIndex(ctx); err != nil {
@@ -2034,17 +2034,17 @@ func (s *Server) Start(ctx context.Context) error {
 					}
 				})
 
-				tse.TsRaftLogSyncPeriod.SetOnChange(&s.st.SV, func() {
-					newPeriod := tse.TsRaftLogSyncPeriod.Get(&s.st.SV)
+				timeseries.TsRaftLogSyncPeriod.SetOnChange(&s.st.SV, func() {
+					newPeriod := timeseries.TsRaftLogSyncPeriod.Get(&s.st.SV)
 					if s.cfg.UseRaftStore {
 						if curPeriod := tsRaftLogEngine.GetSyncPeriod(); curPeriod != newPeriod {
 							tsRaftLogEngine.SetSyncPeriod(newPeriod)
 							tsRaftLogEngine.NotifySyncPeriodChange()
 						}
 					} else {
-						if curPeriod := storage.GetSyncPeriod(); curPeriod != newPeriod {
-							storage.SetSyncPeriod(newPeriod)
-							storage.NotifySyncPeriodChange()
+						if curPeriod := relational.GetSyncPeriod(); curPeriod != newPeriod {
+							relational.SetSyncPeriod(newPeriod)
+							relational.NotifySyncPeriodChange()
 						}
 					}
 				})
@@ -2054,7 +2054,7 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 	// init sync period
 	if !s.cfg.UseRaftStore {
-		storage.SetSyncPeriod(tse.TsRaftLogSyncPeriod.Get(&s.st.SV))
+		relational.SetSyncPeriod(timeseries.TsRaftLogSyncPeriod.Get(&s.st.SV))
 	}
 	// Now that we have a monotonic HLC wrt previous incarnations of the process,
 	// init all the replicas. At this point *some* store has been bootstrapped or
@@ -2128,7 +2128,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 	// Begin recording time series data collected by the status monitor.
 	s.tsDB.PollSource(
-		s.cfg.AmbientCtx, s.recorder, DefaultMetricsSampleInterval, ts.Resolution10s, s.stopper,
+		s.cfg.AmbientCtx, s.recorder, DefaultMetricsSampleInterval, monitoringts.Resolution10s, s.stopper,
 	)
 
 	var graphiteOnce sync.Once
@@ -2239,7 +2239,7 @@ func (s *Server) Start(ctx context.Context) error {
 	// Exempt the health check endpoint from authentication.
 	// This mirrors the handling of /health above.
 	s.mux.Handle("/_admin/v1/health", gwMux)
-	s.mux.Handle(ts.URLPrefix, authHandler)
+	s.mux.Handle(monitoringts.URLPrefix, authHandler)
 	s.mux.Handle(statusPrefix, authHandler)
 	// The /login endpoint is, by definition, available pre-authentication.
 	s.mux.Handle(loginPath, gwMux)
@@ -2389,14 +2389,8 @@ func (s *Server) Start(ctx context.Context) error {
 	// engine type as well as type of start (initial boot vs restart).
 	nodeStartCounter := "storage.engine."
 	switch s.cfg.StorageEngine {
-	case enginepb.EngineTypePebble:
-		nodeStartCounter += "pebble."
-	case enginepb.EngineTypeDefault:
-		nodeStartCounter += "default."
-	case enginepb.EngineTypeRocksDB:
+	case enginepb.EngineTypeDefault, enginepb.EngineTypeRocksDB:
 		nodeStartCounter += "rocksdb."
-	case enginepb.EngineTypeTeePebbleRocksDB:
-		nodeStartCounter += "pebble+rocksdb."
 	}
 	if s.InitialBoot() {
 		nodeStartCounter += "initial-boot"

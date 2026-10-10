@@ -1,0 +1,177 @@
+# Verify the common privilege-grantee visibility rules of information_schema views.
+
+statement ok
+CREATE DATABASE privilege_visibility_test
+
+statement ok
+SET DATABASE = privilege_visibility_test
+
+statement ok
+CREATE USER privilege_visibility_unrelated_user
+
+statement ok
+CREATE ROLE privilege_visibility_direct_role
+
+statement ok
+CREATE ROLE privilege_visibility_parent_role
+
+statement ok
+CREATE ROLE privilege_visibility_child_role
+
+statement ok
+CREATE ROLE privilege_visibility_unrelated_role
+
+# The user receives one role directly and one role through an intermediate role.
+statement ok
+GRANT privilege_visibility_direct_role TO testuser
+
+statement ok
+GRANT privilege_visibility_parent_role TO privilege_visibility_child_role
+
+statement ok
+GRANT privilege_visibility_child_role TO testuser
+
+# Database privileges are copied to subsequently created ordinary schemas and tables.
+statement ok
+GRANT SELECT ON DATABASE privilege_visibility_test TO testuser
+
+statement ok
+GRANT ALL ON DATABASE privilege_visibility_test TO privilege_visibility_direct_role
+
+statement ok
+GRANT UPDATE ON DATABASE privilege_visibility_test TO privilege_visibility_parent_role
+
+statement ok
+GRANT SELECT ON DATABASE privilege_visibility_test TO public
+
+statement ok
+GRANT DELETE ON DATABASE privilege_visibility_test TO privilege_visibility_unrelated_user
+
+statement ok
+GRANT INSERT ON DATABASE privilege_visibility_test TO privilege_visibility_unrelated_role
+
+statement ok
+CREATE TABLE privilege_matrix (a INT, b INT)
+
+user testuser
+
+statement ok
+SET DATABASE = privilege_visibility_test
+
+# An ordinary user sees direct, PUBLIC, direct-role and indirect-role grants only.
+query TT rowsort
+SELECT grantee, privilege_type
+  FROM information_schema.table_privileges
+ WHERE table_schema = 'public' AND table_name = 'privilege_matrix'
+----
+privilege_visibility_direct_role  ALL
+privilege_visibility_parent_role  UPDATE
+testuser                           SELECT
+public                            SELECT
+
+# ALL is expanded to the three column privilege types, and hidden rowid is absent.
+query TTT rowsort
+SELECT grantee, column_name, privilege_type
+  FROM information_schema.column_privileges
+ WHERE table_schema = 'public' AND table_name = 'privilege_matrix'
+----
+privilege_visibility_direct_role  a  INSERT
+privilege_visibility_direct_role  a  SELECT
+privilege_visibility_direct_role  a  UPDATE
+privilege_visibility_direct_role  b  INSERT
+privilege_visibility_direct_role  b  SELECT
+privilege_visibility_direct_role  b  UPDATE
+privilege_visibility_parent_role  a  UPDATE
+privilege_visibility_parent_role  b  UPDATE
+testuser                           a  SELECT
+testuser                           b  SELECT
+public                            a  SELECT
+public                            b  SELECT
+
+# Role views omit direct user grants and keep only roles available to this user plus PUBLIC.
+query TT rowsort
+SELECT grantee, privilege_type
+  FROM information_schema.role_table_grants
+ WHERE table_schema = 'public' AND table_name = 'privilege_matrix'
+----
+privilege_visibility_direct_role  ALL
+privilege_visibility_parent_role  UPDATE
+public                            SELECT
+
+query TTT rowsort
+SELECT grantee, column_name, privilege_type
+  FROM information_schema.role_column_grants
+ WHERE table_schema = 'public' AND table_name = 'privilege_matrix'
+----
+privilege_visibility_direct_role  a  INSERT
+privilege_visibility_direct_role  a  SELECT
+privilege_visibility_direct_role  a  UPDATE
+privilege_visibility_direct_role  b  INSERT
+privilege_visibility_direct_role  b  SELECT
+privilege_visibility_direct_role  b  UPDATE
+privilege_visibility_parent_role  a  UPDATE
+privilege_visibility_parent_role  b  UPDATE
+public                            a  SELECT
+public                            b  SELECT
+
+# Schema privileges use the same grantee filter while preserving database-level values.
+query TT rowsort
+SELECT grantee, privilege_type
+  FROM information_schema.schema_privileges
+ WHERE table_schema = 'public'
+----
+privilege_visibility_direct_role  ALL
+privilege_visibility_parent_role  UPDATE
+testuser                           SELECT
+public                            SELECT
+
+user root
+
+statement ok
+SET DATABASE = privilege_visibility_test
+
+# Administrators can inspect grants of otherwise unrelated roles.
+query T rowsort
+SELECT DISTINCT grantee
+  FROM information_schema.role_table_grants
+ WHERE table_schema = 'public'
+   AND table_name = 'privilege_matrix'
+   AND grantee IN (
+     'privilege_visibility_direct_role',
+     'privilege_visibility_parent_role',
+     'privilege_visibility_unrelated_role',
+     'public'
+   )
+----
+privilege_visibility_direct_role
+privilege_visibility_parent_role
+privilege_visibility_unrelated_role
+public
+
+# A user-defined schema remains discoverable through its own privilege even
+# when the user has no privilege on the containing database.
+statement ok
+CREATE DATABASE schema_visibility_only_test
+
+statement ok
+SET DATABASE = schema_visibility_only_test
+
+statement ok
+CREATE SCHEMA schema_visibility_only
+
+statement ok
+GRANT CREATE ON SCHEMA schema_visibility_only TO testuser
+
+user testuser
+
+statement ok
+SET DATABASE = schema_visibility_only_test
+
+query TTTT
+SELECT grantee, table_catalog, table_schema, privilege_type
+  FROM information_schema.schema_privileges
+ WHERE table_schema = 'schema_visibility_only'
+----
+testuser                      schema_visibility_only_test  schema_visibility_only  CREATE
+
+user root

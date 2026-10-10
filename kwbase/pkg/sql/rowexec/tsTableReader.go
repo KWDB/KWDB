@@ -24,7 +24,7 @@
 
 package rowexec
 
-// #cgo CPPFLAGS: -I../../../kwdbts2/include
+// #cgo CPPFLAGS: -I../../../engine/ts_engine/include
 // #cgo LDFLAGS: -lkwdbts2 -lcommon -lsnappy -lm  -lstdc++
 // #cgo LDFLAGS: -lprotobuf
 // #cgo linux LDFLAGS: -lrt -lpthread
@@ -46,7 +46,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
@@ -87,7 +87,7 @@ type TsTableReader struct {
 	tsTableReaderID int32
 
 	collected bool
-	statsList []tse.TsFetcherStats
+	statsList []timeseries.TsFetcherStats
 
 	tsInfo   execinfrapb.TsInfo
 	waitChan chan struct{}
@@ -188,7 +188,7 @@ func (ttr *TsTableReader) initTableReader(
 	if err != nil {
 		return err
 	}
-	var info tse.TsQueryInfo
+	var info timeseries.TsQueryInfo
 	info.Handle = nil
 	info.Buf = []byte("init ts handle")
 	respInfo, err := ttr.FlowCtx.Cfg.TsEngine.InitTsHandle(&ctx, info)
@@ -291,14 +291,14 @@ func (ttr *TsTableReader) Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerMeta
 	for ttr.State == execinfra.StateRunning {
 		if len(ttr.Rev) == 0 || (ttr.value0 && ttr.rowNum == 0) {
 			// Prepare query info
-			tsQueryInfo := tse.TsQueryInfo{
+			tsQueryInfo := timeseries.TsQueryInfo{
 				ID:           int(ttr.sid),
 				Handle:       ttr.tsHandle,
 				TimeZone:     ttr.timeZone,
 				TimeZoneName: ttr.timeZoneName,
 				UseDST:       ttr.useDST,
 				Buf:          []byte(cmdExecNext),
-				Fetcher:      tse.TsFetcher{Collected: ttr.collected},
+				Fetcher:      timeseries.TsFetcher{Collected: ttr.collected},
 			}
 			// Init analyse fetcher.
 			if ttr.collected {
@@ -345,14 +345,14 @@ func (ttr *TsTableReader) Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerMeta
 // NextPgWire get data for short circuit go pg encoding.
 func (ttr *TsTableReader) NextPgWire() (val []byte, code int, err error) {
 	for ttr.State == execinfra.StateRunning {
-		var tsQueryInfo = tse.TsQueryInfo{
+		var tsQueryInfo = timeseries.TsQueryInfo{
 			ID:           int(ttr.sid),
 			Handle:       ttr.tsHandle,
 			Buf:          []byte(cmdExecNext),
 			TimeZone:     ttr.timeZone,
 			TimeZoneName: ttr.timeZoneName,
 			UseDST:       ttr.useDST,
-			Fetcher:      tse.TsFetcher{Collected: ttr.collected},
+			Fetcher:      timeseries.TsFetcher{Collected: ttr.collected},
 		}
 
 		// Init analyse fetcher.
@@ -420,7 +420,7 @@ func (ttr *TsTableReader) DropHandle(ctx context.Context) {
 	ttr.mu.Lock()
 	defer ttr.mu.Unlock()
 	if ttr.tsHandle != nil {
-		var tsCloseInfo tse.TsQueryInfo
+		var tsCloseInfo timeseries.TsQueryInfo
 		tsCloseInfo.Handle = ttr.tsHandle
 		tsCloseInfo.Buf = []byte("close tsflow")
 		closeErr := ttr.FlowCtx.Cfg.TsEngine.CloseTsFlow(&(ttr.Ctx), tsCloseInfo)
@@ -437,7 +437,7 @@ func (ttr *TsTableReader) cancelTsFlow() {
 	ttr.mu.Lock()
 	defer ttr.mu.Unlock()
 	if ttr.tsHandle != nil {
-		var tsInfo tse.TsQueryInfo
+		var tsInfo timeseries.TsQueryInfo
 		tsInfo.Handle = ttr.tsHandle
 		tsInfo.Buf = []byte("cancel tsflow")
 		err := ttr.FlowCtx.Cfg.TsEngine.CancelTsFlow(&(ttr.Ctx), tsInfo)
@@ -493,7 +493,7 @@ func (ttr *TsTableReader) setupTsFlow(ctx context.Context) error {
 	}
 
 	// Create query info for the TS engine
-	tsQueryInfo := tse.TsQueryInfo{
+	tsQueryInfo := timeseries.TsQueryInfo{
 		ID:           int(ttr.sid),
 		Buf:          msg,
 		UniqueID:     randomNumber,
@@ -617,7 +617,7 @@ func (ttr *TsTableReader) handleEndOfData() *execinfrapb.ProducerMetadata {
 
 // handleFetchError handles error responses from the TS engine
 func (ttr *TsTableReader) handleFetchError(
-	respInfo *tse.TsQueryInfo, err error,
+	respInfo *timeseries.TsQueryInfo, err error,
 ) *execinfrapb.ProducerMetadata {
 	if err == nil {
 		err = errors.Newf("There is no error message for this error code. The err code is %d.\n", respInfo.Code)
@@ -632,8 +632,8 @@ func (ttr *TsTableReader) handleFetchError(
 }
 
 // initStatsCollector initializes the statistics collector
-func (ttr *TsTableReader) initStatsCollector(queryInfo *tse.TsQueryInfo) {
-	tsFetchers := tse.NewTsFetcher(ttr.tsProcessorSpecs)
+func (ttr *TsTableReader) initStatsCollector(queryInfo *timeseries.TsQueryInfo) {
+	tsFetchers := timeseries.NewTsFetcher(ttr.tsProcessorSpecs)
 	queryInfo.Fetcher.CFetchers = tsFetchers
 	queryInfo.Fetcher.Size = len(tsFetchers)
 
@@ -644,21 +644,21 @@ func (ttr *TsTableReader) initStatsCollector(queryInfo *tse.TsQueryInfo) {
 
 // initStatsList initializes the statistics list for all processors
 func (ttr *TsTableReader) initStatsList() {
-	ttr.statsList = make([]tse.TsFetcherStats, 0, len(ttr.tsProcessorSpecs))
+	ttr.statsList = make([]timeseries.TsFetcherStats, 0, len(ttr.tsProcessorSpecs))
 
 	for j := len(ttr.tsProcessorSpecs) - 1; j >= 0; j-- {
 		procSpec := &ttr.tsProcessorSpecs[j]
-		ttr.statsList = append(ttr.statsList, tse.TsFetcherStats{
+		ttr.statsList = append(ttr.statsList, timeseries.TsFetcherStats{
 			ProcessorID:   procSpec.ProcessorID,
-			ProcessorName: tse.TsGetNameValue(&procSpec.Core),
+			ProcessorName: timeseries.TsGetNameValue(&procSpec.Core),
 		})
 	}
 }
 
 // updateStatsList updates the statistics list with data from response
-func (ttr *TsTableReader) updateStatsList(respInfo *tse.TsQueryInfo) {
+func (ttr *TsTableReader) updateStatsList(respInfo *timeseries.TsQueryInfo) {
 	if sp := opentracing.SpanFromContext(ttr.PbCtx()); sp != nil {
-		ttr.statsList = tse.AddStatsList(respInfo.Fetcher, ttr.statsList)
+		ttr.statsList = timeseries.AddStatsList(respInfo.Fetcher, ttr.statsList)
 	}
 }
 
@@ -744,14 +744,14 @@ func (tsi *TsInputStats) TsStatsForQueryPlan() map[int32][]string {
 }
 
 // SetTsInputStats set value to TsInputStats.
-func (tsi *TsInputStats) SetTsInputStats(stats tse.TsFetcherStats) {
+func (tsi *TsInputStats) SetTsInputStats(stats timeseries.TsFetcherStats) {
 	is := InputStats{
 		NumRows:   stats.RowNum,
 		StallTime: time.Duration(stats.StallTime),
 		BuildTime: time.Duration(stats.BuildTime),
 	}
 	switch stats.ProcessorName {
-	case tse.TsTableReaderName, tse.TsTagReaderName, tse.TsStatisticReaderName:
+	case timeseries.TsTableReaderName, timeseries.TsTagReaderName, timeseries.TsStatisticReaderName:
 		ts := TsTableReaderStats{
 			InputStats: TableReaderStats{
 				InputStats:           is,
@@ -770,7 +770,7 @@ func (tsi *TsInputStats) SetTsInputStats(stats tse.TsFetcherStats) {
 			PorcessorId: stats.ProcessorID,
 		}
 		tsi.TsTableReaderStatss = append(tsi.TsTableReaderStatss, ts)
-	case tse.TsAggregatorName, tse.TsDistinctName, tse.TsNoopName:
+	case timeseries.TsAggregatorName, timeseries.TsDistinctName, timeseries.TsNoopName:
 		ts := TsAggregatorStats{
 			InputStats: AggregatorStats{
 				InputStats:      is,
@@ -780,7 +780,7 @@ func (tsi *TsInputStats) SetTsInputStats(stats tse.TsFetcherStats) {
 			PorcessorId: stats.ProcessorID,
 		}
 		tsi.TsAggregatorStatss = append(tsi.TsAggregatorStatss, ts)
-	case tse.TsSorterName:
+	case timeseries.TsSorterName:
 		ts := TsSorterStats{
 			InputStats: SorterStats{
 				InputStats:       is,
