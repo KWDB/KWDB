@@ -195,6 +195,10 @@ func (l *LocalStorage) ReadFile(filename string) (res io.ReadCloser, err error) 
 }
 
 // List prepends IO dir to pattern and glob matches all local files against that pattern.
+//
+// Returned paths always use the URI-style forward slash separator, even on
+// Windows: nodelocal paths originate from (and are re-joined into) URIs, whose
+// path component is slash-separated regardless of the host OS.
 func (l *LocalStorage) List(pattern string) ([]string, error) {
 	if pattern == "" {
 		return nil, errors.New("pattern cannot be empty")
@@ -210,7 +214,7 @@ func (l *LocalStorage) List(pattern string) ([]string, error) {
 
 	var fileList []string
 	for _, file := range matches {
-		fileList = append(fileList, strings.TrimPrefix(file, l.externalIODir))
+		fileList = append(fileList, filepath.ToSlash(strings.TrimPrefix(file, l.externalIODir)))
 	}
 	return fileList, nil
 }

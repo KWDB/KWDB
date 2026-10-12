@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -888,7 +887,8 @@ func (r *importResumer) relationalResume(
 		dbPath := details.URIs[0]
 		for _, table := range details.Tables {
 			count++
-			filePathName := dbPath + string(os.PathSeparator) + table.SchemaName + string(os.PathSeparator) + table.Desc.Name + string(os.PathSeparator)
+			// nodelocal paths are URIs, so the path separator must always be "/" even on Windows.
+			filePathName := dbPath + "/" + table.SchemaName + "/" + table.Desc.Name + "/"
 			dataFiles, err := getDataFilesInURI(ctx, p, filePathName, details.Format, table)
 			if err != nil {
 				if _, ok := err.(*importPathError); ok {
@@ -1016,10 +1016,11 @@ func (r *importResumer) OnFailOrCancel(ctx context.Context, phs interface{}) err
 
 // getURIPrefix get sub path from db path.
 func getURIPrefix(dbPath string, table sqlbase.ImportTable) (string, error) {
-	tsScPath := dbPath + string(os.PathSeparator) + "public" + string(os.PathSeparator)
+	// nodelocal paths are URIs, so the path separator must always be "/" even on Windows.
+	tsScPath := dbPath + "/public/"
 	switch table.TableType {
 	case tree.TimeseriesTable, tree.RelationalTable, tree.SparseTable:
-		return tsScPath + table.TableName + string(os.PathSeparator), nil
+		return tsScPath + table.TableName + "/", nil
 	default:
 		return "", errors.Errorf("unsupported table type %v", table.TableType)
 	}
@@ -1062,7 +1063,7 @@ func getDataFilesInURI(
 			return nil, newImportPathError(uri)
 		}
 		for i := 0; i < len(tableFiles); i++ {
-			tableFiles[i] = strings.Join([]string{uri, tableFiles[i]}, string(os.PathSeparator))
+			tableFiles[i] = strings.Join([]string{uri, tableFiles[i]}, "/")
 		}
 	default:
 		return nil, errors.Errorf("unsupported table type %v", table.TableType)

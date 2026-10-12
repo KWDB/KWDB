@@ -31,7 +31,9 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/url"
+	"path"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -48,7 +50,10 @@ func appendPath(t *testing.T, s, add string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	u.Path = filepath.Join(u.Path, add)
+	// u.Path is a URI component and must be joined with the POSIX path rules:
+	// filepath.Join would inject OS-native separators (backslashes on Windows)
+	// into the URI and break its later parsing.
+	u.Path = path.Join(u.Path, add)
 	return u.String()
 }
 
@@ -120,9 +125,11 @@ func testExportStoreWithExternalIOConfig(
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer r.Close()
 
 			res, err := ioutil.ReadAll(r)
+			// Close before Delete: Windows cannot remove a file while a handle
+			// is still open (Linux permits it, hence the previous defer).
+			_ = r.Close()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -151,8 +158,10 @@ func testExportStoreWithExternalIOConfig(
 		if err != nil {
 			t.Fatalf("Could not get reader for %s: %+v", testingFilename, err)
 		}
-		defer res.Close()
 		content, err := ioutil.ReadAll(res)
+		// Close before Delete: Windows cannot remove a file while a handle is
+		// still open (Linux permits it, hence the previous defer).
+		_ = res.Close()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -178,8 +187,10 @@ func testExportStoreWithExternalIOConfig(
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer res.Close()
 		content, err := ioutil.ReadAll(res)
+		// Close before Delete: Windows cannot remove a file while a handle is
+		// still open (Linux permits it, hence the previous defer).
+		_ = res.Close()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -203,8 +214,10 @@ func testExportStoreWithExternalIOConfig(
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer res.Close()
 		content, err := ioutil.ReadAll(res)
+		// Close before Delete: Windows cannot remove a file while a handle is
+		// still open (Linux permits it, hence the previous defer).
+		_ = res.Close()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -353,6 +366,11 @@ func testListFiles(t *testing.T, storeURI string) {
 			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
+				// On Windows the backslash is a path separator, so it cannot
+				// be used to escape glob metacharacters in a pattern.
+				if runtime.GOOS == "windows" && strings.Contains(tc.name, "escaped") {
+					t.Skip("escaping glob metacharacters with backslash is not supported on Windows")
+				}
 				s := storeFromURI(ctx, t, tc.URI, clientFactory)
 				filesList, err := s.ListFiles(ctx, tc.suffix)
 				if err != nil {
@@ -387,10 +405,93 @@ func TestPutLocal(t *testing.T) {
 	defer cleanupFn()
 
 	testSettings.ExternalIODir = p
-	dest := MakeLocalStorageURI(p)
+	// The URI path is always joined onto the external IO dir by LocalStorage.
+	// Strip the Windows volume name ("C:") first: the colon is illegal inside a
+	// Windows file path and would make directory creation fail. On Linux the
+	// volume name is empty, so the behavior is unchanged.
+	uriPath := filepath.ToSlash(p)
+	if vol := filepath.VolumeName(p); vol != "" {
+		uriPath = strings.TrimPrefix(uriPath, filepath.ToSlash(vol))
+	}
+	dest := MakeLocalStorageURI(uriPath)
 
 	testExportStore(t, dest, false)
 	testListFiles(t, "nodelocal://1/listing-test/basepath")
+}
+
+// TestListFilesDatabaseImportLayout reproduces the directory walk performed by
+// IMPORT DATABASE: a database directory contains meta.sql plus schema folders,
+// each schema folder contains meta.sql and table folders, and each table
+// folder contains meta.sql plus data files. Listed names must be returned
+// relative to the storage base using URI-style forward slashes on every OS;
+// otherwise the importer finds no tables and reports "cannot import an empty
+// database" on Windows.
+func TestListFilesDatabaseImportLayout(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	ctx := context.TODO()
+	p, cleanupFn := testutils.TempDir(t)
+	defer cleanupFn()
+	testSettings.ExternalIODir = p
+	clientFactory := blobs.TestBlobServiceClient(testSettings.ExternalIODir)
+
+	const dbURI = "nodelocal://1/dbcase11"
+	writeFile := func(uri, name, content string) {
+		s := storeFromURI(ctx, t, uri, clientFactory)
+		defer s.Close()
+		if err := s.WriteFile(ctx, name, bytes.NewReader([]byte(content))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeFile(dbURI, "meta.sql", "CREATE DATABASE dbcase11;")
+	writeFile(dbURI, "public/t1/meta.sql", "CREATE TABLE t1 (id INT);")
+	writeFile(dbURI, "public/t1/data.csv", "1\n")
+	writeFile(dbURI, "s1/t2/meta.sql", "CREATE TABLE s1.t2 (id INT);")
+	writeFile(dbURI, "s1/t2/data.csv", "2\n")
+
+	// Walk the database directory, mirroring readTablesInDbFromStore.
+	dbStore := storeFromURI(ctx, t, dbURI+"/", clientFactory)
+	dbEntries, err := dbStore.ListFiles(ctx, "*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(dbEntries)
+	if expected := []string{"meta.sql", "public", "s1"}; strings.Join(dbEntries, ",") != strings.Join(expected, ",") {
+		t.Fatalf("database entries = %v, expected %v", dbEntries, expected)
+	}
+
+	for _, sc := range []string{"public", "s1"} {
+		scStore := storeFromURI(ctx, t, dbURI+"/"+sc+"/", clientFactory)
+		scEntries, err := scStore.ListFiles(ctx, "*")
+		if err != nil {
+			t.Fatal(err)
+		}
+		sort.Strings(scEntries)
+		foundTable := false
+		for _, entry := range scEntries {
+			if entry == "meta.sql" {
+				continue
+			}
+			// Every non-meta entry is treated as a table folder whose
+			// meta.sql must be readable through a slash-joined relative path.
+			r, err := scStore.ReadFile(ctx, entry+"/meta.sql")
+			if err != nil {
+				t.Fatalf("read %s/meta.sql: %v", entry, err)
+			}
+			content, err := ioutil.ReadAll(r)
+			_ = r.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(content), "CREATE TABLE") {
+				t.Fatalf("unexpected table meta content: %q", content)
+			}
+			foundTable = true
+		}
+		if !foundTable {
+			t.Fatalf("schema %s: no table folder listed, got %v", sc, scEntries)
+		}
+	}
 }
 
 func TestLocalIOLimits(t *testing.T) {
