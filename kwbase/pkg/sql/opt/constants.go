@@ -25,6 +25,7 @@
 package opt
 
 import (
+	"runtime"
 	"strconv"
 
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
@@ -74,8 +75,9 @@ var AutoLimitQuantity = settings.RegisterPublicIntSetting(
 	"sql.auto_limit.quantity", "quantity of autolimit", 0)
 
 // PushdownAll is true when we want to push down the whole query to specific engines
+// windows is false，other true
 var PushdownAll = settings.RegisterPublicBoolSetting(
-	"sql.all_push_down.enabled", "push down entire query", true,
+	"sql.all_push_down.enabled", "push down entire query", runtime.GOOS != "windows",
 )
 
 // TSParallelDegree ts engine parallel exec degree
