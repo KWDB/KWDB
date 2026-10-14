@@ -7121,6 +7121,7 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 	thisNodeID := dsp.nodeDesc.NodeID
 
 	if runtime.GOOS != "windows" {
+		// linux
 		plan.SetTSEngineReturnEncode()
 		isDist := false
 		for _, p := range plan.Processors {
@@ -7142,6 +7143,7 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 			}
 		}
 	} else {
+		// windows
 		for i, idx := range plan.ResultRouters {
 			if plan.Processors[idx].ExecInTSEngine() && plan.Processors[idx].Node != thisNodeID {
 				plan.AddNoopImplementation(
@@ -7180,6 +7182,11 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 		plan.AllProcessorsExecInTSEngine = false
 	}
 
+	post := execinfrapb.PostProcessSpec{}
+	if runtime.GOOS == "windows" {
+		post = execinfrapb.PostProcessSpec{OutputTypes: plan.ResultTypes}
+	}
+
 	if len(metadataSenders) > 0 {
 		plan.AddSingleGroupStage(
 			thisNodeID,
@@ -7188,7 +7195,7 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 					SenderIDs: metadataSenders,
 				},
 			},
-			execinfrapb.PostProcessSpec{},
+			post,
 			plan.ResultTypes,
 		)
 		plan.Processors[plan.ResultRouters[0]].LogicalSequenceID = []uint64{0}

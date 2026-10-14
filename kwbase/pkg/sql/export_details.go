@@ -31,6 +31,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/storage/localexternal"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding/csv"
+	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/cockroachdb/errors"
 )
 
@@ -129,6 +130,23 @@ func (ex *connExecutor) dispatchExportDB(
 ) error {
 	exp := planner.stmt.AST.(*tree.Export)
 	dbPath := exp.File.(*tree.StrVal).RawString()
+	// The per-table loop below rewrites this Export object in place (File/Query)
+	// and planner.stmt.SQL into a single-table EXPORT. If the statement later
+	// auto-retries (e.g. sticky TransactionRetryWithProtoRefreshError surfaces
+	// at statement boundary), the retry must re-execute the original
+	// EXPORT DATABASE, not the last rewritten table export. Save and restore.
+	origSQL := planner.stmt.SQL
+	origFile, origQuery := exp.File, exp.Query
+	origIgnoreCheckComment := exp.IgnoreCheckComment
+	defer func() {
+		exp.File, exp.Query = origFile, origQuery
+		exp.IgnoreCheckComment = origIgnoreCheckComment
+		planner.stmt.AST = exp
+		planner.stmt.SQL = origSQL
+	}()
+
+	// log.Infof(ctx, "[EXPORT-DEBUG] dispatchExportDB start: db=%s path=%s onlyData=%v",
+	// 	exp.Database, dbPath, expOpts.onlyData)
 	// createStmtFunc
 	createStmtFunc := func(ctx context.Context, uri, filename, content string) error {
 		if expOpts.onlyData {
@@ -311,17 +329,57 @@ func (ex *connExecutor) dispatchExportDB(
 		planner.tableName.SchemaName = tbl.SchemaName
 		planner.tableName.ExplicitSchema = true
 
-		err = ex.dispatchToExecutionEngine(ctx, planner, res)
+		// tableFile := exp.File.(*tree.StrVal).RawString()
+		// log.Infof(ctx, "[EXPORT-DEBUG] dispatch table start: schema=%s table=%s file=%s sql=%s",
+		// 	tbl.SchemaName, tbl.TableName, tableFile, planner.stmt.SQL)
+		// tableStart := timeutil.Now()
+		// err = ex.dispatchToExecutionEngine(ctx, planner, res)
+		// log.Infof(ctx, "[EXPORT-DEBUG] dispatch table end: schema=%s table=%s dur=%s dispatchErr=%v resErr=%v",
+		// 	tbl.SchemaName, tbl.TableName, timeutil.Since(tableStart), err, res.Err())
 
 		if res.Err() != nil {
+			log.Warningf(ctx, "[EXPORT-DEBUG] table export failed: schema=%s table=%s err=%v",
+				tbl.SchemaName, tbl.TableName, res.Err())
 			res.AppendNotice(res.Err())
 		}
 		if err != nil {
+			log.Warningf(ctx, "[EXPORT-DEBUG] table export dispatch error: schema=%s table=%s err=%v",
+				tbl.SchemaName, tbl.TableName, err)
 			res.AppendNotice(err)
 		}
 		// reset error
 		res.SetError(nil)
 	}
+
+	// [EXPORT-DEBUG] verify files exist after all tables exported
+	// for _, tbl := range tableNames {
+	// 	// nodelocal paths are URIs, so the path separator must always be "/".
+	// 	tbPath := dbPath + "/" + string(tbl.SchemaName) + "/" + string(tbl.TableName)
+	// 	conf, confErr := localexternal.ExternalStorageConfFromURI(tbPath)
+	// 	if confErr != nil {
+	// 		log.Warningf(ctx, "[EXPORT-DEBUG] verify export files: bad path=%s err=%v", tbPath, confErr)
+	// 		continue
+	// 	}
+	// 	es, storeErr := planner.execCfg.DistSQLSrv.ExternalStorage(ctx, conf)
+	// 	if storeErr != nil {
+	// 		log.Warningf(ctx, "[EXPORT-DEBUG] verify export files: open storage failed: path=%s err=%v", tbPath, storeErr)
+	// 		continue
+	// 	}
+	// 	files, listErr := es.ListFiles(ctx, "*.csv")
+	// 	if listErr != nil {
+	// 		log.Warningf(ctx, "[EXPORT-DEBUG] verify export files: ListFiles failed: path=%s err=%v", tbPath, listErr)
+	// 	} else if len(files) == 0 {
+	// 		log.Warningf(ctx, "[EXPORT-DEBUG] verify export files: NO csv files found: schema=%s table=%s path=%s",
+	// 			tbl.SchemaName, tbl.TableName, tbPath)
+	// 	} else {
+	// 		log.Infof(ctx, "[EXPORT-DEBUG] verify export files: schema=%s table=%s count=%d files=%v",
+	// 			tbl.SchemaName, tbl.TableName, len(files), files)
+	// 	}
+	// 	es.Close()
+	// }
+
+	// log.Infof(ctx, "[EXPORT-DEBUG] dispatchExportDB end: db=%s (verify done)", exp.Database)
+
 	return nil
 }
 
@@ -581,6 +639,16 @@ func (ex *connExecutor) dispatchExportTSDB(
 ) error {
 	exp := planner.stmt.AST.(*tree.Export)
 	dbPath := exp.File.(*tree.StrVal).RawString()
+	// Same in-place rewrite as dispatchExportDB: restore the original
+	// EXPORT DATABASE statement fields so a statement-level auto-retry
+	// re-executes the original statement instead of the last table export.
+	origSQL := planner.stmt.SQL
+	origFile, origQuery, origIsTS := exp.File, exp.Query, exp.IsTS
+	defer func() {
+		exp.File, exp.Query, exp.IsTS = origFile, origQuery, origIsTS
+		planner.stmt.AST = exp
+		planner.stmt.SQL = origSQL
+	}()
 	// dispatch need super and normal tables, meta sql need child tables additionally
 	disTableNames, creates, err := getTablesNameByTSDatabase(
 		planner.ExtendedEvalContext().Ctx(),
