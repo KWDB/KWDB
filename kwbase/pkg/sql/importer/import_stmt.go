@@ -892,6 +892,8 @@ func (r *importResumer) relationalResume(
 			dataFiles, err := getDataFilesInURI(ctx, p, filePathName, details.Format, table)
 			if err != nil {
 				if _, ok := err.(*importPathError); ok {
+					log.Warningf(ctx, "skipping table (no data files): schema=%s table=%s path=%s err=%v",
+						table.SchemaName, table.Desc.Name, filePathName, err)
 					continue
 				} else {
 					return err
@@ -1051,6 +1053,7 @@ func getDataFilesInURI(
 		// The current implementation only relies on parsing the hrefs in the HTML file
 		filesInTbDir, err := store.ListFiles(ctx, "*")
 		if err != nil {
+			log.Warningf(ctx, "ListFiles failed: uri=%s err=%v", uri, err)
 			return nil, err
 		}
 
@@ -1059,7 +1062,9 @@ func getDataFilesInURI(
 				tableFiles = append(tableFiles, tableFile)
 			}
 		}
+
 		if len(tableFiles) == 0 {
+			log.Warningf(ctx, "getDataFilesInURI: no csv files found: uri=%s listedFiles=%v", uri, filesInTbDir)
 			return nil, newImportPathError(uri)
 		}
 		for i := 0; i < len(tableFiles); i++ {
@@ -1116,6 +1121,8 @@ func (r *importResumer) prepareTableDescsForIngestion(
 			}
 		}
 		for i, table := range details.Tables {
+			log.Infof(ctx, "[IMPORT-DEBUG] prepareTable: idx=%d schema=%s table=%s isNew=%v",
+				i, table.SchemaName, table.TableName, table.IsNew)
 			if table.IsNew {
 				searchPath := sessiondata.SetSearchPath(p.CurrentSearchPath(), []string{table.SchemaName})
 				p.ExecCfg().InternalExecutor.SetSessionData(&sessiondata.SessionData{Database: cleanedDbName, SearchPath: searchPath})

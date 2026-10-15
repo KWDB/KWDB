@@ -329,13 +329,7 @@ func (ex *connExecutor) dispatchExportDB(
 		planner.tableName.SchemaName = tbl.SchemaName
 		planner.tableName.ExplicitSchema = true
 
-		// tableFile := exp.File.(*tree.StrVal).RawString()
-		// log.Infof(ctx, "[EXPORT-DEBUG] dispatch table start: schema=%s table=%s file=%s sql=%s",
-		// 	tbl.SchemaName, tbl.TableName, tableFile, planner.stmt.SQL)
-		// tableStart := timeutil.Now()
-		// err = ex.dispatchToExecutionEngine(ctx, planner, res)
-		// log.Infof(ctx, "[EXPORT-DEBUG] dispatch table end: schema=%s table=%s dur=%s dispatchErr=%v resErr=%v",
-		// 	tbl.SchemaName, tbl.TableName, timeutil.Since(tableStart), err, res.Err())
+		err = ex.dispatchToExecutionEngine(ctx, planner, res)
 
 		if res.Err() != nil {
 			log.Warningf(ctx, "[EXPORT-DEBUG] table export failed: schema=%s table=%s err=%v",
@@ -350,35 +344,6 @@ func (ex *connExecutor) dispatchExportDB(
 		// reset error
 		res.SetError(nil)
 	}
-
-	// [EXPORT-DEBUG] verify files exist after all tables exported
-	// for _, tbl := range tableNames {
-	// 	// nodelocal paths are URIs, so the path separator must always be "/".
-	// 	tbPath := dbPath + "/" + string(tbl.SchemaName) + "/" + string(tbl.TableName)
-	// 	conf, confErr := localexternal.ExternalStorageConfFromURI(tbPath)
-	// 	if confErr != nil {
-	// 		log.Warningf(ctx, "[EXPORT-DEBUG] verify export files: bad path=%s err=%v", tbPath, confErr)
-	// 		continue
-	// 	}
-	// 	es, storeErr := planner.execCfg.DistSQLSrv.ExternalStorage(ctx, conf)
-	// 	if storeErr != nil {
-	// 		log.Warningf(ctx, "[EXPORT-DEBUG] verify export files: open storage failed: path=%s err=%v", tbPath, storeErr)
-	// 		continue
-	// 	}
-	// 	files, listErr := es.ListFiles(ctx, "*.csv")
-	// 	if listErr != nil {
-	// 		log.Warningf(ctx, "[EXPORT-DEBUG] verify export files: ListFiles failed: path=%s err=%v", tbPath, listErr)
-	// 	} else if len(files) == 0 {
-	// 		log.Warningf(ctx, "[EXPORT-DEBUG] verify export files: NO csv files found: schema=%s table=%s path=%s",
-	// 			tbl.SchemaName, tbl.TableName, tbPath)
-	// 	} else {
-	// 		log.Infof(ctx, "[EXPORT-DEBUG] verify export files: schema=%s table=%s count=%d files=%v",
-	// 			tbl.SchemaName, tbl.TableName, len(files), files)
-	// 	}
-	// 	es.Close()
-	// }
-
-	// log.Infof(ctx, "[EXPORT-DEBUG] dispatchExportDB end: db=%s (verify done)", exp.Database)
 
 	return nil
 }
