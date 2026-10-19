@@ -110,9 +110,11 @@ descriptor  BYTES  true   NULL  ·  {}         false  false
 query TTBTTTBB
 SHOW COLUMNS FROM system.users
 ----
-username        STRING  false  NULL   ·  {primary}  false  false
-hashedPassword  BYTES   true   NULL   ·  {}         false  false
-isRole          BOOL    false  false  ·  {}         false  false
+username           STRING  false  NULL   ·  {primary}  false  false
+hashedPassword     BYTES   true   NULL   ·  {}         false  false
+isRole             BOOL    false  false  ·  {}         false  false
+mysqlNativeDigest  BYTES   true   NULL   ·  {}         false  false
+mysqlSHA2Digest    BYTES   true   NULL   ·  {}         false  false
 
 query TTBTTTBB
 SHOW COLUMNS FROM system.zones

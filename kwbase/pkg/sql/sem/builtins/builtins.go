@@ -4290,6 +4290,26 @@ may increase either contention or retry errors, or both.`,
 		},
 	),
 
+	// MySQL's name for current_database(). Clients call it during the
+	// connection phase to display the active database, so its absence shows up
+	// before an application runs any of its own SQL.
+	"database": makeBuiltin(
+		tree.FunctionProperties{Category: categorySystemInfo},
+		tree.Overload{
+			Types:      tree.ArgTypes{},
+			ReturnType: tree.FixedReturnType(types.String),
+			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				if len(ctx.SessionData.Database) == 0 {
+					return tree.DNull, nil
+				}
+				return tree.NewDString(ctx.SessionData.Database), nil
+			},
+			Info: "Returns the current database. Alias of current_database(), " +
+				"provided for MySQL compatibility.",
+			Volatility: tree.VolatilityStable,
+		},
+	),
+
 	// https://www.postgresql.org/docs/10/static/functions-info.html
 	//
 	// Note that in addition to what the pg doc says ("current_schema =

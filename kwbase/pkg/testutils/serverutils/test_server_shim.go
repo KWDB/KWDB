@@ -68,6 +68,10 @@ type TestServerInterface interface {
 	// ServingSQLAddr returns the server's advertised SQL address.
 	ServingSQLAddr() string
 
+	// ServingMySQLAddr returns the address the MySQL listener bound to, or an
+	// empty string when TestServerArgs.MySQLAddr did not enable it.
+	ServingMySQLAddr() string
+
 	// HTTPAddr returns the server's http address.
 	HTTPAddr() string
 

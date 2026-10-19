@@ -769,3 +769,122 @@ func TestMigrateNamespaceTableDescriptors(t *testing.T) {
 		return nil
 	}))
 }
+
+// TestAddMySQLPasswordDigestsToUsers checks that the migration restores the
+// two columns on a cluster that predates them.
+//
+// Running the migration on a freshly bootstrapped cluster proves nothing: the
+// current descriptor already declares the columns, so the migration takes its
+// no-op path. This strips them first, reproducing what an upgraded cluster
+// actually looks like.
+func TestAddMySQLPasswordDigestsToUsers(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	ctx := context.Background()
+
+	mt := makeMigrationTest(ctx, t)
+	defer mt.close(ctx)
+	mt.start(t, base.TestServerArgs{})
+
+	descKey := sqlbase.MakeDescMetadataKey(keys.UsersTableID)
+
+	readUsersTable := func() *sqlbase.TableDescriptor {
+		t.Helper()
+		desc := &sqlbase.Descriptor{}
+		ts, err := mt.kvDB.GetProtoTs(ctx, descKey, desc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tbl := desc.Table(ts)
+		if tbl == nil {
+			t.Fatal("system.users descriptor is not a table")
+		}
+		return tbl
+	}
+
+	hasColumn := func(tbl *sqlbase.TableDescriptor, name string) bool {
+		for i := range tbl.Columns {
+			if tbl.Columns[i].Name == name {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Rewind the descriptor to its pre-migration shape.
+	before := readUsersTable()
+	if !hasColumn(before, "mysqlNativeDigest") {
+		t.Fatal("expected the bootstrapped descriptor to declare the digest columns")
+	}
+	stripped := *before
+	stripped.Columns = nil
+	stripped.Families = nil
+	for _, col := range before.Columns {
+		if col.Name == "mysqlNativeDigest" || col.Name == "mysqlSHA2Digest" {
+			continue
+		}
+		stripped.Columns = append(stripped.Columns, col)
+	}
+	for _, fam := range before.Families {
+		if fam.Name == "fam_4_mysqlNativeDigest" || fam.Name == "fam_5_mysqlSHA2Digest" {
+			continue
+		}
+		stripped.Families = append(stripped.Families, fam)
+	}
+	stripped.NextColumnID = 4
+	stripped.NextFamilyID = 4
+	stripped.Version++
+	if err := mt.kvDB.Put(ctx, descKey, sqlbase.WrapDescriptor(&stripped)); err != nil {
+		t.Fatal(err)
+	}
+	if tbl := readUsersTable(); hasColumn(tbl, "mysqlNativeDigest") {
+		t.Fatal("failed to strip the digest columns")
+	}
+
+	migration := migrationDescriptor{
+		name:   "add MySQL password digest columns to system.users",
+		workFn: addMySQLPasswordDigestsToUsers,
+	}
+	if err := mt.runMigration(ctx, migration); err != nil {
+		t.Fatal(err)
+	}
+
+	after := readUsersTable()
+	for _, name := range []string{"mysqlNativeDigest", "mysqlSHA2Digest"} {
+		if !hasColumn(after, name) {
+			t.Errorf("migration did not add %q", name)
+		}
+	}
+	// The migrated descriptor must be indistinguishable from a bootstrapped
+	// one, or the two ways of reaching this version would diverge.
+	if after.NextColumnID != before.NextColumnID {
+		t.Errorf("NextColumnID = %d, want %d", after.NextColumnID, before.NextColumnID)
+	}
+	if after.NextFamilyID != before.NextFamilyID {
+		t.Errorf("NextFamilyID = %d, want %d", after.NextFamilyID, before.NextFamilyID)
+	}
+	if len(after.Columns) != len(before.Columns) {
+		t.Errorf("column count = %d, want %d", len(after.Columns), len(before.Columns))
+	}
+
+	// Re-running must not add the columns twice; migrations are retried after
+	// partial failures.
+	if err := mt.runMigration(ctx, migration); err != nil {
+		t.Fatal(err)
+	}
+	if again := readUsersTable(); len(again.Columns) != len(before.Columns) {
+		t.Errorf("second run changed the column count to %d, want %d",
+			len(again.Columns), len(before.Columns))
+	}
+
+	// The columns must be usable, not merely present: the MySQL listener reads
+	// them by name on every connection.
+	mt.sqlDB.Exec(t, `CREATE USER migrated WITH PASSWORD 'hunter2'`)
+	var native, sha2 []byte
+	mt.sqlDB.QueryRow(t,
+		`SELECT "mysqlNativeDigest", "mysqlSHA2Digest" FROM system.users WHERE username = 'migrated'`,
+	).Scan(&native, &sha2)
+	if len(native) == 0 || len(sha2) == 0 {
+		t.Errorf("digests were not recorded after migration: native=%d bytes sha2=%d bytes",
+			len(native), len(sha2))
+	}
+}

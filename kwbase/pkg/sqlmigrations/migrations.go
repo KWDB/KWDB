@@ -28,6 +28,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/base"
@@ -45,6 +46,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/sqlmigrations/leasemanager"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
@@ -362,6 +364,10 @@ var backwardCompatibleMigrations = []migrationDescriptor{
 	{
 		name:   "create system.kwdb_publications table",
 		workFn: createPublicationTable,
+	},
+	{
+		name:   "add MySQL password digest columns to system.users",
+		workFn: addMySQLPasswordDigestsToUsers,
 	},
 }
 
@@ -1782,6 +1788,95 @@ func disallowPublicUserOrRole(ctx context.Context, r runner) error {
 			sqlbase.PublicRole, sqlbase.PublicRole)
 	}
 	return nil
+}
+
+// addMySQLPasswordDigestsToUsers adds the two columns the MySQL protocol's
+// challenge-response authentication plugins need.
+//
+// A cluster created before these columns existed has none, and the MySQL
+// listener's account lookup selects them by name, so without this migration
+// every MySQL connection to an upgraded cluster fails on a missing column.
+//
+// The change is applied to the descriptor directly rather than with ALTER
+// TABLE. system.users is granted only ReadWriteData (see
+// sqlbase.SystemAllowedPrivileges), so root has no CREATE privilege on it and
+// both the ALTER and a GRANT that would enable it are refused. Writing the
+// descriptor is the same mechanism createSystemTable uses to install system
+// tables at reserved IDs, for the same reason: the SQL layer deliberately does
+// not permit what bootstrapping and migrating system tables require.
+//
+// The columns stay empty for accounts whose passwords were set earlier. The
+// digests can only be computed from the cleartext password, which is not
+// recoverable from the bcrypt hash, so backfilling is impossible rather than
+// merely skipped. Those accounts keep working through the plugins that
+// transport the password (sha256_password, and caching_sha2_password's full
+// authentication), and gain the challenge-response plugins the next time their
+// password is set.
+func addMySQLPasswordDigestsToUsers(ctx context.Context, r runner) error {
+	return r.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+		descKey := sqlbase.MakeDescMetadataKey(keys.UsersTableID)
+		desc := &sqlbase.Descriptor{}
+		ts, err := txn.GetProtoTs(ctx, descKey, desc)
+		if err != nil {
+			return err
+		}
+		tbl := desc.Table(ts)
+		if tbl == nil {
+			return errors.AssertionFailedf(
+				"descriptor %d is not a table", keys.UsersTableID)
+		}
+
+		// A cluster bootstrapped from the current descriptor already has the
+		// columns, and a migration may be retried after a partial failure, so
+		// this has to be idempotent rather than assume a pre-change shape.
+		added := false
+		for _, col := range mysqlDigestColumns {
+			if _, _, err := tbl.FindColumnByName(tree.Name(col.Name)); err == nil {
+				continue
+			}
+			c := col
+			// Appended directly rather than through MutableTableDescriptor's
+			// helpers: this is building the descriptor a bootstrapped cluster
+			// would already have, not running a schema change, and the column
+			// and family IDs are fixed by that target shape.
+			tbl.Columns = append(tbl.Columns, c)
+			tbl.Families = append(tbl.Families, sqlbase.ColumnFamilyDescriptor{
+				Name:            "fam_" + strconv.Itoa(int(c.ID)) + "_" + c.Name,
+				ID:              sqlbase.FamilyID(c.ID),
+				ColumnNames:     []string{c.Name},
+				ColumnIDs:       []sqlbase.ColumnID{c.ID},
+				DefaultColumnID: c.ID,
+			})
+			if tbl.NextColumnID <= c.ID {
+				tbl.NextColumnID = c.ID + 1
+			}
+			if tbl.NextFamilyID <= sqlbase.FamilyID(c.ID) {
+				tbl.NextFamilyID = sqlbase.FamilyID(c.ID) + 1
+			}
+			added = true
+		}
+		if !added {
+			return nil
+		}
+
+		tbl.Version++
+		if err := tbl.ValidateTable(); err != nil {
+			return err
+		}
+		if err := txn.SetSystemConfigTrigger(); err != nil {
+			return err
+		}
+		return txn.Put(ctx, descKey, sqlbase.WrapDescriptor(tbl))
+	})
+}
+
+// mysqlDigestColumns must stay identical to the two columns declared in
+// sqlbase.UsersTable, including their IDs: a cluster that bootstrapped from
+// that descriptor and one that reached the same shape through this migration
+// have to be indistinguishable afterwards.
+var mysqlDigestColumns = []sqlbase.ColumnDescriptor{
+	{Name: "mysqlNativeDigest", ID: 4, Type: *types.Bytes, Nullable: true},
+	{Name: "mysqlSHA2Digest", ID: 5, Type: *types.Bytes, Nullable: true},
 }
 
 func createDefaultDbs(ctx context.Context, r runner) error {

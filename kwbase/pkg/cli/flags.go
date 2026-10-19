@@ -63,6 +63,7 @@ var serverListenPort, serverSocketDir string
 var serverAdvertiseAddr, serverAdvertisePort string
 var serverBRPCAddr, serverBRPCPort string
 var serverSQLAddr, serverSQLPort string
+var serverMySQLAddr, serverMySQLPort string
 var serverSQLAdvertiseAddr, serverSQLAdvertisePort string
 var serverHTTPAddr, serverHTTPPort string
 var localityAdvertiseHosts localityList
@@ -79,6 +80,8 @@ func initPreFlagsDefaults() {
 	serverBRPCPort = ""
 
 	serverSQLAddr = ""
+	serverMySQLAddr = ""
+	serverMySQLPort = ""
 	serverSQLPort = ""
 	serverSQLAdvertiseAddr = ""
 	serverSQLAdvertisePort = ""
@@ -338,6 +341,7 @@ func init() {
 		VarFlag(f, addrSetter{&serverAdvertiseAddr, &serverAdvertisePort}, cliflags.AdvertiseAddr)
 		VarFlag(f, addrSetter{&serverBRPCAddr, &serverBRPCPort}, cliflags.BRPCAddr)
 		VarFlag(f, addrSetter{&serverSQLAddr, &serverSQLPort}, cliflags.ListenSQLAddr)
+		VarFlag(f, addrSetter{&serverMySQLAddr, &serverMySQLPort}, cliflags.ListenMySQLAddr)
 		VarFlag(f, addrSetter{&serverSQLAdvertiseAddr, &serverSQLAdvertisePort}, cliflags.SQLAdvertiseAddr)
 		VarFlag(f, addrSetter{&serverHTTPAddr, &serverHTTPPort}, cliflags.ListenHTTPAddr)
 		StringFlag(f, &serverSocketDir, cliflags.SocketDir, serverSocketDir)
@@ -875,6 +879,18 @@ func extraServerFlagInit(cmd *cobra.Command) error {
 	}
 	serverCfg.SQLAddr = net.JoinHostPort(serverSQLAddr, serverSQLPort)
 	serverCfg.SplitListenSQL = fs.Lookup(cliflags.ListenSQLAddr.Name).Changed
+
+	// Fill in the defaults for --mysql-addr. Leaving MySQLAddr empty is what
+	// keeps the listener off, so this only runs when the flag was given.
+	if fs.Lookup(cliflags.ListenMySQLAddr.Name).Changed {
+		if serverMySQLAddr == "" {
+			serverMySQLAddr = startCtx.serverListenAddr
+		}
+		if serverMySQLPort == "" {
+			serverMySQLPort = base.DefaultMySQLPort
+		}
+		serverCfg.MySQLAddr = net.JoinHostPort(serverMySQLAddr, serverMySQLPort)
+	}
 
 	// Fill in the defaults for --advertise-sql-addr.
 	advSpecified := fs.Lookup(cliflags.AdvertiseAddr.Name).Changed ||

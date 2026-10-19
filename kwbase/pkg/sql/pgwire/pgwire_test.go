@@ -542,7 +542,9 @@ func TestPGPreparedQuery(t *testing.T) {
 			baseTest.
 				Results("username", "STRING", false, gosql.NullBool{}, "", "{primary}", false, false).
 				Results("hashedPassword", "BYTES", true, gosql.NullBool{}, "", "{}", false, false).
-				Results("isRole", "BOOL", false, false, "", "{}", false, false),
+				Results("isRole", "BOOL", false, false, "", "{}", false, false).
+				Results("mysqlNativeDigest", "BYTES", true, gosql.NullBool{}, "", "{}", false, false).
+				Results("mysqlSHA2Digest", "BYTES", true, gosql.NullBool{}, "", "{}", false, false),
 		}},
 		{"SHOW DATABASES", []preparedQueryTest{
 			baseTest.Results("d", "RELATIONAL").Results("defaultdb", "RELATIONAL").Results("postgres", "RELATIONAL").Results("system", "RELATIONAL"),

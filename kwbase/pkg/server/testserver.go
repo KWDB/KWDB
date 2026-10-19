@@ -215,6 +215,12 @@ func makeTestConfigFromParams(params base.TestServerArgs) Config {
 		cfg.SQLAddr = params.SQLAddr
 		cfg.SQLAdvertiseAddr = params.SQLAddr
 	}
+	// Setting this also switches the MySQL listener on, since it is disabled
+	// whenever the address is empty. The advertised address is left for the
+	// listener to fill in once it knows which port it bound to.
+	if params.MySQLAddr != "" {
+		cfg.MySQLAddr = params.MySQLAddr
+	}
 	if params.HTTPAddr != "" {
 		cfg.HTTPAddr = params.HTTPAddr
 	}
@@ -527,6 +533,12 @@ func (ts *TestServer) ServingAddr() string {
 // ServingSQLAddr returns the server's SQL address. Should be used by clients.
 func (ts *TestServer) ServingSQLAddr() string {
 	return ts.cfg.SQLAdvertiseAddr
+}
+
+// ServingMySQLAddr returns the address the MySQL listener bound to, or an empty
+// string when the listener was not enabled by TestServerArgs.MySQLAddr.
+func (ts *TestServer) ServingMySQLAddr() string {
+	return ts.cfg.MySQLAdvertiseAddr
 }
 
 // HTTPAddr returns the server's HTTP address. Should be used by clients.

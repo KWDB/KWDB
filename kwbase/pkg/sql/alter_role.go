@@ -147,6 +147,13 @@ func (n *alterRoleNode) startExec(params runParams) error {
 				clusterversion.VersionByKey(clusterversion.VersionMinSupported),
 			)
 		}
+
+		// Recomputed with the password, for the same reason as in create_role.go.
+		mysqlNativeDigest, mysqlSHA2Digest, err := n.roleOptions.GetMySQLPasswordDigests()
+		if err != nil {
+			return err
+		}
+
 		if len(hashedPassword) > 0 && params.extendedEvalCtx.ExecCfg.RPCContext.Insecure {
 			// We disallow setting a non-empty password in insecure mode
 			// because insecure means an observer may have MITM'ed the change
@@ -165,9 +172,12 @@ func (n *alterRoleNode) startExec(params runParams) error {
 			params.ctx,
 			opName,
 			params.p.txn,
-			`UPDATE system.users SET "hashedPassword" = $2 WHERE username = $1`,
+			`UPDATE system.users SET "hashedPassword" = $2, `+
+				`"mysqlNativeDigest" = $3, "mysqlSHA2Digest" = $4 WHERE username = $1`,
 			normalizedUsername,
 			hashedPassword,
+			mysqlNativeDigest,
+			mysqlSHA2Digest,
 		)
 		if err != nil {
 			return err

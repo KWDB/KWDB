@@ -110,6 +110,7 @@ import (
 	_ "gitee.com/kwbasedb/kwbase/pkg/sql/gcjob" // register jobs declared outside of pkg/sql
 	"gitee.com/kwbasedb/kwbase/pkg/sql/gcjob/gcjobnotifier"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/mysqlwire"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/querycache"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
@@ -328,15 +329,17 @@ type Server struct {
 	startTime  time.Time
 	rpcContext *rpc.Context
 	// The gRPC server on which the different RPC handlers will be registered.
-	grpc             *grpcServer
-	gossip           *gossip.Gossip
-	nodeDialer       *nodedialer.Dialer
-	nodeLiveness     *kvserver.NodeLiveness
-	storePool        *kvserver.StorePool
-	tcsFactory       *kvcoord.TxnCoordSenderFactory
-	distSender       *kvcoord.DistSender
-	db               *kv.DB
-	pgServer         *pgwire.Server
+	grpc         *grpcServer
+	gossip       *gossip.Gossip
+	nodeDialer   *nodedialer.Dialer
+	nodeLiveness *kvserver.NodeLiveness
+	storePool    *kvserver.StorePool
+	tcsFactory   *kvcoord.TxnCoordSenderFactory
+	distSender   *kvcoord.DistSender
+	db           *kv.DB
+	pgServer     *pgwire.Server
+	// mysqlServer is nil unless cfg.MySQLAddr is set.
+	mysqlServer      *mysqlwire.Server
 	distSQLServer    *distsql.ServerImpl
 	node             *Node
 	registry         *metric.Registry
@@ -1142,6 +1145,27 @@ func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
 
 	for _, m := range s.pgServer.Metrics() {
 		s.registry.AddMetricStruct(m)
+	}
+
+	// The MySQL listener reuses the sql.Server the pgwire listener built, so
+	// both protocols execute against the same sessions, settings and metrics.
+	if s.cfg.MySQLAddr != "" {
+		s.mysqlServer, err = mysqlwire.MakeServer(
+			s.cfg.AmbientCtx,
+			s.cfg.Config,
+			s.ClusterSettings(),
+			&execCfg,
+			s.pgServer.SQLServer,
+			s.stopper,
+			&rootSQLMemoryMonitor,
+			s.cfg.HistogramWindowInterval(),
+		)
+		if err != nil {
+			return nil, err
+		}
+		for _, m := range s.mysqlServer.Metrics() {
+			s.registry.AddMetricStruct(m)
+		}
 	}
 	*internalExecutor = sql.MakeInternalExecutor(
 		ctx, s.pgServer.SQLServer, s.internalMemMetrics, s.ClusterSettings(),
@@ -2370,6 +2394,11 @@ func (s *Server) Start(ctx context.Context) error {
 		return err
 	}
 
+	// Start serving MySQL protocol clients, if the listener is configured.
+	if err := s.startServeMySQL(ctx, workersCtx, connManager); err != nil {
+		return err
+	}
+
 	// start audit server
 	s.auditServer.Start(ctx, s.stopper)
 
@@ -2757,6 +2786,50 @@ func (s *Server) startServeSQL(
 			}))
 		})
 	}
+	return nil
+}
+
+// startServeMySQL opens the MySQL protocol listener, if one is configured.
+//
+// It deliberately does not reuse the cmux-multiplexed SQL listener: the MySQL
+// server speaks first, so a connection carries no client bytes to match on.
+func (s *Server) startServeMySQL(
+	ctx, workersCtx context.Context, connManager netutil.Server,
+) error {
+	if s.mysqlServer == nil {
+		return nil
+	}
+
+	ln, err := net.Listen("tcp", s.cfg.MySQLAddr)
+	if err != nil {
+		return errors.Wrapf(err, "listening for MySQL connections on %s", s.cfg.MySQLAddr)
+	}
+	// Record the bound address: when the configured one leaves the port to the
+	// kernel there is otherwise no way for a caller to learn where to connect.
+	s.cfg.MySQLAdvertiseAddr = ln.Addr().String()
+	log.Infof(ctx, "starting mysql server at %s", ln.Addr())
+
+	s.stopper.RunWorker(workersCtx, func(workersCtx context.Context) {
+		<-s.stopper.ShouldQuiesce()
+		if err := ln.Close(); err != nil {
+			log.Errorf(workersCtx, "closing the MySQL listener: %v", err)
+		}
+	})
+
+	myCtx := s.cfg.AmbientCtx.AnnotateCtx(context.Background())
+	tcpKeepAlive := tcpKeepAliveManager{
+		tcpKeepAlive: envutil.EnvOrDefaultDuration("KWBASE_SQL_TCP_KEEP_ALIVE", time.Minute),
+	}
+	s.stopper.RunWorker(myCtx, func(myCtx context.Context) {
+		netutil.FatalIfUnexpected(connManager.ServeWith(myCtx, s.stopper, ln, func(conn net.Conn) {
+			connCtx := logtags.AddTag(myCtx, "mysql-client", conn.RemoteAddr().String())
+			tcpKeepAlive.configure(connCtx, conn)
+
+			if err := s.mysqlServer.ServeConn(connCtx, conn); err != nil {
+				log.Errorf(connCtx, "serving MySQL client conn: %v", err)
+			}
+		}))
+	})
 	return nil
 }
 

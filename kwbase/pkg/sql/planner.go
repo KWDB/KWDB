@@ -101,6 +101,15 @@ type extendedEvalContext struct {
 
 	// IsDisplayed is true when the flow spec of the SQL had displayed.
 	IsDisplayed bool
+
+	// ClientSupportsPGWireResults records whether the connection that issued
+	// this statement can receive pre-encoded PostgreSQL wire bytes, and gates
+	// the TS engine's pg-encode short circuit (shouldUseQueryShortCircuit).
+	// dispatchToExecutionEngine sets it from the client's result writer. It is
+	// left false for statements that never reach dispatchToExecutionEngine,
+	// such as internal executor queries, which is the correct answer for them:
+	// they have no wire client either.
+	ClientSupportsPGWireResults bool
 }
 
 // copy returns a deep copy of ctx.

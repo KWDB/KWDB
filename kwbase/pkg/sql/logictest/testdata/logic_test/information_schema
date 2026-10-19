@@ -1697,6 +1697,8 @@ system         public        user_defined_routine             schema_id         
 system         public        user_defined_routine             version                   10
 system         public        users                            hashedPassword            2
 system         public        users                            isRole                    3
+system         public        users                            mysqlNativeDigest         4
+system         public        users                            mysqlSHA2Digest           5
 system         public        users                            username                  1
 system         public        web_sessions                     auditInfo                 8
 system         public        web_sessions                     createdAt                 4

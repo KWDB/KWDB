@@ -59,6 +59,11 @@ func (p *planner) Discard(ctx context.Context, s *tree.Discard) (planNode, error
 func resetSessionVars(ctx context.Context, m *sessionDataMutator) error {
 	for _, varName := range varNames {
 		v := varGen[varName]
+		// An alias shares its target's Set, so applying both would run one
+		// mutation twice and send the client a duplicate ParameterStatus.
+		if v.AliasOf != "" {
+			continue
+		}
 		if v.Set != nil {
 			hasDefault, defVal := getSessionVarDefaultString(varName, v, m)
 			if hasDefault {

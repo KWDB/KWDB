@@ -100,9 +100,11 @@ CREATE TABLE system.descriptor (
 
 	UsersTableSchema = `
 CREATE TABLE system.users (
-  username         STRING PRIMARY KEY,
-  "hashedPassword" BYTES,
-  "isRole"         BOOL NOT NULL DEFAULT false
+  username            STRING PRIMARY KEY,
+  "hashedPassword"    BYTES,
+  "isRole"            BOOL NOT NULL DEFAULT false,
+  "mysqlNativeDigest" BYTES,
+  "mysqlSHA2Digest"   BYTES
 );`
 
 	RoleOptionsTableSchema = `
@@ -785,15 +787,26 @@ var (
 			{Name: "username", ID: 1, Type: *types.String},
 			{Name: "hashedPassword", ID: 2, Type: *types.Bytes, Nullable: true},
 			{Name: "isRole", ID: 3, Type: *types.Bool, DefaultExpr: &falseBoolString},
+			// The MySQL authentication plugins mysql_native_password and the
+			// caching_sha2_password fast path each require the server to hold a
+			// digest of a specific shape. Neither can be derived from the bcrypt
+			// hash above, so they are recorded alongside it when a password is
+			// set. Both are nullable: an account whose password predates these
+			// columns has neither, and can still authenticate through the
+			// plugins that transport the cleartext password.
+			{Name: "mysqlNativeDigest", ID: 4, Type: *types.Bytes, Nullable: true},
+			{Name: "mysqlSHA2Digest", ID: 5, Type: *types.Bytes, Nullable: true},
 		},
-		NextColumnID: 4,
+		NextColumnID: 6,
 		Families: []ColumnFamilyDescriptor{
 			{Name: "primary", ID: 0, ColumnNames: []string{"username"}, ColumnIDs: singleID1},
 			{Name: "fam_2_hashedPassword", ID: 2, ColumnNames: []string{"hashedPassword"}, ColumnIDs: []ColumnID{2}, DefaultColumnID: 2},
 			{Name: "fam_3_isRole", ID: 3, ColumnNames: []string{"isRole"}, ColumnIDs: []ColumnID{3}, DefaultColumnID: 3},
+			{Name: "fam_4_mysqlNativeDigest", ID: 4, ColumnNames: []string{"mysqlNativeDigest"}, ColumnIDs: []ColumnID{4}, DefaultColumnID: 4},
+			{Name: "fam_5_mysqlSHA2Digest", ID: 5, ColumnNames: []string{"mysqlSHA2Digest"}, ColumnIDs: []ColumnID{5}, DefaultColumnID: 5},
 		},
 		PrimaryIndex:   pk("username"),
-		NextFamilyID:   4,
+		NextFamilyID:   6,
 		NextIndexID:    2,
 		Privileges:     NewCustomSuperuserPrivilegeDescriptor(SystemAllowedPrivileges[keys.UsersTableID]),
 		FormatVersion:  InterleavedFormatVersion,

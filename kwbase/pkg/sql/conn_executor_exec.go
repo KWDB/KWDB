@@ -987,6 +987,11 @@ func (ex *connExecutor) dispatchToExecutionEngine(
 ) error {
 	stmt := planner.stmt
 
+	// Record the issuing connection's wire capability while the result is still
+	// in scope. EXPLAIN ANALYZE plans its inner statement against a discarding
+	// writer and cannot recover this later.
+	planner.extendedEvalCtx.ClientSupportsPGWireResults = res.SupportsPGWireResults()
+
 	if exp, ok := stmt.AST.(*tree.Export); ok {
 		var auditFlag = true
 		startTime := timeutil.Now()

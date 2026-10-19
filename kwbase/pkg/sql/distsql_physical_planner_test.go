@@ -45,12 +45,15 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/rpc"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
+	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/distsql"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/physicalplan"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
@@ -2414,3 +2417,68 @@ func TestCreatePlanForUnionFastPathKeepsLeftPlan(t *testing.T) {
 
 // 	_, _ = createTsInsertNodeForSingleMode(n)
 // }
+
+// TestShouldUseQueryShortCircuit pins both directions of the wire-format
+// condition. The false case is the bug this guard exists to prevent; the true
+// case is the optimisation it must not take away from pgwire clients.
+func TestShouldUseQueryShortCircuit(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// eligible builds the argument set that satisfies every condition, so each
+	// subtest can negate exactly one thing and attribute the result to it.
+	eligible := func() (*settings.Values, *PlanningCtx, *PhysicalPlan) {
+		st := cluster.MakeTestingClusterSettings()
+		sv := &st.SV
+		pgEncodeShortCircuitEnabled.Override(sv, true)
+
+		evalCtx := &extendedEvalContext{ClientSupportsPGWireResults: true}
+		evalCtx.SessionData = &sessiondata.SessionData{ClientEncoding: "utf8"}
+
+		planCtx := &PlanningCtx{
+			ExtendedEvalCtx: evalCtx,
+			isCommandResult: true,
+			planner: &planner{stmt: &Statement{
+				Statement: parser.Statement{AST: &tree.Select{}},
+			}},
+		}
+		plan := &PhysicalPlan{
+			PhysicalPlan: physicalplan.PhysicalPlan{
+				AllProcessorsExecInTSEngine: true,
+				ResultTypes:                 []types.T{*types.Int},
+			},
+			PlanToStreamColMap: []int{0},
+		}
+		return sv, planCtx, plan
+	}
+
+	t.Run("pgwire writer keeps the short circuit", func(t *testing.T) {
+		sv, planCtx, plan := eligible()
+		if !shouldUseQueryShortCircuit(sv, planCtx, plan) {
+			t.Error("the short circuit must stay enabled for a pgwire writer")
+		}
+	})
+
+	t.Run("non-pgwire writer loses the short circuit", func(t *testing.T) {
+		sv, planCtx, plan := eligible()
+		planCtx.ExtendedEvalCtx.ClientSupportsPGWireResults = false
+		if shouldUseQueryShortCircuit(sv, planCtx, plan) {
+			t.Error("a writer that cannot forward pg bytes must not get the short circuit")
+		}
+	})
+
+	t.Run("cluster setting still disables it", func(t *testing.T) {
+		sv, planCtx, plan := eligible()
+		pgEncodeShortCircuitEnabled.Override(sv, false)
+		if shouldUseQueryShortCircuit(sv, planCtx, plan) {
+			t.Error("the cluster setting must still be able to turn it off")
+		}
+	})
+
+	t.Run("relational plan does not use it", func(t *testing.T) {
+		sv, planCtx, plan := eligible()
+		plan.AllProcessorsExecInTSEngine = false
+		if shouldUseQueryShortCircuit(sv, planCtx, plan) {
+			t.Error("the short circuit belongs to TS-engine plans only")
+		}
+	})
+}

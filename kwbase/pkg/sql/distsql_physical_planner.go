@@ -7107,6 +7107,30 @@ var pgEncodeShortCircuitEnabled = settings.RegisterBoolSetting(
 	"sql.pg_encode_short_circuit.enabled", "enable the short circuit optimization", true,
 )
 
+// shouldUseQueryShortCircuit reports whether the TS engine may emit pre-encoded
+// PostgreSQL wire bytes for this plan instead of rows.
+//
+// The short circuit is a wire-format optimisation, not merely an execution one:
+// the bytes it produces are readable only by a client speaking the PostgreSQL
+// protocol, so it is gated on the issuing client's ClientSupportsPGWireResults.
+// isCommandResult is true only for a client's own statement result, which is
+// the result dispatchToExecutionEngine reads that capability from.
+func shouldUseQueryShortCircuit(
+	sv *settings.Values, planCtx *PlanningCtx, plan *PhysicalPlan,
+) bool {
+	return pgEncodeShortCircuitEnabled.Get(sv) &&
+		planCtx.isCommandResult &&
+		planCtx.ExtendedEvalCtx.ClientSupportsPGWireResults &&
+		!planCtx.runningSubquery &&
+		!planCtx.ExtendedEvalCtx.IsInternalSQL &&
+		!planCtx.ExtendedEvalCtx.SessionData.OutFormats &&
+		len(plan.PlanToStreamColMap) == len(plan.ResultTypes) &&
+		planCtx.planner != nil && planCtx.planner.stmt != nil &&
+		planCtx.planner.stmt.AST.StatOp() != "CALL" &&
+		plan.AllProcessorsExecInTSEngine &&
+		planCtx.ExtendedEvalCtx.SessionData.ClientEncoding == "utf8"
+}
+
 // FinalizePlan adds a final "result" stage if necessary and populates the
 // endpoints of the plan.
 func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan) {
@@ -7209,11 +7233,7 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 	finalOut.Streams = append(finalOut.Streams, execinfrapb.StreamEndpointSpec{
 		Type: execinfrapb.StreamEndpointType_SYNC_RESPONSE,
 	})
-	if pgEncodeShortCircuitEnabled.Get(&dsp.st.SV) && !planCtx.runningSubquery && !planCtx.ExtendedEvalCtx.IsInternalSQL &&
-		!planCtx.ExtendedEvalCtx.SessionData.OutFormats && len(plan.PlanToStreamColMap) == len(plan.ResultTypes) &&
-		planCtx.planner != nil && planCtx.planner.stmt != nil && planCtx.planner.stmt.AST.StatOp() != "CALL" &&
-		plan.AllProcessorsExecInTSEngine && planCtx.ExtendedEvalCtx.SessionData.ClientEncoding == "utf8" &&
-		planCtx.isCommandResult {
+	if shouldUseQueryShortCircuit(&dsp.st.SV, planCtx, plan) {
 		plan.UseQueryShortCircuit = true
 	}
 	plan.UseCompressType = int64(planCtx.ExtendedEvalCtx.SessionData.PgExtendCompressMode)

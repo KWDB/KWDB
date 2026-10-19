@@ -58,6 +58,11 @@ const (
 	// The default port for HTTP-for-humans.
 	DefaultHTTPPort = "8080"
 
+	// DefaultMySQLPort is the port the MySQL listener uses when it is enabled
+	// with a bare "--mysql-addr=:" style value. It matches MySQL's own default
+	// so that existing client configurations keep working.
+	DefaultMySQLPort = "3306"
+
 	// NB: net.JoinHostPort is not a constant.
 	defaultAddr     = ":" + DefaultPort
 	defaultHTTPAddr = ":" + DefaultHTTPPort
@@ -230,6 +235,19 @@ type Config struct {
 	// This is computed from SQLAddr if specified otherwise Addr.
 	SQLAdvertiseAddr string
 
+	// MySQLAddr is the configured listen address for the MySQL wire protocol.
+	// An empty value, which is the default, disables the listener entirely.
+	//
+	// This cannot share SQLAddr: the MySQL server sends the first packet of a
+	// connection while a PostgreSQL client does, so neither side would speak
+	// until the other did and no amount of sniffing can tell the two apart.
+	MySQLAddr string
+
+	// MySQLAdvertiseAddr is the address the MySQL listener actually bound to.
+	// It differs from MySQLAddr when the configured address leaves the port to
+	// the kernel, which is how tests avoid colliding on a fixed port.
+	MySQLAdvertiseAddr string
+
 	// HTTPAddr is the configured HTTP listen address.
 	HTTPAddr string
 
@@ -313,6 +331,9 @@ func (cfg *Config) InitDefaults() {
 	cfg.SplitListenSQL = false
 	cfg.SQLAddr = defaultSQLAddr
 	cfg.SQLAdvertiseAddr = cfg.SQLAddr
+	// The MySQL listener is opt-in: nodes that do not need it should not open
+	// an extra port.
+	cfg.MySQLAddr = ""
 	cfg.SSLCertsDir = DefaultCertsDirectory
 	cfg.certificateManager = lazyCertificateManager{}
 	cfg.RPCHeartbeatInterval = defaultRPCHeartbeatInterval

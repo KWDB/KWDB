@@ -752,6 +752,15 @@ type RestrictedCommandResult interface {
 	// AddPGResult accumulates a pg result row.
 	AddPGResult(ctx context.Context, res []byte) error
 
+	// SupportsPGWireResults reports whether this writer can forward
+	// pre-encoded PostgreSQL wire bytes verbatim to its client. Only a pgwire
+	// connection answers true. dispatchToExecutionEngine records it as
+	// extendedEvalContext.ClientSupportsPGWireResults, which gates the TS
+	// engine's pg-encode short circuit: the short circuit produces exactly
+	// those bytes, and a writer that cannot forward them would either choke on
+	// them or silently drop them into an empty result set with no error.
+	SupportsPGWireResults() bool
+
 	IsCommandResult() bool
 
 	// AddPGComplete adds a pg complete flag.
@@ -982,6 +991,11 @@ func (r *bufferedCommandResult) AddPGResult(ctx context.Context, res []byte) err
 
 // IsCommandResult is part of the RestrictedCommandResult interface.
 func (r *bufferedCommandResult) IsCommandResult() bool {
+	return false
+}
+
+// SupportsPGWireResults is part of the RestrictedCommandResult interface.
+func (r *bufferedCommandResult) SupportsPGWireResults() bool {
 	return false
 }
 
