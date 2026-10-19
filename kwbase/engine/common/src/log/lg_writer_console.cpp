@@ -10,7 +10,11 @@
 // See the Mulan PSL v2 for more details.
 
 #include "lg_writer_console.h"
+
+#ifdef OS_LINUX
 #include <sys/msg.h>
+#endif
+
 #include "cm_func.h"
 #include "cm_config.h"
 

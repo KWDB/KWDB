@@ -69,8 +69,9 @@ TEST(TsFIOEnv, Write) {
   ASSERT_EQ(rfile->Read(0, rfile->GetFileSize(), &result), SUCCESS);
   std::string_view sv{result.data(), result.size()};
   EXPECT_EQ(sv, "12345543211");
-
-  // reopen and overwrite the file;
+  // Release read handle before opening for write — Windows cannot open/truncate
+  // a file while another handle holds it open.
+  rfile.reset();
   s = env->NewAppendOnlyFile(filename, &wfile);
   ASSERT_EQ(s, SUCCESS);
   ASSERT_NE(wfile, nullptr);
@@ -88,8 +89,8 @@ TEST(TsFIOEnv, Write) {
   ASSERT_EQ(rfile->Read(0, rfile->GetFileSize(), &result), SUCCESS);
   sv = std::string_view{result.data(), result.size()};
   EXPECT_EQ(sv, "abcdeABCDEEDCBA");
-
-  // reopen but not overwrite the file, append from the end;
+  // Release read handle before opening for write (Windows file locking)
+  rfile.reset();
   s = env->NewAppendOnlyFile(filename, &wfile, false);
   ASSERT_EQ(s, SUCCESS);
   ASSERT_NE(wfile, nullptr);
@@ -107,8 +108,8 @@ TEST(TsFIOEnv, Write) {
   ASSERT_EQ(rfile->Read(0, rfile->GetFileSize(), &result), SUCCESS);
   sv = std::string_view{result.data(), result.size()};
   EXPECT_EQ(sv, "abcdeABCDEEDCBAqwerasdfzxcv");
-
-  // reopen but not overwrite the file, append from offset = 6;
+  // Release read handle before opening for write (Windows file locking)
+  rfile.reset();
   s = env->NewAppendOnlyFile(filename, &wfile, false, 6);
   ASSERT_EQ(s, SUCCESS);
   ASSERT_NE(wfile, nullptr);
@@ -127,6 +128,8 @@ TEST(TsFIOEnv, Write) {
   sv = std::string_view{result.data(), result.size()};
   EXPECT_EQ(sv, "abcdeAtestTESTTeSt");
 
+  rfile.reset();
+  wfile.reset();
   fs::remove(filename);
 
   // write large data
@@ -161,6 +164,7 @@ TEST(TsFIOEnv, Write) {
       ASSERT_EQ(result.data()[iloc], expected);
     }
   }
+  rfile.reset();
   fs::remove(filename);
 }
 
@@ -187,6 +191,8 @@ TEST(TsFIOEnv, AppendOnlyFileCloseAndClosedOperations) {
   ASSERT_EQ(rfile->Read(0, rfile->GetFileSize(), &result), SUCCESS);
   std::string_view sv{result.data(), result.size()};
   EXPECT_EQ(sv, "abc");
+  // Release read handle before removing file (Windows file locking)
+  rfile.reset();
 
   fs::remove(filename);
 }
@@ -213,6 +219,8 @@ TEST(TsFIOEnv, RandomReadFileShortReadAfterTruncate) {
 
   EXPECT_EQ(rfile->Read(0, 6, &result), FAIL);
   EXPECT_EQ(result.size(), 0);
+  // Release read handle before removing file (Windows file locking)
+  rfile.reset();
 
   fs::remove(filename);
 }
@@ -243,6 +251,8 @@ TEST(TsFIOEnv, SequentialReadFileShortReadAfterTruncate) {
   ASSERT_EQ(sfile->Read(3, &result), SUCCESS);
   std::string_view sv{result.data(), result.size()};
   EXPECT_EQ(sv, "abc");
+  // Release read handle before removing file (Windows file locking)
+  sfile.reset();
 
   fs::remove(filename);
 }
@@ -358,6 +368,7 @@ TEST(TsFIOEnv, FailedCases) {
   EXPECT_EQ(result.size(), 1);
   std::string_view sv{result.data(), result.size()};
   EXPECT_EQ(sv, "9");
+  rfile.reset();
   fs::remove(filename);
 }
 
@@ -400,8 +411,8 @@ TEST(TsFIOEnv, ReadAfterAllocate) {
 TEST(TsFIOEnv, ConcurrentReadWrite) {
   TsIOEnv* env = &TsIOEnv::GetInstance();
   std::atomic<size_t> file_size{0};
-  std::atomic_bool finished{false};
-  std::atomic_bool start{false};
+  std::atomic<k_bool> finished{false};
+  std::atomic<k_bool> start{false};
   std::string filename = "concurrent_test";
   fs::remove(filename);
 
@@ -504,6 +515,9 @@ TEST(MMAP, TsMMapAllocFiletest) {
     uint8_t fill = 2 + i;
     ASSERT_EQ((uint8_t)(*addr), fill);
   }
+  // Explicitly Close() before delete — on Windows the file descriptor and mmap
+  // must be released before the file can be reopened or deleted.
+  f->Close();
   delete f;
   f = new TsMMapAllocFile("test");
   f->Open();
@@ -514,6 +528,8 @@ TEST(MMAP, TsMMapAllocFiletest) {
   }
   ASSERT_TRUE(f->getHeader()->file_len == cur_file_size);
   ASSERT_TRUE(f->getHeader()->alloc_offset == cur_alloc_offset);
+  // Explicitly Close() before delete (Windows file locking)
+  f->Close();
   delete f;
 }
 
@@ -523,6 +539,9 @@ TEST(MMap, WriteEmptyFile_BUG_ID7BNN) {
   std::unique_ptr<TsAppendOnlyFile> wfile;
   EXPECT_EQ(env->NewAppendOnlyFile("test", &wfile), SUCCESS);
   EXPECT_EQ(wfile->Sync(), SUCCESS);
+  // Release file handle before removing (Windows file locking)
+  wfile.reset();
+  fs::remove("test");
 }
 
 // TEST(MMap, FileLock) {
@@ -594,9 +613,19 @@ TEST(MemoryIO, MemoryIOTest) {
 
     std::unique_ptr<TsAppendOnlyFile> wfile;
     TsIOEnv* mmap_env = &TsMMapIOEnv::GetInstance();
-    fs::remove("testing");
-    ASSERT_EQ(mmap_env->NewAppendOnlyFile("testing", &wfile), SUCCESS);
+    // Use non-throwing remove to avoid exception if file doesn't exist
+    {
+      std::error_code ec;
+      fs::remove("testing_io_file", ec);
+    }
+    ASSERT_EQ(mmap_env->NewAppendOnlyFile("testing_io_file", &wfile), SUCCESS);
     ASSERT_EQ(FileRangeCopy(rfile.get(), wfile.get()), SUCCESS);
+    // Explicitly close and release handles before removing file (Windows file locking)
+    (void)wfile->Close();
+    wfile.reset();
+    rfile.reset();
+    std::error_code ec;
+    fs::remove("testing_io_file", ec);
   }
 
 }

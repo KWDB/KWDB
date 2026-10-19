@@ -16,6 +16,8 @@
 
 #include <memory>
 #include <vector>
+#include <atomic>
+#include <chrono>
 
 #include "ee_global.h"
 #include "ee_task.h"
@@ -91,15 +93,15 @@ class PipelineTask : public ExecTask {
   std::vector<PipelineTask *> parents_;
   std::vector<PipelineTask *> dependencies_;
   k_int32 total_dependencies_{0};
-  std::atomic_int32_t finish_dependencies_{0};
+  std::atomic<k_int32> finish_dependencies_{0};
   TABLE *table_{nullptr};
   void *ts_engine_{nullptr};
   void *fetcher_{nullptr};
   k_bool is_parallel_pg_{KFALSE};
-  std::atomic_bool is_stop_{false};
-  std::atomic_bool is_running_{false};
-  std::atomic_bool is_cancel_{false};
-  std::atomic_bool in_exec_pool_{false};
+  std::atomic<k_bool> is_stop_{false};
+  std::atomic<k_bool> is_running_{false};
+  std::atomic<k_bool> is_cancel_{false};
+  std::atomic<k_bool> in_exec_pool_{false};
   k_uint64 relation_ctx_{0};
   k_int8 timezone_;
   char timezone_name_[TIMEZONE_MAX_LEN]{0};  // IANA timezone name for DST support

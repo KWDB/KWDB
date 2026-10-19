@@ -29,12 +29,12 @@ struct ColDataTypes {
 
 std::vector<ColDataTypes> tag_col_types({
   {DATATYPE::TIMESTAMP64, 8, TagType::PRIMARY_TAG},
-  {DATATYPE::INT64, 8, TagType::GENERAL_TAG},
+  {DATATYPE::K_INT64, 8, TagType::GENERAL_TAG},
   {DATATYPE::VARSTRING, 1024, TagType::PRIMARY_TAG}});
 
 std::vector<ColDataTypes> metric_col_types({{DATATYPE::TIMESTAMP64, 16, TagType::UNKNOWN_TAG},
                                             {DATATYPE::VARSTRING, 1024, TagType::UNKNOWN_TAG},
-                                            {DATATYPE::INT32, 4, TagType::UNKNOWN_TAG},
+                                            {DATATYPE::K_INT32, 4, TagType::UNKNOWN_TAG},
                                             {DATATYPE::VARBINARY, 1123, TagType::UNKNOWN_TAG},
                                             {DATATYPE::VARSTRING, 12334, TagType::UNKNOWN_TAG}});
 
@@ -87,7 +87,7 @@ class TestBinaryToHexstr : public testing::Test {
         case DATATYPE::TIMESTAMP64:
           pay_build.SetColumnValue(j, i, reinterpret_cast<char*>(&cur_value), sizeof(cur_value));
           break;
-        case DATATYPE::INT32: {
+        case DATATYPE::K_INT32: {
           uint32_t value = cur_value;
           pay_build.SetColumnValue(j, i, reinterpret_cast<char*>(&value), sizeof(value));
           break;

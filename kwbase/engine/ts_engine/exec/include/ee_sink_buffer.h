@@ -117,8 +117,8 @@ class OutboundBuffer {
     std::queue<ChunkTransmitContext, std::list<ChunkTransmitContext>> buffer;
     Mutex request_mutex;
 
-    std::atomic_size_t num_finished_rpcs;
-    std::atomic_size_t num_in_flight_rpcs;
+    std::atomic<k_size_t> num_finished_rpcs;
+    std::atomic<k_size_t> num_in_flight_rpcs;
 
     Mutex mutex;
 

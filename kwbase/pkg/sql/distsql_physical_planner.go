@@ -7120,24 +7120,36 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 	}
 	thisNodeID := dsp.nodeDesc.NodeID
 
-	plan.SetTSEngineReturnEncode()
-	isDist := false
-	for _, p := range plan.Processors {
-		if p.Node != thisNodeID {
-			isDist = true
-			break
+	if runtime.GOOS != "windows" {
+		// linux
+		plan.SetTSEngineReturnEncode()
+		isDist := false
+		for _, p := range plan.Processors {
+			if p.Node != thisNodeID {
+				isDist = true
+				break
+			}
 		}
-	}
 
-	if plan.ChildIsExecInTSEngine() && isDist {
-		// If all the processors can be executed in ts engine and need to be summarized,
-		// add ts-noop processor.
-		if len(plan.ResultRouters) != 1 || plan.Processors[plan.ResultRouters[0]].Node != thisNodeID {
-			post := execinfrapb.PostProcessSpec{OutputTypes: plan.ResultTypes}
-			plan.AddTSSingleGroupStage(thisNodeID, execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{
-				InputNum:   uint32(plan.GateNoopInput),
-				TsOperator: plan.TsOperator,
-			}}, post, plan.ResultTypes, true)
+		if plan.ChildIsExecInTSEngine() && isDist {
+			// If all the processors can be executed in ts engine and need to be summarized,
+			// add ts-noop processor.
+			if len(plan.ResultRouters) != 1 || plan.Processors[plan.ResultRouters[0]].Node != thisNodeID {
+				post := execinfrapb.PostProcessSpec{OutputTypes: plan.ResultTypes}
+				plan.AddTSSingleGroupStage(thisNodeID, execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{
+					InputNum:   uint32(plan.GateNoopInput),
+					TsOperator: plan.TsOperator,
+				}}, post, plan.ResultTypes, true)
+			}
+		}
+	} else {
+		// windows
+		for i, idx := range plan.ResultRouters {
+			if plan.Processors[idx].ExecInTSEngine() && plan.Processors[idx].Node != thisNodeID {
+				plan.AddNoopImplementation(
+					execinfrapb.PostProcessSpec{}, idx, i, nil, &plan.ResultTypes,
+				)
+			}
 		}
 	}
 
@@ -7149,7 +7161,7 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 				InputNum:   uint32(plan.GateNoopInput),
 				TsOperator: plan.TsOperator,
 			}},
-			execinfrapb.PostProcessSpec{},
+			execinfrapb.PostProcessSpec{OutputTypes: plan.ResultTypes},
 			plan.ResultTypes,
 		)
 	}
@@ -7159,13 +7171,20 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 	}
 	plan.Processors[plan.ResultRouters[0]].LogicalSequenceID = []uint64{0}
 
-	plan.addNoopForErr()
+	if runtime.GOOS != "windows" {
+		plan.addNoopForErr()
+	}
 
 	// This operation is used to pass the short-circuit flag to AE.
 	// If there is a subquery, it cannot be short-circuited and
 	// directly returned to the client.
 	if planCtx.ExtendedEvalCtx.IsInternalSQL || planCtx.runningSubquery {
 		plan.AllProcessorsExecInTSEngine = false
+	}
+
+	post := execinfrapb.PostProcessSpec{}
+	if runtime.GOOS == "windows" {
+		post = execinfrapb.PostProcessSpec{OutputTypes: plan.ResultTypes}
 	}
 
 	if len(metadataSenders) > 0 {
@@ -7176,7 +7195,7 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 					SenderIDs: metadataSenders,
 				},
 			},
-			execinfrapb.PostProcessSpec{},
+			post,
 			plan.ResultTypes,
 		)
 		plan.Processors[plan.ResultRouters[0]].LogicalSequenceID = []uint64{0}

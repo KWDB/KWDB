@@ -23,7 +23,7 @@ using namespace kwdbts;
 
 TEST(ColumnBlockBuilder, FixLen) {
   AttributeInfo col_schema;
-  col_schema.type = DATATYPE::INT64;
+  col_schema.type = DATATYPE::K_INT64;
   col_schema.size = 8;
   kwdbts::TsColumnBlockBuilder builder(col_schema);
   std::vector<int> block_len{1234, 1, 1324, 1432};

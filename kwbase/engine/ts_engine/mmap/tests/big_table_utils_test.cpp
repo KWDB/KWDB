@@ -65,13 +65,13 @@ TEST_F(BigTableUtilsTest, setInteger) {
 }
 
 TEST_F(BigTableUtilsTest, getDataTypeSize_by_type) {
-  EXPECT_EQ(getDataTypeSize(BOOL), sizeof(bool));
-  EXPECT_EQ(getDataTypeSize(INT8), sizeof(int8_t));
-  EXPECT_EQ(getDataTypeSize(INT16), sizeof(int16_t));
-  EXPECT_EQ(getDataTypeSize(INT32), sizeof(int32_t));
-  EXPECT_EQ(getDataTypeSize(INT64), sizeof(int64_t));
-  EXPECT_EQ(getDataTypeSize(FLOAT), sizeof(float));
-  EXPECT_EQ(getDataTypeSize(DOUBLE), sizeof(double));
+  EXPECT_EQ(getDataTypeSize(K_BOOL), sizeof(bool));
+  EXPECT_EQ(getDataTypeSize(K_INT8), sizeof(int8_t));
+  EXPECT_EQ(getDataTypeSize(K_INT16), sizeof(int16_t));
+  EXPECT_EQ(getDataTypeSize(K_INT32), sizeof(int32_t));
+  EXPECT_EQ(getDataTypeSize(K_INT64), sizeof(int64_t));
+  EXPECT_EQ(getDataTypeSize(K_FLOAT), sizeof(float));
+  EXPECT_EQ(getDataTypeSize(K_DOUBLE), sizeof(double));
   EXPECT_EQ(getDataTypeSize(STRING), sizeof(IDTYPE));
   EXPECT_EQ(getDataTypeSize(VARSTRING), sizeof(intptr_t));
 }
@@ -79,10 +79,10 @@ TEST_F(BigTableUtilsTest, getDataTypeSize_by_type) {
 TEST_F(BigTableUtilsTest, getDataTypeSize_by_attr) {
   AttributeInfo info{};
 
-  info.type = INT32;
+  info.type = K_INT32;
   EXPECT_EQ(getDataTypeSize(info), sizeof(int32_t));
 
-  info.type = CHAR;
+  info.type = K_CHAR;
   info.max_len = 10;
   EXPECT_EQ(getDataTypeSize(info), 10);
 
@@ -93,8 +93,8 @@ TEST_F(BigTableUtilsTest, getDataTypeSize_by_attr) {
 
 TEST_F(BigTableUtilsTest, setAttributeInfo) {
   vector<AttributeInfo> infos(2);
-  infos[0].type = INT32;
-  infos[1].type = INT64;
+  infos[0].type = K_INT32;
+  infos[1].type = K_INT64;
 
   int total = setAttributeInfo(infos);
 

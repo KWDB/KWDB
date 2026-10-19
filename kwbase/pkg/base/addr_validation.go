@@ -100,6 +100,13 @@ func (cfg *Config) ValidateAddrs(ctx context.Context, StartMode string) error {
 	}
 	cfg.HTTPAddr = net.JoinHostPort(httpHost, httpPort)
 
+	if IsWindows() {
+		cfg.BRPCAddr = ""
+		cfg.BRPCListenAddr = ""
+		cfg.AdvertiseBrpcAddr = ""
+		return nil
+	}
+
 	if StartMode != StartSingleNodeCmdName {
 		brpcErr := "--brpc-addr's port not specified"
 		if cfg.BRPCAddr == "" {

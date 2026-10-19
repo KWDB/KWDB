@@ -264,7 +264,7 @@ void TagRowBatch::Init(TABLE *table) {
       primary_tags_len += table->fields_[i]->get_storage_length();
     }
   }
-  tag_offsets_.reserve(table->field_num_ - tag_col_offset_);
+  tag_offsets_.resize(table->field_num_ - tag_col_offset_);
   auto size = table_->scan_tags_.size();
   for (k_int32 i = 0; i < size; i++) {
     auto tag_id = table_->scan_tags_[i] + tag_col_offset_;

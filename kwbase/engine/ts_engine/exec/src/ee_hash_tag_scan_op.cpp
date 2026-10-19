@@ -569,23 +569,26 @@ EEIteratorErrCode HashTagScanOperator::Next(kwdbContext_p ctx) {
     }
   } else {
     // Get primary column values and other join column values.
-    std::vector<void*> primary_column_values(1);
-    primary_column_values[0] = malloc(total_join_column_length_);
-    if (nullptr == primary_column_values[0]) {
+    void* primary_column_value = malloc(total_join_column_length_);
+    if (nullptr == primary_column_value) {
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
-      LOG_ERROR("primary_column_values[0] malloc failed\n");
+      LOG_ERROR("primary_column_value malloc failed\n");
       Return(EEIteratorErrCode::EE_ERROR);
     }
     char *other_column_value = static_cast<char *>(malloc(other_join_column_length_));
     if (nullptr == other_column_value) {
+      free(primary_column_value);
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
       LOG_ERROR("other_column_value malloc failed\n");
       Return(EEIteratorErrCode::EE_ERROR);
     }
+    // Own the buffers through dedicated locals so the free below never depends
+    // on the state of the vectors, which are cleared before this scope exits.
+    std::vector<void*> primary_column_values(1, primary_column_value);
     std::vector<void*> other_join_columns_values(rel_other_join_cols_.size());
     std::vector<void *> intersect_primary_tags;
     Defer defer{[&]() {
-      free(primary_column_values[0]);
+      free(primary_column_value);
       free(other_column_value);
     }};
 
@@ -676,8 +679,6 @@ EEIteratorErrCode HashTagScanOperator::Next(kwdbContext_p ctx) {
     } while (rel_tag_rowbatch_->Count() == 0);
     code = EEIteratorErrCode::EE_OK;
     rel_tag_rowbatch_->SetPipeEntityNum(ctx, current_thd->GetDegree());
-    primary_column_values.clear();  // Clear the vector after cleanup
-    other_join_columns_values.clear();  // Clear the vector after cleanup
   }
   total_read_row_ += rel_tag_rowbatch_->Count();
 

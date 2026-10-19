@@ -1,13 +1,13 @@
 // Copyright (c) 2022-present, Shanghai Yunxi Technology Co, Ltd.
 //
 // This software (KWDB) is licensed under Mulan PSL v2.
-// You can use this software according to the terms and conditions of the Mulan
-// PSL v2. You may obtain a copy of Mulan PSL v2 at:
+// You can use this software according to the terms and conditions of the Mulan PSL v2.
+// You may obtain a copy of Mulan PSL v2 at:
 //          http://license.coscl.org.cn/MulanPSL2
-// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY
-// KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
-// NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE. See the
-// Mulan PSL v2 for more details.
+// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+// EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+// MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+// See the Mulan PSL v2 for more details.
 
 #include "ee_io_cache_handler.h"
 
@@ -88,6 +88,12 @@ KStatus IOCacheHandler::Open(const k_uint32 file_id, cache_type type) {
 
   if (lru_map_.size() >= MAX_OPEN_FILE_NUM) {
     remove_lru();
+  }
+
+  // Close old fd before reopening with different type to release file locks on Windows
+  if (io_info_[file_id].fd_ != -1) {
+    close(io_info_[file_id].fd_);
+    io_info_[file_id].fd_ = -1;
   }
 
   io_info_[file_id].type_ = type;

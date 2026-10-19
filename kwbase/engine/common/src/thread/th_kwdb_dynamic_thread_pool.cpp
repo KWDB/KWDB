@@ -10,6 +10,7 @@
 // See the Mulan PSL v2 for more details.
 
 #include "th_kwdb_dynamic_thread_pool.h"
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <iostream>
@@ -136,7 +137,7 @@ KStatus KWDBDynamicThreadPool::JoinThread(KThreadID thread_id, k_uint16 wait_mic
   }
   KWDBWrappedThread &kwdb_thread = all_threads_[ind];
   std::unique_lock<std::mutex> locker(kwdb_thread.m_mutex);
-  if (kwdb_thread.thread_status.load() == KWDBWrappedThread::ERROR) {
+  if (kwdb_thread.thread_status.load() == KWDBWrappedThread::THREAD_ERROR) {
     LOG_ERROR("this thread(id: %ld) failed during startup, cannot join.", kwdb_thread.m_id);
     TH_TRACE_4("this thread(id: %ld) failed during startup, cannot join.", kwdb_thread.m_id);
     PUSH_ERR_1(SY_TH_THREAD_STATUS_ERR, kwdb_thread.m_id);
@@ -173,7 +174,7 @@ KStatus KWDBDynamicThreadPool::CancelThread(KThreadID thread_id) {
     return KStatus::FAIL;
   }
   KWDBWrappedThread &kwdb_thread = all_threads_[ind];
-  if (kwdb_thread.thread_status.load() == KWDBWrappedThread::ERROR) {
+  if (kwdb_thread.thread_status.load() == KWDBWrappedThread::THREAD_ERROR) {
     LOG_ERROR("this thread(id: %ld) failed during startup, cannot cancel.", kwdb_thread.m_id);
     TH_TRACE_4("this thread(id: %ld) failed during startup, cannot cancel.", kwdb_thread.m_id);
     PUSH_ERR_1(SY_TH_THREAD_STATUS_ERR, kwdb_thread.m_id);
@@ -240,6 +241,13 @@ KStatus KWDBDynamicThreadPool::Stop() {
       }
     }
   }
+#ifdef _WIN32
+  // On Windows, threads may be detached instead of joined (see stopThread).
+  // Skip clear() to avoid use-after-free in detached threads still exiting.
+  pool_status_.store(PoolStatus::STOPPED);
+  TH_TRACE_1("The thread pool stopped successfully (Windows).");
+  return KStatus::SUCCESS;
+#else
   if (clear() == KStatus::SUCCESS) {
     TH_TRACE_1("The thread pool stopped successfully.");
     pool_status_.store(PoolStatus::STOPPED);
@@ -247,6 +255,7 @@ KStatus KWDBDynamicThreadPool::Stop() {
   }
   TH_TRACE_1("Failed to stop the thread pool.");
   return KStatus::FAIL;
+#endif
 }
 
 KStatus KWDBDynamicThreadPool::clear() {
@@ -346,7 +355,7 @@ KWDBDynamicThreadPool::ApplyThread(std::function<void(void *)> &&job,
     TH_TRACE_4("thread(id: %ld) is stopped!", kwdb_thread.m_id);
     PUSH_ERR_1(SY_TH_THREAD_STATUS_STOP, kwdb_thread.m_id);
     return 0;
-  } else if (kwdb_thread.thread_status.load() == KWDBWrappedThread::ERROR) {
+  } else if (kwdb_thread.thread_status.load() == KWDBWrappedThread::THREAD_ERROR) {
     LOG_ERROR("this thread(id: %ld) failed during startup, cannot apply.", kwdb_thread.m_id);
     TH_TRACE_4("this thread(id: %ld) failed during startup, cannot apply.", kwdb_thread.m_id);
     PUSH_ERR_1(SY_TH_THREAD_STATUS_ERR, kwdb_thread.m_id);
@@ -398,8 +407,8 @@ k_bool KWDBDynamicThreadPool::checkThreadStatus(k_int32 thread_index) {
         PUSH_ERR_1(SY_TH_THREAD_START_ERR, kwdb_thread.m_id);
         result = KFALSE;
       }
-    } else if (kwdb_thread.thread_status.load() == KWDBWrappedThread::ERROR) {
-      auto tmp_status = KWDBWrappedThread::ERROR;
+    } else if (kwdb_thread.thread_status.load() == KWDBWrappedThread::THREAD_ERROR) {
+      auto tmp_status = KWDBWrappedThread::THREAD_ERROR;
       if (kwdb_thread.thread_status.compare_exchange_strong(tmp_status, KWDBWrappedThread::INIT)) {
         if (startThread(kwdb_thread) == KStatus::FAIL) {
           LOG_ERROR("failed to start thread in ERROR state!");
@@ -438,7 +447,7 @@ KStatus KWDBDynamicThreadPool::stopThread(KWDBWrappedThread &kwdb_thread) {
     TH_TRACE_4("thread is uninitialized, cannot stop! id = %ld", kwdb_thread.m_id);
     PUSH_ERR_1(SY_TH_THREAD_STATUS_ERR, kwdb_thread.m_id);
     return KStatus::FAIL;
-  } else if (kwdb_thread.thread_status.load() == KWDBWrappedThread::ERROR) {
+  } else if (kwdb_thread.thread_status.load() == KWDBWrappedThread::THREAD_ERROR) {
     LOG_ERROR("thread is in error status without running of any system thread.");
     TH_TRACE_4("thread is in error status without running of any system thread. id = %ld", kwdb_thread.m_id);
     PUSH_ERR_1(SY_TH_THREAD_STATUS_ERR, kwdb_thread.m_id);
@@ -534,7 +543,7 @@ KStatus KWDBDynamicThreadPool::startThread(KWDBWrappedThread &kwdb_thread) {
   auto ctx = ContextManager::GetThreadContext();
   TH_TRACE_3("A new thread is about to be created, id = %ld.", kwdb_thread.m_id);
   if (pool_status_.load() == PoolStatus::STOPPING || pool_status_.load() == PoolStatus::STOPPED) {
-    kwdb_thread.thread_status.store(KWDBWrappedThread::ERROR);
+    kwdb_thread.thread_status.store(KWDBWrappedThread::THREAD_ERROR);
     LOG_ERROR("thread pool is stopped, cannot start thread!");
     TH_TRACE_4("thread pool is stopped, cannot start thread! id = %ld", kwdb_thread.m_id);
     PUSH_ERR_0(SY_TH_THREAD_POOL_STOP);
@@ -548,12 +557,12 @@ KStatus KWDBDynamicThreadPool::startThread(KWDBWrappedThread &kwdb_thread) {
       } catch (std::system_error) {
       LOG_WARN("An system exception occurred while creating a new thread！");
       TH_TRACE_4("An system exception occurred while creating a new thread! id = %ld", kwdb_thread.m_id);
-      kwdb_thread.thread_status.store(KWDBWrappedThread::ERROR);
+      kwdb_thread.thread_status.store(KWDBWrappedThread::THREAD_ERROR);
       return KStatus::FAIL;
     } catch (...) {
       LOG_WARN("An unknown exception occurred while creating a new thread！");
       TH_TRACE_4("An unknown exception occurred while creating a new thread! id = %ld", kwdb_thread.m_id);
-      kwdb_thread.thread_status.store(KWDBWrappedThread::ERROR);
+      kwdb_thread.thread_status.store(KWDBWrappedThread::THREAD_ERROR);
       return KStatus::FAIL;
     }
 
@@ -562,7 +571,7 @@ KStatus KWDBDynamicThreadPool::startThread(KWDBWrappedThread &kwdb_thread) {
       TH_TRACE_4("Create a new thread, id = %ld.", kwdb_thread.m_id);
       return KStatus::SUCCESS;
     } else {
-      kwdb_thread.thread_status.store(KWDBWrappedThread::ERROR);
+      kwdb_thread.thread_status.store(KWDBWrappedThread::THREAD_ERROR);
       LOG_ERROR("failed to create thread!");
       TH_TRACE_4("failed to create thread!");
       return KStatus::FAIL;
@@ -615,8 +624,8 @@ void KWDBDynamicThreadPool::SetOperatorContext(kwdbContext_p kwdb_operator_conte
 }
 
 #ifdef WITH_TESTS
-uint KWDBDynamicThreadPool::DebugGetEnterStartThreadCount() {
-  uint result = 0;
+unsigned int KWDBDynamicThreadPool::DebugGetEnterStartThreadCount() {
+  unsigned int result = 0;
 
   for (auto &t : all_threads_) {
     result += t.m_telemetry.enter_start_thread_count;
@@ -624,8 +633,8 @@ uint KWDBDynamicThreadPool::DebugGetEnterStartThreadCount() {
   return result;
 }
 
-uint KWDBDynamicThreadPool::DebugGetEnterRoutineCount() {
-  uint result = 0;
+unsigned int KWDBDynamicThreadPool::DebugGetEnterRoutineCount() {
+  unsigned int result = 0;
 
   for (auto &t : all_threads_) {
     result += t.m_telemetry.enter_routine_count;
@@ -633,8 +642,8 @@ uint KWDBDynamicThreadPool::DebugGetEnterRoutineCount() {
   return result;
 }
 
-uint KWDBDynamicThreadPool::DebugGetUserRoutineCount() {
-  uint result = 0;
+unsigned int KWDBDynamicThreadPool::DebugGetUserRoutineCount() {
+  unsigned int result = 0;
 
   for (auto &t : all_threads_) {
     result += t.m_telemetry.hook_user_routine_count;
@@ -709,6 +718,15 @@ k_int32 UnClassifiedContextManager::s_last_thread_idx_ = {-1};
 std::vector<std::shared_ptr<kwdbContext_t>> UnClassifiedContextManager::s_contexts_ = {};
 std::vector<k_uint32> UnClassifiedContextManager::s_to_thread_index_(1, 0);
 std::vector<k_uint32> UnClassifiedContextManager::s_to_thread_id_ = {};
+
+#ifdef _WIN32
+// Leaked shutdown flag: prevents thread_local destructors from accessing
+// destroyed static objects during program exit on Windows/MinGW.
+static bool& GetShutdownFlag() {
+  static bool* flag = new bool(false);
+  return *flag;
+}
+#endif
 
 //
 // the state of data structures
@@ -793,12 +811,22 @@ kwdbContext_p UnClassifiedContextManager::GetThreadContext() {
 //                                                   ----------- last_thread_idx
 //
 void UnClassifiedContextManager::RemoveThreadContext() {
-  std::lock_guard<std::mutex> lock(s_mutex_);
-  if (s_last_thread_idx_ < 0) {
-    return;
-  }
+  // Check thread ID before locking mutex - if no context exists,
+  // there's nothing to clean up.
   auto id = ContextManager::GetThreadId();
   if (id == 0) {
+    return;
+  }
+#ifdef _WIN32
+  // During program exit on Windows/MinGW, thread_local destructors may run
+  // after file-scope static objects have been destroyed, causing crashes
+  // when trying to lock s_mutex_. Skip cleanup in this case.
+  if (GetShutdownFlag()) {
+    return;
+  }
+#endif
+  std::lock_guard<std::mutex> lock(s_mutex_);
+  if (s_last_thread_idx_ < 0) {
     return;
   }
   Assert(id < s_to_thread_index_.size());
@@ -818,6 +846,17 @@ void UnClassifiedContextManager::RemoveThreadContext() {
 }
 
 void UnClassifiedContextManager::SetThreadDestroyer() {
+#ifdef _WIN32
+  // Use atexit for cleanup on Windows to avoid thread_local destructor
+  // ordering issues with static destruction.
+  static bool registered = false;
+  if (!registered) {
+    registered = true;
+    std::atexit([]() {
+      GetShutdownFlag() = true;
+    });
+  }
+#endif
   class ThreadDestroyer {
    public:
     ~ThreadDestroyer() {

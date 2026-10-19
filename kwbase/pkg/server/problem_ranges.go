@@ -51,7 +51,7 @@ func (s *statusServer) ProblemRanges(
 	if len(req.NodeID) > 0 {
 		requestedNodeID, _, err := s.parseNodeID(req.NodeID)
 		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, err.Error())
+			return nil, status.Errorf(codes.InvalidArgument, "parse nodeID error: %s, %s", req.NodeID, err.Error())
 		}
 		isLiveMap = kvserver.IsLiveMap{
 			requestedNodeID: kvserver.IsLiveMapEntry{IsLive: true},
@@ -90,7 +90,7 @@ func (s *statusServer) ProblemRanges(
 					// Context completed, response no longer needed.
 				}
 			}); err != nil {
-			return nil, status.Errorf(codes.Internal, err.Error())
+			return nil, status.Errorf(codes.Internal, "request remote range error: %s", err.Error())
 		}
 	}
 
@@ -154,7 +154,7 @@ func (s *statusServer) ProblemRanges(
 			sort.Sort(roachpb.RangeIDSlice(problems.RaftLogTooLargeRangeIDs))
 			response.ProblemsByNodeID[resp.nodeID] = problems
 		case <-ctx.Done():
-			return nil, status.Errorf(codes.DeadlineExceeded, ctx.Err().Error())
+			return nil, status.Errorf(codes.DeadlineExceeded, "Retrieving remote status error: %s", ctx.Err().Error())
 		}
 	}
 

@@ -11,6 +11,8 @@
 
 #include "ee_exec_pool.h"
 #include "gtest/gtest.h"
+#include <chrono>
+#include <thread>
 
 namespace kwdbts {
 class TestExecPool : public testing::Test {
@@ -31,7 +33,7 @@ class SimulatedNormalTask : public ExecTask {
 
   void Run(kwdbContext_p ctx) override {
     // run for 6 seconds and then exit.
-    sleep(6);
+    std::this_thread::sleep_for(std::chrono::seconds(6));
   }
 };
 
@@ -68,7 +70,7 @@ TEST_F(TestExecPool, TestThreadExpansion) {
   ASSERT_EQ(exec_pool.GetTotalThreadNum(), 2);
   exec_pool.PushTask(normal_task1);
   exec_pool.PushTask(normal_task2);
-  sleep(2);
+  std::this_thread::sleep_for(std::chrono::seconds(2));
   // wait thread number should be 0 since two tasks are running
   ASSERT_EQ(exec_pool.GetWaitThreadNum(), 0);
   // total thread number still should be 2
@@ -80,16 +82,17 @@ TEST_F(TestExecPool, TestThreadExpansion) {
   exec_pool.PushTask(extra_task2);
   // there should be 4 threads for now
   ASSERT_EQ(exec_pool.GetTotalThreadNum(), 4);
-  sleep(2);
+  std::this_thread::sleep_for(std::chrono::seconds(2));
   // two extra tasks should be complete immediately, so wait thread number should be 2
   ASSERT_EQ(exec_pool.GetWaitThreadNum(), 2);
   // total thread number should be 4
   ASSERT_EQ(exec_pool.GetTotalThreadNum(), 4);
-  sleep(6);
+  std::this_thread::sleep_for(std::chrono::seconds(6));
   // total thread numbe should shrink back to 2
   ASSERT_EQ(exec_pool.GetTotalThreadNum(), 2);
   // two normal tasks should be complete
   ASSERT_EQ(exec_pool.GetWaitThreadNum(), 2);
+  exec_pool.Stop();
 }
 
 }  // namespace kwdbts

@@ -71,25 +71,25 @@ void StorageHandler::SetFill(const TSFill *ts_fill) {
   // convert datatype to enum DATATYPE
   switch (ts_fill->datatype()) {
     case roachpb::DataType::BOOL:
-      ts_fill_params_.const_data_type = DATATYPE::BOOL;
+      ts_fill_params_.const_data_type = DATATYPE::K_BOOL;
       break;
     case roachpb::DataType::SMALLINT:
-      ts_fill_params_.const_data_type = DATATYPE::INT16;
+      ts_fill_params_.const_data_type = DATATYPE::K_INT16;
       break;
     case roachpb::DataType::INT:
-      ts_fill_params_.const_data_type = DATATYPE::INT32;
+      ts_fill_params_.const_data_type = DATATYPE::K_INT32;
       break;
     case roachpb::DataType::BIGINT:
-      ts_fill_params_.const_data_type = DATATYPE::INT64;
+      ts_fill_params_.const_data_type = DATATYPE::K_INT64;
       break;
     case roachpb::DataType::FLOAT:
-      ts_fill_params_.const_data_type = DATATYPE::FLOAT;
+      ts_fill_params_.const_data_type = DATATYPE::K_FLOAT;
       break;
     case roachpb::DataType::DOUBLE:
-      ts_fill_params_.const_data_type = DATATYPE::DOUBLE;
+      ts_fill_params_.const_data_type = DATATYPE::K_DOUBLE;
       break;
     case roachpb::DataType::CHAR:
-    ts_fill_params_.const_data_type = DATATYPE::CHAR;
+    ts_fill_params_.const_data_type = DATATYPE::K_CHAR;
     break;
     case roachpb::DataType::VARCHAR:
     ts_fill_params_.const_data_type = DATATYPE::VARSTRING;

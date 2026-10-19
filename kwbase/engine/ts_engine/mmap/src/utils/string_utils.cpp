@@ -9,7 +9,9 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+#ifndef _WIN32
 #include <arpa/inet.h>
+#endif
 #include <cctype>
 #include <cfloat>
 #include <cmath>
@@ -59,18 +61,18 @@ int dataTypeMaxTextLen(const AttributeInfo &col) {
       return col.max_len;
 //    case RAWSTRING:
     case STRING_CONST:
-    case CHAR:
+    case K_CHAR:
       return col.size;
-    case INT32:
+    case K_INT32:
     case TIMESTAMP:
       return MAX_INT32_STR_LEN;
-    case INT64:
+    case K_INT64:
     case ROWID:
     case TIMESTAMP64:
       return MAX_INT64_STR_LEN;
-    case FLOAT:
+    case K_FLOAT:
       return MAX_DOUBLE_STR_LEN;
-    case DOUBLE:
+    case K_DOUBLE:
       return MAX_DOUBLE_STR_LEN;
     case VARSTRING:
     case BINARY:
@@ -84,11 +86,11 @@ int dataTypeMaxTextLen(const AttributeInfo &col) {
     case DATETIME32:        // yyyy-mm-dd hh:mm:ss
     case DATETIME64:
       return 19;
-    case INT16:
+    case K_INT16:
       return MAX_INT16_STR_LEN;
-    case BOOL:
-    case BYTE:
-    case INT8:
+    case K_BOOL:
+    case K_BYTE:
+    case K_INT8:
       return MAX_INT8_STR_LEN;
     case TIME:              // -????00:00:00 (2^31/3600 = 596523)
       return MAX_TIME_STR_LEN;

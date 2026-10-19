@@ -416,11 +416,15 @@ func (n *Node) start(
 		})
 	}
 	n.startedAt = n.storeCfg.Clock.Now().WallTime
+	brpcAddress := util.UnresolvedAddr{}
+	if !base.IsWindows() {
+		brpcAddress = util.MakeUnresolvedAddr(brpcAddr.Network(), brpcAddr.String())
+	}
 	n.Descriptor = roachpb.NodeDescriptor{
 		NodeID:          nodeID,
 		Address:         util.MakeUnresolvedAddr(addr.Network(), addr.String()),
 		SQLAddress:      util.MakeUnresolvedAddr(sqlAddr.Network(), sqlAddr.String()),
-		BrpcAddress:     util.MakeUnresolvedAddr(brpcAddr.Network(), brpcAddr.String()),
+		BrpcAddress:     brpcAddress,
 		Attrs:           attrs,
 		Locality:        *locality,
 		LocalityAddress: localityAddress,

@@ -30,6 +30,7 @@ import (
 	"io"
 	"net/url"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -215,8 +216,13 @@ func (l *localFileStorage) ListFiles(ctx context.Context, patternSuffix string) 
 	}
 
 	for _, fileName := range matches {
+		// Listed names and the base path are URI-style paths and therefore
+		// must use forward slashes on every OS. Normalize both before
+		// trimming, otherwise native backslashes (Windows) leave the base
+		// prefix untrimmed and every entry is reported as missing.
+		fileName = filepath.ToSlash(fileName)
 		if patternSuffix != "" {
-			fileList = append(fileList, strings.TrimPrefix(strings.TrimPrefix(fileName, l.base), "/"))
+			fileList = append(fileList, strings.TrimPrefix(strings.TrimPrefix(fileName, filepath.ToSlash(l.base)), "/"))
 		} else {
 			fileList = append(fileList, makeNodeLocalURIWithNodeID(l.cfg.NodeID, fileName))
 		}

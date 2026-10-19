@@ -15,6 +15,9 @@
 #include "lg_api.h"
 #include "ts_common.h"
 #include "sys_utils.h"
+#ifdef _WIN32
+#include "platform.h"
+#endif
 #include "ts_io.h"
 
 // Magic value for identifying complete previous files ("MMTT" on little-endian).
@@ -696,7 +699,7 @@ KStatus RaftStore::init(const std::string& engine_root_path) {
     std::cout <<"Failed to create the directory: " << engine_root_path << " , error:" << e.what() << std::endl;
   }
   for (const auto& entry : fs::directory_iterator(engine_root_path)) {
-    const std::string filename = entry.path().filename();
+    const std::string filename = entry.path().filename().string();
     if (filename.find("current_") != std::string::npos) {
       file_path_ = (fs::path(engine_root_path) / filename).string();
       Open();

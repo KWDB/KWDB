@@ -36,17 +36,17 @@ TEST(TsAgg, FixedBlockAggLayoutComputesSchemaDerivedOffsets) {
   std::vector<AttributeInfo> attrs(7);
   attrs[0].type = DATATYPE::TIMESTAMP64;
   attrs[0].size = sizeof(timestamp64);
-  attrs[1].type = DATATYPE::INT32;
+  attrs[1].type = DATATYPE::K_INT32;
   attrs[1].size = sizeof(int32_t);
   attrs[2].type = DATATYPE::VARSTRING;
   attrs[2].size = sizeof(uint32_t);
-  attrs[3].type = DATATYPE::CHAR;
+  attrs[3].type = DATATYPE::K_CHAR;
   attrs[3].size = 16;
   attrs[4].type = DATATYPE::BINARY;
   attrs[4].size = 16;
   attrs[5].type = DATATYPE::STRING;
   attrs[5].size = 16;
-  attrs[6].type = DATATYPE::DOUBLE;
+  attrs[6].type = DATATYPE::K_DOUBLE;
   attrs[6].size = sizeof(double);
 
   const size_t ts_size = sizeof(uint16_t) + sizeof(timestamp64) * 2;
@@ -73,11 +73,11 @@ TEST(TsAgg, SparseBlockAggBitmapComputesPayloadOffsets) {
   std::vector<AttributeInfo> attrs(4);
   attrs[0].type = DATATYPE::TIMESTAMP64;
   attrs[0].size = sizeof(timestamp64);
-  attrs[1].type = DATATYPE::INT32;
+  attrs[1].type = DATATYPE::K_INT32;
   attrs[1].size = sizeof(int32_t);
   attrs[2].type = DATATYPE::VARSTRING;
   attrs[2].size = sizeof(uint32_t);
-  attrs[3].type = DATATYPE::DOUBLE;
+  attrs[3].type = DATATYPE::K_DOUBLE;
   attrs[3].size = sizeof(double);
 
   auto layout = BuildFixedBlockAggLayout(attrs);
@@ -99,7 +99,7 @@ TEST(TsAgg, SparsePartitionAggExtractsFixedAndVariableColumns) {
   attrs[0].size = sizeof(timestamp64);
   attrs[1].type = DATATYPE::VARSTRING;
   attrs[1].size = sizeof(uint32_t);
-  attrs[2].type = DATATYPE::INT32;
+  attrs[2].type = DATATYPE::K_INT32;
   attrs[2].size = sizeof(int32_t);
 
   std::string bitmap(GetSparsePartitionAggBitmapSize(attrs.size()), '\0');
@@ -200,7 +200,7 @@ TEST(TsAgg, CalcAggForFlushSkipsNullAndComputesSum) {
   bitmap[2] = DataFlags::kValid;
   bitmap[3] = DataFlags::kNull;
 
-  AggCalculatorV2 calc(reinterpret_cast<char*>(values.data()), &bitmap, DATATYPE::INT32,
+  AggCalculatorV2 calc(reinterpret_cast<char*>(values.data()), &bitmap, DATATYPE::K_INT32,
                        sizeof(int32_t), static_cast<int32_t>(values.size()));
 
   uint16_t count = 0;
@@ -219,7 +219,7 @@ TEST(TsAgg, CalcAggForFlushSkipsNullAndComputesSum) {
 
 TEST(TsAgg, CalcAggForFlushConvertsIntegerSumToDoubleAfterOverflow) {
   std::array<int64_t, 2> values{std::numeric_limits<int64_t>::max() - 2048, 4096};
-  AggCalculatorV2 calc(reinterpret_cast<char*>(values.data()), nullptr, DATATYPE::INT64,
+  AggCalculatorV2 calc(reinterpret_cast<char*>(values.data()), nullptr, DATATYPE::K_INT64,
                        sizeof(int64_t), static_cast<int32_t>(values.size()));
 
   uint16_t count = 0;
@@ -238,7 +238,7 @@ TEST(TsAgg, CalcAggForFlushConvertsIntegerSumToDoubleAfterOverflow) {
 
 TEST(TsAgg, CalcAggForFlushComputesFloatWithoutBitmap) {
   std::array<float, 4> values{1.5F, -3.0F, 2.25F, 0.5F};
-  AggCalculatorV2 calc(reinterpret_cast<char*>(values.data()), nullptr, DATATYPE::FLOAT,
+  AggCalculatorV2 calc(reinterpret_cast<char*>(values.data()), nullptr, DATATYPE::K_FLOAT,
                        sizeof(float), static_cast<int32_t>(values.size()));
 
   uint16_t count = 0;
@@ -273,7 +273,7 @@ TEST(TsAgg, CalcAggForFlushComputesFloatWithoutBitmap) {
 TEST(TsAgg, Int16WithNullsBitmap) {
   std::array<int16_t, 6> v{100, 200, 300, 400, 500, 600};
   TsBitmap bm = MakeBitmap(6, {1, 4});
-  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), &bm, DATATYPE::INT16,
+  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), &bm, DATATYPE::K_INT16,
                        sizeof(int16_t), v.size());
   uint16_t count = 0;
   bool ov = false;
@@ -293,7 +293,7 @@ TEST(TsAgg, Int32AllValidBitmapTakesFastPath) {
   std::array<int32_t, 4> v{-1, 2, -3, 4};
   TsBitmap bm = MakeBitmap(4, {});
   ASSERT_TRUE(bm.IsAllValid());
-  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), &bm, DATATYPE::INT32,
+  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), &bm, DATATYPE::K_INT32,
                        sizeof(int32_t), v.size());
   uint16_t count = 0;
   bool ov = false;
@@ -308,7 +308,7 @@ TEST(TsAgg, Int32AllValidBitmapTakesFastPath) {
 
 TEST(TsAgg, Int64NegativeOverflowSwitchesToDouble) {
   std::array<int64_t, 2> v{std::numeric_limits<int64_t>::min() + 100, -2048};
-  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), nullptr, DATATYPE::INT64,
+  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), nullptr, DATATYPE::K_INT64,
                        sizeof(int64_t), v.size());
   uint16_t count = 0;
   bool ov = false;
@@ -328,7 +328,7 @@ TEST(TsAgg, Int64NegativeOverflowSwitchesToDouble) {
 TEST(TsAgg, DoubleMixedSignsWithNullBitmap) {
   std::array<double, 5> v{1.5, -2.5, 3.0, -4.0, 5.5};
   TsBitmap bm = MakeBitmap(5, {2});  // skip 3.0
-  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), &bm, DATATYPE::DOUBLE,
+  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), &bm, DATATYPE::K_DOUBLE,
                        sizeof(double), v.size());
   uint16_t count = 0;
   bool ov = true;  // initialised true on purpose; impl must clear it
@@ -416,7 +416,7 @@ TEST(TsAgg, StringMinMaxWithNulls) {
 
 TEST(TsAgg, BoolMinMax) {
   std::array<int8_t, 4> v{1, 0, 1, 0};
-  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), nullptr, DATATYPE::BOOL,
+  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), nullptr, DATATYPE::K_BOOL,
                        sizeof(int8_t), v.size());
   uint16_t count = 0;
   bool ov = false;
@@ -432,7 +432,7 @@ TEST(TsAgg, BoolMinMax) {
 TEST(TsAgg, AllRowsNullProducesZeroCount) {
   std::array<int32_t, 3> v{1, 2, 3};
   TsBitmap bm = MakeBitmap(3, {0, 1, 2});
-  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), &bm, DATATYPE::INT32,
+  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), &bm, DATATYPE::K_INT32,
                        sizeof(int32_t), v.size());
   uint16_t count = 99;  // sentinel
   bool ov = true;
@@ -449,7 +449,7 @@ TEST(TsAgg, AllRowsNullProducesZeroCount) {
 }
 
 TEST(TsAgg, EmptyInputProducesZeroCount) {
-  AggCalculatorV2 calc(nullptr, nullptr, DATATYPE::INT32, sizeof(int32_t), 0);
+  AggCalculatorV2 calc(nullptr, nullptr, DATATYPE::K_INT32, sizeof(int32_t), 0);
   uint16_t count = 99;
   bool ov = true;
   int32_t mn = 1, mx = 2;
@@ -466,7 +466,7 @@ TEST(TsAgg, IsNotNullSkipsBitmap) {
   // the per-row null check must be bypassed and every row counted.
   std::array<int32_t, 4> v{4, 1, 3, 2};
   TsBitmap bm = MakeBitmap(4, {0, 1, 2, 3});
-  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), &bm, DATATYPE::INT32,
+  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), &bm, DATATYPE::K_INT32,
                        sizeof(int32_t), v.size());
   uint16_t count = 0;
   bool ov = false;
@@ -481,7 +481,7 @@ TEST(TsAgg, IsNotNullSkipsBitmap) {
 
 TEST(TsAgg, SumAddrNullStillComputesMinMax) {
   std::array<int32_t, 4> v{4, 1, 3, 2};
-  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), nullptr, DATATYPE::INT32,
+  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), nullptr, DATATYPE::K_INT32,
                        sizeof(int32_t), v.size());
   uint16_t count = 0;
   bool ov = true;
@@ -496,7 +496,7 @@ TEST(TsAgg, SumAddrNullStillComputesMinMax) {
 TEST(TsAgg, MinAndMaxAddrCanBeNull) {
   // Caller may want only one of min/max (or only count).
   std::array<int32_t, 3> v{5, 9, 7};
-  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), nullptr, DATATYPE::INT32,
+  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), nullptr, DATATYPE::K_INT32,
                        sizeof(int32_t), v.size());
   uint16_t count = 0;
   bool ov = false;
@@ -512,7 +512,7 @@ TEST(TsAgg, SumAddrPreservesPreExistingValue) {
   // Caller pre-populates sum_addr with a partial running sum; the function
   // must accumulate on top of it, not overwrite it.
   std::array<int32_t, 3> v{10, 20, 30};
-  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), nullptr, DATATYPE::INT32,
+  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), nullptr, DATATYPE::K_INT32,
                        sizeof(int32_t), v.size());
   uint16_t count = 0;
   bool ov = false;
@@ -591,7 +591,7 @@ TEST(TsAgg, Int64SumContinuesInDoubleAfterOverflow) {
   // row 2: still here  (must hit "already overflowed -> AddAggFloat" branch)
   std::array<int64_t, 3> v{
       std::numeric_limits<int64_t>::max() - 100, 4096, 7};
-  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), nullptr, DATATYPE::INT64,
+  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), nullptr, DATATYPE::K_INT64,
                        sizeof(int64_t), v.size());
   uint16_t count = 0;
   bool ov = false;
@@ -615,7 +615,7 @@ TEST(TsAgg, Int16MinMaxNoSumWithNullBitmap) {
   // Exercises AggLoopTyped<int16_t, false, true>.
   std::array<int16_t, 5> v{30, 10, 50, 40, 20};
   TsBitmap bm = MakeBitmap(5, {2});
-  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), &bm, DATATYPE::INT16,
+  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), &bm, DATATYPE::K_INT16,
                        sizeof(int16_t), v.size());
   uint16_t count = 0;
   bool ov = false;
@@ -630,7 +630,7 @@ TEST(TsAgg, Int32MinMaxNoSumWithNullBitmap) {
   // Exercises AggLoopTyped<int32_t, false, true>.
   std::array<int32_t, 4> v{7, -3, 11, 4};
   TsBitmap bm = MakeBitmap(4, {2});
-  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), &bm, DATATYPE::INT32,
+  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), &bm, DATATYPE::K_INT32,
                        sizeof(int32_t), v.size());
   uint16_t count = 0;
   bool ov = false;
@@ -643,7 +643,7 @@ TEST(TsAgg, Int32MinMaxNoSumWithNullBitmap) {
 
 TEST(TsAgg, FloatMinMaxNoSum) {
   std::array<float, 4> v{1.5F, -3.0F, 2.25F, 0.5F};
-  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), nullptr, DATATYPE::FLOAT,
+  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), nullptr, DATATYPE::K_FLOAT,
                        sizeof(float), v.size());
   uint16_t count = 0;
   bool ov = false;
@@ -657,7 +657,7 @@ TEST(TsAgg, FloatMinMaxNoSum) {
 TEST(TsAgg, DoubleMinMaxNoSumWithNullBitmap) {
   std::array<double, 4> v{1.5, -2.5, 3.0, -4.0};
   TsBitmap bm = MakeBitmap(4, {1});
-  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), &bm, DATATYPE::DOUBLE,
+  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), &bm, DATATYPE::K_DOUBLE,
                        sizeof(double), v.size());
   uint16_t count = 0;
   bool ov = false;
@@ -673,7 +673,7 @@ TEST(TsAgg, DoubleMinMaxNoSumWithNullBitmap) {
 TEST(TsAgg, Int8SumWithNullBitmap) {
   std::array<int8_t, 5> v{1, 2, 3, 4, 5};
   TsBitmap bm = MakeBitmap(5, {0, 4});
-  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), &bm, DATATYPE::INT8,
+  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), &bm, DATATYPE::K_INT8,
                        sizeof(int8_t), v.size());
   uint16_t count = 0;
   bool ov = false;
@@ -690,7 +690,7 @@ TEST(TsAgg, Int8SumWithNullBitmap) {
 TEST(TsAgg, FloatSumWithNullBitmap) {
   std::array<float, 5> v{1.0F, 2.0F, 3.0F, 4.0F, 5.0F};
   TsBitmap bm = MakeBitmap(5, {1, 3});
-  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), &bm, DATATYPE::FLOAT,
+  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), &bm, DATATYPE::K_FLOAT,
                        sizeof(float), v.size());
   uint16_t count = 0;
   bool ov = false;
@@ -710,7 +710,7 @@ TEST(TsAgg, Int8MinMaxNoSumWithNullBitmap) {
   // AggLoopTyped<int8_t, false, true>
   std::array<int8_t, 4> v{2, -5, 9, 1};
   TsBitmap bm = MakeBitmap(4, {1});
-  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), &bm, DATATYPE::INT8,
+  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), &bm, DATATYPE::K_INT8,
                        sizeof(int8_t), v.size());
   uint16_t count = 0;
   bool ov = false;
@@ -725,7 +725,7 @@ TEST(TsAgg, FloatMinMaxNoSumWithNullBitmap) {
   // AggLoopTyped<float, false, true>
   std::array<float, 4> v{1.5F, -3.0F, 2.25F, 0.5F};
   TsBitmap bm = MakeBitmap(4, {1});
-  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), &bm, DATATYPE::FLOAT,
+  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), &bm, DATATYPE::K_FLOAT,
                        sizeof(float), v.size());
   uint16_t count = 0;
   bool ov = false;
@@ -739,7 +739,7 @@ TEST(TsAgg, FloatMinMaxNoSumWithNullBitmap) {
 TEST(TsAgg, Int16MinMaxNoSumNoBitmap) {
   // AggLoopTyped<int16_t, false, false>
   std::array<int16_t, 4> v{30, 10, 50, 40};
-  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), nullptr, DATATYPE::INT16,
+  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), nullptr, DATATYPE::K_INT16,
                        sizeof(int16_t), v.size());
   uint16_t count = 0;
   bool ov = false;
@@ -753,7 +753,7 @@ TEST(TsAgg, Int16MinMaxNoSumNoBitmap) {
 TEST(TsAgg, Int64MinMaxNoSumNoBitmap) {
   // AggLoopTyped<int64_t, false, false>
   std::array<int64_t, 4> v{300, 100, 500, 400};
-  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), nullptr, DATATYPE::INT64,
+  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), nullptr, DATATYPE::K_INT64,
                        sizeof(int64_t), v.size());
   uint16_t count = 0;
   bool ov = false;
@@ -767,7 +767,7 @@ TEST(TsAgg, Int64MinMaxNoSumNoBitmap) {
 TEST(TsAgg, DoubleMinMaxNoSumNoBitmap) {
   // AggLoopTyped<double, false, false>
   std::array<double, 4> v{1.5, -2.5, 3.0, -4.0};
-  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), nullptr, DATATYPE::DOUBLE,
+  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), nullptr, DATATYPE::K_DOUBLE,
                        sizeof(double), v.size());
   uint16_t count = 0;
   bool ov = false;
@@ -781,7 +781,7 @@ TEST(TsAgg, DoubleMinMaxNoSumNoBitmap) {
 TEST(TsAgg, Int16SumNoBitmap) {
   // AggLoopTyped<int16_t, true, false>
   std::array<int16_t, 4> v{30, 10, 50, 40};
-  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), nullptr, DATATYPE::INT16,
+  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), nullptr, DATATYPE::K_INT16,
                        sizeof(int16_t), v.size());
   uint16_t count = 0;
   bool ov = false;
@@ -798,7 +798,7 @@ TEST(TsAgg, Int64SumWithNullBitmap) {
   // AggLoopTyped<int64_t, true, true>
   std::array<int64_t, 4> v{10, 20, 30, 40};
   TsBitmap bm = MakeBitmap(4, {2});
-  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), &bm, DATATYPE::INT64,
+  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), &bm, DATATYPE::K_INT64,
                        sizeof(int64_t), v.size());
   uint16_t count = 0;
   bool ov = false;
@@ -815,7 +815,7 @@ TEST(TsAgg, Int64SumWithNullBitmap) {
 TEST(TsAgg, DoubleSumNoBitmap) {
   // AggLoopTyped<double, true, false>
   std::array<double, 4> v{1.5, 2.5, 3.0, 4.0};
-  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), nullptr, DATATYPE::DOUBLE,
+  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), nullptr, DATATYPE::K_DOUBLE,
                        sizeof(double), v.size());
   uint16_t count = 0;
   bool ov = false;
@@ -854,7 +854,7 @@ TEST(TsAgg, StringMinMaxNoBitmap) {
 TEST(TsAgg, LegacyIsNullHelperStillWorks) {
   std::array<int32_t, 3> v{1, 2, 3};
   TsBitmap bm = MakeBitmap(3, {1});
-  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), &bm, DATATYPE::INT32,
+  AggCalculatorV2 calc(reinterpret_cast<char*>(v.data()), &bm, DATATYPE::K_INT32,
                        sizeof(int32_t), v.size());
   // Indirectly drive the per-row null path that historically went through
   // isnull(); semantic check via the public API still passes.

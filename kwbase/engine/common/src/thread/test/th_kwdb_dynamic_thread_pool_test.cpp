@@ -13,6 +13,18 @@
 #include <gtest/gtest.h>
 #include <chrono>
 #include <iostream>
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#ifdef ERROR
+#undef ERROR
+#endif
+static inline void sleep(unsigned int seconds) { Sleep(seconds * 1000); }
+#else
+#include <unistd.h>
+#endif
 #include "th_kwdb_dynamic_thread_pool.h"
 #include "th_kwdb_operator_info.h"
 #include "kwdb_type.h"

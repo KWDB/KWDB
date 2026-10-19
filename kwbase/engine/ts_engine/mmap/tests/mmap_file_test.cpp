@@ -12,9 +12,13 @@
 #include "mmap/mmap_file.h"
 #include "mmap/mmap_string_column.h"
 #include "gtest/gtest.h"
+#ifdef _WIN32
+#include "platform.h"
+#else
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <unistd.h>
+#endif
 #include <sys/stat.h>
 
 namespace kwdbts {

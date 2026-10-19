@@ -175,7 +175,7 @@ NCPUS := $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/d
 
 DUPLFLAGS    := -t 100
 # -gcflags=all="-N -l"  go attach need add this param
-GOFLAGS      :=
+GOFLAGS      := 
 TAGS         :=
 ARCHIVE      := kwbase.src.tgz
 STARTFLAGS   := -s type=mem,size=1GiB --logtostderr
@@ -185,13 +185,20 @@ INSTALL      := install
 prefix       := /usr/local
 bindir       := $(prefix)/bin
 
-ifeq "$(findstring -j,$(shell ps -o args= $$PPID))" ""
-ifdef NCPUS
-MAKEFLAGS += -j$(NCPUS)
-$(info Running make with -j$(NCPUS))
-endif
-else
-$(info Running make with -j$(shell ps -o args= $$PPID | grep -oE '(-j)[1-9]+' | sed 's/-j//'))
+UNAME = $(shell uname)
+host-is-macos := $(findstring Darwin,$(UNAME))
+host-is-mingw := $(findstring MINGW,$(UNAME))
+
+# there's not good substitution for ps -o in mingw
+ifndef host-is-mingw
+  ifeq "$(findstring -j,$(shell ps -o args= $$PPID))" ""
+    ifdef NCPUS
+      MAKEFLAGS += -j$(NCPUS)
+      $(info Running make with -j$(NCPUS))
+    endif
+  else
+    $(info Running make with -j$(shell ps -o args= $$PPID | grep -oE '(-j)[1-9]+' | sed 's/-j//'))
+  endif
 endif
 
 help: ## Print help for targets with comments.
@@ -237,7 +244,9 @@ CGO_CFLAGS = $(CFLAGS)
 CGO_CXXFLAGS = $(CXXFLAGS)
 CGO_LDFLAGS = $(filter-out -static,$(LDFLAGS)) -ldl
 
-export CFLAGS CXXFLAGS LDFLAGS CGO_CFLAGS CGO_CXXFLAGS CGO_LDFLAGS
+export CFLAGS CXXFLAGS CGO_CFLAGS CGO_CXXFLAGS 
+
+$(shell [ -d $(KWDB_LIB_DIR) ] || mkdir -p $(KWDB_LIB_DIR))
 
 KWDB_LIB_DIR := $(PWD)/../build/lib
 ifdef KWDB_BUILD_DIR
@@ -265,7 +274,9 @@ endif
 
 $(info GOPATH set to $(GOPATH))
 
-BUILD_DIR := $(GOPATH)/native/$(TARGET_TRIPLE)
+# this is NOT correct because there should be "HOST_TRIPLE" before native
+# but it has been modified to this for long, take it as default
+CMAKE_BUILD_TOP := $(GOPATH)/native
 
 # In MinGW, cgo flags don't handle Unix-style paths, so convert our base path to
 # a Windows-style path.
@@ -273,21 +284,31 @@ BUILD_DIR := $(GOPATH)/native/$(TARGET_TRIPLE)
 # TODO(benesch): Figure out why. MinGW transparently converts Unix-style paths
 # everywhere else.
 ifdef host-is-mingw
-BUILD_DIR := $(shell cygpath -m $(BUILD_DIR))
+  CMAKE_BUILD_TOP := $(shell cygpath -m $(CMAKE_BUILD_TOP))
+  KWBASE_TOP := $(realpath $(dir $(abspath $(firstword $(MAKEFILE_LIST))) ) )
+  KWDB_LIB_DIR := $(shell cygpath -m $(KWDB_LIB_DIR))
+  CMAKE_CMD := /ucrt64/bin/cmake
+else
+  CMAKE_CMD := cmake
 endif
 
 # User-requested build variants.
 ENABLE_LIBROACH_ASSERTIONS ?=
 ENABLE_ROCKSDB_ASSERTIONS ?=
 
-CRYPTOPP_DIR := $(BUILD_DIR)/cryptopp$(if $(use-msan),_msan)
-JEMALLOC_DIR := $(BUILD_DIR)/jemalloc$(if $(use-msan),_msan)
-ROCKSDB_DIR  := $(BUILD_DIR)/rocksdb$(if $(use-msan),_msan)$(if $(use-stdmalloc),_stdmalloc)$(if $(ENABLE_ROCKSDB_ASSERTIONS),_assert)
-SNAPPY_DIR   := $(BUILD_DIR)/snappy$(if $(use-msan),_msan)
-LIBEDIT_DIR  := $(BUILD_DIR)/libedit$(if $(use-msan),_msan)
-LIBROACH_DIR := $(BUILD_DIR)/libroach$(if $(use-msan),_msan)$(if $(ENABLE_LIBROACH_ASSERTIONS),_assert)
+CRYPTOPP_DIR := $(CMAKE_BUILD_TOP)/cryptopp$(if $(use-msan),_msan)
+JEMALLOC_DIR := $(CMAKE_BUILD_TOP)/jemalloc$(if $(use-msan),_msan)
+ROCKSDB_DIR  := $(CMAKE_BUILD_TOP)/rocksdb$(if $(use-msan),_msan)$(if $(use-stdmalloc),_stdmalloc)$(if $(ENABLE_ROCKSDB_ASSERTIONS),_assert)
+SNAPPY_DIR   := $(CMAKE_BUILD_TOP)/snappy$(if $(use-msan),_msan)
+LIBEDIT_DIR  := $(CMAKE_BUILD_TOP)/libedit$(if $(use-msan),_msan)
+LIBROACH_DIR := $(CMAKE_BUILD_TOP)/libroach$(if $(use-msan),_msan)$(if $(ENABLE_LIBROACH_ASSERTIONS),_assert)
 
-LDFLAGS := $(LDFLAGS) -L$(KWDB_LIB_DIR) -L$(ROCKSDB_DIR) -L$(SNAPPY_DIR) -Wl,--as-needed -Wl,-rpath,$(KWDB_LIB_DIR),-rpath,$(ROCKSDB_DIR),-rpath,$(SNAPPY_DIR),-rpath,$$ORIGIN/../lib,-rpath,$$ORIGIN
+LDFLAGS := $(LDFLAGS) -L$(KWDB_LIB_DIR) -L$(ROCKSDB_DIR) -L$(SNAPPY_DIR) -Wl,--as-needed -Wl,-rpath,$(KWDB_LIB_DIR),-rpath,$(ROCKSDB_DIR),-rpath,$(SNAPPY_DIR),-rpath,$$ORIGIN/../lib,-rpath,$$ORIGIN:$$ORIGIN/../lib:$$ORIGIN/../../build/bin:$$ORIGIN/../../build/lib
+# this is needed for CGO code 
+ifndef CGO_CPPFLAGS
+	CGO_CPPFLAGS := -I$(JEMALLOC_DIR)/include
+	export CGO_CPPFLAGS
+endif
 # We intentionally use LINKFLAGS instead of the more traditional LDFLAGS
 # because LDFLAGS has built-in semantics that don't make sense with the Go
 # toolchain.
@@ -302,7 +323,6 @@ WITH_ASAN_LINK = -X gitee.com/kwbasedb/kwbase/pkg/build.typ=$(BUILDTYPE) -extldf
 else
 WITH_ASAN_LINK = -X gitee.com/kwbasedb/kwbase/pkg/build.typ=$(BUILDTYPE) -extldflags "$(LDFLAGS)"
 endif
-override LINKFLAGS = $(WITH_ASAN_LINK)
 
 GOFLAGS ?=
 TAR     ?= tar 
@@ -373,6 +393,14 @@ $(call make-lazy,term-reset)
 # See: https://www.gnu.org/software/make/manual/html_node/Errors.html#Errors
 .DELETE_ON_ERROR:
 
+# Disable the built-in .y.c suffix rule. This project uses goyacc for parser
+# generation (see pkg/sql/parser/gen/sql.go.tmp), not yacc/bison. The built-in
+# rule causes make to attempt building .c files from vendored .y grammar files
+# (e.g. vendor/github.com/yuin/gopher-lua/golua-parse/parser.go.y). On Windows
+# with MinGW make, the path separators are converted to backslashes, which
+# bison interprets as escape characters, producing a "cannot open" error.
+%.c: %.y
+
 # Targets that name a real file that must be rebuilt on every Make invocation
 # should depend on .ALWAYS_REBUILD. (.PHONY should only be used on targets that
 # don't name a real file because .DELETE_ON_ERROR does not apply to .PHONY
@@ -423,9 +451,6 @@ IGNORE_GOVERS :=
 # The following section handles building our C/C++ dependencies. These are
 # common because both the root Makefile and protobuf.mk have C dependencies.
 
-host-is-macos := $(findstring Darwin,$(UNAME))
-host-is-mingw := $(findstring MINGW,$(UNAME))
-
 ifdef host-is-macos
 # On macOS 10.11, XCode SDK v8.1 (and possibly others) indicate the presence of
 # symbols that don't exist until macOS 10.12. Setting MACOSX_DEPLOYMENT_TARGET
@@ -439,6 +464,7 @@ endif
 # path and override the rest of the variables that immediately follow as
 # necessary. For an example, see build/builder/cmd/mkrelease, which sets these
 # variables appropriately for the toolchains baked into the builder image.
+HOST_TRIPLE = $(shell gcc -dumpmachine)
 TARGET_TRIPLE := $(HOST_TRIPLE)
 XCMAKE_SYSTEM_NAME :=
 XGOOS :=
@@ -451,8 +477,6 @@ EXTRA_XCONFIGURE_FLAGS :=
 ifneq ($(HOST_TRIPLE),$(TARGET_TRIPLE))
 is-cross-compile := 1
 endif
-
-target-is-windows := $(findstring w64,$(TARGET_TRIPLE))
 
 # CMAKE_TARGET_MESSAGES=OFF prevents CMake from printing progress messages
 # whenever a target is fully built to prevent spammy output from make when
@@ -495,14 +519,51 @@ LIBEDIT     := $(LIBEDIT_DIR)/src/.libs/libedit.a
 LIBROACH    := $(LIBROACH_DIR)/libroach.a
 PROTOC 		:= ${PROTOBUF_C}
 
-LDFLAGS += -L$(GOPATH)/native/kwdbts2/third_party/lib -L$(GOPATH)/native/kwdbts2/third_party/lib64 -Wl,-Bstatic -lz -Wl,-Bdynamic -lstdc++
+ifndef LIBPROTOBUF
+	LIBPROTOBUF = $(GOPATH)/native/kwdbts2/third_party/lib/libprotobuf.a
+endif
+
+ifndef PROTOC
+	PROTOC = $(GOPATH)/native/kwdbts2/third_party/bin/protoc
+endif
+
+ifndef PROTOBUF_INC
+	PROTOBUF_INC = $(GOPATH)/native/kwdbts2/third_party/include
+endif
+
+CGO_LDFLAGS = $(filter-out -static,$(LDFLAGS)) -ldl
+export LDFLAGS CGO_LDFLAGS
 
 C_LIBS_COMMON = \
 	$(if $(use-stdmalloc),,$(LIBJEMALLOC)) \
-	$(if $(target-is-windows),,$(LIBEDIT)) \
-	$(LIBPROTOBUF) $(LIBSNAPPY) $(LIBROCKSDB)
+	$(if $(host-is-mingw),,$(LIBEDIT)) \
+	$(LIBPROTOBUF) $(LIBSNAPPY) $(LIBROCKSDB) 
 C_LIBS_OSS = $(C_LIBS_COMMON) $(LIBROACH)
 C_LIBS = $(C_LIBS_COMMON) $(LIBROACH)
+
+
+# use a new var BIN_LD_FLAGS to avoid polution of LDFLAGS, which is used later in jemalloc, etc, components
+ifdef host-is-mingw
+  BIN_LD_FLAGS := $(LDFLAGS) -L$(CMAKE_BUILD_TOP)/kwdbts2/third_party/lib -L$(JEMALLOC_DIR)/lib -L$(LIBROACH_DIR) -L$(ROCKSDB_DIR) -L$(SNAPPY_DIR) -g -Wl,-Bstatic -lkwdbts2 -lrocksdb -lroach -lprotobuf -llz4 -lsnappy -ljemalloc -Wl,-Bdynamic -lz -lstdc++ -lws2_32
+else
+  BIN_LD_FLAGS := $(LDFLAGS) -L$(CMAKE_BUILD_TOP)/kwdbts2/third_party/lib -L$(CMAKE_BUILD_TOP)/kwdbts2/third_party/lib64 -Wl,-Bdynamic -lstdc++ -lz
+endif
+
+# logically WITH_ASAN_LINK and LINKFLAG depends on BIN_LD_FLAGS, move it here to make it clearer and avoid confusion
+WITH_ASAN ?=
+ifeq ($(WITH_ASAN), ON)
+  # CGO_LDFLAGS is reassigned (without ASAN) earlier in this Makefile, so re-add
+  # the ASAN linker flags here, otherwise cgo-compiled objects reference
+  # __asan_* symbols that the linker cannot resolve.
+  export CGO_LDFLAGS += -fsanitize=address -fno-omit-frame-pointer -fsanitize-recover=address
+  WITH_ASAN_LINK = -X gitee.com/kwbasedb/kwbase/pkg/build.typ=$(BUILDTYPE) -extldflags "$(BIN_LD_FLAGS) -fsanitize=address -fno-omit-frame-pointer -fsanitize-recover=address"
+  export LD_PRELOAD = $(shell $(CC) -print-file-name=libasan.so)
+  export ASAN_OPTIONS = alloc_dealloc_mismatch=0:halt_on_error=false:detect_leaks=false
+else
+  WITH_ASAN_LINK = -X gitee.com/kwbasedb/kwbase/pkg/build.typ=$(BUILDTYPE) -extldflags "$(BIN_LD_FLAGS)"
+endif
+override LINKFLAGS := $(WITH_ASAN_LINK)
+
 
 # Go does not permit dashes in build tags. This is undocumented.
 native-tag := $(subst -,_,$(TARGET_TRIPLE))$(if $(use-stdmalloc),_stdmalloc)$(if $(use-msan),_msan)
@@ -547,7 +608,7 @@ $(BASE_CGO_FLAGS_FILES): $(MAKEFILE_LIST) build/defs.mk.sig | bin/.submodules-in
 	@echo 'package $(if $($(@D)-package),$($(@D)-package),$(notdir $(@D)))' >> $@
 	@echo >> $@
 	@echo '// #cgo CPPFLAGS: $(addprefix -I,$(JEMALLOC_DIR)/include $(KRB5_DIR)/include)' >> $@
-	@echo '// #cgo LDFLAGS: $(addprefix -L,$(CRYPTOPP_DIR) $(JEMALLOC_DIR)/lib $(SNAPPY_DIR) $(LIBEDIT_DIR)/src/.libs $(ROCKSDB_DIR) $(LIBROACH_DIR) $(LIBINJECTION_DIR) $(KRB5_DIR))' >> $@
+	@echo '// #cgo LDFLAGS: $(addprefix -L,$(CRYPTOPP_DIR) $(JEMALLOC_DIR)/lib $(SNAPPY_DIR) $(LIBEDIT_DIR)/src/.libs $(ROCKSDB_DIR) $(LIBROACH_DIR) )' >> $@
 	@echo 'import "C"' >> $@
 
 vendor/github.com/knz/go-libedit/unix/zcgo_flags_extra.go: $(MAKEFILE_LIST) | bin/.submodules-initialized
@@ -589,7 +650,7 @@ $(CRYPTOPP_DIR)/Makefile: $(C_DEPS_DIR)/cryptopp-rebuild | bin/.submodules-initi
 	mkdir -p $(CRYPTOPP_DIR)
 	@# NOTE: If you change the CMake flags below, bump the version in
 	@# $(C_DEPS_DIR)/cryptopp-rebuild. See above for rationale.
-	cd $(CRYPTOPP_DIR) && CFLAGS+=" $(aes)" && CXXFLAGS+=" $(aes)" cmake $(xcmake-flags) $(CRYPTOPP_SRC_DIR) \
+	cd $(CRYPTOPP_DIR) && CFLAGS+=" $(aes)" && CXXFLAGS+=" $(aes)" ${CMAKE_CMD} $(xcmake-flags) $(CRYPTOPP_SRC_DIR) \
 	  -DCMAKE_BUILD_TYPE=Release
 
 $(JEMALLOC_SRC_DIR)/configure.ac: | bin/.submodules-initialized
@@ -605,7 +666,10 @@ $(JEMALLOC_DIR)/Makefile: $(C_DEPS_DIR)/jemalloc-rebuild $(JEMALLOC_SRC_DIR)/con
 	@#
 	@# jemalloc profiling deadlocks when built against musl. See
 	@# https://github.com/jemalloc/jemalloc/issues/585.
-	cd $(JEMALLOC_DIR) && $(JEMALLOC_SRC_DIR)/configure $(xconfigure-flags) $(if $(findstring musl,$(TARGET_TRIPLE)),,--enable-prof)
+	cd $(JEMALLOC_DIR) && $(JEMALLOC_SRC_DIR)/configure $(xconfigure-flags) --enable-prof --enable-stats \
+	$(if $(host-is-mingw), --with-jemalloc-prefix="" --enable-static --disable-debug --disable-fill --disable-utrace,) \
+	$(if $(host-is-mingw), --disable-cache-oblivious --disable-xmalloc --disable-readlinkat --disable-uaf-detection --disable-syscall,) \
+	$(if $(host-is-mingw), --disable-lazy-lock --disable-zone-allocator --disable-initial-exec-tls  --disable-doc --disable-cxx,) 
 
 $(ROCKSDB_DIR)/Makefile: sse := $(if $(findstring x86_64,$(TARGET_TRIPLE)),-msse3)
 $(ROCKSDB_DIR)/Makefile: $(C_DEPS_DIR)/rocksdb-rebuild | bin/.submodules-initialized $(LIBSNAPPY) $(if $(use-stdmalloc),,$(LIBJEMALLOC))
@@ -616,11 +680,13 @@ $(ROCKSDB_DIR)/Makefile: $(C_DEPS_DIR)/rocksdb-rebuild | bin/.submodules-initial
 	@#
 	@# NOTE 2: We pass PORTABLE=ON to RocksDB in order to disable usage of -march=native which can
 	@# create non-portable binaries that die with "illegal instruction" when run on some x86 CPUs.
-	cd $(ROCKSDB_DIR) && CFLAGS+=" $(sse)" && CXXFLAGS+=" $(sse)" && cmake $(xcmake-flags) $(ROCKSDB_SRC_DIR) \
-	  -DPORTABLE=ON -DWITH_GFLAGS=OFF \
+	cd $(ROCKSDB_DIR) && CFLAGS+=" $(sse)" && CXXFLAGS+=" $(sse)" && ${CMAKE_CMD} $(xcmake-flags) $(ROCKSDB_SRC_DIR) \
+	  -DPORTABLE=ON -DWITH_GFLAGS=OFF -DWITH_TESTS=OFF -DWITH_TOOLS=OFF \
 	  -DSNAPPY_LIBRARIES=$(LIBSNAPPY) -DSNAPPY_INCLUDE_DIR="$(SNAPPY_SRC_DIR);$(SNAPPY_DIR)" -DWITH_SNAPPY=ON \
 	  $(if $(use-stdmalloc),,-DJEMALLOC_LIBRARIES=$(LIBJEMALLOC) -DJEMALLOC_INCLUDE_DIR=$(JEMALLOC_DIR)/include -DWITH_JEMALLOC=ON) \
+	  $(if $(host-is-mingw), -DCMAKE_C_FLAGS="${CMAKE_C_FLAGS} -DJEMALLOC_NO_DEMANGLE" -DCMAKE_CXX_FLAGS="${CMAKE_C_FLAGS} -DJEMALLOC_NO_DEMANGLE", ) \
 	  -DCMAKE_BUILD_TYPE=$(if $(ENABLE_ROCKSDB_ASSERTIONS),Debug,Release) \
+	  -DWITH_RUNTIME_DEBUG=$(if $(ENABLE_ROCKSDB_ASSERTIONS),ON,OFF) \
 	  -DUSE_RTTI=1 -DFAIL_ON_WARNINGS=0
 
 $(SNAPPY_DIR)/Makefile: $(C_DEPS_DIR)/snappy-rebuild | bin/.submodules-initialized
@@ -628,7 +694,7 @@ $(SNAPPY_DIR)/Makefile: $(C_DEPS_DIR)/snappy-rebuild | bin/.submodules-initializ
 	mkdir -p $(SNAPPY_DIR)
 	@# NOTE: If you change the CMake flags below, bump the version in
 	@# $(C_DEPS_DIR)/snappy-rebuild. See above for rationale.
-	cd $(SNAPPY_DIR) && cmake $(xcmake-flags) $(SNAPPY_SRC_DIR) \
+	cd $(SNAPPY_DIR) && ${CMAKE_CMD} $(xcmake-flags) $(SNAPPY_SRC_DIR) \
 	  -DCMAKE_BUILD_TYPE=Release
 
 $(LIBEDIT_SRC_DIR)/configure.ac: | bin/.submodules-initialized
@@ -646,12 +712,14 @@ $(LIBEDIT_DIR)/Makefile: $(C_DEPS_DIR)/libedit-rebuild $(LIBEDIT_SRC_DIR)/config
 # TODO(benesch): make it possible to build libroach without CCL code. Because
 # libroach and libroachccl are defined in the same CMake project, CMake requires
 # that the CCL code be present even if only the OSS target will be built.
-$(LIBROACH_DIR)/Makefile: $(C_DEPS_DIR)/libroach-rebuild | bin/.submodules-initialized
+# libroach's CMakeLists.txt lists protos/*.pb.cc as sources, so the C++
+# protobuf sources must be generated before CMake runs on libroach.
+$(LIBROACH_DIR)/Makefile: $(C_DEPS_DIR)/libroach-rebuild bin/.cpp_protobuf_sources | bin/.submodules-initialized
 	rm -rf $(LIBROACH_DIR)
 	mkdir -p $(LIBROACH_DIR)
 	@# NOTE: If you change the CMake flags below, bump the version in
 	@# $(C_DEPS_DIR)/libroach-rebuild. See above for rationale.
-	cd $(LIBROACH_DIR) && cmake $(xcmake-flags) $(LIBROACH_SRC_DIR) \
+	cd $(LIBROACH_DIR) && ${CMAKE_CMD} $(xcmake-flags) $(LIBROACH_SRC_DIR) \
 		-DCMAKE_BUILD_TYPE=$(if $(ENABLE_LIBROACH_ASSERTIONS),Debug,Release) \
 		-DPROTOBUF_LIB=$(LIBPROTOBUF) -DROCKSDB_LIB=$(LIBROCKSDB) \
 		-DPROTOBUF_INC=$(PROTOBUF_INC) \
@@ -691,7 +759,7 @@ $(LIBCRYPTOPP): $(CRYPTOPP_DIR)/Makefile bin/uptodate .ALWAYS_REBUILD
 	@uptodate $@ $(CRYPTOPP_SRC_DIR) || $(MAKE) --no-print-directory -C $(CRYPTOPP_DIR) static
 
 $(LIBJEMALLOC): $(JEMALLOC_DIR)/Makefile bin/uptodate .ALWAYS_REBUILD
-	@uptodate $@ $(JEMALLOC_SRC_DIR) || $(MAKE) --no-print-directory -C $(JEMALLOC_DIR) build_lib_static
+	@uptodate $@ $(JEMALLOC_SRC_DIR) || $(MAKE) --no-print-directory -C $(JEMALLOC_DIR) -j4 build_lib_static
 
 $(LIBSNAPPY): $(SNAPPY_DIR)/Makefile bin/uptodate .ALWAYS_REBUILD
 	@uptodate $@ $(SNAPPY_SRC_DIR) || $(MAKE) --no-print-directory -C $(SNAPPY_DIR) snappy
@@ -700,12 +768,12 @@ $(LIBEDIT): $(LIBEDIT_DIR)/Makefile bin/uptodate .ALWAYS_REBUILD
 	@uptodate $@ $(LIBEDIT_SRC_DIR) || $(MAKE) --no-print-directory -C $(LIBEDIT_DIR)/src
 
 $(LIBROCKSDB): $(ROCKSDB_DIR)/Makefile bin/uptodate .ALWAYS_REBUILD
-	@uptodate $@ $(ROCKSDB_SRC_DIR) || $(MAKE) --no-print-directory -C $(ROCKSDB_DIR) rocksdb
+	@uptodate $@ $(ROCKSDB_SRC_DIR) || $(MAKE) --no-print-directory -C $(ROCKSDB_DIR) -j4 rocksdb
 
 libroach-inputs := $(LIBROACH_SRC_DIR) $(ROCKSDB_SRC_DIR)/include
 
 $(LIBROACH): $(LIBROACH_DIR)/Makefile bin/uptodate .ALWAYS_REBUILD
-	@uptodate $@ $(libroach-inputs) || $(MAKE) --no-print-directory -C $(LIBROACH_DIR) roach
+	@uptodate $@ $(libroach-inputs) || $(MAKE) --no-print-directory -C $(LIBROACH_DIR) -j4 roach
 
 # Convenient names for maintainers. Not used by other targets in the Makefile.
 .PHONY: protoc libcryptopp libjemalloc libprotobuf libsnappy librocksdb libroach
@@ -977,6 +1045,7 @@ testoptlogic: TESTS := TestExecBuild/$(logic-test-selector)
 # -config, the extra initialization overhead is averted.
 testbaselogic testoptlogic: TESTFLAGS := -test.v $(if $(FILES),-show-sql) $(if $(SHOWLOGS),-show-logs $(SHOWLOGS)) $(if $(TESTCONFIG),-config $(TESTCONFIG))
 testbaselogic testoptlogic:
+	@echo  $(<F) -test.run "$(TESTS)" -test.timeout $(TESTTIMEOUT) $(TESTFLAGS)
 	cd $($(<F)-package) && $(<F) -test.run "$(TESTS)" -test.timeout $(TESTTIMEOUT) $(TESTFLAGS)
 
 testraceslow: override GOFLAGS += -race
@@ -1141,7 +1210,7 @@ $(ERRORS_PROTO): bin/.submodules-initialized
 bin/.go_protobuf_sources: $(GO_PROTOS) $(GOGOPROTO_PROTO) $(ERRORS_PROTO) bin/.bootstrap bin/protoc-gen-gogoroach
 	$(FIND_RELEVANT) -type f -name '*.pb.go' -exec rm {} +
 	set -e; for dir in $(sort $(dir $(GO_PROTOS))); do \
-	  build/werror.sh $(PROTOC) -Ipkg:./vendor/github.com:$(GOGO_PROTOBUF_PATH):$(PROTOBUF_PATH):$(COREOS_PATH):$(GRPC_GATEWAY_GOOGLEAPIS_PATH):$(ERRORS_PATH) --gogoroach_out=$(PROTO_MAPPINGS),plugins=grpc,import_prefix=gitee.com/kwbasedb/kwbase/pkg/:./pkg $$dir/*.proto; \
+	  build/werror.sh $(PROTOC) -I./pkg -I./vendor/github.com -I$(GOGO_PROTOBUF_PATH) -I$(PROTOBUF_PATH) -I$(COREOS_PATH) -I$(GRPC_GATEWAY_GOOGLEAPIS_PATH) -I$(ERRORS_PATH) --gogoroach_out=$(PROTO_MAPPINGS),plugins=grpc,import_prefix=gitee.com/kwbasedb/kwbase/pkg/:./pkg $$dir/*.proto; \
 	done
 	$(SED_INPLACE) -E \
 		-e '/import _ /d' \
@@ -1157,8 +1226,8 @@ bin/.go_protobuf_sources: $(GO_PROTOS) $(GOGOPROTO_PROTO) $(ERRORS_PROTO) bin/.b
 
 bin/.gw_protobuf_sources: $(GW_SERVER_PROTOS) $(GW_TS_PROTOS) $(GO_PROTOS) $(GOGOPROTO_PROTO) $(ERRORS_PROTO) bin/.bootstrap
 	$(FIND_RELEVANT) -type f -name '*.pb.gw.go' -exec rm {} +
-	build/werror.sh $(PROTOC) -Ipkg:./vendor/github.com:$(GOGO_PROTOBUF_PATH):$(PROTOBUF_PATH):$(ERRORS_PATH):$(COREOS_PATH):$(GRPC_GATEWAY_GOOGLEAPIS_PATH) --grpc-gateway_out=logtostderr=true,request_context=true:./pkg $(GW_SERVER_PROTOS)
-	build/werror.sh $(PROTOC) -Ipkg:./vendor/github.com:$(GOGO_PROTOBUF_PATH):$(PROTOBUF_PATH):$(ERRORS_PATH):$(COREOS_PATH):$(GRPC_GATEWAY_GOOGLEAPIS_PATH) --grpc-gateway_out=logtostderr=true,request_context=true:./pkg $(GW_TS_PROTOS)
+	build/werror.sh $(PROTOC) -I./pkg -I./vendor/github.com -I$(GOGO_PROTOBUF_PATH) -I$(PROTOBUF_PATH) -I$(ERRORS_PATH) -I$(COREOS_PATH) -I$(GRPC_GATEWAY_GOOGLEAPIS_PATH) --grpc-gateway_out=logtostderr=true,request_context=true:./pkg $(GW_SERVER_PROTOS); \
+	build/werror.sh $(PROTOC) -I./pkg -I./vendor/github.com -I$(GOGO_PROTOBUF_PATH) -I$(PROTOBUF_PATH) -I$(ERRORS_PATH) -I$(COREOS_PATH) -I$(GRPC_GATEWAY_GOOGLEAPIS_PATH) --grpc-gateway_out=logtostderr=true,request_context=true:./pkg $(GW_TS_PROTOS)
 	@# TODO(benesch): Remove after https://github.com/grpc/grpc-go/issues/711.
 	$(SED_INPLACE) -E 's!golang.org/x/net/context!context!g' $(GW_SOURCES)
 	gofmt -s -w $(GW_SOURCES)
@@ -1166,10 +1235,16 @@ bin/.gw_protobuf_sources: $(GW_SERVER_PROTOS) $(GW_TS_PROTOS) $(GO_PROTOS) $(GOG
 	goimports -w $(GW_SOURCES)
 	touch $@
 
+# the lite: keyword messes up on Windows, we have to make a workaround here
+ifdef host-is-mingw
+CPP_PROTO_ROOT_WIN := $(shell cygpath -m $(CPP_PROTO_ROOT))
+override CPP_PROTO_ROOT := $(CPP_PROTO_ROOT_WIN)
+endif
+
 bin/.cpp_protobuf_sources: $(CPP_PROTOS) bin/.bootstrap
 	rm -rf $(CPP_PROTO_ROOT)
 	mkdir -p $(CPP_PROTO_ROOT)
-	build/werror.sh $(PROTOC) -Ipkg:$(GOGO_PROTOBUF_PATH):$(PROTOBUF_PATH) --cpp_out=lite:$(CPP_PROTO_ROOT) $(CPP_PROTOS)
+	build/werror.sh $(PROTOC) -I./pkg -I$(GOGO_PROTOBUF_PATH) -I$(PROTOBUF_PATH) --cpp_out=lite:$(CPP_PROTO_ROOT) $(CPP_PROTOS)
 	$(SED_INPLACE) -E '/gogoproto/d' $(CPP_HEADERS) $(CPP_SOURCES)
 	touch $@
 
@@ -1430,16 +1505,22 @@ logictest-bins := bin/logictest bin/logictestopt
 # Additional dependencies for binaries that depend on generated code.
 #
 # TODO(benesch): Derive this automatically. This is getting out of hand.
-bin/execgen: $(LIBROCKSDB) $(LIBSNAPPY) $(LIBJEMALLOC)
-bin/execgen bin/roachtest $(logictest-bins): $(SQLPARSER_TARGETS) $(PROTOBUF_TARGETS)
-bin/roachtest $(logictest-bins): $(EXECGEN_TARGETS)
+bin/execgen: $(LIBROCKSDB) $(LIBSNAPPY) $(LIBJEMALLOC) $(C_LIBS)
+bin/workload bin/execgen bin/roachtest $(logictest-bins): $(SQLPARSER_TARGETS) $(PROTOBUF_TARGETS)
+bin/workload bin/roachtest $(logictest-bins): $(EXECGEN_TARGETS)
 bin/roachtest $(logictest-bins): $(C_LIBS) $(CGO_FLAGS_FILES) $(OPTGEN_TARGETS)
 
-$(bins): bin/%: bin/%.d | bin/prereqs bin/.submodules-initialized
+$(bins): bin/%: bin/%.d | bin/prereqs bin/.submodules-initialized 
+# copy the dll's needed by bin/tools
+ifdef host-is-mingw
+	@[ -d $(KWBASE_TOP)/bin ] || rm -f $(KWBASE_TOP)/bin ; mkdir -p $(KWBASE_TOP)/bin
+# 	@[ -f $(KWBASE_TOP)/bin/libkwdbts2.dll ] || cp $(KWDB_LIB_DIR)/libkwdbts2.dll  $(KWBASE_TOP)/bin/libkwdbts2.dll
+	@[ -f $(KWBASE_TOP)/bin/libcommon.dll ]  || cp $(KWDB_LIB_DIR)/../bin/libcommon.dll  $(KWBASE_TOP)/bin/libcommon.dll
+endif
 	@echo go install -v $*
 	bin/prereqs $(if $($*-package),$($*-package),./pkg/cmd/$*) > $@.d.tmp
 	mv -f $@.d.tmp $@.d
-	@$(GO_INSTALL) -v $(if $($*-package),$($*-package),./pkg/cmd/$*)
+	$(GO_INSTALL) -v -ldflags='$(LINKFLAGS)' $(if $($*-package),$($*-package),./pkg/cmd/$*) 
 
 $(xbins): bin/%: bin/%.d | bin/prereqs bin/.submodules-initialized
 	@echo go build -v $(GOFLAGS) $(GOMODVENDORFLAGS) -tags '$(TAGS)' -ldflags '$(LINKFLAGS)' -o $@ $*

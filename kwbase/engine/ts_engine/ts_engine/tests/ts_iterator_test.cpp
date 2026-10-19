@@ -53,24 +53,24 @@ class TestV2Iterator : public TsEngineTestBase {
           ASSERT_EQ(is_null, false);
           switch (col_type[k]) {
             case DATATYPE::TIMESTAMP64:
-              ASSERT_EQ(KTimestamp(res.data[k][0]->mem + j * sizeof(KTimestamp)), parseTimestamp((expected[i][j][k])));
+              ASSERT_EQ(KTimestampCast(res.data[k][0]->mem + j * sizeof(KTimestamp)), parseTimestamp((expected[i][j][k])));
               break;
-            case DATATYPE::INT16:
+            case DATATYPE::K_INT16:
               ASSERT_EQ(KInt16(res.data[k][0]->mem + j * sizeof(int16_t)), stoi(expected[i][j][k]));
               break;
-            case DATATYPE::INT32:
+            case DATATYPE::K_INT32:
               ASSERT_EQ(KInt32(res.data[k][0]->mem + j * sizeof(int32_t)), stoi(expected[i][j][k]));
               break;
-            case DATATYPE::INT64:
+            case DATATYPE::K_INT64:
               ASSERT_EQ(KInt64(res.data[k][0]->mem + j * sizeof(int64_t)), stol(expected[i][j][k]));
               break;
-            case DATATYPE::FLOAT:
+            case DATATYPE::K_FLOAT:
               ASSERT_EQ(KFloat32(res.data[k][0]->mem + j * sizeof(float)), stof(expected[i][j][k]));
               break;
-            case DATATYPE::DOUBLE:
+            case DATATYPE::K_DOUBLE:
               ASSERT_LE(abs(KDouble64(res.data[k][0]->mem + j * sizeof(double)) - stod(expected[i][j][k])), 0.00001);
               break;
-            case DATATYPE::CHAR:
+            case DATATYPE::K_CHAR:
               ASSERT_EQ(KChar(res.data[k][0]->mem + j * 20), *expected[i][j][k].c_str());
               break;
             case DATATYPE::VARSTRING:
@@ -211,7 +211,7 @@ TEST_F(TestV2Iterator, basic) {
         bool is_finished = false;
         ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
         ASSERT_EQ(count, 1);
-        ASSERT_EQ(KTimestamp(res.data[0][0]->mem), convertMSToPrecisionTS(start_ts, ts_col_type));
+        ASSERT_EQ(KTimestampCast(reinterpret_cast<char*>(res.data[0][0]->mem)), convertMSToPrecisionTS(start_ts, ts_col_type));
 
         ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
         ASSERT_EQ(count, 0);
@@ -282,7 +282,7 @@ TEST_F(TestV2Iterator, mulitEntity) {
         bool is_finished = false;
         ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
         ASSERT_EQ(count, entity_row_num);
-        ASSERT_EQ(KTimestamp(reinterpret_cast<char*>(res.data[0][0]->mem) + (entity_row_num -1) * 8) - KTimestamp(res.data[0][0]->mem), interval * (entity_row_num - 1));
+        ASSERT_EQ(KTimestampCast(reinterpret_cast<char*>(res.data[0][0]->mem) + (entity_row_num -1) * 8) - KTimestampCast(reinterpret_cast<char*>(res.data[0][0]->mem)), interval * (entity_row_num - 1));
         ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
         ASSERT_EQ(count, 0);
         delete ts_iter;
@@ -362,7 +362,7 @@ TEST_F(TestV2Iterator, multiDBAndEntity) {
         ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
         if (count > 0) {
           ASSERT_EQ(count, entity_row_num);
-          ASSERT_EQ(KTimestamp(reinterpret_cast<char*>(res.data[0][0]->mem) + (entity_row_num -1) * 8) - KTimestamp(res.data[0][0]->mem), interval * (entity_row_num - 1));
+          ASSERT_EQ(KTimestampCast(reinterpret_cast<char*>(res.data[0][0]->mem) + (entity_row_num -1) * 8) - KTimestampCast(reinterpret_cast<char*>(res.data[0][0]->mem)), interval * (entity_row_num - 1));
           ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
           ASSERT_EQ(count, 0);
           entity_result_num++;
@@ -956,6 +956,7 @@ TEST_F(TestV2Iterator, mulitEntityInvalidCount) {
   }
 }
 
+#ifndef _WIN32
 TEST_F(TestV2Iterator, blockCacheDetachMMAP) {
   EngineOptions::max_rows_per_block = 30;
   EngineOptions::min_rows_per_block = 15;
@@ -1068,8 +1069,9 @@ TEST_F(TestV2Iterator, blockCacheDetachMMAP) {
    * osn column size is 8 bytes
    * int column size is 4 bytes, each block has one byte bitmap
    */
+#ifndef _WIN32
   ASSERT_EQ(TsLRUBlockCache::GetInstance().GetMemorySize(), 18030);
-
+#endif
   for (int j = 0; j < insert_times; ++j) {
     start_ts += 1000;
     for (size_t i = 0; i < entity_num; i++) {
@@ -1154,6 +1156,7 @@ TEST_F(TestV2Iterator, blockCacheDetachMMAP) {
    */
   ASSERT_EQ(created_entity_block_file_count - destroyed_entity_block_file_count, 4);
 }
+#endif  // _WIN32
 
 TEST_F(TestV2Iterator, overflow) {
   TSTableID table_id = 999;
@@ -1813,46 +1816,46 @@ vector<TimeBucketInfo> timeBucketAgg_time_bucket_info = {
 vector<vector<DATATYPE>> timeBucketAgg_out_type = {
   // test case 1
   {
-    DATATYPE::TIMESTAMP64, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT32, DATATYPE::INT32, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT16, DATATYPE::INT16,
-    DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::DOUBLE, DATATYPE::FLOAT, DATATYPE::FLOAT,
-    DATATYPE::INT64, DATATYPE::DOUBLE, DATATYPE::DOUBLE, DATATYPE::DOUBLE, DATATYPE::INT64, DATATYPE::CHAR, DATATYPE::CHAR,
-    DATATYPE::INT64, DATATYPE::VARSTRING, DATATYPE::VARSTRING, DATATYPE::INT64, DATATYPE::VARBINARY, DATATYPE::VARBINARY,
-    DATATYPE::INT32, DATATYPE::INT64
+    DATATYPE::TIMESTAMP64, DATATYPE::K_INT64, DATATYPE::K_INT64, DATATYPE::K_INT32, DATATYPE::K_INT32, DATATYPE::K_INT64, DATATYPE::K_INT64, DATATYPE::K_INT16, DATATYPE::K_INT16,
+    DATATYPE::K_INT64, DATATYPE::K_INT64, DATATYPE::K_INT64, DATATYPE::K_INT64, DATATYPE::K_INT64, DATATYPE::K_DOUBLE, DATATYPE::K_FLOAT, DATATYPE::K_FLOAT,
+    DATATYPE::K_INT64, DATATYPE::K_DOUBLE, DATATYPE::K_DOUBLE, DATATYPE::K_DOUBLE, DATATYPE::K_INT64, DATATYPE::K_CHAR, DATATYPE::K_CHAR,
+    DATATYPE::K_INT64, DATATYPE::VARSTRING, DATATYPE::VARSTRING, DATATYPE::K_INT64, DATATYPE::VARBINARY, DATATYPE::VARBINARY,
+    DATATYPE::K_INT32, DATATYPE::K_INT64
   },
   // test case 2
   {
-    DATATYPE::TIMESTAMP64, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT32, DATATYPE::INT32, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT16, DATATYPE::INT16,
-    DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::DOUBLE, DATATYPE::FLOAT, DATATYPE::FLOAT,
-    DATATYPE::INT64, DATATYPE::DOUBLE, DATATYPE::DOUBLE, DATATYPE::DOUBLE, DATATYPE::INT64, DATATYPE::CHAR, DATATYPE::CHAR,
-    DATATYPE::INT64, DATATYPE::VARSTRING, DATATYPE::VARSTRING, DATATYPE::INT64, DATATYPE::VARBINARY, DATATYPE::VARBINARY
+    DATATYPE::TIMESTAMP64, DATATYPE::K_INT64, DATATYPE::K_INT64, DATATYPE::K_INT32, DATATYPE::K_INT32, DATATYPE::K_INT64, DATATYPE::K_INT64, DATATYPE::K_INT16, DATATYPE::K_INT16,
+    DATATYPE::K_INT64, DATATYPE::K_INT64, DATATYPE::K_INT64, DATATYPE::K_INT64, DATATYPE::K_INT64, DATATYPE::K_DOUBLE, DATATYPE::K_FLOAT, DATATYPE::K_FLOAT,
+    DATATYPE::K_INT64, DATATYPE::K_DOUBLE, DATATYPE::K_DOUBLE, DATATYPE::K_DOUBLE, DATATYPE::K_INT64, DATATYPE::K_CHAR, DATATYPE::K_CHAR,
+    DATATYPE::K_INT64, DATATYPE::VARSTRING, DATATYPE::VARSTRING, DATATYPE::K_INT64, DATATYPE::VARBINARY, DATATYPE::VARBINARY
   },
   // test case 3
   {
-    DATATYPE::TIMESTAMP64, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT32, DATATYPE::INT32, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT16, DATATYPE::INT16,
-    DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::INT64, DATATYPE::DOUBLE, DATATYPE::FLOAT, DATATYPE::FLOAT,
-    DATATYPE::INT64, DATATYPE::DOUBLE, DATATYPE::DOUBLE, DATATYPE::DOUBLE, DATATYPE::INT64, DATATYPE::CHAR, DATATYPE::CHAR,
-    DATATYPE::INT64, DATATYPE::VARSTRING, DATATYPE::VARSTRING, DATATYPE::INT64, DATATYPE::VARBINARY, DATATYPE::VARBINARY
+    DATATYPE::TIMESTAMP64, DATATYPE::K_INT64, DATATYPE::K_INT64, DATATYPE::K_INT32, DATATYPE::K_INT32, DATATYPE::K_INT64, DATATYPE::K_INT64, DATATYPE::K_INT16, DATATYPE::K_INT16,
+    DATATYPE::K_INT64, DATATYPE::K_INT64, DATATYPE::K_INT64, DATATYPE::K_INT64, DATATYPE::K_INT64, DATATYPE::K_DOUBLE, DATATYPE::K_FLOAT, DATATYPE::K_FLOAT,
+    DATATYPE::K_INT64, DATATYPE::K_DOUBLE, DATATYPE::K_DOUBLE, DATATYPE::K_DOUBLE, DATATYPE::K_INT64, DATATYPE::K_CHAR, DATATYPE::K_CHAR,
+    DATATYPE::K_INT64, DATATYPE::VARSTRING, DATATYPE::VARSTRING, DATATYPE::K_INT64, DATATYPE::VARBINARY, DATATYPE::VARBINARY
   },
   // test case 4
   {
-    DATATYPE::TIMESTAMP64, DATATYPE::TIMESTAMP64, DATATYPE::DOUBLE, DATATYPE::TIMESTAMP64, DATATYPE::INT64, DATATYPE::INT16, DATATYPE::TIMESTAMP64,
-    DATATYPE::INT32, DATATYPE::DOUBLE, DATATYPE::INT32, DATATYPE::INT32, DATATYPE::TIMESTAMP64, DATATYPE::TIMESTAMP64
+    DATATYPE::TIMESTAMP64, DATATYPE::TIMESTAMP64, DATATYPE::K_DOUBLE, DATATYPE::TIMESTAMP64, DATATYPE::K_INT64, DATATYPE::K_INT16, DATATYPE::TIMESTAMP64,
+    DATATYPE::K_INT32, DATATYPE::K_DOUBLE, DATATYPE::K_INT32, DATATYPE::K_INT32, DATATYPE::TIMESTAMP64, DATATYPE::TIMESTAMP64
   },
   // test case 5 (for MAX_EXTEND)
   {
-    DATATYPE::TIMESTAMP64, DATATYPE::TIMESTAMP64, DATATYPE::INT32, DATATYPE::INT16,
-    DATATYPE::INT64, DATATYPE::FLOAT, DATATYPE::DOUBLE,
-    DATATYPE::CHAR, DATATYPE::VARSTRING, DATATYPE::VARBINARY
+    DATATYPE::TIMESTAMP64, DATATYPE::TIMESTAMP64, DATATYPE::K_INT32, DATATYPE::K_INT16,
+    DATATYPE::K_INT64, DATATYPE::K_FLOAT, DATATYPE::K_DOUBLE,
+    DATATYPE::K_CHAR, DATATYPE::VARSTRING, DATATYPE::VARBINARY
   },
   // test case 6 (for MIN_EXTEND)
   {
-    DATATYPE::TIMESTAMP64, DATATYPE::TIMESTAMP64, DATATYPE::INT32, DATATYPE::INT16,
-    DATATYPE::INT64, DATATYPE::FLOAT, DATATYPE::DOUBLE,
-    DATATYPE::CHAR, DATATYPE::VARSTRING, DATATYPE::VARBINARY
+    DATATYPE::TIMESTAMP64, DATATYPE::TIMESTAMP64, DATATYPE::K_INT32, DATATYPE::K_INT16,
+    DATATYPE::K_INT64, DATATYPE::K_FLOAT, DATATYPE::K_DOUBLE,
+    DATATYPE::K_CHAR, DATATYPE::VARSTRING, DATATYPE::VARBINARY
   },
   // test case 7 (for heap access after freed)
   {
-    DATATYPE::TIMESTAMP64, DATATYPE::INT16
+    DATATYPE::TIMESTAMP64, DATATYPE::K_INT16
   }
 };
 
@@ -2169,7 +2172,7 @@ TEST_F(TestV2Iterator, aggregation) {
     bool is_finished = false;
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 1);
-    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), start_ts1 + 90);
+    ASSERT_EQ(KTimestampCast(res.data[0][0]->mem), start_ts1 + 90);
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 0);
 
@@ -2184,7 +2187,7 @@ TEST_F(TestV2Iterator, aggregation) {
     res.clear();
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 1);
-    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), start_ts1);
+    ASSERT_EQ(KTimestampCast(res.data[0][0]->mem), start_ts1);
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 0);
 
@@ -2199,7 +2202,7 @@ TEST_F(TestV2Iterator, aggregation) {
     res.clear();
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 1);
-    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), start_ts1 + 90);
+    ASSERT_EQ(KTimestampCast(res.data[0][0]->mem), start_ts1 + 90);
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 0);
 
@@ -2215,7 +2218,7 @@ TEST_F(TestV2Iterator, aggregation) {
     res.clear();
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 1);
-    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), start_ts1 + 90);
+    ASSERT_EQ(KTimestampCast(res.data[0][0]->mem), start_ts1 + 90);
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 0);
 
@@ -2307,7 +2310,7 @@ TEST_F(TestV2Iterator, blockfilter1) {
     bool is_finished = false;
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 3);
-    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), convertMSToPrecisionTS(start_ts, ts_col_type));
+    ASSERT_EQ(KTimestampCast(res.data[0][0]->mem), convertMSToPrecisionTS(start_ts, ts_col_type));
 
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 0);
@@ -2324,7 +2327,7 @@ TEST_F(TestV2Iterator, blockfilter1) {
     res.clear();
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 3);
-    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), convertMSToPrecisionTS(start_ts, ts_col_type));
+    ASSERT_EQ(KTimestampCast(res.data[0][0]->mem), convertMSToPrecisionTS(start_ts, ts_col_type));
 
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 0);
@@ -2405,7 +2408,7 @@ TEST_F(TestV2Iterator, multipleMinMax) {
     bool is_finished = false;
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
     ASSERT_EQ(count, 1);
-    ASSERT_EQ(KTimestamp(res.data[0][0]->mem), start_ts + 200);
+    ASSERT_EQ(KTimestampCast(res.data[0][0]->mem), start_ts + 200);
     ASSERT_EQ(KDouble64(res.data[4][0]->mem), 1.0);
     ASSERT_EQ(KInt32(res.data[5][0]->mem), 200);
     ASSERT_EQ(KDouble64(res.data[6][0]->mem), 1.0);

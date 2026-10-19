@@ -192,7 +192,9 @@ TEST(TestFaultInjection, FaultAbort) {
   ret = ProcInjectFault("active FAULT_FOR_FAULT_INJECTION_UT 2", oss);
   EXPECT_EQ(ret, 0);
   AbortFunction();  // haven't active
+#ifndef _WIN32
   EXPECT_DEATH(AbortFunction(), "");  // active now
+#endif
 }
 
 }  //  namespace kwdbts

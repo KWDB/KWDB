@@ -22,7 +22,7 @@ TsTableObject::~TsTableObject() {
 }
 
 int TsTableObject::open(const fs::path& table_path, const fs::path& absolute_file_path, int cc, int flags) {
-  int error_code = bt_file_.open(table_path, absolute_file_path, flags);
+  int error_code = bt_file_.open(table_path.string(), absolute_file_path.string(), flags);
   if (error_code < 0) {
     return error_code;
   }

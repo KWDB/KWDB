@@ -27,6 +27,7 @@ package sql
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"strings"
 
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
@@ -40,6 +41,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqltelemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/util/errorutil/unimplemented"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
+	"github.com/pkg/errors"
 )
 
 // MaxTSDBNameLength represents the maximum length of ts database name.
@@ -63,6 +65,9 @@ type createDatabaseNode struct {
 //	       mysql uses the mysqladmin command.
 func (p *planner) CreateDatabase(ctx context.Context, n *tree.CreateDatabase) (planNode, error) {
 	if n.EngineType == tree.EngineTypeTimeseries {
+		if runtime.GOOS == "windows" {
+			return nil, errors.New("timeseries engine is not supported on windows")
+		}
 		// check the validity of name.
 		if sqlbase.ContainsNonAlphaNumSymbol(n.Name.String()) {
 			return nil, sqlbase.NewTSNameInvalidError(n.Name.String())

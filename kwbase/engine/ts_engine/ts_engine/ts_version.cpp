@@ -46,6 +46,7 @@
 #include "ts_lru_block_cache.h"
 #include "ts_mem_segment_proxy.h"
 #include "ts_ts_lsn_span_utils.h"
+#include "ts_go_exported.h"
 
 namespace kwdbts {
 // static const int64_t interval = 3600 * 24 * 10;  // 10 days.
@@ -103,12 +104,12 @@ KStatus TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime, int64
     // TODO(zzr): optimization: create the directory only when flushing
     // this logic is only for deletion and will be removed later after optimize delete
     {
-      auto s = env_->DeleteDir(partition_dir);
+      auto s = env_->DeleteDir(partition_dir.string());
       if (s == FAIL) {
         LOG_ERROR("Partition directory already exists, but can not delete it: %s", partition_dir.string().c_str());
         return FAIL;
       }
-      s = env_->NewDirectory(partition_dir);
+      s = env_->NewDirectory(partition_dir.string());
       if (s == FAIL) {
         LOG_ERROR("can not create partition directory: %s", partition_dir.string().c_str());
         return FAIL;
@@ -117,7 +118,7 @@ KStatus TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime, int64
     LOG_INFO("Partition directory created: %s", partition_dir.string().c_str());
     partition->directory_created_ = true;
 
-    partition->del_info_ = std::make_shared<TsDelItemManager>(partition_dir);
+    partition->del_info_ = std::make_shared<TsDelItemManager>(partition_dir.string());
     KStatus s = partition->del_info_->Open();
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("Partition DelItemManager open failed: partition_dir[%s].", partition_dir.string().c_str());
@@ -133,19 +134,20 @@ KStatus TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime, int64
 }
 
 static KStatus TruncateFile(const fs::path& path, size_t size) {
-  int fd = open(path.c_str(), O_WRONLY);
+  int fd = open(path.string().c_str(), O_WRONLY);
   if (fd < 0) {
-    LOG_ERROR("can not open file: %s, reason: %s", path.c_str(), std::strerror(errno));
+    LOG_ERROR("can not open file: %s, reason: %s", path.string().c_str(), std::strerror(errno));
     return FAIL;
   }
 
   KStatus ret = SUCCESS;
   size_t actual_size = lseek(fd, 0, SEEK_END);
   if (actual_size > size) {
-    LOG_INFO("unexpected file size: %s, expected: %lu, actual: %lu, truncate it", path.c_str(), size, actual_size);
+    LOG_INFO("unexpected file size: %s, expected: %llu, actual: %llu, truncate it", path.string().c_str(), size,
+             actual_size);
     int ok = ftruncate(fd, size);
     if (ok != 0) {
-      LOG_ERROR("can not truncate file: %s, reason: %s", path.c_str(), std::strerror(errno));
+      LOG_ERROR("can not truncate file: %s, reason: %s", path.string().c_str(), std::strerror(errno));
       ret = FAIL;
     }
   }
@@ -165,7 +167,7 @@ KStatus TsVersionManager::Recover(bool force_recover) {
     auto update_path = root_path_ / VersionUpdateName(log_file_number);
     {
       std::unique_ptr<TsAppendOnlyFile> current_file;
-      s = env_->NewAppendOnlyFile(current_path, &current_file);
+      s = env_->NewAppendOnlyFile(current_path.string(), &current_file);
       if (s == FAIL) {
         LOG_ERROR("can not create current version file");
         return FAIL;
@@ -177,7 +179,7 @@ KStatus TsVersionManager::Recover(bool force_recover) {
       }
     }
     std::unique_ptr<TsAppendOnlyFile> update_log_file;
-    s = env_->NewAppendOnlyFile(update_path, &update_log_file);
+    s = env_->NewAppendOnlyFile(update_path.string(), &update_log_file);
     if (s == FAIL) {
       LOG_ERROR("can not create update log file");
       return FAIL;
@@ -190,7 +192,7 @@ KStatus TsVersionManager::Recover(bool force_recover) {
 
   // Database exists, recover from current version
   std::unique_ptr<TsRandomReadFile> rfile;
-  s = env_->NewRandomReadFile(root_path_ / CurrentVersionName(), &rfile);
+  s = env_->NewRandomReadFile((root_path_ / CurrentVersionName()).string(), &rfile);
   if (s == FAIL) {
     LOG_ERROR("can not open current version file");
     return FAIL;
@@ -222,7 +224,7 @@ KStatus TsVersionManager::Recover(bool force_recover) {
 
     next_logfile_number = std::stoull(res.str(1)) + 1;
     std::unique_ptr<TsSequentialReadFile> log_file;
-    s = env_->NewSequentialReadFile(root_path_ / log_filename, &log_file);
+    s = env_->NewSequentialReadFile((root_path_ / log_filename).string(), &log_file);
     if (s == FAIL) {
       LOG_ERROR("can not open update log file");
       return FAIL;
@@ -233,8 +235,8 @@ KStatus TsVersionManager::Recover(bool force_recover) {
   // construct a new logger_
   {
     std::unique_ptr<TsAppendOnlyFile> new_log_file;
-    s =
-        env_->NewAppendOnlyFile(root_path_ / VersionUpdateName(next_logfile_number), &new_log_file, true /*overwrite*/);
+    s = env_->NewAppendOnlyFile((root_path_ / VersionUpdateName(next_logfile_number)).string(), &new_log_file,
+                                true /*overwrite*/);
     if (s == FAIL) {
       LOG_ERROR("can not create new update log file");
       return FAIL;
@@ -261,6 +263,9 @@ KStatus TsVersionManager::Recover(bool force_recover) {
     }
     builder.AddUpdate(update);
   } while (!eof);
+  // Close reader and rfile before rename to release file locks on Windows
+  reader.reset();
+  rfile.reset();
   TsVersionUpdate update;
   builder.Finalize(&update);
   assert(logger_ != nullptr);
@@ -269,6 +274,18 @@ KStatus TsVersionManager::Recover(bool force_recover) {
     int64_t interval = end - start;
     recorder_->RecordInterval(dbid, interval);
   }
+  // Truncate files BEFORE ApplyUpdate to avoid Windows file locks
+  for (const auto &par_id : update.partitions_created_) {
+    auto root = root_path_ / PartitionDirName(par_id);
+    auto it = update.entity_segment_.find(par_id);
+    if (it != update.entity_segment_.end()) {
+      auto &info = it->second;
+      TruncateFile(root / BlockHeaderFileName(info.header_b_info.file_number), info.header_b_info.length);
+      TruncateFile(root / DataBlockFileName(info.datablock_info.file_number), info.datablock_info.length);
+      TruncateFile(root / EntityAggFileName(info.agg_info.file_number), info.agg_info.length);
+    }
+  }
+
   s = ApplyUpdate(&update, force_recover);
   LOG_INFO("recovered update: %s", update.DebugStr().c_str());
   if (s == FAIL) {
@@ -278,7 +295,8 @@ KStatus TsVersionManager::Recover(bool force_recover) {
   // safe write to current file
   {
     std::unique_ptr<TsAppendOnlyFile> tmp_current_file;
-    s = env_->NewAppendOnlyFile(root_path_ / TempFileName(CurrentVersionName()), &tmp_current_file, true /*overwrite*/);
+    s = env_->NewAppendOnlyFile((root_path_ / TempFileName(CurrentVersionName())).string(), &tmp_current_file,
+                                true /*overwrite*/);
     if (s == FAIL) {
       LOG_ERROR("can not create temp current version file");
       return FAIL;
@@ -290,7 +308,10 @@ KStatus TsVersionManager::Recover(bool force_recover) {
     }
     tmp_current_file.reset();
     std::error_code ec;
-    fs::rename(root_path_ / TempFileName(CurrentVersionName()), root_path_ / CurrentVersionName(), ec);
+    // On Windows, fs::rename may fail if the target file exists.
+    // Remove the target first, then rename.
+    fs::remove(root_path_ / CurrentVersionName(), ec);
+    fs::rename((root_path_ / TempFileName(CurrentVersionName())).string(), root_path_ / CurrentVersionName(), ec);
     if (ec.value() != 0) {
       LOG_ERROR("can not rename temp current version file, reason: %s", ec.message().c_str());
       return FAIL;
@@ -298,8 +319,8 @@ KStatus TsVersionManager::Recover(bool force_recover) {
 
     // the older log file is no longer needed, delete it
     // no need to check return value
-    auto log_path = root_path_ / log_filename;
-    s = env_->DeleteFile(root_path_ / log_filename);
+    auto log_path = (root_path_ / log_filename).string();
+    s = env_->DeleteFile((root_path_ / log_filename).string());
     if (s == FAIL) {
       // it's ok if the delete failed, it's just a cleanup
       LOG_WARN("can not delete old update log file: %s", log_path.c_str());
@@ -316,7 +337,7 @@ KStatus TsVersionManager::Recover(bool force_recover) {
     std::error_code ec;
     fs::directory_iterator iter{root_path_, ec};
     if (ec.value() != 0) {
-      LOG_ERROR("cannot iterate directory %s, reason: %s", root_path_.c_str(), ec.message().c_str());
+      LOG_ERROR("cannot iterate directory %s, reason: %s", root_path_.string().c_str(), ec.message().c_str());
       return FAIL;
     }
     for (auto const &dir_entry : iter) {
@@ -326,7 +347,7 @@ KStatus TsVersionManager::Recover(bool force_recover) {
       const fs::path& path{dir_entry};
       if (partition_name.find(path.filename()) == partition_name.end()) {
         LOG_INFO("unexpected partition directory: %s, remove it", path.c_str());
-        s = env_->DeleteDir(path);
+        s = env_->DeleteDir(path.string());
         if (s == FAIL) {
           return s;
         }
@@ -381,15 +402,15 @@ KStatus TsVersionManager::Recover(bool force_recover) {
       std::error_code ec;
       fs::directory_iterator iter{root, ec};
       if (ec.value() != 0) {
-        LOG_ERROR("cannot iterate directory %s, reason: %s", root.c_str(), ec.message().c_str());
+        LOG_ERROR("cannot iterate directory %s, reason: %s", root.string().c_str(), ec.message().c_str());
         return FAIL;
       }
 
       for (auto const &dir_entry : iter) {
         const fs::path& p{dir_entry};
         if (expected.find(p.filename()) == expected.end()) {
-          LOG_INFO("unexpected file: %s, remove it", p.c_str());
-          s = env_->DeleteFile(p);
+          LOG_INFO("unexpected file: %s, remove it", p.string().c_str());
+          s = env_->DeleteFile(p.string());
           if (s == FAIL) {
             return s;
           }
@@ -470,7 +491,7 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update, bool force_apply)
       }
       auto partition_dir = root_path_ / PartitionDirName(p);
       auto partition = std::unique_ptr<TsPartitionVersion>(new TsPartitionVersion{partition_dir, p});
-      partition->del_info_ = std::make_shared<TsDelItemManager>(partition_dir);
+      partition->del_info_ = std::make_shared<TsDelItemManager>(partition_dir.string());
       partition->del_info_->Open();
       // partition->meta_info_ = std::make_shared<TsPartitionEntityMetaManager>(root_path_ / PartitionDirName(p));
       // partition->meta_info_->Open();
@@ -536,7 +557,7 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update, bool force_apply)
         for (auto meta : it->second) {
           std::unique_ptr<TsRandomReadFile> rfile;
           auto filepath = partition_dir / LastSegmentFileName(meta.file_number);
-          auto s = last_segment_env_->NewRandomReadFile(filepath, &rfile);
+          auto s = last_segment_env_->NewRandomReadFile(filepath.string(), &rfile);
           if (s == FAIL && !force_apply) {
             return FAIL;
           }
@@ -567,7 +588,7 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update, bool force_apply)
     // Process entity segment update, used by Compact()
     auto it = update->entity_segment_.find(par_id);
     if (it != update->entity_segment_.end()) {
-      std::string root = root_path_ / PartitionDirName(par_id);
+      std::string root = (root_path_ / PartitionDirName(par_id)).string();
       uint64_t prev_block_num = 0;
       if (new_partition_version->entity_segment_) {
         new_partition_version->entity_segment_->MarkDeleteEntityHeader();
@@ -589,7 +610,7 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update, bool force_apply)
     {
       auto count_meta = update->count_flush_infos_.find(par_id);
       if (count_meta != update->count_flush_infos_.end()) {
-        std::string count_path = partition_dir / CountStatFileName(count_meta->second.file_number);
+        std::string count_path = (partition_dir / CountStatFileName(count_meta->second.file_number)).string();
         auto new_count_file = std::make_shared<TsPartitionEntityCountManager>(count_path);
         switch (update->count_stats_status_) {
           case CountStatsStatus::FlushImmOrWriteBatch: {
@@ -685,7 +706,7 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update, bool force_apply)
     {
       auto agg_meta = update->new_agg_files_.find(par_id);
       if (agg_meta != update->new_agg_files_.end()) {
-        std::string agg_path = partition_dir / AggFileName(agg_meta->second);
+        std::string agg_path = (partition_dir / AggFileName(agg_meta->second)).string();
         TsIOEnv* env = &TsIOEnv::GetInstance();
         auto new_agg_file = std::make_shared<TsPartitionAggReader>(env, agg_path);
         auto s = new_agg_file->Open();
@@ -1029,7 +1050,7 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path, T
   for (const auto& entry : dir_iter) {
     std::error_code file_ec;
     if (fs::is_regular_file(entry, file_ec) && !file_ec && entry.path().filename() != DEL_FILE_NAME) {
-      auto mtime = ModifyTime(entry.path());
+      auto mtime = ModifyTime(entry.path().string());
       if (!has_files || mtime > latest_mtime) {
         latest_mtime = mtime;
         has_files = true;
@@ -1037,7 +1058,7 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path, T
     }
   }
   if (!has_files) {
-    LOG_WARN("No regular files found in directory [%s]", root_path.c_str());
+    LOG_WARN("No regular files found in directory [%s]", root_path.string().c_str());
     return SUCCESS;
   }
   auto now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
@@ -1079,11 +1100,13 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path, T
       }
 
       if (force) {
-        auto is_exist = checkTableMetaExist == nullptr ? false : checkTableMetaExist(entity_item.table_id);
+#ifndef WITH_TESTS
+        auto is_exist = CheckTableMetaExist(entity_item.table_id);
         if (!is_exist) {
           need_vacuum = true;
           return SUCCESS;
         }
+#endif
         // CheckDeviceContinuity
         std::vector<TsEntitySegmentBlockItemWithData> block_datas;
         s = entity_segment_->GetAllBlockItems(entity_id, &block_datas);
@@ -1218,7 +1241,7 @@ KStatus TsPartitionVersion::CheckPartitionAggMTime(bool& need_calc) const {
   for (const auto& entry : dir_iter) {
     std::error_code file_ec;
     if (fs::is_regular_file(entry, file_ec) && !file_ec && entry.path().filename() != DEL_FILE_NAME) {
-      auto mtime = ModifyTime(entry.path());
+      auto mtime = ModifyTime(entry.path().string());
       if (!has_files || mtime > latest_mtime) {
         latest_mtime = mtime;
         has_files = true;

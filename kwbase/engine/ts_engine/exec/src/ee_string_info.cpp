@@ -10,7 +10,11 @@
 // See the Mulan PSL v2 for more details.
 #include "ee_string_info.h"
 
+#ifdef _WIN32
+#include <winsock2.h>
+#else
 #include <netinet/in.h>
+#endif
 #include <cstdlib>
 #include <cstring>
 

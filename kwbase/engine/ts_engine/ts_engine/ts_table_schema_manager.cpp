@@ -16,6 +16,7 @@
 #include "sys_utils.h"
 #include "column_utils.h"
 #include "ts_partition_interval_recorder.h"
+#include "ts_go_exported.h"
 
 namespace kwdbts {
 inline string IdToSchemaFileName(const KTableKey& table_id, uint32_t ts_version) {
@@ -220,7 +221,7 @@ void TsTableSchemaManager::ReleaseOwnedSchemaResources() {
 TsTableSchemaManager::~TsTableSchemaManager() {
   if (dropped_) {
     ReleaseOwnedSchemaResources();
-    if (!Remove(table_path_)) {
+    if (!Remove(table_path_.string())) {
       LOG_WARN("remove dropped table path [%s] failed", table_path_.string().c_str());
     } else {
       LOG_INFO("Drop table %lu succeeded", table_id_);
@@ -233,12 +234,12 @@ bool TsTableSchemaManager::IsSchemaDirsExist() {
 }
 
 KStatus TsTableSchemaManager::Init() {
-  tag_table_ = std::make_shared<TagTable>(table_path_, tag_path_, table_id_, 1);
+  tag_table_ = std::make_shared<TagTable>(table_path_.string(), tag_path_.string(), table_id_, 1);
   ErrorInfo err_info;
   std::vector<TableVersion> invalid_tag_versions;
   if (tag_table_->open(invalid_tag_versions, err_info) < 0) {
     LOG_ERROR("failed to open the tag table %s%lu, error: %s",
-              tag_path_.c_str(), table_id_, err_info.errmsg.c_str());
+              tag_path_.string().c_str(), table_id_, err_info.errmsg.c_str());
   }
 
   uint32_t tag_cur_version = tag_table_->GetTagTableVersionManager()->GetCurrentTableVersion();
@@ -350,10 +351,10 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
   }
 
   if (tag_table_ == nullptr || tag_table_->GetTagTableVersionManager()->GetCurrentTableVersion() == 0) {
-    tag_table_ = std::make_shared<TagTable>(table_path_, tag_path_, table_id_, 1);
+    tag_table_ = std::make_shared<TagTable>(table_path_.string(), tag_path_.string(), table_id_, 1);
     if (tag_table_->create(tag_schema, ts_version, idx_info, err_info, sparse_table_) < 0) {
       LOG_ERROR("failed to create the tag table [%lu] %s, error: %s",
-                table_id_, tag_path_.c_str(), err_info.errmsg.c_str());
+                table_id_, tag_path_.string().c_str(), err_info.errmsg.c_str());
       return FAIL;
     }
   } else {
@@ -465,12 +466,15 @@ KStatus TsTableSchemaManager::parseMetaToSchema(roachpb::CreateTsTable* meta,
 }
 
 KStatus TsTableSchemaManager::removeTagVersion(uint32_t version) {
+#ifdef WITH_TESTS
+  return SUCCESS;
+#endif
   char* error = nullptr;
   size_t data_len = 0;
-  char* data = getTableMetaByVersion(table_id_, version, &data_len, &error);
+  char* data = GetTableMetaByVersion(table_id_, version, &data_len, &error);
   Defer defer{[&]() { free(data); }};
   if (error != nullptr) {
-    LOG_ERROR("getTableMetaByVersion failed. table id %lu, version %u, msg: %s", table_id_, version, error);
+    LOG_ERROR("GetTableMetaByVersion failed. table id %lu, version %u, msg: %s", table_id_, version, error);
     free(error);
     return FAIL;
   }
@@ -634,25 +638,25 @@ KStatus TsTableSchemaManager::parseAttrInfo(const roachpb::KWDBKTSColumn& col, A
       attr_info.max_len = 9;
       break;
     case roachpb::SMALLINT:
-      attr_info.type = DATATYPE::INT16;
+      attr_info.type = DATATYPE::K_INT16;
       break;
     case roachpb::INT:
-      attr_info.type = DATATYPE::INT32;
+      attr_info.type = DATATYPE::K_INT32;
       break;
     case roachpb::BIGINT:
-      attr_info.type = DATATYPE::INT64;
+      attr_info.type = DATATYPE::K_INT64;
       break;
     case roachpb::FLOAT:
-      attr_info.type = DATATYPE::FLOAT;
+      attr_info.type = DATATYPE::K_FLOAT;
       break;
     case roachpb::DOUBLE:
-      attr_info.type = DATATYPE::DOUBLE;
+      attr_info.type = DATATYPE::K_DOUBLE;
       break;
     case roachpb::BOOL:
-      attr_info.type = DATATYPE::BYTE;
+      attr_info.type = DATATYPE::K_BYTE;
       break;
     case roachpb::CHAR:
-      attr_info.type = DATATYPE::CHAR;
+      attr_info.type = DATATYPE::K_CHAR;
       attr_info.max_len = col.storage_len();
       break;
     case roachpb::BINARY:

@@ -10,11 +10,20 @@
 // See the Mulan PSL v2 for more details.
 #include "cm_assert.h"
 
-#include <execinfo.h>
 #include <stdlib.h>
 #include <time.h>
 #include <stdio.h>
 #include <mutex>
+
+#ifdef OS_LINUX
+#include <execinfo.h>
+#endif
+
+#ifdef OS_WIN32
+#include <windows.h>
+#include <dbghelp.h>
+#endif
+
 #include "cm_func.h"
 #include "cm_kwdb_context.h"
 
@@ -27,6 +36,7 @@ kwdbContext_p g_kwdb_context = &_ctx;
 
 /* dump call stack to a file */
 void dumpCallStack(FILE* file) {
+#ifdef OS_LINUX
   void *frames[MAX_STACK_TRACE_SIZE];
   int num_traces;
   char **traces;
@@ -42,6 +52,50 @@ void dumpCallStack(FILE* file) {
     printf("--End of Call Stack--\n\n");
   }
   free(traces);
+#elif defined(OS_WIN32)
+  // Windows implementation using CaptureStackBackTrace and SymFromAddr
+  const int MAX_FRAMES = 64;
+  void* frames[MAX_FRAMES];
+  USHORT numFrames = CaptureStackBackTrace(0, MAX_FRAMES, frames, NULL);
+
+  HANDLE hProcess = GetCurrentProcess();
+  // Ensure symbol handler is initialized
+  static bool symInitialized = false;
+  if (!symInitialized) {
+    SymSetOptions(SYMOPT_DEFERRED_LOADS | SYMOPT_LOAD_LINES);
+    SymInitialize(hProcess, NULL, TRUE);
+    symInitialized = true;
+  }
+
+  char symbol_buffer[sizeof(SYMBOL_INFO) + MAX_SYM_NAME * sizeof(TCHAR)];
+  SYMBOL_INFO* symbol = reinterpret_cast<SYMBOL_INFO*>(symbol_buffer);
+  symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+  symbol->MaxNameLen = MAX_SYM_NAME;
+
+  for (USHORT i = 0; i < numFrames; i++) {
+    DWORD64 displacement = 0;
+    if (SymFromAddr(hProcess, reinterpret_cast<DWORD64>(frames[i]),
+                    &displacement, symbol)) {
+      char undecorated[MAX_SYM_NAME];
+      if (UnDecorateSymbolName(symbol->Name, undecorated, MAX_SYM_NAME, UNDNAME_COMPLETE)) {
+        fprintf(file, "#%u %s+0x%llx [%p]\n", i, undecorated,
+                static_cast<unsigned long long>(displacement), frames[i]);
+        printf("#%u %s+0x%llx [%p]\n", i, undecorated,
+               static_cast<unsigned long long>(displacement), frames[i]);
+      } else {
+        fprintf(file, "#%u %s+0x%llx [%p]\n", i, symbol->Name,
+                static_cast<unsigned long long>(displacement), frames[i]);
+        printf("#%u %s+0x%llx [%p]\n", i, symbol->Name,
+               static_cast<unsigned long long>(displacement), frames[i]);
+      }
+    } else {
+      fprintf(file, "#%u [0x%p]\n", i, frames[i]);
+      printf("#%u [0x%p]\n", i, frames[i]);
+    }
+  }
+  fprintf(file, "--End of Call Stack--\n\n");
+  printf("--End of Call Stack--\n\n");
+#endif
 }
 
 // Print an error message
@@ -68,7 +122,11 @@ void dumpAssertContext(  //  KContextP ctx,
   char time_buffer[32];
   struct tm curr_time_info;
   curr_time = time(NULL);
+#ifdef OS_LINUX
   localtime_r(&curr_time, &curr_time_info);
+#elif defined(OS_WIN32)
+  localtime_s(&curr_time_info, &curr_time);
+#endif
   strftime(time_buffer, 32, "%Y-%m-%d %H:%M:%S", &curr_time_info);
   fprintf(file, "\n%s:\n", time_buffer);
   printf("\n%s:\n", time_buffer);

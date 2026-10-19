@@ -17,8 +17,6 @@
 #include <string>
 #include "kwdb_type.h"
 
-using namespace std;
-
 namespace kwdbts {
 /************************ KWDB widely useful constants ************************/
 // similar to NULL for a pointer
@@ -49,17 +47,17 @@ const k_float64 kFloat64Max = 1.7976931348623158e+308;
 const k_float64 kFloat64Min = 2.2250738585072014e-308;
 
 
-const static string& s_emptyString = "";
-const static string& s_NULL = "NULL";
-const static string& s_true = "true";
-const static string& s_false = "false";
-const static string& s_deletable = "_d";
-const static string& s_bt = ".bt";
-const static string& s_kaiwudb = "kaiwudb";
-const static string& s_row = "row";
-const static string& s_inf = "inf";
-const static string& s_n_inf = "-inf";
-const static string& s_default = "default";
+const static std::string& s_emptyString = "";
+const static std::string& s_NULL = "NULL";
+const static std::string& s_true = "true";
+const static std::string& s_false = "false";
+const static std::string& s_deletable = "_d";
+const static std::string& s_bt = ".bt";
+const static std::string& s_kaiwudb = "kaiwudb";
+const static std::string& s_row = "row";
+const static std::string& s_inf = "inf";
+const static std::string& s_n_inf = "-inf";
+const static std::string& s_default = "default";
 
 }  // namespace kwdbts
 

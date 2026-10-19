@@ -16,8 +16,10 @@
 #include <unistd.h>
 #include <string.h>
 #include <gtest/gtest.h>
+#ifndef _WIN32
 #include <sys/statfs.h>
 #include <linux/magic.h>
+#endif
 #include <cassert>
 #include <cstdint>
 #include <iostream>
@@ -62,6 +64,9 @@ int IsDbNameValid(const string& db) {
   return 0;
 }
 
+#ifdef _WIN32
+#undef RemoveDirectory
+#endif
 bool RemoveDirectory(const char* path) {
   DIR* dir = opendir(path);
   if (dir == nullptr) {
@@ -268,7 +273,7 @@ void GenPayloadTagData(Payload& payload, std::vector<AttributeInfo>& tag_schema,
     if (tag_schema[i].isAttrType(COL_PRIMARY_TAG)) {
        switch (tag_schema[i].type) {
          case DATATYPE::TIMESTAMP64:
-             KTimestamp(primary_start_ptr) = start_ts;
+             KTimestampCast(primary_start_ptr) = start_ts;
              primary_start_ptr +=tag_schema[i].size;
            break;
          default:
@@ -278,7 +283,7 @@ void GenPayloadTagData(Payload& payload, std::vector<AttributeInfo>& tag_schema,
     // generating other tags
     switch (tag_schema[i].type) {
       case DATATYPE::TIMESTAMP64:
-          KTimestamp(tag_data_start_ptr) = start_ts;
+          KTimestampCast(tag_data_start_ptr) = start_ts;
           tag_data_start_ptr += tag_schema[i].size;
         break;
       default:
@@ -353,16 +358,16 @@ TSSlice GenSomePayloadData(kwdbContext_p ctx, k_uint32 count, KTimestamp start_t
     switch (schema[i].type) {
       case DATATYPE::TIMESTAMP64:
         for (int j = 0; j < count; j++) {
-          KTimestamp(p.GetColumnAddr(j, i)) = start_ts;
+          KTimestampCast(p.GetColumnAddr(j, i)) = start_ts;
           start_ts += ms_interval;
         }
         break;
-      case DATATYPE::INT64:
+      case DATATYPE::K_INT64:
         for (int j = 0; j < count; j++) {
           KInt64(p.GetColumnAddr(j, i)) = 333333;
         }
         break;
-      case DATATYPE::DOUBLE:
+      case DATATYPE::K_DOUBLE:
         for (int j = 0; j < count; j++) {
           KDouble64(p.GetColumnAddr(j, i)) = 55.555;
         }
@@ -443,27 +448,27 @@ TSSlice GenRowPayload(const std::vector<AttributeInfo>& metric, const std::vecto
           builder.SetColumnValue(i, j, (char*)(&cur_ts), sizeof(cur_ts));
           break;
         }
-        case DATATYPE::INT16: {
+        case DATATYPE::K_INT16: {
           int data = GetRandomNumber(100);
           builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
           break;
         }
-        case DATATYPE::INT32: {
+        case DATATYPE::K_INT32: {
           int data = GetRandomNumber(1024);
           builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
           break;
         }
-        case DATATYPE::INT64: {
+        case DATATYPE::K_INT64: {
           int data = GetRandomNumber(10240);
           builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
           break;
         }
-        case DATATYPE::FLOAT: {
+        case DATATYPE::K_FLOAT: {
           float data = GetRandomNumber(1024 * 1024);
           builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
           break;
         }
-        case DATATYPE::DOUBLE: {
+        case DATATYPE::K_DOUBLE: {
           double data = GetRandomNumber(1024 * 1024);
           builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
           break;
@@ -512,22 +517,22 @@ TSSlice GenRowPayloadForSumOverflow(const std::vector<AttributeInfo>& metric, co
           builder.SetColumnValue(i, j, (char*)(&cur_ts), sizeof(cur_ts));
           break;
         }
-        case DATATYPE::INT16: {
+        case DATATYPE::K_INT16: {
           int16_t data = INT16_MAX;
           builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
           break;
         }
-        case DATATYPE::INT32: {
+        case DATATYPE::K_INT32: {
           int32_t data = INT32_MAX;
           builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
           break;
         }
-        case DATATYPE::INT64: {
+        case DATATYPE::K_INT64: {
           int64_t data = INT64_MAX;
           builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
           break;
         }
-        case DATATYPE::FLOAT: {
+        case DATATYPE::K_FLOAT: {
           float data = numeric_limits<float>::max();
           builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
           break;
@@ -571,7 +576,7 @@ TSSlice GenRowPayload(const std::vector<AttributeInfo>& metric, const std::vecto
           builder.SetColumnValue(i, j, (char*)(&ts[i]), sizeof(timestamp64));
           break;
         }
-        case DATATYPE::INT32: {
+        case DATATYPE::K_INT32: {
           if (col1_is_null[i]) {
             builder.SetColumnNull(i, j);
           } else {
@@ -580,7 +585,7 @@ TSSlice GenRowPayload(const std::vector<AttributeInfo>& metric, const std::vecto
           }
           break;
         }
-        case DATATYPE::DOUBLE: {
+        case DATATYPE::K_DOUBLE: {
           if (col2_is_null[i]) {
             builder.SetColumnNull(i, j);
           } else {
@@ -670,7 +675,7 @@ KStatus InsertData(const std::vector<AttributeInfo>& metric, const std::vector<T
             builder.SetColumnValue(j, k, (char*)(&ts), sizeof(timestamp64));
             break;
           }
-          case DATATYPE::INT16: {
+          case DATATYPE::K_INT16: {
             if (metric_data[i][j][k] == "<NULL>") {
               builder.SetColumnNull(j, k);
             } else {
@@ -679,7 +684,7 @@ KStatus InsertData(const std::vector<AttributeInfo>& metric, const std::vector<T
             }
             break;
           }
-          case DATATYPE::INT32: {
+          case DATATYPE::K_INT32: {
             if (metric_data[i][j][k] == "<NULL>") {
               builder.SetColumnNull(j, k);
             } else {
@@ -688,7 +693,7 @@ KStatus InsertData(const std::vector<AttributeInfo>& metric, const std::vector<T
             }
             break;
           }
-          case DATATYPE::INT64: {
+          case DATATYPE::K_INT64: {
             if (metric_data[i][j][k] == "<NULL>") {
               builder.SetColumnNull(j, k);
             } else {
@@ -697,7 +702,7 @@ KStatus InsertData(const std::vector<AttributeInfo>& metric, const std::vector<T
             }
             break;
           }
-          case DATATYPE::FLOAT: {
+          case DATATYPE::K_FLOAT: {
             if (metric_data[i][j][k] == "<NULL>") {
               builder.SetColumnNull(j, k);
             } else {
@@ -706,7 +711,7 @@ KStatus InsertData(const std::vector<AttributeInfo>& metric, const std::vector<T
             }
             break;
           }
-          case DATATYPE::DOUBLE: {
+          case DATATYPE::K_DOUBLE: {
             if (metric_data[i][j][k] == "<NULL>") {
               builder.SetColumnNull(j, k);
             } else {
@@ -715,7 +720,7 @@ KStatus InsertData(const std::vector<AttributeInfo>& metric, const std::vector<T
             }
             break;
           }
-          case DATATYPE::CHAR: {
+          case DATATYPE::K_CHAR: {
             if (metric_data[i][j][k] == "<NULL>") {
               builder.SetColumnNull(j, k);
             } else {

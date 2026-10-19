@@ -26,7 +26,9 @@
 #include "settings.h"
 #include "cm_kwdb_context.h"
 #include "ts_table.h"
+#ifndef _WIN32
 #include "br_mgr.h"
+#endif
 #include "ts_table_schema_manager.h"
 
 using namespace kwdbts; // NOLINT

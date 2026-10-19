@@ -31,6 +31,22 @@ package timeseries
 // #include <stdlib.h>
 // #include <string.h>
 // #include <libkwdbts2.h>
+//
+// // C bridge for libkwdbts2 weak symbols (isCanceledCtx / goGetTzOffset).
+// // Go exports the *Cb names; without this bridge the weak symbols stay
+// // undefined (address 0) and vacuum's cancel check SIGSEGVs on Linux.
+// // On Windows/MinGW, Go's //export also cannot use the original names
+// // (PE symbol type mismatch: function vs data with DLL .refptr).
+// extern bool goIsCanceledCtxCb(uint64_t goCtxPtr);
+// extern bool goGetTzOffsetCb(int64_t utc_sec, char* tz_name,
+//                             int32_t* offset_sec, char* abbrev, int abbrev_len);
+// bool isCanceledCtx(uint64_t goCtxPtr) {
+//     return goIsCanceledCtxCb(goCtxPtr);
+// }
+// bool goGetTzOffset(int64_t utc_sec, char* tz_name,
+//                    int32_t* offset_sec, char* abbrev, int abbrev_len) {
+//     return goGetTzOffsetCb(utc_sec, tz_name, offset_sec, abbrev, abbrev_len);
+// }
 import "C"
 import (
 	"bytes"
@@ -372,8 +388,8 @@ var SQLTimeseriesTrace = settings.RegisterStringSetting(
 	"",
 )
 
-//export isCanceledCtx
-func isCanceledCtx(goCtxPtr C.uint64_t) C.bool {
+//export goIsCanceledCtxCb
+func goIsCanceledCtxCb(goCtxPtr C.uint64_t) C.bool {
 	ctx, ok := loadGoContextHandle(uint64(goCtxPtr))
 	if !ok || ctx == nil {
 		return C.bool(false)
@@ -423,11 +439,11 @@ func loadGoContextHandle(handle uint64) (context.Context, bool) {
 // tzCache caches time.Location objects for performance
 var tzCache sync.Map // map[string]*time.Location
 
-// goGetTzOffset returns the timezone offset for a specific UTC timestamp (supports DST)
+// goGetTzOffsetCb returns the timezone offset for a specific UTC timestamp (supports DST)
 // Returns true on success, false on failure (caller should fallback to default offset)
 //
-//export goGetTzOffset
-func goGetTzOffset(
+//export goGetTzOffsetCb
+func goGetTzOffsetCb(
 	utcSec C.int64_t, tzName *C.char, offsetSec *C.int32_t, abbrev *C.char, abbrevLen C.int,
 ) C.bool {
 	tzNameStr := C.GoString(tzName)
@@ -517,8 +533,8 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 	traceLevelBytes := []byte(traceLevel)
 	optLog := C.TsLogOptions{
 		Dir:                       goToTSSlice(logDir),
-		LogFileMaxSize:            C.long(r.cfg.LogCfg.LogFileMaxSize),
-		LogFilesCombinedMaxSize:   C.long(r.cfg.LogCfg.LogFilesCombinedMaxSize),
+		LogFileMaxSize:            C.int64_t(r.cfg.LogCfg.LogFileMaxSize),
+		LogFilesCombinedMaxSize:   C.int64_t(r.cfg.LogCfg.LogFilesCombinedMaxSize),
 		LogFileVerbosityThreshold: C.LgSeverity(r.cfg.LogCfg.LogFileVerbosityThreshold),
 		Trace_on_off_list:         goToTSSlice(traceLevelBytes),
 	}
@@ -1491,7 +1507,7 @@ func (r *TsEngine) tsVectorizedExecute(
 			}
 			coli := rev.Column[i]
 			colData := (*C.TsColumnData)(unsafe.Pointer(uintptr(unsafe.Pointer(retInfo.vectorize_data.column_data_)) + uintptr(i)*unsafe.Sizeof(*(retInfo.vectorize_data.column_data_))))
-			length := C.ulong(rev.DataCount) * C.ulong(coli.FixedLen)
+			length := C.size_t(rev.DataCount) * C.size_t(coli.FixedLen)
 			nullBit := C.GoBytes(unsafe.Pointer(colData.bitmap_ptr_), C.int(rev.BitmapSize))
 			for k := range nullBit {
 				nullBit[k] ^= 0xff

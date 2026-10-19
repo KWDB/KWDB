@@ -115,7 +115,7 @@ inline size_t GetBlockAggValueSize(const std::vector<AttributeInfo>& attrs, uint
 }
 
 inline bool IsBlockAggCountOnlyType(DATATYPE type) {
-  return isVarLenType(type) || type == DATATYPE::CHAR || type == DATATYPE::BINARY || type == DATATYPE::STRING;
+  return isVarLenType(type) || type == DATATYPE::K_CHAR || type == DATATYPE::BINARY || type == DATATYPE::STRING;
 }
 
 inline size_t GetFixedBlockAggColumnSize(const std::vector<AttributeInfo>& attrs, uint32_t col_idx) {

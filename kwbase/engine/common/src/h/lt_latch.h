@@ -17,6 +17,14 @@
 #include <thread>
 // #include "ts_common.h"
 
+#ifdef OS_LINUX
+#include <pthread.h>
+#endif
+
+#ifdef OS_WIN32
+#include <pthread.h>
+#endif
+
 #define likely(cond) __builtin_expect(!!(cond), 1)
 #define unlikely(cond) __builtin_expect(!!(cond), 0)
 

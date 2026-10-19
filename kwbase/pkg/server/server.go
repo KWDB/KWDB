@@ -31,6 +31,19 @@ package server
 //
 // #include <stdlib.h>
 // #include <libkwdbts2.h>
+// // On Windows/MinGW, Go's //export creates symbols that conflict with
+// // the DLL's .refptr references (PE symbol type mismatch: function vs data).
+// // We work around this by exporting Go callback functions with different names
+// // and providing C bridge functions with the original weak symbol names.
+// // The C bridge functions are compiled locally and won't conflict with DLL symbols.
+// extern int goFlushedImp();
+// extern int goPrepareFlushImp();
+// int goFlushed() {
+//     return goFlushedImp();
+// }
+// int goPrepareFlush() {
+//     return goPrepareFlushImp();
+// }
 import "C"
 import (
 	"compress/gzip"
@@ -1833,6 +1846,9 @@ func (s *Server) Start(ctx context.Context) error {
 	advAddrU := util.NewUnresolvedAddr("tcp", s.cfg.AdvertiseAddr)
 	advSQLAddrU := util.NewUnresolvedAddr("tcp", s.cfg.SQLAdvertiseAddr)
 	brpcAddrU := util.NewUnresolvedAddr("tcp", s.cfg.AdvertiseBrpcAddr)
+	if base.IsWindows() {
+		brpcAddrU = util.NewUnresolvedAddr("", "")
+	}
 	filtered := s.cfg.FilterGossipBootstrapResolvers(ctx, listenAddrU, advAddrU)
 	s.gossip.Start(advAddrU, filtered)
 	log.Event(ctx, "started gossip")
@@ -2681,6 +2697,9 @@ func (s *Server) startServeUI(
 }
 
 func (s *Server) checkBRPC(ctx context.Context) error {
+	if base.IsWindows() {
+		return nil
+	}
 	var err error
 	_, err = listen(ctx, &s.cfg.BRPCAddr, &s.cfg.AdvertiseBrpcAddr, "brpc")
 	if err != nil {
@@ -3221,8 +3240,8 @@ func (s *Server) RestfulLogout(ctx context.Context) error {
 	return nil
 }
 
-//export goPrepareFlush
-func goPrepareFlush() C.int {
+//export goPrepareFlushImp
+func goPrepareFlushImp() C.int {
 	ctx := context.Background()
 	log.VEventf(ctx, 3, "prepare flush")
 	if err := kvserver.SetTsPrepareFlushedIndexForAllReplicas(ctx); err != nil {
@@ -3232,8 +3251,8 @@ func goPrepareFlush() C.int {
 	return 0
 }
 
-//export goFlushed
-func goFlushed() C.int {
+//export goFlushedImp
+func goFlushedImp() C.int {
 	ctx := context.Background()
 	log.VEventf(ctx, 3, "set flushed")
 	if err := kvserver.SetTsFlushedIndexForAllReplicas(ctx); err != nil {

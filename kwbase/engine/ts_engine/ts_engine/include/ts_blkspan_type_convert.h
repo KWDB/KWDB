@@ -63,7 +63,7 @@ int convertStringToFixData(const char* src, char* dst, int src_len) {
   char* end_val = nullptr;
   const char* end = src + src_len;
   switch (to_type) {
-    case DATATYPE::INT16 : {
+    case DATATYPE::K_INT16 : {
       int32_t value = std::strtol(src, &end_val, 10);
       if (end_val < end && *end_val !='\0') {
         // data truncated
@@ -76,7 +76,7 @@ int convertStringToFixData(const char* src, char* dst, int src_len) {
       *reinterpret_cast<int16_t*>(dst) = static_cast<int16_t>(value);
       break;
     }
-    case DATATYPE::INT32 : {
+    case DATATYPE::K_INT32 : {
       int32_t value = std::strtol(src, &end_val, 10);
       if (end_val < end && *end_val !='\0') {
         // data truncated
@@ -89,7 +89,7 @@ int convertStringToFixData(const char* src, char* dst, int src_len) {
       *reinterpret_cast<int32_t*>(dst) = static_cast<int32_t>(value);
       break;
     }
-    case DATATYPE::INT64 : {
+    case DATATYPE::K_INT64 : {
       int64_t value;
       size_t end_pos = 0;
       try {
@@ -107,7 +107,7 @@ int convertStringToFixData(const char* src, char* dst, int src_len) {
       *reinterpret_cast<int64_t*>(dst) = value;
       break;
     }
-    case DATATYPE::FLOAT : {
+    case DATATYPE::K_FLOAT : {
       float value = std::strtof(src, &end_val);
       if (end_val < end && *end_val !='\0') {
         // data truncated
@@ -120,7 +120,7 @@ int convertStringToFixData(const char* src, char* dst, int src_len) {
       *reinterpret_cast<float*>(dst) = value;
       break;
     }
-    case DATATYPE::DOUBLE : {
+    case DATATYPE::K_DOUBLE : {
       double value = std::strtod(src, &end_val);
       if (end_val < end && *end_val !='\0') {
         // data truncated

@@ -337,11 +337,11 @@ TEST_F(TsEngineV2Test, LoadVGroupCfgTest) {
     EXPECT_EQ(valid_cfg.size(), EngineOptions::vgroup_max_num);
     // Verify each vgroup configuration (Note: paths are normalized, removing ./ prefix)
     for (int i = 1; i <= EngineOptions::vgroup_max_num; i++) {
-      std::string expected_path = "tsdb/valid_vg" + std::to_string(i);
+      std::string expected_path = "tsdb" + std::string(1, fs::path::preferred_separator) + "valid_vg" + std::to_string(i);
       EXPECT_EQ(valid_cfg[i], expected_path);
     }
     // Cleanup
-    Remove(valid_cfg_path);
+    Remove(valid_cfg_path.string());
     for (int i = 1; i <= EngineOptions::vgroup_max_num; i++) {
       Remove(engine_root_path + "/valid_vg" + std::to_string(i));
     }
@@ -358,7 +358,7 @@ TEST_F(TsEngineV2Test, LoadVGroupCfgTest) {
     MakeDirectory((engine_root_path + "/vg0").c_str());
     s = loadVGroupCfg(engine_root_path, invalid_id_cfg);
     EXPECT_EQ(s, KStatus::FAIL);
-    Remove(invalid_id_path);
+    Remove(invalid_id_path.string());
     Remove(engine_root_path + "/vg0");
   }
 
@@ -374,7 +374,7 @@ TEST_F(TsEngineV2Test, LoadVGroupCfgTest) {
     MakeDirectory((engine_root_path + "/vg_invalid").c_str());
     s = loadVGroupCfg(engine_root_path, exceed_id_cfg);
     EXPECT_EQ(s, KStatus::FAIL);
-    Remove(exceed_id_path);
+    Remove(exceed_id_path.string());
     Remove(engine_root_path + "/vg_invalid");
   }
 
@@ -391,7 +391,7 @@ TEST_F(TsEngineV2Test, LoadVGroupCfgTest) {
     MakeDirectory((engine_root_path + "/vg1_dup2").c_str());
     s = loadVGroupCfg(engine_root_path, duplicate_cfg);
     EXPECT_EQ(s, KStatus::FAIL);
-    Remove(duplicate_path);
+    Remove(duplicate_path.string());
     Remove(engine_root_path + "/vg1_dup1");
     Remove(engine_root_path + "/vg1_dup2");
   }
@@ -406,7 +406,7 @@ TEST_F(TsEngineV2Test, LoadVGroupCfgTest) {
     ofs.close();
     s = loadVGroupCfg(engine_root_path, no_dir_cfg);
     EXPECT_EQ(s, KStatus::FAIL);
-    Remove(no_dir_path);
+    Remove(no_dir_path.string());
   }
 
   // Test 7: Incomplete vgroup configuration count
@@ -424,7 +424,7 @@ TEST_F(TsEngineV2Test, LoadVGroupCfgTest) {
     ofs.close();
     s = loadVGroupCfg(engine_root_path, incomplete_cfg);
     EXPECT_EQ(s, KStatus::FAIL);
-    Remove(incomplete_path);
+    Remove(incomplete_path.string());
     for (int i = 1; i < EngineOptions::vgroup_max_num; i++) {
       Remove(engine_root_path + "/incomplete_vg" + std::to_string(i));
     }
@@ -459,11 +459,11 @@ TEST_F(TsEngineV2Test, LoadVGroupCfgTest) {
     EXPECT_EQ(comment_cfg.size(), EngineOptions::vgroup_max_num);
     // Verify paths are correctly trimmed (Note: paths are normalized, removing ./ prefix)
     for (int i = 1; i <= EngineOptions::vgroup_max_num; i++) {
-      std::string expected_path = "tsdb/comment_vg" + std::to_string(i);
+      std::string expected_path = "tsdb" + std::string(1, fs::path::preferred_separator) + "comment_vg" + std::to_string(i);
       EXPECT_EQ(comment_cfg[i], expected_path);
     }
     // Cleanup
-    Remove(comment_path);
+    Remove(comment_path.string());
     for (int i = 1; i <= EngineOptions::vgroup_max_num; i++) {
       Remove(engine_root_path + "/comment_vg" + std::to_string(i));
     }
@@ -487,11 +487,11 @@ TEST_F(TsEngineV2Test, LoadVGroupCfgTest) {
     EXPECT_EQ(slash_cfg.size(), EngineOptions::vgroup_max_num);
     // Verify paths are normalized (removing trailing slashes and ./ prefix)
     for (int i = 1; i <= EngineOptions::vgroup_max_num; i++) {
-      std::string expected_path = "tsdb/slash_vg" + std::to_string(i);
+      std::string expected_path = "tsdb" + std::string(1, fs::path::preferred_separator) + "slash_vg" + std::to_string(i);
       EXPECT_EQ(slash_cfg[i], expected_path);
     }
     // Cleanup
-    Remove(slash_path);
+    Remove(slash_path.string());
     for (int i = 1; i <= EngineOptions::vgroup_max_num; i++) {
       Remove((engine_root_path + "/slash_vg" + std::to_string(i)).c_str());
     }
@@ -508,7 +508,7 @@ TEST_F(TsEngineV2Test, LoadVGroupCfgTest) {
     MakeDirectory((engine_root_path + "/vg_abc").c_str());
     s = loadVGroupCfg(engine_root_path, non_numeric_cfg);
     EXPECT_EQ(s, KStatus::FAIL);
-    Remove(non_numeric_path);
+    Remove(non_numeric_path.string());
     Remove(engine_root_path + "/vg_abc");
   }
 }

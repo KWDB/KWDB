@@ -341,28 +341,28 @@ void Finalize(R *builder) {
 
 static void Int32Checker(TSSlice r) {
   ASSERT_EQ(r.len, sizeof(int));
-  int val = *reinterpret_cast<int *>(r.data);
+  int val = KInt32(r.data);
   EXPECT_LE(val, 1024);
   EXPECT_GE(val, 0);
 }
 
 static void Int64Checker(TSSlice r) {
   ASSERT_EQ(r.len, sizeof(int64_t));
-  int64_t val = *reinterpret_cast<int64_t *>(r.data);
+  int64_t val = KInt64(r.data);
   EXPECT_LE(val, 10240);
   EXPECT_GE(val, 0);
 }
 
 static void FloatChecker(TSSlice r) {
   ASSERT_EQ(r.len, 4);
-  float val = *reinterpret_cast<float *>(r.data);
+  float val = KFloat32(r.data);
   EXPECT_LE(val, 1024 * 1024);
   EXPECT_GE(val, 0);
 }
 
 static void DoubleChecker(TSSlice r) {
   ASSERT_EQ(r.len, 8);
-  double val = *reinterpret_cast<double *>(r.data);
+  double val = KDouble64(r.data);
   EXPECT_LE(val, 1024 * 1024);
   EXPECT_GE(val, 0);
 }
@@ -379,7 +379,7 @@ class TimestampChecker {
   TimestampChecker(timestamp64 initial, int interval) : cur_ts(initial), int_(interval) {}
   void operator()(TSSlice r) {
     ASSERT_EQ(r.len, 8);
-    timestamp64 val = *reinterpret_cast<timestamp64 *>(r.data);
+    timestamp64 val = KTimestampCast(r.data);
     if (first) {
       EXPECT_EQ(val, cur_ts);
       assert(val == cur_ts);

@@ -10,13 +10,14 @@
 // See the Mulan PSL v2 for more details.
 #pragma once
 
+#include <atomic>
+#include <list>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#include <memory>
-#include <list>
 #include "ts_table.h"
 #include "ts_table_schema_manager.h"
 
@@ -28,7 +29,7 @@ class TsTableImpl : public TsTable {
  private:
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;
   const std::vector<std::shared_ptr<TsVGroup>>& vgroups_;
-  std::atomic_bool table_dropped_{false};
+  std::atomic<k_bool> table_dropped_{false};
 
  public:
   TsTableImpl(std::shared_ptr<TsTableSchemaManager> table_schema,

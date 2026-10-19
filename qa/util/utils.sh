@@ -99,6 +99,44 @@ get_listen_addr() {
   echo "$(head -n1 $(realpath ${DEPLOY_ROOT}/${1}/kwbase.listen-addr))"
 }
 
+# Windows (MSYS/Cygwin) builds do not register the --background flag
+# (see kwbase/pkg/cli/start_unix.go vs start_windows.go), so callers must
+# fall back to shell backgrounding there.
+is_windows() {
+  local os
+  os="$(uname -o 2>/dev/null)" || return 1
+  [ "${os}" = "Msys" ] || [ "${os}" = "Cygwin" ]
+}
+
+# Run kwbase start* either with --background (Linux) or shell-backgrounded
+# with output redirected (Windows). On Windows the shell returns immediately,
+# so callers must wait for readiness themselves.
+run_kwbase_start_bg() {
+  local log_file=$1
+  shift
+  if is_windows; then
+    "$@" >>"${log_file}" 2>&1 &
+  else
+    "$@" --background
+  fi
+}
+
+# Poll until `node status` can talk to addr (used when start returns early
+# on Windows and the node may still be initializing).
+wait_kwbase_rpc() {
+  local addr=$1
+  local retries=${2:-30}
+  local i
+  for i in $(seq 1 ${retries}); do
+    if ${KWBIN} node status --insecure --format csv --host="${addr}" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  echo_err "timeout waiting for kwbase rpc at ${addr}"
+  return 1
+}
+
 function start_single_node() {
   local store=${1}
   local listenport=${2:-26257}
@@ -106,15 +144,19 @@ function start_single_node() {
   local host_ip=${4:-127.0.102.145}
   local brpc_port=${5:-28257}
   rm -fr ${DEPLOY_ROOT}/${store}
-  ulimit -c unlimited
-  #echo 'core.%t.%e.%p' | sudo tee /proc/sys/kernel/core_pattern
+  if is_windows; then
+    echo "Skipping core_pattern setup on Windows"
+  else
+    ulimit -c unlimited
+    #echo 'core.%t.%e.%p' | sudo tee /proc/sys/kernel/core_pattern
+  fi
   export GOTRACEBACK=crash
-  ${KWBIN} start-single-node --insecure --listen-addr=${host_ip}:${listenport} \
+  run_kwbase_start_bg "${DEPLOY_ROOT}/${store}.bg.log" \
+    ${KWBIN} start-single-node --insecure --listen-addr=${host_ip}:${listenport} \
     --http-addr=${host_ip}:${http_port} \
     --brpc-addr=${host_ip}:${brpc_port} \
     --store=${DEPLOY_ROOT}/${store} \
-    --pid-file=${DEPLOY_ROOT}/${store}/kwbase.pid \
-    --background
+    --pid-file=${DEPLOY_ROOT}/${store}/kwbase.pid
   for c in {1..30};do
     if [ "1" = "$(check_kwbase_available ${store})" ];then
       break
@@ -143,8 +185,10 @@ function check_kwbase_alive() {
     echo 0 && return 1
   fi
   listenaddr=$(get_listen_addr ${store})
-  echo $(${KWBIN} node status --insecure --format csv --host=${listenaddr} | \
-      grep "${listenaddr}" | grep -cP ",(true|false),true$" )
+  #echo $(${KWBIN} node status --insecure --format csv --host=${listenaddr} | \
+  #    grep "${listenaddr}" | grep -cP ",(true|false),true$" )
+  echo $(${KWBIN} node status --insecure --format csv --host=${listenaddr} 2>/dev/null | \
+      grep "${listenaddr}" | grep -c ",\(true\|false\),true$")
 }
 
 function nice_stop_node_v2() {
@@ -189,8 +233,12 @@ function _cluster_start_() {
 
   rm -fr ${DEPLOY_ROOT}/extern
   mkdir -p ${DEPLOY_ROOT}/extern
-  ulimit -c unlimited
-  #echo 'core.%t.%e.%p' | sudo tee /proc/sys/kernel/core_pattern
+  if is_windows; then
+    echo "Skipping core_pattern setup on Windows"
+  else
+    ulimit -c unlimited
+    #echo 'core.%t.%e.%p' | sudo tee /proc/sys/kernel/core_pattern
+  fi
   export GOTRACEBACK=crash
   for idx in $(seq 1 ${node_count});do
     rm -fr ${DEPLOY_ROOT}/${name_prefix}${idx}
@@ -198,24 +246,28 @@ function _cluster_start_() {
     local laddr=${host_ip}:$(($tcp_port_start+$idx-1))
     local baddr=${host_ip}:$(($brpc_port_start+$idx-1))
     local haddr=${host_ip}:$(($http_port_start+$idx-1))
-    ${KWBIN} \
-    ${mode} --insecure \
-    --listen-addr=${laddr} \
-    --http-addr=${haddr} \
-    --brpc-addr=${baddr} \
-    --store=${DEPLOY_ROOT}/${name_prefix}${idx} \
-    --locality=region=CN-100000-0$(printf "%02d" ${idx}) \
-    --join=${host_ip}:${tcp_port_start} \
-    --pid-file=${DEPLOY_ROOT}/${name_prefix}${idx}/kwbase.pid \
-    --external-io-dir=${DEPLOY_ROOT}/extern \
-    --background
+    run_kwbase_start_bg "${DEPLOY_ROOT}/${name_prefix}${idx}.bg.log" \
+      ${KWBIN} \
+      ${mode} --insecure \
+      --listen-addr=${laddr} \
+      --http-addr=${haddr} \
+      --brpc-addr=${baddr} \
+      --store=${DEPLOY_ROOT}/${name_prefix}${idx} \
+      --locality=region=CN-100000-0$(printf "%02d" ${idx}) \
+      --join=${host_ip}:${tcp_port_start} \
+      --pid-file=${DEPLOY_ROOT}/${name_prefix}${idx}/kwbase.pid \
+      --external-io-dir=${DEPLOY_ROOT}/extern
+    # On Windows start returns before the node is ready; wait for RPC before init.
+    if is_windows; then
+      wait_kwbase_rpc "${laddr}" 30 || return 1
+    fi
     address+="|${laddr}"
   done
 
   echo_info "cluster init: ${node_count}${name_prefix}"
   ${KWBIN} init --insecure --host=${host_ip}:${tcp_port_start} 2>&1 | \
     tee -a $LOG_FILE > /dev/null
-  
+
   while [ ${node_count} -ne \
     $(${KWBIN} node \
       status --insecure --format csv --host=${address##*|} | \

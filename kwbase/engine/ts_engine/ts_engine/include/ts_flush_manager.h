@@ -25,9 +25,69 @@
 #include "ts_lastsegment_builder.h"
 #include "ts_vgroup.h"
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 namespace kwdbts {
 
 class TsMemSegment;
+#ifdef _WIN32
+
+class WinMutex {
+ private:
+    CRITICAL_SECTION cs_;
+
+ public:
+    WinMutex() { InitializeCriticalSection(&cs_); }
+    ~WinMutex() { DeleteCriticalSection(&cs_); }
+    void lock() { EnterCriticalSection(&cs_); }
+    void unlock() { LeaveCriticalSection(&cs_); }
+    CRITICAL_SECTION* native_handle() { return &cs_; }
+    WinMutex(const WinMutex&) = delete;
+    WinMutex& operator=(const WinMutex&) = delete;
+};
+
+class WinCondVar {
+ private:
+    CONDITION_VARIABLE cv_;
+
+ public:
+    WinCondVar() { InitializeConditionVariable(&cv_); }
+    ~WinCondVar() {}
+
+    // Accept std::unique_lock to keep its internal state in sync with the
+    // underlying CRITICAL_SECTION.  SleepConditionVariableCS atomically
+    // releases the CS and re-acquires it before returning, mirroring what
+    // std::condition_variable does with std::unique_lock<std::mutex>.
+    void wait(std::unique_lock<WinMutex>& lk) {
+        // unique_lock must own the lock before we hand control to the OS.
+        assert(lk.owns_lock());
+        // Temporarily release ownership so unique_lock's destructor does not
+        // double-unlock after SleepConditionVariableCS re-acquires the CS.
+        WinMutex* m = lk.release();
+        SleepConditionVariableCS(&cv_, m->native_handle(), INFINITE);
+        // Re-establish ownership so callers (and the destructor) see a
+        // consistently locked unique_lock.
+        lk = std::unique_lock<WinMutex>(*m, std::adopt_lock);
+    }
+
+    template<typename Predicate>
+    void wait(std::unique_lock<WinMutex>& lk, Predicate pred) {
+        while (!pred()) {
+            wait(lk);
+        }
+    }
+
+    void notify_one() { WakeConditionVariable(&cv_); }
+    void notify_all() { WakeAllConditionVariable(&cv_); }
+
+    WinCondVar(const WinCondVar&) = delete;
+    WinCondVar& operator=(const WinCondVar&) = delete;
+};
+
+#endif
+
 class TsFlushJobPool {
  private:
   TsFlushJobPool() {
@@ -79,13 +139,20 @@ class TsFlushJobPool {
   int kMaxConcurrentJobNum = EngineOptions::vgroup_max_num * 2;
   std::vector<std::thread> workers_;
 
+#ifdef _WIN32
+  WinMutex job_mutex_;
+  WinCondVar queue_non_empty_cv_;
+  WinCondVar queue_non_full_cv_;
+  WinCondVar stop_cv_;
+#else
+  std::mutex job_mutex_;
   std::condition_variable queue_non_empty_cv_;
   std::condition_variable queue_non_full_cv_;
   std::condition_variable stop_cv_;
+#endif
   std::atomic_int bg_running_jobs_ = 0;
-  std::mutex job_mutex_;
 
-  std::atomic_bool stop_flag_{false};
+  std::atomic<k_bool> stop_flag_{false};
   KStatus job_status_ = KStatus::SUCCESS;
 
   void WorkerFunc() {

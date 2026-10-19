@@ -12,6 +12,12 @@
 
 #pragma once
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#endif
+
 #if defined(__has_include)
   #if __has_include(<filesystem>)
     #include <filesystem>
@@ -37,6 +43,15 @@
 #include "lg_api.h"
 #include "ts_object_error.h"
 
+#ifdef _WIN32
+// Undefine Windows macros that conflict with our function names
+#ifdef GetDiskFreeSpace
+#undef GetDiskFreeSpace
+#endif
+#ifdef CopyFile
+#undef CopyFile
+#endif
+#endif
 
 /**
  * @brief Check whether the file or directory exists

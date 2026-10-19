@@ -57,13 +57,8 @@ import (
 	"github.com/pkg/errors"
 )
 
-// TODO(tamird): why does rocksdb not link jemalloc,snappy statically?
-
 // #cgo CPPFLAGS: -I../../../c-deps/libroach/include
-// #cgo LDFLAGS: -lroach
-// #cgo LDFLAGS: -lprotobuf
-// #cgo LDFLAGS: -lrocksdb
-// #cgo LDFLAGS: -lsnappy
+// #cgo LDFLAGS: -lroach -lrocksdb -lprotobuf -lsnappy
 // #cgo linux LDFLAGS: -lrt -lpthread
 // #cgo windows LDFLAGS: -lshlwapi -lrpcrt4
 //

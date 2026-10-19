@@ -25,7 +25,6 @@ package settings
 
 // #cgo CPPFLAGS: -I../../engine/ts_engine/include
 // #cgo LDFLAGS: -lkwdbts2 -lcommon -lsnappy -lm  -lstdc++
-// #cgo LDFLAGS: -lprotobuf
 // #cgo linux LDFLAGS: -lrt -lpthread
 //
 // #include <stdlib.h>

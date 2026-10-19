@@ -12,7 +12,9 @@
 #ifndef COMMON_SRC_H_MM_KMALLOC_H_
 #define COMMON_SRC_H_MM_KMALLOC_H_
 
+#ifdef OS_LINUX
 #include <sys/types.h>  // for pid_t
+#endif
 #include <atomic>
 #include "kwdb_type.h"
 

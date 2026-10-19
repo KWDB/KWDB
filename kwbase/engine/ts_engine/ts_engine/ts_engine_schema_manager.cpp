@@ -20,6 +20,7 @@
 #include "sys_utils.h"
 #include "ts_db_schema_manager.h"
 #include "ts_table_schema_manager.h"
+#include "ts_go_exported.h"
 
 unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 std::mt19937 gen(seed);
@@ -46,7 +47,7 @@ KStatus TsEngineSchemaManager::Init(kwdbContext_p ctx) {
   std::regex num_regex("^[0-9]+$");
   try {
     if (!fs::exists(schema_root_path_)) {
-      LOG_ERROR("Schema directory '%s' does not exist", schema_root_path_.c_str());
+      LOG_ERROR("Schema directory '%s' does not exist", schema_root_path_.string().c_str());
       return KStatus::FAIL;
     }
     if (!table_schema_mgrs_.empty()) {
@@ -147,7 +148,7 @@ KStatus TsEngineSchemaManager::GetTableList(std::vector<TSTableID>* table_ids) {
   }
   for (const auto& it : dir_iter) {
     try {
-      std::string fname = it.path().filename();
+      std::string fname = it.path().filename().string();
       TSTableID tbl_id = 0;
       auto split_pos = fname.find('.');
       if (split_pos != std::string::npos) {
@@ -175,10 +176,12 @@ KStatus TsEngineSchemaManager::GetTableSchemaMgr(TSTableID tbl_id, std::shared_p
   const auto it = table_schema_mgrs_.find(tbl_id);
   if (it == table_schema_mgrs_.end()) {
     unLock();
-    if (checkTableMetaExist != nullptr && checkTableMetaExist(tbl_id)) {
+#ifndef WITH_TESTS
+    if (CheckTableMetaExist(tbl_id)) {
       LOG_WARN("table %ld schema not found", tbl_id);
       return KStatus::FAIL;
     }
+#endif
     if (is_dropped) {
       *is_dropped = true;
     }

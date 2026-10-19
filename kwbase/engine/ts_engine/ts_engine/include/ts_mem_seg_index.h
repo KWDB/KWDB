@@ -11,7 +11,48 @@
 #pragma once
 
 #include <assert.h>
+#if defined(_WIN32) || defined(__MINGW32__)
+// Windows doesn't have endian.h, provide byte order macros
+// Assume little-endian for Windows (x86/x64 architecture)
+#ifndef htobe16
+#define htobe16(x) __builtin_bswap16(x)
+#endif
+#ifndef htole16
+#define htole16(x) (x)
+#endif
+#ifndef be16toh
+#define be16toh(x) __builtin_bswap16(x)
+#endif
+#ifndef le16toh
+#define le16toh(x) (x)
+#endif
+#ifndef htobe32
+#define htobe32(x) __builtin_bswap32(x)
+#endif
+#ifndef htole32
+#define htole32(x) (x)
+#endif
+#ifndef be32toh
+#define be32toh(x) __builtin_bswap32(x)
+#endif
+#ifndef le32toh
+#define le32toh(x) (x)
+#endif
+#ifndef htobe64
+#define htobe64(x) __builtin_bswap64(x)
+#endif
+#ifndef htole64
+#define htole64(x) (x)
+#endif
+#ifndef be64toh
+#define be64toh(x) __builtin_bswap64(x)
+#endif
+#ifndef le64toh
+#define le64toh(x) (x)
+#endif
+#else
 #include <endian.h>
+#endif
 #include <stdlib.h>
 #include <sys/types.h>
 #include <algorithm>

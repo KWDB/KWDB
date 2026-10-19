@@ -45,7 +45,7 @@ TEST_F(TestSketch, Insert) {
     std::vector<byte> buf;
     std::shared_ptr<Sketch> sketch = std::make_shared<Sketch>(p_, sparse_);
     for (int i = 1; i <= 10; ++i) {
-        PutUint64LittleEndian(&buf, static_cast<u_int64_t>(i));
+        PutUint64LittleEndian(&buf, static_cast<uint64_t>(i));
         sketch->Insert(buf);
     }
     EXPECT_EQ(sketch->GetTmpSet().size(), 10);
@@ -56,7 +56,7 @@ TEST_F(TestSketch, TransitionToNormal) {
 
     std::vector<byte> buf;
     for (uint64_t i = 1; i < 10000; ++i) {
-       PutUint64LittleEndian(&buf, static_cast<u_int64_t>(i));
+       PutUint64LittleEndian(&buf, static_cast<uint64_t>(i));
        sketch->Insert(buf);
     }
 

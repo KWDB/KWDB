@@ -12,12 +12,14 @@
 package sql
 
 // #cgo CPPFLAGS: -I../../engine/ts_engine/include
-// #cgo LDFLAGS: -lkwdbts2 -lcommon  -lstdc++
-// #cgo LDFLAGS: -lprotobuf
+// #cgo LDFLAGS: -lkwdbts2 -lcommon -lprotobuf -lstdc++
 // #cgo linux LDFLAGS: -lrt -lpthread
 //
-// #include <stdlib.h>
 // #include <libkwdbts2.h>
+// extern char* GetTableMetaByVersion(TSTableID id, TSTableID tsVer,
+//                                      size_t* outputLen, char** errMsg);
+//
+// extern bool CheckTableMetaExist(TSTableID id);
 import "C"
 import (
 	"context"
@@ -87,8 +89,10 @@ func IsObjectCannotFoundError(err error) bool {
 	return false
 }
 
-//export checkTableMetaExist
-func checkTableMetaExist(id C.TSTableID) C.bool {
+// CheckTableMetaExist checks whether the given table metadata exists.
+//
+//export CheckTableMetaExist
+func CheckTableMetaExist(id C.TSTableID) C.bool {
 	// Run the KV transaction on a regular goroutine instead of the cgo
 	// callback goroutine. The cgo callback goroutine's stack is not tracked
 	// by the GC the same way regular goroutine stacks are, which can lead to
@@ -143,9 +147,11 @@ func checkTableMetaExistImpl(tableID uint64) bool {
 	return !tb.Dropped()
 }
 
-//export getTableMetaByVersion
-func getTableMetaByVersion(
-	id C.TSTableID, tsVer C.uint64_t, outputLen *C.size_t, errMsg **C.char,
+// GetTableMetaByVersion retrieves table metadata by version.
+//
+//export GetTableMetaByVersion
+func GetTableMetaByVersion(
+	id C.TSTableID, tsVer C.TSTableID, outputLen *C.size_t, errMsg **C.char,
 ) *C.char {
 	// Run the KV transaction on a regular goroutine instead of the cgo
 	// callback goroutine, for the same reason as checkTableMetaExist.

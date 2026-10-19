@@ -161,75 +161,75 @@ std::string doubleToStr(double value) {
 
 int convertFixedToNum(DATATYPE old_type, DATATYPE new_type, char* src, char* dst, ErrorInfo& err_info) {
   switch (old_type) {
-    case DATATYPE::INT16 : {
+    case DATATYPE::K_INT16 : {
       switch (new_type) {
-        case DATATYPE::INT32:
+        case DATATYPE::K_INT32:
           return convertNumToNum<int16_t, int32_t>(src, dst);
-        case DATATYPE::INT64:
+        case DATATYPE::K_INT64:
           return convertNumToNum<int16_t, int64_t>(src, dst);
-        case DATATYPE::FLOAT:
+        case DATATYPE::K_FLOAT:
           return convertNumToNum<int16_t, float>(src, dst);
-        case DATATYPE::DOUBLE:
+        case DATATYPE::K_DOUBLE:
           return convertNumToNum<int16_t, double>(src, dst);
         default:
           break;
       }
       break;
     }
-    case DATATYPE::INT32 : {
+    case DATATYPE::K_INT32 : {
       switch (new_type) {
-        case DATATYPE::INT16:
+        case DATATYPE::K_INT16:
           return convertNumToNum<int32_t, int16_t>(src, dst);
-        case DATATYPE::INT64:
+        case DATATYPE::K_INT64:
           return convertNumToNum<int32_t, int64_t>(src, dst);
-        case DATATYPE::FLOAT:
+        case DATATYPE::K_FLOAT:
           return convertNumToNum<int32_t, float>(src, dst);
-        case DATATYPE::DOUBLE:
+        case DATATYPE::K_DOUBLE:
           return convertNumToNum<int32_t, double>(src, dst);
         default:
           break;
       }
       break;
     }
-    case DATATYPE::INT64 : {
+    case DATATYPE::K_INT64 : {
       switch (new_type) {
-        case DATATYPE::INT16:
+        case DATATYPE::K_INT16:
           return convertNumToNum<int64_t, int16_t>(src, dst);
-        case DATATYPE::INT32:
+        case DATATYPE::K_INT32:
           return convertNumToNum<int64_t, int32_t>(src, dst);
-        case DATATYPE::FLOAT:
+        case DATATYPE::K_FLOAT:
           return convertNumToNum<int64_t, float>(src, dst);
-        case DATATYPE::DOUBLE:
+        case DATATYPE::K_DOUBLE:
           return convertNumToNum<int64_t, double>(src, dst);
         default:
           break;
       }
       break;
     }
-    case DATATYPE::FLOAT : {
+    case DATATYPE::K_FLOAT : {
       switch (new_type) {
-        case DATATYPE::INT16:
+        case DATATYPE::K_INT16:
           return convertNumToNum<float, int16_t>(src, dst);
-        case DATATYPE::INT32:
+        case DATATYPE::K_INT32:
           return convertNumToNum<float, int32_t>(src, dst);
-        case DATATYPE::INT64:
+        case DATATYPE::K_INT64:
           return convertNumToNum<float, int64_t>(src, dst);
-        case DATATYPE::DOUBLE:
+        case DATATYPE::K_DOUBLE:
           return convertNumToNum<float, double>(src, dst);
         default:
           break;
       }
       break;
     }
-    case DATATYPE::DOUBLE : {
+    case DATATYPE::K_DOUBLE : {
       switch (new_type) {
-        case DATATYPE::INT16:
+        case DATATYPE::K_INT16:
           return convertNumToNum<double, int16_t>(src, dst);
-        case DATATYPE::INT32:
+        case DATATYPE::K_INT32:
           return convertNumToNum<double, int32_t>(src, dst);
-        case DATATYPE::INT64:
+        case DATATYPE::K_INT64:
           return convertNumToNum<double, int64_t>(src, dst);
-        case DATATYPE::FLOAT:
+        case DATATYPE::K_FLOAT:
           return convertNumToNum<double, float>(src, dst);
         default:
           break;
@@ -237,7 +237,7 @@ int convertFixedToNum(DATATYPE old_type, DATATYPE new_type, char* src, char* dst
       break;
     }
     case DATATYPE::BINARY :
-    case DATATYPE::CHAR : {
+    case DATATYPE::K_CHAR : {
       return convertStrToFixed(std::string(src), new_type, dst, strlen(src), err_info);
     }
 
@@ -250,22 +250,22 @@ int convertFixedToNum(DATATYPE old_type, DATATYPE new_type, char* src, char* dst
 int convertFixedToStr(DATATYPE old_type, char* old_data, char* new_data, ErrorInfo& err_info) {
   std::string res;
   switch (old_type) {
-    case DATATYPE::INT16 : {
+    case DATATYPE::K_INT16 : {
       res = std::to_string(KInt16(old_data));
       strcpy(new_data, res.data());  // NOLINT
       break;
     }
-    case DATATYPE::INT32 : {
+    case DATATYPE::K_INT32 : {
       res = std::to_string(KInt32(old_data));
       strcpy(new_data, res.data());  // NOLINT
       break;
     }
-    case DATATYPE::INT64 : {
+    case DATATYPE::K_INT64 : {
       res = std::to_string(KInt64(old_data));
       strcpy(new_data, res.data());  // NOLINT
       break;
     }
-    case DATATYPE::FLOAT : {
+    case DATATYPE::K_FLOAT : {
       std::ostringstream oss;
       oss.clear();
       oss.precision(7);
@@ -275,7 +275,7 @@ int convertFixedToStr(DATATYPE old_type, char* old_data, char* new_data, ErrorIn
       strcpy(new_data, res.data());  // NOLINT
       break;
     }
-    case DATATYPE::DOUBLE : {
+    case DATATYPE::K_DOUBLE : {
       std::stringstream ss;
       ss.precision(15);
       ss.setf(std::ios::fixed);
@@ -285,7 +285,7 @@ int convertFixedToStr(DATATYPE old_type, char* old_data, char* new_data, ErrorIn
       break;
     }
     case DATATYPE::BINARY :
-    case DATATYPE::CHAR : {
+    case DATATYPE::K_CHAR : {
       strcpy(new_data, old_data);  // NOLINT
       break;
     }
@@ -304,23 +304,23 @@ int convertStrToFixed(const std::string& str, DATATYPE new_type, char* data, int
   double res_d{};
   try {
     switch (new_type) {
-      case DATATYPE::INT16 :
+      case DATATYPE::K_INT16 :
         res32 = std::stoi(str, &pos);
         break;
-      case DATATYPE::INT32 : {
+      case DATATYPE::K_INT32 : {
         res32 = std::stoi(str, &pos);
         break;
       }
-      case DATATYPE::INT64 :
+      case DATATYPE::K_INT64 :
         res64 = std::stoll(str, &pos);
         break;
-      case DATATYPE::FLOAT :
+      case DATATYPE::K_FLOAT :
         res_f = std::stof(str, &pos);
         break;
-      case DATATYPE::DOUBLE :
+      case DATATYPE::K_DOUBLE :
         res_d = std::stod(str, &pos);
         break;
-      case DATATYPE::CHAR :
+      case DATATYPE::K_CHAR :
       case DATATYPE::BINARY : {
         memcpy(data, str.data(), old_len);
         return 0;
@@ -338,26 +338,26 @@ int convertStrToFixed(const std::string& str, DATATYPE new_type, char* data, int
   if (pos < str.size()) {
     return err_info.setError(KWEPERM, "Data truncated '" + str + "'");
   }
-  if (new_type == DATATYPE::INT16) {
+  if (new_type == DATATYPE::K_INT16) {
     if (res32 > INT16_MAX || res32 < INT16_MIN) {
       return err_info.setError(KWEPERM, "Out of range value '" + str + "'");
     }
   }
   switch (new_type) {
-    case DATATYPE::INT16 :
+    case DATATYPE::K_INT16 :
       KInt16(data) = res32;
       break;
-    case DATATYPE::INT32 :
+    case DATATYPE::K_INT32 :
       KInt32(data) = res32;
       break;
-    case DATATYPE::INT64 : {
+    case DATATYPE::K_INT64 : {
       KInt64(data) = res64;
       break;
     }
-    case DATATYPE::FLOAT :
+    case DATATYPE::K_FLOAT :
       KFloat32(data) = res_f;
       break;
-    case DATATYPE::DOUBLE :
+    case DATATYPE::K_DOUBLE :
       KDouble64(data) = res_d;
       break;
     default:
@@ -370,27 +370,27 @@ std::shared_ptr<void> convertFixedToVar(DATATYPE old_type, DATATYPE new_type, ch
   std::string res;
   char* var_data{nullptr};
   switch (old_type) {
-    case DATATYPE::INT16 : {
+    case DATATYPE::K_INT16 : {
       res = std::to_string(KInt16(data));
       break;
     }
-    case DATATYPE::INT32 : {
+    case DATATYPE::K_INT32 : {
       res = std::to_string(KInt32(data));
       break;
     }
-    case DATATYPE::INT64 : {
+    case DATATYPE::K_INT64 : {
       res = std::to_string(KInt64(data));
       break;
     }
-    case DATATYPE::FLOAT : {
+    case DATATYPE::K_FLOAT : {
       res = floatToStr(KFloat32(data));
       break;
     }
-    case DATATYPE::DOUBLE : {
+    case DATATYPE::K_DOUBLE : {
       res = doubleToStr(KDouble64(data));
       break;
     }
-    case DATATYPE::CHAR:
+    case DATATYPE::K_CHAR:
     case DATATYPE::BINARY: {
       auto char_len = strlen(data);
       if (new_type == DATATYPE::VARSTRING) {
@@ -408,8 +408,8 @@ std::shared_ptr<void> convertFixedToVar(DATATYPE old_type, DATATYPE new_type, ch
       err_info.setError(KWEPERM, "Incorrect integer value");
       break;
   }
-  if (old_type == DATATYPE::INT16 || old_type == DATATYPE::INT32 || old_type == DATATYPE::INT64 ||
-      old_type == DATATYPE::FLOAT || old_type == DATATYPE::DOUBLE) {
+  if (old_type == DATATYPE::K_INT16 || old_type == DATATYPE::K_INT32 || old_type == DATATYPE::K_INT64 ||
+      old_type == DATATYPE::K_FLOAT || old_type == DATATYPE::K_DOUBLE) {
     auto act_len = res.size() + 1;
     var_data = static_cast<char*>(std::malloc(act_len + kStringLenLen));
     memset(var_data, 0, act_len + kStringLenLen);
@@ -478,7 +478,7 @@ int TSBlkDataTypeConvert::ConvertDataTypeToMem(uint32_t scan_col, int32_t new_ty
     void* temp_new_mem = malloc(new_type_size + 1);
     memset(temp_new_mem, 0, new_type_size + 1);
     if (!isVarLenType(old_type)) {
-      if (new_type == DATATYPE::CHAR || new_type == DATATYPE::BINARY) {
+      if (new_type == DATATYPE::K_CHAR || new_type == DATATYPE::BINARY) {
         err_info.errcode = convertFixedToStr(old_type, static_cast<char*>(old_mem),
                                              static_cast<char*>(temp_new_mem), err_info);
       } else {
@@ -762,77 +762,77 @@ CONVERT_DATA_FUNC getConvertFunc(int32_t old_data_type, int32_t new_data_type,
   is_digit_data = false;
   err_info.errcode = 0;
   switch (old_data_type)  {
-  case DATATYPE::INT16:
+  case DATATYPE::K_INT16:
     is_digit_data = true;
-    if (new_data_type == DATATYPE::INT32) {
+    if (new_data_type == DATATYPE::K_INT32) {
       return convertFixDataToData<int16_t, int32_t, false>;
-    } else if (new_data_type == DATATYPE::INT64) {
+    } else if (new_data_type == DATATYPE::K_INT64) {
       return convertFixDataToData<int16_t, int64_t, false>;
     } else if (new_data_type == DATATYPE::VARSTRING) {
       return convertFixDataToData<int16_t, char, true>;
     }
     err_info.errcode = -1;
     break;
-  case DATATYPE::INT32:
+  case DATATYPE::K_INT32:
     is_digit_data = true;
-    if (new_data_type == DATATYPE::INT64) {
+    if (new_data_type == DATATYPE::K_INT64) {
       return convertFixDataToData<int32_t, int64_t, false>;
     } else if (new_data_type == DATATYPE::VARSTRING) {
       return convertFixDataToData<int32_t, char, true>;
     }
     err_info.errcode = -1;
     break;
-  case DATATYPE::INT64:
+  case DATATYPE::K_INT64:
     is_digit_data = true;
     if (new_data_type == DATATYPE::VARSTRING) {
       return convertFixDataToData<int64_t, char, true>;
     }
     err_info.errcode = -1;
     break;
-  case DATATYPE::FLOAT:
+  case DATATYPE::K_FLOAT:
     is_digit_data = true;
-    if (new_data_type == DATATYPE::DOUBLE) {
+    if (new_data_type == DATATYPE::K_DOUBLE) {
       return convertFixDataToData<float, double, false>;
     } else if (new_data_type == DATATYPE::VARSTRING) {
       return convertFixDataToData<float, char, true>;
     }
     err_info.errcode = -1;
     break;
-  case DATATYPE::DOUBLE:
+  case DATATYPE::K_DOUBLE:
     is_digit_data = true;
     if (new_data_type == DATATYPE::VARSTRING) {
       return convertFixDataToData<double, char, true>;
     }
     err_info.errcode = -1;
     break;
-  case DATATYPE::CHAR:
+  case DATATYPE::K_CHAR:
     if (new_data_type == DATATYPE::VARSTRING ||
         new_data_type == DATATYPE::BINARY ||
-        new_data_type == DATATYPE::CHAR) {
+        new_data_type == DATATYPE::K_CHAR) {
       return nullptr;
     }
     err_info.errcode = -1;
     break;
   case DATATYPE::BINARY:
     if (new_data_type == DATATYPE::VARSTRING ||
-        new_data_type == DATATYPE::CHAR ||
+        new_data_type == DATATYPE::K_CHAR ||
         new_data_type == DATATYPE::BINARY) {
       return nullptr;
     }
     err_info.errcode = -1;
     break;
   case DATATYPE::VARSTRING:
-    if (new_data_type == DATATYPE::INT16) {
-      return convertStringToFixData<DATATYPE::INT16>;
-    } else if (new_data_type == DATATYPE::INT32) {
-      return convertStringToFixData<DATATYPE::INT32>;
-    } else if (new_data_type == DATATYPE::INT64) {
-      return convertStringToFixData<DATATYPE::INT64>;
-    } else if (new_data_type == DATATYPE::FLOAT) {
-      return convertStringToFixData<DATATYPE::FLOAT>;
-    } else if (new_data_type == DATATYPE::DOUBLE) {
-      return convertStringToFixData<DATATYPE::DOUBLE>;
-    } else if (new_data_type == DATATYPE::CHAR ||
+    if (new_data_type == DATATYPE::K_INT16) {
+      return convertStringToFixData<DATATYPE::K_INT16>;
+    } else if (new_data_type == DATATYPE::K_INT32) {
+      return convertStringToFixData<DATATYPE::K_INT32>;
+    } else if (new_data_type == DATATYPE::K_INT64) {
+      return convertStringToFixData<DATATYPE::K_INT64>;
+    } else if (new_data_type == DATATYPE::K_FLOAT) {
+      return convertStringToFixData<DATATYPE::K_FLOAT>;
+    } else if (new_data_type == DATATYPE::K_DOUBLE) {
+      return convertStringToFixData<DATATYPE::K_DOUBLE>;
+    } else if (new_data_type == DATATYPE::K_CHAR ||
                new_data_type == DATATYPE::BINARY ||
                new_data_type == DATATYPE::VARSTRING) {
       return nullptr;

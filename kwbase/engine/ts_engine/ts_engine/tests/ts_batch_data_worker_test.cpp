@@ -141,7 +141,7 @@ std::string BuildLegacyV0BlockData(const std::vector<AttributeInfo>& metric_sche
   osn_attr.encode_algo = roachpb::ENCODE_ALGO_SIMPLE8B;
   osn_attr.compress_algo = roachpb::COMPRESS_ALGO_DISABLED;
   osn_attr.compress_level = roachpb::COMPRESS_LEVEL_UNSPECIFIED;
-  auto [osn_encode, osn_compress] = mgr.GetAlgorithm(DATATYPE::INT64, osn_attr);
+  auto [osn_encode, osn_compress] = mgr.GetAlgorithm(DATATYPE::K_INT64, osn_attr);
   bool ok = mgr.CompressData({reinterpret_cast<char*>(osns.data()), osns.size() * sizeof(uint64_t)}, nullptr,
                              n_rows, &osn_compressed, osn_encode, osn_compress, osn_attr.compress_level);
   assert(ok);
@@ -168,7 +168,7 @@ std::string BuildLegacyV0BlockData(const std::vector<AttributeInfo>& metric_sche
     int_col.append(int_bitmap.GetData());
   }
   TsBufferBuilder int_compressed;
-  auto [int_encode, int_compress] = mgr.GetAlgorithm(DATATYPE::INT32, metric_schema[1]);
+  auto [int_encode, int_compress] = mgr.GetAlgorithm(DATATYPE::K_INT32, metric_schema[1]);
   ok = mgr.CompressData({reinterpret_cast<char*>(int_values.data()), int_values.size() * sizeof(int32_t)}, &int_bitmap,
                         n_rows, &int_compressed, int_encode, int_compress, metric_schema[1].compress_level);
   assert(ok);

@@ -108,7 +108,7 @@ TEST_F(VacuumTest, ZDP49302) {
   int nblock_file = 0;
 
   for (auto ent : fs::directory_iterator("tsdb/vg_001/db00001_+0000000000000")) {
-    std::string name = ent.path().filename();
+    std::string name = ent.path().filename().string();
     nblock_file += name.find("block.ver") != std::string::npos;
   }
 

@@ -34,6 +34,7 @@
 #include "ts_table_v2_impl.h"
 #include "sys_utils.h"
 #include "ts_std_utils.h"
+#include "ts_go_exported.h"
 
 // V2
 int EngineOptions::vgroup_max_num = 4;
@@ -46,8 +47,13 @@ uint32_t EngineOptions::max_compact_num = 10;
 size_t EngineOptions::max_rows_per_block = 4096;
 size_t EngineOptions::min_rows_per_block = 512;
 int64_t EngineOptions::default_partition_interval = 3600 * 24 * 10;
+#ifndef _WIN32
 // default block cache max size is set to 1G
 int64_t EngineOptions::block_cache_max_size = 1024 * 1024 * 1024;
+#else
+// default block cache max size is set to 0
+int64_t EngineOptions::block_cache_max_size = 0;
+#endif
 uint8_t EngineOptions::compress_stage = 3;
 CompressLevel EngineOptions::compress_level = CompressLevel::MEDIUM;
 CompressAlgo EngineOptions::compression_algorithm = CompressAlgo::kLz4;
@@ -101,7 +107,7 @@ KStatus loadVGroupCfg(const fs::path& ts_store_path, std::map<int, std::string>&
 
     dir_path.erase(0, dir_path.find_first_not_of(" \t\n\r"));
     dir_path.erase(dir_path.find_last_not_of(" \t\n\r") + 1);
-    while (!dir_path.empty() && dir_path.back() == '/') {
+    while (!dir_path.empty() && (dir_path.back() == '/' || dir_path.back() == '\\')) {
       dir_path.pop_back();
     }
     if (dir_path.empty()) {
@@ -178,7 +184,9 @@ TSEngineImpl::~TSEngineImpl() {
   closeCalcAggThread();
   DestoryExecutor();
 #ifndef WITH_TESTS
+#ifndef _WIN32
   BrMgr::GetInstance().Destroy();
+#endif
 #endif
   TsFlushJobPool::GetInstance().StopAndWait();
   vgroups_.clear();
@@ -244,7 +252,7 @@ KStatus TSEngineImpl::SortWALFile(kwdbContext_p ctx) {
       LOG_ERROR("Remove wal file fail while Sorting WAL File.")
       return KStatus::FAIL;
     }
-    if (-1 == rename(chk_eng_path.c_str(), cur_eng_path.c_str())) {
+    if (-1 == kwdb_rename(chk_eng_path.c_str(), cur_eng_path.c_str())) {
       LOG_ERROR("Failed to rename WAL file.")
       return KStatus::FAIL;
     }
@@ -288,6 +296,7 @@ KStatus TSEngineImpl::SortWALFile(kwdbContext_p ctx) {
 
 KStatus TSEngineImpl::Init(kwdbContext_p ctx) {
 #ifndef WITH_TESTS
+#ifndef _WIN32
   // init brpc for multi-node mode
   if (!EngineOptions::isSingleNode()) {
     if (BrMgr::GetInstance().Init(ctx, options_) != KStatus::SUCCESS) {
@@ -296,6 +305,8 @@ KStatus TSEngineImpl::Init(kwdbContext_p ctx) {
     }
   }
 #endif
+#endif
+
   PreClearDroppedTables();
   fs::path db_path{options_.db_path};
   assert(!db_path.empty());
@@ -303,7 +314,7 @@ KStatus TSEngineImpl::Init(kwdbContext_p ctx) {
   // the numeric table-dir scanners never see it; the db manager is created
   // first because every table schema manager holds a raw pointer to it.
   db_schema_mgr_ = std::make_unique<TsDBSchemaManager>(options_.db_path);
-  schema_mgr_ = std::make_unique<TsEngineSchemaManager>(db_path / schema_directory, db_schema_mgr_.get());
+  schema_mgr_ = std::make_unique<TsEngineSchemaManager>((db_path / schema_directory).string(), db_schema_mgr_.get());
   KStatus s = schema_mgr_->Init(ctx);
   if (s != KStatus::SUCCESS) {
     return s;
@@ -326,9 +337,9 @@ KStatus TSEngineImpl::Init(kwdbContext_p ctx) {
   bool vgroup_configured = vgroup_cfg.size() == EngineOptions::vgroup_max_num ? true : false;
   vgroups_.clear();
   fs::path wal_path = db_path / "wal";
-  s = TsIOEnv::GetInstance().NewDirectory(wal_path);
+  s = TsIOEnv::GetInstance().NewDirectory(wal_path.string());
   if (s == FAIL) {
-    LOG_ERROR("Failed to create directory: %s", wal_path.c_str());
+    LOG_ERROR("Failed to create directory: %s", wal_path.string().c_str());
     return s;
   }
 
@@ -483,12 +494,12 @@ void TSEngineImpl::PreClearDroppedTables() {
     return;
   }
   for (const auto& it : dir_iter) {
-    std::string fname = it.path().filename();
+    std::string fname = it.path().filename().string();
     auto split_pos = fname.find('.');
     if (split_pos != std::string::npos) {
       // This directory might not exist, but we don't mind, we just need to delete.
-      Remove(db_path / schema_directory / fname.substr(split_pos + 1));
-      Remove(db_path / schema_directory / fname);
+      Remove((db_path / schema_directory / fname.substr(split_pos + 1)).string());
+      Remove((db_path / schema_directory / fname).string());
     }
   }
 }
@@ -630,10 +641,10 @@ KStatus TSEngineImpl::GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, s
 #endif
     char* error;
     size_t data_len = 0;
-    char* data = getTableMetaByVersion(table_id, version, &data_len, &error);
+    char* data = GetTableMetaByVersion(table_id, version, &data_len, &error);
     Defer defer{[&]() { free(data); }};
     if (error != nullptr) {
-      LOG_ERROR("getTableMetaByVersion error: %s.", error);
+      LOG_ERROR("GetTableMetaByVersion error: %s.", error);
       free(error);
       return KStatus::FAIL;
     }
@@ -2035,7 +2046,7 @@ KStatus TSEngineImpl::DropResidualTsTable(kwdbContext_p ctx) {
   for (auto table_id : tables) {
     bool is_exist = false;
 #ifndef WITH_TESTS
-    is_exist = checkTableMetaExist(table_id);
+    is_exist = CheckTableMetaExist(table_id);
 #endif
     if (!is_exist) {
       s = DropTsTable(ctx, table_id);

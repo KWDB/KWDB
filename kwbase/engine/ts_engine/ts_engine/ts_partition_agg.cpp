@@ -46,7 +46,7 @@ TsPartitionAggBuilder::TsPartitionAggBuilder(TsIOEnv* io_env, const fs::path& pa
 TsPartitionAggBuilder::~TsPartitionAggBuilder() { }
 
 KStatus TsPartitionAggBuilder::Open() {
-  auto s = io_env_->NewAppendOnlyFile(file_path_, &w_file_, false);
+  auto s = io_env_->NewAppendOnlyFile(file_path_.string(), &w_file_, false);
   if (s != SUCCESS) {
     LOG_ERROR("TsPartitionAggFileBuilder NewAppendOnlyFile failed, file_path='%s'", file_path_.c_str())
   }
@@ -122,7 +122,7 @@ TsPartitionAggReader::~TsPartitionAggReader() {
 
 
 KStatus TsPartitionAggReader::Open() {
-  auto s = io_env_->NewRandomReadFile(file_path_, &r_file_);
+  auto s = io_env_->NewRandomReadFile(file_path_.string(), &r_file_);
   if (s != SUCCESS) {
     LOG_WARN("TsPartitionAggFile NewRandomReadFile failed, file_path='%s'", file_path_.c_str());
     return SUCCESS;

@@ -20,16 +20,6 @@ using namespace kwdbts;  // NOLINT
 
 std::shared_ptr<TSBlkDataTypeConvert> empty_convert = nullptr;
 
-void TsBlockSpan::SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span) {
-  EXPECT_TRUE(row_num <= nrow_);
-  SplitFrontImpl(row_num, front_span);
-}
-
-void TsBlockSpan::SplitBack(int row_num, shared_ptr<TsBlockSpan>& back_span) {
-  EXPECT_TRUE(row_num <= nrow_);
-  SplitBackImpl(row_num, back_span);
-}
-
 class TsSplitBlockSpansTest : public ::testing::Test {
  public:
   std::vector<AttributeInfo> schema_;
@@ -68,7 +58,7 @@ class TsSplitBlockSpansTest : public ::testing::Test {
       char* row = reinterpret_cast<char*>(malloc(16 + 2));
       row_datas_.push_back(row);
       KUint16(row) = TSPayloadRowStructType::TS_PAYLOAD_ROW_TYPE_TUPLE;
-      KTimestamp(row + 2) = tss[i];
+      KTimestampCast(row + 2) = tss[i];
       KUint64(row + 8 + 2) = osn;
       data->SetData(tss[i], osn);
       TSSlice row_with_type{row, 16 + 2};

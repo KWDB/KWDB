@@ -15,7 +15,9 @@
 #include <string>
 #include <unistd.h>
 #include <algorithm>
+#if !defined(_WIN32) && !defined(__MINGW32__)
 #include <sys/resource.h>
+#endif
 #include "ts_object_error.h"
 #include "big_table.h"
 #include "kwdb_consts.h"

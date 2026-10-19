@@ -10,13 +10,15 @@
 // See the Mulan PSL v2 for more details.
 #include "ee_exec_pool.h"
 
-#include "ee_task.h"
-#include "er_api.h"
-#include "lg_api.h"
-#include "kwdb_type.h"
+#include <unistd.h>
+
 #include "cm_fault_injection.h"
 #include "ee_cpuinfo.h"
 #include "ee_pipeline_task_poller.h"
+#include "ee_task.h"
+#include "er_api.h"
+#include "kwdb_type.h"
+#include "lg_api.h"
 
 namespace kwdbts {
 
@@ -28,6 +30,11 @@ ExecPool::ExecPool(k_uint32 tq_num, k_uint32 tp_size) {
   min_threads_ = tp_size;
   max_threads_ = DEFAULT_MAX_THREADS_NUM;
   is_tp_stop_ = true;
+}
+
+ExecPool &ExecPool::GetInstance(k_uint32 tq_num, k_uint32 tp_size) {
+  static ExecPool instance(tq_num, tp_size);
+  return instance;
 }
 
 void ExecPool::CreateThread() {

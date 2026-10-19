@@ -37,7 +37,7 @@ TsEntitySegmentBlockFile::~TsEntitySegmentBlockFile() {
 }
 
 KStatus TsEntitySegmentBlockFile::Open() {
-  std::string file_path_ = root_path_ / DataBlockFileName(info_.datablock_info.file_number);
+  std::string file_path_ = (root_path_ / DataBlockFileName(info_.datablock_info.file_number)).string();
   if (io_env_->NewRandomReadFile(file_path_, &r_file_, info_.datablock_info.length) != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBlockFile NewRandomReadFile failed, file_path=%s", file_path_.c_str())
     return KStatus::FAIL;
@@ -73,7 +73,7 @@ TsEntitySegmentAggFile::TsEntitySegmentAggFile(TsIOEnv* io_env, const string& ro
     : io_env_(io_env), root_(root), info_(info) {}
 
 KStatus TsEntitySegmentAggFile::Open() {
-  std::string file_path_ = root_ / EntityAggFileName(info_.agg_info.file_number);
+  std::string file_path_ = (root_ / EntityAggFileName(info_.agg_info.file_number)).string();
   if (io_env_->NewRandomReadFile(file_path_, &r_file_, info_.agg_info.length) != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentAggFile NewRandomReadFile failed, file_path=%s", file_path_.c_str())
     return KStatus::FAIL;

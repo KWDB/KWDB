@@ -687,7 +687,7 @@ func (s *span) Finish() {
 func (s *span) FinishWithOptions(opts opentracing.FinishOptions) {
 	finishTime := opts.FinishTime
 	if finishTime.IsZero() {
-		finishTime = time.Now()
+		finishTime = timeutil.Now()
 	}
 	s.mu.Lock()
 	s.mu.duration = finishTime.Sub(s.startTime)
@@ -808,7 +808,7 @@ func (s *span) LogFields(fields ...otlog.Field) {
 		s.mu.Lock()
 		if len(s.mu.recordedLogs) < maxLogsPerSpan {
 			s.mu.recordedLogs = append(s.mu.recordedLogs, opentracing.LogRecord{
-				Timestamp: time.Now(),
+				Timestamp: timeutil.Now(),
 				Fields:    fields,
 			})
 		}

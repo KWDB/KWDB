@@ -642,7 +642,9 @@ public:
   virtual BasicDateTime * clone() const;
 
   void initTs(struct tm *ts) {
+#ifndef _WIN32
     ts->tm_gmtoff = 0;
+#endif
     ts->tm_hour = 0;
     ts->tm_isdst = 0;
     ts->tm_mday = 0;
@@ -652,7 +654,9 @@ public:
     ts->tm_wday = 0;
     ts->tm_yday = 0;
     ts->tm_year = 0;
+#ifndef _WIN32
     ts->tm_zone = 0;
+#endif
   }
 };
 
@@ -810,7 +814,9 @@ public:
   virtual BasicDateTime * clone() const;
 
   void initTs(struct tm *ts) {
+#ifndef _WIN32
     ts->tm_gmtoff = 0;
+#endif
     ts->tm_hour = 0;
     ts->tm_isdst = 0;
     ts->tm_mday = 0;
@@ -820,7 +826,9 @@ public:
     ts->tm_wday = 0;
     ts->tm_yday = 0;
     ts->tm_year = 0;
+#ifndef _WIN32
     ts->tm_zone = 0;
+#endif
   }
 
   inline void toDateTime(int year, int mon, int day, int hour, int min,
@@ -967,7 +975,9 @@ public:
   virtual BasicDateTime * clone() const;
 
   void initTs(struct tm *ts) {
+#ifndef _WIN32
     ts->tm_gmtoff = 0;
+#endif
     ts->tm_hour = 0;
     ts->tm_isdst = 0;
     ts->tm_mday = 0;
@@ -977,7 +987,9 @@ public:
     ts->tm_wday = 0;
     ts->tm_yday = 0;
     ts->tm_year = 0;
+#ifndef _WIN32
     ts->tm_zone = 0;
+#endif
   }
 
   // check is timestamp64 for save data

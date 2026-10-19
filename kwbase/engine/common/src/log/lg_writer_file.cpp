@@ -11,8 +11,17 @@
 
 #include "lg_writer_file.h"
 
+#ifdef OS_LINUX
 #include <sys/stat.h>
 #include <sys/time.h>
+#endif
+
+#ifdef OS_WIN32
+#include <windows.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <time.h>
+#endif
 
 #include <cstdio>
 
@@ -76,7 +85,12 @@ void LogWriterFile :: InitLogFile() {
   char fname[FILE_NAME_LEN];
   MakeLogFileName(fname, FILE_NAME_LEN);
   snprintf(log_dir_, sizeof(log_dir_), "%s/%s", cfg->path.c_str(), fname);
+#ifdef OS_WIN32
+  // Windows symbolic link creation requires appropriate privileges
+  // For now, skip symbolic link creation on Windows
+#else
   std::ignore = symlink(fname, log_symlink_name_.c_str());
+#endif
   p_file_ = fopen(log_symlink_name_.c_str(), "a+");
   if (p_file_ == nullptr) {
     KStatus ret = CreateLogDir(cfg->path.c_str());
@@ -86,7 +100,12 @@ void LogWriterFile :: InitLogFile() {
       rto_f_.unlock();
       return;
     }
-    std::ignore = symlink(fname, log_symlink_name_.c_str());
+  #ifdef OS_WIN32
+  // Windows symbolic link creation requires appropriate privileges
+  // For now, skip symbolic link creation on Windows
+#else
+  std::ignore = symlink(fname, log_symlink_name_.c_str());
+#endif
     p_file_ = fopen(log_symlink_name_.c_str(), "a+");
   }
   rto_f_.unlock();
@@ -114,13 +133,18 @@ KStatus LogWriterFile::CreateLogDir(const char *path) {
   if (path[0] == '\0') {
     return FAIL;
   }
+#ifdef OS_WIN32
+  if (mkdir(path) == -1) {
+#else
   if (mkdir(path, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) == -1) {
+#endif
     return FAIL;
   }
   return SUCCESS;
 }
 
 void LogWriterFile::RelinkLogFile(char *fname) {
+#ifdef OS_LINUX
   int ret;
   rto_f_.lock();
   fclose(p_file_);
@@ -133,9 +157,17 @@ void LogWriterFile::RelinkLogFile(char *fname) {
   // reopen pfile_ in upper
   p_file_ = fopen(log_symlink_name_.c_str(), "a+");
   rto_f_.unlock();
+#elif defined(OS_WIN32)
+  // Windows implementation: close old file and open new file directly
+  rto_f_.lock();
+  fclose(p_file_);
+  p_file_ = fopen(fname, "a+");
+  rto_f_.unlock();
+#endif
 }
 
 KStatus LogWriterFile::LogDirCheck() {
+#ifdef OS_LINUX
   struct stat info {};
   // we check linked targed file's size.
   stat(log_dir_, &info);
@@ -148,6 +180,12 @@ KStatus LogWriterFile::LogDirCheck() {
     return SUCCESS;
   }
   return FAIL;
+#elif defined(OS_WIN32)
+  // Windows implementation: assume directory exists and size is ok
+  if (cfg->file_max <= 0) cfg->file_max = LOG_FILE_DEFAULT_SIZE;
+  // TODO: Implement proper directory checking for Windows
+  return SUCCESS;
+#endif
 }
 
 void LogWriterFile::MakeLogFileName(char *src, int max_size) {

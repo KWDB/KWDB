@@ -9,7 +9,30 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+#if defined(_WIN32) || defined(__MINGW32__)
+// Windows compatibility for POSIX process macros
+#ifndef WIFEXITED
+#define WIFEXITED(status) (((status) & 0xFF) == 0)
+#endif
+#ifndef WEXITSTATUS
+#define WEXITSTATUS(status) ((status) >> 8)
+#endif
+#ifndef WIFSIGNALED
+#define WIFSIGNALED(status) (((status) & 0xFF) != 0)
+#endif
+#ifndef WTERMSIG
+#define WTERMSIG(status) ((status) & 0x7F)
+#endif
+#ifndef WIFSTOPPED
+#define WIFSTOPPED(status) (0)  // Windows doesn't have stopped state
+#endif
+#endif
+
 #include "sys_utils.h"
+
+#if defined(_WIN32) || defined(__MINGW32__)
+#include <windows.h>
+#endif
 
 #include <unistd.h>
 #include <sys/stat.h>
@@ -159,12 +182,18 @@ bool DirExists(const std::string& path) {
 }
 
 bool isSoftLink(const std::string& path) {
+#if !defined(_WIN32) && !defined(__MINGW32__)
   struct stat fileStat;
   if (lstat(path.c_str(), &fileStat) == -1) {
     LOG_ERROR("Error: Unable to get file status for %s", path.c_str())
     return false;
   }
   return S_ISLNK(fileStat.st_mode);
+#else
+  // Windows doesn't support symbolic links in the same way
+  (void)path;
+  return false;
+#endif
 }
 
 std::string lexically_normal(const std::string& path) {

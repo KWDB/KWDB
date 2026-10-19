@@ -21,7 +21,9 @@ typedef std::function<void (int sig, std::ostream& os)> PostExceptionCb;
 
 int32_t RegisterExceptionHandler(char *dir, PostExceptionCb cb = nullptr);
 
+#ifdef OS_LINUX
 void ExceptionHandlerForTest(int signr, siginfo_t *info, void *secret);
+#endif
 
 }  // namespace kwdbts
 

@@ -749,8 +749,10 @@ size_t TsLastSegment::GetBlockSize(size_t block_id) const {
     return -1;
   }
   if (block_id + 1 == footer_.n_data_block) {
-    TsLastSegmentBlockIndex* first_index;
-    block_cache_->GetBlockIndex(0, &first_index);
+    TsLastSegmentBlockIndex* first_index = nullptr;
+    if (block_cache_->GetBlockIndex(0, &first_index) == FAIL) {
+      return -1;
+    }
     return first_index->info_offset - cur_info->block_offset;
   }
   TsLastSegmentBlockInfoWithData* next_info;

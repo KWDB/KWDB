@@ -11,6 +11,19 @@
 
 #pragma once
 
+// Windows headers define these macros, undefine them to avoid conflicts with enum values
+#if defined(_WIN32) || defined(__MINGW32__)
+#undef INT8
+#undef INT16
+#undef INT32
+#undef INT64
+#undef FLOAT
+#undef DOUBLE
+#undef CHAR
+#undef BOOL
+#undef BYTE
+#endif
+
 #include <inttypes.h>
 #include <vector>
 #include <string>
@@ -141,13 +154,13 @@ enum DATATYPE {
   NO_TYPE = -2,             // for create tree
   INVALID = -1,
   TIMESTAMP64 = 0,
-  INT16 = 1,
-  INT32 = 2,
-  INT64 = 3,
-  FLOAT = 4,
-  DOUBLE = 5,
-  BYTE = 6,
-  CHAR = 7,
+  K_INT16 = 1,
+  K_INT32 = 2,
+  K_INT64 = 3,
+  K_FLOAT = 4,
+  K_DOUBLE = 5,
+  K_BYTE = 6,
+  K_CHAR = 7,
   BINARY = 8,
   VARSTRING = 10,
   VARBINARY = 11,
@@ -159,11 +172,11 @@ enum DATATYPE {
   DATE32 = 19,
   DATETIMEDOS = 20,         // DATE, TIME MS DOS format
   DATETIME64 = 21,
-  BOOL = 24,
+  K_BOOL = 24,
   TIMESTAMP = 26,           // 4 bytes time stamp up to 2038/01/19
   INT16_ARRAY = 27,
   TIME = 28,                // 4 bytes, curtime(), timediff()
-  INT8 = 29,
+  K_INT8 = 29,
   BYTE_ARRAY = 30,
   INT8_ARRAY = 34,
   DATETIME32 = 50,          // 32-bit date time.
@@ -188,8 +201,8 @@ inline bool isBinaryType(int type) { return (type == BINARY || type == VARBINARY
 
 inline bool isVarLenType(int type) { return ((type == VARSTRING) ||  (type == VARBINARY)); }
 inline bool isArithmeticType(int type) {
-  return (type == INT8 || type == INT16 || type == INT32 || type == INT64 || type == FLOAT || type == DOUBLE ||
-          type == BOOL || type == TIMESTAMP || type == TIMESTAMP64 || type == TIMESTAMP64_MICRO ||
+  return (type == K_INT8 || type == K_INT16 || type == K_INT32 || type == K_INT64 || type == K_FLOAT || type == K_DOUBLE ||
+          type == K_BOOL || type == TIMESTAMP || type == TIMESTAMP64 || type == TIMESTAMP64_MICRO ||
           type == TIMESTAMP64_NANO);
 }
 

@@ -225,8 +225,8 @@ TEST(CompressorManager, ChimpAlgorithmMatchesFloatingType) {
   AttributeInfo attr_info{};
   attr_info.encode_algo = roachpb::ENCODE_ALGO_CHIMP;
 
-  auto [float_alg, float_general_alg] = inst.GetAlgorithm(DATATYPE::FLOAT, attr_info);
-  auto [double_alg, double_general_alg] = inst.GetAlgorithm(DATATYPE::DOUBLE, attr_info);
+  auto [float_alg, float_general_alg] = inst.GetAlgorithm(DATATYPE::K_FLOAT, attr_info);
+  auto [double_alg, double_general_alg] = inst.GetAlgorithm(DATATYPE::K_DOUBLE, attr_info);
   (void)float_general_alg;
   (void)double_general_alg;
 
@@ -315,8 +315,8 @@ TEST(CompressorManager, UnspecifiedCompressionAlgorithmUsesCurrentClusterSetting
 
   kwdbts::EngineOptions::compress_stage = 0;
   kwdbts::EngineOptions::compression_algorithm = kwdbts::CompressAlgo::kLz4;
-  auto [first_stage0, second_stage0] = inst.GetAlgorithm(DATATYPE::INT32, attr_info);
-  auto [default_first_stage0, default_second_stage0] = inst.GetDefaultAlgorithm(DATATYPE::INT32);
+  auto [first_stage0, second_stage0] = inst.GetAlgorithm(DATATYPE::K_INT32, attr_info);
+  auto [default_first_stage0, default_second_stage0] = inst.GetDefaultAlgorithm(DATATYPE::K_INT32);
   EXPECT_EQ(first_stage0, kwdbts::EncodeAlgo::kSimple8B_V2_s32);
   EXPECT_EQ(second_stage0, kwdbts::CompressAlgo::kPlain);
   EXPECT_EQ(default_first_stage0, kwdbts::EncodeAlgo::kSimple8B_V2_s32);
@@ -324,8 +324,8 @@ TEST(CompressorManager, UnspecifiedCompressionAlgorithmUsesCurrentClusterSetting
 
   kwdbts::EngineOptions::compress_stage = 3;
   kwdbts::EngineOptions::compression_algorithm = kwdbts::CompressAlgo::kZstd;
-  auto [first_stage3, second_stage3] = inst.GetAlgorithm(DATATYPE::INT32, attr_info);
-  auto [default_first_stage3, default_second_stage3] = inst.GetDefaultAlgorithm(DATATYPE::INT32);
+  auto [first_stage3, second_stage3] = inst.GetAlgorithm(DATATYPE::K_INT32, attr_info);
+  auto [default_first_stage3, default_second_stage3] = inst.GetDefaultAlgorithm(DATATYPE::K_INT32);
   EXPECT_EQ(first_stage3, kwdbts::EncodeAlgo::kSimple8B_V2_s32);
   EXPECT_EQ(second_stage3, kwdbts::CompressAlgo::kZstd);
   EXPECT_EQ(default_first_stage3, kwdbts::EncodeAlgo::kSimple8B_V2_s32);

@@ -91,7 +91,7 @@ EEIteratorErrCode RemoteInboundOperator::Next(kwdbContext_p ctx,
 EEIteratorErrCode RemoteInboundOperator::TryPullChunk(kwdbContext_p ctx,
                                                       DataChunkPtr& chunk) {
   {
-    std::unique_lock l(lock_);
+    std::unique_lock<std::mutex> l(lock_);
     while (true) {
       if (is_stop_ || (CheckCancel(ctx) != SUCCESS)) {
         LOG_ERROR("RemoteInboundOperator be cancel or stop (queryid %ld).",
@@ -208,7 +208,7 @@ KStatus RemoteInboundOperator::SetFinish() { return KStatus::SUCCESS; }
 void RemoteInboundOperator::PushFinish(EEIteratorErrCode code,
                                        k_int32 stream_id,
                                        const EEPgErrorInfo& pgInfo) {
-  std::unique_lock l(push_lock_);
+  std::unique_lock<std::mutex> l(push_lock_);
   if (pgInfo.code > 0) {
     ReceiveChunkNotify(0, pgInfo.code, pgInfo.msg);
     return;
@@ -251,7 +251,7 @@ void RemoteInboundOperator::PushFinish(EEIteratorErrCode code,
 
 KStatus RemoteInboundOperator::PushChunk(kwdbContext_p ctx, DataChunkPtr& chunk, k_int32 stream_id,
                                          EEIteratorErrCode code) {
-  std::unique_lock l(push_lock_);
+  std::unique_lock<std::mutex> l(push_lock_);
   if (chunk_request_ == nullptr) {
     chunk_request_ = std::make_shared<PTransmitChunkParams>();
     chunk_request_->set_dest_processor(dest_processor_id_);
@@ -283,7 +283,7 @@ EEIteratorErrCode RemoteInboundOperator::Close(kwdbContext_p ctx) {
   EnterFunc();
   is_stop_ = true;
   {
-    std::unique_lock l(lock_);
+    std::unique_lock<std::mutex> l(lock_);
     not_fill_cv_.notify_all();
   }
   EEIteratorErrCode code = EEIteratorErrCode::EE_OK;

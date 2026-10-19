@@ -76,9 +76,9 @@ class TsDBSchema {
     }
 
     std::unique_ptr<TsSequentialReadFile> counter_file;
-    auto s = TsFIOEnv::GetInstance().NewSequentialReadFile(counter_file_path, &counter_file);
+    auto s = TsFIOEnv::GetInstance().NewSequentialReadFile(counter_file_path.string(), &counter_file);
     if (s == FAIL) {
-      LOG_ERROR("failed to open max_entity_id file [%s] of db %u", counter_file_path.c_str(), db_id_);
+      LOG_ERROR("failed to open max_entity_id file [%s] of db %u", counter_file_path.string().c_str(), db_id_);
       return FAIL;
     }
 
@@ -86,14 +86,14 @@ class TsDBSchema {
 
     if (file_size < kMaxEntityIdFileHeaderSize) {
       LOG_ERROR("max_entity_id file [%s] of db %u is truncated: size %lu",
-                counter_file_path.c_str(), db_id_, static_cast<uint64_t>(file_size));
+                counter_file_path.string().c_str(), db_id_, static_cast<uint64_t>(file_size));
       return FAIL;
     }
 
     TsSliceGuard slice;
     s = counter_file->Read(file_size, &slice);
     if (s == FAIL) {
-      LOG_ERROR("failed to read max_entity_id file [%s] of db %u", counter_file_path.c_str(), db_id_);
+      LOG_ERROR("failed to read max_entity_id file [%s] of db %u", counter_file_path.string().c_str(), db_id_);
       return FAIL;
     }
 
@@ -107,12 +107,12 @@ class TsDBSchema {
 
     if (magic != kMaxEntityIdFileMagic) {
       LOG_ERROR("max_entity_id file [%s] of db %u has bad magic 0x%x, expected 0x%x",
-                counter_file_path.c_str(), db_id_, magic, kMaxEntityIdFileMagic);
+                counter_file_path.string().c_str(), db_id_, magic, kMaxEntityIdFileMagic);
       return FAIL;
     }
     if (version != kMaxEntityIdFileVersion) {
       LOG_ERROR("max_entity_id file [%s] of db %u has unsupported version %u, supported %u",
-                counter_file_path.c_str(), db_id_, version, kMaxEntityIdFileVersion);
+                counter_file_path.string().c_str(), db_id_, version, kMaxEntityIdFileVersion);
       return FAIL;
     }
 
@@ -127,7 +127,7 @@ class TsDBSchema {
 
     if (file_size != kMaxEntityIdFileHeaderSize + 8 * static_cast<uint64_t>(n_vgroup)) {
       LOG_ERROR("max_entity_id file [%s] of db %u has inconsistent size %lu for %u vgroups",
-                counter_file_path.c_str(), db_id_, static_cast<uint64_t>(file_size), n_vgroup);
+                counter_file_path.string().c_str(), db_id_, static_cast<uint64_t>(file_size), n_vgroup);
       return FAIL;
     }
 
@@ -139,7 +139,7 @@ class TsDBSchema {
     return SUCCESS;
   }
 
-  KStatus Create() { return TsFIOEnv::GetInstance().NewDirectory(root_path_); }
+  KStatus Create() { return TsFIOEnv::GetInstance().NewDirectory(root_path_.string()); }
 
   // Flush the directory entry created by the rename in Persist(). Without
   // this, a crash can lose the renamed file while the vg.mei removal (or an
@@ -149,18 +149,26 @@ class TsDBSchema {
     if (!EngineOptions::force_sync_file) {
       return SUCCESS;
     }
-    int fd = open(dir.c_str(), O_RDONLY | O_DIRECTORY);
+#ifdef _WIN32
+    // Windows has no O_DIRECTORY and cannot fsync a directory handle, so the
+    // directory entry cannot be flushed explicitly. The rename itself is
+    // already visible to the OS, so treat this as a no-op.
+    (void)dir;
+    return SUCCESS;
+#else
+    int fd = open(dir.string().c_str(), O_RDONLY | O_DIRECTORY);
     if (fd < 0) {
-      LOG_ERROR("failed to open dir [%s] for sync of db %u", dir.c_str(), db_id_);
+      LOG_ERROR("failed to open dir [%s] for sync of db %u", dir.string().c_str(), db_id_);
       return FAIL;
     }
     KStatus s = SUCCESS;
     if (fsync(fd) != 0) {
-      LOG_ERROR("failed to sync dir [%s] of db %u", dir.c_str(), db_id_);
+      LOG_ERROR("failed to sync dir [%s] of db %u", dir.string().c_str(), db_id_);
       s = FAIL;
     }
     close(fd);
     return s;
+#endif
   }
 
  public:
@@ -191,9 +199,9 @@ class TsDBSchema {
     std::string filename = "max_entity_id";
     auto tmp_path = root_path_ / TempFileName(filename);
     std::unique_ptr<TsAppendOnlyFile> file;
-    auto s = TsFIOEnv::GetInstance().NewAppendOnlyFile(tmp_path, &file);
+    auto s = TsFIOEnv::GetInstance().NewAppendOnlyFile(tmp_path.string(), &file);
     if (s == FAIL) {
-      LOG_ERROR("failed to create temp max_entity_id file [%s] of db %u", tmp_path.c_str(), db_id_);
+      LOG_ERROR("failed to create temp max_entity_id file [%s] of db %u", tmp_path.string().c_str(), db_id_);
       return FAIL;
     }
     TsBufferBuilder tmp_buffer;
@@ -205,12 +213,12 @@ class TsDBSchema {
     }
     s = file->Append(tmp_buffer.AsStringView());
     if (s == FAIL) {
-      LOG_ERROR("failed to write max_entity_id file [%s] of db %u", tmp_path.c_str(), db_id_);
+      LOG_ERROR("failed to write max_entity_id file [%s] of db %u", tmp_path.string().c_str(), db_id_);
       return FAIL;
     }
     s = file->Sync();
     if (s == FAIL) {
-      LOG_ERROR("failed to sync max_entity_id file [%s] of db %u", tmp_path.c_str(), db_id_);
+      LOG_ERROR("failed to sync max_entity_id file [%s] of db %u", tmp_path.string().c_str(), db_id_);
       return FAIL;
     }
     std::error_code ec;
@@ -272,9 +280,9 @@ class TsDBSchemaManager {
       LOG_ERROR("failed to load entity id counters from tag tables");
       return FAIL;
     }
-    s = TsFIOEnv::GetInstance().NewDirectory(root_path_);
+    s = TsFIOEnv::GetInstance().NewDirectory(root_path_.string());
     if (s == FAIL) {
-      LOG_ERROR("failed to create db schema directory [%s]", root_path_.c_str());
+      LOG_ERROR("failed to create db schema directory [%s]", root_path_.string().c_str());
       return FAIL;
     }
     s = ResetCounters();
@@ -300,7 +308,7 @@ class TsDBSchemaManager {
       db_schema = it->second;
       return SUCCESS;
     }
-    db_schema = std::make_shared<TsDBSchema>(root_path_, db_id);
+    db_schema = std::make_shared<TsDBSchema>(root_path_.string(), db_id);
 
     if (db_schema->Init() != SUCCESS) {
       LOG_ERROR("failed to init db schema of db %u", db_id);

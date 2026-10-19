@@ -52,32 +52,32 @@ KStatus AggCalculatorV2::CalcAggForFlush(bool is_not_null, bool& is_overflow, ui
       auto* double_sum_addr = static_cast<double*>(sum_addr);
       if (!overflow) {
         switch (type_) {
-          case DATATYPE::INT8:
+          case DATATYPE::K_INT8:
             overflow = AddAggInteger<int64_t>(
                 *int_sum_addr,
                 *static_cast<int8_t*>(current));
             break;
-          case DATATYPE::INT16:
+          case DATATYPE::K_INT16:
             overflow = AddAggInteger<int64_t>(
                 *int_sum_addr,
                 *static_cast<int16_t*>(current));
             break;
-          case DATATYPE::INT32:
+          case DATATYPE::K_INT32:
             overflow = AddAggInteger<int64_t>(
                 *int_sum_addr,
                 *static_cast<int32_t*>(current));
             break;
-          case DATATYPE::INT64:
+          case DATATYPE::K_INT64:
             overflow = AddAggInteger<int64_t>(
                 *int_sum_addr,
                 *static_cast<int64_t*>(current));
             break;
-          case DATATYPE::FLOAT:
+          case DATATYPE::K_FLOAT:
             AddAggFloat<double>(
                 *double_sum_addr,
                 *static_cast<float*>(current));
             break;
-          case DATATYPE::DOUBLE:
+          case DATATYPE::K_DOUBLE:
             AddAggFloat<double>(
                 *double_sum_addr,
                 *static_cast<double*>(current));
@@ -92,28 +92,28 @@ KStatus AggCalculatorV2::CalcAggForFlush(bool is_not_null, bool& is_overflow, ui
       }
       if (overflow) {
         switch (type_) {
-          case DATATYPE::INT8:
+          case DATATYPE::K_INT8:
             AddAggFloat<double, int64_t>(
                 *double_sum_addr,
                 *static_cast<int8_t*>(current));
             break;
-          case DATATYPE::INT16:
+          case DATATYPE::K_INT16:
             AddAggFloat<double, int64_t>(
                 *double_sum_addr,
                 *static_cast<int16_t*>(current));
             break;
-          case DATATYPE::INT32:
+          case DATATYPE::K_INT32:
             AddAggFloat<double, int64_t>(
                 *double_sum_addr,
                 *static_cast<int32_t*>(current));
             break;
-          case DATATYPE::INT64:
+          case DATATYPE::K_INT64:
             AddAggFloat<double, int64_t>(
                 *double_sum_addr,
                 *static_cast<int64_t*>(current));
             break;
-          case DATATYPE::FLOAT:
-          case DATATYPE::DOUBLE:
+          case DATATYPE::K_FLOAT:
+          case DATATYPE::K_DOUBLE:
             LOG_ERROR("Overflow not supported for sum, datatype: %d",
                 type_);
             return KStatus::FAIL;

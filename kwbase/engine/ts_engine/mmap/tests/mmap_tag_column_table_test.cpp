@@ -48,7 +48,7 @@ class TestTagColumn : public testing::Test {
     }
 
     tag_info_.m_id = 1;
-    tag_info_.m_data_type = DATATYPE::INT32;
+    tag_info_.m_data_type = DATATYPE::K_INT32;
     tag_info_.m_length = sizeof(int32_t);
     tag_info_.m_offset = 0;
     tag_info_.m_size = sizeof(int32_t);
@@ -150,42 +150,42 @@ TEST_F(TestTagColumn, Resource_Constants) {
 
 TEST_F(TestTagColumn, DataType_Int32) {
   TagInfo info = tag_info_;
-  info.m_data_type = DATATYPE::INT32;
+  info.m_data_type = DATATYPE::K_INT32;
   TagColumn col(0, info);
 
-  EXPECT_EQ(col.attributeInfo().m_data_type, DATATYPE::INT32);
+  EXPECT_EQ(col.attributeInfo().m_data_type, DATATYPE::K_INT32);
 }
 
 TEST_F(TestTagColumn, DataType_Int64) {
   TagInfo info = tag_info_;
-  info.m_data_type = DATATYPE::INT64;
+  info.m_data_type = DATATYPE::K_INT64;
   TagColumn col(0, info);
 
-  EXPECT_EQ(col.attributeInfo().m_data_type, DATATYPE::INT64);
+  EXPECT_EQ(col.attributeInfo().m_data_type, DATATYPE::K_INT64);
 }
 
 TEST_F(TestTagColumn, DataType_Float) {
   TagInfo info = tag_info_;
-  info.m_data_type = DATATYPE::FLOAT;
+  info.m_data_type = DATATYPE::K_FLOAT;
   TagColumn col(0, info);
 
-  EXPECT_EQ(col.attributeInfo().m_data_type, DATATYPE::FLOAT);
+  EXPECT_EQ(col.attributeInfo().m_data_type, DATATYPE::K_FLOAT);
 }
 
 TEST_F(TestTagColumn, DataType_Double) {
   TagInfo info = tag_info_;
-  info.m_data_type = DATATYPE::DOUBLE;
+  info.m_data_type = DATATYPE::K_DOUBLE;
   TagColumn col(0, info);
 
-  EXPECT_EQ(col.attributeInfo().m_data_type, DATATYPE::DOUBLE);
+  EXPECT_EQ(col.attributeInfo().m_data_type, DATATYPE::K_DOUBLE);
 }
 
 TEST_F(TestTagColumn, DataType_Bool) {
   TagInfo info = tag_info_;
-  info.m_data_type = DATATYPE::BOOL;
+  info.m_data_type = DATATYPE::K_BOOL;
   TagColumn col(0, info);
 
-  EXPECT_EQ(col.attributeInfo().m_data_type, DATATYPE::BOOL);
+  EXPECT_EQ(col.attributeInfo().m_data_type, DATATYPE::K_BOOL);
 }
 
 TEST_F(TestTagColumn, TagType_GeneralTag) {
@@ -265,7 +265,7 @@ class TestMMapTagColumnTable : public testing::Test {
 
     TagInfo ntag_info;
     ntag_info.m_id = 2;
-    ntag_info.m_data_type = DATATYPE::INT32;
+    ntag_info.m_data_type = DATATYPE::K_INT32;
     ntag_info.m_length = sizeof(int32_t);
     ntag_info.m_size = sizeof(int32_t);
     ntag_info.m_tag_type = GENERAL_TAG;
@@ -696,7 +696,7 @@ class TestSparseTagColumnTable : public testing::Test {
 
     TagInfo ntag_info1;
     ntag_info1.m_id = 2;
-    ntag_info1.m_data_type = DATATYPE::INT32;
+    ntag_info1.m_data_type = DATATYPE::K_INT32;
     ntag_info1.m_length = sizeof(int32_t);
     ntag_info1.m_size = sizeof(int32_t);
     ntag_info1.m_tag_type = GENERAL_TAG;
@@ -705,7 +705,7 @@ class TestSparseTagColumnTable : public testing::Test {
 
     TagInfo ntag_info2;
     ntag_info2.m_id = 3;
-    ntag_info2.m_data_type = DATATYPE::INT64;
+    ntag_info2.m_data_type = DATATYPE::K_INT64;
     ntag_info2.m_length = sizeof(int64_t);
     ntag_info2.m_size = sizeof(int64_t);
     ntag_info2.m_tag_type = GENERAL_TAG;
@@ -714,7 +714,7 @@ class TestSparseTagColumnTable : public testing::Test {
 
     TagInfo ntag_info3;
     ntag_info3.m_id = 4;
-    ntag_info3.m_data_type = DATATYPE::FLOAT;
+    ntag_info3.m_data_type = DATATYPE::K_FLOAT;
     ntag_info3.m_length = sizeof(float);
     ntag_info3.m_size = sizeof(float);
     ntag_info3.m_tag_type = GENERAL_TAG;
@@ -1030,7 +1030,7 @@ class TestTagTuplePackValidColumns : public testing::Test {
 
     TagInfo ntag_info;
     ntag_info.m_id = 2;
-    ntag_info.m_data_type = DATATYPE::INT32;
+    ntag_info.m_data_type = DATATYPE::K_INT32;
     ntag_info.m_length = sizeof(int32_t);
     ntag_info.m_size = sizeof(int32_t);
     ntag_info.m_tag_type = GENERAL_TAG;

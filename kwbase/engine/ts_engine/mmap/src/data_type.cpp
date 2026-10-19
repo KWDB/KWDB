@@ -36,12 +36,12 @@ bool AttributeInfo::operator==(AttributeInfo& rhs) const {
 std::string getDataTypeName(int32_t data_type) {
   switch (data_type)
   {
-    case DATATYPE::INT16:   return "INT16";
-    case DATATYPE::INT32:   return "INT32";
-    case DATATYPE::INT64:   return "INT64";
-    case DATATYPE::FLOAT:   return "FLOAT";
-    case DATATYPE::DOUBLE:  return "DOUBLE";
-    case DATATYPE::CHAR:    return "CHAR";
+    case DATATYPE::K_INT16:   return "INT16";
+    case DATATYPE::K_INT32:   return "INT32";
+    case DATATYPE::K_INT64:   return "INT64";
+    case DATATYPE::K_FLOAT:   return "FLOAT";
+    case DATATYPE::K_DOUBLE:  return "DOUBLE";
+    case DATATYPE::K_CHAR:    return "CHAR";
     case DATATYPE::BINARY:  return "BINARY";
     case DATATYPE::VARSTRING: return "VARSTRING";
     case DATATYPE::VARBINARY: return "VARBINARY";

@@ -39,7 +39,12 @@ KStatus TSEngine::Execute(kwdbContext_p ctx, QueryInfo* req, RespInfo* resp) {
 namespace kwdbts {
 int32_t EngineOptions::iot_interval  = 864000;
 string EngineOptions::home_;  // NOLINT
+#if defined(_WIN32) || defined(__MINGW32__)
+#include <windows.h>
+size_t EngineOptions::ps_ = 4096;  // Default page size for Windows
+#else
 size_t EngineOptions::ps_ = sysconf(_SC_PAGESIZE);
+#endif
 
 #define DEFAULT_NS_ALIGN_SIZE       2  // 16GB name service
 
@@ -50,8 +55,8 @@ int EngineOptions::float_precision_ = 6;
 int64_t EngineOptions::max_anon_memory_size_ = 1*1024*1024*1024;  // 1G
 int EngineOptions::dt32_base_year_ = 2000;
 bool EngineOptions::zero_if_null_ = false;
-#if defined(_WINDOWS_)
-const char BigObjectConfig::slash_ = '\\';
+#if defined(_WIN32) || defined(__MINGW32__)
+const char EngineOptions::slash_ = '\\';
 #else
 const char EngineOptions::slash_ = '/';
 #endif

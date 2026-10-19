@@ -35,8 +35,10 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 
+	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
@@ -52,6 +54,19 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 	"github.com/pkg/errors"
 )
+
+var windowsAeGatherWarning sync.Once
+
+func aeGatherEnabledForPlatform(useAeGather bool) bool {
+	if !useAeGather || !base.IsWindows() {
+		return useAeGather
+	}
+	windowsAeGatherWarning.Do(func() {
+		log.Warningf(context.Background(),
+			"disabling AE gather on Windows; distributed TS queries will exchange data through the ME Go-layer path")
+	})
+	return false
+}
 
 // VectorizeDisableReason defines why a plan cannot use the vectorized engine.
 type VectorizeDisableReason int
@@ -1938,6 +1953,7 @@ func (p *PhysicalPlan) GenerateFlowSpecs(
 	}
 
 	queryID := generateQueryID(uint16(gateway))
+	useAeGather = aeGatherEnabledForPlatform(useAeGather)
 
 	//set brpcAddress for ae.
 	brpcAddrs := make([]string, maxNodeID)

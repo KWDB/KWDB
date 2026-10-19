@@ -14,7 +14,6 @@ package importer
 import (
 	"context"
 	"io/ioutil"
-	"os"
 
 	"gitee.com/kwbasedb/kwbase/pkg/sql"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
@@ -41,7 +40,8 @@ func checkAndGetDetailsInDatabase(
 	dbPath := files[0]
 
 	externalStorageFromURI := p.ExecCfg().DistSQLSrv.ExternalStorageFromURI
-	dbStore, err := externalStorageFromURI(ctx, dbPath+string(os.PathSeparator))
+	// nodelocal paths are URIs, so the path separator must always be "/" even on Windows.
+	dbStore, err := externalStorageFromURI(ctx, dbPath+"/")
 	if err != nil {
 		return false, "", nil, nil, "", nil, err
 	}
@@ -253,7 +253,8 @@ func readTablesInDbFromStore(
 	var hasScPrivileges bool
 	var privileges []string
 	externalStorageFromURI := p.ExecCfg().DistSQLSrv.ExternalStorageFromURI
-	dbPath = dbPath + string(os.PathSeparator)
+	// nodelocal paths are URIs, so the path separator must always be "/" even on Windows.
+	dbPath = dbPath + "/"
 	dbStore, err := externalStorageFromURI(ctx, dbPath)
 	if err != nil {
 		return nil, nil, false, nil, false, err
@@ -276,7 +277,7 @@ func readTablesInDbFromStore(
 			scNames = append(scNames, scFolderName)
 		}
 		// schemaPath
-		scPath := dbPath + scFolderName + string(os.PathSeparator)
+		scPath := dbPath + scFolderName + "/"
 		scStore, err := externalStorageFromURI(ctx, scPath)
 		if err != nil {
 			return nil, nil, false, nil, false, err
@@ -317,7 +318,7 @@ func readTablesInDbFromStore(
 				continue
 			}
 			// table SQL
-			tbReader, err := scStore.ReadFile(ctx, tbFolderName+string(os.PathSeparator)+"meta.sql")
+			tbReader, err := scStore.ReadFile(ctx, tbFolderName+"/meta.sql")
 			if err != nil {
 				return nil, nil, false, nil, false, err
 			}

@@ -9,16 +9,28 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-
-#include <sys/syscall.h>
-#include <sys/stat.h>
-#include <cxxabi.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <dlfcn.h>
+#ifdef OS_LINUX
 #include <signal.h>
 #include <execinfo.h>
 #include <dirent.h>
+#include <sys/syscall.h>
+#include <sys/stat.h>
+#include <cxxabi.h>
+#include <dlfcn.h>
+#endif
+
+#ifdef OS_WIN32
+#include <windows.h>
+#include <psapi.h>
+#include <dbghelp.h>
+#include <tlhelp32.h>
+#include <direct.h>
+#include <io.h>
+#include <cxxabi.h>
+#endif
+
+#include <fcntl.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <memory>
 #include <string>
@@ -38,10 +50,21 @@
 namespace kwdbts {
 const char* kThreadBtName = "thread_backtrace";
 k_char kThreadBtPath[FULL_FILE_NAME_MAX_LEN];
+#ifdef OS_LINUX
 struct sigaction oldsa;
+#endif
 static constexpr size_t kDemangleBufferSize = 8 * 1024;
 
+// Protects backtrace file writes from concurrent threads (both Linux and Windows).
+std::mutex lock_4_backtrace;
+
 void DumpLatchInfo();
+
+#ifdef OS_WIN32
+// Forward declarations for Windows backtrace functions
+void DumpCurrentThreadBacktrace(HANDLE hProcess, FILE* fp);
+void DumpSuspendedThreadBacktrace(HANDLE hProcess, HANDLE hThread, DWORD tid, FILE* fp);
+#endif
 
 // Generate thread stack backtrace file absolute path.
 void GetThreadBtFilePath(char *threadBtPath, char* folder, char* nowTimeStamp) {
@@ -55,6 +78,7 @@ void GetThreadBtFilePath(char *threadBtPath, char* folder, char* nowTimeStamp) {
   }
 }
 
+#ifdef OS_LINUX
 // Signal SIGUSR2 to thread by syscall.
 int SignalThreadDump(pid_t pid, uid_t uid, pid_t tid) {
   // Similar to pthread_sigqueue(), but usable with a tid since we
@@ -69,6 +93,7 @@ int SignalThreadDump(pid_t pid, uid_t uid, pid_t tid) {
   info.si_value = nullVal;
   return syscall(SYS_rt_tgsigqueueinfo, pid, tid, SIGUSR2, &info);
 }
+#endif
 
 void SetThreadBtPath(char* folder, char* nowTimeStamp) {
   memset(kThreadBtPath, 0, sizeof(kThreadBtPath));
@@ -77,6 +102,7 @@ void SetThreadBtPath(char* folder, char* nowTimeStamp) {
 
 // Send signal SIGUSR2 to all threads in /proc/<PID>/task.
 bool DumpAllThreadBacktrace(char* folder, char* nowTimeStamp) {
+#ifdef OS_LINUX
   DIR *dir;
   struct dirent *entry;
   // dump latch info
@@ -110,8 +136,67 @@ bool DumpAllThreadBacktrace(char* folder, char* nowTimeStamp) {
 
   closedir(dir);
   return true;
+#elif defined(OS_WIN32)
+  DumpLatchInfo();
+  SetThreadBtPath(folder, nowTimeStamp);
+
+  std::lock_guard<std::mutex> guard(lock_4_backtrace);
+  FILE* fp = fopen(kThreadBtPath, "ab");
+  if (fp == nullptr) {
+    return false;
+  }
+
+  HANDLE hProcess = GetCurrentProcess();
+  DWORD currentPid = static_cast<DWORD>(_getpid());
+  DWORD currentTid = GetCurrentThreadId();
+
+  // Take a snapshot of all threads in the current process
+  HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+  if (hSnapshot == INVALID_HANDLE_VALUE) {
+    fclose(fp);
+    return false;
+  }
+
+  THREADENTRY32 te32;
+  te32.dwSize = sizeof(THREADENTRY32);
+
+  if (Thread32First(hSnapshot, &te32)) {
+    do {
+      if (te32.th32OwnerProcessID != currentPid) {
+        continue;
+      }
+
+      DWORD tid = te32.th32ThreadID;
+
+      if (tid == currentTid) {
+        // Current thread: use CaptureStackBackTrace (safe, no suspension needed)
+        DumpCurrentThreadBacktrace(hProcess, fp);
+      } else {
+        // Other threads: suspend, walk stack, resume
+        HANDLE hThread = OpenThread(
+          THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION,
+          FALSE, tid);
+        if (hThread == NULL) {
+          continue;
+        }
+
+        if (SuspendThread(hThread) != static_cast<DWORD>(-1)) {
+          DumpSuspendedThreadBacktrace(hProcess, hThread, tid, fp);
+          ResumeThread(hThread);
+        }
+
+        CloseHandle(hThread);
+      }
+    } while (Thread32Next(hSnapshot, &te32));
+  }
+
+  CloseHandle(hSnapshot);
+  fclose(fp);
+  return true;
+#endif
 }
 
+#ifdef OS_LINUX
 void demangle(const char* symbol, char* buffer, size_t buffer_size) {
   if (!symbol || !buffer || buffer_size == 0) {
     return;
@@ -150,6 +235,39 @@ void demangle(const char* symbol, char* buffer, size_t buffer_size) {
     buffer[buffer_size - 1] = '\0';
   }
 }
+#endif
+
+#ifdef OS_WIN32
+void demangle(const char* symbol, char* buffer, size_t buffer_size) {
+  if (!symbol || !buffer || buffer_size == 0) {
+    return;
+  }
+  if (strlen(symbol) > buffer_size / 8) {
+    strncpy(buffer, symbol, buffer_size - 1);
+    buffer[buffer_size - 1] = '\0';
+    return;
+  }
+  // MinGW/GCC uses Itanium ABI mangling (_Z prefix), same as Linux.
+  // Use __cxa_demangle instead of UnDecorateSymbolName (which is MSVC-only).
+  if (symbol[0] == '_' && symbol[1] == 'Z') {
+    int status = 0;
+    size_t len = buffer_size;
+    char* ret = abi::__cxa_demangle(symbol, buffer, &len, &status);
+    if (status != 0 || ret == nullptr) {
+      strncpy(buffer, symbol, buffer_size - 1);
+      buffer[buffer_size - 1] = '\0';
+    } else if (ret != buffer) {
+      strncpy(buffer, ret, buffer_size - 1);
+      buffer[buffer_size - 1] = '\0';
+      free(ret);
+    }
+  } else {
+    strncpy(buffer, symbol, buffer_size - 1);
+    buffer[buffer_size - 1] = '\0';
+  }
+}
+#endif
+
 char* AppendLiteral(char* cursor, char* end, const char* text) {
   while (*text != '\0' && cursor < end) {
     *cursor++ = *text++;
@@ -181,6 +299,7 @@ char* AppendInt32(char* cursor, char* end, int32_t value) {
   }
   return AppendUInt64(cursor, end, num);
 }
+
 char* AppendPtr(char* cursor, char* end, uintptr_t ptr_value) {
   const char hex_digits[] = "0123456789abcdef";
   const int ptr_bytes = sizeof(ptr_value);
@@ -201,21 +320,8 @@ char* AppendPtr(char* cursor, char* end, uintptr_t ptr_value) {
   }
   return cursor;
 }
-void GenThreadHeader(char* header, size_t* head_size, size_t frame_size) {
-  char* cursor = header;
-  char* end = header + *head_size;
-  cursor = AppendLiteral(cursor, end, "\nThread 0x");
-  cursor = AppendPtr(cursor, end, pthread_self());
-  cursor = AppendLiteral(cursor, end, " pid=");
-  cursor = AppendUInt64(cursor, end, static_cast<uint64_t>(getpid()));
-  cursor = AppendLiteral(cursor, end, " tid=");
-  cursor = AppendUInt64(cursor, end, static_cast<uint64_t>(gettid()));
-  cursor = AppendLiteral(cursor, end, "\nbacktrace: size:");
-  cursor = AppendUInt64(cursor, end, static_cast<uint64_t>(frame_size));
-  cursor = AppendLiteral(cursor, end, "\n");
-  *head_size = static_cast<size_t>(cursor - header);
-}
 
+// GenTraceLine is platform-independent
 void GenTraceLine(char* header, size_t* head_size,
   size_t i, const char* lib_name, const char* display_name, uintptr_t offset, void* array_i) {
   char* cursor = header;
@@ -232,6 +338,22 @@ void GenTraceLine(char* header, size_t* head_size,
   cursor = AppendLiteral(cursor, end, ") [0x");
   cursor = AppendPtr(cursor, end, reinterpret_cast<uintptr_t>(array_i));
   cursor = AppendLiteral(cursor, end, "]\n");
+  *head_size = static_cast<size_t>(cursor - header);
+}
+
+#ifdef OS_LINUX
+void GenThreadHeader(char* header, size_t* head_size, size_t frame_size) {
+  char* cursor = header;
+  char* end = header + *head_size;
+  cursor = AppendLiteral(cursor, end, "\nThread 0x");
+  cursor = AppendPtr(cursor, end, pthread_self());
+  cursor = AppendLiteral(cursor, end, " pid=");
+  cursor = AppendUInt64(cursor, end, static_cast<uint64_t>(getpid()));
+  cursor = AppendLiteral(cursor, end, " tid=");
+  cursor = AppendUInt64(cursor, end, static_cast<uint64_t>(gettid()));
+  cursor = AppendLiteral(cursor, end, "\nbacktrace: size:");
+  cursor = AppendUInt64(cursor, end, static_cast<uint64_t>(frame_size));
+  cursor = AppendLiteral(cursor, end, "\n");
   *head_size = static_cast<size_t>(cursor - header);
 }
 
@@ -285,9 +407,176 @@ void DumpThreadBacktraceToFile(int fd) {
     return;
   }
 }
+#endif  // OS_LINUX
 
-std::mutex lock_4_backtrace;
+#ifdef OS_WIN32
+void GenThreadHeader(char* header, size_t* head_size, size_t frame_size, DWORD tid) {
+  char* cursor = header;
+  char* end = header + *head_size;
+  cursor = AppendLiteral(cursor, end, "\nThread 0x");
+  cursor = AppendPtr(cursor, end, static_cast<uintptr_t>(tid));
+  cursor = AppendLiteral(cursor, end, " pid=");
+  cursor = AppendUInt64(cursor, end, static_cast<uint64_t>(_getpid()));
+  cursor = AppendLiteral(cursor, end, " tid=");
+  cursor = AppendUInt64(cursor, end, static_cast<uint64_t>(tid));
+  cursor = AppendLiteral(cursor, end, "\nbacktrace: size:");
+  cursor = AppendUInt64(cursor, end, static_cast<uint64_t>(frame_size));
+  cursor = AppendLiteral(cursor, end, "\n");
+  *head_size = static_cast<size_t>(cursor - header);
+}
+
+// Dump backtrace for the current thread using CaptureStackBackTrace
+void DumpCurrentThreadBacktrace(HANDLE hProcess, FILE* fp) {
+  const k_int32 MAX_FRAME_LEVEL = 128;
+  void* frames[MAX_FRAME_LEVEL];
+  USHORT numFrames = CaptureStackBackTrace(0, MAX_FRAME_LEVEL, frames, NULL);
+
+  char thread_info[512];
+  size_t head_size = sizeof(thread_info);
+  GenThreadHeader(thread_info, &head_size, numFrames, GetCurrentThreadId());
+  fwrite(thread_info, 1, head_size, fp);
+
+  // SYMBOL_INFO buffer: struct header + variable-length name
+  char symbol_buffer[sizeof(SYMBOL_INFO) + MAX_SYM_NAME * sizeof(TCHAR)];
+  SYMBOL_INFO* symbol = reinterpret_cast<SYMBOL_INFO*>(symbol_buffer);
+  symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+  symbol->MaxNameLen = MAX_SYM_NAME;
+
+  IMAGEHLP_MODULE64 moduleInfo;
+  moduleInfo.SizeOfStruct = sizeof(IMAGEHLP_MODULE64);
+
+  char demangle_buf[kDemangleBufferSize];
+
+  for (USHORT i = 0; i < numFrames; i++) {
+    DWORD64 displacement = 0;
+    const char* display_name = "??";
+    const char* lib_name = "??";
+    uintptr_t offset = 0;
+
+    if (SymFromAddr(hProcess, reinterpret_cast<DWORD64>(frames[i]),
+                    &displacement, symbol)) {
+      demangle(symbol->Name, demangle_buf, sizeof(demangle_buf));
+      display_name = demangle_buf;
+      offset = static_cast<uintptr_t>(displacement);
+    }
+
+    if (SymGetModuleInfo64(hProcess, reinterpret_cast<DWORD64>(frames[i]),
+                           &moduleInfo)) {
+      const char* cur_char = moduleInfo.ImageName;
+      const char* last_sep = cur_char;
+      while (*cur_char != 0) {
+        if (*cur_char == '\\' || *cur_char == '/') {
+          last_sep = cur_char + 1;
+        }
+        cur_char++;
+      }
+      lib_name = last_sep;
+    }
+
+    size_t line_len = sizeof(thread_info);
+    GenTraceLine(thread_info, &line_len, i, lib_name, display_name, offset,
+                 frames[i]);
+    fwrite(thread_info, 1, line_len, fp);
+  }
+  fwrite("\n", 1, 1, fp);
+}
+
+// Dump backtrace for a suspended thread using StackWalk64
+void DumpSuspendedThreadBacktrace(HANDLE hProcess, HANDLE hThread, DWORD tid,
+                                  FILE* fp) {
+  const k_int32 MAX_FRAME_LEVEL = 128;
+  uintptr_t pc_frames[MAX_FRAME_LEVEL];
+  size_t frame_count = 0;
+
+  CONTEXT context;
+  memset(&context, 0, sizeof(CONTEXT));
+  context.ContextFlags = CONTEXT_FULL;
+
+  if (!GetThreadContext(hThread, &context)) {
+    return;
+  }
+
+  STACKFRAME64 stackFrame;
+  memset(&stackFrame, 0, sizeof(STACKFRAME64));
+
+#if defined(_M_IX86) || defined(__i386__)
+  DWORD machineType = IMAGE_FILE_MACHINE_I386;
+  stackFrame.AddrPC.Offset = context.Eip;
+  stackFrame.AddrPC.Mode = AddrModeFlat;
+  stackFrame.AddrStack.Offset = context.Esp;
+  stackFrame.AddrStack.Mode = AddrModeFlat;
+  stackFrame.AddrFrame.Offset = context.Ebp;
+  stackFrame.AddrFrame.Mode = AddrModeFlat;
+#else
+  // Default to x86_64 (AMD64)
+  DWORD machineType = IMAGE_FILE_MACHINE_AMD64;
+  stackFrame.AddrPC.Offset = context.Rip;
+  stackFrame.AddrPC.Mode = AddrModeFlat;
+  stackFrame.AddrStack.Offset = context.Rsp;
+  stackFrame.AddrStack.Mode = AddrModeFlat;
+  stackFrame.AddrFrame.Offset = context.Rbp;
+  stackFrame.AddrFrame.Mode = AddrModeFlat;
+#endif
+
+  // Collect all PC frames first so we know the count for the header
+  while (StackWalk64(machineType, hProcess, hThread, &stackFrame, &context,
+                     NULL, SymFunctionTableAccess64, SymGetModuleBase64, NULL)) {
+    if (frame_count >= MAX_FRAME_LEVEL) break;
+    pc_frames[frame_count++] = stackFrame.AddrPC.Offset;
+  }
+
+  // Write header
+  char thread_info[512];
+  size_t head_size = sizeof(thread_info);
+  GenThreadHeader(thread_info, &head_size, frame_count, tid);
+  fwrite(thread_info, 1, head_size, fp);
+
+  // Write each frame with symbol resolution
+  char symbol_buffer[sizeof(SYMBOL_INFO) + MAX_SYM_NAME * sizeof(TCHAR)];
+  SYMBOL_INFO* symbol = reinterpret_cast<SYMBOL_INFO*>(symbol_buffer);
+  symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+  symbol->MaxNameLen = MAX_SYM_NAME;
+
+  IMAGEHLP_MODULE64 moduleInfo;
+  moduleInfo.SizeOfStruct = sizeof(IMAGEHLP_MODULE64);
+
+  char demangle_buf[kDemangleBufferSize];
+
+  for (size_t i = 0; i < frame_count; i++) {
+    DWORD64 displacement = 0;
+    const char* display_name = "??";
+    const char* lib_name = "??";
+    uintptr_t offset = 0;
+
+    if (SymFromAddr(hProcess, pc_frames[i], &displacement, symbol)) {
+      demangle(symbol->Name, demangle_buf, sizeof(demangle_buf));
+      display_name = demangle_buf;
+      offset = static_cast<uintptr_t>(displacement);
+    }
+
+    if (SymGetModuleInfo64(hProcess, pc_frames[i], &moduleInfo)) {
+      const char* cur_char = moduleInfo.ImageName;
+      const char* last_sep = cur_char;
+      while (*cur_char != 0) {
+        if (*cur_char == '\\' || *cur_char == '/') {
+          last_sep = cur_char + 1;
+        }
+        cur_char++;
+      }
+      lib_name = last_sep;
+    }
+
+    size_t line_len = sizeof(thread_info);
+    GenTraceLine(thread_info, &line_len, i, lib_name, display_name, offset,
+                 reinterpret_cast<void*>(pc_frames[i]));
+    fwrite(thread_info, 1, line_len, fp);
+  }
+  fwrite("\n", 1, 1, fp);
+}
+#endif  // OS_WIN32
+
 // the callback function of SIGUSR2 for dump thread backtrace.
+#ifdef OS_LINUX
 static void DumpThreadBacktrace(int signr, siginfo_t *info, void *secret) {
   if (kThreadBtPath[0] == '\0') {
     return;
@@ -302,9 +591,11 @@ static void DumpThreadBacktrace(int signr, siginfo_t *info, void *secret) {
   close(fd);
   lock_4_backtrace.unlock();
 }
+#endif
 
 // Register signal SIGUSR2 action function.
 void RegisterBacktraceSignalHandler() {
+#ifdef OS_LINUX
   // Register SIGUSR2 for dump thread backtrace
   struct sigaction sa;
   sigfillset(&sa.sa_mask);
@@ -316,6 +607,16 @@ void RegisterBacktraceSignalHandler() {
   const k_int32 MAX_FRAME_LEVEL = 2;
   void *array[MAX_FRAME_LEVEL];
   backtrace(array, MAX_FRAME_LEVEL);
+#elif defined(OS_WIN32)
+  // Initialize DbgHelp symbol handler for stack walking
+  SymSetOptions(SYMOPT_DEFERRED_LOADS | SYMOPT_LOAD_LINES);
+  SymInitialize(GetCurrentProcess(), NULL, TRUE);
+
+  // Pre-load DbgHelp by capturing a dummy backtrace
+  const k_int32 MAX_FRAME_LEVEL = 2;
+  void *array[MAX_FRAME_LEVEL];
+  CaptureStackBackTrace(0, MAX_FRAME_LEVEL, array, NULL);
+#endif
 }
 
 // dump latchs stats
@@ -324,7 +625,7 @@ FILE* openNewFile(const char* file_prefix) {
   if (dump_file_path.empty()) {
     dump_file_path = "./";
   }
-  if (dump_file_path.back() != '/') {
+  if (dump_file_path.back() != '/' && dump_file_path.back() != '\\') {
     dump_file_path += "/";
   }
 
@@ -369,9 +670,21 @@ void DumpLatchInfo() {
   fclose(fp2);
 }
 
+#ifdef OS_LINUX
 void DumpThreadBacktraceForTest(char* folder, char* nowTimeStamp, int signr, siginfo_t *info, void *secret) {
   SetThreadBtPath(folder, nowTimeStamp);
   DumpThreadBacktrace(signr, info, secret);
 }
+#elif defined(OS_WIN32)
+void DumpThreadBacktraceForTest(char* folder, char* nowTimeStamp, int signr, void *info, void *secret) {
+  SetThreadBtPath(folder, nowTimeStamp);
+  FILE* fp = fopen(kThreadBtPath, "a");
+  if (fp == nullptr) {
+    return;
+  }
+  DumpCurrentThreadBacktrace(GetCurrentProcess(), fp);
+  fclose(fp);
+}
+#endif
 
 }  // namespace kwdbts

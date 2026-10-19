@@ -12,7 +12,9 @@
 #ifndef COMMON_SRC_H_CM_CONFIG_H_
 #define COMMON_SRC_H_CM_CONFIG_H_
 
+#ifdef OS_LINUX
 #include <unistd.h>
+#endif
 
 #include <cstdlib>
 #include <fstream>

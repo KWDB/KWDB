@@ -12,7 +12,11 @@
 
 #pragma once
 
+#include <atomic>
+#include <condition_variable>
 #include <list>
+#include <mutex>
+#include <thread>
 #include "ee_task.h"
 #include "kwdb_type.h"
 
@@ -40,7 +44,7 @@ class PipelineTaskPoller {
 
 
  private:
-  std::atomic_bool is_poller_stop_{false};
+  std::atomic<k_bool> is_poller_stop_{false};
   TaskList blocked_drivers_;
   ExecPool *exec_pool_{nullptr};
   std::thread poller_thread_;

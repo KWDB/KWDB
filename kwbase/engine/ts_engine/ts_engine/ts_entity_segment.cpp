@@ -153,13 +153,14 @@ KStatus TsEntitySegmentBlockItemFile::GetBlockItem(uint64_t blk_id, TsEntitySegm
 
 TsEntitySegmentMetaManager::TsEntitySegmentMetaManager(TsIOEnv* env, const string& dir_path, EntitySegmentMetaInfo info)
     : dir_path_(dir_path),
-      entity_header_(env, dir_path_ / EntityHeaderFileName(info.header_e_file_number)),
-      block_header_(env, dir_path_ / BlockHeaderFileName(info.header_b_info.file_number), info.header_b_info.length) {}
+      entity_header_(env, (dir_path_ / EntityHeaderFileName(info.header_e_file_number)).string()),
+      block_header_(env, (dir_path_ / BlockHeaderFileName(info.header_b_info.file_number)).string(),
+                    info.header_b_info.length) {}
 
 KStatus TsEntitySegmentMetaManager::Open() {
   // Attempt to access the directory
-  if (access(dir_path_.c_str(), F_OK)) {
-    LOG_ERROR("cannot open directory [%s].", dir_path_.c_str());
+  if (access(dir_path_.string().c_str(), F_OK)) {
+    LOG_ERROR("cannot open directory [%s].", dir_path_.string().c_str());
     return KStatus::FAIL;
   }
   KStatus s = entity_header_.Open();
@@ -950,10 +951,10 @@ TsEntitySegment::TsEntitySegment(uint32_t max_blocks) {
 }
 
 TsSegmentFile::TsSegmentFile(EntitySegmentIOEnvSet env_set, const fs::path& root, EntitySegmentMetaInfo info)
-    : dir_path_(root),
-      meta_mgr_(env_set.header_io_env, root, info),
-      block_file_(env_set.block_agg_io_env, root, info),
-      agg_file_(env_set.block_agg_io_env, root, info),
+    : dir_path_(root.string()),
+      meta_mgr_(env_set.header_io_env, root.string(), info),
+      block_file_(env_set.block_agg_io_env, root.string(), info),
+      agg_file_(env_set.block_agg_io_env, root.string(), info),
       info_(info) {
   KStatus s = Open();
   if (s != KStatus::SUCCESS) {

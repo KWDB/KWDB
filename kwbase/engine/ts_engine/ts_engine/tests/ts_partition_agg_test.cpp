@@ -262,8 +262,8 @@ TEST_F(TestPartitionAgg, basicPartitionAgg) {
         ASSERT_EQ(count, 1);
         ASSERT_EQ(KInt64(res.data[0][0]->mem), 2 * entity_row_num);
         timestamp64 max_val = start_ts2 + (entity_row_num - 1) * interval;
-        ASSERT_EQ(KTimestamp(res.data[1][0]->mem), max_val);
-        ASSERT_EQ(KTimestamp(res.data[2][0]->mem), start_ts1);
+        ASSERT_EQ(KTimestampCast(res.data[1][0]->mem), max_val);
+        ASSERT_EQ(KTimestampCast(res.data[2][0]->mem), start_ts1);
         ASSERT_EQ(KInt64(res.data[3][0]->mem), 2 * entity_row_num);
         ASSERT_NE(res.data[4][0]->mem, nullptr);
         ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
@@ -452,14 +452,14 @@ TEST_F(TestPartitionAgg, basicPartitionAggDelete) {
         if (vgroup->GetVGroupID() == v_group_id && entity_id == del_entity_id) {
           ASSERT_EQ(KInt64(res.data[0][0]->mem), entity_row_num + entity_row_num / 2);
           timestamp64 max_val = start_ts2 + (entity_row_num / 2 - 1) * interval;
-          ASSERT_EQ(KTimestamp(res.data[1][0]->mem), max_val);
-          ASSERT_EQ(KTimestamp(res.data[2][0]->mem), start_ts1);
+          ASSERT_EQ(KTimestampCast(res.data[1][0]->mem), max_val);
+          ASSERT_EQ(KTimestampCast(res.data[2][0]->mem), start_ts1);
           ASSERT_EQ(KInt64(res.data[3][0]->mem), entity_row_num + entity_row_num / 2);
         } else {
           ASSERT_EQ(KInt16(res.data[0][0]->mem), 2 * entity_row_num);
           timestamp64 max_val = start_ts2 + (entity_row_num - 1) * interval;
-          ASSERT_EQ(KTimestamp(res.data[1][0]->mem), max_val);
-          ASSERT_EQ(KTimestamp(res.data[2][0]->mem), start_ts1);
+          ASSERT_EQ(KTimestampCast(res.data[1][0]->mem), max_val);
+          ASSERT_EQ(KTimestampCast(res.data[2][0]->mem), start_ts1);
           ASSERT_EQ(KInt64(res.data[3][0]->mem), 2 * entity_row_num);
         }
         ASSERT_NE(res.data[4][0]->mem, nullptr);

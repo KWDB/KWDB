@@ -25,6 +25,7 @@
 #include "ee_hash_table_tuple_data.h"
 #include "ee_exec_pool.h"
 #include "ee_mempool.h"
+#include "ee_exec_pool.h"
 #include "gtest/gtest.h"
 
 namespace kwdbts {

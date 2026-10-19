@@ -95,7 +95,7 @@ class TsRawPayloadRowParser {
 
   // ts used frequently,so optimize it.
   inline timestamp64 GetTimestamp(const TSSlice& row_data) const {
-    return KTimestamp(row_data.data + col_offset_[0]);
+    return KTimestampCast(row_data.data + col_offset_[0]);
   }
   DataFlags GetColFlags(TSSlice row, int col_id) const {
     assert(col_id < schema_->size());
