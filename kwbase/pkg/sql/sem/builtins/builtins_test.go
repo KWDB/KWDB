@@ -75,6 +75,24 @@ func TestCategory(t *testing.T) {
 	}
 }
 
+func TestGetNewTimeMonthUsesLocation(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	location, err := time.LoadLocation("Asia/Shanghai")
+	require.NoError(t, err)
+
+	interval, err := tree.ParseDInterval("1 month")
+	require.NoError(t, err)
+	origin := time.Date(2026, time.September, 30, 16, 0, 0, 0, time.UTC)
+	want := time.Date(2026, time.October, 1, 0, 0, 0, 0, location)
+	require.True(t, getNewTime(origin, *interval, location).Equal(want))
+
+	interval, err = tree.ParseDInterval("1 year")
+	require.NoError(t, err)
+	origin = time.Date(2025, time.December, 31, 16, 0, 0, 0, time.UTC)
+	want = time.Date(2026, time.January, 1, 0, 0, 0, 0, location)
+	require.True(t, getNewTime(origin, *interval, location).Equal(want))
+}
+
 // TestGenerateUniqueIDOrder verifies the expected ordering of
 // GenerateUniqueID.
 func TestGenerateUniqueIDOrder(t *testing.T) {

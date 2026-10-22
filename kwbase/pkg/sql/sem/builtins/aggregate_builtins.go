@@ -3217,7 +3217,11 @@ func (a *TimestamptzBucketAggregate) Add(
 func getNewTime(oldTime time.Time, dInterval tree.DInterval, loc *time.Location) time.Time {
 	newTime := time.Date(1, 1, 1, 0, 0, 0, 0, loc)
 	if dInterval.Months != 0 {
-		timeMonth := (oldTime.Year()-1)*12 + (int(oldTime.Month() - 1))
+		monthTime := oldTime
+		if loc != nil {
+			monthTime = oldTime.In(loc)
+		}
+		timeMonth := (monthTime.Year()-1)*12 + (int(monthTime.Month() - 1))
 		newMonth := (int64(timeMonth) / dInterval.Months) * dInterval.Months
 		newTime = newTime.AddDate(0, int(newMonth), 0)
 		return newTime

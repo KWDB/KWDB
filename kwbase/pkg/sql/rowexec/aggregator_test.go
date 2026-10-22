@@ -28,6 +28,7 @@ import (
 	"context"
 	"math"
 	"testing"
+	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
@@ -658,4 +659,37 @@ func makeGroupedIntRows(groupSize, numCols int, groupedCols []int) sqlbase.EncDa
 		}
 	}
 	return rows
+}
+
+func TestGetNewTimeMonthUsesLocation(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	location, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	interval, err := tree.ParseDInterval("1 month")
+	if err != nil {
+		t.Fatal(err)
+	}
+	origin := time.Date(2026, time.September, 30, 16, 0, 0, 0, time.UTC)
+	want := time.Date(2026, time.October, 1, 0, 0, 0, 0, location)
+	if got := getNewTime(origin, *interval, location); !got.Equal(want) {
+		t.Errorf("getNewTime() = %s, want %s", got, want)
+	}
+	if got := getNewTimeForWin(origin, *interval, *interval, location); !got.Equal(want) {
+		t.Errorf("getNewTimeForWin() = %s, want %s", got, want)
+	}
+
+	interval, err = tree.ParseDInterval("1 year")
+	if err != nil {
+		t.Fatal(err)
+	}
+	origin = time.Date(2025, time.December, 31, 16, 0, 0, 0, time.UTC)
+	want = time.Date(2026, time.January, 1, 0, 0, 0, 0, location)
+	if got := getNewTime(origin, *interval, location); !got.Equal(want) {
+		t.Errorf("getNewTime() = %s, want %s", got, want)
+	}
+	if got := getNewTimeForWin(origin, *interval, *interval, location); !got.Equal(want) {
+		t.Errorf("getNewTimeForWin() = %s, want %s", got, want)
+	}
 }

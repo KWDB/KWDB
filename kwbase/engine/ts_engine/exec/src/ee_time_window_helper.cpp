@@ -22,7 +22,9 @@ void TimeWindowHelper::CalSkipTsSpan(kwdbts::KTimestampTz &ts) {
   if (d_var_) {
     KTimestampTz start = ts / MILLISECOND_PER_SECOND;
     struct tm tm, etm;
-    time_t tt = (time_t)start;
+    // Variable intervals follow the session-local calendar. Timestamps stay
+    // in UTC, so shift only while deriving their calendar fields.
+    time_t tt = (time_t)start + time_zone_ * 3600;
     ToGMT(tt, tm);
     tm.tm_sec = 0;
     tm.tm_min = 0;
@@ -43,10 +45,14 @@ void TimeWindowHelper::CalSkipTsSpan(kwdbts::KTimestampTz &ts) {
       etm.tm_year = mon / 12;
       etm.tm_mon = mon % 12;
     }
-    tm.tm_hour -= time_zone_;
-    etm.tm_hour -= time_zone_;
-    first_ts_ = (k_int64)(timegm(&tm) * MILLISECOND_PER_SECOND);
-    last_ts_ = (k_int64)(timegm(&etm) * MILLISECOND_PER_SECOND);
+    struct tm first_boundary_tm = tm;
+    struct tm next_boundary_tm = etm;
+    first_boundary_tm.tm_hour -= time_zone_;
+    next_boundary_tm.tm_hour -= time_zone_;
+    first_ts_ =
+        (k_int64)(timegm(&first_boundary_tm) * MILLISECOND_PER_SECOND);
+    last_ts_ =
+        (k_int64)(timegm(&next_boundary_tm) * MILLISECOND_PER_SECOND);
     src_first_ts_ = first_ts_;
     src_last_ts_ = last_ts_;
     last_tm_ = etm;
@@ -70,7 +76,10 @@ void TimeWindowHelper::NextSkipTsSpan(KTimestampTz &ts) {
       last_tm_.tm_mon = mon % 12;
     }
     first_ts_ = last_ts_;
-    last_ts_ = (k_int64)(timegm(&last_tm_) * MILLISECOND_PER_SECOND);
+    struct tm next_boundary_tm = last_tm_;
+    next_boundary_tm.tm_hour -= time_zone_;
+    last_ts_ =
+        (k_int64)(timegm(&next_boundary_tm) * MILLISECOND_PER_SECOND);
     src_first_ts_ = src_last_ts_;
     src_last_ts_ = last_ts_;
   } else {

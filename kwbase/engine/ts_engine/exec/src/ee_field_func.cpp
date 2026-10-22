@@ -1826,7 +1826,10 @@ k_int64 FieldFuncTimeBucket::CalculateValue(k_int64& original_timestamp) {
   } else {
     // construct_variable calculate the start of time_bucket for year and month
     // use 0000-01-01 00:00:00 as start
-    std::time_t tt = (std::time_t)original_timestamp / 1000;
+    // Align variable intervals using the session-local calendar. The input
+    // timestamp is stored as UTC, so shift only while extracting calendar fields.
+    std::time_t tt = (std::time_t)original_timestamp / 1000 +
+                     time_zone_ * 3600;
     struct std::tm tm;
     ToGMT(tt, tm);
     tm.tm_sec = 0;
