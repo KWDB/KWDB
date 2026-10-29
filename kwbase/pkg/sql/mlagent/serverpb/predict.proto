@@ -1,0 +1,45 @@
+// Copyright (c) 2022-present, Shanghai Yunxi Technology Co, Ltd. All rights reserved.
+// 
+// This software is the confidential and proprietary information of Shanghai Yunxi Technology Co, Ltd.
+// You shall not disclose such confidential information and shall use it only in accordance with 
+// the terms of the license agreement you entered into with Shanghai Yunxi Technology Co, Ltd.
+// 
+// Shanghai Yunxi Technology Co, Ltd makes no representations or warranties about the suitability 
+// of the software, either express or implied, including but not limited to the implied warranties 
+// of merchantability, fitness for a particular purpose, or non-infringement. Shanghai Yunxi 
+// Technology Co, Ltd shall not be liable for any damages suffered by licensee as a result
+// of using, modifying or distributing this software or its derivatives.
+// 
+
+syntax = "proto3";
+
+option go_package = "sql/mlagent/serverpb";
+
+package predict;
+
+// Interface exported by the server.
+service KPredictionService {
+
+  rpc KPredict(KPredictRequest) returns (KPredictResponse) {}
+
+}
+
+message KPredictRequest {
+  string model_name = 1;
+
+  string model_version = 2;
+
+  bytes predict_inputs = 3;
+
+  bytes predict_filter = 4;
+}
+
+message KPredictResponse {
+  bytes predict_outputs = 1;
+}
+
+
+
+
+
+

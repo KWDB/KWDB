@@ -1384,6 +1384,10 @@ func (b *Builder) buildSelectClause(
 	b.PhysType = tree.Invalid
 	b.DealHint(sel)
 
+	// Make sure that the "USING MODEL" clause of the main statement can take
+	// effect.
+	b.factory.Metadata().SetMLModelName(string(sel.MLModel))
+
 	fromScope := b.buildFrom(sel.From, locking, inScope)
 	if len(b.InstanceTabNames) > 0 {
 		b.addInstanceTablePTag(sel)

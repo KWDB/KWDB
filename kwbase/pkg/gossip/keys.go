@@ -113,6 +113,9 @@ const (
 	//cuckoo-filter-update
 	KeyCuckooFilterAddCache = "cuckoo-filter-update"
 
+	// KeyGossipMLCache is the gossip key for ml predict privilege cache
+	KeyGossipMLCache = "ml-predict"
+
 	// KeyUDFUpdatedPrefix is the prefix for keys that indicate a new udf
 	// was created.
 	KeyUDFUpdatedPrefix = "udf-added"

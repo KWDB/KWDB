@@ -1106,7 +1106,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <str> schema_name schedule_name stream_name audit_name function_name argument_name cursor_name
 %type <[]string> schema_name_list function_name_list
 %type <*tree.UnresolvedName> table_pattern complex_table_pattern
-%type <*tree.UnresolvedName> column_path prefixed_column_path column_path_with_star last_column
+%type <*tree.UnresolvedName> column_path prefixed_column_path column_path_with_star model_path prefixed_model_path last_column
 %type <tree.TableExpr> insert_target create_stats_target
 
 %type <*tree.TableIndexName> table_index_name
@@ -1280,6 +1280,8 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.Exprs> var_list
 %type <tree.NameList> var_name
 %type <str> unrestricted_name type_function_name
+
+%type <str> ml_clause opt_ml_clause
 %type <str> any_identifier opt_loop_label opt_label
 %type <str> handler_operator handler_for
 %type <[]string> handler_for_list cursor_list
@@ -9008,14 +9010,15 @@ simple_select:
 | set_operation
 
 fill_select_clause:
-  SELECT select_hint_set opt_all_clause target_list
+  SELECT select_hint_set opt_all_clause target_list opt_ml_clause
      from_clause where_clause fill_clause
     {
       $$.val = &tree.SelectClause{
         Exprs:      $4.selExprs(),
-        From:       $5.from(),
-        Where:      tree.NewWhere(tree.AstWhere, $6.expr()),
-        Fill:       $7.fill(),
+        MLModel:    tree.Name($5),
+        From:       $6.from(),
+        Where:      tree.NewWhere(tree.AstWhere, $7.expr()),
+        Fill:       $8.fill(),
       }
     }
 // %Help: SELECT - retrieve rows from a data source and compute a result
@@ -9034,18 +9037,19 @@ fill_select_clause:
 //        [ OFFSET <expr> [ ROW | ROWS ] ]
 // %SeeAlso: SHOW TABLES
 simple_select_clause:
-  SELECT select_hint_set opt_all_clause target_list
+  SELECT select_hint_set opt_all_clause target_list opt_ml_clause
     from_clause opt_where_clause
     group_clause having_clause window_clause
   {
     $$.val = &tree.SelectClause{
       HintSet: $2.hintset(),
       Exprs:   $4.selExprs(),
-      From:    $5.from(),
-      Where:   tree.NewWhere(tree.AstWhere, $6.expr()),
-      GroupBy: $7.groupBy(),
-      Having:  tree.NewWhere(tree.AstHaving, $8.expr()),
-      Window:  $9.window(),
+      MLModel: tree.Name($5),
+      From:    $6.from(),
+      Where:   tree.NewWhere(tree.AstWhere, $7.expr()),
+      GroupBy: $8.groupBy(),
+      Having:  tree.NewWhere(tree.AstHaving, $9.expr()),
+      Window:  $10.window(),
     }
   }
 | SELECT distinct_clause target_list
@@ -13286,6 +13290,34 @@ column_path:
       $$.val = &tree.UnresolvedName{NumParts:1, Parts: tree.NameParts{$1}}
   }
 | prefixed_column_path
+
+// The ML model referenced by a "USING MODEL" clause.
+model_path:
+  name
+  {
+      $$.val = &tree.UnresolvedName{NumParts:1, Parts: tree.NameParts{$1}}
+  }
+| prefixed_model_path
+
+prefixed_model_path:
+  name '.' name
+  {
+      $$.val = &tree.UnresolvedName{NumParts:2, Parts: tree.NameParts{$3,$1}}
+  }
+
+// The optional "USING <model>" clause of a SELECT statement.
+ml_clause:
+  USING model_path
+  {
+    $$ = $2.unresolvedName().String()
+  }
+
+opt_ml_clause:
+  ml_clause
+| /* EMPTY */
+  {
+    $$ = ""
+  }
 
 prefixed_column_path:
   db_object_name_component '.' unrestricted_name

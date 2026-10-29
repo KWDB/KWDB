@@ -115,6 +115,9 @@ type SelectClause struct {
 	HintSet      HintSet
 	HintForest   HintForest
 	NeedPushDown bool
+
+	// MLModel is the name of the ML model given by the "USING MODEL" clause.
+	MLModel Name
 }
 
 // CheckHintType return true when have IndexFlags hint.

@@ -113,6 +113,7 @@ const (
 	categoryJSON          = "JSONB"
 	categoryReplication   = "Replication"
 	categoryGEO           = "Geometry"
+	categoryML            = "Machine learning"
 )
 
 func categorizeType(t *types.T) string {

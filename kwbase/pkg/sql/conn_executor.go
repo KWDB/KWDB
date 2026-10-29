@@ -41,6 +41,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/server/serverpb"
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/mlmgt"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
@@ -2529,6 +2530,7 @@ func (ex *connExecutor) initEvalCtx(ctx context.Context, evalCtx *extendedEvalCo
 
 	*evalCtx = extendedEvalContext{
 		EvalContext: tree.EvalContext{
+			ML:                 mlmgt.NewMLManager(p),
 			Planner:            p,
 			Sequence:           p,
 			SessionData:        ex.sessionData,

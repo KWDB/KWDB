@@ -136,6 +136,9 @@ type Metadata struct {
 	// tableType identify the type of the current table.
 	tableType int32
 
+	// mlModelName stores the ML model name of the "USING MODEL" clause.
+	mlModelName string
+
 	// NOTE! When adding fields here, update Init, CopyFrom and TestMetadata.
 }
 
@@ -219,6 +222,8 @@ func (md *Metadata) Init() {
 
 	md.currUniqueID = 0
 
+	md.mlModelName = ""
+
 	md.withBindings = nil
 }
 
@@ -248,6 +253,7 @@ func (md *Metadata) CopyFrom(from *Metadata) {
 	md.deps = append(md.deps, from.deps...)
 	md.views = append(md.views, from.views...)
 	md.currUniqueID = from.currUniqueID
+	md.mlModelName = from.mlModelName
 
 	// We cannot copy the bound expressions; they must be rebuilt in the new memo.
 	md.withBindings = nil
@@ -572,6 +578,16 @@ func (md *Metadata) QualifiedAlias(colID ColumnID, fullyQualify bool, catalog ca
 	sb.WriteRune('.')
 	sb.WriteString(cm.Alias)
 	return sb.String()
+}
+
+// MLModelName returns the ML model name from the "USING MODEL" clause.
+func (md *Metadata) MLModelName() string {
+	return md.mlModelName
+}
+
+// SetMLModelName sets the ML model name from the "USING MODEL" clause.
+func (md *Metadata) SetMLModelName(name string) {
+	md.mlModelName = name
 }
 
 // SequenceID uniquely identifies the usage of a sequence within the scope of a

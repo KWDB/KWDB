@@ -1,0 +1,107 @@
+// Copyright (c) 2022-present, Shanghai Yunxi Technology Co, Ltd. All rights reserved.
+// 
+// This software is the confidential and proprietary information of Shanghai Yunxi Technology Co, Ltd.
+// You shall not disclose such confidential information and shall use it only in accordance with 
+// the terms of the license agreement you entered into with Shanghai Yunxi Technology Co, Ltd.
+// 
+// Shanghai Yunxi Technology Co, Ltd makes no representations or warranties about the suitability 
+// of the software, either express or implied, including but not limited to the implied warranties 
+// of merchantability, fitness for a particular purpose, or non-infringement. Shanghai Yunxi 
+// Technology Co, Ltd shall not be liable for any damages suffered by licensee as a result
+// of using, modifying or distributing this software or its derivatives.
+// 
+
+syntax = "proto3";
+
+option go_package = "sql/mlagent/serverpb";
+
+package isvc;
+
+// Interface exported by the server.
+service IsvcService {
+
+  rpc GetIsvc(GetIsvcRequest) returns (GetIsvcResponse) {}
+  rpc GetBatchIsvc(GetBatchIsvcRequest) returns (GetBatchIsvcResponse) {}
+  rpc CreateIsvc(CreateIsvcRequest) returns (CreateIsvcResponse) {}
+  rpc DeleteIsvc(DeleteIsvcRequest) returns (IsvcNull) {}
+  rpc GetResources(GetResourcesRequest) returns (GetResourcesResponse) {}
+}
+
+message GetIsvcRequest {
+  ModelSpec model_spec = 1;
+  bytes model_filter = 2;
+}
+
+message GetIsvcResponse {
+  IsvcSpec isvc_output = 1;
+}
+
+message GetBatchIsvcRequest {
+  repeated ModelSpec model_specs = 1;
+  bytes model_filter = 2;
+}
+
+message GetBatchIsvcResponse {
+  repeated IsvcSpec output = 1;
+}
+
+message CreateIsvcRequest {
+  ModelSpec model_spec = 1;
+  bytes model_filter = 2;
+  bool sync = 3;
+}
+
+message CreateIsvcResponse {
+  IsvcSpec isvc_output = 1;
+}
+
+message DeleteIsvcRequest {
+  ModelSpec model_spec = 1;
+  bytes model_filter = 2;
+}
+
+message ModelSpec {
+  string model_name = 1;
+  string model_version = 2;
+  string model_framework = 3;
+  string problem_type = 4;
+  bytes model_content = 5;
+  bytes model_preparation = 6;
+}
+
+message PodStatus {
+  string name = 1;
+  string status = 2;
+  string message = 3;
+}
+
+message IsvcStatus {
+  string status = 1;
+  string message = 2;
+  repeated PodStatus pod_status = 3;
+}
+
+message IsvcSpec {
+  string isvc_name = 1;
+  IsvcStatus isvc_status = 2;
+  string isvc_url = 3;
+}
+
+message IsvcNull {
+}
+
+message Resource {
+  string name = 1;
+  string type = 2;
+  string CPU = 3;
+  string memory = 4;
+  string storage = 5;
+}
+
+message GetResourcesRequest {
+  repeated Resource resources = 1;
+}
+
+message GetResourcesResponse {
+  repeated Resource resources = 1;
+}

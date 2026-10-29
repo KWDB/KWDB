@@ -39,6 +39,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/mlmgt"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
@@ -579,6 +580,13 @@ func (n *setClusterSettingNode) startExec(params runParams) error {
 			params.ctx, "SET CLUSTER SETTING %q timed out waiting for value %q, observed %q",
 			n.name, expectedEncodedValue, observed,
 		)
+	}
+
+	if n.name == "ml.enabled" && expectedEncodedValue == "true" {
+		mlInitializer := mlmgt.NewMLInitializer(params.ctx, n.st, execCfg.InternalExecutor)
+		if err := mlInitializer.Initialize(); err != nil {
+			return err
+		}
 	}
 
 	if n.name == "sql.add_white_list" {

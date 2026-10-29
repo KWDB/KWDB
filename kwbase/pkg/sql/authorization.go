@@ -207,7 +207,12 @@ func (p *planner) CheckAnyPrivilege(ctx context.Context, descriptor sqlbase.Desc
 // HasAdminRole implements the AuthorizationAccessor interface.
 // Requires a valid transaction to be open.
 func (p *planner) HasAdminRole(ctx context.Context) (bool, error) {
-	user := p.SessionData().User
+	return p.UserHasAdminRole(ctx, p.SessionData().User)
+}
+
+// UserHasAdminRole reports whether the given user has the admin role.
+// Requires a valid transaction to be open.
+func (p *planner) UserHasAdminRole(ctx context.Context, user string) (bool, error) {
 	if user == "" {
 		return false, errors.AssertionFailedf("empty user")
 	}

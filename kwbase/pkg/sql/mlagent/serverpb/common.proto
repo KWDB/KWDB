@@ -1,0 +1,70 @@
+// Copyright (c) 2022-present, Shanghai Yunxi Technology Co, Ltd. All rights reserved.
+// 
+// This software is the confidential and proprietary information of Shanghai Yunxi Technology Co, Ltd.
+// You shall not disclose such confidential information and shall use it only in accordance with 
+// the terms of the license agreement you entered into with Shanghai Yunxi Technology Co, Ltd.
+// 
+// Shanghai Yunxi Technology Co, Ltd makes no representations or warranties about the suitability 
+// of the software, either express or implied, including but not limited to the implied warranties 
+// of merchantability, fitness for a particular purpose, or non-infringement. Shanghai Yunxi 
+// Technology Co, Ltd shall not be liable for any damages suffered by licensee as a result
+// of using, modifying or distributing this software or its derivatives.
+// 
+
+syntax = "proto3";
+
+option go_package = "sql/mlagent/serverpb";
+package kwdb.ml;
+
+message Empty {}
+
+message HeartbeatResponse {
+  string version = 1;
+  string message = 2;
+}
+
+message Parameter {
+  string name = 1;
+  string value = 2;
+}
+
+message ReferenceKey {
+  string type = 1;
+  string id = 2;
+}
+
+message ResourceReference {
+  string relationship = 1;
+  ReferenceKey key = 2;
+}
+
+message DataSource {
+  string address = 1; // hostname:port
+  string database = 2;
+  string query = 3;
+  int32 size =4;
+}
+
+message Feature{
+  string name = 1;
+  string type = 2;
+}
+
+message Target{
+  string name = 1;
+  string type = 2;
+}
+
+message Metrics{
+  string objective = 1;
+  double score = 2;
+}
+
+message ModelMeta{
+  string framework = 1;
+  string runtime = 2;
+  string problemType = 3;
+  repeated Feature features = 4;
+  repeated Target target = 5;
+  repeated Metrics metrics = 6;
+}

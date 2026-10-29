@@ -1,0 +1,165 @@
+// Copyright (c) 2022-present, Shanghai Yunxi Technology Co, Ltd. All rights reserved.
+// 
+// This software is the confidential and proprietary information of Shanghai Yunxi Technology Co, Ltd.
+// You shall not disclose such confidential information and shall use it only in accordance with 
+// the terms of the license agreement you entered into with Shanghai Yunxi Technology Co, Ltd.
+// 
+// Shanghai Yunxi Technology Co, Ltd makes no representations or warranties about the suitability 
+// of the software, either express or implied, including but not limited to the implied warranties 
+// of merchantability, fitness for a particular purpose, or non-infringement. Shanghai Yunxi 
+// Technology Co, Ltd shall not be liable for any damages suffered by licensee as a result
+// of using, modifying or distributing this software or its derivatives.
+// 
+
+syntax = "proto3";
+import "sql/mlagent/serverpb/common.proto";
+
+option go_package = "sql/mlagent/serverpb";
+package kwdb.ml;
+
+message PipelineInfo{
+  string pipelineName = 1;
+  ModelMeta modelMeta = 2;
+  bytes pipelineEntity = 3;
+  bytes dataPreparationEntity = 4;
+}
+
+message FineTuneRequest {
+  string tsllmname = 1;   
+  DataSource dataSource = 2; 
+  bool immediatelyDeploy = 3; 
+  string user = 4;
+}
+
+message PostFineTuneRequest {
+  string storeId = 1;
+  bytes content = 2;  
+  string metrics = 3;  
+  bytes datapreparation = 4; 
+  string errorInfo = 5; 
+}
+
+message ModelTrainingInfo{
+  string user = 1;
+  string modelId = 2;  // can be empty for the first training
+  string modelName = 3;
+  string description = 4;
+}
+
+message TrainingRequest {
+  PipelineInfo pipelineInfo = 1;
+  ModelTrainingInfo modelTrainingInfo = 2;
+  DataSource dataSource = 3;
+  bool newVersionIfExists = 4;
+  bool immediatelyDeploy = 5;
+  bool keepHistory = 6;
+}
+
+message PostTrainingRequest {
+  string storeId = 1;
+  bytes content = 2;
+  string metrics = 3;
+  bytes datapreparation = 4;
+  string errorInfo = 5;
+}
+
+message CommonResponse {
+  string modelId = 1;
+  string modelVersion = 2;
+  string runId = 3;
+  string status = 4;
+  string message = 5;
+}
+
+message JobRequest{
+  string jobId = 1;
+  repeated string jobIds = 2;
+  string modelName = 3;
+  string user = 4;
+}
+
+
+message JobStatus{
+  string id = 1;
+  string status = 2;
+  string message = 3;
+  string createdAt = 4;
+  string scheduledAt = 5;
+  string finishedAt = 6;
+}
+
+message JobStatusResponse{
+  int32 totalSize = 1;
+  repeated JobStatus jobs = 2;
+}
+
+message CleanupRequest{
+  string pipelineName = 1;
+  string modelName = 2;
+  string user = 3;
+  string runId = 4;
+  string runIds = 5;
+}
+
+message CancelJobRequest{
+  string runId = 1;
+}
+
+message ModelInfo{
+  string user = 1;
+  string modelName = 3;
+  string modelVersion = 4;
+  ModelMeta modelMeta = 5;
+  bytes modelEntity = 6;
+  bytes dataPreparationEntity = 7;
+}
+
+message EvaluationRequest {
+  PipelineInfo pipelineInfo = 1;
+  ModelInfo modelInfo = 2;
+  DataSource dataSource = 3;
+  repeated string metrics = 4;
+  bool keepHistory = 5;
+  string currentUser = 6;
+}
+
+message PostEvaluationRequest {
+  string storeId = 1;
+  repeated string metrics = 2;
+  string errorInfo = 3;
+}
+
+message BatchPredictRequest {
+  PipelineInfo pipelineInfo = 1;
+  ModelInfo modelInfo = 2;
+  DataSource dataSource = 3;
+  string outputTable = 4;
+  repeated string outputColumns = 5;
+  string strategy = 6;
+  bool keepHistory = 7;
+  string currentUser = 8;
+}
+
+message PostBatchPredictRequest {
+  string storeId = 1;
+  int64 successCount = 2;
+  int64 total = 3;
+  string errorInfo = 4;
+}
+
+message JobResource {
+  string name = 1;
+  string type = 2;
+  string CPU = 3;
+  string memory = 4;
+  string storage = 5;
+}
+
+message JobResourcesRequest {
+  repeated JobResource resources = 1;
+}
+
+message JobResourcesResponse {
+  repeated JobResource resources = 1;
+}
+

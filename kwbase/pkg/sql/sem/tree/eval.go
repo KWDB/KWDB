@@ -3479,6 +3479,10 @@ func (*EvalContextTestingKnobs) ModuleTestingKnobs() {}
 // more fields from the sql package. Through that extendedEvalContext, this
 // struct now generally used by planNodes.
 type EvalContext struct {
+	// ML is the ML operator interface used by the kwdbml.* SQL builtins.
+	// It is set by the planner when the EvalContext is initialized. If nil,
+	// ML-related builtins will return ScalarOperationCannotRunWithoutFullSessionContext.
+	ML MLOperator
 	// Session variables. This is a read-only copy of the values owned by the
 	// Session.
 	SessionData *sessiondata.SessionData

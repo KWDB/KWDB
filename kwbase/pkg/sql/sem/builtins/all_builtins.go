@@ -49,6 +49,9 @@ func init() {
 	initWindowBuiltins()
 	initGeneratorBuiltins()
 	initPGBuiltins()
+	initMLBuiltins()
+	initMLTrainingPipelineBuiltins()
+	initMLJobBuiltins()
 
 	AllBuiltinNames = make([]string, 0, len(builtins))
 	AllAggregateBuiltinNames = make([]string, 0, len(aggregates))

@@ -57,6 +57,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/distsql"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/gcjob/gcjobnotifier"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/mlmgt"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
@@ -673,6 +674,13 @@ type ExecutorConfig struct {
 	// Role membership cache.
 	RoleMemberCache *MembershipCache
 
+	// MLPrivilegesCache caches the ML model/pipeline privilege lookups and
+	// invalidates them through gossip.
+	MLPrivilegesCache *mlmgt.MLPrivilegesCache
+
+	// MLPredictMetrics holds the metrics of the online ML prediction path.
+	MLPredictMetrics *mlmgt.MLPredictMetrics
+
 	// ProtectedTimestampProvider encapsulates the protected timestamp subsystem.
 	ProtectedTimestampProvider protectedts.Provider
 
@@ -722,6 +730,11 @@ func (cfg *ExecutorConfig) SV() *settings.Values {
 // Organization returns the value of cluster.organization.
 func (cfg *ExecutorConfig) Organization() string {
 	return ClusterOrganization.Get(&cfg.Settings.SV)
+}
+
+// MLAgent returns the value of ml.agent.addr.
+func (cfg *ExecutorConfig) MLAgent() string {
+	return MLAgentAddress.Get(&cfg.Settings.SV)
 }
 
 // StmtDiagnosticsRecorder is the interface into *stmtdiagnostics.Registry to

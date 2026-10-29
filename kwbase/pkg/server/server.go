@@ -97,6 +97,7 @@ import (
 	_ "gitee.com/kwbasedb/kwbase/pkg/sql/gcjob" // register jobs declared outside of pkg/sql
 	"gitee.com/kwbasedb/kwbase/pkg/sql/gcjob/gcjobnotifier"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/mlmgt"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/querycache"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
@@ -1050,6 +1051,10 @@ func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
 	}
 
 	execCfg.StartMode = sql.ChangeStartMode(s.cfg.StartMode)
+
+	execCfg.MLPrivilegesCache = mlmgt.NewMLPrivilegesCache(s.gossip)
+	execCfg.MLPredictMetrics = mlmgt.MakeMLPredictMetrics()
+	s.registry.AddMetricStruct(execCfg.MLPredictMetrics)
 
 	s.stopper.AddCloser(execCfg.ExecLogger)
 	s.stopper.AddCloser(execCfg.AuditLogger)
