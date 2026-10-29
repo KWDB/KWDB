@@ -47,43 +47,43 @@ func TestIsTypeSupportedInVersion(t *testing.T) {
 
 		ok bool
 	}{
-		{clusterversion.Version19_2, types.Time, true},
-		{clusterversion.Version19_2, types.Timestamp, true},
-		{clusterversion.Version19_2, types.Interval, true},
+		{clusterversion.VersionMinSupported, types.Time, true},
+		{clusterversion.VersionMinSupported, types.Timestamp, true},
+		{clusterversion.VersionMinSupported, types.Interval, true},
 
-		{clusterversion.Version19_2, types.TimeTZ, false},
-		{clusterversion.VersionTimeTZType, types.TimeTZ, true},
+		{clusterversion.VersionMinSupported, types.TimeTZ, true},
+		{clusterversion.VersionMinSupported, types.TimeTZ, true},
 
-		{clusterversion.Version19_2, types.MakeTime(0), false},
-		{clusterversion.Version19_2, types.MakeTimeTZ(0), false},
-		{clusterversion.VersionTimeTZType, types.MakeTimeTZ(0), false},
-		{clusterversion.Version19_2, types.MakeTimestamp(0), false},
-		{clusterversion.Version19_2, types.MakeTimestampTZ(0), false},
+		{clusterversion.VersionMinSupported, types.MakeTime(0), true},
+		{clusterversion.VersionMinSupported, types.MakeTimeTZ(0), true},
+		{clusterversion.VersionMinSupported, types.MakeTimeTZ(0), true},
+		{clusterversion.VersionMinSupported, types.MakeTimestamp(0), true},
+		{clusterversion.VersionMinSupported, types.MakeTimestampTZ(0), true},
 		{
-			clusterversion.Version19_2,
+			clusterversion.VersionMinSupported,
 			types.MakeInterval(types.IntervalTypeMetadata{Precision: 3, PrecisionIsSet: true}),
-			false,
+			true,
 		},
 		{
-			clusterversion.Version19_2,
+			clusterversion.VersionMinSupported,
 			types.MakeInterval(
 				types.IntervalTypeMetadata{
 					DurationField: types.IntervalDurationField{DurationType: types.IntervalDurationType_SECOND},
 				},
 			),
-			false,
+			true,
 		},
-		{clusterversion.VersionTimePrecision, types.MakeTime(0), true},
-		{clusterversion.VersionTimePrecision, types.MakeTimeTZ(0), true},
-		{clusterversion.VersionTimePrecision, types.MakeTimestamp(0), true},
-		{clusterversion.VersionTimePrecision, types.MakeTimestampTZ(0), true},
+		{clusterversion.VersionMinSupported, types.MakeTime(0), true},
+		{clusterversion.VersionMinSupported, types.MakeTimeTZ(0), true},
+		{clusterversion.VersionMinSupported, types.MakeTimestamp(0), true},
+		{clusterversion.VersionMinSupported, types.MakeTimestampTZ(0), true},
 		{
-			clusterversion.VersionTimePrecision,
+			clusterversion.VersionMinSupported,
 			types.MakeInterval(types.IntervalTypeMetadata{Precision: 3, PrecisionIsSet: true}),
 			true,
 		},
 		{
-			clusterversion.VersionTimePrecision,
+			clusterversion.VersionMinSupported,
 			types.MakeInterval(
 				types.IntervalTypeMetadata{
 					DurationField: types.IntervalDurationField{DurationType: types.IntervalDurationType_SECOND},

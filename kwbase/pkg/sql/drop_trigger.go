@@ -14,7 +14,6 @@ package sql
 import (
 	"context"
 
-	"gitee.com/kwbasedb/kwbase/pkg/clusterversion"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/privilege"
@@ -30,12 +29,6 @@ type dropTriggerNode struct {
 
 // DropTrigger returns a dropTriggerNode to represent trigger which should be deleted by name.
 func (p *planner) DropTrigger(ctx context.Context, n *tree.DropTrigger) (planNode, error) {
-	// Ensure all nodes are the correct version.
-	if !p.ExecCfg().Settings.Version.IsActive(ctx, clusterversion.VersionTrigger) {
-		return nil, pgerror.New(pgcode.FeatureNotSupported,
-			"not all nodes are at the correct version to use Triggers")
-	}
-
 	// resolve trigger bounded table
 	tableDesc, err := p.ResolveMutableTableDescriptor(
 		ctx, &n.Table, true, ResolveRequireTableDesc,

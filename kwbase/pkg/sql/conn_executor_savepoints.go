@@ -112,7 +112,7 @@ func (ex *connExecutor) execSavepointInOpenState(
 	}
 
 	// We don't support savepoints in mixed-version clusters.
-	if !ex.server.cfg.Settings.Version.IsActive(ctx, clusterversion.VersionSavepoints) && !commitOnRelease {
+	if !ex.server.cfg.Settings.Version.IsActive(ctx, clusterversion.VersionMinSupported) && !commitOnRelease {
 		err := errors.New("savepoints cannot be used until the version upgrade is finalized")
 		ev, payload := ex.makeErrEvent(err, s)
 		return ev, payload, nil
@@ -215,7 +215,7 @@ func (ex *connExecutor) execRollbackToSavepointInOpenState(
 	// TODO(knz): Remove this check in v20.2 and only keep the 'else'
 	// clause, which is the generic rollback code.
 	if entry.kvToken.Initial() &&
-		!ex.server.cfg.Settings.Version.IsActive(ctx, clusterversion.VersionSavepoints) {
+		!ex.server.cfg.Settings.Version.IsActive(ctx, clusterversion.VersionMinSupported) {
 		// Bump the epoch manually.
 		ex.state.mu.txn.ManualRestart(ctx, hlc.Timestamp{})
 	} else {
@@ -309,7 +309,7 @@ func (ex *connExecutor) execRollbackToSavepointInAbortedState(
 	// TODO(knz): Remove this check in v20.2 and only keep the 'else'
 	// clause, which is the generic rollback code.
 	if entry.kvToken.Initial() &&
-		!ex.server.cfg.Settings.Version.IsActive(ctx, clusterversion.VersionSavepoints) {
+		!ex.server.cfg.Settings.Version.IsActive(ctx, clusterversion.VersionMinSupported) {
 		// Bump the epoch manually.
 		ex.state.mu.txn.ManualRestart(ctx, hlc.Timestamp{})
 	} else {

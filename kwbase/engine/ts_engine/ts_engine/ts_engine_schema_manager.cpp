@@ -1,0 +1,279 @@
+// Copyright (c) 2022-present, Shanghai Yunxi Technology Co, Ltd.
+//
+// This software (KWDB) is licensed under Mulan PSL v2.
+// You can use this software according to the terms and conditions of the Mulan PSL v2.
+// You may obtain a copy of Mulan PSL v2 at:
+//          http://license.coscl.org.cn/MulanPSL2
+// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+// EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+// MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+// See the Mulan PSL v2 for more details.
+
+#include "ts_engine_schema_manager.h"
+
+#include <memory>
+#include <regex>
+
+#include "ee_global.h"
+#include "kwdb_type.h"
+#include "lg_api.h"
+#include "sys_utils.h"
+#include "ts_db_schema_manager.h"
+#include "ts_table_schema_manager.h"
+#include "ts_go_exported.h"
+
+unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
+std::mt19937 gen(seed);
+
+namespace kwdbts {
+
+TsEngineSchemaManager::TsEngineSchemaManager(const string& schema_root_path, TsDBSchemaManager* db_schema_mgr)
+    : schema_root_path_(schema_root_path),
+      db_schema_mgr_(db_schema_mgr),
+      mgrs_rw_latch_(RWLATCH_ID_SCHEMA_MGRS_RWLOCK) {
+  auto exists = IsExists(schema_root_path_);
+  if (exists == false) {
+    MakeDirectory(schema_root_path_);
+  }
+}
+
+TsEngineSchemaManager::~TsEngineSchemaManager() {
+}
+
+KStatus TsEngineSchemaManager::Init(kwdbContext_p ctx) {
+  // Init runs single-threaded during engine startup, before any background
+  // thread or external caller exists, so no latch is needed.
+  // init table schema manager
+  std::regex num_regex("^[0-9]+$");
+  try {
+    if (!fs::exists(schema_root_path_)) {
+      LOG_ERROR("Schema directory '%s' does not exist", schema_root_path_.string().c_str());
+      return KStatus::FAIL;
+    }
+    if (!table_schema_mgrs_.empty()) {
+      LOG_WARN("table_schema_mgrs is not empty before initialized");
+      table_schema_mgrs_.clear();
+    }
+    for (const auto& table_entry : fs::directory_iterator(schema_root_path_)) {
+      if (fs::is_directory(table_entry)) {
+        std::string dir_name = table_entry.path().filename().string();
+        if (std::regex_match(dir_name, num_regex)) {
+          auto table_id = atoi(dir_name.c_str());
+          auto tb_schema_mgr =
+              std::make_unique<TsTableSchemaManager>(schema_root_path_, table_id, db_schema_mgr_);
+          KStatus s = tb_schema_mgr->Init();
+          if (s != KStatus::SUCCESS) {
+            if (fs::exists(tb_schema_mgr->GetMetricSchemaPath())) {
+              return s;  // engine can start up when metric schema dir not exists.
+            }
+          }
+          if (tb_schema_mgr->GetCurrentVersion() != 0) {
+            auto partition_interval = tb_schema_mgr->GetPartitionInterval();
+            s = PartitionIntervalRecorder::GetInstance()->RecordInterval(tb_schema_mgr->GetDbID(), partition_interval);
+            if (s != KStatus::SUCCESS) {
+              LOG_ERROR("Partition interval of db_id %u is %ld, not %ld for table id %u", tb_schema_mgr->GetDbID(),
+                         PartitionIntervalRecorder::GetInstance()->GetInterval(tb_schema_mgr->GetDbID()),
+                         partition_interval, table_id);
+              return s;
+            }
+          }
+          table_schema_mgrs_[table_id] = std::move(tb_schema_mgr);
+        }
+      }
+    }
+  } catch (const fs::filesystem_error& e) {
+    LOG_ERROR("Filesystem error: %s", e.what());
+    return KStatus::FAIL;
+  } catch (const std::exception& e) {
+    LOG_ERROR("Error: %s", e.what());
+    return KStatus::FAIL;
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsEngineSchemaManager::CreateTable(kwdbContext_p ctx, const uint32_t& db_id, const KTableKey& table_id,
+                                           roachpb::CreateTsTable* meta) {
+  {
+    rdLock();
+    Defer defer([&]() { unLock(); });
+    auto it = table_schema_mgrs_.find(table_id);
+    if (it != table_schema_mgrs_.end()) {
+      return KStatus::SUCCESS;
+    }
+  }
+  wrLock();
+  Defer defer([&]() { unLock(); });
+  auto it = table_schema_mgrs_.find(table_id);
+  if (it != table_schema_mgrs_.end()) {
+    return KStatus::SUCCESS;
+  }
+  uint32_t ts_version = 1;
+  if (meta->ts_table().has_ts_version()) {
+    ts_version = meta->ts_table().ts_version();
+  }
+
+  ErrorInfo err_info;
+  fs::path table_path = schema_root_path_ / std::to_string(table_id);
+  MakeDirectory(table_path);
+  fs::path metric_schema_path = table_path / "metric";
+  MakeDirectory(metric_schema_path);
+  fs::path tag_schema_path = table_path / "tag";
+  MakeDirectory(tag_schema_path);
+
+  auto tbl_schema_mgr = std::make_unique<TsTableSchemaManager>(schema_root_path_, table_id, db_schema_mgr_);
+  KStatus s = tbl_schema_mgr->CreateTable(ctx, meta, db_id, ts_version, err_info);
+  if (s != KStatus::SUCCESS) {
+    return s;
+  }
+
+  table_schema_mgrs_[table_id] = std::move(tbl_schema_mgr);
+  return KStatus::SUCCESS;
+}
+
+bool TsEngineSchemaManager::IsTableExist(TSTableID tbl_id) {
+  auto tbl_schema_mgr = std::make_unique<TsTableSchemaManager>(schema_root_path_, tbl_id, db_schema_mgr_);
+  if (tbl_schema_mgr->IsSchemaDirsExist()) {
+    return true;
+  }
+  return false;
+}
+
+KStatus TsEngineSchemaManager::GetTableList(std::vector<TSTableID>* table_ids) {
+  // scan all directory.
+  std::error_code ec;
+  fs::directory_iterator dir_iter{schema_root_path_, ec};
+  if (ec.value() != 0) {
+    LOG_ERROR("GetTableList failed, reason: %s", ec.message().c_str());
+    return KStatus::FAIL;
+  }
+  for (const auto& it : dir_iter) {
+    try {
+      std::string fname = it.path().filename().string();
+      TSTableID tbl_id = 0;
+      auto split_pos = fname.find('.');
+      if (split_pos != std::string::npos) {
+        tbl_id = std::stol(fname.substr(split_pos + 1));
+      } else {
+        tbl_id = std::stol(fname);
+      }
+      table_ids->push_back(tbl_id);
+    } catch (const fs::filesystem_error& e) {
+      LOG_ERROR("GetTableList failed, table entry parse exception: %s, reason: %s",
+          it.path().filename().string().c_str(), e.what());
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsEngineSchemaManager::GetTableSchemaMgr(TSTableID tbl_id, std::shared_ptr<TsTableSchemaManager>& tb_schema_mgr,
+                                                 bool* is_dropped) {
+  assert(tbl_id != 0);
+  if (is_dropped) {
+    *is_dropped = false;
+  }
+
+  rdLock();
+  const auto it = table_schema_mgrs_.find(tbl_id);
+  if (it == table_schema_mgrs_.end()) {
+    unLock();
+#ifndef WITH_TESTS
+    if (CheckTableMetaExist(tbl_id)) {
+      LOG_WARN("table %ld schema not found", tbl_id);
+      return KStatus::FAIL;
+    }
+#endif
+    if (is_dropped) {
+      *is_dropped = true;
+    }
+    return KStatus::FAIL;
+  }
+  tb_schema_mgr = it->second;
+  unLock();
+  return KStatus::SUCCESS;
+}
+
+KStatus TsEngineSchemaManager::GetAllTableSchemaMgrs(std::vector<std::shared_ptr<TsTableSchemaManager>>& tb_schema_mgr) {
+  rdLock();
+  for (const auto& it : table_schema_mgrs_) {
+    tb_schema_mgr.emplace_back(it.second);
+  }
+  unLock();
+  return KStatus::SUCCESS;
+}
+
+KStatus TsEngineSchemaManager::SetTableDropped(TSTableID tbl_id) {
+  wrLock();
+  Defer defer([&]() { unLock(); });
+  auto iter = table_schema_mgrs_.find(tbl_id);
+  if (iter != table_schema_mgrs_.end()) {
+    iter->second->SetDropped();
+    table_schema_mgrs_.erase(tbl_id);
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsEngineSchemaManager::GetVGroupAndUpdateValidCol(kwdbContext_p ctx,
+  const std::shared_ptr<TsTableSchemaManager>& tb_schema,
+  std::vector<uint32_t> valid_col_idx,
+  TSSlice primary_key, uint32_t* vgroup_id,
+  TSEntityID* entity_id, bool* new_tag) {
+  std::shared_ptr<TagTable> tag_schema;
+  tb_schema->GetTagSchema(ctx, &tag_schema);
+  uint32_t entityid, groupid;
+  if (tag_schema->hasPrimaryKey(primary_key.data, primary_key.len, entityid, groupid)) {
+    *entity_id = entityid;
+    // TODO(guanyanxin) clean up the code after adding the checksum.
+    if (groupid <= 0 || EngineOptions::vgroup_max_num < groupid) {
+      LOG_ERROR("Failed to obtain the vgroup id! vgroup_max_num is [%d], vgroup_id is [%u]",
+                EngineOptions::vgroup_max_num, groupid);
+      // After power failure, the tag data is incomplete. Delete the existing ptag.
+      ErrorInfo err_info;
+      std::pair<uint64_t, uint64_t> ignore;
+      tag_schema->DeleteTagRecord(primary_key.data, primary_key.len, err_info, 0, OperateType::Ignore, ignore);
+    } else {
+      *vgroup_id = groupid;
+      *new_tag = false;
+      return KStatus::SUCCESS;
+    }
+    if (valid_col_idx.size() > 0) {
+      // For existing tag on sparse table, check if valid columns need updating
+      std::shared_ptr<TagTable> tag_table;
+      auto s = tb_schema->GetTagSchema(ctx, &tag_table);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("Failed get tag schema for valid column update, table[%lu].", tb_schema->GetTableId());
+        return s;
+      }
+      if (tag_table->issparse()) {
+        if (!tag_table->CheckAndUpdateValidColumns(primary_key.data, primary_key.len, valid_col_idx)) {
+          LOG_ERROR("Failed to update valid columns for table[%lu].", tb_schema->GetTableId());
+        }
+      }
+    }
+  }
+  // use consistent hash to allocate vgroup id
+  *vgroup_id = GetConsistentVgroupId(primary_key.data, primary_key.len, EngineOptions::vgroup_max_num);
+  *new_tag = true;
+  return KStatus::SUCCESS;
+}
+
+uint32_t TsEngineSchemaManager::GetDBIDByTableID(TSTableID table_id) {
+  std::shared_ptr<TsTableSchemaManager> tb_schema_mgr;
+  KStatus s = GetTableSchemaMgr(table_id, tb_schema_mgr);
+  if (s == KStatus::SUCCESS) {
+    return tb_schema_mgr->GetDbID();
+  }
+  return 0;
+}
+
+KStatus TsEngineSchemaManager::AlterTable(kwdbContext_p ctx, const KTableKey& table_id, AlterType alter_type,
+                                          roachpb::KWDBKTSColumn* column, uint32_t cur_version, uint32_t new_version,
+                                          string& msg) {
+  std::shared_ptr<TsTableSchemaManager> tb_schema_mgr;
+  auto s = GetTableSchemaMgr(table_id, tb_schema_mgr);
+  if (s != KStatus::SUCCESS) {
+    return s;
+  }
+  return tb_schema_mgr->AlterTable(ctx, alter_type, column, cur_version, new_version, msg);
+}
+impl_latch_virtual_func(TsEngineSchemaManager, &mgrs_rw_latch_)
+}  //  namespace kwdbts

@@ -41,7 +41,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/rpc"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/contextutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -169,7 +169,7 @@ type NodeLiveness struct {
 	ambientCtx        log.AmbientContext
 	clock             *hlc.Clock
 	db                *kv.DB
-	engines           []storage.Engine
+	engines           []relational.Engine
 	gossip            *gossip.Gossip
 	livenessThreshold time.Duration
 	heartbeatInterval time.Duration
@@ -197,7 +197,7 @@ func NewNodeLiveness(
 	ambient log.AmbientContext,
 	clock *hlc.Clock,
 	db *kv.DB,
-	engines []storage.Engine,
+	engines []relational.Engine,
 	g *gossip.Gossip,
 	livenessThreshold time.Duration,
 	renewalDuration time.Duration,
@@ -957,7 +957,7 @@ func (nl *NodeLiveness) updateLiveness(
 			// don't want any excessively slow disks to prevent leases from being
 			// shifted to other nodes. A slow/stalled disk would block here and cause
 			// the node to lose its leases.
-			if err := storage.WriteSyncNoop(ctx, eng); err != nil {
+			if err := relational.WriteSyncNoop(ctx, eng); err != nil {
 				return errors.Wrapf(err, "couldn't update node liveness because disk write failed")
 			}
 		}

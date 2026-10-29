@@ -32,8 +32,8 @@ import (
 	"strconv"
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/fs"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 	"github.com/pkg/errors"
 	"golang.org/x/time/rate"
@@ -43,13 +43,13 @@ import (
 // directory of scratches created. A scratch manages the SSTs created during a
 // specific snapshot.
 type SSTSnapshotStorage struct {
-	engine  storage.Engine
+	engine  relational.Engine
 	limiter *rate.Limiter
 	dir     string
 }
 
 // NewSSTSnapshotStorage creates a new SST snapshot storage.
-func NewSSTSnapshotStorage(engine storage.Engine, limiter *rate.Limiter) SSTSnapshotStorage {
+func NewSSTSnapshotStorage(engine relational.Engine, limiter *rate.Limiter) SSTSnapshotStorage {
 	return SSTSnapshotStorage{
 		engine:  engine,
 		limiter: limiter,

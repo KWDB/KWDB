@@ -24,7 +24,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/cloud"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/localexternal"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 )
 
@@ -186,7 +186,7 @@ type generatorExternalStorage struct {
 	gen  *csvGenerator
 }
 
-var _ cloud.ExternalStorage = &generatorExternalStorage{}
+var _ localexternal.ExternalStorage = &generatorExternalStorage{}
 
 func (es *generatorExternalStorage) Conf() roachpb.ExternalStorage {
 	return es.conf
@@ -233,7 +233,7 @@ func (es *generatorExternalStorage) Delete(ctx context.Context, basename string)
 	return errors.New("unsupported")
 }
 
-// generatedStorage is a factory (cloud.ExternalStorageFactory)
+// generatedStorage is a factory (localexternal.ExternalStorageFactory)
 // that returns the underlying csvGenerators The file name of the
 // generated file doesn't matter: the first time we attempt to get a
 // generator for a file, we return the next generator on the list.

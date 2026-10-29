@@ -324,25 +324,25 @@ bool checkColValue(const std::vector<AttributeInfo>& data_schema, const ResultSe
           }
           tmp += 8;
           break;
-        case DATATYPE::INT16:
+        case DATATYPE::K_INT16:
           if (KInt16(tmp) != value) {
             check_col_ok = false;
           }
           tmp += 2;
           break;
-        case DATATYPE::INT64:
+        case DATATYPE::K_INT64:
           if (KInt64(tmp) != value) {
             check_col_ok = false;
           }
           tmp += 8;
           break;
-        case DATATYPE::BOOL:
+        case DATATYPE::K_BOOL:
           if (KUint8(tmp) != value) {
             check_col_ok = false;
           }
           tmp += 1;
           break;
-        case DATATYPE::CHAR:
+        case DATATYPE::K_CHAR:
           if (atoi(tmp) != value) {
             check_col_ok = false;
           }
@@ -377,28 +377,28 @@ TSSlice genValue4Col(DATATYPE type, int size, int store_value) {
     case DATATYPE::TIMESTAMP64:
       length = sizeof(uint64_t);
       addr = new char[length];
-      KTimestamp(addr) = store_value;
+      KTimestampCast(addr) = store_value;
       break;
-    case DATATYPE::INT32:
+    case DATATYPE::K_INT32:
       addr = reinterpret_cast<char*>(new int32_t(store_value));
       length = sizeof(int32_t);
       break;
-    case DATATYPE::INT16:
+    case DATATYPE::K_INT16:
       length = sizeof(int16_t);
       addr = new char[length];
       KInt16(addr) = store_value;
       break;
-    case DATATYPE::INT64:
+    case DATATYPE::K_INT64:
       length = sizeof(int64_t);
       addr = new char[length];
       KInt64(addr) = store_value;
       break;
-    case DATATYPE::BOOL:
+    case DATATYPE::K_BOOL:
       length = sizeof(int8_t);
       addr = new char[length];
       *(int8_t*)(addr) = store_value;
       break;
-    case DATATYPE::CHAR:
+    case DATATYPE::K_CHAR:
       length = size;
       addr = new char[length];
       memset(addr, 0, length);

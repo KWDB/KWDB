@@ -545,11 +545,11 @@ ORDER BY s.work_area_sn;
              │                          | standard_val          | standard_val
              └── hash-join              |                       |
                   │                     | type                  | inner
-                  │                     | equality              | (column11) = (standard_val)
+                  │                     | equality              | (column14) = (standard_val)
                   ├── synchronizer      |                       |
                   │    └── render       |                       |
                   │         │           | engine type           | time series
-                  │         │           | column11              | second_val + 5.0
+                  │         │           | column14              | second_val + 5.0
                   │         │           | value                 | value
                   │         │           | state                 | state
                   │         │           | second_val            | second_val
@@ -821,7 +821,7 @@ WHERE t.standard_avg + 5 = ts.second_val;
   render                                |                  |
    └── batch-lookup-join                |                  |
         │                               | type             | inner
-        │                               | equality         | (column22) = (second_val)
+        │                               | equality         | (column28) = (second_val)
         ├── render                      |                  |
         │    └── batch-lookup-join      |                  |
         │         │                     | type             | inner
@@ -1845,11 +1845,11 @@ ORDER BY s.work_area_sn;
              │                          | standard_val          | standard_val
              └── hash-join              |                       |
                   │                     | type                  | inner
-                  │                     | equality              | (column11) = (standard_val)
+                  │                     | equality              | (column14) = (standard_val)
                   ├── synchronizer      |                       |
                   │    └── render       |                       |
                   │         │           | engine type           | time series
-                  │         │           | column11              | second_val + 5.0
+                  │         │           | column14              | second_val + 5.0
                   │         │           | value                 | value
                   │         │           | state                 | state
                   │         │           | second_val            | second_val
@@ -2121,7 +2121,7 @@ WHERE t.standard_avg + 5 = ts.second_val;
   render                                |                  |
    └── batch-lookup-join                |                  |
         │                               | type             | inner
-        │                               | equality         | (column22) = (second_val)
+        │                               | equality         | (column28) = (second_val)
         ├── render                      |                  |
         │    └── batch-lookup-join      |                  |
         │         │                     | type             | inner
@@ -3229,11 +3229,11 @@ ORDER BY s.work_area_sn;
              │                          | standard_val          | standard_val
              └── hash-join              |                       |
                   │                     | type                  | inner
-                  │                     | equality              | (column11) = (standard_val)
+                  │                     | equality              | (column14) = (standard_val)
                   ├── synchronizer      |                       |
                   │    └── render       |                       |
                   │         │           | engine type           | time series
-                  │         │           | column11              | second_val + 5.0
+                  │         │           | column14              | second_val + 5.0
                   │         │           | value                 | value
                   │         │           | state                 | state
                   │         │           | second_val            | second_val
@@ -3505,7 +3505,7 @@ WHERE t.standard_avg + 5 = ts.second_val;
   render                                |                  |
    └── batch-lookup-join                |                  |
         │                               | type             | inner
-        │                               | equality         | (column22) = (second_val)
+        │                               | equality         | (column28) = (second_val)
         ├── render                      |                  |
         │    └── batch-lookup-join      |                  |
         │         │                     | type             | inner

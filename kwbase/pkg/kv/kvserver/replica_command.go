@@ -46,7 +46,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/causer"
 	"gitee.com/kwbasedb/kwbase/pkg/util/contextutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/ctxgroup"
@@ -454,7 +454,7 @@ func (r *Replica) adminSplitWithDescriptor(
 			// Find a key to split by size.
 			var err error
 			targetSize := r.GetMaxBytes() / 2
-			foundSplitKey, err = storage.MVCCFindSplitKey(
+			foundSplitKey, err = relational.MVCCFindSplitKey(
 				ctx, r.store.engine, desc.StartKey, desc.EndKey, targetSize)
 			if err != nil {
 				return reply, errors.Errorf("unable to determine split key: %s", err)
@@ -485,7 +485,7 @@ func (r *Replica) adminSplitWithDescriptor(
 		if !splitKey.Equal(foundSplitKey) {
 			return reply, errors.Errorf("cannot split range at range-local key %s", splitKey)
 		}
-		if !storage.IsValidSplitKey(foundSplitKey) {
+		if !relational.IsValidSplitKey(foundSplitKey) {
 			return reply, errors.Errorf("cannot split range at key %s", splitKey)
 		}
 	}
@@ -549,7 +549,9 @@ func (r *Replica) adminSplitWithDescriptor(
 				args.IsCreateTsTable,
 			)
 		})
-		log.Warningf(ctx, "split retry, err is %+v", rt.CurrentAttempts(), err)
+		if err != nil {
+			log.Warningf(ctx, "split retry count is %d , err is %+v", rt.CurrentAttempts(), err)
+		}
 		if err == ErrorTableStateAdd {
 			continue
 		}
@@ -1027,6 +1029,13 @@ func IsSnapshotError(err error) bool {
 	})
 }
 
+// changeReplicasOpts controls optional behavior for replication changes.
+type changeReplicasOpts struct {
+	// tsStatsReconciledForSnapshot is set when TS range MVCCStats were already
+	// refreshed from TsEngine before snapshot sizing (e.g. by queue timeout path).
+	tsStatsReconciledForSnapshot bool
+}
+
 // ChangeReplicas atomically changes the replicas that are members of a range.
 // The change is performed in a distributed transaction and takes effect when
 // that transaction is committed. This transaction confirms that the supplied
@@ -1126,14 +1135,15 @@ func (r *Replica) ChangeReplicas(
 	// We execute the change serially if we're not allowed to run atomic
 	// replication changes or if that was explicitly disabled.
 	st := r.ClusterSettings()
-	unroll := !st.Version.IsActive(ctx, clusterversion.VersionAtomicChangeReplicas) ||
+	unroll := !st.Version.IsActive(ctx, clusterversion.VersionMinSupported) ||
 		!UseAtomicReplicationChanges.Get(&st.SV)
 
 	if unroll {
 		// Legacy behavior.
+		opts := changeReplicasOpts{}
 		for i := range chgs {
 			var err error
-			desc, err = r.changeReplicasImpl(ctx, desc, priority, reason, details, chgs[i:i+1])
+			desc, err = r.changeReplicasImpl(ctx, desc, priority, reason, details, chgs[i:i+1], opts)
 			if err != nil {
 				return nil, err
 			}
@@ -1141,7 +1151,7 @@ func (r *Replica) ChangeReplicas(
 		return desc, nil
 	}
 	// Atomic replication change.
-	return r.changeReplicasImpl(ctx, desc, priority, reason, details, chgs)
+	return r.changeReplicasImpl(ctx, desc, priority, reason, details, chgs, changeReplicasOpts{})
 }
 
 func (r *Replica) changeReplicasImpl(
@@ -1151,6 +1161,7 @@ func (r *Replica) changeReplicasImpl(
 	reason storagepb.RangeLogEventReason,
 	details string,
 	chgs roachpb.ReplicationChanges,
+	opts changeReplicasOpts,
 ) (updatedDesc *roachpb.RangeDescriptor, _ error) {
 	var err error
 	// If in a joint config, clean up. The assumption here is that the caller
@@ -1225,7 +1236,7 @@ func (r *Replica) changeReplicasImpl(
 	log.VEventf(ctx, 3, " atomicReplicationChange begin")
 	// Catch up any learners, then run the atomic replication change that adds the
 	// final voters and removes any undesirable replicas.
-	desc, err = r.atomicReplicationChange(ctx, desc, priority, reason, details, chgs)
+	desc, err = r.atomicReplicationChange(ctx, desc, priority, reason, details, chgs, opts)
 	if err != nil {
 		// If the error occurred while transitioning out of an atomic replication change,
 		// try again here with a fresh descriptor; this is a noop otherwise.
@@ -1453,12 +1464,14 @@ func (r *Replica) atomicReplicationChange(
 	reason storagepb.RangeLogEventReason,
 	details string,
 	chgs roachpb.ReplicationChanges,
+	opts changeReplicasOpts,
 ) (*roachpb.RangeDescriptor, error) {
 	// TODO(dan): We allow ranges with learner replicas to split, so in theory
 	// this may want to detect that and retry, sending a snapshot and promoting
 	// both sides.
 
 	iChgs := make([]internalReplicationChange, 0, len(chgs))
+	tsStatsReconciled := opts.tsStatsReconciledForSnapshot
 
 	for _, target := range chgs.Additions() {
 		iChgs = append(iChgs, internalReplicationChange{target: target, typ: internalChangeTypePromoteLearner})
@@ -1492,7 +1505,13 @@ func (r *Replica) atomicReplicationChange(
 		// orphaned learner. Second, this tickled some bugs in etcd/raft around
 		// switching between StateSnapshot and StateProbe. Even if we worked through
 		// these, it would be susceptible to future similar issues.
-		if desc.GetRangeType() == roachpb.TS_RANGE {
+		if isTSRangeDescriptor(desc) {
+			// Admin and other direct conf-change paths reconcile here. The replicate
+			// and raft snapshot queues already refresh stats in totalBytesForQueueTimeout.
+			if !tsStatsReconciled {
+				r.reconcileTSRangeStatsForSnapshot(ctx)
+				tsStatsReconciled = true
+			}
 			// for TS replicas, call the timing engine interface to obtain a snapshot and apply it
 			exist := false
 			if r.store.TsEngine != nil && desc.TableId != 0 {
@@ -1501,7 +1520,7 @@ func (r *Replica) atomicReplicationChange(
 			if err := r.sendTSSnapshot(ctx, rDesc, SnapshotRequest_LEARNER, priority, exist); err != nil {
 				return nil, err
 			}
-		} else if desc.GetRangeType() == roachpb.DEFAULT_RANGE {
+		} else {
 			if err := r.sendSnapshot(ctx, rDesc, SnapshotRequest_LEARNER, priority); err != nil {
 				return nil, err
 			}
@@ -1514,7 +1533,7 @@ func (r *Replica) atomicReplicationChange(
 		}
 	}
 
-	canUseDemotion := r.store.ClusterSettings().Version.IsActive(ctx, clusterversion.VersionChangeReplicasDemotion)
+	canUseDemotion := r.store.ClusterSettings().Version.IsActive(ctx, clusterversion.VersionMinSupported)
 	for _, target := range chgs.Removals() {
 		typ := internalChangeTypeRemove
 		if rDesc, ok := desc.GetReplicaDescriptor(target.StoreID); ok && rDesc.GetType() == roachpb.VOTER_FULL && canUseDemotion {
@@ -1743,16 +1762,18 @@ func prepareChangeReplicasTrigger(
 
 	var crt *roachpb.ChangeReplicasTrigger
 	if !store.ClusterSettings().Version.IsActive(
-		ctx, clusterversion.VersionAtomicChangeReplicasTrigger,
+		ctx, clusterversion.VersionMinSupported,
 	) {
 		var deprecatedChangeType roachpb.ReplicaChangeType
 		var deprecatedRepDesc roachpb.ReplicaDescriptor
 		if len(added) > 0 {
 			deprecatedChangeType = roachpb.ADD_REPLICA
 			deprecatedRepDesc = added[0]
-		} else {
+		} else if len(removed) > 0 {
 			deprecatedChangeType = roachpb.REMOVE_REPLICA
 			deprecatedRepDesc = removed[0]
+		} else {
+			return nil, errors.New("cannot create ChangeReplicasTrigger for empty change on pre-atomic cluster")
 		}
 		crt = &roachpb.ChangeReplicasTrigger{
 			// NB: populate Desc as well because locally we rely on it being
@@ -2078,6 +2099,16 @@ func (r *Replica) sendTSSnapshot(
 	if err != nil {
 		return errors.Wrapf(err, "%s: failed to generate %s TS snapshot", r, snapType)
 	}
+	// Refresh only ValBytes/LiveBytes on the stats loaded from the engine
+	// snapshot. Replacing the whole blob with r.GetMVCCStats() is unsafe:
+	// KeyCount/ValCount may advance in memory after the engine snap is taken
+	// (CreateSnapshotForRead can take seconds), while SSTs still carry the older
+	// RangeAppliedState — the receiver then Fatals in assertStateLocked.
+	if snap.State.Stats != nil && isTSRangeDescriptor(r.Desc()) {
+		correctTSRangeMVCCStatsFromDataVolume(
+			ctx, r.store.metrics, r.store.TsEngine, r.Desc(), snap.State.Stats,
+		)
+	}
 	defer snap.Close()
 	log.Event(ctx, "generated TS snapshot")
 	durGenerate := timeutil.Since(start)
@@ -2093,8 +2124,8 @@ func (r *Replica) sendTSSnapshot(
 		return &benignError{errors.New("raft status not initialized")}
 	}
 
-	usesReplicatedTruncatedState, err := storage.MVCCGetProto(
-		ctx, snap.EngineSnap, keys.RaftTruncatedStateLegacyKey(r.RangeID), hlc.Timestamp{}, nil, storage.MVCCGetOptions{},
+	usesReplicatedTruncatedState, err := relational.MVCCGetProto(
+		ctx, snap.EngineSnap, keys.RaftTruncatedStateLegacyKey(r.RangeID), hlc.Timestamp{}, nil, relational.MVCCGetOptions{},
 	)
 	if err != nil {
 		return errors.Wrap(err, "loading legacy truncated state")
@@ -2108,6 +2139,11 @@ func (r *Replica) sendTSSnapshot(
 			Index: snap.RaftSnap.Metadata.Index,
 			Term:  snap.RaftSnap.Metadata.Term,
 		}
+	}
+
+	rangeSize := int64(0)
+	if snap.State.Stats != nil {
+		rangeSize = snap.State.Stats.Total()
 	}
 
 	req := SnapshotRequest_Header{
@@ -2125,8 +2161,7 @@ func (r *Replica) sendTSSnapshot(
 				Snapshot: snap.RaftSnap,
 			},
 		},
-		// TODO: Use TS range size
-		RangeSize:  r.GetMVCCStats().Total(),
+		RangeSize:  rangeSize,
 		CanDecline: false,
 		Priority:   priority,
 		Strategy:   SnapshotRequest_TS_BATCH,
@@ -2303,8 +2338,8 @@ func (r *Replica) sendSnapshot(
 		return &benignError{errors.New("raft status not initialized")}
 	}
 
-	usesReplicatedTruncatedState, err := storage.MVCCGetProto(
-		ctx, snap.EngineSnap, keys.RaftTruncatedStateLegacyKey(r.RangeID), hlc.Timestamp{}, nil, storage.MVCCGetOptions{},
+	usesReplicatedTruncatedState, err := relational.MVCCGetProto(
+		ctx, snap.EngineSnap, keys.RaftTruncatedStateLegacyKey(r.RangeID), hlc.Timestamp{}, nil, relational.MVCCGetOptions{},
 	)
 	if err != nil {
 		return errors.Wrap(err, "loading legacy truncated state")

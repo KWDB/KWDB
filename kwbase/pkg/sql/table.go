@@ -1052,7 +1052,7 @@ func (p *planner) createDropDatabaseJob(
 	droppedDetails []jobspb.DroppedTableDetails,
 	jobDesc string,
 ) error {
-	if !p.ExecCfg().Settings.Version.IsActive(ctx, clusterversion.VersionSchemaChangeJob) {
+	if !p.ExecCfg().Settings.Version.IsActive(ctx, clusterversion.VersionMinSupported) {
 		if ctx.Value(migrationSchemaChangeRequiredHint{}) == nil {
 			return errSchemaChangeDisallowedInMixedState
 		}
@@ -1087,7 +1087,7 @@ func (p *planner) createOrUpdateSchemaChangeJob(
 	jobDesc string,
 	mutationID sqlbase.MutationID,
 ) error {
-	if !p.ExecCfg().Settings.Version.IsActive(ctx, clusterversion.VersionSchemaChangeJob) {
+	if !p.ExecCfg().Settings.Version.IsActive(ctx, clusterversion.VersionMinSupported) {
 		if ctx.Value(migrationSchemaChangeRequiredHint{}) == nil {
 			return errSchemaChangeDisallowedInMixedState
 		}

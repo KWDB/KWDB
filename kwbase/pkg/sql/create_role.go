@@ -123,8 +123,16 @@ func (n *CreateRoleNode) startExec(params runParams) error {
 	}
 
 	var hashedPassword []byte
+	// The MySQL protocol's challenge-response plugins need digests that cannot
+	// be derived from the bcrypt hash, so they are recorded here, where the
+	// cleartext password is still in hand.
+	var mysqlNativeDigest, mysqlSHA2Digest []byte
 	if n.roleOptions.Contains(roleoption.PASSWORD) {
 		hashedPassword, err = n.roleOptions.GetHashedPassword()
+		if err != nil {
+			return err
+		}
+		mysqlNativeDigest, mysqlSHA2Digest, err = n.roleOptions.GetMySQLPasswordDigests()
 		if err != nil {
 			return err
 		}
@@ -172,10 +180,12 @@ func (n *CreateRoleNode) startExec(params runParams) error {
 		params.ctx,
 		opName,
 		params.p.txn,
-		fmt.Sprintf("insert into %s values ($1, $2, $3)", userTableName),
+		fmt.Sprintf("insert into %s values ($1, $2, $3, $4, $5)", userTableName),
 		normalizedUsername,
 		hashedPassword,
 		n.isRole,
+		mysqlNativeDigest,
+		mysqlSHA2Digest,
 	)
 
 	if err != nil {

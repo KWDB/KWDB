@@ -47,7 +47,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqltelemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/fsm"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -986,6 +986,11 @@ func (ex *connExecutor) dispatchToExecutionEngine(
 	ctx context.Context, planner *planner, res RestrictedCommandResult,
 ) error {
 	stmt := planner.stmt
+
+	// Record the issuing connection's wire capability while the result is still
+	// in scope. EXPLAIN ANALYZE plans its inner statement against a discarding
+	// writer and cannot recover this later.
+	planner.extendedEvalCtx.ClientSupportsPGWireResults = res.SupportsPGWireResults()
 
 	if exp, ok := stmt.AST.(*tree.Export); ok {
 		var auditFlag = true

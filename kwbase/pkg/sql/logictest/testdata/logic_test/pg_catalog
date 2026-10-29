@@ -291,6 +291,7 @@ role_table_grants  false
 table_constraints  false
 table_privileges   false
 tables             false
+view_table_usage   false
 
 ## pg_catalog.pg_tablespace
 
@@ -637,6 +638,8 @@ query OOIBBBBBBBBBBTTTTTT colnames
 SELECT * FROM pg_catalog.pg_index ORDER BY indexrelid
 ----
 indexrelid  indrelid  indnatts  indisunique  indisprimary  indisexclusion  indimmediate  indisclustered  indisvalid  indcheckxmin  indisready  indislive  indisreplident  indkey   indcollation               indclass  indoption  indexprs  indpred
+51576700    64        1         true         true          false           true          false           true        false         false       true       false           1        0                          0         2          NULL      NULL
+51576703    64        1         true         false         false           true          false           true        false         false       true       false           2        3903121477                 0         2          NULL      NULL
 144368028   32        1         true         true          false           true          false           true        false         false       true       false           1        0                          0         2          NULL      NULL
 543291288   23        1         false        false         false           false         false           true        false         false       true       false           1        3903121477                 0         2          NULL      NULL
 543291289   23        1         false        false         false           false         false           true        false         false       true       false           2        3903121477                 0         2          NULL      NULL
@@ -664,6 +667,7 @@ indexrelid  indrelid  indnatts  indisunique  indisprimary  indisexclusion  indim
 2407840836  24        3         true         true          false           true          false           true        false         false       true       false           1 2 3    0 0 0                      0 0 0     2 2 2      NULL      NULL
 2528390112  47        2         true         false         false           true          false           true        false         false       true       false           2 3      3903121477 3903121477      0 0       2 2        NULL      NULL
 2528390115  47        1         true         true          false           true          false           true        false         false       true       false           1        0                          0         2          NULL      NULL
+2574785779  63        3         true         true          false           true          false           true        false         false       true       false           1 2 7    0 0 0                      0 0 0     2 2 2      NULL      NULL
 2621181440  15        2         false        false         false           false         false           true        false         false       true       false           2 3      3903121477 0               0 0       2 2        NULL      NULL
 2621181443  15        1         true         true          false           true          false           true        false         false       true       false           1        0                          0         2          NULL      NULL
 2667577107  31        1         true         true          false           true          false           true        false         false       true       false           1        0                          0         2          NULL      NULL
@@ -676,6 +680,8 @@ indexrelid  indrelid  indnatts  indisunique  indisprimary  indisexclusion  indim
 3706522183  11        4         true         true          false           true          false           true        false         false       true       false           1 2 4 3  0 0 0 0                    0 0 0 0   2 2 2 2    NULL      NULL
 3752917847  27        2         true         true          false           true          false           true        false         false       true       false           1 2      0 0                        0 0       2 2        NULL      NULL
 3873467122  46        1         true         true          false           true          false           true        false         false       true       false           1        0                          0         2          NULL      NULL
+3919862785  62        1         true         false         false           true          false           true        false         false       true       false           2        3903121477                 0         2          NULL      NULL
+3919862786  62        1         true         true          false           true          false           true        false         false       true       false           1        0                          0         2          NULL      NULL
 3966258450  14        1         true         true          false           true          false           true        false         false       true       false           1        3903121477                 0         2          NULL      NULL
 4012654114  30        3         true         true          false           true          false           true        false         false       true       false           1 2 3    0 0 3903121477             0 0 0     2 2 2      NULL      NULL
 4179599057  61        1         true         true          false           true          false           true        false         false       true       false           1        0                          0         2          NULL      NULL
@@ -691,6 +697,8 @@ FROM pg_index
 ORDER BY indexrelid, operator_argument_position
 ----
 indexrelid  operator_argument_type_oid  operator_argument_position
+51576700    0                           1
+51576703    0                           1
 144368028   0                           1
 543291288   0                           1
 543291289   0                           1
@@ -736,6 +744,9 @@ indexrelid  operator_argument_type_oid  operator_argument_position
 2528390112  0                           1
 2528390112  0                           2
 2528390115  0                           1
+2574785779  0                           1
+2574785779  0                           2
+2574785779  0                           3
 2621181440  0                           1
 2621181440  0                           2
 2621181443  0                           1
@@ -756,6 +767,8 @@ indexrelid  operator_argument_type_oid  operator_argument_position
 3752917847  0                           1
 3752917847  0                           2
 3873467122  0                           1
+3919862785  0                           1
+3919862786  0                           1
 3966258450  0                           1
 4012654114  0                           1
 4012654114  0                           2
@@ -1543,23 +1556,31 @@ objoid      classoid    objsubid  description
 4294967248  4294967219  0         roles available to the current user
 4294967247  4294967219  0         check constraints
 4294967246  4294967219  0         column privilege grants (incomplete)
+4294967163  4294967219  0         histogram statistics for visible table columns
 4294967245  4294967219  0         table and view columns (incomplete)
 4294967244  4294967219  0         columns usage by constraints
 4294967243  4294967219  0         roles for the current user
 4294967242  4294967219  0         column usage by indexes and key constraints
-4294967241  4294967219  0         built-in function parameters (empty - introspection not yet supported)
+4294967169  4294967219  0         SQL keywords
+4294967241  4294967219  0         user-defined function and procedure parameters
 4294967228  4294967219  0         privileges granted on procedure (incomplete; may contain excess users or roles)
+4294967162  4294967219  0         current SQL sessions visible to the current user
 4294967240  4294967219  0         foreign key constraints
-4294967239  4294967219  0         privileges granted on table or views (incomplete; see also information_schema.table_privileges; may contain excess users or roles)
-4294967238  4294967219  0         built-in functions (empty - introspection not yet supported)
-4294967236  4294967219  0         schema privileges (incomplete; may contain excess users or roles)
+4294967168  4294967219  0         column privilege grants to roles available to the current user (incomplete; grantor information unavailable)
+4294967167  4294967219  0         privileges granted on procedures and Lua user-defined functions
+4294967239  4294967219  0         privileges granted on tables or views to roles available to the current user (incomplete; grantor information unavailable)
+4294967238  4294967219  0         user-defined functions and procedures
+4294967236  4294967219  0         schema privileges for the current user, public, or available roles; administrators can view all grantees (incomplete; grant option information unavailable)
 4294967237  4294967219  0         database schemas (may contain schemata without permission)
 4294967235  4294967219  0         sequences
 4294967234  4294967219  0         index metadata and statistics (incomplete)
 4294967233  4294967219  0         table constraints
-4294967232  4294967219  0         privileges granted on table or views (incomplete; may contain excess users or roles)
+4294967232  4294967219  0         privileges on visible tables or views for the current user, public, or available roles; administrators can view all grantees (incomplete; grantor and grant option information unavailable)
 4294967231  4294967219  0         tables and views
-4294967229  4294967219  0         grantable privileges (incomplete)
+4294967165  4294967219  0         triggers on tables visible to the current user
+4294967164  4294967219  0         user account attributes
+4294967229  4294967219  0         global privilege compatibility rows for root and admin role membership; non-admin users see no rows
+4294967166  4294967219  0         tables and views directly referenced by views
 4294967230  4294967219  0         views (incomplete)
 4294967256  4294967219  0         audit policies
 4294967294  4294967219  0         backward inter-descriptor dependencies starting from tables accessible by current user in current database (KV scan)
@@ -1582,6 +1603,7 @@ objoid      classoid    objsubid  description
 4294967255  4294967219  0         kwdb attribute and value info
 4294967175  4294967219  0         kwdb functions info
 4294967254  4294967219  0         kwdb object create statement
+4294967172  4294967219  0         kwdb pipes info
 4294967174  4294967219  0         kwdb procedures info
 4294967253  4294967219  0         kwdb show retentions
 4294967176  4294967219  0         kwdb schedules info
@@ -1599,6 +1621,7 @@ objoid      classoid    objsubid  description
 4294967259  4294967219  0         per-application transaction statistics (in-memory, not durable; local node only). This table is wiped periodically (by default, at least every two hours)
 4294967271  4294967219  0         defined partitions for all tables/indexes accessible by the current user in the current database (KV scan)
 4294967270  4294967219  0         comments for predefined virtual tables (RAM/static)
+4294967171  4294967219  0         kwdb publication info
 4294967269  4294967219  0         range metadata without leaseholder details (KV join; expensive!)
 4294967266  4294967219  0         ongoing schema changes, across all descriptors accessible by current user (KV scan; expensive!)
 4294967265  4294967219  0         session trace accumulated so far (RAM)
@@ -1606,7 +1629,7 @@ objoid      classoid    objsubid  description
 4294967262  4294967219  0         details for all columns accessible by current user in current database (KV scan)
 4294967261  4294967219  0         indexes accessible by current user in current database (KV scan)
 4294967260  4294967219  0         table descriptors accessible by current user, including non-public and virtual (KV scan; expensive!)
-4294967172  4294967219  0         kwdb show info of ts engine
+4294967170  4294967219  0         kwdb show info of ts engine
 4294967258  4294967219  0         decoded zone configurations from system.zones (KV scan)
 4294967226  4294967219  0         index access methods (incomplete)
 4294967225  4294967219  0         column default values
@@ -1726,67 +1749,82 @@ FROM
 WHERE
   name != 'optimizer' AND name != 'kwdb_version' AND name != 'session_id'
 ----
-name                                      setting             category  short_desc  extra_desc  vartype
-application_name                          ·                   NULL      NULL        NULL        string
-avoid_buffering                           off                 NULL      NULL        NULL        string
-bytea_output                              hex                 NULL      NULL        NULL        string
-client_encoding                           utf8                NULL      NULL        NULL        string
-client_min_messages                       notice              NULL      NULL        NULL        string
-database                                  test                NULL      NULL        NULL        string
-datestyle                                 ISO, MDY            NULL      NULL        NULL        string
-default_int_size                          8                   NULL      NULL        NULL        string
-default_tablespace                        ·                   NULL      NULL        NULL        string
-default_transaction_isolation             serializable        NULL      NULL        NULL        string
-default_transaction_read_only             off                 NULL      NULL        NULL        string
-distsql                                   off                 NULL      NULL        NULL        string
-enable_implicit_select_for_update         on                  NULL      NULL        NULL        string
-enable_insert_fast_path                   on                  NULL      NULL        NULL        string
-enable_multimodel                         off                 NULL      NULL        NULL        string
-enable_timebucket_opt                     off                 NULL      NULL        NULL        string
-enable_zigzag_join                        on                  NULL      NULL        NULL        string
-experimental_enable_hash_sharded_indexes  off                 NULL      NULL        NULL        string
-experimental_enable_temp_tables           off                 NULL      NULL        NULL        string
-experimental_serial_normalization         rowid               NULL      NULL        NULL        string
-extra_float_digits                        0                   NULL      NULL        NULL        string
-force_savepoint_restart                   off                 NULL      NULL        NULL        string
-hash_scan_mode                            0                   NULL      NULL        NULL        string
-idle_in_session_timeout                   0                   NULL      NULL        NULL        string
-idle_in_transaction_session_timeout       0                   NULL      NULL        NULL        string
-inside_out_row_ratio                      0.9                 NULL      NULL        NULL        string
-integer_datetimes                         on                  NULL      NULL        NULL        string
-intervalstyle                             postgres            NULL      NULL        NULL        string
-locality                                  region=test,dc=dc1  NULL      NULL        NULL        string
-lock_timeout                              0                   NULL      NULL        NULL        string
-max_identifier_length                     128                 NULL      NULL        NULL        string
-max_index_keys                            32                  NULL      NULL        NULL        string
-multi_model_reorder_joins_limit           8                   NULL      NULL        NULL        string
-need_control_inside_out                   off                 NULL      NULL        NULL        string
-node_id                                   1                   NULL      NULL        NULL        string
-optimizer_foreign_keys                    on                  NULL      NULL        NULL        string
-pg_extend_compress                        off                 NULL      NULL        NULL        string
-reorder_joins_limit                       4                   NULL      NULL        NULL        string
-require_explicit_primary_keys             off                 NULL      NULL        NULL        string
-results_buffer_size                       16384               NULL      NULL        NULL        string
-row_security                              off                 NULL      NULL        NULL        string
-search_path                               public              NULL      NULL        NULL        string
-server_encoding                           UTF8                NULL      NULL        NULL        string
-server_version                            9.5.0               NULL      NULL        NULL        string
-server_version_num                        90500               NULL      NULL        NULL        string
-session_user                              root                NULL      NULL        NULL        string
-sql_safe_updates                          off                 NULL      NULL        NULL        string
-standard_conforming_strings               on                  NULL      NULL        NULL        string
-statement_timeout                         0                   NULL      NULL        NULL        string
-synchronize_seqscans                      on                  NULL      NULL        NULL        string
-timezone                                  UTC                 NULL      NULL        NULL        string
-tracing                                   off                 NULL      NULL        NULL        string
-transaction_isolation                     serializable        NULL      NULL        NULL        string
-transaction_priority                      normal              NULL      NULL        NULL        string
-transaction_read_only                     off                 NULL      NULL        NULL        string
-transaction_status                        NoTxn               NULL      NULL        NULL        string
-ts_ignore_batcherror                      off                 NULL      NULL        NULL        string
-tsinsert_direct                           on                 NULL      NULL        NULL        string
-vectorize                                 auto                NULL      NULL        NULL        string
-vectorize_row_count_threshold             0                   NULL      NULL        NULL        string
+name                                      setting              category  short_desc  extra_desc  vartype
+application_name                          ·                    NULL      NULL        NULL        string
+autocommit                                on                   NULL      NULL        NULL        string
+avoid_buffering                           off                  NULL      NULL        NULL        string
+bytea_output                              hex                  NULL      NULL        NULL        string
+character_set_client                      utf8mb4              NULL      NULL        NULL        string
+character_set_connection                  utf8mb4              NULL      NULL        NULL        string
+character_set_results                     utf8mb4              NULL      NULL        NULL        string
+client_encoding                           utf8                 NULL      NULL        NULL        string
+client_min_messages                       notice               NULL      NULL        NULL        string
+collation_connection                      utf8mb4_general_ci   NULL      NULL        NULL        string
+collation_database                        utf8mb4_general_ci   NULL      NULL        NULL        string
+collation_server                          utf8mb4_general_ci   NULL      NULL        NULL        string
+database                                  test                 NULL      NULL        NULL        string
+datestyle                                 ISO, MDY             NULL      NULL        NULL        string
+default_int_size                          8                    NULL      NULL        NULL        string
+default_tablespace                        ·                    NULL      NULL        NULL        string
+default_transaction_isolation             serializable         NULL      NULL        NULL        string
+default_transaction_read_only             off                  NULL      NULL        NULL        string
+distsql                                   off                  NULL      NULL        NULL        string
+enable_implicit_select_for_update         on                   NULL      NULL        NULL        string
+enable_insert_fast_path                   on                   NULL      NULL        NULL        string
+enable_multimodel                         off                  NULL      NULL        NULL        string
+enable_timebucket_opt                     off                  NULL      NULL        NULL        string
+enable_zigzag_join                        on                   NULL      NULL        NULL        string
+experimental_enable_hash_sharded_indexes  off                  NULL      NULL        NULL        string
+experimental_enable_temp_tables           off                  NULL      NULL        NULL        string
+experimental_serial_normalization         rowid                NULL      NULL        NULL        string
+extra_float_digits                        0                    NULL      NULL        NULL        string
+force_savepoint_restart                   off                  NULL      NULL        NULL        string
+hash_scan_mode                            0                    NULL      NULL        NULL        string
+idle_in_session_timeout                   0                    NULL      NULL        NULL        string
+idle_in_transaction_session_timeout       0                    NULL      NULL        NULL        string
+inside_out_row_ratio                      0.9                  NULL      NULL        NULL        string
+integer_datetimes                         on                   NULL      NULL        NULL        string
+interactive_timeout                       28800                NULL      NULL        NULL        string
+intervalstyle                             postgres             NULL      NULL        NULL        string
+locality                                  region=test,dc=dc1   NULL      NULL        NULL        string
+lock_timeout                              0                    NULL      NULL        NULL        string
+max_allowed_packet                        67108864             NULL      NULL        NULL        string
+max_identifier_length                     128                  NULL      NULL        NULL        string
+max_index_keys                            32                   NULL      NULL        NULL        string
+multi_model_reorder_joins_limit           8                    NULL      NULL        NULL        string
+need_control_inside_out                   off                  NULL      NULL        NULL        string
+net_read_timeout                          30                   NULL      NULL        NULL        string
+net_write_timeout                         60                   NULL      NULL        NULL        string
+node_id                                   1                    NULL      NULL        NULL        string
+optimizer_foreign_keys                    on                   NULL      NULL        NULL        string
+pg_extend_compress                        off                  NULL      NULL        NULL        string
+reorder_joins_limit                       4                    NULL      NULL        NULL        string
+require_explicit_primary_keys             off                  NULL      NULL        NULL        string
+results_buffer_size                       16384                NULL      NULL        NULL        string
+row_security                              off                  NULL      NULL        NULL        string
+search_path                               public               NULL      NULL        NULL        string
+server_encoding                           UTF8                 NULL      NULL        NULL        string
+server_version                            9.5.0                NULL      NULL        NULL        string
+server_version_num                        90500                NULL      NULL        NULL        string
+session_user                              root                 NULL      NULL        NULL        string
+sql_mode                                  STRICT_TRANS_TABLES  NULL      NULL        NULL        string
+sql_safe_updates                          off                  NULL      NULL        NULL        string
+standard_conforming_strings               on                   NULL      NULL        NULL        string
+statement_timeout                         0                    NULL      NULL        NULL        string
+synchronize_seqscans                      on                   NULL      NULL        NULL        string
+time_zone                                 UTC                  NULL      NULL        NULL        string
+timezone                                  UTC                  NULL      NULL        NULL        string
+tracing                                   off                  NULL      NULL        NULL        string
+transaction_isolation                     serializable         NULL      NULL        NULL        string
+transaction_priority                      normal               NULL      NULL        NULL        string
+transaction_read_only                     off                  NULL      NULL        NULL        string
+transaction_status                        NoTxn                NULL      NULL        NULL        string
+ts_ignore_batcherror                      off                  NULL      NULL        NULL        string
+tsinsert_direct                           on                   NULL      NULL        NULL        string
+vectorize                                 auto                 NULL      NULL        NULL        string
+vectorize_row_count_threshold             0                    NULL      NULL        NULL        string
+version_comment                           KaiwuDB              NULL      NULL        NULL        string
+wait_timeout                              28800                NULL      NULL        NULL        string
 
 query TTTTTTT colnames
 SELECT
@@ -1796,77 +1834,99 @@ FROM
 WHERE
   name != 'optimizer' AND name != 'kwdb_version' AND name != 'session_id'
 ----
-name                                      setting             unit  context  enumvals  boot_val            reset_val
-application_name                          ·                   NULL  user     NULL      ·                   ·
-avoid_buffering                           off                 NULL  user     NULL      false               false
-bytea_output                              hex                 NULL  user     NULL      hex                 hex
-client_encoding                           utf8                NULL  user     NULL      UTF8                UTF8
-client_min_messages                       notice              NULL  user     NULL      notice              notice
-database                                  test                NULL  user     NULL      ·                   test
-datestyle                                 ISO, MDY            NULL  user     NULL      ISO, MDY            ISO, MDY
-default_int_size                          8                   NULL  user     NULL      8                   8
-default_tablespace                        ·                   NULL  user     NULL      ·                   ·
-default_transaction_isolation             serializable        NULL  user     NULL      serializable        serializable
-default_transaction_read_only             off                 NULL  user     NULL      off                 off
-distsql                                   off                 NULL  user     NULL      off                 off
-enable_implicit_select_for_update         on                  NULL  user     NULL      on                  on
-enable_insert_fast_path                   on                  NULL  user     NULL      on                  on
-enable_multimodel                         off                 NULL  user     NULL      off                 off
-enable_timebucket_opt                     off                 NULL  user     NULL      off                 off
-enable_zigzag_join                        on                  NULL  user     NULL      on                  on
-experimental_enable_hash_sharded_indexes  off                 NULL  user     NULL      off                 off
-experimental_enable_temp_tables           off                 NULL  user     NULL      off                 off
-experimental_serial_normalization         rowid               NULL  user     NULL      rowid               rowid
-extra_float_digits                        0                   NULL  user     NULL      0                   2
-force_savepoint_restart                   off                 NULL  user     NULL      off                 off
-hash_scan_mode                            0                   NULL  user     NULL      0                   0
-idle_in_session_timeout                   0                   NULL  user     NULL      0s                  0s
-idle_in_transaction_session_timeout       0                   NULL  user     NULL      0                   0
-inside_out_row_ratio                      0.9                 NULL  user     NULL      0.9                 0.9
-integer_datetimes                         on                  NULL  user     NULL      on                  on
-intervalstyle                             postgres            NULL  user     NULL      postgres            postgres
-locality                                  region=test,dc=dc1  NULL  user     NULL      region=test,dc=dc1  region=test,dc=dc1
-lock_timeout                              0                   NULL  user     NULL      0                   0
-max_identifier_length                     128                 NULL  user     NULL      128                 128
-max_index_keys                            32                  NULL  user     NULL      32                  32
-multi_model_reorder_joins_limit           8                   NULL  user     NULL      8                   8
-need_control_inside_out                   off                 NULL  user     NULL      off                 off
-node_id                                   1                   NULL  user     NULL      1                   1
-optimizer_foreign_keys                    on                  NULL  user     NULL      on                  on
-pg_extend_compress                        off                 NULL  user     NULL      off                 off
-reorder_joins_limit                       4                   NULL  user     NULL      4                   4
-require_explicit_primary_keys             off                 NULL  user     NULL      off                 off
-results_buffer_size                       16384               NULL  user     NULL      16384               16384
-row_security                              off                 NULL  user     NULL      off                 off
-search_path                               public              NULL  user     NULL      public              public
-server_encoding                           UTF8                NULL  user     NULL      UTF8                UTF8
-server_version                            9.5.0               NULL  user     NULL      9.5.0               9.5.0
-server_version_num                        90500               NULL  user     NULL      90500               90500
-session_user                              root                NULL  user     NULL      root                root
-sql_safe_updates                          off                 NULL  user     NULL      off                 off
-standard_conforming_strings               on                  NULL  user     NULL      on                  on
-statement_timeout                         0                   NULL  user     NULL      0                   0
-synchronize_seqscans                      on                  NULL  user     NULL      on                  on
-timezone                                  UTC                 NULL  user     NULL      ·                   ·
-tracing                                   off                 NULL  user     NULL      off                 off
-transaction_isolation                     serializable        NULL  user     NULL      serializable        serializable
-transaction_priority                      normal              NULL  user     NULL      normal              normal
-transaction_read_only                     off                 NULL  user     NULL      off                 off
-transaction_status                        NoTxn               NULL  user     NULL      NoTxn               NoTxn
-ts_ignore_batcherror                      off                 NULL  user     NULL      NULL                NULL
-tsinsert_direct                           on                  NULL  user     NULL      on                  on
-vectorize                                 auto                NULL  user     NULL      auto                auto
-vectorize_row_count_threshold             0                   NULL  user     NULL      0                   0
+name                                      setting              unit  context  enumvals  boot_val             reset_val
+application_name                          ·                    NULL  user     NULL      ·                    ·
+autocommit                                on                   NULL  user     NULL      on                   on
+avoid_buffering                           off                  NULL  user     NULL      false                false
+bytea_output                              hex                  NULL  user     NULL      hex                  hex
+character_set_client                      utf8mb4              NULL  user     NULL      utf8mb4              utf8mb4
+character_set_connection                  utf8mb4              NULL  user     NULL      utf8mb4              utf8mb4
+character_set_results                     utf8mb4              NULL  user     NULL      utf8mb4              utf8mb4
+client_encoding                           utf8                 NULL  user     NULL      UTF8                 UTF8
+client_min_messages                       notice               NULL  user     NULL      notice               notice
+collation_connection                      utf8mb4_general_ci   NULL  user     NULL      utf8mb4_general_ci   utf8mb4_general_ci
+collation_database                        utf8mb4_general_ci   NULL  user     NULL      utf8mb4_general_ci   utf8mb4_general_ci
+collation_server                          utf8mb4_general_ci   NULL  user     NULL      utf8mb4_general_ci   utf8mb4_general_ci
+database                                  test                 NULL  user     NULL      ·                    test
+datestyle                                 ISO, MDY             NULL  user     NULL      ISO, MDY             ISO, MDY
+default_int_size                          8                    NULL  user     NULL      8                    8
+default_tablespace                        ·                    NULL  user     NULL      ·                    ·
+default_transaction_isolation             serializable         NULL  user     NULL      serializable         serializable
+default_transaction_read_only             off                  NULL  user     NULL      off                  off
+distsql                                   off                  NULL  user     NULL      off                  off
+enable_implicit_select_for_update         on                   NULL  user     NULL      on                   on
+enable_insert_fast_path                   on                   NULL  user     NULL      on                   on
+enable_multimodel                         off                  NULL  user     NULL      off                  off
+enable_timebucket_opt                     off                  NULL  user     NULL      off                  off
+enable_zigzag_join                        on                   NULL  user     NULL      on                   on
+experimental_enable_hash_sharded_indexes  off                  NULL  user     NULL      off                  off
+experimental_enable_temp_tables           off                  NULL  user     NULL      off                  off
+experimental_serial_normalization         rowid                NULL  user     NULL      rowid                rowid
+extra_float_digits                        0                    NULL  user     NULL      0                    2
+force_savepoint_restart                   off                  NULL  user     NULL      off                  off
+hash_scan_mode                            0                    NULL  user     NULL      0                    0
+idle_in_session_timeout                   0                    NULL  user     NULL      0s                   0s
+idle_in_transaction_session_timeout       0                    NULL  user     NULL      0                    0
+inside_out_row_ratio                      0.9                  NULL  user     NULL      0.9                  0.9
+integer_datetimes                         on                   NULL  user     NULL      on                   on
+interactive_timeout                       28800                NULL  user     NULL      28800                28800
+intervalstyle                             postgres             NULL  user     NULL      postgres             postgres
+locality                                  region=test,dc=dc1   NULL  user     NULL      region=test,dc=dc1   region=test,dc=dc1
+lock_timeout                              0                    NULL  user     NULL      0                    0
+max_allowed_packet                        67108864             NULL  user     NULL      67108864             67108864
+max_identifier_length                     128                  NULL  user     NULL      128                  128
+max_index_keys                            32                   NULL  user     NULL      32                   32
+multi_model_reorder_joins_limit           8                    NULL  user     NULL      8                    8
+need_control_inside_out                   off                  NULL  user     NULL      off                  off
+net_read_timeout                          30                   NULL  user     NULL      30                   30
+net_write_timeout                         60                   NULL  user     NULL      60                   60
+node_id                                   1                    NULL  user     NULL      1                    1
+optimizer_foreign_keys                    on                   NULL  user     NULL      on                   on
+pg_extend_compress                        off                  NULL  user     NULL      off                  off
+reorder_joins_limit                       4                    NULL  user     NULL      4                    4
+require_explicit_primary_keys             off                  NULL  user     NULL      off                  off
+results_buffer_size                       16384                NULL  user     NULL      16384                16384
+row_security                              off                  NULL  user     NULL      off                  off
+search_path                               public               NULL  user     NULL      public               public
+server_encoding                           UTF8                 NULL  user     NULL      UTF8                 UTF8
+server_version                            9.5.0                NULL  user     NULL      9.5.0                9.5.0
+server_version_num                        90500                NULL  user     NULL      90500                90500
+session_user                              root                 NULL  user     NULL      root                 root
+sql_mode                                  STRICT_TRANS_TABLES  NULL  user     NULL      STRICT_TRANS_TABLES  STRICT_TRANS_TABLES
+sql_safe_updates                          off                  NULL  user     NULL      off                  off
+standard_conforming_strings               on                   NULL  user     NULL      on                   on
+statement_timeout                         0                    NULL  user     NULL      0                    0
+synchronize_seqscans                      on                   NULL  user     NULL      on                   on
+time_zone                                 UTC                  NULL  user     NULL      ·                    ·
+timezone                                  UTC                  NULL  user     NULL      ·                    ·
+tracing                                   off                  NULL  user     NULL      off                  off
+transaction_isolation                     serializable         NULL  user     NULL      serializable         serializable
+transaction_priority                      normal               NULL  user     NULL      normal               normal
+transaction_read_only                     off                  NULL  user     NULL      off                  off
+transaction_status                        NoTxn                NULL  user     NULL      NoTxn                NoTxn
+ts_ignore_batcherror                      off                  NULL  user     NULL      NULL                 NULL
+tsinsert_direct                           on                   NULL  user     NULL      on                   on
+vectorize                                 auto                 NULL  user     NULL      auto                 auto
+vectorize_row_count_threshold             0                    NULL  user     NULL      0                    0
+version_comment                           KaiwuDB              NULL  user     NULL      KaiwuDB              KaiwuDB
+wait_timeout                              28800                NULL  user     NULL      28800                28800
 
 query TTTTTT colnames
 SELECT name, source, min_val, max_val, sourcefile, sourceline FROM pg_catalog.pg_settings
 ----
 name                                      source  min_val  max_val  sourcefile  sourceline
 application_name                          NULL    NULL     NULL     NULL        NULL
+autocommit                                NULL    NULL     NULL     NULL        NULL
 avoid_buffering                           NULL    NULL     NULL     NULL        NULL
 bytea_output                              NULL    NULL     NULL     NULL        NULL
+character_set_client                      NULL    NULL     NULL     NULL        NULL
+character_set_connection                  NULL    NULL     NULL     NULL        NULL
+character_set_results                     NULL    NULL     NULL     NULL        NULL
 client_encoding                           NULL    NULL     NULL     NULL        NULL
 client_min_messages                       NULL    NULL     NULL     NULL        NULL
+collation_connection                      NULL    NULL     NULL     NULL        NULL
+collation_database                        NULL    NULL     NULL     NULL        NULL
+collation_server                          NULL    NULL     NULL     NULL        NULL
 database                                  NULL    NULL     NULL     NULL        NULL
 datestyle                                 NULL    NULL     NULL     NULL        NULL
 default_int_size                          NULL    NULL     NULL     NULL        NULL
@@ -1889,14 +1949,18 @@ idle_in_session_timeout                   NULL    NULL     NULL     NULL        
 idle_in_transaction_session_timeout       NULL    NULL     NULL     NULL        NULL
 inside_out_row_ratio                      NULL    NULL     NULL     NULL        NULL
 integer_datetimes                         NULL    NULL     NULL     NULL        NULL
+interactive_timeout                       NULL    NULL     NULL     NULL        NULL
 intervalstyle                             NULL    NULL     NULL     NULL        NULL
 kwdb_version                              NULL    NULL     NULL     NULL        NULL
 locality                                  NULL    NULL     NULL     NULL        NULL
 lock_timeout                              NULL    NULL     NULL     NULL        NULL
+max_allowed_packet                        NULL    NULL     NULL     NULL        NULL
 max_identifier_length                     NULL    NULL     NULL     NULL        NULL
 max_index_keys                            NULL    NULL     NULL     NULL        NULL
 multi_model_reorder_joins_limit           NULL    NULL     NULL     NULL        NULL
 need_control_inside_out                   NULL    NULL     NULL     NULL        NULL
+net_read_timeout                          NULL    NULL     NULL     NULL        NULL
+net_write_timeout                         NULL    NULL     NULL     NULL        NULL
 node_id                                   NULL    NULL     NULL     NULL        NULL
 optimizer                                 NULL    NULL     NULL     NULL        NULL
 optimizer_foreign_keys                    NULL    NULL     NULL     NULL        NULL
@@ -1911,10 +1975,12 @@ server_version                            NULL    NULL     NULL     NULL        
 server_version_num                        NULL    NULL     NULL     NULL        NULL
 session_id                                NULL    NULL     NULL     NULL        NULL
 session_user                              NULL    NULL     NULL     NULL        NULL
+sql_mode                                  NULL    NULL     NULL     NULL        NULL
 sql_safe_updates                          NULL    NULL     NULL     NULL        NULL
 standard_conforming_strings               NULL    NULL     NULL     NULL        NULL
 statement_timeout                         NULL    NULL     NULL     NULL        NULL
 synchronize_seqscans                      NULL    NULL     NULL     NULL        NULL
+time_zone                                 NULL    NULL     NULL     NULL        NULL
 timezone                                  NULL    NULL     NULL     NULL        NULL
 tracing                                   NULL    NULL     NULL     NULL        NULL
 transaction_isolation                     NULL    NULL     NULL     NULL        NULL
@@ -1925,6 +1991,8 @@ ts_ignore_batcherror                      NULL    NULL     NULL     NULL        
 tsinsert_direct                           NULL    NULL     NULL     NULL        NULL
 vectorize                                 NULL    NULL     NULL     NULL        NULL
 vectorize_row_count_threshold             NULL    NULL     NULL     NULL        NULL
+version_comment                           NULL    NULL     NULL     NULL        NULL
+wait_timeout                              NULL    NULL     NULL     NULL        NULL
 
 # pg_catalog.pg_sequence
 

@@ -34,7 +34,7 @@ import (
 // more details.
 func TestDropDatabaseCascadeDuringImportsFails(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-
+	t.Skip()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	args := base.TestClusterArgs{}

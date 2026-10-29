@@ -483,6 +483,27 @@ forwarding is set up on an intermediate firewall/router.`,
 		Description: `Deprecated. Use --advertise-addr=<host>:<port>.`,
 	}
 
+	ListenMySQLAddr = FlagInfo{
+		Name: "mysql-addr",
+		Description: `
+The hostname or IP address to bind to for MySQL protocol clients, for
+example --mysql-addr=myhost:3306 or --mysql-addr=:3306 (listen on all
+interfaces).
+<PRE>
+
+</PRE>
+The MySQL listener is disabled unless this flag is specified. It cannot
+share the port used by --sql-addr, because the MySQL server sends the
+first packet of a connection whereas a PostgreSQL client does, so the
+two protocols cannot be told apart on a shared port.
+<PRE>
+
+</PRE>
+If specified but the address part is omitted, the address part defaults
+to the address part of --listen-addr. If specified but the port number
+is omitted, the port number defaults to 3306.`,
+	}
+
 	ListenSQLAddr = FlagInfo{
 		Name: "sql-addr",
 		Description: `
@@ -799,12 +820,11 @@ Also, if you use equal signs in the file path to a store, you must use the
 	StorageEngine = FlagInfo{
 		Name: "storage-engine",
 		Description: `
-Storage engine to use for all stores on this kwbase node. Options are default,
-rocksdb, or pebble.
+Storage engine to use for all stores on this kwbase node. Options are default or
+rocksdb.
 
-If default is specified, the storage engine last used to write to the first
-store directory is used (see --store). If the store directory is uninitialized
-and default is specified, rocksdb is used as the default storage engine.`,
+If default is specified, rocksdb is used. The pebble and pebble+rocksdb storage
+engines have been removed.`,
 	}
 
 	Size = FlagInfo{

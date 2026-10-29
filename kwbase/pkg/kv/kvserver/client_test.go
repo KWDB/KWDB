@@ -62,8 +62,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/rpc/nodedialer"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
@@ -116,7 +116,7 @@ type testStoreOpts struct {
 	dontCreateSystemRanges bool
 
 	cfg *kvserver.StoreConfig
-	eng storage.Engine
+	eng relational.Engine
 }
 
 // createTestStoreWithOpts creates a test store using the given engine and clock.
@@ -134,7 +134,7 @@ func createTestStoreWithOpts(
 	}
 	eng := opts.eng
 	if eng == nil {
-		eng = storage.NewDefaultInMem()
+		eng = relational.NewDefaultInMem()
 		stopper.AddCloser(eng)
 	}
 
@@ -292,7 +292,7 @@ type multiTestContext struct {
 	// multiTestContext.clock, but it may be populated before Start() to
 	// use distinct clocks per store.
 	clocks      []*hlc.Clock
-	engines     []storage.Engine
+	engines     []relational.Engine
 	grpcServers []*grpc.Server
 	distSenders []*kvcoord.DistSender
 	dbs         []*kv.DB
@@ -832,7 +832,7 @@ func (m *multiTestContext) addStore(idx int) {
 		clock = m.storeConfig.Clock
 		m.clocks = append(m.clocks, clock)
 	}
-	var eng storage.Engine
+	var eng relational.Engine
 	var needBootstrap bool
 	if len(m.engines) > idx {
 		eng = m.engines[idx]
@@ -845,7 +845,7 @@ func (m *multiTestContext) addStore(idx int) {
 	} else {
 		engineStopper := stop.NewStopper()
 		m.engineStoppers = append(m.engineStoppers, engineStopper)
-		eng = storage.NewDefaultInMem()
+		eng = relational.NewDefaultInMem()
 		engineStopper.AddCloser(eng)
 		m.engines = append(m.engines, eng)
 		needBootstrap = true
@@ -1314,8 +1314,8 @@ func (m *multiTestContext) waitForUnreplicated(rangeID roachpb.RangeID, dest int
 func (m *multiTestContext) readIntFromEngines(key roachpb.Key) []int64 {
 	results := make([]int64, len(m.engines))
 	for i, eng := range m.engines {
-		val, _, err := storage.MVCCGet(context.Background(), eng, key, m.clocks[i].Now(),
-			storage.MVCCGetOptions{})
+		val, _, err := relational.MVCCGet(context.Background(), eng, key, m.clocks[i].Now(),
+			relational.MVCCGetOptions{})
 		if err != nil {
 			log.VEventf(context.TODO(), 1, "engine %d: error reading from key %s: %s", i, key, err)
 		} else if val == nil {
@@ -1334,14 +1334,6 @@ func (m *multiTestContext) readIntFromEngines(key roachpb.Key) []int64 {
 // testing.T which may differ from m.t.
 func (m *multiTestContext) waitForValuesT(t testing.TB, key roachpb.Key, expected []int64) {
 	t.Helper()
-	// This test relies on concurrently waiting for a value to change in the
-	// underlying engine(s). Since the teeing engine does not respond well to
-	// value mismatches, whether transient or permanent, skip this test if the
-	// teeing engine is being used. See
-	// https://gitee.com/kwbasedb/kwbase/issues/42656 for more context.
-	if storage.DefaultStorageEngine == enginepb.EngineTypeTeePebbleRocksDB {
-		t.Skip("disabled on teeing engine")
-	}
 	testutils.SucceedsSoon(t, func() error {
 		actual := m.readIntFromEngines(key)
 		if !reflect.DeepEqual(expected, actual) {
@@ -1620,7 +1612,7 @@ func TestSortRangeDescByAge(t *testing.T) {
 }
 
 func verifyRangeStats(
-	reader storage.Reader, rangeID roachpb.RangeID, expMS enginepb.MVCCStats,
+	reader relational.Reader, rangeID roachpb.RangeID, expMS enginepb.MVCCStats,
 ) error {
 	ms, err := stateloader.Make(rangeID).LoadMVCCStats(context.Background(), reader)
 	if err != nil {
@@ -1635,7 +1627,7 @@ func verifyRangeStats(
 }
 
 func verifyRecomputedStats(
-	reader storage.Reader, d *roachpb.RangeDescriptor, expMS enginepb.MVCCStats, nowNanos int64,
+	reader relational.Reader, d *roachpb.RangeDescriptor, expMS enginepb.MVCCStats, nowNanos int64,
 ) error {
 	if ms, err := rditer.ComputeStatsForRange(d, reader, nowNanos); err != nil {
 		return err
@@ -1646,12 +1638,12 @@ func verifyRecomputedStats(
 }
 
 func waitForTombstone(
-	t *testing.T, reader storage.Reader, rangeID roachpb.RangeID,
+	t *testing.T, reader relational.Reader, rangeID roachpb.RangeID,
 ) (tombstone roachpb.RangeTombstone) {
 	testutils.SucceedsSoon(t, func() error {
 		tombstoneKey := keys.RangeTombstoneKey(rangeID)
-		ok, err := storage.MVCCGetProto(
-			context.TODO(), reader, tombstoneKey, hlc.Timestamp{}, &tombstone, storage.MVCCGetOptions{},
+		ok, err := relational.MVCCGetProto(
+			context.TODO(), reader, tombstoneKey, hlc.Timestamp{}, &tombstone, relational.MVCCGetOptions{},
 		)
 		if err != nil {
 			t.Fatalf("failed to read tombstone: %v", err)

@@ -55,10 +55,10 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sqlmigrations"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
-	"gitee.com/kwbasedb/kwbase/pkg/ts"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
+	"gitee.com/kwbasedb/kwbase/pkg/telemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/metric"
@@ -86,7 +86,7 @@ func makeTestConfig(st *cluster.Settings) Config {
 	cfg.Insecure = false
 
 	// Configure test storage engine.
-	cfg.StorageEngine = storage.DefaultStorageEngine
+	cfg.StorageEngine = relational.DefaultStorageEngine
 	// Resolve the storage engine to a specific type if it's the default value.
 	if cfg.StorageEngine == enginepb.EngineTypeDefault {
 		cfg.StorageEngine = enginepb.EngineTypeRocksDB
@@ -214,6 +214,12 @@ func makeTestConfigFromParams(params base.TestServerArgs) Config {
 	if params.SQLAddr != "" {
 		cfg.SQLAddr = params.SQLAddr
 		cfg.SQLAdvertiseAddr = params.SQLAddr
+	}
+	// Setting this also switches the MySQL listener on, since it is disabled
+	// whenever the address is empty. The advertised address is left for the
+	// listener to fill in once it knows which port it bound to.
+	if params.MySQLAddr != "" {
+		cfg.MySQLAddr = params.MySQLAddr
 	}
 	if params.HTTPAddr != "" {
 		cfg.HTTPAddr = params.HTTPAddr
@@ -364,8 +370,8 @@ func (ts *TestServer) RPCContext() *rpc.Context {
 	return nil
 }
 
-// TsDB returns the ts.DB instance used by the TestServer.
-func (ts *TestServer) TsDB() *ts.DB {
+// TsDB returns the telemetry.DB instance used by the TestServer.
+func (ts *TestServer) TsDB() *telemetry.DB {
 	if ts != nil {
 		return ts.tsDB
 	}
@@ -505,12 +511,12 @@ func (ts *TestServer) ClusterSettings() *cluster.Settings {
 }
 
 // Engines returns the TestServer's engines.
-func (ts *TestServer) Engines() []storage.Engine {
+func (ts *TestServer) Engines() []relational.Engine {
 	return ts.engines
 }
 
 // TSEngine returns the TestServer's tsEngine.
-func (ts *TestServer) TSEngine() *tse.TsEngine {
+func (ts *TestServer) TSEngine() *timeseries.TsEngine {
 	return ts.tsEngine
 }
 
@@ -527,6 +533,12 @@ func (ts *TestServer) ServingAddr() string {
 // ServingSQLAddr returns the server's SQL address. Should be used by clients.
 func (ts *TestServer) ServingSQLAddr() string {
 	return ts.cfg.SQLAdvertiseAddr
+}
+
+// ServingMySQLAddr returns the address the MySQL listener bound to, or an empty
+// string when the listener was not enabled by TestServerArgs.MySQLAddr.
+func (ts *TestServer) ServingMySQLAddr() string {
+	return ts.cfg.MySQLAdvertiseAddr
 }
 
 // HTTPAddr returns the server's HTTP address. Should be used by clients.

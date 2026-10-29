@@ -34,7 +34,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagebase"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagepb"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/kr/pretty"
@@ -211,7 +211,7 @@ func (r *Replica) executeReadOnlyTSBatch(
 // batch/txn.
 func (r *Replica) executeReadOnlyBatchWithServersideRefreshes(
 	ctx context.Context,
-	rw storage.ReadWriter,
+	rw relational.ReadWriter,
 	rec batcheval.EvalContext,
 	ba *roachpb.BatchRequest,
 	latchSpans *spanset.SpanSet,

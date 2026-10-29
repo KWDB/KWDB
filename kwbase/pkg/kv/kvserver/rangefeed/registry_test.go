@@ -31,7 +31,7 @@ import (
 
 	_ "gitee.com/kwbasedb/kwbase/pkg/keys" // hook up pretty printer
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
@@ -110,7 +110,7 @@ type testRegistration struct {
 }
 
 func newTestRegistration(
-	span roachpb.Span, ts hlc.Timestamp, catchup storage.SimpleIterator, withDiff bool,
+	span roachpb.Span, ts hlc.Timestamp, catchup relational.SimpleIterator, withDiff bool,
 ) *testRegistration {
 	s := newTestStream()
 	errC := make(chan *roachpb.Error, 1)
@@ -163,7 +163,7 @@ func TestRegistrationBasic(t *testing.T) {
 	<-noCatchupReg.errC
 
 	// Registration with catchup scan.
-	catchupReg := newTestRegistration(spBC, hlc.Timestamp{WallTime: 1}, newTestIterator([]storage.MVCCKeyValue{
+	catchupReg := newTestRegistration(spBC, hlc.Timestamp{WallTime: 1}, newTestIterator([]relational.MVCCKeyValue{
 		makeKV("b", "val1", 10),
 		makeInline("ba", "val2"),
 		makeKV("bc", "val3", 11),
@@ -216,7 +216,7 @@ func TestRegistrationCatchUpScan(t *testing.T) {
 	// Run a catch-up scan for a registration over a test
 	// iterator with the following keys.
 	txn1, txn2 := uuid.MakeV4(), uuid.MakeV4()
-	iter := newTestIterator([]storage.MVCCKeyValue{
+	iter := newTestIterator([]relational.MVCCKeyValue{
 		makeKV("a", "valA1", 10),
 		makeInline("b", "valB1"),
 		makeIntent("c", txn1, "txnKeyC", 15),

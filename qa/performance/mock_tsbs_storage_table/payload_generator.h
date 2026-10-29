@@ -155,18 +155,18 @@ class TagPayloadGenerator final {
       auto buff = payload_ptr + bitmap_sz_ + schema_.at(CI).m_offset;
 
       switch (schema_.at(CI).m_data_type) {
-        case DATATYPE::BOOL:
+        case DATATYPE::K_BOOL:
         case DATATYPE::BYTE:
-        case DATATYPE::INT8:
-        case DATATYPE::INT16:
-        case DATATYPE::INT32:
+        case DATATYPE::K_INT8:
+        case DATATYPE::K_INT16:
+        case DATATYPE::K_INT32:
         case DATATYPE::TIMESTAMP:
-        case DATATYPE::INT64:
+        case DATATYPE::K_INT64:
         case DATATYPE::TIMESTAMP64:
-        case DATATYPE::FLOAT:
-        case DATATYPE::CHAR:
+        case DATATYPE::K_FLOAT:
+        case DATATYPE::K_CHAR:
         case DATATYPE::BINARY:
-        case DATATYPE::DOUBLE: {
+        case DATATYPE::K_DOUBLE: {
           copy(buff, std::forward<T>(t), schema_.at(CI).m_length);
           return do_payload<CI + 1>(payload_ptr, varchar_ptr, std::forward<Y>(y)...);
         }

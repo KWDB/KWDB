@@ -29,8 +29,8 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/colcontainer"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/fs"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 )
 
@@ -48,7 +48,7 @@ func NewTestingDiskQueueCfg(t testing.TB, inMem bool) (colcontainer.DiskQueueCfg
 	)
 
 	if inMem {
-		ngn := storage.NewDefaultInMem()
+		ngn := relational.NewDefaultInMem()
 		testingFS = ngn.(fs.FS)
 		if err := testingFS.CreateDir(inMemDirName); err != nil {
 			t.Fatal(err)
@@ -58,7 +58,7 @@ func NewTestingDiskQueueCfg(t testing.TB, inMem bool) (colcontainer.DiskQueueCfg
 	} else {
 		tempPath, dirCleanup := testutils.TempDir(t)
 		path = tempPath
-		ngn, err := storage.NewDefaultEngine(0 /* cacheSize */, base.StorageConfig{Dir: tempPath})
+		ngn, err := relational.NewDefaultEngine(0 /* cacheSize */, base.StorageConfig{Dir: tempPath})
 		if err != nil {
 			t.Fatal(err)
 		}

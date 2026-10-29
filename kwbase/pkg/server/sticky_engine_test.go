@@ -29,8 +29,8 @@ import (
 	"testing"
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"github.com/stretchr/testify/require"
 )
@@ -83,7 +83,7 @@ func TestStickyEngines(t *testing.T) {
 	// Cleaning up everything asserts everything is closed.
 	CloseAllStickyInMemEngines()
 	require.Len(t, stickyInMemEnginesRegistry.entries, 0)
-	for _, engine := range []storage.Engine{engine1, newEngine1, engine2} {
+	for _, engine := range []relational.Engine{engine1, newEngine1, engine2} {
 		require.True(t, engine.Closed())
 		require.True(t, engine.(*stickyInMemEngine).Engine.Closed())
 	}

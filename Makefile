@@ -66,10 +66,10 @@ build: .ALWAYS_REBUILD
 ################################################################
 cpplint: .ALWAYS_REBUILD
 	$(info ========== $@ ==========)
-	cpplint --recursive --exclude=kwdbts2/mmap --exclude=kwdbts2/third_party \
-		--exclude=kwdbts2/roachpb --exclude=kwdbts2/**/tests \
+	cpplint --recursive --exclude=kwbase/engine/ts_engine/mmap --exclude=kwbase/engine/ts_engine/third_party \
+		--exclude=kwbase/engine/ts_engine/roachpb --exclude=kwbase/engine/ts_engine/**/tests \
 		--filter=-build/c++11,-build/include_subdir,-runtime/references,-readability/fn_size \
-		--linelength=125 $(BASEDIR)/kwdbts2
+		--linelength=125 $(BASEDIR)/kwbase/engine/ts_engine
 
 kwdbts2-test: BUILDDIR := $(addsuffix -kwdbts2-test, $(BUILDDIR))
 kwdbts2-test: CMAKE_CONFIG_OPTIONS := -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
@@ -150,7 +150,7 @@ clean:
 	rm -rf kwbase/build/defs.mk kwbase/build/defs.mk.sig
 	rm -rf $(GOPATH)/native
 	rm -rf qa/TEST_integration
-	rm -rf kwdbts2/roachpb/*.cc kwdbts2/roachpb/*.h
+	rm -rf kwbase/engine/ts_engine/roachpb/*.cc kwbase/engine/ts_engine/roachpb/*.h
 	cd kwbase && GOPATH=$(GOPATH) $(MAKE) clean
 	@echo Clean Done.
 

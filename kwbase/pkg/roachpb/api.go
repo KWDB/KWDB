@@ -87,7 +87,7 @@ func (rc ReadConsistencyType) SupportsBatch(ba BatchRequest) error {
 		for _, ru := range ba.Requests {
 			m := ru.GetInner().Method()
 			switch m {
-			case Get, Scan, ReverseScan:
+			case Get, Scan, ReverseScan, LeaseInfo:
 			default:
 				return errors.Errorf("method %s not allowed with %s batch", m, rc)
 			}

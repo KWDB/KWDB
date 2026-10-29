@@ -29,7 +29,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/batcheval/result"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 )
 
 func init() {
@@ -43,10 +43,10 @@ func init() {
 // transactional, merges are not currently exposed directly to
 // clients. Merged values are explicitly not MVCC data.
 func Merge(
-	ctx context.Context, readWriter storage.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
+	ctx context.Context, readWriter relational.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
 	args := cArgs.Args.(*roachpb.MergeRequest)
 	h := cArgs.Header
 
-	return result.Result{}, storage.MVCCMerge(ctx, readWriter, cArgs.Stats, args.Key, h.Timestamp, args.Value)
+	return result.Result{}, relational.MVCCMerge(ctx, readWriter, cArgs.Stats, args.Key, h.Timestamp, args.Value)
 }

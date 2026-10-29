@@ -28,7 +28,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/cloud"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/localexternal"
 	"gitee.com/kwbasedb/kwbase/pkg/util/ctxgroup"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding/csv"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -273,7 +273,7 @@ func (sp *csvWriter) Run(ctx context.Context) execinfra.RowStats {
 		typs := sp.input.OutputTypes()
 
 		// get ExternalStorage
-		conf, err := cloud.ExternalStorageConfFromURI(sp.spec.Destination)
+		conf, err := localexternal.ExternalStorageConfFromURI(sp.spec.Destination)
 		if err != nil {
 			return err
 		}
@@ -431,18 +431,10 @@ func (sp *csvWriter) Run(ctx context.Context) execinfra.RowStats {
 					//    write file in ChunkRows.
 					if shouldLimit {
 						// limit write memory
-						if sp.spec.ChunkRows <= sql.ExportChunkSizeDefault { // flag = sp.spec.ChunkRows < sql.ExportChunkSizeDefault
-							if (rowsCount + sendNum) >= sp.spec.ChunkRows {
-								c.completedSend = true
-								sendNum = 0
-								break
-							}
-						} else {
-							if (rowsCount + sendNum) >= sql.ExportChunkSizeDefault {
-								c.completedSend = true
-								sendNum = 0
-								break
-							}
+						if sp.spec.ChunkRows > 0 && (rowsCount+sendNum) >= sp.spec.ChunkRows {
+							c.completedSend = true
+							sendNum = 0
+							break
 						}
 						if memoryUsed >= sp.spec.Options.LimitMemory {
 							sendNum += rowsCount
@@ -686,7 +678,7 @@ func (sp *csvWriter) sendResult(ctx context.Context, rows int64, size int64, chu
 // writeExportFile params
 type writeExportParams struct {
 	pattern       string
-	es            cloud.ExternalStorage
+	es            localexternal.ExternalStorage
 	buf           *bytes.Buffer
 	colNameBuf    *bytes.Buffer
 	numRowsOfFile *int64

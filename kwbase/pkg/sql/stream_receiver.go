@@ -451,7 +451,7 @@ func (srw *StreamReceiver) persistLowWatermark() error {
 			srw.currentLowWaterMark,
 			srw.parameters.SourceTableID,
 			srw.metadata.ID,
-			cdcpb.TSCDCInstanceType_Stream,
+			sqlbase.CDCInstanceType_Stream,
 			waterMarkTypeRealtime,
 		); err != nil {
 			return err

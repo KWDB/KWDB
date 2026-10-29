@@ -40,8 +40,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagepb"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
@@ -336,7 +336,7 @@ func (r *Replica) evalAndProposeTS(
 
 	var storageAsync bool
 	if r.store.TsRaftLogEngine == nil {
-		storageAsync = storage.IsAsyncConsensus()
+		storageAsync = relational.IsAsyncConsensus()
 	} else {
 		storageAsync = r.store.TsRaftLogEngine.IsAsyncConsensus()
 	}
@@ -710,7 +710,7 @@ func (r *Replica) hasPendingProposalQuotaRLocked() bool {
 
 var errRemoved = errors.New("replica removed")
 
-const stepSlowThreshold = 2 * time.Second
+const stepSlowThreshold = 3 * time.Second
 
 // stepRaftGroup calls Step on the replica's RawNode with the provided request's
 // message. Before doing so, it assures that the replica is unquiesced and ready
@@ -730,8 +730,9 @@ func (r *Replica) stepRaftGroup(req *RaftMessageRequest) error {
 			elapsed := timeutil.Since(startTime)
 			if elapsed > stepSlowThreshold {
 				log.Warningf(context.TODO(),
-					"stepRaftGroup took %v (>%v), may cause raft heartbeat timeout; fromReplica=%d, msgType=%v",
-					elapsed, stepSlowThreshold, req.FromReplica.ReplicaID, req.Message.Type)
+					"stepRaftGroup took %v (>%v), may cause raft heartbeat timeout; rangeID=%d, fromReplica=%d, "+
+						"msgType=%v，Index=%d, Term=%d, LogTerm=%d", elapsed, stepSlowThreshold, r.RangeID, req.FromReplica.ReplicaID,
+					req.Message.Type, req.Message.Index, req.Message.Term, req.Message.LogTerm)
 			}
 		}()
 
@@ -1065,7 +1066,7 @@ func (r *Replica) handleRaftReadyRaftMuLocked(
 	// were not persisted to disk, it wouldn't be a problem because raft does not
 	// infer the that entries are persisted on the node that sends a snapshot.
 	commitStart := timeutil.Now()
-	if err := batch.Commit(rd.MustSync && !disableSyncRaftLog.Get(&r.store.cfg.Settings.SV), storage.NormalCommitType); err != nil {
+	if err := batch.Commit(rd.MustSync && !disableSyncRaftLog.Get(&r.store.cfg.Settings.SV), relational.NormalCommitType); err != nil {
 		const expl = "while committing batch"
 		return stats, expl, errors.Wrap(err, expl)
 	}
@@ -1421,11 +1422,11 @@ func (r *Replica) handleRaftTSReadyRaftMuLocked(
 	msgApps, otherMsgs := splitMsgApps(rd.Messages)
 	r.sendRaftMessages(ctx, msgApps)
 
-	var batch storage.Batch
-	var writer storage.ReadWriter
-	var tsBatch *tse.TsRaftWriteBatch
+	var batch relational.Batch
+	var writer relational.ReadWriter
+	var tsBatch *timeseries.TsRaftWriteBatch
 	if r.store.TsRaftLogEngine != nil {
-		tsBatch = tse.NewTsRaftLogBatch(r.store.TsRaftLogEngine)
+		tsBatch = timeseries.NewTsRaftLogBatch(r.store.TsRaftLogEngine)
 	} else {
 		batch = r.store.Engine().NewWriteOnlyBatch()
 		defer batch.Close()
@@ -1501,7 +1502,7 @@ func (r *Replica) handleRaftTSReadyRaftMuLocked(
 		// infer the that entries are persisted on the node that sends a snapshot.
 		commitStart := timeutil.Now()
 		sync = rd.MustSync && !disableSyncRaftLog.Get(&r.store.cfg.Settings.SV)
-		if err := batch.Commit(sync, storage.TsCommitType); err != nil {
+		if err := batch.Commit(sync, relational.TsCommitType); err != nil {
 			const expl = "while committing batch"
 			return stats, expl, errors.Wrap(err, expl)
 		}
@@ -1513,7 +1514,7 @@ func (r *Replica) handleRaftTSReadyRaftMuLocked(
 	if sync {
 		var storageAsync bool
 		if r.store.TsRaftLogEngine == nil {
-			storageAsync = storage.IsAsyncWrite()
+			storageAsync = relational.IsAsyncWrite()
 		} else {
 			storageAsync = r.store.TsRaftLogEngine.IsAsyncWrite()
 		}
@@ -2516,8 +2517,8 @@ func (r *Replica) handleTruncatedStateBelowRaft(
 	ctx context.Context,
 	oldTruncatedState, newTruncatedState *roachpb.RaftTruncatedState,
 	loader stateloader.StateLoader,
-	readWriter storage.ReadWriter,
-	tsBatch *tse.TsRaftWriteBatch,
+	readWriter relational.ReadWriter,
+	tsBatch *timeseries.TsRaftWriteBatch,
 ) (_apply bool, _ error) {
 	// If this is a log truncation, load the resulting unreplicated or legacy
 	// replicated truncated state (in that order). If the migration is happening
@@ -2553,7 +2554,7 @@ func (r *Replica) handleTruncatedStateBelowRaft(
 			// NB: RangeIDPrefixBufs have sufficient capacity (32 bytes) to
 			// avoid allocating when constructing Raft log keys (16 bytes).
 			unsafeKey := prefixBuf.RaftLogKey(idx)
-			if err := readWriter.Clear(storage.MakeMVCCMetadataKey(unsafeKey)); err != nil {
+			if err := readWriter.Clear(relational.MakeMVCCMetadataKey(unsafeKey)); err != nil {
 				return false, errors.Wrapf(err, "unable to clear truncated Raft entries for %+v", newTruncatedState)
 			}
 		}
@@ -2571,7 +2572,7 @@ func (r *Replica) handleTruncatedStateBelowRaft(
 			// new key (which wasn't touched by the batch), and we need to
 			// overwrite it if this truncation "moves it forward".
 
-			if err := storage.MVCCPutProto(
+			if err := relational.MVCCPutProto(
 				ctx, readWriter, nil /* ms */, prefixBuf.RaftTruncatedStateKey(),
 				hlc.Timestamp{}, nil /* txn */, newTruncatedState,
 			); err != nil {
@@ -2596,11 +2597,14 @@ func (r *Replica) handleTruncatedStateBelowRaft(
 //
 // The sideloaded storage may be nil, in which case it is treated as empty.
 func ComputeRaftLogSize(
-	ctx context.Context, rangeID roachpb.RangeID, reader storage.Reader, sideloaded SideloadStorage,
+	ctx context.Context,
+	rangeID roachpb.RangeID,
+	reader relational.Reader,
+	sideloaded SideloadStorage,
 ) (int64, error) {
 	prefix := keys.RaftLogPrefix(rangeID)
 	prefixEnd := prefix.PrefixEnd()
-	iter := reader.NewIterator(storage.IterOptions{
+	iter := reader.NewIterator(relational.IterOptions{
 		LowerBound: prefix,
 		UpperBound: prefixEnd,
 	})

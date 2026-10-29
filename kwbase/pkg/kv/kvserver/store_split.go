@@ -30,9 +30,9 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/stateloader"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/pkg/errors"
 	"go.etcd.io/etcd/raft"
@@ -44,8 +44,8 @@ import (
 // split commit.
 func splitPreApply(
 	ctx context.Context,
-	readWriter storage.ReadWriter,
-	tsBatch *tse.TsRaftWriteBatch,
+	readWriter relational.ReadWriter,
+	tsBatch *timeseries.TsRaftWriteBatch,
 	split roachpb.SplitTrigger,
 	r *Replica,
 ) {

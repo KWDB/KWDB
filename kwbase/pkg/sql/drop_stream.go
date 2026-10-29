@@ -14,7 +14,6 @@ package sql
 import (
 	"context"
 
-	"gitee.com/kwbasedb/kwbase/pkg/cdc/cdcpb"
 	"gitee.com/kwbasedb/kwbase/pkg/jobs"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
@@ -101,8 +100,8 @@ func (p *planner) removeStream(
 ) error {
 	if jobID != 0 {
 		// Close the job by closing the CDC
-		p.ExecCfg().CDCCoordinator.StopCDCByLocal(tableID, streamID, cdcpb.TSCDCInstanceType_Stream)
-		waitCDCStatusChanged(ctx, p.ExecCfg().CDCCoordinator, tableID, streamID, cdcpb.TSCDCInstanceType_Stream, false)
+		p.ExecCfg().CDCCoordinator.StopCDCByLocal(tableID, streamID, sqlbase.CDCInstanceType_Stream)
+		waitCDCStatusChanged(ctx, p.ExecCfg().CDCCoordinator, tableID, streamID, sqlbase.CDCInstanceType_Stream, false)
 
 		if err := p.execCfg.DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) (err error) {
 			job, _ := p.execCfg.JobRegistry.LoadJobWithTxn(ctx, jobID, txn)
@@ -141,7 +140,7 @@ func (p *planner) removeStream(
 		"DELETE FROM system.kwdb_cdc_watermark WHERE table_id = $1 AND task_id = $2 AND task_type = $3",
 		tableID,
 		streamID,
-		cdcpb.TSCDCInstanceType_Stream,
+		sqlbase.CDCInstanceType_Stream,
 	); err != nil {
 		return err
 	}

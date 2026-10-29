@@ -64,7 +64,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/contextutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/httputil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -272,7 +272,7 @@ func (s *statusServer) Gossip(
 	ctx = s.AnnotateCtx(ctx)
 	nodeID, local, err := s.parseNodeID(req.NodeId)
 	if err != nil {
-		return nil, grpcstatus.Errorf(codes.InvalidArgument, err.Error())
+		return nil, grpcstatus.Errorf(codes.InvalidArgument, "parse nodeID error: %s, %s", req.NodeId, err.Error())
 	}
 
 	if local {
@@ -297,7 +297,7 @@ func (s *statusServer) EngineStats(
 	ctx = s.AnnotateCtx(ctx)
 	nodeID, local, err := s.parseNodeID(req.NodeId)
 	if err != nil {
-		return nil, grpcstatus.Errorf(codes.InvalidArgument, err.Error())
+		return nil, grpcstatus.Errorf(codes.InvalidArgument, "parse nodeID error: %s, %s", req.NodeId, err.Error())
 	}
 
 	if !local {
@@ -317,10 +317,10 @@ func (s *statusServer) EngineStats(
 		}
 
 		switch e := store.Engine().(type) {
-		case *storage.RocksDB:
+		case *relational.RocksDB:
 			tickersAndHistograms, err := e.GetTickersAndHistograms()
 			if err != nil {
-				return grpcstatus.Errorf(codes.Internal, err.Error())
+				return grpcstatus.Errorf(codes.Internal, "GetTickersAndHistograms error: %s", err.Error())
 			}
 			engineStatsInfo.TickersAndHistograms = tickersAndHistograms
 		}
@@ -352,7 +352,7 @@ func (s *statusServer) Allocator(
 	ctx = s.AnnotateCtx(ctx)
 	nodeID, local, err := s.parseNodeID(req.NodeId)
 	if err != nil {
-		return nil, grpcstatus.Errorf(codes.InvalidArgument, err.Error())
+		return nil, grpcstatus.Errorf(codes.InvalidArgument, "parse nodeID error: %s, %s", req.NodeId, err.Error())
 	}
 
 	if !local {
@@ -416,7 +416,7 @@ func (s *statusServer) Allocator(
 		return nil
 	})
 	if err != nil {
-		return nil, grpcstatus.Errorf(codes.Internal, err.Error())
+		return nil, grpcstatus.Errorf(codes.Internal, "Visit store error: %s", err.Error())
 	}
 	return output, nil
 }
@@ -501,7 +501,7 @@ func (s *statusServer) AllocatorRange(
 					return nil
 				})
 			}); err != nil {
-			return nil, grpcstatus.Errorf(codes.Internal, err.Error())
+			return nil, grpcstatus.Errorf(codes.Internal, "Handle live map error: %s", err.Error())
 		}
 	}
 
@@ -535,7 +535,7 @@ func (s *statusServer) AllocatorRange(
 			}
 			fmt.Fprintf(&buf, "n%d: %s", nodeID, err)
 		}
-		return nil, grpcstatus.Errorf(codes.Internal, buf.String())
+		return nil, grpcstatus.Errorf(codes.Internal, "Invalid simulator error: %s", buf.String())
 	}
 	return &serverpb.AllocatorRangeResponse{}, nil
 }
@@ -552,7 +552,7 @@ func (s *statusServer) Certificates(
 	ctx = s.AnnotateCtx(ctx)
 	nodeID, local, err := s.parseNodeID(req.NodeId)
 	if err != nil {
-		return nil, grpcstatus.Errorf(codes.InvalidArgument, err.Error())
+		return nil, grpcstatus.Errorf(codes.InvalidArgument, "parse nodeID error: %s, %s", req.NodeId, err.Error())
 	}
 
 	if s.cfg.Insecure {
@@ -671,7 +671,7 @@ func (s *statusServer) Details(
 	ctx = s.AnnotateCtx(ctx)
 	nodeID, local, err := s.parseNodeID(req.NodeId)
 	if err != nil {
-		return nil, grpcstatus.Errorf(codes.InvalidArgument, err.Error())
+		return nil, grpcstatus.Errorf(codes.InvalidArgument, "parse nodeID error: %s, %s", req.NodeId, err.Error())
 	}
 	if !local {
 		status, err := s.dialNode(ctx, nodeID)
@@ -713,7 +713,7 @@ func (s *statusServer) GetFiles(
 	ctx = s.AnnotateCtx(ctx)
 	nodeID, local, err := s.parseNodeID(req.NodeId)
 	if err != nil {
-		return nil, grpcstatus.Errorf(codes.InvalidArgument, err.Error())
+		return nil, grpcstatus.Errorf(codes.InvalidArgument, "parse nodeID error: %s, %s", req.NodeId, err.Error())
 	}
 	if !local {
 		status, err := s.dialNode(ctx, nodeID)
@@ -740,7 +740,7 @@ func (s *statusServer) GetFiles(
 	var resp serverpb.GetFilesResponse
 	for _, pattern := range req.Patterns {
 		if err := checkFilePattern(pattern); err != nil {
-			return nil, grpcstatus.Errorf(codes.InvalidArgument, err.Error())
+			return nil, grpcstatus.Errorf(codes.InvalidArgument, "file pattern error: %s, %s", pattern, err.Error())
 		}
 		filepaths, err := filepath.Glob(filepath.Join(dir, pattern))
 		if err != nil {
@@ -753,7 +753,7 @@ func (s *statusServer) GetFiles(
 			if !req.ListOnly {
 				contents, err = ioutil.ReadFile(path)
 				if err != nil {
-					return nil, grpcstatus.Errorf(codes.Internal, err.Error())
+					return nil, grpcstatus.Errorf(codes.Internal, "Filepath access error: %s, %s", path, err.Error())
 				}
 			}
 			resp.Files = append(resp.Files,
@@ -784,7 +784,7 @@ func (s *statusServer) LogFilesList(
 	ctx = s.AnnotateCtx(ctx)
 	nodeID, local, err := s.parseNodeID(req.NodeId)
 	if err != nil {
-		return nil, grpcstatus.Errorf(codes.InvalidArgument, err.Error())
+		return nil, grpcstatus.Errorf(codes.InvalidArgument, "parse nodeID error: %s, %s", req.NodeId, err.Error())
 	}
 	if !local {
 		status, err := s.dialNode(ctx, nodeID)
@@ -817,7 +817,7 @@ func (s *statusServer) LogFile(
 	ctx = s.AnnotateCtx(ctx)
 	nodeID, local, err := s.parseNodeID(req.NodeId)
 	if err != nil {
-		return nil, grpcstatus.Errorf(codes.InvalidArgument, err.Error())
+		return nil, grpcstatus.Errorf(codes.InvalidArgument, "parse nodeID error: %s, %s", req.NodeId, err.Error())
 	}
 	if !local {
 		status, err := s.dialNode(ctx, nodeID)
@@ -896,7 +896,7 @@ func (s *statusServer) Logs(
 	ctx = s.AnnotateCtx(ctx)
 	nodeID, local, err := s.parseNodeID(req.NodeId)
 	if err != nil {
-		return nil, grpcstatus.Errorf(codes.InvalidArgument, err.Error())
+		return nil, grpcstatus.Errorf(codes.InvalidArgument, "parse nodeID error: %s, %s", req.NodeId, err.Error())
 	}
 	if !local {
 		status, err := s.dialNode(ctx, nodeID)
@@ -962,7 +962,7 @@ func (s *statusServer) Stacks(
 	ctx = s.AnnotateCtx(ctx)
 	nodeID, local, err := s.parseNodeID(req.NodeId)
 	if err != nil {
-		return nil, grpcstatus.Errorf(codes.InvalidArgument, err.Error())
+		return nil, grpcstatus.Errorf(codes.InvalidArgument, "parse nodeID error: %s, %s", req.NodeId, err.Error())
 	}
 
 	if !local {
@@ -988,7 +988,7 @@ func (s *statusServer) Stacks(
 			return &serverpb.JSONResponse{Data: buf[:length]}, nil
 		}
 	case serverpb.StacksType_THREAD_STACKS:
-		return &serverpb.JSONResponse{Data: []byte(storage.ThreadStacks())}, nil
+		return &serverpb.JSONResponse{Data: []byte(relational.ThreadStacks())}, nil
 	default:
 		return nil, grpcstatus.Errorf(codes.InvalidArgument, "unknown stacks type: %s", req.Type)
 	}
@@ -1007,7 +1007,7 @@ func (s *statusServer) Profile(
 
 	nodeID, local, err := s.parseNodeID(req.NodeId)
 	if err != nil {
-		return nil, grpcstatus.Errorf(codes.InvalidArgument, err.Error())
+		return nil, grpcstatus.Errorf(codes.InvalidArgument, "parse nodeID error: %s, %s", req.NodeId, err.Error())
 	}
 
 	if !local {
@@ -1026,7 +1026,7 @@ func (s *statusServer) Profile(
 		}
 		var buf bytes.Buffer
 		if err := p.WriteTo(&buf, 0); err != nil {
-			return nil, grpcstatus.Errorf(codes.Internal, err.Error())
+			return nil, grpcstatus.Errorf(codes.Internal, "writing pprof to buffer error: %s", err.Error())
 		}
 		return &serverpb.JSONResponse{Data: buf.Bytes()}, nil
 
@@ -1054,7 +1054,7 @@ func (s *statusServer) Nodes(
 	b.Scan(startKey, endKey)
 	if err := s.db.Run(ctx, b); err != nil {
 		log.Error(ctx, err)
-		return nil, grpcstatus.Errorf(codes.Internal, err.Error())
+		return nil, grpcstatus.Errorf(codes.Internal, "batch request runtime error: %s", err.Error())
 	}
 	rows := b.Results[0].Rows
 
@@ -1064,7 +1064,7 @@ func (s *statusServer) Nodes(
 	for i, row := range rows {
 		if err := row.ValueProto(&resp.Nodes[i]); err != nil {
 			log.Error(ctx, err)
-			return nil, grpcstatus.Errorf(codes.Internal, err.Error())
+			return nil, grpcstatus.Errorf(codes.Internal, "response conversion error: %s", err.Error())
 		}
 	}
 
@@ -1115,7 +1115,7 @@ func (s *statusServer) Node(
 	ctx = s.AnnotateCtx(ctx)
 	nodeID, _, err := s.parseNodeID(req.NodeId)
 	if err != nil {
-		return nil, grpcstatus.Errorf(codes.InvalidArgument, err.Error())
+		return nil, grpcstatus.Errorf(codes.InvalidArgument, "parse nodeID error: %s, %s", req.NodeId, err.Error())
 	}
 
 	key := keys.NodeStatusKey(nodeID)
@@ -1123,14 +1123,14 @@ func (s *statusServer) Node(
 	b.Get(key)
 	if err := s.db.Run(ctx, b); err != nil {
 		log.Error(ctx, err)
-		return nil, grpcstatus.Errorf(codes.Internal, err.Error())
+		return nil, grpcstatus.Errorf(codes.Internal, "batch request runtime error: %s", err.Error())
 	}
 
 	var nodeStatus statuspb.NodeStatus
 	if err := b.Results[0].Rows[0].ValueProto(&nodeStatus); err != nil {
 		err = errors.Errorf("could not unmarshal NodeStatus from %s: %s", key, err)
 		log.Error(ctx, err)
-		return nil, grpcstatus.Errorf(codes.Internal, err.Error())
+		return nil, grpcstatus.Errorf(codes.Internal, "could not unmarshal NodeStatus from %s: %s", key, err)
 	}
 	return &nodeStatus, nil
 }
@@ -1143,7 +1143,7 @@ func (s *statusServer) Metrics(
 	ctx = s.AnnotateCtx(ctx)
 	nodeID, local, err := s.parseNodeID(req.NodeId)
 	if err != nil {
-		return nil, grpcstatus.Errorf(codes.InvalidArgument, err.Error())
+		return nil, grpcstatus.Errorf(codes.InvalidArgument, "parse nodeID error: %s, %s", req.NodeId, err.Error())
 	}
 
 	if !local {
@@ -1272,7 +1272,7 @@ func (s *statusServer) Ranges(
 	ctx = s.AnnotateCtx(ctx)
 	nodeID, local, err := s.parseNodeID(req.NodeId)
 	if err != nil {
-		return nil, grpcstatus.Errorf(codes.InvalidArgument, err.Error())
+		return nil, grpcstatus.Errorf(codes.InvalidArgument, "parse nodeID error: %s, %s", req.NodeId, err.Error())
 	}
 
 	if !local {
@@ -1417,7 +1417,7 @@ func (s *statusServer) Ranges(
 		return nil
 	})
 	if err != nil {
-		return nil, grpcstatus.Errorf(codes.Internal, err.Error())
+		return nil, grpcstatus.Errorf(codes.Internal, "Visit store error: %s", err.Error())
 	}
 	return &output, nil
 }
@@ -1441,7 +1441,7 @@ func (s *statusServer) HotRanges(
 	if len(req.NodeID) > 0 {
 		requestedNodeID, local, err := s.parseNodeID(req.NodeID)
 		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, err.Error())
+			return nil, status.Errorf(codes.InvalidArgument, "parse nodeID error: %s, %s", req.NodeID, err.Error())
 		}
 
 		// Only hot ranges from the local node.
@@ -1756,7 +1756,7 @@ func (s *statusServer) CancelSession(
 	nodeID, local, err := s.parseNodeID(req.NodeId)
 
 	if err != nil {
-		return nil, grpcstatus.Errorf(codes.InvalidArgument, err.Error())
+		return nil, grpcstatus.Errorf(codes.InvalidArgument, "parse nodeID error: %s, %s", req.NodeId, err.Error())
 	}
 
 	if !local {
@@ -1798,7 +1798,7 @@ func (s *statusServer) CancelQuery(
 	nodeID, local, err := s.parseNodeID(req.NodeId)
 
 	if err != nil {
-		return nil, grpcstatus.Errorf(codes.InvalidArgument, err.Error())
+		return nil, grpcstatus.Errorf(codes.InvalidArgument, "parse nodeID error: %s, %s", req.NodeId, err.Error())
 	}
 
 	if !local {
@@ -1833,7 +1833,7 @@ func (s *statusServer) SpanStats(
 	ctx = s.AnnotateCtx(ctx)
 	nodeID, local, err := s.parseNodeID(req.NodeID)
 	if err != nil {
-		return nil, grpcstatus.Errorf(codes.InvalidArgument, err.Error())
+		return nil, grpcstatus.Errorf(codes.InvalidArgument, "parse nodeID error: %s, %s", req.NodeID, err.Error())
 	}
 
 	if !local {
@@ -1870,7 +1870,7 @@ func (s *statusServer) Diagnostics(
 	ctx = s.AnnotateCtx(ctx)
 	nodeID, local, err := s.parseNodeID(req.NodeId)
 	if err != nil {
-		return nil, grpcstatus.Errorf(codes.InvalidArgument, err.Error())
+		return nil, grpcstatus.Errorf(codes.InvalidArgument, "parse nodeID error: %s, %s", req.NodeId, err.Error())
 	}
 
 	if !local {
@@ -1896,7 +1896,7 @@ func (s *statusServer) Stores(
 	ctx = s.AnnotateCtx(ctx)
 	nodeID, local, err := s.parseNodeID(req.NodeId)
 	if err != nil {
-		return nil, grpcstatus.Errorf(codes.InvalidArgument, err.Error())
+		return nil, grpcstatus.Errorf(codes.InvalidArgument, "parse nodeID error: %s, %s", req.NodeId, err.Error())
 	}
 
 	if !local {
@@ -1948,7 +1948,7 @@ func (s *statusServer) CompactStores(
 	ctx = s.AnnotateCtx(ctx)
 	nodeID, local, err := s.parseNodeID(req.NodeId)
 	if err != nil {
-		return nil, grpcstatus.Errorf(codes.InvalidArgument, err.Error())
+		return nil, grpcstatus.Errorf(codes.InvalidArgument, "parse nodeID error: %s, %s", req.NodeId, err.Error())
 	}
 
 	if !local {
@@ -1964,7 +1964,7 @@ func (s *statusServer) CompactStores(
 		storeDetails := serverpb.StoreDetails{
 			StoreID: store.Ident.StoreID,
 		}
-		if rb, ok := store.Engine().(*storage.RocksDB); ok {
+		if rb, ok := store.Engine().(*relational.RocksDB); ok {
 			err = rb.CompactToBottom()
 			if err != nil {
 				log.Errorf(ctx, "Compact to bottom Failed, reason:%s", err.Error())
@@ -2084,7 +2084,7 @@ func (s *statusServer) JobRegistryStatus(
 	ctx = s.AnnotateCtx(ctx)
 	nodeID, local, err := s.parseNodeID(req.NodeId)
 	if err != nil {
-		return nil, grpcstatus.Errorf(codes.InvalidArgument, err.Error())
+		return nil, grpcstatus.Errorf(codes.InvalidArgument, "parse nodeID error: %s, %s", req.NodeId, err.Error())
 	}
 	if !local {
 		status, err := s.dialNode(ctx, nodeID)

@@ -29,7 +29,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/batcheval/result"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/pkg/errors"
 )
@@ -41,7 +41,7 @@ func init() {
 // RefreshRange checks whether the key range specified has any values written in
 // the interval [args.RefreshFrom, header.Timestamp].
 func RefreshRange(
-	ctx context.Context, reader storage.Reader, cArgs CommandArgs, resp roachpb.Response,
+	ctx context.Context, reader relational.Reader, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
 	args := cArgs.Args.(*roachpb.RefreshRangeRequest)
 	h := cArgs.Header
@@ -72,9 +72,9 @@ func RefreshRange(
 	// committed version. Note also that we include tombstones, which must be
 	// considered as updates on refresh.
 	log.VEventf(ctx, 2, "refresh %s @[%s-%s]", args.Span(), refreshFrom, refreshTo)
-	intents, err := storage.MVCCIterate(
+	intents, err := relational.MVCCIterate(
 		ctx, reader, args.Key, args.EndKey, refreshTo,
-		storage.MVCCScanOptions{
+		relational.MVCCScanOptions{
 			Inconsistent: true,
 			Tombstones:   true,
 		},

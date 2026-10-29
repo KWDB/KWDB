@@ -32,7 +32,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/spanset"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagepb"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 )
 
@@ -70,7 +70,7 @@ func declareKeysGC(
 // listed key along with the expiration timestamp. The GC metadata
 // specified in the args is persisted after GC.
 func GC(
-	ctx context.Context, readWriter storage.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
+	ctx context.Context, readWriter relational.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
 	args := cArgs.Args.(*roachpb.GCRequest)
 	h := cArgs.Header
@@ -88,7 +88,7 @@ func GC(
 	}
 
 	// Garbage collect the specified keys by expiration timestamps.
-	if err := storage.MVCCGarbageCollect(
+	if err := relational.MVCCGarbageCollect(
 		ctx, readWriter, cArgs.Stats, keys, h.Timestamp,
 	); err != nil {
 		return result.Result{}, err

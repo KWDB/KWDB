@@ -31,8 +31,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
-	"gitee.com/kwbasedb/kwbase/pkg/cdc/cdcpb"
 	"gitee.com/kwbasedb/kwbase/pkg/clusterversion"
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
@@ -1756,7 +1756,7 @@ func (desc *MutableTableDescriptor) MaybeIncrementVersion(
 	//
 	// TODO(ajwerner): remove this check in 20.1.
 	var modTime hlc.Timestamp
-	if !settings.Version.IsActive(ctx, clusterversion.VersionTableDescModificationTimeFromMVCC) {
+	if !settings.Version.IsActive(ctx, clusterversion.VersionMinSupported) {
 		var err error
 		modTime, err = txn.CommitTimestamp()
 		if err != nil {
@@ -2615,6 +2615,11 @@ func checkColumnsValidForInvertedIndex(
 // AddColumn adds a column to the table.
 func (desc *MutableTableDescriptor) AddColumn(col *ColumnDescriptor) {
 	desc.Columns = append(desc.Columns, *col)
+}
+
+// AddCDC adds a cdc to the table.
+func (desc *MutableTableDescriptor) AddCDC(cdc CDCDescriptor) {
+	desc.CDC = append(desc.CDC, cdc)
 }
 
 // AddTriggerDesc adds a trigger to the table and reorder all triggerDesc if necessary.
@@ -4804,7 +4809,7 @@ type CDCData struct {
 // CDCPushData stores information of CDC data.
 type CDCPushData struct {
 	TaskID   uint64
-	TaskType cdcpb.TSCDCInstanceType
+	TaskType CDCInstanceType
 	Rows     [][]byte
 	Types    []types.T
 }
@@ -4923,13 +4928,16 @@ func (desc *ProcedureDescriptor) Validate() error {
 	return desc.Privileges.Validate(desc.GetID())
 }
 
-// TSIDGenerator is used to generate a unique time-series ID.
+// TSIDDPrecision used to tree.MakeDTimestamp
+const TSIDDPrecision = time.Nanosecond
+
+// TSIDGenerator is used to generate a unique time-series ID (OSN).
 type TSIDGenerator struct {
 	mu           syncutil.Mutex
 	lastNanoTime uint64
 }
 
-// GetNextID returns a unique ID based on a timestamp.
+// GetNextID returns a unique ID based on a timestamp(OSN).
 func (u *TSIDGenerator) GetNextID() uint64 {
 	var res uint64
 
@@ -4941,4 +4949,9 @@ func (u *TSIDGenerator) GetNextID() uint64 {
 	u.lastNanoTime = res
 	u.mu.Unlock()
 	return res
+}
+
+// TSIDToTime format TsID(osn) to time.
+func TSIDToTime(id uint64) time.Time {
+	return timeutil.FromUnixNano(int64(id))
 }

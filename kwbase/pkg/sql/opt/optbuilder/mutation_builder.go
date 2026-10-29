@@ -1031,3 +1031,39 @@ func checkDatumTypeFitsColumnType(col cat.Column, typ *types.T, tableType tree.T
 		"value type %s doesn't match type %s of column %q",
 		typ, col.DatumType(), tree.ErrNameString(colName)))
 }
+
+func (mb *mutationBuilder) addCastTypeForInsert(
+	inScope *scope, desiredCol cat.Column, originCol *scopeColumn, tableType tree.TableType,
+) {
+	originType := originCol.typ
+	desiredType := desiredCol.DatumType()
+	if tableType != tree.RelationalTable {
+		return
+	}
+	if originType.Equivalent(desiredType) {
+		return
+	}
+	canConvert := false
+	if familys, ok := types.TypeConvertMap[originType.Family()]; ok {
+		for _, family := range familys {
+			if family == desiredType.Family() {
+				canConvert = true
+				break
+			}
+		}
+	}
+	if canConvert {
+		newExpr := &tree.CastExpr{Expr: originCol.getExpr(), Type: desiredType}
+		if scalar := mb.b.buildScalar(newExpr, inScope, nil, originCol, nil); scalar != nil {
+			originCol.expr = newExpr
+			originCol.typ = desiredType
+			originCol.scalar = scalar
+			originCol.exprStr = symbolicExprStr(originCol.expr)
+			mb.b.populateSynthesizedColumn(originCol, scalar, mb.outScope.ScopeTSProp)
+			mb.outScope.expr = mb.b.constructProject(
+				inScope.expr.(memo.RelExpr),
+				append(mb.outScope.cols),
+			)
+		}
+	}
+}

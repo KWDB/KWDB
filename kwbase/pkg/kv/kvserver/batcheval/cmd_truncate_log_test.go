@@ -31,7 +31,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"github.com/stretchr/testify/assert"
@@ -39,7 +39,7 @@ import (
 
 func putTruncatedState(
 	t *testing.T,
-	eng storage.Engine,
+	eng relational.Engine,
 	rangeID roachpb.RangeID,
 	truncState roachpb.RaftTruncatedState,
 	legacy bool,
@@ -48,7 +48,7 @@ func putTruncatedState(
 	if legacy {
 		key = keys.RaftTruncatedStateLegacyKey(rangeID)
 	}
-	if err := storage.MVCCPutProto(
+	if err := relational.MVCCPutProto(
 		context.Background(), eng, nil, key,
 		hlc.Timestamp{}, nil /* txn */, &truncState,
 	); err != nil {
@@ -57,12 +57,12 @@ func putTruncatedState(
 }
 
 func readTruncStates(
-	t *testing.T, eng storage.Engine, rangeID roachpb.RangeID,
+	t *testing.T, eng relational.Engine, rangeID roachpb.RangeID,
 ) (legacy roachpb.RaftTruncatedState, unreplicated roachpb.RaftTruncatedState) {
 	t.Helper()
-	legacyFound, err := storage.MVCCGetProto(
+	legacyFound, err := relational.MVCCGetProto(
 		context.Background(), eng, keys.RaftTruncatedStateLegacyKey(rangeID),
-		hlc.Timestamp{}, &legacy, storage.MVCCGetOptions{},
+		hlc.Timestamp{}, &legacy, relational.MVCCGetOptions{},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -71,9 +71,9 @@ func readTruncStates(
 		t.Fatalf("legacy key found=%t but state is %+v", legacyFound, legacy)
 	}
 
-	unreplicatedFound, err := storage.MVCCGetProto(
+	unreplicatedFound, err := relational.MVCCGetProto(
 		context.Background(), eng, keys.RaftTruncatedStateKey(rangeID),
-		hlc.Timestamp{}, &unreplicated, storage.MVCCGetOptions{},
+		hlc.Timestamp{}, &unreplicated, relational.MVCCGetOptions{},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -138,7 +138,7 @@ func runUnreplicatedTruncatedState(t *testing.T, tc unreplicatedTruncStateTest) 
 		FirstIndex: firstIndex,
 	}
 
-	eng := storage.NewDefaultInMem()
+	eng := relational.NewDefaultInMem()
 	defer eng.Close()
 
 	truncState := roachpb.RaftTruncatedState{

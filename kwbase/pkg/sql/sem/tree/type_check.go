@@ -362,6 +362,12 @@ func (expr *BinaryExpr) TypeCheck(ctx *SemaContext, desired *types.T) (TypedExpr
 	if err != nil {
 		return nil, err
 	}
+	if len(fns) == 0 && expr.Operator == Concat {
+		convSubExprs, convFns := tryConvertOverloadedExprs(ctx, ops, typedSubExprs)
+		if len(convSubExprs) > 0 && len(convFns) > 0 {
+			typedSubExprs, fns = convSubExprs, convFns
+		}
+	}
 
 	leftTyped, rightTyped := typedSubExprs[0], typedSubExprs[1]
 	leftReturn := leftTyped.ResolvedType()

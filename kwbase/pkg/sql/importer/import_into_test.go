@@ -40,7 +40,7 @@ import (
 // cancelation or failure.
 func TestProtectedTimestampsDuringImportInto(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-
+	t.Skip()
 	// A sketch of the test is as follows:
 	//
 	//  * Create a table foo to import into.

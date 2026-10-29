@@ -31,7 +31,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/batcheval/result"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/spanset"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 )
@@ -90,7 +90,7 @@ func resolveToMetricType(status roachpb.TransactionStatus, poison bool) *result.
 // ResolveIntent resolves a write intent from the specified key
 // according to the status of the transaction which created it.
 func ResolveIntent(
-	ctx context.Context, readWriter storage.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
+	ctx context.Context, readWriter relational.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
 	args := cArgs.Args.(*roachpb.ResolveIntentRequest)
 	h := cArgs.Header
@@ -101,7 +101,7 @@ func ResolveIntent(
 	}
 
 	update := args.AsLockUpdate()
-	ok, err := storage.MVCCResolveWriteIntent(ctx, readWriter, ms, update)
+	ok, err := relational.MVCCResolveWriteIntent(ctx, readWriter, ms, update)
 	if err != nil {
 		return result.Result{}, err
 	}

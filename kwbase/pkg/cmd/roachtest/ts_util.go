@@ -29,7 +29,7 @@ import (
 	"net/http"
 	"time"
 
-	"gitee.com/kwbasedb/kwbase/pkg/ts/tspb"
+	"gitee.com/kwbasedb/kwbase/pkg/telemetry/tspb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/httputil"
 )
 

@@ -30,7 +30,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/batcheval/result"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/spanset"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 )
 
@@ -54,7 +54,7 @@ func declareKeysPut(
 
 // Put sets the value for a specified key.
 func Put(
-	ctx context.Context, readWriter storage.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
+	ctx context.Context, readWriter relational.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
 	args := cArgs.Args.(*roachpb.PutRequest)
 	h := cArgs.Header
@@ -65,7 +65,7 @@ func Put(
 		ts = h.Timestamp
 	}
 	if h.DistinctSpans {
-		if b, ok := readWriter.(storage.Batch); ok {
+		if b, ok := readWriter.(relational.Batch); ok {
 			// Use the distinct batch for both blind and normal ops so that we don't
 			// accidentally flush mutations to make them visible to the distinct
 			// batch.
@@ -75,9 +75,9 @@ func Put(
 	}
 	var err error
 	if args.Blind {
-		err = storage.MVCCBlindPut(ctx, readWriter, ms, args.Key, ts, args.Value, h.Txn)
+		err = relational.MVCCBlindPut(ctx, readWriter, ms, args.Key, ts, args.Value, h.Txn)
 	} else {
-		err = storage.MVCCPut(ctx, readWriter, ms, args.Key, ts, args.Value, h.Txn)
+		err = relational.MVCCPut(ctx, readWriter, ms, args.Key, ts, args.Value, h.Txn)
 	}
 	// NB: even if MVCC returns an error, it may still have written an intent
 	// into the batch. This allows callers to consume errors like WriteTooOld

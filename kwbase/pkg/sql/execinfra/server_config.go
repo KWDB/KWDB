@@ -28,6 +28,7 @@ package execinfra
 
 import (
 	"context"
+	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/cdc/cdcpb"
@@ -48,9 +49,9 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlutil"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/stats"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/cloud"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/fs"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/localexternal"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/mon"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
@@ -158,7 +159,7 @@ type ServerConfig struct {
 	TempFS fs.FS
 
 	// TsEngine is a ts engine
-	TsEngine *tse.TsEngine
+	TsEngine *timeseries.TsEngine
 
 	// TsIDGen is a TSIDGenerator
 	TsIDGen *sqlbase.TSIDGenerator
@@ -206,8 +207,8 @@ type ServerConfig struct {
 	// required, so that users of ServerConfig don't have to care about them.
 	SessionBoundInternalExecutorFactory sqlutil.SessionBoundInternalExecutorFactory
 
-	ExternalStorage        cloud.ExternalStorageFactory
-	ExternalStorageFromURI cloud.ExternalStorageFromURIFactory
+	ExternalStorage        localexternal.ExternalStorageFactory
+	ExternalStorageFromURI localexternal.ExternalStorageFromURIFactory
 
 	// ProtectedTimestampProvider maintains the state of the protected timestamp
 	// subsystem. It is queried during the GC process and in the handling of
@@ -326,19 +327,55 @@ func GetWorkMemLimit(config *ServerConfig) int64 {
 type CDCCoordinator interface {
 	// IsCDCEnabled returns if it has a running CDC task based on the relation id.
 	IsCDCEnabled(tableID uint64) bool
+	// WaitCDCEnabled returns if it all CDC tasks are active.
+	WaitCDCEnabled(tableID uint64, cdcDesc []sqlbase.CDCDescriptor) bool
 	// CaptureData filters and formats the captured data changes (aka CDC).
 	// It also computes the low-water mark in current CDC batch (array of inputDatums).
 	// The CDC batch (inputDatums) maybe include multiple data timestamps (parsed from user's INSERT statement).
-	CaptureData(evalCtx *tree.EvalContext, tableID uint64, columns []*sqlbase.ColumnDescriptor, inputDatums []tree.Datums, colIndex map[int]int) (data []*sqlbase.CDCPushData, maxTimestamp int64)
+	CaptureData(
+		evalCtx *tree.EvalContext,
+		tableID uint64,
+		columns []*sqlbase.ColumnDescriptor,
+		inputDatums []tree.Datums,
+		colIndex map[int]int,
+	) (data []*sqlbase.CDCPushData, maxTimestamp int64)
 	// SendRows sends the captured data changes (aka CDC) to Sink.
 	SendRows(tableInfo *execinfrapb.CDCData)
 	// LiveNodeIDList return live nodeID list.
 	LiveNodeIDList(ctx context.Context) ([]roachpb.NodeID, error)
 	// StopCDCByLocal stops the current CDC instance
-	StopCDCByLocal(tableID uint64, instanceID uint64, cdcType cdcpb.TSCDCInstanceType)
+	StopCDCByLocal(tableID uint64, instanceID uint64, cdcType sqlbase.CDCInstanceType)
 	// DistInternalExecutor is used to run SQL with DistSQLAuto mode.
 	DistInternalExecutor() sqlutil.InternalExecutor
+	// SetDistInternalExecutor set InternalExecutor to Coordinator.
 	SetDistInternalExecutor(executor sqlutil.InternalExecutor)
+	// SetTsEngine set tsEngine to Coordinator.
+	SetTsEngine(tse *timeseries.TsEngine)
+	// SendToPipeImmediately finds the specified CDC instance, and sends data immediately.
+	SendToPipeImmediately(
+		ctx context.Context,
+		dbName string,
+		schemaName string,
+		tableName string,
+		ddlOperation string,
+		stmt string,
+		sinkURI string,
+		bufferSize int,
+		osn time.Time,
+	) error
 	// HasTask checks whether the specified instance has task in CDC.
-	HasTask(instanceType cdcpb.TSCDCInstanceType, tableID uint64, instanceID uint64) bool
+	HasTask(
+		instanceType sqlbase.CDCInstanceType, tableID uint64, instanceID uint64) bool
+	// SendStatement used to send sql statement to sink.
+	// It uses the same sink as SendRows, and flush is executed before sending.
+	SendStatement(ons uint64, tableID uint64, Operation string, stmt []byte)
+	// CheckPubTasksCountAndSubscribed checks whether the publication has been subscribed and will exceed the limitation.
+	CheckPubTasksCountAndSubscribed(
+		ctx context.Context,
+		instanceType sqlbase.CDCInstanceType,
+		pubMeta *cdcpb.PubMetadata,
+		params cdcpb.PubParameters,
+	) error
+	// SetCDCTableOSN sets OSN of tables with CDC to tsEngine.
+	SetCDCTableOSN(ctx context.Context) error
 }

@@ -63,7 +63,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/ts/catalog"
+	"gitee.com/kwbasedb/kwbase/pkg/telemetry/catalog"
 	"gitee.com/kwbasedb/kwbase/pkg/util/contextutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"

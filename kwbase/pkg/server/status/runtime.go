@@ -25,9 +25,9 @@
 package status
 
 /*
-#cgo CPPFLAGS: -I../../../../common/src/h
+#cgo CPPFLAGS: -I../../../engine/common/src/h
 #cgo LDFLAGS: -lcommon
-#include "../../../../common/src/h/mm_malloc_cgo.h"
+#include "mm_malloc_cgo.h"
 */
 import "C"
 
@@ -488,6 +488,13 @@ func GetKmallocStats(ctx context.Context) *KmallocMemStats {
 
 // GetMmapStatsBySysFile collects memory map size by system file.
 func GetMmapStatsBySysFile(ctx context.Context) *MmapStats {
+	if runtime.GOOS == "windows" {
+		return &MmapStats{
+			MmapVirtualBytes:  0,
+			MmapPhysicalBytes: 0,
+			MmapTotalCount:    0,
+		}
+	}
 	var mmapVirtualBytes uint
 	var mmapPhysicalBytes uint
 	var mmapCount uint

@@ -1,0 +1,125 @@
+// Copyright (c) 2022-present, Shanghai Yunxi Technology Co, Ltd.
+//
+// This software (KWDB) is licensed under Mulan PSL v2.
+// You can use this software according to the terms and conditions of the Mulan PSL v2.
+// You may obtain a copy of Mulan PSL v2 at:
+//          http://license.coscl.org.cn/MulanPSL2
+// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+// EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+// MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+// See the Mulan PSL v2 for more details.
+#pragma once
+
+#include <cstdint>
+#include <map>
+#include <memory>
+#include <utility>
+#include <list>
+#include <set>
+#include <unordered_map>
+#include <string>
+#include <vector>
+#include <chrono>
+#include <random>
+#include <unordered_set>
+#include "kwdb_type.h"
+#include "ts_common.h"
+#include "libkwdbts2.h"
+#include "cm_kwdb_context.h"
+#include "cm_func.h"
+#include "lg_api.h"
+#include "ts_db_schema_manager.h"
+#include "ts_table_schema_manager.h"
+#include "ts_partition_interval_recorder.h"
+#include "sys_utils.h"
+
+namespace kwdbts {
+
+/**
+ * table group used for organizing all schema info of table
+ */
+class TsEngineSchemaManager {
+ public:
+  TsEngineSchemaManager() = delete;
+
+  // db_schema_mgr is owned by TSEngineImpl and must outlive this manager; it
+  // is wired into every TsTableSchemaManager created here.
+  TsEngineSchemaManager(const std::string& schema_root_path, TsDBSchemaManager* db_schema_mgr);
+
+  ~TsEngineSchemaManager();
+
+  KStatus Init(kwdbContext_p ctx);
+
+  KStatus CreateTable(kwdbContext_p ctx, const uint32_t& db_id, const KTableKey& table_id, roachpb::CreateTsTable* meta);
+
+  bool IsTableExist(TSTableID tbl_id);
+
+  KStatus GetTableSchemaMgr(TSTableID tbl_id, std::shared_ptr<TsTableSchemaManager>& tb_schema_mgr,
+                            bool* is_dropped = nullptr);
+
+  KStatus GetAllTableSchemaMgrs(std::vector<std::shared_ptr<TsTableSchemaManager>>& tb_schema_mgr);
+
+  KStatus SetTableDropped(TSTableID tbl_id);
+
+  KStatus GetTableList(std::vector<TSTableID>* table_ids);
+
+  KStatus GetMeta(kwdbContext_p ctx, TSTableID table_id, uint32_t version, roachpb::CreateTsTable* meta);
+
+  // Get or allocate vgroup_id and entity_id
+  KStatus GetVGroupAndUpdateValidCol(kwdbContext_p ctx,
+    const std::shared_ptr<TsTableSchemaManager>& tb_schema, std::vector<uint32_t> valid_col_idx, TSSlice primary_key,
+    uint32_t* vgroup_id, TSEntityID* entity_id, bool* new_tag);
+
+  uint32_t GetDBIDByTableID(TSTableID table_id);
+
+  KStatus AlterTable(kwdbContext_p ctx, const KTableKey& table_id, AlterType alter_type, roachpb::KWDBKTSColumn* column,
+                     uint32_t cur_version, uint32_t new_version, string& msg);
+
+  fs::path GetSchemaPath() const {return schema_root_path_;}
+
+  bool GetTablePublishedMaxOSN(TSTableID tbl_id, TS_OSN& osn) {
+    if (!is_pubsub_init_) {   // pubsub table osn waterline not set. cannot delete any data.
+      osn = 0;
+      LOG_INFO("pubsub table osn waterline not set. storage cannot clear any data.");
+      return true;
+    }
+    bool ret = false;
+    rdLock();
+    auto it = tbl_pub_max_osn_.find(tbl_id);
+    if (it == tbl_pub_max_osn_.end()) {
+      ret = false;
+    } else {
+      ret = true;
+      osn = it->second;
+    }
+    unLock();
+    return ret;
+  }
+
+  void SetTablePublishedMaxOSN(std::unordered_map<TSTableID, TS_OSN>& tbl_osn) {
+    wrLock();
+    tbl_pub_max_osn_.swap(tbl_osn);
+    is_pubsub_init_  = true;
+    unLock();
+  }
+
+  TsDBSchemaManager* GetDbSchemaMgr() const { return db_schema_mgr_; }
+
+  int rdLock();
+
+  int wrLock();
+
+  int unLock();
+
+ protected:
+  fs::path schema_root_path_;
+  uint32_t vgroup_id_;
+  string tbl_sub_path_;
+  std::unordered_map<TSTableID, std::shared_ptr<TsTableSchemaManager>> table_schema_mgrs_;
+  TsDBSchemaManager* db_schema_mgr_;  // owned by TSEngineImpl
+  KRWLatch mgrs_rw_latch_;
+  bool is_pubsub_init_{false};
+  std::unordered_map<TSTableID, TS_OSN> tbl_pub_max_osn_;  // table max data osn that has done in pub/sub module.
+};
+
+}  // namespace kwdbts

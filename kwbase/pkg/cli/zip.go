@@ -85,6 +85,7 @@ var debugZipTablesPerCluster = []string{
 	"system.namespace2", // TODO(sqlexec): consider removing in 20.2 or later.
 
 	"kwdb_internal.kwdb_object_create_statement",
+	"kwdb_internal.kwdb_pipes",
 	"kwdb_internal.kwdb_retention",
 
 	"kwdb_internal.kv_node_status",
@@ -98,6 +99,7 @@ var debugZipTablesPerCluster = []string{
 	"kwdb_internal.schema_changes",
 	"kwdb_internal.ts_inflight_transactions",
 	"kwdb_internal.partitions",
+	"kwdb_internal.publications",
 	"kwdb_internal.zones",
 }
 

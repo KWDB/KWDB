@@ -107,7 +107,7 @@ INSERT INTO test_follower_read.t1 (ts, e1, e2, e3, e4, e5, e6, e7, e8, e10, e16,
 INSERT INTO test_follower_read.t1 (ts, e1, e2, e3, e4, e5, e6, e7, e8, e10, e16, tag1, tag2, tag3, tag4, tag5, tag6, tag7, tag11, tag13) VALUES ('2000-10-10T10:11:48', '2024-02-06 07:53:45', 35, 164, 966, 8873.539765774418, -6295.051624778738, False, 'b', 'J', '6', True, 967, 656, 150, 7536.393986761272, 4845.217063334514, '6', 'j', 'u');
 INSERT INTO test_follower_read.t1 (ts, e1, e2, e3, e4, e5, e6, e7, e8, e10, e16, tag1, tag2, tag3, tag4, tag5, tag6, tag7, tag11, tag13) VALUES ('2000-10-10T10:11:49', '2024-02-06 07:53:45', 611, 965, 5, 7567.450800110706, -2746.5781895453874, True, 's', 'q', '6', True, 231, 311, 211, 8294.536259146378, 1809.1062291211329, 'A', 'u', 'q');
 
-
+-- sleep: 10s
 select count(*) from test_follower_read.t1;
 select count(*) from test_follower_read.t1;
 select count(*) from test_follower_read.t1;

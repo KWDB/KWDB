@@ -63,22 +63,22 @@ DROP ROLE
   -      | succeeded |   15
 (1 row)
 > select * from system.users;
-  username | hashedPassword | isRole
------------+----------------+---------
-  admin    | \x             |  true
-  r1       | \x             |  true
-  r2       | \x             |  true
-  r3       | \x             |  true
-  r4       | \x             |  true
-  r5       | \x             | false
-  r6       | \x             | false
-  root     | \x             | false
-  u1       | \x             | false
-  u2       | \x             | false
-  u3       | \x             | false
-  u4       | \x             | false
-  u5       | \x             | false
-  u6       | \x             | false
+  username | hashedPassword | isRole | mysqlNativeDigest | mysqlSHA2Digest
+-----------+----------------+--------+-------------------+------------------
+  admin    | \x             |  true  | NULL              | NULL
+  r1       | \x             |  true  | \x                | \x
+  r2       | \x             |  true  | \x                | \x
+  r3       | \x             |  true  | \x                | \x
+  r4       | \x             |  true  | \x                | \x
+  r5       | \x             | false  | \x                | \x
+  r6       | \x             | false  | \x                | \x
+  root     | \x             | false  | NULL              | NULL
+  u1       | \x             | false  | \x                | \x
+  u2       | \x             | false  | \x                | \x
+  u3       | \x             | false  | \x                | \x
+  u4       | \x             | false  | \x                | \x
+  u5       | \x             | false  | \x                | \x
+  u6       | \x             | false  | \x                | \x
 (14 rows)
 > show users;
   username |                    options                     | member_of

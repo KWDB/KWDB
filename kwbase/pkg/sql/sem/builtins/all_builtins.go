@@ -49,6 +49,7 @@ func init() {
 	initWindowBuiltins()
 	initGeneratorBuiltins()
 	initPGBuiltins()
+	initPubAndSubBuiltins()
 	initMLBuiltins()
 	initMLTrainingPipelineBuiltins()
 	initMLJobBuiltins()

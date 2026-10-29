@@ -30,7 +30,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/batcheval/result"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/concurrency/lock"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 )
 
@@ -58,7 +58,7 @@ import (
 // is only currently used for range lookups and when watching for a merge (both
 // of which are off the hot path), this is ok for now.
 func CollectIntentRows(
-	ctx context.Context, reader storage.Reader, usePrefixIter bool, intents []roachpb.Intent,
+	ctx context.Context, reader relational.Reader, usePrefixIter bool, intents []roachpb.Intent,
 ) ([]roachpb.KeyValue, error) {
 	if len(intents) == 0 {
 		return nil, nil
@@ -87,10 +87,10 @@ func CollectIntentRows(
 // use of a prefix iterator). The function returns an empty KeyValue if the
 // intent is found to contain a deletion tombstone as its provisional value.
 func readProvisionalVal(
-	ctx context.Context, reader storage.Reader, usePrefixIter bool, intent *roachpb.Intent,
+	ctx context.Context, reader relational.Reader, usePrefixIter bool, intent *roachpb.Intent,
 ) (roachpb.KeyValue, error) {
 	if usePrefixIter {
-		val, _, err := storage.MVCCGetAsTxn(
+		val, _, err := relational.MVCCGetAsTxn(
 			ctx, reader, intent.Key, intent.Txn.WriteTimestamp, intent.Txn,
 		)
 		if err != nil {
@@ -102,7 +102,7 @@ func readProvisionalVal(
 		}
 		return roachpb.KeyValue{Key: intent.Key, Value: *val}, nil
 	}
-	res, err := storage.MVCCScanAsTxn(
+	res, err := relational.MVCCScanAsTxn(
 		ctx, reader, intent.Key, intent.Key.Next(), intent.Txn.WriteTimestamp, intent.Txn,
 	)
 	if err != nil {
@@ -124,13 +124,13 @@ func acquireUnreplicatedLocksOnKeys(
 	res *result.Result,
 	txn *roachpb.Transaction,
 	scanFmt roachpb.ScanFormat,
-	scanRes *storage.MVCCScanResult,
+	scanRes *relational.MVCCScanResult,
 ) error {
 	switch scanFmt {
 	case roachpb.BATCH_RESPONSE:
 		res.Local.AcquiredLocks = make([]roachpb.LockUpdate, scanRes.NumKeys)
 		var i int
-		return storage.MVCCScanDecodeKeyValues(scanRes.KVData, func(key storage.MVCCKey, _ []byte) error {
+		return relational.MVCCScanDecodeKeyValues(scanRes.KVData, func(key relational.MVCCKey, _ []byte) error {
 			res.Local.AcquiredLocks[i] = roachpb.LockUpdate{
 				Span:       roachpb.Span{Key: key.Key},
 				Txn:        txn.TxnMeta,

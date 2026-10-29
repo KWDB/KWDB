@@ -34,7 +34,7 @@ type createProcedureNode struct {
 
 func (n *createProcedureNode) startExec(params runParams) error {
 	// Ensure all nodes are the correct version.
-	if !params.ExecCfg().Settings.Version.IsActive(params.ctx, clusterversion.VersionUDR) {
+	if !params.ExecCfg().Settings.Version.IsActive(params.ctx, clusterversion.VersionMinSupported) {
 		return pgerror.New(pgcode.FeatureNotSupported,
 			"all nodes are not at the correct version to use Stored Procedures")
 	}

@@ -32,14 +32,17 @@ import (
 	"strings"
 	"time"
 
+	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvclient/kvcoord"
+
 	//mgr "gitee.com/kwbasedb/kwbase/pkg/replicationmgr"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/mlmgt"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/opt"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
@@ -48,7 +51,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqltelemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/stats"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util/humanizeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/retry"
@@ -200,6 +203,13 @@ func checkBool(encodedValue string) error {
 	return err
 }
 
+func checkPushdownAll(encodedValue string) error {
+	if err := checkBool(encodedValue); err != nil {
+		return err
+	}
+	return opt.CheckPushdownAllSetting(encodedValue, base.IsWindows())
+}
+
 // checkCapacityStatsPeriod checks whether the capacity stats period value set is valid
 func checkCapacityStatsPeriod(encodedValue string) error {
 	value, err := strconv.ParseInt(encodedValue, 10, 64)
@@ -341,6 +351,7 @@ func checkTsCountRecalcCycle(encodedValue string) error {
 
 // CheckClusterSetting map of checking methods for saving cluster settings
 var CheckClusterSetting = map[string]CheckOperation{
+	"sql.all_push_down.enabled":          checkPushdownAll,
 	"ts.dedup.rule":                      checkTsDedupRule,
 	"ts.rows_per_block.max_limit":        checkTsRowsPerBlockMaxLimit,
 	"ts.sql.query_opt_mode":              checkTsQueryOptMode,
@@ -439,7 +450,7 @@ func (n *setClusterSettingNode) startExec(params runParams) error {
 			}
 			if n.name == "ts.raftlog_combine_wal.enabled" {
 				if encoded == "true" {
-					if tse.TsRaftLogCombineWAL.Get(&n.st.SV) {
+					if timeseries.TsRaftLogCombineWAL.Get(&n.st.SV) {
 						return nil
 					}
 					if params.ExecCfg().StartMode != StartMultiReplica {
@@ -448,12 +459,12 @@ func (n *setClusterSettingNode) startExec(params runParams) error {
 					if sqlbase.CheckWhetherHasTsTable(params.ctx, txn) {
 						return errors.New("cluster has time-series table, cannot set ts.raftlog_combine_wal.enabled to true")
 					}
-					deRule := tse.DeDuplicateRule.Get(&n.st.SV)
+					deRule := timeseries.DeDuplicateRule.Get(&n.st.SV)
 					if deRule != "merge" && deRule != "override" {
 						return errors.New("should set ts.dedup.rule to merge or override before set ts.raftlog_combine_wal.enabled to true")
 					}
 				} else {
-					if !tse.TsRaftLogCombineWAL.Get(&n.st.SV) {
+					if !timeseries.TsRaftLogCombineWAL.Get(&n.st.SV) {
 						return nil
 					}
 				}
@@ -530,8 +541,8 @@ func (n *setClusterSettingNode) startExec(params runParams) error {
 			}
 			telemetry.Inc(sqltelemetry.VecModeCounter(validatedExecMode.String()))
 		case kvcoord.TsTxnAtomicityClusterSettingName:
-			tsWalLevel := tse.TsWALLevel.Get(&n.st.SV)
-			combineWal := tse.TsRaftLogCombineWAL.Get(&n.st.SV)
+			tsWalLevel := timeseries.TsWALLevel.Get(&n.st.SV)
+			combineWal := timeseries.TsRaftLogCombineWAL.Get(&n.st.SV)
 			if expectedEncodedValue == "true" && ((tsWalLevel != 1 && tsWalLevel != 2) || combineWal) {
 				return pgerror.Newf(pgcode.InvalidParameterValue,
 					"cannot enable ts.txn.atomicity_enabled=true when ts.wal.wal.level is %v; atomicity requires WAL level 1, 2 and ts.raftlog_combine_wal.enabled is false", tsWalLevel)
@@ -541,7 +552,7 @@ func (n *setClusterSettingNode) startExec(params runParams) error {
 				return pgerror.Newf(pgcode.InvalidParameterValue,
 					"ts.raftlog_combine_wal.enabled cannot be set to %v when ts.txn.atomicity.enabled is true", expectedEncodedValue)
 			}
-		case tse.TsWALLevelClusterSettingName:
+		case timeseries.TsWALLevelClusterSettingName:
 			if kvcoord.TsTxnAtomicityEnabled.Get(&n.st.SV) && (expectedEncodedValue == "0" || expectedEncodedValue == "3") {
 				return pgerror.Newf(pgcode.InvalidParameterValue,
 					"ts.wal.wal_level cannot be set to %v when ts.txn.atomicity.enabled is true", expectedEncodedValue)

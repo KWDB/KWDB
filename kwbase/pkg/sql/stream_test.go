@@ -12,34 +12,15 @@
 package sql
 
 import (
-	"context"
-	"fmt"
-	"path/filepath"
+	gosql "database/sql"
 	"testing"
 	"time"
 
-	"gitee.com/kwbasedb/kwbase/pkg/base"
-	"gitee.com/kwbasedb/kwbase/pkg/testutils"
-	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
-	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"github.com/stretchr/testify/require"
 )
 
-func TestStream(t *testing.T) {
-	defer leaktest.AfterTest(t)()
-
-	ctx := context.Background()
-	baseDir, dirCleanupFn := testutils.TempDir(t)
-	defer dirCleanupFn()
-	path := filepath.Join(baseDir, fmt.Sprintf("test_stream_server%d", 1))
-	args := base.TestServerArgs{
-		StoreSpecs:    []base.StoreSpec{{Path: path}},
-		CatchCoreDump: true,
-	}
-	s, db, _ := serverutils.StartServer(t, args)
-
-	defer s.Stopper().Stop(ctx)
-
+// StreamTest is stream unit test.
+func StreamTest(t *testing.T, db *gosql.DB) {
 	// create a test database and tables
 	_, err := db.Exec(`CREATE TS DATABASE IF NOT EXISTS test_stream_db`)
 	require.NoError(t, err)
@@ -435,7 +416,7 @@ primary attributes (hostname);`)
 	_, err = db.Exec(`CREATE STREAM cpu_stream_agg_ts_8 INTO test_stream_db.cpu_avg_agg8 WITH OPTIONS(recalculate_delay_rounds='0',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='off', MAX_DELAY='10s',SYNC_TIME='5s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end,first_row(k_timestamp) as w_begin1, last_row(k_timestamp) as w_end1, avg(usage_user) as usage_user_avg, avg(usage_system) as usage_system_avg, count(*) as count, hostname as hostname FROM test_stream_db.cpu_normal WHERE usage_system+usage_system>0 GROUP BY hostname, time_window(k_timestamp, '1m','30s');`)
 	require.NoError(t, err)
 	time.Sleep(time.Second * 2)
-	//
+
 	_, err = db.Exec(`INSERT INTO test_stream_db.cpu_normal values ('2023-05-31 10:00:30.123456789', 58, 10, 24, 61, 22, 63, 6, 44, 80, 38, 'host_1', '', '', '', '', '', '', '', '', '');`)
 	require.NoError(t, err)
 	_, err = db.Exec(`INSERT INTO test_stream_db.cpu_normal values ('2023-05-31 10:00:40.123456789', 58, 55, 24, 61, 22, 63, 6, 44, 80, 38, 'host_0', '', '', '', '', '', '', '', '', '');`)

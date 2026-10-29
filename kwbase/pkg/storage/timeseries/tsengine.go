@@ -1,0 +1,2796 @@
+// Copyright (c) 2022-present, Shanghai Yunxi Technology Co, Ltd. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// This software (KWDB) is licensed under Mulan PSL v2.
+// You can use this software according to the terms and conditions of the Mulan PSL v2.
+// You may obtain a copy of Mulan PSL v2 at:
+//          http://license.coscl.org.cn/MulanPSL2
+// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+// EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+// MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+// See the Mulan PSL v2 for more details.
+
+package timeseries
+
+// #cgo CPPFLAGS: -I../../engine/ts_engine/include
+// #cgo LDFLAGS: -lkwdbts2 -lcommon -lstdc++
+// #cgo LDFLAGS: -lprotobuf
+// #cgo linux LDFLAGS: -lrt -lpthread
+//
+// #include <stdlib.h>
+// #include <string.h>
+// #include <libkwdbts2.h>
+//
+// // C bridge for libkwdbts2 weak symbols (isCanceledCtx / goGetTzOffset).
+// // Go exports the *Cb names; without this bridge the weak symbols stay
+// // undefined (address 0) and vacuum's cancel check SIGSEGVs on Linux.
+// // On Windows/MinGW, Go's //export also cannot use the original names
+// // (PE symbol type mismatch: function vs data with DLL .refptr).
+// extern bool goIsCanceledCtxCb(uint64_t goCtxPtr);
+// extern bool goGetTzOffsetCb(int64_t utc_sec, char* tz_name,
+//                             int32_t* offset_sec, char* abbrev, int abbrev_len);
+// bool isCanceledCtx(uint64_t goCtxPtr) {
+//     return goIsCanceledCtxCb(goCtxPtr);
+// }
+// bool goGetTzOffset(int64_t utc_sec, char* tz_name,
+//                    int32_t* offset_sec, char* abbrev, int abbrev_len) {
+//     return goGetTzOffsetCb(utc_sec, tz_name, offset_sec, abbrev, abbrev_len);
+// }
+import "C"
+import (
+	"bytes"
+	"context"
+	"encoding/binary"
+	"fmt"
+	"math"
+	"runtime"
+	"strconv"
+	"sync"
+	"sync/atomic"
+	"time"
+	"unsafe"
+
+	"gitee.com/kwbasedb/kwbase/pkg/col/coldata"
+	"gitee.com/kwbasedb/kwbase/pkg/col/coltypes"
+	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
+	"gitee.com/kwbasedb/kwbase/pkg/settings"
+	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
+	"gitee.com/kwbasedb/kwbase/pkg/util/duration"
+	"gitee.com/kwbasedb/kwbase/pkg/util/log"
+	"gitee.com/kwbasedb/kwbase/pkg/util/metric"
+	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
+	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
+	"github.com/cockroachdb/apd"
+	"github.com/lib/pq/oid"
+	"github.com/pkg/errors"
+)
+
+const (
+	// MaxArrayLen is a safe maximum length for slices on this architecture.
+	MaxArrayLen = 1<<50 - 1
+)
+
+const (
+	compressInterval = "ts.compress_interval"
+	vacuumInterval   = "ts.vacuum_interval"
+)
+
+const (
+	// Nanosecond is one nano second
+	Nanosecond = 1
+	// Microsecond is one micro second to nano seconds
+	Microsecond = 1000 * Nanosecond
+	// Millisecond is one milli second to microseconds
+	Millisecond = 1000 * Microsecond
+	// Second is one second to milli seconds
+	Second = 1000 * Millisecond
+	// Minute is one minute to seconds
+	Minute = 60 * Second
+	// Hour is one hour to minutes
+	Hour = 60 * Minute
+	// Day is one day to hours
+	Day = 24 * Hour
+)
+
+// TsPayloadSizeLimit is the max size of per payload.
+var TsPayloadSizeLimit = settings.RegisterNonNegativeIntSetting(
+	"ts.payload_size_limit",
+	"max size of payload(bytes)",
+	1<<20, // (1MiB)
+)
+
+// name of processor in time series
+const (
+	TsUnknownName int8 = iota
+	TsTableReaderName
+	TsAggregatorName
+	TsNoopName
+	TsSorterName
+	TsStatisticReaderName
+	TsSynchronizerName
+	TsSamplerName
+	TsTagReaderName
+	TsDistinctName
+)
+
+// TsGetNameValue get name of tsProcessor.
+func TsGetNameValue(this *execinfrapb.ProcessorCoreUnion) int8 {
+	if this.TsTableReader != nil {
+		return TsTableReaderName
+	}
+	if this.Aggregator != nil {
+		return TsAggregatorName
+	}
+	if this.Noop != nil {
+		return TsNoopName
+	}
+	if this.Sorter != nil {
+		return TsSorterName
+	}
+	if this.TsStatisticReader != nil {
+		return TsStatisticReaderName
+	}
+	if this.TsSynchronizer != nil {
+		return TsSynchronizerName
+	}
+	if this.Sampler != nil {
+		return TsSamplerName
+	}
+	if this.TsTagReader != nil {
+		return TsTagReaderName
+	}
+	if this.Distinct != nil {
+		return TsDistinctName
+	}
+	return TsUnknownName
+}
+
+// A Error wraps an error returned from a TsEngine operation.
+type Error struct {
+	msg string
+}
+
+func (e Error) Error() string {
+	return e.msg
+}
+
+// TsMetrics is to define the metrics used in TsEngine.
+var (
+	MetaTsBlockCacheHitCount = metric.Metadata{
+		Name:        "ts.blockcache.hit.count",
+		Help:        "Counter of ts engine block cache hit count",
+		Measurement: "Ts Engine",
+		Unit:        metric.Unit_COUNT,
+	}
+	MetaTsBlockCacheMissCount = metric.Metadata{
+		Name:        "ts.blockcache.miss.count",
+		Help:        "Counter of ts engine block cache miss count",
+		Measurement: "Ts Engine",
+		Unit:        metric.Unit_COUNT,
+	}
+	MetaTsBlockCacheHitRatio = metric.Metadata{
+		Name:        "ts.blockcache.hit.ratio",
+		Help:        "Hit ratio of ts engine block cache",
+		Measurement: "Ts Engine",
+		Unit:        metric.Unit_PERCENT,
+	}
+	MetaTsBlockCacheMemorySize = metric.Metadata{
+		Name:        "ts.blockcache.memory.size",
+		Help:        "Bytes of ts engine block cache memory size",
+		Measurement: "Ts Engine",
+		Unit:        metric.Unit_BYTES,
+	}
+)
+
+// TsEngineMetrics is the set of metrics for the tsEngine server.
+type TsEngineMetrics struct {
+	TsBlockCacheHitCount   *metric.Gauge
+	TsBlockCacheMissCount  *metric.Gauge
+	TsBlockCacheHitRatio   *metric.GaugeFloat64
+	TsBlockCacheMemorySize *metric.Gauge
+}
+
+func makeTsEngineMetrics() *TsEngineMetrics {
+	return &TsEngineMetrics{
+		TsBlockCacheHitCount:   metric.NewGauge(MetaTsBlockCacheHitCount),
+		TsBlockCacheMissCount:  metric.NewGauge(MetaTsBlockCacheMissCount),
+		TsBlockCacheHitRatio:   metric.NewGaugeFloat64(MetaTsBlockCacheHitRatio),
+		TsBlockCacheMemorySize: metric.NewGauge(MetaTsBlockCacheMemorySize),
+	}
+}
+
+// goToCTSSlice converts a go byte slice to a TSSlice. Note that this is
+// potentially dangerous as the DBSlice holds a reference to the go
+// byte slice memory that the Go GC does not know about. This method
+// is only intended for use in converting arguments to C
+// functions. The C function must copy any data that it wishes to
+// retain once the function returns.
+func goToCTSSlice(b []byte) C.TSSlice {
+	if len(b) == 0 {
+		return C.TSSlice{data: nil, len: 0}
+	}
+	return C.TSSlice{
+		data: (*C.char)(unsafe.Pointer(&b[0])),
+		len:  C.size_t(len(b)),
+	}
+}
+
+// TsEngineConfig configuration of TsEngine
+type TsEngineConfig struct {
+	Attrs          roachpb.Attributes
+	Dir            string
+	ThreadPoolSize int
+	TaskQueueSize  int
+	BufferPoolSize int
+	Settings       *cluster.Settings
+	LogCfg         log.Config
+	ExtraOptions   []byte
+	IsSingleNode   bool
+	BRPCAddr       string
+	ClusterID      string
+	TsIDGen        *sqlbase.TSIDGenerator
+}
+
+// TsQueryInfo the parameter and return value passed by the query
+type TsQueryInfo struct {
+	Buf          []byte
+	RowNum       int
+	ID           int
+	UniqueID     int
+	TimeZone     int
+	TimeZoneName string // IANA timezone name (e.g. "Europe/Berlin") for DST support
+	UseDST       bool   // DST flag calculated by Go layer
+	Code         int
+	Handle       unsafe.Pointer
+	Fetcher      TsFetcher
+	// only pass the data chunk to tse for multiple model processing
+	// when the switch is on and the server starts with single node mode.
+	PushData *DataChunkGo
+	RowCount int
+	SQL      string
+	// PullData TsDataChunkToGo
+}
+
+// TsColumnInfoToGo ts col info To Go
+type TsColumnInfoToGo struct {
+	FixedLen    uint32
+	ReturnType  types.Family
+	StorageLen  uint32
+	StorageType sqlbase.DataType
+}
+
+// TsDataChunkToGo ts struct
+type TsDataChunkToGo struct {
+	ColumnNum   uint32
+	Column      []TsColumnInfoToGo
+	BitmapSize  uint32
+	RowSize     uint32
+	DataCount   uint32
+	Capacity    uint32
+	Data        []coldata.Vec
+	IsDataOwner bool
+	Begin       int
+	NeedType    []coltypes.T
+}
+
+// IsReadComplete read complete
+func (r *TsDataChunkToGo) IsReadComplete() bool {
+	return uint32(r.Begin) == r.DataCount
+}
+
+// ColumnInfo defines ColumInfo structure used for pushing batchlookup data down
+// only create the columnInfo to build data chunk in blj for multiple model processing
+// when the switch is on and the server starts with single node mode.
+type ColumnInfo struct {
+	StorageLen      uint32
+	FixedStorageLen uint32
+	StorageType     oid.Oid
+}
+
+// DataChunkGo defines DataChunk structure used for pushing batchlookup data down
+// only use for creating push data chunk for multiple model processing
+// when the switch is on and the server starts with single node mode.
+type DataChunkGo struct {
+	Data         []byte
+	ColInfo      []ColumnInfo
+	ColOffset    []uint32
+	BitmapOffset []uint32
+	RowCount     uint32
+}
+
+// DedupResult is PutData dedup result
+type DedupResult struct {
+	DedupRule     int    // Deduplication mode
+	DedupRows     int    // The number of inserted data rows affected
+	DiscardBitmap []byte // The bitmap of discard data
+}
+
+// EntitiesAffect is affect of entities and unordered row count
+type EntitiesAffect struct {
+	EntityCount    uint16
+	UnorderedCount uint32
+}
+
+// TsEngine is ts database instance.
+type TsEngine struct {
+	stopper *stop.Stopper
+	cfg     TsEngineConfig
+	tdb     *C.TSEngine
+	opened  bool
+	openCh  chan struct{}
+	metrics *TsEngineMetrics
+	TsIDGen *sqlbase.TSIDGenerator
+}
+
+// IsSingleNode Returns whether TsEngine is started in singleNode mode
+func (r *TsEngine) IsSingleNode() bool {
+	return r.cfg.IsSingleNode
+}
+
+// DeDuplicateRule indicates the deduplicate rule of the ts engine
+var DeDuplicateRule = settings.RegisterPublicStringSetting(
+	"ts.dedup.rule",
+	"remove time series data duplicate rule",
+	"override",
+)
+
+// TsRaftLogCombineWAL indicates whether combine raft log and wal
+var TsRaftLogCombineWAL = settings.RegisterPublicBoolSetting(
+	"ts.raftlog_combine_wal.enabled",
+	"combine raft log and wal to reduce write amplification, but still ensure data consistency",
+	false,
+)
+
+// TsRaftLogSyncPeriod determine the sync interval of ts raft logs.
+var TsRaftLogSyncPeriod = settings.RegisterPublicDurationSetting(
+	"ts.raft_log.sync_period",
+	"used to set whether to enable asynchronous raft log consensus, with a default value of 0 (disabled)",
+	0*time.Second,
+)
+
+// TsWALLevelClusterSettingName is the name of the ts wal level cluster setting.
+const TsWALLevelClusterSettingName = "ts.wal.wal_level"
+
+// TsWALLevel indicates the WAL level
+var TsWALLevel = settings.RegisterPublicIntSetting(
+	TsWALLevelClusterSettingName,
+	"ts WAL level, default 2(flush)",
+	2,
+)
+
+// TsWALCheckpointInterval indicates the wal checkpoint interval of TsEngine
+var TsWALCheckpointInterval = settings.RegisterPublicDurationSetting(
+	"ts.wal.checkpoint_interval",
+	"ts WAL checkpoint interval in TsEngine",
+	time.Minute,
+)
+
+// SQLTimeseriesTrace set trace for timeseries.
+var SQLTimeseriesTrace = settings.RegisterStringSetting(
+	"ts.trace.on_off_list",
+	"collection/push switch",
+	"",
+)
+
+//export goIsCanceledCtxCb
+func goIsCanceledCtxCb(goCtxPtr C.uint64_t) C.bool {
+	ctx, ok := loadGoContextHandle(uint64(goCtxPtr))
+	if !ok || ctx == nil {
+		return C.bool(false)
+	}
+	select {
+	case <-ctx.Done():
+		return C.bool(true)
+	default:
+		return C.bool(false)
+	}
+}
+
+var goContextHandles sync.Map // map[uint64]context.Context
+
+var nextGoContextHandle uint64
+
+func registerGoContextHandle(ctx context.Context) (C.uint64_t, func()) {
+	if ctx == nil {
+		return 0, func() {}
+	}
+	handle := atomic.AddUint64(&nextGoContextHandle, 1)
+	goContextHandles.Store(handle, ctx)
+	return C.uint64_t(handle), func() {
+		goContextHandles.Delete(handle)
+	}
+}
+
+func registerGoContextHandlePtr(ctx *context.Context) (C.uint64_t, func()) {
+	if ctx == nil {
+		return 0, func() {}
+	}
+	return registerGoContextHandle(*ctx)
+}
+
+func loadGoContextHandle(handle uint64) (context.Context, bool) {
+	if handle == 0 {
+		return nil, false
+	}
+	v, ok := goContextHandles.Load(handle)
+	if !ok {
+		return nil, false
+	}
+	ctx, ok := v.(context.Context)
+	return ctx, ok
+}
+
+// tzCache caches time.Location objects for performance
+var tzCache sync.Map // map[string]*time.Location
+
+// goGetTzOffsetCb returns the timezone offset for a specific UTC timestamp (supports DST)
+// Returns true on success, false on failure (caller should fallback to default offset)
+//
+//export goGetTzOffsetCb
+func goGetTzOffsetCb(
+	utcSec C.int64_t, tzName *C.char, offsetSec *C.int32_t, abbrev *C.char, abbrevLen C.int,
+) C.bool {
+	tzNameStr := C.GoString(tzName)
+	if tzNameStr == "" {
+		return C.bool(false)
+	}
+
+	// Try to get from cache
+	var loc *time.Location
+	if cached, ok := tzCache.Load(tzNameStr); ok {
+		loc = cached.(*time.Location)
+	} else {
+		// Load and cache
+		var err error
+		loc, err = timeutil.TimeZoneStringToLocation(tzNameStr,
+			timeutil.TimeZoneStringToLocationISO8601Standard)
+		if err != nil {
+			return C.bool(false)
+		}
+		tzCache.Store(tzNameStr, loc)
+	}
+
+	// Get timezone info at the specific UTC timestamp
+	abbr, offset := timeutil.Unix(int64(utcSec), 0).In(loc).Zone()
+	*offsetSec = C.int32_t(offset) // offset in seconds (includes DST)
+
+	// Copy timezone abbreviation (e.g. "CET", "CEST", "PST", "PDT")
+	if abbrev != nil && abbrevLen > 0 {
+		abbrBytes := []byte(abbr)
+		maxLen := int(abbrevLen) - 1
+		if len(abbrBytes) > maxLen {
+			abbrBytes = abbrBytes[:maxLen]
+		}
+		for i, b := range abbrBytes {
+			*(*C.char)(unsafe.Pointer(uintptr(unsafe.Pointer(abbrev)) + uintptr(i))) = C.char(b)
+		}
+		*(*C.char)(unsafe.Pointer(uintptr(unsafe.Pointer(abbrev)) + uintptr(len(abbrBytes)))) = 0
+	}
+
+	return C.bool(true)
+}
+
+// NewTsEngine new ts engine
+func NewTsEngine(
+	ctx context.Context, cfg TsEngineConfig, stopper *stop.Stopper,
+) (*TsEngine, error) {
+	if cfg.Dir == "" {
+		return nil, errors.New("dir must be non-empty")
+	}
+
+	metrics := makeTsEngineMetrics()
+
+	r := &TsEngine{
+		stopper: stopper,
+		cfg:     cfg,
+		openCh:  make(chan struct{}),
+		metrics: metrics,
+	}
+	return r, nil
+}
+
+// Metrics returns the metrics for the ts engine.
+func (r *TsEngine) Metrics() *TsEngineMetrics {
+	return r.metrics
+}
+
+// IsOpen returns when the ts engine has been open.
+func (r *TsEngine) IsOpen() bool {
+	return r.opened
+}
+
+// CheckOrWaitForOpen check whether the ts engine has been open and
+// waits for open if it is not.
+func (r *TsEngine) checkOrWaitForOpen() {
+	if r.opened {
+		return
+	}
+	_ = <-r.openCh
+}
+
+// Open opens the ts engine.
+func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
+	walLevel := TsWALLevel.Get(&r.cfg.Settings.SV)
+
+	traceLevel := SQLTimeseriesTrace.Get(&r.cfg.Settings.SV)
+	logDir := []byte(r.cfg.LogCfg.Dir)
+	traceLevelBytes := []byte(traceLevel)
+	optLog := C.TsLogOptions{
+		Dir:                       goToTSSlice(logDir),
+		LogFileMaxSize:            C.int64_t(r.cfg.LogCfg.LogFileMaxSize),
+		LogFilesCombinedMaxSize:   C.int64_t(r.cfg.LogCfg.LogFilesCombinedMaxSize),
+		LogFileVerbosityThreshold: C.LgSeverity(r.cfg.LogCfg.LogFileVerbosityThreshold),
+		Trace_on_off_list:         goToTSSlice(traceLevelBytes),
+	}
+
+	if len(rangeIndex) == 0 {
+		dir := []byte(r.cfg.Dir)
+		brpcAddr := []byte(r.cfg.BRPCAddr)
+		clusterID := []byte(r.cfg.ClusterID)
+		status := C.TSOpen(&r.tdb, goToTSSlice(dir),
+			C.TSOptions{
+				wal_level:        C.uint8_t(walLevel),
+				extra_options:    goToTSSlice(r.cfg.ExtraOptions),
+				thread_pool_size: C.uint16_t(uint16(r.cfg.ThreadPoolSize)),
+				task_queue_size:  C.uint16_t(uint16(r.cfg.TaskQueueSize)),
+				buffer_pool_size: C.uint32_t(uint32(r.cfg.BufferPoolSize)),
+				lg_opts:          optLog,
+				is_single_node:   C.bool(r.cfg.IsSingleNode),
+				brpc_addr:        goToTSSlice(brpcAddr),
+				cluster_id:       goToTSSlice(clusterID),
+			},
+			nil,
+			C.uint64_t(0))
+		runtime.KeepAlive(dir)
+		runtime.KeepAlive(brpcAddr)
+		runtime.KeepAlive(clusterID)
+		runtime.KeepAlive(r.cfg.ExtraOptions)
+		runtime.KeepAlive(logDir)
+		runtime.KeepAlive(traceLevelBytes)
+		if err := statusToError(status); err != nil {
+			return errors.Wrap(err, "could not open tsengine instance")
+		}
+	} else {
+		appliedRangeIndex := make([]C.AppliedRangeIndex, len(rangeIndex))
+		for idx, rangeIdx := range rangeIndex {
+			appliedRangeIndex[idx] = C.AppliedRangeIndex{
+				range_id:      C.uint64_t(rangeIdx.RangeId),
+				applied_index: C.uint64_t(rangeIdx.ApplyIndex),
+			}
+		}
+
+		dir := []byte(r.cfg.Dir)
+		brpcAddr := []byte(r.cfg.BRPCAddr)
+		clusterID := []byte(r.cfg.ClusterID)
+		status := C.TSOpen(&r.tdb, goToTSSlice(dir),
+			C.TSOptions{
+				wal_level:        C.uint8_t(walLevel),
+				extra_options:    goToTSSlice(r.cfg.ExtraOptions),
+				thread_pool_size: C.uint16_t(uint16(r.cfg.ThreadPoolSize)),
+				task_queue_size:  C.uint16_t(uint16(r.cfg.TaskQueueSize)),
+				buffer_pool_size: C.uint32_t(uint32(r.cfg.BufferPoolSize)),
+				lg_opts:          optLog,
+				is_single_node:   C.bool(r.cfg.IsSingleNode),
+				brpc_addr:        goToTSSlice(brpcAddr),
+				cluster_id:       goToTSSlice(clusterID),
+			},
+			&appliedRangeIndex[0],
+			C.uint64_t(len(appliedRangeIndex)))
+		runtime.KeepAlive(dir)
+		runtime.KeepAlive(brpcAddr)
+		runtime.KeepAlive(clusterID)
+		runtime.KeepAlive(r.cfg.ExtraOptions)
+		runtime.KeepAlive(appliedRangeIndex)
+		runtime.KeepAlive(logDir)
+		runtime.KeepAlive(traceLevelBytes)
+		if err := statusToError(status); err != nil {
+			return errors.Wrap(err, "could not open tsengine instance")
+		}
+	}
+
+	if r.cfg.IsSingleNode {
+		r.SetRaftLogCombinedWAL(false)
+	} else {
+		r.SetRaftLogCombinedWAL(TsRaftLogCombineWAL.Get(&r.cfg.Settings.SV))
+	}
+	r.manageWAL()
+	r.opened = true
+	close(r.openCh)
+	return nil
+}
+
+// SetRaftLogCombinedWAL set the state of TsRaftLogCombineWAL to AE
+func (r *TsEngine) SetRaftLogCombinedWAL(combined bool) {
+	if r.tdb != nil {
+		status := C.TsSetUseRaftLogAsWAL(r.tdb, C.bool(combined))
+		_ = statusToError(status)
+	}
+}
+
+// GetTableBlocksDistribution get table block distribution info
+func (r *TsEngine) GetTableBlocksDistribution(tableID uint64) ([]byte, error) {
+	r.checkOrWaitForOpen()
+	var blockMeta *C.TSSlice
+	blockMeta = (*C.TSSlice)(C.malloc(C.size_t(unsafe.Sizeof(C.TSSlice{}))))
+	defer C.free(unsafe.Pointer(blockMeta))
+	status := C.TSGetTableBlocksDistribution(r.tdb, C.TSTableID(tableID), blockMeta)
+	if err := statusToError(status); err != nil {
+		return nil, errors.Wrap(err, "could not GetTableBlocksDistribution")
+	}
+	defer C.free(unsafe.Pointer((*blockMeta).data))
+	return cSliceToGoBytes(*blockMeta), nil
+}
+
+// GetDBBlocksDistribution get database block distribution info
+func (r *TsEngine) GetDBBlocksDistribution(dbID uint64) ([]byte, error) {
+	r.checkOrWaitForOpen()
+	var blockMeta *C.TSSlice
+	blockMeta = (*C.TSSlice)(C.malloc(C.size_t(unsafe.Sizeof(C.TSSlice{}))))
+	defer C.free(unsafe.Pointer(blockMeta))
+	status := C.TSGetDBBlocksDistribution(r.tdb, C.uint32_t(dbID), blockMeta)
+	if err := statusToError(status); err != nil {
+		return nil, errors.Wrap(err, "could not GetDBBlocksDistribution")
+	}
+	defer C.free(unsafe.Pointer((*blockMeta).data))
+	return cSliceToGoBytes(*blockMeta), nil
+}
+
+// CreateTsTable create ts table
+func (r *TsEngine) CreateTsTable(
+	tableID uint64, hashNum uint64, meta []byte, rangeGroups []api.RangeGroup,
+) error {
+	r.checkOrWaitForOpen()
+	nRange := len(rangeGroups)
+	cRanges := make([]C.RangeGroup, nRange)
+	for i := 0; i < nRange; i++ {
+		cRanges[i].range_group_id = C.uint64_t(rangeGroups[i].RangeGroupID)
+		cRanges[i].typ = C.int8_t(rangeGroups[i].Type)
+	}
+	cRangeGroups := C.RangeGroups{
+		ranges: (*C.RangeGroup)(unsafe.Pointer(&cRanges[0])),
+		len:    C.int32_t(len(cRanges)),
+	}
+	status := C.TSCreateTsTable(r.tdb, C.TSTableID(tableID), goToTSSlice(meta), cRangeGroups)
+	runtime.KeepAlive(meta)
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "could not CreateTsTable")
+	}
+	return nil
+}
+
+// GetMetaData get meta from source of the snapshot
+func (r *TsEngine) GetMetaData(tableID uint64, rangeGroup api.RangeGroup) ([]byte, error) {
+	r.checkOrWaitForOpen()
+	cRangeGroup := C.RangeGroup{
+		range_group_id: C.uint64_t(rangeGroup.RangeGroupID),
+	}
+	var tableMeta *C.TSSlice
+	tableMeta = (*C.TSSlice)(C.malloc(C.size_t(unsafe.Sizeof(C.TSSlice{}))))
+	defer C.free(unsafe.Pointer(tableMeta))
+	status := C.TSGetMetaData(r.tdb, C.TSTableID(tableID), cRangeGroup, tableMeta)
+	if err := statusToError(status); err != nil {
+		return nil, errors.Wrap(err, "could not CreateTsTable")
+	}
+	defer C.free(unsafe.Pointer((*tableMeta).data))
+	meta := cSliceToGoBytes(*tableMeta)
+	return meta, nil
+}
+
+// TSIsTsTableExist checks if ts table exists.
+func (r *TsEngine) TSIsTsTableExist(tableID uint64) (bool, error) {
+	r.checkOrWaitForOpen()
+	var isExist *C.bool
+	isExist = (*C.bool)(C.malloc(C.size_t(unsafe.Sizeof(C.bool(false)))))
+	defer C.free(unsafe.Pointer(isExist))
+	*isExist = C.bool(false)
+	status := C.TSIsTsTableExist(r.tdb, C.TSTableID(tableID), isExist)
+	if err := statusToError(status); err != nil {
+		return false, errors.Wrap(err, "get error")
+	}
+	return bool(*isExist), nil
+}
+
+// DropTsTable drop ts table.
+func (r *TsEngine) DropTsTable(tableID uint64) error {
+	r.checkOrWaitForOpen()
+	status := C.TSDropTsTable(r.tdb, C.TSTableID(tableID))
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "could not DropTsTable")
+	}
+	return nil
+}
+
+// DropLeftTsTableGarbage drop left ts table metadata garbage.
+func (r *TsEngine) DropLeftTsTableGarbage() error {
+	r.checkOrWaitForOpen()
+	status := C.TSDropResidualTsTable(r.tdb)
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "could not drop residual ts table")
+	}
+	return nil
+}
+
+// TSFlushVGroups flush v-groups after import
+func (r *TsEngine) TSFlushVGroups() error {
+	r.checkOrWaitForOpen()
+	status := C.TSFlushVGroups(r.tdb)
+	if err := statusToError(status); err != nil {
+		// retry once
+		retryStatus := C.TSFlushVGroups(r.tdb)
+		if err := statusToError(retryStatus); err != nil {
+			return errors.Wrap(err, "could not flush v-groups")
+		}
+	}
+	return nil
+}
+
+// TsGetRecentBlockCacheInfo get storage block cache hit, miss counts and current used memory size(M) for showing hit ratio in web console
+func (r *TsEngine) TsGetRecentBlockCacheInfo() (int, int, int64, error) {
+	var hitCount *C.uint32_t
+	var missCount *C.uint32_t
+	var memorySize *C.uint64_t
+	hitCount = (*C.uint32_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint32_t(0)))))
+	defer C.free(unsafe.Pointer(hitCount))
+	missCount = (*C.uint32_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint32_t(0)))))
+	defer C.free(unsafe.Pointer(missCount))
+	memorySize = (*C.uint64_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint64_t(0)))))
+	defer C.free(unsafe.Pointer(memorySize))
+	*hitCount = 0
+	*missCount = 0
+	*memorySize = 0
+	C.TsGetRecentBlockCacheInfo(hitCount, missCount, memorySize)
+	return int(*hitCount), int(*missCount), int64(*memorySize), nil
+}
+
+// SamplePeriodicMetrics sample tsengine metrics periodically (default 10s).
+// If you need to collect other ts engine metrics periodically, please add them in this function.
+func (r *TsEngine) SamplePeriodicMetrics() {
+	// Sample BlockCache Info
+	hitCount, missCount, memorySize, _ := r.TsGetRecentBlockCacheInfo()
+	hitRatio := float64(hitCount) / (float64(hitCount) + float64(missCount) + 1e-8) // add 1e-8 to avoid division by zero
+	r.metrics.TsBlockCacheHitCount.Update(int64(hitCount))
+	r.metrics.TsBlockCacheMissCount.Update(int64(missCount))
+	r.metrics.TsBlockCacheHitRatio.Update(hitRatio)
+	r.metrics.TsBlockCacheMemorySize.Update(int64(memorySize))
+}
+
+// AddTSColumn adds column for ts table.
+func (r *TsEngine) AddTSColumn(
+	tableID uint64, currentTSVersion, newTSVersion uint32, transactionID []byte, colMeta []byte,
+) error {
+	r.checkOrWaitForOpen()
+	status := C.TSAddColumn(
+		r.tdb, C.TSTableID(tableID), goToCChar(transactionID), goToTSSlice(colMeta), C.uint32_t(currentTSVersion), C.uint32_t(newTSVersion))
+	runtime.KeepAlive(transactionID)
+	runtime.KeepAlive(colMeta)
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "could not AddTsColumn")
+	}
+	return nil
+}
+
+// DropTSColumn drop column for ts table.
+func (r *TsEngine) DropTSColumn(
+	tableID uint64, currentTSVersion, newTSVersion uint32, transactionID []byte, colMeta []byte,
+) error {
+	r.checkOrWaitForOpen()
+	status := C.TSDropColumn(
+		r.tdb, C.TSTableID(tableID), goToCChar(transactionID), goToTSSlice(colMeta), C.uint32_t(currentTSVersion), C.uint32_t(newTSVersion))
+	runtime.KeepAlive(transactionID)
+	runtime.KeepAlive(colMeta)
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "could not DropTsColumn")
+	}
+	return nil
+}
+
+// CreateNormalTagIndex create index on normal tag of ts table
+func (r *TsEngine) CreateNormalTagIndex(
+	tableID uint64,
+	indexID uint64,
+	curVersion, newVersion uint32,
+	transactionID []byte,
+	indexColumns []uint32,
+) error {
+	numColumn := len(indexColumns)
+	cIndexs := make([]C.uint, numColumn)
+	for i := 0; i < numColumn; i++ {
+		cIndexs[i] = C.uint(indexColumns[i])
+	}
+	cIndexColumns := C.IndexColumns{
+		index_column: (*C.uint32_t)(unsafe.Pointer(&cIndexs[0])),
+		len:          C.int32_t(len(cIndexs)),
+	}
+	status := C.TSCreateNormalTagIndex(r.tdb, C.TSTableID(tableID), C.uint64_t(indexID), goToCChar(transactionID), C.uint32_t(curVersion), C.uint32_t(newVersion), cIndexColumns)
+	runtime.KeepAlive(transactionID)
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "could not CreateNormalTagIndex")
+	}
+	return nil
+}
+
+// DropNormalTagIndex drop index on normal tag of ts table
+func (r *TsEngine) DropNormalTagIndex(
+	tableID uint64, indexID uint64, curVersion, newVersion uint32, transactionID []byte,
+) error {
+	status := C.TSDropNormalTagIndex(r.tdb, C.TSTableID(tableID), C.uint64_t(indexID), goToCChar(transactionID), C.uint32_t(curVersion), C.uint32_t(newVersion))
+	runtime.KeepAlive(transactionID)
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "could not DropNormalTagIndex")
+	}
+	return nil
+}
+
+// AlterLifetime alter lifetime interval for this table.
+func (r *TsEngine) AlterLifetime(tableID uint64, lifeTime uint64) error {
+	r.checkOrWaitForOpen()
+	status := C.TSAlterLifetime(r.tdb, C.TSTableID(tableID), C.uint64_t(lifeTime))
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "failed to set table lifetime")
+	}
+	return nil
+}
+
+// AlterPartitionInterval alter partition interval for ts table.
+func (r *TsEngine) AlterPartitionInterval(tableID uint64, partitionInterval uint64) error {
+	r.checkOrWaitForOpen()
+	status := C.TSAlterPartitionInterval(r.tdb, C.TSTableID(tableID), C.uint64_t(partitionInterval))
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "could not AlterPartitionInterval")
+	}
+	return nil
+}
+
+// AlterTSColumnType alter column/tag type of ts table.
+func (r *TsEngine) AlterTSColumnType(
+	tableID uint64,
+	currentTSVersion, newTSVersion uint32,
+	transactionID []byte,
+	colMeta []byte,
+	originColMeta []byte,
+	isAlterType bool,
+	isAlterCompress bool,
+) error {
+	r.checkOrWaitForOpen()
+	status := C.TSAlterColumn(
+		r.tdb,
+		C.TSTableID(tableID),
+		goToCChar(transactionID),
+		goToTSSlice(colMeta),
+		goToTSSlice(originColMeta),
+		C.uint32_t(currentTSVersion),
+		C.uint32_t(newTSVersion),
+		C.bool(isAlterType),
+		C.bool(isAlterCompress),
+	)
+	runtime.KeepAlive(transactionID)
+	runtime.KeepAlive(colMeta)
+	runtime.KeepAlive(originColMeta)
+	if err := statusToError(status); err != nil {
+		return err
+	}
+	return nil
+}
+
+// PutEntity write in, update tag data and write in ts data
+func (r *TsEngine) PutEntity(
+	rangeGroupID uint64, tableID uint64, payload [][]byte, tsTxnID uint64, osnID uint64,
+) error {
+	if len(payload) == 0 {
+		return errors.New("payload is nul")
+	}
+
+	r.checkOrWaitForOpen()
+	cTsSlice := make([]C.TSSlice, len(payload))
+	for i, p := range payload {
+		if len(p) == 0 {
+			cTsSlice[i].data = nil
+			cTsSlice[i].len = 0
+		} else {
+			dataPtr := C.CBytes(p)
+			defer C.free(dataPtr)
+
+			cTsSlice[i].data = (*C.char)(dataPtr)
+			cTsSlice[i].len = C.size_t(len(p))
+		}
+	}
+	// mock
+	cRangeGroup := C.RangeGroup{
+		range_group_id: C.uint64_t(rangeGroupID),
+		typ:            C.int8_t(0),
+	}
+	status := C.TSPutEntity(
+		r.tdb,
+		C.TSTableID(tableID),
+		&cTsSlice[0],
+		(C.size_t)(len(cTsSlice)),
+		cRangeGroup,
+		C.uint64_t(tsTxnID),
+		C.uint64_t(osnID))
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "could not PutEntity")
+	}
+	return nil
+}
+
+// PutData write in tag data and write in ts data
+func (r *TsEngine) PutData(
+	tableID uint64, payload [][]byte, tsTxnID uint64, writeWAL bool, transactionID []byte,
+) (DedupResult, EntitiesAffect, error) {
+	if len(payload) == 0 {
+		return DedupResult{}, EntitiesAffect{}, errors.New("payload is nul")
+	}
+
+	r.checkOrWaitForOpen()
+	cTsSlice := make([]C.TSSlice, len(payload))
+	for i, p := range payload {
+		if len(p) == 0 {
+			cTsSlice[i].data = nil
+			cTsSlice[i].len = 0
+		} else {
+			dataPtr := C.CBytes(p)
+			defer C.free(dataPtr)
+
+			cTsSlice[i].data = (*C.char)(dataPtr)
+			cTsSlice[i].len = C.size_t(len(p))
+		}
+	}
+	// mock
+	cRangeGroup := C.RangeGroup{
+		range_group_id: C.uint64_t(101),
+		typ:            C.int8_t(0),
+	}
+
+	var dedupResult *C.DedupResult
+	var affect EntitiesAffect
+	var entitiesAffected *C.uint16_t
+	var unorderedAffected *C.uint32_t
+	dedupResult = (*C.DedupResult)(C.malloc(C.size_t(unsafe.Sizeof(C.DedupResult{}))))
+	defer C.free(unsafe.Pointer(dedupResult))
+	C.memset(unsafe.Pointer(dedupResult), 0, C.size_t(unsafe.Sizeof(C.DedupResult{})))
+	entitiesAffected = (*C.uint16_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint16_t(0)))))
+	defer C.free(unsafe.Pointer(entitiesAffected))
+	unorderedAffected = (*C.uint32_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint32_t(0)))))
+	defer C.free(unsafe.Pointer(unorderedAffected))
+	(*entitiesAffected) = 0
+	(*unorderedAffected) = 0
+	var status C.TSStatus
+	if len(transactionID) > 0 {
+		status = C.TSPutDataByRowTypeExplicit(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
+			entitiesAffected, unorderedAffected, dedupResult, C.bool(writeWAL), goToCChar(transactionID))
+		runtime.KeepAlive(transactionID)
+	} else {
+		status = C.TSPutDataByRowType(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
+			entitiesAffected, unorderedAffected, dedupResult, C.bool(writeWAL))
+	}
+	if err := statusToError(status); err != nil {
+		return DedupResult{}, EntitiesAffect{}, errors.Wrap(err, "could not PutData")
+	}
+
+	res := DedupResult{
+		DedupRule:     int((*dedupResult).dedup_rule),
+		DedupRows:     int((*dedupResult).dedup_rows),
+		DiscardBitmap: cSliceToGoBytes((*dedupResult).discard_bitmap),
+	}
+	defer C.free(unsafe.Pointer((*dedupResult).discard_bitmap.data))
+	affect.EntityCount = uint16(*entitiesAffected)
+	affect.UnorderedCount = uint32(*unorderedAffected)
+	return res, affect, nil
+}
+
+const (
+	tsPayloadVersionSize   = 4
+	tsPayloadDBIDSize      = 4
+	tsPayloadTableIDSize   = 8
+	tsPayloadTSVersionSize = 4
+	tsPayloadRowNumSize    = 4
+	tsPayloadRowTypeSize   = 1
+
+	tsPayloadVersionOffset   = sqlbase.RangeGroupIDOffset + sqlbase.RangeGroupIDSize
+	tsPayloadDBIDOffset      = tsPayloadVersionOffset + tsPayloadVersionSize
+	tsPayloadTableIDOffset   = tsPayloadDBIDOffset + tsPayloadDBIDSize
+	tsPayloadTSVersionOffset = tsPayloadTableIDOffset + tsPayloadTableIDSize
+	tsPayloadRowNumOffset    = tsPayloadTSVersionOffset + tsPayloadTSVersionSize
+	tsPayloadRowTypeOffset   = tsPayloadRowNumOffset + tsPayloadRowNumSize
+	tsPayloadHeadSize        = tsPayloadRowTypeOffset + tsPayloadRowTypeSize
+
+	tsPayloadPTagLenSize = 2
+	tsPayloadTagLenSize  = 4
+	tsPayloadDataLenSize = 4
+	tsPayloadVersionV2   = 2
+)
+
+func tsPayloadPrefixBaseLen(headerPrefix []byte) int {
+	if len(headerPrefix) < tsPayloadHeadSize+tsPayloadPTagLenSize {
+		return len(headerPrefix)
+	}
+	ptagLen := int(binary.LittleEndian.Uint16(headerPrefix[tsPayloadHeadSize:]))
+	tagLenOffset := tsPayloadHeadSize + tsPayloadPTagLenSize + ptagLen
+	if len(headerPrefix) < tagLenOffset+tsPayloadTagLenSize {
+		return len(headerPrefix)
+	}
+	tagLen := int(binary.LittleEndian.Uint32(headerPrefix[tagLenOffset:]))
+	baseLen := tagLenOffset + tsPayloadTagLenSize + tagLen
+	if baseLen > len(headerPrefix) {
+		return len(headerPrefix)
+	}
+	return baseLen
+}
+
+func putRowDataLayout(headerPrefix []byte) (uint32, int, int) {
+	payloadVersion := binary.LittleEndian.Uint32(
+		headerPrefix[tsPayloadVersionOffset : tsPayloadVersionOffset+tsPayloadVersionSize],
+	)
+	if payloadVersion != tsPayloadVersionV2 {
+		return payloadVersion, len(headerPrefix), 0
+	}
+	basePrefixLen := tsPayloadPrefixBaseLen(headerPrefix)
+	return payloadVersion, basePrefixLen, len(headerPrefix) - basePrefixLen
+}
+
+// PutRowData 行存tags值和时序数据写入
+func (r *TsEngine) PutRowData(
+	tableID uint64,
+	headerPrefix []byte,
+	payload [][]byte,
+	size int32,
+	tsTxnID uint64,
+	writeWAL bool,
+	transactionID []byte,
+) (DedupResult, EntitiesAffect, error) {
+	if len(payload) == 0 {
+		return DedupResult{}, EntitiesAffect{}, errors.New("payload is nul")
+	}
+
+	r.checkOrWaitForOpen()
+	sizeLimit := int32(TsPayloadSizeLimit.Get(&r.cfg.Settings.SV))
+	var cTsSlice C.TSSlice
+	// The structure of HeaderPrefix:
+	// v1: | Header | primary_tag_len | primary_tag | tag_len | tags |
+	// v2: | Header | primary_tag_len | primary_tag | tag_len | tags | data_row_type | valid_col_flag |
+	// Header: | txn(16) | group_id(2) | payload_version(4) | database_id(4) | table_id(8) | ts_version(4) | row_num(4) | flags(1) |
+
+	headerLen := len(headerPrefix)
+	cTsSlice.data = (*C.char)(C.malloc(C.size_t(int(size) + headerLen + tsPayloadDataLenSize)))
+	if cTsSlice.data == nil {
+		return DedupResult{}, EntitiesAffect{}, errors.New("failed malloc")
+	}
+	defer C.free(unsafe.Pointer(cTsSlice.data))
+
+	payloadVersion, basePrefixLen, dataHeaderLen := putRowDataLayout(headerPrefix)
+	if payloadVersion == tsPayloadVersionV2 {
+		C.memcpy(unsafe.Pointer(cTsSlice.data), unsafe.Pointer(&headerPrefix[0]), C.size_t(basePrefixLen))
+		if dataHeaderLen > 0 {
+			C.memcpy(
+				unsafe.Pointer(uintptr(unsafe.Pointer(cTsSlice.data))+uintptr(basePrefixLen+tsPayloadDataLenSize)),
+				unsafe.Pointer(&headerPrefix[basePrefixLen]),
+				C.size_t(dataHeaderLen),
+			)
+		}
+	} else {
+		C.memcpy(unsafe.Pointer(cTsSlice.data), unsafe.Pointer(&headerPrefix[0]), C.size_t(headerLen))
+	}
+	dataPtr := uintptr(unsafe.Pointer(cTsSlice.data)) + uintptr(basePrefixLen) // pointer to the data_len
+
+	// mock
+	cRangeGroup := C.RangeGroup{
+		range_group_id: C.uint64_t(1),
+		typ:            C.int8_t(0),
+	}
+	payloadPtr := dataPtr + uintptr(tsPayloadDataLenSize+dataHeaderLen)
+	payloadSize := 0
+	partRowCnt := 0
+	totalRowCnt := len(payload)
+	var res DedupResult
+	var affect EntitiesAffect
+	flushPayload := func(payloadSize int, partRowCnt int, captureDiscard bool) error {
+		if partRowCnt == 0 {
+			return nil
+		}
+		// fill data_len
+		*(*int32)(unsafe.Pointer(dataPtr)) = int32(payloadSize + dataHeaderLen)
+		// fill row_num
+		*(*int32)(unsafe.Pointer(uintptr(unsafe.Pointer(cTsSlice.data)) + uintptr(tsPayloadRowNumOffset))) = int32(partRowCnt)
+		// set tsSlice len
+		cTsSlice.len = C.size_t(basePrefixLen + tsPayloadDataLenSize + dataHeaderLen + payloadSize)
+		dedupResult := (*C.DedupResult)(C.malloc(C.size_t(unsafe.Sizeof(C.DedupResult{}))))
+		if dedupResult == nil {
+			return errors.New("failed malloc")
+		}
+		defer C.free(unsafe.Pointer(dedupResult))
+		C.memset(unsafe.Pointer(dedupResult), 0, C.size_t(unsafe.Sizeof(C.DedupResult{})))
+		entitiesAffected := (*C.uint16_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint16_t(0)))))
+		if entitiesAffected == nil {
+			return errors.New("failed malloc")
+		}
+		defer C.free(unsafe.Pointer(entitiesAffected))
+		unorderedAffected := (*C.uint32_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint32_t(0)))))
+		if unorderedAffected == nil {
+			return errors.New("failed malloc")
+		}
+		defer C.free(unsafe.Pointer(unorderedAffected))
+		(*entitiesAffected) = 0
+		(*unorderedAffected) = 0
+		var status C.TSStatus
+		if len(transactionID) > 0 {
+			status = C.TSPutDataByRowTypeExplicit(r.tdb, C.TSTableID(tableID), &cTsSlice, (C.size_t)(1), cRangeGroup, C.uint64_t(tsTxnID),
+				entitiesAffected, unorderedAffected, dedupResult, C.bool(writeWAL), goToCChar(transactionID))
+			runtime.KeepAlive(transactionID)
+		} else {
+			status = C.TSPutDataByRowType(r.tdb, C.TSTableID(tableID), &cTsSlice, (C.size_t)(1), cRangeGroup, C.uint64_t(tsTxnID),
+				entitiesAffected, unorderedAffected, dedupResult, C.bool(writeWAL))
+		}
+
+		if err := statusToError(status); err != nil {
+			return errors.Wrap(err, "could not PutData")
+		}
+
+		res.DedupRows += int((*dedupResult).dedup_rows)
+		if captureDiscard {
+			res.DedupRule = int((*dedupResult).dedup_rule)
+			// the DiscardBitmap is not complete if the payload is truncated due to the size limit.
+			res.DiscardBitmap = cSliceToGoBytes((*dedupResult).discard_bitmap)
+		}
+		affect.EntityCount += uint16(*entitiesAffected)
+		affect.UnorderedCount += uint32(*unorderedAffected)
+		C.free(unsafe.Pointer((*dedupResult).discard_bitmap.data))
+		return nil
+	}
+	for i := 0; i < totalRowCnt; i++ {
+		p := payload[i]
+		if len(p) == 0 {
+			continue
+		}
+		partLen := len(p)
+		if sizeLimit > 0 && partRowCnt > 0 && payloadSize+partLen > int(sizeLimit) {
+			if err := flushPayload(payloadSize, partRowCnt, false); err != nil {
+				return DedupResult{}, EntitiesAffect{}, err
+			}
+			payloadSize = 0
+			payloadPtr = dataPtr + uintptr(tsPayloadDataLenSize+dataHeaderLen)
+			partRowCnt = 0
+		}
+		payloadSize += partLen
+		partRowCnt++
+		C.memcpy(unsafe.Pointer(payloadPtr), unsafe.Pointer(&p[0]), C.size_t(partLen))
+		payloadPtr += uintptr(partLen)
+	}
+
+	if err := flushPayload(payloadSize, partRowCnt, true); err != nil {
+		return DedupResult{}, EntitiesAffect{}, err
+	}
+
+	return res, affect, nil
+}
+
+// GetDataVolume gets DataVolume for ts range.
+// should not call this for relational ranges.
+func (r *TsEngine) GetDataVolume(
+	tableID uint64, startHashPoint, endHashPoint uint64, startTimestamp, endTimestamp int64,
+) (uint64, error) {
+	r.checkOrWaitForOpen()
+	var volume *C.uint64_t
+	volume = (*C.uint64_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint64_t(0)))))
+	defer C.free(unsafe.Pointer(volume))
+	*volume = 0
+	status := C.TSGetDataVolume(
+		r.tdb,
+		C.TSTableID(tableID),
+		C.uint64_t(startHashPoint),
+		C.uint64_t(endHashPoint),
+		C.KwTsSpan{
+			begin: C.int64_t(startTimestamp),
+			end:   C.int64_t(endTimestamp),
+		},
+		volume,
+	)
+	if err := statusToError(status); err != nil {
+		log.Errorf(context.TODO(), "GetDataVolume failed. err is :%+v. tableID: %d startHashPoint: %d, endHashPoint:%d startTimeStamp: %d, endTimeStamp: %d",
+			err, tableID, startHashPoint, endHashPoint, startTimestamp, endTimestamp)
+		return 0, errors.Wrap(err, "get data Volume failed")
+	}
+	return uint64(*volume), nil
+}
+
+// GetDataVolumeHalfTS returns haslTS
+func (r *TsEngine) GetDataVolumeHalfTS(
+	tableID uint64, startHashPoint, endHashPoint uint64, startTimestamp, endTimestamp int64,
+) (int64, error) {
+	r.checkOrWaitForOpen()
+	var halfTimestamp *C.int64_t
+	halfTimestamp = (*C.int64_t)(C.malloc(C.size_t(unsafe.Sizeof(C.int64_t(0)))))
+	defer C.free(unsafe.Pointer(halfTimestamp))
+	*halfTimestamp = 0
+	status := C.TSGetDataVolumeHalfTS(
+		r.tdb,
+		C.TSTableID(tableID),
+		C.uint64_t(startHashPoint),
+		C.uint64_t(endHashPoint),
+		C.KwTsSpan{
+			begin: C.int64_t(startTimestamp),
+			end:   C.int64_t(endTimestamp),
+		},
+		halfTimestamp,
+	)
+	if err := statusToError(status); err != nil {
+		return 0, errors.Wrap(err, "get half timestamp data Volume failed")
+	}
+
+	return int64(*halfTimestamp), nil
+}
+
+// GetAvgTableRowSize gets AvgTableRowSize
+func (r *TsEngine) GetAvgTableRowSize(tableID uint64) (uint64, error) {
+	r.checkOrWaitForOpen()
+	var avgRowSize *C.uint64_t
+	avgRowSize = (*C.uint64_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint64_t(0)))))
+	defer C.free(unsafe.Pointer(avgRowSize))
+	*avgRowSize = 0
+	status := C.TSGetAvgTableRowSize(
+		r.tdb,
+		C.TSTableID(tableID),
+		avgRowSize,
+	)
+	if err := statusToError(status); err != nil {
+		return 0, errors.Wrap(err, "get avg table row size failed")
+	}
+	return uint64(*avgRowSize), nil
+}
+
+// TsFetcher collect information in explain analyse
+type TsFetcher struct {
+	Collected bool
+	CFetchers []C.TsFetcher
+	Size      int
+}
+
+// TsFetcherStats collect information in explain analyse
+type TsFetcherStats struct {
+	ProcessorID          int32
+	ProcessorName        int8
+	RowNum               int64
+	StallTime            int64   // time of execute
+	BytesRead            int64   // byte of rows
+	MaxAllocatedMem      int64   // maximum number of memory
+	MaxAllocatedDisk     int64   // Maximum number of disk
+	OutputRowNum         int64   // row of aggregation
+	MemoryBlockCount     int32   // scanned memory block count
+	LastBlockCount       int32   // scanned last block count
+	EntityBlockCount     int64   // scanned entity block count
+	PartitionAggCount    int64   // partition pre-aggregation usage count
+	BlockCacheHitRatio   float32 //entity block cache hit ratio
+	BlockBytes           int64   // scanned block bytes
+	AggBytes             int64   // scanned agg bytes
+	HeaderBytes          int64   // scanned header bytes
+	BlockPreAggHitCount  int64   // block count that used block pre-aggregation
+	BlockPreAggMissCount int64   // block count that fell back to raw aggregation
+	// BuildTime only be used for hash tag scan op for multiple model processing
+	// when the switch is on and the server starts with single node mode.
+	BuildTime int64 // hash tag build time
+}
+
+// sendDmlMsgToTs call the tsengine dml interface to issue a request and return the result
+func (r *TsEngine) tsExecute(
+	ctx *context.Context, tp C.EnMqType, tsQueryInfo TsQueryInfo,
+) (tsRespInfo TsQueryInfo, err error) {
+	if len(tsQueryInfo.Buf) == 0 {
+		return tsRespInfo, errors.New("query buf is nul")
+	}
+	var queryInfo *C.QueryInfo
+	queryInfo = (*C.QueryInfo)(C.malloc(C.size_t(unsafe.Sizeof(C.QueryInfo{}))))
+	C.memset(unsafe.Pointer(queryInfo), 0, C.size_t(unsafe.Sizeof(C.QueryInfo{})))
+	defer C.free(unsafe.Pointer(queryInfo))
+	bufC := C.CBytes(tsQueryInfo.Buf)
+	defer C.free(unsafe.Pointer(bufC))
+	(*queryInfo).value = bufC
+	(*queryInfo).len = C.uint(len(tsQueryInfo.Buf))
+	(*queryInfo).tp = tp
+	(*queryInfo).id = C.int(tsQueryInfo.ID)
+	(*queryInfo).handle = tsQueryInfo.Handle
+	(*queryInfo).unique_id = C.int(tsQueryInfo.UniqueID)
+	(*queryInfo).time_zone = C.int(tsQueryInfo.TimeZone)
+	var cTzNameSlice C.TSSlice
+	(*queryInfo).use_dst = C.bool(tsQueryInfo.UseDST)
+	if (*queryInfo).use_dst && tsQueryInfo.TimeZoneName != "" {
+		tzNameBytes := []byte(tsQueryInfo.TimeZoneName)
+		cTzName := C.CBytes(tzNameBytes)
+		defer C.free(unsafe.Pointer(cTzName))
+		cTzNameSlice = C.TSSlice{
+			data: (*C.char)(cTzName),
+			len:  C.size_t(len(tzNameBytes)),
+		}
+		(*queryInfo).time_zone_name = cTzNameSlice
+	}
+	/*
+		cTsSlice := C.TSSlice{
+			data: C.CString(tsQueryInfo.SQL),
+			len:  C.size_t(len(tsQueryInfo.SQL)),
+		}
+		defer C.free(unsafe.Pointer(cTsSlice.data))
+		(*queryInfo).sql = cTsSlice
+	*/
+	// process push data for batch lookup join for multiple model processing
+	// only store the data chunk pointer into tsQueryInfo and push it down to tse
+	// when the switch is on and the server starts with single node mode.
+	dataChunk := tsQueryInfo.PushData
+	if dataChunk != nil {
+		pushDatabufC := C.CBytes(dataChunk.Data)
+		(*queryInfo).relRowCount = C.int(dataChunk.RowCount)
+		defer C.free(unsafe.Pointer(pushDatabufC))
+		(*queryInfo).relBatchData = pushDatabufC
+		dataChunk = nil // clean datachunk
+	}
+
+	var vecFetcher *C.VecTsFetcher
+	vecFetcher = nil
+	if tsQueryInfo.Fetcher.Collected {
+		vecFetcher = (*C.VecTsFetcher)(C.malloc(C.size_t(unsafe.Sizeof(C.VecTsFetcher{}))))
+		(*vecFetcher).collected = C.bool(true)
+		(*vecFetcher).size = C.int8_t(tsQueryInfo.Fetcher.Size)
+		tsFetcherSize := unsafe.Sizeof(C.TsFetcher{})
+		vsize := C.size_t((*vecFetcher).size) * C.size_t(tsFetcherSize)
+		(*vecFetcher).TsFetchers = (*C.TsFetcher)(C.malloc(vsize))
+		C.memset(unsafe.Pointer((*vecFetcher).TsFetchers), 0, vsize)
+		for i := 0; i < tsQueryInfo.Fetcher.Size; i++ {
+			elemPtr := (*C.TsFetcher)(unsafe.Pointer(
+				uintptr(unsafe.Pointer((*vecFetcher).TsFetchers)) + uintptr(i)*tsFetcherSize,
+			))
+			(*elemPtr).processor_id = tsQueryInfo.Fetcher.CFetchers[i].processor_id
+		}
+	}
+	var retInfo *C.QueryInfo
+	retInfo = (*C.QueryInfo)(C.malloc(C.size_t(unsafe.Sizeof(C.QueryInfo{}))))
+	C.memset(unsafe.Pointer(retInfo), 0, C.size_t(unsafe.Sizeof(C.QueryInfo{})))
+	defer C.free(unsafe.Pointer(retInfo))
+	(*retInfo).value = nil
+	status := C.TSExecQuery(r.tdb, queryInfo, retInfo, vecFetcher)
+	if retErr := statusToError(status); retErr != nil {
+		// log.Errorf(context.TODO(), "failed to execute query")
+	}
+	tsRespInfo.Fetcher = tsQueryInfo.Fetcher
+	if tsQueryInfo.Fetcher.Collected {
+		tsFetcherSize := unsafe.Sizeof(C.TsFetcher{})
+		for i := 0; i < tsQueryInfo.Fetcher.Size; i++ {
+			elemPtr := (*C.TsFetcher)(unsafe.Pointer(
+				uintptr(unsafe.Pointer((*vecFetcher).TsFetchers)) + uintptr(i)*tsFetcherSize,
+			))
+			tsRespInfo.Fetcher.CFetchers[i] = *elemPtr
+		}
+		C.free(unsafe.Pointer((*vecFetcher).TsFetchers))
+		C.free(unsafe.Pointer(vecFetcher))
+	}
+	tsRespInfo.ID = int((*retInfo).id)
+	tsRespInfo.UniqueID = int((*retInfo).unique_id)
+	tsRespInfo.Handle = unsafe.Pointer((*retInfo).handle)
+	tsRespInfo.Code = int((*retInfo).code)
+	tsRespInfo.RowNum = int((*retInfo).row_num)
+	if unsafe.Pointer((*retInfo).value) != nil {
+		tsRespInfo.Buf = C.GoBytes(unsafe.Pointer((*retInfo).value), C.int((*retInfo).len))
+		C.TSFree(unsafe.Pointer((*retInfo).value))
+	}
+	if (*retInfo).ret < 1 {
+		if (*retInfo).len > 0 {
+			strCode := make([]byte, 5)
+			code := uint32(tsRespInfo.Code)
+			for i := 0; i < 5; i++ {
+				strCode[i] = byte((code & 0x3F) + '0')
+				code = code >> 6
+			}
+			err = pgerror.Newf(string(strCode), string(tsRespInfo.Buf))
+		} else {
+			err = fmt.Errorf("Error Code: %d", tsRespInfo.Code)
+		}
+	}
+	return tsRespInfo, err
+}
+
+// tsVectorizedExecute Vectorized tsengine.go:137Execute
+func (r *TsEngine) tsVectorizedExecute(
+	ctx *context.Context, tp C.EnMqType, tsQueryInfo TsQueryInfo, rev *TsDataChunkToGo,
+) (tsRespInfo TsQueryInfo, err error) {
+	if len(tsQueryInfo.Buf) == 0 {
+		return tsRespInfo, errors.New("query buf is nul")
+	}
+	var queryInfo C.QueryInfo
+	bufC := C.CBytes(tsQueryInfo.Buf)
+	defer C.free(unsafe.Pointer(bufC))
+	queryInfo.value = bufC
+	queryInfo.len = C.uint(len(tsQueryInfo.Buf))
+	queryInfo.tp = tp
+	queryInfo.id = C.int(tsQueryInfo.ID)
+	queryInfo.handle = tsQueryInfo.Handle
+	queryInfo.unique_id = C.int(tsQueryInfo.UniqueID)
+	queryInfo.time_zone = C.int(tsQueryInfo.TimeZone)
+	queryInfo.relation_ctx = C.uint64_t(uintptr(unsafe.Pointer(ctx)))
+	// process push data for batch lookup join for multiple model processing
+	// only store the data chunk pointer into tsQueryInfo and push it down to tse
+	// when the switch is on and the server starts with single node mode.
+	dataChunk := tsQueryInfo.PushData
+	if dataChunk != nil {
+		pushDatabufC := C.CBytes(dataChunk.Data)
+		queryInfo.relRowCount = C.int(dataChunk.RowCount)
+		defer C.free(unsafe.Pointer(pushDatabufC))
+		queryInfo.relBatchData = pushDatabufC
+		dataChunk = nil // clean datachunk
+	}
+
+	var vecFetcher *C.VecTsFetcher
+	vecFetcher = nil
+	if tsQueryInfo.Fetcher.Collected {
+		vecFetcher = (*C.VecTsFetcher)(C.malloc(C.size_t(unsafe.Sizeof(C.VecTsFetcher{}))))
+		(*vecFetcher).collected = C.bool(true)
+		(*vecFetcher).size = C.int8_t(tsQueryInfo.Fetcher.Size)
+		tsFetcherSize := unsafe.Sizeof(C.TsFetcher{})
+		vsize := C.size_t((*vecFetcher).size) * C.size_t(tsFetcherSize)
+		(*vecFetcher).TsFetchers = (*C.TsFetcher)(C.malloc(vsize))
+		C.memset(unsafe.Pointer((*vecFetcher).TsFetchers), 0, vsize)
+		for i := 0; i < tsQueryInfo.Fetcher.Size; i++ {
+			elemPtr := (*C.TsFetcher)(unsafe.Pointer(
+				uintptr(unsafe.Pointer((*vecFetcher).TsFetchers)) + uintptr(i)*tsFetcherSize,
+			))
+			(*elemPtr).processor_id = tsQueryInfo.Fetcher.CFetchers[i].processor_id
+		}
+	}
+	var retInfo C.QueryInfo
+	retInfo.value = nil
+	status := C.TSExecQuery(r.tdb, &queryInfo, &retInfo, vecFetcher)
+	if retErr := statusToError(status); retErr != nil {
+		// log.Errorf(context.TODO(), "failed to execute query")
+	}
+	tsRespInfo.Fetcher = tsQueryInfo.Fetcher
+	if tsQueryInfo.Fetcher.Collected {
+		tsFetcherSize := unsafe.Sizeof(C.TsFetcher{})
+		for i := 0; i < tsQueryInfo.Fetcher.Size; i++ {
+			elemPtr := (*C.TsFetcher)(unsafe.Pointer(
+				uintptr(unsafe.Pointer((*vecFetcher).TsFetchers)) + uintptr(i)*tsFetcherSize,
+			))
+			tsRespInfo.Fetcher.CFetchers[i] = *elemPtr
+		}
+		C.free(unsafe.Pointer((*vecFetcher).TsFetchers))
+		C.free(unsafe.Pointer(vecFetcher))
+	}
+	tsRespInfo.ID = int(retInfo.id)
+	tsRespInfo.UniqueID = int(retInfo.unique_id)
+	tsRespInfo.Handle = unsafe.Pointer(retInfo.handle)
+	tsRespInfo.Code = int(retInfo.code)
+	tsRespInfo.RowNum = int(retInfo.row_num)
+
+	if tsRespInfo.RowNum > 0 {
+		capacity := rev.Capacity
+		rev.Begin = 0
+		rev.ColumnNum = uint32(retInfo.vectorize_data.column_num_)
+		rev.BitmapSize = uint32(retInfo.vectorize_data.bitmap_size_)
+		rev.RowSize = uint32(retInfo.vectorize_data.row_size_)
+		rev.DataCount = uint32(retInfo.vectorize_data.data_count_)
+		rev.Capacity = uint32(retInfo.vectorize_data.capacity_)
+		rev.IsDataOwner = bool(retInfo.vectorize_data.is_data_owner_)
+		if nil == rev.Column {
+			rev.Column = make([]TsColumnInfoToGo, rev.ColumnNum)
+			for i := 0; i < int(rev.ColumnNum); i++ {
+				cData := (*C.TsColumnInfo)(unsafe.Pointer(uintptr(unsafe.Pointer(retInfo.vectorize_data.column_)) + uintptr(i)*unsafe.Sizeof(*(retInfo.vectorize_data.column_))))
+
+				rev.Column[i].FixedLen = uint32(cData.fixed_len_)
+				rev.Column[i].ReturnType = types.Family(cData.return_type_)
+				rev.Column[i].StorageLen = uint32(cData.storage_len_)
+				rev.Column[i].StorageType = sqlbase.DataType(cData.storage_type_)
+			}
+		}
+
+		if nil == rev.Data || rev.Capacity > capacity {
+			if nil == rev.Data {
+				rev.Data = make([]coldata.Vec, rev.ColumnNum)
+			}
+			for i := range rev.NeedType {
+				rev.Data[i] = coldata.NewMemColumn(rev.NeedType[i], int(rev.Capacity))
+			}
+		}
+
+		for i := range rev.NeedType {
+			if err != nil {
+				break
+			}
+			coli := rev.Column[i]
+			colData := (*C.TsColumnData)(unsafe.Pointer(uintptr(unsafe.Pointer(retInfo.vectorize_data.column_data_)) + uintptr(i)*unsafe.Sizeof(*(retInfo.vectorize_data.column_data_))))
+			length := C.size_t(rev.DataCount) * C.size_t(coli.FixedLen)
+			nullBit := C.GoBytes(unsafe.Pointer(colData.bitmap_ptr_), C.int(rev.BitmapSize))
+			for k := range nullBit {
+				nullBit[k] ^= 0xff
+			}
+			rev.Data[i].Nulls().CopyNullsBitmap(nullBit, int(rev.BitmapSize))
+			if coli.StorageType == sqlbase.DataType_NULLVAL {
+				continue
+			}
+
+			switch coli.ReturnType {
+			case types.BoolFamily:
+				C.memcpy(unsafe.Pointer(&(rev.Data[i].Bool()[0])), colData.data_ptr_, length)
+			case types.IntFamily:
+				switch coli.FixedLen {
+				case 1, 2:
+					if rev.Data[i].Type() == coltypes.Int32 || rev.Data[i].Type() == coltypes.Int64 {
+						ioBuf := bytes.NewReader(C.GoBytes(unsafe.Pointer(colData.data_ptr_), C.int(length)))
+						for j := 0; uint32(j) < rev.DataCount; j++ {
+							var value int16
+							err = binary.Read(ioBuf, binary.LittleEndian, &value)
+							if err != nil {
+								fmt.Println("Error reading bytes:", err)
+								break
+							}
+							if rev.Data[i].Type() == coltypes.Int32 {
+								rev.Data[i].Int32()[j] = int32(value)
+							} else {
+								rev.Data[i].Int64()[j] = int64(value)
+							}
+						}
+					} else {
+						C.memcpy(unsafe.Pointer(&(rev.Data[i].Int16()[0])), colData.data_ptr_, length)
+					}
+				case 4:
+					if rev.Data[i].Type() == coltypes.Int16 || rev.Data[i].Type() == coltypes.Int64 {
+						ioBuf := bytes.NewReader(C.GoBytes(unsafe.Pointer(colData.data_ptr_), C.int(length)))
+						for j := 0; uint32(j) < rev.DataCount; j++ {
+							var value int32
+							err = binary.Read(ioBuf, binary.LittleEndian, &value)
+							if err != nil {
+								fmt.Println("Error reading bytes:", err)
+								break
+							}
+							if rev.Data[i].Type() == coltypes.Int16 {
+								rev.Data[i].Int16()[j] = int16(value)
+							} else {
+								rev.Data[i].Int64()[j] = int64(value)
+							}
+						}
+					} else {
+						C.memcpy(unsafe.Pointer(&(rev.Data[i].Int32()[0])), colData.data_ptr_, length)
+					}
+				default:
+					if rev.Data[i].Type() == coltypes.Int16 || rev.Data[i].Type() == coltypes.Int32 {
+						ioBuf := bytes.NewReader(C.GoBytes(unsafe.Pointer(colData.data_ptr_), C.int(length)))
+						for j := 0; uint32(j) < rev.DataCount; j++ {
+							var value int64
+							err = binary.Read(ioBuf, binary.LittleEndian, &value)
+							if err != nil {
+								fmt.Println("Error reading bytes:", err)
+								break
+							}
+							if rev.Data[i].Type() == coltypes.Int16 {
+								rev.Data[i].Int16()[j] = int16(value)
+							} else {
+								rev.Data[i].Int32()[j] = int32(value)
+							}
+						}
+					} else {
+						C.memcpy(unsafe.Pointer(&(rev.Data[i].Int64()[0])), colData.data_ptr_, length)
+					}
+				}
+			case types.FloatFamily:
+				switch coli.FixedLen {
+				case 4:
+					ioBuf := bytes.NewReader(C.GoBytes(unsafe.Pointer(colData.data_ptr_), C.int(length)))
+					for j := 0; uint32(j) < rev.DataCount; j++ {
+						var value float32
+						err = binary.Read(ioBuf, binary.LittleEndian, &value)
+						if err != nil {
+							fmt.Println("Error reading bytes:", err)
+							break
+						}
+						rev.Data[i].Float64()[j] = float64(value)
+					}
+				case 8:
+					C.memcpy(unsafe.Pointer(&(rev.Data[i].Float64()[0])), colData.data_ptr_, length)
+				}
+			case types.DecimalFamily:
+				switch coli.StorageType {
+				case sqlbase.DataType_BIGINT:
+					ioBuf := bytes.NewReader(C.GoBytes(unsafe.Pointer(colData.data_ptr_), C.int(length)))
+					var value int64
+					for j := 0; uint32(j) < rev.DataCount; j++ {
+						err = binary.Read(ioBuf, binary.LittleEndian, &value)
+						if err != nil {
+							fmt.Println("Error reading bytes:", err)
+							break
+						}
+						rev.Data[i].Decimal()[j].SetInt64(value)
+					}
+				case sqlbase.DataType_DOUBLE:
+					ioBuf := bytes.NewReader(C.GoBytes(unsafe.Pointer(colData.data_ptr_), C.int(length)))
+					var value float64
+					for j := 0; uint32(j) < rev.DataCount; j++ {
+						err = binary.Read(ioBuf, binary.LittleEndian, &value)
+						if err != nil {
+							fmt.Println("Error reading bytes:", err)
+							break
+						}
+						newDecimal, _, err := apd.NewFromString(strconv.FormatFloat(value, 'f', -1, 64))
+						if err != nil {
+							fmt.Println("Error reading bytes:", err)
+							break
+						}
+						rev.Data[i].Decimal()[j].Set(newDecimal)
+					}
+				case sqlbase.DataType_DECIMAL:
+					ioBuf := bytes.NewReader(C.GoBytes(unsafe.Pointer(colData.data_ptr_), C.int(length)))
+					val := make([]byte, uint32(coli.FixedLen))
+					for j := 0; uint32(j) < rev.DataCount; j++ {
+						err = binary.Read(ioBuf, binary.LittleEndian, &val)
+						if err != nil {
+							fmt.Println("Error reading bytes:", err)
+							break
+						}
+						if val[0] != 1 {
+							var data int64
+							buf := bytes.NewReader(val[1:])
+							err := binary.Read(buf, binary.LittleEndian, &data)
+							if err != nil {
+								fmt.Println("Error reading int64:", err)
+								break
+							}
+							rev.Data[i].Decimal()[j].SetInt64(data)
+						} else {
+							bits := binary.LittleEndian.Uint64(val[1:])
+							data := math.Float64frombits(bits)
+							newDecimal, _, err := apd.NewFromString(strconv.FormatFloat(data, 'f', -1, 64))
+							if err != nil {
+								fmt.Println("Error reading bytes:", err)
+								break
+							}
+							rev.Data[i].Decimal()[j].Set(newDecimal)
+						}
+					}
+				}
+			case types.TimestampFamily, types.TimestampTZFamily:
+				var interval int64 = 1000
+				var sec int64
+				var nsec int64
+				switch coli.StorageType {
+				case sqlbase.DataType_TIMESTAMP_MICRO, sqlbase.DataType_TIMESTAMPTZ_MICRO:
+					interval = 1000000
+				case sqlbase.DataType_TIMESTAMP_NANO, sqlbase.DataType_TIMESTAMPTZ_NANO:
+					interval = 1000000000
+				}
+				src := coldata.NewMemColumn(coltypes.Int64, int(rev.DataCount))
+				C.memcpy(unsafe.Pointer(&(src.Int64()[0])), colData.data_ptr_, length)
+				for j := 0; uint32(j) < rev.DataCount; j++ {
+					val := src.Int64()[j]
+					if val < 0 && val%interval != 0 {
+						sec = val/interval - 1
+						nsec = ((val % interval) + interval) * (1000000000 / interval)
+					} else {
+						sec = val / interval
+						nsec = val % interval * (1000000000 / interval)
+					}
+					t := timeutil.Unix(sec, nsec)
+					rev.Data[i].Timestamp()[j] = t
+				}
+			case types.IntervalFamily:
+				ioBuf := bytes.NewReader(C.GoBytes(unsafe.Pointer(colData.data_ptr_), C.int(length)))
+				switch coli.StorageType {
+				case sqlbase.DataType_TIMESTAMP_MICRO, sqlbase.DataType_TIMESTAMPTZ_MICRO:
+					for j := 0; uint32(j) < rev.DataCount; j++ {
+						var value int64
+						err := binary.Read(ioBuf, binary.LittleEndian, &value)
+						if err != nil {
+							fmt.Println("Error reading int64:", err)
+							break
+						}
+						extraDays := value / (Day / 1000)
+						days := extraDays
+						value -= extraDays * (Day / 1000)
+						var nanos = value * 1000
+						var d duration.Duration = duration.DecodeDuration(0, days, nanos)
+						rev.Data[i].Interval()[j] = d
+					}
+				case sqlbase.DataType_TIMESTAMP_NANO, sqlbase.DataType_TIMESTAMPTZ_NANO:
+					for j := 0; uint32(j) < rev.DataCount; j++ {
+						var value int64
+						err := binary.Read(ioBuf, binary.LittleEndian, &value)
+						if err != nil {
+							fmt.Println("Error reading int64:", err)
+							break
+						}
+						extraDays := value / (Day / 1)
+						days := extraDays
+						value -= extraDays * (Day / 1)
+						var nanos = value * 1
+						var d duration.Duration = duration.DecodeDuration(0, days, nanos)
+						rev.Data[i].Interval()[j] = d
+					}
+				default:
+					for j := 0; uint32(j) < rev.DataCount; j++ {
+						var value int64
+						err := binary.Read(ioBuf, binary.LittleEndian, &value)
+						if err != nil {
+							fmt.Println("Error reading int64:", err)
+							break
+						}
+						extraDays := value / (Day / 1000000)
+						days := extraDays
+						value -= extraDays * (Day / 1000000)
+						var nanos = value * 1000000
+						var d duration.Duration = duration.DecodeDuration(0, days, nanos)
+						rev.Data[i].Interval()[j] = d
+					}
+				}
+			case types.BytesFamily, types.StringFamily:
+				rev.Data[i].Bytes().Reset()
+				colOffset := (*[1 << 30]int32)(unsafe.Pointer(colData.offset_))[: rev.DataCount+1 : rev.DataCount+1]
+				offset := make([]int32, rev.DataCount+1)
+				copy(offset[:], colOffset[:])
+				buf := C.GoBytes(unsafe.Pointer(colData.data_ptr_), C.int(offset[rev.DataCount]))
+				coldata.BytesFromArrowSerializationFormat(rev.Data[i].Bytes(), buf, offset)
+				C.free(unsafe.Pointer(colData.data_ptr_))
+				C.free(unsafe.Pointer(colData.offset_))
+			default:
+				err = fmt.Errorf("Unknown column return type")
+				break
+			}
+		}
+
+		if rev.IsDataOwner {
+			C.TsMemPoolFree(unsafe.Pointer(retInfo.vectorize_data.data_))
+		}
+		C.free(unsafe.Pointer(retInfo.vectorize_data.column_))
+		C.free(unsafe.Pointer(retInfo.vectorize_data.column_data_))
+	}
+	if retInfo.ret < 1 {
+		if retInfo.len > 0 {
+			strCode := make([]byte, 5)
+			code := uint32(tsRespInfo.Code)
+			for i := 0; i < 5; i++ {
+				strCode[i] = byte((code & 0x3F) + '0')
+				code = code >> 6
+			}
+			tsRespInfo.Buf = C.GoBytes(unsafe.Pointer(retInfo.value), C.int(retInfo.len))
+			C.free(unsafe.Pointer(retInfo.value))
+			err = pgerror.Newf(string(strCode), string(tsRespInfo.Buf))
+		} else {
+			err = fmt.Errorf("Error Code: %d", tsRespInfo.Code)
+		}
+	}
+
+	return tsRespInfo, err
+}
+
+func freeTSSlice(cTsSlice []C.TSSlice) {
+	for _, slice := range cTsSlice {
+		if slice.data != nil {
+			C.free(unsafe.Pointer(slice.data))
+		}
+	}
+}
+
+// GetValidColumns returns the union of valid columns for the given primary tags
+func (r *TsEngine) GetValidColumns(
+	tableID uint64, tableVersion uint32, primaryTags [][]byte,
+) ([]uint32, error) {
+	if len(primaryTags) == 0 {
+		return nil, errors.New("primaryTags is empty")
+	}
+
+	r.checkOrWaitForOpen()
+	cTsSlice := make([]C.TSSlice, len(primaryTags))
+	defer freeTSSlice(cTsSlice)
+	for i, p := range primaryTags {
+		if len(p) == 0 {
+			cTsSlice[i].data = nil
+			cTsSlice[i].len = 0
+		} else {
+			dataPtr := C.CBytes(p)
+			cTsSlice[i].data = (*C.char)(dataPtr)
+			cTsSlice[i].len = C.size_t(len(p))
+		}
+	}
+
+	cValidColumns := C.ValidColumns{}
+	status := C.TsGetValidColumns(r.tdb, C.TSTableID(tableID), C.uint32_t(tableVersion), &cTsSlice[0], (C.size_t)(len(cTsSlice)), &cValidColumns)
+	if err := statusToError(status); err != nil {
+		return nil, errors.Wrap(err, "could not GetValidColumns")
+	}
+	defer C.free(unsafe.Pointer(cValidColumns.valid_column))
+
+	if cValidColumns.len <= 0 || cValidColumns.valid_column == nil {
+		return nil, nil
+	}
+
+	result := make([]uint32, int(cValidColumns.len))
+	const maxArrayLen = 1<<31 - 1
+	cArr := (*[maxArrayLen]C.uint32_t)(unsafe.Pointer(cValidColumns.valid_column))[:cValidColumns.len:cValidColumns.len]
+	for i := 0; i < int(cValidColumns.len); i++ {
+		result[i] = uint32(cArr[i])
+	}
+	return result, nil
+}
+
+// DeleteEntities delete entity, containing tag data and ts data
+func (r *TsEngine) DeleteEntities(
+	tableID uint64,
+	rangeGroupID uint64,
+	primaryTags [][]byte,
+	isDrop bool,
+	tsTxnID uint64,
+	osnID uint64,
+) (uint64, error) {
+	if len(primaryTags) == 0 {
+		return 0, errors.New("primaryTags is null")
+	}
+
+	r.checkOrWaitForOpen()
+	cTsSlice := make([]C.TSSlice, len(primaryTags))
+	defer freeTSSlice(cTsSlice)
+	for i, p := range primaryTags {
+		if len(p) == 0 {
+			cTsSlice[i].data = nil
+			cTsSlice[i].len = 0
+		} else {
+			dataPtr := C.CBytes(p)
+			cTsSlice[i].data = (*C.char)(dataPtr)
+			cTsSlice[i].len = C.size_t(len(p))
+		}
+	}
+
+	var delCnt *C.uint64_t
+	delCnt = (*C.uint64_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint64_t(0)))))
+	defer C.free(unsafe.Pointer(delCnt))
+	(*delCnt) = C.uint64_t(0)
+	status := C.TsDeleteEntities(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)),
+		C.uint64_t(rangeGroupID), delCnt, C.uint64_t(tsTxnID), C.uint64_t(osnID))
+	if err := statusToError(status); err != nil {
+		if isDrop {
+			return 0, err
+		}
+		log.Errorf(context.TODO(), "failed to delete ts entities")
+	}
+	return uint64(*delCnt), nil
+}
+
+// TsDeleteEntitiesByTag delete entity, including tag data and ts data
+// Parameters:
+//
+//	beginHash - Start value of the replica hash range
+//	endHash - End value of the replica hash range
+//	primaryTags - List of part primary tag values
+//	indexColumns - List of tag IDs corresponding to the primaryTags
+//
+// Returns:
+//
+//	uint64 - Number of rows successfully deleted
+func (r *TsEngine) TsDeleteEntitiesByTag(
+	tableID uint64,
+	beginHash uint64,
+	endHash uint64,
+	primaryTags [][]byte,
+	indexColumns []uint32,
+	isDrop bool,
+	tsTxnID uint64,
+	osnID uint64,
+) (uint64, error) {
+	if len(primaryTags) == 0 {
+		return 0, errors.New("primaryTags is null")
+	}
+
+	r.checkOrWaitForOpen()
+	cTsSlice := make([]C.TSSlice, len(primaryTags))
+	defer freeTSSlice(cTsSlice)
+	for i, p := range primaryTags {
+		if len(p) == 0 {
+			cTsSlice[i].data = nil
+			cTsSlice[i].len = 0
+		} else {
+			dataPtr := C.CBytes(p)
+			cTsSlice[i].data = (*C.char)(dataPtr)
+			cTsSlice[i].len = C.size_t(len(p))
+		}
+	}
+	numColumn := len(indexColumns)
+	cIndexs := make([]C.uint, numColumn)
+	for i := 0; i < numColumn; i++ {
+		cIndexs[i] = C.uint(indexColumns[i])
+	}
+	cIndexColumns := C.IndexColumns{
+		index_column: (*C.uint32_t)(unsafe.Pointer(&cIndexs[0])),
+		len:          C.int32_t(len(cIndexs)),
+	}
+
+	cKwHashIDSpans := C.HashIdSpan{
+		begin: C.uint64_t(beginHash),
+		end:   C.uint64_t(endHash),
+	}
+	var delCnt *C.uint64_t
+	delCnt = (*C.uint64_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint64_t(0)))))
+	defer C.free(unsafe.Pointer(delCnt))
+	(*delCnt) = C.uint64_t(0)
+
+	status := C.TsDeleteEntitiesByTag(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)),
+		cIndexColumns, delCnt, cKwHashIDSpans, C.uint64_t(tsTxnID), C.uint64_t(osnID))
+	if err := statusToError(status); err != nil {
+		if isDrop {
+			return 0, err
+		}
+		log.Errorf(context.TODO(), "failed to delete ts entities")
+	}
+	return uint64(*delCnt), nil
+}
+
+// DeleteRangeData delete entities data in the range
+func (r *TsEngine) DeleteRangeData(
+	tableID uint64,
+	rangeGroupID uint64,
+	beginHash uint64,
+	endHash uint64,
+	tsSpans []*roachpb.TsSpan,
+	tsTxnID uint64,
+	osnID uint64,
+) (uint64, error) {
+	r.checkOrWaitForOpen()
+	cKwHashIDSpans := C.HashIdSpan{
+		begin: C.uint64_t(beginHash),
+		end:   C.uint64_t(endHash),
+	}
+
+	cTsSpans := make([]C.KwTsSpan, len(tsSpans))
+	for i := 0; i < len(tsSpans); i++ {
+		cTsSpans[i].begin = C.int64_t(tsSpans[i].TsStart)
+		cTsSpans[i].end = C.int64_t(tsSpans[i].TsEnd)
+	}
+	cKwTsSpans := C.KwTsSpans{
+		spans: (*C.KwTsSpan)(unsafe.Pointer(&cTsSpans[0])),
+		len:   C.int32_t(len(tsSpans)),
+	}
+
+	var delCnt *C.uint64_t
+	delCnt = (*C.uint64_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint64_t(0)))))
+	defer C.free(unsafe.Pointer(delCnt))
+	(*delCnt) = C.uint64_t(0)
+	status := C.TsDeleteRangeData(
+		r.tdb,
+		C.TSTableID(tableID),
+		C.uint64_t(rangeGroupID),
+		cKwHashIDSpans,
+		cKwTsSpans,
+		delCnt,
+		C.uint64_t(tsTxnID),
+		C.uint64_t(osnID))
+	if err := statusToError(status); err != nil {
+		return uint64(*delCnt), errors.New("Data deletion failed or partially failed")
+	}
+	return uint64(*delCnt), nil
+}
+
+// DeleteTsRangeData delete entities data in the range
+func (r *TsEngine) DeleteTsRangeData(
+	tableID, beginHash, endHash uint64, startTs, endTs int64, tsTxnID uint64,
+) error {
+	osnID := r.cfg.TsIDGen.GetNextID()
+	r.checkOrWaitForOpen()
+	tsSpan := C.KwTsSpan{
+		begin: C.int64_t(startTs),
+		end:   C.int64_t(endTs),
+	}
+	status := C.TsDeleteTotalRange(r.tdb, C.TSTableID(tableID), C.uint64_t(beginHash),
+		C.uint64_t(endHash), tsSpan, C.uint64_t(tsTxnID), C.uint64_t(osnID))
+	if err := statusToError(status); err != nil {
+		return errors.New("range data deletion failed")
+	}
+	return nil
+}
+
+// DeleteData delete some one entity data
+func (r *TsEngine) DeleteData(
+	tableID uint64,
+	rangeGroupID uint64,
+	primaryTag []byte,
+	tsSpans []*roachpb.TsSpan,
+	tsTxnID uint64,
+	osnID uint64,
+) (uint64, error) {
+	if len(primaryTag) == 0 {
+		return 0, errors.New("primaryTag is null")
+	}
+
+	r.checkOrWaitForOpen()
+	cTsSlice := C.TSSlice{
+		data: (*C.char)(C.CBytes(primaryTag)),
+		len:  C.size_t(len(primaryTag)),
+	}
+	defer C.free(unsafe.Pointer(cTsSlice.data))
+
+	cTsSpans := make([]C.KwTsSpan, len(tsSpans))
+	for i := 0; i < len(tsSpans); i++ {
+		// todo(liangbo01) ts span invaild, ignore it.
+		if tsSpans[i].TsStart > tsSpans[i].TsEnd {
+			log.Infof(context.TODO(), "DeleteData ignore ts_span [%s ~ %s]", tsSpans[i].TsStart, tsSpans[i].TsEnd)
+			continue
+		}
+		cTsSpans[i].begin = C.int64_t(tsSpans[i].TsStart)
+		cTsSpans[i].end = C.int64_t(tsSpans[i].TsEnd)
+	}
+	cKwTsSpans := C.KwTsSpans{
+		spans: (*C.KwTsSpan)(unsafe.Pointer(&cTsSpans[0])),
+		len:   C.int32_t(len(tsSpans)),
+	}
+
+	var delCnt *C.uint64_t
+	delCnt = (*C.uint64_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint64_t(0)))))
+	defer C.free(unsafe.Pointer(delCnt))
+	(*delCnt) = C.uint64_t(0)
+	status := C.TsDeleteData(
+		r.tdb,
+		C.TSTableID(tableID),
+		C.uint64_t(rangeGroupID),
+		cTsSlice,
+		cKwTsSpans,
+		delCnt,
+		C.uint64_t(tsTxnID),
+		C.uint64_t(osnID))
+	if err := statusToError(status); err != nil {
+		return uint64(*delCnt), errors.Wrap(err, "failed to delete ts data")
+	}
+	return uint64(*delCnt), nil
+}
+
+// TsDeleteMetricByTag deletes metric data by specific tag values and ts span
+// Parameters:
+//
+//	beginHash - Start value of the replica hash range
+//	endHash - End value of the replica hash range
+//	primaryTags - List of primary tag values
+//	indexColumns - List of tag IDs (uint32) corresponding to the primaryTags
+//	tsSpans - Time range spans to filter data (only delete data within these time ranges)
+//
+// Returns:
+//
+//	uint64 - Number of rows successfully deleted
+func (r *TsEngine) TsDeleteMetricByTag(
+	tableID uint64,
+	beginHash uint64,
+	endHash uint64,
+	primaryTags [][]byte,
+	indexColumns []uint32,
+	tsSpans []*roachpb.TsSpan,
+	tsTxnID uint64,
+	osnID uint64,
+) (uint64, error) {
+	if len(primaryTags) == 0 {
+		return 0, errors.New("primaryTag is null")
+	}
+
+	r.checkOrWaitForOpen()
+	cTsSlice := make([]C.TSSlice, len(primaryTags))
+	defer freeTSSlice(cTsSlice)
+	for i, p := range primaryTags {
+		if len(p) == 0 {
+			cTsSlice[i].data = nil
+			cTsSlice[i].len = 0
+		} else {
+			dataPtr := C.CBytes(p)
+			cTsSlice[i].data = (*C.char)(dataPtr)
+			cTsSlice[i].len = C.size_t(len(p))
+		}
+	}
+
+	cTsSpans := make([]C.KwTsSpan, len(tsSpans))
+	for i := 0; i < len(tsSpans); i++ {
+		if tsSpans[i].TsStart > tsSpans[i].TsEnd {
+			log.Infof(context.TODO(), "DeleteData ignore ts_span [%s ~ %s]", tsSpans[i].TsStart, tsSpans[i].TsEnd)
+			continue
+		}
+		cTsSpans[i].begin = C.int64_t(tsSpans[i].TsStart)
+		cTsSpans[i].end = C.int64_t(tsSpans[i].TsEnd)
+	}
+	cKwTsSpans := C.KwTsSpans{
+		spans: (*C.KwTsSpan)(unsafe.Pointer(&cTsSpans[0])),
+		len:   C.int32_t(len(tsSpans)),
+	}
+
+	numColumn := len(indexColumns)
+	cIndexs := make([]C.uint, numColumn)
+	for i := 0; i < numColumn; i++ {
+		cIndexs[i] = C.uint(indexColumns[i])
+	}
+	cIndexColumns := C.IndexColumns{
+		index_column: (*C.uint32_t)(unsafe.Pointer(&cIndexs[0])),
+		len:          C.int32_t(len(cIndexs)),
+	}
+	cKwHashIDSpans := C.HashIdSpan{
+		begin: C.uint64_t(beginHash),
+		end:   C.uint64_t(endHash),
+	}
+
+	var delCnt *C.uint64_t
+	delCnt = (*C.uint64_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint64_t(0)))))
+	defer C.free(unsafe.Pointer(delCnt))
+	(*delCnt) = C.uint64_t(0)
+
+	status := C.TsDeleteMetricByTag(
+		r.tdb,
+		C.TSTableID(tableID),
+		&cTsSlice[0],
+		(C.size_t)(len(cTsSlice)),
+		cIndexColumns,
+		cKwTsSpans,
+		delCnt,
+		C.uint64_t(tsTxnID),
+		cKwHashIDSpans,
+		C.uint64_t(osnID))
+	if err := statusToError(status); err != nil {
+		return uint64(*delCnt), errors.Wrap(err, "failed to delete ts data")
+	}
+	return uint64(*delCnt), nil
+}
+
+// CountRangeData delete entities data in the range
+func (r *TsEngine) CountRangeData(
+	tableID uint64,
+	rangeGroupID uint64,
+	beginHash uint64,
+	endHash uint64,
+	tsSpans []*roachpb.TsSpan,
+	tsTxnID uint64,
+	osnID uint64,
+) (uint64, error) {
+	r.checkOrWaitForOpen()
+	cKwHashIDSpans := C.HashIdSpan{
+		begin: C.uint64_t(beginHash),
+		end:   C.uint64_t(endHash),
+	}
+
+	cTsSpans := make([]C.KwTsSpan, len(tsSpans))
+	for i := 0; i < len(tsSpans); i++ {
+		cTsSpans[i].begin = C.int64_t(tsSpans[i].TsStart)
+		cTsSpans[i].end = C.int64_t(tsSpans[i].TsEnd)
+	}
+	cKwTsSpans := C.KwTsSpans{
+		spans: (*C.KwTsSpan)(unsafe.Pointer(&cTsSpans[0])),
+		len:   C.int32_t(len(tsSpans)),
+	}
+
+	var RangeCnt *C.uint64_t
+	RangeCnt = (*C.uint64_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint64_t(0)))))
+	defer C.free(unsafe.Pointer(RangeCnt))
+	(*RangeCnt) = 0
+	status := C.TsCountRangeData(
+		r.tdb,
+		C.TSTableID(tableID),
+		C.uint64_t(rangeGroupID),
+		cKwHashIDSpans,
+		cKwTsSpans,
+		RangeCnt,
+		C.uint64_t(tsTxnID),
+		C.uint64_t(osnID))
+	if err := statusToError(status); err != nil {
+		return uint64(*RangeCnt), errors.New("Data count failed or partially failed")
+	}
+	return uint64(*RangeCnt), nil
+}
+
+// SetPublishedMaxOSN set OSN of tables to clean
+func (r *TsEngine) SetPublishedMaxOSN(ctx context.Context, mapOSN map[uint64]uint64) error {
+	if r == nil {
+		return nil
+	}
+
+	r.checkOrWaitForOpen()
+
+	n := len(mapOSN)
+	var status C.TSStatus
+	if n == 0 {
+		status = C.TSSetPublishedMaxOSN(r.tdb, C.TSSlice{})
+	} else {
+		pairs := make([]uint64, 0, n*2)
+		for key, value := range mapOSN {
+			pairs = append(pairs, key, value)
+		}
+
+		cTsSlice := C.TSSlice{
+			data: (*C.char)(unsafe.Pointer(&pairs[0])),
+			len:  C.size_t(len(pairs) * 8),
+		}
+
+		status = C.TSSetPublishedMaxOSN(r.tdb, cTsSlice)
+	}
+
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "failed to SetPublishedMaxOSN ts storage")
+	}
+	return nil
+}
+
+// Vacuum vacuum partitions
+func (r *TsEngine) Vacuum(ctx context.Context, manual bool, onlyAgg bool) error {
+	if r == nil {
+		return nil
+	}
+	r.checkOrWaitForOpen()
+	goCtxPtr, releaseGoCtx := registerGoContextHandle(ctx)
+	defer releaseGoCtx()
+	status := C.TSVacuum(r.tdb, goCtxPtr, C.bool(manual), C.bool(onlyAgg))
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "failed to vacuum ts storage")
+	}
+	return nil
+}
+
+// TsTableAutonomy Autonomous Evaluation
+func (r *TsEngine) TsTableAutonomy(tableID uint64) error {
+	if r == nil {
+		return nil
+	}
+	r.checkOrWaitForOpen()
+	status := C.TSTableAutonomy(r.tdb, C.TSTableID(tableID))
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "failed to ts table's autonomy")
+	}
+	return nil
+}
+
+// SetupTsFlow send timing execution plan and receive execution results
+func (r *TsEngine) SetupTsFlow(
+	ctx *context.Context, tsQueryInfo TsQueryInfo,
+) (tsRespInfo TsQueryInfo, err error) {
+	r.checkOrWaitForOpen()
+	return r.tsExecute(ctx, C.MQ_TYPE_DML_SETUP, tsQueryInfo)
+}
+
+// NextTsFlow drive timing execution plan, receive execution results
+func (r *TsEngine) NextTsFlow(
+	ctx *context.Context, tsQueryInfo TsQueryInfo,
+) (tsRespInfo TsQueryInfo, err error) {
+	r.checkOrWaitForOpen()
+	return r.tsExecute(ctx, C.MQ_TYPE_DML_NEXT, tsQueryInfo)
+}
+
+// NextVectorizedTsFlow drive timing execution plan, receive execution results
+func (r *TsEngine) NextVectorizedTsFlow(
+	ctx *context.Context, tsQueryInfo TsQueryInfo, rev *TsDataChunkToGo,
+) (tsRespInfo TsQueryInfo, err error) {
+	return r.tsVectorizedExecute(ctx, C.MQ_TYPE_DML_VECTORIZE_NEXT, tsQueryInfo, rev)
+}
+
+// NextTsFlowPgWire drive timing execution plan, receive execution results
+func (r *TsEngine) NextTsFlowPgWire(
+	ctx *context.Context, tsQueryInfo TsQueryInfo,
+) (tsRespInfo TsQueryInfo, err error) {
+	r.checkOrWaitForOpen()
+	return r.tsExecute(ctx, C.MQ_TYPE_DML_PG_RESULT, tsQueryInfo)
+}
+
+// PushTsFlow drive pushing relational data to TSEngine for join
+// only push PUSH type req and pass data chunk pointer to tse for multiple model processing
+// when the switch is on and the server starts with single node mode.
+func (r *TsEngine) PushTsFlow(ctx *context.Context, tsQueryInfo TsQueryInfo) (err error) {
+	r.checkOrWaitForOpen()
+	_, err = r.tsExecute(ctx, C.MQ_TYPE_DML_PUSH, tsQueryInfo)
+	return err
+}
+
+// CloseTsFlow close the TS actuator corresponding to the current flow
+func (r *TsEngine) CloseTsFlow(ctx *context.Context, tsQueryInfo TsQueryInfo) (err error) {
+	r.checkOrWaitForOpen()
+	_, err = r.tsExecute(ctx, C.MQ_TYPE_DML_CLOSE, tsQueryInfo)
+	return err
+}
+
+// CancelTsFlow cancel the TS actuator corresponding to the current flow
+func (r *TsEngine) CancelTsFlow(ctx *context.Context, tsQueryInfo TsQueryInfo) (err error) {
+	r.checkOrWaitForOpen()
+	_, err = r.tsExecute(ctx, C.MQ_TYPE_DML_CANCEL, tsQueryInfo)
+	return err
+}
+
+// InitTsHandle corresponding to init ts handle
+func (r *TsEngine) InitTsHandle(
+	ctx *context.Context, tsQueryInfo TsQueryInfo,
+) (tsRespInfo TsQueryInfo, err error) {
+	if r == nil {
+		return TsQueryInfo{}, errors.New("TsEngine not initialized")
+	}
+	r.checkOrWaitForOpen()
+	return r.tsExecute(ctx, C.MQ_TYPE_DML_INIT, tsQueryInfo)
+}
+
+// FlushBuffer flush WALs of all ts tables to files in the node
+func (r *TsEngine) FlushBuffer() error {
+	r.checkOrWaitForOpen()
+	status := C.TSFlushBuffer(r.tdb)
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "failed to flush WAL buffer")
+	}
+
+	return nil
+}
+
+// Checkpoint create checkpoint
+func (r *TsEngine) Checkpoint() error {
+	r.checkOrWaitForOpen()
+	status := C.TSCreateCheckpoint(r.tdb)
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "failed to create WAL checkpoint")
+	}
+
+	return nil
+}
+
+// CheckpointForTable create checkpoint for a table
+func (r *TsEngine) CheckpointForTable(tableID uint32) error {
+	r.checkOrWaitForOpen()
+	status := C.TSCreateCheckpointForTable(r.tdb, C.uint64_t(tableID))
+	if err := statusToError(status); err != nil {
+		return err
+	}
+	return nil
+}
+
+// DeleteRangeGroup Delete RangeGroup
+func (r *TsEngine) DeleteRangeGroup(tableID uint64, rangeGroup api.RangeGroup) error {
+	r.checkOrWaitForOpen()
+	cRangeGroup := C.RangeGroup{
+		range_group_id: C.uint64_t(rangeGroup.RangeGroupID),
+	}
+	status := C.TSDeleteRangeGroup(r.tdb, C.TSTableID(tableID), cRangeGroup)
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "failed to delete range group")
+	}
+	return nil
+}
+
+// CreateSnapshotForRead create snapshot
+func (r *TsEngine) CreateSnapshotForRead(
+	tableID uint64, beginHash uint64, endHash uint64, beginTs int64, endTs int64,
+) (uint64, error) {
+	r.checkOrWaitForOpen()
+	var snapshotID *C.uint64_t
+	snapshotID = (*C.uint64_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint64_t(0)))))
+	defer C.free(unsafe.Pointer(snapshotID))
+	(*snapshotID) = 0
+	tsSpan := C.KwTsSpan{
+		begin: C.int64_t(beginTs),
+		end:   C.int64_t(endTs),
+	}
+	// todo(fengyouxu) exchange
+	var scanOSN C.uint64_t
+	scanOSN = C.uint64_t(math.MaxUint64)
+	status := C.TSCreateSnapshotForRead(r.tdb, C.TSTableID(tableID),
+		C.uint64_t(beginHash), C.uint64_t(endHash), tsSpan, scanOSN, snapshotID)
+	if err := statusToError(status); err != nil {
+		return 0, errors.Wrap(err, "failed to create snapshot")
+	}
+	return uint64(*snapshotID), nil
+}
+
+// CreateSnapshotForWrite preparing for writing snapshots
+func (r *TsEngine) CreateSnapshotForWrite(
+	tableID uint64, beginHash uint64, endHash uint64, beginTs int64, endTs int64,
+) (uint64, error) {
+	r.checkOrWaitForOpen()
+	osnID := r.cfg.TsIDGen.GetNextID()
+	var snapshotID *C.uint64_t
+	snapshotID = (*C.uint64_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint64_t(0)))))
+	defer C.free(unsafe.Pointer(snapshotID))
+	(*snapshotID) = 0
+	tsSpan := C.KwTsSpan{
+		begin: C.int64_t(beginTs),
+		end:   C.int64_t(endTs),
+	}
+	status := C.TSCreateSnapshotForWrite(r.tdb, C.TSTableID(tableID),
+		C.uint64_t(beginHash), C.uint64_t(endHash), tsSpan, snapshotID, C.uint64_t(osnID))
+	if err := statusToError(status); err != nil {
+		return 0, errors.Wrap(err, "failed to create snapshot")
+	}
+	return uint64(*snapshotID), nil
+}
+
+// GetSnapshotNextBatchData get data of the snapshot
+func (r *TsEngine) GetSnapshotNextBatchData(tableID uint64, snapshotID uint64) ([]byte, error) {
+	r.checkOrWaitForOpen()
+	var data *C.TSSlice
+	data = (*C.TSSlice)(C.malloc(C.size_t(unsafe.Sizeof(C.TSSlice{}))))
+	defer C.free(unsafe.Pointer(data))
+	status := C.TSGetSnapshotNextBatchData(r.tdb, C.TSTableID(tableID), C.uint64_t(snapshotID), data)
+	if err := statusToError(status); err != nil {
+		return nil, errors.Wrap(err, "failed to get snapshot data")
+	}
+	defer C.free(unsafe.Pointer((*data).data))
+	return cSliceToGoBytes(*data), nil
+}
+
+// WriteSnapshotBatchData write snapshot data
+func (r *TsEngine) WriteSnapshotBatchData(tableID uint64, snapshotID uint64, data []byte) error {
+	if len(data) == 0 {
+		return errors.New("snapshot data is null")
+	}
+
+	r.checkOrWaitForOpen()
+	cTsSlice := C.TSSlice{
+		data: (*C.char)(C.CBytes(data)),
+		len:  C.size_t(len(data)),
+	}
+	defer C.free(unsafe.Pointer(cTsSlice.data))
+
+	status := C.TSWriteSnapshotBatchData(r.tdb, C.TSTableID(tableID), C.uint64_t(snapshotID), cTsSlice)
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "failed to write snapshot data")
+	}
+	return nil
+}
+
+// WriteSnapshotSuccess apply snapshot
+func (r *TsEngine) WriteSnapshotSuccess(tableID uint64, snapshotID uint64) error {
+	r.checkOrWaitForOpen()
+	status := C.TSWriteSnapshotSuccess(r.tdb, C.TSTableID(tableID), C.uint64_t(snapshotID))
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "failed to apply snapshot")
+	}
+	return nil
+}
+
+// WriteSnapshotRollback rollback snapshot
+func (r *TsEngine) WriteSnapshotRollback(tableID uint64, snapshotID uint64) error {
+	r.checkOrWaitForOpen()
+	osnID := r.cfg.TsIDGen.GetNextID()
+	status := C.TSWriteSnapshotRollback(r.tdb, C.TSTableID(tableID), C.uint64_t(snapshotID), C.uint64_t(osnID))
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "failed to rollback snapshot")
+	}
+	return nil
+}
+
+// DeleteSnapshot drops Snapshot.
+func (r *TsEngine) DeleteSnapshot(tableID uint64, snapshotID uint64) error {
+	r.checkOrWaitForOpen()
+	status := C.TSDeleteSnapshot(r.tdb, C.TSTableID(tableID), C.uint64_t(snapshotID))
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "failed to drop snapshot")
+	}
+	return nil
+}
+
+// MtrBegin BEGIN a TS mini-transaction
+func (r *TsEngine) MtrBegin(
+	tableID uint64, rangeGroupID uint64, rangeID uint64, index uint64, transactionID []byte,
+) (uint64, error) {
+	r.checkOrWaitForOpen()
+	var miniTransID *C.uint64_t
+	miniTransID = (*C.uint64_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint64_t(0)))))
+	defer C.free(unsafe.Pointer(miniTransID))
+	(*miniTransID) = 0
+	var status C.TSStatus
+	if len(transactionID) > 0 {
+		status = C.TSMtrBeginExplicit(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(rangeID),
+			C.uint64_t(index), miniTransID, goToCChar(transactionID))
+		runtime.KeepAlive(transactionID)
+	} else {
+		status = C.TSMtrBegin(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(rangeID),
+			C.uint64_t(index), miniTransID)
+	}
+	if err := statusToError(status); err != nil {
+		return 0, errors.Wrap(err, "failed to BEGIN a TS mini-transaction")
+	}
+	return uint64(*miniTransID), nil
+}
+
+// MtrCommit COMMIT a TS mini-transaction
+func (r *TsEngine) MtrCommit(
+	tableID uint64, rangeGroupID uint64, miniTransID uint64, transactionID []byte,
+) error {
+	r.checkOrWaitForOpen()
+	var status C.TSStatus
+	if len(transactionID) > 0 {
+		status = C.TSMtrCommitExplicit(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(miniTransID),
+			goToCChar(transactionID))
+		runtime.KeepAlive(transactionID)
+	} else {
+		status = C.TSMtrCommit(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(miniTransID))
+	}
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "failed to COMMIT a TS mini-transaction")
+	}
+	return nil
+}
+
+// MtrRollback ROLLBACK a TS mini-transaction
+func (r *TsEngine) MtrRollback(
+	tableID uint64, rangeGroupID uint64, miniTransID uint64, transactionID []byte,
+) error {
+	r.checkOrWaitForOpen()
+	var status C.TSStatus
+	if len(transactionID) > 0 {
+		status = C.TSMtrRollbackExplicit(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(miniTransID),
+			goToCChar(transactionID))
+		runtime.KeepAlive(transactionID)
+	} else {
+		status = C.TSMtrRollback(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(miniTransID))
+	}
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "failed to ROLLBACK a TS mini-transaction")
+	}
+	return nil
+}
+
+// TransBegin BEGIN a TS transaction
+func (r *TsEngine) TransBegin(tableID uint64, transactionID []byte) error {
+	r.checkOrWaitForOpen()
+	status := C.TSxBegin(r.tdb, C.TSTableID(tableID), goToCChar(transactionID))
+	runtime.KeepAlive(transactionID)
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "failed to BEGIN a TS mini-transaction")
+	}
+	return nil
+}
+
+// TransCommit COMMIT a TS transaction
+func (r *TsEngine) TransCommit(tableID uint64, transactionID []byte) error {
+	r.checkOrWaitForOpen()
+	status := C.TSxCommit(r.tdb, C.TSTableID(tableID), goToCChar(transactionID))
+	runtime.KeepAlive(transactionID)
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "failed to COMMIT a TS mini-transaction")
+	}
+	return nil
+}
+
+// TransRollback ROLLBACK a TS transaction
+func (r *TsEngine) TransRollback(tableID uint64, transactionID []byte) error {
+	r.checkOrWaitForOpen()
+	status := C.TSxRollback(r.tdb, C.TSTableID(tableID), goToCChar(transactionID))
+	runtime.KeepAlive(transactionID)
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "failed to ROLLBACK a TS mini-transaction")
+	}
+	return nil
+}
+
+// TSGetWaitThreadNum is used to get wait thread num from time series engine
+func (r *TsEngine) TSGetWaitThreadNum() (uint32, error) {
+	r.checkOrWaitForOpen()
+	var info *C.ThreadInfo
+	info = (*C.ThreadInfo)(C.malloc(C.size_t(unsafe.Sizeof(C.ThreadInfo{}))))
+	defer C.free(unsafe.Pointer(info))
+	status := C.TSGetWaitThreadNum(r.tdb, unsafe.Pointer(info))
+	if err := statusToError(status); err != nil {
+		return 0, errors.Wrap(err, "failed to get wait threads number")
+	}
+
+	return uint32((*info).wait_threads), nil
+}
+
+// Close close TsEngine
+func (r *TsEngine) Close() {
+	status := C.TSClose(r.tdb)
+	if err := statusToError(status); err != nil {
+		log.Errorf(context.TODO(), "could not close ts engine instance")
+	}
+}
+
+func (r *TsEngine) manageWAL() {
+	ctx := context.Background()
+	r.stopper.RunWorker(ctx, func(ctx context.Context) {
+		flushTimer := timeutil.NewTimer()
+		checkpointTimer := timeutil.NewTimer()
+
+		defer flushTimer.Stop()
+		defer checkpointTimer.Stop()
+
+		checkpointInterval := TsWALCheckpointInterval.Get(&r.cfg.Settings.SV)
+		checkpointTimer.Reset(checkpointInterval)
+
+		for {
+			select {
+			case <-r.stopper.ShouldStop():
+				return
+			case <-checkpointTimer.C:
+				checkpointInterval = TsWALCheckpointInterval.Get(&r.cfg.Settings.SV)
+				checkpointTimer.Read = true
+				_ = r.Checkpoint()
+				checkpointTimer.Reset(checkpointInterval)
+			}
+		}
+	})
+}
+
+// DeleteReplicaTSData delete replica ts data
+func (r *TsEngine) DeleteReplicaTSData(
+	tableID uint64, beginHash uint64, endHash uint64, startTs int64, endTs int64,
+) error {
+	osnID := r.cfg.TsIDGen.GetNextID()
+	r.checkOrWaitForOpen()
+	tsSpan := C.KwTsSpan{
+		begin: C.int64_t(startTs),
+		end:   C.int64_t(endTs),
+	}
+	status := C.TsDeleteTotalRange(r.tdb, C.TSTableID(tableID),
+		C.uint64_t(beginHash), C.uint64_t(endHash), tsSpan, C.uint64_t(0), C.uint64_t(osnID))
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "failed to delete replica ts data")
+	}
+	return nil
+}
+
+func goToTSSlice(b []byte) C.TSSlice {
+	if len(b) == 0 {
+		return C.TSSlice{data: nil, len: 0}
+	}
+	return C.TSSlice{
+		data: (*C.char)(unsafe.Pointer(&b[0])),
+		len:  C.size_t(len(b)),
+	}
+}
+
+// goToCChar safely returns a *C.char pointer from a byte slice.
+// Returns nil if the slice is nil or empty.
+func goToCChar(b []byte) *C.char {
+	if len(b) == 0 {
+		return nil
+	}
+	return (*C.char)(unsafe.Pointer(&b[0]))
+}
+
+func goToTSAppliedRangeIndexe(b []byte) C.TSSlice {
+	if len(b) == 0 {
+		return C.TSSlice{data: nil, len: 0}
+	}
+	return C.TSSlice{
+		data: (*C.char)(unsafe.Pointer(&b[0])),
+		len:  C.size_t(len(b)),
+	}
+}
+
+func statusToError(s C.TSStatus) error {
+	if s.data == nil {
+		return nil
+	}
+	return &Error{msg: cStringToGoString(s)}
+}
+
+func cStringToGoString(s C.TSString) string {
+	if s.data == nil {
+		return ""
+	}
+	// Reinterpret the string as a slice, then cast to string which does a copy.
+	result := string(cSliceToUnsafeGoBytes(C.TSSlice{s.data, s.len}))
+	C.free(unsafe.Pointer(s.data))
+	return result
+}
+
+func cSliceToGoBytes(s C.TSSlice) []byte {
+	if s.data == nil {
+		return nil
+	}
+	return gobytes(unsafe.Pointer(s.data), int(s.len))
+}
+
+func cSliceToUnsafeGoBytes(s C.TSSlice) []byte {
+	if s.data == nil {
+		return nil
+	}
+	// Interpret the C pointer as a pointer to a Go array, then slice.
+	return (*[MaxArrayLen]byte)(unsafe.Pointer(s.data))[:s.len:s.len]
+}
+
+// NewTsFetcher init tsFetcher
+func NewTsFetcher(specs []execinfrapb.ProcessorSpec) []C.TsFetcher {
+	i := 0
+	tsFetchers := make([]C.TsFetcher, len(specs))
+	for j := len(specs) - 1; j >= 0; j-- {
+		tsFetchers[i].processor_id = C.int32_t(specs[j].ProcessorID)
+		i++
+	}
+	return tsFetchers
+}
+
+// AddStatsList add data to statsList
+func AddStatsList(tsFetcher TsFetcher, statss []TsFetcherStats) []TsFetcherStats {
+	for i := 0; i < tsFetcher.Size; i++ {
+		fetcher := tsFetcher.CFetchers[i]
+		if fetcher.row_num > 0 {
+			statss[i].RowNum = int64(fetcher.row_num)
+		}
+		if fetcher.stall_time > 0 {
+			statss[i].StallTime = int64(fetcher.stall_time)
+		}
+		if fetcher.bytes_read > 0 {
+			statss[i].BytesRead = int64(fetcher.bytes_read)
+		}
+		if fetcher.max_allocated_mem > 0 {
+			statss[i].MaxAllocatedMem = int64(fetcher.max_allocated_mem)
+		}
+		if fetcher.max_allocated_disk > 0 {
+			statss[i].MaxAllocatedDisk = int64(fetcher.max_allocated_disk)
+		}
+		if fetcher.max_allocated_disk > 0 {
+			statss[i].MaxAllocatedDisk = int64(fetcher.max_allocated_disk)
+		}
+		if fetcher.output_row_num > 0 {
+			statss[i].OutputRowNum = int64(fetcher.output_row_num)
+		}
+		if fetcher.memory_block_count > 0 {
+			statss[i].MemoryBlockCount = int32(fetcher.memory_block_count)
+		}
+		if fetcher.last_block_count > 0 {
+			statss[i].LastBlockCount = int32(fetcher.last_block_count)
+		}
+		if fetcher.entity_block_count > 0 {
+			statss[i].EntityBlockCount = int64(fetcher.entity_block_count)
+			statss[i].BlockCacheHitRatio = float32(fetcher.block_cache_hit_count) / float32(statss[i].EntityBlockCount)
+		}
+		if fetcher.partition_agg_count > 0 {
+			statss[i].PartitionAggCount = int64(fetcher.partition_agg_count)
+		}
+		if fetcher.block_bytes > 0 {
+			statss[i].BlockBytes = int64(fetcher.block_bytes)
+		}
+		if fetcher.agg_bytes > 0 {
+			statss[i].AggBytes = int64(fetcher.agg_bytes)
+		}
+		if fetcher.header_bytes > 0 {
+			statss[i].HeaderBytes = int64(fetcher.header_bytes)
+		}
+		if fetcher.block_pre_agg_hit_count > 0 {
+			statss[i].BlockPreAggHitCount = int64(fetcher.block_pre_agg_hit_count)
+		}
+		if fetcher.block_pre_agg_miss_count > 0 {
+			statss[i].BlockPreAggMissCount = int64(fetcher.block_pre_agg_miss_count)
+		}
+		// build_time only be used for hash tag scan op for multiple model processing
+		// when the switch is on and the server starts with single node mode.
+		if fetcher.build_time > 0 {
+			statss[i].BuildTime = int64(fetcher.build_time)
+		}
+	}
+	return statss
+}
+
+// GetTsVersion get current version of ts table
+func (r *TsEngine) GetTsVersion(tableID uint64) (uint32, error) {
+	r.checkOrWaitForOpen()
+	var tsVersion *C.uint32_t
+	tsVersion = (*C.uint32_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint32_t(0)))))
+	defer C.free(unsafe.Pointer(tsVersion))
+	(*tsVersion) = 0
+	status := C.TsGetTableVersion(r.tdb, C.TSTableID(tableID), tsVersion)
+	if err := statusToError(status); err != nil {
+		return uint32(*tsVersion), errors.Wrap(err, "failed to get ts version")
+	}
+	return uint32(*tsVersion), nil
+}
+
+// GetWalLevel get current wal level of ts engine
+func (r *TsEngine) GetWalLevel() (int, error) {
+	r.checkOrWaitForOpen()
+	var walLevel *C.uint8_t
+	walLevel = (*C.uint8_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint8_t(0)))))
+	defer C.free(unsafe.Pointer(walLevel))
+	(*walLevel) = 0
+	status := C.TsGetWalLevel(r.tdb, walLevel)
+	if err := statusToError(status); err != nil {
+		return int(*walLevel), errors.Wrap(err, "failed to get ts version")
+	}
+	return int(*walLevel), nil
+}
+
+// GetTableMetaByVersion is used for unit test, try to get the tableMeta with specific tsVersion
+func (r *TsEngine) GetTableMetaByVersion(tableID uint64, tsVer uint64) error {
+	var tsVersion C.uint64_t
+	tsVersion = C.uint64_t(tsVer)
+	status := C.TsTestGetAndAddSchemaVersion(r.tdb, C.TSTableID(tableID), tsVersion)
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "failed to create ts table by specific tsVersion")
+	}
+	return nil
+}

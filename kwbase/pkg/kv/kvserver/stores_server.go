@@ -30,7 +30,7 @@ import (
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/retry"
 )
@@ -171,7 +171,7 @@ func (is Server) WaitForApplication(
 						log.Warningf(ctx, "checkpoint for table %d failed for %+v", repl.Desc().TableId, err)
 					}
 				}
-				return storage.WriteSyncNoop(ctx, s.engine)
+				return relational.WriteSyncNoop(ctx, s.engine)
 			}
 		}
 		if ctx.Err() == nil {

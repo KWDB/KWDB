@@ -1296,11 +1296,9 @@ SQLSTATE: 42804
 ERROR: value type bool doesn't match type citext of column "citext"
 SQLSTATE: 42804
 > INSERT INTO caster (float8)        VALUES ('12.42'::text);
-ERROR: value type string doesn't match type float of column "float8"
-SQLSTATE: 42804
+INSERT 1
 > INSERT INTO caster (text)          VALUES ('12.42'::float8);
-ERROR: value type float doesn't match type string of column "text"
-SQLSTATE: 42804
+INSERT 1
 > INSERT INTO caster (float8)        VALUES ('12.42'::citext);
 ERROR: value type citext doesn't match type float of column "float8"
 SQLSTATE: 42804
@@ -1308,11 +1306,9 @@ SQLSTATE: 42804
 ERROR: value type float doesn't match type citext of column "citext"
 SQLSTATE: 42804
 > INSERT INTO caster (float4)        VALUES ('12.42'::text);
-ERROR: value type string doesn't match type float4 of column "float4"
-SQLSTATE: 42804
+INSERT 1
 > INSERT INTO caster (text)          VALUES ('12.42'::float4);
-ERROR: value type float4 doesn't match type string of column "text"
-SQLSTATE: 42804
+INSERT 1
 > INSERT INTO caster (float4)        VALUES ('12.42'::citext);
 ERROR: value type citext doesn't match type float4 of column "float4"
 SQLSTATE: 42804
@@ -1320,8 +1316,7 @@ SQLSTATE: 42804
 ERROR: value type float4 doesn't match type citext of column "citext"
 SQLSTATE: 42804
 > INSERT INTO caster (numeric)       VALUES ('12.42'::text);
-ERROR: value type string doesn't match type decimal of column "numeric"
-SQLSTATE: 42804
+INSERT 1
 > INSERT INTO caster (text)          VALUES ('12.42'::numeric);
 ERROR: value type decimal doesn't match type string of column "text"
 SQLSTATE: 42804
@@ -1332,11 +1327,9 @@ SQLSTATE: 42804
 ERROR: value type decimal doesn't match type citext of column "citext"
 SQLSTATE: 42804
 > INSERT INTO caster (int8)          VALUES ('12'::text);
-ERROR: value type string doesn't match type int of column "int8"
-SQLSTATE: 42804
+INSERT 1
 > INSERT INTO caster (text)          VALUES ('12'::int8);
-ERROR: value type int doesn't match type string of column "text"
-SQLSTATE: 42804
+INSERT 1
 > INSERT INTO caster (int8)          VALUES ('12'::citext);
 ERROR: value type citext doesn't match type int of column "int8"
 SQLSTATE: 42804
@@ -1344,11 +1337,9 @@ SQLSTATE: 42804
 ERROR: value type int doesn't match type citext of column "citext"
 SQLSTATE: 42804
 > INSERT INTO caster (int4)          VALUES ('12'::text);
-ERROR: value type string doesn't match type int4 of column "int4"
-SQLSTATE: 42804
+INSERT 1
 > INSERT INTO caster (text)          VALUES ('12'::int4);
-ERROR: value type int4 doesn't match type string of column "text"
-SQLSTATE: 42804
+INSERT 1
 > INSERT INTO caster (int4)          VALUES ('12'::citext);
 ERROR: value type citext doesn't match type int4 of column "int4"
 SQLSTATE: 42804
@@ -1356,11 +1347,9 @@ SQLSTATE: 42804
 ERROR: value type int4 doesn't match type citext of column "citext"
 SQLSTATE: 42804
 > INSERT INTO caster (int2)          VALUES ('12'::text);
-ERROR: value type string doesn't match type int2 of column "int2"
-SQLSTATE: 42804
+INSERT 1
 > INSERT INTO caster (text)          VALUES ('12'::int2);
-ERROR: value type int2 doesn't match type string of column "text"
-SQLSTATE: 42804
+INSERT 1
 > INSERT INTO caster (int2)          VALUES ('12'::citext);
 ERROR: value type citext doesn't match type int2 of column "int2"
 SQLSTATE: 42804
@@ -1493,11 +1482,15 @@ SQLSTATE: 42804
       true
 (1 row)
 > SELECT 'Value: '::citext || 42 = 'Value: 42' AS text_concat;
-ERROR: unsupported binary operator: <citext> || <int>
-SQLSTATE: 22023
+  text_concat
+---------------
+     true
+(1 row)
 > SELECT  42 || ': value'::citext ='42: value' AS int_concat;
-ERROR: unsupported binary operator: <int> || <citext>
-SQLSTATE: 22023
+  int_concat
+--------------
+     true
+(1 row)
 > SELECT bit_length('jose'::citext) = 32 AS t;
    t
 --------

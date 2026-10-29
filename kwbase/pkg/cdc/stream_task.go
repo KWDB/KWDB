@@ -13,18 +13,15 @@ package cdc
 
 import (
 	"context"
-	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/cdc/cdcpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
-	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
-	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlutil"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
-	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
+	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"github.com/pkg/errors"
 )
@@ -68,16 +65,20 @@ func newStreamTask(
 			heartbeatInterval: streamOpts.HeartbeatInterval,
 			errCh:             make(chan error, 1),
 			outputColumnIDs:   request.CDCColumns.CDCColumnIDs,
-			instanceType:      cdcpb.TSCDCInstanceType_Stream,
+			instanceType:      sqlbase.CDCInstanceType_Stream,
 			instanceID:        request.StreamMetadata.ID,
 			tableID:           streamPara.SourceTableID,
 			outColumnTypes:    request.CDCColumns.CDCTypes,
 			needNormalTag:     *request.CDCColumns.NeedNormalTags,
 			sourceTableName:   sourceTable,
+			status:            true,
+			operatorMap:       map[string]struct{}{},
+			serverMu:          new(syncutil.Mutex),
 		},
 		metricsFilter: request.StreamMetadata.MetricsFilter,
 		tagFilter:     request.StreamMetadata.TagFilter,
 	}
+	streamTask.operatorMap[cdcpb.EventInsert] = struct{}{}
 
 	return streamTask, nil
 }
@@ -106,6 +107,8 @@ func (t *StreamTask) Run(stopper *stop.Stopper) error {
 			t.localWaterMark = InvalidWatermark
 			heartbeatTimer.Reset(t.heartbeatInterval)
 		case <-stopper.ShouldStop():
+			return nil
+		case <-t.Ctx.Done():
 			return nil
 		}
 	}
@@ -173,6 +176,7 @@ func (t *StreamTask) FilterRow(
 // ConstructCDCRow encodes the filtered rows.
 func (t *StreamTask) ConstructCDCRow(
 	_ []*sqlbase.ColumnDescriptor,
+	_ map[uint32]sqlbase.ColumnDescriptor,
 	_ map[int]int,
 	_ map[int]int,
 	_ tree.Datums,
@@ -220,7 +224,7 @@ func (t *StreamTask) FormatCDCRows(data []interface{}) *sqlbase.CDCPushData {
 }
 
 // Push pushes a message to buffer and checks if it reaches the flush threshold.
-func (t *StreamTask) Push(ts int64, data [][]byte) error {
+func (t *StreamTask) Push(ts int64, _ uint64, data [][]byte) error {
 	t.serverMu.Lock()
 	defer t.serverMu.Unlock()
 
@@ -233,25 +237,4 @@ func (t *StreamTask) Push(ts int64, data [][]byte) error {
 		t.localWaterMark = ts
 	}
 	return t.server.Send(evt)
-}
-
-// initFilter format filter from bytes to ExprHelper.
-func initFilter(bytes []byte, types []types.T) (*execinfra.ExprHelper, error) {
-	filterExp := &execinfrapb.Expression{}
-	if err := protoutil.Unmarshal(bytes, filterExp); err != nil {
-		return nil, err
-	}
-
-	expr := &execinfra.ExprHelper{}
-	evalCtx := &tree.EvalContext{
-		SessionData: &sessiondata.SessionData{
-			DataConversion: sessiondata.DataConversionConfig{Location: time.UTC},
-		},
-	}
-
-	if err := expr.Init(*filterExp, types, evalCtx); err != nil {
-		return nil, err
-	}
-
-	return expr, nil
 }

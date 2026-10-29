@@ -252,6 +252,14 @@ func (j *Job) CheckStatus(ctx context.Context) error {
 	})
 }
 
+// CheckRunningStatus verifies the status of the job and returns if the job's
+// status isn't Running.
+func (j *Job) CheckRunningStatus(ctx context.Context) bool {
+	return j.Update(ctx, func(_ *kv.Txn, md JobMetadata, _ *JobUpdater) error {
+		return md.CheckRunning()
+	}) == nil
+}
+
 // CheckTerminalStatus returns true if the job is in a terminal status.
 func (j *Job) CheckTerminalStatus(ctx context.Context) bool {
 	err := j.Update(ctx, func(_ *kv.Txn, md JobMetadata, _ *JobUpdater) error {

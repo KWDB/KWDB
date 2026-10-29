@@ -29,7 +29,6 @@
 package sysutil
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -67,15 +66,6 @@ func ExitStatus(err *exec.ExitError) int {
 	return err.Sys().(syscall.WaitStatus).ExitStatus()
 }
 
-// DumpBacktraceSignal is used to dump all thread and goroutine stack backtrace
-var DumpBacktraceSignal os.Signal = syscall.SIGUSR1
-
-// NotifyThreadDumpSignal is used signal thread to dump stack backtrace
-var NotifyThreadDumpSignal os.Signal = syscall.SIGUSR2
-
-// AeDiedSignal is used to detect the ae died event
-var AeDiedSignal os.Signal = syscall.SIGCHLD
-
 const refreshSignal = syscall.SIGHUP
 
 // RefreshSignaledChan returns a channel that will receive an os.Signal whenever
@@ -101,31 +91,4 @@ func IsErrConnectionReset(err error) bool {
 // IsErrConnectionRefused returns true if an error is a "connection refused" error.
 func IsErrConnectionRefused(err error) bool {
 	return errors.Is(err, syscall.ECONNREFUSED)
-}
-
-// SyscallMeStartTs starts up AE_ts.
-func SyscallMeStartTs(pid int) error {
-	err := syscall.Kill(pid, syscall.SIGUSR1)
-	return err
-}
-
-// GetPid call syscall.Getpid()
-func GetPid() int {
-	return syscall.Getpid()
-}
-
-// GetDeviceNumber call syscall.Stat_t
-func GetDeviceNumber(path string) (int64, error) {
-	// Get file information
-	fileInfo, err := os.Stat(path)
-	if err != nil {
-		return 0, err
-	}
-
-	stat, ok := fileInfo.Sys().(*syscall.Stat_t)
-	if !ok {
-		return 0, fmt.Errorf("failed to convert Sys() to *syscall.Stat_t")
-	}
-
-	return int64(stat.Dev), nil
 }

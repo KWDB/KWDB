@@ -49,7 +49,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagepb"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
@@ -105,7 +105,7 @@ func TestSideloadingSideloadedStorage(t *testing.T) {
 	})
 	t.Run("Disk", func(t *testing.T) {
 		maker := func(
-			s *cluster.Settings, rangeID roachpb.RangeID, rep roachpb.ReplicaID, name string, eng storage.Engine,
+			s *cluster.Settings, rangeID roachpb.RangeID, rep roachpb.ReplicaID, name string, eng relational.Engine,
 		) (SideloadStorage, error) {
 			return newDiskSideloadStorage(s, rangeID, rep, name, rate.NewLimiter(rate.Inf, math.MaxInt64), eng)
 		}
@@ -115,7 +115,7 @@ func TestSideloadingSideloadedStorage(t *testing.T) {
 
 func testSideloadingSideloadedStorage(
 	t *testing.T,
-	maker func(*cluster.Settings, roachpb.RangeID, roachpb.ReplicaID, string, storage.Engine) (SideloadStorage, error),
+	maker func(*cluster.Settings, roachpb.RangeID, roachpb.ReplicaID, string, relational.Engine) (SideloadStorage, error),
 ) {
 	dir, cleanup := testutils.TempDir(t)
 	defer cleanup()
@@ -628,16 +628,16 @@ func testRaftSSTableSideloadingProposal(t *testing.T, engineInMem, mockSideloade
 	stopper := stop.NewStopper()
 	tc := testContext{}
 	if !engineInMem {
-		cfg := storage.RocksDBConfig{
+		cfg := relational.RocksDBConfig{
 			StorageConfig: base.StorageConfig{
 				Dir:      dir,
 				Settings: cluster.MakeTestingClusterSettings(),
 			},
 		}
 		var err error
-		cache := storage.NewRocksDBCache(1 << 20)
+		cache := relational.NewRocksDBCache(1 << 20)
 		defer cache.Release()
-		tc.engine, err = storage.NewRocksDB(cfg, cache)
+		tc.engine, err = relational.NewRocksDB(cfg, cache)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -768,9 +768,9 @@ func (mr *mockSender) Recv() (*SnapshotResponse, error) {
 	return &SnapshotResponse{Status: status}, nil
 }
 
-func newEngine(t *testing.T) (func(), storage.Engine) {
+func newEngine(t *testing.T) (func(), relational.Engine) {
 	dir, cleanup := testutils.TempDir(t)
-	eng, err := storage.NewDefaultEngine(
+	eng, err := relational.NewDefaultEngine(
 		1<<20,
 		base.StorageConfig{
 			Dir:       dir,

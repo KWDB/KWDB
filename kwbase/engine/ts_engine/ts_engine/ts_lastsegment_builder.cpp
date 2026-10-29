@@ -1,0 +1,277 @@
+// Copyright (c) 2022-present, Shanghai Yunxi Technology Co, Ltd.
+//
+// This software (KWDB) is licensed under Mulan PSL v2.
+// You can use this software according to the terms and conditions of the Mulan PSL v2.
+// You may obtain a copy of Mulan PSL v2 at:
+//          http://license.coscl.org.cn/MulanPSL2
+// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+// EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+// MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+// See the Mulan PSL v2 for more details.
+
+#include "ts_lastsegment_builder.h"
+
+#include <algorithm>
+#include <cstdint>
+#include <limits>
+#include <numeric>
+#include <tuple>
+
+#include "data_type.h"
+#include "kwdb_type.h"
+#include "libkwdbts2.h"
+#include "ts_block.h"
+#include "ts_bufferbuilder.h"
+#include "ts_coding.h"
+#include "ts_common.h"
+#include "ts_compressor.h"
+#include "ts_io.h"
+#include "ts_lastsegment.h"
+#include "ts_lastsegment_endec.h"
+#include "ts_metric_block.h"
+
+namespace kwdbts {
+
+KStatus TsLastSegmentBuilder::PutBlockSpan(std::shared_ptr<TsBlockSpan> span) {
+  TableVersionInfo current_table_version{span->GetTableID(), span->GetTableVersion()};
+  bloom_filter_->Add(span->GetEntityID());
+  while (span != nullptr && span->GetRowNum() != 0) {
+    if (metric_block_builder_ == nullptr || current_table_version != table_version_) {
+      auto s = RecordAndWriteBlockToFile();
+      if (s == FAIL) {
+        return FAIL;
+      }
+      auto [new_metric_block_builder, status] =
+          TsMetricBlockBuilder::Create(engine_schema_manager_, span->GetTableID(), span->GetTableVersion());
+      if (status == FAIL) {
+        LOG_ERROR("Failed to create metric block builder");
+        return status;
+      }
+      metric_block_builder_ = std::move(new_metric_block_builder);
+      block_index_collector_ = std::make_unique<BlockIndexCollector>(span->GetTableID(), span->GetTableVersion());
+      entity_id_buffer_.clear();
+      table_version_ = current_table_version;
+    }
+
+    std::shared_ptr<TsBlockSpan> back_span;
+    int extra_rows = metric_block_builder_->GetRowNum() + span->GetRowNum() - TsLastSegment::kNRowPerBlock;
+    if (extra_rows > 0) {
+      // split blockspan
+      span->SplitBack(extra_rows, back_span);
+    }
+
+    block_index_collector_->Collect(span.get());
+    auto s = metric_block_builder_->PutBlockSpan(span);
+    if (s == FAIL) {
+      return FAIL;
+    }
+    entity_id_buffer_.reserve(entity_id_buffer_.size() + span->GetRowNum());
+    std::fill_n(std::back_inserter(entity_id_buffer_), span->GetRowNum(), span->GetEntityID());
+
+    if (metric_block_builder_->GetRowNum() == TsLastSegment::kNRowPerBlock) {
+      s = RecordAndWriteBlockToFile();
+      if (s == FAIL) {
+        LOG_ERROR("Failed to write block to file");
+        return s;
+      }
+    }
+    span = back_span;
+  }
+  return SUCCESS;
+}
+
+KStatus TsLastSegmentBuilder::Finalize(TsSegmentWriteStats* stats) {
+  if (metric_block_builder_ != nullptr && metric_block_builder_->GetRowNum() != 0) {
+    auto s = RecordAndWriteBlockToFile();
+    if (s == FAIL) {
+      return FAIL;
+    }
+  }
+  uint64_t current_offset = last_segment_file_->GetFileSize();
+  stats->written_bytes = current_offset;
+  assert(block_info_buffer_.size() == block_index_buffer_.size());
+  uint32_t nblock = block_index_buffer_.size();
+  stats->written_blocks = nblock;
+  TsBufferBuilder buffer;
+  for (uint32_t i = 0; i < nblock; ++i) {
+    auto offset = buffer.size();
+    EncodeBlockInfo(&buffer, block_info_buffer_[i]);
+    auto length = buffer.size() - offset;
+    block_index_buffer_[i].info_offset = current_offset + offset;
+    block_index_buffer_[i].length = length;
+  }
+  stats->written_rows = std::accumulate(block_info_buffer_.begin(), block_info_buffer_.end(), 0,
+                                        [](int lhs, const TsLastSegmentBlockInfo& info) { return lhs + info.nrow; });
+  TsLastSegmentFooter footer_;
+  footer_.magic_number = FOOTER_MAGIC;
+  footer_.n_data_block = nblock;
+  footer_.file_version = 1;
+  footer_.block_info_idx_offset = current_offset + buffer.size();
+
+  [[maybe_unused]] std::tuple<TSEntityID, timestamp64> prev{0, INT64_MIN};
+  for (uint32_t i = 0; i < nblock; ++i) {
+    const auto& index = block_index_buffer_[i];
+    EncodeBlockIndex(&buffer, index);
+
+    std::tuple<TSEntityID, timestamp64> current{index.min_entity_id, index.min_ts};
+    // assert(current >= prev);
+    prev = current;
+
+    stats->written_devices += index.n_entity;
+  }
+  for (int i = 1; i < nblock; ++i) {
+    stats->written_devices -= (block_index_buffer_[i].min_entity_id == block_index_buffer_[i - 1].min_entity_id);
+  }
+
+  std::vector<size_t> meta_block_offset;
+  std::vector<size_t> meta_block_size;
+
+  for (int i = 0; i < meta_blocks_.size(); ++i) {
+    TsBufferBuilder tmp;
+    meta_blocks_[i]->Serialize(&tmp);
+    if (!tmp.empty()) {
+      meta_block_offset.push_back(current_offset + buffer.size());
+      meta_block_size.push_back(tmp.size());
+    }
+    buffer.append(tmp);
+  }
+
+  footer_.meta_block_idx_offset = current_offset + buffer.size();
+  for (int i = 0; i < meta_block_offset.size(); ++i) {
+    PutFixed64(&buffer, meta_block_offset[i]);
+    PutFixed64(&buffer, meta_block_size[i]);
+  }
+  footer_.n_meta_block = meta_block_offset.size();
+  EncodeFooter(&buffer, footer_);
+  auto s = last_segment_file_->Append(buffer.AsSlice());
+  if (s == FAIL) {
+    LOG_ERROR("Failed to append last segment file: %s", last_segment_file_->GetFilePath().c_str());
+    return FAIL;
+  }
+  s = last_segment_file_->Sync();
+  if (s == FAIL) {
+    LOG_ERROR("Failed to sync last segment file: %s", last_segment_file_->GetFilePath().c_str());
+    return FAIL;
+  }
+  s = last_segment_file_->Close();
+  if (s == FAIL) {
+    LOG_ERROR("Failed to close last segment file: %s", last_segment_file_->GetFilePath().c_str());
+    return FAIL;
+  }
+
+  return SUCCESS;
+}
+
+TS_OSN TsLastSegmentBuilder::GetMaxOSN() const {
+  auto it = std::max_element(
+      block_index_buffer_.begin(), block_index_buffer_.end(),
+      [](const TsLastSegmentBlockIndex& a, const TsLastSegmentBlockIndex& b) { return a.max_osn < b.max_osn; });
+  return it == block_index_buffer_.end() ? 0 : it->max_osn;
+}
+
+KStatus TsLastSegmentBuilder::RecordAndWriteBlockToFile() {
+  if (metric_block_builder_ == nullptr || metric_block_builder_->GetRowNum() == 0) {
+    return SUCCESS;
+  }
+  assert(metric_block_builder_ != nullptr);
+  assert(entity_id_buffer_.size() == metric_block_builder_->GetRowNum());
+  auto metric_block = metric_block_builder_->GetMetricBlock();
+
+  TsLastSegmentBlockInfo block_info;
+  block_info.ncol = metric_block->GetColNum();
+  block_info.nrow = metric_block->GetRowNum();
+  block_info.block_offset = last_segment_file_->GetFileSize();
+
+  auto index = block_index_collector_->GetIndex();
+
+  // 1. compress entityid first;
+  TSSlice entity_id_slice{reinterpret_cast<char*>(entity_id_buffer_.data()),
+                          entity_id_buffer_.size() * sizeof(TSEntityID)};
+  const auto& mgr = CompressorManager::GetInstance();
+  compressed_data_.clear();
+  bool ok = mgr.CompressData(entity_id_slice, nullptr, entity_id_buffer_.size(), &compressed_data_, EncodeAlgo::kPlain,
+                             CompressAlgo::kPlain, 0);
+  if (!ok) {
+    return FAIL;
+  }
+
+  block_info.entity_id_len = compressed_data_.size();
+
+  TsMetricCompressInfo compress_info;
+  ok = metric_block->GetCompressedData(compressed_data_, compress_info, EngineOptions::compress_last_segment,
+                                       EngineOptions::compress_last_segment || metric_block_builder_->IsSparseTable());
+  if (!ok) {
+    return FAIL;
+  }
+  auto s = last_segment_file_->Append(compressed_data_.AsSlice());
+  if (s == FAIL) {
+    return s;
+  }
+
+  index.info_offset = -1;
+  index.length = -1;
+  block_index_buffer_.push_back(index);
+
+  block_info.osn_len = compress_info.osn_len;
+  block_info.col_infos.resize(block_info.ncol);
+  for (int i = 0; i < block_info.ncol; ++i) {
+    block_info.col_infos[i].offset = compress_info.column_data_segments[i].offset;
+    block_info.col_infos[i].bitmap_len = compress_info.column_compress_infos[i].bitmap_len;
+    block_info.col_infos[i].fixdata_len = compress_info.column_compress_infos[i].fixdata_len;
+    block_info.col_infos[i].vardata_len = compress_info.column_compress_infos[i].vardata_len;
+  }
+  block_info_buffer_.push_back(std::move(block_info));
+
+  metric_block_builder_->Reset();
+  block_index_collector_->Reset();
+  entity_id_buffer_.clear();
+  return SUCCESS;
+}
+
+void TsLastSegmentBuilder::BlockIndexCollector::Collect(TsBlockSpan* span) {
+  assert(span->GetRowNum() != 0);
+  n_entity_ += (span->GetEntityID() != prev_entity_id_);
+  prev_entity_id_ = span->GetEntityID();
+  max_entity_id_ = std::max(max_entity_id_, span->GetEntityID());
+  min_entity_id_ = std::min(min_entity_id_, span->GetEntityID());
+  max_ts_ = std::max(max_ts_, span->GetLastTS());
+  min_ts_ = std::min(min_ts_, span->GetFirstTS());
+  if (first_ts_ == std::numeric_limits<timestamp64>::max()) {
+    first_ts_ = span->GetFirstTS();
+  }
+  last_ts_ = span->GetLastTS();
+
+  uint64_t min_osn_it;
+  uint64_t max_osn_it;
+  span->GetMinAndMaxOSN(min_osn_it, max_osn_it);
+
+  min_osn_ = std::min(min_osn_, min_osn_it);
+  max_osn_ = std::max(max_osn_, max_osn_it);
+
+  if (first_osn_ == std::numeric_limits<uint64_t>::max()) {
+    first_osn_ = span->GetFirstOSN();
+  }
+  last_osn_ = span->GetLastOSN();
+}
+
+TsLastSegmentBlockIndex TsLastSegmentBuilder::BlockIndexCollector::GetIndex() const {
+  TsLastSegmentBlockIndex index;
+  index.info_offset = 0;
+  index.length = 0;
+  index.table_id = table_id_;
+  index.table_version = version_;
+  index.n_entity = n_entity_;
+  index.min_ts = min_ts_;
+  index.max_ts = max_ts_;
+  index.first_ts = first_ts_;
+  index.last_ts = last_ts_;
+  index.min_osn = min_osn_;
+  index.max_osn = max_osn_;
+  index.first_osn = first_osn_;
+  index.last_osn = last_osn_;
+  index.min_entity_id = min_entity_id_;
+  index.max_entity_id = max_entity_id_;
+  return index;
+}
+
+}  // namespace kwdbts

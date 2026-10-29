@@ -33,7 +33,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
 )
@@ -88,7 +88,7 @@ type FlowCtx struct {
 	// batchlookup join input
 	// only pass the data chunk formed by batchlookupjoiner to tse for multiple model processing
 	// when the switch is on and the server starts with single node mode.
-	TsBatchLookupInput *tse.DataChunkGo
+	TsBatchLookupInput *timeseries.DataChunkGo
 
 	// TsHandleMap define a tsreader id vs. tshandle map
 	// only pass the tshandle to push data chunk to tse for multiple model processing

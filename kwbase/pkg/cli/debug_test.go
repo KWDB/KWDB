@@ -44,7 +44,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/rpc"
 	"gitee.com/kwbasedb/kwbase/pkg/server"
 	"gitee.com/kwbasedb/kwbase/pkg/server/serverpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/sqlutils"
@@ -56,10 +56,10 @@ import (
 
 func createStore(t *testing.T, path string) {
 	t.Helper()
-	cache := storage.NewRocksDBCache(server.DefaultCacheSize)
+	cache := relational.NewRocksDBCache(server.DefaultCacheSize)
 	defer cache.Release()
-	db, err := storage.NewRocksDB(
-		storage.RocksDBConfig{
+	db, err := relational.NewRocksDB(
+		relational.RocksDBConfig{
 			StorageConfig: base.StorageConfig{
 				Dir:       path,
 				MustExist: false,
@@ -137,7 +137,7 @@ func TestOpenReadOnlyStore(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			key := storage.MakeMVCCMetadataKey(roachpb.Key("key"))
+			key := relational.MakeMVCCMetadataKey(roachpb.Key("key"))
 			val := []byte("value")
 			err = db.Put(key, val)
 			if !testutils.IsError(err, test.expErr) {
@@ -284,7 +284,7 @@ func TestRemoveDeadReplicas(t *testing.T) {
 						return err
 					}
 					if batch != nil {
-						if err := batch.Commit(true, storage.NormalCommitType); err != nil {
+						if err := batch.Commit(true, relational.NormalCommitType); err != nil {
 							return err
 						}
 						batch.Close()

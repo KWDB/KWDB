@@ -37,6 +37,15 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// DumpBacktraceSignal is used to dump all thread and goroutine stack backtrace
+var DumpBacktraceSignal os.Signal = syscall.SIGUSR1
+
+// NotifyThreadDumpSignal is used signal thread to dump stack backtrace
+var NotifyThreadDumpSignal os.Signal = syscall.SIGUSR2
+
+// AeDiedSignal is used to detect the ae died event
+var AeDiedSignal os.Signal = syscall.SIGCHLD
+
 // ProcessIdentity returns a string describing the user and group that this
 // process is running as.
 func ProcessIdentity() string {
@@ -88,4 +97,31 @@ func StatAndLinkCount(path string) (os.FileInfo, int64, error) {
 // error.
 func IsCrossDeviceLinkErrno(errno error) bool {
 	return errno == syscall.EXDEV
+}
+
+// SyscallMeStartTs starts up AE_ts.
+func SyscallMeStartTs(pid int) error {
+	err := syscall.Kill(pid, syscall.SIGUSR1)
+	return err
+}
+
+// GetPid call syscall.Getpid()
+func GetPid() int {
+	return syscall.Getpid()
+}
+
+// GetDeviceNumber call syscall.Stat_t
+func GetDeviceNumber(path string) (int64, error) {
+	// Get file information
+	fileInfo, err := os.Stat(path)
+	if err != nil {
+		return 0, err
+	}
+
+	stat, ok := fileInfo.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, fmt.Errorf("failed to convert Sys() to *syscall.Stat_t")
+	}
+
+	return int64(stat.Dev), nil
 }

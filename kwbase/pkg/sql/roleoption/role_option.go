@@ -29,6 +29,7 @@ import (
 	"strings"
 
 	"gitee.com/kwbasedb/kwbase/pkg/security"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/mysqlwire/mysqlwirebase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqltelemetry"
@@ -202,4 +203,40 @@ func (rol List) GetHashedPassword() ([]byte, error) {
 	}
 	// Password option not found.
 	return hashedPassword, errors.New("password not found in role options")
+}
+
+// GetMySQLPasswordDigests returns the two digests the MySQL authentication
+// plugins require: SHA1(SHA1(password)) for mysql_native_password, and
+// SHA256(SHA256(password)) for the caching_sha2_password fast path.
+//
+// These exist because neither can be derived from the bcrypt hash KWDB stores,
+// and both plugins are challenge-response: the client never sends anything the
+// server could compare against bcrypt. Recording them at the moment the
+// password is set is the only point where the cleartext is available.
+//
+// Both digests are password-equivalent for their respective plugins, and are
+// far cheaper to attack offline than bcrypt. They are stored because the
+// protocol leaves no alternative, and this is the same exposure a real MySQL
+// server carries for the same accounts.
+//
+// A NULL password yields nil digests, matching GetHashedPassword's treatment.
+func (rol List) GetMySQLPasswordDigests() (native []byte, sha2 []byte, err error) {
+	for _, ro := range rol {
+		if ro.Option != PASSWORD {
+			continue
+		}
+		isNull, password, err := ro.Value()
+		if isNull {
+			return nil, nil, nil
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+		if password == "" {
+			return nil, nil, security.ErrEmptyPassword
+		}
+		return mysqlwirebase.NativePasswordDigest(password),
+			mysqlwirebase.CachingSHA2Digest(password), nil
+	}
+	return nil, nil, errors.New("password not found in role options")
 }

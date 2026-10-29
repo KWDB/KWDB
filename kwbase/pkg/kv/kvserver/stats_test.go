@@ -30,7 +30,7 @@ import (
 	"testing"
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/stateloader"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
 	"github.com/kr/pretty"

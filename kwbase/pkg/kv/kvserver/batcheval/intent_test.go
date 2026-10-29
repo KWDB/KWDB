@@ -29,23 +29,23 @@ import (
 	"testing"
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"github.com/stretchr/testify/require"
 )
 
-// instrumentedEngine wraps a storage.Engine and allows for various methods in
+// instrumentedEngine wraps a relational.Engine and allows for various methods in
 // the interface to be instrumented for testing purposes.
 type instrumentedEngine struct {
-	storage.Engine
+	relational.Engine
 
-	onNewIterator func(storage.IterOptions)
+	onNewIterator func(relational.IterOptions)
 	// ... can be extended ...
 }
 
-func (ie *instrumentedEngine) NewIterator(opts storage.IterOptions) storage.Iterator {
+func (ie *instrumentedEngine) NewIterator(opts relational.IterOptions) relational.Iterator {
 	if ie.onNewIterator != nil {
 		ie.onNewIterator(opts)
 	}
@@ -69,13 +69,13 @@ func TestCollectIntentsUsesSameIterator(t *testing.T) {
 
 	testCases := []struct {
 		name              string
-		run               func(*testing.T, storage.ReadWriter) (intents []roachpb.KeyValue, _ error)
+		run               func(*testing.T, relational.ReadWriter) (intents []roachpb.KeyValue, _ error)
 		expPrefixIters    int
 		expNonPrefixIters int
 	}{
 		{
 			name: "get",
-			run: func(t *testing.T, db storage.ReadWriter) ([]roachpb.KeyValue, error) {
+			run: func(t *testing.T, db relational.ReadWriter) ([]roachpb.KeyValue, error) {
 				req := &roachpb.GetRequest{
 					RequestHeader: roachpb.RequestHeader{Key: key},
 				}
@@ -93,7 +93,7 @@ func TestCollectIntentsUsesSameIterator(t *testing.T) {
 		},
 		{
 			name: "scan",
-			run: func(t *testing.T, db storage.ReadWriter) ([]roachpb.KeyValue, error) {
+			run: func(t *testing.T, db relational.ReadWriter) ([]roachpb.KeyValue, error) {
 				req := &roachpb.ScanRequest{
 					RequestHeader: roachpb.RequestHeader{Key: key, EndKey: key.Next()},
 				}
@@ -108,7 +108,7 @@ func TestCollectIntentsUsesSameIterator(t *testing.T) {
 		},
 		{
 			name: "reverse scan",
-			run: func(t *testing.T, db storage.ReadWriter) ([]roachpb.KeyValue, error) {
+			run: func(t *testing.T, db relational.ReadWriter) ([]roachpb.KeyValue, error) {
 				req := &roachpb.ReverseScanRequest{
 					RequestHeader: roachpb.RequestHeader{Key: key, EndKey: key.Next()},
 				}
@@ -129,7 +129,7 @@ func TestCollectIntentsUsesSameIterator(t *testing.T) {
 			// the request should ignore the intent and should not return any
 			// corresponding intent row.
 			testutils.RunTrueAndFalse(t, "deletion intent", func(t *testing.T, delete bool) {
-				db := &instrumentedEngine{Engine: storage.NewDefaultInMem()}
+				db := &instrumentedEngine{Engine: relational.NewDefaultInMem()}
 				defer db.Close()
 
 				// Write an intent.
@@ -137,15 +137,15 @@ func TestCollectIntentsUsesSameIterator(t *testing.T) {
 				txn := roachpb.MakeTransaction("test", key, roachpb.NormalUserPriority, ts, 0)
 				var err error
 				if delete {
-					err = storage.MVCCDelete(ctx, db, nil, key, ts, &txn)
+					err = relational.MVCCDelete(ctx, db, nil, key, ts, &txn)
 				} else {
-					err = storage.MVCCPut(ctx, db, nil, key, ts, val, &txn)
+					err = relational.MVCCPut(ctx, db, nil, key, ts, val, &txn)
 				}
 				require.NoError(t, err)
 
 				// Instrument iterator creation, count prefix vs. non-prefix iters.
 				var prefixIters, nonPrefixIters int
-				db.onNewIterator = func(opts storage.IterOptions) {
+				db.onNewIterator = func(opts relational.IterOptions) {
 					if opts.Prefix {
 						prefixIters++
 					} else {

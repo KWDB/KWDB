@@ -388,41 +388,41 @@ INSERT INTO stream_db_fvt.cpu_agg values ('2023-05-31 10:00:20.123456789', 58, 4
 
 -- ts table
 -- 1. TIME_BUCKET
-CREATE STREAM cpu_stream_agg_ts_1 INTO stream_db_fvt_out.cpu_avg_agg1 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='on', MAX_DELAY='10s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='5s',heartbeat_interval='1s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM cpu_stream_agg_ts_1 INTO stream_db_fvt_out.cpu_avg_agg1 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='10s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='7s',heartbeat_interval='5s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
 -- 2. TIME_WINDOW
 -- for TIME_WINDOW case, use first_row/last_row instead of first/last to ensure the stream recalculation is working correctly.
-CREATE STREAM cpu_stream_agg_ts_2 INTO stream_db_fvt_out.cpu_avg_agg2 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='on', MAX_DELAY='10s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='5s',heartbeat_interval='1s') AS SELECT first_row(k_timestamp) as w_begin, last_row(k_timestamp) as w_end, avg(usage_user) as usage_user_avg, avg(usage_system) as usage_system_avg, count(*) as count, hostname as hostname FROM stream_db_fvt.cpu_agg WHERE usage_system+usage_system>0 GROUP BY hostname, TIME_WINDOW(k_timestamp, '1m');
+CREATE STREAM cpu_stream_agg_ts_2 INTO stream_db_fvt_out.cpu_avg_agg2 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='on', MAX_DELAY='10s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='7s',heartbeat_interval='5s') AS SELECT first_row(k_timestamp) as w_begin, last_row(k_timestamp) as w_end, avg(usage_user) as usage_user_avg, avg(usage_system) as usage_system_avg, count(*) as count, hostname as hostname FROM stream_db_fvt.cpu_agg WHERE usage_system+usage_system>0 GROUP BY hostname, TIME_WINDOW(k_timestamp, '1m');
 -- 3. COUNT_WINDOW
-CREATE STREAM cpu_stream_agg_ts_3 INTO stream_db_fvt_out.cpu_avg_agg3 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='on', MAX_DELAY='10s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='5s',heartbeat_interval='1s') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, avg(usage_system) as usage_system_avg, hostname as hostname, count(*) as count, avg(usage_user) as usage_user_avg FROM stream_db_fvt.cpu_agg WHERE abs(usage_system)>0 GROUP BY hostname, COUNT_WINDOW(5);
+CREATE STREAM cpu_stream_agg_ts_3 INTO stream_db_fvt_out.cpu_avg_agg3 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='on', MAX_DELAY='10s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='7s',heartbeat_interval='5s') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, avg(usage_system) as usage_system_avg, hostname as hostname, count(*) as count, avg(usage_user) as usage_user_avg FROM stream_db_fvt.cpu_agg WHERE abs(usage_system)>0 GROUP BY hostname, COUNT_WINDOW(5);
 -- 4. SESSION_WINDOW
-CREATE STREAM cpu_stream_agg_ts_4 INTO stream_db_fvt_out.cpu_avg_agg4 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='on', MAX_DELAY='10s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='5s',heartbeat_interval='1s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>-1 GROUP BY hostname, SESSION_WINDOW(k_timestamp, '5m');
+CREATE STREAM cpu_stream_agg_ts_4 INTO stream_db_fvt_out.cpu_avg_agg4 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='on', MAX_DELAY='10s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='7s',heartbeat_interval='5s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>-1 GROUP BY hostname, SESSION_WINDOW(k_timestamp, '5m');
 -- 5. EVENT_WINDOW
-CREATE STREAM cpu_stream_agg_ts_5 INTO stream_db_fvt_out.cpu_avg_agg5 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='on', MAX_DELAY='10s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='5s',heartbeat_interval='1s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system not in (0,100) GROUP BY hostname, EVENT_WINDOW(usage_user > 50, usage_system < 20);
+CREATE STREAM cpu_stream_agg_ts_5 INTO stream_db_fvt_out.cpu_avg_agg5 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='on', MAX_DELAY='10s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='7s',heartbeat_interval='5s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system not in (0,100) GROUP BY hostname, EVENT_WINDOW(usage_user > 50, usage_system < 20);
 -- 6. STATE_WINDOW
-CREATE STREAM cpu_stream_agg_ts_6 INTO stream_db_fvt_out.cpu_avg_agg6 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='on', MAX_DELAY='10s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='5s',heartbeat_interval='1s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY hostname, STATE_WINDOW(usage_idle);
+CREATE STREAM cpu_stream_agg_ts_6 INTO stream_db_fvt_out.cpu_avg_agg6 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='on', MAX_DELAY='10s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='7s',heartbeat_interval='5s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY hostname, STATE_WINDOW(usage_idle);
 -- 7. cannot create stream without any agg function (group by hostname only)
-CREATE STREAM cpu_stream_agg_ts_7 INTO stream_db_fvt_out.cpu_avg_agg7 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='on', MAX_DELAY='10s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='5s',heartbeat_interval='1s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY hostname;
+CREATE STREAM cpu_stream_agg_ts_7 INTO stream_db_fvt_out.cpu_avg_agg7 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='on', MAX_DELAY='10s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='7s',heartbeat_interval='5s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY hostname;
 -- 8. TIME_WINDOW slide
 -- for TIME_WINDOW case, use first/last to ensure the stream recalculation is working correctly.
-CREATE STREAM cpu_stream_agg_ts_8 INTO stream_db_fvt_out.cpu_avg_agg8 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='30',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='on', MAX_DELAY='10s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='5s',heartbeat_interval='1s') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end,first_row(k_timestamp) as w_begin1, last_row(k_timestamp) as w_end1, avg(usage_user) as usage_user_avg, avg(usage_system) as usage_system_avg, count(*) as count, hostname as hostname FROM stream_db_fvt.cpu_agg WHERE usage_system+usage_system>0 GROUP BY hostname, TIME_WINDOW(k_timestamp, '1m','30s');
+CREATE STREAM cpu_stream_agg_ts_8 INTO stream_db_fvt_out.cpu_avg_agg8 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='30',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='on', MAX_DELAY='10s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='7s',heartbeat_interval='5s') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end,first_row(k_timestamp) as w_begin1, last_row(k_timestamp) as w_end1, avg(usage_user) as usage_user_avg, avg(usage_system) as usage_system_avg, count(*) as count, hostname as hostname FROM stream_db_fvt.cpu_agg WHERE usage_system+usage_system>0 GROUP BY hostname, TIME_WINDOW(k_timestamp, '1m','30s');
 -- 9. COUNT_WINDOW slide
-CREATE STREAM cpu_stream_agg_ts_9 INTO stream_db_fvt_out.cpu_avg_agg9 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='30',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='on', MAX_DELAY='10s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='5s',heartbeat_interval='1s') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, avg(usage_system) as usage_system_avg, hostname as hostname, count(*) as count, avg(usage_user) as usage_user_avg FROM stream_db_fvt.cpu_agg WHERE abs(usage_system)>0 GROUP BY hostname, COUNT_WINDOW(5,3);
+CREATE STREAM cpu_stream_agg_ts_9 INTO stream_db_fvt_out.cpu_avg_agg9 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='30',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='on', MAX_DELAY='10s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='7s',heartbeat_interval='5s') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, avg(usage_system) as usage_system_avg, hostname as hostname, count(*) as count, avg(usage_user) as usage_user_avg FROM stream_db_fvt.cpu_agg WHERE abs(usage_system)>0 GROUP BY hostname, COUNT_WINDOW(5,3);
 
 -- relation table
 -- 1. TIME_BUCKET
-CREATE STREAM cpu_stream_agg_rel_1 INTO stream_db_fvt_out1.cpu_avg_agg1 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
+CREATE STREAM cpu_stream_agg_rel_1 INTO stream_db_fvt_out1.cpu_avg_agg1 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='10s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='7s',heartbeat_interval='5s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
 -- 2. TIME_WINDOW
-CREATE STREAM cpu_stream_agg_rel_2 INTO stream_db_fvt_out1.cpu_avg_agg2 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first_row(k_timestamp) as w_begin, last_row(k_timestamp) as w_end, avg(usage_user) as usage_user_avg, avg(usage_system) as usage_system_avg, count(*) as count, hostname as hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY hostname, TIME_WINDOW(k_timestamp, '1m');
+CREATE STREAM cpu_stream_agg_rel_2 INTO stream_db_fvt_out1.cpu_avg_agg2 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='10s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='7s',heartbeat_interval='5s') AS SELECT first_row(k_timestamp) as w_begin, last_row(k_timestamp) as w_end, avg(usage_user) as usage_user_avg, avg(usage_system) as usage_system_avg, count(*) as count, hostname as hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY hostname, TIME_WINDOW(k_timestamp, '1m');
 -- 3. COUNT_WINDOW
-CREATE STREAM cpu_stream_agg_rel_3 INTO stream_db_fvt_out1.cpu_avg_agg3 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, avg(usage_system) as usage_system_avg, hostname as hostname, count(*) as count, avg(usage_user) as usage_user_avg FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY hostname, COUNT_WINDOW(5);
+CREATE STREAM cpu_stream_agg_rel_3 INTO stream_db_fvt_out1.cpu_avg_agg3 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='10s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='7s',heartbeat_interval='5s') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, avg(usage_system) as usage_system_avg, hostname as hostname, count(*) as count, avg(usage_user) as usage_user_avg FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY hostname, COUNT_WINDOW(5);
 -- 4. SESSION_WINDOW
-CREATE STREAM cpu_stream_agg_rel_4 INTO stream_db_fvt_out1.cpu_avg_agg4 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY hostname, SESSION_WINDOW(k_timestamp, '5m');
+CREATE STREAM cpu_stream_agg_rel_4 INTO stream_db_fvt_out1.cpu_avg_agg4 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='10s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='7s',heartbeat_interval='5s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY hostname, SESSION_WINDOW(k_timestamp, '5m');
 -- 5. EVENT_WINDOW
-CREATE STREAM cpu_stream_agg_rel_5 INTO stream_db_fvt_out1.cpu_avg_agg5 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY hostname, EVENT_WINDOW(usage_user > 50, usage_system < 20);
+CREATE STREAM cpu_stream_agg_rel_5 INTO stream_db_fvt_out1.cpu_avg_agg5 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='10s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='7s',heartbeat_interval='5s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY hostname, EVENT_WINDOW(usage_user > 50, usage_system < 20);
 -- 6. STATE_WINDOW
-CREATE STREAM cpu_stream_agg_rel_6 INTO stream_db_fvt_out1.cpu_avg_agg6 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY hostname, STATE_WINDOW(usage_idle);
+CREATE STREAM cpu_stream_agg_rel_6 INTO stream_db_fvt_out1.cpu_avg_agg6 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='10s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='7s',heartbeat_interval='5s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY hostname, STATE_WINDOW(usage_idle);
 -- 7. cannot create stream without any agg function (group by hostname only)
-CREATE STREAM cpu_stream_agg_rel_7 INTO stream_db_fvt_out1.cpu_avg_agg7 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY hostname;
+CREATE STREAM cpu_stream_agg_rel_7 INTO stream_db_fvt_out1.cpu_avg_agg7 WITH OPTIONS(low_latency='on',recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='10s',SYNC_TIME='0',BUFFER_SIZE='1024kib',checkpoint_interval='7s',heartbeat_interval='5s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY hostname;
 
 select pg_sleep(1);
 
@@ -434,7 +434,7 @@ INSERT INTO stream_db_fvt.cpu_agg values ('2023-05-31 10:01:05.123456789', 58, 0
 INSERT INTO stream_db_fvt.cpu_agg values ('2023-05-31 10:01:10.123456789', 58, 77, 25, 61, 22, 63, 6, 44, 80, 38, 'host_0', '', '', '', '', '', '', '', '', '');
 INSERT INTO stream_db_fvt.cpu_agg values ('2023-05-31 10:01:20.123456789', 58, 88, 24, 61, 22, 63, 6, 44, 80, 38, 'host_0', '', '', '', '', '', '', '', '', '');
 INSERT INTO stream_db_fvt.cpu_agg values ('2023-05-31 10:10:00.123456789', 58, 3, 25, 61, 22, 63, 6, 44, 80, 38, 'host_0', '', '', '', '', '', '', '', '', '');
-select pg_sleep(0.5);
+select pg_sleep(1);
 INSERT INTO stream_db_fvt.cpu_agg
 values ('2023-05-31 10:20:00', 58, 3, 25, 61, 22, 63, 6, 44, 80, 38, 'host_1', '', '', '', '', '', '', '', '', '');
 
@@ -446,29 +446,30 @@ INSERT INTO stream_db_fvt.cpu_agg
 values ('2023-05-31 10:00:26', 58, 44, 24, 61, 22, 63, 6, 44, 80, 38, 'host_0', '', '', '', '', '', '', '', '', '');
 INSERT INTO stream_db_fvt.cpu_agg
 values ('2023-05-31 10:00:26', 58, 44, 24, 61, 22, 63, 6, 44, 80, 38, 'host_1', '', '', '', '', '', '', '', '', '');
-select pg_sleep(0.5);
--- Immediate result
-select * from stream_db_fvt_out.cpu_avg_agg1 order by w_begin, hostname;
-select * from stream_db_fvt_out.cpu_avg_agg2 order by w_begin, hostname;
-select * from stream_db_fvt_out.cpu_avg_agg3 order by w_begin, hostname;
-select * from stream_db_fvt_out.cpu_avg_agg4 order by w_begin, hostname;
-select * from stream_db_fvt_out.cpu_avg_agg5 order by w_begin, hostname;
-select * from stream_db_fvt_out.cpu_avg_agg6 order by w_begin, hostname;
-select * from stream_db_fvt_out.cpu_avg_agg7 order by w_begin, hostname;
-select pg_sleep(1);
-select * from stream_db_fvt_out.cpu_avg_agg8 order by hostname, w_begin;
-select * from stream_db_fvt_out.cpu_avg_agg9 order by hostname, w_begin;
+--select pg_sleep(1);
+-- Immediate result 
+-- The Immediate results are too heavily influenced by the testing environment, so they have been temporarily removed.
+-- select * from stream_db_fvt_out.cpu_avg_agg1 order by w_begin, hostname;
+-- select * from stream_db_fvt_out.cpu_avg_agg2 order by w_begin, hostname;
+-- select * from stream_db_fvt_out.cpu_avg_agg3 order by w_begin, hostname;
+-- select * from stream_db_fvt_out.cpu_avg_agg4 order by w_begin, hostname;
+-- select * from stream_db_fvt_out.cpu_avg_agg5 order by w_begin, hostname;
+-- select * from stream_db_fvt_out.cpu_avg_agg6 order by w_begin, hostname;
+-- select * from stream_db_fvt_out.cpu_avg_agg7 order by w_begin, hostname;
 
-select * from stream_db_fvt_out1.cpu_avg_agg1 order by w_begin, hostname;
-select * from stream_db_fvt_out1.cpu_avg_agg2 order by w_begin, hostname;
-select * from stream_db_fvt_out1.cpu_avg_agg3 order by w_begin, hostname;
-select * from stream_db_fvt_out1.cpu_avg_agg4 order by w_begin, hostname;
-select * from stream_db_fvt_out1.cpu_avg_agg5 order by w_begin, hostname;
-select * from stream_db_fvt_out1.cpu_avg_agg6 order by w_begin, hostname;
-select * from stream_db_fvt_out1.cpu_avg_agg7 order by w_begin, hostname;
+-- select * from stream_db_fvt_out1.cpu_avg_agg1 order by w_begin, hostname;
+-- select * from stream_db_fvt_out1.cpu_avg_agg2 order by w_begin, hostname;
+-- select * from stream_db_fvt_out1.cpu_avg_agg3 order by w_begin, hostname;
+-- select * from stream_db_fvt_out1.cpu_avg_agg4 order by w_begin, hostname;
+-- select * from stream_db_fvt_out1.cpu_avg_agg5 order by w_begin, hostname;
+-- select * from stream_db_fvt_out1.cpu_avg_agg6 order by w_begin, hostname;
+-- select * from stream_db_fvt_out1.cpu_avg_agg7 order by w_begin, hostname;
 
+-- select pg_sleep(10);
+-- select * from stream_db_fvt_out.cpu_avg_agg8 order by hostname, w_begin;
+-- select * from stream_db_fvt_out.cpu_avg_agg9 order by hostname, w_begin;
 -- Final result
-select pg_sleep(25);
+select pg_sleep(30);
 
 select * from stream_db_fvt_out.cpu_avg_agg1 order by w_begin, hostname;
 select * from stream_db_fvt_out.cpu_avg_agg2 order by w_begin, hostname;

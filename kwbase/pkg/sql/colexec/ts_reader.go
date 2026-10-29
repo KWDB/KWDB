@@ -26,7 +26,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/rowexec"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
@@ -48,7 +48,7 @@ type TsReaderOp struct {
 	tsProcessorSpecs []execinfrapb.ProcessorSpec
 	timeZone         int
 	collected        bool
-	statsList        []tse.TsFetcherStats
+	statsList        []timeseries.TsFetcherStats
 	done             bool
 	FlowCtx          *execinfra.FlowCtx
 	// EvalCtx is used for expression evaluation. It overrides the one in flowCtx.
@@ -60,7 +60,7 @@ type TsReaderOp struct {
 	Ctx   context.Context
 	types []types.T
 	// Rev   []byte
-	Rcv tse.TsDataChunkToGo
+	Rcv timeseries.TsDataChunkToGo
 
 	// tsInfo is information for ae.
 	tsInfo   execinfrapb.TsInfo
@@ -179,7 +179,7 @@ func (tro *TsReaderOp) Init() {
 		timezone := offSet / 3600
 		tro.timeZone = timezone
 		var tsHandle unsafe.Pointer
-		var tsQueryInfo = tse.TsQueryInfo{
+		var tsQueryInfo = timeseries.TsQueryInfo{
 			ID:       int(tro.sid),
 			Buf:      msg,
 			UniqueID: randomNumber,
@@ -229,20 +229,20 @@ func (tro *TsReaderOp) Next(ctx context.Context) coldata.Batch {
 
 	for {
 		if tro.Rcv.IsReadComplete() {
-			var tsQueryInfo = tse.TsQueryInfo{
+			var tsQueryInfo = timeseries.TsQueryInfo{
 				ID:      int(tro.sid),
 				Handle:  tro.tsHandle,
 				Buf:     []byte("exec next"),
-				Fetcher: tse.TsFetcher{Collected: tro.collected},
+				Fetcher: timeseries.TsFetcher{Collected: tro.collected},
 			}
 			// Init analyse fetcher.
 			if tro.collected {
-				tsFetchers := tse.NewTsFetcher(tro.tsProcessorSpecs)
+				tsFetchers := timeseries.NewTsFetcher(tro.tsProcessorSpecs)
 				tsQueryInfo.Fetcher.CFetchers = tsFetchers
 				tsQueryInfo.Fetcher.Size = len(tsFetchers)
 				if tro.statsList == nil || len(tro.statsList) <= 0 {
 					for j := len(tro.tsProcessorSpecs) - 1; j >= 0; j-- {
-						rowNumFetcherStats := tse.TsFetcherStats{ProcessorID: tro.tsProcessorSpecs[j].ProcessorID, ProcessorName: tse.TsGetNameValue(&tro.tsProcessorSpecs[j].Core)}
+						rowNumFetcherStats := timeseries.TsFetcherStats{ProcessorID: tro.tsProcessorSpecs[j].ProcessorID, ProcessorName: timeseries.TsGetNameValue(&tro.tsProcessorSpecs[j].Core)}
 						tro.statsList = append(tro.statsList, rowNumFetcherStats)
 					}
 				}
@@ -251,7 +251,7 @@ func (tro *TsReaderOp) Next(ctx context.Context) coldata.Batch {
 			respInfo, err := tro.FlowCtx.Cfg.TsEngine.NextVectorizedTsFlow(&(tro.Ctx), tsQueryInfo, &tro.Rcv)
 			if tro.collected {
 				if sp := opentracing.SpanFromContext(ctx); sp != nil {
-					tro.statsList = tse.AddStatsList(respInfo.Fetcher, tro.statsList)
+					tro.statsList = timeseries.AddStatsList(respInfo.Fetcher, tro.statsList)
 				}
 			}
 			if respInfo.Code == -1 {
@@ -317,21 +317,21 @@ func (tro *TsReaderOp) Next(ctx context.Context) coldata.Batch {
 
 // NextPgWire get data from AE by short citcuit.
 func (tro *TsReaderOp) NextPgWire() (val []byte, code int, err error) {
-	var tsQueryInfo = tse.TsQueryInfo{
+	var tsQueryInfo = timeseries.TsQueryInfo{
 		ID:       int(tro.sid),
 		Handle:   tro.tsHandle,
 		Buf:      []byte("exec next"),
 		TimeZone: tro.timeZone,
-		Fetcher:  tse.TsFetcher{Collected: tro.collected},
+		Fetcher:  timeseries.TsFetcher{Collected: tro.collected},
 	}
 	// Init analyse fetcher.
 	if tro.collected {
-		tsFetchers := tse.NewTsFetcher(tro.tsProcessorSpecs)
+		tsFetchers := timeseries.NewTsFetcher(tro.tsProcessorSpecs)
 		tsQueryInfo.Fetcher.CFetchers = tsFetchers
 		tsQueryInfo.Fetcher.Size = len(tsFetchers)
 		if tro.statsList == nil || len(tro.statsList) <= 0 {
 			for j := len(tro.tsProcessorSpecs) - 1; j >= 0; j-- {
-				rowNumFetcherStats := tse.TsFetcherStats{ProcessorID: tro.tsProcessorSpecs[j].ProcessorID, ProcessorName: tse.TsGetNameValue(&tro.tsProcessorSpecs[j].Core)}
+				rowNumFetcherStats := timeseries.TsFetcherStats{ProcessorID: tro.tsProcessorSpecs[j].ProcessorID, ProcessorName: timeseries.TsGetNameValue(&tro.tsProcessorSpecs[j].Core)}
 				tro.statsList = append(tro.statsList, rowNumFetcherStats)
 			}
 		}
@@ -339,7 +339,7 @@ func (tro *TsReaderOp) NextPgWire() (val []byte, code int, err error) {
 	respInfo, err := tro.FlowCtx.Cfg.TsEngine.NextTsFlowPgWire(&(tro.Ctx), tsQueryInfo)
 	if tro.collected {
 		if sp := opentracing.SpanFromContext(tro.Ctx); sp != nil {
-			tro.statsList = tse.AddStatsList(respInfo.Fetcher, tro.statsList)
+			tro.statsList = timeseries.AddStatsList(respInfo.Fetcher, tro.statsList)
 		}
 	}
 	if respInfo.Code == -1 {
@@ -367,7 +367,7 @@ func (tro *TsReaderOp) cancelTsFlow() {
 	tro.mu.Lock()
 	defer tro.mu.Unlock()
 	if tro.tsHandle != nil {
-		var tsInfo tse.TsQueryInfo
+		var tsInfo timeseries.TsQueryInfo
 		tsInfo.Handle = tro.tsHandle
 		tsInfo.Buf = []byte("cancel tsflow")
 		err := tro.FlowCtx.Cfg.TsEngine.CancelTsFlow(&(tro.Ctx), tsInfo)
@@ -382,7 +382,7 @@ func (tro *TsReaderOp) cleanup(ctx context.Context) {
 	tro.mu.Lock()
 	defer tro.mu.Unlock()
 	if tro.tsHandle != nil {
-		var tsCloseInfo tse.TsQueryInfo
+		var tsCloseInfo timeseries.TsQueryInfo
 		tsCloseInfo.Handle = tro.tsHandle
 		tsCloseInfo.Buf = []byte("close tsflow")
 		closeErr := tro.FlowCtx.Cfg.TsEngine.CloseTsFlow(&(tro.Ctx), tsCloseInfo)

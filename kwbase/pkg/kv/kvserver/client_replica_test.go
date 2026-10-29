@@ -49,8 +49,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/server"
 	"gitee.com/kwbasedb/kwbase/pkg/sql"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/sqlutils"
@@ -112,8 +111,8 @@ func TestRangeCommandClockUpdate(t *testing.T) {
 	testutils.SucceedsSoon(t, func() error {
 		values := []int64{}
 		for _, eng := range mtc.engines {
-			val, _, err := storage.MVCCGet(context.Background(), eng, roachpb.Key("a"), clocks[0].Now(),
-				storage.MVCCGetOptions{})
+			val, _, err := relational.MVCCGet(context.Background(), eng, roachpb.Key("a"), clocks[0].Now(),
+				relational.MVCCGetOptions{})
 			if err != nil {
 				return err
 			}
@@ -180,8 +179,8 @@ func TestRejectFutureCommand(t *testing.T) { ///
 	if advance := ts3.GoTime().Sub(ts2.GoTime()); advance != 0 {
 		t.Fatalf("expected clock not to advance, but it advanced by %s", advance)
 	}
-	val, _, err := storage.MVCCGet(context.Background(), mtc.engines[0], key, ts3,
-		storage.MVCCGetOptions{})
+	val, _, err := relational.MVCCGet(context.Background(), mtc.engines[0], key, ts3,
+		relational.MVCCGetOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,7 +251,7 @@ func TestTxnPutOutOfOrder(t *testing.T) {
 			}
 			return nil
 		}
-	eng := storage.NewDefaultInMem()
+	eng := relational.NewDefaultInMem()
 	stopper.AddCloser(eng)
 	store := createTestStoreWithOpts(t,
 		testStoreOpts{eng: eng, cfg: &cfg},
@@ -1817,15 +1816,6 @@ func TestSystemZoneConfigs(t *testing.T) {
 		t.Skip()
 	}
 
-	// This test relies on concurrently waiting for a value to change in the
-	// underlying engine(s). Since the teeing engine does not respond well to
-	// value mismatches, whether transient or permanent, skip this test if the
-	// teeing engine is being used. See
-	// https://gitee.com/kwbasedb/kwbase/issues/42656 for more context.
-	if storage.DefaultStorageEngine == enginepb.EngineTypeTeePebbleRocksDB {
-		t.Skip("disabled on teeing engine")
-	}
-
 	ctx := context.Background()
 	tc := testcluster.StartTestCluster(t, 7, base.TestClusterArgs{
 		ServerArgs: base.TestServerArgs{
@@ -1946,7 +1936,7 @@ func TestClearRange(t *testing.T) {
 		t.Helper()
 		start := prefix
 		end := prefix.PrefixEnd()
-		kvs, err := storage.Scan(store.Engine(), start, end, 0 /* maxRows */)
+		kvs, err := relational.Scan(store.Engine(), start, end, 0 /* maxRows */)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2290,15 +2280,6 @@ func TestRandomConcurrentAdminChangeReplicasRequests(t *testing.T) {
 // written at sane values.
 func TestReplicaTombstone(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-
-	// This test relies on concurrently waiting for a value to change in the
-	// underlying engine(s). Since the teeing engine does not respond well to
-	// value mismatches, whether transient or permanent, skip this test if the
-	// teeing engine is being used. See
-	// https://gitee.com/kwbasedb/kwbase/issues/42656 for more context.
-	if storage.DefaultStorageEngine == enginepb.EngineTypeTeePebbleRocksDB {
-		t.Skip("disabled on teeing engine")
-	}
 
 	t.Run("(1) ChangeReplicasTrigger", func(t *testing.T) {
 		defer leaktest.AfterTest(t)()
@@ -2680,8 +2661,8 @@ func TestReplicaTombstone(t *testing.T) {
 				return err
 			}
 			tombstoneKey := keys.RangeTombstoneKey(rhsDesc.RangeID)
-			ok, err := storage.MVCCGetProto(
-				context.TODO(), store.Engine(), tombstoneKey, hlc.Timestamp{}, &tombstone, storage.MVCCGetOptions{},
+			ok, err := relational.MVCCGetProto(
+				context.TODO(), store.Engine(), tombstoneKey, hlc.Timestamp{}, &tombstone, relational.MVCCGetOptions{},
 			)
 			require.NoError(t, err)
 			if !ok {

@@ -44,8 +44,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/tracing"
@@ -189,13 +189,13 @@ func declareKeysEndTxn(
 // TODO(nvanbenschoten): rename this file to cmd_end_txn.go once some of andrei's
 // recent PRs have landed.
 func EndTxn(
-	ctx context.Context, readWriter storage.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
+	ctx context.Context, readWriter relational.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
 	args := cArgs.Args.(*roachpb.EndTxnRequest)
 	h := cArgs.Header
 	ms := cArgs.Stats
 	reply := resp.(*roachpb.EndTxnResponse)
-	var logicalOp storage.MVCCLogicalOpType
+	var logicalOp relational.MVCCLogicalOpType
 	if err := VerifyTransaction(h, args, roachpb.PENDING, roachpb.STAGING, roachpb.ABORTED); err != nil {
 		return result.Result{}, err
 	}
@@ -213,8 +213,8 @@ func EndTxn(
 	key := keys.TransactionKey(h.Txn.Key, h.Txn.ID)
 	// Fetch existing transaction.
 	var existingTxn roachpb.Transaction
-	if ok, err := storage.MVCCGetProto(
-		ctx, readWriter, key, hlc.Timestamp{}, &existingTxn, storage.MVCCGetOptions{},
+	if ok, err := relational.MVCCGetProto(
+		ctx, readWriter, key, hlc.Timestamp{}, &existingTxn, relational.MVCCGetOptions{},
 	); err != nil {
 		return result.Result{}, err
 	} else if !ok {
@@ -270,8 +270,8 @@ func EndTxn(
 			// meantime. The TransactionStatusError is going to be handled by the
 			// txnCommitter interceptor.
 			log.VEventf(ctx, 2, "transaction found to be already committed")
-			logicalOp = storage.MVCCCommitTxnOpType
-			logicalOpDetails := storage.MVCCLogicalOpDetails{
+			logicalOp = relational.MVCCCommitTxnOpType
+			logicalOpDetails := relational.MVCCLogicalOpDetails{
 				Txn: reply.Txn.TxnMeta,
 			}
 			readWriter.LogLogicalOp(logicalOp, logicalOpDetails)
@@ -298,8 +298,8 @@ func EndTxn(
 				res := result.FromEndTxn(reply.Txn, true /* alwaysReturn */, args.Poison)
 				res.Local.ResolvedLocks = resolvedLocks
 
-				logicalOp = storage.MVCCAbortOpType
-				logicalOpDetails := storage.MVCCLogicalOpDetails{
+				logicalOp = relational.MVCCAbortOpType
+				logicalOpDetails := relational.MVCCLogicalOpDetails{
 					Txn: reply.Txn.TxnMeta,
 				}
 				readWriter.LogLogicalOp(logicalOp, logicalOpDetails)
@@ -337,8 +337,8 @@ func EndTxn(
 	// Attempt to commit or abort the transaction per the args.Commit parameter.
 	if args.Commit {
 		if retry, reason, extraMsg := IsEndTxnTriggeringRetryError(reply.Txn, args); retry {
-			logicalOp = storage.MVCCCommitTxnOpType
-			logicalOpDetails := storage.MVCCLogicalOpDetails{
+			logicalOp = relational.MVCCCommitTxnOpType
+			logicalOpDetails := relational.MVCCLogicalOpDetails{
 				Txn: reply.Txn.TxnMeta,
 			}
 			readWriter.LogLogicalOp(logicalOp, logicalOpDetails)
@@ -373,8 +373,8 @@ func EndTxn(
 				reply.Txn.WriteKeyCount += reply.Txn.BatchWriteKeyCount
 				reply.Txn.BatchWriteKeyCount = 0
 			}
-			logicalOp = storage.MVCCCommitTxnOpType
-			logicalOpDetails := storage.MVCCLogicalOpDetails{
+			logicalOp = relational.MVCCCommitTxnOpType
+			logicalOpDetails := relational.MVCCLogicalOpDetails{
 				Txn: reply.Txn.TxnMeta,
 			}
 			readWriter.LogLogicalOp(logicalOp, logicalOpDetails)
@@ -395,7 +395,7 @@ func EndTxn(
 		// during startup, to infer that any lingering intents belong to in-progress
 		// transactions and thus the pre-intent value can safely be used.
 		if mt := args.InternalCommitTrigger.GetMergeTrigger(); mt != nil {
-			mergeResult, err := mergeTrigger(ctx, cArgs.EvalCtx, readWriter.(storage.Batch),
+			mergeResult, err := mergeTrigger(ctx, cArgs.EvalCtx, readWriter.(relational.Batch),
 				ms, mt, reply.Txn.WriteTimestamp)
 			if err != nil {
 				return result.Result{}, err
@@ -404,10 +404,10 @@ func EndTxn(
 				return result.Result{}, err
 			}
 		}
-		logicalOp = storage.MVCCCommitTxnOpType
+		logicalOp = relational.MVCCCommitTxnOpType
 	} else {
 		reply.Txn.Status = roachpb.ABORTED
-		logicalOp = storage.MVCCAbortOpType
+		logicalOp = relational.MVCCAbortOpType
 	}
 
 	// Resolve locks on the local range synchronously so that their resolution
@@ -426,7 +426,7 @@ func EndTxn(
 
 	// Run the rest of the commit triggers if successfully committed.
 	if reply.Txn.Status == roachpb.COMMITTED {
-		triggerResult, err := RunCommitTrigger(ctx, cArgs.EvalCtx, readWriter.(storage.Batch),
+		triggerResult, err := RunCommitTrigger(ctx, cArgs.EvalCtx, readWriter.(relational.Batch),
 			ms, args, reply.Txn)
 		if err != nil {
 			return result.Result{}, roachpb.NewReplicaCorruptionError(err)
@@ -488,7 +488,7 @@ func EndTxn(
 		reply.Txn.BatchWriteKeyCount = 0
 	}
 	reply.Txn.WriteKeyCount = h.Txn.WriteKeyCount
-	logicalOpDetails := storage.MVCCLogicalOpDetails{
+	logicalOpDetails := relational.MVCCLogicalOpDetails{
 		Txn: reply.Txn.TxnMeta,
 	}
 	readWriter.LogLogicalOp(logicalOp, logicalOpDetails)
@@ -562,7 +562,7 @@ const lockResolutionBatchSize = 500
 func resolveLocalLocks(
 	ctx context.Context,
 	desc *roachpb.RangeDescriptor,
-	readWriter storage.ReadWriter,
+	readWriter relational.ReadWriter,
 	ms *enginepb.MVCCStats,
 	args *roachpb.EndTxnRequest,
 	txn *roachpb.Transaction,
@@ -575,10 +575,10 @@ func resolveLocalLocks(
 		desc = &mergeTrigger.LeftDesc
 	}
 
-	iter := readWriter.NewIterator(storage.IterOptions{
+	iter := readWriter.NewIterator(relational.IterOptions{
 		UpperBound: desc.EndKey.AsRawKey(),
 	})
-	iterAndBuf := storage.GetBufUsingIter(iter)
+	iterAndBuf := relational.GetBufUsingIter(iter)
 	defer iterAndBuf.Cleanup()
 
 	var resolveAllowance int64 = lockResolutionBatchSize
@@ -602,7 +602,7 @@ func resolveLocalLocks(
 					return nil
 				}
 				resolveMS := ms
-				ok, err := storage.MVCCResolveWriteIntentUsingIter(ctx, readWriter, iterAndBuf, resolveMS, update)
+				ok, err := relational.MVCCResolveWriteIntentUsingIter(ctx, readWriter, iterAndBuf, resolveMS, update)
 				if err != nil {
 					return err
 				}
@@ -619,7 +619,7 @@ func resolveLocalLocks(
 			externalLocks = append(externalLocks, outSpans...)
 			if inSpan != nil {
 				update.Span = *inSpan
-				num, resumeSpan, err := storage.MVCCResolveWriteIntentRangeUsingIter(ctx, readWriter, iterAndBuf, ms, update, resolveAllowance)
+				num, resumeSpan, err := relational.MVCCResolveWriteIntentRangeUsingIter(ctx, readWriter, iterAndBuf, ms, update, resolveAllowance)
 				if err != nil {
 					return err
 				}
@@ -658,7 +658,7 @@ func resolveLocalLocks(
 // remote) locks.
 func updateStagingTxn(
 	ctx context.Context,
-	readWriter storage.ReadWriter,
+	readWriter relational.ReadWriter,
 	ms *enginepb.MVCCStats,
 	key []byte,
 	args *roachpb.EndTxnRequest,
@@ -667,7 +667,7 @@ func updateStagingTxn(
 	txn.LockSpans = args.LockSpans
 	txn.InFlightWrites = args.InFlightWrites
 	txnRecord := txn.AsRecord()
-	return storage.MVCCPutProto(ctx, readWriter, ms, key, hlc.Timestamp{}, nil /* txn */, &txnRecord)
+	return relational.MVCCPutProto(ctx, readWriter, ms, key, hlc.Timestamp{}, nil /* txn */, &txnRecord)
 }
 
 // updateFinalizedTxn persists the COMMITTED or ABORTED transaction record with
@@ -676,7 +676,7 @@ func updateStagingTxn(
 // around.
 func updateFinalizedTxn(
 	ctx context.Context,
-	readWriter storage.ReadWriter,
+	readWriter relational.ReadWriter,
 	ms *enginepb.MVCCStats,
 	key []byte,
 	args *roachpb.EndTxnRequest,
@@ -687,19 +687,19 @@ func updateFinalizedTxn(
 		if log.V(2) {
 			log.Infof(ctx, "auto-gc'ed %s (%d locks)", txn.Short(), len(args.LockSpans))
 		}
-		return storage.MVCCDelete(ctx, readWriter, ms, key, hlc.Timestamp{}, nil /* txn */)
+		return relational.MVCCDelete(ctx, readWriter, ms, key, hlc.Timestamp{}, nil /* txn */)
 	}
 	txn.LockSpans = externalLocks
 	txn.InFlightWrites = nil
 	txnRecord := txn.AsRecord()
-	return storage.MVCCPutProto(ctx, readWriter, ms, key, hlc.Timestamp{}, nil /* txn */, &txnRecord)
+	return relational.MVCCPutProto(ctx, readWriter, ms, key, hlc.Timestamp{}, nil /* txn */, &txnRecord)
 }
 
 // RunCommitTrigger runs the commit trigger from an end transaction request.
 func RunCommitTrigger(
 	ctx context.Context,
 	rec EvalContext,
-	batch storage.Batch,
+	batch relational.Batch,
 	ms *enginepb.MVCCStats,
 	args *roachpb.EndTxnRequest,
 	txn *roachpb.Transaction,
@@ -997,7 +997,7 @@ func getTsRangeSize(rec EvalContext, desc roachpb.RangeDescriptor) (uint64, erro
 func splitTrigger(
 	ctx context.Context,
 	rec EvalContext,
-	batch storage.Batch,
+	batch relational.Batch,
 	bothDeltaMS enginepb.MVCCStats,
 	split *roachpb.SplitTrigger,
 	ts hlc.Timestamp,
@@ -1078,7 +1078,7 @@ func splitTrigger(
 func splitTriggerHelper(
 	ctx context.Context,
 	rec EvalContext,
-	batch storage.Batch,
+	batch relational.Batch,
 	statsInput splitStatsHelperInput,
 	split *roachpb.SplitTrigger,
 	ts hlc.Timestamp,
@@ -1097,7 +1097,7 @@ func splitTriggerHelper(
 	if err != nil {
 		return enginepb.MVCCStats{}, result.Result{}, errors.Wrap(err, "unable to fetch last replica GC timestamp")
 	}
-	if err := storage.MVCCPutProto(ctx, batch, nil, keys.RangeLastReplicaGCTimestampKey(split.RightDesc.RangeID), hlc.Timestamp{}, nil, &replicaGCTS); err != nil {
+	if err := relational.MVCCPutProto(ctx, batch, nil, keys.RangeLastReplicaGCTimestampKey(split.RightDesc.RangeID), hlc.Timestamp{}, nil, &replicaGCTS); err != nil {
 		return enginepb.MVCCStats{}, result.Result{}, errors.Wrap(err, "unable to copy last replica GC timestamp")
 	}
 
@@ -1178,13 +1178,13 @@ func splitTriggerHelper(
 		//
 		// See VersionUnreplicatedRaftTruncatedState.
 		truncStateType := stateloader.TruncatedStateUnreplicated
-		if found, err := storage.MVCCGetProto(
+		if found, err := relational.MVCCGetProto(
 			ctx,
 			batch,
 			keys.RaftTruncatedStateLegacyKey(rec.GetRangeID()),
 			hlc.Timestamp{},
 			nil,
-			storage.MVCCGetOptions{},
+			relational.MVCCGetOptions{},
 		); err != nil {
 			return enginepb.MVCCStats{}, result.Result{}, errors.Wrap(err, "unable to load legacy truncated state")
 		} else if found {
@@ -1239,7 +1239,7 @@ func splitTriggerHelper(
 	}
 
 	deltaPostSplitLeft := h.DeltaPostSplitLeft()
-	if !rec.ClusterSettings().Version.IsActive(ctx, clusterversion.VersionContainsEstimatesCounter) {
+	if !rec.ClusterSettings().Version.IsActive(ctx, clusterversion.VersionMinSupported) {
 		deltaPostSplitLeft.ContainsEstimates = 0
 	}
 	return deltaPostSplitLeft, pd, nil
@@ -1251,7 +1251,7 @@ func splitTriggerHelper(
 func mergeTrigger(
 	ctx context.Context,
 	rec EvalContext,
-	batch storage.Batch,
+	batch relational.Batch,
 	ms *enginepb.MVCCStats,
 	merge *roachpb.MergeTrigger,
 	ts hlc.Timestamp,
@@ -1298,7 +1298,7 @@ func mergeTrigger(
 	ms.Add(merge.RightMVCCStats)
 	{
 		ridPrefix := keys.MakeRangeIDReplicatedPrefix(merge.RightDesc.RangeID)
-		iter := batch.NewIterator(storage.IterOptions{UpperBound: ridPrefix.PrefixEnd()})
+		iter := batch.NewIterator(relational.IterOptions{UpperBound: ridPrefix.PrefixEnd()})
 		defer iter.Close()
 		sysMS, err := iter.ComputeStats(ridPrefix, ridPrefix.PrefixEnd(), 0 /* nowNanos */)
 		if err != nil {
@@ -1315,7 +1315,7 @@ func mergeTrigger(
 }
 
 func changeReplicasTrigger(
-	_ context.Context, rec EvalContext, _ storage.Batch, change *roachpb.ChangeReplicasTrigger,
+	_ context.Context, rec EvalContext, _ relational.Batch, change *roachpb.ChangeReplicasTrigger,
 ) result.Result {
 	var pd result.Result
 	// After a successful replica addition or removal check to see if the

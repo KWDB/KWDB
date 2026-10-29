@@ -37,7 +37,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/humanizeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -138,7 +138,7 @@ func (sq *splitQueue) shouldQueue(
 	if desc.GetRangeType() == roachpb.TS_RANGE && (sq.mode == singleNode || sq.mode == singleReplica) {
 		return false, 0
 	}
-	shouldQ, priority = shouldSplitRange(repl.Desc(), repl.GetMVCCStats(),
+	shouldQ, priority = shouldSplitRange(repl.Desc(), repl.GetMVCCStatsForDecisions(ctx),
 		repl.GetMaxBytes(), sysCfg)
 
 	if !shouldQ && repl.SplitByLoadEnabled() {
@@ -290,7 +290,7 @@ func (sq *splitQueue) processAttempt(
 	// Next handle case of splitting due to size. Note that we don't perform
 	// size-based splitting if maxBytes is 0 (happens in certain test
 	// situations).
-	size := r.GetMVCCStats().Total()
+	size := r.GetMVCCStatsForDecisions(ctx).Total()
 	maxBytes := r.GetMaxBytes()
 	if maxBytes > 0 && float64(size)/float64(maxBytes) > 1 {
 		if desc.GetRangeType() == roachpb.DEFAULT_RANGE {

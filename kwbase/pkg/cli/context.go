@@ -36,7 +36,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
@@ -100,8 +100,8 @@ func initCLIDefaults() {
 
 	zipCtx.nodes = nodeSelection{}
 
-	debugCtx.startKey = storage.NilKey
-	debugCtx.endKey = storage.MVCCKeyMax
+	debugCtx.startKey = relational.NilKey
+	debugCtx.endKey = relational.MVCCKeyMax
 	debugCtx.values = false
 	debugCtx.sizes = false
 	debugCtx.replicated = false
@@ -289,7 +289,7 @@ var authCtx struct {
 // debugCtx captures the command-line parameters of the `debug` command.
 // Defaults set by InitCLIDefaults() above.
 var debugCtx struct {
-	startKey, endKey  storage.MVCCKey
+	startKey, endKey  relational.MVCCKey
 	values            bool
 	sizes             bool
 	replicated        bool

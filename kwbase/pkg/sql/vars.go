@@ -69,6 +69,13 @@ type sessionVar struct {
 	// Hidden indicates that the variable should not show up in the output of SHOW ALL.
 	Hidden bool
 
+	// AliasOf names the variable this one is another spelling of. Both entries
+	// share a single Set, so a session reset must apply that Set once: running
+	// it twice repeats the same mutation, and for a variable whose value is
+	// reported to the client that is visible as two ParameterStatus messages
+	// where the protocol sends one.
+	AliasOf string
+
 	// Get returns a string representation of a given variable to be used
 	// either by SHOW or in the pg_catalog table.
 	Get func(evalCtx *extendedEvalContext) string
@@ -137,6 +144,17 @@ var varGen = map[string]sessionVar{
 		GlobalDefault: func(_ *settings.Values) string { return "" },
 	},
 
+	// Sent by essentially every MySQL client and connection pool during the
+	// connection phase. KWDB commits every statement outside an explicit
+	// transaction, so autocommit is already on; a client asking to turn it off
+	// wants manual transaction control that KWDB would not honor, and is told
+	// so rather than left believing it succeeded.
+	`autocommit`: makeCompatBoolVarWithHint(`autocommit`, true, false, /* anyValAllowed */
+		"KWDB commits each statement outside an explicit transaction, so autocommit "+
+			"cannot be turned off. Connect with autocommit enabled and use BEGIN/COMMIT "+
+			"for explicit transactions (PyMySQL and mysqlclient: pass autocommit=True to "+
+			"connect(); Connector/Python: autocommit=True)."),
+
 	`avoid_buffering`: {
 		Get: func(evalCtx *extendedEvalContext) string {
 			return formatBoolAsPostgresSetting(evalCtx.SessionData.AvoidBuffering)
@@ -179,6 +197,22 @@ var varGen = map[string]sessionVar{
 	// See https://www.postgresql.org/docs/9.6/static/runtime-config-compatible.html
 	`client_min_messages`: makeCompatStringVar(`client_min_messages`, `notice`, `debug5`, `debug4`, `debug3`, `debug2`, `debug1`, `debug`, `log`, `warning`, `error`, `fatal`, `panic`),
 
+	// MySQL splits what PostgreSQL calls client_encoding into three variables.
+	// SET NAMES sets all of them at once and is handled by client_encoding
+	// below; these exist for clients that set them individually. Only the UTF-8
+	// spellings are accepted, because that is the only encoding KWDB emits.
+	`character_set_client`:     makeCompatStringVar(`character_set_client`, "utf8mb4", "utf8", "utf8mb3"),
+	`character_set_connection`: makeCompatStringVar(`character_set_connection`, "utf8mb4", "utf8", "utf8mb3"),
+	`character_set_results`:    makeCompatStringVar(`character_set_results`, "utf8mb4", "utf8", "utf8mb3"),
+
+	// KWDB compares strings with a single, fixed collation, so a MySQL client's
+	// choice cannot be honored. It is reported rather than rejected because
+	// clients send it alongside SET NAMES and do not act on the reply; a
+	// mismatch shows up as ordering that differs from MySQL's, not as an error.
+	`collation_connection`: makeIgnoredVar(`collation_connection`, "utf8mb4_general_ci"),
+	`collation_database`:   makeIgnoredVar(`collation_database`, "utf8mb4_general_ci"),
+	`collation_server`:     makeIgnoredVar(`collation_server`, "utf8mb4_general_ci"),
+
 	// See https://www.postgresql.org/docs/9.6/static/multibyte.html
 	// Also aliased to SET NAMES.
 	`client_encoding`: {
@@ -189,6 +223,15 @@ var varGen = map[string]sessionVar{
 			switch encoding {
 			case "utf8", "unicode", "cp65001":
 				m.data.ClientEncoding = encoding
+			case "utf8mb4", "utf8mb3":
+				// MySQL's names for UTF-8. utf8mb4 is UTF-8 proper; utf8mb3 is
+				// MySQL's older three-byte subset, which every string KWDB
+				// produces already satisfies. Both are normalised to utf8 so
+				// that SHOW reports one encoding rather than three spellings of
+				// it. A MySQL client sends one of these in the SET NAMES it
+				// issues before its first query, so rejecting them makes the
+				// connection unusable rather than merely differently encoded.
+				m.data.ClientEncoding = "utf8"
 			case "gbk", "gb18030":
 				m.data.ClientEncoding = encoding
 			case "big5":
@@ -514,6 +557,10 @@ var varGen = map[string]sessionVar{
 	},
 
 	// CockroachDB extension.
+	// MySQL clients display this on connect. It names the distribution rather
+	// than describing a setting, and cannot be changed.
+	`version_comment`: makeIgnoredVar(`version_comment`, "KaiwuDB"),
+
 	`vectorize`: {
 		Set: func(_ context.Context, m *sessionDataMutator, s string) error {
 			mode, ok := sessiondata.VectorizeExecModeFromString(s)
@@ -739,6 +786,12 @@ var varGen = map[string]sessionVar{
 
 	// Supported for PG compatibility only.
 	// See https://www.postgresql.org/docs/10/static/sql-syntax-lexical.html#SQL-SYNTAX-IDENTIFIERS
+	// Clients read this to size their own send buffers, so it has to report the
+	// limit the MySQL listener actually enforces (mysqlwire.maxPacketPayload)
+	// rather than a placeholder. It is read-only in effect: a client cannot
+	// raise the server's limit by setting it.
+	`max_allowed_packet`: makeIgnoredIntVar(`max_allowed_packet`, 67108864),
+
 	`max_identifier_length`: {
 		Get: func(evalCtx *extendedEvalContext) string { return "128" },
 	},
@@ -763,6 +816,14 @@ var varGen = map[string]sessionVar{
 
 	// CockroachDB extension (inspired by MySQL).
 	// See https://dev.mysql.com/doc/refman/5.7/en/server-system-variables.html#sysvar_sql_safe_updates
+	// MySQL's sql_mode selects among behaviors KWDB does not have variants of:
+	// it is always strict about truncation and invalid dates, and its quoting
+	// rules are fixed. The value is therefore ignored rather than mapped. This
+	// is the one variable here whose value can matter to results, and the gap
+	// is real: an application relying on MySQL's non-strict modes to accept
+	// out-of-range values will get errors from KWDB instead of coerced data.
+	`sql_mode`: makeIgnoredVar(`sql_mode`, "STRICT_TRANS_TABLES"),
+
 	`sql_safe_updates`: {
 		Get: func(evalCtx *extendedEvalContext) string {
 			return formatBoolAsPostgresSetting(evalCtx.SessionData.SafeUpdates)
@@ -907,6 +968,16 @@ var varGen = map[string]sessionVar{
 		GlobalDefault: func(sv *settings.Values) string { return "0" },
 	},
 
+	// MySQL's socket-level timeouts. KWDB governs connection lifetime with
+	// idle_in_session_timeout and statement_timeout instead, so these are
+	// accepted and ignored: a client sets them to protect itself against a
+	// hung server, and refusing the SET would fail the connection over a knob
+	// that only ever loosens behavior.
+	`interactive_timeout`: makeIgnoredIntVar(`interactive_timeout`, 28800),
+	`net_read_timeout`:    makeIgnoredIntVar(`net_read_timeout`, 30),
+	`net_write_timeout`:   makeIgnoredIntVar(`net_write_timeout`, 60),
+	`wait_timeout`:        makeIgnoredIntVar(`wait_timeout`, 28800),
+
 	`idle_in_session_timeout`: {
 		GetStringVal: makeTimeoutVarGetter(`idle_in_session_timeout`),
 		Set:          idleInSessionTimeoutVarSet,
@@ -939,6 +1010,23 @@ var varGen = map[string]sessionVar{
 	},
 
 	// See https://www.postgresql.org/docs/10/static/runtime-config-client.html#GUC-TIMEZONE
+	// MySQL's spelling of timezone. It shares the implementation rather than
+	// ignoring the value, because the session's zone is observable in every
+	// timestamp the client reads back.
+	`time_zone`: {
+		// MySQL's spelling of `timezone`, sharing its implementation because the
+		// session time zone is observable in every timestamp a client reads back.
+		AliasOf: `timezone`,
+		Get: func(evalCtx *extendedEvalContext) string {
+			return sessionDataTimeZoneFormat(evalCtx.SessionData.DataConversion.Location)
+		},
+		GetStringVal: timeZoneVarGetStringVal,
+		Set:          timeZoneVarSet,
+		GlobalDefault: func(sv *settings.Values) string {
+			return ServerTimezoneClusterSetting.Get(sv)
+		},
+	},
+
 	`timezone`: {
 		Get: func(evalCtx *extendedEvalContext) string {
 			return sessionDataTimeZoneFormat(evalCtx.SessionData.DataConversion.Location)
@@ -1174,6 +1262,18 @@ func makePostgresBoolGetStringValFn(varName string) getStringValFn {
 		if s, ok := val.(*tree.DString); ok {
 			return string(*s), nil
 		}
+		if i, ok := val.(*tree.DInt); ok {
+			// PostgreSQL accepts 1 and 0 for boolean settings, and MySQL
+			// clients write SET autocommit=1 during the connection phase.
+			// Other integers are not boolean spellings in either dialect and
+			// fall through to the error below.
+			switch *i {
+			case 0:
+				return "false", nil
+			case 1:
+				return "true", nil
+			}
+		}
 		s, err := getSingleBool(varName, val)
 		if err != nil {
 			return "", err
@@ -1239,6 +1339,38 @@ func serverTimezoneFormat(tzStr string) string {
 	return tzStr
 }
 
+// makeIgnoredVar returns a variable that accepts any value and changes
+// nothing, reporting displayValue when read.
+//
+// This is a stronger claim than the makeCompat* helpers make: those reject
+// values whose behavior KWDB does not implement, so a client asking for
+// something it will not get is told so. An ignored variable instead lets the
+// client believe its request took effect.
+//
+// That trade is only acceptable where the value space is open-ended and the
+// setting does not change results a client can observe through SQL — MySQL
+// connection-phase knobs like sql_mode strings and socket timeouts. It must
+// not be used for anything affecting transactions, types, or comparison
+// semantics, where silence would turn a compatibility gap into wrong answers.
+func makeIgnoredVar(varName, displayValue string) sessionVar {
+	return sessionVar{
+		Get: func(_ *extendedEvalContext) string { return displayValue },
+		Set: func(_ context.Context, _ *sessionDataMutator, s string) error {
+			telemetry.Inc(sqltelemetry.UnimplementedSessionVarValueCounter(varName, s))
+			return nil
+		},
+		GlobalDefault: func(_ *settings.Values) string { return displayValue },
+	}
+}
+
+// makeIgnoredIntVar is makeIgnoredVar for settings clients write as integers
+// rather than quoted strings, which the default string accessor rejects.
+func makeIgnoredIntVar(varName string, displayValue int) sessionVar {
+	v := makeIgnoredVar(varName, strconv.Itoa(displayValue))
+	v.GetStringVal = makeIntGetStringValFn(varName)
+	return v
+}
+
 func makeCompatBoolVar(varName string, displayValue, anyValAllowed bool) sessionVar {
 	displayValStr := formatBoolAsPostgresSetting(displayValue)
 	return sessionVar{
@@ -1263,6 +1395,35 @@ func makeCompatBoolVar(varName string, displayValue, anyValAllowed bool) session
 		GlobalDefault: func(sv *settings.Values) string { return displayValStr },
 		GetStringVal:  makePostgresBoolGetStringValFn(varName),
 	}
+}
+
+// makeCompatBoolVarWithHint is makeCompatBoolVar with a caller-supplied hint in
+// place of the generic compatibility note.
+//
+// The generic note says the parameter is recognized only for compatibility and
+// has no effect, which is the wrong thing to tell a client about a variable
+// KWDB does honor and simply will not let it change.
+func makeCompatBoolVarWithHint(
+	varName string, displayValue, anyValAllowed bool, hint string,
+) sessionVar {
+	v := makeCompatBoolVar(varName, displayValue, anyValAllowed)
+	v.Set = func(_ context.Context, m *sessionDataMutator, s string) error {
+		b, err := parsePostgresBool(s)
+		if err != nil {
+			return pgerror.WithCandidateCode(err, pgcode.InvalidParameterValue)
+		}
+		if anyValAllowed || b == displayValue {
+			return nil
+		}
+		telemetry.Inc(sqltelemetry.UnimplementedSessionVarValueCounter(varName, s))
+		// Only the caller-supplied hint is attached here (no allowed-values
+		// hint from newVarValueError): a second hint would be joined in by
+		// errors.FlattenHints with a "--" separator that means nothing to a
+		// client, and "Available values: on" is not useful advice to someone
+		// who explicitly asked to turn a setting off.
+		return errors.WithHint(newVarValueError(varName, s), hint)
+	}
+	return v
 }
 
 func makeCompatIntVar(varName string, displayValue int, extraAllowed ...int) sessionVar {

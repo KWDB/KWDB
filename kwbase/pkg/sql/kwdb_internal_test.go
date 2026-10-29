@@ -156,7 +156,7 @@ CREATE TABLE t.test (k INT);
 		t.Fatal(err)
 	}
 	colDef := alterCmd.AST.(*tree.AlterTable).Cmds[0].(*tree.AlterTableAddColumn).ColumnDef
-	col, _, _, err := sqlbase.MakeColumnDefDescs(colDef, nil, tree.RelationalTable)
+	col, _, _, err := sqlbase.MakeColumnDefDescs(colDef, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -549,6 +549,14 @@ func TestKWDBInternalTablesPopulate(t *testing.T) {
 			table: kwdbInternalKWDBStreamTable,
 		},
 		{
+			name:  "kwdb_pipes",
+			table: kwdbInternalKWDBPipeTable,
+		},
+		{
+			name:  "kwdb_publications",
+			table: kwdbInternalKWDBPublicationsTable,
+		},
+		{
 			name:  "ts_transaction_record",
 			table: kwdbInternalTSTransactionRecord,
 		},
@@ -586,30 +594,25 @@ func TestKWDBInternalTablesPopulate(t *testing.T) {
 	}
 }
 
-// TestAddPartitioningRows tests the addPartitioningRows function
+// TestAddPartitioningRows tests addPartitioningRowsWithContext.
 func TestAddPartitioningRows(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
-	// Start a test server
 	ctx := context.Background()
 	s, _, db := serverutils.StartServer(t, base.TestServerArgs{})
 	defer s.Stopper().Stop(ctx)
 
-	// Get the executor config
 	execCfg := s.ExecutorConfig().(ExecutorConfig)
-
-	// Create a planner with admin privileges
 	localPlanner, cleanup := NewInternalPlanner(
 		"test",
 		kv.NewTxn(ctx, db, s.NodeID()),
-		security.RootUser, // Root user has admin privileges
+		security.RootUser,
 		&MemoryMetrics{},
 		&execCfg,
 	)
 	defer cleanup()
 	p := localPlanner.(*planner)
 
-	// Create a mock table descriptor with partitioning
 	table := &TableDescriptor{
 		ID:   1,
 		Name: "test_table",
@@ -620,14 +623,8 @@ func TestAddPartitioningRows(t *testing.T) {
 				Partitioning: sqlbase.PartitioningDescriptor{
 					NumColumns: 1,
 					List: []sqlbase.PartitioningDescriptor_List{
-						{
-							Name:   "partition1",
-							Values: [][]byte{[]byte("value1")},
-						},
-						{
-							Name:   "partition2",
-							Values: [][]byte{[]byte("value2")},
-						},
+						{Name: "partition1", Values: [][]byte{[]byte("value1")}},
+						{Name: "partition2", Values: [][]byte{[]byte("value2")}},
 					},
 				},
 				ColumnNames: []string{"col1"},
@@ -635,23 +632,27 @@ func TestAddPartitioningRows(t *testing.T) {
 		},
 	}
 
-	// Create a slice to capture the rows added by addPartitioningRows
 	var rows [][]tree.Datum
 	addRow := func(d ...tree.Datum) error {
 		rows = append(rows, d)
 		return nil
 	}
 
-	// Call addPartitioningRows
-	err := addPartitioningRows(ctx, p, "test_db", table, &table.Indexes[0], &table.Indexes[0].Partitioning, tree.DNull, 0, addRow)
-	// We expect this to fail in test environment due to node availability issues
-	// but we just want to make sure it doesn't panic
+	err := addPartitioningRowsWithContext(
+		ctx,
+		p,
+		"test_db",
+		"public",
+		table,
+		&table.Indexes[0],
+		&table.Indexes[0].Partitioning,
+		partitionParentInfo{name: tree.DNull},
+		0,
+		addRow,
+	)
 	if err != nil {
-		t.Logf("addPartitioningRows returned error (expected in test environment): %v", err)
+		t.Logf("addPartitioningRowsWithContext returned error: %v", err)
 	}
-
-	// Even if there's an error, we still check if any rows were added
-	// This helps us verify that the function is working partially at least
 	if len(rows) == 0 {
 		t.Logf("no rows were added, but this might be expected in test environment")
 	}

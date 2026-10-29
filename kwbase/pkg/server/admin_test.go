@@ -343,11 +343,12 @@ func TestAdminAPIDatabases(t *testing.T) {
 	}
 
 	for _, tc := range []struct {
-		expectedDBs []string
-		isAdmin     bool
+		expectedDBs    []string
+		expectedGrants int
+		isAdmin        bool
 	}{
-		{[]string{"defaultdb", "postgres", "system", testdb}, true},
-		{[]string{"defaultdb", "postgres", "system", testdb}, false},
+		{[]string{"defaultdb", "postgres", "system", testdb}, 4, true},
+		{[]string{"defaultdb", "postgres", "system", testdb}, 2, false},
 	} {
 		t.Run(fmt.Sprintf("isAdmin:%t", tc.isAdmin), func(t *testing.T) {
 			// Test databases endpoint.
@@ -383,7 +384,7 @@ func TestAdminAPIDatabases(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if a, e := len(details.Grants), 4; a != e {
+			if a, e := len(details.Grants), tc.expectedGrants; a != e {
 				t.Fatalf("# of grants %d != expected %d", a, e)
 			}
 

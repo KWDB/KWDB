@@ -62,6 +62,10 @@ type TestServerArgs struct {
 	Addr string
 	// SQLAddr (if nonempty) is the SQL address to use for the test server.
 	SQLAddr string
+	// MySQLAddr (if nonempty) is the MySQL wire protocol address to use for the
+	// test server. Unlike the others it also enables the listener, which is off
+	// by default; use ServingMySQLAddr to learn the bound address.
+	MySQLAddr string
 	// HTTPAddr (if nonempty) is the HTTP address to use for the test server.
 	HTTPAddr string
 	// DisableTLSForHTTP if set, disables TLS for the HTTP interface.

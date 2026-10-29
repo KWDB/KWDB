@@ -32,7 +32,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/batcheval/result"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/spanset"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"github.com/pkg/errors"
 )
 
@@ -100,7 +100,7 @@ func declareKeysSubsume(
 // The period of time after intents have been placed but before the merge
 // transaction is complete is called the merge's "critical phase".
 func Subsume(
-	ctx context.Context, readWriter storage.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
+	ctx context.Context, readWriter relational.ReadWriter, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
 	args := cArgs.Args.(*roachpb.SubsumeRequest)
 	reply := resp.(*roachpb.SubsumeResponse)
@@ -125,14 +125,14 @@ func Subsume(
 	// Sanity check the caller has initiated a merge transaction by checking for
 	// a deletion intent on the local range descriptor.
 	descKey := keys.RangeDescriptorKey(desc.StartKey)
-	_, intent, err := storage.MVCCGet(ctx, readWriter, descKey, cArgs.Header.Timestamp,
-		storage.MVCCGetOptions{Inconsistent: true})
+	_, intent, err := relational.MVCCGet(ctx, readWriter, descKey, cArgs.Header.Timestamp,
+		relational.MVCCGetOptions{Inconsistent: true})
 	if err != nil {
 		return result.Result{}, errors.Errorf("fetching local range descriptor: %s", err)
 	} else if intent == nil {
 		return result.Result{}, errors.New("range missing intent on its local descriptor")
 	}
-	val, _, err := storage.MVCCGetAsTxn(ctx, readWriter, descKey, cArgs.Header.Timestamp, intent.Txn)
+	val, _, err := relational.MVCCGetAsTxn(ctx, readWriter, descKey, cArgs.Header.Timestamp, intent.Txn)
 	if err != nil {
 		return result.Result{}, errors.Errorf("fetching local range descriptor as txn: %s", err)
 	} else if val != nil {

@@ -42,7 +42,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util/humanizeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/mon"
@@ -353,7 +353,7 @@ const stringWide = 2
 
 // InsertData is used to add a row to datachunk
 func InsertData(
-	dc tse.DataChunkGo, row uint32, col uint32, colPrecision int32, coldata sqlbase.EncDatum,
+	dc timeseries.DataChunkGo, row uint32, col uint32, colPrecision int32, coldata sqlbase.EncDatum,
 ) {
 	colOffset := row*dc.ColInfo[col].FixedStorageLen + dc.ColOffset[col]
 	// set null bitmap first
@@ -484,7 +484,7 @@ func (h *batchLookupJoiner) pushToProbeSide() (
 		bitmapOffset := uint32(0)
 		var bitmapOffsetSlice []uint32
 		var colOffsetSlice []uint32
-		var colInfo []tse.ColumnInfo
+		var colInfo []timeseries.ColumnInfo
 		colNums := uint32(len(outputType))
 		for colIdx := 0; colIdx < int(colNums); colIdx++ {
 			// Width is the size or scale of the type, such as number of bits or
@@ -565,7 +565,7 @@ func (h *batchLookupJoiner) pushToProbeSide() (
 				// - in create_table.go, in checkTSColValidity, seems like ts table doesn't support decimal col
 				// currently, transfer decimal cols into float
 			}
-			curColInfo := tse.ColumnInfo{
+			curColInfo := timeseries.ColumnInfo{
 				StorageLen:      storeLen,      // original length
 				FixedStorageLen: fixedStoreLen, // + STRING_WIDE
 				StorageType:     colType,       // VARCHAR = 10 in me_metadata.pb.h
@@ -585,7 +585,7 @@ func (h *batchLookupJoiner) pushToProbeSide() (
 			bufferSize = 1024 * 10 // tmp magic number
 		}
 		// create a datachunk
-		dataChunk := tse.DataChunkGo{
+		dataChunk := timeseries.DataChunkGo{
 			Data:         make([]byte, bufferSize),
 			ColInfo:      colInfo,
 			ColOffset:    colOffsetSlice,
@@ -643,10 +643,10 @@ func (h *batchLookupJoiner) pushToProbeSide() (
 	return bljPullFromProbeSide, nil, nil
 }
 
-func (h *batchLookupJoiner) PushTsFlow(chunk *tse.DataChunkGo) batchLookupJoinerState {
+func (h *batchLookupJoiner) PushTsFlow(chunk *timeseries.DataChunkGo) batchLookupJoinerState {
 	// when turned to pull mode, we already push all data down to tse
 	// thus we need to send one more push end message to tse
-	var tsQueryInfo tse.TsQueryInfo
+	var tsQueryInfo timeseries.TsQueryInfo
 	if h.FlowCtx.TsHandleBreak {
 		log.Warning(h.PbCtx(), "tse returned an error, please check the error code")
 		h.MoveToDraining(nil)

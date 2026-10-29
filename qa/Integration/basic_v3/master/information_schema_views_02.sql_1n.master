@@ -1,0 +1,277 @@
+> DROP DATABASE IF EXISTS is_rel_db CASCADE;
+DROP DATABASE
+> DROP DATABASE IF EXISTS is_ts_db CASCADE;
+DROP DATABASE
+> CREATE DATABASE is_rel_db;
+CREATE DATABASE
+> CREATE TS DATABASE is_ts_db;
+CREATE TS DATABASE
+> CREATE TABLE is_rel_db.rel_table (
+    id INT PRIMARY KEY,
+    amount DECIMAL(10, 2),
+    name VARCHAR(20)
+);
+CREATE TABLE
+> COMMENT ON TABLE is_rel_db.rel_table IS 'relational table comment';
+COMMENT ON TABLE
+> CREATE VIEW is_rel_db.rel_view AS
+SELECT id, amount FROM is_rel_db.rel_table;
+CREATE VIEW
+> CREATE MATERIALIZED VIEW is_rel_db.rel_mat_view AS
+SELECT id, amount FROM is_rel_db.rel_table;
+CREATE VIEW
+> CREATE SEQUENCE is_rel_db.rel_sequence;
+CREATE SEQUENCE
+> CREATE TABLE is_ts_db.ts_table (
+    ts TIMESTAMPTZ NOT NULL,
+    value INT
+) TAGS (host VARCHAR(20) NOT NULL) PRIMARY TAGS (host);
+CREATE TABLE
+> CREATE SPARSE TABLE is_ts_db.sparse_table (
+    ts TIMESTAMPTZ NOT NULL,
+    value INT
+) TAGS (host VARCHAR(20) NOT NULL) PRIMARY TAGS (host);
+CREATE TABLE
+> SET experimental_enable_temp_tables = 'on';
+SET
+> CREATE TEMP TABLE temp_is_table (id INT);
+CREATE TABLE
+> SELECT table_name, table_type, is_insertable_into,
+       engine, row_format, table_comment
+FROM is_rel_db.information_schema.tables
+WHERE table_schema = 'public'
+ORDER BY table_name;
+   table_name  |    table_type     | is_insertable_into |   engine   | row_format |      table_comment
+---------------+-------------------+--------------------+------------+------------+---------------------------
+  rel_mat_view | MATERIALIZED VIEW | NO                 | NULL       | NULL       | VIEW
+  rel_table    | BASE TABLE        | YES                | RELATIONAL | ROW        | relational table comment
+  rel_view     | VIEW              | NO                 | NULL       | NULL       | VIEW
+(3 rows)
+> SELECT table_name, update_time IS NOT NULL AS has_update_time
+FROM is_rel_db.information_schema.tables
+WHERE table_schema = 'public'
+  AND table_name IN ('rel_table', 'rel_view', 'rel_mat_view')
+ORDER BY table_name;
+   table_name  | has_update_time
+---------------+------------------
+  rel_mat_view |      true
+  rel_table    |      true
+  rel_view     |      true
+(3 rows)
+> SELECT table_name, table_type, is_insertable_into,
+       engine, row_format
+FROM is_ts_db.information_schema.tables
+WHERE table_schema = 'public'
+ORDER BY table_name;
+   table_name  |        table_type        | is_insertable_into |   engine   | row_format
+---------------+--------------------------+--------------------+------------+-------------
+  sparse_table | SPARSE TIME SERIES TABLE | YES                | TIMESERIES | COLUMN
+  ts_table     | TIME SERIES TABLE        | YES                | TIMESERIES | COLUMN
+(2 rows)
+> SELECT table_name, table_type, engine, row_format
+FROM information_schema.tables
+WHERE table_schema LIKE 'pg_temp_%'
+  AND table_name = 'temp_is_table';
+   table_name   |   table_type    |   engine   | row_format
+----------------+-----------------+------------+-------------
+  temp_is_table | LOCAL TEMPORARY | RELATIONAL | ROW
+(1 row)
+> SET experimental_enable_temp_tables = 'off';
+SET
+> SELECT table_name
+FROM is_rel_db.information_schema.tables
+WHERE table_name = 'rel_sequence';
+  table_name
+--------------
+(0 rows)
+> SELECT table_name, column_name, data_type, is_tag,
+       declared_data_type, declared_numeric_precision,
+       declared_numeric_scale, is_system_time_period_start,
+       is_system_time_period_end,
+       system_time_period_timestamp_generation
+FROM is_rel_db.information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = 'rel_table'
+ORDER BY ordinal_position;
+  table_name | column_name |     data_type     | is_tag | declared_data_type | declared_numeric_precision | declared_numeric_scale | is_system_time_period_start | is_system_time_period_end | system_time_period_timestamp_generation
+-------------+-------------+-------------------+--------+--------------------+----------------------------+------------------------+-----------------------------+---------------------------+------------------------------------------
+  rel_table  | id          | integer           | NO     | INT4               |                         32 |                      0 | NO                          | NO                        | NULL
+  rel_table  | amount      | numeric           | NO     | DECIMAL(10,2)      |                         10 |                      2 | NO                          | NO                        | NULL
+  rel_table  | name        | character varying | NO     | VARCHAR(20)        |                       NULL |                   NULL | NO                          | NO                        | NULL
+(3 rows)
+> SELECT table_name, column_name, data_type, is_tag,
+       declared_data_type, declared_numeric_precision,
+       declared_numeric_scale
+FROM is_ts_db.information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name IN ('ts_table', 'sparse_table')
+ORDER BY table_name, ordinal_position;
+   table_name  | column_name |        data_type         | is_tag | declared_data_type | declared_numeric_precision | declared_numeric_scale
+---------------+-------------+--------------------------+--------+--------------------+----------------------------+-------------------------
+  sparse_table | ts          | timestamp with time zone | NO     | TIMESTAMPTZ(3)     |                       NULL |                   NULL
+  sparse_table | value       | integer                  | NO     | INT4               |                         32 |                      0
+  sparse_table | host        | character varying        | YES    | VARCHAR(20)        |                       NULL |                   NULL
+  ts_table     | ts          | timestamp with time zone | NO     | TIMESTAMPTZ(3)     |                       NULL |                   NULL
+  ts_table     | value       | integer                  | NO     | INT4               |                         32 |                      0
+  ts_table     | host        | character varying        | YES    | VARCHAR(20)        |                       NULL |                   NULL
+(6 rows)
+> SELECT schema_name, engine_type, retentions, partition_interval,
+       schema_owner, default_character_set_catalog,
+       default_character_set_schema
+FROM is_rel_db.information_schema.schemata
+WHERE schema_name = 'public';
+  schema_name | engine_type | retentions | partition_interval | schema_owner | default_character_set_catalog | default_character_set_schema
+--------------+-------------+------------+--------------------+--------------+-------------------------------+-------------------------------
+  public      | RELATIONAL  |          0 |             864000 | NULL         | NULL                          | NULL
+(1 row)
+> SELECT schema_name, engine_type, retentions, partition_interval,
+       schema_owner, default_character_set_catalog,
+       default_character_set_schema
+FROM is_ts_db.information_schema.schemata
+WHERE schema_name = 'public';
+  schema_name | engine_type | retentions | partition_interval | schema_owner | default_character_set_catalog | default_character_set_schema
+--------------+-------------+------------+--------------------+--------------+-------------------------------+-------------------------------
+  public      | TIME SERIES |          0 |             864000 | NULL         | NULL                          | NULL
+(1 row)
+> SELECT table_name, insertable_into, is_updatable,
+       is_trigger_updatable,
+       is_trigger_deletable, is_trigger_insertable_into
+FROM is_rel_db.information_schema.views
+WHERE table_schema = 'public'
+ORDER BY table_name;
+   table_name  | insertable_into | is_updatable | is_trigger_updatable | is_trigger_deletable | is_trigger_insertable_into
+---------------+-----------------+--------------+----------------------+----------------------+-----------------------------
+  rel_mat_view | NO              | NO           | NO                   | NO                   | NO
+  rel_view     | NO              | NO           | NO                   | NO                   | NO
+(2 rows)
+> SELECT word, reserved
+FROM information_schema.keywords
+WHERE word IN ('create', 'select', 'table', 'kwdb')
+ORDER BY word;
+   word  | reserved
+---------+-----------
+  create |        1
+  select |        1
+  table  |        1
+(3 rows)
+> SELECT count(*) > 0 AS has_keywords
+FROM information_schema.keywords;
+  has_keywords
+----------------
+      true
+(1 row)
+> CREATE ROLE is_privilege_role;
+CREATE ROLE
+> CREATE PROCEDURE is_rel_db.is_all_routine() BEGIN SELECT 1; END;
+CREATE PROCEDURE
+> GRANT SELECT ON DATABASE is_rel_db TO is_privilege_role;
+GRANT
+> GRANT ALL ON PROCEDURE is_rel_db.is_all_routine TO is_privilege_role;
+GRANT
+> GRANT SELECT ON TABLE is_rel_db.rel_table TO is_privilege_role;
+GRANT
+> SELECT grantee, table_catalog, table_schema, privilege_type
+FROM is_rel_db.information_schema.schema_privileges
+WHERE grantee = 'is_privilege_role'
+  AND table_catalog = 'is_rel_db'
+ORDER BY table_schema, privilege_type;
+       grantee      | table_catalog |    table_schema    | privilege_type
+--------------------+---------------+--------------------+-----------------
+  is_privilege_role | is_rel_db     | information_schema | SELECT
+  is_privilege_role | is_rel_db     | kwdb_internal      | SELECT
+  is_privilege_role | is_rel_db     | pg_catalog         | SELECT
+  is_privilege_role | is_rel_db     | public             | SELECT
+(4 rows)
+> SELECT grantee, table_schema, table_name, privilege_type
+FROM is_rel_db.information_schema.table_privileges
+WHERE grantee = 'is_privilege_role'
+  AND table_schema = 'public'
+  AND table_name = 'rel_table'
+ORDER BY privilege_type;
+       grantee      | table_schema | table_name | privilege_type
+--------------------+--------------+------------+-----------------
+  is_privilege_role | public       | rel_table  | SELECT
+(1 row)
+> SELECT grantee, table_name, column_name, privilege_type
+FROM is_rel_db.information_schema.column_privileges
+WHERE grantee = 'is_privilege_role'
+  AND table_schema = 'public'
+  AND table_name = 'rel_table'
+ORDER BY column_name, privilege_type;
+       grantee      | table_name | column_name | privilege_type
+--------------------+------------+-------------+-----------------
+  is_privilege_role | rel_table  | amount      | SELECT
+  is_privilege_role | rel_table  | id          | SELECT
+  is_privilege_role | rel_table  | name        | SELECT
+(3 rows)
+> SELECT grantee, table_catalog, privilege_type
+FROM is_rel_db.information_schema.user_privileges
+WHERE table_catalog = 'is_rel_db'
+ORDER BY grantee, privilege_type;
+  grantee | table_catalog | privilege_type
+----------+---------------+-----------------
+  admin   | is_rel_db     | ALL
+  admin   | is_rel_db     | CREATE
+  admin   | is_rel_db     | DELETE
+  admin   | is_rel_db     | DROP
+  admin   | is_rel_db     | EXECUTE
+  admin   | is_rel_db     | GRANT
+  admin   | is_rel_db     | INSERT
+  admin   | is_rel_db     | SELECT
+  admin   | is_rel_db     | UPDATE
+  admin   | is_rel_db     | ZONECONFIG
+  root    | is_rel_db     | ALL
+  root    | is_rel_db     | CREATE
+  root    | is_rel_db     | DELETE
+  root    | is_rel_db     | DROP
+  root    | is_rel_db     | EXECUTE
+  root    | is_rel_db     | GRANT
+  root    | is_rel_db     | INSERT
+  root    | is_rel_db     | SELECT
+  root    | is_rel_db     | UPDATE
+  root    | is_rel_db     | ZONECONFIG
+(20 rows)
+> SELECT table_name
+FROM is_rel_db.information_schema.tables
+WHERE table_schema = 'information_schema'
+  AND table_name IN ('role_column_grants', 'role_routine_grants')
+ORDER BY table_name;
+      table_name
+-----------------------
+  role_column_grants
+  role_routine_grants
+(2 rows)
+> SELECT grantee, specific_catalog, specific_schema, specific_name,
+       routine_catalog, routine_schema, routine_name, privilege_type
+FROM is_rel_db.information_schema.role_routine_grants
+WHERE grantee = 'is_privilege_role'
+  AND routine_name = 'is_all_routine';
+       grantee      | specific_catalog | specific_schema | specific_name  | routine_catalog | routine_schema |  routine_name  | privilege_type
+--------------------+------------------+-----------------+----------------+-----------------+----------------+----------------+-----------------
+  is_privilege_role | is_rel_db        | public          | is_all_routine | is_rel_db       | public         | is_all_routine | EXECUTE
+(1 row)
+> SELECT grantee, table_catalog, table_schema, table_name, privilege_type
+FROM is_rel_db.information_schema.role_table_grants
+WHERE grantee = 'is_privilege_role'
+  AND table_schema = 'public'
+  AND table_name = 'rel_table';
+       grantee      | table_catalog | table_schema | table_name | privilege_type
+--------------------+---------------+--------------+------------+-----------------
+  is_privilege_role | is_rel_db     | public       | rel_table  | SELECT
+(1 row)
+> SELECT grantee, column_name, privilege_type
+FROM is_rel_db.information_schema.role_column_grants
+WHERE grantee = 'is_privilege_role'
+  AND table_schema = 'public'
+  AND table_name = 'rel_table'
+  AND column_name = 'id';
+       grantee      | column_name | privilege_type
+--------------------+-------------+-----------------
+  is_privilege_role | id          | SELECT
+(1 row)
+> DROP DATABASE is_rel_db CASCADE;
+DROP DATABASE
+> DROP DATABASE is_ts_db CASCADE;
+DROP DATABASE
+> DROP ROLE is_privilege_role;
+DROP ROLE

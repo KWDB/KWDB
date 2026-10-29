@@ -57,6 +57,8 @@ type tsDeleter struct {
 	deleteSuccess bool
 	notFirst      bool
 	err           error
+
+	cdcData []byte
 }
 
 var _ execinfra.Processor = &tsDeleter{}
@@ -78,6 +80,7 @@ func newTsDeleter(
 		primaryTagIDs:    tsDeleteSpec.PrimaryTagIDs,
 		primaryTags:      tsDeleteSpec.PrimaryTags,
 		partOfPTagValues: tsDeleteSpec.PartPrimaryTags,
+		cdcData:          tsDeleteSpec.CDCData,
 	}
 	td.spans = tsDeleteSpec.Spans
 
@@ -104,7 +107,7 @@ func newTsDeleter(
 }
 
 // InitProcessorProcedure init processor in procedure
-func (td *tsDeleter) InitProcessorProcedure(txn *kv.Txn) {}
+func (td *tsDeleter) InitProcessorProcedure(_ *kv.Txn) {}
 
 // Start is part of the RowSource interface.
 func (td *tsDeleter) Start(ctx context.Context) context.Context {
@@ -113,7 +116,13 @@ func (td *tsDeleter) Start(ctx context.Context) context.Context {
 	deletedRow := uint64(0)
 
 	ba := td.FlowCtx.Txn.NewBatch()
-	OsnID := td.FlowCtx.Cfg.TsIDGen.GetNextID()
+
+	var OsnID uint64
+	if td.EvalCtx.StartDistributeMode {
+		OsnID = 0
+	} else {
+		OsnID = td.FlowCtx.Cfg.TsIDGen.GetNextID()
+	}
 
 	// Check if there are partial primary tag values and build request
 	if len(td.partOfPTagValues) != 0 {
@@ -127,7 +136,7 @@ func (td *tsDeleter) Start(ctx context.Context) context.Context {
 			},
 			TableId:         td.tableID,
 			HashNum:         td.hashNum,
-			OsnId:           OsnID,
+			OsnID:           OsnID,
 			TagIDs:          td.primaryTagIDs,
 			PartPrimaryTags: td.partOfPTagValues,
 		}
@@ -181,7 +190,7 @@ func (td *tsDeleter) Start(ctx context.Context) context.Context {
 			},
 			TableId:     td.tableID,
 			PrimaryTags: td.primaryTags[0],
-			OsnId:       OsnID,
+			OsnID:       OsnID,
 		}
 		req.TsSpans = make([]*roachpb.TsSpan, len(td.spans))
 		for i := range td.spans {
@@ -196,6 +205,9 @@ func (td *tsDeleter) Start(ctx context.Context) context.Context {
 			for i := range ba.RawResponse().Responses {
 				if v, ok := ba.RawResponse().Responses[i].Value.(*roachpb.ResponseUnion_TsDelete); ok {
 					deletedRow += uint64(v.TsDelete.NumKeys)
+					if OsnID == 0 || OsnID > v.TsDelete.OsnID {
+						OsnID = v.TsDelete.OsnID
+					}
 				}
 			}
 		}
@@ -209,7 +221,7 @@ func (td *tsDeleter) Start(ctx context.Context) context.Context {
 			},
 			TableId: td.tableID,
 			HashNum: td.hashNum,
-			OsnId:   OsnID,
+			OsnID:   OsnID,
 		}
 		for _, span := range td.spans {
 			req.TsSpans = append(req.TsSpans, &roachpb.TsSpan{TsStart: span.StartTs, TsEnd: span.EndTs})
@@ -223,6 +235,9 @@ func (td *tsDeleter) Start(ctx context.Context) context.Context {
 			for i := range ba.RawResponse().Responses {
 				if v, ok := ba.RawResponse().Responses[i].Value.(*roachpb.ResponseUnion_TsDeleteMultiEntitiesData); ok {
 					deletedRow += uint64(v.TsDeleteMultiEntitiesData.NumKeys)
+					if OsnID == 0 || OsnID > v.TsDeleteMultiEntitiesData.OsnID {
+						OsnID = v.TsDeleteMultiEntitiesData.OsnID
+					}
 				}
 			}
 		}
@@ -244,7 +259,7 @@ func (td *tsDeleter) Start(ctx context.Context) context.Context {
 			TableId:     td.tableID,
 			PrimaryTags: td.primaryTags[0],
 			TsSpans:     []*roachpb.TsSpan{{TsStart: math.MinInt64, TsEnd: math.MaxInt64}},
-			OsnId:       OsnID,
+			OsnID:       OsnID,
 		}
 		//fmt.Println("-----DeleteEntities-----data")
 		//fmt.Printf("startKey: %v, endKey: %v, TsSpan: %v\n", delDataReq.Key, delDataReq.EndKey, delDataReq.TsSpans)
@@ -254,6 +269,9 @@ func (td *tsDeleter) Start(ctx context.Context) context.Context {
 			for i := range ba.RawResponse().Responses {
 				if v, ok := ba.RawResponse().Responses[i].Value.(*roachpb.ResponseUnion_TsDelete); ok {
 					deletedRow += uint64(v.TsDelete.NumKeys)
+					if OsnID == 0 || OsnID > v.TsDelete.OsnID {
+						OsnID = v.TsDelete.OsnID
+					}
 				}
 			}
 			ba2 := td.FlowCtx.Txn.NewBatch()
@@ -265,7 +283,7 @@ func (td *tsDeleter) Start(ctx context.Context) context.Context {
 				},
 				TableId:     td.tableID,
 				PrimaryTags: td.primaryTags,
-				OsnId:       OsnID,
+				OsnID:       OsnID,
 			})
 			err = td.FlowCtx.Cfg.TseDB.Run(ctx, ba2)
 		}
@@ -279,6 +297,12 @@ func (td *tsDeleter) Start(ctx context.Context) context.Context {
 	}
 	td.deleteSuccess = true
 	td.deleteRow = deletedRow
+
+	// only send to cdc when deleteSuccess is true.
+	if td.cdcData != nil && td.deleteRow > 0 {
+		td.FlowCtx.Cfg.CDCCoordinator.SendStatement(OsnID, td.tableID, "delete", td.cdcData)
+	}
+
 	return ctx
 }
 

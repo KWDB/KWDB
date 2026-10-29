@@ -41,7 +41,6 @@ import (
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/base"
-	"gitee.com/kwbasedb/kwbase/pkg/cli/syncbench"
 	"gitee.com/kwbasedb/kwbase/pkg/config"
 	"gitee.com/kwbasedb/kwbase/pkg/config/zonepb"
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
@@ -57,9 +56,9 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/server/serverpb"
 	"gitee.com/kwbasedb/kwbase/pkg/server/status/statuspb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
-	"gitee.com/kwbasedb/kwbase/pkg/ts/tspb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/telemetry/tspb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/flagutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
@@ -70,8 +69,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/sysutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
-	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/tool"
 	"github.com/gogo/protobuf/jsonpb"
 	"github.com/kr/pretty"
 	"github.com/pkg/errors"
@@ -136,13 +133,17 @@ type OpenEngineOptions struct {
 
 // OpenExistingStore opens the rocksdb engine rooted at 'dir'.
 // If 'readOnly' is true, opens the store in read-only mode.
-func OpenExistingStore(dir string, stopper *stop.Stopper, readOnly bool) (storage.Engine, error) {
+func OpenExistingStore(
+	dir string, stopper *stop.Stopper, readOnly bool,
+) (relational.Engine, error) {
 	return OpenEngine(dir, stopper, OpenEngineOptions{ReadOnly: readOnly, MustExist: true})
 }
 
 // OpenEngine opens the engine at 'dir'. Depending on the supplied options,
 // an empty engine might be initialized.
-func OpenEngine(dir string, stopper *stop.Stopper, opts OpenEngineOptions) (storage.Engine, error) {
+func OpenEngine(
+	dir string, stopper *stop.Stopper, opts OpenEngineOptions,
+) (relational.Engine, error) {
 	maxOpenFiles, err := server.SetOpenFileLimitForOneStore()
 	if err != nil {
 		return nil, err
@@ -154,34 +155,23 @@ func OpenEngine(dir string, stopper *stop.Stopper, opts OpenEngineOptions) (stor
 		MustExist: opts.MustExist,
 	}
 
-	var db storage.Engine
-	storageEngine := resolveStorageEngineType(context.Background(), storage.DefaultStorageEngine, storageConfig)
+	var db relational.Engine
+	storageEngine := resolveStorageEngineType(context.Background(), relational.DefaultStorageEngine, storageConfig)
 
 	switch storageEngine {
-	case enginepb.EngineTypePebble:
-		cfg := storage.PebbleConfig{
-			StorageConfig: storageConfig,
-			Opts:          storage.DefaultPebbleOptions(),
-		}
-		cfg.Opts.Cache = pebble.NewCache(server.DefaultCacheSize)
-		defer cfg.Opts.Cache.Unref()
-
-		cfg.Opts.MaxOpenFiles = int(maxOpenFiles)
-		cfg.Opts.ReadOnly = opts.ReadOnly
-
-		db, err = storage.NewPebble(context.Background(), cfg)
-
-	case enginepb.EngineTypeRocksDB:
-		cache := storage.NewRocksDBCache(server.DefaultCacheSize)
+	case enginepb.EngineTypeDefault, enginepb.EngineTypeRocksDB:
+		cache := relational.NewRocksDBCache(server.DefaultCacheSize)
 		defer cache.Release()
 
-		cfg := storage.RocksDBConfig{
+		cfg := relational.RocksDBConfig{
 			StorageConfig: storageConfig,
 			MaxOpenFiles:  maxOpenFiles,
 			ReadOnly:      opts.ReadOnly,
 		}
 
-		db, err = storage.NewRocksDB(cfg, cache)
+		db, err = relational.NewRocksDB(cfg, cache)
+	default:
+		return nil, relational.ErrRemovedStorageEngine(storageEngine)
 	}
 
 	if err != nil {
@@ -192,7 +182,7 @@ func OpenEngine(dir string, stopper *stop.Stopper, opts OpenEngineOptions) (stor
 	return db, nil
 }
 
-func printKey(kv storage.MVCCKeyValue) (bool, error) {
+func printKey(kv relational.MVCCKeyValue) (bool, error) {
 	fmt.Printf("%s %s: ", kv.Key.Timestamp, kv.Key.Key)
 	if debugCtx.sizes {
 		fmt.Printf(" %d %d", len(kv.Key.Key), len(kv.Value))
@@ -212,7 +202,7 @@ func runDebugKeys(cmd *cobra.Command, args []string) error {
 
 	printer := printKey
 	if debugCtx.values {
-		printer = func(kv storage.MVCCKeyValue) (bool, error) {
+		printer = func(kv relational.MVCCKeyValue) (bool, error) {
 			kvserver.PrintKeyValue(kv)
 			return false, nil
 		}
@@ -314,7 +304,7 @@ func runDebugRangeData(cmd *cobra.Command, args []string) error {
 		} else if !ok {
 			break
 		}
-		kvserver.PrintKeyValue(storage.MVCCKeyValue{
+		kvserver.PrintKeyValue(relational.MVCCKeyValue{
 			Key:   iter.Key(),
 			Value: iter.Value(),
 		})
@@ -333,10 +323,10 @@ Prints all range descriptors in a store with a history of changes.
 }
 
 func loadRangeDescriptor(
-	db storage.Engine, rangeID roachpb.RangeID,
+	db relational.Engine, rangeID roachpb.RangeID,
 ) (roachpb.RangeDescriptor, error) {
 	var desc roachpb.RangeDescriptor
-	handleKV := func(kv storage.MVCCKeyValue) (bool, error) {
+	handleKV := func(kv relational.MVCCKeyValue) (bool, error) {
 		if kv.Key.Timestamp == (hlc.Timestamp{}) {
 			// We only want values, not MVCCMetadata.
 			return false, nil
@@ -383,7 +373,7 @@ func runDebugRangeDescriptors(cmd *cobra.Command, args []string) error {
 	start := keys.LocalRangePrefix
 	end := keys.LocalRangeMax
 
-	return db.Iterate(start, end, func(kv storage.MVCCKeyValue) (bool, error) {
+	return db.Iterate(start, end, func(kv relational.MVCCKeyValue) (bool, error) {
 		if kvserver.IsRangeDescriptorKey(kv.Key) != nil {
 			return false, nil
 		}
@@ -408,7 +398,7 @@ Decode a hexadecimal-encoded key and pretty-print it. For example:
 			if err != nil {
 				return err
 			}
-			k, err := storage.DecodeMVCCKey(b)
+			k, err := relational.DecodeMVCCKey(b)
 			if err != nil {
 				return err
 			}
@@ -439,7 +429,7 @@ Decode and print a hexadecimal-encoded key-value pair.
 		}
 
 		isTS := bytes.HasPrefix(bs[0], keys.TimeseriesPrefix)
-		k, err := storage.DecodeMVCCKey(bs[0])
+		k, err := relational.DecodeMVCCKey(bs[0])
 		if err != nil {
 			// Older versions of the consistency checker give you diffs with a raw_key that
 			// is already a roachpb.Key, so make a half-assed attempt to support both.
@@ -447,13 +437,13 @@ Decode and print a hexadecimal-encoded key-value pair.
 				fmt.Printf("unable to decode key: %v, assuming it's a roachpb.Key with fake timestamp;\n"+
 					"if the result below looks like garbage, then it likely is:\n\n", err)
 			}
-			k = storage.MVCCKey{
+			k = relational.MVCCKey{
 				Key:       bs[0],
 				Timestamp: hlc.Timestamp{WallTime: 987654321},
 			}
 		}
 
-		kvserver.PrintKeyValue(storage.MVCCKeyValue{
+		kvserver.PrintKeyValue(relational.MVCCKeyValue{
 			Key:   k,
 			Value: bs[1],
 		})
@@ -489,10 +479,10 @@ func runDebugRaftLog(cmd *cobra.Command, args []string) error {
 	end := keys.RaftLogPrefix(rangeID).PrefixEnd()
 	fmt.Printf("Printing keys %s -> %s (RocksDB keys: %#x - %#x )\n",
 		start, end,
-		string(storage.EncodeKey(storage.MakeMVCCMetadataKey(start))),
-		string(storage.EncodeKey(storage.MakeMVCCMetadataKey(end))))
+		string(relational.EncodeKey(relational.MakeMVCCMetadataKey(start))),
+		string(relational.EncodeKey(relational.MakeMVCCMetadataKey(end))))
 
-	return db.Iterate(start, end, func(kv storage.MVCCKeyValue) (bool, error) {
+	return db.Iterate(start, end, func(kv relational.MVCCKeyValue) (bool, error) {
 		kvserver.PrintKeyValue(kv)
 		return false, nil
 	})
@@ -552,8 +542,8 @@ func runDebugGCCmd(cmd *cobra.Command, args []string) error {
 
 	var descs []roachpb.RangeDescriptor
 
-	if _, err := storage.MVCCIterate(context.Background(), db, start, end, hlc.MaxTimestamp,
-		storage.MVCCScanOptions{Inconsistent: true}, func(kv roachpb.KeyValue) (bool, error) {
+	if _, err := relational.MVCCIterate(context.Background(), db, start, end, hlc.MaxTimestamp,
+		relational.MVCCScanOptions{Inconsistent: true}, func(kv roachpb.KeyValue) (bool, error) {
 			var desc roachpb.RangeDescriptor
 			_, suffix, _, err := keys.DecodeRangeKey(kv.Key)
 			if err != nil {
@@ -614,16 +604,8 @@ https://github.com/facebook/rocksdb/wiki/Administration-and-Data-Access-Tool#ldb
 	// TODO(mberhault): support encrypted stores.
 	DisableFlagParsing: true,
 	Run: func(cmd *cobra.Command, args []string) {
-		storage.RunLDB(args)
+		relational.RunLDB(args)
 	},
-}
-
-var debugPebbleCmd = &cobra.Command{
-	Use:   "pebble [command]",
-	Short: "run a Pebble introspection tool command",
-	Long: `
-Allows the use of pebble tools, such as to introspect manifests, SSTables, etc.
-`,
 }
 
 var debugSSTDumpCmd = &cobra.Command{
@@ -636,7 +618,7 @@ Runs the RocksDB 'sst_dump' tool
 	// TODO(mberhault): support encrypted stores.
 	DisableFlagParsing: true,
 	Run: func(cmd *cobra.Command, args []string) {
-		storage.RunSSTDump(args)
+		relational.RunSSTDump(args)
 	},
 }
 
@@ -906,30 +888,6 @@ func runTimeSeriesDump(cmd *cobra.Command, args []string) error {
 	}
 }
 
-var debugSyncBenchCmd = &cobra.Command{
-	Use:   "syncbench [directory]",
-	Short: "Run a performance test for WAL sync speed",
-	Long: `
-`,
-	Args:   cobra.MaximumNArgs(1),
-	Hidden: true,
-	RunE:   MaybeDecorateGRPCError(runDebugSyncBench),
-}
-
-var syncBenchOpts = syncbench.Options{
-	Concurrency: 1,
-	Duration:    10 * time.Second,
-	LogOnly:     true,
-}
-
-func runDebugSyncBench(cmd *cobra.Command, args []string) error {
-	syncBenchOpts.Dir = "./testdb"
-	if len(args) == 1 {
-		syncBenchOpts.Dir = args[0]
-	}
-	return syncbench.Run(syncBenchOpts)
-}
-
 var debugUnsafeRemoveDeadReplicasCmd = &cobra.Command{
 	Use:   "unsafe-remove-dead-replicas --dead-store-ids=[store ID,...] [path]",
 	Short: "Unsafely remove all other replicas from the given range",
@@ -997,7 +955,7 @@ func runDebugUnsafeRemoveDeadReplicas(cmd *cobra.Command, args []string) error {
 	fmt.Printf("\n")
 	if line[0] == 'y' || line[0] == 'Y' {
 		fmt.Printf("Committing\n")
-		if err := batch.Commit(true, storage.NormalCommitType); err != nil {
+		if err := batch.Commit(true, relational.NormalCommitType); err != nil {
 			return err
 		}
 	} else {
@@ -1007,8 +965,8 @@ func runDebugUnsafeRemoveDeadReplicas(cmd *cobra.Command, args []string) error {
 }
 
 func removeDeadReplicas(
-	db storage.Engine, deadStoreIDs map[roachpb.StoreID]struct{},
-) (storage.Batch, error) {
+	db relational.Engine, deadStoreIDs map[roachpb.StoreID]struct{},
+) (relational.Batch, error) {
 	clock := hlc.NewClock(hlc.UnixNano, 0)
 
 	ctx := context.Background()
@@ -1126,7 +1084,7 @@ func removeDeadReplicas(
 		if err != nil {
 			return nil, errors.Wrap(err, "loading MVCCStats")
 		}
-		err = storage.MVCCPutProto(ctx, batch, &ms, key, clock.Now(), nil /* txn */, &desc)
+		err = relational.MVCCPutProto(ctx, batch, &ms, key, clock.Now(), nil /* txn */, &desc)
 		if wiErr, ok := err.(*roachpb.WriteIntentError); ok {
 			if len(wiErr.Intents) != 1 {
 				return nil, errors.Errorf("expected 1 intent, found %d: %s", len(wiErr.Intents), wiErr)
@@ -1150,7 +1108,7 @@ func removeDeadReplicas(
 			// A crude form of the intent resolution process: abort the
 			// transaction by deleting its record.
 			txnKey := keys.TransactionKey(intent.Txn.Key, intent.Txn.ID)
-			if err := storage.MVCCDelete(ctx, batch, &ms, txnKey, hlc.Timestamp{}, nil); err != nil {
+			if err := relational.MVCCDelete(ctx, batch, &ms, txnKey, hlc.Timestamp{}, nil); err != nil {
 				return nil, err
 			}
 			update := roachpb.LockUpdate{
@@ -1159,11 +1117,11 @@ func removeDeadReplicas(
 				Status:     roachpb.ABORTED,
 				Durability: lock.Replicated,
 			}
-			if _, err := storage.MVCCResolveWriteIntent(ctx, batch, &ms, update); err != nil {
+			if _, err := relational.MVCCResolveWriteIntent(ctx, batch, &ms, update); err != nil {
 				return nil, err
 			}
 			// With the intent resolved, we can try again.
-			if err := storage.MVCCPutProto(ctx, batch, &ms, key, clock.Now(),
+			if err := relational.MVCCPutProto(ctx, batch, &ms, key, clock.Now(),
 				nil /* txn */, &desc); err != nil {
 				return nil, err
 			}
@@ -1241,12 +1199,12 @@ var debugCmds = append(DebugCmdsForRocksDB,
 	debugSSTDumpCmd,
 	debugGossipValuesCmd,
 	debugTimeSeriesDumpCmd,
-	debugSyncBenchCmd,
 	debugSyncTestCmd,
 	debugUnsafeRemoveDeadReplicasCmd,
 	debugEnvCmd,
 	debugZipCmd,
 	debugMergeLogsCommand,
+	debugRangeReportCmd,
 )
 
 // DebugCmd is the root of all debug commands.
@@ -1264,24 +1222,7 @@ process that has failed and cannot restart.
 func init() {
 	DebugCmd.AddCommand(debugCmds...)
 
-	pebbleTool := tool.New()
-	// To be able to read Kw-written RocksDB manifests/SSTables, comparator
-	// and merger functions must be specified to pebble that match the ones used
-	// to write those files.
-	pebbleTool.RegisterMerger(storage.MVCCMerger)
-	pebbleTool.RegisterComparer(storage.MVCCComparer)
-	debugPebbleCmd.AddCommand(pebbleTool.Commands...)
-	DebugCmd.AddCommand(debugPebbleCmd)
-
-	f := debugSyncBenchCmd.Flags()
-	f.IntVarP(&syncBenchOpts.Concurrency, "concurrency", "c", syncBenchOpts.Concurrency,
-		"number of concurrent writers")
-	f.DurationVarP(&syncBenchOpts.Duration, "duration", "d", syncBenchOpts.Duration,
-		"duration to run the test for")
-	f.BoolVarP(&syncBenchOpts.LogOnly, "log-only", "l", syncBenchOpts.LogOnly,
-		"only write to the WAL, not to sstables")
-
-	f = debugUnsafeRemoveDeadReplicasCmd.Flags()
+	f := debugUnsafeRemoveDeadReplicasCmd.Flags()
 	f.IntSliceVar(&removeDeadReplicasOpts.deadStoreIDs, "dead-store-ids", nil,
 		"list of dead store IDs")
 

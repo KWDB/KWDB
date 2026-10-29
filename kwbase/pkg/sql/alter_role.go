@@ -141,11 +141,17 @@ func (n *alterRoleNode) startExec(params runParams) error {
 
 		// TODO(knz): Remove in 20.2.
 		if normalizedUsername == security.RootUser && len(hashedPassword) > 0 &&
-			!params.EvalContext().Settings.Version.IsActive(params.ctx, clusterversion.VersionRootPassword) {
+			!params.EvalContext().Settings.Version.IsActive(params.ctx, clusterversion.VersionMinSupported) {
 			return pgerror.Newf(pgcode.ObjectNotInPrerequisiteState,
 				`setting a root password requires all nodes to be upgraded to %s`,
-				clusterversion.VersionByKey(clusterversion.VersionRootPassword),
+				clusterversion.VersionByKey(clusterversion.VersionMinSupported),
 			)
+		}
+
+		// Recomputed with the password, for the same reason as in create_role.go.
+		mysqlNativeDigest, mysqlSHA2Digest, err := n.roleOptions.GetMySQLPasswordDigests()
+		if err != nil {
+			return err
 		}
 
 		if len(hashedPassword) > 0 && params.extendedEvalCtx.ExecCfg.RPCContext.Insecure {
@@ -166,9 +172,12 @@ func (n *alterRoleNode) startExec(params runParams) error {
 			params.ctx,
 			opName,
 			params.p.txn,
-			`UPDATE system.users SET "hashedPassword" = $2 WHERE username = $1`,
+			`UPDATE system.users SET "hashedPassword" = $2, `+
+				`"mysqlNativeDigest" = $3, "mysqlSHA2Digest" = $4 WHERE username = $1`,
 			normalizedUsername,
 			hashedPassword,
+			mysqlNativeDigest,
+			mysqlSHA2Digest,
 		)
 		if err != nil {
 			return err

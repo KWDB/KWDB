@@ -31,6 +31,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/exec/execbuilder"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
@@ -103,8 +104,33 @@ func (ex *connExecutor) execPrepare(
 
 	var types tree.PlaceholderTypes
 	// prepare direct skip memo without types
+	findTag := false
 	if ps.Insertdirectstmt.InsertFast {
 		ps.PrepareInsertDirect = parseCmd.PrepareInsertDirect
+		ps.PrepareInsertDirect.DirectTimes[ParseStart] = parseCmd.ParseStart
+		ps.PrepareInsertDirect.DirectTimes[ParseEnd] = parseCmd.ParseEnd
+		if ps.PrepareInsertDirect.Dit.IsPayloadInsert {
+			cols := ps.PrepareInsertDirect.Dit.ColsDesc
+			ps.InferredTypes = make([]oid.Oid, 0, len(cols))
+			ps.PrepareInsertDirect.Dit.TagIndex = -1
+			ps.PrepareInsertDirect.Dit.PtagIndex = ps.PrepareInsertDirect.Dit.PtagIndex[:0]
+			ps.PrepareInsertDirect.Dit.StorageLen = ps.PrepareInsertDirect.Dit.StorageLen[:0]
+
+			for i, col := range cols {
+				ps.InferredTypes = append(ps.InferredTypes, col.Type.InternalType.Oid)
+				if !findTag && col.IsTagCol() {
+					ps.PrepareInsertDirect.Dit.TagIndex = int16(i)
+					findTag = true
+				}
+
+				if col.IsPrimaryTagCol() {
+					ps.PrepareInsertDirect.Dit.PtagIndex = append(ps.PrepareInsertDirect.Dit.PtagIndex, uint16(i))
+				}
+				ps.PrepareInsertDirect.Dit.StorageLen = append(ps.PrepareInsertDirect.Dit.StorageLen,
+					uint32(col.TsCol.StorageLen))
+			}
+			return nil, nil
+		}
 		types = ps.TypeHints
 
 		rowsAffected := ps.PrepareMetadata.Insertdirectstmt.RowsAffected
@@ -556,6 +582,9 @@ func (ex *connExecutor) execPreparedirectBind(
 	}
 
 	if ins, ok := ps.PrepareMetadata.Statement.AST.(*tree.Insert); ok {
+		bindStart := timeutil.Now()
+		ps.PrepareInsertDirect.DirectTimes[HandleSimpleStart] = bindStart
+		ps.PrepareInsertDirect.DirectTimes[OtherStart] = bindStart
 		curStmt := Statement{Prepared: ps}
 		curStmt.queryID = ex.generateID()
 		unregisterFn := ex.TsprepareaddActiveQuery(curStmt.queryID, curStmt, ex.state.cancel)
@@ -607,7 +636,8 @@ func (ex *connExecutor) execPreparedirectBind(
 
 			// When the table has the pipe enabled, bind data needs to be converted into datums for filter.
 			if ex.server.GetCFG().CDCCoordinator != nil {
-				if ex.server.GetCFG().CDCCoordinator.IsCDCEnabled(uint64(ps.PrepareInsertDirect.Dit.TabID)) {
+				if ex.server.GetCFG().CDCCoordinator.IsCDCEnabled(uint64(ps.PrepareInsertDirect.Dit.TabID)) ||
+					len(table.CDC) > 0 {
 					di.InputValues, err = getPrepareInputValues(ptCtx, &bindCmd, ps.InferredTypes, &di)
 					if err != nil {
 						return err
@@ -671,11 +701,142 @@ func (ex *connExecutor) execPreparedirectBind(
 	if err := ex.addPortal(ctx, portalName, ps, qargs, columnFormatCodes); err != nil {
 		return retErr(err)
 	}
+	ps.PrepareInsertDirect.DirectTimes[OtherEnd] = timeutil.Now()
 
 	if log.V(2) {
 		log.Infof(ctx, "portal: %q for %q, args %q, formats %q",
 			portalName, ps.Statement, qargs, columnFormatCodes)
 	}
+
+	return nil, nil
+}
+
+func (ex *connExecutor) execPreparedirectBindEx(
+	ctx context.Context, bindCmd BindAndExecStmt,
+) (fsm.Event, fsm.EventPayload) {
+	retErr := func(err error) (fsm.Event, fsm.EventPayload) {
+		return eventNonRetriableErr{IsCommit: fsm.False}, eventNonRetriableErrPayload{err: err}
+	}
+
+	portalName := bindCmd.PortalName
+	// The unnamed portal can be freely overwritten.
+	if portalName != "" {
+		if _, ok := ex.extraTxnState.prepStmtsNamespace.portals[portalName]; ok {
+			return retErr(pgerror.Newf(
+				pgcode.DuplicateCursor, "portal %q already exists", portalName))
+		}
+	} else {
+		// Deallocate the unnamed portal, if it exists.
+		ex.deletePortal(ctx, "")
+	}
+
+	ps, ok := ex.extraTxnState.prepStmtsNamespace.prepStmts[bindCmd.PreparedStatementName]
+	if !ok {
+		return retErr(pgerror.Newf(
+			pgcode.InvalidSQLStatementName,
+			"unknown prepared statement %q", bindCmd.PreparedStatementName))
+	}
+
+	if ins, ok := ps.PrepareMetadata.Statement.AST.(*tree.Insert); ok {
+		bindStart := bindCmd.TimeReceived
+		if bindStart.IsZero() {
+			bindStart = timeutil.Now()
+		}
+		ps.PrepareInsertDirect.DirectTimes[HandleSimpleStart] = bindStart
+		ps.PrepareInsertDirect.DirectTimes[OtherStart] = bindStart
+		curStmt := Statement{Prepared: ps}
+		curStmt.queryID = ex.generateID()
+		unregisterFn := ex.TsprepareaddActiveQuery(curStmt.queryID, curStmt, ex.state.cancel)
+		defer func() {
+			unregisterFn()
+		}()
+
+		var di DirectInsert
+		copy(ins.Columns, ps.PrepareInsertDirect.Dit.Desc)
+
+		ie := ex.server.GetCFG().InternalExecutor
+		cfg := ie.GetServer().GetCFG()
+
+		err := cfg.DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+			tables := GetTableCollection(cfg, ie)
+			defer tables.ReleaseTSTables(ctx)
+
+			flags := tree.ObjectLookupFlags{}
+			table, err := tables.GetTableVersion(ctx, txn, ps.PrepareInsertDirect.Dit.Tname, flags)
+			if err != nil {
+				return err
+			}
+			if table == nil {
+				return pgerror.Newf(pgcode.Syntax, "table is being dropped")
+			}
+			var sd sessiondata.SessionData
+			evalCtx := tree.EvalContext{
+				Context:          ctx,
+				Txn:              txn,
+				SessionData:      &sd,
+				InternalExecutor: ex.server.GetCFG().InternalExecutor,
+				Settings:         ex.server.GetCFG().Settings,
+				NodeID:           ex.server.GetCFG().NodeID.Get(),
+			}
+			evalCtx.StartSinglenode = ex.server.GetCFG().StartMode == StartSingleNode
+			if err := GetColsInfo(ctx, evalCtx, &ps.PrepareInsertDirect.Dit.ColsDesc, ins, &di, &ps.PrepareMetadata.Statement,
+				ex.server.GetCFG().TsIDGen); err != nil {
+				return err
+			}
+			di.PArgs.TSVersion = uint32(table.TsTable.TsVersion)
+			v2Info := execbuilder.BuildPayloadV2TupleDataInfo(di.Dcs)
+			di.PArgs.V2DataHeader = v2Info.DataHeader
+			di.PArgs.V2DataCols = v2Info.DataCols
+
+			// When the table has the pipe enabled, bind data needs to be converted into datums for filter.
+
+			di.Ptags = append(di.Ptags, bindCmd.Ptags...)
+			if len(bindCmd.Payloads) < len(di.Ptags) {
+				return pgwirebase.NewProtocolViolationErrorf(
+					"payload count %d does not match primary tag count %d", len(bindCmd.Payloads), len(di.Ptags))
+			}
+			di.Payloads = bindCmd.Payloads[:len(di.Ptags)]
+			di.PArgs.TsIDGen = ex.server.GetCFG().TsIDGen
+			bindCmd.Payloads = nil
+
+			di.PayloadNodeMap = make(map[int]*sqlbase.PayloadForDistTSInsert, 1)
+
+			if err = BuildRowBytesForPrepareTsInsertEx(
+				ps.PrepareInsertDirect.Dit, &di, evalCtx, table, cfg.NodeInfo.NodeID.Get()); err != nil {
+				return err
+			}
+			ps.PrepareMetadata.Statement.Insertdirectstmt.RowsAffected = int64(di.RowNum)
+
+			stmtRes := ex.clientComm.CreateStatementResult(
+				ps.AST,
+				// The client is using the extended protocol, so no row description is
+				// needed.
+				DontNeedRowDesc,
+				0, nil,
+				ex.sessionData.DataConversion,
+				0,
+				portalName,
+				ex.implicitTxn(),
+			)
+
+			ps.PrepareInsertDirect.payloadNodeMap = di.PayloadNodeMap
+			ps.PrepareInsertDirect.stmtRes = stmtRes
+			ps.PrepareInsertDirect.EvalContext = evalCtx
+			ps.PrepareInsertDirect.EvalContext.Txn = nil
+			ps.PrepareInsertDirect.Queryid = curStmt.queryID
+			return nil
+		})
+		if err != nil {
+			return retErr(err)
+		}
+	}
+
+	var qargs tree.QueryArguments
+	// Create the new PreparedPortal.
+	if err := ex.addPortal(ctx, portalName, ps, qargs, nil); err != nil {
+		return retErr(err)
+	}
+	ps.PrepareInsertDirect.DirectTimes[OtherEnd] = timeutil.Now()
 
 	return nil, nil
 }
@@ -776,7 +937,12 @@ func (ex *connExecutor) execDescribe(
 				"unknown prepared statement %q", descCmd.Name))
 		}
 
-		res.SetInferredTypes(ps.InferredTypes)
+		dit := ps.PrepareInsertDirect.Dit
+		if dit.IsPayloadInsert {
+			res.SetInferredTypesEx(ps.InferredTypes, dit.TagIndex, dit.PtagIndex, dit.StorageLen)
+		} else {
+			res.SetInferredTypes(ps.InferredTypes)
+		}
 
 		if stmtHasNoData(ps.AST) {
 			res.SetNoDataRowDescription()

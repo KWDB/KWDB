@@ -267,7 +267,8 @@ func (p *pendingLeaseRequest) InitOrJoinRequest(
 		}
 		reqLease.Epoch = liveness.Epoch
 	}
-	reqLease.CheckLeaseFlag = p.repl.checkLeaseOK(ctx, reqLease)
+	// TODO by fyx, not used it, temp remove
+	//reqLease.CheckLeaseFlag = p.repl.checkLeaseOK(ctx, reqLease)
 	if transfer {
 		// Generate TransferLeaseRequest
 		leaseReq = &roachpb.TransferLeaseRequest{

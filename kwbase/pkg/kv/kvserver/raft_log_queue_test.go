@@ -37,7 +37,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
@@ -853,9 +853,9 @@ func TestTruncateLogRecompute(t *testing.T) {
 	dir, cleanup := testutils.TempDir(t)
 	defer cleanup()
 
-	cache := storage.NewRocksDBCache(1 << 20)
+	cache := relational.NewRocksDBCache(1 << 20)
 	defer cache.Release()
-	eng, err := storage.NewRocksDB(storage.RocksDBConfig{StorageConfig: base.StorageConfig{Dir: dir}}, cache)
+	eng, err := relational.NewRocksDB(relational.RocksDBConfig{StorageConfig: base.StorageConfig{Dir: dir}}, cache)
 	if err != nil {
 		t.Fatal(err)
 	}

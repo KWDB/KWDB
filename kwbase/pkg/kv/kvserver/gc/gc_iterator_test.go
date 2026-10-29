@@ -32,7 +32,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 	"github.com/stretchr/testify/require"
@@ -45,14 +45,14 @@ func TestGCIterator(t *testing.T) {
 	// dataItem represents a version in the storage engine and optionally a
 	// corresponding transaction which will make the MVCCKeyValue an intent.
 	type dataItem struct {
-		storage.MVCCKeyValue
+		relational.MVCCKeyValue
 		txn *roachpb.Transaction
 	}
 	// makeDataItem is a shorthand to construct dataItems.
 	makeDataItem := func(k roachpb.Key, val []byte, ts int64, txn *roachpb.Transaction) dataItem {
 		return dataItem{
-			MVCCKeyValue: storage.MVCCKeyValue{
-				Key: storage.MVCCKey{
+			MVCCKeyValue: relational.MVCCKeyValue{
+				Key: relational.MVCCKey{
 					Key:       k,
 					Timestamp: hlc.Timestamp{WallTime: ts * time.Nanosecond.Nanoseconds()},
 				},
@@ -64,9 +64,9 @@ func TestGCIterator(t *testing.T) {
 	// makeLiteralDistribution adapts dataItems for use with the data distribution
 	// infrastructure.
 	makeLiteralDataDistribution := func(items ...dataItem) dataDistribution {
-		return func() (storage.MVCCKeyValue, *roachpb.Transaction, bool) {
+		return func() (relational.MVCCKeyValue, *roachpb.Transaction, bool) {
 			if len(items) == 0 {
-				return storage.MVCCKeyValue{}, nil, false
+				return relational.MVCCKeyValue{}, nil, false
 			}
 			item := items[0]
 			defer func() { items = items[1:] }()
@@ -118,7 +118,7 @@ func TestGCIterator(t *testing.T) {
 	checkExpectations := func(
 		t *testing.T, data []dataItem, ex stateExpectations, s gcIteratorState,
 	) {
-		check := func(ex int, kv *storage.MVCCKeyValue) {
+		check := func(ex int, kv *relational.MVCCKeyValue) {
 			switch {
 			case ex >= 0:
 				require.EqualValues(t, &data[ex].MVCCKeyValue, kv)
@@ -136,7 +136,7 @@ func TestGCIterator(t *testing.T) {
 	}
 	makeTest := func(tc testCase) func(t *testing.T) {
 		return func(t *testing.T) {
-			eng := storage.NewDefaultInMem()
+			eng := relational.NewDefaultInMem()
 			defer eng.Close()
 			ds := makeLiteralDataDistribution(tc.data...)
 			ds.setupTest(t, eng, desc)

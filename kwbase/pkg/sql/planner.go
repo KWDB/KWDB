@@ -101,6 +101,15 @@ type extendedEvalContext struct {
 
 	// IsDisplayed is true when the flow spec of the SQL had displayed.
 	IsDisplayed bool
+
+	// ClientSupportsPGWireResults records whether the connection that issued
+	// this statement can receive pre-encoded PostgreSQL wire bytes, and gates
+	// the TS engine's pg-encode short circuit (shouldUseQueryShortCircuit).
+	// dispatchToExecutionEngine sets it from the client's result writer. It is
+	// left false for statements that never reach dispatchToExecutionEngine,
+	// such as internal executor queries, which is the correct answer for them:
+	// they have no wire client either.
+	ClientSupportsPGWireResults bool
 }
 
 // copy returns a deep copy of ctx.
@@ -755,12 +764,9 @@ func (p *planner) MakeNewPlanAndRunForTsInsert(
 	ctx context.Context, evalCtx *tree.EvalContext, param tree.TSInsertSelectParam,
 ) (int, error) {
 	if payloadNodeMap, ok := param.(*map[int]*sqlbase.PayloadForDistTSInsert); ok {
-		tsIns := tsInsertNodePool.Get().(*tsInsertNode)
-		for _, payloadVals := range *payloadNodeMap {
-			tsIns.nodeIDs = append(tsIns.nodeIDs, payloadVals.NodeID)
-			tsIns.allNodePayloadInfos = append(tsIns.allNodePayloadInfos, payloadVals.PerNodePayloads)
-		}
-		return p.makeNewPlanAndRun(ctx, evalCtx.Txn, tsIns)
+		tsInsNode := buildInsertNode(evalCtx, *payloadNodeMap)
+
+		return p.makeNewPlanAndRun(ctx, evalCtx.Txn, tsInsNode)
 	}
 	return 0, nil
 }

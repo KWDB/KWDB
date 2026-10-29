@@ -32,7 +32,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/mon"
@@ -56,7 +56,7 @@ type TimeSeriesDataStore interface {
 	ContainsTimeSeries(roachpb.RKey, roachpb.RKey) bool
 	MaintainTimeSeries(
 		context.Context,
-		storage.Reader,
+		relational.Reader,
 		roachpb.RKey,
 		roachpb.RKey,
 		*kv.DB,

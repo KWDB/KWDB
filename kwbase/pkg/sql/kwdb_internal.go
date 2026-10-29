@@ -27,6 +27,7 @@ package sql
 import (
 	"bytes"
 	"context"
+	ejson "encoding/json"
 	"fmt"
 	"net"
 	"net/url"
@@ -37,6 +38,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/build"
+	"gitee.com/kwbasedb/kwbase/pkg/cdc/cdcpb"
 	"gitee.com/kwbasedb/kwbase/pkg/clusterversion"
 	"gitee.com/kwbasedb/kwbase/pkg/config/zonepb"
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
@@ -134,6 +136,8 @@ var kwdbInternal = virtualSchema{
 		sqlbase.CrdbInternalKWDBStreamsTableID:          kwdbInternalKWDBStreamTable,
 		sqlbase.CrdbInternalTSEInfoID:                   kwdbInternalTSEngineInfo,
 		sqlbase.CrdbInternalTSTransactionRecordID:       kwdbInternalTSTransactionRecord,
+		sqlbase.KwdbInternalKWDBPublicationsTableID:     kwdbInternalKWDBPublicationsTable,
+		sqlbase.CrdbInternalKWDBPipeTableID:             kwdbInternalKWDBPipeTable,
 	},
 	validWithNoDatabaseContext: true,
 }
@@ -2400,7 +2404,7 @@ func getAllNames(
 	ctx context.Context, txn *kv.Txn, executor *InternalExecutor,
 ) (map[sqlbase.ID]NamespaceKey, error) {
 	namespace := map[sqlbase.ID]NamespaceKey{}
-	if executor.s.cfg.Settings.Version.IsActive(ctx, clusterversion.VersionNamespaceTableWithSchemas) {
+	if executor.s.cfg.Settings.Version.IsActive(ctx, clusterversion.VersionMinSupported) {
 		rows, err := executor.Query(
 			ctx, "get-all-names", txn,
 			`SELECT id, "parentID", "parentSchemaID", name FROM system.namespace`,
@@ -3162,33 +3166,52 @@ CREATE TABLE kwdb_internal.gossip_network (
 	},
 }
 
-// addPartitioningRows adds the rows in kwdb_internal.partitions for each partition.
-// None of the arguments can be nil, and it is used recursively when a list partition
-// has subpartitions. In that case, the colOffset argument is incremented to represent
-// how many columns of the index have been partitioned already.
-func addPartitioningRows(
+// partitionParentInfo tracks the immediate parent for the legacy parent_name
+// column. The root fields preserve the top-level partition metadata while
+// recursively visiting deeper subpartitions.
+type partitionParentInfo struct {
+	isSubpartition bool
+	name           tree.Datum
+	rootName       tree.Datum
+	rootOrdinal    tree.Datum
+	rootMethod     tree.Datum
+	rootExpression tree.Datum
+}
+
+// addPartitioningRowsWithContext adds rows for one partitioning descriptor and
+// recursively visits its subpartitions while preserving top-level metadata.
+func addPartitioningRowsWithContext(
 	ctx context.Context,
 	p *planner,
 	database string,
+	schema string,
 	table *sqlbase.TableDescriptor,
 	index *sqlbase.IndexDescriptor,
 	partitioning *sqlbase.PartitioningDescriptor,
-	parentName tree.Datum,
+	parent partitionParentInfo,
 	colOffset int,
 	addRow func(...tree.Datum) error,
 ) error {
 	tableID := tree.NewDInt(tree.DInt(table.ID))
 	indexID := tree.NewDInt(tree.DInt(index.ID))
 	numColumns := tree.NewDInt(tree.DInt(partitioning.NumColumns))
-
-	var buf bytes.Buffer
+	var colNameBuf bytes.Buffer
 	for i := uint32(colOffset); i < uint32(colOffset)+partitioning.NumColumns; i++ {
 		if i != uint32(colOffset) {
-			buf.WriteString(`, `)
+			colNameBuf.WriteString(`, `)
 		}
-		buf.WriteString(index.ColumnNames[i])
+		colNameBuf.WriteString(index.ColumnNames[i])
 	}
-	colNames := tree.NewDString(buf.String())
+	colNames := tree.NewDString(colNameBuf.String())
+
+	method := tree.DNull
+	if partitioning.IsHash || len(partitioning.HashPoint) > 0 {
+		method = tree.NewDString("HASH")
+	} else if len(partitioning.List) > 0 {
+		method = tree.NewDString("LIST")
+	} else if len(partitioning.Range) > 0 {
+		method = tree.NewDString("RANGE")
+	}
 
 	var datumAlloc sqlbase.DatumAlloc
 
@@ -3197,6 +3220,84 @@ func addPartitioningRows(
 	fakePrefixDatums := make([]tree.Datum, colOffset)
 	for i := range fakePrefixDatums {
 		fakePrefixDatums[i] = tree.DNull
+	}
+
+	ordinal := 0
+	addPartitionRow := func(
+		name *tree.DString,
+		listValue tree.Datum,
+		rangeValue tree.Datum,
+		hashValue tree.Datum,
+		description tree.Datum,
+		zoneID uint32,
+		subzoneID base.SubzoneID,
+	) error {
+		ordinal++
+		ordinalDatum := tree.NewDString(strconv.Itoa(ordinal))
+
+		var partitionName tree.Datum = name
+		var subpartitionName tree.Datum = tree.DNull
+		var partitionOrdinal tree.Datum = ordinalDatum
+		var subpartitionOrdinal tree.Datum = tree.DNull
+		partitionMethodDatum := method
+		var subpartitionMethod tree.Datum = tree.DNull
+		var partitionExpr tree.Datum = colNames
+		var subpartitionExpr tree.Datum = tree.DNull
+
+		// MySQL exposes a fixed partition/subpartition pair. For every nested
+		// node, keep PARTITION_* anchored at the top level and expose the current
+		// node through SUBPARTITION_*; legacy name/parent_name retains each edge.
+		if parent.isSubpartition {
+			partitionName = parent.rootName
+			subpartitionName = name
+			partitionOrdinal = parent.rootOrdinal
+			subpartitionOrdinal = ordinalDatum
+			partitionMethodDatum = parent.rootMethod
+			subpartitionMethod = method
+			partitionExpr = parent.rootExpression
+			subpartitionExpr = colNames
+		}
+
+		// The already decoded LIST, RANGE, or HASH value is also the most
+		// accurate available description of this partition's boundary.
+		return addRow(
+			tableID,                            // table_id
+			indexID,                            // index_id
+			parent.name,                        // parent_name
+			name,                               // name
+			numColumns,                         // columns
+			colNames,                           // column_names
+			listValue,                          // list_value
+			rangeValue,                         // range_value
+			hashValue,                          // hash_value
+			tree.NewDInt(tree.DInt(zoneID)),    // zone_id
+			tree.NewDInt(tree.DInt(subzoneID)), // subzone_id
+			tree.NewDString(database),          // table_catalog
+			tree.NewDString(schema),            // table_schema
+			tree.NewDString(table.Name),        // table_name
+			partitionName,                      // partition_name
+			subpartitionName,                   // subpartition_name
+			partitionOrdinal,                   // partition_ordinal_position
+			subpartitionOrdinal,                // subpartition_ordinal_position
+			partitionMethodDatum,               // partition_method
+			subpartitionMethod,                 // subpartition_method
+			partitionExpr,                      // partition_expression
+			subpartitionExpr,                   // subpartition_expression
+			description,                        // partition_description
+			tree.DNull,                         // table_rows
+			tree.DNull,                         // avg_row_length
+			tree.DNull,                         // data_length
+			tree.DNull,                         // max_data_length
+			tree.DNull,                         // index_length
+			tree.DNull,                         // data_free
+			tree.DNull,                         // create_time
+			tree.DNull,                         // update_time
+			tree.DNull,                         // check_time
+			tree.DNull,                         // checksum
+			tree.DNull,                         // partition_comment
+			tree.DNull,                         // nodegroup
+			tree.DNull,                         // tablespace_name
+		)
 	}
 
 	// This produces the list_value column.
@@ -3233,23 +3334,39 @@ func addPartitioningRows(
 			}
 		}
 
-		if err := addRow(
-			tableID,
-			indexID,
-			parentName,
+		if err := addPartitionRow(
 			name,
-			numColumns,
-			colNames,
 			partitionValue,
-			tree.DNull, /* null value for partition range */
-			tree.DNull, /* null value for partition hash */
-			tree.NewDInt(tree.DInt(zoneID)),
-			tree.NewDInt(tree.DInt(subzoneID)),
+			tree.DNull, /* rangeValue */
+			tree.DNull, /* hashValue */
+			partitionValue,
+			zoneID,
+			subzoneID,
 		); err != nil {
 			return err
 		}
-		err = addPartitioningRows(ctx, p, database, table, index, &l.Subpartitioning, name,
-			colOffset+int(partitioning.NumColumns), addRow)
+		// Seed the root context at the first level, then carry it unchanged
+		// through recursive visits so deeper rows still reference the top level.
+		rootName := tree.Datum(name)
+		rootOrdinal := tree.Datum(tree.NewDString(strconv.Itoa(ordinal)))
+		rootMethod := method
+		rootExpression := tree.Datum(colNames)
+		if parent.isSubpartition {
+			rootName = parent.rootName
+			rootOrdinal = parent.rootOrdinal
+			rootMethod = parent.rootMethod
+			rootExpression = parent.rootExpression
+		}
+		childParent := partitionParentInfo{
+			isSubpartition: true,
+			name:           name,
+			rootName:       rootName,
+			rootOrdinal:    rootOrdinal,
+			rootMethod:     rootMethod,
+			rootExpression: rootExpression,
+		}
+		err = addPartitioningRowsWithContext(ctx, p, database, schema, table, index, &l.Subpartitioning,
+			childParent, colOffset+int(partitioning.NumColumns), addRow)
 		if err != nil {
 			return err
 		}
@@ -3290,18 +3407,14 @@ func addPartitioningRows(
 			}
 		}
 
-		if err := addRow(
-			tableID,
-			indexID,
-			parentName,
+		if err := addPartitionRow(
 			tree.NewDString(r.Name),
-			numColumns,
-			colNames,
-			tree.DNull, /* null value for partition list */
+			tree.DNull, /* listValue */
 			partitionRange,
-			tree.DNull, /* null value for partition hash */
-			tree.NewDInt(tree.DInt(zoneID)),
-			tree.NewDInt(tree.DInt(subzoneID)),
+			tree.DNull, /* hashValue */
+			partitionRange,
+			zoneID,
+			subzoneID,
 		); err != nil {
 			return err
 		}
@@ -3341,18 +3454,14 @@ func addPartitioningRows(
 			}
 		}
 
-		if err := addRow(
-			tableID,
-			indexID,
-			parentName,
+		if err := addPartitionRow(
 			tree.NewDString(r.Name),
-			numColumns,
-			colNames,
-			tree.DNull, /* null value for partition list */
-			tree.DNull, /* null value for partition list */
+			tree.DNull, /* listValue */
+			tree.DNull, /* rangeValue */
 			partitionHash,
-			tree.NewDInt(tree.DInt(zoneID)),
-			tree.NewDInt(tree.DInt(subzoneID)),
+			partitionHash,
+			zoneID,
+			subzoneID,
 		); err != nil {
 			return err
 		}
@@ -3361,10 +3470,6 @@ func addPartitioningRows(
 	return nil
 }
 
-// kwdbInternalPartitionsTable decodes and exposes the partitions of each
-// table.
-//
-// TODO(tbg): prefix with cluster_.
 var kwdbInternalPartitionsTable = virtualSchemaTable{
 	comment: "defined partitions for all tables/indexes accessible by the current user in the current database (KV scan)",
 	schema: `
@@ -3379,19 +3484,40 @@ CREATE TABLE kwdb_internal.partitions (
 	range_value STRING,
 	hash_value  STRING,
 	zone_id INT8, -- references a zone id in the kwdb_internal.zones table
-	subzone_id INT8 -- references a subzone id in the kwdb_internal.zones table
+	subzone_id INT8, -- references a subzone id in the kwdb_internal.zones table
+	table_catalog STRING,
+	table_schema STRING,
+	table_name STRING,
+	partition_name STRING,
+	subpartition_name STRING,
+	partition_ordinal_position STRING,
+	subpartition_ordinal_position STRING,
+	partition_method STRING,
+	subpartition_method STRING,
+	partition_expression STRING,
+	subpartition_expression STRING,
+	partition_description STRING,
+	table_rows INT8,
+	avg_row_length INT8,
+	data_length INT8,
+	max_data_length INT8,
+	index_length INT8,
+	data_free INT8,
+	create_time TIMESTAMP,
+	update_time TIMESTAMP,
+	check_time TIMESTAMP,
+	checksum STRING,
+	partition_comment STRING,
+	nodegroup STRING,
+	tablespace_name STRING
 )
 	`,
 	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
-		dbName := ""
-		if dbContext != nil {
-			dbName = dbContext.Name
-		}
 		return forEachTableDescAll(ctx, p, dbContext, hideVirtual, /* virtual tables have no partitions*/
-			func(db *DatabaseDescriptor, _ string, table *TableDescriptor) error {
+			func(db *DatabaseDescriptor, scName string, table *TableDescriptor) error {
 				return table.ForeachNonDropIndex(func(index *sqlbase.IndexDescriptor) error {
-					return addPartitioningRows(ctx, p, dbName, table, index, &index.Partitioning,
-						tree.DNull /* parentName */, 0 /* colOffset */, addRow)
+					return addPartitioningRowsWithContext(ctx, p, db.Name, scName, table, index, &index.Partitioning,
+						partitionParentInfo{name: tree.DNull}, 0 /* colOffset */, addRow)
 				})
 			})
 	},
@@ -4062,6 +4188,238 @@ CREATE TABLE kwdb_internal.kwdb_tse_info (
 			tree.NewDInt(tree.DInt(walLevel)), // table_id
 		); err != nil {
 			return err
+		}
+
+		return nil
+	},
+}
+
+var kwdbInternalKWDBPipeTable = virtualSchemaTable{
+	comment: "kwdb pipes info",
+	schema: `
+CREATE TABLE kwdb_internal.kwdb_pipes (
+  name           		STRING,
+  table_name        STRING,
+  column_names      STRING,
+  filter						STRING,
+  options           JSONB,
+  low_watermark			STRING,
+  status						STRING,
+  create_at					TIMESTAMP,
+  create_by					STRING,
+  start_time   			TIMESTAMP,
+  end_time					TIMESTAMP,
+  error_message     String
+)
+`,
+	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+
+		query := `SELECT p.id,p.name,p.parameters,p.create_at,p.create_by,p.status,p.run_info,p.job_id,p.source_id, w.lw, w.tids 
+FROM system.kwdb_pipes p
+LEFT JOIN (select task_id, array_agg(low_watermark) AS lw ,array_agg(table_id) AS tids FROM system.kwdb_cdc_watermark c group by task_id) AS w
+ON w.task_id=p.id`
+		rows, err := p.extendedEvalCtx.ExecCfg.InternalExecutor.Query(ctx, "show-pipes", p.txn, query)
+		if err != nil {
+			return err
+		}
+		for _, row := range rows {
+			name := tree.MustBeDString(row[1])
+			params := tree.MustBeDJSON(row[2])
+			createAt := tree.MustBeDTimestamp(row[3])
+			createBy := tree.MustBeDString(row[4])
+			status := tree.MustBeDString(row[5])
+			pipeRun := tree.MustBeDJSON(row[6]).JSON
+
+			pipeParas, err := cdcpb.UnmarshalPipeParameters(params.JSON)
+			if err != nil {
+				return err
+			}
+			table := ""
+			tableOrder := make([]uint64, len(pipeParas.Tables))
+			for i := range pipeParas.Tables {
+				tableName := pipeParas.Tables[i].Table
+				databaseName := pipeParas.Tables[i].Database
+				schemaName := pipeParas.Tables[i].Schema
+				if i > 0 {
+					table += ","
+				}
+				table += databaseName + "." + schemaName + "." + tableName
+				tableOrder[i] = pipeParas.TableIDs[i]
+			}
+
+			colNames := ""
+			filter := ""
+			if len(pipeParas.Tables) == 1 {
+				colNames = strings.Join(pipeParas.Tables[0].ColNames, ",")
+				filter = pipeParas.Tables[0].Filter
+			}
+
+			options, err := params.JSON.FetchValKey("options")
+			if err != nil {
+				return err
+			}
+
+			lowWatermark := ""
+			if row[9] != tree.DNull {
+				lowWatermarks := tree.MustBeDArray(row[9]).Array
+				tableIDs := tree.MustBeDArray(row[10]).Array
+				// tableID -> lowWatermark
+				tableToLowWatermark := make(map[uint64]tree.Datum, len(lowWatermarks))
+				for i := range lowWatermarks {
+					tableID := uint64(tree.MustBeDInt(tableIDs[i]))
+					tableToLowWatermark[tableID] = lowWatermarks[i]
+				}
+				for idx, tableID := range tableOrder {
+					if idx > 0 {
+						lowWatermark += ","
+					}
+					lwInt := int64(tree.MustBeDInt(tableToLowWatermark[tableID]))
+					lwTime := timeutil.FromTimestamp(lwInt, 9)
+					lwDatum := tree.MakeDTimestampTZ(lwTime, time.Nanosecond)
+					lowWatermark += strings.Trim(lwDatum.String(), "'")
+				}
+			}
+
+			runInfo, err := cdcpb.UnmarshalRunInfo(pipeRun)
+			if err != nil {
+				return err
+			}
+
+			var start, end, errMsg tree.Datum
+			lastRunIndex := len(runInfo) - 1
+			if lastRunIndex > -1 {
+				startTime, err := time.Parse(time.RFC3339, runInfo[lastRunIndex].StartTime)
+				if err != nil {
+					start = tree.DNull
+				} else {
+					start = tree.MakeDTimestamp(startTime, time.Microsecond)
+				}
+
+				endTime, err := time.Parse(time.RFC3339, runInfo[lastRunIndex].EndTime)
+				if err != nil {
+					end = tree.DNull
+				} else {
+					end = tree.MakeDTimestamp(endTime, time.Microsecond)
+				}
+
+				errMsg = tree.NewDString(runInfo[lastRunIndex].ErrorMessage)
+			} else {
+				start = tree.DNull
+				end = tree.DNull
+				errMsg = tree.DNull
+			}
+
+			if err := addRow(
+				&name,
+				tree.NewDString(table),
+				tree.NewDString(colNames),
+				tree.NewDString(filter),
+				tree.NewDJSON(options),
+				tree.NewDString(lowWatermark),
+				&status,
+				&createAt,
+				&createBy,
+				start,
+				end,
+				errMsg,
+			); err != nil {
+				return err
+			}
+		}
+		return nil
+	},
+}
+
+// subSession is used for show publications, to construct the array about subscription field.
+type subSession struct {
+	SessionID string `json:"session_id"`
+	UserName  string `json:"user"`
+}
+
+// kwdbInternalKWDBPublicationsTable is used for show publications.
+var kwdbInternalKWDBPublicationsTable = virtualSchemaTable{
+	comment: "kwdb publication info",
+	schema: `
+CREATE TABLE kwdb_internal.publications (
+  name           STRING,
+  pub_objects    STRING,
+  parameter      JSON,
+  create_at      TIMESTAMP,
+  create_by      STRING,
+  subscription   JSON
+)
+`,
+	populate: func(ctx context.Context, p *planner, _ *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		rows, err := p.execCfg.InternalExecutor.QueryEx(ctx,
+			"query-publications",
+			p.Txn(),
+			sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
+			"SELECT name, parameters, create_at, create_by FROM system.kwdb_publications")
+		if err != nil {
+			return err
+		}
+		sessionRows, sessionErr := p.execCfg.InternalExecutor.QueryEx(ctx,
+			"query-sub-sessions",
+			p.Txn(),
+			sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
+			"SELECT session_id, user_name, application_name FROM [SHOW CLUSTER SESSIONS] WHERE application_name LIKE 'sub$$$%'")
+		if sessionErr != nil {
+			return sessionErr
+		}
+		subSessionMap := make(map[string][]subSession)
+		for _, sessionRow := range sessionRows {
+			sessionID := string(*sessionRow[0].(*tree.DString))
+			userName := string(*sessionRow[1].(*tree.DString))
+			appName := string(*sessionRow[2].(*tree.DString))
+			pubName := appName[6:]
+			subSessionMap[pubName] = append(subSessionMap[pubName], subSession{SessionID: sessionID, UserName: userName})
+		}
+
+		for _, row := range rows {
+			name := tree.MustBeDString(row[0])
+			parameter := tree.MustBeDJSON(row[1])
+			createAt := tree.MustBeDTimestamp(row[2])
+			createBy := tree.MustBeDString(row[3])
+			pubObjects := ""
+			pubPara, err1 := cdcpb.UnmarshalPubParameters(parameter.JSON)
+			if err1 != nil {
+				return err1
+			}
+			for idx, tableInfo := range pubPara.TableList {
+				if idx > 0 {
+					pubObjects += ","
+				}
+				pubObjects += tableInfo.Database + "." + tableInfo.Schema + "." + tableInfo.Table
+			}
+
+			var subSessions tree.DJSON
+			pubNameStr := string(*row[0].(*tree.DString))
+			subSessionArray, ok := subSessionMap[pubNameStr]
+			if ok {
+				subSessionBytes, err := ejson.Marshal(subSessionArray)
+				if err != nil {
+					return err
+				}
+				subSessionJSON, err := json.ParseJSON(string(subSessionBytes))
+				subSessions = *tree.NewDJSON(subSessionJSON)
+			} else {
+				jsonNull, err := tree.MakeDJSON(nil)
+				if err != nil {
+					return err
+				}
+				subSessions = tree.MustBeDJSON(jsonNull)
+			}
+
+			if err := addRow(
+				&name,                       // name
+				tree.NewDString(pubObjects), // pub_objects
+				&parameter,                  // parameter
+				&createAt,                   // create_at
+				&createBy,                   // create_by
+				&subSessions,                // subscription
+			); err != nil {
+				return err
+			}
 		}
 
 		return nil

@@ -35,8 +35,8 @@ import (
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
@@ -146,7 +146,7 @@ func rangeFeedCheckpoint(span roachpb.Span, ts hlc.Timestamp) *roachpb.RangeFeed
 const testProcessorEventCCap = 16
 
 func newTestProcessorWithTxnPusher(
-	rtsIter storage.SimpleIterator, txnPusher TxnPusher,
+	rtsIter relational.SimpleIterator, txnPusher TxnPusher,
 ) (*Processor, *stop.Stopper) {
 	stopper := stop.NewStopper()
 
@@ -170,7 +170,7 @@ func newTestProcessorWithTxnPusher(
 	return p, stopper
 }
 
-func newTestProcessor(rtsIter storage.SimpleIterator) (*Processor, *stop.Stopper) {
+func newTestProcessor(rtsIter relational.SimpleIterator) (*Processor, *stop.Stopper) {
 	return newTestProcessorWithTxnPusher(rtsIter, nil /* pusher */)
 }
 
@@ -538,7 +538,7 @@ func TestProcessorInitializeResolvedTimestamp(t *testing.T) {
 	t.Skip("Initialize, the catch-up no longer requires testing")
 
 	txn1, txn2 := uuid.MakeV4(), uuid.MakeV4()
-	rtsIter := newTestIterator([]storage.MVCCKeyValue{
+	rtsIter := newTestIterator([]relational.MVCCKeyValue{
 		makeKV("a", "val1", 10),
 		makeInline("b", "val2"),
 		makeIntent("c", txn1, "txnKey1", 15),

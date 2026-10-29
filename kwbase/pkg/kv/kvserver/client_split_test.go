@@ -53,13 +53,13 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/rpc"
 	"gitee.com/kwbasedb/kwbase/pkg/server"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/telemetry"
+	"gitee.com/kwbasedb/kwbase/pkg/telemetry/tspb"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/testcluster"
-	"gitee.com/kwbasedb/kwbase/pkg/ts"
-	"gitee.com/kwbasedb/kwbase/pkg/ts/tspb"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/ctxgroup"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding"
@@ -398,8 +398,8 @@ func TestStoreRangeSplitIntents(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, key := range []roachpb.Key{keys.RangeDescriptorKey(roachpb.RKeyMin), keys.RangeDescriptorKey(splitKeyAddr)} {
-		if _, _, err := storage.MVCCGet(
-			context.Background(), store.Engine(), key, store.Clock().Now(), storage.MVCCGetOptions{},
+		if _, _, err := relational.MVCCGet(
+			context.Background(), store.Engine(), key, store.Clock().Now(), relational.MVCCGetOptions{},
 		); err != nil {
 			t.Errorf("failed to read consistent range descriptor for key %s: %+v", key, err)
 		}
@@ -413,9 +413,9 @@ func TestStoreRangeSplitIntents(t *testing.T) {
 		return keys.MakeRangeKey(rk, keys.LocalTransactionSuffix, nil)
 	}
 	// Verify the transaction record is gone.
-	start := storage.MakeMVCCMetadataKey(keys.MakeRangeKeyPrefix(roachpb.RKeyMin))
-	end := storage.MakeMVCCMetadataKey(keys.MakeRangeKeyPrefix(roachpb.RKeyMax))
-	iter := store.Engine().NewIterator(storage.IterOptions{UpperBound: roachpb.KeyMax})
+	start := relational.MakeMVCCMetadataKey(keys.MakeRangeKeyPrefix(roachpb.RKeyMin))
+	end := relational.MakeMVCCMetadataKey(keys.MakeRangeKeyPrefix(roachpb.RKeyMax))
+	iter := store.Engine().NewIterator(relational.IterOptions{UpperBound: roachpb.KeyMax})
 
 	defer iter.Close()
 	for iter.SeekGE(start); ; iter.Next() {
@@ -616,8 +616,8 @@ func TestStoreRangeSplitIdempotency(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, key := range []roachpb.Key{keys.RangeDescriptorKey(roachpb.RKeyMin), keys.RangeDescriptorKey(splitKeyAddr)} {
-		if _, _, err := storage.MVCCGet(
-			context.Background(), store.Engine(), key, store.Clock().Now(), storage.MVCCGetOptions{},
+		if _, _, err := relational.MVCCGet(
+			context.Background(), store.Engine(), key, store.Clock().Now(), relational.MVCCGetOptions{},
 		); err != nil {
 			t.Fatal(err)
 		}
@@ -2150,7 +2150,7 @@ func writeRandomTimeSeriesDataToRange(
 	t testing.TB, store *kvserver.Store, rangeID roachpb.RangeID, keyPrefix []byte,
 ) (midpoint []byte) {
 	src := rand.New(rand.NewSource(0))
-	r := ts.Resolution10s
+	r := telemetry.Resolution10s
 	for i := 0; i < 20; i++ {
 		var data []tspb.TimeSeriesData
 		for j := int64(0); j <= src.Int63n(5); j++ {

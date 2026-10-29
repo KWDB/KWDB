@@ -1,0 +1,137 @@
+# Verify information_schema.role_routine_grants role filtering and public Lua UDFs.
+
+statement ok
+CREATE DATABASE role_routine_test
+
+statement ok
+SET DATABASE = role_routine_test
+
+query TTBTTTBB colnames
+SHOW COLUMNS FROM information_schema.role_routine_grants
+----
+column_name       data_type  is_nullable  column_default  generation_expression  indices  is_hidden  is_tag
+grantor           STRING     true         NULL            ·                      {}       false      false
+grantee           STRING     false        NULL            ·                      {}       false      false
+specific_catalog  STRING     true         NULL            ·                      {}       false      false
+specific_schema   STRING     true         NULL            ·                      {}       false      false
+specific_name     STRING     true         NULL            ·                      {}       false      false
+routine_catalog   STRING     true         NULL            ·                      {}       false      false
+routine_schema    STRING     true         NULL            ·                      {}       false      false
+routine_name      STRING     true         NULL            ·                      {}       false      false
+privilege_type    STRING     false        NULL            ·                      {}       false      false
+is_grantable      STRING     true         NULL            ·                      {}       false      false
+
+statement ok
+CREATE ROLE routine_role
+
+statement ok
+CREATE PROCEDURE routine_proc() BEGIN SELECT 1; END;
+
+statement ok
+GRANT EXECUTE ON PROCEDURE routine_proc TO routine_role
+
+statement ok
+GRANT EXECUTE ON PROCEDURE routine_proc TO testuser
+
+statement ok
+GRANT EXECUTE ON PROCEDURE routine_proc TO public
+
+statement ok
+GRANT routine_role TO testuser
+
+statement ok
+CREATE ROLE routine_parent_role
+
+statement ok
+GRANT EXECUTE ON PROCEDURE routine_proc TO routine_parent_role
+
+statement ok
+GRANT routine_parent_role TO routine_role
+
+statement ok
+CREATE ROLE routine_all_role
+
+statement ok
+GRANT ALL ON PROCEDURE routine_proc TO routine_all_role
+
+statement ok
+GRANT routine_all_role TO testuser
+
+statement ok
+CREATE ROLE unrelated_routine_role
+
+statement ok
+GRANT EXECUTE ON PROCEDURE routine_proc TO unrelated_routine_role
+
+user testuser
+
+statement ok
+SET DATABASE = role_routine_test
+
+# Direct user and unrelated-role grants are excluded; direct and indirect roles remain.
+# A stored ALL privilege is normalized to the ISO routine privilege, EXECUTE.
+query TTTTTTTTTT rowsort
+SELECT *
+  FROM information_schema.role_routine_grants
+ WHERE routine_name = 'routine_proc'
+----
+NULL  public                     role_routine_test  public  routine_proc  role_routine_test  public  routine_proc  EXECUTE  NULL
+NULL  routine_all_role           role_routine_test  public  routine_proc  role_routine_test  public  routine_proc  EXECUTE  NULL
+NULL  routine_parent_role        role_routine_test  public  routine_proc  role_routine_test  public  routine_proc  EXECUTE  NULL
+NULL  routine_role               role_routine_test  public  routine_proc  role_routine_test  public  routine_proc  EXECUTE  NULL
+
+query TT
+SELECT grantee, privilege_type
+  FROM information_schema.role_routine_grants
+ WHERE routine_name = 'routine_proc' AND grantee = 'routine_all_role'
+----
+routine_all_role  EXECUTE
+
+user root
+
+statement ok
+SET DATABASE = role_routine_test
+
+# root can see all role grantees, but not direct user grants.
+query T rowsort
+SELECT DISTINCT grantee
+  FROM information_schema.role_routine_grants
+ WHERE routine_name = 'routine_proc'
+ ORDER BY grantee
+----
+admin
+public
+routine_all_role
+routine_parent_role
+routine_role
+unrelated_routine_role
+
+statement ok
+CREATE FUNCTION public_routine() RETURNS INT LANGUAGE LUA BEGIN 'function public_routine() return 1 end' END
+
+user testuser
+
+statement ok
+SET DATABASE = role_routine_test
+
+# Lua UDFs are visible to every visible role.
+query T rowsort
+SELECT DISTINCT grantee
+  FROM information_schema.role_routine_grants
+ WHERE routine_name = 'public_routine'
+ ORDER BY grantee
+----
+public
+routine_all_role
+routine_parent_role
+routine_role
+
+# Lua UDFs have no stored schema ID, so both schema columns remain NULL.
+query TTTTTTTTT rowsort
+SELECT DISTINCT specific_catalog, specific_schema, specific_name,
+       routine_catalog, routine_schema, routine_name,
+       privilege_type, grantor, is_grantable
+  FROM information_schema.role_routine_grants
+ WHERE routine_name = 'public_routine'
+----
+role_routine_test  NULL  public_routine  role_routine_test  NULL  public_routine  EXECUTE  NULL  NULL

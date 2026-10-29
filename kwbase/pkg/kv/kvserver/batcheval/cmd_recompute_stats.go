@@ -36,8 +36,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 	"github.com/pkg/errors"
 )
@@ -74,7 +74,7 @@ func declareKeysRecomputeStats(
 // RecomputeStats recomputes the MVCCStats stored for this range and adjust them accordingly,
 // returning the MVCCStats delta obtained in the process.
 func RecomputeStats(
-	ctx context.Context, _ storage.Reader, cArgs CommandArgs, resp roachpb.Response,
+	ctx context.Context, _ relational.Reader, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
 	desc := cArgs.EvalCtx.Desc()
 	args := cArgs.Args.(*roachpb.RecomputeStatsRequest)
@@ -113,7 +113,8 @@ func RecomputeStats(
 	delta := actualMS
 	delta.Subtract(currentStats)
 
-	if desc.GetRangeType() == roachpb.TS_RANGE && cArgs.EvalCtx.TsEngine() != nil && !cArgs.EvalCtx.TsEngine().IsSingleNode() {
+	if (desc.GetRangeType() == roachpb.TS_RANGE || desc.HashNum > 0) &&
+		cArgs.EvalCtx.TsEngine() != nil && !cArgs.EvalCtx.TsEngine().IsSingleNode() {
 		// call GetDataVolume to re compute rangeSize for ts range.
 		// GetDataVolume for relational range may cause err.
 		hashNum := desc.HashNum
@@ -150,7 +151,7 @@ func RecomputeStats(
 		// stats for timeseries ranges (which go cold and the approximate stats are
 		// wildly overcounting) and this is paced by the consistency checker, but it
 		// means some extra engine churn.
-		if !cArgs.EvalCtx.ClusterSettings().Version.IsActive(ctx, clusterversion.VersionContainsEstimatesCounter) {
+		if !cArgs.EvalCtx.ClusterSettings().Version.IsActive(ctx, clusterversion.VersionMinSupported) {
 			// We are running with the older version of MVCCStats.ContainsEstimates
 			// which was a boolean, so we should keep it in {0,1} and not reset it
 			// to avoid racing with another command that sets it to true.

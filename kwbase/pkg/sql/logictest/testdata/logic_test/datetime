@@ -172,9 +172,9 @@ SELECT now() - timestamp '2015-06-13' > interval '100h'
 true
 
 query BB
-SELECT now() = now()::timestamp, now()::timestamp = now()
+SELECT date_trunc('second', now()) = date_trunc('second', now())::timestamp, date_trunc('second', now())::timestamp = date_trunc('second', now())
 ----
-false  false
+true  true
 
 query B
 SELECT current_date - current_date() = 0

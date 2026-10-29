@@ -1,0 +1,163 @@
+> USE defaultdb;
+SET
+> DROP DATABASE IF EXISTS is_views_04 CASCADE;
+DROP DATABASE
+> CREATE DATABASE is_views_04;
+CREATE DATABASE
+> SET DATABASE = is_views_04;
+SET
+> CREATE SCHEMA is_views_04_schema;
+CREATE SCHEMA
+> SELECT "USER",
+       host IS NULL AS host_is_null,
+       "ATTRIBUTE" IS NULL AS attribute_is_null
+FROM information_schema.user_attributes
+WHERE "USER" = 'root';
+  USER | host_is_null | attribute_is_null
+-------+--------------+--------------------
+  root |     true     |       true
+(1 row)
+> CREATE TABLE is_views_04_schema.list_partition_table (
+    region INT,
+    id INT,
+    PRIMARY KEY (region, id)
+) PARTITION BY LIST (region) (
+    PARTITION p_east VALUES IN (1),
+    PARTITION p_west VALUES IN (2)
+);
+CREATE TABLE
+> CREATE TABLE is_views_04_schema.range_partition_table (
+    id INT PRIMARY KEY
+) PARTITION BY RANGE (id) (
+    PARTITION p_low VALUES FROM (1) TO (10),
+    PARTITION p_high VALUES FROM (10) TO (20)
+);
+CREATE TABLE
+> CREATE TABLE is_views_04_schema.hash_partition_table (
+    bucket INT PRIMARY KEY
+) PARTITION BY HASH (bucket) (
+    PARTITION p_hash_0 VALUES IN (0),
+    PARTITION p_hash_1 VALUES IN (1)
+);
+CREATE TABLE
+> SHOW PARTITIONS FROM TABLE is_views_04_schema.list_partition_table;
+  database_name |      table_name      | partition_name | parent_partition | column_names |          index_name          | partition_value | zone_config |       full_zone_config
+----------------+----------------------+----------------+------------------+--------------+------------------------------+-----------------+-------------+-------------------------------
+  is_views_04   | list_partition_table | p_east         | NULL             | region       | list_partition_table@primary | (1)             | NULL        | range_min_bytes = 134217728,
+                |                      |                |                  |              |                              |                 |             | range_max_bytes = 536870912,
+                |                      |                |                  |              |                              |                 |             | gc.ttlseconds = 60,
+                |                      |                |                  |              |                              |                 |             | num_replicas = 1,
+                |                      |                |                  |              |                              |                 |             | ts_merge.days = 240h0m0s,
+                |                      |                |                  |              |                              |                 |             | constraints = '[]',
+                |                      |                |                  |              |                              |                 |             | lease_preferences = '[]'
+  is_views_04   | list_partition_table | p_west         | NULL             | region       | list_partition_table@primary | (2)             | NULL        | range_min_bytes = 134217728,
+                |                      |                |                  |              |                              |                 |             | range_max_bytes = 536870912,
+                |                      |                |                  |              |                              |                 |             | gc.ttlseconds = 60,
+                |                      |                |                  |              |                              |                 |             | num_replicas = 1,
+                |                      |                |                  |              |                              |                 |             | ts_merge.days = 240h0m0s,
+                |                      |                |                  |              |                              |                 |             | constraints = '[]',
+                |                      |                |                  |              |                              |                 |             | lease_preferences = '[]'
+(2 rows)
+> SELECT table_catalog, table_schema, table_name,
+       partition_name, subpartition_name,
+       partition_ordinal_position, subpartition_ordinal_position,
+       partition_method, subpartition_method,
+       partition_expression, subpartition_expression,
+       partition_description
+FROM kwdb_internal.partitions
+WHERE table_catalog = 'is_views_04'
+  AND table_schema = 'is_views_04_schema'
+  AND table_name IN (
+      'list_partition_table',
+      'range_partition_table',
+      'hash_partition_table'
+  )
+ORDER BY table_name, partition_ordinal_position;
+  table_catalog |    table_schema    |      table_name       | partition_name | subpartition_name | partition_ordinal_position | subpartition_ordinal_position | partition_method | subpartition_method | partition_expression | subpartition_expression | partition_description
+----------------+--------------------+-----------------------+----------------+-------------------+----------------------------+-------------------------------+------------------+---------------------+----------------------+-------------------------+------------------------
+  is_views_04   | is_views_04_schema | hash_partition_table  | p_hash_0       | NULL              | 1                          | NULL                          | HASH             | NULL                | bucket               | NULL                    | (0)
+  is_views_04   | is_views_04_schema | hash_partition_table  | p_hash_1       | NULL              | 2                          | NULL                          | HASH             | NULL                | bucket               | NULL                    | (1)
+  is_views_04   | is_views_04_schema | list_partition_table  | p_east         | NULL              | 1                          | NULL                          | LIST             | NULL                | region               | NULL                    | (1)
+  is_views_04   | is_views_04_schema | list_partition_table  | p_west         | NULL              | 2                          | NULL                          | LIST             | NULL                | region               | NULL                    | (2)
+  is_views_04   | is_views_04_schema | range_partition_table | p_low          | NULL              | 1                          | NULL                          | RANGE            | NULL                | id                   | NULL                    | (1) TO (10)
+  is_views_04   | is_views_04_schema | range_partition_table | p_high         | NULL              | 2                          | NULL                          | RANGE            | NULL                | id                   | NULL                    | (10) TO (20)
+(6 rows)
+> SELECT table_name,
+       partition_description =
+           coalesce(list_value, range_value, hash_value)
+           AS description_matches_legacy_value,
+       table_rows IS NULL
+           AND avg_row_length IS NULL
+           AND data_length IS NULL
+           AND max_data_length IS NULL
+           AND index_length IS NULL
+           AND data_free IS NULL
+           AS size_fields_are_null,
+       create_time IS NULL
+           AND update_time IS NULL
+           AND check_time IS NULL
+           AND checksum IS NULL
+           AND partition_comment IS NULL
+           AND nodegroup IS NULL
+           AND tablespace_name IS NULL
+           AS unsupported_fields_are_null
+FROM kwdb_internal.partitions
+WHERE table_catalog = 'is_views_04'
+  AND table_schema = 'is_views_04_schema'
+ORDER BY table_name, partition_ordinal_position;
+       table_name       | description_matches_legacy_value | size_fields_are_null | unsupported_fields_are_null
+------------------------+----------------------------------+----------------------+------------------------------
+  hash_partition_table  |               true               |         true         |            true
+  hash_partition_table  |               true               |         true         |            true
+  list_partition_table  |               true               |         true         |            true
+  list_partition_table  |               true               |         true         |            true
+  range_partition_table |               true               |         true         |            true
+  range_partition_table |               true               |         true         |            true
+(6 rows)
+> CREATE TABLE is_views_04_schema.statistics_table (
+    id INT PRIMARY KEY,
+    value INT,
+    category STRING
+);
+CREATE TABLE
+> INSERT INTO is_views_04_schema.statistics_table
+VALUES
+    (1, 10, 'a'),
+    (2, 10, 'a'),
+    (3, 20, 'b'),
+    (4, 30, 'c'),
+    (5, NULL, 'c');
+INSERT 5
+> CREATE STATISTICS is_views_04_value_stats
+ON value
+FROM is_views_04_schema.statistics_table;
+CREATE STATISTICS
+> SELECT schema_name, table_name, column_name,
+       histogram->>'histogram-type' AS histogram_type,
+       (histogram->>'number-of-buckets-specified')::INT AS bucket_count,
+       (histogram->>'null-values')::DECIMAL = 0.2 AS null_fraction_matches,
+       histogram->>'data-type' AS data_type
+FROM information_schema.column_statistics
+WHERE schema_name = 'is_views_04_schema'
+  AND table_name = 'statistics_table'
+ORDER BY column_name;
+     schema_name     |    table_name    | column_name | histogram_type | bucket_count | null_fraction_matches | data_type
+---------------------+------------------+-------------+----------------+--------------+-----------------------+------------
+  is_views_04_schema | statistics_table | value       | singleton      |            3 |         true          | int
+(1 row)
+> SELECT count(*) > 0 AS has_current_root_query
+FROM information_schema.processlist
+WHERE "USER" = 'root'
+  AND length(id) = 32
+  AND command = 'Query'
+  AND "time" >= 0
+  AND state IN ('PREPARING', 'EXECUTING')
+  AND info LIKE '%information_schema.processlist%';
+  has_current_root_query
+--------------------------
+           true
+(1 row)
+> USE defaultdb;
+SET
+> DROP DATABASE is_views_04 CASCADE;
+DROP DATABASE

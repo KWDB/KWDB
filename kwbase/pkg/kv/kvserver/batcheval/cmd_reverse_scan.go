@@ -31,7 +31,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/batcheval/result"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/concurrency/lock"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 )
 
 func init() {
@@ -43,17 +43,17 @@ func init() {
 // maxKeys stores the number of scan results remaining for this batch
 // (MaxInt64 for no limit).
 func ReverseScan(
-	ctx context.Context, reader storage.Reader, cArgs CommandArgs, resp roachpb.Response,
+	ctx context.Context, reader relational.Reader, cArgs CommandArgs, resp roachpb.Response,
 ) (result.Result, error) {
 	args := cArgs.Args.(*roachpb.ReverseScanRequest)
 	h := cArgs.Header
 	reply := resp.(*roachpb.ReverseScanResponse)
 
 	var res result.Result
-	var scanRes storage.MVCCScanResult
+	var scanRes relational.MVCCScanResult
 	var err error
 
-	opts := storage.MVCCScanOptions{
+	opts := relational.MVCCScanOptions{
 		Inconsistent:     h.ReadConsistency != roachpb.CONSISTENT,
 		Txn:              h.Txn,
 		MaxKeys:          h.MaxSpanRequestKeys,
@@ -64,14 +64,14 @@ func ReverseScan(
 
 	switch args.ScanFormat {
 	case roachpb.BATCH_RESPONSE:
-		scanRes, err = storage.MVCCScanToBytes(
+		scanRes, err = relational.MVCCScanToBytes(
 			ctx, reader, args.Key, args.EndKey, h.Timestamp, opts)
 		if err != nil {
 			return result.Result{}, err
 		}
 		reply.BatchResponses = scanRes.KVData
 	case roachpb.KEY_VALUES:
-		scanRes, err = storage.MVCCScan(
+		scanRes, err = relational.MVCCScan(
 			ctx, reader, args.Key, args.EndKey, h.Timestamp, opts)
 		if err != nil {
 			return result.Result{}, err

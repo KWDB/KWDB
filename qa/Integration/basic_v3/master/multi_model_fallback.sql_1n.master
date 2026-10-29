@@ -423,11 +423,11 @@ ORDER BY
                   │                            | order                 | +work_area_name,+measure_type
                   └── hash-join                |                       |
                        │                       | type                  | inner
-                       │                       | equality              | (work_area_sn, column25) = (work_area_sn, column26)
+                       │                       | equality              | (work_area_sn, column28) = (work_area_sn, column29)
                        ├── synchronizer        |                       |
                        │    └── render         |                       |
                        │         │             | engine type           | time series
-                       │         │             | column25              | pipeline_sn::STRING(8)
+                       │         │             | column28              | pipeline_sn::STRING(8)
                        │         │             | point_sn              | point_sn
                        │         │             | work_area_sn          | work_area_sn
                        │         │             | measure_type          | measure_type
@@ -491,7 +491,7 @@ ORDER BY
                   └── hash-join                |                       |
                        │                       | type                  | inner
                        │                       | equality              | (work_area_sn) = (work_area_sn)
-                       │                       | pred                  | measure_type = column25
+                       │                       | pred                  | measure_type = column28
                        ├── synchronizer        |                       |
                        │    └── ts scan        |                       |
                        │                       | ts-table              | t_point
@@ -678,7 +678,7 @@ ORDER BY si.station_name;
              │                              | station_name                | station_name
              └── hash-join                  |                             |
                   │                         | type                        | inner
-                  │                         | equality                    | (measure_type) = (column20)
+                  │                         | equality                    | (measure_type) = (column23)
                   ├── synchronizer          |                             |
                   │    └── ts scan          |                             |
                   │                         | ts-table                    | t_point

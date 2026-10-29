@@ -232,7 +232,7 @@ var storageParamExpectedTypes = map[string]storageParamType{
 // minimumTypeUsageVersions defines the minimum version needed for a new
 // data type.
 var minimumTypeUsageVersions = map[types.Family]clusterversion.VersionKey{
-	types.TimeTZFamily: clusterversion.VersionTimeTZType,
+	types.TimeTZFamily: clusterversion.VersionMinSupported,
 }
 
 // isTypeSupportedInVersion returns whether a given type is supported in the given version.
@@ -245,7 +245,7 @@ func isTypeSupportedInVersion(v clusterversion.ClusterVersion, t *types.T) (bool
 
 	switch t.Family() {
 	case types.TimeFamily, types.TimestampFamily, types.TimestampTZFamily, types.TimeTZFamily:
-		if t.Precision() != 6 && !v.IsActive(clusterversion.VersionTimePrecision) {
+		if t.Precision() != 6 && !v.IsActive(clusterversion.VersionMinSupported) {
 			return false, nil
 		}
 	case types.IntervalFamily:
@@ -254,7 +254,7 @@ func isTypeSupportedInVersion(v clusterversion.ClusterVersion, t *types.T) (bool
 			return false, err
 		}
 		if (t.Precision() != 6 || itm.DurationField != types.IntervalDurationField{}) &&
-			!v.IsActive(clusterversion.VersionTimePrecision) {
+			!v.IsActive(clusterversion.VersionMinSupported) {
 			return false, nil
 		}
 	}
@@ -368,6 +368,14 @@ func (n *createTableNode) startExec(params runParams) error {
 	if err := checkEngineType(n); err != nil {
 		return err
 	}
+
+	if tree.IsTSTableType(n.n.TableType) {
+		// check whether the parent database has been published or subscribed
+		if err := checkDatabaseRelatedPubsAndSubs(params.ctx, params.p, n.dbDesc); err != nil {
+			return err
+		}
+	}
+
 	log.Infof(params.ctx, "create table %s 1st txn start, type: %s", n.n.Table.Table(), tree.TableTypeName(n.n.TableType))
 	telemetry.Inc(sqltelemetry.SchemaChangeCreateCounter("table"))
 
@@ -682,7 +690,12 @@ func (n *createTableNode) startExec(params runParams) error {
 		}
 	}
 
+	var pipeMetadatas []*PipeMetadata
 	if desc.IsTSTable() {
+		pipeMetadatas, err = params.p.checkDatabaseUsedByCDC(params.ctx, uint64(n.dbDesc.ID))
+		if err != nil {
+			return err
+		}
 		if err = createAndExecCreateTSTableJob(params, desc, n); err != nil {
 			return err
 		}
@@ -728,6 +741,15 @@ func (n *createTableNode) startExec(params runParams) error {
 				wg.Wait()
 				log.Infof(params.ctx, "done relocate leaseholder for creating ts table ")
 			}
+		}
+	}
+	if desc.IsTSTable() && len(pipeMetadatas) > 0 {
+		dbName := n.n.Table.Catalog()
+		schemaName := n.n.Table.Schema()
+		tableName := n.n.Table.Table()
+		stmt := tree.AsStringWithFQNames(n.n, params.Ann())
+		if err = sendDDLToPipe(params, dbName, schemaName, tableName, kafkaMsgKindCreateTable, stmt, pipeMetadatas, true); err != nil {
+			return err
 		}
 	}
 
@@ -1641,6 +1663,7 @@ func buildTSTableDesc(
 	for _, pt := range n.PrimaryTagList {
 		primaryTagName[pt] = struct{}{}
 	}
+	var allColumnName []tree.Name
 	for i := range n.Tags {
 		columnType := sqlbase.ColumnType_TYPE_TAG
 		if _, ok := allTagName[n.Tags[i].TagName]; ok {
@@ -1671,6 +1694,19 @@ func buildTSTableDesc(
 		}
 		*allTagDesc = append(*allTagDesc, tagColumn)
 		allTagName[n.Tags[i].TagName] = tagColumn
+		allColumnName = append(allColumnName, n.Tags[i].TagName)
+	}
+	for _, def := range n.Defs {
+		if d, ok := def.(*tree.ColumnTableDef); ok {
+			allColumnName = append(allColumnName, d.Name)
+		}
+	}
+	for _, colName := range allColumnName {
+		if colName == opt.HiddenOSNColumnName ||
+			colName == opt.HiddenOperationColumnName ||
+			colName == opt.HiddenEventColumnName {
+			return pgerror.Newf(pgcode.InvalidName, "creating hidden %s column is not supported in the time series table", colName)
+		}
 	}
 	// Check if the primary tag meets the requirements of the primary tag
 	// 1. Cannot exceed four
@@ -1752,7 +1788,7 @@ func checkColumnDef(
 			return invalidClusterForShardedIndexError
 		}
 		if version == (clusterversion.ClusterVersion{}) ||
-			!version.IsActive(clusterversion.VersionHashShardedIndexes) {
+			!version.IsActive(clusterversion.VersionMinSupported) {
 			return invalidClusterForShardedIndexError
 		}
 
@@ -1977,7 +2013,7 @@ func addColToTblDesc(
 			return err
 		}
 	} else {
-		col, idx, expr, err = sqlbase.MakeColumnDefDescs(d, semaCtx, tree.RelationalTable)
+		col, idx, expr, err = sqlbase.MakeColumnDefDescs(d, semaCtx, false)
 		if err != nil {
 			return err
 		}
@@ -2015,7 +2051,7 @@ func checkColFamily(
 	ctx context.Context, st *cluster.Settings, desc *sqlbase.MutableTableDescriptor,
 ) error {
 	if version := st.Version.ActiveVersionOrEmpty(ctx); version != (clusterversion.ClusterVersion{}) &&
-		!version.IsActive(clusterversion.VersionPrimaryKeyColumnsOutOfFamilyZero) {
+		!version.IsActive(clusterversion.VersionMinSupported) {
 		var colsInFamZero util.FastIntSet
 		for _, colID := range desc.Families[0].ColumnIDs {
 			colsInFamZero.Add(int(colID))
@@ -2123,7 +2159,7 @@ func MakeTableDesc(
 	// server setup before the cluster version has been initialized.
 	version := st.Version.ActiveVersionOrEmpty(ctx)
 	if version != (clusterversion.ClusterVersion{}) &&
-		version.IsActive(clusterversion.VersionSecondaryIndexColumnFamilies) {
+		version.IsActive(clusterversion.VersionMinSupported) {
 		indexEncodingVersion = sqlbase.SecondaryIndexFamilyFormatVersion
 	}
 
@@ -3131,9 +3167,10 @@ func createInstanceTable(
 		tmplTbl.TableType,
 		false,
 		uint32(tmplTbl.TsTable.TsVersion),
-		tmplTbl.TsTable.HashNum,
+		nil,
 		nil,
 		params.ExecCfg().TsIDGen,
+		tmplTbl.TsTable.HashNum,
 	)
 	if err != nil {
 		return err

@@ -48,8 +48,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/limit"
@@ -265,10 +265,15 @@ func (r *Replica) computeChecksumPostApply(ctx context.Context, cc storagepb.Com
 		}()
 
 		var shouldFatal bool
-		for _, rDesc := range cc.Terminate {
-			if rDesc.StoreID == r.store.StoreID() && rDesc.ReplicaID == r.mu.replicaID {
-				shouldFatal = true
+		if !isTSRangeDescriptor(&desc) {
+			for _, rDesc := range cc.Terminate {
+				if rDesc.StoreID == r.store.StoreID() && rDesc.ReplicaID == r.mu.replicaID {
+					shouldFatal = true
+				}
 			}
+		} else if len(cc.Terminate) > 0 && isTSRangeDescriptor(&desc) {
+			log.Errorf(ctx, "%s: replica inconsistency reported for TS range; "+
+				"skipping node termination (TS stats excluded from checksum)", r)
 		}
 
 		if shouldFatal {
@@ -493,7 +498,7 @@ func (r *Replica) leasePostApply(ctx context.Context, newLease roachpb.Lease, pe
 func addSSTablePreApply(
 	ctx context.Context,
 	st *cluster.Settings,
-	eng storage.Engine,
+	eng relational.Engine,
 	sideloaded SideloadStorage,
 	term, index uint64,
 	sst storagepb.ReplicatedEvalResult_AddSSTable,
@@ -574,7 +579,7 @@ func addSSTablePreApply(
 				// going to be surfaced.
 				ingestErrMsg := ingestErr.Error()
 				isSeqNoErr := strings.Contains(ingestErrMsg, seqNoMsg) || strings.Contains(ingestErrMsg, seqNoOnReIngest)
-				if _, ok := ingestErr.(*storage.Error); !ok || !isSeqNoErr {
+				if _, ok := ingestErr.(*relational.Error); !ok || !isSeqNoErr {
 					log.Fatalf(ctx, "while ingesting %s: %s", ingestPath, ingestErr)
 				}
 			}
@@ -812,16 +817,18 @@ func (r *Replica) evaluateProposalTS(
 				ms.ValCount += int64(rowCount)
 				ms.LiveBytes += int64(rowCount) * ms.TsPerRowSize
 				ms.ValBytes += int64(rowCount) * ms.TsPerRowSize
-			} else if tsput, ok := req.Value.(*roachpb.RequestUnion_TsRowPut); ok {
-				rowCount := len(tsput.TsRowPut.Values)
-				ms.LiveBytes += int64(rowCount) * ms.TsPerRowSize
-				ms.ValBytes += int64(rowCount) * ms.TsPerRowSize
+			} else if tsRowPut, ok := req.Value.(*roachpb.RequestUnion_TsRowPut); ok {
+				rowCount := int64(len(tsRowPut.TsRowPut.Values))
+				ms.KeyCount += rowCount
+				ms.ValCount += rowCount
+				ms.LiveBytes += rowCount * ms.TsPerRowSize
+				ms.ValBytes += rowCount * ms.TsPerRowSize
 			}
 		}
 	}
 	res.Replicated.Delta = ms.ToStatsDelta()
-	_ = clusterversion.VersionContainsEstimatesCounter // see for info on ContainsEstimates migration
-	if r.ClusterSettings().Version.IsActive(ctx, clusterversion.VersionContainsEstimatesCounter) {
+	_ = clusterversion.VersionMinSupported // see for info on ContainsEstimates migration
+	if r.ClusterSettings().Version.IsActive(ctx, clusterversion.VersionMinSupported) {
 		// Encode that this command (and any that follow) uses regular arithmetic for ContainsEstimates
 		// by making sure ContainsEstimates is > 1.
 		// This will be interpreted during command application.
@@ -937,8 +944,8 @@ func (r *Replica) evaluateProposal(
 		res.Replicated.Timestamp = ba.Timestamp
 		res.Replicated.Delta = ms.ToStatsDelta()
 
-		_ = clusterversion.VersionContainsEstimatesCounter // see for info on ContainsEstimates migration
-		if r.ClusterSettings().Version.IsActive(ctx, clusterversion.VersionContainsEstimatesCounter) {
+		_ = clusterversion.VersionMinSupported // see for info on ContainsEstimates migration
+		if r.ClusterSettings().Version.IsActive(ctx, clusterversion.VersionMinSupported) {
 			// Encode that this command (and any that follow) uses regular arithmetic for ContainsEstimates
 			// by making sure ContainsEstimates is > 1.
 			// This will be interpreted during command application.
@@ -1002,24 +1009,24 @@ func (r *Replica) batchRequestOsnRewrite(
 				log.VEventf(ctx, 3, "The TsRowPutRequest RangeID is : %v, osn is :%v", r.RangeID, osn)
 			}
 		case *roachpb.TsDeleteRequest:
-			originOsn := req.(*roachpb.TsDeleteRequest).OsnId
+			originOsn := req.(*roachpb.TsDeleteRequest).OsnID
 			if originOsn == 0 {
 				osn := r.TsEngine().TsIDGen.GetNextID()
-				req.(*roachpb.TsDeleteRequest).OsnId = osn
+				req.(*roachpb.TsDeleteRequest).OsnID = osn
 				log.VEventf(ctx, 3, "The TsDeleteRequest RangeID is : %v, osn is :%v", r.RangeID, osn)
 			}
 		case *roachpb.TsDeleteMultiEntitiesDataRequest:
-			originOsn := req.(*roachpb.TsDeleteMultiEntitiesDataRequest).OsnId
+			originOsn := req.(*roachpb.TsDeleteMultiEntitiesDataRequest).OsnID
 			if originOsn == 0 {
 				osn := r.TsEngine().TsIDGen.GetNextID()
-				req.(*roachpb.TsDeleteMultiEntitiesDataRequest).OsnId = osn
+				req.(*roachpb.TsDeleteMultiEntitiesDataRequest).OsnID = osn
 				log.VEventf(ctx, 3, "The TsDeleteMultiEntitiesDataRequest RangeID is : %v, osn is :%v", r.RangeID, osn)
 			}
 		case *roachpb.TsDeleteEntityRequest:
-			originOsn := req.(*roachpb.TsDeleteEntityRequest).OsnId
+			originOsn := req.(*roachpb.TsDeleteEntityRequest).OsnID
 			if originOsn == 0 {
 				osn := r.TsEngine().TsIDGen.GetNextID()
-				req.(*roachpb.TsDeleteEntityRequest).OsnId = osn
+				req.(*roachpb.TsDeleteEntityRequest).OsnID = osn
 				log.VEventf(ctx, 3, "The TsDeleteEntityRequest RangeID is : %v, osn is :%v", r.RangeID, osn)
 			}
 		case *roachpb.TsTagUpdateRequest:
@@ -1052,6 +1059,7 @@ func (r *Replica) requestToProposalTS(
 	latchSpans *spanset.SpanSet,
 ) (*ProposalData, *roachpb.Error) {
 	res, needConsensus, pErr := r.evaluateProposalTS(ctx, idKey, ba, latchSpans)
+	ba.Requests = r.batchRequestOsnRewrite(ctx, ba.Requests)
 
 	// Fill out the results even if pErr != nil; we'll return the error below.
 	proposal := &ProposalData{

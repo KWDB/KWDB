@@ -205,6 +205,13 @@ func (r *commandResult) IsCommandResult() bool {
 	return true
 }
 
+// SupportsPGWireResults is part of the CommandResult interface. A pgwire
+// connection is the one writer that can forward pre-encoded PostgreSQL wire
+// bytes to its client unchanged.
+func (r *commandResult) SupportsPGWireResults() bool {
+	return true
+}
+
 // IsLimit is part of the RestrictedCommandResult interface.
 func (r *commandResult) IsLimit() bool {
 	return false
@@ -329,6 +336,14 @@ func (r *commandResult) SetInferredTypes(types []oid.Oid) {
 	r.assertNotReleased()
 	r.conn.writerState.fi.registerCmd(r.pos)
 	r.conn.bufferParamDesc(types)
+}
+
+func (r *commandResult) SetInferredTypesEx(
+	types []oid.Oid, tagindex int16, ptagIDs []uint16, colStorageLen []uint32,
+) {
+	r.assertNotReleased()
+	r.conn.writerState.fi.registerCmd(r.pos)
+	r.conn.bufferParamDescEx(types, tagindex, ptagIDs, colStorageLen)
 }
 
 // SetNoDataRowDescription is part of the DescribeResult interface.

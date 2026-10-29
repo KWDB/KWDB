@@ -30,8 +30,8 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/batcheval/result"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/rangefeed"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/metric"
 	"go.etcd.io/etcd/raft/raftpb"
@@ -498,6 +498,13 @@ var (
 		Help:        "Latency histogram for committing Raft log entries",
 		Measurement: "Latency",
 		Unit:        metric.Unit_NANOSECONDS,
+	}
+	metaTsRangeStatsDataVolumeFailures = metric.Metadata{
+		Name: "range.ts.stats.datavolume.failures",
+		Help: "Number of TS_RANGE MVCCStats corrections that fell back to " +
+			"incremental stats because TsEngine.GetDataVolume failed",
+		Measurement: "Stats Corrections",
+		Unit:        metric.Unit_COUNT,
 	}
 	metaRaftCommandCommitLatency = metric.Metadata{
 		Name:        "raft.process.commandcommit.latency",
@@ -1125,15 +1132,16 @@ type StoreMetrics struct {
 	RangeRaftLeaderTransfers     *metric.Counter
 
 	// Raft processing metrics.
-	RaftTicks                    *metric.Counter
-	RaftWorkingDurationNanos     *metric.Counter
-	RaftTickingDurationNanos     *metric.Counter
-	RaftCommandsApplied          *metric.Counter
-	RaftLogCommitLatency         *metric.Histogram
-	RaftCommandCommitLatency     *metric.Histogram
-	RaftHandleReadyLatency       *metric.Histogram
-	RaftApplyCommittedLatency    *metric.Histogram
-	RaftReplicaConsistentLatency *metric.Histogram
+	RaftTicks                      *metric.Counter
+	RaftWorkingDurationNanos       *metric.Counter
+	RaftTickingDurationNanos       *metric.Counter
+	RaftCommandsApplied            *metric.Counter
+	RaftLogCommitLatency           *metric.Histogram
+	RaftCommandCommitLatency       *metric.Histogram
+	RaftHandleReadyLatency         *metric.Histogram
+	RaftApplyCommittedLatency      *metric.Histogram
+	RaftReplicaConsistentLatency   *metric.Histogram
+	TsRangeStatsDataVolumeFailures *metric.Counter
 
 	// Raft message metrics.
 	RaftRcvdMsgProp           *metric.Counter
@@ -1338,15 +1346,16 @@ func newStoreMetrics(histogramWindow time.Duration) *StoreMetrics {
 		RangeRaftLeaderTransfers:     metric.NewCounter(metaRangeRaftLeaderTransfers),
 
 		// Raft processing metrics.
-		RaftTicks:                    metric.NewCounter(metaRaftTicks),
-		RaftWorkingDurationNanos:     metric.NewCounter(metaRaftWorkingDurationNanos),
-		RaftTickingDurationNanos:     metric.NewCounter(metaRaftTickingDurationNanos),
-		RaftCommandsApplied:          metric.NewCounter(metaRaftCommandsApplied),
-		RaftLogCommitLatency:         metric.NewLatency(metaRaftLogCommitLatency, histogramWindow),
-		RaftCommandCommitLatency:     metric.NewLatency(metaRaftCommandCommitLatency, histogramWindow),
-		RaftHandleReadyLatency:       metric.NewLatency(metaRaftHandleReadyLatency, histogramWindow),
-		RaftApplyCommittedLatency:    metric.NewLatency(metaRaftApplyCommittedLatency, histogramWindow),
-		RaftReplicaConsistentLatency: metric.NewLatency(metaRaftReplicaConsistentLatency, histogramWindow),
+		RaftTicks:                      metric.NewCounter(metaRaftTicks),
+		RaftWorkingDurationNanos:       metric.NewCounter(metaRaftWorkingDurationNanos),
+		RaftTickingDurationNanos:       metric.NewCounter(metaRaftTickingDurationNanos),
+		RaftCommandsApplied:            metric.NewCounter(metaRaftCommandsApplied),
+		RaftLogCommitLatency:           metric.NewLatency(metaRaftLogCommitLatency, histogramWindow),
+		RaftCommandCommitLatency:       metric.NewLatency(metaRaftCommandCommitLatency, histogramWindow),
+		RaftHandleReadyLatency:         metric.NewLatency(metaRaftHandleReadyLatency, histogramWindow),
+		RaftApplyCommittedLatency:      metric.NewLatency(metaRaftApplyCommittedLatency, histogramWindow),
+		RaftReplicaConsistentLatency:   metric.NewLatency(metaRaftReplicaConsistentLatency, histogramWindow),
+		TsRangeStatsDataVolumeFailures: metric.NewCounter(metaTsRangeStatsDataVolumeFailures),
 
 		// Raft message metrics.
 		RaftRcvdMsgProp:           metric.NewCounter(metaRaftRcvdProp),
@@ -1504,7 +1513,7 @@ func (sm *StoreMetrics) subtractMVCCStats(delta enginepb.MVCCStats) {
 	sm.incMVCCGauges(neg)
 }
 
-func (sm *StoreMetrics) updateRocksDBStats(stats storage.Stats) {
+func (sm *StoreMetrics) updateRocksDBStats(stats relational.Stats) {
 	// We do not grab a lock here, because it's not possible to get a point-in-
 	// time snapshot of RocksDB stats. Retrieving RocksDB stats doesn't grab any
 	// locks, and there's no way to retrieve multiple stats in a single operation.
@@ -1524,7 +1533,7 @@ func (sm *StoreMetrics) updateRocksDBStats(stats storage.Stats) {
 	sm.RdbTableReadersMemEstimate.Update(stats.TableReadersMemEstimate)
 }
 
-func (sm *StoreMetrics) updateEnvStats(stats storage.EnvStats) {
+func (sm *StoreMetrics) updateEnvStats(stats relational.EnvStats) {
 	sm.EncryptionAlgorithm.Update(int64(stats.EncryptionType))
 }
 

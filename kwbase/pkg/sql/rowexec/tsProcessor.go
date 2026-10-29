@@ -126,12 +126,24 @@ func (tp *tsProcessor) Start(ctx context.Context) context.Context {
 		}
 	case execinfrapb.OperatorType_TsVacuum:
 		errPrefix = "Vacuum Failed, reason:%s"
+		if tp.FlowCtx.Cfg.CDCCoordinator != nil {
+			if err = tp.FlowCtx.Cfg.CDCCoordinator.SetCDCTableOSN(ctx); err != nil {
+				log.Errorf(context.Background(), "Vacuum OSN Failed, reason:%s \n", err.Error())
+			}
+		}
+
 		err = tp.FlowCtx.Cfg.TsEngine.Vacuum(ctx, false, tp.onlyAgg)
 		if err != nil {
 			log.Errorf(context.Background(), "Vacuum Failed, reason:%s \n", err.Error())
 		}
 	case execinfrapb.OperatorType_TsManualVacuum:
 		errPrefix = "Vacuum Failed, reason:%s"
+		if tp.FlowCtx.Cfg.CDCCoordinator != nil {
+			if err = tp.FlowCtx.Cfg.CDCCoordinator.SetCDCTableOSN(ctx); err != nil {
+				log.Errorf(context.Background(), "Vacuum OSN Failed, reason:%s \n", err.Error())
+			}
+		}
+
 		err = tp.FlowCtx.Cfg.TsEngine.Vacuum(ctx, true, tp.onlyAgg)
 		if err != nil {
 			log.Errorf(context.Background(), "Vacuum Failed, reason:%s \n", err.Error())

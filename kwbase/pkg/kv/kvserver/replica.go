@@ -50,10 +50,10 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/rpc"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/cloud"
-	enginepb "gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/localexternal"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	enginepb "gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
@@ -513,6 +513,15 @@ type Replica struct {
 		// abort of a transaction which might have blocked the system config from
 		// being gossiped and attempting to gossip again.
 		failureToGossipSystemConfig bool
+
+		// needReplicateAnyway sets to true when the replica need be replicated anyway
+		// even though there is a split or something else.
+		needReplicateAnyway bool
+
+		// Consecutive process timeouts for snapshot/replicate queues; each failure
+		// doubles the next timeout up to 2^maxQueueTimeoutBackoffShift.
+		snapshotQueueTimeoutFailures  uint32
+		replicateQueueTimeoutFailures uint32
 	}
 
 	rangefeedMu struct {
@@ -581,7 +590,7 @@ type Replica struct {
 		pendingGCThreshold hlc.Timestamp
 	}
 
-	tsCommitter tse.TsRaftWriteBatch
+	tsCommitter timeseries.TsRaftWriteBatch
 }
 
 var _ batcheval.EvalContext = &Replica{}
@@ -734,12 +743,12 @@ func (r *Replica) DB() *kv.DB {
 
 // Engine returns the Replica's underlying Engine. In most cases the
 // evaluation Batch should be used instead.
-func (r *Replica) Engine() storage.Engine {
+func (r *Replica) Engine() relational.Engine {
 	return r.store.Engine()
 }
 
 // TsEngine returns the Replica's underlying TsEngine.
-func (r *Replica) TsEngine() *tse.TsEngine {
+func (r *Replica) TsEngine() *timeseries.TsEngine {
 	return r.store.TsEngine
 }
 
@@ -924,8 +933,8 @@ func (r *Replica) ContainsKeyRange(start, end roachpb.Key) bool {
 func (r *Replica) GetLastReplicaGCTimestamp(ctx context.Context) (hlc.Timestamp, error) {
 	key := keys.RangeLastReplicaGCTimestampKey(r.RangeID)
 	var timestamp hlc.Timestamp
-	_, err := storage.MVCCGetProto(ctx, r.store.Engine(), key, hlc.Timestamp{}, &timestamp,
-		storage.MVCCGetOptions{})
+	_, err := relational.MVCCGetProto(ctx, r.store.Engine(), key, hlc.Timestamp{}, &timestamp,
+		relational.MVCCGetOptions{})
 	if err != nil {
 		return hlc.Timestamp{}, err
 	}
@@ -934,7 +943,7 @@ func (r *Replica) GetLastReplicaGCTimestamp(ctx context.Context) (hlc.Timestamp,
 
 func (r *Replica) setLastReplicaGCTimestamp(ctx context.Context, timestamp hlc.Timestamp) error {
 	key := keys.RangeLastReplicaGCTimestampKey(r.RangeID)
-	return storage.MVCCPutProto(ctx, r.store.Engine(), nil, key, hlc.Timestamp{}, nil, &timestamp)
+	return relational.MVCCPutProto(ctx, r.store.Engine(), nil, key, hlc.Timestamp{}, nil, &timestamp)
 }
 
 // getQueueLastProcessed returns the last processed timestamp for the
@@ -943,8 +952,8 @@ func (r *Replica) getQueueLastProcessed(ctx context.Context, queue string) (hlc.
 	key := keys.QueueLastProcessedKey(r.Desc().StartKey, queue)
 	var timestamp hlc.Timestamp
 	if r.store != nil {
-		_, err := storage.MVCCGetProto(ctx, r.store.Engine(), key, hlc.Timestamp{}, &timestamp,
-			storage.MVCCGetOptions{})
+		_, err := relational.MVCCGetProto(ctx, r.store.Engine(), key, hlc.Timestamp{}, &timestamp,
+			relational.MVCCGetOptions{})
 		if err != nil {
 			log.VErrEventf(ctx, 2, "last processed timestamp unavailable: %s", err)
 			return hlc.Timestamp{}, err
@@ -1048,12 +1057,12 @@ func (r *Replica) State() storagepb.RangeInfo {
 // Requires that both r.raftMu and r.mu are held.
 //
 // TODO(tschottdorf): Consider future removal (for example, when #7224 is resolved).
-func (r *Replica) assertStateLocked(ctx context.Context, reader storage.Reader) {
+func (r *Replica) assertStateLocked(ctx context.Context, reader relational.Reader) {
 	diskState, err := r.mu.stateLoader.Load(ctx, reader, r.mu.state.Desc)
 	if err != nil {
 		log.Fatal(ctx, err)
 	}
-	if !diskState.Equal(r.mu.state) {
+	if !replicaStateEqualForAssert(r.mu.state.Desc, diskState, r.mu.state) {
 		// The roundabout way of printing here is to expose this information in sentry.io.
 		//
 		// TODO(dt): expose properly once #15892 is addressed.
@@ -1313,14 +1322,14 @@ func (ec *endCmds) done(
 func (r *Replica) maybeWatchForMerge(ctx context.Context) error {
 	desc := r.Desc()
 	descKey := keys.RangeDescriptorKey(desc.StartKey)
-	_, intent, err := storage.MVCCGet(ctx, r.Engine(), descKey, r.Clock().Now(),
-		storage.MVCCGetOptions{Inconsistent: true})
+	_, intent, err := relational.MVCCGet(ctx, r.Engine(), descKey, r.Clock().Now(),
+		relational.MVCCGetOptions{Inconsistent: true})
 	if err != nil {
 		return err
 	} else if intent == nil {
 		return nil
 	}
-	val, _, err := storage.MVCCGetAsTxn(
+	val, _, err := relational.MVCCGetAsTxn(
 		ctx, r.Engine(), descKey, intent.Txn.WriteTimestamp, intent.Txn)
 	if err != nil {
 		return err
@@ -1535,7 +1544,7 @@ func (r *Replica) getReplicaDescriptorByIDRLocked(
 // transaction. In case the transaction has been aborted, return a
 // transaction abort error.
 func checkIfTxnAborted(
-	ctx context.Context, rec batcheval.EvalContext, reader storage.Reader, txn roachpb.Transaction,
+	ctx context.Context, rec batcheval.EvalContext, reader relational.Reader, txn roachpb.Transaction,
 ) *roachpb.Error {
 	var entry roachpb.AbortSpanEntry
 	aborted, err := rec.AbortSpan().Get(ctx, reader, txn.ID, &entry)
@@ -1590,14 +1599,14 @@ func EnableLeaseHistory(maxEntries int) func() {
 // information parsed from a URI, stored in `dest`.
 func (r *Replica) GetExternalStorage(
 	ctx context.Context, dest roachpb.ExternalStorage,
-) (cloud.ExternalStorage, error) {
+) (localexternal.ExternalStorage, error) {
 	return r.store.cfg.ExternalStorage(ctx, dest)
 }
 
 // GetExternalStorageFromURI returns an ExternalStorage object, based on the given URI.
 func (r *Replica) GetExternalStorageFromURI(
 	ctx context.Context, uri string,
-) (cloud.ExternalStorage, error) {
+) (localexternal.ExternalStorage, error) {
 	return r.store.cfg.ExternalStorageFromURI(ctx, uri)
 }
 

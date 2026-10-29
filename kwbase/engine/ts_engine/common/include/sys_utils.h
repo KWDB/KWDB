@@ -1,0 +1,115 @@
+// Copyright (c) 2022-present, Shanghai Yunxi Technology Co, Ltd.
+//
+// This software (KWDB) is licensed under Mulan PSL v2.
+// You can use this software according to the terms and conditions of the Mulan PSL v2.
+// You may obtain a copy of Mulan PSL v2 at:
+//          http://license.coscl.org.cn/MulanPSL2
+// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+// EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+// MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+// See the Mulan PSL v2 for more details.
+
+
+#pragma once
+
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#endif
+
+#if defined(__has_include)
+  #if __has_include(<filesystem>)
+    #include <filesystem>
+    namespace fs = std::filesystem;
+  #elif __has_include(<experimental/filesystem>)
+    #include <experimental/filesystem>
+    namespace fs = std::experimental::filesystem;
+  #else
+    #error "No <filesystem> or <experimental/filesystem> available"
+  #endif
+#else
+  #if defined(__GNUC__) && (__GNUC__ < 8)
+    #include <experimental/filesystem>
+    namespace fs = std::experimental::filesystem;
+  #else
+    #include <filesystem>
+    namespace fs = std::filesystem;
+  #endif
+#endif
+
+#include <string>
+#include <vector>
+#include "lg_api.h"
+#include "ts_object_error.h"
+
+#ifdef _WIN32
+// Undefine Windows macros that conflict with our function names
+#ifdef GetDiskFreeSpace
+#undef GetDiskFreeSpace
+#endif
+#ifdef CopyFile
+#undef CopyFile
+#endif
+#endif
+
+/**
+ * @brief Check whether the file or directory exists
+ * @param path The path of file or directory
+ * @return false/true
+ */
+bool IsExists(const fs::path& path);
+
+/**
+ * @brief Remove file or directory
+ * @param path The path of file or directory
+ * @return false/true
+ */
+bool Remove(const string& path);
+
+/**
+ * @brief Remove directory contents
+ * @param dir_path The path of directory
+ * @return
+ */
+bool RemoveDirContents(const string& dir_path);
+
+/**
+ * @brief Recursively create a directory (mkdir -p xxx)
+ * @param dir_path The path of directory
+ * @return true/false
+ */
+bool MakeDirectory(const fs::path& dir_path);
+
+/**
+ * @brief Get the modify time of file
+ * @param filePath The path of file
+ * @return modify time
+ */
+std::time_t ModifyTime(const std::string& filePath);
+
+/**
+ * @brief call system()
+ * @param cmd shell command
+ * @return true/false
+ */
+bool System(const string& cmd,  bool print_log = true, ErrorInfo& error_info = getDummyErrorInfo());
+
+bool DirExists(const std::string& path);
+
+bool isSoftLink(const std::string& path);
+
+/**
+ * @brief gcc 7 does not support std::filesystem::path().lexically_normal(), so we need to implement it ourselves
+ * @param path
+ * @return
+ */
+std::string lexically_normal(const std::string& path);
+
+/**
+ * @brief Copy file
+ * @param src_path The path of source file
+ * @param dst_path The path of destination file
+ * @return false/true
+ */
+bool CopyFile(const string& src_path, const string& dst_path);

@@ -583,6 +583,13 @@ var (
 // types such as CITEXT.
 var CaseInsensitiveLocale = "en_us_u_ks_level2"
 
+// TypeConvertMap Get list of convertible types for the type
+var TypeConvertMap = map[Family][]Family{
+	StringFamily: {DecimalFamily, FloatFamily, IntFamily},
+	IntFamily:    {DecimalFamily, FloatFamily, StringFamily},
+	FloatFamily:  {DecimalFamily, StringFamily},
+}
+
 // Engine stands which engine support this type
 type Engine uint32
 

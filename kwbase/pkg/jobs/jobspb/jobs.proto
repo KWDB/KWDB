@@ -638,6 +638,7 @@ message Payload {
     ReplicaRebanalceDetails replicaRebalance = 29;
     StreamDetails stream = 30;
     TsTxnDetails tsTxn = 31;
+    PipeWatermarkDetails pipeWatermark = 32;
   }
 }
 
@@ -666,6 +667,7 @@ message Progress {
     ReplicaRebanalceProgress replicaRebalance = 23;
     StreamProgress stream = 24;
     TsTxnProgress tsTxn = 25;
+    PipeWatermarkProgress pipeWatermark = 26;
   }
 }
 
@@ -694,6 +696,7 @@ enum Type {
   REPLICA_REBALANCE = 18 [(gogoproto.enumvalue_customname) = "TypeReplicaRebanalce"];
   STREAM = 19 [(gogoproto.enumvalue_customname) = "TypeStream"];
   TS_TXN = 20 [(gogoproto.enumvalue_customname) = "TypeTsTxn"];
+  PIPE_WATERMARK = 21 [(gogoproto.enumvalue_customname) = "TypePipeWatermark"];
 }
 
 message Job {
@@ -771,4 +774,13 @@ message StreamDetails {
 
 message StreamProgress {
 
+}
+
+message PipeWatermarkDetails {
+  cdcpb.PipeMetadata pipe_metadata = 1;
+  string ts_column_name = 2;
+  repeated int32 active_node_list = 3;
+}
+
+message PipeWatermarkProgress {
 }

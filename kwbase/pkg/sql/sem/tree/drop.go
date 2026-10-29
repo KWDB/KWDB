@@ -97,6 +97,40 @@ func (node *DropIndex) Format(ctx *FmtCtx) {
 	}
 }
 
+// DropPipe represents a DROP PIPE statement.
+type DropPipe struct {
+	PipeName Name
+	IfExists bool
+}
+
+var _ Statement = &DropPipe{}
+
+// Format implements the NodeFormatter interface.
+func (node *DropPipe) Format(ctx *FmtCtx) {
+	ctx.WriteString("DROP PIPE ")
+	if node.IfExists {
+		ctx.WriteString("IF EXISTS ")
+	}
+	node.PipeName.Format(ctx)
+}
+
+// DropPublication represents a DROP PUBLICATION statement.
+type DropPublication struct {
+	PubName  Name
+	IfExists bool
+}
+
+var _ Statement = &DropPublication{}
+
+// Format implements the NodeFormatter interface.
+func (node *DropPublication) Format(ctx *FmtCtx) {
+	ctx.WriteString("DROP PUBLICATION ")
+	if node.IfExists {
+		ctx.WriteString("IF EXISTS ")
+	}
+	node.PubName.Format(ctx)
+}
+
 // DropTable represents a DROP TABLE statement.
 type DropTable struct {
 	Names        TableNames

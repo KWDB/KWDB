@@ -37,10 +37,10 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagebase"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/cloud"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/localexternal"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 )
@@ -106,12 +106,12 @@ func (rec *SpanSetReplicaEvalContext) GetNodeLocality() roachpb.Locality {
 }
 
 // Engine returns the engine.
-func (rec *SpanSetReplicaEvalContext) Engine() storage.Engine {
+func (rec *SpanSetReplicaEvalContext) Engine() relational.Engine {
 	return rec.i.Engine()
 }
 
 // TsEngine returns the engine.
-func (rec *SpanSetReplicaEvalContext) TsEngine() *tse.TsEngine {
+func (rec *SpanSetReplicaEvalContext) TsEngine() *timeseries.TsEngine {
 	return rec.i.TsEngine()
 }
 
@@ -228,13 +228,13 @@ func (rec *SpanSetReplicaEvalContext) GetLimiters() *batcheval.Limiters {
 // information parsed from a URI, stored in `dest`.
 func (rec *SpanSetReplicaEvalContext) GetExternalStorage(
 	ctx context.Context, dest roachpb.ExternalStorage,
-) (cloud.ExternalStorage, error) {
+) (localexternal.ExternalStorage, error) {
 	return rec.i.GetExternalStorage(ctx, dest)
 }
 
 // GetExternalStorageFromURI returns an ExternalStorage object, based on the given URI.
 func (rec *SpanSetReplicaEvalContext) GetExternalStorageFromURI(
 	ctx context.Context, uri string,
-) (cloud.ExternalStorage, error) {
+) (localexternal.ExternalStorage, error) {
 	return rec.i.GetExternalStorageFromURI(ctx, uri)
 }

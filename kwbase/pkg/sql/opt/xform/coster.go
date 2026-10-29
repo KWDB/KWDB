@@ -386,18 +386,21 @@ func (c *coster) computeTsScanCost(tsScan *memo.TSScanExpr) memo.Cost {
 		tagIndexCols.Add(opt.ColumnID(k))
 	}
 	tsScan.Cols.ForEach(func(id opt.ColumnID) {
-		// get column metadata through logical id.
-		column := table.Column(int(id) - int(tsScan.Table.ColumnID(0)))
-		if column.IsPrimaryTagCol() {
-			pTagColCount++
-			pTagColsWith += column.TsColStorgeLen()
-		} else if column.IsTagCol() {
-			if tagIndexCols.Contains(id) {
-				tagIndexColsWith += column.TsColStorgeLen()
+		colIdx := int(id) - int(tsScan.Table.ColumnID(0))
+		if colIdx < table.DeletableColumnCount() {
+			// get column metadata through logical id.
+			column := table.Column(int(id) - int(tsScan.Table.ColumnID(0)))
+			if column.IsPrimaryTagCol() {
+				pTagColCount++
+				pTagColsWith += column.TsColStorgeLen()
+			} else if column.IsTagCol() {
+				if tagIndexCols.Contains(id) {
+					tagIndexColsWith += column.TsColStorgeLen()
+				}
+				tagColsWith += column.TsColStorgeLen()
+			} else {
+				colsWith += column.TsColStorgeLen()
 			}
-			tagColsWith += column.TsColStorgeLen()
-		} else {
-			colsWith += column.TsColStorgeLen()
 		}
 	})
 

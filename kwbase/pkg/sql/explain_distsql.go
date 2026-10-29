@@ -150,6 +150,9 @@ func (n *explainDistSQLNode) startExec(params runParams) error {
 		// so treat the inner plan like a client result for pg encode short-circuit
 		// purposes. This preserves session options such as pg_extend_compress while
 		// keeping callbackResultWriter's default behavior unchanged for internal users.
+		// Whether the short circuit is planned still follows the issuing client's
+		// ClientSupportsPGWireResults, so a MySQL client is shown the plan its own
+		// query would take.
 		planCtx.isCommandResult = true
 	}
 	distSQLPlanner.FinalizePlan(planCtx, &plan)

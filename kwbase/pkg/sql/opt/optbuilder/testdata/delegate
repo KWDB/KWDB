@@ -11,7 +11,7 @@ distinct-on
       └── project
            ├── columns: catalog_name:1 engine_type:7
            └── virtual-scan "".information_schema.schemata
-                └── columns: catalog_name:1 schema_name:2 catalog_id:3 schema_id:4 default_character_set_name:5 sql_path:6 engine_type:7 retentions:8 partition_interval:9
+                └── columns: catalog_name:1 schema_name:2 catalog_id:3 schema_id:4 default_character_set_name:5 sql_path:6 engine_type:7 retentions:8 partition_interval:9 schema_owner:10 default_character_set_catalog:11 default_character_set_schema:12
 
 # Note: t is the default database for the test catalog.
 build
@@ -23,8 +23,8 @@ sort
  └── project
       ├── columns: schema_name:2
       └── select
-           ├── columns: catalog_name:1!null schema_name:2 catalog_id:3 schema_id:4 default_character_set_name:5 sql_path:6 engine_type:7 retentions:8 partition_interval:9
+           ├── columns: catalog_name:1!null schema_name:2 catalog_id:3 schema_id:4 default_character_set_name:5 sql_path:6 engine_type:7 retentions:8 partition_interval:9 schema_owner:10 default_character_set_catalog:11 default_character_set_schema:12
            ├── virtual-scan t.information_schema.schemata
-           │    └── columns: catalog_name:1 schema_name:2 catalog_id:3 schema_id:4 default_character_set_name:5 sql_path:6 engine_type:7 retentions:8 partition_interval:9
+           │    └── columns: catalog_name:1 schema_name:2 catalog_id:3 schema_id:4 default_character_set_name:5 sql_path:6 engine_type:7 retentions:8 partition_interval:9 schema_owner:10 default_character_set_catalog:11 default_character_set_schema:12
            └── filters
                 └── catalog_name:1 = 't'

@@ -26,7 +26,7 @@ syntax = "proto3";
 package kwbase.kv.kvserver.storagepb;
 option go_package = "storagepb";
 
-import "storage/enginepb/mvcc.proto";
+import "storage/relational/enginepb/mvcc.proto";
 import "roachpb/internal_raft.proto";
 import "roachpb/metadata.proto";
 import "roachpb/data.proto";

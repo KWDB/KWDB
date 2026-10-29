@@ -39,8 +39,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/batcheval"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
@@ -51,28 +51,21 @@ import (
 
 // createTestRocksDBEngine returns a new in-memory RocksDB engine with 1MB of
 // storage capacity.
-func createTestRocksDBEngine() storage.Engine {
-	return storage.NewInMem(context.Background(),
+func createTestRocksDBEngine() relational.Engine {
+	return relational.NewInMem(context.Background(),
 		enginepb.EngineTypeRocksDB, roachpb.Attributes{}, 1<<20)
-}
-
-// createTestPebbleEngine returns a new in-memory Pebble storage engine.
-func createTestPebbleEngine() storage.Engine {
-	return storage.NewInMem(context.Background(),
-		enginepb.EngineTypePebble, roachpb.Attributes{}, 1<<20)
 }
 
 var engineImpls = []struct {
 	name   string
-	create func() storage.Engine
+	create func() relational.Engine
 }{
 	{"rocksdb", createTestRocksDBEngine},
-	{"pebble", createTestPebbleEngine},
 }
 
-func singleKVSSTable(key storage.MVCCKey, value []byte) ([]byte, error) {
-	sstFile := &storage.MemFile{}
-	sst := storage.MakeBackupSSTWriter(sstFile)
+func singleKVSSTable(key relational.MVCCKey, value []byte) ([]byte, error) {
+	sstFile := &relational.MemFile{}
+	sst := relational.MakeBackupSSTWriter(sstFile)
 	defer sst.Close()
 	if err := sst.Put(key, value); err != nil {
 		return nil, err
@@ -115,7 +108,7 @@ func TestDBAddSSTable(t *testing.T) {
 // if store != nil, assume it is on-disk and check ingestion semantics.
 func runTestDBAddSSTable(ctx context.Context, t *testing.T, db *kv.DB, store *kvserver.Store) {
 	{
-		key := storage.MVCCKey{Key: []byte("bb"), Timestamp: hlc.Timestamp{WallTime: 2}}
+		key := relational.MVCCKey{Key: []byte("bb"), Timestamp: hlc.Timestamp{WallTime: 2}}
 		data, err := singleKVSSTable(key, roachpb.MakeValueFromString("1").RawBytes)
 		if err != nil {
 			t.Fatalf("%+v", err)
@@ -174,7 +167,7 @@ func runTestDBAddSSTable(ctx context.Context, t *testing.T, db *kv.DB, store *kv
 	// Check that ingesting a key with an earlier mvcc timestamp doesn't affect
 	// the value returned by Get.
 	{
-		key := storage.MVCCKey{Key: []byte("bb"), Timestamp: hlc.Timestamp{WallTime: 1}}
+		key := relational.MVCCKey{Key: []byte("bb"), Timestamp: hlc.Timestamp{WallTime: 1}}
 		data, err := singleKVSSTable(key, roachpb.MakeValueFromString("2").RawBytes)
 		if err != nil {
 			t.Fatalf("%+v", err)
@@ -201,7 +194,7 @@ func runTestDBAddSSTable(ctx context.Context, t *testing.T, db *kv.DB, store *kv
 	// Key range in request span is not empty. First time through a different
 	// key is present. Second time through checks the idempotency.
 	{
-		key := storage.MVCCKey{Key: []byte("bc"), Timestamp: hlc.Timestamp{WallTime: 1}}
+		key := relational.MVCCKey{Key: []byte("bc"), Timestamp: hlc.Timestamp{WallTime: 1}}
 		data, err := singleKVSSTable(key, roachpb.MakeValueFromString("3").RawBytes)
 		if err != nil {
 			t.Fatalf("%+v", err)
@@ -256,7 +249,7 @@ func runTestDBAddSSTable(ctx context.Context, t *testing.T, db *kv.DB, store *kv
 
 	// ... and doing the same thing but via write-batch works the same.
 	{
-		key := storage.MVCCKey{Key: []byte("bd"), Timestamp: hlc.Timestamp{WallTime: 1}}
+		key := relational.MVCCKey{Key: []byte("bd"), Timestamp: hlc.Timestamp{WallTime: 1}}
 		data, err := singleKVSSTable(key, roachpb.MakeValueFromString("3").RawBytes)
 		if err != nil {
 			t.Fatalf("%+v", err)
@@ -304,7 +297,7 @@ func runTestDBAddSSTable(ctx context.Context, t *testing.T, db *kv.DB, store *kv
 
 	// Invalid key/value entry checksum.
 	{
-		key := storage.MVCCKey{Key: []byte("bb"), Timestamp: hlc.Timestamp{WallTime: 1}}
+		key := relational.MVCCKey{Key: []byte("bb"), Timestamp: hlc.Timestamp{WallTime: 1}}
 		value := roachpb.MakeValueFromString("1")
 		value.InitChecksum([]byte("foo"))
 		data, err := singleKVSSTable(key, value.RawBytes)
@@ -326,8 +319,8 @@ type strKv struct {
 	v  string
 }
 
-func mvccKVsFromStrs(in []strKv) []storage.MVCCKeyValue {
-	kvs := make([]storage.MVCCKeyValue, len(in))
+func mvccKVsFromStrs(in []strKv) []relational.MVCCKeyValue {
+	kvs := make([]relational.MVCCKeyValue, len(in))
 	for i := range kvs {
 		kvs[i].Key.Key = []byte(in[i].k)
 		kvs[i].Key.Timestamp.WallTime = in[i].ts
@@ -395,7 +388,7 @@ func TestAddSSTableMVCCStats(t *testing.T) {
 				ts,
 				base.DefaultMaxClockOffset.Nanoseconds(),
 			)
-			if err := storage.MVCCPut(
+			if err := relational.MVCCPut(
 				ctx, e, nil, []byte("i"), ts,
 				roachpb.MakeValueFromBytes([]byte("it")),
 				&txn,
@@ -409,18 +402,18 @@ func TestAddSSTableMVCCStats(t *testing.T) {
 			// stats. Make sure recomputing from scratch gets the same answer as
 			// applying the diff to the stats
 			beforeStats := func() enginepb.MVCCStats {
-				iter := e.NewIterator(storage.IterOptions{UpperBound: roachpb.KeyMax})
+				iter := e.NewIterator(relational.IterOptions{UpperBound: roachpb.KeyMax})
 				defer iter.Close()
-				beforeStats, err := storage.ComputeStatsGo(iter, roachpb.KeyMin, roachpb.KeyMax, 10)
+				beforeStats, err := relational.ComputeStatsGo(iter, roachpb.KeyMin, roachpb.KeyMax, 10)
 				if err != nil {
 					t.Fatalf("%+v", err)
 				}
 				return beforeStats
 			}()
 
-			mkSST := func(kvs []storage.MVCCKeyValue) []byte {
-				sstFile := &storage.MemFile{}
-				sst := storage.MakeBackupSSTWriter(sstFile)
+			mkSST := func(kvs []relational.MVCCKeyValue) []byte {
+				sstFile := &relational.MemFile{}
+				sst := relational.MakeBackupSSTWriter(sstFile)
 				defer sst.Close()
 				for _, kv := range kvs {
 					if err := sst.Put(kv.Key, kv.Value); err != nil {
@@ -460,9 +453,9 @@ func TestAddSSTableMVCCStats(t *testing.T) {
 			}
 
 			afterStats := func() enginepb.MVCCStats {
-				iter := e.NewIterator(storage.IterOptions{UpperBound: roachpb.KeyMax})
+				iter := e.NewIterator(relational.IterOptions{UpperBound: roachpb.KeyMax})
 				defer iter.Close()
-				afterStats, err := storage.ComputeStatsGo(iter, roachpb.KeyMin, roachpb.KeyMax, 10)
+				afterStats, err := relational.ComputeStatsGo(iter, roachpb.KeyMin, roachpb.KeyMax, 10)
 				if err != nil {
 					t.Fatalf("%+v", err)
 				}
@@ -478,8 +471,8 @@ func TestAddSSTableMVCCStats(t *testing.T) {
 				Header: roachpb.Header{Timestamp: hlc.Timestamp{WallTime: 7}},
 				Args: &roachpb.AddSSTableRequest{
 					RequestHeader: roachpb.RequestHeader{Key: keys.MinKey, EndKey: keys.MaxKey},
-					Data: mkSST([]storage.MVCCKeyValue{{
-						Key:   storage.MVCCKey{Key: roachpb.Key("zzzzzzz"), Timestamp: ts},
+					Data: mkSST([]relational.MVCCKeyValue{{
+						Key:   relational.MVCCKey{Key: roachpb.Key("zzzzzzz"), Timestamp: ts},
 						Value: roachpb.MakeValueFromBytes([]byte("zzz")).RawBytes,
 					}}),
 					MVCCStats: &enginepb.MVCCStats{KeyCount: 10},
@@ -522,9 +515,9 @@ func TestAddSSTableDisallowShadowing(t *testing.T) {
 				}
 			}
 
-			getSSTBytes := func(sstKVs []storage.MVCCKeyValue) []byte {
-				sstFile := &storage.MemFile{}
-				sst := storage.MakeBackupSSTWriter(sstFile)
+			getSSTBytes := func(sstKVs []relational.MVCCKeyValue) []byte {
+				sstFile := &relational.MemFile{}
+				sst := relational.MakeBackupSSTWriter(sstFile)
 				defer sst.Close()
 				for _, kv := range sstKVs {
 					if err := sst.Put(kv.Key, kv.Value); err != nil {
@@ -538,13 +531,13 @@ func TestAddSSTableDisallowShadowing(t *testing.T) {
 			}
 
 			getStats := func(startKey, endKey roachpb.Key, data []byte) enginepb.MVCCStats {
-				dataIter, err := storage.NewMemSSTIterator(data, true)
+				dataIter, err := relational.NewMemSSTIterator(data, true)
 				if err != nil {
 					return enginepb.MVCCStats{}
 				}
 				defer dataIter.Close()
 
-				stats, err := storage.ComputeStatsGo(dataIter, startKey, endKey, 0)
+				stats, err := relational.ComputeStatsGo(dataIter, startKey, endKey, 0)
 				if err != nil {
 					t.Fatalf("%+v", err)
 				}
@@ -768,7 +761,7 @@ func TestAddSSTableDisallowShadowing(t *testing.T) {
 					ts,
 					base.DefaultMaxClockOffset.Nanoseconds(),
 				)
-				if err := storage.MVCCPut(
+				if err := relational.MVCCPut(
 					ctx, e, nil, []byte("t"), ts,
 					roachpb.MakeValueFromBytes([]byte("tt")),
 					&txn,
@@ -808,7 +801,7 @@ func TestAddSSTableDisallowShadowing(t *testing.T) {
 
 				// Add in an inline value.
 				ts := hlc.Timestamp{}
-				if err := storage.MVCCPut(
+				if err := relational.MVCCPut(
 					ctx, e, nil, []byte("i"), ts,
 					roachpb.MakeValueFromBytes([]byte("i")),
 					nil,

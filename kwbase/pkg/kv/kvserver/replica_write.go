@@ -38,8 +38,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagebase"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagepb"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -320,6 +320,9 @@ func (r *Replica) executeWriteTSBatch(
 	if r.store.nodeDesc.StartMode == base.StartSingleReplicaCmdName {
 		br = &roachpb.BatchResponse{}
 		br.Responses = make([]roachpb.ResponseUnion, len(ba.Requests))
+
+		ba.Requests = r.batchRequestOsnRewrite(ctx, ba.Requests)
+
 		tableID, rangeGroupID, tsTxnID, needAutoCommit, err := r.stageTsBatchRequest(ctx, ba, br.Responses, true, nil)
 		if err == nil && tsTxnID != 0 && needAutoCommit {
 			err = r.store.TsEngine.MtrCommit(tableID, rangeGroupID, tsTxnID, nil)
@@ -554,7 +557,7 @@ func (r *Replica) evaluateWriteBatch(
 	idKey storagebase.CmdIDKey,
 	ba *roachpb.BatchRequest,
 	latchSpans *spanset.SpanSet,
-) (storage.Batch, enginepb.MVCCStats, *roachpb.BatchResponse, result.Result, *roachpb.Error) {
+) (relational.Batch, enginepb.MVCCStats, *roachpb.BatchResponse, result.Result, *roachpb.Error) {
 	// If the transaction has been pushed but it can commit at the higher
 	// timestamp, let's evaluate the batch at the bumped timestamp. This will
 	// allow it commit, and also it'll allow us to attempt the 1PC code path.
@@ -611,7 +614,7 @@ type onePCResult struct {
 	stats enginepb.MVCCStats
 	br    *roachpb.BatchResponse
 	res   result.Result
-	batch storage.Batch
+	batch relational.Batch
 }
 
 // evaluate1PC attempts to evaluate the batch as a 1PC transaction - meaning it
@@ -628,7 +631,7 @@ func (r *Replica) evaluate1PC(
 ) (onePCRes onePCResult) {
 	log.VEventf(ctx, 2, "attempting 1PC execution")
 
-	var batch storage.Batch
+	var batch relational.Batch
 	defer func() {
 		// Close the batch unless it's passed to the caller (when the evaluation
 		// succeeds).
@@ -747,7 +750,7 @@ func (r *Replica) evaluateWriteBatchWithServersideRefreshes(
 	ba *roachpb.BatchRequest,
 	latchSpans *spanset.SpanSet,
 	deadline *hlc.Timestamp,
-) (batch storage.Batch, br *roachpb.BatchResponse, res result.Result, pErr *roachpb.Error) {
+) (batch relational.Batch, br *roachpb.BatchResponse, res result.Result, pErr *roachpb.Error) {
 	goldenMS := *ms
 	for retries := 0; ; retries++ {
 		if retries > 0 {
@@ -788,7 +791,7 @@ func (r *Replica) evaluateWriteBatchWrapper(
 	ms *enginepb.MVCCStats,
 	ba *roachpb.BatchRequest,
 	latchSpans *spanset.SpanSet,
-) (storage.Batch, *roachpb.BatchResponse, result.Result, *roachpb.Error) {
+) (relational.Batch, *roachpb.BatchResponse, result.Result, *roachpb.Error) {
 	batch, opLogger := r.newBatchedEngine(latchSpans)
 	var br *roachpb.BatchResponse
 	var res result.Result
@@ -813,9 +816,11 @@ func (r *Replica) evaluateWriteBatchWrapper(
 // are enabled, it also returns an engine.OpLoggerBatch. If non-nil, then this
 // OpLogger is attached to the returned engine.Batch, recording all operations.
 // Its recording should be attached to the Result of request evaluation.
-func (r *Replica) newBatchedEngine(spans *spanset.SpanSet) (storage.Batch, *storage.OpLoggerBatch) {
+func (r *Replica) newBatchedEngine(
+	spans *spanset.SpanSet,
+) (relational.Batch, *relational.OpLoggerBatch) {
 	batch := r.store.Engine().NewBatch()
-	var opLogger *storage.OpLoggerBatch
+	var opLogger *relational.OpLoggerBatch
 	if RangefeedEnabled.Get(&r.store.cfg.Settings.SV) {
 		// TODO(nvanbenschoten): once we get rid of the RangefeedEnabled
 		// cluster setting we'll need a way to turn this on when any
@@ -849,7 +854,7 @@ func (r *Replica) newBatchedEngine(spans *spanset.SpanSet) (storage.Batch, *stor
 		//
 		// Another alternative is to make the setting table/zone-scoped
 		// instead of a fine-grained per-replica state.
-		opLogger = storage.NewOpLoggerBatch(batch)
+		opLogger = relational.NewOpLoggerBatch(batch)
 		batch = opLogger
 	}
 	if util.RaceEnabled {

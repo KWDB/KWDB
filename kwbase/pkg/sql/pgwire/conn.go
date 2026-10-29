@@ -522,7 +522,10 @@ Loop:
 			// the client, and must then ignore further copy messages. See:
 			// https://github.com/postgres/postgres/blob/6e1dd2773eb60a6ab87b27b8d9391b756e904ac3/src/backend/tcop/postgres.c#L4295
 			c.ClientEncode(ctx, ClientEncoding)
-
+		case pgwirebase.ClientMsgParseEx:
+			err = c.handleParseEx(ctx, &c.readBuf, intSizer.GetUnqualifiedIntSize(), intSizer, sqlServer)
+		case pgwirebase.ClientMsgBindEx:
+			err = c.handleBindEx(ctx, &c.readBuf, ClientEncoding, timeReceived)
 		default:
 			c.ClientEncode(ctx, ClientEncoding)
 			err = c.stmtBuf.Push(
@@ -1298,6 +1301,100 @@ func shortInsertLogAudit(
 
 // An error is returned iff the statement buffer has been closed. In that case,
 // the connection should be considered toast.
+func (c *conn) handleParseEx(
+	ctx context.Context,
+	buf *pgwirebase.ReadBuffer,
+	nakedIntSize *types.T,
+	unqis unqualifiedIntSizer,
+	server *sql.Server,
+) error {
+	name, err := buf.GetString()
+	if err != nil {
+		return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+	}
+	tablename, err := buf.GetString()
+	if err != nil {
+		return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+	}
+
+	parts := strings.Split(tablename, ".")
+	var dbName, schemaName, tableName string
+	switch len(parts) {
+	case 2:
+		dbName, schemaName, tableName = parts[0], tree.PublicSchema, parts[1]
+	case 3:
+		dbName, schemaName, tableName = parts[0], parts[1], parts[2]
+	default:
+		return c.stmtBuf.Push(ctx,
+			sql.SendError{Err: pgerror.Newf(pgcode.ProtocolViolation, "tablename must be including database.")})
+	}
+	if schemaName != tree.PublicSchema {
+		return c.stmtBuf.Push(ctx,
+			sql.SendError{Err: pgerror.Newf(pgcode.ProtocolViolation, "extend pgwire only supports public schema.")})
+	}
+
+	c.parser.IsShortcircuit = unqis.GetTsinsertdirect()
+	if !c.parser.IsShortcircuit {
+		return c.stmtBuf.Push(ctx,
+			sql.SendError{Err: pgerror.Newf(pgcode.ProtocolViolation, "extend pgwire only by tstable and tsinsert_direct.")})
+	}
+	var dit sql.DirectInsertTable
+	user := c.sessionArgs.User
+	var isTsTable bool
+	var insertErr error
+	isTsTable, dit, insertErr = server.GetCFG().InternalExecutor.IsTsTable(ctx, dbName, tableName, user)
+	if insertErr != nil {
+		return c.stmtBuf.Push(ctx, sql.SendError{Err: insertErr})
+	}
+	if !isTsTable {
+		return c.stmtBuf.Push(ctx,
+			sql.SendError{Err: sqlbase.NewWrongObjectTypeError(
+				tree.NewTableName(tree.Name(dbName), tree.Name(tableName)), "timeseries table")})
+	}
+
+	c.parser.SetPrepareMode(true)
+	startParse := timeutil.Now()
+	stmt := parser.Statement{
+		AST: &tree.Insert{
+			Table:     tree.NewTableName(tree.Name(dbName), tree.Name(tableName)),
+			Returning: &tree.NoReturningClause{}},
+		Insertdirectstmt: parser.Insertdirectstmt{
+			InsertFast: true,
+		},
+	}
+
+	endParse := timeutil.Now()
+
+	var insclosnum int
+	if stmt.Insertdirectstmt.InsertFast {
+		if v, ok := stmt.AST.(*tree.Insert); ok {
+			dit.Desc = make(tree.NameList, len(v.Columns))
+			if v.Columns != nil {
+				copy(dit.Desc, v.Columns)
+			}
+			if len(dit.Desc) == 0 {
+				insclosnum = len(dit.ColsDesc)
+			} else {
+				insclosnum = len(dit.Desc)
+			}
+		}
+	}
+
+	dit.IsPayloadInsert = true
+	return c.stmtBuf.Push(
+		ctx,
+		sql.PrepareStmt{
+			Name:       name,
+			Statement:  stmt,
+			ParseStart: startParse,
+			ParseEnd:   endParse,
+			PrepareInsertDirect: sql.PrepareInsertDirect{
+				Dit:        dit,
+				Inscolsnum: insclosnum,
+			},
+		})
+}
+
 func (c *conn) handleParse(
 	ctx context.Context,
 	buf *pgwirebase.ReadBuffer,
@@ -1611,6 +1708,52 @@ func (c *conn) handleBind(
 		})
 }
 
+func (c *conn) handleBindEx(
+	ctx context.Context, buf *pgwirebase.ReadBuffer, ClientEncoding string, timeReceived time.Time,
+) error {
+	portalName, err := buf.GetString()
+	if err != nil {
+		return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+	}
+	statementName, err := buf.GetString()
+	if err != nil {
+		return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+	}
+
+	payloadCount, err := buf.GetUint16()
+	if err != nil {
+		return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+	}
+	ptags := make([]string, payloadCount, payloadCount)
+	payloads := make([][]byte, payloadCount, payloadCount)
+	for i := 0; i < int(payloadCount); i++ {
+		key, err := buf.GetString()
+		if err != nil {
+			return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+		}
+		ptags[i] = key
+		size, err := buf.GetUint32()
+		if err != nil {
+			return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+		}
+		payload, err := buf.GetBytes(int(size))
+		if err != nil {
+			return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
+		}
+		payloads[i] = payload
+	}
+
+	return c.stmtBuf.Push(
+		ctx,
+		sql.BindAndExecStmt{
+			PreparedStatementName: statementName,
+			PortalName:            portalName,
+			Ptags:                 ptags,
+			Payloads:              payloads,
+			TimeReceived:          timeReceived,
+		})
+}
+
 // An error is returned iff the statement buffer has been closed. In that case,
 // the connection should be considered toast.
 func (c *conn) handleExecute(
@@ -1874,6 +2017,28 @@ func (c *conn) bufferParamDesc(types []oid.Oid) {
 	c.msgBuilder.putInt16(int16(len(types)))
 	for _, t := range types {
 		c.msgBuilder.putInt32(int32(t))
+	}
+	if err := c.msgBuilder.finishMsg(&c.writerState.buf); err != nil {
+		panic(fmt.Sprintf("unexpected err from buffer: %s", err))
+	}
+}
+
+func (c *conn) bufferParamDescEx(
+	types []oid.Oid, tagIndex int16, ptagIDs []uint16, colStorageLen []uint32,
+) {
+	c.msgBuilder.initMsg(pgwirebase.ServerMsgParameterDescriptionEx)
+	c.msgBuilder.putInt16(int16(len(types)))
+	for _, t := range types {
+		c.msgBuilder.putInt32(int32(t))
+	}
+	c.msgBuilder.putInt16(int16(tagIndex))
+	c.msgBuilder.putInt16(int16(len(ptagIDs)))
+	for _, id := range ptagIDs {
+		c.msgBuilder.putInt16(int16(id))
+	}
+	c.msgBuilder.putInt16(int16(len(colStorageLen)))
+	for _, id := range colStorageLen {
+		c.msgBuilder.putInt32(int32(id))
 	}
 	if err := c.msgBuilder.finishMsg(&c.writerState.buf); err != nil {
 		panic(fmt.Sprintf("unexpected err from buffer: %s", err))

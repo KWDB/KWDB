@@ -43,8 +43,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/stateloader"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/rpc"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/bufalloc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
@@ -561,7 +561,7 @@ type replicaHash struct {
 func (r *Replica) sha512(
 	ctx context.Context,
 	desc roachpb.RangeDescriptor,
-	snap storage.Reader,
+	snap relational.Reader,
 	snapshot *roachpb.RaftSnapshotData,
 	mode roachpb.ChecksumMode,
 	limiter *limit.LimiterBurstDisabled,
@@ -569,7 +569,7 @@ func (r *Replica) sha512(
 	statsOnly := mode == roachpb.ChecksumMode_CHECK_STATS
 
 	// Iterate over all the data in the range.
-	iter := snap.NewIterator(storage.IterOptions{UpperBound: desc.EndKey.AsRawKey()})
+	iter := snap.NewIterator(relational.IterOptions{UpperBound: desc.EndKey.AsRawKey()})
 	defer iter.Close()
 
 	var alloc bufalloc.ByteAllocator
@@ -578,7 +578,7 @@ func (r *Replica) sha512(
 	var timestampBuf []byte
 	hasher := sha512.New()
 
-	visitor := func(unsafeKey storage.MVCCKey, unsafeValue []byte) error {
+	visitor := func(unsafeKey relational.MVCCKey, unsafeValue []byte) error {
 		// Rate Limit the scan through the range
 		if err := limiter.WaitN(ctx, len(unsafeKey.Key)+len(unsafeValue)); err != nil {
 			return err
@@ -599,7 +599,8 @@ func (r *Replica) sha512(
 		if _, err := hasher.Write(intBuf[:]); err != nil {
 			return err
 		}
-		binary.LittleEndian.PutUint64(intBuf[:], uint64(len(unsafeValue)))
+		hashValue := tsRangeReplicatedValueForChecksum(&desc, unsafeKey.Key, unsafeValue)
+		binary.LittleEndian.PutUint64(intBuf[:], uint64(len(hashValue)))
 		if _, err := hasher.Write(intBuf[:]); err != nil {
 			return err
 		}
@@ -618,7 +619,7 @@ func (r *Replica) sha512(
 		if _, err := hasher.Write(timestampBuf); err != nil {
 			return err
 		}
-		_, err := hasher.Write(unsafeValue)
+		_, err := hasher.Write(hashValue)
 		return err
 	}
 
@@ -627,7 +628,7 @@ func (r *Replica) sha512(
 	// all of the replicated key space.
 	if !statsOnly {
 		for _, span := range rditer.MakeReplicatedKeyRanges(&desc) {
-			spanMS, err := storage.ComputeStatsGo(
+			spanMS, err := relational.ComputeStatsGo(
 				iter, span.Start.Key, span.End.Key, 0 /* nowNanos */, visitor,
 			)
 			if err != nil {
@@ -654,7 +655,11 @@ func (r *Replica) sha512(
 	result.PersistedMS = rangeAppliedState.RangeStats.ToStats()
 
 	if statsOnly {
-		b, err := protoutil.Marshal(rangeAppliedState)
+		rasForHash := *rangeAppliedState
+		if isTSRangeDescriptor(&desc) {
+			rasForHash.RangeStats = enginepb.MVCCPersistentStats{}
+		}
+		b, err := protoutil.Marshal(&rasForHash)
 		if err != nil {
 			return nil, err
 		}

@@ -32,7 +32,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/config/zonepb"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"github.com/stretchr/testify/assert"
@@ -114,7 +114,7 @@ func TestIntentAgeThresholdSetting(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
 	ctx := context.Background()
-	eng := storage.NewDefaultInMem()
+	eng := relational.NewDefaultInMem()
 	defer eng.Close()
 
 	// Test event timeline.
@@ -130,7 +130,7 @@ func TestIntentAgeThresholdSetting(t *testing.T) {
 		WallTime: intentTs.Nanoseconds(),
 	}
 	txn := roachpb.MakeTransaction("txn", key, roachpb.NormalUserPriority, intentHlc, 1000)
-	require.NoError(t, storage.MVCCPut(ctx, eng, nil, key, intentHlc, value, &txn))
+	require.NoError(t, relational.MVCCPut(ctx, eng, nil, key, intentHlc, value, &txn))
 	require.NoError(t, eng.Flush())
 
 	// Prepare test fixtures for GC run.

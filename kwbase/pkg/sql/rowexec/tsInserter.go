@@ -83,6 +83,8 @@ type tsInserter struct {
 	dedupRows int64
 	// insertRows is the actual number of successfully inserted rows.
 	insertRows int64
+	// osn is the insert time.
+	osn uint64
 
 	payloadPrefix            [][]byte
 	payloadForDistributeMode []*execinfrapb.PayloadForDistributeMode
@@ -148,12 +150,14 @@ func startForSingleMode(ctx context.Context, tri *tsInserter) context.Context {
 	ba.SetIsTsInsert(true)
 
 	insertRowSum := 0
+	tri.osn = sqlbase.DecodeOsnIDFromPayload(tri.payload[0])
 	for i, pl := range tri.payload {
 		ba.AddRawRequest(&roachpb.TsPutRequest{
 			RequestHeader: roachpb.RequestHeader{
 				Key: tri.primaryTagKey[i],
 			},
 			Value: roachpb.Value{RawBytes: pl},
+			OsnID: tri.osn,
 		})
 		insertRowSum += int(tri.rowNums[i])
 	}
@@ -183,8 +187,8 @@ func startForSingleMode(ctx context.Context, tri *tsInserter) context.Context {
 		}
 	}
 	tri.insertRows = int64(insertRowSum) - tri.dedupRows
-
 	tri.insertSuccess = true
+
 	// Here we need to notify the statistics table of changes in the number of rows.
 	if NeedNotifyTsMutation(&tri.EvalCtx.Settings.SV) {
 		if tableID := ExtractTableIDFromPayload(tri.payload); tableID > 0 {
@@ -255,18 +259,28 @@ func startForDistributeMode(ctx context.Context, tri *tsInserter) context.Contex
 		log.Errorf(context.Background(), tri.err.Error())
 		return ctx
 	}
+	tri.osn = 0
 	for _, rawResponse := range rawResponses.Responses {
 		if v, ok := rawResponse.Value.(*roachpb.ResponseUnion_TsRowPut); ok {
 			tri.dedupRule = v.TsRowPut.DedupRule
 			tri.insertRows += v.TsRowPut.NumKeys
 			entitiesAffected += v.TsRowPut.EntitiesAffected
 			unorderedAffected += v.TsRowPut.UnorderedAffected
+			if tri.osn == 0 || tri.osn > v.TsRowPut.OsnID {
+				tri.osn = v.TsRowPut.OsnID
+			}
 		} else if v, ok := rawResponse.Value.(*roachpb.ResponseUnion_TsPutTag); ok {
 			tri.dedupRule = v.TsPutTag.DedupRule
 			tri.insertRows += v.TsPutTag.NumKeys
+			if tri.osn == 0 || tri.osn > v.TsPutTag.OsnID {
+				tri.osn = v.TsPutTag.OsnID
+			}
 		} else if v, ok := rawResponse.Value.(*roachpb.ResponseUnion_TsPut); ok {
 			entitiesAffected += v.TsPut.EntitiesAffected
 			unorderedAffected += v.TsPut.UnorderedAffected
+			if tri.osn == 0 || tri.osn > v.TsPut.OsnID {
+				tri.osn = v.TsPut.OsnID
+			}
 		}
 	}
 	tri.dedupRows = int64(insertRowSum) - tri.insertRows
@@ -642,9 +656,10 @@ func (tis *tsInsertSelecter) runTSInsert(
 			insTable.TableType,
 			insTable.TableType == tree.InstanceTable,
 			uint32(insTable.TsTable.TsVersion),
-			insTable.TsTable.HashNum,
-			nil,
+			tis.FlowCtx.Cfg.CDCCoordinator,
+			insTable.CDC,
 			tis.FlowCtx.Cfg.TsIDGen,
+			insTable.TsTable.HashNum,
 		)
 		if err != nil {
 			return false, 0, err
@@ -741,6 +756,10 @@ func (tri *tsInserterWithCDC) Start(ctx context.Context) context.Context {
 
 	// context error cannot confirm whether the result is saved to disk, so it is still sent.
 	if tri.err == nil || strings.Contains(tri.err.Error(), ctx.Err().Error()) {
+		if tri.osn == 0 {
+			tri.osn = tri.FlowCtx.Cfg.TsIDGen.GetNextID()
+		}
+		tri.cdcData.OSN = tri.osn
 		tri.FlowCtx.Cfg.CDCCoordinator.SendRows(&tri.cdcData)
 	}
 

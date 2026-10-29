@@ -16,13 +16,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
 
-	"gitee.com/kwbasedb/kwbase/pkg/clusterversion"
 	"gitee.com/kwbasedb/kwbase/pkg/jobs"
 	"gitee.com/kwbasedb/kwbase/pkg/jobs/jobspb"
 	"gitee.com/kwbasedb/kwbase/pkg/jobs/jobsprotectedts"
@@ -41,7 +39,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqltelemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/cloud"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/localexternal"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/errorutil/unimplemented"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
@@ -124,10 +122,6 @@ func importPlanHook(
 		return nil, nil, nil, false, nil
 	}
 	telemetry.Inc(sqltelemetry.ImportCounter("total.attempted"))
-	if !p.ExecCfg().Settings.Version.IsActive(ctx, clusterversion.VersionPartitionedBackup) {
-		return nil, nil, nil, false, errors.Errorf("IMPORT requires a cluster which has the version >= 19.2")
-	}
-
 	filesFn, err := p.TypeAsStringArray(importStmt.Files, "IMPORT FILES")
 	if err != nil {
 		return nil, nil, nil, false, err
@@ -645,8 +639,11 @@ func getOptsParas(fileFormat string, opts map[string]string) (roachpb.IOFileForm
 		if limitMemory > maxMemory {
 			return ioFileFormat, errors.Errorf("limit_memory exceeds maximum allowed value (1PB)")
 		}
-		ioFileFormat.Csv.LimitMemory = limitMemory
 	}
+	if limitMemory == 0 {
+		limitMemory = 1024 * 1024 * 10 //10MB
+	}
+	ioFileFormat.Csv.LimitMemory = limitMemory
 	// log.Infof(context.Background(), "logColumn %d, threads %d, batchRows %d",
 	// 	ioFileFormat.Csv.LogColumn, ioFileFormat.Csv.Threads, ioFileFormat.Csv.BatchRows)
 	return ioFileFormat, nil
@@ -658,7 +655,7 @@ func importJobDescription(
 	stmt := *orig
 	stmt.Files = nil
 	for _, file := range files {
-		clean, err := cloud.SanitizeExternalStorageURI(file, nil /* extraParams */)
+		clean, err := localexternal.SanitizeExternalStorageURI(file, nil /* extraParams */)
 		if err != nil {
 			return "", err
 		}
@@ -890,10 +887,13 @@ func (r *importResumer) relationalResume(
 		dbPath := details.URIs[0]
 		for _, table := range details.Tables {
 			count++
-			filePathName := dbPath + string(os.PathSeparator) + table.SchemaName + string(os.PathSeparator) + table.Desc.Name + string(os.PathSeparator)
+			// nodelocal paths are URIs, so the path separator must always be "/" even on Windows.
+			filePathName := dbPath + "/" + table.SchemaName + "/" + table.Desc.Name + "/"
 			dataFiles, err := getDataFilesInURI(ctx, p, filePathName, details.Format, table)
 			if err != nil {
 				if _, ok := err.(*importPathError); ok {
+					log.Warningf(ctx, "skipping table (no data files): schema=%s table=%s path=%s err=%v",
+						table.SchemaName, table.Desc.Name, filePathName, err)
 					continue
 				} else {
 					return err
@@ -1018,10 +1018,11 @@ func (r *importResumer) OnFailOrCancel(ctx context.Context, phs interface{}) err
 
 // getURIPrefix get sub path from db path.
 func getURIPrefix(dbPath string, table sqlbase.ImportTable) (string, error) {
-	tsScPath := dbPath + string(os.PathSeparator) + "public" + string(os.PathSeparator)
+	// nodelocal paths are URIs, so the path separator must always be "/" even on Windows.
+	tsScPath := dbPath + "/public/"
 	switch table.TableType {
 	case tree.TimeseriesTable, tree.RelationalTable, tree.SparseTable:
-		return tsScPath + table.TableName + string(os.PathSeparator), nil
+		return tsScPath + table.TableName + "/", nil
 	default:
 		return "", errors.Errorf("unsupported table type %v", table.TableType)
 	}
@@ -1052,6 +1053,7 @@ func getDataFilesInURI(
 		// The current implementation only relies on parsing the hrefs in the HTML file
 		filesInTbDir, err := store.ListFiles(ctx, "*")
 		if err != nil {
+			log.Warningf(ctx, "ListFiles failed: uri=%s err=%v", uri, err)
 			return nil, err
 		}
 
@@ -1060,11 +1062,13 @@ func getDataFilesInURI(
 				tableFiles = append(tableFiles, tableFile)
 			}
 		}
+
 		if len(tableFiles) == 0 {
+			log.Warningf(ctx, "getDataFilesInURI: no csv files found: uri=%s listedFiles=%v", uri, filesInTbDir)
 			return nil, newImportPathError(uri)
 		}
 		for i := 0; i < len(tableFiles); i++ {
-			tableFiles[i] = strings.Join([]string{uri, tableFiles[i]}, string(os.PathSeparator))
+			tableFiles[i] = strings.Join([]string{uri, tableFiles[i]}, "/")
 		}
 	default:
 		return nil, errors.Errorf("unsupported table type %v", table.TableType)
@@ -1117,6 +1121,8 @@ func (r *importResumer) prepareTableDescsForIngestion(
 			}
 		}
 		for i, table := range details.Tables {
+			log.Infof(ctx, "[IMPORT-DEBUG] prepareTable: idx=%d schema=%s table=%s isNew=%v",
+				i, table.SchemaName, table.TableName, table.IsNew)
 			if table.IsNew {
 				searchPath := sessiondata.SetSearchPath(p.CurrentSearchPath(), []string{table.SchemaName})
 				p.ExecCfg().InternalExecutor.SetSessionData(&sessiondata.SessionData{Database: cleanedDbName, SearchPath: searchPath})

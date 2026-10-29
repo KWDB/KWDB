@@ -1,0 +1,539 @@
+// Copyright 2019 The Cockroach Authors.
+// Copyright (c) 2022-present, Shanghai Yunxi Technology Co, Ltd. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// This software (KWDB) is licensed under Mulan PSL v2.
+// You can use this software according to the terms and conditions of the Mulan PSL v2.
+// You may obtain a copy of Mulan PSL v2 at:
+//          http://license.coscl.org.cn/MulanPSL2
+// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+// EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+// MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+// See the Mulan PSL v2 for more details.
+
+package localexternal
+
+import (
+	"bytes"
+	"context"
+	"crypto/rand"
+	"fmt"
+	"io/ioutil"
+	"net/url"
+	"path"
+	"path/filepath"
+	"runtime"
+	"sort"
+	"strings"
+	"testing"
+
+	"gitee.com/kwbasedb/kwbase/pkg/base"
+	"gitee.com/kwbasedb/kwbase/pkg/blobs"
+	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
+	"gitee.com/kwbasedb/kwbase/pkg/testutils"
+	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
+)
+
+func appendPath(t *testing.T, s, add string) string {
+	u, err := url.Parse(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// u.Path is a URI component and must be joined with the POSIX path rules:
+	// filepath.Join would inject OS-native separators (backslashes on Windows)
+	// into the URI and break its later parsing.
+	u.Path = path.Join(u.Path, add)
+	return u.String()
+}
+
+var testSettings *cluster.Settings
+
+func init() {
+	testSettings = cluster.MakeTestingClusterSettings()
+}
+
+func storeFromURI(
+	ctx context.Context, t *testing.T, uri string, clientFactory blobs.BlobClientFactory,
+) ExternalStorage {
+	conf, err := ExternalStorageConfFromURI(uri)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Setup a sink for the given args.
+	s, err := MakeExternalStorage(ctx, conf, base.ExternalIOConfig{}, testSettings, clientFactory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+func testExportStore(t *testing.T, storeURI string, skipSingleFile bool) {
+	testExportStoreWithExternalIOConfig(t, base.ExternalIOConfig{}, storeURI, skipSingleFile)
+}
+
+func testExportStoreWithExternalIOConfig(
+	t *testing.T, ioConf base.ExternalIOConfig, storeURI string, skipSingleFile bool,
+) {
+	ctx := context.TODO()
+
+	conf, err := ExternalStorageConfFromURI(storeURI)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Setup a sink for the given args.
+	clientFactory := blobs.TestBlobServiceClient(testSettings.ExternalIODir)
+	s, err := MakeExternalStorage(ctx, conf, ioConf, testSettings, clientFactory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	if readConf := s.Conf(); readConf != conf {
+		t.Fatalf("conf does not roundtrip: started with %+v, got back %+v", conf, readConf)
+	}
+
+	t.Run("simple round trip", func(t *testing.T) {
+		sampleName := "somebytes"
+		sampleBytes := "hello world"
+
+		for i := 0; i < 10; i++ {
+			name := fmt.Sprintf("%s-%d", sampleName, i)
+			payload := []byte(strings.Repeat(sampleBytes, i))
+			if err := s.WriteFile(ctx, name, bytes.NewReader(payload)); err != nil {
+				t.Fatal(err)
+			}
+
+			if sz, err := s.Size(ctx, name); err != nil {
+				t.Error(err)
+			} else if sz != int64(len(payload)) {
+				t.Errorf("size mismatch, got %d, expected %d", sz, len(payload))
+			}
+
+			r, err := s.ReadFile(ctx, name)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			res, err := ioutil.ReadAll(r)
+			// Close before Delete: Windows cannot remove a file while a handle
+			// is still open (Linux permits it, hence the previous defer).
+			_ = r.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(res, payload) {
+				t.Fatalf("got %v expected %v", res, payload)
+			}
+			if err := s.Delete(ctx, name); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
+
+	t.Run("8mb-tempfile", func(t *testing.T) {
+		const size = 1024 * 1024 * 8 // 8MiB
+		testingContent := make([]byte, size)
+		if _, err := rand.Read(testingContent); err != nil {
+			t.Fatal(err)
+		}
+		testingFilename := "testing-123"
+
+		if err := s.WriteFile(ctx, testingFilename, bytes.NewReader(testingContent)); err != nil {
+			t.Fatal(err)
+		}
+
+		res, err := s.ReadFile(ctx, testingFilename)
+		if err != nil {
+			t.Fatalf("Could not get reader for %s: %+v", testingFilename, err)
+		}
+		content, err := ioutil.ReadAll(res)
+		// Close before Delete: Windows cannot remove a file while a handle is
+		// still open (Linux permits it, hence the previous defer).
+		_ = res.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(content, testingContent) {
+			t.Fatalf("wrong content")
+		}
+		if err := s.Delete(ctx, testingFilename); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if skipSingleFile {
+		return
+	}
+	t.Run("read-single-file-by-uri", func(t *testing.T) {
+		const testingFilename = "A"
+		if err := s.WriteFile(ctx, testingFilename, bytes.NewReader([]byte("aaa"))); err != nil {
+			t.Fatal(err)
+		}
+		singleFile := storeFromURI(ctx, t, appendPath(t, storeURI, testingFilename), clientFactory)
+		defer singleFile.Close()
+
+		res, err := singleFile.ReadFile(ctx, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		content, err := ioutil.ReadAll(res)
+		// Close before Delete: Windows cannot remove a file while a handle is
+		// still open (Linux permits it, hence the previous defer).
+		_ = res.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(content, []byte("aaa")) {
+			t.Fatalf("wrong content")
+		}
+		if err := s.Delete(ctx, testingFilename); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("write-single-file-by-uri", func(t *testing.T) {
+		const testingFilename = "B"
+		singleFile := storeFromURI(ctx, t, appendPath(t, storeURI, testingFilename), clientFactory)
+		defer singleFile.Close()
+
+		if err := singleFile.WriteFile(ctx, "", bytes.NewReader([]byte("bbb"))); err != nil {
+			t.Fatal(err)
+		}
+
+		res, err := s.ReadFile(ctx, testingFilename)
+		if err != nil {
+			t.Fatal(err)
+		}
+		content, err := ioutil.ReadAll(res)
+		// Close before Delete: Windows cannot remove a file while a handle is
+		// still open (Linux permits it, hence the previous defer).
+		_ = res.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(content, []byte("bbb")) {
+			t.Fatalf("wrong content")
+		}
+		if err := s.Delete(ctx, testingFilename); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
+func testListFiles(t *testing.T, storeURI string) {
+	ctx := context.TODO()
+	dataLetterFiles := []string{"file/letters/dataA.csv", "file/letters/dataB.csv", "file/letters/dataC.csv"}
+	dataNumberFiles := []string{"file/numbers/data1.csv", "file/numbers/data2.csv", "file/numbers/data3.csv"}
+	letterFiles := []string{"file/abc/A.csv", "file/abc/B.csv", "file/abc/C.csv"}
+	fileNames := append(dataLetterFiles, dataNumberFiles...)
+	fileNames = append(fileNames, letterFiles...)
+	sort.Strings(fileNames)
+
+	clientFactory := blobs.TestBlobServiceClient(testSettings.ExternalIODir)
+	for _, fileName := range fileNames {
+		file := storeFromURI(ctx, t, storeURI, clientFactory)
+		if err := file.WriteFile(ctx, fileName, bytes.NewReader([]byte("bbb"))); err != nil {
+			t.Fatal(err)
+		}
+		_ = file.Close()
+	}
+
+	uri, _ := url.Parse(storeURI)
+
+	abs := func(in []string) []string {
+		out := make([]string, len(in))
+		for i := range in {
+			u := *uri
+			u.Path = u.Path + "/" + in[i]
+			out[i] = u.String()
+		}
+		return out
+	}
+
+	t.Run("ListFiles", func(t *testing.T) {
+
+		for _, tc := range []struct {
+			name       string
+			URI        string
+			suffix     string
+			resultList []string
+		}{
+			{
+				"list-all-csv",
+				appendPath(t, storeURI, "file/*/*.csv"),
+				"",
+				abs(fileNames),
+			},
+			{
+				"list-letter-csv",
+				appendPath(t, storeURI, "file/abc/?.csv"),
+				"",
+				abs(letterFiles),
+			},
+			{
+				"list-letter-csv-rel-file-suffix",
+				appendPath(t, storeURI, "file"),
+				"abc/?.csv",
+				[]string{"abc/A.csv", "abc/B.csv", "abc/C.csv"},
+			},
+			{
+				"list-letter-csv-rel-abc-suffix",
+				appendPath(t, storeURI, "file/abc"),
+				"?.csv",
+				[]string{"A.csv", "B.csv", "C.csv"},
+			},
+			{
+				"list-letter-csv-dotdot",
+				appendPath(t, storeURI, "file/abc/xzy/../?.csv"),
+				"",
+				abs(letterFiles),
+			},
+			{
+				"list-abc-csv-suffix",
+				appendPath(t, storeURI, "file"),
+				"abc/?.csv",
+				[]string{"abc/A.csv", "abc/B.csv", "abc/C.csv"},
+			},
+			{
+				"list-letter-csv-dotdot-suffix",
+				appendPath(t, storeURI, "file/abc/xzy"),
+				"../../?.csv",
+				nil,
+			},
+			{
+				"list-data-num-csv",
+				appendPath(t, storeURI, "file/numbers/data[0-9].csv"),
+				"",
+				abs(dataNumberFiles),
+			},
+			{
+				"wildcard-bucket-and-filename",
+				appendPath(t, storeURI, "*/numbers/*.csv"),
+				"",
+				abs(dataNumberFiles),
+			},
+			{
+				"wildcard-bucket-and-filename-suffix",
+				appendPath(t, storeURI, ""),
+				"*/numbers/*.csv",
+				[]string{"file/numbers/data1.csv", "file/numbers/data2.csv", "file/numbers/data3.csv"},
+			},
+			{
+				"list-all-csv-skip-dir",
+				appendPath(t, storeURI, "file/*.csv"),
+				"",
+				[]string{},
+			},
+			{
+				"list-no-matches",
+				appendPath(t, storeURI, "file/letters/dataD.csv"),
+				"",
+				[]string{},
+			},
+			{
+				"list-escaped-star",
+				appendPath(t, storeURI, "file/*/\\*.csv"),
+				"",
+				[]string{},
+			},
+			{
+				"list-escaped-star-suffix",
+				appendPath(t, storeURI, "file"),
+				"*/\\*.csv",
+				[]string{},
+			},
+			{
+				"list-escaped-range",
+				appendPath(t, storeURI, "file/*/data\\[0-9\\].csv"),
+				"",
+				[]string{},
+			},
+			{
+				"list-escaped-range-suffix",
+				appendPath(t, storeURI, "file"),
+				"*/data\\[0-9\\].csv",
+				[]string{},
+			},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				// On Windows the backslash is a path separator, so it cannot
+				// be used to escape glob metacharacters in a pattern.
+				if runtime.GOOS == "windows" && strings.Contains(tc.name, "escaped") {
+					t.Skip("escaping glob metacharacters with backslash is not supported on Windows")
+				}
+				s := storeFromURI(ctx, t, tc.URI, clientFactory)
+				filesList, err := s.ListFiles(ctx, tc.suffix)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				if len(filesList) != len(tc.resultList) {
+					t.Fatal(`listed incorrect number of files`, filesList)
+				}
+				for i, got := range filesList {
+					if expected := tc.resultList[i]; got != expected {
+						t.Fatal(`resulting list is incorrect. got: `, got, `expected: `, expected, "\n", filesList)
+					}
+				}
+			})
+		}
+	})
+
+	for _, fileName := range fileNames {
+		file := storeFromURI(ctx, t, storeURI, clientFactory)
+		if err := file.Delete(ctx, fileName); err != nil {
+			t.Fatal(err)
+		}
+		_ = file.Close()
+	}
+}
+
+func TestPutLocal(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	p, cleanupFn := testutils.TempDir(t)
+	defer cleanupFn()
+
+	testSettings.ExternalIODir = p
+	// The URI path is always joined onto the external IO dir by LocalStorage.
+	// Strip the Windows volume name ("C:") first: the colon is illegal inside a
+	// Windows file path and would make directory creation fail. On Linux the
+	// volume name is empty, so the behavior is unchanged.
+	uriPath := filepath.ToSlash(p)
+	if vol := filepath.VolumeName(p); vol != "" {
+		uriPath = strings.TrimPrefix(uriPath, filepath.ToSlash(vol))
+	}
+	dest := MakeLocalStorageURI(uriPath)
+
+	testExportStore(t, dest, false)
+	testListFiles(t, "nodelocal://1/listing-test/basepath")
+}
+
+// TestListFilesDatabaseImportLayout reproduces the directory walk performed by
+// IMPORT DATABASE: a database directory contains meta.sql plus schema folders,
+// each schema folder contains meta.sql and table folders, and each table
+// folder contains meta.sql plus data files. Listed names must be returned
+// relative to the storage base using URI-style forward slashes on every OS;
+// otherwise the importer finds no tables and reports "cannot import an empty
+// database" on Windows.
+func TestListFilesDatabaseImportLayout(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	ctx := context.TODO()
+	p, cleanupFn := testutils.TempDir(t)
+	defer cleanupFn()
+	testSettings.ExternalIODir = p
+	clientFactory := blobs.TestBlobServiceClient(testSettings.ExternalIODir)
+
+	const dbURI = "nodelocal://1/dbcase11"
+	writeFile := func(uri, name, content string) {
+		s := storeFromURI(ctx, t, uri, clientFactory)
+		defer s.Close()
+		if err := s.WriteFile(ctx, name, bytes.NewReader([]byte(content))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeFile(dbURI, "meta.sql", "CREATE DATABASE dbcase11;")
+	writeFile(dbURI, "public/t1/meta.sql", "CREATE TABLE t1 (id INT);")
+	writeFile(dbURI, "public/t1/data.csv", "1\n")
+	writeFile(dbURI, "s1/t2/meta.sql", "CREATE TABLE s1.t2 (id INT);")
+	writeFile(dbURI, "s1/t2/data.csv", "2\n")
+
+	// Walk the database directory, mirroring readTablesInDbFromStore.
+	dbStore := storeFromURI(ctx, t, dbURI+"/", clientFactory)
+	dbEntries, err := dbStore.ListFiles(ctx, "*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(dbEntries)
+	if expected := []string{"meta.sql", "public", "s1"}; strings.Join(dbEntries, ",") != strings.Join(expected, ",") {
+		t.Fatalf("database entries = %v, expected %v", dbEntries, expected)
+	}
+
+	for _, sc := range []string{"public", "s1"} {
+		scStore := storeFromURI(ctx, t, dbURI+"/"+sc+"/", clientFactory)
+		scEntries, err := scStore.ListFiles(ctx, "*")
+		if err != nil {
+			t.Fatal(err)
+		}
+		sort.Strings(scEntries)
+		foundTable := false
+		for _, entry := range scEntries {
+			if entry == "meta.sql" {
+				continue
+			}
+			// Every non-meta entry is treated as a table folder whose
+			// meta.sql must be readable through a slash-joined relative path.
+			r, err := scStore.ReadFile(ctx, entry+"/meta.sql")
+			if err != nil {
+				t.Fatalf("read %s/meta.sql: %v", entry, err)
+			}
+			content, err := ioutil.ReadAll(r)
+			_ = r.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(content), "CREATE TABLE") {
+				t.Fatalf("unexpected table meta content: %q", content)
+			}
+			foundTable = true
+		}
+		if !foundTable {
+			t.Fatalf("schema %s: no table folder listed, got %v", sc, scEntries)
+		}
+	}
+}
+
+func TestLocalIOLimits(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	ctx := context.TODO()
+	const allowed = "/allowed"
+	testSettings.ExternalIODir = allowed
+
+	clientFactory := blobs.TestBlobServiceClient(testSettings.ExternalIODir)
+
+	baseDir, err := ExternalStorageFromURI(
+		ctx, "nodelocal://01/", base.ExternalIOConfig{}, testSettings, clientFactory)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for dest, expected := range map[string]string{allowed: "", "/../../blah": "not allowed"} {
+		u := fmt.Sprintf("nodelocal://01%s", dest)
+		e, err := ExternalStorageFromURI(
+			ctx, u, base.ExternalIOConfig{}, testSettings, clientFactory)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err = e.ListFiles(ctx, ""); !testutils.IsError(err, expected) {
+			t.Fatal(err)
+		}
+		if _, err = baseDir.ListFiles(ctx, dest); !testutils.IsError(err, expected) {
+			t.Fatal(err)
+		}
+	}
+
+	for host, expectErr := range map[string]bool{"": false, "1": false, "0": false, "blah": true} {
+		u := fmt.Sprintf("nodelocal://01%s/path/to/file", host)
+
+		var expected string
+		if expectErr {
+			expected = "host component of nodelocal URI must be a node ID"
+		}
+		if _, err := ExternalStorageConfFromURI(u); !testutils.IsError(err, expected) {
+			t.Fatalf("%q: expected error %q, got %v", u, expected, err)
+		}
+	}
+}

@@ -62,6 +62,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/timeseries"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding"
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
@@ -1125,6 +1126,10 @@ func (dsp *DistSQLPlanner) partitionTSSpans(
 				var b kv.Batch
 				liReq := &roachpb.LeaseInfoRequest{}
 				liReq.Key = rangeKey
+				// for mode2, read uncommitted because write not control and maybe latch lock
+				if timeseries.TsRaftLogSyncPeriod.Get(&dsp.st.SV) > 0 {
+					b.Header.ReadConsistency = roachpb.READ_UNCOMMITTED
+				}
 				b.AddRawRequest(liReq)
 				b.Header.ReturnRangeInfo = true
 				if err = dsp.distSQLSrv.DB.Run(ctx, &b); err != nil {
@@ -1241,10 +1246,13 @@ func getLeaseHolderByLeaseInfoRequest(
 
 				liReq := &roachpb.LeaseInfoRequest{}
 				liReq.Key = start
-
 				var b kv.Batch
 				b.AddRawRequest(liReq)
 				b.Header.ReturnRangeInfo = true
+				// for mode2, read uncommitted because write not control and maybe latch lock
+				if timeseries.TsRaftLogSyncPeriod.Get(&dsp.st.SV) > 0 {
+					b.Header.ReadConsistency = roachpb.READ_UNCOMMITTED
+				}
 				if err := dsp.distSQLSrv.DB.Run(ctx, &b); err != nil {
 					errOnce.Do(func() {
 						resultErr = errors.Wrap(err, "get lease info failed")
@@ -1889,9 +1897,13 @@ func buildTSColsAndTSColMap(
 		}
 	}
 
+	// Add time series hidden columns (_osn, _op, _event)
+	tsCols, tsColMap = addTsHiddenTSColumns(n, tsCols, tsColMap)
+
 	resCols := make([]int, 0)
 	for _, resCol := range n.resultColumns {
-		if columnIDSet.Contains(opt.ColumnID(resCol.PGAttributeNum)) {
+		if columnIDSet.Contains(opt.ColumnID(resCol.PGAttributeNum)) || resCol.PGAttributeNum == sqlbase.OsnColIdx ||
+			resCol.PGAttributeNum == sqlbase.OpColIdx || resCol.PGAttributeNum == sqlbase.EventColIdx {
 			if index, ok := tsColMap[resCol.PGAttributeNum]; ok {
 				resCols = append(resCols, index.idx)
 			} else {
@@ -1902,6 +1914,50 @@ func buildTSColsAndTSColMap(
 		}
 	}
 	return tsCols, tsColMap, resCols
+}
+
+// addTsHiddenTSColumns adds the time series hidden columns (_osn, _op, _event)
+// to the TS column metadata and column index map.
+func addTsHiddenTSColumns(
+	n *tsScanNode, tsCols []sqlbase.TSCol, tsColMap map[sqlbase.ColumnID]tsColIndex,
+) ([]sqlbase.TSCol, map[sqlbase.ColumnID]tsColIndex) {
+	// Add _osn column
+	tsCol1 := sqlbase.TSCol{
+		SqlType:            sqlbase.DataType_TIMESTAMP,
+		StorageType:        sqlbase.DataType_BIGINT,
+		StorageLen:         8,
+		VariableLengthType: sqlbase.VariableLengthType_ColStorageTypeTuple,
+		ColumnType:         sqlbase.ColumnType_TYPE_DATA,
+		Nullable:           false,
+	}
+	tsCols = append(tsCols, tsCol1)
+	tsColMap[sqlbase.OsnColIdx] = tsColIndex{sqlbase.OsnColIdx, *types.Int, tsCol1.ColumnType}
+
+	// Add _op column
+	tsCol2 := sqlbase.TSCol{
+		SqlType:            sqlbase.DataType_TIMESTAMP,
+		StorageType:        sqlbase.DataType_BYTES,
+		StorageLen:         1,
+		VariableLengthType: sqlbase.VariableLengthType_ColStorageTypeTuple,
+		ColumnType:         sqlbase.ColumnType_TYPE_DATA,
+		Nullable:           false,
+	}
+	tsCols = append(tsCols, tsCol2)
+	tsColMap[sqlbase.OpColIdx] = tsColIndex{sqlbase.OpColIdx, *types.Bytes, tsCol2.ColumnType}
+
+	// Add _event column
+	tsCol3 := sqlbase.TSCol{
+		SqlType:            sqlbase.DataType_TIMESTAMP,
+		StorageType:        sqlbase.DataType_BYTES,
+		StorageLen:         16,
+		VariableLengthType: sqlbase.VariableLengthType_ColStorageTypeTuple,
+		ColumnType:         sqlbase.ColumnType_TYPE_DATA,
+		Nullable:           true,
+	}
+	tsCols = append(tsCols, tsCol3)
+	tsColMap[sqlbase.EventColIdx] = tsColIndex{sqlbase.EventColIdx, *types.Bytes, tsCol3.ColumnType}
+
+	return tsCols, tsColMap
 }
 
 // build HashtsCols and tsColMap by cols
@@ -1984,8 +2040,8 @@ func (p *PhysicalPlan) initPhyPlanForTsReaders(
 			*n.blockFilter[i].ColID = uint32(tsColIdx.idx + 1)
 		}
 	}
-	tr := execinfrapb.TSReaderSpec{TableID: uint64(n.Table.ID()), TsSpans: n.tsSpans, TableVersion: n.Table.GetTSVersion(),
-		OrderedScan: n.orderedType.UserOrderedScan(), TsTablereaderId: planCtx.tsTableReaderID, BlockFilter: n.blockFilter, TsFill: n.tsFill}
+	tr := execinfrapb.TSReaderSpec{TableID: uint64(n.Table.ID()), TsSpans: n.tsSpans, OsnSpans: n.osnSpans, TableVersion: n.Table.GetTSVersion(),
+		OrderedScan: n.orderedType.UserOrderedScan(), TsTablereaderId: planCtx.tsTableReaderID, BlockFilter: n.blockFilter, HasOsnCol: n.HasOsnCols, TsFill: n.tsFill}
 
 	if n.orderedType.NeedReverse() || n.reverse {
 		reverse := true
@@ -2229,9 +2285,11 @@ func (p *PhysicalPlan) buildPhyPlanForTagReaders(
 	var outCols []uint32
 	n.ScanSource.ForEach(func(i int) {
 		outCols = append(outCols, uint32(i-1))
-		if col, ok := tsColMap[sqlbase.ColumnID(n.Table.Column(i-1).ColID())]; ok {
-			if col.colType == sqlbase.ColumnType_TYPE_PTAG || col.colType == sqlbase.ColumnType_TYPE_TAG {
-				post.OutputColumns = append(post.OutputColumns, uint32(col.idx))
+		if i-1 < n.Table.DeletableColumnCount() {
+			if col, ok := tsColMap[sqlbase.ColumnID(n.Table.Column(i-1).ColID())]; ok {
+				if col.colType == sqlbase.ColumnType_TYPE_PTAG || col.colType == sqlbase.ColumnType_TYPE_TAG {
+					post.OutputColumns = append(post.OutputColumns, uint32(col.idx))
+				}
 			}
 		}
 	})
@@ -2855,6 +2913,10 @@ func (dsp *DistSQLPlanner) createTSDelete(
 			Spans:           n.spans,
 		}
 
+		if planCtx != nil && n.nodeIDs[i] == planCtx.EvalContext().NodeID {
+			tsDelete.CDCData = n.cdcData
+		}
+
 		proc := physicalplan.Processor{
 			Node: n.nodeIDs[i],
 			Spec: execinfrapb.ProcessorSpec{
@@ -2895,6 +2957,10 @@ func (dsp *DistSQLPlanner) createTSTagUpdate(
 		tsTagUpdate.StartKey = n.startKey
 		tsTagUpdate.EndKey = n.endKey
 		tsTagUpdate.OsnId = n.osnID
+
+		if planCtx != nil && n.nodeIDs[i] == planCtx.EvalContext().NodeID {
+			tsTagUpdate.CDCData = n.cdcData
+		}
 
 		proc := physicalplan.Processor{
 			Node: n.nodeIDs[i],
@@ -5606,6 +5672,13 @@ func (dsp *DistSQLPlanner) createPlanForNode(
 		if err := plan.AddFilter(n.filter, planCtx, plan.PlanToStreamColMap, n.engine == tree.EngineTypeTimeseries); err != nil {
 			return PhysicalPlan{}, err
 		}
+		if planCtx.cdcCtx != nil && n.filter != nil {
+			planCtx.cdcCtx.metricsFilter, err = physicalplan.MakeExpression(
+				n.filter, planCtx, plan.PlanToStreamColMap, false, false)
+			if err != nil {
+				return PhysicalPlan{}, err
+			}
+		}
 	case *synchronizerNode:
 		plan, err = dsp.createPlanForSynchronizer(planCtx, n)
 
@@ -7034,6 +7107,30 @@ var pgEncodeShortCircuitEnabled = settings.RegisterBoolSetting(
 	"sql.pg_encode_short_circuit.enabled", "enable the short circuit optimization", true,
 )
 
+// shouldUseQueryShortCircuit reports whether the TS engine may emit pre-encoded
+// PostgreSQL wire bytes for this plan instead of rows.
+//
+// The short circuit is a wire-format optimisation, not merely an execution one:
+// the bytes it produces are readable only by a client speaking the PostgreSQL
+// protocol, so it is gated on the issuing client's ClientSupportsPGWireResults.
+// isCommandResult is true only for a client's own statement result, which is
+// the result dispatchToExecutionEngine reads that capability from.
+func shouldUseQueryShortCircuit(
+	sv *settings.Values, planCtx *PlanningCtx, plan *PhysicalPlan,
+) bool {
+	return pgEncodeShortCircuitEnabled.Get(sv) &&
+		planCtx.isCommandResult &&
+		planCtx.ExtendedEvalCtx.ClientSupportsPGWireResults &&
+		!planCtx.runningSubquery &&
+		!planCtx.ExtendedEvalCtx.IsInternalSQL &&
+		!planCtx.ExtendedEvalCtx.SessionData.OutFormats &&
+		len(plan.PlanToStreamColMap) == len(plan.ResultTypes) &&
+		planCtx.planner != nil && planCtx.planner.stmt != nil &&
+		planCtx.planner.stmt.AST.StatOp() != "CALL" &&
+		plan.AllProcessorsExecInTSEngine &&
+		planCtx.ExtendedEvalCtx.SessionData.ClientEncoding == "utf8"
+}
+
 // FinalizePlan adds a final "result" stage if necessary and populates the
 // endpoints of the plan.
 func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan) {
@@ -7047,24 +7144,36 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 	}
 	thisNodeID := dsp.nodeDesc.NodeID
 
-	plan.SetTSEngineReturnEncode()
-	isDist := false
-	for _, p := range plan.Processors {
-		if p.Node != thisNodeID {
-			isDist = true
-			break
+	if runtime.GOOS != "windows" {
+		// linux
+		plan.SetTSEngineReturnEncode()
+		isDist := false
+		for _, p := range plan.Processors {
+			if p.Node != thisNodeID {
+				isDist = true
+				break
+			}
 		}
-	}
 
-	if plan.ChildIsExecInTSEngine() && isDist {
-		// If all the processors can be executed in ts engine and need to be summarized,
-		// add ts-noop processor.
-		if len(plan.ResultRouters) != 1 || plan.Processors[plan.ResultRouters[0]].Node != thisNodeID {
-			post := execinfrapb.PostProcessSpec{OutputTypes: plan.ResultTypes}
-			plan.AddTSSingleGroupStage(thisNodeID, execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{
-				InputNum:   uint32(plan.GateNoopInput),
-				TsOperator: plan.TsOperator,
-			}}, post, plan.ResultTypes, true)
+		if plan.ChildIsExecInTSEngine() && isDist {
+			// If all the processors can be executed in ts engine and need to be summarized,
+			// add ts-noop processor.
+			if len(plan.ResultRouters) != 1 || plan.Processors[plan.ResultRouters[0]].Node != thisNodeID {
+				post := execinfrapb.PostProcessSpec{OutputTypes: plan.ResultTypes}
+				plan.AddTSSingleGroupStage(thisNodeID, execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{
+					InputNum:   uint32(plan.GateNoopInput),
+					TsOperator: plan.TsOperator,
+				}}, post, plan.ResultTypes, true)
+			}
+		}
+	} else {
+		// windows
+		for i, idx := range plan.ResultRouters {
+			if plan.Processors[idx].ExecInTSEngine() && plan.Processors[idx].Node != thisNodeID {
+				plan.AddNoopImplementation(
+					execinfrapb.PostProcessSpec{}, idx, i, nil, &plan.ResultTypes,
+				)
+			}
 		}
 	}
 
@@ -7076,7 +7185,7 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 				InputNum:   uint32(plan.GateNoopInput),
 				TsOperator: plan.TsOperator,
 			}},
-			execinfrapb.PostProcessSpec{},
+			execinfrapb.PostProcessSpec{OutputTypes: plan.ResultTypes},
 			plan.ResultTypes,
 		)
 	}
@@ -7086,13 +7195,20 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 	}
 	plan.Processors[plan.ResultRouters[0]].LogicalSequenceID = []uint64{0}
 
-	plan.addNoopForErr()
+	if runtime.GOOS != "windows" {
+		plan.addNoopForErr()
+	}
 
 	// This operation is used to pass the short-circuit flag to AE.
 	// If there is a subquery, it cannot be short-circuited and
 	// directly returned to the client.
 	if planCtx.ExtendedEvalCtx.IsInternalSQL || planCtx.runningSubquery {
 		plan.AllProcessorsExecInTSEngine = false
+	}
+
+	post := execinfrapb.PostProcessSpec{}
+	if runtime.GOOS == "windows" {
+		post = execinfrapb.PostProcessSpec{OutputTypes: plan.ResultTypes}
 	}
 
 	if len(metadataSenders) > 0 {
@@ -7103,7 +7219,7 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 					SenderIDs: metadataSenders,
 				},
 			},
-			execinfrapb.PostProcessSpec{},
+			post,
 			plan.ResultTypes,
 		)
 		plan.Processors[plan.ResultRouters[0]].LogicalSequenceID = []uint64{0}
@@ -7117,11 +7233,7 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 	finalOut.Streams = append(finalOut.Streams, execinfrapb.StreamEndpointSpec{
 		Type: execinfrapb.StreamEndpointType_SYNC_RESPONSE,
 	})
-	if pgEncodeShortCircuitEnabled.Get(&dsp.st.SV) && !planCtx.runningSubquery && !planCtx.ExtendedEvalCtx.IsInternalSQL &&
-		!planCtx.ExtendedEvalCtx.SessionData.OutFormats && len(plan.PlanToStreamColMap) == len(plan.ResultTypes) &&
-		planCtx.planner != nil && planCtx.planner.stmt != nil && planCtx.planner.stmt.AST.StatOp() != "CALL" &&
-		plan.AllProcessorsExecInTSEngine && planCtx.ExtendedEvalCtx.SessionData.ClientEncoding == "utf8" &&
-		planCtx.isCommandResult {
+	if shouldUseQueryShortCircuit(&dsp.st.SV, planCtx, plan) {
 		plan.UseQueryShortCircuit = true
 	}
 	plan.UseCompressType = int64(planCtx.ExtendedEvalCtx.SessionData.PgExtendCompressMode)
@@ -7541,5 +7653,16 @@ func visitTableMeta(
 			}
 		}
 	}
+
+	// Add osn hidden columns
+	descColumnIDs = append(descColumnIDs, sqlbase.OsnColIdx)
+	typs = append(typs, *types.Int)
+
+	descColumnIDs = append(descColumnIDs, sqlbase.OpColIdx)
+	typs = append(typs, *types.Bytes)
+
+	descColumnIDs = append(descColumnIDs, sqlbase.EventColIdx)
+	typs = append(typs, *types.Bytes)
+
 	return ptCols, typs, descColumnIDs, columnIDSet
 }

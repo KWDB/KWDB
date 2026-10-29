@@ -35,7 +35,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/stateloader"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/testcluster"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
@@ -93,7 +93,7 @@ func TestDebugCheckStore(t *testing.T) {
 
 	// Introduce a stats divergence on s1.
 	func() {
-		eng, err := storage.NewDefaultEngine(
+		eng, err := relational.NewDefaultEngine(
 			10<<20, /* 10mb */
 			base.StorageConfig{
 				Dir:       storePaths[0],

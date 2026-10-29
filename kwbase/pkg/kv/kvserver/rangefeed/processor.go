@@ -31,8 +31,8 @@ import (
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/relational/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/interval"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -203,7 +203,7 @@ func NewProcessor(cfg Config) *Processor {
 // calling its Close method when it is finished. If the iterator is nil then
 // no initialization scan will be performed and the resolved timestamp will
 // immediately be considered initialized.
-func (p *Processor) Start(stopper *stop.Stopper, rtsIter storage.SimpleIterator) {
+func (p *Processor) Start(stopper *stop.Stopper, rtsIter relational.SimpleIterator) {
 	ctx := p.AnnotateCtx(context.Background())
 	stopper.RunWorker(ctx, func(ctx context.Context) {
 		defer close(p.stoppedC)
@@ -395,7 +395,7 @@ func (p *Processor) sendStop(pErr *roachpb.Error) {
 func (p *Processor) Register(
 	span roachpb.RSpan,
 	startTS hlc.Timestamp,
-	catchupIter storage.SimpleIterator,
+	catchupIter relational.SimpleIterator,
 	withDiff bool,
 	stream Stream,
 	errC chan<- *roachpb.Error,
