@@ -132,7 +132,7 @@ CREATE PUBLICATION
 ERROR: publication is only used on ts table. but sensor_data1 is relational table
 SQLSTATE: 42809
 > CREATE PUB pub_table_filter FOR TABLE tsdb1.sensor_data1 WHERE temperature > 36.8; -- error, for table_list does not support WHERE.
-ERROR: at or near "where": syntax error
+ERROR: at or near "where" with offset 57: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 CREATE PUB pub_table_filter FOR TABLE tsdb1.sensor_data1 WHERE temperature > 36.8
@@ -155,7 +155,7 @@ CREATE PUBLICATION
 > CREATE PUB pub_table_multi_2 FOR TABLE tsdb1.sensor_data1, tsdb2.sensor_data1; -- ok
 CREATE PUBLICATION
 > CREATE PUB pub_table_multi_filter FOR TABLE tsdb1.sensor_data1, tsdb1.sensor_data2 WHERE temperature > 36.8; -- error. not support WHERE for multiple tables
-ERROR: at or near "where": syntax error
+ERROR: at or near "where" with offset 83: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 CREATE PUB pub_table_multi_filter FOR TABLE tsdb1.sensor_data1, tsdb1.sensor_data2 WHERE temperature > 36.8
@@ -369,7 +369,7 @@ DROP PUBLICATION
 > CREATE PUB pub_db FOR DATABASE tsdb1; -- ok
 CREATE PUBLICATION
 > CREATE PUB pub_db_filter FOR DATABASE tsdb1 WHERE k_timestamp > '2025-07-17 02:08:19.302+00:00'; -- error. not support WHERE for DATABSE
-ERROR: at or near "where": syntax error
+ERROR: at or near "where" with offset 44: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 CREATE PUB pub_db_filter FOR DATABASE tsdb1 WHERE k_timestamp > '2025-07-17 02:08:19.302+00:00'

@@ -2379,23 +2379,23 @@ func TestParseError(t *testing.T) {
 		expected string
 	}{
 		{`SELECT2 1`,
-			`at or near "select2": syntax error
+			`at or near "select2" with offset 0: syntax error
 DETAIL: source SQL:
 SELECT2 1
 ^`},
 		{`SELECT 1 FROM (t)`,
-			`at or near ")": syntax error
+			`at or near ")" with offset 16: syntax error
 DETAIL: source SQL:
 SELECT 1 FROM (t)
                 ^
 HINT: try \h <SOURCE>`},
 		{`SET TIME ZONE INTERVAL 'foobar'`,
-			`at or near "EOF": syntax error: could not parse "foobar" as type interval: interval: missing unit at position 0: "foobar"
+			`at or near "EOF" with offset 31: syntax error: could not parse "foobar" as type interval: interval: missing unit at position 0: "foobar"
 DETAIL: source SQL:
 SET TIME ZONE INTERVAL 'foobar'
                                ^`},
 		{`SELECT INTERVAL 'foo'`,
-			`at or near "EOF": syntax error: could not parse "foo" as type interval: interval: missing unit at position 0: "foo"
+			`at or near "EOF" with offset 21: syntax error: could not parse "foo" as type interval: interval: missing unit at position 0: "foo"
 DETAIL: source SQL:
 SELECT INTERVAL 'foo'
                      ^`},
@@ -2411,7 +2411,7 @@ SELECT '1
        ^
 HINT: try \h SELECT`},
 		{`SELECT * FROM t WHERE k=`,
-			`at or near "EOF": syntax error
+			`at or near "EOF" with offset 24: syntax error
 DETAIL: source SQL:
 SELECT * FROM t WHERE k=
                         ^
@@ -2420,7 +2420,7 @@ HINT: try \h SELECT`,
 		{`CREATE TABLE test (
   CONSTRAINT foo INDEX (bar)
 )`,
-			`at or near "index": syntax error
+			`at or near "index" with offset 37: syntax error
 DETAIL: source SQL:
 CREATE TABLE test (
   CONSTRAINT foo INDEX (bar)
@@ -2429,7 +2429,7 @@ HINT: try \h CREATE TABLE`},
 		{`CREATE TABLE test (
   foo BIT(0)
 )`,
-			`at or near ")": syntax error: length for type bit must be at least 1
+			`at or near ")" with offset 31: syntax error: length for type bit must be at least 1
 DETAIL: source SQL:
 CREATE TABLE test (
   foo BIT(0)
@@ -2437,7 +2437,7 @@ CREATE TABLE test (
 		{`CREATE TABLE test (
   foo INT8 DEFAULT 1 DEFAULT 2
 )`,
-			`at or near ")": syntax error: multiple default values specified for column "foo"
+			`at or near ")" with offset 51: syntax error: multiple default values specified for column "foo"
 DETAIL: source SQL:
 CREATE TABLE test (
   foo INT8 DEFAULT 1 DEFAULT 2
@@ -2446,7 +2446,7 @@ CREATE TABLE test (
 		{`CREATE TABLE test (
   foo INT8 REFERENCES t1 REFERENCES t2
 )`,
-			`at or near ")": syntax error: multiple foreign key constraints specified for column "foo"
+			`at or near ")" with offset 59: syntax error: multiple foreign key constraints specified for column "foo"
 DETAIL: source SQL:
 CREATE TABLE test (
   foo INT8 REFERENCES t1 REFERENCES t2
@@ -2455,14 +2455,14 @@ CREATE TABLE test (
 		{`CREATE TABLE test (
   foo INT8 FAMILY a FAMILY b
 )`,
-			`at or near ")": syntax error: multiple column families specified for column "foo"
+			`at or near ")" with offset 49: syntax error: multiple column families specified for column "foo"
 DETAIL: source SQL:
 CREATE TABLE test (
   foo INT8 FAMILY a FAMILY b
 )
 ^`},
 		{`SELECT family FROM test`,
-			`at or near "from": syntax error
+			`at or near "from" with offset 14: syntax error
 DETAIL: source SQL:
 SELECT family FROM test
               ^
@@ -2470,7 +2470,7 @@ HINT: try \h SELECT`},
 		{`CREATE TABLE test (
   foo INT8 NOT NULL NULL
 )`,
-			`at or near ")": syntax error: conflicting NULL/NOT NULL declarations for column "foo"
+			`at or near ")" with offset 45: syntax error: conflicting NULL/NOT NULL declarations for column "foo"
 DETAIL: source SQL:
 CREATE TABLE test (
   foo INT8 NOT NULL NULL
@@ -2479,42 +2479,42 @@ CREATE TABLE test (
 		{`CREATE TABLE test (
   foo INT8 NULL NOT NULL
 )`,
-			`at or near ")": syntax error: conflicting NULL/NOT NULL declarations for column "foo"
+			`at or near ")" with offset 45: syntax error: conflicting NULL/NOT NULL declarations for column "foo"
 DETAIL: source SQL:
 CREATE TABLE test (
   foo INT8 NULL NOT NULL
 )
 ^`},
 		{`CREATE DATABASE a b`,
-			`at or near "b": syntax error
+			`at or near "b" with offset 18: syntax error
 DETAIL: source SQL:
 CREATE DATABASE a b
                   ^`},
 		{`CREATE DATABASE a b c`,
-			`at or near "b": syntax error
+			`at or near "b" with offset 18: syntax error
 DETAIL: source SQL:
 CREATE DATABASE a b c
                   ^`},
 		{`CREATE INDEX ON a (b) STORING ()`,
-			`at or near ")": syntax error
+			`at or near ")" with offset 31: syntax error
 DETAIL: source SQL:
 CREATE INDEX ON a (b) STORING ()
                                ^
 HINT: try \h CREATE INDEX`},
 		{`CREATE VIEW a`,
-			`at or near "EOF": syntax error
+			`at or near "EOF" with offset 13: syntax error
 DETAIL: source SQL:
 CREATE VIEW a
              ^
 HINT: try \h CREATE VIEW`},
 		{`CREATE VIEW a () AS select * FROM b`,
-			`at or near ")": syntax error
+			`at or near ")" with offset 15: syntax error
 DETAIL: source SQL:
 CREATE VIEW a () AS select * FROM b
                ^
 HINT: try \h CREATE VIEW`},
 		{`SELECT FROM t`,
-			`at or near "from": syntax error
+			`at or near "from" with offset 7: syntax error
 DETAIL: source SQL:
 SELECT FROM t
        ^
@@ -2527,7 +2527,7 @@ SELECT 1e-
        ^
 HINT: try \h SELECT`},
 		{"SELECT foo''",
-			`at or near "": syntax error: type does not exist
+			`at or near "" with offset 10: syntax error: type does not exist
 DETAIL: source SQL:
 SELECT foo''
           ^`},
@@ -2557,7 +2557,7 @@ HINT: try \h SELECT`,
 		},
 		{
 			`SELECT POSITION('high', 'a')`,
-			`at or near ",": syntax error
+			`at or near "," with offset 22: syntax error
 DETAIL: source SQL:
 SELECT POSITION('high', 'a')
                       ^
@@ -2565,7 +2565,7 @@ HINT: try \h SELECT`,
 		},
 		{
 			`SELECT a FROM foo@{FORCE_INDEX}`,
-			`at or near "}": syntax error
+			`at or near "}" with offset 30: syntax error
 DETAIL: source SQL:
 SELECT a FROM foo@{FORCE_INDEX}
                               ^
@@ -2573,7 +2573,7 @@ HINT: try \h <SOURCE>`,
 		},
 		{
 			`SELECT a FROM foo@{FORCE_INDEX=}`,
-			`at or near "}": syntax error
+			`at or near "}" with offset 31: syntax error
 DETAIL: source SQL:
 SELECT a FROM foo@{FORCE_INDEX=}
                                ^
@@ -2581,49 +2581,49 @@ HINT: try \h <SOURCE>`,
 		},
 		{
 			`SELECT a FROM foo@{FORCE_INDEX=bar,FORCE_INDEX=baz}`,
-			`at or near "baz": syntax error: FORCE_INDEX specified multiple times
+			`at or near "baz" with offset 47: syntax error: FORCE_INDEX specified multiple times
 DETAIL: source SQL:
 SELECT a FROM foo@{FORCE_INDEX=bar,FORCE_INDEX=baz}
                                                ^`,
 		},
 		{
 			`SELECT a FROM foo@{FORCE_INDEX=bar,NO_INDEX_JOIN}`,
-			`at or near "}": syntax error: FORCE_INDEX cannot be specified in conjunction with NO_INDEX_JOIN
+			`at or near "}" with offset 48: syntax error: FORCE_INDEX cannot be specified in conjunction with NO_INDEX_JOIN
 DETAIL: source SQL:
 SELECT a FROM foo@{FORCE_INDEX=bar,NO_INDEX_JOIN}
                                                 ^`,
 		},
 		{
 			`SELECT a FROM foo@{NO_INDEX_JOIN,NO_INDEX_JOIN}`,
-			`at or near "no_index_join": syntax error: NO_INDEX_JOIN specified multiple times
+			`at or near "no_index_join" with offset 33: syntax error: NO_INDEX_JOIN specified multiple times
 DETAIL: source SQL:
 SELECT a FROM foo@{NO_INDEX_JOIN,NO_INDEX_JOIN}
                                  ^`,
 		},
 		{
 			`SELECT a FROM foo@{IGNORE_FOREIGN_KEYS,IGNORE_FOREIGN_KEYS}`,
-			`at or near "ignore_foreign_keys": syntax error: IGNORE_FOREIGN_KEYS specified multiple times
+			`at or near "ignore_foreign_keys" with offset 39: syntax error: IGNORE_FOREIGN_KEYS specified multiple times
 DETAIL: source SQL:
 SELECT a FROM foo@{IGNORE_FOREIGN_KEYS,IGNORE_FOREIGN_KEYS}
                                        ^`,
 		},
 		{
 			`SELECT a FROM foo@{ASC}`,
-			`at or near "}": syntax error: ASC/DESC must be specified in conjunction with an index
+			`at or near "}" with offset 22: syntax error: ASC/DESC must be specified in conjunction with an index
 DETAIL: source SQL:
 SELECT a FROM foo@{ASC}
                       ^`,
 		},
 		{
 			`SELECT a FROM foo@{DESC}`,
-			`at or near "}": syntax error: ASC/DESC must be specified in conjunction with an index
+			`at or near "}" with offset 23: syntax error: ASC/DESC must be specified in conjunction with an index
 DETAIL: source SQL:
 SELECT a FROM foo@{DESC}
                        ^`,
 		},
 		{
 			`INSERT INTO a@b VALUES (1, 2)`,
-			`at or near "@": syntax error
+			`at or near "@" with offset 13: syntax error
 DETAIL: source SQL:
 INSERT INTO a@b VALUES (1, 2)
              ^
@@ -2631,7 +2631,7 @@ HINT: try \h INSERT`,
 		},
 		{
 			`ALTER TABLE t RENAME COLUMN x TO family`,
-			`at or near "family": syntax error
+			`at or near "family" with offset 33: syntax error
 DETAIL: source SQL:
 ALTER TABLE t RENAME COLUMN x TO family
                                  ^
@@ -2639,21 +2639,21 @@ HINT: try \h ALTER TABLE`,
 		},
 		{
 			`SELECT CAST(1.2+2.3 AS notatype)`,
-			`at or near "notatype": syntax error: type does not exist
+			`at or near "notatype" with offset 23: syntax error: type does not exist
 DETAIL: source SQL:
 SELECT CAST(1.2+2.3 AS notatype)
                        ^`,
 		},
 		{
 			`SELECT ANNOTATE_TYPE(1.2+2.3, notatype)`,
-			`at or near "notatype": syntax error: type does not exist
+			`at or near "notatype" with offset 30: syntax error: type does not exist
 DETAIL: source SQL:
 SELECT ANNOTATE_TYPE(1.2+2.3, notatype)
                               ^`,
 		},
 		{
 			`CREATE USER foo WITH PASSWORD`,
-			`at or near "EOF": syntax error
+			`at or near "EOF" with offset 29: syntax error
 DETAIL: source SQL:
 CREATE USER foo WITH PASSWORD
                              ^
@@ -2661,21 +2661,21 @@ HINT: try \h CREATE ROLE`,
 		},
 		{
 			`ALTER TABLE t RENAME TO t[TRUE]`,
-			`at or near "[": syntax error
+			`at or near "[" with offset 25: syntax error
 DETAIL: source SQL:
 ALTER TABLE t RENAME TO t[TRUE]
                          ^`,
 		},
 		{
 			`TABLE abc[TRUE]`,
-			`at or near "[": syntax error
+			`at or near "[" with offset 9: syntax error
 DETAIL: source SQL:
 TABLE abc[TRUE]
          ^`,
 		},
 		{
 			`UPDATE kv SET k[0] = 9`,
-			`at or near "[": syntax error
+			`at or near "[" with offset 15: syntax error
 DETAIL: source SQL:
 UPDATE kv SET k[0] = 9
                ^
@@ -2683,14 +2683,14 @@ HINT: try \h UPDATE`,
 		},
 		{
 			`SELECT (0) FROM y[array[]]`,
-			`at or near "[": syntax error
+			`at or near "[" with offset 17: syntax error
 DETAIL: source SQL:
 SELECT (0) FROM y[array[]]
                  ^`,
 		},
 		{
 			`INSERT INTO kv (k[0]) VALUES ('hello')`,
-			`at or near "[": syntax error
+			`at or near "[" with offset 17: syntax error
 DETAIL: source SQL:
 INSERT INTO kv (k[0]) VALUES ('hello')
                  ^
@@ -2698,28 +2698,28 @@ HINT: try \h <SELECTCLAUSE>`,
 		},
 		{
 			`SELECT CASE 1 = 1 WHEN true THEN ARRAY[1, 2] ELSE ARRAY[2, 3] END[1]`,
-			`at or near "[": syntax error
+			`at or near "[" with offset 65: syntax error
 DETAIL: source SQL:
 SELECT CASE 1 = 1 WHEN true THEN ARRAY[1, 2] ELSE ARRAY[2, 3] END[1]
                                                                  ^`,
 		},
 		{
 			`SELECT EXISTS(SELECT 1)[1]`,
-			`at or near "[": syntax error
+			`at or near "[" with offset 23: syntax error
 DETAIL: source SQL:
 SELECT EXISTS(SELECT 1)[1]
                        ^`,
 		},
 		{
 			`SELECT 1 + ANY ARRAY[1, 2, 3]`,
-			`at or near "EOF": syntax error: + ANY <array> is invalid because "+" is not a boolean operator
+			`at or near "EOF" with offset 29: syntax error: + ANY <array> is invalid because "+" is not a boolean operator
 DETAIL: source SQL:
 SELECT 1 + ANY ARRAY[1, 2, 3]
                              ^`,
 		},
 		{
 			`SELECT 'f'::"blah"`,
-			`at or near "blah": syntax error: type does not exist
+			`at or near "blah" with offset 12: syntax error: type does not exist
 DETAIL: source SQL:
 SELECT 'f'::"blah"
             ^`,
@@ -2728,7 +2728,7 @@ SELECT 'f'::"blah"
 		// where it should not be recognized.
 		{
 			`GRANT SELECT ON ROLE foo, bar TO blix`,
-			`at or near "foo": syntax error
+			`at or near "foo" with offset 21: syntax error
 DETAIL: source SQL:
 GRANT SELECT ON ROLE foo, bar TO blix
                      ^
@@ -2736,7 +2736,7 @@ HINT: try \h GRANT`,
 		},
 		{
 			`REVOKE SELECT ON ROLE foo, bar FROM blix`,
-			`at or near "foo": syntax error
+			`at or near "foo" with offset 22: syntax error
 DETAIL: source SQL:
 REVOKE SELECT ON ROLE foo, bar FROM blix
                       ^
@@ -2760,56 +2760,56 @@ HINT: try \h REVOKE`,
 		//		},
 		{
 			`SELECT avg(1) OVER (ROWS UNBOUNDED FOLLOWING) FROM t`,
-			`at or near "following": syntax error: frame start cannot be UNBOUNDED FOLLOWING
+			`at or near "following" with offset 35: syntax error: frame start cannot be UNBOUNDED FOLLOWING
 DETAIL: source SQL:
 SELECT avg(1) OVER (ROWS UNBOUNDED FOLLOWING) FROM t
                                    ^`,
 		},
 		{
 			`SELECT avg(1) OVER (ROWS 1 FOLLOWING) FROM t`,
-			`at or near "following": syntax error: frame starting from following row cannot end with current row
+			`at or near "following" with offset 27: syntax error: frame starting from following row cannot end with current row
 DETAIL: source SQL:
 SELECT avg(1) OVER (ROWS 1 FOLLOWING) FROM t
                            ^`,
 		},
 		{
 			`SELECT avg(1) OVER (ROWS BETWEEN UNBOUNDED FOLLOWING AND UNBOUNDED FOLLOWING) FROM t`,
-			`at or near "following": syntax error: frame start cannot be UNBOUNDED FOLLOWING
+			`at or near "following" with offset 67: syntax error: frame start cannot be UNBOUNDED FOLLOWING
 DETAIL: source SQL:
 SELECT avg(1) OVER (ROWS BETWEEN UNBOUNDED FOLLOWING AND UNBOUNDED FOLLOWING) FROM t
                                                                    ^`,
 		},
 		{
 			`SELECT avg(1) OVER (ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED PRECEDING) FROM t`,
-			`at or near "preceding": syntax error: frame end cannot be UNBOUNDED PRECEDING
+			`at or near "preceding" with offset 67: syntax error: frame end cannot be UNBOUNDED PRECEDING
 DETAIL: source SQL:
 SELECT avg(1) OVER (ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED PRECEDING) FROM t
                                                                    ^`,
 		},
 		{
 			`SELECT avg(1) OVER (ROWS BETWEEN CURRENT ROW AND 1 PRECEDING) FROM t`,
-			`at or near "preceding": syntax error: frame starting from current row cannot have preceding rows
+			`at or near "preceding" with offset 51: syntax error: frame starting from current row cannot have preceding rows
 DETAIL: source SQL:
 SELECT avg(1) OVER (ROWS BETWEEN CURRENT ROW AND 1 PRECEDING) FROM t
                                                    ^`,
 		},
 		{
 			`SELECT avg(1) OVER (ROWS BETWEEN 1 FOLLOWING AND 1 PRECEDING) FROM t`,
-			`at or near "preceding": syntax error: frame starting from following row cannot have preceding rows
+			`at or near "preceding" with offset 51: syntax error: frame starting from following row cannot have preceding rows
 DETAIL: source SQL:
 SELECT avg(1) OVER (ROWS BETWEEN 1 FOLLOWING AND 1 PRECEDING) FROM t
                                                    ^`,
 		},
 		{
 			`SELECT avg(1) OVER (ROWS BETWEEN 1 FOLLOWING AND CURRENT ROW) FROM t`,
-			`at or near "row": syntax error: frame starting from following row cannot have preceding rows
+			`at or near "row" with offset 57: syntax error: frame starting from following row cannot have preceding rows
 DETAIL: source SQL:
 SELECT avg(1) OVER (ROWS BETWEEN 1 FOLLOWING AND CURRENT ROW) FROM t
                                                          ^`,
 		},
 		{
 			`CREATE TABLE foo(a CHAR(0))`,
-			`at or near ")": syntax error: length for type CHAR must be at least 1
+			`at or near ")" with offset 25: syntax error: length for type CHAR must be at least 1
 DETAIL: source SQL:
 CREATE TABLE foo(a CHAR(0))
                          ^`,
@@ -2823,7 +2823,7 @@ e'\xad'::string
 		},
 		{
 			`EXPLAIN EXECUTE a`,
-			`at or near "execute": syntax error
+			`at or near "execute" with offset 8: syntax error
 DETAIL: source SQL:
 EXPLAIN EXECUTE a
         ^
@@ -2831,14 +2831,14 @@ HINT: try \h EXPLAIN`,
 		},
 		{
 			`EXPLAIN ANALYZE (PLAN) SELECT 1`,
-			`at or near "EOF": syntax error: EXPLAIN ANALYZE cannot be used with PLAN
+			`at or near "EOF" with offset 31: syntax error: EXPLAIN ANALYZE cannot be used with PLAN
 DETAIL: source SQL:
 EXPLAIN ANALYZE (PLAN) SELECT 1
                                ^`,
 		},
 		{
 			`EXPLAIN (ANALYZE, PLAN) SELECT 1`,
-			`at or near "analyze": syntax error
+			`at or near "analyze" with offset 9: syntax error
 DETAIL: source SQL:
 EXPLAIN (ANALYZE, PLAN) SELECT 1
          ^
@@ -2846,28 +2846,28 @@ HINT: try \h <SELECTCLAUSE>`,
 		},
 		{
 			`EXPLAIN ANALYZE (OPT) SELECT 1`,
-			`at or near "EOF": syntax error: EXPLAIN ANALYZE cannot be used with OPT
+			`at or near "EOF" with offset 30: syntax error: EXPLAIN ANALYZE cannot be used with OPT
 DETAIL: source SQL:
 EXPLAIN ANALYZE (OPT) SELECT 1
                               ^`,
 		},
 		{
 			`EXPLAIN ANALYZE (VEC) SELECT 1`,
-			`at or near "EOF": syntax error: EXPLAIN ANALYZE cannot be used with VEC
+			`at or near "EOF" with offset 30: syntax error: EXPLAIN ANALYZE cannot be used with VEC
 DETAIL: source SQL:
 EXPLAIN ANALYZE (VEC) SELECT 1
                               ^`,
 		},
 		{
 			`EXPLAIN (DEBUG) SELECT 1`,
-			`at or near "EOF": syntax error: DEBUG flag can only be used with EXPLAIN ANALYZE
+			`at or near "EOF" with offset 24: syntax error: DEBUG flag can only be used with EXPLAIN ANALYZE
 DETAIL: source SQL:
 EXPLAIN (DEBUG) SELECT 1
                         ^`,
 		},
 		{
 			`EXPLAIN (PLAN, DEBUG) SELECT 1`,
-			`at or near "EOF": syntax error: DEBUG flag can only be used with EXPLAIN ANALYZE
+			`at or near "EOF" with offset 30: syntax error: DEBUG flag can only be used with EXPLAIN ANALYZE
 DETAIL: source SQL:
 EXPLAIN (PLAN, DEBUG) SELECT 1
                               ^`,
@@ -2882,7 +2882,7 @@ HINT: try \h SELECT`,
 		},
 		{
 			`SELECT $-1`,
-			`at or near "$": syntax error
+			`at or near "$" with offset 7: syntax error
 DETAIL: source SQL:
 SELECT $-1
        ^
@@ -2899,28 +2899,28 @@ HINT: try \h SELECT`,
 
 		{
 			`CREATE STATISTICS a ON col1 FROM t WITH OPTIONS THROTTLING 2.0`,
-			`at or near "2.0": syntax error: THROTTLING fraction must be between 0 and 1
+			`at or near "2.0" with offset 59: syntax error: THROTTLING fraction must be between 0 and 1
 DETAIL: source SQL:
 CREATE STATISTICS a ON col1 FROM t WITH OPTIONS THROTTLING 2.0
                                                            ^`,
 		},
 		{
 			`CREATE STATISTICS a ON col1 FROM t WITH OPTIONS THROTTLING 0.1 THROTTLING 0.5`,
-			`at or near "0.5": syntax error: THROTTLING specified multiple times
+			`at or near "0.5" with offset 74: syntax error: THROTTLING specified multiple times
 DETAIL: source SQL:
 CREATE STATISTICS a ON col1 FROM t WITH OPTIONS THROTTLING 0.1 THROTTLING 0.5
                                                                           ^`,
 		},
 		{
 			`CREATE STATISTICS a ON col1 FROM t WITH OPTIONS AS OF SYSTEM TIME '-1s' THROTTLING 0.1 AS OF SYSTEM TIME '-2s'`,
-			`at or near "EOF": syntax error: AS OF specified multiple times
+			`at or near "EOF" with offset 110: syntax error: AS OF specified multiple times
 DETAIL: source SQL:
 CREATE STATISTICS a ON col1 FROM t WITH OPTIONS AS OF SYSTEM TIME '-1s' THROTTLING 0.1 AS OF SYSTEM TIME '-2s'
                                                                                                               ^`,
 		},
 		{
 			`ALTER PARTITION p OF TABLE tbl@idx CONFIGURE ZONE USING num_replicas = 1`,
-			`at or near "idx": syntax error: index name should not be specified in ALTER PARTITION ... OF TABLE
+			`at or near "idx" with offset 31: syntax error: index name should not be specified in ALTER PARTITION ... OF TABLE
 DETAIL: source SQL:
 ALTER PARTITION p OF TABLE tbl@idx CONFIGURE ZONE USING num_replicas = 1
                                ^
@@ -2928,7 +2928,7 @@ HINT: try ALTER PARTITION ... OF INDEX`,
 		},
 		{
 			`ALTER PARTITION p OF TABLE tbl@* CONFIGURE ZONE USING num_replicas = 1`,
-			`at or near "configure": syntax error: index wildcard unsupported in ALTER PARTITION ... OF TABLE
+			`at or near "configure" with offset 33: syntax error: index wildcard unsupported in ALTER PARTITION ... OF TABLE
 DETAIL: source SQL:
 ALTER PARTITION p OF TABLE tbl@* CONFIGURE ZONE USING num_replicas = 1
                                  ^
@@ -2978,7 +2978,7 @@ func TestParsePanic(t *testing.T) {
 		"(F(F(F(F(F(F(F(F(F((" +
 		"F(0"
 	_, err := parser.Parse(s)
-	expected := `at or near "EOF": syntax error`
+	expected := `at or near "EOF" with offset 203: syntax error`
 	if !testutils.IsError(err, expected) {
 		t.Fatalf("expected %s, but found %v", expected, err)
 	}

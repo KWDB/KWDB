@@ -1490,7 +1490,7 @@ func TestRollbackToSavepointFromUnusualStates(t *testing.T) {
 	checkState(tx, ts)
 
 	// ROLLBACK TO SAVEPOINT from an Aborted txn should work.
-	if _, err := tx.Exec("BOGUS SQL STATEMENT"); !testutils.IsError(err, `at or near "bogus": syntax error`) {
+	if _, err := tx.Exec("BOGUS SQL STATEMENT"); !testutils.IsError(err, `at or near "bogus" with offset 0: syntax error`) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if _, err := tx.Exec("ROLLBACK TO SAVEPOINT kwbase_restart"); err != nil {

@@ -144,7 +144,7 @@ DELETE 0
 DELETE 5
 > insert into t5 values(1672531200000,1,2,'k', false, 1),
 select * from t5 where b = 2 and false order by ts;
-ERROR: at or near "select": syntax error
+ERROR: at or near "select" with offset 56: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 insert into t5 values(1672531200000,1,2,'k', false, 1),

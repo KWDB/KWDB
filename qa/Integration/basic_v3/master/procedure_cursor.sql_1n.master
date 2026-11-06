@@ -117,7 +117,7 @@ CREATE PROCEDURE
 > drop procedure test_dec8;
 DROP PROCEDURE
 > CREATE PROCEDURE test_dec9()BEGIN DECLARE x INVALID_TYPE;END;
-ERROR: at or near "invalid_type": syntax error: type does not exist
+ERROR: at or near "invalid_type" with offset 44: syntax error: type does not exist
 SQLSTATE: 42601
 DETAIL: source SQL:
 CREATE PROCEDURE test_dec9()BEGIN DECLARE x INVALID_TYPE;END
@@ -536,7 +536,7 @@ CREATE PROCEDURE
 > drop procedure test_cur9;
 DROP PROCEDURE
 > create procedure test_cur10()begin declare sql varchar(100);set sql = 'select * from t1';declare cur cursor for sql;end;
-ERROR: at or near "sql": syntax error
+ERROR: at or near "sql" with offset 112: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create procedure test_cur10()begin declare sql varchar(100);set sql = 'select * from t1';declare cur cursor for sql;end
@@ -598,7 +598,7 @@ CREATE PROCEDURE
 > DROP PROCEDURE test_cur15;
 DROP PROCEDURE
 > CREATE PROCEDURE test_cur16()BEGIN SET @sql = 'SELECT a FROM t1';DECLARE cur CURSOR FOR @sql;END;
-ERROR: at or near "@": syntax error
+ERROR: at or near "@" with offset 88: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 CREATE PROCEDURE test_cur16()BEGIN SET @sql = 'SELECT a FROM t1';DECLARE cur CURSOR FOR @sql;END
@@ -752,7 +752,7 @@ CREATE PROCEDURE
 > DROP PROCEDURE test_cur24;
 DROP PROCEDURE
 > CREATE PROCEDURE test_cur25()BEGIN DECLARE a INT; DECLARE cur CURSOR FOR SELECT * FROM t1;ALTER TABLE t1 ADD COLUMN c INT; OPEN cur;FETCH cur INTO a;CLOSE cur;END;
-ERROR: at or near "alter": syntax error
+ERROR: at or near "alter" with offset 90: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 CREATE PROCEDURE test_cur25()BEGIN DECLARE a INT; DECLARE cur CURSOR FOR SELECT * FROM t1;ALTER TABLE t1 ADD COLUMN c INT; OPEN cur;FETCH cur INTO a;CLOSE cur;END
@@ -794,7 +794,7 @@ CREATE PROCEDURE
 > DROP PROCEDURE test_cur27;
 DROP PROCEDURE
 > CREATE PROCEDURE test_cur28(cur CURSOR)BEGIN FETCH cur INTO x;END;
-ERROR: at or near "cursor": syntax error
+ERROR: at or near "cursor" with offset 32: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 CREATE PROCEDURE test_cur28(cur CURSOR)BEGIN FETCH cur INTO x;END
@@ -864,7 +864,7 @@ CREATE PROCEDURE
 > DROP PROCEDURE test_cur33;
 DROP PROCEDURE
 > CREATE PROCEDURE test_cur35() BEGIN DECLARE cur CURSOR;END;
-ERROR: at or near ";": syntax error
+ERROR: at or near ";" with offset 54: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 CREATE PROCEDURE test_cur35() BEGIN DECLARE cur CURSOR;END
@@ -904,7 +904,7 @@ CREATE PROCEDURE
 > DROP PROCEDURE test_cur37;
 DROP PROCEDURE
 > CREATE PROCEDURE test_cur38()BEGIN CREATE VIEW v1 AS SELECT a FROM t1;DECLARE cur CURSOR FOR SELECT * FROM v1;OPEN cur;CLOSE cur;DROP VIEW v1;END;
-ERROR: at or near "create": syntax error
+ERROR: at or near "create" with offset 35: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 CREATE PROCEDURE test_cur38()BEGIN CREATE VIEW v1 AS SELECT a FROM t1;DECLARE cur CURSOR FOR SELECT * FROM v1;OPEN cur;CLOSE cur;DROP VIEW v1;END
@@ -1222,7 +1222,7 @@ SQLSTATE: 42704
 ERROR: procedure "test_set24" does not exist
 SQLSTATE: 42704
 > CREATE PROCEDURE test_set25()BEGIN DECLARE bin VARBINARY(10);SET bin = UNHEX('4D7953514C');SELECT HEX(bin);END;
-ERROR: at or near "varbinary": syntax error: type does not exist
+ERROR: at or near "varbinary" with offset 47: syntax error: type does not exist
 SQLSTATE: 42601
 DETAIL: source SQL:
 CREATE PROCEDURE test_set25()BEGIN DECLARE bin VARBINARY(10);SET bin = UNHEX('4D7953514C');SELECT HEX(bin);END

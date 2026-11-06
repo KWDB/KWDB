@@ -313,7 +313,7 @@ SQLSTATE: 42601
 ERROR: last() can only be used in timeseries table query or subquery
 SQLSTATE: 0A000
 > select last(x+1) from t;
-ERROR: at or near "+": syntax error
+ERROR: at or near "+" with offset 13: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last(x+1) from t
@@ -477,7 +477,7 @@ HINT: try \hf last
   2023-07-29 03:35:00+00:00 | e
 (3 rows)
 > select time_bucket(k_timestamp, '300s') bucket, count(distinct y), last_row(x), last_row(x), last_row(y) from t where k_timestamp > '2023-07-29 03:12:59.68' group by bucket order by bucket order by bucket;
-ERROR: at or near "order": syntax error
+ERROR: at or near "order" with offset 189: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select time_bucket(k_timestamp, '300s') bucket, count(distinct y), last_row(x), last_row(x), last_row(y) from t where k_timestamp > '2023-07-29 03:12:59.68' group by bucket order by bucket order by bucket
@@ -598,7 +598,7 @@ SQLSTATE: 42601
 ERROR: last_row() can only be used in timeseries table query or subquery
 SQLSTATE: 0A000
 > select last_row(x+1) from t;
-ERROR: at or near "+": syntax error
+ERROR: at or near "+" with offset 17: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last_row(x+1) from t
@@ -1705,112 +1705,112 @@ INSERT 1
 > create table t3(k_timestamp timestamp not null, x float, y int,k int,m int, z varchar(32)) tags(a int not null) primary tags(a);
 CREATE TABLE
 > select last(null), last_row(null);
-ERROR: at or near "null": syntax error
+ERROR: at or near "null" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last(null), last_row(null)
             ^
 HINT: try \hf last
 > select last(3), last_row(3);
-ERROR: at or near "3": syntax error
+ERROR: at or near "3" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last(3), last_row(3)
             ^
 HINT: try \hf last
 > select last(3.1), last_row(3.1);
-ERROR: at or near "3.1": syntax error
+ERROR: at or near "3.1" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last(3.1), last_row(3.1)
             ^
 HINT: try \hf last
 > select last('3.1'), last_row('3.1');
-ERROR: at or near "3.1": syntax error
+ERROR: at or near "3.1" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last('3.1'), last_row('3.1')
             ^
 HINT: try \hf last
 > select last(null), last_row(null) from t3;
-ERROR: at or near "null": syntax error
+ERROR: at or near "null" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last(null), last_row(null) from t3
             ^
 HINT: try \hf last
 > select last(3), last_row(3) from t3;
-ERROR: at or near "3": syntax error
+ERROR: at or near "3" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last(3), last_row(3) from t3
             ^
 HINT: try \hf last
 > select last(3.1), last_row(3.1) from t3;
-ERROR: at or near "3.1": syntax error
+ERROR: at or near "3.1" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last(3.1), last_row(3.1) from t3
             ^
 HINT: try \hf last
 > select last('3.1'), last_row('3.1') from t3;
-ERROR: at or near "3.1": syntax error
+ERROR: at or near "3.1" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last('3.1'), last_row('3.1') from t3
             ^
 HINT: try \hf last
 > select last(null), last_row(null) from t3 where x in (0);
-ERROR: at or near "null": syntax error
+ERROR: at or near "null" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last(null), last_row(null) from t3 where x in (0)
             ^
 HINT: try \hf last
 > select last(3), last_row(3)  from t3 where x in (0);
-ERROR: at or near "3": syntax error
+ERROR: at or near "3" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last(3), last_row(3)  from t3 where x in (0)
             ^
 HINT: try \hf last
 > select last(3.1), last_row(3.1) from t3 where x in (0);
-ERROR: at or near "3.1": syntax error
+ERROR: at or near "3.1" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last(3.1), last_row(3.1) from t3 where x in (0)
             ^
 HINT: try \hf last
 > select last('3.1'), last_row('3.1') from t3 where x in (0);
-ERROR: at or near "3.1": syntax error
+ERROR: at or near "3.1" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last('3.1'), last_row('3.1') from t3 where x in (0)
             ^
 HINT: try \hf last
 > select last(null), last_row(null) from t3 group by y;
-ERROR: at or near "null": syntax error
+ERROR: at or near "null" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last(null), last_row(null) from t3 group by y
             ^
 HINT: try \hf last
 > select last(3), last_row(3)  from t3 group by y;
-ERROR: at or near "3": syntax error
+ERROR: at or near "3" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last(3), last_row(3)  from t3 group by y
             ^
 HINT: try \hf last
 > select last(3.1), last_row(3.1) from t3 group by y;
-ERROR: at or near "3.1": syntax error
+ERROR: at or near "3.1" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last(3.1), last_row(3.1) from t3 group by y
             ^
 HINT: try \hf last
 > select last('3.1'), last_row('3.1') from t3 group by y;
-ERROR: at or near "3.1": syntax error
+ERROR: at or near "3.1" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last('3.1'), last_row('3.1') from t3 group by y
@@ -1875,112 +1875,112 @@ INSERT 1
   2023-07-29 03:40:59.688+00:00 | NULL        |          77 | NULL        |          22 | NULL        |           1
 (1 row)
 > select last(null), last_row(null);
-ERROR: at or near "null": syntax error
+ERROR: at or near "null" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last(null), last_row(null)
             ^
 HINT: try \hf last
 > select last(3), last_row(3);
-ERROR: at or near "3": syntax error
+ERROR: at or near "3" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last(3), last_row(3)
             ^
 HINT: try \hf last
 > select last(3.1), last_row(3.1);
-ERROR: at or near "3.1": syntax error
+ERROR: at or near "3.1" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last(3.1), last_row(3.1)
             ^
 HINT: try \hf last
 > select last('3.1'), last_row('3.1');
-ERROR: at or near "3.1": syntax error
+ERROR: at or near "3.1" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last('3.1'), last_row('3.1')
             ^
 HINT: try \hf last
 > select last(null), last_row(null) from t3;
-ERROR: at or near "null": syntax error
+ERROR: at or near "null" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last(null), last_row(null) from t3
             ^
 HINT: try \hf last
 > select last(3), last_row(3) from t3;
-ERROR: at or near "3": syntax error
+ERROR: at or near "3" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last(3), last_row(3) from t3
             ^
 HINT: try \hf last
 > select last(3.1), last_row(3.1) from t3;
-ERROR: at or near "3.1": syntax error
+ERROR: at or near "3.1" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last(3.1), last_row(3.1) from t3
             ^
 HINT: try \hf last
 > select last('3.1'), last_row('3.1') from t3;
-ERROR: at or near "3.1": syntax error
+ERROR: at or near "3.1" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last('3.1'), last_row('3.1') from t3
             ^
 HINT: try \hf last
 > select last(null), last_row(null) from t3 where x in (0);
-ERROR: at or near "null": syntax error
+ERROR: at or near "null" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last(null), last_row(null) from t3 where x in (0)
             ^
 HINT: try \hf last
 > select last(3), last_row(3)  from t3 where x in (0);
-ERROR: at or near "3": syntax error
+ERROR: at or near "3" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last(3), last_row(3)  from t3 where x in (0)
             ^
 HINT: try \hf last
 > select last(3.1), last_row(3.1) from t3 where x in (0);
-ERROR: at or near "3.1": syntax error
+ERROR: at or near "3.1" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last(3.1), last_row(3.1) from t3 where x in (0)
             ^
 HINT: try \hf last
 > select last('3.1'), last_row('3.1') from t3 where x in (0);
-ERROR: at or near "3.1": syntax error
+ERROR: at or near "3.1" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last('3.1'), last_row('3.1') from t3 where x in (0)
             ^
 HINT: try \hf last
 > select last(null), last_row(null) from t3 group by y;
-ERROR: at or near "null": syntax error
+ERROR: at or near "null" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last(null), last_row(null) from t3 group by y
             ^
 HINT: try \hf last
 > select last(3), last_row(3)  from t3 group by y;
-ERROR: at or near "3": syntax error
+ERROR: at or near "3" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last(3), last_row(3)  from t3 group by y
             ^
 HINT: try \hf last
 > select last(3.1), last_row(3.1) from t3 group by y;
-ERROR: at or near "3.1": syntax error
+ERROR: at or near "3.1" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last(3.1), last_row(3.1) from t3 group by y
             ^
 HINT: try \hf last
 > select last('3.1'), last_row('3.1') from t3 group by y;
-ERROR: at or near "3.1": syntax error
+ERROR: at or near "3.1" with offset 12: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last('3.1'), last_row('3.1') from t3 group by y

@@ -247,7 +247,7 @@ SQLSTATE: 22023
     (
     select t1.e1 as new_e1, t1.e2 as new_e2 from t1 join t2 on t1.e1=t2.e1
     );
-ERROR: at or near ",": syntax error
+ERROR: at or near "," with offset 26: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last(new_e1, new_e2, '2026-1-29') from
@@ -290,7 +290,7 @@ HINT: try \hf last
     (
         select t1.e1 as new_e1, t1.e2 as new_e2 from t1 join t2 on t1.e1=t2.e1
     );
-ERROR: at or near ",": syntax error
+ERROR: at or near "," with offset 28: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select lastts(new_e1, new_e2, '2026-1-29') from
@@ -333,7 +333,7 @@ HINT: try \hf lastts
     (
         select t1.e1 as new_e1, t1.e2 as new_e2 from t1 join t2 on t1.e1=t2.e1
     );
-ERROR: at or near ",": syntax error
+ERROR: at or near "," with offset 30: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last_row(new_e1, new_e2, '2026-1-29') from
@@ -376,7 +376,7 @@ HINT: try \hf last_row
     (
         select t1.e1 as new_e1, t1.e2 as new_e2 from t1 join t2 on t1.e1=t2.e1
     );
-ERROR: at or near ",": syntax error
+ERROR: at or near "," with offset 33: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last_row_ts(new_e1, new_e2, '2026-1-29') from
@@ -419,7 +419,7 @@ HINT: try \hf last_row_ts
     (
     select t1.e1 as new_e1, t1.e2 as new_e2 from t1 join t2 on t1.e1=t2.e1
     );
-ERROR: at or near ",": syntax error
+ERROR: at or near "," with offset 27: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select first(new_e1, new_e2, '2026-1-29') from
@@ -462,7 +462,7 @@ HINT: try \hf first
     (
         select t1.e1 as new_e1, t1.e2 as new_e2 from t1 join t2 on t1.e1=t2.e1
     );
-ERROR: at or near ",": syntax error
+ERROR: at or near "," with offset 29: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select firstts(new_e1, new_e2, '2026-1-29') from
@@ -505,7 +505,7 @@ HINT: try \hf firstts
     (
         select t1.e1 as new_e1, t1.e2 as new_e2 from t1 join t2 on t1.e1=t2.e1
     );
-ERROR: at or near ",": syntax error
+ERROR: at or near "," with offset 31: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select first_row(new_e1, new_e2, '2026-1-29') from
@@ -548,7 +548,7 @@ HINT: try \hf first_row
     (
         select t1.e1 as new_e1, t1.e2 as new_e2 from t1 join t2 on t1.e1=t2.e1
     );
-ERROR: at or near ",": syntax error
+ERROR: at or near "," with offset 34: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select first_row_ts(new_e1, new_e2, '2026-1-29') from

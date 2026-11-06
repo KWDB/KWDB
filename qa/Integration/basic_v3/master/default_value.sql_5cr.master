@@ -3,7 +3,7 @@ CREATE TS DATABASE
 > use default_val_db;
 SET
 > create table t(ts timestamptz not null, a int, b int not null default 1, c varchar default 'aaa') tags(ptag int not null, tag1 int default 1) primary tags(ptag);
-ERROR: at or near "default": syntax error
+ERROR: at or near "default" with offset 131: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create table t(ts timestamptz not null, a int, b int not null default 1, c varchar default 'aaa') tags(ptag int not null, tag1 int default 1) primary tags(ptag)

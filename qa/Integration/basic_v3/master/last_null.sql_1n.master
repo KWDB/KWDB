@@ -259,7 +259,7 @@ SQLSTATE: 42803
 ERROR: last() can only be used in timeseries table query or subquery
 SQLSTATE: 0A000
 > select last(x+1) from t;
-ERROR: at or near "+": syntax error
+ERROR: at or near "+" with offset 13: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select last(x+1) from t

@@ -639,7 +639,7 @@ CREATE TABLE
 CREATE PIPE
 > create pipe test_pipe_mock_20_1 for table pipe_db_fvt2.t1,pipe_db_fvt2.t2 where e1>0
        with options (enable='off',sink='mock://localhost:9095?topic_name=test_topic_mock20');
-ERROR: at or near "where": syntax error
+ERROR: at or near "where" with offset 74: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create pipe test_pipe_mock_20_1 for table pipe_db_fvt2.t1,pipe_db_fvt2.t2 where e1>0
@@ -650,7 +650,7 @@ create pipe test_pipe_mock_20_1 for table pipe_db_fvt2.t1,pipe_db_fvt2.t2 where 
 CREATE PIPE
 > create pipe test_pipe_mock_21_1 for database pipe_db_fvt2 where e1>0
        with options (enable='off',ignore_history='on',sink='mock://localhost:9095?topic_name=test_topic_mock21_1');
-ERROR: at or near "where": syntax error
+ERROR: at or near "where" with offset 58: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create pipe test_pipe_mock_21_1 for database pipe_db_fvt2 where e1>0
@@ -748,14 +748,14 @@ DROP TABLE
 > alter pipe test_pipe_mock_20 set publish = 'insert,update,delete',buffer_size='0';
 ALTER PIPE
 > alter pipe test_pipe_mock_20 set table 'pipe_db_fvt2.t1' where e1>0;
-ERROR: at or near "pipe_db_fvt2.t1": syntax error
+ERROR: at or near "pipe_db_fvt2.t1" with offset 39: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 alter pipe test_pipe_mock_20 set table 'pipe_db_fvt2.t1' where e1>0
                                        ^
 HINT: try \h ALTER PIPE
 > alter pipe test_pipe_mock_21 set database 'pipe_db_fvt1';
-ERROR: at or near "pipe_db_fvt1": syntax error
+ERROR: at or near "pipe_db_fvt1" with offset 42: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 alter pipe test_pipe_mock_21 set database 'pipe_db_fvt1'

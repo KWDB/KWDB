@@ -2317,7 +2317,7 @@ SELECT count(*) FILTER (WHERE count(*) OVER () > 5) OVER () FROM products
 statement error incompatible FILTER expression type: int
 SELECT count(*) FILTER (WHERE 1) OVER () FROM products
 
-statement error at or near "filter": syntax error
+statement error at or near "filter" with offset 13: syntax error
 SELECT price FILTER (WHERE price=1) OVER () FROM products
 
 query II

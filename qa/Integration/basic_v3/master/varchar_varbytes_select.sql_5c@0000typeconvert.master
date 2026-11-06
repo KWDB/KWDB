@@ -316,49 +316,49 @@ SQLSTATE: 22003
   test时间精度通用查询测试！！！@TEST1
 (18 rows)
 > select e10:char(255) from test_SELECT_col.t1 order by k_timestamp;
-ERROR: at or near ":": syntax error
+ERROR: at or near ":" with offset 10: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select e10:char(255) from test_SELECT_col.t1 order by k_timestamp
           ^
 > select e10:nchar(255) from test_SELECT_col.t1 order by k_timestamp;
-ERROR: at or near ":": syntax error
+ERROR: at or near ":" with offset 10: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select e10:nchar(255) from test_SELECT_col.t1 order by k_timestamp
           ^
 > select e11:nchar(255) from test_SELECT_col.t1 order by k_timestamp;
-ERROR: at or near ":": syntax error
+ERROR: at or near ":" with offset 10: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select e11:nchar(255) from test_SELECT_col.t1 order by k_timestamp
           ^
 > select e15:nchar(255) from test_SELECT_col.t1 order by k_timestamp;
-ERROR: at or near ":": syntax error
+ERROR: at or near ":" with offset 10: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select e15:nchar(255) from test_SELECT_col.t1 order by k_timestamp
           ^
 > select e15:varchar(255) from test_SELECT_col.t1 order by k_timestamp;
-ERROR: at or near ":": syntax error
+ERROR: at or near ":" with offset 10: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select e15:varchar(255) from test_SELECT_col.t1 order by k_timestamp
           ^
 > select e15:char(255) from test_SELECT_col.t1 order by k_timestamp;
-ERROR: at or near ":": syntax error
+ERROR: at or near ":" with offset 10: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select e15:char(255) from test_SELECT_col.t1 order by k_timestamp
           ^
 > select e19:varchar(255) from test_SELECT_col.t1 order by k_timestamp;
-ERROR: at or near ":": syntax error
+ERROR: at or near ":" with offset 10: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select e19:varchar(255) from test_SELECT_col.t1 order by k_timestamp
           ^
 > select e22:bytes(1023) from test_SELECT_col.t1 order by k_timestamp;
-ERROR: at or near ":": syntax error
+ERROR: at or near ":" with offset 10: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select e22:bytes(1023) from test_SELECT_col.t1 order by k_timestamp

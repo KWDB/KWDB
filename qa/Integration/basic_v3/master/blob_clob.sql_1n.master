@@ -35,14 +35,14 @@ INSERT 1
   \x616263 | def
 (1 row)
 > create table t2 (e1 blob(3), e2 clob);
-ERROR: at or near "(": syntax error
+ERROR: at or near "(" with offset 24: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create table t2 (e1 blob(3), e2 clob)
                         ^
 HINT: try \h CREATE TABLE
 > create table t3 (e1 blob, e2 clob(3));
-ERROR: at or near "(": syntax error
+ERROR: at or near "(" with offset 33: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create table t3 (e1 blob, e2 clob(3))

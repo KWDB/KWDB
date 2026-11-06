@@ -40,7 +40,7 @@ c d
 g h
 
 # parse error runs nothing
-statement error at or near "k": syntax error
+statement error at or near "k" with offset 20: syntax error
 INSERT INTO kv (k,v) VALUES ('i', 'j'); INSERT INTO VALUES ('k', 'l')
 
 query TT rowsort

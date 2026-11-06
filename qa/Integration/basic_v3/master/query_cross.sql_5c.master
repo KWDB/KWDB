@@ -7914,7 +7914,7 @@ group by hh order by hh,h) tem1 left join dcjg_vehicle_device_online_status tem2
 where tem2.online = 1
 group by hh,h) vehicle on days.hour= vehicle.hh
 order by hour;
-ERROR: at or near "1": syntax error
+ERROR: at or near "1" with offset 325: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select STR_TO_DATE(hour,'%Y-%m-%d %H') as create_time,ifnull(vehicle.number,0) number from ( select * from (

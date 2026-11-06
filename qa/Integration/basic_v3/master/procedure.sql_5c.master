@@ -1774,13 +1774,13 @@ HINT: you can drop defaultdb.public.p1 instead.
 > drop table if exists t1 cascade;
 DROP TABLE
 > create procedure p1();
-ERROR: at or near "EOF": syntax error: the procedure body is missing
+ERROR: at or near "EOF" with offset 21: syntax error: the procedure body is missing
 SQLSTATE: 42601
 DETAIL: source SQL:
 create procedure p1()
                      ^
 > create procedure p1(a int);
-ERROR: at or near "EOF": syntax error: the procedure body is missing
+ERROR: at or near "EOF" with offset 26: syntax error: the procedure body is missing
 SQLSTATE: 42601
 DETAIL: source SQL:
 create procedure p1(a int)
@@ -1789,7 +1789,7 @@ create procedure p1(a int)
 ERROR: please put the statement into the body of BEGIN...END
 SQLSTATE: 42P13
 > create procedure p1(a int) $$ begin declare b int; declare c int; end;$$ begin select b,c; end;
-ERROR: at or near "EOF": syntax error: body-string and body-block cannot occur simultaneously
+ERROR: at or near "EOF" with offset 94: syntax error: body-string and body-block cannot occur simultaneously
 SQLSTATE: 42601
 DETAIL: source SQL:
 create procedure p1(a int) $$ begin declare b int; declare c int; end;$$ begin select b,c; end

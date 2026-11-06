@@ -415,7 +415,7 @@ SELECT field, replace(message, e'\n', ' ') AS message FROM [SHOW SYNTAX 'foo']
  WHERE field != 'line'
 ----
 field     message
-error     at or near "foo": syntax error
+error     at or near "foo" with offset 0: syntax error
 code      42601
 file      lexer.go
 function  Error

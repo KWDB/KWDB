@@ -1122,13 +1122,13 @@ SQLSTATE: 0A000
 ERROR: unsupported conditions in update: unsupported filter expression
 SQLSTATE: 0A000
 > update update_tag.tb set t7 ='1'  where t1 < 500 group by t1,t2,t3 order by t1;
-ERROR: at or near "group": syntax error
+ERROR: at or near "group" with offset 49: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 update update_tag.tb set t7 ='1'  where t1 < 500 group by t1,t2,t3 order by t1
                                                  ^
 > update update_tag.tb set t9 =null  where t4 in(true,false) group by t4;
-ERROR: at or near "group": syntax error
+ERROR: at or near "group" with offset 59: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 update update_tag.tb set t9 =null  where t4 in(true,false) group by t4
@@ -1137,7 +1137,7 @@ update update_tag.tb set t9 =null  where t4 in(true,false) group by t4
 ERROR: unsupported conditions in update: unsupported filter expression
 SQLSTATE: 0A000
 > update update_tag.tb set t11 ='p'  where t1 between 3 and 6 group by t1,t5,t12;
-ERROR: at or near "group": syntax error
+ERROR: at or near "group" with offset 60: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 update update_tag.tb set t11 ='p'  where t1 between 3 and 6 group by t1,t5,t12

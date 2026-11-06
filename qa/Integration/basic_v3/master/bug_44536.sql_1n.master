@@ -1,5 +1,5 @@
 > drop DATABASE db_shig cascade if exists;
-ERROR: at or near "if": syntax error
+ERROR: at or near "if" with offset 30: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 drop DATABASE db_shig cascade if exists

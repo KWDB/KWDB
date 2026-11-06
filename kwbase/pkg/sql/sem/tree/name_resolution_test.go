@@ -48,10 +48,10 @@ func TestClassifyTablePattern(t *testing.T) {
 		{`a`, `a`, `""."".a`, ``},
 		{`a.b`, `a.b`, `"".a.b`, ``},
 		{`a.b.c`, `a.b.c`, `a.b.c`, ``},
-		{`a.b.c.d`, ``, ``, `at or near "\.": syntax error`},
+		{`a.b.c.d`, ``, ``, `at or near "\." with offset 21: syntax error`},
 		{`a.""`, ``, ``, `invalid table name: a\.""`},
 		{`a.b.""`, ``, ``, `invalid table name: a\.b\.""`},
-		{`a.b.c.""`, ``, ``, `at or near "\.": syntax error`},
+		{`a.b.c.""`, ``, ``, `at or near "\." with offset 21: syntax error`},
 		{`a."".c`, ``, ``, `invalid table name: a\.""\.c`},
 		// CockroachDB extension: empty catalog name.
 		{`"".b.c`, `"".b.c`, `"".b.c`, ``},
@@ -65,10 +65,10 @@ func TestClassifyTablePattern(t *testing.T) {
 		{`*`, `*`, `""."".*`, ``},
 		{`a.*`, `a.*`, `"".a.*`, ``},
 		{`a.b.*`, `a.b.*`, `a.b.*`, ``},
-		{`a.b.c.*`, ``, ``, `at or near "\.": syntax error`},
-		{`a.b.*.c`, ``, ``, `at or near "\.": syntax error`},
-		{`a.*.b`, `a."*".b`, `a."*".b`, `at or near "\.": syntax error`},
-		{`*.b`, ``, ``, `at or near "\.": syntax error`},
+		{`a.b.c.*`, ``, ``, `at or near "\." with offset 21: syntax error`},
+		{`a.b.*.c`, ``, ``, `at or near "\." with offset 21: syntax error`},
+		{`a.*.b`, `a."*".b`, `a."*".b`, `at or near "\." with offset 19: syntax error`},
+		{`*.b`, ``, ``, `at or near "\." with offset 17: syntax error`},
 		{`"".*`, ``, ``, `invalid table name: "".\*`},
 		{`a."".*`, ``, ``, `invalid table name: a\.""\.\*`},
 		{`a.b."".*`, ``, ``, `invalid table name: a.b.""`},
@@ -80,7 +80,7 @@ func TestClassifyTablePattern(t *testing.T) {
 		{`"user".x.*`, `"user".x.*`, `"user".x.*`, ``},
 		{`x.user.*`, `x."user".*`, `x."user".*`, ``},
 
-		{`foo@bar`, ``, ``, `at or near "@": syntax error`},
+		{`foo@bar`, ``, ``, `at or near "@" with offset 19: syntax error`},
 	}
 
 	for _, tc := range testCases {
@@ -155,9 +155,9 @@ func TestClassifyColumnName(t *testing.T) {
 		{`a.*`, `a.*`, ``},
 		{`a.b.*`, `a.b.*`, ``},
 		{`a.b.c.*`, `a.b.c.*`, ``},
-		{`a.b.*.c`, ``, `at or near "\.": syntax error`},
-		{`a.*.b`, ``, `at or near "\.": syntax error`},
-		{`*.b`, ``, `at or near "\.": syntax error`},
+		{`a.b.*.c`, ``, `at or near "\." with offset 12: syntax error`},
+		{`a.*.b`, ``, `at or near "\." with offset 10: syntax error`},
+		{`*.b`, ``, `at or near "\." with offset 8: syntax error`},
 		{`"".*`, ``, `invalid column name: "".\*`},
 		{`a."".*`, ``, `invalid column name: a\.""\.\*`},
 		{`a.b."".*`, ``, `invalid column name: a\.b\.""\.\*`},
@@ -173,7 +173,7 @@ func TestClassifyColumnName(t *testing.T) {
 		{`"user".x.*`, `"user".x.*`, ``},
 		{`x.user.*`, `x.user.*`, ``},
 
-		{`foo@bar`, ``, `at or near "@": syntax error`},
+		{`foo@bar`, ``, `at or near "@" with offset 10: syntax error`},
 	}
 
 	for _, tc := range testCases {

@@ -2401,7 +2401,7 @@ project
 build
 SELECT * FROM onecolumn AS a NATURAL LEFT LOOKUP JOIN onecolumn as b USING(x)
 ----
-error (42601): at or near "using": syntax error
+error (42601): at or near "using" with offset 69: syntax error
 
 build
 SELECT * FROM onecolumn AS a(x) FULL OUTER HASH JOIN onecolumn AS b(y) ON a.x = b.y

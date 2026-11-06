@@ -158,7 +158,7 @@ SQLSTATE: 22023
 ERROR: buffer_size parameter "a" is invalid
 SQLSTATE: 22023
 > alter pipe test_pipe1 set options(buffer_size=2);
-ERROR: at or near "2": syntax error
+ERROR: at or near "2" with offset 46: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 alter pipe test_pipe1 set options(buffer_size=2)

@@ -25,7 +25,7 @@ SQLSTATE: 22001
 ERROR: value '中文abPOL!123！a(01-OP!《》？？。~~！！@yingy*1中文ab!123！a()901-9!《》？。~！！@1' too long for type NVARCHAR(63) (column e2)
 SQLSTATE: 22001
 > INSERT INTO test_varchar1.d11  VALUES ('2018-10-10 10:00:07', 'a'('a'),'中'('a'), 8);
-ERROR: at or near "(": syntax error
+ERROR: at or near "(" with offset 65: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 INSERT INTO test_varchar1.d11  VALUES ('2018-10-10 10:00:07', 'a'('a'),'中'('a'), 8)

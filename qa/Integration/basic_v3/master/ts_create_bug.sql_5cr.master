@@ -59,7 +59,7 @@ INSERT 1
   2023-07-03 10:58:52.111+00:00 | 1 | 44
 (1 row)
 > create ts database NULL;
-ERROR: at or near "null": syntax error
+ERROR: at or near "null" with offset 19: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create ts database NULL
@@ -76,7 +76,7 @@ DROP DATABASE
 > drop database "nul" cascade;
 DROP DATABASE
 > drop database NULL cascade;
-ERROR: at or near "null": syntax error
+ERROR: at or near "null" with offset 14: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 drop database NULL cascade

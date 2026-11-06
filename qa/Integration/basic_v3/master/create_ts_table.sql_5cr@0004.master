@@ -1,68 +1,68 @@
 > drop database '!';
-ERROR: at or near "!": syntax error
+ERROR: at or near "!" with offset 14: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 drop database '!'
               ^
 HINT: try \h DROP DATABASE
 > drop database '#';
-ERROR: at or near "#": syntax error
+ERROR: at or near "#" with offset 14: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 drop database '#'
               ^
 HINT: try \h DROP DATABASE
 > drop database '$';
-ERROR: at or near "$": syntax error
+ERROR: at or near "$" with offset 14: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 drop database '$'
               ^
 HINT: try \h DROP DATABASE
 > drop database '-';
-ERROR: at or near "-": syntax error
+ERROR: at or near "-" with offset 14: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 drop database '-'
               ^
 HINT: try \h DROP DATABASE
 > drop database '--';
-ERROR: at or near "--": syntax error
+ERROR: at or near "--" with offset 14: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 drop database '--'
               ^
 HINT: try \h DROP DATABASE
 > drop database '-1';
-ERROR: at or near "-1": syntax error
+ERROR: at or near "-1" with offset 14: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 drop database '-1'
               ^
 HINT: try \h DROP DATABASE
 > drop database 1;
-ERROR: at or near "1": syntax error
+ERROR: at or near "1" with offset 14: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 drop database 1
               ^
 HINT: try \h DROP DATABASE
 > drop database 1670976000;
-ERROR: at or near "1670976000": syntax error
+ERROR: at or near "1670976000" with offset 14: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 drop database 1670976000
               ^
 HINT: try \h DROP DATABASE
 > drop database 2021;
-ERROR: at or near "2021": syntax error
+ERROR: at or near "2021" with offset 14: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 drop database 2021
               ^
 HINT: try \h DROP DATABASE
 > drop database '@';
-ERROR: at or near "@": syntax error
+ERROR: at or near "@" with offset 14: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 drop database '@'
@@ -79,7 +79,7 @@ SQLSTATE: 3D000
 ERROR: database "now" does not exist
 SQLSTATE: 3D000
 > drop database 'null';
-ERROR: at or near "null": syntax error
+ERROR: at or near "null" with offset 14: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 drop database 'null'
@@ -91,7 +91,7 @@ DROP DATABASE
 ERROR: database "s" does not exist
 SQLSTATE: 3D000
 > drop database '♠';
-ERROR: at or near "♠": syntax error
+ERROR: at or near "♠" with offset 14: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 drop database '♠'

@@ -411,7 +411,7 @@ CREATE PROCEDURE
 > DROP PROCEDURE test_cur33;
 DROP PROCEDURE
 > CREATE PROCEDURE test_cur35() BEGIN DECLARE cur CURSOR;END;
-ERROR: at or near ";": syntax error
+ERROR: at or near ";" with offset 54: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 CREATE PROCEDURE test_cur35() BEGIN DECLARE cur CURSOR;END
