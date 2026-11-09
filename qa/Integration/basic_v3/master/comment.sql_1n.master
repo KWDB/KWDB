@@ -2282,7 +2282,7 @@ CREATE TS DATABASE
   《!!database TEST中文英文COLUMN-code16!!》
 (2 rows)
 > create table db1.t1(a int comment 'aaa' comment 'aaa');
-ERROR: at or near ")": syntax error: multiple comments specified for column "a"
+ERROR: at or near ")" with offset 53: syntax error: multiple comments specified for column "a"
 SQLSTATE: 42601
 DETAIL: source SQL:
 create table db1.t1(a int comment 'aaa' comment 'aaa')

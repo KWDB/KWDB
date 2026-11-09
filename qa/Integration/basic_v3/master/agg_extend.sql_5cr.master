@@ -68,7 +68,7 @@ INSERT 1
   2012-02-29 01:10:10+00:00 | -32767 | 2012-02-29 01:10:10+00:00 | 2012-02-29 01:10:10+00:00 | 1976-10-20 12:00:12.123+00:00
 (1 row)
 > SELECT time_bucket(k_timestamp,'8000day') as tb,e12,e13,e14,k_timestamp,MAX(e12),last(k_timestamp),first(k timestamp) from test_select_maxandmin.t1 group by tb order by tb;
-ERROR: at or near "timestamp": syntax error
+ERROR: at or near "timestamp" with offset 107: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 SELECT time_bucket(k_timestamp,'8000day') as tb,e12,e13,e14,k_timestamp,MAX(e12),last(k_timestamp),first(k timestamp) from test_select_maxandmin.t1 group by tb order by tb

@@ -271,7 +271,7 @@ CREATE TABLE y (
   a INT AS (3)
 )
 
-statement error at or near "virtual": syntax error: unimplemented
+statement error at or near "virtual" with offset 32: syntax error: unimplemented
 CREATE TABLE y (
   a INT AS (3) VIRTUAL
 )

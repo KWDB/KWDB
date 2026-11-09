@@ -10,7 +10,7 @@ CREATE TABLE t (a INT PRIMARY KEY CHECK(a > 0), f INT REFERENCES other, INDEX (f
 statement ok
 INSERT INTO t VALUES (1, 9)
 
-statement error pq: at or near "\*": syntax error
+statement error pq: at or near "\*" with offset 26: syntax error
 ALTER TABLE t RENAME TO t.*
 
 statement ok

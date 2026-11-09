@@ -14,56 +14,56 @@ SQLSTATE: 3D000
 > create ts database test;
 CREATE TS DATABASE
 > create ts database 1;
-ERROR: at or near "1": syntax error
+ERROR: at or near "1" with offset 19: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create ts database 1
                    ^
 HINT: try \h CREATE TS DATABASE
 > create ts database 1.0;
-ERROR: at or near "1.0": syntax error
+ERROR: at or near "1.0" with offset 19: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create ts database 1.0
                    ^
 HINT: try \h CREATE TS DATABASE
 > create ts database 1.23;
-ERROR: at or near "1.23": syntax error
+ERROR: at or near "1.23" with offset 19: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create ts database 1.23
                    ^
 HINT: try \h CREATE TS DATABASE
 > create ts database -1.23;
-ERROR: at or near "-": syntax error
+ERROR: at or near "-" with offset 19: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create ts database -1.23
                    ^
 HINT: try \h CREATE TS DATABASE
 > create ts database '-1.23';
-ERROR: at or near "-1.23": syntax error
+ERROR: at or near "-1.23" with offset 19: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create ts database '-1.23'
                    ^
 HINT: try \h CREATE TS DATABASE
 > create ts database '-1';
-ERROR: at or near "-1": syntax error
+ERROR: at or near "-1" with offset 19: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create ts database '-1'
                    ^
 HINT: try \h CREATE TS DATABASE
 > create ts database 123123131388888888888888888888888888888888888888888888888888123132;
-ERROR: at or near "123123131388888888888888888888888888888888888888888888888888123132": syntax error
+ERROR: at or near "123123131388888888888888888888888888888888888888888888888888123132" with offset 19: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create ts database 123123131388888888888888888888888888888888888888888888888888123132
                    ^
 HINT: try \h CREATE TS DATABASE
 > create ts database '一二三';
-ERROR: at or near "一二三": syntax error
+ERROR: at or near "一二三" with offset 19: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create ts database '一二三'
@@ -72,7 +72,7 @@ HINT: try \h CREATE TS DATABASE
 > create ts database a;
 CREATE TS DATABASE
 > create ts database 'a';
-ERROR: at or near "a": syntax error
+ERROR: at or near "a" with offset 19: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create ts database 'a'
@@ -82,7 +82,7 @@ HINT: try \h CREATE TS DATABASE
 ERROR: database "a" already exists
 SQLSTATE: 42P04
 > create ts database 's';
-ERROR: at or near "s": syntax error
+ERROR: at or near "s" with offset 19: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create ts database 's'
@@ -91,90 +91,90 @@ HINT: try \h CREATE TS DATABASE
 > create ts database "q";
 CREATE TS DATABASE
 > create ts database 1+1;
-ERROR: at or near "1": syntax error
+ERROR: at or near "1" with offset 19: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create ts database 1+1
                    ^
 HINT: try \h CREATE TS DATABASE
 > create ts database 2021-1-1;
-ERROR: at or near "2021": syntax error
+ERROR: at or near "2021" with offset 19: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create ts database 2021-1-1
                    ^
 HINT: try \h CREATE TS DATABASE
 > create ts database 2021-1-5 11:15:45;
-ERROR: at or near "2021": syntax error
+ERROR: at or near "2021" with offset 19: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create ts database 2021-1-5 11:15:45
                    ^
 HINT: try \h CREATE TS DATABASE
 > create ts database '2021-1-5 11:15:45';
-ERROR: at or near "2021-1-5 11:15:45": syntax error
+ERROR: at or near "2021-1-5 11:15:45" with offset 19: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create ts database '2021-1-5 11:15:45'
                    ^
 HINT: try \h CREATE TS DATABASE
 > create ts database now();
-ERROR: at or near "(": syntax error
+ERROR: at or near "(" with offset 22: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create ts database now()
                       ^
 > create ts database 1670976000;
-ERROR: at or near "1670976000": syntax error
+ERROR: at or near "1670976000" with offset 19: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create ts database 1670976000
                    ^
 HINT: try \h CREATE TS DATABASE
 > create ts database !;
-ERROR: at or near "!": syntax error
+ERROR: at or near "!" with offset 19: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create ts database !
                    ^
 HINT: try \h CREATE TS DATABASE
 > create ts database @;
-ERROR: at or near "@": syntax error
+ERROR: at or near "@" with offset 19: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create ts database @
                    ^
 HINT: try \h CREATE TS DATABASE
 > create ts database '#';
-ERROR: at or near "#": syntax error
+ERROR: at or near "#" with offset 19: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create ts database '#'
                    ^
 HINT: try \h CREATE TS DATABASE
 > create ts database $;
-ERROR: at or near "$": syntax error
+ERROR: at or near "$" with offset 19: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create ts database $
                    ^
 HINT: try \h CREATE TS DATABASE
 > create ts database '"';
-ERROR: at or near """: syntax error
+ERROR: at or near """ with offset 19: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create ts database '"'
                    ^
 HINT: try \h CREATE TS DATABASE
 > create ts database '♠';
-ERROR: at or near "♠": syntax error
+ERROR: at or near "♠" with offset 19: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create ts database '♠'
                    ^
 HINT: try \h CREATE TS DATABASE
 > create ts database '--';
-ERROR: at or near "--": syntax error
+ERROR: at or near "--" with offset 19: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create ts database '--'

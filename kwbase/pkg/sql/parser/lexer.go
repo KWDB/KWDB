@@ -222,7 +222,7 @@ func (l *lexer) populateErrorDetails() {
 			// parser encounters a parsing error.
 			l.lastError = errors.Wrap(l.lastError, "syntax error")
 		}
-		l.lastError = errors.Wrapf(l.lastError, "at or near \"%s\"", lastTok.str)
+		l.lastError = errors.Wrapf(l.lastError, "at or near \"%s\" with offset %d", lastTok.str, lastTok.pos)
 	}
 
 	// Find the end of the line containing the last token.

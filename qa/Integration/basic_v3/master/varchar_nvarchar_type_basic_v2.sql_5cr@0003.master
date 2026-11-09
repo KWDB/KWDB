@@ -26,7 +26,7 @@ SQLSTATE: 22001
 ERROR: value 'test1中文测试Englishtest！@#￥%&……%（*1928018hUIHStest1中文测试Englishtest！@#￥%&……%（*1928018hUIHStest1中文测试Englishtest！@#￥%&……%（*1928018hUIHStest1中文测试Englishtest！@#￥%&……%（*1928018hUIHStest1中zA!' too long for type VARCHAR(254) (column e1)
 SQLSTATE: 22001
 > INSERT INTO test_varchar1.d11 VALUES ('2018-10-10 10:00:09', 'a'('a'),'中'('a'), 10);
-ERROR: at or near "(": syntax error
+ERROR: at or near "(" with offset 64: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 INSERT INTO test_varchar1.d11 VALUES ('2018-10-10 10:00:09', 'a'('a'),'中'('a'), 10)

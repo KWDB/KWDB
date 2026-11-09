@@ -10,7 +10,7 @@ CREATE TABLE
 > create table metric_ts2(k_timestamp timestamp not null, data1 float8, data2 char(40)) tags (device_id char(40) not null, alias char(40)) primary tags(device_id);
 CREATE TABLE
 > select * from ts_db.metric_ts FILL(EXACT);
-ERROR: at or near "fill": syntax error
+ERROR: at or near "fill" with offset 30: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select * from ts_db.metric_ts FILL(EXACT)
@@ -29,7 +29,7 @@ SQLSTATE: 42601
 ERROR: the conditions of FILL clause must only be ts col and pTag
 SQLSTATE: 42601
 > select * from ts_db.metric_ts where device_id = 'device1' and k_timestamp = '2025-12-19 10:00:02.200' FILL(EXACT) group by k_timestamp;
-ERROR: at or near "group": syntax error
+ERROR: at or near "group" with offset 114: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select * from ts_db.metric_ts where device_id = 'device1' and k_timestamp = '2025-12-19 10:00:02.200' FILL(EXACT) group by k_timestamp
@@ -38,7 +38,7 @@ select * from ts_db.metric_ts where device_id = 'device1' and k_timestamp = '202
 select k_timestamp, data1+data2 from ts_db.metric_ts where device_id = 'device1' and k_timestamp = '2025-12-19 10:00:02.200' FILL(EXACT)
 
 select * from (select * from ts_db.metric_ts) where device_id = 'device1' and k_timestamp = '2025-12-19 10:00:02.200' FILL(EXACT);
-ERROR: at or near "select": syntax error
+ERROR: at or near "select" with offset 129: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select max(k_timestamp) from ts_db.metric_ts where device_id = 'device1' and k_timestamp = '2025-12-19 10:00:02.200' FILL(EXACT)
@@ -86,28 +86,28 @@ INSERT 1
   2025-12-19 10:00:02.15+00:00 | false |     1 |    11 |   111 | 11.11 | 111.111 | d7    | d8    | d9    | d10    | \x643131 | device1   | tianjin
 (1 row)
 > select * from ts_db.metric_ts where device_id = 'device1' and k_timestamp = '2025-12-19 10:00:02.150' FILL(EXACT, 1000);
-ERROR: at or near ",": syntax error
+ERROR: at or near "," with offset 112: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select * from ts_db.metric_ts where device_id = 'device1' and k_timestamp = '2025-12-19 10:00:02.150' FILL(EXACT, 1000)
                                                                                                                 ^
 HINT: try \h SELECT
 > select * from ts_db.metric_ts where device_id = 'device1' and k_timestamp = '2025-12-19 10:00:02.150' FILL(EXACT, 1000, 1000);
-ERROR: at or near ",": syntax error
+ERROR: at or near "," with offset 112: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select * from ts_db.metric_ts where device_id = 'device1' and k_timestamp = '2025-12-19 10:00:02.150' FILL(EXACT, 1000, 1000)
                                                                                                                 ^
 HINT: try \h SELECT
 > select * from ts_db.metric_ts where device_id = 'device1' and k_timestamp = '2025-12-19 10:00:02.150' FILL(EXACT, 'test_const');
-ERROR: at or near ",": syntax error
+ERROR: at or near "," with offset 112: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select * from ts_db.metric_ts where device_id = 'device1' and k_timestamp = '2025-12-19 10:00:02.150' FILL(EXACT, 'test_const')
                                                                                                                 ^
 HINT: try \h SELECT
 > select * from ts_db.metric_ts where device_id = 'device1' and k_timestamp = '2025-12-19 10:00:02.150' FILL(EXACT, 1000, 1000, 'test_const');
-ERROR: at or near ",": syntax error
+ERROR: at or near "," with offset 112: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select * from ts_db.metric_ts where device_id = 'device1' and k_timestamp = '2025-12-19 10:00:02.150' FILL(EXACT, 1000, 1000, 'test_const')
@@ -508,27 +508,27 @@ INSERT 1
   2025-12-19 10:00:02.48+00:00 | true  |     2 | NULL  |   222 | 22.219999 | 222.222 | d71   | d81   | d91   | d101   | \x64313032 | device2   | beijing
 (4 rows)
 > select * from ts_db.metric_ts where device_id = 'device2' and k_timestamp = '2025-12-19 10:00:02.200' FILL(PREVIOUS, -1);
-ERROR: at or near ")": syntax error: before range must be greater than or equal to 0
+ERROR: at or near ")" with offset 119: syntax error: before range must be greater than or equal to 0
 SQLSTATE: 42601
 DETAIL: source SQL:
 select * from ts_db.metric_ts where device_id = 'device2' and k_timestamp = '2025-12-19 10:00:02.200' FILL(PREVIOUS, -1)
                                                                                                                        ^
 > select * from ts_db.metric_ts where device_id = 'device2' and k_timestamp = '2025-12-19 10:00:02.200' FILL(PREVIOUS, 1000, 1000);
-ERROR: at or near ",": syntax error
+ERROR: at or near "," with offset 121: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select * from ts_db.metric_ts where device_id = 'device2' and k_timestamp = '2025-12-19 10:00:02.200' FILL(PREVIOUS, 1000, 1000)
                                                                                                                          ^
 HINT: try \h SELECT
 > select * from ts_db.metric_ts where device_id = 'device2' and k_timestamp = '2025-12-19 10:00:02.200' FILL(PREVIOUS, 'test_const');
-ERROR: at or near "test_const": syntax error
+ERROR: at or near "test_const" with offset 117: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select * from ts_db.metric_ts where device_id = 'device2' and k_timestamp = '2025-12-19 10:00:02.200' FILL(PREVIOUS, 'test_const')
                                                                                                                      ^
 HINT: try \h SELECT
 > select * from ts_db.metric_ts where device_id = 'device2' and k_timestamp = '2025-12-19 10:00:02.200' FILL(PREVIOUS, 1000, 1000, 'test_const');
-ERROR: at or near ",": syntax error
+ERROR: at or near "," with offset 121: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select * from ts_db.metric_ts where device_id = 'device2' and k_timestamp = '2025-12-19 10:00:02.200' FILL(PREVIOUS, 1000, 1000, 'test_const')
@@ -931,27 +931,27 @@ INSERT 1
   2025-12-19 10:00:02.5+00:00  | true  |     2 |    22 |   222 | 22.219999 | 222.222 | d71   | d81   | d91   | d101   | \x64313032 | device3   | shanghai
 (4 rows)
 > select * from ts_db.metric_ts where device_id = 'device3' and k_timestamp = '2025-12-19 10:00:02.200' FILL(NEXT, -1);
-ERROR: at or near ")": syntax error: end range must be greater than or equal to 0
+ERROR: at or near ")" with offset 115: syntax error: end range must be greater than or equal to 0
 SQLSTATE: 42601
 DETAIL: source SQL:
 select * from ts_db.metric_ts where device_id = 'device3' and k_timestamp = '2025-12-19 10:00:02.200' FILL(NEXT, -1)
                                                                                                                    ^
 > select * from ts_db.metric_ts where device_id = 'device3' and k_timestamp = '2025-12-19 10:00:02.200' FILL(NEXT, 1000, 1000);
-ERROR: at or near ",": syntax error
+ERROR: at or near "," with offset 117: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select * from ts_db.metric_ts where device_id = 'device3' and k_timestamp = '2025-12-19 10:00:02.200' FILL(NEXT, 1000, 1000)
                                                                                                                      ^
 HINT: try \h SELECT
 > select * from ts_db.metric_ts where device_id = 'device3' and k_timestamp = '2025-12-19 10:00:02.200' FILL(NEXT, 'test_const');
-ERROR: at or near "test_const": syntax error
+ERROR: at or near "test_const" with offset 113: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select * from ts_db.metric_ts where device_id = 'device3' and k_timestamp = '2025-12-19 10:00:02.200' FILL(NEXT, 'test_const')
                                                                                                                  ^
 HINT: try \h SELECT
 > select * from ts_db.metric_ts where device_id = 'device3' and k_timestamp = '2025-12-19 10:00:02.200' FILL(NEXT, 1000, 1000, 'test_const');
-ERROR: at or near ",": syntax error
+ERROR: at or near "," with offset 117: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select * from ts_db.metric_ts where device_id = 'device3' and k_timestamp = '2025-12-19 10:00:02.200' FILL(NEXT, 1000, 1000, 'test_const')
@@ -1354,27 +1354,27 @@ INSERT 1
   2025-12-19 10:00:02.5+00:00  | true  |     2 |    22 |   222 | 22.219999 | 222.222 | d71   | d81   | d91   | d101   | \x64313032 | device4   | shenzhen
 (4 rows)
 > select * from ts_db.metric_ts where device_id = 'device4' and k_timestamp = '2025-12-19 10:00:02.200' FILL(CLOSER, -1);
-ERROR: at or near ")": syntax error: r range must be greater than or equal to 0
+ERROR: at or near ")" with offset 117: syntax error: r range must be greater than or equal to 0
 SQLSTATE: 42601
 DETAIL: source SQL:
 select * from ts_db.metric_ts where device_id = 'device4' and k_timestamp = '2025-12-19 10:00:02.200' FILL(CLOSER, -1)
                                                                                                                      ^
 > select * from ts_db.metric_ts where device_id = 'device4' and k_timestamp = '2025-12-19 10:00:02.200' FILL(CLOSER, 1000, 1000);
-ERROR: at or near ",": syntax error
+ERROR: at or near "," with offset 119: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select * from ts_db.metric_ts where device_id = 'device4' and k_timestamp = '2025-12-19 10:00:02.200' FILL(CLOSER, 1000, 1000)
                                                                                                                        ^
 HINT: try \h SELECT
 > select * from ts_db.metric_ts where device_id = 'device4' and k_timestamp = '2025-12-19 10:00:02.200' FILL(CLOSER, 'test_const');
-ERROR: at or near "test_const": syntax error
+ERROR: at or near "test_const" with offset 115: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select * from ts_db.metric_ts where device_id = 'device4' and k_timestamp = '2025-12-19 10:00:02.200' FILL(CLOSER, 'test_const')
                                                                                                                    ^
 HINT: try \h SELECT
 > select * from ts_db.metric_ts where device_id = 'device4' and k_timestamp = '2025-12-19 10:00:02.200' FILL(CLOSER, 1000, 1000, 'test_const');
-ERROR: at or near ",": syntax error
+ERROR: at or near "," with offset 119: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select * from ts_db.metric_ts where device_id = 'device4' and k_timestamp = '2025-12-19 10:00:02.200' FILL(CLOSER, 1000, 1000, 'test_const')
@@ -1669,13 +1669,13 @@ INSERT 1
   2025-12-19 10:00:02.6+00:00  | false |     3 |    33 |   333 | 33.330002 | 333.333 | d72   | d82   | d92   | d102   | \x64313033 | device5   | sichuan
 (4 rows)
 > select * from ts_db.metric_ts where device_id = 'device5' and k_timestamp = '2025-12-19 10:00:02.200' FILL(LINEAR, -1);
-ERROR: at or near ")": syntax error: before range must be greater than or equal to 0
+ERROR: at or near ")" with offset 117: syntax error: before range must be greater than or equal to 0
 SQLSTATE: 42601
 DETAIL: source SQL:
 select * from ts_db.metric_ts where device_id = 'device5' and k_timestamp = '2025-12-19 10:00:02.200' FILL(LINEAR, -1)
                                                                                                                      ^
 > select * from ts_db.metric_ts where device_id = 'device5' and k_timestamp = '2025-12-19 10:00:02.200' FILL(LINEAR, 0, -1);
-ERROR: at or near ")": syntax error: end range must be greater than or equal to 0
+ERROR: at or near ")" with offset 120: syntax error: end range must be greater than or equal to 0
 SQLSTATE: 42601
 DETAIL: source SQL:
 select * from ts_db.metric_ts where device_id = 'device5' and k_timestamp = '2025-12-19 10:00:02.200' FILL(LINEAR, 0, -1)
@@ -1686,14 +1686,14 @@ select * from ts_db.metric_ts where device_id = 'device5' and k_timestamp = '202
   2025-12-19 10:00:02.2+00:00 | NULL  |     3 |    13 |   415 | 41.540001 | 415.46 | NULL  | NULL  | NULL  | NULL   | NULL   | device5   | sichuan
 (1 row)
 > select * from ts_db.metric_ts where device_id = 'device5' and k_timestamp = '2025-12-19 10:00:02.200' FILL(LINEAR, 'test_const');
-ERROR: at or near "test_const": syntax error
+ERROR: at or near "test_const" with offset 115: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select * from ts_db.metric_ts where device_id = 'device5' and k_timestamp = '2025-12-19 10:00:02.200' FILL(LINEAR, 'test_const')
                                                                                                                    ^
 HINT: try \h SELECT
 > select * from ts_db.metric_ts where device_id = 'device5' and k_timestamp = '2025-12-19 10:00:02.200' FILL(LINEAR, 1000, 1000, 'test_const');
-ERROR: at or near ",": syntax error
+ERROR: at or near "," with offset 125: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select * from ts_db.metric_ts where device_id = 'device5' and k_timestamp = '2025-12-19 10:00:02.200' FILL(LINEAR, 1000, 1000, 'test_const')
@@ -2416,14 +2416,14 @@ INSERT 1
   2025-12-19 10:00:02.2+00:00 | device65  | NULL
 (2 rows)
 > select * from ts_db.metric_ts3 where device_id = 'device6' and k_timestamp = '2025-12-19 10:00:02.200' FILL(CONSTANT, 1000, 1000);
-ERROR: at or near ",": syntax error
+ERROR: at or near "," with offset 122: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select * from ts_db.metric_ts3 where device_id = 'device6' and k_timestamp = '2025-12-19 10:00:02.200' FILL(CONSTANT, 1000, 1000)
                                                                                                                           ^
 HINT: try \h SELECT
 > select * from ts_db.metric_ts3 where device_id = 'device6' and k_timestamp = '2025-12-19 10:00:02.200' FILL(CONSTANT, 1000, 1000, 'test_const');
-ERROR: at or near ",": syntax error
+ERROR: at or near "," with offset 122: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select * from ts_db.metric_ts3 where device_id = 'device6' and k_timestamp = '2025-12-19 10:00:02.200' FILL(CONSTANT, 1000, 1000, 'test_const')
@@ -3827,7 +3827,7 @@ INSERT 1
   2025-12-19 10:00:02.2+00:00 | device65   | device651  | test
 (2 rows)
 > select k_timestamp, device_id1, device_id2, data7 from ts_db.metric_ts_multi2 where device_id1 = 'device6' and device_id2 = 'device66' and k_timestamp = '2025-12-19 10:00:02.200' FILL(CONSTANT, cast('test' as varbytes)));
-ERROR: at or near ")": syntax error
+ERROR: at or near ")" with offset 219: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 select k_timestamp, device_id1, device_id2, data7 from ts_db.metric_ts_multi2 where device_id1 = 'device6' and device_id2 = 'device66' and k_timestamp = '2025-12-19 10:00:02.200' FILL(CONSTANT, cast('test' as varbytes)))

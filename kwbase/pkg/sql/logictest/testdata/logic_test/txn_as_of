@@ -242,7 +242,7 @@ SET TRANSACTION AS OF SYSTEM TIME '2019-01-01'
 statement ok
 SAVEPOINT kwbase_restart;
 
-statement error at or near "selct": syntax error
+statement error at or near "selct" with offset 0: syntax error
 SELCT;
 
 statement ok

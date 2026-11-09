@@ -341,7 +341,7 @@ CREATE TABLE
 ERROR: INSERT ... ON CONFLICT is not supported in trigger definition
 SQLSTATE: 0A000
 > create trigger trig2 before update on tt for each row begin upsert tt1 values (new.b);end;
-ERROR: at or near "upsert": syntax error
+ERROR: at or near "upsert" with offset 60: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create trigger trig2 before update on tt for each row begin upsert tt1 values (new.b);end

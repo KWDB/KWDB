@@ -288,7 +288,7 @@ SQLSTATE: 42809
 ERROR: tag a7: unsupported tag type time in timeseries table
 SQLSTATE: 42809
 > alter table test_alter.t2 add tag a8 data;
-ERROR: at or near "data": syntax error
+ERROR: at or near "data" with offset 37: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 alter table test_alter.t2 add tag a8 data

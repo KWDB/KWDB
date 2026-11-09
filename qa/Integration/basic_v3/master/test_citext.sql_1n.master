@@ -176,7 +176,7 @@ INSERT 1
    false
 (1 row)
 > CREATE TABLE citext_with_width_tbl (a CITEXT(10));
-ERROR: at or near "(": syntax error
+ERROR: at or near "(" with offset 44: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 CREATE TABLE citext_with_width_tbl (a CITEXT(10))

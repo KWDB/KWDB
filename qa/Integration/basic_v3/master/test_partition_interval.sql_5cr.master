@@ -43,7 +43,7 @@ SQLSTATE: 22023
 > create ts database tsdb PARTITION INTERVAL 2d;
 CREATE TS DATABASE
 > alter ts database tsdb set PARTITION INTERVAL = 10d;
-ERROR: at or near "partition": syntax error
+ERROR: at or near "partition" with offset 27: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 alter ts database tsdb set PARTITION INTERVAL = 10d
@@ -52,7 +52,7 @@ HINT: try \h ALTER
 > create table tsdb.t(ts timestamp not null, a int) tags(ptag int not null) primary tags(ptag);
 CREATE TABLE
 > create table tsdb.t1(ts timestamp not null, a int) tags(ptag int not null) primary tags(ptag) PARTITION INTERVAL 15d;
-ERROR: at or near "partition": syntax error
+ERROR: at or near "partition" with offset 94: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 create table tsdb.t1(ts timestamp not null, a int) tags(ptag int not null) primary tags(ptag) PARTITION INTERVAL 15d
@@ -73,7 +73,7 @@ create table tsdb.t1(ts timestamp not null, a int) tags(ptag int not null) prima
                 |     retentions 0s
 (1 row)
 > alter table tsdb.t set PARTITION INTERVAL = 25d;
-ERROR: at or near "partition": syntax error
+ERROR: at or near "partition" with offset 23: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 alter table tsdb.t set PARTITION INTERVAL = 25d

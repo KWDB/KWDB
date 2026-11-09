@@ -8,7 +8,7 @@ SQLSTATE: 42803
 ERROR: column "k_timestamp" must appear in the GROUP BY clause or be used in an aggregate function
 SQLSTATE: 42803
 > SELECT max(e2) FROM test_SELECT_col.t1 GROUP BY e2 ORDER BY k_timestamp ORDER BY k_timestamp;---BUG
-ERROR: at or near "order": syntax error
+ERROR: at or near "order" with offset 72: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 SELECT max(e2) FROM test_SELECT_col.t1 GROUP BY e2 ORDER BY k_timestamp ORDER BY k_timestamp

@@ -56,7 +56,7 @@ CREATE USER foo☂
 statement error pq: username "-foo" invalid
 CREATE USER "-foo"
 
-statement error at or near "-": syntax error
+statement error at or near "-" with offset 15: syntax error
 CREATE USER foo-bar
 
 statement ok

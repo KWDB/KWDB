@@ -7,7 +7,7 @@ BEGIN
     return new_time
 end'
 END;
-ERROR: at or near ")": syntax error
+ERROR: at or near ")" with offset 44: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 CREATE FUNCTION time_add_hour(timestamp_str )
@@ -22,7 +22,7 @@ function time_add_hour(timestamp_str)
     return new_time
 end
 END;
-ERROR: at or near "function": syntax error
+ERROR: at or near "function" with offset 100: syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 CREATE FUNCTION time_add_hour(timestamp_str timestamp)
