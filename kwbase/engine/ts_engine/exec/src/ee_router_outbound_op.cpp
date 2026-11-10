@@ -668,13 +668,13 @@ EEIteratorErrCode RouterOutboundOperator::Close(kwdbContext_p ctx) {
   is_tp_stop_ = true;
   {
     std::unique_lock l(lock_);
-    while (true) {
+    while (!buffer_->IsFinishedExtra()) {
       // must wait brpc message callback finish, cannot stop.
-      if (buffer_->IsFinishedExtra()) {
-        break;
-      }
       wait_cond_.wait_for(l, std::chrono::seconds(2));
-      continue;
+    }
+    while (!buffer_->CallbackFinished()) {
+      // must wait brpc message callback finish, cannot stop.
+      wait_cond_.wait_for(l, std::chrono::milliseconds(1));
     }
     is_real_finished_ = true;
   }

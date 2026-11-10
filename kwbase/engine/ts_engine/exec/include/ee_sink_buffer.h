@@ -88,6 +88,7 @@ class OutboundBuffer {
   k_bool IsFinished() const;
   // IsFinishedExtra is used to check if the buffer is finished extra.
   k_bool IsFinishedExtra() const;
+  k_bool CallbackFinished() const;
   void CancelOneSinker();
   void IncrSinker();
   // GetUnfinihedRpc is used to get the unfinished rpc.
@@ -145,6 +146,7 @@ class OutboundBuffer {
   std::atomic<k_bool> is_completing_ = false;
   std::atomic<k_int64> request_sequence_id_ = 0;
   k_int64 audit_stats_send_frequency_max_ = 64;
+  std::atomic<k_int32> callback_in_flight_ = 0;
 };
 
 }  // namespace kwdbts
