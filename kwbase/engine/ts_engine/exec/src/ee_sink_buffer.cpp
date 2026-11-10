@@ -127,6 +127,10 @@ k_bool OutboundBuffer::IsFinished() const {
   return sending_rpc_count_ == 0 && pending_rpc_total_ == 0;
 }
 
+k_bool OutboundBuffer::CallbackFinished() const {
+  return callback_in_flight_ == 0;
+}
+
 k_bool OutboundBuffer::IsFinishedExtra() const {
   return (sending_rpc_count_ == 0 &&
           pending_rpc_total_ == 0) /*|| is_completing_*/;
@@ -237,10 +241,12 @@ KStatus OutboundBuffer::AttemptSendRpc(const k_int64& instance_id,
         if (notify_rpc_callback_) {
           notify_rpc_callback_(ctx.instance_id, ERRCODE_INTERNAL_ERROR, std::string(rpc_error_msg));
         }
+        ++callback_in_flight_;
         --pending_rpc_total_;
         if (notify_callback_) {
           notify_callback_();
         }
+        --callback_in_flight_;
       });
       is_completing_ = true;
       auto& context = OutboundCtx(ctx.instance_id);
@@ -273,10 +279,12 @@ KStatus OutboundBuffer::AttemptSendRpc(const k_int64& instance_id,
                 notify_rpc_callback_(ctx.instance_id, status.status_code(), msg);
               }
             }
+            ++callback_in_flight_;
             --pending_rpc_total_;
             if (notify_callback_) {
               notify_callback_();
             }
+            --callback_in_flight_;
           });
 
           auto& context = OutboundCtx(ctx.instance_id);
@@ -338,10 +346,12 @@ KStatus OutboundBuffer::SendErrMsg(TransmitSimpleInfo& request) {
         if (notify_rpc_callback_) {
           notify_rpc_callback_(ctx.instance_id, ERRCODE_INTERNAL_ERROR, std::string(rpc_error_msg));
         }
+        ++callback_in_flight_;
         --pending_rpc_total_;
         if (notify_callback_) {
           notify_callback_();
         }
+        --callback_in_flight_;
       });
     });
     closure->AddSuccessHandler(
@@ -353,10 +363,12 @@ KStatus OutboundBuffer::SendErrMsg(TransmitSimpleInfo& request) {
               std::string msg = status.error_msgs(0);
               notify_rpc_callback_(ctx.instance_id, status.status_code(), msg);
             }
+            ++callback_in_flight_;
             --pending_rpc_total_;
             if (notify_callback_) {
               notify_callback_();
             }
+            --callback_in_flight_;
           });
         });
 
@@ -388,10 +400,12 @@ KStatus OutboundBuffer::SendSimpleMsg(TransmitSimpleInfo& request) {
         if (notify_rpc_callback_) {
           notify_rpc_callback_(ctx.instance_id, ERRCODE_INTERNAL_ERROR, std::string(rpc_error_msg));
         }
+        ++callback_in_flight_;
         --pending_rpc_total_;
         if (notify_callback_) {
           notify_callback_();
         }
+        --callback_in_flight_;
       });
     });
     closure->AddSuccessHandler([this](const ClosureContext& ctx, const PDialDataRecvrResult& result) noexcept {
@@ -402,10 +416,12 @@ KStatus OutboundBuffer::SendSimpleMsg(TransmitSimpleInfo& request) {
           std::string msg = status.error_msgs(0);
           notify_rpc_callback_(ctx.instance_id, status.status_code(), msg);
         }
+        ++callback_in_flight_;
         --pending_rpc_total_;
         if (notify_callback_) {
           notify_callback_();
         }
+        --callback_in_flight_;
       });
     });
 
